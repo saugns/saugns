@@ -1,5 +1,5 @@
-/* sgensys: Common definitions.
- * Copyright (c) 2011-2012, 2018 Joel K. Pettersson
+/* sgensys: Memory pool module.
+ * Copyright (c) 2014, 2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -12,26 +12,13 @@
  */
 
 #pragma once
+#include "sgensys.h"
 
-/*
- * Common types.
- */
+struct SGS_MemPool;
+typedef struct SGS_MemPool SGS_MemPool;
 
-#include <stddef.h>
-#include <stdint.h>
-#include <stdbool.h>
+SGS_MemPool *SGS_create_MemPool(size_t block_size);
+void SGS_destroy_MemPool(SGS_MemPool *o);
 
-typedef unsigned int uint;
-
-/*
- * Debugging options.
- */
-
-#define SGS_DEBUG_PRINT_PROGRAM 1
-
-/* Disable old parser, run test code instead. */
-#define SGS_TEST_SCANNER 0
-#define SGS_TEST_LEXER 0
-
-#define SGS_HASHTAB_STATS 0
-#define SGS_LEXER_QUIET 0
+void *SGS_MemPool_alloc(SGS_MemPool *o, size_t size);
+void *SGS_MemPool_dup(SGS_MemPool *o, const void *mem, size_t size);

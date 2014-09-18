@@ -12,6 +12,12 @@
  */
 
 #include "sgensys.h"
+#if SGS_TEST_SCANNER
+# include "streamf.h"
+# include "scanner.h"
+#elif SGS_TEST_LEXER
+# include "lexer.h"
+#endif
 #include "program.h"
 #include "parser.h"
 #include "generator.h"
@@ -233,6 +239,39 @@ INVALID:
  */
 static bool process_script(const char *fname, SGS_Program **prg_out,
 		uint32_t options) {
+#if SGS_TEST_SCANNER
+	SGS_Stream fs;
+	SGS_init_Stream(&fs);
+	if (!SGS_Stream_fopenrb(&fs, script_path)) {
+		return false;
+	}
+	SGS_Scanner *scanner = SGS_create_Scanner(&fs);
+	for (;;) {
+		char c = SGS_Scanner_getc(scanner);
+		putchar(c);
+		if (!c) {
+			putchar('\n');
+			break;
+		}
+	}
+	SGS_destroy_Scanner(scanner);
+	SGS_fini_Stream(&fs);
+	return true;
+#elif SGS_TEST_LEXER
+	SGS_SymTab *symtab = SGS_create_SymTab();
+	SGS_Lexer *lexer = SGS_create_Lexer(script_path, symtab);
+	if (!lexer) {
+		SGS_destroy_SymTab(symtab);
+		return false;
+	}
+	for (;;) {
+		SGS_LexerToken token;
+		if (!SGS_Lexer_get(lexer, &token)) break;
+	}
+	SGS_destroy_Lexer(lexer);
+	SGS_destroy_SymTab(symtab);
+	return true;
+#else
 	SGS_Parser *parser = SGS_create_Parser();
 	SGS_ParseResult *parse = SGS_Parser_process(parser, fname);
 	if (!parse) {
@@ -247,6 +286,7 @@ static bool process_script(const char *fname, SGS_Program **prg_out,
 	SGS_destroy_Parser(parser);
 	*prg_out = prg;
 	return (prg != NULL);
+#endif
 }
 
 /**
@@ -260,20 +300,18 @@ int main(int argc, char **argv) {
 
 	if (!parse_args(argc, argv, &options, &script_path, &wav_path,
 			&srate))
-		goto DONE;
+		return false;
 
 	struct SGS_Program *prg = NULL;
 	if (!process_script(script_path, &prg, options)) {
 		error = true;
-		goto DONE;
+	} else if (prg) {
+		bool use_audiodev = (wav_path ?
+				(options & ARG_ENABLE_AUDIO_DEV) :
+				!(options & ARG_DISABLE_AUDIO_DEV));
+		error = !run_program(prg, use_audiodev, wav_path, srate);
+		SGS_destroy_Program(prg);
 	}
 
-	bool use_audiodev = (wav_path ?
-			(options & ARG_ENABLE_AUDIO_DEV) :
-			!(options & ARG_DISABLE_AUDIO_DEV));
-	error = !run_program(prg, use_audiodev, wav_path, srate);
-	SGS_destroy_Program(prg);
-
-DONE:
 	return error;
 }
