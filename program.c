@@ -457,17 +457,33 @@ static SGSProgram* build_program(struct SGSParseList *parse) {
   return prg;
 }
 
+#if TEST_LEXER
+#include "lexer.h"
+#endif
 /**
  * Create program for the given script file. Invokes the parser.
  *
  * Return SGSProgram if successful, NULL on error.
  */
 SGSProgram* SGS_open_program(const char *filename) {
+#if TEST_LEXER
+	SGSSymtab *symtab = SGS_create_symtab();
+	SGSLexer *lexer = SGS_create_lexer(filename, symtab);
+	if (!lexer) return NULL;
+	for (;;) {
+		SGSToken *token = SGS_get_token(lexer);
+		if (token->type <= 0) break;
+	}
+	SGS_destroy_lexer(lexer);
+	SGS_destroy_symtab(symtab);
+	return (SGSProgram*) calloc(1, sizeof(SGSProgram)); //0;
+#else // OLD PARSER
 	struct SGSParseList *parse = SGS_parse(filename);
 	if (!parse) return NULL;
 	SGSProgram *prg = build_program(parse);
 	free(parse);
 	return prg;
+#endif
 }
 
 /**

@@ -22,3 +22,10 @@
 #include <stdbool.h>
 
 typedef unsigned int uint;
+
+/*
+ * Debugging options.
+ */
+
+/* Disable old parser, run lexer testing instead. */
+#define TEST_LEXER 0
