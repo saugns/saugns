@@ -5,7 +5,9 @@ LFLAGS_OSSAUDIO=$(LFLAGS) -lossaudio
 OBJ=audiodev.o \
     wavfile.o \
     ptrarr.o \
+    mempool.o \
     symtab.o \
+    lexer.o \
     parser.o \
     builder.o \
     interpreter.o \
@@ -41,6 +43,12 @@ generator.o: generator.c generator.h program.h osc.h math.h sgensys.h
 interpreter.o: interpreter.c interpreter.h program.h ptrarr.h sgensys.h
 	$(CC) -c $(CFLAGS) interpreter.c
 
+lexer.o: lexer.c lexer.h symtab.h math.h sgensys.h
+	$(CC) -c $(CFLAGS) lexer.c
+
+mempool.o: mempool.c mempool.h sgensys.h
+	$(CC) -c $(CFLAGS) mempool.c
+
 osc.o: osc.c osc.h math.h sgensys.h
 	$(CC) -c $(CFLAGS) osc.c
 
@@ -59,7 +67,7 @@ renderer.o: renderer.c renderer.h interpreter.h program.h ptrarr.h osc.h math.h 
 sgensys.o: sgensys.c generator.h renderer.h interpreter.h builder.h parser.h program.h osc.h ptrarr.h audiodev.h wavfile.h sgensys.h
 	$(CC) -c $(CFLAGS) sgensys.c
 
-symtab.o: symtab.c symtab.h sgensys.h
+symtab.o: symtab.c symtab.h mempool.h sgensys.h
 	$(CC) -c $(CFLAGS) symtab.c
 
 wavfile.o: wavfile.c wavfile.h sgensys.h

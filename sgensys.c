@@ -11,6 +11,7 @@
  * <http://www.gnu.org/licenses/>.
  */
 
+#include "lexer.h"
 #include "parser.h"
 #include "builder.h"
 #if OLD_SOUNDGEN
@@ -309,6 +310,20 @@ int main(int argc, char **argv) {
 			&srate) != 0)
 		goto DONE;
 
+#if USE_LEXER
+	SGSSymTab_t symtab = SGS_create_symtab();
+	SGSLexer *lexer = SGS_create_lexer(script_path, symtab);
+	if (!lexer) {
+		error = true;
+		goto DONE;
+	}
+	for (;;) {
+		SGSToken *token = SGS_get_token(lexer);
+		if (token->type <= 0) break;
+	}
+	SGS_destroy_lexer(lexer);
+	SGS_destroy_symtab(symtab);
+#else
 	SGSParser_t parser = SGS_create_parser();
 	SGSParseResult_t parse_res = SGS_parser_process(parser, script_path);
 	if (!parse_res) {
@@ -327,6 +342,7 @@ int main(int argc, char **argv) {
 			!(options & ARG_DISABLE_AUDIO_DEV));
 	error = !run_program(prg, use_audiodev, wav_path, srate);
 	SGS_destroy_program(prg);
+#endif
 
 DONE:
 	return error;

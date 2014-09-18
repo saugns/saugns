@@ -1,6 +1,5 @@
-/* sgensys: Common definitions.
- * Copyright (c) 2011-2012, 2018 Joel K. Pettersson
- * <joelkpettersson@gmail.com>.
+/* sgensys memory pool module.
+ * Copyright (c) 2014 Joel K. Pettersson <joelkpettersson@gmail.com>
  *
  * This file and the software of which it is part is distributed under the
  * terms of the GNU Lesser General Public License, either version 3 or (at
@@ -11,27 +10,17 @@
  * <http://www.gnu.org/licenses/>.
  */
 
-#pragma once
-
-/*
- * Common types.
- */
+#ifndef __SGS_mempool_h
+#define __SGS_mempool_h
 
 #include <stddef.h>
-#include <stdint.h>
-#include <stdbool.h>
 
-typedef unsigned int uint;
+struct SGSMemPool;
+typedef struct SGSMemPool SGSMemPool;
 
-/*
- * Debugging options.
- */
+SGSMemPool *SGS_create_mempool(size_t block_size);
+void SGS_destroy_mempool(SGSMemPool *o);
 
-#if TESTNEW
-# define OLD_SOUNDGEN 0
-#else
-# define OLD_SOUNDGEN 1
-#endif
-#define USE_LEXER 1
-#define HASHTAB_TEST 0
-#define LEXER_TEST 0
+void *SGS_mempool_alloc(SGSMemPool *o, size_t size);
+
+#endif /* EOF */

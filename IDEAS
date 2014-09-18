@@ -1,0 +1,5 @@
+Add argument passing to scripts
+Add retrieving e.g. "arg" array inside scripts
+Tests (branches), conditional actions...
+
+Can allow e.g. a simple timer script that is configurable
