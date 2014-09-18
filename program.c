@@ -449,12 +449,24 @@ static SGSProgram* build(SGSParser *o) {
   return prg;
 }
 
+#include "lexer.h"
 /**
  * Create SGSProgram for the given SGS file. Invokes the parser.
  *
  * Return SGSProgram if successful, NULL on error.
  */
 SGSProgram* SGS_open_program(const char *filename) {
+	SGSSymtab *symtab = SGS_create_symtab();
+	SGSLexer *lexer = SGS_create_lexer(filename, symtab);
+	if (!lexer) return NULL;
+	for (;;) {
+		SGSToken *token = SGS_get_token(lexer);
+		if (token->type <= 0) break;
+	}
+	SGS_destroy_lexer(lexer);
+	SGS_destroy_symtab(symtab);
+	return (SGSProgram*) calloc(1, sizeof(SGSProgram)); //0;
+#if 0 // OLD PARSER
   SGSParser p;
   FILE *f = fopen(filename, "r");
   if (!f) return 0;
@@ -462,6 +474,7 @@ SGSProgram* SGS_open_program(const char *filename) {
   SGS_parse(&p, f, filename);
   fclose(f);
   return build(&p);
+#endif
 }
 
 /**
