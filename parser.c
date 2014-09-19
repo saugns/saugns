@@ -1355,7 +1355,7 @@ void SGS_parse(SGSParser *o, FILE *f, const char *fn) {
   memset(o, 0, sizeof(SGSParser));
   o->f = f;
   o->fn = fn;
-  o->st = SGS_symtab_create();
+  o->st = SGS_create_symtab();
   o->line = 1;
   o->ampmult = 1.f; /* default until changed */
   o->def_time_ms = 1000; /* default until changed */
@@ -1363,7 +1363,7 @@ void SGS_parse(SGSParser *o, FILE *f, const char *fn) {
   o->def_A4tuning = 444.f; /* default until changed */
   o->def_ratio = 1.f; /* default until changed */
   parse_level(o, 0, NL_GRAPH, SCOPE_TOP);
-  SGS_symtab_destroy(o->st);
+  SGS_destroy_symtab(o->st);
   pp_passes(o);
 }
 

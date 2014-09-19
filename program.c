@@ -387,7 +387,7 @@ static void program_convert_enode(ProgramAlloc *pa, SGSEventNode *e) {
 static SGSProgram* build(SGSParser *o) {
   //puts("build():");
   ProgramAlloc pa;
-  SGSProgram *prg = calloc(1, sizeof(SGSProgram));
+  SGSProgram *prg = alloc(1, sizeof(SGSProgram));
   SGSEventNode *e;
   uint id;
   /*
@@ -447,7 +447,19 @@ static SGSProgram* build(SGSParser *o) {
   return prg;
 }
 
+#include "lexer.h"
 SGSProgram* SGS_program_create(const char *filename) {
+	SGSSymtab *symtab = SGS_create_symtab();
+	SGSLexer *lexer = SGS_create_lexer(filename, symtab);
+	if (!lexer) return NULL;
+	for (;;) {
+		SGSToken *token = SGS_get_token(lexer);
+		if (token->type <= 0) break;
+	}
+	SGS_destroy_lexer(lexer);
+	SGS_destroy_symtab(symtab);
+	return (SGSProgram*) calloc(1, sizeof(SGSProgram)); //0;
+#if 0 // OLD PARSER
   SGSParser p;
   FILE *f = fopen(filename, "r");
   if (!f) return 0;
@@ -455,6 +467,7 @@ SGSProgram* SGS_program_create(const char *filename) {
   SGS_parse(&p, f, filename);
   fclose(f);
   return build(&p);
+#endif
 }
 
 void SGS_program_destroy(SGSProgram *o) {

@@ -9,11 +9,19 @@
  * <http://www.gnu.org/licenses/>.
  */
 
+#ifndef __SGS_symtab_h
+#define __SGS_symtab_h
+
 struct SGSSymtab;
 typedef struct SGSSymtab SGSSymtab;
 
-SGSSymtab* SGS_symtab_create(void);
-void SGS_symtab_destroy(SGSSymtab *o);
+SGSSymtab* SGS_create_symtab(void);
+void SGS_destroy_symtab(SGSSymtab *o);
+
+int SGS_symtab_register_str(SGSSymtab *o, const char *str);
+const char *SGS_symtab_lookup_str(SGSSymtab *o, int id);
 
 void* SGS_symtab_get(SGSSymtab *o, const char *key);
 void* SGS_symtab_set(SGSSymtab *o, const char *key, void *value);
+
+#endif /* EOF */

@@ -10,21 +10,31 @@
  * <http://www.gnu.org/licenses/>.
  */
 
+#ifndef __SGS_lexer_h
+#define __SGS_lexer_h
+
+#ifndef __SGS_symtab_h
+# include "symtab.h"
+#endif
+
 enum {
 	SGS_T_ERROR = -1,
 	SGS_T_EOF = 0,
+	SGS_T_IDENTIFIER,
 };
 
 typedef struct SGSToken {
 	int type;
+	union {
+	} data;
 } SGSToken;
 
 struct SGSLexer;
 typedef struct SGSLexer SGSLexer;
 
-SGSLexer *SGS_create_lexer(const char *filename);
+SGSLexer *SGS_create_lexer(const char *filename, SGSSymtab *symtab);
 void SGS_destroy_lexer(SGSLexer *o);
 
 SGSToken *SGS_get_token(SGSLexer *o);
 
-/* EOF */
+#endif /* EOF */

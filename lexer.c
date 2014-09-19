@@ -11,14 +11,16 @@
  */
 
 #include "sgensys.h"
-#include "lexer.h"
 #include "symtab.h"
+#include "lexer.h"
 #include "math.h"
 #include <stdio.h>
+#include <stdarg.h>
 #include <string.h>
 #include <stdlib.h>
 
 #define BUF_LEN 4096
+#define STRING_MAX_LEN 128
 #define READ_ERROR '\0'
 
 struct SGSLexer {
@@ -28,22 +30,25 @@ struct SGSLexer {
 	     *buf_read;
 	FILE *file;
 	const char *filename;
+	SGSSymtab *symtab;
 	uint line, line_pos;
 	SGSToken token;
-	struct SGSSymtab *symtab;
+	char string[STRING_MAX_LEN];
 };
 
-SGSLexer *SGS_create_lexer(const char *filename) {
+SGSLexer *SGS_create_lexer(const char *filename, SGSSymtab *symtab) {
 	SGSLexer *o;
+	if (symtab == NULL) return NULL;
 	FILE *file = fopen(filename, "r");
-	if (file == NULL) return 0;
+	if (file == NULL) return NULL;
 
 	o = calloc(1, sizeof(SGSLexer));
-	if (o == NULL) return 0;
+	if (o == NULL) return NULL;
 	o->buf_start = NULL;
 	o->buf_read = o->buf_start + BUF_LEN; /* trigger initialization */
 	o->file = file;
 	o->filename = filename;
+	o->symtab = symtab;
 	return o;
 }
 
@@ -51,15 +56,6 @@ void SGS_destroy_lexer(SGSLexer *o) {
 	if (o == NULL) return;
 	fclose(o->file);
 	free(o);
-}
-
-static void print_error(SGSLexer *o, const char *msg) {
-	fprintf(stderr, "%s:%d:%d: error: %s\n",
-		o->filename, o->line, o->line_pos, msg);
-}
-static void print_warning(SGSLexer *o, const char *msg) {
-	fprintf(stderr, "%s:%d:%d: warning: %s\n",
-		o->filename, o->line, o->line_pos, msg);
 }
 
 /**
@@ -110,10 +106,101 @@ static char buf_getc(SGSLexer *o) {
 	return *o->buf_read++;
 }
 
+enum {
+	PRINT_FILE_INFO = 1<<0
+};
+static void print_stderr(SGSLexer *o, uint options, const char *prefix,
+	const char *fmt, va_list ap) {
+	if (options & PRINT_FILE_INFO) {
+		fprintf(stderr, "%s:%d:%d: ",
+			o->filename, o->line, o->line_pos);
+	}
+	if (prefix != NULL) {
+		fprintf(stderr, "%s: ", prefix);
+	}
+	vfprintf(stderr, fmt, ap);
+	putc('\n', stderr);
+}
+void SGS_lexer_warning(SGSLexer *o, const char *fmt, ...) {
+	va_list ap;
+	va_start(ap, fmt);
+	print_stderr(o, PRINT_FILE_INFO, "warning", fmt, ap);
+	va_end(ap);
+}
+void SGS_lexer_error(SGSLexer *o, const char *fmt, ...) {
+	va_list ap;
+	va_start(ap, fmt);
+	print_stderr(o, PRINT_FILE_INFO, "error", fmt, ap);
+	va_end(ap);
+}
+
+#define MARK_END_OF_LINE(o) do{\
+	++(o)->line;\
+	(o)->line_pos = 1;\
+} while(0)
+
+/*
+ * The following macros are used to recognize types of characters.
+ */
+
+/* Basic character types. */
+#define IS_LOWER(c) ((c) >= 'a' && (c) <= 'z')
+#define IS_UPPER(c) ((c) >= 'A' && (c) <= 'Z')
+#define IS_DIGIT(c) ((c) >= '0' && (c) <= '9')
+#define IS_ALPHA(c) (IS_LOWER(c) || IS_UPPER(c))
+#define IS_ALNUM(c) (IS_ALPHA(c) || IS_DIGIT(c))
+#define IS_BLANK(c) ((c) == ' ' || (c) == '\t')
+#define IS_LINEB(c) ((c) == '\n' || (c) == '\r')
+
+/* Valid characters in identifiers. */
+#define IS_IDHEAD(c) IS_ALPHA(c)
+#define IS_IDTAIL(c) (IS_ALNUM(c) || (c) == '_')
+
+/**
+ * Return the next token from the current file. The token is overwritten on
+ * each call, so it must be copied before a new call if it is to be preserved.
+ * Memory for the token is handled by the SGSLexer instance.
+ *
+ * Upon end of file, the SGS_T_EOF token is returned; upon any file-reading
+ * error, the SGS_T_ERROR token is returned.
+ *
+ * See the SGSToken type and the tokens defined in lexer.h for more
+ * information.
+ * \return the address of the current token
+ */
 SGSToken *SGS_get_token(SGSLexer *o) {
 	SGSToken *t = &o->token;
 	for (;;) {
 		char c = buf_getc(o);
+		/*
+		 * Handle keywords and idenitifiers
+		 */
+		if (IS_IDHEAD(c)) {
+			int id;
+			const char *reg_str;
+			int i = 0;
+			do {
+				o->string[i] = c;
+				c = buf_getc(o);
+			} while (IS_IDTAIL(c) && ++i < (STRING_MAX_LEN - 1));
+			if (i == (STRING_MAX_LEN - 1)) {
+				o->string[i] = '\0';
+				// warn and handle too-long-string
+			} else { /* string ended gracefully */
+				++i;
+				o->string[i] = '\0';
+			}
+			id = SGS_symtab_register_str(o->symtab, o->string);
+			if (id < 0) {
+				SGS_lexer_error(o, "failed to register string '%s'", o->string);
+			}
+#if 0
+			id = SGS_symtab_register_str(o->symtab, o->string);
+			SGS_lexer_warning(o, "'%s' (id=%d)", o->string, id);
+			if (id < 0) SGS_lexer_error(o, "string registration failed");
+			SGS_lexer_warning(o, SGS_symtab_lookup_str(o->symtab, id));
+#endif
+		}
 		switch (c) {
 		case EOF:
 			t->type = SGS_T_EOF;
