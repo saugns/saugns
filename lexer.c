@@ -176,7 +176,6 @@ SGSToken *SGS_get_token(SGSLexer *o) {
 		 * Handle keywords and idenitifiers
 		 */
 		if (IS_IDHEAD(c)) {
-			int id;
 			const char *reg_str;
 			int i = 0;
 			do {
@@ -190,16 +189,10 @@ SGSToken *SGS_get_token(SGSLexer *o) {
 				++i;
 				o->string[i] = '\0';
 			}
-			id = SGS_symtab_register_str(o->symtab, o->string);
-			if (id < 0) {
+			reg_str = SGS_symtab_intern_str(o->symtab, o->string);
+			if (reg_str == NULL) {
 				SGS_lexer_error(o, "failed to register string '%s'", o->string);
 			}
-#if 0
-			id = SGS_symtab_register_str(o->symtab, o->string);
-			SGS_lexer_warning(o, "'%s' (id=%d)", o->string, id);
-			if (id < 0) SGS_lexer_error(o, "string registration failed");
-			SGS_lexer_warning(o, SGS_symtab_lookup_str(o->symtab, id));
-#endif
 		}
 		switch (c) {
 		case EOF:
@@ -211,7 +204,7 @@ SGSToken *SGS_get_token(SGSLexer *o) {
 				o->filename);
 			return t;
 		default:
-			putchar(c);
+//			putchar(c);
 			break;
 		}
 	}
