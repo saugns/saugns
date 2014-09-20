@@ -37,7 +37,7 @@ audiodev.o: audiodev.c audiodev_*.c audiodev.h sgensys.h
 generator.o: generator.c generator.h program.h osc.h math.h sgensys.h
 	$(CC) -c $(CFLAGS) generator.c
 
-lexer.o: lexer.c symtab.h math.h sgensys.h
+lexer.o: lexer.c lexer.h symtab.h math.h sgensys.h
 	$(CC) -c $(CFLAGS) lexer.c
 
 mempool.o: mempool.c mempool.h sgensys.h

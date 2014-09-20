@@ -10,12 +10,17 @@
  * <http://www.gnu.org/licenses/>.
  */
 
+#ifndef __SGS_mempool_h
+#define __SGS_mempool_h
+
+#include <stddef.h>
+
 struct SGSMemPool;
 typedef struct SGSMemPool SGSMemPool;
 
-SGSMemPool *SGS_create_mempool();
+SGSMemPool *SGS_create_mempool(size_t block_size);
 void SGS_destroy_mempool(SGSMemPool *o);
 
-void *SGS_mempool_add(SGSMemPool *o, const void *data, uint size);
+void *SGS_mempool_alloc(SGSMemPool *o, size_t size);
 
-/* EOF */
+#endif /* EOF */

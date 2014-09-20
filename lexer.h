@@ -14,10 +14,55 @@
 #pragma once
 #include "symtab.h"
 
+/**
+ * For those 1-character (special character) tokens that are defined, passing
+ * the character will yield the token number.
+ */
+#define SGS_T_1CT(c) (0x100 + (c))
+
+/*
+ * Token enumerations.
+ */
 enum {
 	SGS_T_ERROR = -1,
 	SGS_T_EOF = 0,
+	SGS_T_UNKNOWN = 1,
 	SGS_T_IDENTIFIER,
+	SGS_T_INTVALUE,
+	SGS_T_REALVALUE,
+	/* individual special characters */
+	SGS_T_BANG           = SGS_T_1CT('!'),
+	SGS_T_QUOTATIONMARK  = SGS_T_1CT('"'),
+	SGS_T_NUMBERSIGN     = SGS_T_1CT('#'),
+	SGS_T_DOLLARSIGN     = SGS_T_1CT('$'),
+	SGS_T_PERCENTSIGN    = SGS_T_1CT('%'),
+	SGS_T_AMPERSAND      = SGS_T_1CT('&'),
+	SGS_T_APOSTROPHE     = SGS_T_1CT('\''),
+	SGS_T_LPARENTHESIS   = SGS_T_1CT('('),
+	SGS_T_RPARENTHESIS   = SGS_T_1CT(')'),
+	SGS_T_ASTERISK       = SGS_T_1CT('*'),
+	SGS_T_PLUS           = SGS_T_1CT('+'),
+	SGS_T_COMMA          = SGS_T_1CT(','),
+	SGS_T_MINUS          = SGS_T_1CT('-'),
+	SGS_T_DOT            = SGS_T_1CT('.'),
+	SGS_T_SLASH          = SGS_T_1CT('/'),
+	SGS_T_COLON          = SGS_T_1CT(':'),
+	SGS_T_SEMICOLON      = SGS_T_1CT(';'),
+	SGS_T_LESSTHAN       = SGS_T_1CT('<'),
+	SGS_T_EQUALSSIGN     = SGS_T_1CT('='),
+	SGS_T_GREATERTHAN    = SGS_T_1CT('>'),
+	SGS_T_QUESTIONMARK   = SGS_T_1CT('?'),
+	SGS_T_ATSIGN         = SGS_T_1CT('@'),
+	SGS_T_LSQUAREBRACKET = SGS_T_1CT('['),
+	SGS_T_BACKSLASH      = SGS_T_1CT('\\'),
+	SGS_T_RSQUAREBRACKET = SGS_T_1CT(']'),
+	SGS_T_CARET          = SGS_T_1CT('^'),
+	SGS_T_UNDERSCORE     = SGS_T_1CT('_'),
+	SGS_T_BACKTICK       = SGS_T_1CT('`'),
+	SGS_T_LCURLYBRACKET  = SGS_T_1CT('{'),
+	SGS_T_PIPE           = SGS_T_1CT('|'),
+	SGS_T_RCURLYBRACKET  = SGS_T_1CT('}'),
+	SGS_T_TILDE          = SGS_T_1CT('~'),
 };
 
 typedef struct SGSToken {

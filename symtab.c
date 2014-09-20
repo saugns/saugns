@@ -16,12 +16,20 @@
 #include <string.h>
 #include <stdlib.h>
 
+#define INITIAL_STRTAB_ALLOC 1024
+
+static uint32_t collision_count = 0;
+#include <stdio.h>
+
 typedef struct StringEntry {
-	int symbol_bucket;
-	char string[1]; /* sized to actual length */
+	struct StringEntry *prev;
+	int32_t symbol_bucket;
+	uint32_t len;
+	char str[1]; /* sized to actual length */
 } StringEntry;
 
-#define GET_STRING_ENTRY_SIZE(str_len) (sizeof(StringEntry) + str_len)
+#define GET_STRING_ENTRY_SIZE(str_len) \
+	(offsetof(StringEntry, str) + (str_len))
 
 typedef struct SGSSymnode {
   const char *key;
@@ -32,25 +40,19 @@ typedef struct SGSSymnode {
 struct SGSSymtab {
 	SGSMemPool *mempool;
 	StringEntry **strtab;
-	uint strtab_count;
-	uint strtab_alloc;
+	uint32_t strtab_count;
+	uint32_t strtab_alloc;
   SGSSymnode *node;
 };
 
 SGSSymtab* SGS_create_symtab(void) {
 	SGSSymtab *o = calloc(1, sizeof(SGSSymtab));
 	if (o == NULL) return NULL;
-	o->mempool = SGS_create_mempool();
+	o->mempool = SGS_create_mempool(0);
 	if (o->mempool == NULL) {
 		free(o);
 		return NULL;
 	}
-	/*
-	 * Allocate hash table for string pool.
-	 */
-	o->strtab_alloc = 1403;
-	o->strtab = calloc(o->strtab_alloc, sizeof(StringEntry*));
-
 	return o;
 }
 
@@ -61,102 +63,108 @@ void SGS_destroy_symtab(SGSSymtab *o) {
     free(n);
     n = nn;
   }
-  SGS_destroy_mempool(o->mempool);
-  free(o->strtab);
+  printf("collision count: %d\n", collision_count);
+	SGS_destroy_mempool(o->mempool);
+	free(o->strtab);
+}
+
+/**
+ * Return the hash of the given string \p str of lenght \p len.
+ * \return the hash of \p str
+ */
+static uint32_t hash_string(SGSSymtab *o, const char *str, uint32_t len) {
+	uint32_t i, j;
+	uint32_t hash;
+	/*
+	 * Calculate hash.
+	 */
+	hash = len;
+	for (i = 0; i < len; ++i) {
+		uint32_t c = str[i];
+		hash = 37 * hash + c;
+	}
+	hash &= (o->strtab_alloc - 1); /* strtab_alloc is a power of 2 */
+	return hash;
 }
 
 /**
  * Increase the size of the hash table for the string pool.
  * \return the new allocation size, or -1 upon failure
  */
-//static int extend_strtab(SGSSymtab *o) {
-//	StringEntry **new_strtab;
-//	uint new_alloc;
-//	uint i;
-//	/*
-//	 * Calculate size.
-//	 */
-//	if (o->strtab_alloc == 0) {
-//	}
-//
-//}
-
-static int get_string_hash(SGSSymtab *o, const char *str, uint len) {
-	uint i;
-	int hash;
-	//if (o->strtab_alloc == 0) // XXX: alloc goes here if dynamic size
+static int32_t extend_strtab(SGSSymtab *o) {
+	StringEntry **old_strtab = o->strtab;
+	uint32_t old_strtab_alloc = o->strtab_alloc;
+	uint32_t i;
+	o->strtab_alloc = (o->strtab_alloc > 0) ?
+		(o->strtab_alloc << 1) :
+		INITIAL_STRTAB_ALLOC;
+	o->strtab = calloc(o->strtab_alloc, sizeof(StringEntry*));
+	if (o->strtab == NULL)
+		return -1;
 	/*
-	 * Calculate hash.
+	 * Rehash entries
 	 */
-	hash = 0;
-	for (i = 0; i < len; ++i) {
-		hash = 4 * hash + str[i];
+	for (i = 0; i < old_strtab_alloc; ++i) {
+		StringEntry *entry = old_strtab[i];
+		while (entry) {
+			StringEntry *prev_entry;
+			uint32_t hash;
+			hash = hash_string(o, entry->str, entry->len);
+			/*
+			 * Before adding the entry to the new table, set
+			 * entry->prev to the previous (if any) entry with
+			 * the same hash in the new table. Done repeatedly,
+			 * the links are rebuilt, though not necessarily in
+			 * the same order.
+			 */
+			prev_entry = entry->prev;
+			entry->prev = o->strtab[hash];
+			o->strtab[hash] = entry;
+			entry = prev_entry;
+		}
 	}
-	hash &= ~(1<<31);
-	hash %= o->strtab_alloc;
-	/*
-	 * Collision detection.
-	 */
-	i = 0;
-	for (;;) {
-		if (o->strtab[hash] == NULL) break;
-		if (!strcmp(o->strtab[hash]->string, str)) break;
-		hash += 2 * ++i - 1;
-		hash &= ~(1<<31);
-		hash %= o->strtab_alloc;
-	}
-	return hash;
+	free(old_strtab);
+	return o->strtab_alloc;
 }
 
-#include <stdio.h>
-
 /**
- * Add a string to the string pool of the symbol table, returning the id
- * of the string. The id is unique for each distinct string and symbol table
- * instance. If the string has already been added, the id of the
- * pre-existing entry will be returned.
+ * Intern a string in the string pool of the symbol table. A unique copy of
+ * \p str is added, unless already stored. In either case, the unique copy is
+ * returned.
  *
- * The string cannot be larger (in bytes) than the memory page size of the
- * system.
- * \return the id of the given string, or -1 if allocation fails
+ * \return the unique copy of \p str, or NULL if allocation fails
  */
-int SGS_symtab_register_str(SGSSymtab *o, const char *str) {
-	uint len;
-	int hash;
+const char *SGS_symtab_intern_str(SGSSymtab *o, const char *str, uint32_t len) {
+	uint32_t hash;
 	StringEntry *entry;
-	len = strlen(str);
-	//if (o->strtab_count == o->strtab_alloc - 4) {
-	//	puts("hash table is filled");
-	//	fflush(stdout);
-	//	return -1;
-	//}
-	hash = get_string_hash(o, str, len);
-	if (o->strtab[hash] != NULL) return hash;
+	if (str == NULL || len == 0) return NULL;
+	if (o->strtab_count == (o->strtab_alloc / 2)) {
+		if (extend_strtab(o) < 0) return NULL;
+	}
+	hash = hash_string(o, str, len);
+	entry = o->strtab[hash];
+	for (;;) {
+		if (entry == NULL) break; /* missing */
+		if (entry->len == len &&
+			!strcmp(entry->str, str)) return entry->str; /* found */
+		entry = entry->prev;
+	}
 	/*
 	 * Register string.
 	 */
-	entry = SGS_mempool_add(o->mempool, NULL, GET_STRING_ENTRY_SIZE(len));
-	if (entry == NULL) return -1;
-	entry->symbol_bucket = -1; /* As-yet unused. */
-	strcpy(entry->string, str);
-	o->strtab[hash] = entry;
-	++o->strtab_count;
-	return hash;
-}
-
-/**
- * Lookup the string for a given id within the string pool of the symbol table,
- * returning the string if registered. The id is unique for each distinct
- * string and symbol table instance. If the id does not correspond to a string,
- * NULL is returned.
- * \return the string for the given id, or NULL if none.
- */
-const char *SGS_symtab_lookup_str(SGSSymtab *o, int id) {
-	StringEntry *entry;
-	if (id < 0 || id >= (int)o->strtab_alloc) return NULL;
-	entry = o->strtab[id];
+	entry = SGS_mempool_alloc(o->mempool, GET_STRING_ENTRY_SIZE(len + 1));
 	if (entry == NULL) return NULL;
-	return entry->string; // FIXME: id numbers inherently broken design
+	if (o->strtab[hash] != NULL) {
+		++collision_count;
+	}
+	entry->prev = o->strtab[hash];
+	o->strtab[hash] = entry;
+	entry->symbol_bucket = -1; /* As-yet unused. */
+	entry->len = len;
+	memcpy(entry->str, str, len);
+	entry->str[len] = '\0';
+	++o->strtab_count;
+	return entry->str;
 }
 
 void* SGS_symtab_get(SGSSymtab *o, const char *key) {
