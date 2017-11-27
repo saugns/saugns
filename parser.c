@@ -3,7 +3,7 @@
  *
  * This file and the software of which it is part is distributed under the
  * terms of the GNU Lesser General Public License, either version 3 or (at
- * your option) any later version; WITHOUT ANY WARRANTY, not even of
+ * your option) any later version, WITHOUT ANY WARRANTY, not even of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
@@ -78,7 +78,7 @@ static int getinum(FILE *f) {
 }
 
 static int strfind(FILE *f, const char *const*str) {
-  int search, ret;
+  int ret;
   uint i, len, pos, matchpos;
   char c, undo[256];
   uint strc;
@@ -88,7 +88,7 @@ static int strfind(FILE *f, const char *const*str) {
   s = malloc(sizeof(const char*) * strc);
   for (i = 0; i < strc; ++i)
     s[i] = str[i];
-  search = ret = -1;
+  ret = -1;
   pos = matchpos = 0;
   while ((c = getc(f)) != EOF) {
     undo[pos] = c;
@@ -96,15 +96,11 @@ static int strfind(FILE *f, const char *const*str) {
       if (!s[i]) continue;
       else if (!s[i][pos]) {
         s[i] = 0;
-        if (search == (int)i) {
-          ret = i;
-          matchpos = pos-1;
-        }
+        ret = i;
+        matchpos = pos-1;
       } else if (c != s[i][pos]) {
         s[i] = 0;
-        search = -1;
-      } else
-        search = i;
+      }
     }
     if (pos == len) break;
     ++pos;
@@ -179,7 +175,6 @@ static char read_char(SGSParser *o) {
     testgetc('\r', o->f);
     c = NEWLINE;
   } else if (c == '\r') {
-    testgetc('\n', o->f);
     c = NEWLINE;
   } else {
     eatws(o->f);
@@ -199,7 +194,6 @@ static void read_ws(SGSParser *o) {
       testgetc('\r', o->f);
     } else if (c == '\r') {
       ++o->line;
-      testgetc('\n', o->f);
     } else if (c == '#') {
       while ((c = getc(o->f)) != '\n' && c != '\r' && c != EOF) ;
     } else {
