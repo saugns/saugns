@@ -4,6 +4,7 @@ LFLAGS_LINUX=$(LFLAGS) -lasound
 LFLAGS_UNIX=$(LFLAGS) -lossaudio
 OBJ=audiodev.o \
     generator.o \
+    interpreter.o \
     osc.o \
     parser.o \
     program.o \
@@ -28,8 +29,11 @@ sgensys: $(OBJ)
 audiodev.o: audiodev.c audiodev_*.c audiodev.h
 	$(CC) -c $(CFLAGS) audiodev.c
 
-generator.o: generator.c generator.h math.h osc.h program.h
+generator.o: generator.c generator.h math.h osc.h interpreter.h
 	$(CC) -c $(CFLAGS) generator.c
+
+interpreter.o: interpreter.c interpreter.h program.h
+	$(CC) -c $(CFLAGS) interpreter.c
 
 osc.o: osc.c osc.h math.h
 	$(CC) -c $(CFLAGS) osc.c
