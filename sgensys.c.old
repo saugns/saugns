@@ -7,7 +7,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <http://www.gnu.org/licenses/>
  */
 
 #include "sgensys.h"
@@ -69,7 +69,7 @@ static int run_program(struct SGSProgram *prg, uchar audio_device,
  */
 static void print_usage(void) {
 	puts(
-"Usage: sgensys [[-a|-m] [-r srate] [-o wavfile]|-c] scriptfile\n"
+"Usage: sgensys [-a|-m] [-r srate] [-o wavfile] scriptfile\n"
 "If no options are given, audio output is sent to the audio device.\n"
 "\n"
 "  -a \tAlways enable audio device output.\n"
@@ -79,8 +79,6 @@ static void print_usage(void) {
 "     \twarning will be printed along with the rate used instead.\n"
 "  -o \tWrite output to a 16-bit PCM WAV file; by default, this disables\n"
 "     \taudio device output.\n"
-"  -c \tMerely compile the script, stopping upon success or error; mutually\n"
-"     \texclusive with all other options.\n"
 "  -h \tPrint this message."
 	);
 }
@@ -102,10 +100,8 @@ static int get_piarg(const char *str) {
  * Command line argument flags.
  */
 enum {
-	ARG_FULL_RUN = 1<<0, /* identifies any non-compile-only flags */
-	ARG_ENABLE_AUDIO_DEV = 1<<1,
-	ARG_DISABLE_AUDIO_DEV = 1<<2,
-	ARG_ONLY_COMPILE = 1<<3,
+	ARG_ENABLE_AUDIO_DEV = 1<<0,
+	ARG_DISABLE_AUDIO_DEV = 1<<1
 };
 
 /*
@@ -134,22 +130,13 @@ static int parse_args(int argc, char **argv, uint *flags,
 		}
 		while (*++arg) {
 			if (*arg == 'a') {
-				if (*flags & (ARG_DISABLE_AUDIO_DEV |
-						ARG_ONLY_COMPILE))
-					goto USAGE;
-				*flags |= ARG_FULL_RUN |
-					ARG_ENABLE_AUDIO_DEV;
+				if (*flags & ARG_DISABLE_AUDIO_DEV) goto USAGE;
+				*flags |= ARG_ENABLE_AUDIO_DEV;
 			} else if (*arg == 'm') {
-				if (*flags & (ARG_ENABLE_AUDIO_DEV |
-						ARG_ONLY_COMPILE))
-					goto USAGE;
-				*flags |= ARG_FULL_RUN |
-					 ARG_DISABLE_AUDIO_DEV;
+				if (*flags & ARG_ENABLE_AUDIO_DEV) goto USAGE;
+				*flags |= ARG_DISABLE_AUDIO_DEV;
 			} else if (!strcmp(arg, "r")) {
 				int i;
-				if (*flags & ARG_ONLY_COMPILE)
-					goto USAGE;
-				*flags |= ARG_FULL_RUN;
 				--argc;
 				++argv;
 				if (argc < 1) goto USAGE;
@@ -159,19 +146,12 @@ static int parse_args(int argc, char **argv, uint *flags,
 				*srate = i;
 				break;
 			} else if (!strcmp(arg, "o")) {
-				if (*flags & ARG_ONLY_COMPILE)
-					goto USAGE;
-				*flags |= ARG_FULL_RUN;
 				--argc;
 				++argv;
 				if (argc < 1) goto USAGE;
 				arg = *argv;
 				*wav_path = arg;
 				break;
-			} else if (*arg == 'c') {
-				if (*flags & ARG_FULL_RUN)
-					goto USAGE;
-				*flags |= ARG_ONLY_COMPILE;
 			} else
 				goto USAGE;
 		}
@@ -194,8 +174,6 @@ int main(int argc, char **argv) {
 				script_path);
 		return 1;
 	}
-	if (options & ARG_ONLY_COMPILE)
-		return 0;
 	audio_dev = (wav_path ?
 			(options & ARG_ENABLE_AUDIO_DEV) :
 			!(options & ARG_DISABLE_AUDIO_DEV));
