@@ -387,7 +387,7 @@ static void program_convert_enode(ProgramAlloc *pa, SGSEventNode *e) {
 static SGSProgram* build(SGSParser *o) {
   //puts("build():");
   ProgramAlloc pa;
-  SGSProgram *prg = alloc(1, sizeof(SGSProgram));
+  SGSProgram *prg = calloc(1, sizeof(SGSProgram));
   SGSEventNode *e;
   uint id;
   /*
