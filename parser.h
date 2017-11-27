@@ -1,39 +1,20 @@
-/* sgensys script parser module.
- * Copyright (c) 2011-2012 Joel K. Pettersson <joelkpettersson@gmail.com>
+/* sgensys: Script parser module.
+ * Copyright (c) 2011-2012, 2017-2018 Joel K. Pettersson
+ * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
  * terms of the GNU Lesser General Public License, either version 3 or (at
- * your option) any later version; WITHOUT ANY WARRANTY, not even of
+ * your option) any later version, WITHOUT ANY WARRANTY, not even of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
  * <http://www.gnu.org/licenses/>.
  */
 
-#include <stdio.h>
+#pragma once
+#include "ptrarr.h"
 
 struct SGSOperatorNode;
-
-/*
- * SGSNodeList
- */
-
-typedef struct SGSNodeList {
-  ushort count,
-         inactive_count; /* used when nodes are inherited from another list */
-  void *data;
-} SGSNodeList;
-
-#define SGS_NODE_LIST_GET(nl) \
- ((struct SGSOperatorNode**)(((nl)->count > 1) ? (nl)->data : &(nl)->data))
-
-void SGS_node_list_add(SGSNodeList *list, struct SGSOperatorNode *n);
-void SGS_node_list_clear(SGSNodeList *list);
-void SGS_node_list_safe_copy(SGSNodeList *dst, const SGSNodeList *src);
-int SGS_node_list_rforeach(SGSNodeList *list,
-                           int (*callback)(struct SGSOperatorNode *op,
-                                           void *arg),
-                           void *arg);
 
 /*
  * Parsing nodes.
@@ -51,21 +32,21 @@ enum {
 
 typedef struct SGSOperatorNode {
   struct SGSEventNode *event;
-  SGSNodeList on_next; /* all immediate forward references for operator(s) */
+  struct SGSPtrArr on_next; /* all immediate forward references for operator(s) */
   struct SGSOperatorNode *on_prev; /* preceding node(s) for same operator(s) */
   struct SGSOperatorNode *next_bound;
-  uint on_flags;
+  uint32_t on_flags;
   const char *label;
   /* operator parameters */
-  uint operator_id; /* not filled in by parser; for later use (program.c) */
-  uint operator_params;
-  uchar attr;
-  uchar wave;
-  int time_ms, silence_ms;
+  uint32_t operator_id; /* not filled in by parser; for later use (program.c) */
+  uint32_t operator_params;
+  uint8_t attr;
+  uint8_t wave;
+  int32_t time_ms, silence_ms;
   float freq, dynfreq, phase, amp, dynamp;
   SGSProgramValit valitfreq, valitamp;
   /* node adjacents in operator linkage graph */
-  SGSNodeList fmods, pmods, amods;
+  struct SGSPtrArr fmods, pmods, amods;
 } SGSOperatorNode;
 
 enum {
@@ -78,36 +59,30 @@ typedef struct SGSEventNode {
   struct SGSEventNode *next;
   struct SGSEventNode *groupfrom;
   struct SGSEventNode *composite;
-  int wait_ms;
-  SGSNodeList operators; /* operators included in event */
-  uint en_flags;
+  int32_t wait_ms;
+  struct SGSPtrArr operators; /* operators included in event */
+  uint32_t en_flags;
   /* voice parameters */
-  uint voice_id; /* not filled in by parser; for later use (program.c) */
-  uint voice_params;
+  uint32_t voice_id; /* not filled in by parser; for later use (program.c) */
+  uint32_t voice_params;
   struct SGSEventNode *voice_prev; /* preceding event for same voice */
-  uchar voice_attr;
+  uint8_t voice_attr;
   float panning;
   SGSProgramValit valitpanning;
-  SGSNodeList graph;
+  struct SGSPtrArr graph;
 } SGSEventNode;
 
 void SGS_event_node_destroy(SGSEventNode *e);
 
-typedef struct SGSParser {
-  FILE *f;
-  const char *fn;
-  struct SGSSymtab *st;
-  uint line;
-  uint calllevel;
-  uint scopeid;
-  char c, nextc;
-  /* node state */
-  SGSEventNode *events;
-  SGSEventNode *last_event;
-  /* settings/ops */
-  float ampmult;
-  int def_time_ms;
-  float def_freq, def_A4tuning, def_ratio;
-} SGSParser;
+struct SGSParseList {
+	SGSEventNode *events;
+};
 
-void SGS_parse(SGSParser *o, FILE *f, const char *fn);
+struct SGSParser;
+
+struct SGSParser *SGS_create_parser(void);
+void SGS_destroy_parser(struct SGSParser *o);
+
+struct SGSParseList *SGS_parser_process(struct SGSParser *o, const char *filename);
+
+struct SGSParseList *SGS_parse(const char *filename);
