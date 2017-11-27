@@ -3,7 +3,11 @@ Osin fF4 f[cexp vA4 t1] t1
 ;    f[cexp vF4 t1] t1
 ;    f[cexp vA4 t1] t1
 ;    f[cexp vF4 t1] t1
+;    f[cexp vA4 t1] t1
+;    f[cexp vF4 t1] t1
 Osin fA4 f[clog vF4 t1] t1
+;    f[clog vA4 t1] t1
+;    f[clog vF4 t1] t1
 ;    f[clog vA4 t1] t1
 ;    f[clog vF4 t1] t1
 ;    f[clog vA4 t1] t1
