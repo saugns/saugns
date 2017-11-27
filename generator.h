@@ -1,4 +1,4 @@
-/* sgensys: Symbol table module.
+/* sgensys: sound generator module.
  * Copyright (c) 2011-2012, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -12,12 +12,17 @@
  */
 
 #pragma once
+#include "program.h"
 
-struct SGSSymtab;
-typedef struct SGSSymtab SGSSymtab;
+/*
+ * SGSGenerator
+ */
 
-SGSSymtab* SGS_create_symtab(void);
-void SGS_destroy_symtab(SGSSymtab *o);
+struct SGSGenerator;
+typedef struct SGSGenerator SGSGenerator;
 
-void* SGS_symtab_get(SGSSymtab *o, const char *key);
-void* SGS_symtab_set(SGSSymtab *o, const char *key, void *value);
+SGSGenerator* SGS_create_generator(SGSProgram *prg, uint32_t srate);
+void SGS_destroy_generator(SGSGenerator *o);
+
+bool SGS_generator_run(SGSGenerator *o, int16_t *buf, size_t buf_len,
+                        size_t *gen_len);
