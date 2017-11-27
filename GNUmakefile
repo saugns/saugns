@@ -1,5 +1,5 @@
-CFLAGS=-W -Wall -O2 -ffast-math
-LFLAGS=-s -lm
+CFLAGS=-std=gnu99 -W -Wall -O2 -ggdb -ffast-math
+LFLAGS=-lm
 LFLAGS_LINUX=$(LFLAGS) -lasound
 LFLAGS_OSSAUDIO=$(LFLAGS) -lossaudio
 OBJ=audiodev.o \

@@ -648,7 +648,7 @@ static void end_operator(NodeScope *ns) {
   if (!op)
     return; /* nothing to do */
   if (!op->on_prev) { /* initial event should reset its parameters */
-    op->operator_params |= SGS_UNUSED |
+    op->operator_params |= SGS_ADJCS |
                            SGS_WAVE |
                            SGS_TIME |
                            SGS_SILENCE |
@@ -696,8 +696,8 @@ static void end_event(NodeScope *ns) {
   end_operator(ns);
   pve = e->voice_prev;
   if (!pve) { /* initial event should reset its parameters */
-    e->voice_params |= SGS_OPLIST |
-                       SGS_VOATTR |
+    e->voice_params |= SGS_VOATTR |
+                       SGS_GRAPH |
                        SGS_PANNING;
   } else {
     if (e->panning != pve->panning)
@@ -827,7 +827,7 @@ static void begin_operator(NodeScope *ns, uchar linktype, uchar composite) {
       linktype == NL_GRAPH) {
     SGS_node_list_add(&e->operators, op);
     if (linktype == NL_GRAPH) {
-      e->voice_params |= SGS_OPLIST;
+      e->voice_params |= SGS_GRAPH;
       SGS_node_list_add(&e->graph, op);
     }
   } else {
@@ -843,8 +843,7 @@ static void begin_operator(NodeScope *ns, uchar linktype, uchar composite) {
       list = &ns->parent_on->amods;
       break;
     }
-    //ns->parent_on->operator_params |= SGS_UNUSED;
-    e->voice_params |= SGS_OPLIST; /* needs update */
+    ns->parent_on->operator_params |= SGS_ADJCS;
     SGS_node_list_add(list, op);
   }
   /*
@@ -1043,8 +1042,7 @@ static uchar parse_step(NodeScope *ns) {
         }
         if (testgetc('<', o->f)) {
           if (op->amods.count) {
-            //op->operator_params |= SGS_UNUSED;
-            e->voice_params |= SGS_OPLIST; /* needs update */
+            op->operator_params |= SGS_ADJCS;
             SGS_node_list_clear(&op->amods);
           }
           parse_level(o, ns, NL_AMODS, SCOPE_NEST);
@@ -1068,8 +1066,7 @@ static uchar parse_step(NodeScope *ns) {
         }
         if (testgetc('<', o->f)) {
           if (op->fmods.count) {
-            //op->operator_params |= SGS_UNUSED;
-            e->voice_params |= SGS_OPLIST; /* needs update */
+            op->operator_params |= SGS_ADJCS;
             SGS_node_list_clear(&op->fmods);
           }
           parse_level(o, ns, NL_FMODS, SCOPE_NEST);
@@ -1091,8 +1088,7 @@ static uchar parse_step(NodeScope *ns) {
       if (testgetc('!', o->f)) {
         if (testgetc('<', o->f)) {
           if (op->pmods.count) {
-            //op->operator_params |= SGS_UNUSED;
-            e->voice_params |= SGS_OPLIST; /* needs update */
+            op->operator_params |= SGS_ADJCS;
             SGS_node_list_clear(&op->pmods);
           }
           parse_level(o, ns, NL_PMODS, SCOPE_NEST);
@@ -1117,8 +1113,7 @@ static uchar parse_step(NodeScope *ns) {
         }
         if (testgetc('<', o->f)) {
           if (op->fmods.count) {
-            //op->operator_params |= SGS_UNUSED;
-            e->voice_params |= SGS_OPLIST; /* needs update */
+            op->operator_params |= SGS_ADJCS;
             SGS_node_list_clear(&op->fmods);
           }
           parse_level(o, ns, NL_FMODS, SCOPE_NEST);
@@ -1360,7 +1355,7 @@ void SGS_parse(SGSParser *o, FILE *f, const char *fn) {
   memset(o, 0, sizeof(SGSParser));
   o->f = f;
   o->fn = fn;
-  o->st = SGS_symtab_create();
+  o->st = SGS_create_symtab();
   o->line = 1;
   o->ampmult = 1.f; /* default until changed */
   o->def_time_ms = 1000; /* default until changed */
@@ -1368,7 +1363,7 @@ void SGS_parse(SGSParser *o, FILE *f, const char *fn) {
   o->def_A4tuning = 444.f; /* default until changed */
   o->def_ratio = 1.f; /* default until changed */
   parse_level(o, 0, NL_GRAPH, SCOPE_TOP);
-  SGS_symtab_destroy(o->st);
+  SGS_destroy_symtab(o->st);
   pp_passes(o);
 }
 
