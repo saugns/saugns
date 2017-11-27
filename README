@@ -1,135 +1,214 @@
-sgensys is the Sound GENeration SYStem, a sound synthesis program developed
-to be usable for musical purposes, as well as capable of generating all manner
-of sounds; it will read a script file of its SGS (Sound Generation Script)
-format and produce audio output, either sent to the audio device or, if
-specified, written to a 16-bit PCM WAV file.
+sgensys is the Sound GENeration SYStem, a sound synthesis program
+developed to be usable for musical purposes, as well as capable of
+generating all manner of sounds. It reads script files of its SGS
+(Sound Generation Script) format and produces corresponding audio
+output.
 
-Script syntax overview:
+Various wave types are supported, as well as FM, PM (which is what
+is commonly called FM in audio synthesis), and AM. There is no
+support for the use of pre-recorded samples in synthesis.
 
-Operators are oscillators that may be freely linked in any number of
-configurations as carriers and modulators, each having a number of parameters.
-They, along with their timing relative to each other, are the main objects
-described by the script syntax.
+Audio output support includes ALSA (on Linux), OSS (on BSDs,
+and as a fallback on Linux), and writing 16-bit PCM WAV files.
 
-When specified - or later referenced - operators are optionally followed by
-arguments for their parameters. Other kinds of modifiers also exist that affect
-operators but having other syntactical rules; such are used to affect the
-relative timing of operators and their changes. These changes - including
-setting the initial state - can be seen as events, each having its specific
-target as well as location in time.
+Building and installing
+=======================
 
-A new event terminates the previous one. On the topmost script scope, newlines
-also terminate events; within sub-scopes, however, newlines may be placed
-freely. This means that multiple events may be placed on one line - and that,
-in short, it is always possible to omit newlines, but not to insert them
-everywhere.
+There are currently no install scripts provided. The program can be
+manually copied, along with example scripts, after building.
 
-Whitespace is not allowed within multi-character names, keywords or numbers.
-Apart from this, spaces and tabs may be freely placed, or - not recommended -
-omitted.
+Building can be done using make and a C compiler, on Linux or a BSD.
+There are no extra dependencies except, on Linux, the ALSA sound
+library headers.
 
-When a numerical expression is given, specifying it within parentheses will
-make the syntax freer, allowing whitespace to be freely placed; outside
-parentheses, whitespace will mark the end of the expression.
+Licensing
+=========
 
-The following main keywords - and sub-keywords - are supported:
+sgensys is distributed under the terms of the GNU Lesser General
+Public License (LGPL), version 3 or later. See the file COPYING
+for details.
 
-S:
-	Set argument defaults and parameter modifiers. (referred to as
-	S default values)
-	f, r, t	Set default values for parameters f (default 100),
-		r (default 1), t (default 1).
-	a	Sets a multiplier for the amplitude for all non-modulator
-		waves; effectively a volume control for the combined output.
-	n	Sets A4 tuning (default 444) for frequencies specified as
-		notes.
+The sound generation scripts included currently do not have any
+explicit licensing. If needed in the future, some Creative Commons
+license will be used. Feel free to re-use snippets in writing your
+own scripts.
 
-Osin, Osrs, Otri, Osqr, Osaw:
-	Specify operator - and if top-level, play - with wave type set to
-	either sine, square root of sine, triangle, square or saw wave.
-	When specified or later referenced, operators support the
-	following parameters:
-	t	Time duration in seconds. If no t setting is given, the time
-		set depends on the context.
-			If there are several operators simultaneously given
-		(ie. in succession, ending with the next |), the time, where
-		not otherwise determined, is fitted to the combined duration of
-		their play; otherwise, the S default value is used. (t* can
-		also be used to specify this explicitly)
-			For nested operators, ie. modulators, the default time
-		is infinite (can also be given as ti), meaning they play
-		whenever a carrier they are linked to does. Infinite duration
-		is only supported for nested operators, all scripts having
-		finite duration.
+Script syntax overview
+======================
+
+General description
+-------------------
+
+The current syntax uses keywords followed by zero or more
+parameters with arguments. Each main keyword provides an action,
+either at run time (like a function call in other languages),
+or at parse time (like a global script setting).
+
+The most important keyword, "O" followed by a wavetype, adds an
+operator. Operators are oscillators with parameters, and may be
+connected as carriers and modulators. They, and the timing of their
+running, make the core features of the scripting language.
+
+Events and timing are central; each addition of an operator, or
+later change to operator or voice parameters, is an event. Timing
+modifiers may be used quite freely in the script to change the
+relative time placement of events.
+
+Keyword parameters may either be set (named, followed by writing
+their argument(s)), or left out to use the previous value or a
+default value. Some default values can be changed using the "S"
+(set option) parse-time action.
+
+Modifiers are similar to keywords, but simpler and more flexible
+in how they may be used. They may or may not be followed by an
+argument (e.g.  a delay time).
+
+Keywords
+--------
+
+Each of these keywords is further described in its own section below.
+	S	Set option (parameter default value or other);
+		runs during parsing.
+	O	Add operator; an oscillator with parameters, either a
+		carrier which produces sound for a duration, or a
+		modulator; the "O" must be immediately followed by the
+		(initial) wave type, as in "Osin".
+	P	Panning for the voice at the current location; to be
+		followed by the new value.
+	Q	Quit script; end parsing, turning all that follows
+		into a comment. (Optional.) Other ways to comment exist.
+
+See the section 'Timing' for modifiers.
+
+Set option: S
+-------------
+
+Set parameter default value or other option; runs during parsing.
+Usage: "S", followed by zero or more parameters, each with a value.
+
+Parameters:
+	f	Set default O "f" (frequency, Hz) value; defaults to 444.
+	r	Set default O "r" (frequency ratio) value; defaults to 1.
+	t	Set default O "t" (time, seconds) value; defaults to 1.
+	a	Set multiplier for O "a" (amplitude) value applied to all
+		top-level carriers; defaults to 1.
+	n	Sets A4 tuning (Hz) for O "f" (frequency, Hz) value using
+		note syntax; defaults to 444.
+
+Operator: O (followed by wave type)
+-----------------------------------
+
+Add operator. If a carrier and not a modulator, adds sound at current time
+position, playing for the time duration.
+
+Usage: "O" followed by (initial) wave type (e.g. "Osin"), followed by zero
+or more parameters, each with a value.
+
+Wave types:
+	sin	Sine.
+	sqr	Square (naive).
+	tri	Triangle (naive).
+	saw	Saw (naive, decreasing).
+	srs	Square root of sine (mirrored for the negative half);
+		a softer alternative to a square wave.
+
+Parameters:
+	t	Time duration in seconds. If no t setting is given, the
+		time set depends on the context.
+			For a single non-nested operator, 1 is used unless
+		the default value is changed with "S t".
+			When several operators are specified at the same
+		time and time is explicitly set for at least one, the
+		default time is the combined duration of their play.
+		(t* can also be used to specify this explicitly.)
+			For nested operators, i.e. modulators, the default
+		time is infinite (can also be set as "ti"), meaning they
+		play whenever a carrier they are linked to does. Infinite
+		duration is only supported for nested operators, all scripts
+		having finite duration.
 			For a composite event, the first part is given the
-		S default value if none set. The following parts will each in
-		turn be given the value of the preceding part if not explicitly
-		set - with the exception for nested operators of the last
-		part, which will have infinite time (ti) by default.
-	f	Frequency in Hz. Notes may also be specified in justly intoned
-		C-major scale; optional subnote (c, d, e, f, g, a or b) inside
-		inner octave (between note and next note), then note (C, D, E,
-		F, G, A or B), then optionally s (sharp) or f (flat), then
-		optionally (default 4) the octave of the note (0-10).
+		S default value if none set. The following parts will each
+		in turn be given the value of the preceding part if not
+		explicitly set - with the exception of nested operators for
+		the last part, which will have infinite time (ti) by default.
+	f	Frequency in Hz.
 			Gradual value adjustment also supported; see section.
-	f!<>	Second frequency in Hz to modulate (FM) to by wave or envelope,
-		and/or a list of modulators given within the <> following the
-		number if given. This list replaces any previous FM modulators
-		set, and may be empty.
-			The per-sample product of the modulator amplitudes is
-		used to frequency-modulate the carrier(s), be they the final
+	f!<>	A second frequency in Hz may follow the "!", for a range to
+		use with FM by wave or envelope. A list of modulator
+		operators may be specified within "<>"; this list replaces
+		any previous FM modulators set, and may be empty.
+			The product of the modulator amplitudes is used to
+		frequency-modulate the carrier(s), be they the final
 		carrier(s) or in turn modulator(s) for one or more other
 		carrier(s).
-	r	Frequency ratio (modulator waves only) of carrier to modulator.
-		Keeps frequency that of the carrier divided by the given
-		number. Often used in the form r(n/m) to give an n:m ratio.
+	r	(For modulator operators only.) Frequency ratio of carrier
+		to modulator. Keeps frequency that of the carrier divided by
+		the given number. May be used in the form r(n/m) for an
+		n:m ratio.
 			Gradual value adjustment also supported; see section.
-	r!<>	Second frequency ratio (modulator waves only) to modulate (FM)
-		to by wave or envelope, and/or a list of modulators given
-		within the <> following the number if given. This list
+	r!<>	(For modulator operators only.) A second frequency ratio,
+		for a range to use with FM by wave or envelope. A list of
+		modulator operators may be specified within "<>"; this list
 		replaces any previous FM modulators set, and may be empty.
-			The per-sample product of the modulator amplitudes is
-		used to frequency-modulate the carrier(s), be they the final
+			The product of the modulator amplitudes is used to
+		frequency-modulate the carrier(s), be they the final
 		carrier(s) or in turn modulator(s) for one or more other
 		carrier(s).
-	a	Amplitude, where 1.0 gives a level of 0dB, which is the signal
-		max of the output. For a modulator wave, this however simply
-		adjusts the effect strength.
+	a	Amplitude, where 1.0 corresponds to a level of 0dB. (Note
+		that for top-level carriers, the "S a" value is used as a
+		multiplier. Panning will also reduce the output level
+		unless at the extreme left or right.)
 			Gradual value adjustment also supported; see section.
-	a!<>	Second amplitude to modulate (AM) to by wave or envelope,
-		and/or a list of modulators given within the <> following the
-		number if given. This list replaces any previous AM modulators
-		set, and may be empty.
-			The per-sample product of the modulator amplitudes is
-		used to amplitude-modulate the carrier(s), be they the final
+	a!<>	A second amplitude may follow the "!", for a range to use
+		with AM by wave or envelope. A list of modulator operators
+		may be specified within "<>"; this list replaces any
+		previous AM modulators set, and may be empty.
+			The product of the modulator amplitudes is used to
+		amplitude-modulate the carrier(s), be they the final
 		carrier(s) or in turn modulator(s) for one or more other
 		carrier(s).
 	p	Set the beginning phase of the wave. For example, p(3/4) will
 		make a sine or triangle wave begin at its "bottom". This is
 		mostly used where wanted for waves used by f!/r! or a!.
-	p!<>	A list of modulator (PM) operators follow within the <>. This
-		list replaces any previous PM modulators set, and may be empty.
-			The per-sample sum of the modulator amplitudes is used
-		to phase-modulate the carrier(s), be they the final carrier(s)
+	p!<>	A list of PM modulator operators may be specified within "<>";
+		this list replaces any previous PM modulators set, and may be
+		empty.
+			The sum of the modulator amplitudes is used to
+		phase-modulate the carrier(s), be they the final carrier(s)
 		or in turn modulator(s) for one or more other carrier(s).
 	s	Silent time before playing, time in seconds.
 			Works like adding a delay, except it only affects this
 		operator.
-	w	Set (change) wave type (sin, srs, tri, sqr, saw).
+	w	Set (change) wave type. See list of wave types for values.
 
-P:
-	Set the panning (left-right "balance") of the voice associated with
-	the present operator(s), affecting the mixing of all its operators.
-	Value ranges 0 (left) to 1 (right). Default is 0.5 (center).
-			Gradual value adjustment also supported; see section.
+Panning: P
+----------
 
-The following other modifiers are supported:
-	\	Delay the next event and all following ones, time in seconds.
-		Alternatively, \t will delay by the time of the previous
-		event.
-	|	Add (independently of \) just enough delay to make the next
-		event(s) begin at the expiration of all that preceeds it,
-		though \ may further delay it.
+Set the panning (left-right "balance") of the voice associated with
+the present operator(s), affecting the left and right output levels.
+Value range is 0 (all-left) to 1 (all-right). Default is 0.5 (center).
+Panning not at either extreme end will reduce level.
+		Gradual value adjustment also supported; see section.
+
+Quit: Q
+-------
+
+Quit script; end parsing, turning all that follows into a comment.
+(Optional.)
+
+Generally, comments are added using "#" (line comment) instead.
+
+Values and expressions
+----------------------
+
+Whitespace is not allowed within multi-character names, keywords or
+numbers, and separates values. Spaces and tabs may otherwise be used or
+omitted anywhere.
+
+Following a "#", the rest of a line is commented out.
+
+Numerical expressions are allowed within parentheses, allowing numbers
+to be specified using basic arithmetic and freely placed whitespace.
 
 Gradual value adjustment:
 	Some parameters are noted to support this. Instead of typing the
@@ -137,30 +216,58 @@ Gradual value adjustment:
 	(square brackets):
 	v	Target value.
 	t	Time to reach target value.
-	c	Character of gradual change; either lin, exp or log. (exp and
-		log are ear-tuned approximations designed to sound natural,
-		and symmetric to one another. these approximations allow
-		definite, finite timing, whereas a real exponential
-		calculation wouldn't)
-
-Labels and referencing:
-	Any operator when specified may be prefixed by "'label " in order to
-	define a label for it, where the label is anything followed by
-	whitespace; thereafter the label may be referenced as ":label",
-	allowing future changes to be placed at any later point in the script.
+	c	Change type; either lin, exp or log. (exp and log use
+		ear-tuned polynomial approximations designed to sound
+		natural, and which are symmetric to one another.)
 
 Parameters and operator binding:
 	When specifying or referencing operators within {} brackets, any
-	arguments that follow the closing '}' will be bound to and apply to all
-	of them.
-		Significantly, this allows multiple carriers (given within the
-	{}) to be linked to the same modulator(s), whether for FM, PM, or AM.
+	parameters set following the closing '}' will be bound to and apply
+	to all of them.
+		Significantly, this allows multiple carriers (given within
+	the {}) to be linked to the same modulator(s), whether for FM, PM,
+	or AM. (Note: Support for this is experimental and incomplete.)
+
+Labels and referencing:
+	Any operator when specified may be prefixed by "'label " in order
+	to define a label for it, where the label is anything followed by
+	whitespace; thereafter the label may be referenced as ":label",
+	allowing future changes to be placed at any later point in the
+	script.
+
+Frequencies as notes:
+		Frequency values may be specified as notes. Currently,
+		justly intoned C-major scale is supported; "S n" sets
+		the A4 tuning (default 444Hz). The value consists of the
+		note (C, D, E, F, G, A or B), optionally given a prefix
+		and/or suffix. The prefix is an optional subnote (c, d,
+		e, f, g, a or b) inside an inner octave (between note and
+		next note). The suffix is an optional s (sharp) or
+		f (flat), and/or, in the last position, an octave number
+		(from 0-10, default 4).
+
+Timing
+------
+
+A new event terminates the previous one, but they will have the same
+placement in time unless a delay is added.
+
+At the topmost script scope, newlines also terminate events; within
+sub-scopes, however, newlines may be placed freely.
+
+Timing modifiers:
+	|	Time separator. Delays what follows by the duration of
+		prior events. This is independent of delay added
+		with "\".
+	\	Delay the next event and all following ones, time in
+		seconds. Alternatively, \t will delay by the time of the
+		last event.
 
 Composite events:
 	Writing a ';' (on a new line or the same line) after an event will
-	allow specifying new arguments to apply at the end of the previous
-	duration; this can be repeated.
-		This makes it possible to write a sequence of events as if a
-	single "composite event", not having to insert delays that affect the
-	timing of events later written, thus increasing the flexibility of how
-	changes to operators may be positioned in a script.
+	allow specifying new parameter arguments to apply at the end of the
+	previous duration; this can be repeated.
+		This makes it possible to write a sequence of events as if
+	a single "composite event", not having to insert delays that affect
+	the timing of events later written, thus increasing the flexibility
+	of how changes to operators may be positioned in a script.

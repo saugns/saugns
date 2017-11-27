@@ -3,7 +3,7 @@
  *
  * This file and the software of which it is part is distributed under the
  * terms of the GNU Lesser General Public License, either version 3 or (at
- * your option) any later version; WITHOUT ANY WARRANTY, not even of
+ * your option) any later version, WITHOUT ANY WARRANTY, not even of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
@@ -92,6 +92,7 @@ static inline void close_linux_audio_dev(SGSAudioDev *ad) {
 		return;
 	}
 	
+	snd_pcm_drain(ad->ref.handle);
 	snd_pcm_close(ad->ref.handle);
 	free(ad);
 }
