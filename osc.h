@@ -27,12 +27,15 @@
  * Oscillator wave types.
  */
 enum {
-  SGS_WAVE_SIN = 0,
-  SGS_WAVE_SRS,
-  SGS_WAVE_TRI,
-  SGS_WAVE_SQR,
-  SGS_WAVE_SAW,
-  SGS_WAVE_TYPES
+	SGS_WAVE_SIN = 0,
+	SGS_WAVE_TRI,
+	SGS_WAVE_SQR,
+	SGS_WAVE_SAW,
+	SGS_WAVE_SAB,
+	SGS_WAVE_SHW,
+	SGS_WAVE_SSR,
+	SGS_WAVE_SHR,
+	SGS_WAVE_TYPES
 };
 
 typedef int16_t SGSOscLUT[SGSOsc_LUT_LEN];
@@ -40,8 +43,14 @@ typedef int16_t SGSOscLUT[SGSOsc_LUT_LEN];
 /** Oscillator LUTs, indexed by wave type value. */
 extern SGSOscLUT SGSOsc_luts[SGS_WAVE_TYPES];
 
+/** Smallest unsigned type holding a wave type value. */
+typedef uint8_t SGS_wave_t;
+
 /** Oscillator LUT pointer type. */
 typedef const int16_t *SGSOscLUT_t;
+
+/** Names of oscillator LUTs, with an extra NULL pointer at the end. */
+extern const char *const SGSOsc_lut_names[SGS_WAVE_TYPES + 1];
 
 /**
  * Oscillator data. Only includes phase, as most parameters are
@@ -50,6 +59,9 @@ typedef const int16_t *SGSOscLUT_t;
 struct SGSOsc {
 	uint32_t phase;
 };
+
+extern void SGSOsc_global_init(void);
+extern void SGSOsc_print_lut(SGS_wave_t id);
 
 /**
  * Get phase as 32-bit unsigned int value.
@@ -133,5 +145,3 @@ struct SGSOsc {
 	uint32_t SGSOsc__inc = lrint((coeff)*(freq)); \
 	(o)->phase += SGSOsc__inc; \
 }while(0)
-
-extern void SGSOsc_global_init(void);

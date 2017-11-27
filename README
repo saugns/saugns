@@ -90,8 +90,10 @@ Parameters:
 	f	Set default O "f" (frequency, Hz) value; defaults to 444.
 	r	Set default O "r" (frequency ratio) value; defaults to 1.
 	t	Set default O "t" (time, seconds) value; defaults to 1.
-	a	Set multiplier for O "a" (amplitude) value applied to all
-		top-level carriers; defaults to 1.
+	a	Set multiplier for O "a" (amplitude) value, applied when
+		adding a top-level carrier. If used, this disables automatic
+		down-scaling of amplitude by the number of voices, for
+		manual control instead.
 	n	Sets A4 tuning (Hz) for O "f" (frequency, Hz) value using
 		note syntax; defaults to 444.
 
@@ -106,11 +108,21 @@ or more parameters, each with a value.
 
 Wave types:
 	sin	Sine.
-	sqr	Square (naive).
 	tri	Triangle (naive).
+	sqr	Square (naive).
 	saw	Saw (naive, decreasing).
-	srs	Square root of sine (mirrored for the negative half);
-		a softer alternative to a square wave.
+	sab	Adjusted absolute value of sine (frequency halved to
+		restore base frequency, peak amplitude centered and
+		doubled, phase shift to begin and end at zero amplitude);
+		a softer alternative to saw (saw wave).
+	shw	Half-wave sine (positive half kept, negative half zero'd,
+		peak amplitude centered and doubled, phase shifted to
+		begin and end at zero amplitude); a warm and full sound.
+	ssr	Square root of sine (mirrored for the negative half);
+		a softer alternative to sqr (square wave).
+	shr	Square root of half-wave sine (based on shw, with the
+		negative part unchanged); a slightly metallic-sounding
+		cross between shw and ssr.
 
 Parameters:
 	t	Time duration in seconds. If no t setting is given, the
@@ -155,9 +167,10 @@ Parameters:
 		carrier(s) or in turn modulator(s) for one or more other
 		carrier(s).
 	a	Amplitude, where 1.0 corresponds to a level of 0dB. (Note
-		that for top-level carriers, the "S a" value is used as a
-		multiplier. Panning will also reduce the output level
-		unless at the extreme left or right.)
+		that the final output level is scaled down by the number of
+		voices; alternatively, the S "a" option can be used to set
+		a multiplier used when adding a top-level carrier. Panning
+		will further reduce output level unless fully left or right.)
 			Gradual value adjustment also supported; see section.
 	a!<>	A second amplitude may follow the "!", for a range to use
 		with AM by wave or envelope. A list of modulator operators

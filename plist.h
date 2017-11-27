@@ -1,4 +1,4 @@
-/* sgensys: Pointer array module.
+/* sgensys: Pointer list module.
  * Copyright (c) 2011-2012, 2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -14,37 +14,35 @@
 #pragma once
 #include "sgensys.h"
 
-/*
- * Pointer array type.
+/**
+ * Pointer list type using an array with resizing. A copy
+ * (SGS_plist_copy()) references the copied array instead
+ * of duplicating it, until added to.
  */
-
-/** Pointer array item type. */
-typedef const void *SGSPtr_t;
-
-struct SGSPtrArr {
+typedef struct SGSPList {
 	size_t count;
 	size_t copy_count;
-	SGSPtr_t *items;
+	const void **items;
 	size_t alloc;
-};
+} SGSPList;
 
 /**
- * Get array of items.
+ * Get array holding list of items.
  *
  * The array pointer is used in place of an array if no more
  * than 1 item has been added.
  */
-#define SGS_PTRARR_ITEMS(ar) \
-	((SGSPtr_t*) ((ar)->count > 1 ? \
-		(ar)->items : \
-		((SGSPtr_t*) &(ar)->items)))
+#define SGS_PLIST_ITEMS(o) \
+	((o)->count > 1 ? \
+		(o)->items : \
+		((const void**) &(o)->items))
 
 /**
  * Get the item \p i.
  */
-#define SGS_PTRARR_GET(ar, i) \
-	((SGSPtr_t) SGS_PTRARR_ITEMS(ar)[i])
+#define SGS_PLIST_GET(o, i) \
+	((const void*) SGS_PLIST_ITEMS(o)[i])
 
-bool SGS_ptrarr_add(struct SGSPtrArr *ar, SGSPtr_t item);
-void SGS_ptrarr_clear(struct SGSPtrArr *ar);
-void SGS_ptrarr_copy(struct SGSPtrArr *dst, const struct SGSPtrArr *src);
+bool SGS_plist_add(SGSPList *o, const void *item);
+void SGS_plist_clear(SGSPList *o);
+void SGS_plist_copy(SGSPList *dst, const SGSPList *src);

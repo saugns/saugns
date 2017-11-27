@@ -18,9 +18,6 @@
  * Program types and definitions.
  */
 
-struct SGSProgram;
-typedef struct SGSProgram SGSProgram;
-
 enum {
 	/* voice parameters */
 	SGS_P_GRAPH = 1<<0,
@@ -118,7 +115,8 @@ typedef struct SGSProgramVoiceData {
 typedef struct SGSProgramOperatorData {
 	const SGSProgramGraphAdjcs *adjcs;
 	uint32_t operator_id;
-	uint8_t attr, wave;
+	uint8_t attr;
+	SGS_wave_t wave;
 	int32_t time_ms, silence_ms;
 	float freq, dynfreq, phase, amp, dynamp;
 	SGSProgramValit valitfreq, valitamp;
@@ -132,13 +130,26 @@ typedef struct SGSProgramEvent {
 	const SGSProgramOperatorData *operator;
 } SGSProgramEvent;
 
-struct SGSProgram {
-	const SGSProgramEvent *events;
-	size_t eventc;
-	uint32_t operatorc;
-	uint32_t voicec;
+/**
+ * Program flags affecting interpretation.
+ */
+enum {
+	SGS_PROG_AMP_DIV_VOICES = 1<<0,
 };
-typedef struct SGSProgram SGSProgram;
 
-SGSProgram* SGS_open_program(const char *filename);
+/**
+ * Main program type. Contains everything needed for interpretation.
+ */
+typedef struct SGSProgram {
+	const SGSProgramEvent **events;
+	size_t event_count;
+	uint32_t operator_count;
+	uint16_t voice_count;
+	uint16_t flags;
+	const char *name;
+} SGSProgram;
+
+SGSProgram* SGS_open_program(const char *fname);
 void SGS_close_program(SGSProgram *o);
+
+void SGS_program_print_info(SGSProgram *o);

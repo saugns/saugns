@@ -4,7 +4,7 @@ LFLAGS_LINUX=$(LFLAGS) -lasound
 LFLAGS_OSSAUDIO=$(LFLAGS) -lossaudio
 OBJ=audiodev.o \
     wavfile.o \
-    ptrarr.o \
+    plist.o \
     symtab.o \
     parser.o \
     program.o \
@@ -33,20 +33,20 @@ sgensys: $(OBJ)
 audiodev.o: audiodev.c audiodev_*.c audiodev.h sgensys.h
 	$(CC) -c $(CFLAGS) audiodev.c
 
-generator.o: generator.c generator.h math.h osc.h program.h sgensys.h
+generator.o: generator.c generator.h osc.h math.h program.h sgensys.h
 	$(CC) -c $(CFLAGS) generator.c
 
 osc.o: osc.c osc.h math.h sgensys.h
 	$(CC) -c $(CFLAGS) osc.c
 
-parser.o: parser.c parser.h symtab.h program.h ptrarr.h osc.h math.h sgensys.h
+parser.o: parser.c parser.h program.h osc.h math.h plist.h symtab.h sgensys.h
 	$(CC) -c $(CFLAGS) parser.c
 
-program.o: program.c program.h ptrarr.h parser.h sgensys.h
-	$(CC) -c $(CFLAGS) program.c
+plist.o: plist.c plist.h sgensys.h
+	$(CC) -c $(CFLAGS) plist.c
 
-ptrarr.o: ptrarr.c ptrarr.h sgensys.h
-	$(CC) -c $(CFLAGS) ptrarr.c
+program.o: program.c program.h osc.h parser.h plist.h sgensys.h
+	$(CC) -c $(CFLAGS) program.c
 
 sgensys.o: sgensys.c generator.h program.h audiodev.h wavfile.h sgensys.h
 	$(CC) -c $(CFLAGS) sgensys.c
