@@ -1,5 +1,5 @@
-/* sgensys: Common definitions.
- * Copyright (c) 2011-2012, 2018 Joel K. Pettersson
+/* sgensys: Audio renderer module
+ * Copyright (c) 2011-2014, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -12,20 +12,17 @@
  */
 
 #pragma once
+#include "result.h"
 
 /*
- * Common types.
+ * SGSRenderer
  */
 
-#include <stddef.h>
-#include <stdint.h>
-#include <stdbool.h>
+struct SGS_Renderer;
+typedef struct SGS_Renderer SGS_Renderer;
 
-typedef unsigned int uint;
+SGS_Renderer *SGS_create_Renderer(const SGS_Result *res, uint32_t srate);
+void SGS_destroy_Renderer(SGS_Renderer *o);
 
-/*
- * Debugging options.
- */
-
-/** Disable old sound generator, use interpreter & renderer instead. */
-#define TEST_INTERPRETER 0
+bool SGS_Renderer_run(SGS_Renderer *o, int16_t *buf, size_t buf_len,
+		size_t *out_len);
