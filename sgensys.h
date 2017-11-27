@@ -1,4 +1,6 @@
-/* Copyright (c) 2011-2012 Joel K. Pettersson <joelkpettersson@gmail.com>
+/* sgensys: Common definitions.
+ * Copyright (c) 2011-2012, 2018 Joel K. Pettersson
+ * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
  * terms of the GNU Lesser General Public License, either version 3 or (at
@@ -9,28 +11,14 @@
  * <http://www.gnu.org/licenses/>.
  */
 
+#pragma once
+
+/*
+ * Common types.
+ */
+
+#include <stddef.h>
+#include <stdint.h>
+#include <stdbool.h>
+
 typedef unsigned int uint;
-typedef unsigned short ushort;
-typedef unsigned char uchar;
-
-/*
- * SGSProgram
- */
-
-struct SGSProgram;
-typedef struct SGSProgram SGSProgram;
-
-SGSProgram* SGS_program_create(const char *filename);
-void SGS_program_destroy(SGSProgram *o);
-
-/*
- * SGSGenerator
- */
-
-struct SGSGenerator;
-typedef struct SGSGenerator SGSGenerator;
-
-SGSGenerator* SGS_generator_create(uint srate, SGSProgram *prg);
-void SGS_generator_destroy(SGSGenerator *o);
-uchar SGS_generator_run(SGSGenerator *o, short *buf, uint buf_len,
-                        uint *gen_len);

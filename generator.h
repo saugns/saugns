@@ -1,4 +1,4 @@
-/* sgensys: Math definitions.
+/* sgensys: Audio generator module.
  * Copyright (c) 2011-2012, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -12,8 +12,13 @@
  */
 
 #pragma once
-#include "sgensys.h"
+#include "program.h"
 
-#include <math.h>
+struct SGSGenerator;
+typedef struct SGSGenerator SGSGenerator;
 
-#define SGS_PI       3.14159265358979323846
+SGSGenerator* SGS_create_generator(SGSProgram *prg, uint32_t srate);
+void SGS_destroy_generator(SGSGenerator *o);
+
+bool SGS_generator_run(SGSGenerator *o, int16_t *buf, size_t buf_len,
+                       size_t *gen_len);
