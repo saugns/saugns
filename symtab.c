@@ -1,9 +1,10 @@
-/* sgensys symbol table module.
- * Copyright (c) 2011-2012 Joel K. Pettersson <joelkpettersson@gmail.com>
+/* sgensys: symbol table module.
+ * Copyright (c) 2011-2012, 2014, 2017-2018 Joel K. Pettersson
+ * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
  * terms of the GNU Lesser General Public License, either version 3 or (at
- * your option) any later version; WITHOUT ANY WARRANTY, not even of
+ * your option) any later version, WITHOUT ANY WARRANTY, not even of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
@@ -17,8 +18,10 @@
 
 #define INITIAL_STRTAB_ALLOC 1024
 
+#if HASHTAB_TEST
 static uint32_t collision_count = 0;
 #include <stdio.h>
+#endif
 
 typedef struct StringEntry {
 	struct StringEntry *prev;
@@ -64,7 +67,9 @@ void SGS_destroy_symtab(SGSSymtab *o) {
     free(n);
     n = nn;
   }
+#if HASHTAB_TEST
   printf("collision count: %d\n", collision_count);
+#endif
 	SGS_destroy_mempool(o->mempool);
 	free(o->strtab);
 }
@@ -74,7 +79,7 @@ void SGS_destroy_symtab(SGSSymtab *o) {
  * \return the hash of \p str
  */
 static uint32_t hash_string(SGSSymtab *o, const char *str, uint32_t len) {
-	uint32_t i, j;
+	uint32_t i;
 	uint32_t hash;
 	/*
 	 * Calculate hash.
@@ -129,13 +134,13 @@ static int32_t extend_strtab(SGSSymtab *o) {
 }
 
 /**
- * Intern a string in the string pool of the symbol table. A unique copy of
- * \p str is added, unless already stored. In either case, the unique copy is
- * returned.
+ * Place a string in the string pool of the symbol table, unless already
+ * present. A copy of \p str unique for the symbol table is pointed to
+ * by the return value.
  *
- * \return the unique copy of \p str, or NULL if allocation fails
+ * \return unique copy of \p str for symtab instance, or NULL on failure
  */
-const char *SGS_symtab_intern_str(SGSSymtab *o, const char *str, uint32_t len) {
+const char *SGS_symtab_pool_str(SGSSymtab *o, const char *str, uint32_t len) {
 	uint32_t hash;
 	StringEntry *entry;
 	if (str == NULL || len == 0) return NULL;
@@ -155,9 +160,11 @@ const char *SGS_symtab_intern_str(SGSSymtab *o, const char *str, uint32_t len) {
 	 */
 	entry = SGS_mempool_alloc(o->mempool, GET_STRING_ENTRY_SIZE(len + 1));
 	if (entry == NULL) return NULL;
+#if HASHTAB_TEST
 	if (o->strtab[hash] != NULL) {
 		++collision_count;
 	}
+#endif
 	entry->prev = o->strtab[hash];
 	o->strtab[hash] = entry;
 	entry->symbol_bucket = -1; /* As-yet unused. */
