@@ -29,26 +29,26 @@ sgensys: $(OBJ)
 		$(CC) $(OBJ) $(LFLAGS) -o sgensys; \
 	fi
 
-audiodev.o: audiodev.c audiodev_*.c audiodev.h sgensys.h 
+audiodev.o: audiodev.c audiodev_*.c audiodev.h sgensys.h
 	$(CC) -c $(CFLAGS) audiodev.c
 
-generator.o: generator.c math.h osc.h program.h sgensys.h
+generator.o: generator.c generator.h math.h osc.h program.h sgensys.h
 	$(CC) -c $(CFLAGS) generator.c
 
-osc.o: osc.c math.h osc.h sgensys.h 
+osc.o: osc.c osc.h math.h sgensys.h
 	$(CC) -c $(CFLAGS) osc.c
 
-parser.o: parser.c math.h parser.h program.h sgensys.h
+parser.o: parser.c parser.h program.h symtab.h math.h sgensys.h
 	$(CC) -c $(CFLAGS) parser.c
 
-program.o: program.c parser.h program.h sgensys.h
+program.o: program.c parser.h program.h
 	$(CC) -c $(CFLAGS) program.c
 
-sgensys.o: sgensys.c audiodev.h sgensys.h wavfile.h
+sgensys.o: sgensys.c audiodev.h wavfile.h sgensys.h
 	$(CC) -c $(CFLAGS) sgensys.c
 
-symtab.o: symtab.c sgensys.h symtab.h
+symtab.o: symtab.c symtab.h
 	$(CC) -c $(CFLAGS) symtab.c
 
-wavfile.o: wavfile.c sgensys.h wavfile.h
+wavfile.o: wavfile.c wavfile.h sgensys.h
 	$(CC) -c $(CFLAGS) wavfile.c
