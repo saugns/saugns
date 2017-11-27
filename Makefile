@@ -4,11 +4,14 @@ LFLAGS_LINUX=$(LFLAGS) -lasound
 LFLAGS_OSSAUDIO=$(LFLAGS) -lossaudio
 OBJ=audiodev.o \
     wavfile.o \
-    osc.o \
-    generator.o \
+    ptrarr.o \
     symtab.o \
     parser.o \
     builder.o \
+    interpreter.o \
+    osc.o \
+    generator.o \
+    renderer.o \
     sgensys.o
 
 all: sgensys
@@ -35,16 +38,25 @@ audiodev.o: audiodev.c audiodev_*.c audiodev.h sgensys.h
 generator.o: generator.c generator.h program.h osc.h math.h sgensys.h
 	$(CC) -c $(CFLAGS) generator.c
 
+interpreter.o: interpreter.c interpreter.h program.h ptrarr.h sgensys.h
+	$(CC) -c $(CFLAGS) interpreter.c
+
 osc.o: osc.c osc.h math.h sgensys.h
 	$(CC) -c $(CFLAGS) osc.c
 
-parser.o: parser.c parser.h program.h symtab.h math.h sgensys.h
+parser.o: parser.c parser_*.c parser.h program.h ptrarr.h math.h sgensys.h
 	$(CC) -c $(CFLAGS) parser.c
 
-builder.o: builder.c builder.h program.h parser.h sgensys.h
+builder.o: builder.c builder.h program.h parser.h ptrarr.h sgensys.h
 	$(CC) -c $(CFLAGS) builder.c
 
-sgensys.o: sgensys.c generator.h builder.h parser.h program.h osc.h audiodev.h wavfile.h sgensys.h
+ptrarr.o: ptrarr.c ptrarr.h sgensys.h
+	$(CC) -c $(CFLAGS) ptrarr.c
+
+renderer.o: renderer.c renderer.h interpreter.h program.h ptrarr.h osc.h math.h sgensys.h
+	$(CC) -c $(CFLAGS) renderer.c
+
+sgensys.o: sgensys.c generator.h renderer.h interpreter.h builder.h parser.h program.h osc.h ptrarr.h audiodev.h wavfile.h sgensys.h
 	$(CC) -c $(CFLAGS) sgensys.c
 
 symtab.o: symtab.c symtab.h sgensys.h

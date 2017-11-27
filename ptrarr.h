@@ -1,5 +1,5 @@
-/* sgensys: sound generator module.
- * Copyright (c) 2011-2012, 2017-2018 Joel K. Pettersson
+/* sgensys: Pointer array module.
+ * Copyright (c) 2011-2012, 2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -12,17 +12,21 @@
  */
 
 #pragma once
-#include "program.h"
+#include "sgensys.h"
 
 /*
- * SGSGenerator
+ * Pointer array type.
  */
 
-struct SGSGenerator;
-typedef struct SGSGenerator *SGSGenerator_t;
+typedef const void *SGSPtr_t;
 
-SGSGenerator_t SGS_create_generator(SGSProgram_t prg, uint32_t srate);
-void SGS_destroy_generator(SGSGenerator_t o);
+struct SGSPtrArr {
+	size_t count;
+	size_t copy_count;
+	SGSPtr_t *data;
+	size_t alloc;
+};
 
-bool SGS_generator_run(SGSGenerator_t o, int16_t *buf, size_t buf_len,
-                       size_t *gen_len);
+bool SGS_ptrarr_add(struct SGSPtrArr *list, SGSPtr_t value);
+void SGS_ptrarr_clear(struct SGSPtrArr *list);
+void SGS_ptrarr_copy(struct SGSPtrArr *dst, const struct SGSPtrArr *src);

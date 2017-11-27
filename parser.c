@@ -19,110 +19,10 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-/*
- * General-purpose functions
- */
-
-static void *memdup(const void *src, size_t size) {
-  void *ret = malloc(size);
-  if (!ret) return 0;
-  memcpy(ret, src, size);
-  return ret;
-}
-
-#ifdef strdup /* deal with libc issues when already provided */
-# undef strdup
-#endif
-#define strdup _strdup
-static char *_strdup(const char *src) {
-  size_t len = strlen(src);
-  char *ret;
-  if (!len) return 0;
-  ret = memdup(src, len + 1);
-  if (!ret) return 0;
-  ret[len] = '\0';
-  return ret;
-}
-
-#define IS_WHITESPACE(c) \
-  ((c) == ' ' || (c) == '\t' || (c) == '\n' || (c) == '\r')
-
-static bool testc(char c, FILE *f) {
-  char gc = getc(f);
-  ungetc(gc, f);
-  return (gc == c);
-}
-
-static bool testgetc(char c, FILE *f) {
-  char gc;
-  if ((gc = getc(f)) == c) return true;
-  ungetc(gc, f);
-  return false;
-}
-
-static int32_t getinum(FILE *f) {
-  char c;
-  int32_t num = -1;
-  c = getc(f);
-  if (c >= '0' && c <= '9') {
-    num = c - '0';
-    for (;;) {
-      c = getc(f);
-      if (c >= '0' && c <= '9')
-        num = num * 10 + (c - '0');
-      else
-        break;
-    }
-  }
-  ungetc(c, f);
-  return num;
-}
-
-static int32_t strfind(FILE *f, const char *const*str) {
-  int32_t search, ret;
-  uint32_t i, len, pos, matchpos;
-  char c, undo[256];
-  uint32_t strc;
-  const char **s;
-  for (len = 0, strc = 0; str[strc]; ++strc)
-    if ((i = strlen(str[strc])) > len) len = i;
-  s = malloc(sizeof(const char*) * strc);
-  for (i = 0; i < strc; ++i)
-    s[i] = str[i];
-  search = ret = -1;
-  pos = matchpos = 0;
-  while ((c = getc(f)) != EOF) {
-    undo[pos] = c;
-    for (i = 0; i < strc; ++i) {
-      if (!s[i]) continue;
-      else if (!s[i][pos]) {
-        s[i] = 0;
-        if (search == (int32_t)i) {
-          ret = i;
-          matchpos = pos-1;
-        }
-      } else if (c != s[i][pos]) {
-        s[i] = 0;
-        search = -1;
-      } else
-        search = i;
-    }
-    if (pos == len) break;
-    ++pos;
-  }
-  free(s);
-  for (i = pos; i > matchpos; --i) ungetc(undo[i], f);
-  return ret;
-}
-
-static void eatws(FILE *f) {
-  char c;
-  while ((c = getc(f)) == ' ' || c == '\t') ;
-  ungetc(c, f);
-}
+#include "parser_util.c"
 
 /*
- * Parsing code
+ * Parser
  */
 
 struct SGSParser {
@@ -578,116 +478,32 @@ enum {
   NL_AMODS,
 };
 
-/*
- * Add a node to the given node list.
- */
-void SGS_nodelist_add(SGSNodeList *list, struct SGSOperatorNode *n) {
-  SGSOperatorNode **nl;
-  ++list->count;
-  if (list->count <= 2) {
-    if (list->count == 1) {
-      list->data = n;
-    } else {
-      void *tmp = list->data;
-      list->data = malloc(sizeof(struct SGSOperatorNode*) * 2);
-      nl = list->data;
-      nl[0] = tmp;
-      nl[1] = n;
-    }
-  } else if ((list->count - 1) == list->inactive_count) {
-    void *tmp = list->data;
-    list->data = malloc(sizeof(struct SGSOperatorNode*) * list->count);
-    memcpy(list->data, tmp,
-           sizeof(struct SGSOperatorNode*) * (list->count - 1));
-    nl = list->data;
-    nl[list->count - 1] = n;
-  } else {
-    list->data = realloc(list->data,
-                         sizeof(struct SGSOperatorNode*) * list->count);
-    nl = list->data;
-    nl[list->count - 1] = n;
+static void destroy_operator(SGSOperatorNode *op) {
+  SGS_ptrarr_clear(&op->on_next);
+  uint i;
+  for (i = op->fmods.copy_count; i < op->fmods.count; ++i) {
+    destroy_operator((struct SGSOperatorNode*) op->fmods.data[i]);
   }
-}
-
-/*
- * Clear the given node list.
- */
-void SGS_nodelist_clear(SGSNodeList *list) {
-  if (list->count > 1 &&
-      list->count > list->inactive_count) free(list->data);
-  list->count = 0;
-  list->inactive_count = 0;
-  list->data = 0;
-}
-
-/*
- * Copy the node list src to dst; to save memory and limit fragmentation,
- * dst will actually merely reference the data in src unless/until modified.
- *
- * This is a "safe copy", meaning the copied node entries at the beginning
- * of the list will remain "inactive" - SGS_node_list_rforeach() as well as
- * the cleanup code of the owner of the list will ignore them, avoiding
- * duplicate operations.
- *
- * Manual (read-only) access of the list will still give access to the
- * "inactive" nodes, unless deliberately beginning iteration at
- * inactive_count.
- */
-void SGS_nodelist_safe_copy(SGSNodeList *dst, const SGSNodeList *src) {
-  SGS_nodelist_clear(dst);
-  dst->count = src->count;
-  dst->inactive_count = src->count;
-  dst->data = src->data;
-}
-
-/*
- * Loop and recurse through the operator hierarchy beginning with the given
- * node list, calling the provided callback with the provided argument for
- * each active operator node before entering the next level. The callback
- * return values are summed for each level and then returned.
- */
-int32_t SGS_nodelist_rforeach(SGSNodeList *list,
-                           int32_t (*callback)(struct SGSOperatorNode *op,
-                                           void *arg),
-                           void *arg) {
-  SGSOperatorNode **nl = SGS_NODELIST_GET(list);
-  int32_t ret = 0;
-  uint32_t i;
-  for (i = list->inactive_count; i < list->count; ++i) {
-    SGSOperatorNode *op = nl[i];
-    ret += callback(op, arg);
-    ret += SGS_nodelist_rforeach(&op->fmods, callback, arg);
-    ret += SGS_nodelist_rforeach(&op->pmods, callback, arg);
-    ret += SGS_nodelist_rforeach(&op->amods, callback, arg);
+  for (i = op->pmods.copy_count; i < op->pmods.count; ++i) {
+    destroy_operator((struct SGSOperatorNode*) op->pmods.data[i]);
   }
-  return ret;
-}
-
-/*
- * Recurse and free all active operator nodes and node lists within and
- * including the given list.
- */
-static void SGS_nodelist_rcleanup(SGSNodeList *list) {
-  SGSOperatorNode **nl = SGS_NODELIST_GET(list);
-  uint32_t i;
-  for (i = list->inactive_count; i < list->count; ++i) {
-    SGSOperatorNode *op = nl[i];
-    SGS_nodelist_clear(&op->on_next);
-    SGS_nodelist_rcleanup(&op->fmods);
-    SGS_nodelist_rcleanup(&op->pmods);
-    SGS_nodelist_rcleanup(&op->amods);
-    if (op->on_flags & ON_LABEL_ALLOC) free((char*)op->label);
-    free(op);
+  for (i = op->amods.copy_count; i < op->amods.count; ++i) {
+    destroy_operator((struct SGSOperatorNode*) op->amods.data[i]);
   }
-  SGS_nodelist_clear(list);
+  if (op->on_flags & ON_LABEL_ALLOC) {
+	  free((char*) op->label);
+  }
+  free(op);
 }
 
 /*
  * Destroy the given event node and all associated operator nodes.
  */
 void SGS_event_node_destroy(SGSEventNode *e) {
-  SGS_nodelist_rcleanup(&e->operators);
-  SGS_nodelist_clear(&e->graph);
+  for (uint i = e->operators.copy_count; i < e->operators.count; ++i) {
+    destroy_operator((struct SGSOperatorNode*) e->operators.data[i]);
+  }
+  SGS_ptrarr_clear(&e->graph);
   free(e);
 }
 
@@ -697,39 +513,39 @@ static void end_operator(NodeScope *ns) {
   if (!op)
     return; /* nothing to do */
   if (!op->on_prev) { /* initial event should reset its parameters */
-    op->operator_params |= SGS_ADJCS |
-                           SGS_WAVE |
-                           SGS_TIME |
-                           SGS_SILENCE |
-                           SGS_FREQ |
-                           SGS_DYNFREQ |
-                           SGS_PHASE |
-                           SGS_AMP |
-                           SGS_DYNAMP |
-                           SGS_OPATTR;
+    op->operator_params |= SGS_P_ADJCS |
+                           SGS_P_WAVE |
+                           SGS_P_TIME |
+                           SGS_P_SILENCE |
+                           SGS_P_FREQ |
+                           SGS_P_DYNFREQ |
+                           SGS_P_PHASE |
+                           SGS_P_AMP |
+                           SGS_P_DYNAMP |
+                           SGS_P_OPATTR;
   } else {
     SGSOperatorNode *pop = op->on_prev;
     if (op->attr != pop->attr)
-      op->operator_params |= SGS_OPATTR;
+      op->operator_params |= SGS_P_OPATTR;
     if (op->wave != pop->wave)
-      op->operator_params |= SGS_WAVE;
+      op->operator_params |= SGS_P_WAVE;
     /* SGS_TIME set when time set */
     if (op->silence_ms)
-      op->operator_params |= SGS_SILENCE;
+      op->operator_params |= SGS_P_SILENCE;
     /* SGS_FREQ set when freq set */
     if (op->dynfreq != pop->dynfreq)
-      op->operator_params |= SGS_DYNFREQ;
+      op->operator_params |= SGS_P_DYNFREQ;
     /* SGS_PHASE set when phase set */
     /* SGS_AMP set when amp set */
     if (op->dynamp != pop->dynamp)
-      op->operator_params |= SGS_DYNAMP;
+      op->operator_params |= SGS_P_DYNAMP;
   }
   if (op->valitfreq.type)
-    op->operator_params |= SGS_OPATTR |
-                           SGS_VALITFREQ;
+    op->operator_params |= SGS_P_OPATTR |
+                           SGS_P_VALITFREQ;
   if (op->valitamp.type)
-    op->operator_params |= SGS_OPATTR |
-                           SGS_VALITAMP;
+    op->operator_params |= SGS_P_OPATTR |
+                           SGS_P_VALITAMP;
   if (!(ns->ns_flags & NS_NESTED_SCOPE))
     op->amp *= o->ampmult;
   ns->operator = 0;
@@ -744,16 +560,16 @@ static void end_event(NodeScope *ns) {
   end_operator(ns);
   pve = e->voice_prev;
   if (!pve) { /* initial event should reset its parameters */
-    e->voice_params |= SGS_VOATTR |
-                       SGS_GRAPH |
-                       SGS_PANNING;
+    e->voice_params |= SGS_P_VOATTR |
+                       SGS_P_GRAPH |
+                       SGS_P_PANNING;
   } else {
     if (e->panning != pve->panning)
-      e->voice_params |= SGS_PANNING;
+      e->voice_params |= SGS_P_PANNING;
   }
   if (e->valitpanning.type)
-    e->voice_params |= SGS_VOATTR |
-                       SGS_VALITPANNING;
+    e->voice_params |= SGS_P_VOATTR |
+                       SGS_P_VALITPANNING;
   ns->last_event = e;
   ns->event = 0;
 }
@@ -834,21 +650,21 @@ static void begin_operator(NodeScope *ns, uint8_t linktype, bool composite) {
     op->dynamp = pop->dynamp;
     op->valitfreq = pop->valitfreq;
     op->valitamp = pop->valitamp;
-    SGS_nodelist_safe_copy(&op->fmods, &pop->fmods);
-    SGS_nodelist_safe_copy(&op->pmods, &pop->pmods);
-    SGS_nodelist_safe_copy(&op->amods, &pop->amods);
+    SGS_ptrarr_copy(&op->fmods, &pop->fmods);
+    SGS_ptrarr_copy(&op->pmods, &pop->pmods);
+    SGS_ptrarr_copy(&op->amods, &pop->amods);
     if (ns->ns_flags & NS_BIND_MULTIPLE) {
       SGSOperatorNode *mpop = pop;
       int32_t max_time = 0;
       do { 
         if (max_time < mpop->time_ms) max_time = mpop->time_ms;
-        SGS_nodelist_add(&mpop->on_next, op);
+        SGS_ptrarr_add(&mpop->on_next, op);
       } while ((mpop = mpop->next_bound));
       op->on_flags |= ON_MULTIPLE_OPERATORS;
       op->time_ms = max_time;
       ns->ns_flags &= ~NS_BIND_MULTIPLE;
     } else {
-      SGS_nodelist_add(&pop->on_next, op);
+      SGS_ptrarr_add(&pop->on_next, op);
     }
   } else {
     /*
@@ -873,26 +689,26 @@ static void begin_operator(NodeScope *ns, uint8_t linktype, bool composite) {
    */
   if (linktype == NL_REFER ||
       linktype == NL_GRAPH) {
-    SGS_nodelist_add(&e->operators, op);
+    SGS_ptrarr_add(&e->operators, op);
     if (linktype == NL_GRAPH) {
-      e->voice_params |= SGS_GRAPH;
-      SGS_nodelist_add(&e->graph, op);
+      e->voice_params |= SGS_P_GRAPH;
+      SGS_ptrarr_add(&e->graph, op);
     }
   } else {
-    SGSNodeList *list = 0;
+    struct SGSPtrArr *arr = 0;
     switch (linktype) {
     case NL_FMODS:
-      list = &ns->parent_on->fmods;
+      arr = &ns->parent_on->fmods;
       break;
     case NL_PMODS:
-      list = &ns->parent_on->pmods;
+      arr = &ns->parent_on->pmods;
       break;
     case NL_AMODS:
-      list = &ns->parent_on->amods;
+      arr = &ns->parent_on->amods;
       break;
     }
-    ns->parent_on->operator_params |= SGS_ADJCS;
-    SGS_nodelist_add(list, op);
+    ns->parent_on->operator_params |= SGS_P_ADJCS;
+    SGS_ptrarr_add(arr, op);
   }
   /*
    * Assign label. If no new label but previous node (for a non-composite)
@@ -1090,8 +906,8 @@ static bool parse_step(NodeScope *ns) {
         }
         if (testgetc('<', o->f)) {
           if (op->amods.count) {
-            op->operator_params |= SGS_ADJCS;
-            SGS_nodelist_clear(&op->amods);
+            op->operator_params |= SGS_P_ADJCS;
+            SGS_ptrarr_clear(&op->amods);
           }
           parse_level(o, ns, NL_AMODS, SCOPE_NEST);
         }
@@ -1100,7 +916,7 @@ static bool parse_step(NodeScope *ns) {
           op->attr |= SGS_ATTR_VALITAMP;
       } else {
         read_num(o, 0, &op->amp);
-        op->operator_params |= SGS_AMP;
+        op->operator_params |= SGS_P_AMP;
         if (!op->valitamp.type)
           op->attr &= ~SGS_ATTR_VALITAMP;
       }
@@ -1114,8 +930,8 @@ static bool parse_step(NodeScope *ns) {
         }
         if (testgetc('<', o->f)) {
           if (op->fmods.count) {
-            op->operator_params |= SGS_ADJCS;
-            SGS_nodelist_clear(&op->fmods);
+            op->operator_params |= SGS_P_ADJCS;
+            SGS_ptrarr_clear(&op->fmods);
           }
           parse_level(o, ns, NL_FMODS, SCOPE_NEST);
         }
@@ -1126,7 +942,7 @@ static bool parse_step(NodeScope *ns) {
         }
       } else if (read_num(o, read_note, &op->freq)) {
         op->attr &= ~SGS_ATTR_FREQRATIO;
-        op->operator_params |= SGS_FREQ;
+        op->operator_params |= SGS_P_FREQ;
         if (!op->valitfreq.type)
           op->attr &= ~(SGS_ATTR_VALITFREQ |
                         SGS_ATTR_VALITFREQRATIO);
@@ -1136,8 +952,8 @@ static bool parse_step(NodeScope *ns) {
       if (testgetc('!', o->f)) {
         if (testgetc('<', o->f)) {
           if (op->pmods.count) {
-            op->operator_params |= SGS_ADJCS;
-            SGS_nodelist_clear(&op->pmods);
+            op->operator_params |= SGS_P_ADJCS;
+            SGS_ptrarr_clear(&op->pmods);
           }
           parse_level(o, ns, NL_PMODS, SCOPE_NEST);
         } else
@@ -1146,7 +962,7 @@ static bool parse_step(NodeScope *ns) {
         op->phase = fmod(op->phase, 1.f);
         if (op->phase < 0.f)
           op->phase += 1.f;
-        op->operator_params |= SGS_PHASE;
+        op->operator_params |= SGS_P_PHASE;
       }
       break;
     case 'r':
@@ -1161,8 +977,8 @@ static bool parse_step(NodeScope *ns) {
         }
         if (testgetc('<', o->f)) {
           if (op->fmods.count) {
-            op->operator_params |= SGS_ADJCS;
-            SGS_nodelist_clear(&op->fmods);
+            op->operator_params |= SGS_P_ADJCS;
+            SGS_ptrarr_clear(&op->fmods);
           }
           parse_level(o, ns, NL_FMODS, SCOPE_NEST);
         }
@@ -1175,7 +991,7 @@ static bool parse_step(NodeScope *ns) {
       } else if (read_num(o, 0, &op->freq)) {
         op->freq = 1.f / op->freq;
         op->attr |= SGS_ATTR_FREQRATIO;
-        op->operator_params |= SGS_FREQ;
+        op->operator_params |= SGS_P_FREQ;
         if (!op->valitfreq.type)
           op->attr &= ~(SGS_ATTR_VALITFREQ |
                         SGS_ATTR_VALITFREQRATIO);
@@ -1211,7 +1027,7 @@ static bool parse_step(NodeScope *ns) {
         op->on_flags &= ~ON_TIME_DEFAULT;
         op->time_ms = lrint(time * 1000.f);
       }
-      op->operator_params |= SGS_TIME;
+      op->operator_params |= SGS_P_TIME;
       break;
     case 'w': {
       int32_t wave = read_wavetype(o);
@@ -1479,11 +1295,11 @@ static void group_events(SGSEventNode *to) {
   uint32_t i;
   int32_t wait = 0, waitcount = 0;
   for (e = to->groupfrom; e != e_after; ) {
-    SGSOperatorNode **nl = SGS_NODELIST_GET(&e->operators);
-    for (i = 0; i < e->operators.count; ++i) {
-      SGSOperatorNode *op = nl[i];
+    struct SGSPtrArr *ops = &e->operators;
+    for (i = 0; i < ops->count; ++i) {
+      SGSOperatorNode *op = (struct SGSOperatorNode*) ops->data[i];
       if (e->next == e_after &&
-          i == (uint)(e->operators.count - 1) &&
+          i == (uint)(ops->count - 1) &&
           op->on_flags & ON_TIME_DEFAULT) /* default for last node in group */
         op->on_flags &= ~ON_TIME_DEFAULT;
       if (wait < op->time_ms)
@@ -1496,9 +1312,9 @@ static void group_events(SGSEventNode *to) {
     }
   }
   for (e = to->groupfrom; e != e_after; ) {
-    SGSOperatorNode **nl = SGS_NODELIST_GET(&e->operators);
-    for (i = 0; i < e->operators.count; ++i) {
-      SGSOperatorNode *op = nl[i];
+    struct SGSPtrArr *ops = &e->operators;
+    for (i = 0; i < ops->count; ++i) {
+      SGSOperatorNode *op = (struct SGSOperatorNode*) ops->data[i];
       if (op->on_flags & ON_TIME_DEFAULT) {
         op->on_flags &= ~ON_TIME_DEFAULT;
         op->time_ms = wait + waitcount; /* fill in sensible default time */
@@ -1514,7 +1330,7 @@ static void group_events(SGSEventNode *to) {
     e_after->wait_ms += wait;
 }
 
-static int32_t time_operator(SGSOperatorNode *op, void *arg) {
+static void time_operator(SGSOperatorNode *op) {
   SGSEventNode *e = op->event;
   if (op->valitfreq.time_ms == VI_TIME_DEFAULT)
     op->valitfreq.time_ms = op->time_ms;
@@ -1534,7 +1350,16 @@ static int32_t time_operator(SGSOperatorNode *op, void *arg) {
       ((SGSEventNode*)e->next)->wait_ms += op->time_ms;
     e->en_flags &= ~EN_ADD_WAIT_DURATION;
   }
-  return 0;
+  uint i;
+  for (i = op->fmods.copy_count; i < op->fmods.count; ++i) {
+    time_operator((struct SGSOperatorNode*) op->fmods.data[i]);
+  }
+  for (i = op->pmods.copy_count; i < op->pmods.count; ++i) {
+    time_operator((struct SGSOperatorNode*) op->pmods.data[i]);
+  }
+  for (i = op->amods.copy_count; i < op->amods.count; ++i) {
+    time_operator((struct SGSOperatorNode*) op->amods.data[i]);
+  }
 }
 
 static void time_event(SGSEventNode *e) {
@@ -1544,13 +1369,15 @@ static void time_event(SGSEventNode *e) {
    */
   if (e->valitpanning.time_ms == VI_TIME_DEFAULT)
     e->valitpanning.time_ms = 1000; /* FIXME! */
-  SGS_nodelist_rforeach(&e->operators, time_operator, 0);
+  for (uint i = e->operators.copy_count; i < e->operators.count; ++i) {
+    time_operator((struct SGSOperatorNode*) e->operators.data[i]);
+  }
   /*
    * Timing for composites - done before event list flattened.
    */
   if (e->composite) {
-    SGSEventNode *ce = e->composite;
-    SGSOperatorNode *ce_op = SGS_NODELIST_GET(&ce->operators)[0],
+    SGSEventNode *ce = e->composite, *ce_prev = e;
+    SGSOperatorNode *ce_op = (struct SGSOperatorNode*) ce->operators.data[0],
                     *ce_op_prev = ce_op->on_prev,
                     *e_op = ce_op_prev;
     if (e_op->on_flags & ON_TIME_DEFAULT)
@@ -1569,11 +1396,11 @@ static void time_event(SGSEventNode *e) {
       else if (e_op->time_ms != SGS_TIME_INF)
         e_op->time_ms += ce_op->time_ms +
                          (ce->wait_ms - ce_op_prev->time_ms);
-      ce_op->operator_params &= ~SGS_TIME;
+      ce_op->operator_params &= ~SGS_P_TIME;
       ce_op_prev = ce_op;
       ce = ce->next;
       if (!ce) break;
-      ce_op = SGS_NODELIST_GET(&ce->operators)[0];
+      ce_op = (struct SGSOperatorNode*) ce->operators.data[0];
     }
   }
 }

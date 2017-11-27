@@ -1,4 +1,4 @@
-/* sgensys: common definitions.
+/* sgensys: Common definitions.
  * Copyright (c) 2011-2012, 2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -13,8 +13,22 @@
 
 #pragma once
 
+/*
+ * Common types.
+ */
+
+#include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
-#include <stddef.h>
 
 typedef unsigned int uint;
+
+/*
+ * Debugging options.
+ */
+
+#if TESTNEW
+# define OLD_SOUNDGEN 0
+#else
+# define OLD_SOUNDGEN 1
+#endif

@@ -13,7 +13,12 @@
 
 #include "parser.h"
 #include "builder.h"
-#include "generator.h"
+#if OLD_SOUNDGEN
+# include "generator.h"
+#else
+# include "interpreter.h"
+# include "renderer.h"
+#endif
 #include "audiodev.h"
 #include "wavfile.h"
 #include <errno.h>
@@ -24,10 +29,12 @@
 #define NUM_CHANNELS 2
 #define DEFAULT_SRATE 44100
 
+#if OLD_SOUNDGEN /* SGSProgram -> SGSGenerator */
+
 static int16_t sound_buf[BUF_SAMPLES * NUM_CHANNELS];
 
 /*
- * Produce sound for the given SGSProgram, optionally sending it
+ * Produce sound for the given program, optionally sending it
  * to a given audio device and/or WAV file.
  *
  * Return true if no error occurred.
@@ -97,6 +104,79 @@ static bool run_program(SGSProgram_t prg,
 	}
 	return status;
 }
+
+#else /* SGSProgram -> SGSInterpreter; SGSResult -> SGSRenderer */
+
+static int16_t audio_buf[BUF_SAMPLES * NUM_CHANNELS];
+
+/*
+ * Render audio for the given program result, optionally sending it
+ * to a given audio device and/or WAV file.
+ *
+ * Return true if no error occurred.
+ */
+static bool produce_audio(SGSResult_t res,
+		SGSAudioDev_t ad, SGSWAVFile_t wf, uint32_t srate) {
+	SGSRenderer_t ar = SGS_create_renderer(res, srate);
+	size_t len;
+	bool error = false;
+	bool run;
+	do {
+		run = SGS_renderer_run(ar, audio_buf, BUF_SAMPLES, &len);
+		if (ad && !SGS_audiodev_write(ad, audio_buf, len)) {
+			error = true;
+			fputs("error: audio device write failed\n", stderr);
+		}
+		if (wf && !SGS_wavfile_write(wf, audio_buf, len)) {
+			error = true;
+			fputs("error: WAV file write failed\n", stderr);
+		}
+	} while (run);
+	SGS_destroy_renderer(ar);
+	return !error;
+}
+
+static bool run_program(SGSProgram_t prg,
+		bool use_audiodev, const char *wav_path, uint32_t srate) {
+	SGSInterpreter_t intrp = SGS_create_interpreter();
+	SGSResult_t res = SGS_interpreter_run(intrp, prg);
+
+	SGSAudioDev_t ad = NULL;
+	uint32_t ad_srate = srate;
+	SGSWAVFile_t wf = NULL;
+	if (use_audiodev) {
+		ad = SGS_open_audiodev(NUM_CHANNELS, &ad_srate);
+		if (!ad) {
+			return false;
+		}
+	}
+	if (wav_path) {
+		wf = SGS_create_wavfile(wav_path, NUM_CHANNELS, srate);
+		if (!wf) {
+			if (ad) SGS_close_audiodev(ad);
+			return false;
+		}
+	}
+
+	bool status;
+	if (ad && wf && (ad_srate != srate)) {
+		fputs("warning: generating sound twice, using a different sample rate for each output\n", stderr);
+		status = produce_audio(res, ad, NULL, ad_srate);
+		status = status && produce_audio(res, NULL, wf, srate);
+	} else {
+		status = produce_audio(res, ad, wf, ad_srate);
+	}
+
+	if (ad) {
+		SGS_close_audiodev(ad);
+	}
+	if (wf) {
+		status = status && (SGS_close_wavfile(wf) == 0);
+	}
+	return status;
+}
+
+#endif
 
 /*
  * Print command line usage instructions.

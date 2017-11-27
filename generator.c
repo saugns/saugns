@@ -1,4 +1,4 @@
-/* sgensys: sound generator module.
+/* sgensys: Sound generator module.
  * Copyright (c) 2011-2012, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -151,9 +151,9 @@ SGSGenerator_t SGS_create_generator(SGSProgram_t prg, uint32_t srate) {
     setssize += sizeof(SetNode) +
                 (sizeof(Data) *
                  (count_flags(step->params) +
-                  count_flags(step->params & (SGS_VALITFREQ |
-                                              SGS_VALITAMP |
-                                              SGS_VALITPANNING))*2 - 1));
+                  count_flags(step->params & (SGS_P_VALITFREQ |
+                                              SGS_P_VALITAMP |
+                                              SGS_P_VALITPANNING))*2 - 1));
   }
   /*
    * Allocate & initialize.
@@ -190,50 +190,50 @@ SGSGenerator_t SGS_create_generator(SGSProgram_t prg, uint32_t srate) {
       SGSProgramOperatorData_t od = step->operator;
       s->operator_id = od->operator_id;
       s->voice_id = step->voice_id;
-      if (s->params & SGS_ADJCS)
+      if (s->params & SGS_P_ADJCS)
         (*set++).v = (void*)od->adjcs;
-      if (s->params & SGS_OPATTR)
+      if (s->params & SGS_P_OPATTR)
         (*set++).i = od->attr;
-      if (s->params & SGS_WAVE)
+      if (s->params & SGS_P_WAVE)
         (*set++).i = od->wave;
-      if (s->params & SGS_TIME) {
+      if (s->params & SGS_P_TIME) {
         (*set++).i = (od->time_ms == SGS_TIME_INF) ?
                      SGS_TIME_INF :
                      (int32_t) ((float)od->time_ms) * srate * .001f;
       }
-      if (s->params & SGS_SILENCE)
+      if (s->params & SGS_P_SILENCE)
         (*set++).i = ((float)od->silence_ms) * srate * .001f;
-      if (s->params & SGS_FREQ)
+      if (s->params & SGS_P_FREQ)
         (*set++).f = od->freq;
-      if (s->params & SGS_VALITFREQ) {
+      if (s->params & SGS_P_VALITFREQ) {
         (*set++).i = ((float)od->valitfreq.time_ms) * srate * .001f;
         (*set++).f = od->valitfreq.goal;
         (*set++).i = od->valitfreq.type;
       }
-      if (s->params & SGS_DYNFREQ)
+      if (s->params & SGS_P_DYNFREQ)
         (*set++).f = od->dynfreq;
-      if (s->params & SGS_PHASE)
+      if (s->params & SGS_P_PHASE)
         (*set++).i = SGSOsc_PHASE(od->phase);
-      if (s->params & SGS_AMP)
+      if (s->params & SGS_P_AMP)
         (*set++).f = od->amp;
-      if (s->params & SGS_VALITAMP) {
+      if (s->params & SGS_P_VALITAMP) {
         (*set++).i = ((float)od->valitamp.time_ms) * srate * .001f;
         (*set++).f = od->valitamp.goal;
         (*set++).i = od->valitamp.type;
       }
-      if (s->params & SGS_DYNAMP)
+      if (s->params & SGS_P_DYNAMP)
         (*set++).f = od->dynamp;
     }
     if (step->voice) {
       SGSProgramVoiceData_t vd = step->voice;
       s->voice_id = step->voice_id;
-      if (s->params & SGS_GRAPH)
+      if (s->params & SGS_P_GRAPH)
         (*set++).v = (void*)vd->graph;
-      if (s->params & SGS_VOATTR)
+      if (s->params & SGS_P_VOATTR)
         (*set++).i = vd->attr;
-      if (s->params & SGS_PANNING)
+      if (s->params & SGS_P_PANNING)
         (*set++).f = vd->panning;
-      if (s->params & SGS_VALITPANNING) {
+      if (s->params & SGS_P_VALITPANNING) {
         (*set++).i = ((float)vd->valitpanning.time_ms) * srate * .001f;
         (*set++).f = vd->valitpanning.goal;
         (*set++).i = vd->valitpanning.type;
@@ -264,57 +264,57 @@ static void handle_event(SGSGenerator_t o, EventNode *e) {
      */
     if (s->operator_id >= 0) {
       on = &o->operators[s->operator_id];
-      if (s->params & SGS_ADJCS)
+      if (s->params & SGS_P_ADJCS)
         on->adjcs = (*data++).v;
-      if (s->params & SGS_OPATTR) {
+      if (s->params & SGS_P_OPATTR) {
         uint8_t attr = (uint8_t)(*data++).i;
-        if (!(s->params & SGS_FREQ)) {
+        if (!(s->params & SGS_P_FREQ)) {
           /* May change during processing; preserve state of FREQRATIO flag */
           attr &= ~SGS_ATTR_FREQRATIO;
           attr |= on->attr & SGS_ATTR_FREQRATIO;
         }
         on->attr = attr;
       }
-      if (s->params & SGS_WAVE)
+      if (s->params & SGS_P_WAVE)
         on->wave = (*data++).i;
-      if (s->params & SGS_TIME)
+      if (s->params & SGS_P_TIME)
         on->time = (*data++).i;
-      if (s->params & SGS_SILENCE)
+      if (s->params & SGS_P_SILENCE)
         on->silence = (*data++).i;
-      if (s->params & SGS_FREQ)
+      if (s->params & SGS_P_FREQ)
         on->freq = (*data++).f;
-      if (s->params & SGS_VALITFREQ) {
+      if (s->params & SGS_P_VALITFREQ) {
         on->valitfreq.time = (*data++).i;
         on->valitfreq.pos = 0;
         on->valitfreq.goal = (*data++).f;
         on->valitfreq.type = (*data++).i;
       }
-      if (s->params & SGS_DYNFREQ)
+      if (s->params & SGS_P_DYNFREQ)
         on->dynfreq = (*data++).f;
-      if (s->params & SGS_PHASE)
+      if (s->params & SGS_P_PHASE)
         SGSOsc_SET_PHASE(&on->osc, (uint32_t)(*data++).i);
-      if (s->params & SGS_AMP)
+      if (s->params & SGS_P_AMP)
         on->amp = (*data++).f;
-      if (s->params & SGS_VALITAMP) {
+      if (s->params & SGS_P_VALITAMP) {
         on->valitamp.time = (*data++).i;
         on->valitamp.pos = 0;
         on->valitamp.goal = (*data++).f;
         on->valitamp.type = (*data++).i;
       }
-      if (s->params & SGS_DYNAMP)
+      if (s->params & SGS_P_DYNAMP)
         on->dynamp = (*data++).f;
     }
     if (s->voice_id >= 0) {
       vn = &o->voices[s->voice_id];
-      if (s->params & SGS_GRAPH)
+      if (s->params & SGS_P_GRAPH)
         vn->graph = (*data++).v;
-      if (s->params & SGS_VOATTR) {
+      if (s->params & SGS_P_VOATTR) {
         uint8_t attr = (uint8_t)(*data++).i;
         vn->attr = attr;
       }
-      if (s->params & SGS_PANNING)
+      if (s->params & SGS_P_PANNING)
         vn->panning = (*data++).f;
-      if (s->params & SGS_VALITPANNING) {
+      if (s->params & SGS_P_VALITPANNING) {
         vn->valitpanning.time = (*data++).i;
         vn->valitpanning.pos = 0;
         vn->valitpanning.goal = (*data++).f;
