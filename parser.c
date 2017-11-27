@@ -648,7 +648,7 @@ static void end_operator(NodeScope *ns) {
   if (!op)
     return; /* nothing to do */
   if (!op->on_prev) { /* initial event should reset its parameters */
-    op->operator_params |= SGS_ADJCS |
+    op->operator_params |= SGS_UNUSED |
                            SGS_WAVE |
                            SGS_TIME |
                            SGS_SILENCE |
@@ -696,8 +696,8 @@ static void end_event(NodeScope *ns) {
   end_operator(ns);
   pve = e->voice_prev;
   if (!pve) { /* initial event should reset its parameters */
-    e->voice_params |= SGS_VOATTR |
-                       SGS_GRAPH |
+    e->voice_params |= SGS_OPLIST |
+                       SGS_VOATTR |
                        SGS_PANNING;
   } else {
     if (e->panning != pve->panning)
@@ -827,7 +827,7 @@ static void begin_operator(NodeScope *ns, uchar linktype, uchar composite) {
       linktype == NL_GRAPH) {
     SGS_node_list_add(&e->operators, op);
     if (linktype == NL_GRAPH) {
-      e->voice_params |= SGS_GRAPH;
+      e->voice_params |= SGS_OPLIST;
       SGS_node_list_add(&e->graph, op);
     }
   } else {
@@ -843,7 +843,8 @@ static void begin_operator(NodeScope *ns, uchar linktype, uchar composite) {
       list = &ns->parent_on->amods;
       break;
     }
-    ns->parent_on->operator_params |= SGS_ADJCS;
+    //ns->parent_on->operator_params |= SGS_UNUSED;
+    e->voice_params |= SGS_OPLIST; /* needs update */
     SGS_node_list_add(list, op);
   }
   /*
@@ -1042,7 +1043,8 @@ static uchar parse_step(NodeScope *ns) {
         }
         if (testgetc('<', o->f)) {
           if (op->amods.count) {
-            op->operator_params |= SGS_ADJCS;
+            //op->operator_params |= SGS_UNUSED;
+            e->voice_params |= SGS_OPLIST; /* needs update */
             SGS_node_list_clear(&op->amods);
           }
           parse_level(o, ns, NL_AMODS, SCOPE_NEST);
@@ -1066,7 +1068,8 @@ static uchar parse_step(NodeScope *ns) {
         }
         if (testgetc('<', o->f)) {
           if (op->fmods.count) {
-            op->operator_params |= SGS_ADJCS;
+            //op->operator_params |= SGS_UNUSED;
+            e->voice_params |= SGS_OPLIST; /* needs update */
             SGS_node_list_clear(&op->fmods);
           }
           parse_level(o, ns, NL_FMODS, SCOPE_NEST);
@@ -1088,7 +1091,8 @@ static uchar parse_step(NodeScope *ns) {
       if (testgetc('!', o->f)) {
         if (testgetc('<', o->f)) {
           if (op->pmods.count) {
-            op->operator_params |= SGS_ADJCS;
+            //op->operator_params |= SGS_UNUSED;
+            e->voice_params |= SGS_OPLIST; /* needs update */
             SGS_node_list_clear(&op->pmods);
           }
           parse_level(o, ns, NL_PMODS, SCOPE_NEST);
@@ -1113,7 +1117,8 @@ static uchar parse_step(NodeScope *ns) {
         }
         if (testgetc('<', o->f)) {
           if (op->fmods.count) {
-            op->operator_params |= SGS_ADJCS;
+            //op->operator_params |= SGS_UNUSED;
+            e->voice_params |= SGS_OPLIST; /* needs update */
             SGS_node_list_clear(&op->fmods);
           }
           parse_level(o, ns, NL_FMODS, SCOPE_NEST);
