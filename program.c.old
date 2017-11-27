@@ -475,7 +475,6 @@ typedef struct OperatorAllocData {
 	SGSOperatorNode *last;
 	SGSProgramEvent *out;
 	uint duration_ms;
-	uchar visited; /* used in graph traversal */
 } OperatorAllocData;
 
 typedef struct OperatorAlloc {
@@ -587,7 +586,6 @@ static SGSProgramEvent *program_alloc_oevent(ProgramAlloc *pa) {
  * Graph creation and traversal
  */
 
-#if 0
 typedef struct SGSImGraph {
   uchar opc;
   struct SGSImGraphNodeAdjcs *ops[1]; /* sized to opc */
@@ -691,126 +689,11 @@ static void destroy_graph(SGSImGraph *o) {
 	}
 	free(o);
 }
-#endif
-
-#if 0 /* generator.c */
-static uint run_block(SGSGenerator *o, Buf *blocks, uint buf_len,
-		OperatorNode *n, BufData *parent_freq, uchar wave_env,
-		uint acc_ind) {
-	uint i, len, zero_len, skip_len;
-	BufData *freq, *freqmod, *pm, *amp;
-	BufData *sbuf = *blocks;
-	Buf *nextbuf = blocks + 1;
-	uchar fmodc, pmodc, amodc;
-	/*
-	 * Handle frequency (alternatively ratio) parameter, including frequency
-	 * modulation if modulators linked.
-	 */
-	freq = *(nextbuf++);
-	if (n->attr & SGS_ATTR_VALITFREQ) {
-		if (n->attr & SGS_ATTR_VALITFREQRATIO) {
-			freqmod = parent_freq;
-			if (!(n->attr & SGS_ATTR_FREQRATIO)) {
-				n->attr |= SGS_ATTR_FREQRATIO;
-				n->freq /= parent_freq[0].f;
-			}
-		} else {
-			freqmod = 0;
-			if (n->attr & SGS_ATTR_FREQRATIO) {
-				n->attr &= ~SGS_ATTR_FREQRATIO;
-				n->freq *= parent_freq[0].f;
-			}
-		}
-	} else {
-		freqmod = (n->attr & SGS_ATTR_FREQRATIO) ? parent_freq : 0;
-	}
-	if (run_param(freq, len, vi, &n->freq, freqmod))
-		n->attr &= ~(SGS_ATTR_VALITFREQ|SGS_ATTR_VALITFREQRATIO);
-	if (fmodc) {
-		const int *fmods = n->adjcs->adjcs;
-		BufData *fmbuf;
-		for (i = 0; i < fmodc; ++i)
-			run_block(o, nextbuf, len, &o->operators[fmods[i]], freq, 1, i);
-		fmbuf = *nextbuf;
-		if (n->attr & SGS_ATTR_FREQRATIO) {
-			for (i = 0; i < len; ++i)
-				freq[i].f += (n->dynfreq * parent_freq[i].f - freq[i].f) * fmbuf[i].f;
-		} else {
-			for (i = 0; i < len; ++i)
-				freq[i].f += (n->dynfreq - freq[i].f) * fmbuf[i].f;
-		}
-	}
-	/*
-	 * If phase modulators linked, get phase offsets for modulation.
-	 */
-	pm = 0;
-	if (pmodc) {
-		const int *pmods = &n->adjcs->adjcs[fmodc];
-		for (i = 0; i < pmodc; ++i)
-			run_block(o, nextbuf, len, &o->operators[pmods[i]], freq, 0, i);
-		pm = *(nextbuf++);
-	}
-	if (!wave_env) {
-		/*
-		 * Handle amplitude parameter, including amplitude modulation if
-		 * modulators linked.
-		 */
-		if (amodc) {
-			const int *amods = &n->adjcs->adjcs[fmodc+pmodc];
-			float dynampdiff = n->dynamp - n->amp;
-			for (i = 0; i < amodc; ++i)
-				run_block(o, nextbuf, len, &o->operators[amods[i]], freq, 1, i);
-			amp = *(nextbuf++);
-			for (i = 0; i < len; ++i)
-				amp[i].f = n->amp + amp[i].f * dynampdiff;
-		} else {
-			amp = *(nextbuf++);
-			vi = (n->attr & SGS_ATTR_VALITAMP) ? &n->valitamp : 0;
-			if (run_param(amp, len, vi, &n->amp, 0))
-				n->attr &= ~SGS_ATTR_VALITAMP;
-		}
-		/*
-		 * Generate integer output - either for voice output or phase modulation
-		 * input.
-		 */
-		for (i = 0; i < len; ++i) {
-			int s, spm = 0;
-			float sfreq = freq[i].f, samp = amp[i].f;
-			if (pm) spm = pm[i].i;
-			SGSOsc_RUN_PM(&n->osc, n->osctype, o->osc_coeff, sfreq, spm, samp, s);
-			if (acc_ind) s += sbuf[i].i;
-			sbuf[i].i = s;
-		}
-	} else {
-		/*
-		 * Generate float output - used as waveform envelopes for modulating
-		 * frequency or amplitude.
-		 */
-		for (i = 0; i < len; ++i) {
-			float s, sfreq = freq[i].f;
-			int spm = 0;
-			if (pm) spm = pm[i].i;
-			SGSOsc_RUN_PM_ENVO(&n->osc, n->osctype, o->osc_coeff, sfreq, spm, s);
-			if (acc_ind) s *= sbuf[i].f;
-			sbuf[i].f = s;
-		}
-	}
-}
-#endif
 
 static const int *traverse_graph(SGSImGraph *operator_graph) {
 	const int *op_list;
 	
 	return op_list;
-}
-
-static void reset_graph(ProgramAlloc *pa) {
-	OperatorAlloc *oa = &pa->oa;
-	uint i;
-	for (i = 0; i < oa->operatorc; ++i) {
-		OperatorAllocData *entry = &oa->data[i];
-		entry->visited = 0;
-	}
 }
 
 /*
