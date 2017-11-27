@@ -19,12 +19,16 @@ clean:
 	rm -f $(OBJ) sgensys
 
 sgensys: $(OBJ)
-	@if [ `uname -s` == 'Linux' ]; then \
-		echo "Linking for Linux build (ALSA and OSS)."; \
-		$(CC) $(LFLAGS_LINUX) $(OBJ) -o sgensys; \
+	@UNAME="`uname -s`"; \
+	if [ $$UNAME = 'Linux' ]; then \
+		echo "Linking for Linux (using ALSA and OSS)."; \
+		$(CC) $(OBJ) $(LFLAGS_LINUX) -o sgensys; \
+	elif [ $$UNAME = 'OpenBSD' ] || [ $$UNAME = 'NetBSD' ]; then \
+		echo "Linking for OpenBSD or NetBSD (using OSS)."; \
+		$(CC) $(OBJ) $(LFLAGS_OSSAUDIO) -o sgensys; \
 	else \
-		echo "Linking for generic OSS build."; \
-		$(CC) $(LFLAGS_OSSAUDIO) $(OBJ) -o sgensys; \
+		echo "Linking for generic UNIX (using OSS)."; \
+		$(CC) $(OBJ) $(LFLAGS) -o sgensys; \
 	fi
 
 audiodev.o: audiodev.c audiodev_*.c sgensys.h audiodev.h

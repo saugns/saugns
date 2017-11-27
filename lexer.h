@@ -1,9 +1,10 @@
-/* sgensys script lexer module.
- * Copyright (c) 2014 Joel K. Pettersson <joelkpettersson@gmail.com>
+/* sgensys: script lexer module.
+ * Copyright (c) 2014, 2017-2018 Joel K. Pettersson
+ * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
  * terms of the GNU Lesser General Public License, either version 3 or (at
- * your option) any later version; WITHOUT ANY WARRANTY, not even of
+ * your option) any later version, WITHOUT ANY WARRANTY, not even of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
@@ -29,10 +30,10 @@
 enum {
 	SGS_T_ERROR = -1,
 	SGS_T_EOF = 0,
-	SGS_T_UNKNOWN = 1,
-	SGS_T_IDENTIFIER,
-	SGS_T_INTVALUE,
-	SGS_T_REALVALUE,
+	SGS_T_INVALID = 1,
+	SGS_T_ID_STR,
+	SGS_T_INT_NUM,
+	SGS_T_REAL_NUM,
 	/* individual special characters */
 	SGS_T_BANG           = SGS_T_1CT('!'),
 	SGS_T_QUOTATIONMARK  = SGS_T_1CT('"'),
@@ -69,8 +70,9 @@ enum {
 };
 
 typedef struct SGSToken {
-	int type;
+	int32_t type;
 	union {
+		const char *id;
 	} data;
 } SGSToken;
 
@@ -81,5 +83,8 @@ SGSLexer *SGS_create_lexer(const char *filename, SGSSymtab *symtab);
 void SGS_destroy_lexer(SGSLexer *o);
 
 SGSToken *SGS_get_token(SGSLexer *o);
+
+void SGS_lexer_warning(SGSLexer *o, const char *fmt, ...);
+void SGS_lexer_error(SGSLexer *o, const char *fmt, ...);
 
 #endif /* EOF */
