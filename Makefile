@@ -1,6 +1,7 @@
 CFLAGS=-W -Wall -O2 -ffast-math
 LFLAGS=-s -lm
 LFLAGS_LINUX=$(LFLAGS) -lasound
+LFLAGS_OSSAUDIO=$(LFLAGS) -lossaudio
 OBJ=audiodev.o \
     generator.o \
     osc.o \
@@ -21,7 +22,7 @@ sgensys: $(OBJ)
 		$(CC) $(LFLAGS_LINUX) $(OBJ) -o sgensys; \
 	else \
 		echo "Linking for generic OSS build."; \
-		$(CC) $(LFLAGS) $(OBJ) -o sgensys; \
+		$(CC) $(LFLAGS_OSSAUDIO) $(OBJ) -o sgensys; \
 	fi
 
 audiodev.o: audiodev.c audiodev_*.c audiodev.h sgensys.h 

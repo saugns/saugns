@@ -13,8 +13,13 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
-#include <sys/soundcard.h>
-#define OSS_NAME_OUT "/dev/dsp"
+#if defined(__OpenBSD__) || defined(__NetBSD__)
+# include <soundcard.h>
+# define OSS_NAME_OUT "/dev/sound"
+#else
+# include <sys/soundcard.h>
+# define OSS_NAME_OUT "/dev/dsp"
+#endif
 
 /*
  * Returns 0 if successful, nonzero on error.
