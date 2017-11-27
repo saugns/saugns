@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2012 Joel K. Pettersson <joelkpettersson@gmail.com>
+/* Copyright (c) 2011-2013 Joel K. Pettersson <joelkpettersson@gmail.com>
  *
  * This file and the software of which it is part is distributed under the
  * terms of the GNU Lesser General Public License, either version 3 or (at
@@ -9,11 +9,10 @@
  * <http://www.gnu.org/licenses/>.
  */
 
-struct SGSSymtab;
-typedef struct SGSSymtab SGSSymtab;
+struct SGSAudioDev;
+typedef struct SGSAudioDev SGSAudioDev;
 
-SGSSymtab* SGS_symtab_create(void);
-void SGS_symtab_destroy(SGSSymtab *o);
+SGSAudioDev *SGS_open_audio_dev(ushort channels, uint srate);
+void SGS_close_audio_dev(SGSAudioDev *ad);
+uchar SGS_audio_dev_write(SGSAudioDev *ad, const short *buf, uint samples);
 
-void* SGS_symtab_get(SGSSymtab *o, const char *key);
-void* SGS_symtab_set(SGSSymtab *o, const char *key, void *value);
