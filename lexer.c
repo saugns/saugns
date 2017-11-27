@@ -1,5 +1,5 @@
 /* sgensys script lexer module.
- * Copyright (c) 2014 Joel K. Pettersson <joelkpettersson@gmail.com>
+ * Copyright (c) 2014, 2017 Joel K. Pettersson <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
  * terms of the GNU Lesser General Public License, either version 3 or (at
@@ -10,7 +10,6 @@
  * <http://www.gnu.org/licenses/>.
  */
 
-#include "symtab.h"
 #include "lexer.h"
 #include "math.h"
 #include <stdio.h>
@@ -24,15 +23,15 @@
 #define STRING_MAX_LEN  1024
 
 struct SGSLexer {
-	uint8_t buf1[BUF_LEN],
-	        buf2[BUF_LEN];
+	uint8_t buf0[BUF_LEN],
+	        buf1[BUF_LEN];
 	uint8_t *buf_start,
 	        *buf_read,
 	        *buf_eof;
 	FILE *file;
 	const char *filename;
 	SGSSymtab *symtab;
-	uint32_t line, line_pos;
+	uint32_t line_num, char_num;
 	SGSToken token;
 	uint8_t string[STRING_MAX_LEN];
 };
@@ -67,23 +66,26 @@ void SGS_destroy_lexer(SGSLexer *o) {
  * Swap active buffer (buf_start), filling the new one. Check for read
  * errors and EOF.
  *
- * When EOF is reached, or a read error occurs, the character after the
- * last one read (or the first if none) is set to either BUFC_EOF or
- * BUFC_ERROR, respectively. The return value of fread() determines the
- * position of the marker. buf_eof is set to point to the marker, having
- * been NULL previously.
+ * When handling EOF or a read error, the buffer will be at most
+ * partially filled. (If it were fully filled, it can be used normally,
+ * the handling of EOF or error being left for next time, when the
+ * buffer will end up non-filled.) The first unused character in the
+ * buffer is then set to either BUFC_EOF or BUFC_ERROR, depending on
+ * the condition, and buf_eof is pointed at that character.
  *
  * \return number of characters read.
  */
 static size_t buf_fill(SGSLexer *o) {
 	size_t read;
-	/* Initialize active buffer to buf1, or swap if set. */
-	o->buf_start = (o->buf_start == o->buf1) ? o->buf2 : o->buf1;
+	/* Initialize active buffer to buf0, or swap if set. */
+	o->buf_start = (o->buf_start == o->buf0) ? o->buf1 : o->buf0;
 	read = fread(o->buf_start, 1, BUF_LEN, o->file);
 	o->buf_read = o->buf_start;
+	/*
+	 * If buffer not full, insert marker immediately after last
+	 * character.
+	 */
 	if (read < BUF_LEN) {
-		/* Set marker immediately after any characters read.
-		 */
 		o->buf_eof = &o->buf_start[read];
 		*o->buf_eof = (!ferror(o->file) && feof(o->file)) ?
 			BUFC_EOF :
@@ -134,7 +136,7 @@ static size_t buf_fill(SGSLexer *o) {
 
 /**
  * Handle the end of the buffer being reached, assuming reads use
- * BUF_GETC_RAW().
+ * BUF_RAW_GETC().
  */
 #define BUF_HANDLE_EOB(o) \
 	((void)(buf_fill(o), --(o)->buf_read))
@@ -158,7 +160,7 @@ static void print_stderr(SGSLexer *o, uint options, const char *prefix,
 	const char *fmt, va_list ap) {
 	if (options & PRINT_FILE_INFO) {
 		fprintf(stderr, "%s:%d:%d: ",
-			o->filename, o->line, o->line_pos);
+			o->filename, o->line_num, o->char_num);
 	}
 	if (prefix != NULL) {
 		fprintf(stderr, "%s: ", prefix);
@@ -179,15 +181,6 @@ void SGS_lexer_error(SGSLexer *o, const char *fmt, ...) {
 	va_end(ap);
 }
 
-#define MARK_BLANK(o) do{\
-	++(o)->line_pos;\
-} while(0)
-
-#define MARK_NEWLINE(o) do{\
-	++(o)->line;\
-	(o)->line_pos = 1;\
-} while(0)
-
 /*
  * The following macros are used to recognize types of characters.
  */
@@ -199,7 +192,7 @@ void SGS_lexer_error(SGSLexer *o, const char *fmt, ...) {
 #define IS_ALPHA(c) (IS_LOWER(c) || IS_UPPER(c))
 #define IS_ALNUM(c) (IS_ALPHA(c) || IS_DIGIT(c))
 #define IS_BLANK(c) ((c) == ' ' || (c) == '\t')
-#define IS_LINEB(c) ((c) == '\n' || (c) == '\r')
+#define IS_LNBRK(c) ((c) == '\n' || (c) == '\r')
 
 /* Valid characters in identifiers. */
 #define IS_IDHEAD(c) IS_ALPHA(c)
@@ -218,11 +211,38 @@ static void handle_unknown_or_end(SGSLexer *o, uint8_t c) {
 			return;
 		}
 	}
-	t->type = SGS_T_UNKNOWN;
-//	putchar(c);
+	t->type = SGS_T_INVALID;
+	SGS_lexer_warning(o, "invalid character (numerical value %d)", c);
+}
+
+static uint8_t handle_blanks(SGSLexer *o, uint8_t c) {
+	do {
+		++o->char_num;
+		c = BUF_GETC(o);
+	} while (IS_BLANK(c));
+	return c;
+}
+
+static uint8_t handle_linebreaks(SGSLexer *o, uint8_t c) {
+	do {
+		uint8_t nl, nc;
+
+		nl = (c == '\n');
+		++o->line_num;
+		o->char_num = 1;
+	NEXTC:
+		nc = BUF_GETC(o);
+		if (nl && (nc == '\r')) {
+			nl = 0;
+			goto NEXTC; /* finish DOS-format newline */
+		}
+		c = nc;
+	} while (IS_LNBRK(c));
+	return c;
 }
 
 static void handle_comment(SGSLexer *o, uint8_t c) {
+	SGS_lexer_warning(o, "cannot yet handle comment marked by '%c'", c);
 }
 
 static void handle_numeric_value(SGSLexer *o, uint8_t first_digit) {
@@ -240,45 +260,14 @@ static void handle_numeric_value(SGSLexer *o, uint8_t first_digit) {
 		++i;
 		o->string[i] = '\0';
 	}
-	t->type = SGS_T_INTVALUE; /* XXX: dummy code */
+	t->type = SGS_T_INT_NUM; /* XXX: dummy code */
 	BUF_UNGETC(o);
 }
 
-#define STRALLOC_MAX UINT32_MAX
 static void handle_identifier(SGSLexer *o, uint8_t id_head) {
 	SGSToken *t = &o->token;
-	const uint8_t *reg_str;
+	const char *pool_str;
 	uint8_t c = id_head;
-#if 0
-	uint8_t *str_start, *str_write = o->string;
-	uint32_t i, str_len = 0;
-	do {
-		++len;
-		if (BUF_EOB(o)) {
-			uint8_t *str_start = o->buf_read - len;
-			memcpy(str_write, str_start, len * sizeof(uint8_t));
-			str_write += len;
-			BUF_HANDLE_EOB(o);
-		}
-		c = BUF_RAW_GETC(o);
-
-	} while (IS_IDTAIL(c) && ++i < (STRALLOC_MAX - 1));
-	if (i == ((STRALLOC_MAX - 1)) {
-		o->string[i] = '\0';
-		// warn and handle too-long-string
-	} else { /* string ended gracefully */
-		++i;
-		o->string[i] = '\0';
-	}
-REG_STR:
-	reg_str = (const uint8_t*)SGS_symtab_intern_str(o->symtab, (const char*)o->string, i);
-	if (reg_str == NULL) {
-		SGS_lexer_error(o, "failed to register string '%s'", o->string);
-	}
-	t->type = SGS_T_IDENTIFIER;
-	BUF_UNGETC(o);
-
-#else
 	uint32_t i = 0;
 	do {
 		o->string[i] = c;
@@ -286,18 +275,19 @@ REG_STR:
 	} while (IS_IDTAIL(c) && ++i < (STRING_MAX_LEN - 1));
 	if (i == (STRING_MAX_LEN - 1)) {
 		o->string[i] = '\0';
-		// warn and handle too-long-string
+		// TODO: warn and handle too-long-string
+		SGS_lexer_error(o, "cannot handle string longer than %d characters", STRING_MAX_LEN);
 	} else { /* string ended gracefully */
 		++i;
 		o->string[i] = '\0';
 	}
-	reg_str = (const uint8_t*)SGS_symtab_intern_str(o->symtab, (const char*)o->string, i);
-	if (reg_str == NULL) {
+	pool_str = SGS_symtab_pool_str(o->symtab, (const char*)o->string, i);
+	if (pool_str == NULL) {
 		SGS_lexer_error(o, "failed to register string '%s'", o->string);
 	}
-	t->type = SGS_T_IDENTIFIER;
+	t->type = SGS_T_ID_STR;
+	t->data.id = pool_str;
 	BUF_UNGETC(o);
-#endif
 }
 
 /**
@@ -597,16 +587,10 @@ TEST_1STCHAR:
 		handle_unknown_or_end(o, c);
 		break;
 	HANDLE_BLANK:
-		do {
-			MARK_BLANK(o);
-			c = BUF_GETC(o);
-		} while (IS_BLANK(c));
+		c = handle_blanks(o, c);
 		goto TEST_1STCHAR;
 	HANDLE_LINEBREAK:
-		do {
-			MARK_NEWLINE(o);
-			c = BUF_GETC(o);
-		} while (IS_LINEB(c));
+		c = handle_linebreaks(o, c);
 		goto TEST_1STCHAR;
 	HANDLE_1CT:
 		t->type = SGS_T_1CT(c);
