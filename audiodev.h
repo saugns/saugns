@@ -9,9 +9,10 @@
  * <http://www.gnu.org/licenses/>
  */
 
-struct SGSWAVFile;
-typedef struct SGSWAVFile SGSWAVFile;
+struct SGSAudioDev;
+typedef struct SGSAudioDev SGSAudioDev;
 
-SGSWAVFile *SGS_begin_wav_file(const char *fpath, ushort channels, uint srate);
-int SGS_end_wav_file(SGSWAVFile *wf);
-uchar SGS_wav_file_write(SGSWAVFile *wf, const short *buf, uint samples);
+SGSAudioDev *SGS_open_audio_dev(ushort channels, uint srate);
+void SGS_close_audio_dev(SGSAudioDev *ad);
+uchar SGS_audio_dev_write(SGSAudioDev *ad, const short *buf, uint samples);
+
