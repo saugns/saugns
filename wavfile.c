@@ -1,4 +1,6 @@
-/* Copyright (c) 2011-2013 Joel K. Pettersson <joelkpettersson@gmail.com>
+/* sgensys: WAV file writer module.
+ * Copyright (c) 2011-2013, 2017 Joel K. Pettersson
+ * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
  * terms of the GNU Lesser General Public License, either version 3 or (at
@@ -9,21 +11,22 @@
  * <http://www.gnu.org/licenses/>.
  */
 
-#include "sgensys.h"
+#include <stdint.h>
+#include <stdbool.h>
 #include "wavfile.h"
 #include <stdio.h>
 #include <stdlib.h>
 
-static void fputw(short i16, FILE *stream) {
-	uchar c;
+static void fputw(int16_t i16, FILE *stream) {
+	uint8_t c;
 	c = i16 & 0xff;
 	putc(c, stream);
 	c = (i16 >>= 8) & 0xff;
 	putc(c, stream);
 }
 
-static void fputl(int i32, FILE *stream) {
-	uchar c;
+static void fputl(int32_t i32, FILE *stream) {
+	uint8_t c;
 	c = i32 & 0xff;
 	putc(c, stream);
 	c = (i32 >>= 8) & 0xff;
@@ -39,8 +42,8 @@ static void fputl(int i32, FILE *stream) {
 
 struct SGSWAVFile {
 	FILE *f;
-	ushort channels;
-	uint samples;
+	uint16_t channels;
+	uint32_t samples;
 };
 
 /*
@@ -49,8 +52,8 @@ struct SGSWAVFile {
  *
  * Returns NULL if fopen fails.
  */
-SGSWAVFile *SGS_begin_wav_file(const char *fpath, ushort channels,
-		uint srate) {
+SGSWAVFile *SGS_begin_wav_file(const char *fpath, uint16_t channels,
+		uint32_t srate) {
 	SGSWAVFile *wf;
 	FILE *f = fopen(fpath, "wb");
 	if (!f) return NULL;
@@ -84,13 +87,13 @@ SGSWAVFile *SGS_begin_wav_file(const char *fpath, ushort channels,
  * created for multiple channels, buf is assumed to be interleaved and of
  * channels * samples length.
  *
- * Returns zero upon suceessful write, otherwise non-zero.
+ * Returns true upon successful write, otherwise false.
  */
-uchar SGS_wav_file_write(SGSWAVFile *wf, const short *buf, uint samples) {
+bool SGS_wav_file_write(SGSWAVFile *wf, const int16_t *buf, uint32_t samples) {
 	size_t length = wf->channels * samples, written;
 	written = fwrite(buf, SOUND_BYTES, length, wf->f);
 	wf->samples += written;
-	return (written != length);
+	return (written == length);
 }
 
 /*
@@ -103,8 +106,8 @@ uchar SGS_wav_file_write(SGSWAVFile *wf, const short *buf, uint samples) {
 int SGS_end_wav_file(SGSWAVFile *wf) {
 	int err;
 	FILE *f = wf->f;
-	uint channels = wf->channels;
-	uint samples = wf->samples;
+	uint32_t channels = wf->channels;
+	uint32_t samples = wf->samples;
 
 	fseek(f, 4 /* after "RIFF" */, SEEK_SET);
 	fputl(36 + (channels * samples * SOUND_BYTES), f);

@@ -1,5 +1,6 @@
-/* Linux audio output support.
- * Copyright (c) 2013 Joel K. Pettersson <joelkpettersson@gmail.com>
+/* sgensys: Linux audio output support.
+ * Copyright (c) 2013, 2017 Joel K. Pettersson
+ * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
  * terms of the GNU Lesser General Public License, either version 3 or (at
@@ -10,32 +11,29 @@
  * <http://www.gnu.org/licenses/>.
  */
 
-#include "audiodev_oss.c"
+#include "audiodev_oss.c" /* used in fallback mechanism */
 #include <alsa/asoundlib.h>
 #define ALSA_NAME_OUT "default"
 
 /*
- * Returns nonzero if the ALSA kernel module is loaded.
+ * Returns true if the ALSA kernel module is loaded.
  */
-static uchar alsa_enabled() {
-	char buf[16];
+static bool alsa_enabled() {
+	int8_t buf[16];
 	FILE *alsa_check = popen("lsmod | grep soundcore", "r");
-	uchar ret = (fread(buf, 1, sizeof (buf), alsa_check) > 0);
+	bool ret = (fread(buf, 1, sizeof(buf), alsa_check) > 0);
 	pclose(alsa_check);
 	return ret;
 }
 
-
-// need snd_pcm_prepare for playback ?
-
 /*
- * Returns 0 if successful, nonzero on error.
+ * Returns SGSAudioDev instance if successful, NULL on error.
  */
 static inline SGSAudioDev *open_linux_audio_dev(const char *alsa_name,
-		const char *oss_name, int oss_mode, ushort channels,
-		uint srate) {
+		const char *oss_name, int oss_mode, uint16_t channels,
+		uint32_t srate) {
 	SGSAudioDev *ad;
-	uint tmp;
+	uint32_t tmp;
 	int err;
 	snd_pcm_t *handle = NULL;
 	snd_pcm_hw_params_t *params = NULL;
@@ -97,10 +95,10 @@ static inline void close_linux_audio_dev(SGSAudioDev *ad) {
 }
 
 /*
- * Returns zero upon suceessful write, otherwise non-zero.
+ * Returns true upon suceessful write, otherwise false.
  */
-static inline uchar linux_audio_dev_write(SGSAudioDev *ad, const short *buf,
-		uint samples) {
+static inline bool linux_audio_dev_write(SGSAudioDev *ad, const int16_t *buf,
+		uint32_t samples) {
 	snd_pcm_sframes_t written;
 
 	if (ad->type == TYPE_OSS)
@@ -116,5 +114,5 @@ static inline uchar linux_audio_dev_write(SGSAudioDev *ad, const short *buf,
 		}
 	}
 
-	return (written != (snd_pcm_sframes_t) samples);
+	return (written == (snd_pcm_sframes_t) samples);
 }

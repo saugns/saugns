@@ -1,5 +1,6 @@
-/* sgensys script parser module.
- * Copyright (c) 2011-2012 Joel K. Pettersson <joelkpettersson@gmail.com>
+/* sgensys: Parser module.
+ * Copyright (c) 2011-2012, 2017 Joel K. Pettersson
+ * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
  * terms of the GNU Lesser General Public License, either version 3 or (at
@@ -10,7 +11,8 @@
  * <http://www.gnu.org/licenses/>.
  */
 
-#include "sgensys.h"
+#include <stdint.h>
+#include <stdbool.h>
 #include "program.h"
 #include "parser.h"
 #include "symtab.h"
@@ -46,22 +48,22 @@ static char *_strdup(const char *src) {
 #define IS_WHITESPACE(c) \
   ((c) == ' ' || (c) == '\t' || (c) == '\n' || (c) == '\r')
 
-static uchar testc(char c, FILE *f) {
+static uint8_t testc(char c, FILE *f) {
   char gc = getc(f);
   ungetc(gc, f);
   return (gc == c);
 }
 
-static uchar testgetc(char c, FILE *f) {
+static uint8_t testgetc(char c, FILE *f) {
   char gc;
   if ((gc = getc(f)) == c) return 1;
   ungetc(gc, f);
   return 0;
 }
 
-static int getinum(FILE *f) {
+static int32_t getinum(FILE *f) {
   char c;
-  int num = -1;
+  int32_t num = -1;
   c = getc(f);
   if (c >= '0' && c <= '9') {
     num = c - '0';
@@ -77,11 +79,11 @@ static int getinum(FILE *f) {
   return num;
 }
 
-static int strfind(FILE *f, const char *const*str) {
-  int search, ret;
-  uint i, len, pos, matchpos;
+static int32_t strfind(FILE *f, const char *const*str) {
+  int32_t search, ret;
+  uint32_t i, len, pos, matchpos;
   char c, undo[256];
-  uint strc;
+  uint32_t strc;
   const char **s;
   for (len = 0, strc = 0; str[strc]; ++strc)
     if ((i = strlen(str[strc])) > len) len = i;
@@ -149,18 +151,18 @@ enum {
 typedef struct NodeScope {
   SGSParser *o;
   struct NodeScope *parent;
-  uint ns_flags;
+  uint32_t ns_flags;
   char scope;
   SGSEventNode *event, *last_event;
   SGSOperatorNode *operator, *first_operator, *last_operator;
   SGSOperatorNode *parent_on, *on_prev;
-  uchar linktype;
-  uchar last_linktype; /* FIXME: kludge */
+  uint8_t linktype;
+  uint8_t last_linktype; /* FIXME: kludge */
   char *set_label;
   /* timing/delay */
   SGSEventNode *group_from; /* where to begin for group_events() */
   SGSEventNode *composite; /* grouping of events for a voice and/or operator */
-  uint next_wait_ms; /* added for next event */
+  uint32_t next_wait_ms; /* added for next event */
 } NodeScope;
 
 #define NEWLINE '\n'
@@ -210,9 +212,9 @@ static void read_ws(SGSParser *o) {
 }
 
 static float read_num_r(SGSParser *o, float (*read_symbol)(SGSParser *o),
-                        char *buf, uint len, uchar pri, uint level) {
+                        char *buf, uint32_t len, uint8_t pri, uint32_t level) {
   char *p = buf;
-  uchar dot = 0;
+  uint8_t dot = 0;
   float num;
   char c;
   c = getc(o->f);
@@ -286,7 +288,7 @@ LOOP:
     }
   }
 }
-static uchar read_num(SGSParser *o, float (*read_symbol)(SGSParser *o),
+static uint8_t read_num(SGSParser *o, float (*read_symbol)(SGSParser *o),
                       float *var) {
   char buf[64];
   float num = read_num_r(o, read_symbol, buf, 64, 254, 0);
@@ -356,9 +358,9 @@ static float read_note(SGSParser *o) {
   };
   float freq;
   o->c = getc(o->f);
-  int octave;
-  int semitone = 1, note;
-  int subnote = -1;
+  int32_t octave;
+  int32_t semitone = 1, note;
+  int32_t subnote = -1;
   if (o->c >= 'a' && o->c <= 'g') {
     subnote = o->c - 'c';
     if (subnote < 0) /* a, b */
@@ -397,8 +399,8 @@ static float read_note(SGSParser *o) {
 #define LABEL_LEN 80
 #define LABEL_LEN_A "80"
 typedef char LabelBuf[LABEL_LEN];
-static uchar read_label(SGSParser *o, LabelBuf label, char op) {
-  uint i = 0;
+static uint8_t read_label(SGSParser *o, LabelBuf label, char op) {
+  uint32_t i = 0;
   char nolabel_msg[] = "ignoring ? without label name";
   nolabel_msg[9] = op; /* replace ? */
   for (;;) {
@@ -421,7 +423,7 @@ static uchar read_label(SGSParser *o, LabelBuf label, char op) {
   return 0;
 }
 
-static int read_wavetype(SGSParser *o) {
+static int32_t read_wavetype(SGSParser *o) {
   static const char *const wavetypes[] = {
     "sin",
     "srs",
@@ -430,13 +432,13 @@ static int read_wavetype(SGSParser *o) {
     "saw",
     0
   };
-  int wave = strfind(o->f, wavetypes);
+  int32_t wave = strfind(o->f, wavetypes);
   if (wave < 0)
     warning(o, "invalid wave type follows; sin, sqr, tri, saw available");
   return wave;
 }
 
-static uchar read_valit(SGSParser *o, float (*read_symbol)(SGSParser *o),
+static uint8_t read_valit(SGSParser *o, float (*read_symbol)(SGSParser *o),
                         SGSProgramValit *vi) {
   static const char *const valittypes[] = {
     "lin",
@@ -445,8 +447,8 @@ static uchar read_valit(SGSParser *o, float (*read_symbol)(SGSParser *o),
     0
   };
   char c;
-  uchar goal = 0;
-  int type;
+  uint8_t goal = 0;
+  int32_t type;
   vi->time_ms = VI_TIME_DEFAULT;
   vi->type = SGS_VALIT_LIN; /* default */
   while ((c = read_char(o)) != EOF) {
@@ -493,7 +495,7 @@ RETURN:
   return 1;
 }
 
-static uchar read_waittime(NodeScope *ns) {
+static uint8_t read_waittime(NodeScope *ns) {
   SGSParser *o = ns->o;
   /* FIXME: ADD_WAIT_DURATION */
   if (testgetc('t', o->f)) {
@@ -504,7 +506,7 @@ static uchar read_waittime(NodeScope *ns) {
     ns->last_event->en_flags |= EN_ADD_WAIT_DURATION;
   } else {
     float wait;
-    int wait_ms;
+    int32_t wait_ms;
     read_num(o, 0, &wait);
     if (wait < 0.f) {
       warning(o, "ignoring '\\' with sub-zero time");
@@ -597,13 +599,13 @@ void SGS_node_list_safe_copy(SGSNodeList *dst, const SGSNodeList *src) {
  * each active operator node before entering the next level. The callback
  * return values are summed for each level and then returned.
  */
-int SGS_node_list_rforeach(SGSNodeList *list,
-                           int (*callback)(struct SGSOperatorNode *op,
+int32_t SGS_node_list_rforeach(SGSNodeList *list,
+                           int32_t (*callback)(struct SGSOperatorNode *op,
                                            void *arg),
                            void *arg) {
   SGSOperatorNode **nl = SGS_NODE_LIST_GET(list);
-  int ret = 0;
-  uint i;
+  int32_t ret = 0;
+  uint32_t i;
   for (i = list->inactive_count; i < list->count; ++i) {
     SGSOperatorNode *op = nl[i];
     ret += callback(op, arg);
@@ -620,7 +622,7 @@ int SGS_node_list_rforeach(SGSNodeList *list,
  */
 static void SGS_node_list_rcleanup(SGSNodeList *list) {
   SGSOperatorNode **nl = SGS_NODE_LIST_GET(list);
-  uint i;
+  uint32_t i;
   for (i = list->inactive_count; i < list->count; ++i) {
     SGSOperatorNode *op = nl[i];
     SGS_node_list_clear(&op->on_next);
@@ -688,7 +690,6 @@ static void end_operator(NodeScope *ns) {
 }
 
 static void end_event(NodeScope *ns) {
-  SGSParser *o = ns->o;
   SGSEventNode *e = ns->event;
   SGSEventNode *pve;
   if (!e)
@@ -710,7 +711,7 @@ static void end_event(NodeScope *ns) {
   ns->event = 0;
 }
 
-static void begin_event(NodeScope *ns, uchar linktype, uchar composite) {
+static void begin_event(NodeScope *ns, uint8_t linktype, uint8_t composite) {
   SGSParser *o = ns->o;
   SGSEventNode *e, *pve;
   end_event(ns);
@@ -752,7 +753,7 @@ static void begin_event(NodeScope *ns, uchar linktype, uchar composite) {
   }
 }
 
-static void begin_operator(NodeScope *ns, uchar linktype, uchar composite) {
+static void begin_operator(NodeScope *ns, uint8_t linktype, uint8_t composite) {
   SGSParser *o = ns->o;
   SGSEventNode *e = ns->event;
   SGSOperatorNode *op, *pop = ns->on_prev;
@@ -791,7 +792,7 @@ static void begin_operator(NodeScope *ns, uchar linktype, uchar composite) {
     SGS_node_list_safe_copy(&op->amods, &pop->amods);
     if (ns->ns_flags & NS_BIND_MULTIPLE) {
       SGSOperatorNode *mpop = pop;
-      int max_time = 0;
+      int32_t max_time = 0;
       do { 
         if (max_time < mpop->time_ms) max_time = mpop->time_ms;
         SGS_node_list_add(&mpop->on_next, op);
@@ -848,7 +849,7 @@ static void begin_operator(NodeScope *ns, uchar linktype, uchar composite) {
   }
   /*
    * Assign label. If no new label but previous node (for a non-composite)
-   * has one, update label to point to new node, but keep pointer (and flag
+   * has one, update label to point32_t to new node, but keep pointer (and flag
    * exclusively for safe deallocation) in previous node.
    */
   if (ns->set_label) {
@@ -891,7 +892,7 @@ static void label_next_node(NodeScope *ns, const char *label) {
  * Used instead of directly calling begin_operator() and/or begin_event().
  */
 static void begin_node(NodeScope *ns, SGSOperatorNode *previous,
-                       uchar linktype, uchar composite) {
+                       uint8_t linktype, uint8_t composite) {
   ns->on_prev = previous;
   if (!ns->event ||
       !in_current_node(ns) /* previous event implicitly ended */ ||
@@ -903,7 +904,7 @@ static void begin_node(NodeScope *ns, SGSOperatorNode *previous,
 }
 
 static void begin_scope(SGSParser *o, NodeScope *ns, NodeScope *parent,
-                        uchar linktype, char newscope) {
+                        uint8_t linktype, char newscope) {
   memset(ns, 0, sizeof(NodeScope));
   ns->o = o;
   ns->scope = newscope;
@@ -960,7 +961,7 @@ static void end_scope(NodeScope *ns) {
  * Main parser functions
  */
 
-static uchar parse_settings(NodeScope *ns) {
+static uint8_t parse_settings(NodeScope *ns) {
   SGSParser *o = ns->o;
   char c;
   enter_defaults(ns);
@@ -1004,10 +1005,10 @@ static uchar parse_settings(NodeScope *ns) {
   return 0;
 }
 
-static uchar parse_level(SGSParser *o, NodeScope *parentnd,
-                         uchar linktype, char newscope);
+static uint8_t parse_level(SGSParser *o, NodeScope *parentnd,
+                         uint8_t linktype, char newscope);
 
-static uchar parse_step(NodeScope *ns) {
+static uint8_t parse_step(NodeScope *ns) {
   SGSParser *o = ns->o;
   SGSEventNode *e = ns->event;
   SGSOperatorNode *op = ns->operator;
@@ -1166,7 +1167,7 @@ static uchar parse_step(NodeScope *ns) {
       op->operator_params |= SGS_TIME;
       break;
     case 'w': {
-      int wave = read_wavetype(o);
+      int32_t wave = read_wavetype(o);
       if (wave < 0)
         break;
       op->wave = wave;
@@ -1185,11 +1186,11 @@ enum {
   DEFERRED_STEP = 1<<2,
   DEFERRED_SETTINGS = 1<<4
 };
-static uchar parse_level(SGSParser *o, NodeScope *parentns,
-                         uchar linktype, char newscope) {
+static uint8_t parse_level(SGSParser *o, NodeScope *parentns,
+                         uint8_t linktype, char newscope) {
   char c;
-  uchar endscope = 0;
-  uchar flags = 0;
+  uint8_t endscope = 0;
+  uint8_t flags = 0;
   LabelBuf label;
   NodeScope ns;
   begin_scope(o, &ns, parentns, linktype, newscope);
@@ -1253,7 +1254,7 @@ static uchar parse_level(SGSParser *o, NodeScope *parentns,
       endscope = 1;
       goto RETURN;
     case 'O': {
-      int wave = read_wavetype(o);
+      int32_t wave = read_wavetype(o);
       if (wave < 0)
         break;
       begin_node(&ns, 0, ns.linktype, 0);
@@ -1324,7 +1325,7 @@ static uchar parse_level(SGSParser *o, NodeScope *parentns,
     }
     /* Return to sub-parsing routines. */
     if (flags && !(flags & HANDLE_DEFER)) {
-      uchar test = flags;
+      uint8_t test = flags;
       flags = 0;
       if (test & DEFERRED_STEP) {
         if (parse_step(&ns))
@@ -1374,8 +1375,8 @@ void SGS_parse(SGSParser *o, FILE *f, const char *fn) {
  */
 static void group_events(SGSEventNode *to) {
   SGSEventNode *e, *e_after = to->next;
-  uint i;
-  int wait = 0, waitcount = 0;
+  uint32_t i;
+  int32_t wait = 0, waitcount = 0;
   for (e = to->groupfrom; e != e_after; ) {
     SGSOperatorNode **nl = SGS_NODE_LIST_GET(&e->operators);
     for (i = 0; i < e->operators.count; ++i) {
@@ -1412,7 +1413,7 @@ static void group_events(SGSEventNode *to) {
     e_after->wait_ms += wait;
 }
 
-static int time_operator(SGSOperatorNode *op, void *arg) {
+static int32_t time_operator(SGSOperatorNode *op, void *arg) {
   SGSEventNode *e = op->event;
   if (op->valitfreq.time_ms == VI_TIME_DEFAULT)
     op->valitfreq.time_ms = op->time_ms;
@@ -1447,7 +1448,7 @@ static void time_event(SGSEventNode *e) {
    * Timing for composites - done before event list flattened.
    */
   if (e->composite) {
-    SGSEventNode *ce = e->composite, *ce_prev = e;
+    SGSEventNode *ce = e->composite;
     SGSOperatorNode *ce_op = SGS_NODE_LIST_GET(&ce->operators)[0],
                     *ce_op_prev = ce_op->on_prev,
                     *e_op = ce_op_prev;
@@ -1468,7 +1469,6 @@ static void time_event(SGSEventNode *e) {
         e_op->time_ms += ce_op->time_ms +
                          (ce->wait_ms - ce_op_prev->time_ms);
       ce_op->operator_params &= ~SGS_TIME;
-      ce_prev = ce;
       ce_op_prev = ce_op;
       ce = ce->next;
       if (!ce) break;
@@ -1487,8 +1487,8 @@ static void time_event(SGSEventNode *e) {
 static void flatten_events(SGSEventNode *e) {
   SGSEventNode *ce = e->composite;
   SGSEventNode *se = e->next, *se_prev = e;
-  int wait_ms = 0;
-  int added_wait_ms = 0;
+  int32_t wait_ms = 0;
+  int32_t added_wait_ms = 0;
   while (ce) {
     if (!se) {
       /*

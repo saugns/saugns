@@ -1,5 +1,6 @@
-/* OSS audio output support.
- * Copyright (c) 2011-2013 Joel K. Pettersson <joelkpettersson@gmail.com>
+/* sgensys: OSS audio output support.
+ * Copyright (c) 2011-2013, 2017 Joel K. Pettersson
+ * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
  * terms of the GNU Lesser General Public License, either version 3 or (at
@@ -13,14 +14,19 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
-#include <sys/soundcard.h>
-#define OSS_NAME_OUT "/dev/dsp"
+#if defined(__OpenBSD__) || defined(__NetBSD__)
+# include <soundcard.h>
+# define OSS_NAME_OUT "/dev/sound"
+#else
+# include <sys/soundcard.h>
+# define OSS_NAME_OUT "/dev/dsp"
+#endif
 
 /*
- * Returns 0 if successful, nonzero on error.
+ * Returns SGSAudioDev instance if successful, NULL on error.
  */
 static inline SGSAudioDev *open_oss_audio_dev(const char *name, int mode,
-		ushort channels, uint srate) {
+		uint16_t channels, uint32_t srate) {
 	SGSAudioDev *ad;
 	int tmp, fd;
 
@@ -85,12 +91,12 @@ static inline void close_oss_audio_dev(SGSAudioDev *ad) {
 }
 
 /*
- * Returns zero upon suceessful write, otherwise non-zero.
+ * Returns true upon suceessful write, otherwise false;
  */
-static inline uchar oss_audio_dev_write(SGSAudioDev *ad, const short *buf,
-		uint samples) {
+static inline bool oss_audio_dev_write(SGSAudioDev *ad, const int16_t *buf,
+		uint32_t samples) {
 	size_t length = samples * ad->channels * SOUND_BYTES, written;
 
 	written = write(ad->ref.fd, buf, length);
-	return (written != length);
+	return (written == length);
 }
