@@ -1,5 +1,6 @@
-/* sgensys parsing data to program data translator module.
- * Copyright (c) 2011-2012 Joel K. Pettersson <joelkpettersson@gmail.com>
+/* sgensys: Program for sound generation from parsing data module.
+ * Copyright (c) 2011-2012, 2017 Joel K. Pettersson
+ * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
  * terms of the GNU Lesser General Public License, either version 3 or (at
@@ -10,7 +11,8 @@
  * <http://www.gnu.org/licenses/>.
  */
 
-#include "sgensys.h"
+#include <stdint.h>
+#include <stdbool.h>
 #include "program.h"
 #include "parser.h"
 #include <string.h>

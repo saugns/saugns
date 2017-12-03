@@ -1,4 +1,6 @@
-/* Copyright (c) 2011-2012 Joel K. Pettersson <joelkpettersson@gmail.com>
+/* sgensys: Sound generator module.
+ * Copyright (c) 2011-2012, 2017 Joel K. Pettersson
+ * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
  * terms of the GNU Lesser General Public License, either version 3 or (at
@@ -9,11 +11,12 @@
  * <http://www.gnu.org/licenses/>.
  */
 
-#include "sgensys.h"
-#include "osc.h"
-#include "program.h"
-#include <stdio.h>
+#include <stdint.h>
+#include <stdbool.h>
 #include <stdlib.h>
+#include "generator.h"
+#include "osc.h"
+#include <stdio.h>
 
 enum {
   SGS_FLAG_INIT = 1<<0,
@@ -21,7 +24,7 @@ enum {
 };
 
 typedef union BufData {
-  int i;
+  int32_t i;
   float f;
 } BufData;
 
@@ -29,16 +32,16 @@ typedef union BufData {
 typedef BufData Buf[BUF_LEN];
 
 typedef struct ParameterValit {
-  uint time, pos;
+  uint32_t time, pos;
   float goal;
-  uchar type;
+  uint8_t type;
 } ParameterValit;
 
 typedef struct OperatorNode {
-  int time;
-  uint silence;
+  int32_t time;
+  uint32_t silence;
   const SGSProgramGraphAdjcs *adjcs;
-  uchar type, attr;
+  uint8_t type, attr;
   float freq, dynfreq;
   SGSOscLuv *osctype;
   SGSOsc osc;
@@ -47,32 +50,32 @@ typedef struct OperatorNode {
 } OperatorNode;
 
 typedef struct VoiceNode {
-  int pos; /* negative for wait time */
-  uchar flag, attr;
+  int32_t pos; /* negative for wait time */
+  uint8_t flag, attr;
   const SGSProgramGraph *graph;
   float panning;
   ParameterValit valitpanning;
 } VoiceNode;
 
 typedef union Data {
-  int i;
+  int32_t i;
   float f;
   void *v;
 } Data;
 
 typedef struct EventNode {
   void *node;
-  uint waittime;
+  uint32_t waittime;
 } EventNode;
 
 typedef struct SetNode {
-  int voice_id, operator_id;
-  uint params;
+  int32_t voice_id, operator_id;
+  uint32_t params;
   Data data[1]; /* sized for number of parameters set */
 } SetNode;
 
-static uint count_flags(uint flags) {
-  uint i, count = 0;
+static uint32_t count_flags(uint32_t flags) {
+  uint32_t i, count = 0;
   for (i = 0; i < (8 * sizeof(uint)); ++i) {
     count += flags & 1;
     flags >>= 1;
@@ -81,14 +84,14 @@ static uint count_flags(uint flags) {
 }
 
 struct SGSGenerator {
-  uint srate;
+  uint32_t srate;
   Buf *bufs;
-  uint bufc;
+  uint32_t bufc;
   double osc_coeff;
-  uint event, eventc;
-  uint eventpos;
+  uint32_t event, eventc;
+  uint32_t eventpos;
   EventNode *events;
-  uint voice, voicec;
+  uint32_t voice, voicec;
   VoiceNode *voices;
   OperatorNode operators[1]; /* sized to number of nodes */
 };
@@ -97,11 +100,11 @@ struct SGSGenerator {
  * Count buffers needed for operator, including linked operators.
  * TODO: Verify, remove debug printing when parser module done.
  */
-static uint calc_bufs(SGSGenerator *o, OperatorNode *n) {
-  uint count = 0, i, res;
+static uint32_t calc_bufs(SGSGenerator *o, OperatorNode *n) {
+  uint32_t count = 0, i, res;
   if (n->adjcs) {
-    const int *mods = n->adjcs->adjcs;
-    const uint modc = n->adjcs->fmodc + n->adjcs->pmodc + n->adjcs->amodc;
+    const int32_t *mods = n->adjcs->adjcs;
+    const uint32_t modc = n->adjcs->fmodc + n->adjcs->pmodc + n->adjcs->amodc;
     for (i = 0; i < modc; ++i) {
   printf("visit node %d\n", mods[i]);
       res = calc_bufs(o, &o->operators[mods[i]]);
@@ -116,7 +119,7 @@ static uint calc_bufs(SGSGenerator *o, OperatorNode *n) {
  * TODO: Verify, remove debug printing when parser module done.
  */
 static void upsize_bufs(SGSGenerator *o, VoiceNode *vn) {
-  uint count = 0, i, res;
+  uint32_t count = 0, i, res;
   if (!vn->graph) return;
   for (i = 0; i < vn->graph->opc; ++i) {
   printf("visit node %d\n", vn->graph->ops[i]);
@@ -125,7 +128,7 @@ static void upsize_bufs(SGSGenerator *o, VoiceNode *vn) {
   }
   printf("need %d buffers (have %d)\n", count, o->bufc);
   if (count > o->bufc) {
-    printf("new alloc size 0x%x\n", sizeof(Buf) * count);
+    printf("new alloc size 0x%lu\n", sizeof(Buf) * count);
     o->bufs = realloc(o->bufs, sizeof(Buf) * count);
     o->bufc = count;
   }
@@ -135,12 +138,12 @@ static void upsize_bufs(SGSGenerator *o, VoiceNode *vn) {
  * Allocate SGSGenerator with the passed sample rate and using the
  * given SGSProgram.
  */
-SGSGenerator* SGS_generator_create(uint srate, struct SGSProgram *prg) {
+SGSGenerator* SGS_generator_create(uint32_t srate, SGSProgram *prg) {
   SGSGenerator *o;
   const SGSProgramEvent *step;
   void *data;
-  uint i, indexwaittime;
-  uint size, eventssize, voicessize, operatorssize, setssize;
+  uint32_t i, indexwaittime;
+  uint32_t size, eventssize, voicessize, operatorssize, setssize;
   /*
    * Establish allocation sizes.
    */
@@ -167,11 +170,11 @@ SGSGenerator* SGS_generator_create(uint srate, struct SGSProgram *prg) {
   o->event = 0;
   o->eventc = prg->eventc;
   o->eventpos = 0;
-  o->events = (void*)(((uchar*)o) + size + operatorssize);
+  o->events = (void*)(((uint8_t*)o) + size + operatorssize);
   o->voice = 0;
   o->voicec = prg->voicec;
-  o->voices = (void*)(((uchar*)o) + size + operatorssize + eventssize);
-  data      = (void*)(((uchar*)o) + size + operatorssize + eventssize + voicessize);
+  o->voices = (void*)(((uint8_t*)o) + size + operatorssize + eventssize);
+  data      = (void*)(((uint8_t*)o) + size + operatorssize + eventssize + voicessize);
   SGSOsc_init();
   /*
    * Fill in events according to the SGSProgram, ie. copy timed state
@@ -247,9 +250,9 @@ SGSGenerator* SGS_generator_create(uint srate, struct SGSProgram *prg) {
       o->voices[s->voice_id].pos = -indexwaittime;
       indexwaittime = 0;
     }
-    data = (void*)(((uchar*)data) +
+    data = (void*)(((uint8_t*)data) +
                    (sizeof(SetNode) - sizeof(Data)) +
-                   (((uchar*)set) - ((uchar*)s->data)));
+                   (((uint8_t*)set) - ((uint8_t*)s->data)));
   }
   return o;
 }
@@ -273,7 +276,7 @@ static void SGS_generator_handle_event(SGSGenerator *o, EventNode *e) {
       if (s->params & SGS_ADJCS)
         on->adjcs = (*data++).v;
       if (s->params & SGS_OPATTR) {
-        uchar attr = (uchar)(*data++).i;
+        uint8_t attr = (uint8_t)(*data++).i;
         if (!(s->params & SGS_FREQ)) {
           /* May change during processing; preserve state of FREQRATIO flag */
           attr &= ~SGS_ATTR_FREQRATIO;
@@ -330,7 +333,7 @@ static void SGS_generator_handle_event(SGSGenerator *o, EventNode *e) {
       if (s->params & SGS_GRAPH)
         vn->graph = (*data++).v;
       if (s->params & SGS_VOATTR) {
-        uchar attr = (uchar)(*data++).i;
+        uint8_t attr = (uint8_t)(*data++).i;
         vn->attr = attr;
       }
       if (s->params & SGS_PANNING)
@@ -367,9 +370,9 @@ void SGS_generator_destroy(SGSGenerator *o) {
  * Passing a modifier buffer will accordingly multiply each output
  * value, done to get absolute values from ratios.
  */
-static uchar run_param(BufData *buf, uint buf_len, ParameterValit *vi,
+static bool run_param(BufData *buf, uint32_t buf_len, ParameterValit *vi,
                        float *state, const BufData *modbuf) {
-  uint i, end, len, filllen;
+  uint32_t i, end, len, filllen;
   double coeff;
   float s0 = *state;
   if (!vi) {
@@ -445,14 +448,14 @@ static uchar run_param(BufData *buf, uint buf_len, ParameterValit *vi,
  *
  * Returns number of samples generated for the node.
  */
-static uint run_block(SGSGenerator *o, Buf *bufs, uint buf_len,
+static uint32_t run_block(SGSGenerator *o, Buf *bufs, uint32_t buf_len,
                       OperatorNode *n, BufData *parent_freq,
-                      uchar wave_env, uint acc_ind) {
-  uint i, len, zero_len, skip_len;
+                      uint8_t wave_env, uint32_t acc_ind) {
+  uint32_t i, len, zero_len, skip_len;
   BufData *sbuf, *freq, *freqmod, *pm, *amp;
   Buf *nextbuf = bufs + 1;
   ParameterValit *vi;
-  uchar fmodc, pmodc, amodc;
+  uint8_t fmodc, pmodc, amodc;
   fmodc = pmodc = amodc = 0;
   if (n->adjcs) {
     fmodc = n->adjcs->fmodc;
@@ -512,7 +515,7 @@ static uint run_block(SGSGenerator *o, Buf *bufs, uint buf_len,
   if (run_param(freq, len, vi, &n->freq, freqmod))
     n->attr &= ~(SGS_ATTR_VALITFREQ|SGS_ATTR_VALITFREQRATIO);
   if (fmodc) {
-    const int *fmods = n->adjcs->adjcs;
+    const int32_t *fmods = n->adjcs->adjcs;
     BufData *fmbuf;
     for (i = 0; i < fmodc; ++i)
       run_block(o, nextbuf, len, &o->operators[fmods[i]], freq, 1, i);
@@ -530,7 +533,7 @@ static uint run_block(SGSGenerator *o, Buf *bufs, uint buf_len,
    */
   pm = 0;
   if (pmodc) {
-    const int *pmods = &n->adjcs->adjcs[fmodc];
+    const int32_t *pmods = &n->adjcs->adjcs[fmodc];
     for (i = 0; i < pmodc; ++i)
       run_block(o, nextbuf, len, &o->operators[pmods[i]], freq, 0, i);
     pm = *(nextbuf++);
@@ -541,7 +544,7 @@ static uint run_block(SGSGenerator *o, Buf *bufs, uint buf_len,
      * modulators linked.
      */
     if (amodc) {
-      const int *amods = &n->adjcs->adjcs[fmodc+pmodc];
+      const int32_t *amods = &n->adjcs->adjcs[fmodc+pmodc];
       float dynampdiff = n->dynamp - n->amp;
       for (i = 0; i < amodc; ++i)
         run_block(o, nextbuf, len, &o->operators[amods[i]], freq, 1, i);
@@ -559,7 +562,7 @@ static uint run_block(SGSGenerator *o, Buf *bufs, uint buf_len,
      * input.
      */
     for (i = 0; i < len; ++i) {
-      int s, spm = 0;
+      int32_t s, spm = 0;
       float sfreq = freq[i].f, samp = amp[i].f;
       if (pm) spm = pm[i].i;
       SGSOsc_RUN_PM(&n->osc, n->osctype, o->osc_coeff, sfreq, spm, samp, s);
@@ -573,7 +576,7 @@ static uint run_block(SGSGenerator *o, Buf *bufs, uint buf_len,
      */
     for (i = 0; i < len; ++i) {
       float s, sfreq = freq[i].f;
-      int spm = 0;
+      int32_t spm = 0;
       if (pm) spm = pm[i].i;
       SGSOsc_RUN_PM_ENVO(&n->osc, n->osctype, o->osc_coeff, sfreq, spm, s);
       if (acc_ind) s *= sbuf[i].f;
@@ -600,12 +603,12 @@ static uint run_block(SGSGenerator *o, Buf *bufs, uint buf_len,
  *
  * Returns number of samples generated for the voice.
  */
-static uint run_voice(SGSGenerator *o, VoiceNode *vn, short *out,
-                      uint buf_len) {
-  const int *ops;
-  uint i, opc, ret_len = 0, finished = 1;
-  int time;
-  short *sp;
+static uint32_t run_voice(SGSGenerator *o, VoiceNode *vn, int16_t *out,
+                      uint32_t buf_len) {
+  const int32_t *ops;
+  uint32_t i, opc, ret_len = 0, finished = 1;
+  int32_t time;
+  int16_t *sp;
   if (!vn->graph) goto RETURN;
   opc = vn->graph->opc;
   ops = vn->graph->ops;
@@ -621,12 +624,12 @@ static uint run_voice(SGSGenerator *o, VoiceNode *vn, short *out,
    */
   sp = out;
   while (time) {
-    uint acc_ind = 0;
-    uint gen_len = 0;
-    uint len = (time < BUF_LEN) ? time : BUF_LEN;
+    uint32_t acc_ind = 0;
+    uint32_t gen_len = 0;
+    uint32_t len = (time < BUF_LEN) ? time : BUF_LEN;
     time -= len;
     for (i = 0; i < opc; ++i) {
-      uint last_len;
+      uint32_t last_len;
       OperatorNode *n = &o->operators[ops[i]];
       if (n->time == 0) continue;
       last_len = run_block(o, o->bufs, len, n, 0, 0, acc_ind++);
@@ -638,14 +641,14 @@ static uint run_voice(SGSGenerator *o, VoiceNode *vn, short *out,
       if (run_param(buf, gen_len, &vn->valitpanning, &vn->panning, 0))
         vn->attr &= ~SGS_ATTR_VALITPANNING;
       for (i = 0; i < gen_len; ++i) {
-        int s = (*o->bufs)[i].i, p;
+        int32_t s = (*o->bufs)[i].i, p;
         SET_I2FV(p, ((float)s) * buf[i].f);
         *sp++ += s - p;
         *sp++ += p;
       }
     } else {
       for (i = 0; i < gen_len; ++i) {
-        int s = (*o->bufs)[i].i, p;
+        int32_t s = (*o->bufs)[i].i, p;
         SET_I2FV(p, ((float)s) * vn->panning);
         *sp++ += s - p;
         *sp++ += p;
@@ -677,10 +680,10 @@ RETURN:
  * Returns non-zero until the end of the generated signal has been
  * reached.
  */
-uchar SGS_generator_run(SGSGenerator *o, short *buf, uint buf_len,
-                        uint *gen_len) {
-  short *sp = buf;
-  uint i, len = buf_len, skip_len, ret_len = 0, last_len;
+bool SGS_generator_run(SGSGenerator *o, int16_t *buf, size_t buf_len,
+                        size_t *gen_len) {
+  int16_t *sp = buf;
+  uint32_t i, len = buf_len, skip_len, ret_len = 0, last_len;
   for (i = len; i--; sp += 2) {
     sp[0] = 0;
     sp[1] = 0;
@@ -690,7 +693,7 @@ PROCESS:
   while (o->event < o->eventc) {
     EventNode *e = &o->events[o->event];
     if (o->eventpos < e->waittime) {
-      uint waittime = e->waittime - o->eventpos;
+      uint32_t waittime = e->waittime - o->eventpos;
       if (waittime < len) {
         /*
          * Limit len to waittime, further splitting processing into two
@@ -711,7 +714,7 @@ PROCESS:
   for (i = o->voice; i < o->voicec; ++i) {
     VoiceNode *vn = &o->voices[i];
     if (vn->pos < 0) {
-      uint waittime = -vn->pos;
+      uint32_t waittime = -vn->pos;
       if (waittime >= len) {
         vn->pos += len;
         break; /* end for now; waittimes accumulate across nodes */
@@ -721,7 +724,7 @@ PROCESS:
       vn->pos = 0;
     }
     if (vn->flag & SGS_FLAG_EXEC) {
-      uint voice_len = run_voice(o, vn, buf, len);
+      uint32_t voice_len = run_voice(o, vn, buf, len);
       if (voice_len > last_len) last_len = voice_len; 
     }
   }
@@ -739,12 +742,12 @@ PROCESS:
     if (o->voice == o->voicec) {
       if (o->event != o->eventc) break;
       if (gen_len) *gen_len = ret_len;
-      return 0;
+      return false;
     }
     vn = &o->voices[o->voice];
     if (!(vn->flag & SGS_FLAG_INIT) || vn->flag & SGS_FLAG_EXEC) break;
     ++o->voice;
   }
   if (gen_len) *gen_len = buf_len;
-  return 1;
+  return true;
 }
