@@ -1,14 +1,14 @@
 # This (updated) was the first sgensys script made
-Wsin	nA3 t1
-;	nA4 t1.5
-;	nG4 t0.5
-;	nF4 t0.5
-;	nE4 t1.5
-;	s1 nA3 t1
-;	nA4 t1.5
-;	nGs4 t0.5
-;	nA4 t0.5
-;	nB4 t1
-;	nAf4 t1
-;	nA4 t1.5
+Wsin	fA3 t1
+;	fA4 t1.5
+;	fG4 t0.5
+;	fF4 t0.5
+;	fE4 t1.5
+;	s1 fA3 t1
+;	fA4 t1.5
+;	fGs4 t0.5
+;	fA4 t0.5
+;	fB4 t1
+;	fAf4 t1
+;	fA4 t1.5
 Q
