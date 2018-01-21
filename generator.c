@@ -160,7 +160,7 @@ SGSGenerator* SGSGenerator_create(uint srate, struct SGSProgram *prg) {
       const SGSProgramOperatorData *od = step->operator;
       s->voiceid = step->voiceid;
       s->operatorid = od->operatorid;
-      if (s->params & SGS_ADJC)
+      if (s->params & SGS_ADJCS)
         (*set++).v = (void*)od->adjcs;
       if (s->params & SGS_OPATTR)
         (*set++).i = od->attr;
@@ -231,7 +231,7 @@ static void SGSGenerator_handle_event(SGSGenerator *o, EventNode *e) {
     }
     if (s->operatorid >= 0) {
       on = &o->operators[s->operatorid];
-      if (s->params & SGS_ADJC)
+      if (s->params & SGS_ADJCS)
         on->adjcs = (*data++).v;
       if (s->params & SGS_OPATTR) {
         uchar attr = (uchar)(*data++).i;

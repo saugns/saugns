@@ -99,9 +99,10 @@ enum {
   FMODS = 1<<2,
   AMODS = 1<<3,
   /* other flags */
-  PARENT_OLD = 1<<4,
-  ADD_WAIT_DURATION = 1<<5,
-  SILENCE_ADDED = 1<<6
+  NODE_LINKED = 1<<4,
+  PARENT_OLD = 1<<5,
+  ADD_WAIT_DURATION = 1<<6,
+  SILENCE_ADDED = 1<<7
 };
 
 typedef struct VoiceData {
@@ -220,17 +221,18 @@ static void add_adjc(EventNode *e, EventNode *adjc, uchar type) {
   *adjcs = realloc(*adjcs, sizeof(OperatorData*) * (*count));
   (*adjcs)[*count - 1] = adjc;
   e->parseflags |= type;
+  adjc->parseflags |= NODE_LINKED;
 }
 
 static void end_operator(SGSParser *o, NodeData *nd);
 static void end_voice(SGSParser *o, NodeData *nd);
 
+static void init_event(SGSParser *o, NodeData *nd, EventNode *previous,
+                      uchar linktype, uchar composite);
+
 static void new_event(SGSParser *o, NodeData *nd, EventNode *previous,
                       uchar linktype, uchar composite) {
-  EventNode *e, *pve;
-  VoiceData *vd;
-  OperatorData *od;
-  uchar setop = 0, setvo = 0;
+  EventNode *e;
   end_operator(o, nd);
   end_voice(o, nd);
   if (previous && previous->scopeid == nd->scopeid) {
@@ -248,10 +250,57 @@ static void new_event(SGSParser *o, NodeData *nd, EventNode *previous,
       nd->next_wait_ms = 0;
       return; /* reuse repositioned event */
     }
+  } else if (nd->event &&
+             !nd->event->params &&
+             !(nd->event->parseflags & NODE_LINKED)) {
+    nd->next_wait_ms += nd->event->wait_ms;
+    if (nd->event->groupfrom) {
+      nd->last->groupfrom = nd->event->groupfrom;
+      nd->event->groupfrom = 0;
+      nd->group = nd->event;
+    }
+    init_event(o, nd, previous, linktype, composite);
+    return; /* reuse previous allocation for new event */
   }
   if (nd->parent && !composite && nd->next_wait_ms != 0)
     nd->parent->parseflags |= PARENT_OLD;
-  e = calloc(1, sizeof(EventNode));
+  nd->event = calloc(1, sizeof(EventNode));
+  init_event(o, nd, previous, linktype, composite);
+
+  e = nd->event;
+  if (!nd->first)
+    nd->first = e;
+  if (!nd->group)
+    nd->group = e;
+  if (composite) {
+    if (!nd->composite) {
+      nd->composite = nd->current;
+      nd->composite->composite = e;
+      nd->last = nd->composite;
+    } else {
+      nd->last = (nd->last->composite) ? nd->last->composite :
+                 nd->last->next;
+      nd->last->next = e;
+    }
+  } else {
+    if (!o->events)
+      o->events = e;
+    else
+      o->last_event->next = e;
+    o->last_event = e;
+    nd->last = nd->current;
+    nd->current = e; /* then remains the same during composite events */
+    nd->composite = 0;
+  }
+}
+
+static void init_event(SGSParser *o, NodeData *nd, EventNode *previous,
+                      uchar linktype, uchar composite) {
+  EventNode *e, *pve;
+  VoiceData *vd;
+  OperatorData *od;
+  uchar setop = 0, setvo = 0;
+  e = nd->event;
   e->wait_ms = nd->next_wait_ms;
   nd->next_wait_ms = 0;
   e->id = o->eventc++;
@@ -291,6 +340,8 @@ static void new_event(SGSParser *o, NodeData *nd, EventNode *previous,
       od->attr |= SGS_ATTR_FREQRATIO;
     }
   }
+  if (composite)
+    od->time_ms = -1; /* defaults to time of previous step of composite */
 
   /* Linkage */
   if (linktype) {
@@ -302,48 +353,23 @@ static void new_event(SGSParser *o, NodeData *nd, EventNode *previous,
       if (linktype == GRAPH)
         nd->parent = e;
     }
-    nd->parent->params |= (linktype == GRAPH) ? SGS_GRAPH : SGS_ADJC;
+    nd->parent->params |= (linktype == GRAPH) ? SGS_GRAPH : SGS_ADJCS;
     add_adjc(nd->parent, e, linktype);
   }
-  nd->event = e;
-  if (!nd->first)
-    nd->first = e;
-  if (!nd->group)
-    nd->group = e;
-  if (composite) {
-    if (!nd->composite) {
-      nd->composite = nd->current;
-      nd->composite->composite = e;
-      nd->last = nd->composite;
-    } else {
-      nd->last = (nd->last->composite) ? nd->last->composite :
-                 nd->last->next;
-      nd->last->next = e;
-    }
-    od->time_ms = -1; /* defaults to time of previous step of composite */
-  } else {
-    nd->last = nd->current;
-    nd->current = e; /* then remains the same during composite events */
-    nd->composite = 0;
-  }
-  if (!o->events)
-    o->events = e;
-  else
-    o->last_event->next = e;
-  o->last_event = e;
 
   /* Assign label? */
   if (nd->setsym) {
     SGSSymtab_set(o->st, nd->setsym, e);
+    e->parseflags |= NODE_LINKED;
     free(nd->setsym);
     nd->setsym = 0;
   }
 }
 
 static void end_voice(SGSParser *o, NodeData *nd) {
-  EventNode *e = nd->current;
+  EventNode *e = nd->event;
   VoiceData *vd = &nd->voice;
-  if (!e)
+  if (!e || e->voice != vd)
     return; /* nothing to do */
   if (!vd->voprev) { /* initial event should reset its parameters */
     e->params |= SGS_VOATTR |
@@ -369,12 +395,12 @@ static void end_voice(SGSParser *o, NodeData *nd) {
 }
 
 static void end_operator(SGSParser *o, NodeData *nd) {
-  EventNode *e = nd->current;
+  EventNode *e = nd->event;
   OperatorData *od = &nd->operator;
-  if (!e)
+  if (!e || e->operator != od)
     return; /* nothing to do */
   if (!od->opprev) { /* initial event should reset its parameters */
-    e->params |= SGS_ADJC |
+    e->params |= SGS_ADJCS |
                  SGS_WAVE |
                  SGS_TIME |
                  SGS_SILENCE |
@@ -856,7 +882,7 @@ static uchar parse_step(SGSParser *o, NodeData *nd) {
           read_num(o, 0, &od->dynamp);
         }
         if (testgetc('{', o->f)) {
-          if (e->params & SGS_ADJC)
+          if (e->params & SGS_ADJCS)
             od->amodc = 0;
           ++o->nestlevel;
           parse_level(o, nd, AMODS, '{');
@@ -891,7 +917,7 @@ static uchar parse_step(SGSParser *o, NodeData *nd) {
           }
         }
         if (testgetc('{', o->f)) {
-          if (e->params & SGS_ADJC)
+          if (e->params & SGS_ADJCS)
             od->fmodc = 0;
           ++o->nestlevel;
           parse_level(o, nd, FMODS, '{');
@@ -929,7 +955,7 @@ static uchar parse_step(SGSParser *o, NodeData *nd) {
           }
         }
         if (testgetc('{', o->f)) {
-          if (e->params & SGS_ADJC)
+          if (e->params & SGS_ADJCS)
             od->fmodc = 0;
           ++o->nestlevel;
           parse_level(o, nd, FMODS, '{');
@@ -1049,7 +1075,7 @@ static uchar parse_level(SGSParser *o, NodeData *parentnd,
         warning(o, "multiple carriers not yet supported", c);
         break;
       }
-      if (last->params & SGS_ADJC)
+      if (last->params & SGS_ADJCS)
         last->operator->pmodc = 0;
       ++o->nestlevel;
       ret = parse_level(o, &nd, PMODS, SCOPE_SAME);
@@ -1058,10 +1084,10 @@ static uchar parse_level(SGSParser *o, NodeData *parentnd,
         goto RETURN;
       break; }
     case ':':
-      end_operator(o, &nd);
       if (nd.setsym)
         warning(o, "ignoring label assignment to label reference", c);
       nd.set_settings = 0;
+      nd.set_step = 0;
       if (read_sym(o, &nd.setsym, ':')) {
         EventNode *ref = SGSSymtab_get(o->st, nd.setsym);
         if (!ref)
@@ -1211,8 +1237,10 @@ static void group_events(EventNode *to, int def_time_ms) {
        until = until->next) ;
   for (ge = from; ge != until; ) {
     OperatorData *od;
-    if (ge->nestlevel)
+    if (ge->nestlevel) {
+      ge = ge->next;
       continue;
+    }
     if ((od = ge->operator)) {
       if (ge->next == until && od->time_ms < 0) /* Set and use default for last node in group */
         od->time_ms = def_time_ms;
@@ -1227,6 +1255,10 @@ static void group_events(EventNode *to, int def_time_ms) {
   }
   for (ge = from; ge != until; ) {
     OperatorData *od;
+    if (ge->nestlevel) {
+      ge = ge->next;
+      continue;
+    }
     if ((od = ge->operator)) {
       if (od->time_ms < 0)
         od->time_ms = wait + waitcount; /* fill in sensible default time */
@@ -1274,6 +1306,7 @@ static void flatten_events(EventNode *e) {
   if (!ce)
     return;
   /* Flatten composites */
+  puts("flatten");
   do {
     if (!se) {
       se_prev->next = ce;
@@ -1310,6 +1343,7 @@ static void flatten_events(EventNode *e) {
       ce = ce_next;
     }
   } while (ce);
+  puts("/flatten");
   e->composite = 0;
 }
 
@@ -1318,7 +1352,7 @@ static void build_graph(SGSProgramEvent *root, EventNode *root_in) {
   uint i;
   uint size;
   VoiceData *voice_in = root_in->voice;
-  if (!voice_in)
+  if (!voice_in || !(root_in->params & SGS_GRAPH))
     return;
   size = voice_in->operatorc;
   if (!size)
@@ -1328,6 +1362,31 @@ static void build_graph(SGSProgramEvent *root, EventNode *root_in) {
   for (i = 0; i < size; ++i)
     graph->ops[i] = voice_in->graph[i]->operator->operatorid;
   *(SGSProgramGraph**)&root->voice->graph = graph;
+}
+
+static void build_adjcs(SGSProgramEvent *root, EventNode *root_in) {
+  SGSProgramGraphAdjcs *adjcs;
+  int *data;
+  uint i;
+  uint size;
+  OperatorData *operator_in = root_in->operator;
+  if (!operator_in || !(root_in->params & SGS_ADJCS))
+    return;
+  size = operator_in->pmodc + operator_in->fmodc + operator_in->amodc;
+  if (!size)
+    return;
+  adjcs = malloc(sizeof(SGSProgramGraphAdjcs) + sizeof(int) * (size - 1));
+  adjcs->pmodc = operator_in->pmodc;
+  adjcs->fmodc = operator_in->fmodc;
+  adjcs->amodc = operator_in->amodc;
+  data = adjcs->adjcs;
+  for (i = 0; i < adjcs->pmodc; ++i)
+    *data++ = operator_in->pmods[i]->operator->operatorid;
+  for (i = 0; i < adjcs->fmodc; ++i)
+    *data++ = operator_in->fmods[i]->operator->operatorid;
+  for (i = 0; i < adjcs->amodc; ++i)
+    *data++ = operator_in->amods[i]->operator->operatorid;
+  *(SGSProgramGraphAdjcs**)&root->operator->adjcs = adjcs;
 }
 
 static SGSProgram* build(SGSParser *o) {
@@ -1400,7 +1459,10 @@ static SGSProgram* build(SGSParser *o) {
       ovd->attr = vd->attr;
       ovd->panning = vd->panning;
       ovd->valitpanning = vd->valitpanning;
-      build_graph(oe, e);
+      if (oe->params & SGS_GRAPH) {
+        build_graph(oe, e);
+        free(vd->graph);
+      }
       free(vd);
     }
     if (od) {
@@ -1420,6 +1482,12 @@ static SGSProgram* build(SGSParser *o) {
       ood->dynamp = od->dynamp;
       ood->valitfreq = od->valitfreq;
       ood->valitamp = od->valitamp;
+      if (oe->params & SGS_ADJCS) {
+        build_adjcs(oe, e);
+        free(od->pmods);
+        free(od->fmods);
+        free(od->amods);
+      }
       free(od);
     }
     ++id;

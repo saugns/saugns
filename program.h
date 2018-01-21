@@ -6,7 +6,7 @@ enum {
   SGS_VALITPANNING = 1<<2,
   SGS_VOATTR = 1<<3,
   /* operator values */
-  SGS_ADJC = 1<<4,
+  SGS_ADJCS = 1<<4,
   SGS_WAVE = 1<<5,
   SGS_TIME = 1<<6,
   SGS_SILENCE = 1<<7,
