@@ -1,8 +1,8 @@
-struct MGSSymtab;
-typedef struct MGSSymtab MGSSymtab;
+struct SGSSymtab;
+typedef struct SGSSymtab SGSSymtab;
 
-MGSSymtab* MGSSymtab_create(void);
-void MGSSymtab_destroy(MGSSymtab *o);
+SGSSymtab* SGSSymtab_create(void);
+void SGSSymtab_destroy(SGSSymtab *o);
 
-void* MGSSymtab_get(MGSSymtab *o, const char *key);
-void* MGSSymtab_set(MGSSymtab *o, const char *key, void *value);
+void* SGSSymtab_get(SGSSymtab *o, const char *key);
+void* SGSSymtab_set(SGSSymtab *o, const char *key, void *value);
