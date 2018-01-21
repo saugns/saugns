@@ -3,51 +3,62 @@ for musical purposes; it will read a script file of its SGS (Sound Generation
 Script) format and produce audio output; once more developed writing to audio
 files will be implemented.
 
-Script syntax:
+Syntax overview:
 
-Whitespace is not allowed within names that come after the initial letter of
-an operation, such as sin, tri. Nor is it allowed within numbers. Apart from
-this, spaces and tabs may be freely placed, or - not recommended - omitted.
+Operators are oscillators with various parameters, and the main thing dealt
+with in scripts.
+
+A specific operator is specified or referenced followed by optional arguments
+for its parameters. Other kinds of modifiers exist that affect operators much
+like parameters, but have other syntactical rules; such are used for
+connecting operators and for modifying their placement in time.
+
+Changes to operators - including the initial state - are grouped into "steps".
+Each reference to an operator is a step, located at a point in time - a place
+to specify arguments for changing its parameters.
+
+The point in time at which steps are placed is successively advanced using
+various modifiers - with some alternate constructs available.
 
 Newlines terminate steps, though a new step will also terminate the previous
-one allowing multiple steps on one line. In short, it is always possible to
-remove newlines, but not to insert them anywhere.
+one. (scope nesting - see below - allows exceptions) This allows multiple
+steps on one line; in short, it is always possible to remove newlines, but not
+to insert them anywhere.
 
-< and > allow nesting of scope; the step prior to the < remains in scope
-until new steps are given, and a newline or a > will return to the step for
-which the < was given.
+Whitespace is not allowed within multi-character names or keywords, such as
+sin, tri. Nor is it allowed within numbers. Apart from this, spaces and tabs
+may be freely placed, or - not recommended - omitted.
+
+When a numerical expression is given for a parameter, specifying it within
+parentheses will make the syntax freer, allowing whitespace to be freely
+placed; outside parentheses, whitespace will terminate the expression.
+
+< and > allow nesting of scope; the scope prior to the < returns upon the >.
+For the top-level scope, each line is considered a sub-scope, so the present
+list of steps will end with it. Nesting scopes with < and >, the sub-scope is
+not line-dependent, and the list of steps will continue for the remainder of
+the scope. Individual steps are still line-bound, though the last one
+preceding a < on its line will be returned to after the >.
 
 Parameters with nesting use { and } instead, differentiating the two, though
 such nesting also allows newlines.
 
-When a number is given for a parameter, specifying it within parentheses will
-make the syntax freer, allowing arithmetic and further nesting of parentheses.
-Whitespace including newlines may be freely placed until the final closing
-parenthesis.
-
-* Operations are specified followed by optional arguments for parameters.
-* Arguments are given for an operation.
-* Other kinds of modifiers exist that affect operations much like arguments,
-  but may be more freely placed and do not belong to the present operation.
-
-Operations will output audio at the same time unless wait times are involved.
-Each delaying will delay (shift the time of) all future operations.
-
-The following operations are supported:
+The following main keywords - and sub-keywords - are supported:
 
 S:
-	Set defaults and parameter modifiers.
+	Set argument defaults and parameter modifiers.
 	f, r, t	Set default values for parameters f (default 100),
 		r (default 1), t (default 1).
 	a	Sets a multiplier for the amplitude for all non-modulator
 		waves; effectively a volume control for the combined output.
-	n	Sets A4 tuning (default 444) for notes specified with n.
+	n	Sets A4 tuning (default 444) for frequencies specified as
+		notes.
 
-Wsin, Wtri, Wsqr, Wsaw:
-	Play sine, triangle, square or saw wave.
-	Supports f, t, a, \ parameters.
-
-The following parameters can be found in wave operations:
+Osin, Osrs, Otri, Osqr, Osaw:
+	Specify operator - and if top-level, play - with wave type set to
+	either sine, square root of sine, triangle, square or saw wave.
+	When specified or later referenced, operators support the
+	following parameters:
 	t	Time duration in seconds. If no t setting given, or t*
 		(blank time setting) is explicitly given, default time depends
 		on context: For a composite step, the value of the previous
@@ -55,56 +66,77 @@ The following parameters can be found in wave operations:
 		otherwise, if there are simultaneous operations it is fitted
 		to the duration of their play; otherwise, the default value
                 is used.
-	f	Frequency in Hz.
+	f	Frequency in Hz. Notes may also be specified in justly intoned
+		C-major scale; optional subnote (c, d, e, f, g, a or b) inside
+		inner octave (between note and next note), then note (C, D, E,
+		F, G, A or B), then optionally s (sharp) or f (flat), then
+		optionally (default 4) the octave of the note (0-10).
+			Gradual value adjustment also supported; see section.
 	f!{}	Second frequency in Hz to modulate (FM) to by wave or envelope,
 		and/or a list of modulators given within {} following the
 		number if given.
-	n	Frequency as note in justly intoned C-major scale; optional
-		subnote (c, d, e, f, g, a or b) inside inner octave (between
-		note and next note), then note (C, D, E, F, G, A or B), then
-		optionally s (sharp) or f (flat), then optionally the octave
-		of the note (0-10), default being 4.
 	r	Frequency ratio (modulator waves only) of carrier to modulator.
 		Keeps frequency that of the carrier divided by the given
 		number. Often used in the form r(n/m) to give an n:m ratio.
+			Gradual value adjustment also supported; see section.
 	r!{}	Second frequency ratio (modulator waves only) to modulate (FM)
 		to by wave or envelope, and/or a list of modulators given
 		within {} following the number if given.
 	a	Amplitude, where 1.0 gives a level of 0dB, which is the signal
 		max of the output. For a modulator wave, this however simply
 		adjusts the effect strength.
+			Gradual value adjustment also supported; see section.
 	a!{}	Second amplitude to modulate (AM) to by wave or envelope,
 		and/or a list of modulators given within {} following the
 		number if given.
+	b	Set the "balance" (panning) of the operator, from 0 (left) to
+		1 (right). Default is 0.5 (center).
+			Gradual value adjustment also supported; see section.
 	p	Set the beginning phase of the wave. For example, p(3/4) will
 		make a sine or triangle wave begin at its "bottom". This is
 		mostly used where wanted for waves used by f!/r! or a!.
-	p!{}	A list of modulator (PM) waves is given within the {}, the
-		per-sample sum of which is used to phase-modulate the carrier,
-		be it the final carrier or in turn another modulator.
 	s	Silent time at the beginning of the operation, time in seconds.
 		Works like adding delay, except it only affects this operation.
 	\	Delay current operation and all following ones, time in
 		seconds.
-	w	Set wave type (sin, tri, sqr, saw).
+	w	Set wave type (sin, srs, tri, sqr, saw).
 
 The following other modifiers are supported:
-	/	Delay next operation and all following ones, time in seconds.
+	/	Delay next step and all following ones, time in seconds.
 		Alternatively, /t will delay by the time of the previous
-		operation.
+		step.
 	|	Add (independently of /) just enough delay to make the next
-		operation(s) begin at the expiration of all that preceeds it,
+		step(s) begin at the expiration of all that preceeds it,
 		though / and \ may further delay it.
+	-	Placed for the preceding operator(s) of the present scope, a
+		list of modulator (PM) operators follow. This replaces any
+		previous PM modulators set, and may be blank.
+			The per-sample sum of the modulator amplitudes is used
+		to phase-modulate the carrier(s), be they the final carrier(s)
+		or in turn modulator(s) for one or more other carrier(s).
+			To restore and reuse the scope after the list, this
+		modifier and its list may be given within < and >.
+
+Gradual value adjustment:
+	Some parameters are noted to support this. Instead of typing the
+	value directly, the following sub-parameters are specified within []
+	(square brackets):
+	v	Target value.
+	t	Time to reach target value.
+	c	Character of gradual change; either lin, exp or log. (exp and
+		log are ear-tuned approximations designed to sound natural,
+		and symmetric to one another. these approximations allow
+		definite, finite timing, whereas a real exponential
+		calculation wouldn't)
 
 Compound steps:
-	Writing a ";" (on new line or same line) after an operation will allow
+	Writing a ";" (on new line or same line) after a step will allow
 	specifying new arguments to apply at the end of the previous duration;
-	this can also be repeated.
-		This is mostly syntactic sugar, making it possible to write a
-	sequence of steps as a single "compound step", rather than having to
-	(when other simultaneous operations are going on) intersperse them
-	with a mixture of delay times and steps for those other simultaneous
-	operations.
+	this can be repeated.
+		This makes it possible to write a sequence of steps as if a
+	single "compound step", rather than having to (when other simultaneous
+	operations are going on) intersperse them with a mixture of delay
+	times and the steps for other simultaneous operations.
 
 Labels and referencing:
 	Any W operation may be prefixed by "'label " in order to define a

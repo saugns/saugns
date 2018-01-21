@@ -6,30 +6,35 @@ enum {
 
 /* operator parameters */
 enum {
+  SGS_VOICE = 1<<0,
   /* operator linkage */
-  SGS_PMOD = 1<<0,
-  SGS_FMOD = 1<<1,
-  SGS_AMOD = 1<<2,
-  SGS_LINK = 1<<3,
+  SGS_PMOD = 1<<1,
+  SGS_FMOD = 1<<2,
+  SGS_AMOD = 1<<3,
+  SGS_LINK = 1<<4,
   /* operator values */
-  SGS_WAVE = 1<<4,
-  SGS_TIME = 1<<5,
-  SGS_SILENCE = 1<<6,
-  SGS_FREQ = 1<<7,
-  SGS_DYNFREQ = 1<<8,
-  SGS_PHASE = 1<<9,
-  SGS_AMP = 1<<10,
-  SGS_DYNAMP = 1<<11,
-  SGS_ATTR = 1<<12,
+  SGS_WAVE = 1<<5,
+  SGS_TIME = 1<<6,
+  SGS_SILENCE = 1<<7,
+  SGS_FREQ = 1<<8,
+  SGS_VALITFREQ = 1<<9,
+  SGS_DYNFREQ = 1<<10,
+  SGS_PHASE = 1<<11,
+  SGS_AMP = 1<<12,
+  SGS_VALITAMP = 1<<13,
+  SGS_DYNAMP = 1<<14,
+  SGS_ATTR = 1<<15,
   /* top-operator-specific values */
-  SGS_PANNING = 1<<13
+  SGS_PANNING = 1<<16,
+  SGS_VALITPANNING = 1<<17
 };
 
 /* operator wave types */
 enum {
   SGS_WAVE_SIN = 0,
-  SGS_WAVE_SQR,
+  SGS_WAVE_SRS,
   SGS_WAVE_TRI,
+  SGS_WAVE_SQR,
   SGS_WAVE_SAW
 };
 
@@ -58,18 +63,15 @@ typedef struct SGSProgramValit {
 } SGSProgramValit;
 
 typedef struct SGSProgramEvent {
-  struct SGSProgramEvent *next;
-  struct SGSProgramEvent *lvnext;
-  struct SGSProgramEvent *opprev, *opnext; /* linked list per topopid */
-  struct SGSProgramEvent *composite; /* only used during parsing */
-  int wait_ms;
-  uint id;
-  uint opid; /* counts up from 0 separately for different optypes */
+  /* event info: (-1 for blank id) */
+  int opprevid, opnextid; /* previous & next event for same operator */
   uchar optype;
-  uchar opfirst;
-  uint topopid; /* top operator for operator set */
-  /* operator parameters possibly set: (-1 id = none) */
-  ushort params;
+  uint opid; /* counts up from 0 separately for different optypes */
+  uint parentid, topopid; /* top operator for operator set */
+  int wait_ms;
+  /* operator parameters possibly set: (-1 for blank id) */
+  uint params;
+  int voiceid;
   uchar attr;
   uchar wave;
   int time_ms, silence_ms;
