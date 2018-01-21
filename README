@@ -42,8 +42,8 @@ S:
 	a	Sets a multiplier for the amplitude for all non-modulator
 		waves; effectively a volume control for the combined output.
 
-Wsin, Wsqr, Wtri, Wsaw:
-	Play sine, square, triangle or saw wave.
+Wsin, Wtri, Wsqr, Wsaw:
+	Play sine, triangle, square or saw wave.
 	Supports f, t, a, \ parameters.
 
 The following parameters can be found in wave operations:
@@ -76,8 +76,11 @@ The following parameters can be found in wave operations:
 	p!{}	A list of modulator (PM) waves is given within the {}, the
 		per-sample sum of which is used to phase-modulate the carrier,
 		be it the final carrier or in turn another modulator.
+	s	Silent time at the beginning of the operation, time in seconds.
+		Works like adding delay, except it only affects this operation.
 	\	Delay current operation and all following ones, time in
 		seconds.
+	w	Set wave type (sin, tri, sqr, saw).
 
 The following other modifiers are supported:
 	/	Delay next operation and all following ones, time in seconds.

@@ -446,16 +446,16 @@ static uint run_node(SGSGenerator *o, OperatorNode *n, short *sp, uint pos, uint
   uint i, ret, time = n->time - pos;
   if (time > len)
     time = len;
+  ret = time;
   if (n->silence) {
     if (n->silence >= time) {
       n->silence -= time;
-      return time;
+      return ret;
     }
     sp += n->silence + n->silence; /* doubled given stereo interleaving */
     time -= n->silence;
     n->silence = 0;
   }
-  ret = time;
   do {
     len = BUF_LEN;
     if (len > time)

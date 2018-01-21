@@ -241,8 +241,7 @@ static void end_event(SGSParser *o, NodeData *nd) {
     e->amp *= o->ampmult;
 
   if (nd->composite) {
-    if (nd->add_wait_ms) { /* Simulate with silence and time increase */
-      e->time_ms += nd->add_wait_ms;
+    if (nd->add_wait_ms) { /* Simulate with silence */
       e->silence_ms += nd->add_wait_ms;
       e->params |= SGS_SILENCE;
       nd->acc_wait_ms += nd->add_wait_ms; /* ...and keep for non-composite */
@@ -250,8 +249,8 @@ static void end_event(SGSParser *o, NodeData *nd) {
     }
     /* Add time of composites */
     if (e->time_ms < 0)
-      e->time_ms = nd->last->time_ms;
-    nd->composite->time_ms += e->time_ms;
+      e->time_ms = nd->last->time_ms - nd->last->silence_ms;
+    nd->composite->time_ms += e->time_ms + e->silence_ms;
     e->params &= ~SGS_TIME;
     if (!e->params) {
       free(e);
@@ -289,7 +288,9 @@ static void end_event(SGSParser *o, NodeData *nd) {
     nd->add_wait_ms = 0;
     nd->acc_wait_ms = 0;
   }
-
+  if (e->time_ms >= 0)
+    e->time_ms += e->silence_ms;
+ 
   nd->last = e;
   if (nd->oplast->optype == e->optype &&
     nd->oplast->opid == e->opid)
@@ -839,8 +840,10 @@ FINISH:
     warning(o, "end of file without closing '}'s", c);
 RETURN:
   if (nd.event) {
-    if (nd.event->time_ms < 0)
+    if (nd.event->time_ms < 0) {
       nd.event->time_ms = o->def_time_ms; /* use default */
+      nd.event->time_ms += nd.event->silence_ms;
+    }
     if (!o->reclevel)
       nd.end_group = 1; /* end grouping if any */
     end_operator(o, &nd);
