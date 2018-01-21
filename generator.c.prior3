@@ -415,7 +415,7 @@ static void run_block(Buf *bufs, uint buflen, OperatorNode *n,
                       Data *parentfreq, double osc_coeff, uchar waveenv) {
   uchar acc = 0;
   uint i, len;
-  Data *sbuf, *freq, *freqmod, *pm, *amp;
+  Data *sbuf, *freq, *pm, *amp;
   Buf *nextbuf = bufs;
   ParameterValit *vi;
 BEGIN:
@@ -434,44 +434,26 @@ BEGIN:
     sbuf += zerolen;
   }
   freq = *(nextbuf++);
-  if (!(n->attr & SGS_ATTR_VALITFREQ)) {
-    vi = 0;
-    freqmod = (n->attr & SGS_ATTR_FREQRATIO) ? parentfreq : 0;
-  } else {
+  if (n->attr & SGS_ATTR_VALITFREQ) {
     vi = &n->valitfreq;
     if (n->attr & SGS_ATTR_VALITFREQRATIO) {
-      freqmod = parentfreq;
       if (!(n->attr & SGS_ATTR_FREQRATIO)) {
         n->attr |= SGS_ATTR_FREQRATIO;
         n->freq /= parentfreq[0].f;
       }
     } else {
-      freqmod = 0;
       if (n->attr & SGS_ATTR_FREQRATIO) {
         n->attr &= ~SGS_ATTR_FREQRATIO;
         n->freq *= parentfreq[0].f;
       }
     }
+  } else {
+    vi = 0;
   }
-  if (run_param(freq, len, vi, &n->freq, freqmod))
+  if (run_param(freq, len, vi, &n->freq,
+                (n->attr & (SGS_ATTR_FREQRATIO |
+                            SGS_ATTR_VALITFREQRATIO)) ? parentfreq : 0))
     n->attr &= ~(SGS_ATTR_VALITFREQ|SGS_ATTR_VALITFREQRATIO);
-  //if (n->attr & SGS_ATTR_FREQRATIO) {
-  //  Data *freqmod;
-  //  if (n->attr & SGS_ATTR_VALITFREQ) {
-  //    vi = &n->valitfreq;
-  //    if (!(n->attr & SGS_ATTR_VALITFREQRATIO)) {
-  //      n->attr &= ~SGS_ATTR_FREQRATIO;
-  //      n->freq *= parentfreq[0].f;
-  //    }
-  //  } else {
-  //    vi = 0;
-  //  }
-  //  if (run_param(freq, len, vi, &n->freq, 
-  //}
-  //vi = (n->attr & SGS_ATTR_VALITFREQ) ? &n->valitfreq : 0;
-  //if (run_param(freq, len, vi, &n->freq,
-  //              0))
-  //  n->attr &= ~SGS_ATTR_VALITFREQ;
   if (n->fmodchain) {
     Data *fmbuf;
     run_block(nextbuf, len, n->fmodchain, freq, osc_coeff, 1);

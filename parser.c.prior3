@@ -989,7 +989,7 @@ static void parse_level(SGSParser *o, NodeTarget *chaintarget) {
           }
         } else if (read_num(o, read_note, &nd.event->freq)) {
           nd.event->attr &= ~SGS_ATTR_FREQRATIO;
-          if (!nd.event->valitamp.type)
+          if (!nd.event->valitfreq.type)
             nd.event->attr &= ~(SGS_ATTR_VALITFREQ |
                                 SGS_ATTR_VALITFREQRATIO);
         }
@@ -1049,7 +1049,7 @@ static void parse_level(SGSParser *o, NodeTarget *chaintarget) {
         } else if (read_num(o, 0, &nd.event->freq)) {
           nd.event->freq = 1.f / nd.event->freq;
           nd.event->attr |= SGS_ATTR_FREQRATIO;
-          if (!nd.event->valitamp.type)
+          if (!nd.event->valitfreq.type)
             nd.event->attr &= ~(SGS_ATTR_VALITFREQ |
                                 SGS_ATTR_VALITFREQRATIO);
         }
