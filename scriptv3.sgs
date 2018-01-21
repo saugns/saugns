@@ -1,0 +1,14 @@
+# This (updated) was the first sgensys script made
+Wsin	f220 t1
+;	f440 t1.5
+;	f400 t0.5
+;	f350 t0.5
+;	f325 t1.5
+;	s1 f220 t1
+;	f440 t1.5
+;	f415 t0.5
+;	f445 t0.5
+;	f490 t1
+;	f420 t1
+;	f440 t1.5
+Q
