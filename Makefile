@@ -1,6 +1,6 @@
-CFLAGS=-O2 -ffast-math
+CFLAGS=-W -Wall -O2 -ffast-math
 LFLAGS=-s
-OBJ=mgensys.o parser.o generator.o
+OBJ=mgensys.o parser.o generator.o osc.o
 
 all: mgensys
 
@@ -18,3 +18,6 @@ parser.o: parser.c mgensys.h program.h
 
 generator.o: generator.c mgensys.h program.h osc.h
 	$(CC) -c $(CFLAGS) generator.c
+
+osc.o: osc.c osc.h
+	$(CC) -c $(CFLAGS) osc.c
