@@ -6,11 +6,13 @@ extern void SGSOsc_init(void);
 #define SGSOsc_TABINDEXBITS 10
 #define SGSOsc_TABINDEXMASK ((1<<(32-SGSOsc_TABINDEXBITS))-1)
 
-/* for different waveforms (use short* as pointer type) */
-typedef short SGSOscTab[SGSOsc_TABLEN+1]; /* one extra for no-check lerp */
-extern SGSOscTab SGSOsc_sin,
-                 SGSOsc_sqr,
+/* for different waveforms (use SGSOscLuv* as pointer type) */
+typedef short SGSOscLuv;
+typedef SGSOscLuv SGSOscLut[SGSOsc_TABLEN+1]; /* one extra for no-check lerp */
+extern SGSOscLut SGSOsc_sin,
+                 SGSOsc_srs,
                  SGSOsc_tri,
+                 SGSOsc_sqr,
                  SGSOsc_saw;
 
 typedef struct SGSOsc {
