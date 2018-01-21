@@ -168,7 +168,7 @@ typedef struct SGSParser {
   uint voicec;
   /* settings/ops */
   float ampmult;
-  uint def_time_ms;
+  int def_time_ms;
   float def_freq, def_A4tuning, def_ratio;
 } SGSParser;
 
@@ -320,6 +320,7 @@ static void init_event(SGSParser *o, NodeData *nd, EventNode *previous,
     if (previous->operator) {
       setop = 1;
       *od = *previous->operator;
+      od->silence_ms = 0;
       od->opprev = previous;
     }
   }
