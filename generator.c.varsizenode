@@ -40,8 +40,8 @@ struct MGSGenerator {
 MGSGenerator* MGSGenerator_create(uint srate, struct MGSProgram *prg) {
   MGSGenerator *o;
   MGSProgramNode *step;
-  MGSGeneratorNode *n, *ref;
-  uint i, j, size, nodessize, component = 0, componentc = 0;
+  MGSGeneratorNode *n;
+  uint i, size, nodessize, component = 0, componentc = 0;
   size = sizeof(MGSGenerator);
   nodessize = sizeof(MGSGeneratorNode) * prg->stepc;
   for (step = prg->steps; step; step = step->next) {
@@ -66,7 +66,7 @@ MGSGenerator* MGSGenerator_create(uint srate, struct MGSProgram *prg) {
       n->ref = 0;
       n->component = &o->components[component++];
     } else {
-      ref = o->nodes;
+      MGSGeneratorNode *ref = o->nodes;
       for (i = step->ref->id; i; --i)
         ref = MGSGeneratorNode_NEXT(ref);
       n->ref = ref;
@@ -94,26 +94,7 @@ MGSGenerator* MGSGenerator_create(uint srate, struct MGSProgram *prg) {
     SET_I16_162F(n->amp, amp);
     n->freq = freq;
     n->modc = step->modc;
-    for (i = 0; i < n->modc; ++i)
-      n->mods[i] = (void*)step->mods[i]; /* replace with proper entry below */
     step = step->next;
-  }
-  for (n = o->nodes, j = 0; n != o->end; n = MGSGeneratorNode_NEXT(n), ++j) {
-    if (n->modc) {
-      for (i = 0; i < n->modc; ++i) {
-        /* Seeking forward from the present node will work as modulator nodes
-         * are always placed after the modulated node.
-         */
-        uint id = j;
-        ref = n;
-        step = (void*)n->mods[i];
-        while (id < step->id) {
-          ref = MGSGeneratorNode_NEXT(ref);
-          ++id;
-        }
-        n->mods[i] = ref; /* now given proper entry */
-      }
-    }
   }
   return o;
 }
@@ -162,55 +143,29 @@ void MGSGenerator_destroy(MGSGenerator *o) {
 }
 
 /*
- * node sample processing
+ * oscillator block processing
  */
 
-static uint run_pm(MGSGeneratorNode *n) {
-  uint i;
-  int s = 0;
+void run_osc(MGSGeneratorNode *n, short *sp, uint len) {
   MGSGeneratorComponent *c = n->component;
-  for (i = 0; i < n->modc; ++i) {
-    MGSGeneratorNode *mn = n->mods[i];
-    if (mn->modc)
-      s += run_pm(mn);
-    else {
-      int v;
-      MGSGeneratorComponent *c = mn->component;
-      MGSOsc_RUN(&c->osc, mn->osctype, v);
-      s += v;
-    }
-  }
-  MGSOsc_RUN_PM(&c->osc, n->osctype, s, s);
-  return s;
-}
-
-/*
- * node block processing
- */
-
-static void run_node(MGSGeneratorNode *n, short *sp, uint len) {
   uint time = n->time - n->pos;
   if (time > len)
     time = len;
   n->pos += time;
   if (n->type != MGS_TYPE_WAVE) return;
-  if (n->mode == MGS_MODE_RIGHT) ++sp;
-  if (n->modc) {
-    for (; time; --time, sp += 2) {
-      int s;
-      s = run_pm(n);
-      sp[0] += s;
-      if (n->mode == MGS_MODE_CENTER)
-        sp[1] += s;
-    }
-  } else {
-    MGSGeneratorComponent *c = n->component;
+  if (n->mode == MGS_MODE_CENTER) {
     for (; time; --time, sp += 2) {
       int s;
       MGSOsc_RUN(&c->osc, n->osctype, s);
       sp[0] += s;
-      if (n->mode == MGS_MODE_CENTER)
-        sp[1] += s;
+      sp[1] += s;
+    }
+  } else {
+    if (n->mode == MGS_MODE_RIGHT) ++sp;
+    for (; time; --time, sp += 2) {
+      int s;
+      MGSOsc_RUN(&c->osc, n->osctype, s);
+      sp[0] += s;
     }
   }
   if ((uint)n->pos == n->time)
@@ -249,7 +204,7 @@ PROCESS:
     }
     if (!(n->flag & MGS_FLAG_ENTERED))
       /* After return to PROCESS, ensures disabling node is initialized before
-       * disabled node would otherwise play.
+       * disabled node plays.
        */
       MGSGenerator_enter_node(o, n);
   }
@@ -271,7 +226,7 @@ PROCESS:
     if (!(n->flag & MGS_FLAG_ENTERED))
       MGSGenerator_enter_node(o, n);
     if (n->flag & MGS_FLAG_PLAY)
-      run_node(n, buf, len);
+      run_osc(n, buf, len);
   }
   if (skiplen) {
     buf += len+len; /* doubled due to stereo interleaving */
