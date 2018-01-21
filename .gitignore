@@ -1,0 +1,9 @@
+.svn
+.*.swp
+
+*.o
+mgensys
+sgensys
+
+*.[ch][-.]*
+backup/
