@@ -14,81 +14,81 @@ extern MGSOscTab MGSOsc_sin,
                  MGSOsc_saw;
 
 typedef struct MGSOsc {
-  uint inc, phase;
-  ui16_16 amp;
+  float freq;
+  uint phase;
+  float amp;
 } MGSOsc;
 
-#define MGSOsc_COEFF(fq, sr) \
-  ((4294967296.0 * (fq))/(sr))
+#define MGSOsc_COEFF(sr) \
+  (4294967296.0/(sr))
 
 #define MGSOsc_SET_PHASE(o, p) \
   ((void)((o)->phase = (p)))
 
-#define MGSOsc_SET_COEFF(o, fq, sr) \
-  ((void)((o)->inc = MGSOsc_COEFF(fq, sr)))
+#define MGSOsc_SET_FREQ(o, fq) \
+  ((void)((o)->freq = (fq)))
 
-#define MGSOsc_SET_RANGE(o, r) \
+#define MGSOsc_SET_AMP(o, r) \
   ((void)((o)->amp = (r)))
 
-#define MGSOsc_RUN(o, osctab, out) do{ \
-  int MGSOsc__s, MGSOsc__d; \
+#define MGSOsc_RUN(o, osctab, coeff, out) do{ \
+  int MGSOsc__s; \
   uint MGSOsc__i; \
-  (o)->phase += (o)->inc; \
+  SET_I2F(MGSOsc__i, (coeff)*(o)->freq); \
+  (o)->phase += MGSOsc__i; \
   MGSOsc__i = (o)->phase >> (32-MGSOsc_TABINDEXBITS); \
   MGSOsc__s = (osctab)[MGSOsc__i]; \
-  SET_I2F(MGSOsc__d, \
-    ((float)(((osctab)[MGSOsc__i + 1] - MGSOsc__s)) * \
-             ((o)->phase & MGSOsc_TABINDEXMASK) * \
-             (1.f / (1 << (32-MGSOsc_TABINDEXBITS)))) \
+  /* write lerp'd & scaled result */ \
+  SET_I2F((out), \
+    (((float)MGSOsc__s) + \
+     ((float)(((osctab)[MGSOsc__i + 1] - MGSOsc__s))) * \
+     ((float)((o)->phase & MGSOsc_TABINDEXMASK)) * \
+     (1.f / (1 << (32-MGSOsc_TABINDEXBITS)))) * \
+    (o)->amp \
   ); \
-/*printf("%d + %d = %d\n", MGSOsc__s, MGSOsc__d, MGSOsc__s + MGSOsc__d);*/ \
-  MGSOsc__s += MGSOsc__d; \
-  MGSOsc__s *= (o)->amp; \
-  MGSOsc__s >>= 16; \
-  (out) = MGSOsc__s; \
 }while(0)
 
-#define MGSOsc_RUN_FM(o, osctab, fm, out) do{ \
-  int MGSOsc__s, MGSOsc__d; \
+#define MGSOsc_RUN_FM(o, osctab, coeff, fm, out) do{ \
+  int MGSOsc__s; \
   uint MGSOsc__i; \
-  (o)->phase += (o)->inc + ((fm) * (((o)->inc >> 11) - ((o)->inc >> 14) + ((o)->inc >> 18))); \
+  SET_I2F(MGSOsc__i, (coeff)*(o)->freq); \
+  (o)->phase += MGSOsc__i + ((fm) * ((MGSOsc__i >> 11) - (MGSOsc__i >> 14) + (MGSOsc__i >> 18))); \
   MGSOsc__i = (o)->phase >> (32-MGSOsc_TABINDEXBITS); \
   MGSOsc__s = (osctab)[MGSOsc__i]; \
-  SET_I2F(MGSOsc__d, \
-    ((float)(((osctab)[MGSOsc__i + 1] - MGSOsc__s)) * \
-             ((o)->phase & MGSOsc_TABINDEXMASK) * \
-             (1.f / (1 << (32-MGSOsc_TABINDEXBITS)))) \
+  /* write lerp'd & scaled result */ \
+  SET_I2F((out), \
+    (((float)MGSOsc__s) + \
+     ((float)(((osctab)[MGSOsc__i + 1] - MGSOsc__s))) * \
+     ((float)((o)->phase & MGSOsc_TABINDEXMASK)) * \
+     (1.f / (1 << (32-MGSOsc_TABINDEXBITS)))) * \
+    (o)->amp \
   ); \
-/*printf("%d + %d = %d\n", MGSOsc__s, MGSOsc__d, MGSOsc__s + MGSOsc__d);*/ \
-  MGSOsc__s += MGSOsc__d; \
-  MGSOsc__s *= (o)->amp; \
-  MGSOsc__s >>= 16; \
-  (out) = MGSOsc__s; \
 }while(0)
 
-#define MGSOsc_RUN_PM(o, osctab, pm, out) do{ \
-  int MGSOsc__s, MGSOsc__d; \
+#define MGSOsc_RUN_PM(o, osctab, coeff, pm, out) do{ \
+  int MGSOsc__s; \
   uint MGSOsc__i, MGSOsc__p; \
-  (o)->phase += (o)->inc; \
+  SET_I2F(MGSOsc__i, (coeff)*(o)->freq); \
+  (o)->phase += MGSOsc__i; \
   MGSOsc__p = (o)->phase + ((pm) << 16); \
   MGSOsc__i = MGSOsc__p >> (32-MGSOsc_TABINDEXBITS); \
   MGSOsc__s = (osctab)[MGSOsc__i]; \
-  SET_I2F(MGSOsc__d, \
-    ((float)(((osctab)[MGSOsc__i + 1] - MGSOsc__s)) * \
-             (MGSOsc__p & MGSOsc_TABINDEXMASK) * \
-             (1.f / (1 << (32-MGSOsc_TABINDEXBITS)))) \
+  /* write lerp'd & scaled result */ \
+  SET_I2F((out), \
+    (((float)MGSOsc__s) + \
+     ((float)(((osctab)[MGSOsc__i + 1] - MGSOsc__s))) * \
+     ((float)(MGSOsc__p & MGSOsc_TABINDEXMASK)) * \
+     (1.f / (1 << (32-MGSOsc_TABINDEXBITS)))) * \
+    (o)->amp \
   ); \
-/*printf("%d + %d = %d\n", MGSOsc__s, MGSOsc__d, MGSOsc__s + MGSOsc__d);*/ \
-  MGSOsc__s += MGSOsc__d; \
-  MGSOsc__s *= (o)->amp; \
-  MGSOsc__s >>= 16; \
-  (out) = MGSOsc__s; \
 }while(0)
 
-#define MGSOsc_WAVE_OFFS(o, timepos, out) do{ \
-  uint MGSOsc__p = (o)->inc * (uint)(timepos); \
+#define MGSOsc_WAVE_OFFS(o, coeff, timepos, out) do{ \
+  uint MGSOsc__i; \
+  SET_I2F(MGSOsc__i, (coeff)*(o)->freq); \
+  uint MGSOsc__p = MGSOsc__i * (uint)(timepos); \
   int MGSOsc__o = MGSOsc__p - (MGSOsc_TABINDEXMASK+1); \
-  (out) = (MGSOsc__o / (o)->inc); \
+  (out) = (MGSOsc__o / MGSOsc__i); \
 }while(0)
 
 /**/
