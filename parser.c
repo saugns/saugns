@@ -236,7 +236,7 @@ static void new_event(SGSParser *o, NodeData *nd, EventNode *previous,
   end_operator(o, nd);
   end_voice(o, nd);
   if (previous && previous->scopeid == nd->scopeid) {
-    if (!nd->next_wait_ms) {
+    if (!nd->next_wait_ms && !composite) {
       if (!previous->voice)
         previous->voice = &nd->voice;
       if (!previous->operator)
@@ -498,14 +498,14 @@ static void read_ws(SGSParser *o) {
   } while (c != EOF);
 }
 
-static float read_num_r(SGSParser *o, float (*read_symbol)(SGSParser *o), char *buf, uint len, uchar pri, uint level) {
+static float read_num_r(SGSParser *o, float (*read_symbol)(SGSParser *o),
+                        char *buf, uint len, uchar pri, uint level) {
   char *p = buf;
   uchar dot = 0;
   float num;
   char c;
   c = getc(o->f);
-  if (level)
-    read_ws(o);
+  if (level) read_ws(o);
   if (c == '(') {
     return read_num_r(o, read_symbol, buf, len, 255, level+1);
   }
@@ -513,16 +513,13 @@ static float read_num_r(SGSParser *o, float (*read_symbol)(SGSParser *o), char *
       ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))) {
     ungetc(c, o->f);
     num = read_symbol(o);
-    if (num == num) { /* not NAN; was recognized */
-      c = getc(o->f);
+    if (num == num) /* not NAN; was recognized */
       goto LOOP;
-    }
   }
   if (c == '-') {
     *p++ = c;
     c = getc(o->f);
-    if (level)
-      read_ws(o);
+    if (level) read_ws(o);
   }
   while ((c >= '0' && c <= '9') || (!dot && (dot = (c == '.')))) {
     if ((p+1) == (buf+len)) {
@@ -531,16 +528,15 @@ static float read_num_r(SGSParser *o, float (*read_symbol)(SGSParser *o), char *
     *p++ = c;
     c = getc(o->f);
   }
-  if (p == buf) {
-    ungetc(c, o->f);
-    return NAN;
-  }
+  ungetc(c, o->f);
+  if (p == buf) return NAN;
   *p = '\0';
   num = strtod(buf, 0);
 LOOP:
+  if (level) read_ws(o);
   for (;;) {
-    if (level)
-      read_ws(o);
+    c = getc(o->f);
+    if (level) read_ws(o);
     switch (c) {
     case '(':
       num *= read_num_r(o, read_symbol, buf, len, 255, level+1);
@@ -577,7 +573,6 @@ LOOP:
       ungetc(c, o->f);
       return num;
     }
-    c = getc(o->f);
   }
 }
 static uchar read_num(SGSParser *o, float (*read_symbol)(SGSParser *o),
@@ -1307,7 +1302,6 @@ static void flatten_events(EventNode *e) {
   if (!ce)
     return;
   /* Flatten composites */
-  puts("flatten");
   do {
     if (!se) {
       se_prev->next = ce;
@@ -1344,7 +1338,6 @@ static void flatten_events(EventNode *e) {
       ce = ce_next;
     }
   } while (ce);
-  puts("/flatten");
   e->composite = 0;
 }
 
