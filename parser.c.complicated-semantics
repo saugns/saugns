@@ -275,12 +275,10 @@ static void parse_level(MGSParser *o, MGSProgramNode *node, MGSProgramNode *mods
     switch (c) {
     case '\n':
     EOL:
-      if (!modc) {
-        if (o->setdef > o->nest)
-          o->setdef = (o->nest) ? (o->nest - 1) : 0;
-        else if (o->setnode > o->nest)
-          o->setnode = (o->nest) ? (o->nest - 1) : 0;
-      }
+      if (o->setdef > o->nest)
+        o->setdef = (o->nest) ? (o->nest - 1) : 0;
+      else if (o->setnode > o->nest)
+        o->setnode = (o->nest) ? (o->nest - 1) : 0;
       ++o->line;
       break;
     case '\t':
@@ -425,11 +423,9 @@ static void parse_level(MGSParser *o, MGSProgramNode *node, MGSProgramNode *mods
               node->type = node->ref->type;
               node->wave = node->ref->wave;
               node->mode = node->ref->mode;
-              node->amp = node->ref->amp;
-              node->dynamp = node->ref->dynamp;
-              node->freq = node->ref->freq;
-              node->dynfreq = node->ref->dynfreq;
-              node->flag |= MGS_FLAG_REFTIME;
+              node->flag |= MGS_FLAG_REFAMP |
+                            MGS_FLAG_REFTIME |
+                            MGS_FLAG_REFFREQ;
               node->pmodc = node->ref->pmodc;
               node->pmods = node->ref->pmods;
               node->fmodc = node->ref->fmodc;
@@ -454,13 +450,16 @@ static void parse_level(MGSParser *o, MGSProgramNode *node, MGSProgramNode *mods
       if (o->setdef > o->setnode)
         o->n_amp = getnum(o->f);
       else if (o->setnode > 0) {
-        if (modtype == MGS_AMODS ||
-            modtype == MGS_FMODS)
-          goto INVALID;
         if (testgetc('!', o->f)) {
-          if (!testc('{', o->f)) {
-            node->dynamp = getnum(o->f);
+          if (!testgetc(',', o->f)) {
+            node->amp = getnum(o->f);
+            node->flag &= ~MGS_FLAG_REFAMP;
+            if (!testgetc(',', o->f)) {
+              warning(o, "second numerical value missing for 'a!' setting", c);
+              break;
+            }
           }
+          node->dynamp = (getnum(o->f) - node->amp);
           if (testgetc('{', o->f)) {
             MGSProgramNode *mods[MODC_MAX];
             uchar modc = 0;
@@ -479,6 +478,7 @@ static void parse_level(MGSParser *o, MGSProgramNode *node, MGSProgramNode *mods
           }
         } else {
           node->amp = getnum(o->f);
+          node->flag &= ~MGS_FLAG_REFAMP;
         }
       } else
         goto INVALID;
@@ -488,10 +488,16 @@ static void parse_level(MGSParser *o, MGSProgramNode *node, MGSProgramNode *mods
         o->n_freq = getnum(o->f);
       else if (o->setnode > 0) {
         if (testgetc('!', o->f)) {
-          if (!testc('{', o->f)) {
-            node->dynfreq = getnum(o->f);
-            node->flag &= ~MGS_FLAG_DYNFREQRATIO;
+          if (!testgetc(',', o->f)) {
+            node->freq = getnum(o->f);
+            node->flag &= ~(MGS_FLAG_REFFREQ |
+                          MGS_FLAG_FREQRATIO);
+            if (!testgetc(',', o->f)) {
+              warning(o, "second numerical value missing for 'f!' setting", c);
+              break;
+            }
           }
+          node->dynfreq = (getnum(o->f) - node->freq);
           if (testgetc('{', o->f)) {
             MGSProgramNode *mods[MODC_MAX];
             uchar modc = 0;
@@ -510,7 +516,8 @@ static void parse_level(MGSParser *o, MGSProgramNode *node, MGSProgramNode *mods
           }
         } else {
           node->freq = getnum(o->f);
-          node->flag &= ~MGS_FLAG_FREQRATIO;
+          node->flag &= ~(MGS_FLAG_REFFREQ |
+                         MGS_FLAG_FREQRATIO);
         }
       } else
         goto INVALID;
@@ -545,31 +552,9 @@ static void parse_level(MGSParser *o, MGSProgramNode *node, MGSProgramNode *mods
       else if (o->setnode > 0) {
         if (!modc)
           goto INVALID;
-        if (testgetc('!', o->f)) {
-          if (!testc('{', o->f)) {
-            node->dynfreq = 1.f / getnum(o->f);
-            node->flag |= MGS_FLAG_DYNFREQRATIO;
-          }
-          if (testgetc('{', o->f)) {
-            MGSProgramNode *mods[MODC_MAX];
-            uchar modc = 0;
-            parse_level(o, node, mods, &modc, MGS_FMODS);
-            if (node->fmodc && node->free_mods & MGS_FMODS) {
-              free(node->fmods);
-              node->fmods = 0;
-            }
-            node->fmodc = modc;
-            if (modc) {
-              uint size = modc * sizeof(MGSProgramNode*);
-              node->free_mods |= MGS_FMODS;
-              node->fmods = malloc(size);
-              memcpy(node->fmods, mods, size);
-            }
-          }
-        } else {
-          node->freq = 1.f / getnum(o->f);
-          node->flag |= MGS_FLAG_FREQRATIO;
-        }
+        node->freq = 1.f / getnum(o->f);
+        node->flag &= ~MGS_FLAG_REFFREQ;
+        node->flag |= MGS_FLAG_FREQRATIO;
       } else
         goto INVALID;
       break;

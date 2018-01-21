@@ -1,0 +1,22 @@
+Wsin t15 f500 f!501{Wsin f1} m{
+	Wsin f400 f!800{Wsqr f1 f!10{Wsin f5000} Wtri f0.1 f!10.0{Wsin f0.2}}
+}
+
+|
+Wsin t15 f400 f!500{Wsqr f10} m{
+	Wsin r(2/1.22) a.5
+	Wsin f244 a.5
+}
+
+|
+Wsin t15 f600 f!666{Wsin f2} m{
+	Wsin f400
+	Wsin f400 f!500{Wsin f.1}
+}
+
+|
+Wsin t15 f222 f!666{Wsin f0.1} m{
+	Wsin r(1/2)
+	Wsin r(3/4)
+	Wsin r(7/3)
+}
