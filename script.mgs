@@ -1,0 +1,19 @@
+# This is the first mgensys script made
+D	a0.5
+W	t0.5
+Ssqr	f220 t1
+Ssqr	f110 t0.5 a.05 	E
+Ssqr	f440 t1.5
+Ssqr	f220 t0.5 a.05 	E
+Ssqr	f400 t0.5 	E
+Ssqr	f350 t0.5 	E
+Ssqr	f325 t1.5 	E
+W	t1
+Ssqr	f220 t1 	E
+Ssqr	f440 t1.5 	E
+Ssqr	f415 t0.5 	E
+Ssqr	f445 t0.5 	E
+Ssqr	f490 t1 	E
+Ssqr	f420 t1 	E
+Ssqr	f440 t1.5 	E
+Q
