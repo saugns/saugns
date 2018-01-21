@@ -18,12 +18,14 @@ typedef union MGSGeneratorComponent {
   MGSOsc osc;
 } MGSGeneratorComponent;
 
+#define NO_DELAY_OFFS (0x80000000)
 struct MGSGenerator {
   const struct MGSProgram *program;
   MGSGeneratorComponent *components;
   uint srate;
   uint cpos;
   uint node, nodec;
+  int delay_offs;
   MGSGeneratorNode nodes[1]; /* sized at construction */
 };
 
@@ -44,17 +46,17 @@ MGSGenerator* MGSGenerator_create(uint srate, struct MGSProgram *prg) {
     float freq = step->freq;
     o->nodes[i].pos = -delay;
     o->nodes[i].time = time;
-    switch (step->type) {
-    case MGS_TYPE_SIN:
+    switch (step->wave) {
+    case MGS_WAVE_SIN:
       o->nodes[i].osctype = MGSOsc_sin;
       break;
-    case MGS_TYPE_SQR:
+    case MGS_WAVE_SQR:
       o->nodes[i].osctype = MGSOsc_sqr;
       break;
-    case MGS_TYPE_TRI:
+    case MGS_WAVE_TRI:
       o->nodes[i].osctype = MGSOsc_tri;
       break;
-    case MGS_TYPE_SAW:
+    case MGS_WAVE_SAW:
       o->nodes[i].osctype = MGSOsc_saw;
       break;
     }
@@ -70,11 +72,17 @@ MGSGenerator* MGSGenerator_create(uint srate, struct MGSProgram *prg) {
 static void MGSGenerator_enter_node(MGSGenerator *o, uint index) {
   MGSGeneratorComponent *comp;
   MGSGeneratorNode *node = &o->nodes[index];
+  int pos_offs;
   comp = node->component = &o->components[o->cpos++];
   MGSOsc_SET_COEFF(&comp->osc, node->freq, o->srate);
   MGSOsc_SET_PHASE(&comp->osc, 0);
   MGSOsc_SET_RANGE(&comp->osc, node->amp);
   node->active = 1;
+  /* click reduction: increase time to make it end at wave cycle's end */
+  MGSOsc_WAVE_OFFS(&comp->osc, node->time, pos_offs);
+  node->time -= pos_offs;
+  if ((uint)o->delay_offs == NO_DELAY_OFFS || o->delay_offs > pos_offs)
+    o->delay_offs = pos_offs;
 }
 
 void MGSGenerator_destroy(MGSGenerator *o) {
@@ -121,7 +129,12 @@ uchar MGSGenerator_run(MGSGenerator *o, short *buf, uint len) {
   for (i = o->node; i < o->nodec; ++i) {
     n = &o->nodes[i];
     if (n->pos < 0) {
-      uint offs = - n->pos;
+      uint offs;
+      if ((uint)o->delay_offs != NO_DELAY_OFFS) {
+        n->pos += o->delay_offs; /* delay increase == previous time increase */
+        o->delay_offs = NO_DELAY_OFFS;
+      }
+      offs = - n->pos;
       if (offs >= len) {
         n->pos += len;
         break; /* end for now; delays accumulate across steps */

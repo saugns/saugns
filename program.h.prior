@@ -1,10 +1,4 @@
 enum {
-  MGS_TYPE_SETAMP = 1<<0,
-  MGS_TYPE_SETTIME = 1<<1,
-  MGS_TYPE_SETFREQ = 1<<2
-};
-
-enum {
   MGS_WAVE_SIN = 0,
   MGS_WAVE_SQR,
   MGS_WAVE_TRI,
