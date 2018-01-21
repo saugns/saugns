@@ -6,6 +6,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#define IS_WHITESPACE(c) \
+  ((c) == ' ' || (c) == '\t' || (c) == '\n' || (c) == '\r')
 
 typedef struct MGSParser {
   FILE *f;
@@ -80,20 +82,6 @@ static void new_node(MGSParser *o, NodeData *nd, MGSProgramNodeChain *target, uc
       nd->n_add_delay += o->last_top->time;
     nd->n_time_delay = 0;
   }
-  if (!nd->n_begin)
-    nd->n_begin = n;
-  else if (nd->n_end) {
-    double delay = 0.f;
-    MGSProgramNode *step;
-    for (step = nd->n_begin; step != n; step = step->next) {
-      if (delay < step->time)
-        delay = step->time;
-      delay -= step->next->delay;
-    }
-    nd->n_add_delay += delay;
-    nd->n_begin = n;
-    nd->n_end = 0;
-  }
   nd->n_next_add_delay = 0.f;
 
   if (nd->target) {
@@ -138,8 +126,6 @@ static void end_node(MGSParser *o, NodeData *nd) {
        */
       if (o->last_nested == n)
         o->last_nested = o->undo_last;
-      if (nd->n_begin == n)
-        nd->n_begin = 0;
       if (o->last_top == n)
         o->last_top->next = 0;
       free(n);
@@ -162,7 +148,23 @@ static void end_node(MGSParser *o, NodeData *nd) {
   nd->last = n;
   ++p->nodec;
 
-  n->amp *= o->n_ampmult;
+  if (n->type != MGS_TYPE_NESTED) /* don't mess with modulation depth */
+    n->amp *= o->n_ampmult;
+  /* node-to-| sequence timing */
+  if (!nd->n_begin)
+    nd->n_begin = n;
+  else if (nd->n_end) {
+    double delay = 0.f;
+    MGSProgramNode *step;
+    for (step = nd->n_begin; step != n; step = step->next) {
+      if (delay < step->time)
+        delay = step->time;
+      delay -= step->next->delay;
+    }
+    nd->n_add_delay += delay;
+    nd->n_begin = n;
+    nd->n_end = 0;
+  }
   n->delay += nd->n_add_delay;
   nd->n_add_delay = 0.f;
 
@@ -180,7 +182,7 @@ static double getnum_r(FILE *f, char *buf, uint len, uchar pri) {
   char c;
   do {
     c = getc(f);
-  } while (c == ' ' || c == '\t' || c == '\r' || c == '\n');
+  } while (IS_WHITESPACE(c));
   if (c == '(') {
     return getnum_r(f, buf, len, 255);
   }
@@ -198,7 +200,7 @@ static double getnum_r(FILE *f, char *buf, uint len, uchar pri) {
   *p = '\0';
   num = strtod(buf, 0);
   for (;;) {
-    while (c == ' ' || c == '\t' || c == '\r' || c == '\n')
+    while (IS_WHITESPACE(c))
       c = getc(f);
     switch (c) {
     case '(':
@@ -328,7 +330,7 @@ static uchar read_sym(MGSParser *o, char **sym, char op) {
     *sym = malloc(SYMKEY_LEN);
   for (;;) {
     char c = getc(o->f);
-    if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+    if (IS_WHITESPACE(c)) {
       if (i == 0)
         warning(o, nosym_msg, c);
       else END_OF_SYM: {

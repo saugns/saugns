@@ -1,4 +1,4 @@
-#include "mgensys.h"
+#include "sgensys.h"
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -46,33 +46,33 @@ ERROR:
   return -1;
 }
 
-static void make_audio(int fd, uint srate, struct MGSProgram *prg) {
+static void make_audio(int fd, uint srate, struct SGSProgram *prg) {
   short buf[2048];
   uchar run;
-  MGSGenerator *gen = MGSGenerator_create(srate, prg);
+  SGSGenerator *gen = SGSGenerator_create(srate, prg);
   do {
-    run = MGSGenerator_run(gen, buf, 1024);
+    run = SGSGenerator_run(gen, buf, 1024);
     if (write(fd, buf, sizeof(buf)) != sizeof(buf))
       puts("warning: audio write failed");
   } while (run);
-  MGSGenerator_destroy(gen);
+  SGSGenerator_destroy(gen);
 }
 
 int main(int argc, char **argv) {
-  MGSProgram *prg;
+  SGSProgram *prg;
   int fd_out;
   uint srate;
   if (argc < 2) {
     puts("usage: mgensys scriptfile");
     return 0;
   }
-  if (!(prg = MGSProgram_create(argv[1]))) {
+  if (!(prg = SGSProgram_create(argv[1]))) {
     printf("error: couldn't open script file \"%s\"\n", argv[1]);
     return 1;
   }
   fd_out = open_audio_dev(NAME_OUT, O_WRONLY, &srate);
   make_audio(fd_out, srate, prg);
   close(fd_out);
-  MGSProgram_destroy(prg);
+  SGSProgram_destroy(prg);
   return 0;
 }
