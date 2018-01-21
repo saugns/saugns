@@ -4,9 +4,10 @@
 #define SGSOsc_TABSCALE ((float)((1<<15) - 1))
 #define HALFLEN (SGSOsc_TABLEN>>1)
 
-SGSOscTab SGSOsc_sin,
-          SGSOsc_sqr,
+SGSOscLut SGSOsc_sin,
+          SGSOsc_srs,
           SGSOsc_tri,
+          SGSOsc_sqr,
           SGSOsc_saw;
 
 void SGSOsc_init(void) {
@@ -17,23 +18,27 @@ void SGSOsc_init(void) {
 
   /* first half */
   for (i = 0; i < HALFLEN; ++i) {
-    SGSOsc_sin[i] = SGSOsc_TABSCALE * sin(PI * i/HALFLEN);
-    SGSOsc_sqr[i] = SGSOsc_TABSCALE;
+    double sinval = sin(PI * i/HALFLEN);
+    SGSOsc_sin[i] = SGSOsc_TABSCALE * sinval;
+    SGSOsc_srs[i] = SGSOsc_TABSCALE * sqrtf(sinval);
     if (i < (HALFLEN>>1))
       SGSOsc_tri[i] = SGSOsc_TABSCALE * (2.f * i/HALFLEN);
     else
       SGSOsc_tri[i] = SGSOsc_TABSCALE * (2.f * (HALFLEN-i)/HALFLEN);
+    SGSOsc_sqr[i] = SGSOsc_TABSCALE;
     SGSOsc_saw[i] = SGSOsc_TABSCALE * (1.f * (HALFLEN-i)/HALFLEN);
   }
   /* second half */
   for (; i < SGSOsc_TABLEN; ++i) {
     SGSOsc_sin[i] = -SGSOsc_sin[i - HALFLEN];
-    SGSOsc_sqr[i] = -SGSOsc_sqr[i - HALFLEN];
+    SGSOsc_srs[i] = -SGSOsc_srs[i - HALFLEN];
     SGSOsc_tri[i] = -SGSOsc_tri[i - HALFLEN];
+    SGSOsc_sqr[i] = -SGSOsc_sqr[i - HALFLEN];
     SGSOsc_saw[i] = -SGSOsc_saw[SGSOsc_TABLEN - i];
   }
   /* wrap value */
   SGSOsc_sin[SGSOsc_TABLEN] = SGSOsc_sin[0];
+  SGSOsc_srs[SGSOsc_TABLEN] = SGSOsc_srs[0];
   SGSOsc_sqr[SGSOsc_TABLEN] = SGSOsc_sqr[0];
   SGSOsc_tri[SGSOsc_TABLEN] = SGSOsc_tri[0];
   SGSOsc_saw[SGSOsc_TABLEN] = SGSOsc_saw[0];
