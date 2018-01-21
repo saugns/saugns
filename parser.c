@@ -275,10 +275,12 @@ static void parse_level(MGSParser *o, MGSProgramNode *node, MGSProgramNode *mods
     switch (c) {
     case '\n':
     EOL:
-      if (o->setdef > o->nest)
-        o->setdef = (o->nest) ? (o->nest - 1) : 0;
-      else if (o->setnode > o->nest)
-        o->setnode = (o->nest) ? (o->nest - 1) : 0;
+      if (!modc) {
+        if (o->setdef > o->nest)
+          o->setdef = (o->nest) ? (o->nest - 1) : 0;
+        else if (o->setnode > o->nest)
+          o->setnode = (o->nest) ? (o->nest - 1) : 0;
+      }
       ++o->line;
       break;
     case '\t':
@@ -452,9 +454,12 @@ static void parse_level(MGSParser *o, MGSProgramNode *node, MGSProgramNode *mods
       if (o->setdef > o->setnode)
         o->n_amp = getnum(o->f);
       else if (o->setnode > 0) {
+        if (modtype == MGS_AMODS ||
+            modtype == MGS_FMODS)
+          goto INVALID;
         if (testgetc('!', o->f)) {
           if (!testc('{', o->f)) {
-            node->dynamp = (getnum(o->f) - node->amp);
+            node->dynamp = getnum(o->f);
           }
           if (testgetc('{', o->f)) {
             MGSProgramNode *mods[MODC_MAX];
@@ -484,7 +489,7 @@ static void parse_level(MGSParser *o, MGSProgramNode *node, MGSProgramNode *mods
       else if (o->setnode > 0) {
         if (testgetc('!', o->f)) {
           if (!testc('{', o->f)) {
-            node->dynfreq = (getnum(o->f) - node->freq);
+            node->dynfreq = getnum(o->f);
             node->flag &= ~MGS_FLAG_DYNFREQRATIO;
           }
           if (testgetc('{', o->f)) {
@@ -542,7 +547,7 @@ static void parse_level(MGSParser *o, MGSProgramNode *node, MGSProgramNode *mods
           goto INVALID;
         if (testgetc('!', o->f)) {
           if (!testc('{', o->f)) {
-            node->dynfreq = ((1.f / getnum(o->f)) - node->freq);
+            node->dynfreq = 1.f / getnum(o->f);
             node->flag |= MGS_FLAG_DYNFREQRATIO;
           }
           if (testgetc('{', o->f)) {
