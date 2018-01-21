@@ -308,16 +308,23 @@ static void end_event(SGSParser *o, NodeData *nd) {
     /* SGS_SILENCE set when silence set */
     if (e->freq != pe->freq)
       e->params |= SGS_FREQ;
+    if (e->valitfreq.type)
+      e->params |= SGS_ATTR;
     if (e->dynfreq != pe->dynfreq)
       e->params |= SGS_DYNFREQ;
     /* SGS_PHASE set when phase set */
     if (e->amp != pe->amp)
       e->params |= SGS_AMP;
+    if (e->valitamp.type)
+      e->params |= SGS_ATTR;
     if (e->dynamp != pe->dynamp)
       e->params |= SGS_DYNAMP;
-    if (e->optype == SGS_TYPE_TOP)
+    if (e->optype == SGS_TYPE_TOP) {
       if (e->topop.panning != pe->topop.panning)
         e->params |= SGS_PANNING;
+      if (e->topop.valitpanning.type)
+        e->params |= SGS_ATTR;
+    }
 
     if (!e->params) { /* Remove empty event */
       if (nd->group == e)
@@ -628,7 +635,8 @@ static int read_wavetype(SGSParser *o, char lastc) {
   return wave;
 }
 
-static uchar read_valit(SGSParser *o, SGSProgramValit *vi) {
+static uchar read_valit(SGSParser *o, float (*read_symbol)(SGSParser *o),
+                        SGSProgramValit *vi) {
   char c;
   uchar goal = 0;
   vi->time_ms = -1;
@@ -636,6 +644,11 @@ static uchar read_valit(SGSParser *o, SGSProgramValit *vi) {
   while ((c = getc(o->f)) != EOF) {
     eatws(o->f);
     switch (c) {
+    case '\n':
+    case '\t':
+    case ' ':
+      eatws(o->f);
+      break;
     case 's':
       if (testgetc('l', o->f))
         vi->type = SGS_VALIT_LIN;
@@ -655,7 +668,7 @@ static uchar read_valit(SGSParser *o, SGSProgramValit *vi) {
       }
       break; }
     case 'v':
-      if (read_num(o, 0, &vi->goal))
+      if (read_num(o, read_symbol, &vi->goal))
         goal = 1;
       break;
     case ']':
@@ -926,7 +939,7 @@ static void parse_level(SGSParser *o, NodeTarget *chaintarget) {
             parse_level(o, &nt);
           }
         } else if (testgetc('[', o->f)) {
-          if (read_valit(o, &nd.event->valitamp))
+          if (read_valit(o, 0, &nd.event->valitamp))
             nd.event->attr |= SGS_ATTR_VALITAMP;
         } else {
           read_num(o, 0, &nd.event->amp);
@@ -941,7 +954,7 @@ static void parse_level(SGSParser *o, NodeTarget *chaintarget) {
           nd.event->optype != SGS_TYPE_TOP)
         goto INVALID;
       if (testgetc('[', o->f)) {
-        if (read_valit(o, &nd.event->topop.valitpanning))
+        if (read_valit(o, 0, &nd.event->topop.valitpanning))
           nd.event->attr |= SGS_ATTR_VALITPANNING;
       } else if (read_num(o, 0, &nd.event->topop.panning)) {
         if (!nd.event->topop.valitpanning.type)
@@ -964,7 +977,7 @@ static void parse_level(SGSParser *o, NodeTarget *chaintarget) {
             parse_level(o, &nt);
           }
         } else if (testgetc('[', o->f)) {
-          if (read_valit(o, &nd.event->valitfreq)) {
+          if (read_valit(o, read_note, &nd.event->valitfreq)) {
             nd.event->attr |= SGS_ATTR_VALITFREQ;
             nd.event->attr &= ~SGS_ATTR_VALITFREQRATIO;
           }
@@ -1023,7 +1036,7 @@ static void parse_level(SGSParser *o, NodeTarget *chaintarget) {
             parse_level(o, &nt);
           }
         } else if (testgetc('[', o->f)) {
-          if (read_valit(o, &nd.event->valitfreq)) {
+          if (read_valit(o, read_note, &nd.event->valitfreq)) {
             nd.event->attr |= SGS_ATTR_VALITFREQ |
                               SGS_ATTR_VALITFREQRATIO;
           }

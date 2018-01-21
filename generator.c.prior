@@ -122,13 +122,13 @@ SGSGenerator* SGSGenerator_create(uint srate, struct SGSProgram *prg) {
     nodessize += sizeof(SetNode) +
                    (sizeof(Data) *
                     ((count_flags(step->params) - 1) +
-                     ((step->params &
-                       (SGS_AMOD|SGS_FMOD|SGS_PMOD|SGS_LINK)) != 0) +
                      ((step->valitfreq.type != 0) * 3 +
                       (step->valitamp.type != 0) * 3)));
     if (step->optype == SGS_TYPE_TOP)
       nodessize += sizeof(Data) *
-                   ((step->topop.valitpanning.type != 0) * 3);
+                   (((step->params &
+                      (SGS_AMOD|SGS_FMOD|SGS_PMOD|SGS_LINK)) != 0) +
+                    ((step->topop.valitpanning.type != 0) * 3));
     if (!step->opprev) { /* new operator */
       indexsize += sizeof(IndexNode);
       nodessize += step->optype == SGS_TYPE_TOP ?
@@ -156,11 +156,12 @@ SGSGenerator* SGSGenerator_create(uint srate, struct SGSProgram *prg) {
     e->node = s;
     e->waittime = ((float)step->wait_ms) * srate * .001f;
     s->setid = step->opid;
-    if (step->optype == SGS_TYPE_NESTED)
-      s->setid += prg->topopc;
     s->params = step->params;
-    if (s->params & (SGS_AMOD|SGS_FMOD|SGS_PMOD|SGS_LINK))
-      (*set++).i = step->topopid;
+    if (step->optype == SGS_TYPE_NESTED) {
+      s->setid += prg->topopc;
+      if (s->params & (SGS_AMOD|SGS_FMOD|SGS_PMOD|SGS_LINK))
+        (*set++).i = step->topopid;
+    }
     if (s->params & SGS_AMOD)
       (*set++).i = step->amodid >= 0 ? (int)(step->amodid + prg->topopc) : -1;
     if (s->params & SGS_FMOD)
@@ -235,9 +236,13 @@ static void SGSGenerator_handle_event(SGSGenerator *o, EventNode *e) {
     IndexNode *refin = &o->nodes[s->setid];
     OperatorNode *refn = refin->node;
     Data *data = s->data;
-    int topopid = -1;
-    if (s->params & (SGS_AMOD|SGS_FMOD|SGS_PMOD|SGS_LINK))
-      topopid = (*data++).i;
+    IndexNode *topin = 0;
+    if (s->params & (SGS_AMOD|SGS_FMOD|SGS_PMOD|SGS_LINK)) {
+      if (refin->type == SGS_TYPE_NESTED)
+        topin = &o->nodes[(*data++).i];
+      else
+        topin = refin;
+    }
     /* set state */
     if (s->params & SGS_AMOD) {
       int id = (*data++).i;
@@ -327,10 +332,8 @@ static void SGSGenerator_handle_event(SGSGenerator *o, EventNode *e) {
       voice->valitpanning.goal = (*data++).f;
       voice->valitpanning.type = (*data++).i;
     }
-    if (topopid >= 0) {
-      IndexNode *topin = &o->nodes[topopid];
+    if (topin)
       upsize_bufs(o, topin->node);
-    }
     refin->flag |= SGS_FLAG_INIT;
   }
 }
@@ -344,9 +347,10 @@ void SGSGenerator_destroy(SGSGenerator *o) {
  * node block processing
  */
 
-static uchar run_valit(ParameterValit *o, Data *buf, uint buflen, float state) {
+static uchar run_valit(ParameterValit *o, Data *buf, uint buflen, float *state) {
   uint i, end, len, filllen;
-  float div = 1.f / o->time;
+  double coeff = 1.f / o->time;
+  float s0 = *state;
   len = o->time - o->pos;
   if (len > buflen) {
     len = buflen;
@@ -357,17 +361,38 @@ static uchar run_valit(ParameterValit *o, Data *buf, uint buflen, float state) {
   switch (o->type) {
   case SGS_VALIT_LIN:
     for (i = o->pos, end = i + len; i < end; ++i) {
-      float s = state + (o->goal - state) * (i * div);
-      (*buf++).f = s;
+      (*buf++).f = s0 + (o->goal - s0) * (i * coeff);
     }
     break;
   case SGS_VALIT_EXP:
+    for (i = o->pos, end = i + len; i < end; ++i) {
+      double mod = 1.f - i * coeff,
+             modp2 = mod * mod,
+             modp3 = modp2 * mod;
+      mod = modp3 + (modp2 * modp3 - modp2) *
+                    (mod * (39.f/112.f) + modp2 * (73.f/112.f));
+      (*buf++).f = o->goal + (s0 - o->goal) * mod;
+    }
+    break;
+  case SGS_VALIT_EXP+1:
+    for (i = o->pos, end = i + len; i < end; ++i) {
+      double mod = i * coeff,
+             modp2 = mod * mod,
+             modp3 = modp2 * mod;
+      mod = modp3 + (modp2 * modp3 - modp2) *
+                    (mod * (39.f/112.f) + modp2 * (73.f/112.f));
+      (*buf++).f = s0 + (o->goal - s0) * mod;
+    }
     break;
   }
-  for (i = 0; i < filllen; ++i)
-    buf[i].f = o->goal;
   o->pos += len;
-  return o->time == o->pos;
+  if (o->time == o->pos) {
+    *state = o->goal;
+    for (i = 0; i < filllen; ++i)
+      buf[i].f = o->goal;
+    return 1;
+  }
+  return 0;
 }
 
 static void run_block(Buf *bufs, uint buflen, OperatorNode *n,
@@ -397,10 +422,8 @@ BEGIN:
       freq[i].f = n->freq * parentfreq[i].f;
   } else {
     if (n->attr & SGS_ATTR_VALITFREQ) {
-      if (run_valit(&n->valitfreq, freq, len, n->freq)) {
+      if (run_valit(&n->valitfreq, freq, len, &n->freq))
         n->attr &= ~SGS_ATTR_VALITFREQ;
-        n->freq = n->valitfreq.goal;
-      }
     }
     else for (i = 0; i < len; ++i)
       freq[i].f = n->freq;
@@ -432,10 +455,8 @@ BEGIN:
     } else {
       amp = *(nextbuf++);
       if (n->attr & SGS_ATTR_VALITAMP) {
-        if (run_valit(&n->valitamp, amp, len, n->amp)) {
+        if (run_valit(&n->valitamp, amp, len, &n->amp))
           n->attr &= ~SGS_ATTR_VALITAMP;
-          n->amp = n->valitamp.goal;
-        }
       } else for (i = 0; i < len; ++i)
         amp[i].f = n->amp;
     }
@@ -491,7 +512,17 @@ static uint run_node(SGSGenerator *o, VoiceNode *n, short *sp, uint pos,
       len = time;
     time -= len;
     run_block(o->bufs, len, &n->o, 0, osc_coeff, 0);
-    for (i = 0; i < len; ++i, sp += 2) {
+    if (n->o.attr & SGS_ATTR_VALITPANNING) {
+      Data *buf = o->bufs[1];
+      if (run_valit(&n->valitpanning, buf, len, &n->panning))
+        n->o.attr &= ~SGS_ATTR_VALITPANNING;
+      for (i = 0; i < len; ++i, sp += 2) {
+        int s = (*o->bufs)[i].i, p;
+        SET_I2F(p, ((float)s) * buf[i].f);
+        sp[0] += s - p;
+        sp[1] += p;
+      }
+    } else for (i = 0; i < len; ++i, sp += 2) {
       int s = (*o->bufs)[i].i, p;
       SET_I2F(p, ((float)s) * n->panning);
       sp[0] += s - p;
