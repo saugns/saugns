@@ -484,21 +484,43 @@ static float read_note(SGSParser *o) {
     32.f,
     64.f
   };
-  static const float notes[8] = {
-    1.f,
-    (9.f/8.f),
-    (5.f/4.f),
-    (4.f/3.f),
-    (3.f/2.f),
-    (5.f/3.f),
-    (15.f/8.f),
-    2.f
+  static const float notes[3][8] = {
+    { /* flat */
+      48.f/25.f,
+      16.f/15.f,
+      6.f/5.f,
+      32.f/25.f,
+      36.f/25.f,
+      8.f/5.f,
+      9.f/5.f,
+      96.f/25.f
+    },
+    { /* normal (9/8 replaced with 10/9 for symmetry) */
+      1.f,
+      10.f/9.f,
+      5.f/4.f,
+      4.f/3.f,
+      3.f/2.f,
+      5.f/3.f,
+      15.f/8.f,
+      2.f
+    },
+    { /* sharp */
+      25.f/24.f,
+      75.f/64.f,
+      125.f/96.f,
+      25.f/18.f,
+      25.f/16.f,
+      225.f/128.f,
+      125.f/64.f,
+      25.f/12.f
+    }
   };
   float freq;
   char c = getc(o->f);
   int octave;
-  int note, subnote = -1;
-  char semitone = 0;
+  int semitone = 1, note;
+  int subnote = -1;
   if (c >= 'a' && c <= 'g') {
     subnote = c - 'c';
     if (subnote < 0) /* a, b */
@@ -514,9 +536,9 @@ static float read_note(SGSParser *o) {
     note += 7;
   c = getc(o->f);
   if (c == 's')
-    semitone = 1;
+    semitone = 2;
   else if (c == 'f')
-    semitone = -1;
+    semitone = 0;
   else
     ungetc(c, o->f);
   octave = getinum(o->f);
@@ -527,17 +549,10 @@ static float read_note(SGSParser *o) {
     octave = 4;
   }
   freq = o->def_A4tuning * (3.f/5.f); /* get C4 */
-  freq *= octaves[octave];
-  if (semitone < 0)
-    freq *= (note > 0) ?
-            (notes[note-1] + notes[note]) * .5f : 
-            (notes[6] * .5f + notes[note]) * .5f;
-  else if (semitone > 0)
-    freq *= (notes[note] + notes[note+1]) * .5f;
-  else
-    freq *= notes[note];
+  freq *= octaves[octave] * notes[semitone][note];
   if (subnote >= 0)
-    freq *= 1.f + (notes[note+1] / notes[note] - 1.f) * (notes[subnote] - 1.f);
+    freq *= 1.f + (notes[semitone][note+1] / notes[semitone][note] - 1.f) *
+                  (notes[1][subnote] - 1.f);
   return freq;
 }
 

@@ -4,7 +4,7 @@ Wsin	nA3 t1
 ;	nG4 t0.5
 ;	nD4 t0.5
 ;	nE4 t1.5
-;	s1 nF4 t0.5
+;	nF4 s0.5 t0.5
 ;	nB3 t0.5
 ;	nE4 t0.5
 ;	nA3 t0.5
