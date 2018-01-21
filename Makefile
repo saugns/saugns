@@ -1,6 +1,6 @@
 CFLAGS=-W -Wall -O2 -ffast-math
 LFLAGS=-s
-OBJ=mgensys.o parser.o generator.o osc.o
+OBJ=mgensys.o parser.o symtab.o generator.o osc.o
 
 all: mgensys
 
@@ -15,6 +15,9 @@ mgensys.o: mgensys.c mgensys.h
 
 parser.o: parser.c mgensys.h program.h
 	$(CC) -c $(CFLAGS) parser.c
+
+symtab.o: symtab.c mgensys.h symtab.h
+	$(CC) -c $(CFLAGS) symtab.c
 
 generator.o: generator.c mgensys.h program.h osc.h
 	$(CC) -c $(CFLAGS) generator.c
