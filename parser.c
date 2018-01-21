@@ -24,7 +24,6 @@ typedef struct SGSParser {
   SGSProgramNode *last_top, *last_nested;
   SGSProgramNode *undo_last;
   /* settings/ops */
-  uchar n_mode;
   float n_ampmult;
   float n_time;
   float n_freq, n_ratio;
@@ -55,9 +54,10 @@ static void new_node(SGSParser *o, NodeData *nd, SGSProgramNodeChain *target, uc
   n->type = type;
   /* defaults */
   n->amp = 1.f;
-  n->mode = o->n_mode;
-  if (type == SGS_TYPE_TOP)
+  if (type == SGS_TYPE_TOP) {
     n->time = -1.f; /* set later */
+    n->panning = .5f; /* default - center */
+  }
   else if (type == SGS_TYPE_NESTED)
     n->time = o->n_time;
   n->freq = o->n_freq;
@@ -97,21 +97,22 @@ static void end_node(SGSParser *o, NodeData *nd) {
   if (!n)
     return; /* nothing to do */
   nd->node = 0;
-  if (n->type == SGS_TYPE_SETTOP ||
-      n->type == SGS_TYPE_SETNESTED) {
+  if (n->type & SGS_TYPE_SET) {
     /* check what the set-node changes */
     SGSProgramNode *ref = n->spec.set.ref;
     /* SGS_TIME set when time set */
+    /* SGS_SILCENCE set when silence set */
     if (n->freq != ref->freq)
       n->spec.set.values |= SGS_FREQ;
     if (n->dynfreq != ref->dynfreq)
       n->spec.set.values |= SGS_DYNFREQ;
-    if (n->phase != ref->phase)
-      n->spec.set.values |= SGS_PHASE;
+    /* SGS_PHASE set when phase set */
     if (n->amp != ref->amp)
       n->spec.set.values |= SGS_AMP;
     if (n->dynamp != ref->dynamp)
       n->spec.set.values |= SGS_DYNAMP;
+    if (n->panning != ref->panning)
+      n->spec.set.values |= SGS_PANNING;
     if (n->attr != ref->attr)
       n->spec.set.values |= SGS_ATTR;
     if (n->amod.chain != ref->amod.chain)
@@ -135,7 +136,6 @@ static void end_node(SGSParser *o, NodeData *nd) {
   }
 
   if (!nd->target) {
-    n->flag |= SGS_FLAG_EXEC;
     o->last_top = n;
     n->id = p->topc++;
   } else {
@@ -365,7 +365,6 @@ static SGSProgram* parse(FILE *f, const char *fn, SGSParser *o) {
   o->prg = calloc(1, sizeof(SGSProgram));
   o->st = SGSSymtab_create();
   o->line = 1;
-  o->n_mode = SGS_MODE_CENTER; /* default until changed */
   o->n_ampmult = 1.f; /* default until changed */
   o->n_time = 1.f; /* default until changed */
   o->n_freq = 100.f; /* default until changed */
@@ -448,21 +447,12 @@ static void parse_level(SGSParser *o, SGSProgramNodeChain *chain, uchar modtype)
       }
       --o->level;
       break;
-    case 'C':
-      o->n_mode = SGS_MODE_CENTER;
-      break;
     case 'E':
       new_node(o, &nd, 0, SGS_TYPE_ENV);
       o->setnode = o->level + 1;
       break;
-    case 'L':
-      o->n_mode = SGS_MODE_LEFT;
-      break;
     case 'Q':
       goto FINISH;
-    case 'R':
-      o->n_mode = SGS_MODE_RIGHT;
-      break;
     case 'S':
       o->setdef = o->level + 1;
       break;
@@ -532,11 +522,11 @@ static void parse_level(SGSParser *o, SGSProgramNodeChain *chain, uchar modtype)
           new_node(o, &nd, 0, type);
           nd.node->spec.set.ref = ref;
           nd.node->wave = ref->wave;
-          nd.node->mode = ref->mode;
-          nd.node->amp = ref->amp;
-          nd.node->dynamp = ref->dynamp;
           nd.node->freq = ref->freq;
           nd.node->dynfreq = ref->dynfreq;
+          nd.node->amp = ref->amp;
+          nd.node->dynamp = ref->dynamp;
+          nd.node->panning = ref->panning;
           nd.node->attr = ref->attr;
           nd.node->pmod = ref->pmod;
           nd.node->fmod = ref->fmod;
@@ -564,6 +554,12 @@ static void parse_level(SGSParser *o, SGSProgramNodeChain *chain, uchar modtype)
         }
       } else
         goto INVALID;
+      break;
+    case 'b':
+      if (o->setdef > o->setnode || o->setnode <= 0 ||
+          nd.node->type & SGS_TYPE_NESTED)
+        goto INVALID;
+      nd.node->panning = getnum(o->f);
       break;
     case 'f':
       if (o->setdef > o->setnode)
@@ -595,6 +591,8 @@ static void parse_level(SGSParser *o, SGSProgramNodeChain *chain, uchar modtype)
         nd.node->phase = fmod(getnum(o->f), 1.f);
         if (nd.node->phase < 0.f)
           nd.node->phase += 1.f;
+        if (nd.node->type & SGS_TYPE_SET)
+          nd.node->spec.set.values |= SGS_PHASE;
       }
       break; }
     case 'r':
@@ -618,13 +616,19 @@ static void parse_level(SGSParser *o, SGSProgramNodeChain *chain, uchar modtype)
       } else
         goto INVALID;
       break;
+    case 's':
+      if (o->setdef > o->setnode || o->setnode <= 0)
+        goto INVALID;
+      nd.node->silence = getnum(o->f);
+      if (nd.node->type & SGS_TYPE_SET)
+        nd.node->spec.set.values |= SGS_SILENCE;
+      break;
     case 't':
       if (o->setdef > o->setnode)
         o->n_time = getnum(o->f);
       else if (o->setnode > 0) {
         nd.node->time = getnum(o->f);
-        if (nd.node->type == SGS_TYPE_SETTOP ||
-            nd.node->type == SGS_TYPE_SETNESTED)
+        if (nd.node->type & SGS_TYPE_SET)
           nd.node->spec.set.values |= SGS_TIME;
       } else
         goto INVALID;

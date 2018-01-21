@@ -1,9 +1,10 @@
 enum {
-  SGS_TYPE_TOP = 0,
-  SGS_TYPE_NESTED,
-  SGS_TYPE_SETTOP,
-  SGS_TYPE_SETNESTED,
-  SGS_TYPE_ENV
+  SGS_TYPE_TOP = 0,               /* value */
+  SGS_TYPE_NESTED,                /* value, flag */
+  SGS_TYPE_SET,                   /* flag */
+  SGS_TYPE_SETTOP = SGS_TYPE_SET, /* value */
+  SGS_TYPE_SETNESTED,             /* value (sets NESTED, not itself NESTED!) */
+  SGS_TYPE_ENV                    /* value */
 };
 
 enum {
@@ -24,19 +25,16 @@ enum {
 };
 
 enum {
-  SGS_MODE_CENTER = 0,
-  SGS_MODE_LEFT   = 1,
-  SGS_MODE_RIGHT  = 2
-};
-
-enum {
   SGS_TIME = 1<<0,
-  SGS_FREQ = 1<<1,
-  SGS_DYNFREQ = 1<<2,
-  SGS_PHASE = 1<<3,
-  SGS_AMP = 1<<4,
-  SGS_DYNAMP = 1<<5,
-  SGS_ATTR = 1<<6
+  SGS_SILENCE = 1<<1,
+  SGS_FREQ = 1<<2,
+  SGS_DYNFREQ = 1<<3,
+  SGS_PHASE = 1<<4,
+  SGS_AMP = 1<<5,
+  SGS_DYNAMP = 1<<6,
+  SGS_PANNING = 1<<7,
+  SGS_ATTR = 1<<8,
+  SGS_VALUES = 9
 };
 
 enum {
@@ -50,26 +48,27 @@ typedef struct SGSProgramNodeChain {
   struct SGSProgramNode *chain;
 } SGSProgramNodeChain;
 
-typedef struct SGSProgramNode {
-  struct SGSProgramNode *next;
-  uchar type, flag, attr, wave, mode;
-  float time, delay, freq, dynfreq, phase, amp, dynamp;
+typedef struct SGSProgramOpNode {
+  struct SGSProgramOpNode *next;
+  uchar type, wave;
   uint id;
+  struct SGSProgramOpNode *link;
+} SGSProgramOpNode;
+
+typedef struct SGSProgramEventNode {
+  SGSProgramOpNode *node;
   SGSProgramNodeChain pmod, fmod, amod;
-  union { /* type-specific data */
-    struct {
-      struct SGSProgramNode *link;
-    } nested;
-    struct {
-      uchar values;
-      uchar mods;
-      struct SGSProgramNode *ref;
-    } set;
-  } spec;
-} SGSProgramNode;
+  float delay, time, silence, freq, dynfreq, phase, amp, dynamp, panning;
+  ushort values;
+  uchar attr;
+  uchar mods;
+  uint id;
+} SGSProgramEventNode;
 
 struct SGSProgram {
-  SGSProgramNode *nodelist;
+  SGSProgramNode *oplist;
+  SGSProgramEvent *eventlist;
   uint nodec;
   uint topc; /* nodes >= topc are nested ones, ids starting over from 0 */
+  uint eventc;
 };
