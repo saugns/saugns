@@ -1,0 +1,3 @@
+Wsin f200 f[adsr: t12.0 a0.1 d1.0 s0.5 r10.0]400
+Wsin f200 f!400[adsr: t12.0 a0.1 d1.0 s0.5 r10.0]
+Wsin f200 f!400{Eadsr t12.0 a0.1 d1.0 s0.5 r10.0}
