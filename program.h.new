@@ -49,7 +49,7 @@ typedef struct SGSProgramEvent {
   uchar attr;
   ushort params;
   uchar wave;
-  int time_ms, silence_ms;
+  uint time_ms, silence_ms;
   float freq, dynfreq, phase, amp, dynamp, panning;
   int pmodid, fmodid, amodid;
   int linkid;

@@ -38,13 +38,6 @@ typedef union Data {
   float f;
 } Data;
 
-typedef struct EventNode {
-  void *node;
-  uint waittime;
-  ushort values;
-  Data data[1]; /* sized for number of parameters set */
-} EventNode;
-
 typedef struct SetNode {
   uint nodeid;
   ushort values;
@@ -60,6 +53,12 @@ static uint count_flags(uint flags) {
   }
   return count;
 }
+
+typedef struct EventNode {
+  void *node;
+  uint waittime;
+  uchar type;
+} EventNode;
 
 #if 0
 struct EventNode;

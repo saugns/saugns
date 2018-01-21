@@ -63,7 +63,7 @@ int main(int argc, char **argv) {
   int fd_out;
   uint srate;
   if (argc < 2) {
-    puts("usage: mgensys scriptfile");
+    puts("usage: sgensys scriptfile");
     return 0;
   }
   if (!(prg = SGSProgram_create(argv[1]))) {
