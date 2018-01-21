@@ -484,41 +484,13 @@ static float read_note(SGSParser *o) {
     32.f,
     64.f
   };
-  static const float notes[8] = {
-    1.f,
-    (9.f/8.f),
-    (5.f/4.f),
-    (4.f/3.f),
-    (3.f/2.f),
-    (5.f/3.f),
-    (15.f/8.f),
-    2.f
-  };
-  float freq;
+  float freq = o->def_A4tuning * (3.f/5.f); /* get C4 */
   char c = getc(o->f);
   int octave;
-  int note, subnote = -1;
-  char semitone = 0;
-  if (c >= 'a' && c <= 'g') {
-    subnote = c - 'c';
-    if (subnote < 0) /* a, b */
-      subnote += 7;
-    c = getc(o->f);
-  }
   if (c < 'A' || c > 'G') {
     warning(o, "invalid note specified - should be C, D, E, F, G, A or B", c);
     return -1.f;
   }
-  note = c - 'C';
-  if (note < 0) /* A, B */
-    note += 7;
-  c = getc(o->f);
-  if (c == 's')
-    semitone = 1;
-  else if (c == 'f')
-    semitone = -1;
-  else
-    ungetc(c, o->f);
   octave = getinum(o->f);
   if (octave < 0) /* none given, default to 4 */
     octave = 4;
@@ -526,19 +498,22 @@ static float read_note(SGSParser *o) {
     warning(o, "invalid octave specified for note - valid range 0-10", c);
     octave = 4;
   }
-  freq = o->def_A4tuning * (3.f/5.f); /* get C4 */
   freq *= octaves[octave];
-  if (semitone < 0)
-    freq *= (note > 0) ?
-            (notes[note-1] + notes[note]) * .5f : 
-            (notes[6] * .5f + notes[note]) * .5f;
-  else if (semitone > 0)
-    freq *= (notes[note] + notes[note+1]) * .5f;
-  else
-    freq *= notes[note];
-  if (subnote >= 0)
-    freq *= 1.f + (notes[note+1] / notes[note] - 1.f) * (notes[subnote] - 1.f);
-  return freq;
+  switch (c) {
+  case 'D':
+    return freq * (9.f/8.f);
+  case 'E':
+    return freq * (5.f/4.f);
+  case 'F':
+    return freq * (4.f/3.f);
+  case 'G':
+    return freq * (3.f/2.f);
+  case 'A':
+    return freq * (5.f/3.f);
+  case 'B':
+    return freq * (15.f/8.f);
+  }
+  return freq; /* C */
 }
 
 #define SYMKEY_LEN 80
