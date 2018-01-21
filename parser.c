@@ -5,11 +5,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#define SYMKEY_LEN 256
+#define MODC_MAX 256
+
 typedef struct MGSParser {
   FILE *f;
   const char *fn;
   MGSProgram *prg;
   MGSSymtab *st;
+  char setsymkey[SYMKEY_LEN];
+  uchar setsym;
   uint line;
   /* node state */
   uint nest;
@@ -68,6 +73,11 @@ static MGSProgramNode* make_node(MGSParser *o) {
 
   n->id = p->stepc;
   ++p->stepc;
+
+  if (o->setsym) {
+    o->setsym = 0;
+    MGSSymtab_set(o->st, o->setsymkey, n);
+  }
 
   return n;
 }
@@ -138,17 +148,14 @@ static void warning(MGSParser *o, const char *s, char c) {
   printf("warning: %s [line %d, at %s] - %s\n", o->fn, o->line, buf, s);
 }
 
-#define SYMKEY_LEN 256
+static void parse_level(MGSParser *o, MGSProgramNode *node, MGSProgramNode *mods[MODC_MAX], uchar *modc);
 
 static MGSProgram* parse(FILE *f, const char *fn, MGSParser *o) {
-  char c;
-  MGSProgramNode *node = 0;
-  char symkey[SYMKEY_LEN];
-  uchar setsym = 0;
   o->f = f;
   o->fn = fn;
   o->prg = calloc(1, sizeof(MGSProgram));
   o->st = MGSSymtab_create();
+  o->setsym = 0;
   o->line = 1;
   o->nest = 0;
   o->setnode = o->setdef = 0;
@@ -161,6 +168,14 @@ static MGSProgram* parse(FILE *f, const char *fn, MGSParser *o) {
   o->n_begin = 0;
   o->n_time_delay = o->n_end = 0;
   o->n_next_add_delay = o->n_add_delay = 0.f;
+  parse_level(o, 0, 0, 0);
+  MGSSymtab_destroy(o->st);
+  return o->prg;
+}
+
+static void parse_level(MGSParser *o, MGSProgramNode *node, MGSProgramNode *mods[MODC_MAX], uchar *modc) {
+  char c;
+  uint entrynest = o->nest;
   while ((c = getc(o->f)) != EOF) {
     eatws(o->f);
     switch (c) {
@@ -192,24 +207,25 @@ static MGSProgram* parse(FILE *f, const char *fn, MGSParser *o) {
       ++o->nest;
       break;
     case '>':
-      if (!o->nest)
+      if (!o->nest) {
         warning(o, "closing marker without opening '<'", c);
-      else {
-        if (o->setdef > o->nest)
-          o->setdef = (o->nest) ? (o->nest - 1) : 0;
-        else if (o->setnode > o->nest)
-          o->setnode = (o->nest) ? (o->nest - 1) : 0;
-        --o->nest;
+        break;
       }
+      if (o->setdef > o->nest)
+        o->setdef = (o->nest) ? (o->nest - 1) : 0;
+      else if (o->setnode > o->nest)
+        o->setnode = (o->nest) ? (o->nest - 1) : 0;
+      --o->nest;
+      if (modc && o->nest == entrynest)
+        return;
       break;
     case 'C':
       o->n_mode = MGS_MODE_CENTER;
       break;
     case 'E':
-      if (!o->n_begin)
-        warning(o, "end of sequence before any parts given", c);
-      else
-        o->n_end = 1;
+      node = make_node(o);
+      node->type = MGS_TYPE_ENV;
+      o->setnode = o->nest + 1;
       break;
     case 'L':
       o->n_mode = MGS_MODE_LEFT;
@@ -230,19 +246,33 @@ static MGSProgram* parse(FILE *f, const char *fn, MGSParser *o) {
         "saw",
         0
       };
-      int wave = strfind(o->f, simples) + MGS_WAVE_SIN;
-      if (wave < MGS_WAVE_SIN)
+      int wave;
+      wave = strfind(o->f, simples) + MGS_WAVE_SIN;
+      if (wave < MGS_WAVE_SIN) {
         warning(o, "invalid wave type follows W in file; sin, sqr, tri, saw available", c);
-      else {
-        node = make_node(o);
-        node->wave = wave;
-        o->setnode = o->nest + 1;
-        if (setsym) {
-          setsym = 0;
-          MGSSymtab_set(o->st, symkey, node);
-        }
+        break;
       }
+      if (modc && *modc == 255) {
+        warning(o, "ignoring 256th modulator for one node (max 255)", c);
+        break;
+      }
+      node = make_node(o);
+      node->type = MGS_TYPE_WAVE;
+      node->wave = wave;
+      if (modc)
+        mods[(*modc)++] = node;
+      else
+        node->flag |= MGS_FLAG_PLAY;
+      o->setnode = o->nest + 1;
+      if (modc && o->nest == entrynest)
+        return;
       break; }
+    case '|':
+      if (!o->n_begin)
+        warning(o, "end of sequence before any parts given", c);
+      else
+        o->n_end = 1;
+      break;
     case '\\':
       if (o->setdef > o->setnode)
         o->n_delay = getnum(o->f);
@@ -251,44 +281,55 @@ static MGSProgram* parse(FILE *f, const char *fn, MGSParser *o) {
       break;
     case '\'': {
       uint i = 0;
+      if (o->setsym)
+        warning(o, "ignoring label assignment to label assignment", c);
       for (;;) {
         c = getc(o->f);
         if (c == ' ' || c == '\t' || c == '\n') {
           if (i == 0)
             warning(o, "ignoring ' without symbol name", c);
           else {
-            symkey[i] = '\0';
-            setsym = 1;
+            o->setsymkey[i] = '\0';
+            o->setsym = 1;
           }
           break;
         }
-        symkey[i++] = c;
+        o->setsymkey[i++] = c;
       }
       break; }
     case ':': {
       uint i = 0;
+      if (o->setsym)
+        warning(o, "ignoring label assignment to label reference", c);
       for (;;) {
         c = getc(o->f);
         if (c == ' ' || c == '\t' || c == '\n') {
           if (i == 0)
             warning(o, "ignoring : without symbol name", c);
           else {
-            symkey[i] = '\0';
-            MGSProgramNode *ref = MGSSymtab_get(o->st, symkey);
+            o->setsymkey[i] = '\0';
+            MGSProgramNode *ref = MGSSymtab_get(o->st, o->setsymkey);
             if (!ref)
               warning(o, "ignoring reference to undefined label", c);
             else {
+              o->setsym = 1; /* update */
               node = make_node(o);
               node->ref = ref;
+              node->type = node->ref->type;
               node->wave = node->ref->wave;
               node->mode = node->ref->mode;
+              if (modc)
+                mods[(*modc)++] = node;
+              else
+                node->flag |= MGS_FLAG_PLAY;
               o->setnode = o->nest + 1;
-              MGSSymtab_set(o->st, symkey, node);
+              if (modc && o->nest == entrynest)
+                return;
             }
           }
           break;
         }
-        symkey[i++] = c;
+        o->setsymkey[i++] = c;
       }
       break; }
     case 'a':
@@ -296,7 +337,7 @@ static MGSProgram* parse(FILE *f, const char *fn, MGSParser *o) {
         o->n_amp = getnum(o->f);
       else if (o->setnode > 0) {
         node->amp = getnum(o->f);
-        node->type |= MGS_TYPE_SETAMP;
+        node->flag |= MGS_FLAG_SETAMP;
       } else
         goto INVALID;
       break;
@@ -305,16 +346,29 @@ static MGSProgram* parse(FILE *f, const char *fn, MGSParser *o) {
         o->n_freq = getnum(o->f);
       else if (o->setnode > 0) {
         node->freq = getnum(o->f);
-        node->type |= MGS_TYPE_SETFREQ;
+        node->flag |= MGS_FLAG_SETFREQ;
       } else
         goto INVALID;
       break;
+    case 'm': {
+      MGSProgramNode *mods[MODC_MAX];
+      uchar modc = 0;
+      if (o->setdef > o->setnode || o->setnode <= 0)
+        goto INVALID;
+      parse_level(o, node, mods, &modc);
+      if (modc) {
+        uint size = modc * sizeof(MGSProgramNode*);
+        node->modc = modc;
+        node->mods = malloc(size);
+        memcpy(node->mods, mods, size);
+      }
+      break; }
     case 't':
       if (o->setdef > o->setnode)
         o->n_time = getnum(o->f);
       else if (o->setnode > 0) {
         node->time = getnum(o->f);
-        node->type |= MGS_TYPE_SETTIME;
+        node->flag |= MGS_FLAG_SETTIME;
       } else
         goto INVALID;
       break;
@@ -324,10 +378,11 @@ static MGSProgram* parse(FILE *f, const char *fn, MGSParser *o) {
       break;
     }
   }
-  warning(o, "no terminating Q in file", c);
+  if (!modc)
+    warning(o, "no terminating Q in file", c);
 FINISH:
-  MGSSymtab_destroy(o->st);
-  return o->prg;
+  if (o->nest)
+    warning(o, "end of file without closing '>'s", c);
 }
 
 MGSProgram* MGSProgram_create(const char *filename) {
@@ -345,6 +400,7 @@ void MGSProgram_destroy(MGSProgram *o) {
   MGSProgramNode *n = o->steps;
   while (n) {
     MGSProgramNode *nn = n->next;
+    free(n->mods);
     free(n);
     n = nn;
   }

@@ -68,13 +68,14 @@ typedef struct MGSOsc {
 
 #define MGSOsc_RUN_PM(o, osctab, pm, out) do{ \
   int MGSOsc__s, MGSOsc__d; \
-  uint MGSOsc__i; \
+  uint MGSOsc__i, MGSOsc__p; \
   (o)->phase += (o)->inc; \
-  MGSOsc__i = ((o)->phase + (pm)) >> (32-MGSOsc_TABINDEXBITS); \
+  MGSOsc__p = (o)->phase + ((pm) * ((o)->inc >> 7)); \
+  MGSOsc__i = MGSOsc__p >> (32-MGSOsc_TABINDEXBITS); \
   MGSOsc__s = (osctab)[MGSOsc__i]; \
   SET_I2F(MGSOsc__d, \
     ((float)(((osctab)[MGSOsc__i + 1] - MGSOsc__s)) * \
-             ((o)->phase & MGSOsc_TABINDEXMASK) * \
+             (MGSOsc__p & MGSOsc_TABINDEXMASK) * \
              (1.f / (1 << (32-MGSOsc_TABINDEXBITS)))) \
   ); \
 /*printf("%d + %d = %d\n", MGSOsc__s, MGSOsc__d, MGSOsc__s + MGSOsc__d);*/ \
