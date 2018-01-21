@@ -1,36 +1,24 @@
-//#include "osc.h"
-
 enum {
-  MGS_TYPE_WAIT = 0,
-  MGS_TYPE_SIN,
-  MGS_TYPE_SQR,
-  MGS_TYPE_TRI,
-  MGS_TYPE_SAW
+  MGS_WAVE_SIN = 0,
+  MGS_WAVE_SQR,
+  MGS_WAVE_TRI,
+  MGS_WAVE_SAW
 };
 
 enum {
-  MGS_MODE_CENTER = 1|2,
+  MGS_MODE_CENTER = 0,
   MGS_MODE_LEFT   = 1,
   MGS_MODE_RIGHT  = 2
 };
 
 typedef struct MGSProgramNode {
-  struct MGSProgramNode *pnext, *snext, *pfirst;
-  uchar type, mode;
-  union MGSProgramComponent *component;
-  float amp, time, freq;
-  uint len, pos;
+  struct MGSProgramNode *next;
+  uchar type, wave, mode;
+  float amp, delay, time, freq;
 } MGSProgramNode;
 
-typedef union MGSProgramComponent {
-  MGSSinOsc sinosc;
-  MGSSqrOsc sqrosc;
-  MGSSawOsc sawosc;
-  MGSTriOsc triosc;
-} MGSProgramComponent;
-
 struct MGSProgram {
-  MGSProgramNode *steps, *last;
-  MGSProgramComponent *components;
+  MGSProgramNode *steps;
+  uint stepc;
   uint componentc;
 };

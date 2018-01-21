@@ -1,8 +1,8 @@
 # This is the first mgensys script made
-S	a0.5
+S <Wsin t0> a0.5
 			/0.5
-Wsin	f220 t1
-Wsin	f110 t0.5 a.05 	E
+Wsin<	S> f220 t1
+Wsin	f110 t0.5 a.05	E
 Wsin	f440 t1.5
 Wsin	f220 t0.5 a.05 	E
 Wsin	f400 t0.5 	E

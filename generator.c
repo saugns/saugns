@@ -1,112 +1,145 @@
 #include "mgensys.h"
+#include "osc.h"
 #include "program.h"
 #include <stdio.h>
 #include <stdlib.h>
 
+typedef struct MGSGeneratorNode {
+  int pos;
+  uint time;
+  uchar mode, active;
+  short *osctype;
+  union MGSGeneratorComponent *component;
+  ui16_16 amp;
+  float freq;
+} MGSGeneratorNode;
+
+typedef union MGSGeneratorComponent {
+  MGSOsc osc;
+} MGSGeneratorComponent;
+
 struct MGSGenerator {
-  struct MGSProgram *program;
-  struct MGSProgramNode *node;
+  const struct MGSProgram *program;
+  MGSGeneratorComponent *components;
   uint srate;
   uint cpos;
+  uint node, nodec;
+  MGSGeneratorNode nodes[1]; /* sized at construction */
 };
 
-static void node_init(MGSGenerator *s) {
-  MGSProgramComponent *comp;
-  s->node->pos = 0;
-  s->node->len = s->node->time * s->srate;
-  switch (s->node->type) {
-  case MGS_TYPE_SIN:
-    comp = s->node->component = &s->program->components[s->cpos++];
-    MGSSinOsc_SET_COEFF(&comp->sinosc, s->node->freq, s->srate);
-    MGSSinOsc_SET_RANGE(&comp->sinosc, s->node->amp);
-    break;
-  case MGS_TYPE_SQR:
-    comp = s->node->component = &s->program->components[s->cpos++];
-    MGSSqrOsc_SET_COEFF(&comp->sqrosc, s->node->freq, s->srate);
-    MGSSqrOsc_SET_RANGE(&comp->sqrosc, s->node->amp);
-    break;
-  case MGS_TYPE_TRI:
-    comp = s->node->component = &s->program->components[s->cpos++];
-    MGSTriOsc_SET_COEFF(&comp->triosc, s->node->freq, s->srate);
-    MGSTriOsc_SET_RANGE(&comp->triosc, s->node->amp);
-    break;
-  case MGS_TYPE_SAW:
-    comp = s->node->component = &s->program->components[s->cpos++];
-    MGSSawOsc_SET_COEFF(&comp->sawosc, s->node->freq, s->srate);
-    MGSSawOsc_SET_RANGE(&comp->sawosc, s->node->amp);
-    break;
-  }
-  /* recurse to init other "voices"/parallel operations */
-  if (s->node->pnext) {
-    s->node = s->node->pnext;
-    node_init(s);
-    s->node = s->node->pfirst;
-  }
-}
-
 MGSGenerator* MGSGenerator_create(uint srate, struct MGSProgram *prg) {
-  MGSGenerator *o = calloc(1, sizeof(MGSGenerator));
+  MGSGenerator *o = calloc(1, sizeof(MGSGenerator) +
+                              sizeof(MGSGeneratorNode) * (prg->stepc-1));
+  MGSProgramNode *step;
+  uint i;
+  MGSOsc_init();
   o->program = prg;
   o->srate = srate;
-  o->node = o->program->steps;
-  node_init(o);
+  o->nodec = prg->stepc;
+  step = prg->steps;
+  for (i = 0; i < o->nodec; ++i) {
+    float amp = step->amp;
+    uint delay = step->delay * srate;
+    uint time = step->time * srate;
+    float freq = step->freq;
+    o->nodes[i].pos = -delay;
+    o->nodes[i].time = time;
+    switch (step->wave) {
+    case MGS_WAVE_SIN:
+      o->nodes[i].osctype = MGSOsc_sin;
+      break;
+    case MGS_WAVE_SQR:
+      o->nodes[i].osctype = MGSOsc_sqr;
+      break;
+    case MGS_WAVE_TRI:
+      o->nodes[i].osctype = MGSOsc_tri;
+      break;
+    case MGS_WAVE_SAW:
+      o->nodes[i].osctype = MGSOsc_saw;
+      break;
+    }
+    o->nodes[i].mode = step->mode;
+    SET_I16_162F(o->nodes[i].amp, amp);
+    o->nodes[i].freq = freq;
+    step = step->next;
+  }
+  o->components = calloc(prg->componentc, sizeof(MGSGeneratorComponent));
   return o;
 }
 
+static void MGSGenerator_enter_node(MGSGenerator *o, uint index) {
+  MGSGeneratorComponent *comp;
+  MGSGeneratorNode *node = &o->nodes[index];
+  comp = node->component = &o->components[o->cpos++];
+  MGSOsc_SET_COEFF(&comp->osc, node->freq, o->srate);
+  MGSOsc_SET_PHASE(&comp->osc, 0);
+  MGSOsc_SET_RANGE(&comp->osc, node->amp);
+  node->active = 1;
+}
+
 void MGSGenerator_destroy(MGSGenerator *o) {
+  free(o->components);
   free(o);
 }
 
-uchar MGSGenerator_run(MGSGenerator *s, short *buf, uint len) {
-  uint i;
-  MGSProgram *program = s->program;
-  MGSProgramNode *n;
-  short *p;
-  for (p = buf; len-- > 0; p += 2) {
-    p[0] = 0;
-    p[1] = 0;
-    if (s->node) {
-      if (s->node->pos++ >= s->node->len) {
-        s->node = s->node->snext;
-        if (!s->node) break;
-        node_init(s);
-      }
+/*
+ * oscillator block processing
+ */
+
+uint run_osc(MGSGeneratorNode *n, short *sp, uint len) {
+  MGSGeneratorComponent *c = n->component;
+  if (n->mode == MGS_MODE_CENTER) {
+    for (; len-- && n->pos++ < (int)n->time; sp += 2) {
+      int s;
+      MGSOsc_RUN(&c->osc, n->osctype, s);
+      sp[0] += s;
+      sp[1] += s;
     }
-    for (n = s->node; n; n = n->pnext) {
-      MGSProgramComponent *comp = n->component;
-      switch (s->node->type) {
-      case MGS_TYPE_WAIT:
-        break;
-      case MGS_TYPE_SIN:
-        MGSSinOsc_RUN(&comp->sinosc);
-        if (n->mode & MGS_MODE_LEFT)
-          p[0] += comp->sinosc.sin * 16384;
-        if (n->mode & MGS_MODE_RIGHT)
-          p[1] += comp->sinosc.sin * 16384;
-        break;
-      case MGS_TYPE_SQR:
-        MGSSqrOsc_RUN(&comp->sqrosc);
-        if (n->mode & MGS_MODE_LEFT)
-          p[0] += comp->sqrosc.sqr * 16384;
-        if (n->mode & MGS_MODE_RIGHT)
-          p[1] += comp->sqrosc.sqr * 16384;
-        break;
-      case MGS_TYPE_TRI:
-        MGSTriOsc_RUN(&comp->triosc);
-        if (n->mode & MGS_MODE_LEFT)
-          p[0] += comp->triosc.tri * 16384;
-        if (n->mode & MGS_MODE_RIGHT)
-          p[1] += comp->triosc.tri * 16384;
-        break;
-      case MGS_TYPE_SAW:
-        MGSSawOsc_RUN(&comp->sawosc);
-        if (n->mode & MGS_MODE_LEFT)
-          p[0] += comp->sawosc.saw * 16384;
-        if (n->mode & MGS_MODE_RIGHT)
-          p[1] += comp->sawosc.saw * 16384;
-        break;
-      }
+  } else {
+    if (n->mode == MGS_MODE_RIGHT) ++sp;
+    for (; len-- && n->pos++ < (int)n->time; sp += 2) {
+      int s;
+      MGSOsc_RUN(&c->osc, n->osctype, s);
+      sp[0] += s;
     }
   }
-  return (s->node != 0);
+  return len;
+}
+
+/*
+ * main run-function
+ */
+
+uchar MGSGenerator_run(MGSGenerator *o, short *buf, uint len) {
+  short *sp = buf;
+  uint i;
+  MGSGeneratorNode *n;
+  for (i = len; i--; sp += 2) {
+    sp[0] = 0;
+    sp[1] = 0;
+  }
+  for (i = o->node; i < o->nodec; ++i) {
+    n = &o->nodes[i];
+    if (n->pos < 0) {
+      uint offs = - n->pos;
+      if (offs >= len) {
+        n->pos += len;
+        break; /* end for now; delays accumulate across steps */
+      }
+      n->pos += offs;
+      len -= offs;
+      buf += offs+offs; /* doubled due to stereo interleaving */
+    } else if (n->pos == (int)n->time)
+      continue;
+    if (!n->active)
+      MGSGenerator_enter_node(o, i);
+    run_osc(n, buf, len);
+  }
+  for(;;) {
+    if (o->node == o->nodec) return 0;
+    n = &o->nodes[o->node];
+    if (n->pos < (int)n->time) break;
+    ++o->node;
+  }
+  return 1;
 }
