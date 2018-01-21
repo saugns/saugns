@@ -1,6 +1,7 @@
 #include "mgensys.h"
 #include "program.h"
 #include "symtab.h"
+#include "math.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,13 +20,13 @@ typedef struct MGSParser {
   /* node state */
   uint nest;
   uint setdef, setnode;
-  MGSProgramNode *last;
+  MGSProgramNode *last, *last_play;
   /* settings/ops */
   uchar n_mode;
   float n_amp;
   float n_delay;
   float n_time;
-  float n_freq;
+  float n_freq, n_ratio;
   MGSProgramNode *n_begin;
   uchar n_end;
   uchar n_time_delay;
@@ -33,21 +34,34 @@ typedef struct MGSParser {
   float n_next_add_delay;
 } MGSParser;
 
+static void end_node(MGSParser *o) {
+  MGSProgramNode *n = o->last;
+  if (!n) return;
+  if (n->ref && !n->free_mods) {
+    n->modc = n->ref->modc;
+    n->mods = n->ref->mods;
+  }
+}
+
 static MGSProgramNode* make_node(MGSParser *o) {
   MGSProgram *p = o->prg;
   MGSProgramNode *n = calloc(1, sizeof(MGSProgramNode));
   if (!p->steps)
     p->steps = n;
-  else
+  else {
     o->last->next = n;
+    if (o->last->flag & MGS_FLAG_PLAY)
+      o->last_play = o->last;
+    end_node(o);
+  }
 
   /* settings/ops */
   n->mode = o->n_mode;
   n->amp = o->n_amp;
   o->n_add_delay = o->n_next_add_delay;
   if (o->n_time_delay) {
-    if (o->last)
-      o->n_add_delay += o->last->time;
+    if (o->last_play)
+      o->n_add_delay += o->last_play->time;
     o->n_time_delay = 0;
   }
   if (!o->n_begin)
@@ -56,9 +70,11 @@ static MGSProgramNode* make_node(MGSParser *o) {
     double delay = 0.f;
     MGSProgramNode *step;
     for (step = o->n_begin; step != n; step = step->next) {
-      if (delay < step->time)
-        delay = step->time;
-      delay -= step->next->delay;
+      if (step->flag & MGS_FLAG_PLAY) {
+        if (delay < step->time)
+          delay = step->time;
+        delay -= step->next->delay;
+      }
     }
     o->n_add_delay += delay;
     o->n_begin = n;
@@ -82,13 +98,86 @@ static MGSProgramNode* make_node(MGSParser *o) {
   return n;
 }
 
+static double getnum_r(FILE *f, char *buf, uint len, uchar pri) {
+  char *p = buf;
+  uchar dot = 0;
+  double num;
+  char c;
+  do {
+    c = getc(f);
+  } while (c == ' ' || c == '\t' || c == '\r' || c == '\n');
+  if (c == '(') {
+    return getnum_r(f, buf, len, 255);
+  }
+  while ((c >= '0' && c <= '9') || (!dot && (dot = (c == '.')))) {
+    if ((p+1) == (buf+len)) {
+      break;
+    }
+    *p++ = c;
+    c = getc(f);
+  }
+  if (p == buf) {
+    ungetc(c, f);
+    return NAN;
+  }
+  *p = '\0';
+  num = strtod(buf, 0);
+  for (;;) {
+    while (c == ' ' || c == '\t' || c == '\r' || c == '\n')
+      c = getc(f);
+    switch (c) {
+    case '(':
+      num *= getnum_r(f, buf, len, 255);
+      break;
+    case ')':
+      if (pri < 255)
+        ungetc(c, f);
+      return num;
+      break;
+    case '^':
+      num = exp(log(num) * getnum_r(f, buf, len, 0));
+      break;
+    case '*':
+      num *= getnum_r(f, buf, len, 1);
+      break;
+    case '/':
+      num /= getnum_r(f, buf, len, 1);
+      break;
+    case '+':
+      if (pri < 2)
+        return num;
+      num += getnum_r(f, buf, len, 2);
+      break;
+    case '-':
+      if (pri < 2)
+        return num;
+      num -= getnum_r(f, buf, len, 2);
+      break;
+    default:
+      return num;
+    }
+    if (num != num) {
+      ungetc(c, f);
+      return num;
+    }
+    c = getc(f);
+  }
+}
 static double getnum(FILE *f) {
   char buf[64];
   char *p = buf;
-  while (((*p = getc(f)) >= '0' && *p <= '9') || *p == '.') ++p;
+  uchar dot = 0;
+  if ((*p = getc(f)) == '(')
+    return getnum_r(f, buf, 64, 255);
+  do {
+    if ((*p >= '0' && *p <= '9') || (!dot && (dot = (*p == '.'))))
+      ++p;
+    else
+      break;
+  } while ((*p = getc(f)) && p < (buf+64));
   ungetc(*p, f);
   *p = '\0';
-  return atof(buf);
+  return strtod(buf, 0);
 }
 
 static int strfind(FILE *f, const char *const*str) {
@@ -135,7 +224,13 @@ static void eatws(FILE *f) {
   ungetc(c, f);
 }
 
-static uchar testchar(FILE *f, char c) {
+static uchar testc(char c, FILE *f) {
+  char gc = getc(f);
+  ungetc(gc, f);
+  return (gc == c);
+}
+
+static uchar testgetc(char c, FILE *f) {
   char gc;
   if ((gc = getc(f)) == c) return 1;
   ungetc(gc, f);
@@ -165,6 +260,7 @@ static MGSProgram* parse(FILE *f, const char *fn, MGSParser *o) {
   o->n_delay = 0.f; /* default until changed */
   o->n_time = 1.f; /* default until changed */
   o->n_freq = 100.f; /* default until changed */
+  o->n_ratio = 1.f; /* default until changed */
   o->n_begin = 0;
   o->n_time_delay = o->n_end = 0;
   o->n_next_add_delay = o->n_add_delay = 0.f;
@@ -180,6 +276,7 @@ static void parse_level(MGSParser *o, MGSProgramNode *node, MGSProgramNode *mods
     eatws(o->f);
     switch (c) {
     case '\n':
+    EOL:
       if (o->setdef > o->nest)
         o->setdef = (o->nest) ? (o->nest - 1) : 0;
       else if (o->setnode > o->nest)
@@ -192,11 +289,11 @@ static void parse_level(MGSParser *o, MGSProgramNode *node, MGSProgramNode *mods
       break;
     case '#':
       while ((c = getc(o->f)) != '\n' && c != EOF) ;
-      ++o->line;
+      goto EOL;
       break;
     case '/':
       if (o->setdef > o->setnode) goto INVALID;
-      if (testchar(o->f, 't'))
+      if (testgetc('t', o->f))
         o->n_time_delay = 1;
       else {
         o->n_time_delay = 0;
@@ -264,8 +361,6 @@ static void parse_level(MGSParser *o, MGSProgramNode *node, MGSProgramNode *mods
       else
         node->flag |= MGS_FLAG_PLAY;
       o->setnode = o->nest + 1;
-      if (modc && o->nest == entrynest)
-        return;
       break; }
     case '|':
       if (!o->n_begin)
@@ -307,6 +402,10 @@ static void parse_level(MGSParser *o, MGSProgramNode *node, MGSProgramNode *mods
           if (i == 0)
             warning(o, "ignoring : without symbol name", c);
           else {
+            if (modc && *modc == 255) {
+              warning(o, "ignoring 256th modulator for one node (max 255)", c);
+              break;
+            }
             o->setsymkey[i] = '\0';
             MGSProgramNode *ref = MGSSymtab_get(o->st, o->setsymkey);
             if (!ref)
@@ -318,13 +417,16 @@ static void parse_level(MGSParser *o, MGSProgramNode *node, MGSProgramNode *mods
               node->type = node->ref->type;
               node->wave = node->ref->wave;
               node->mode = node->ref->mode;
-              if (modc)
+              node->flag |= MGS_FLAG_REFAMP |
+                            MGS_FLAG_REFTIME |
+                            MGS_FLAG_REFFREQ;
+              if (modc) {
+                node->freq = o->n_ratio;
+                node->flag |= MGS_FLAG_FREQRATIO;
                 mods[(*modc)++] = node;
-              else
+              } else
                 node->flag |= MGS_FLAG_PLAY;
               o->setnode = o->nest + 1;
-              if (modc && o->nest == entrynest)
-                return;
             }
           }
           break;
@@ -337,7 +439,7 @@ static void parse_level(MGSParser *o, MGSProgramNode *node, MGSProgramNode *mods
         o->n_amp = getnum(o->f);
       else if (o->setnode > 0) {
         node->amp = getnum(o->f);
-        node->flag |= MGS_FLAG_SETAMP;
+        node->flag &= ~MGS_FLAG_REFAMP;
       } else
         goto INVALID;
       break;
@@ -346,7 +448,8 @@ static void parse_level(MGSParser *o, MGSProgramNode *node, MGSProgramNode *mods
         o->n_freq = getnum(o->f);
       else if (o->setnode > 0) {
         node->freq = getnum(o->f);
-        node->flag |= MGS_FLAG_SETFREQ;
+        node->flag &= ~(MGS_FLAG_REFFREQ |
+                        MGS_FLAG_FREQRATIO);
       } else
         goto INVALID;
       break;
@@ -355,34 +458,56 @@ static void parse_level(MGSParser *o, MGSProgramNode *node, MGSProgramNode *mods
       uchar modc = 0;
       if (o->setdef > o->setnode || o->setnode <= 0)
         goto INVALID;
+      if (node->modc && node->free_mods) {
+        free(node->mods);
+        node->mods = 0;
+        node->modc = 0;
+      }
+      /* require <> nesting syntax; keeps parsing simple */
+      if (!testc('<', o->f)) {
+        warning(o, "modulation parameter without <contents>", c);
+        break;
+      }
       parse_level(o, node, mods, &modc);
       if (modc) {
         uint size = modc * sizeof(MGSProgramNode*);
         node->modc = modc;
+        node->free_mods = 1;
         node->mods = malloc(size);
         memcpy(node->mods, mods, size);
       }
       break; }
+    case 'r':
+      if (o->setdef > o->setnode)
+        o->n_ratio = getnum(o->f);
+      else if (o->setnode > 0) {
+        if (!modc)
+          goto INVALID;
+        node->freq = getnum(o->f);
+        node->flag &= ~MGS_FLAG_REFFREQ;
+        node->flag |= MGS_FLAG_FREQRATIO;
+      } else
+        goto INVALID;
+      break;
     case 't':
       if (o->setdef > o->setnode)
         o->n_time = getnum(o->f);
       else if (o->setnode > 0) {
         node->time = getnum(o->f);
-        node->flag |= MGS_FLAG_SETTIME;
+        node->flag &= ~MGS_FLAG_REFTIME;
       } else
         goto INVALID;
       break;
     default:
     INVALID:
-      warning(o, "ignoring invalid character", c);
+      warning(o, "invalid character", c);
       break;
     }
   }
-  if (!modc)
-    warning(o, "no terminating Q in file", c);
 FINISH:
   if (o->nest)
     warning(o, "end of file without closing '>'s", c);
+  end_node(o);
 }
 
 MGSProgram* MGSProgram_create(const char *filename) {
@@ -400,7 +525,8 @@ void MGSProgram_destroy(MGSProgram *o) {
   MGSProgramNode *n = o->steps;
   while (n) {
     MGSProgramNode *nn = n->next;
-    free(n->mods);
+    if (n->free_mods)
+      free(n->mods);
     free(n);
     n = nn;
   }
