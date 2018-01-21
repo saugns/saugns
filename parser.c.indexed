@@ -362,7 +362,7 @@ static void parse_level(MGSParser *o, MGSProgramNode *node, MGSProgramNode *mods
         break;
       }
       node = make_node(o);
-      node->type = MGS_TYPE_WAVE;
+      node->type = MGS_TYPE_SOUND;
       node->wave = wave;
       if (modc) {
         mods[(*modc)++] = node;
@@ -438,7 +438,7 @@ static void parse_level(MGSParser *o, MGSProgramNode *node, MGSProgramNode *mods
               node->amods = node->ref->amods;
               if (modc) {
                 node->freq = o->n_ratio;
-                node->flag |= MGS_FLAG_FREQRATIO;
+                node->attr |= MGS_ATTR_FREQRATIO;
                 mods[(*modc)++] = node;
               } else
                 node->flag |= MGS_FLAG_PLAY;
@@ -490,7 +490,7 @@ static void parse_level(MGSParser *o, MGSProgramNode *node, MGSProgramNode *mods
         if (testgetc('!', o->f)) {
           if (!testc('{', o->f)) {
             node->dynfreq = getnum(o->f);
-            node->flag &= ~MGS_FLAG_DYNFREQRATIO;
+            node->attr &= ~MGS_ATTR_DYNFREQRATIO;
           }
           if (testgetc('{', o->f)) {
             MGSProgramNode *mods[MODC_MAX];
@@ -510,7 +510,7 @@ static void parse_level(MGSParser *o, MGSProgramNode *node, MGSProgramNode *mods
           }
         } else {
           node->freq = getnum(o->f);
-          node->flag &= ~MGS_FLAG_FREQRATIO;
+          node->attr &= ~MGS_ATTR_FREQRATIO;
         }
       } else
         goto INVALID;
@@ -553,7 +553,7 @@ static void parse_level(MGSParser *o, MGSProgramNode *node, MGSProgramNode *mods
         if (testgetc('!', o->f)) {
           if (!testc('{', o->f)) {
             node->dynfreq = 1.f / getnum(o->f);
-            node->flag |= MGS_FLAG_DYNFREQRATIO;
+            node->attr |= MGS_ATTR_DYNFREQRATIO;
           }
           if (testgetc('{', o->f)) {
             MGSProgramNode *mods[MODC_MAX];
@@ -573,7 +573,7 @@ static void parse_level(MGSParser *o, MGSProgramNode *node, MGSProgramNode *mods
           }
         } else {
           node->freq = 1.f / getnum(o->f);
-          node->flag |= MGS_FLAG_FREQRATIO;
+          node->attr |= MGS_ATTR_FREQRATIO;
         }
       } else
         goto INVALID;
