@@ -1,91 +1,84 @@
 #include "math.h"
 
-/*
- * MGSSinOsc - thanks to anonymous musicdsp archive contributor for algorithm
- */
+extern void MGSOsc_init(void);
 
-typedef struct MGSSinOsc {
-  float coeff;
-  float sin, cos;
-} MGSSinOsc;
+#define MGSOsc_TABLEN 1024
+#define MGSOsc_TABINDEXBITS 10
+#define MGSOsc_TABINDEXMASK ((1<<(32-MGSOsc_TABINDEXBITS))-1)
 
-#define MGSSinOsc_SET_COEFF(o, fq, sr) \
-  ((void)((o)->coeff = (2.f * sin(PI * (fq)/(sr)))))
+/* for different waveforms (use short* as pointer type) */
+typedef short MGSOscTab[MGSOsc_TABLEN+1]; /* one extra for no-check lerp */
+extern MGSOscTab MGSOsc_sin,
+                 MGSOsc_sqr,
+                 MGSOsc_tri,
+                 MGSOsc_saw;
 
-#define MGSSinOsc_SET_RANGE(o, r) \
-  ((void)(((o)->sin = (r)), (o)->cos = 0.f))
+typedef struct MGSOsc {
+  uint inc, phase;
+  ui16_16 amp;
+} MGSOsc;
 
-#define MGSSinOsc_RUN(o) do{ \
-  (o)->sin -= (o)->coeff * (o)->cos; \
-  (o)->cos += (o)->coeff * (o)->sin; \
+#define MGSOsc_SET_PHASE(o, p) \
+  ((void)((o)->phase = (p)))
+
+#define MGSOsc_SET_COEFF(o, fq, sr) \
+  ((void)((o)->inc = (4294967296.0 * (fq))/(sr)))
+
+#define MGSOsc_SET_RANGE(o, r) \
+  ((void)((o)->amp = (r)))
+
+#define MGSOsc_RUN(o, osctab, out) do{ \
+  int MGSOsc__s, MGSOsc__d; \
+  uint MGSOsc__i; \
+  (o)->phase += (o)->inc; \
+  MGSOsc__i = (o)->phase >> (32-MGSOsc_TABINDEXBITS); \
+  MGSOsc__s = (osctab)[MGSOsc__i]; \
+  SET_I2F(MGSOsc__d, \
+    ((float)(((osctab)[MGSOsc__i + 1] - MGSOsc__s)) * \
+             ((o)->phase & MGSOsc_TABINDEXMASK) * \
+             (1.f / (1 << (32-MGSOsc_TABINDEXBITS)))) \
+  ); \
+/*printf("%d + %d = %d\n", MGSOsc__s, MGSOsc__d, MGSOsc__s + MGSOsc__d);*/ \
+  MGSOsc__s += MGSOsc__d; \
+  MGSOsc__s *= (o)->amp; \
+  MGSOsc__s >>= 16; \
+  (out) = MGSOsc__s; \
 }while(0)
 
-/*
- * MGSSqrOsc
- */
-
-typedef struct MGSSqrOsc {
-  uint len, pos;
-  float sqr;
-} MGSSqrOsc;
-
-#define MGSSqrOsc_SET_COEFF(o, fq, sr) \
-  ((void)((o)->len = (sr)/((fq)*2.f)))
-
-#define MGSSqrOsc_SET_RANGE(o, r) \
-  ((void)(((o)->pos = 0), (o)->sqr = (r)))
-
-#define MGSSqrOsc_RUN(o) do{ \
-  if ((o)->pos++ >= (o)->len) { \
-    (o)->pos = 0; \
-    (o)->sqr = -(o)->sqr; \
-  } \
+#define MGSOsc_RUN_FM(o, osctab, fm, out) do{ \
+  int MGSOsc__s, MGSOsc__d; \
+  uint MGSOsc__i; \
+  (o)->phase += (o)->inc + (fm); \
+  MGSOsc__i = (o)->phase >> (32-MGSOsc_TABINDEXBITS); \
+  MGSOsc__s = (osctab)[MGSOsc__i]; \
+  SET_I2F(MGSOsc__d, \
+    ((float)(((osctab)[MGSOsc__i + 1] - MGSOsc__s)) * \
+             ((o)->phase & MGSOsc_TABINDEXMASK) * \
+             (1.f / (1 << (32-MGSOsc_TABINDEXBITS)))) \
+  ); \
+/*printf("%d + %d = %d\n", MGSOsc__s, MGSOsc__d, MGSOsc__s + MGSOsc__d);*/ \
+  MGSOsc__s += MGSOsc__d; \
+  MGSOsc__s *= (o)->amp; \
+  MGSOsc__s >>= 16; \
+  (out) = MGSOsc__s; \
 }while(0)
 
-/*
- * MGSSawOsc
- */
-
-typedef struct MGSSawOsc {
-  float size, step;
-  float saw;
-} MGSSawOsc;
-
-#define MGSSawOsc_SET_COEFF(o, fq, sr) \
-  ((void)((o)->step = ((fq)*2.f)/(sr)))
-
-#define MGSSawOsc_SET_RANGE(o, r) \
-  ((void)(((o)->size = (r)), (o)->saw = 0.f))
-
-#define MGSSawOsc_RUN_UP(o) do{ \
-  (o)->saw += (o)->step * (o)->size; \
-  if ((o)->saw >= (o)->size - DC_OFFSET) (o)->saw = - (o)->size; \
+#define MGSOsc_RUN_PM(o, osctab, pm, out) do{ \
+  int MGSOsc__s, MGSOsc__d; \
+  uint MGSOsc__i; \
+  (o)->phase += (o)->inc; \
+  MGSOsc__i = ((o)->phase + (pm)) >> (32-MGSOsc_TABINDEXBITS); \
+  MGSOsc__s = (osctab)[MGSOsc__i]; \
+  SET_I2F(MGSOsc__d, \
+    ((float)(((osctab)[MGSOsc__i + 1] - MGSOsc__s)) * \
+             ((o)->phase & MGSOsc_TABINDEXMASK) * \
+             (1.f / (1 << (32-MGSOsc_TABINDEXBITS)))) \
+  ); \
+/*printf("%d + %d = %d\n", MGSOsc__s, MGSOsc__d, MGSOsc__s + MGSOsc__d);*/ \
+  MGSOsc__s += MGSOsc__d; \
+  MGSOsc__s *= (o)->amp; \
+  MGSOsc__s >>= 16; \
+  (out) = MGSOsc__s; \
 }while(0)
 
-#define MGSSawOsc_RUN_DOWN(o) do{ \
-  (o)->saw -= (o)->step * (o)->size; \
-  if ((o)->saw <= DC_OFFSET - (o)->size) (o)->saw = (o)->size; \
-}while(0)
-
-/* Default - more or less arbitrary. */
-#define MGSSawOsc_RUN(o) MGSSawOsc_RUN_UP(o)
-
-/*
- * MGSTriOsc
- */
-
-typedef struct MGSTriOsc {
-  float size, step;
-  float tri;
-} MGSTriOsc;
-
-#define MGSTriOsc_SET_COEFF(o, fq, sr) \
-  ((void)((o)->step = ((fq)*4.f)/(sr)))
-
-#define MGSTriOsc_SET_RANGE(o, r) \
-  ((void)(((o)->size = (r)), (o)->tri = 0.f))
-
-#define MGSTriOsc_RUN(o) do{ \
-  (o)->tri += (o)->step * (o)->size; \
-  if (fabs((o)->tri) >= (o)->size - DC_OFFSET) (o)->step = - (o)->step; \
-}while(0)
+/**/

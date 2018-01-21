@@ -1,23 +1,47 @@
 #include "math.h"
 
+extern void MGS_osc_init(void);
+
 /*
  * MGSSinOsc - thanks to anonymous musicdsp archive contributor for algorithm
  */
 
+#define MGSSinOsc_TABLEN 128
+#define MGSSinOsc_TABINDEXBITS 7
+#define MGSSinOsc_TABINDEXMASK ((1<<(32-MGSSinOsc_TABINDEXBITS))-1)
+
+extern short MGSSinOsc_table[]; /* used by macros */
+
 typedef struct MGSSinOsc {
-  float coeff;
-  float sin, cos;
+  uint inc, phase;
+  ui16_16 amp;
 } MGSSinOsc;
 
+#define MGSSinOsc_SET_PHASE(o, p) \
+  ((void)((o)->phase = (p)))
+
 #define MGSSinOsc_SET_COEFF(o, fq, sr) \
-  ((void)((o)->coeff = (2.f * sin(PI * (fq)/(sr)))))
+  ((void)((o)->inc = (4294967296.0 * (fq))/(sr)))
 
 #define MGSSinOsc_SET_RANGE(o, r) \
-  ((void)(((o)->sin = (r)), (o)->cos = 0.f))
+  ((void)((o)->amp = (r)))
 
-#define MGSSinOsc_RUN(o) do{ \
-  (o)->sin -= (o)->coeff * (o)->cos; \
-  (o)->cos += (o)->coeff * (o)->sin; \
+#define MGSSinOsc_RUN(o, out) do{ \
+  int MGSSinOsc__s, MGSSinOsc__d; \
+  uint MGSSinOsc__i; \
+  (o)->phase += (o)->inc; \
+  MGSSinOsc__i = (o)->phase >> (32-MGSSinOsc_TABINDEXBITS); \
+  MGSSinOsc__s = MGSSinOsc_table[MGSSinOsc__i]; \
+  SET_I2F(MGSSinOsc__d, \
+    ((float)((MGSSinOsc_table[MGSSinOsc__i + 1] - MGSSinOsc__s)) * \
+             ((o)->phase & MGSSinOsc_TABINDEXMASK) * \
+             (1.f / (1 << (32-MGSSinOsc_TABINDEXBITS)))) \
+  ); \
+/*printf("%d + %d = %d\n", MGSSinOsc__s, MGSSinOsc__d, MGSSinOsc__s + MGSSinOsc__d);*/ \
+  MGSSinOsc__s += MGSSinOsc__d; \
+  MGSSinOsc__s *= (o)->amp; \
+  MGSSinOsc__s >>= 16; \
+  (out) = MGSSinOsc__s; \
 }while(0)
 
 /*

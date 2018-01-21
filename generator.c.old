@@ -44,17 +44,17 @@ MGSGenerator* MGSGenerator_create(uint srate, struct MGSProgram *prg) {
     float freq = step->freq;
     o->nodes[i].pos = -delay;
     o->nodes[i].time = time;
-    switch (step->wave) {
-    case MGS_WAVE_SIN:
+    switch (step->type) {
+    case MGS_TYPE_SIN:
       o->nodes[i].osctype = MGSOsc_sin;
       break;
-    case MGS_WAVE_SQR:
+    case MGS_TYPE_SQR:
       o->nodes[i].osctype = MGSOsc_sqr;
       break;
-    case MGS_WAVE_TRI:
+    case MGS_TYPE_TRI:
       o->nodes[i].osctype = MGSOsc_tri;
       break;
-    case MGS_WAVE_SAW:
+    case MGS_TYPE_SAW:
       o->nodes[i].osctype = MGSOsc_saw;
       break;
     }
