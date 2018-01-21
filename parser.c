@@ -193,6 +193,10 @@ static void end_event(SGSParser *o, NodeData *nd) {
   }
 
   nd->opevent = e;
+  if (!p->events)
+    p->events = e;
+  else
+    o->last_event->next = e;
   o->last_event = e;
   e->id = p->eventc++;
 

@@ -6,13 +6,13 @@
 #include <stdlib.h>
 
 enum {
-  SGS_FLAG_EXEC = 1<<0,
-  SGS_FLAG_ENTERED = 1<<1
+  SGS_FLAG_INIT = 1<<0,
+  SGS_FLAG_EXEC = 1<<1
 };
 
 typedef struct IndexNode {
   void *node;
-  int pos; /* negative for delay/time shift */
+  int pos; /* negative for waittime/time shift */
   uchar type, flag;
 } IndexNode;
 
@@ -41,15 +41,12 @@ typedef union Data {
 typedef struct EventNode {
   void *node;
   uint waittime;
-  ushort values;
-  Data data[1]; /* sized for number of parameters set */
 } EventNode;
 
 typedef struct SetNode {
-  uint nodeid;
-  ushort values;
-  uchar mods;
-  Data data[1]; /* sized for number of things set */
+  uint setid;
+  ushort params;
+  Data data[1]; /* sized for number of parameters set */
 } SetNode;
 
 static uint count_flags(uint flags) {
@@ -61,32 +58,6 @@ static uint count_flags(uint flags) {
   return count;
 }
 
-#if 0
-struct EventNode;
-
-typedef struct EventIndexNode {
-  uint pos, wait;
-  struct EventNode *event;
-  uchar type;
-} EventIndexNode;
-
-static struct Event *get_event(OperatorNode *n, uchar type) {
-  uint i, eventc;
-  EventNode *events = n->events;
-  if (!events)
-    return 0;
-  eventc = n->eventc;
-  for (i = 0; i < eventc; ++i) {
-    EventNode *en = events[i];
-    if (en->wait > en->pos)
-      return 0;
-    if (en->type == type)
-      return en->event;
-  }
-  return 0;
-}
-#endif
-
 #define BUF_LEN 256
 typedef Data Buf[BUF_LEN];
 
@@ -96,8 +67,8 @@ struct SGSGenerator {
   Buf *bufs;
   uint bufc;
   double osc_coeff;
-  int delay_offs;
   uint event, eventc;
+  uint eventpos;
   EventNode *events;
   uint node, nodec;
   IndexNode nodes[1]; /* sized to number of nodes */
@@ -142,26 +113,18 @@ static void upsize_bufs(SGSGenerator *o, OperatorNode *n) {
 
 SGSGenerator* SGSGenerator_create(uint srate, struct SGSProgram *prg) {
   SGSGenerator *o;
-  SGSProgramNode *step;
+  SGSProgramEvent *step;
   void *data;
-  uint i, node, nodec, event, indexdelay;
-  uint size, indexsize, nodessize, eventssize, eventc;
+  uint i, indexwaittime;
+  uint size, indexsize, nodessize, eventssize;
   size = sizeof(SGSGenerator) - sizeof(IndexNode);
-  indexsize = nodessize = eventssize = 0;
-  nodec = eventc = 0;
-  for (step = prg->nodelist; step; step = step->next) {
-    if (step->type & SGS_TYPE_SET) {
-      if (step->spec.set.values & SGS_TIME &&
-          step->time != 0.f) /* new index node takes over at entry */
-        indexsize += sizeof(IndexNode);
-      eventssize += sizeof(EventNode);
-      ++eventc;
-      nodessize += sizeof(SetNode) +
+  eventssize = sizeof(EventNode) * prg->eventc;
+  indexsize = nodessize = 0;
+  for (step = prg->events; step; step = step->next) {
+    nodessize += sizeof(SetNode) +
                    (sizeof(Data) *
-                    (count_flags((step->spec.set.values << 8) |
-                                 step->spec.set.mods) - 1));
-      
-    } else {
+                    (count_flags(step->params) - 1));
+    if (!step->opprev) { /* new operator */
       indexsize += sizeof(IndexNode);
       nodessize += sizeof(OperatorNode);
     }
@@ -170,220 +133,161 @@ SGSGenerator* SGSGenerator_create(uint srate, struct SGSProgram *prg) {
   o->srate = srate;
   o->osc_coeff = SGSOsc_COEFF(srate);
   o->node = 0;
-  o->nodec = prg->topc; /* only loop top-level nodes */
+  o->nodec = prg->topopc; /* only loop top-level nodes */
   o->event = 0;
-  o->eventc = eventc;
-  o->events = (void*)(((uchar*)data) + size + indexsize);
+  o->eventc = prg->eventc;
+  o->eventpos = 0;
+  o->events = (void*)(((uchar*)o) + size + indexsize);
   data = (void*)(((uchar*)o->events) + eventssize);
   SGSOsc_init();
-  step = prg->nodelist;
-  for (i = node = event = 0; node < prg->nodec; ++node) {
-    if (step->type == SGS_TYPE_TOP ||
-        step->type == SGS_TYPE_NESTED) {
-      OperatorNode *n = data;
-      IndexNode *in = &o->nodes[nodec++];
-      uint delay = step->delay * srate;
+  step = prg->events;
+  indexwaittime = 0;
+  for (i = 0; i < prg->eventc; ++i) {
+    EventNode *e = &o->events[i];
+    SetNode *s = data;
+    Data *set = s->data;
+    e->node = s;
+    e->waittime = step->wait_ms * srate * .001f;
+    s->setid = step->opid;
+    if (step->optype == SGS_TYPE_NESTED)
+      s->setid += prg->topopc;
+    s->params = step->params;
+    if (s->params & SGS_AMOD)
+      (*set++).i = step->amodid >= 0 ? (int)(step->amodid + prg->topopc) : -1;
+    if (s->params & SGS_FMOD)
+      (*set++).i = step->fmodid >= 0 ? (int)(step->fmodid + prg->topopc) : -1;
+    if (s->params & SGS_PMOD)
+      (*set++).i = step->pmodid >= 0 ? (int)(step->pmodid + prg->topopc) : -1;
+    if (s->params & SGS_LINK)
+      (*set++).i = step->linkid >= 0 ? (int)(step->linkid + prg->topopc) : -1;
+    if (s->params & SGS_ATTR)
+      (*set++).i = step->attr;
+    if (s->params & SGS_WAVE)
+      (*set++).i = step->wave;
+    if (s->params & SGS_TIME)
+      (*set++).i = step->time_ms * srate * .001f;
+    if (s->params & SGS_SILENCE)
+      (*set++).i = step->silence_ms * srate * .001f;
+    if (s->params & SGS_FREQ)
+      (*set++).f = step->freq;
+    if (s->params & SGS_DYNFREQ)
+      (*set++).f = step->dynfreq;
+    if (s->params & SGS_PHASE)
+      (*set++).i = SGSOsc_PHASE(step->phase);
+    if (s->params & SGS_AMP)
+      (*set++).f = step->amp;
+    if (s->params & SGS_DYNAMP)
+      (*set++).f = step->dynamp;
+    if (s->params & SGS_PANNING)
+      (*set++).i = step->panning;
+    data = (void*)(((uchar*)data) +
+                   sizeof(SetNode) +
+                   (sizeof(Data) *
+                    (count_flags(step->params) - 1)));
+    indexwaittime += e->waittime;
+    if (!step->opprev) { /* new operator */
+      IndexNode *in = &o->nodes[s->setid];
       in->node = data;
-      in->pos = -delay;
-      in->type = step->type;
-      in->flag = step->flag;
-      indexdelay = 0; /* used for set nodes following */
-      n->time = step->time * srate;
-      n->silence = step->silence * srate;
-      switch (step->wave) {
-      case SGS_WAVE_SIN:
-        n->osctype = SGSOsc_sin;
-        break;
-      case SGS_WAVE_SQR:
-        n->osctype = SGSOsc_sqr;
-        break;
-      case SGS_WAVE_TRI:
-        n->osctype = SGSOsc_tri;
-        break;
-      case SGS_WAVE_SAW:
-        n->osctype = SGSOsc_saw;
-        break;
-      }
-      n->attr = step->attr;
-      n->freq = step->freq;
-      n->dynfreq = step->dynfreq;
-      n->amp = step->amp;
-      n->dynamp = step->dynamp;
-      SGSOsc_SET_PHASE(&n->osc, SGSOsc_PHASE(step->phase));
-      if (step->type == SGS_TYPE_TOP)
-        n->spec.panning = step->panning;
-      /* mods init part one - replaced with proper entries next loop */
-      n->amodchain = (void*)step->amod.chain;
-      n->fmodchain = (void*)step->fmod.chain;
-      n->pmodchain = (void*)step->pmod.chain;
-      n->link = (void*)step->spec.nested.link;
+      in->pos = -indexwaittime;
+      in->type = step->optype;
+      indexwaittime = 0;
       data = (void*)(((uchar*)data) + sizeof(OperatorNode));
-    } else if (step->type & SGS_TYPE_SET) {
-      SetNode *n = data;
-      EventNode *e = &o->events[event++];
-      Data *set = n->data;
-      SGSProgramNode *ref = step->spec.set.ref;
-      n->nodeid = ref->id;
-      if (ref->type == SGS_TYPE_NESTED)
-        n->nodeid += prg->topc;
-      n->values = step->spec.set.values;
-      n->mods = step->spec.set.mods;
-      e->node = n;
-      e->waittime = step->delay * srate;
-      e->type = step->type;
-      indexdelay += e->waittime;
-      if (ref->type == SGS_TYPE_TOP &&
-          n->values & SGS_TIME &&
-          step->time != 0.f) { /* insert indexnode for takeover upon event */
-        IndexNode *in = &o->nodes[i++];
-        in->node = ref;
-        in->pos = -indexdelay;
-        in->type = ref->type;
-        in->flag = SGS_FLAG_EXEC;
-        indexdelay = 0; /* used for set nodes following */
-      }
-      if (n->values & SGS_TIME)
-        (*set++).i = step->time * srate;
-      if (n->values & SGS_SILENCE)
-        (*set++).i = step->silence * srate;
-      if (n->values & SGS_FREQ)
-        (*set++).f = step->freq;
-      if (n->values & SGS_DYNFREQ)
-        (*set++).f = step->dynfreq;
-      if (n->values & SGS_PHASE)
-        (*set++).i = SGSOsc_PHASE(step->phase);
-      if (n->values & SGS_AMP)
-        (*set++).f = step->amp;
-      if (n->values & SGS_DYNAMP)
-        (*set++).f = step->dynamp;
-      if (n->values & SGS_PANNING)
-        (*set++).i = step->panning;
-      if (n->values & SGS_ATTR)
-        (*set++).i = step->attr;
-      if (n->mods & SGS_AMODS)
-        (*set++).i = step->amod.chain->id + prg->topc;
-      if (n->mods & SGS_FMODS)
-        (*set++).i = step->fmod.chain->id + prg->topc;
-      if (n->mods & SGS_PMODS)
-        (*set++).i = step->pmod.chain->id + prg->topc;
-      data = (void*)(((uchar*)data) +
-                     sizeof(SetNode) +
-                     (sizeof(Data) *
-                      (count_flags((step->spec.set.values << 16) |
-                                   step->spec.set.mods) - 1)));
     }
     step = step->next;
-  }
-  /* mods init part two - give proper entries */
-  for (i = 0; i < prg->nodec; ++i) {
-    IndexNode *in = &o->nodes[i];
-    if (in->type == SGS_TYPE_TOP ||
-        in->type == SGS_TYPE_NESTED) {
-      OperatorNode *n = in->node;
-      if (n->amodchain) {
-        uint id = ((SGSProgramNode*)n->amodchain)->id + prg->topc;
-        n->amodchain = o->nodes[id].node;
-        n->amodchain->spec.parentid = i;
-      }
-      if (n->fmodchain) {
-        uint id = ((SGSProgramNode*)n->fmodchain)->id + prg->topc;
-        n->fmodchain = o->nodes[id].node;
-        n->fmodchain->spec.parentid = i;
-      }
-      if (n->pmodchain) {
-        uint id = ((SGSProgramNode*)n->pmodchain)->id + prg->topc;
-        n->pmodchain = o->nodes[id].node;
-        n->pmodchain->spec.parentid = i;
-      }
-      if (n->link) {
-        uint id = ((SGSProgramNode*)n->link)->id + prg->topc;
-        n->link = o->nodes[id].node;
-        n->link->spec.parentid = i;
-      }
-    }
   }
   return o;
 }
 
-static void adjust_time(SGSGenerator *o, OperatorNode *n) {
-  int pos_offs;
-  int time = n->time - n->silence;
-  /* click reduction: increase time to make it end at wave cycle's end */
-  SGSOsc_WAVE_OFFS(&n->osc, o->osc_coeff, n->freq, time, pos_offs);
-  n->time -= pos_offs;
-  if ((uint)o->delay_offs == NO_DELAY_OFFS || o->delay_offs > pos_offs)
-    o->delay_offs = pos_offs;
-}
-
-static void SGSGenerator_enter_node(SGSGenerator *o, IndexNode *in) {
-  switch (in->type) {
-  case SGS_TYPE_TOP:
-    upsize_bufs(o, in->node);
-    adjust_time(o, in->node);
-  case SGS_TYPE_NESTED:
-    break;
-  case SGS_TYPE_SETTOP:
-  case SGS_TYPE_SETNESTED: {
-    SetNode *setn = in->node;
-    IndexNode *refin = &o->nodes[setn->nodeid];
+static void SGSGenerator_handle_event(SGSGenerator *o, EventNode *e) {
+  if (1) {
+    SetNode *s = e->node;
+    IndexNode *refin = &o->nodes[s->setid];
     OperatorNode *refn = refin->node;
-    Data *data = setn->data;
-    uchar adjtime = 0;
+    Data *data = s->data;
     /* set state */
-    if (setn->values & SGS_TIME) {
+    if (s->params & SGS_AMOD) {
+      int id = (*data++).i;
+      if (id >= 0) {
+        refn->amodchain = o->nodes[id].node;
+        refn->amodchain->spec.parentid = s->setid;
+      } else
+        refn->amodchain = 0;
+    }
+    if (s->params & SGS_FMOD) {
+      int id = (*data++).i;
+      if (id >= 0) {
+        refn->fmodchain = o->nodes[id].node;
+        refn->fmodchain->spec.parentid = s->setid;
+      } else
+        refn->fmodchain = 0;
+    }
+    if (s->params & SGS_PMOD) {
+      int id = (*data++).i;
+      if (id >= 0) {
+        refn->pmodchain = o->nodes[id].node;
+        refn->pmodchain->spec.parentid = s->setid;
+      } else
+        refn->pmodchain = 0;
+    }
+    if (s->params & SGS_LINK) {
+      int id = (*data++).i;
+      if (id >= 0) {
+        refn->link = o->nodes[id].node;
+        refn->link->spec.parentid = s->setid;
+      } else
+        refn->link = 0;
+    }
+    if (s->params & SGS_ATTR)
+      refn->attr = (uchar)(*data++).i;
+    if (s->params & SGS_WAVE) switch ((*data++).i) {
+    case SGS_WAVE_SIN:
+      refn->osctype = SGSOsc_sin;
+      break;
+    case SGS_WAVE_SQR:
+      refn->osctype = SGSOsc_sqr;
+      break;
+    case SGS_WAVE_TRI:
+      refn->osctype = SGSOsc_tri;
+      break;
+    case SGS_WAVE_SAW:
+      refn->osctype = SGSOsc_saw;
+      break;
+    }
+    if (s->params & SGS_TIME) {
       refn->time = (*data++).i;
       refin->pos = 0;
-      if (refn->time) {
-        if (refin->type == SGS_TYPE_TOP)
-          refin->flag |= SGS_FLAG_EXEC;
-        adjtime = 1;
-      } else
+      if (!refn->time)
         refin->flag &= ~SGS_FLAG_EXEC;
+      else if (refin->type == SGS_TYPE_TOP) {
+        refin->flag |= SGS_FLAG_EXEC;
+        if (o->node > s->setid) /* go back to re-activated node */
+          o->node = s->setid;
+      }
     }
-    if (setn->values & SGS_SILENCE) {
+    if (s->params & SGS_SILENCE)
       refn->silence = (*data++).i;
-      adjtime = 1;
-    }
-    if (setn->values & SGS_FREQ) {
+    if (s->params & SGS_FREQ)
       refn->freq = (*data++).f;
-      adjtime = 1;
-    }
-    if (setn->values & SGS_DYNFREQ)
+    if (s->params & SGS_DYNFREQ)
       refn->dynfreq = (*data++).f;
-    if (setn->values & SGS_PHASE)
+    if (s->params & SGS_PHASE)
       SGSOsc_SET_PHASE(&refn->osc, (uint)(*data++).i);
-    if (setn->values & SGS_AMP)
+    if (s->params & SGS_AMP)
       refn->amp = (*data++).f;
-    if (setn->values & SGS_DYNAMP)
+    if (s->params & SGS_DYNAMP)
       refn->dynamp = (*data++).f;
-    if (setn->values & SGS_PANNING)
+    if (s->params & SGS_PANNING)
       refn->spec.panning = (*data++).f;
-    if (setn->values & SGS_ATTR)
-      refn->attr = (uchar)(*data++).i;
-    if (setn->mods & SGS_AMODS)
-      refn->amodchain = o->nodes[(*data++).i].node;
-    if (setn->mods & SGS_FMODS)
-      refn->fmodchain = o->nodes[(*data++).i].node;
-    if (setn->mods & SGS_PMODS)
-      refn->pmodchain = o->nodes[(*data++).i].node;
-    if (refn->type == SGS_TYPE_TOP) {
+    if (refn->type == SGS_TYPE_TOP)
       upsize_bufs(o, refn);
-      if (adjtime) /* here so new freq also used if set */
-        adjust_time(o, refn);
-    } else {
+    else {
       IndexNode *topin = refin;
       while (topin->type == SGS_TYPE_NESTED)
         topin = &o->nodes[((OperatorNode*)topin->node)->spec.parentid];
       upsize_bufs(o, topin->node);
     }
-    /* take over place of ref'd node */
-    *in = *refin;
-    refin->flag &= ~SGS_FLAG_EXEC;
-    break; }
-  case SGS_TYPE_ENV:
-    break;
+    refin->flag |= SGS_FLAG_INIT;
   }
-  in->flag |= SGS_FLAG_ENTERED;
 }
 
 void SGSGenerator_destroy(SGSGenerator *o) {
@@ -582,46 +486,36 @@ uchar SGSGenerator_run(SGSGenerator *o, short *buf, uint len) {
   }
 PROCESS:
   skiplen = 0;
-  for (i = o->node; i < o->nodec; ++i) {
-    IndexNode *in = &o->nodes[i];
-    if (in->pos < 0) {
-      uint delay = -in->pos;
-      if ((uint)o->delay_offs != NO_DELAY_OFFS)
-        delay -= o->delay_offs; /* delay inc == previous time inc */
-      if (delay <= len) {
-        /* Split processing so that len is no longer than delay, avoiding
-         * cases where the node prior to a node disabling it plays too
-         * long.
+  while (o->event < o->eventc) {
+    EventNode *e = &o->events[o->event];
+    if (o->eventpos < e->waittime) {
+      uint waittime = e->waittime - o->eventpos;
+      if (waittime < len) {
+        /* Split processing so that len is no longer than waittime, ensuring
+         * event is handled before its operator is used.
          */
-        skiplen = len - delay;
-        len = delay;
+        skiplen = len - waittime;
+        len = waittime;
       }
+      o->eventpos += len;
       break;
     }
-    if (!(in->flag & SGS_FLAG_ENTERED))
-      /* After return to PROCESS, ensures disabling node is initialized before
-       * disabled node would otherwise play.
-       */
-      SGSGenerator_enter_node(o, in);
+    SGSGenerator_handle_event(o, e);
+    ++o->event;
+    o->eventpos = 0;
   }
   for (i = o->node; i < o->nodec; ++i) {
     IndexNode *in = &o->nodes[i];
     if (in->pos < 0) {
-      uint delay = -in->pos;
-      if ((uint)o->delay_offs != NO_DELAY_OFFS) {
-        in->pos += o->delay_offs; /* delay inc == previous time inc */
-        o->delay_offs = NO_DELAY_OFFS;
-      }
-      if (delay >= len) {
+      uint waittime = -in->pos;
+      if (waittime >= len) {
         in->pos += len;
-        break; /* end for now; delays accumulate across nodes */
+        break; /* end for now; waittimes accumulate across nodes */
       }
-      buf += delay+delay; /* doubled given stereo interleaving */
-      len -= delay;
+      buf += waittime+waittime; /* doubled given stereo interleaving */
+      len -= waittime;
       in->pos = 0;
-    } else
-    if (!(in->flag & SGS_FLAG_ENTERED))
-      SGSGenerator_enter_node(o, in);
+    }
     if (in->flag & SGS_FLAG_EXEC) {
       OperatorNode *n = in->node;
       in->pos += run_node(o, n, buf, in->pos, len);
@@ -635,9 +529,11 @@ PROCESS:
     goto PROCESS;
   }
   for(;;) {
+    IndexNode *in;
     if (o->node == o->nodec)
-      return 0;
-    if (o->nodes[o->node].flag & SGS_FLAG_EXEC)
+      return (o->event != o->eventc);
+    in = &o->nodes[o->node];
+    if (!(in->flag & SGS_FLAG_INIT) || in->flag & SGS_FLAG_EXEC)
       break;
     ++o->node;
   }
