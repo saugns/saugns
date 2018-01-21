@@ -1,5 +1,5 @@
 enum {
-  MGS_TYPE_WAVE = 0,
+  MGS_TYPE_SOUND = 0,
   MGS_TYPE_ENV = 1
 };
 
@@ -7,9 +7,12 @@ enum {
   MGS_FLAG_PLAY = 1<<0,
   MGS_FLAG_REFTIME = 1<<1,
   MGS_FLAG_REFPHASE = 1<<2,
-  MGS_FLAG_FREQRATIO = 1<<3,
-  MGS_FLAG_DYNFREQRATIO = 1<<4,
-  MGS_FLAG_ENTERED = 1<<5
+  MGS_FLAG_ENTERED = 1<<3
+};
+
+enum {
+  MGS_ATTR_FREQRATIO = 1<<0,
+  MGS_ATTR_DYNFREQRATIO = 1<<1
 };
 
 enum {
@@ -31,13 +34,18 @@ enum {
   MGS_AMODS = 1<<2
 };
 
+typedef struct MGSProgramNodeChain {
+  uint count;
+  struct MGSProgramNode *chain;
+} MGSProgramNodeChain;
+
 typedef struct MGSProgramNode {
   struct MGSProgramNode *next, *ref;
-  uchar type, flag, wave, mode;
+  uchar type, flag, attr, wave, mode;
   float amp, dynamp, delay, time, freq, dynfreq, phase;
   uint id;
-  uchar pmodc, fmodc, amodc, free_mods;
-  struct MGSProgramNode **pmods, **fmods, **amods;
+  MGSProgramNodeChain pmod, fmod, amod;
+  struct MGSProgramNode *link;
 } MGSProgramNode;
 
 struct MGSProgram {
