@@ -17,12 +17,12 @@ clean:
 	rm -f $(OBJ) sgensys
 
 sgensys: $(OBJ)
-	@if [ `uname -s` == 'Linux' ]; then \
+	@if [ "`uname -s`" = 'Linux' ]; then \
 		echo "Linking for Linux build (ALSA and OSS)."; \
-		$(CC) $(LFLAGS_LINUX) $(OBJ) -o sgensys; \
+		$(CC) $(OBJ) $(LFLAGS_LINUX) -o sgensys; \
 	else \
 		echo "Linking for generic OSS build."; \
-		$(CC) $(LFLAGS_UNIX) $(OBJ) -o sgensys; \
+		$(CC) $(OBJ) $(LFLAGS_UNIX) -o sgensys; \
 	fi
 
 audiodev.o: audiodev.c audiodev_*.c audiodev.h

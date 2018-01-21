@@ -90,6 +90,7 @@ static inline void close_linux_audio_dev(SGSAudioDev *ad) {
 		return;
 	}
 	
+	snd_pcm_drain(ad->ref.handle);
 	snd_pcm_close(ad->ref.handle);
 	free(ad);
 }
