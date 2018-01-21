@@ -1,37 +1,37 @@
-#include "mgensys.h"
+#include "sgensys.h"
 #include "symtab.h"
 #include <string.h>
 #include <stdlib.h>
 
 /* a plain linked list is sufficient at present */
 
-typedef struct MGSSymnode {
+typedef struct SGSSymnode {
   char *key;
   void *value;
-  struct MGSSymnode *next;
-} MGSSymnode;
+  struct SGSSymnode *next;
+} SGSSymnode;
 
-struct MGSSymtab {
-  MGSSymnode *node;
+struct SGSSymtab {
+  SGSSymnode *node;
 };
 
-MGSSymtab* MGSSymtab_create(void) {
-  MGSSymtab *o = calloc(1, sizeof(MGSSymtab));
+SGSSymtab* SGSSymtab_create(void) {
+  SGSSymtab *o = calloc(1, sizeof(SGSSymtab));
   return o;
 }
 
-void MGSSymtab_destroy(MGSSymtab *o) {
-  MGSSymnode *n = o->node;
+void SGSSymtab_destroy(SGSSymtab *o) {
+  SGSSymnode *n = o->node;
   while (n) {
-    MGSSymnode *nn = n->next;
+    SGSSymnode *nn = n->next;
     free(n->key);
     free(n);
     n = nn;
   }
 }
 
-void* MGSSymtab_get(MGSSymtab *o, const char *key) {
-  MGSSymnode *n = o->node;
+void* SGSSymtab_get(SGSSymtab *o, const char *key) {
+  SGSSymnode *n = o->node;
   while (n) {
     if (!strcmp(n->key, key))
       return n->value;
@@ -40,8 +40,8 @@ void* MGSSymtab_get(MGSSymtab *o, const char *key) {
   return 0;
 }
 
-static MGSSymnode* MGSSymnode_alloc(const char *key, void *value) {
-  MGSSymnode *o = malloc(sizeof(MGSSymnode));
+static SGSSymnode* SGSSymnode_alloc(const char *key, void *value) {
+  SGSSymnode *o = malloc(sizeof(SGSSymnode));
   int len = strlen(key);
   o->key = malloc(len);
   strcpy(o->key, key);
@@ -50,10 +50,10 @@ static MGSSymnode* MGSSymnode_alloc(const char *key, void *value) {
   return o;
 }
 
-void* MGSSymtab_set(MGSSymtab *o, const char *key, void *value) {
-  MGSSymnode *n = o->node;
+void* SGSSymtab_set(SGSSymtab *o, const char *key, void *value) {
+  SGSSymnode *n = o->node;
   if (!n) {
-    o->node = MGSSymnode_alloc(key, value);
+    o->node = SGSSymnode_alloc(key, value);
     return 0;
   }
   for (;;) {
@@ -66,6 +66,6 @@ void* MGSSymtab_set(MGSSymtab *o, const char *key, void *value) {
       break;
     n = n->next;
   }
-  n->next = MGSSymnode_alloc(key, value);
+  n->next = SGSSymnode_alloc(key, value);
   return 0;
 }

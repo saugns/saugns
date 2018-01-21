@@ -1,54 +1,75 @@
 enum {
-  MGS_TYPE_SOUND = 0,
-  MGS_TYPE_ENV = 1
+  SGS_TYPE_TOP = 0,
+  SGS_TYPE_NESTED,
+  SGS_TYPE_SETTOP,
+  SGS_TYPE_SETNESTED,
+  SGS_TYPE_ENV
 };
 
 enum {
-  MGS_FLAG_PLAY = 1<<0,
-  MGS_FLAG_REFTIME = 1<<1,
-  MGS_FLAG_REFPHASE = 1<<2,
-  MGS_FLAG_ENTERED = 1<<3
+  SGS_FLAG_EXEC = 1<<0,
+  SGS_FLAG_ENTERED = 1<<1
 };
 
 enum {
-  MGS_ATTR_FREQRATIO = 1<<0,
-  MGS_ATTR_DYNFREQRATIO = 1<<1
+  SGS_ATTR_FREQRATIO = 1<<0,
+  SGS_ATTR_DYNFREQRATIO = 1<<1
 };
 
 enum {
-  MGS_WAVE_SIN = 0,
-  MGS_WAVE_SQR,
-  MGS_WAVE_TRI,
-  MGS_WAVE_SAW
+  SGS_WAVE_SIN = 0,
+  SGS_WAVE_SQR,
+  SGS_WAVE_TRI,
+  SGS_WAVE_SAW
 };
 
 enum {
-  MGS_MODE_CENTER = 0,
-  MGS_MODE_LEFT   = 1,
-  MGS_MODE_RIGHT  = 2
+  SGS_MODE_CENTER = 0,
+  SGS_MODE_LEFT   = 1,
+  SGS_MODE_RIGHT  = 2
 };
 
 enum {
-  MGS_PMODS = 1<<0,
-  MGS_FMODS = 1<<1,
-  MGS_AMODS = 1<<2
+  SGS_TIME = 1<<0,
+  SGS_FREQ = 1<<1,
+  SGS_DYNFREQ = 1<<2,
+  SGS_PHASE = 1<<3,
+  SGS_AMP = 1<<4,
+  SGS_DYNAMP = 1<<5,
+  SGS_ATTR = 1<<6
 };
 
-typedef struct MGSProgramNodeChain {
+enum {
+  SGS_PMODS = 1<<0,
+  SGS_FMODS = 1<<1,
+  SGS_AMODS = 1<<2
+};
+
+typedef struct SGSProgramNodeChain {
   uint count;
-  struct MGSProgramNode *chain;
-} MGSProgramNodeChain;
+  struct SGSProgramNode *chain;
+} SGSProgramNodeChain;
 
-typedef struct MGSProgramNode {
-  struct MGSProgramNode *next, *ref;
+typedef struct SGSProgramNode {
+  struct SGSProgramNode *next;
   uchar type, flag, attr, wave, mode;
-  float amp, dynamp, delay, time, freq, dynfreq, phase;
+  float time, delay, freq, dynfreq, phase, amp, dynamp;
   uint id;
-  MGSProgramNodeChain pmod, fmod, amod;
-  struct MGSProgramNode *link;
-} MGSProgramNode;
+  SGSProgramNodeChain pmod, fmod, amod;
+  union { /* type-specific data */
+    struct {
+      struct SGSProgramNode *link;
+    } nested;
+    struct {
+      uchar values;
+      uchar mods;
+      struct SGSProgramNode *ref;
+    } set;
+  } spec;
+} SGSProgramNode;
 
-struct MGSProgram {
-  MGSProgramNode *steps;
-  uint stepc;
+struct SGSProgram {
+  SGSProgramNode *nodelist;
+  uint nodec;
+  uint topc; /* nodes >= topc are nested ones, ids starting over from 0 */
 };
