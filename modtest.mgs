@@ -1,5 +1,5 @@
-Wsin f120 t20 m{
-	Wsin f190 t10 a1 m{
+Wsin f120 t20 p!{
+	Wsin f190 t10 a1 p!{
 		Wsin f1125 t10 a1
 	}
 	Wsin f64

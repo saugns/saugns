@@ -20,7 +20,10 @@ typedef struct MGSOsc {
 #define MGSOsc_COEFF(sr) \
   (4294967296.0/(sr))
 
-#define MGSOsc_PHASE(o) \
+#define MGSOsc_PHASE(p) \
+  ((uint)((p) * 4294967296.0))
+
+#define MGSOsc_GET_PHASE(o) \
   ((uint)((o)->phase))
 
 #define MGSOsc_SET_PHASE(o, p) \
@@ -92,7 +95,7 @@ typedef struct MGSOsc {
            ((float)(((osctab)[MGSOsc__i + 1] - MGSOsc__s))) * \
            ((float)(MGSOsc__p & MGSOsc_TABINDEXMASK)) * \
            (1.f / (1 << (32-MGSOsc_TABINDEXBITS)))) * \
-          (1.f / (1 << 16)) + \
+          (1.f / ((1 << 16) - 2)) + \
           .5f; \
 }while(0)
 
