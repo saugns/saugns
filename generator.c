@@ -20,20 +20,16 @@ typedef struct OperatorNode {
   uint time, silence;
   uchar type, attr;
   float freq, dynfreq;
-  struct OperatorNode *fmodchain;
-  struct OperatorNode *pmodchain;
   SGSOscLuv *osctype;
   SGSOsc osc;
   float amp, dynamp;
-  struct OperatorNode *amodchain;
-  struct OperatorNode *link;
   ParameterValit valitamp, valitfreq;
 } OperatorNode;
 
 typedef struct VoiceNode {
   int pos; /* negative for wait time */
   uchar flag;
-  OperatorNode *o;
+  const SGSProgramCncSch *cncsch;
   float panning;
   ParameterValit valitpanning;
 } VoiceNode;
@@ -41,6 +37,7 @@ typedef struct VoiceNode {
 typedef union Data {
   int i;
   float f;
+  void *v;
 } Data;
 
 typedef struct EventNode {
@@ -63,8 +60,13 @@ static uint count_flags(uint flags) {
   return count;
 }
 
+typedef union BufData {
+  int i;
+  float f;
+} BufData;
+
 #define BUF_LEN 256
-typedef Data Buf[BUF_LEN];
+typedef BufData Buf[BUF_LEN];
 
 #define NO_DELAY_OFFS (0x80000000)
 struct SGSGenerator {
@@ -81,24 +83,8 @@ struct SGSGenerator {
   /* actual nodes of varying type stored here */
 };
 
-static int calc_bufs(OperatorNode *n, uchar waveenv) {
-  int count = 1, i = 0, j;
-BEGIN:
-  ++count;
-  if (n->fmodchain) i = calc_bufs(n->fmodchain, 1);
-  if (!waveenv) {
-    ++count, --i;
-    if (n->amodchain) {j = calc_bufs(n->amodchain, 1); if (i < j) i = j;}
-  }
-  if (n->pmodchain) {j = calc_bufs(n->pmodchain, 0); if (i < j) i = j;}
-  if (!n->link) return (i > 0 ? count + i : count);
-  n = n->link;
-  ++count, --i; /* need separate accumulating buf */
-  goto BEGIN;
-} /* need separate multiplying buf */
-
-static void upsize_bufs(SGSGenerator *o, OperatorNode *n) {
-  uint count = calc_bufs(n, 0);
+static void upsize_bufs(SGSGenerator *o) {//, OperatorNode *n) {
+  uint count = 3;//calc_bufs(n, 0);
   if (count > o->bufc) {
     o->bufs = realloc(o->bufs, sizeof(Buf) * count);
     o->bufc = count;
@@ -125,9 +111,8 @@ SGSGenerator* SGSGenerator_create(uint srate, struct SGSProgram *prg) {
                                               SGS_VALITAMP |
                                               SGS_VALITPANNING))*2 - 1));
     if (step->optype == SGS_TYPE_NESTED)
-      setssize += sizeof(Data) *
-                  ((step->params &
-                    (SGS_AMOD|SGS_FMOD|SGS_PMOD|SGS_LINK)) != 0);
+      if (step->params & SGS_CNCSCH)
+        setssize += sizeof(Data);
   }
   o = calloc(1, size + opssize + eventssize + voicessize + setssize);
   o->srate = srate;
@@ -157,17 +142,11 @@ SGSGenerator* SGSGenerator_create(uint srate, struct SGSProgram *prg) {
     s->params = step->params;
     if (step->optype == SGS_TYPE_NESTED) {
       s->setid += prg->topopc;
-      if (s->params & (SGS_AMOD|SGS_FMOD|SGS_PMOD|SGS_LINK))
-        (*set++).i = step->topopid;
     }
-    if (s->params & SGS_AMOD)
-      (*set++).i = step->amodid >= 0 ? (int)(step->amodid + prg->topopc) : -1;
-    if (s->params & SGS_FMOD)
-      (*set++).i = step->fmodid >= 0 ? (int)(step->fmodid + prg->topopc) : -1;
-    if (s->params & SGS_PMOD)
-      (*set++).i = step->pmodid >= 0 ? (int)(step->pmodid + prg->topopc) : -1;
-    if (s->params & SGS_LINK)
-      (*set++).i = step->linkid >= 0 ? (int)(step->linkid + prg->topopc) : -1;
+    if (s->params & (SGS_CNCSCH|SGS_PANNING|SGS_VALITPANNING))
+      (*set++).i = step->parentid;
+    if (s->params & SGS_CNCSCH)
+      (*set++).v = step->cncsch;
     if (s->params & SGS_ATTR)
       (*set++).i = step->attr;
     if (s->params & SGS_WAVE)
@@ -196,14 +175,12 @@ SGSGenerator* SGSGenerator_create(uint srate, struct SGSProgram *prg) {
     }
     if (s->params & SGS_DYNAMP)
       (*set++).f = step->dynamp;
-    if (step->optype == SGS_TYPE_TOP) {
-      if (s->params & SGS_PANNING)
-        (*set++).f = step->topop.panning;
-      if (s->params & SGS_VALITPANNING) {
-        (*set++).i = ((float)step->topop.valitpanning.time_ms) * srate * .001f;
-        (*set++).f = step->topop.valitpanning.goal;
-        (*set++).i = step->topop.valitpanning.type;
-      }
+    if (s->params & SGS_PANNING)
+      (*set++).f = step->panning;
+    if (s->params & SGS_VALITPANNING) {
+      (*set++).i = ((float)step->valitpanning.time_ms) * srate * .001f;
+      (*set++).f = step->valitpanning.goal;
+      (*set++).i = step->valitpanning.type;
     }
     data = (void*)(((uchar*)data) +
                    (sizeof(SetNode) - sizeof(Data)) +
@@ -214,7 +191,6 @@ SGSGenerator* SGSGenerator_create(uint srate, struct SGSProgram *prg) {
       n->type = step->optype;
       if (step->optype == SGS_TYPE_TOP) {
         VoiceNode *vn = &o->voices[s->setid];
-        vn->o = n;
         vn->pos = -indexwaittime;
       }
       indexwaittime = 0;
@@ -226,42 +202,14 @@ SGSGenerator* SGSGenerator_create(uint srate, struct SGSProgram *prg) {
 static void SGSGenerator_handle_event(SGSGenerator *o, EventNode *e) {
   if (1) {
     SetNode *s = e->node;
-    OperatorNode *n = &o->ops[s->setid], *topn = 0;
+    OperatorNode *n = &o->ops[s->setid];
     VoiceNode *vn = 0;
     Data *data = s->data;
-    if (n->type == SGS_TYPE_TOP)
-      vn = &o->voices[s->setid];
-    if (s->params & (SGS_AMOD|SGS_FMOD|SGS_PMOD|SGS_LINK))
-      topn = (vn ? n : &o->ops[(*data++).i]);
+    if (s->params & (SGS_CNCSCH|SGS_PANNING|SGS_VALITPANNING))
+      vn = &o->voices[(*data++).i];
     /* set state */
-    if (s->params & SGS_AMOD) {
-      int id = (*data++).i;
-      if (id >= 0) {
-        n->amodchain = &o->ops[id];
-      } else
-        n->amodchain = 0;
-    }
-    if (s->params & SGS_FMOD) {
-      int id = (*data++).i;
-      if (id >= 0) {
-        n->fmodchain = &o->ops[id];
-      } else
-        n->fmodchain = 0;
-    }
-    if (s->params & SGS_PMOD) {
-      int id = (*data++).i;
-      if (id >= 0) {
-        n->pmodchain = &o->ops[id];
-      } else
-        n->pmodchain = 0;
-    }
-    if (s->params & SGS_LINK) {
-      int id = (*data++).i;
-      if (id >= 0) {
-        n->link = &o->ops[id];
-      } else
-        n->link = 0;
-    }
+    if (s->params & SGS_CNCSCH)
+      vn->cncsch = (*data++).v;
     if (s->params & SGS_ATTR) {
       uchar attr = (uchar)(*data++).i;
       if (!(s->params & SGS_FREQ)) {
@@ -333,8 +281,8 @@ static void SGSGenerator_handle_event(SGSGenerator *o, EventNode *e) {
       vn->valitpanning.goal = (*data++).f;
       vn->valitpanning.type = (*data++).i;
     }
-    if (topn)
-      upsize_bufs(o, topn);
+    if (vn)
+      upsize_bufs(o);//, topn);
     if (vn)
       vn->flag |= SGS_FLAG_INIT;
   }
@@ -349,8 +297,8 @@ void SGSGenerator_destroy(SGSGenerator *o) {
  * node block processing
  */
 
-static uchar run_param(Data *buf, uint buflen, ParameterValit *vi,
-                       float *state, const Data *modbuf) {
+static uchar run_param(BufData *buf, uint buflen, ParameterValit *vi,
+                       float *state, const BufData *modbuf) {
   uint i, end, len, filllen;
   double coeff;
   float s0 = *state;
@@ -414,10 +362,10 @@ static uchar run_param(Data *buf, uint buflen, ParameterValit *vi,
 }
 
 static void run_block(Buf *bufs, uint buflen, OperatorNode *n,
-                      Data *parentfreq, double osc_coeff, uchar waveenv) {
+                      BufData *parentfreq, double osc_coeff, uchar waveenv) {
   uchar acc = 0;
   uint i, len;
-  Data *sbuf, *freq, *freqmod, *pm, *amp;
+  BufData *sbuf, *freq, *freqmod, *pm, *amp;
   Buf *nextbuf = bufs;
   ParameterValit *vi;
 BEGIN:
@@ -458,7 +406,7 @@ BEGIN:
   if (run_param(freq, len, vi, &n->freq, freqmod))
     n->attr &= ~(SGS_ATTR_VALITFREQ|SGS_ATTR_VALITFREQRATIO);
   if (n->fmodchain) {
-    Data *fmbuf;
+    BufData *fmbuf;
     run_block(nextbuf, len, n->fmodchain, freq, osc_coeff, 1);
     fmbuf = *nextbuf;
     if (n->attr & SGS_ATTR_FREQRATIO) {
@@ -519,43 +467,50 @@ NEXT:
 
 static uint run_voice(SGSGenerator *o, VoiceNode *vn, short *sp, uint len) {
   double osc_coeff = o->osc_coeff;
-  OperatorNode *n = vn->o;
-  uint i, ret, time = n->time - vn->pos;
-  if (time > len)
-    time = len;
-  ret = time;
-  if (n->silence) {
-    if (n->silence >= time) {
-      n->silence -= time;
-      goto RETURN;
+  SGSProgramOpAdjc *vna;
+  uint i, ret;
+  if (!vn->cncsch)
+    goto RETURN;
+  vna = vn->cncsch[0];
+  for (i = 0; i < vna->pmodc; ++i) {
+    OperatorNode *n = &o->ops[vna->adjcs[i]];
+    int time = n->time - vn->pos;
+    if (time > len)
+      time = len;
+    ret = time;
+    if (n->silence) {
+      if (n->silence >= time) {
+        n->silence -= time;
+        vn->pos += ret;
+        continue;
+      }
+      sp += n->silence + n->silence; /* doubled given stereo interleaving */
+      time -= n->silence;
+      n->silence = 0;
     }
-    sp += n->silence + n->silence; /* doubled given stereo interleaving */
-    time -= n->silence;
-    n->silence = 0;
-  }
-  do {
-    len = BUF_LEN;
-    if (len > time)
-      len = time;
-    time -= len;
-    run_block(o->bufs, len, n, 0, osc_coeff, 0);
-    if (n->attr & SGS_ATTR_VALITPANNING) {
-      Data *buf = o->bufs[1];
-      if (run_param(buf, len, &vn->valitpanning, &vn->panning, 0))
-        n->attr &= ~SGS_ATTR_VALITPANNING;
-      for (i = 0; i < len; ++i, sp += 2) {
+    do {
+      len = BUF_LEN;
+      if (len > time)
+        len = time;
+      time -= len;
+      run_block(o->bufs, len, n, 0, osc_coeff, 0);
+      if (n->attr & SGS_ATTR_VALITPANNING) {
+        BufData *buf = o->bufs[1];
+        if (run_param(buf, len, &vn->valitpanning, &vn->panning, 0))
+          n->attr &= ~SGS_ATTR_VALITPANNING;
+        for (i = 0; i < len; ++i, sp += 2) {
+          int s = (*o->bufs)[i].i, p;
+          SET_I2F(p, ((float)s) * buf[i].f);
+          sp[0] += s - p;
+          sp[1] += p;
+        }
+      } else for (i = 0; i < len; ++i, sp += 2) {
         int s = (*o->bufs)[i].i, p;
-        SET_I2F(p, ((float)s) * buf[i].f);
+        SET_I2F(p, ((float)s) * vn->panning);
         sp[0] += s - p;
         sp[1] += p;
       }
-    } else for (i = 0; i < len; ++i, sp += 2) {
-      int s = (*o->bufs)[i].i, p;
-      SET_I2F(p, ((float)s) * vn->panning);
-      sp[0] += s - p;
-      sp[1] += p;
-    }
-  } while (time);
+    } while (time);
 RETURN:
   vn->pos += ret;
   if ((uint)vn->pos == n->time)

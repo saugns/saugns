@@ -156,13 +156,13 @@ typedef struct NodeData {
   char scope;
   uchar topopevent; /* ensure new_event() type is SGS_TYPE_TOP */
   EventNode *event; /* state for tentative event until end_event() */
-  EventNode *first, *last;
+  EventNode *first, *current, *last;
   EventNode *oplast; /* last event for last operator */
   NodeTarget *target;
   char *setsym;
   /* timing/delay */
   EventNode *group,
-                  *composite; /* allows specifying events out of linear order*/
+            *composite; /* allows specifying events out of linear order*/
   uchar end_composite;
   uint next_wait_ms; /* added for next event; adjusted in parser */
   uint add_wait_ms; /* added to event's wait in end_event() */
@@ -281,6 +281,7 @@ static void new_event(SGSParser *o, NodeData *nd, EventNode *opevent,
 
     pe = nd->last;
   } else {
+    nd->current = e; /* remains the same for composite events */
     nd->composite = 0;
 
     /* Linkage */
@@ -1030,6 +1031,10 @@ static uchar parse_level(SGSParser *o, NodeData *parentnd,
       }
       break;
     case ';':
+      if (newscope == SCOPE_SAME) {
+        o->nextc = c;
+        goto RETURN;
+      }
       if (nd.setdef || (!nd.event && !nd.last))
         goto INVALID;
       end_event(o, &nd);
@@ -1078,7 +1083,7 @@ static uchar parse_level(SGSParser *o, NodeData *parentnd,
       if (nd.setdef ||
           (nd.event && nd.event->optype == SGS_TYPE_NESTED))
         goto INVALID;
-      if (!newscope) {
+      if (newscope == SCOPE_SAME) {
         o->nextc = c;
         goto RETURN;
       }
@@ -1088,7 +1093,7 @@ static uchar parse_level(SGSParser *o, NodeData *parentnd,
         break;
       }
       if (nd.group) {
-        nd.last->groupfrom = nd.group;
+        nd.current->groupfrom = nd.group;
         nd.group = 0;
       }
       break;
@@ -1123,14 +1128,12 @@ FINISH:
     warning(o, "end of file without closing '}'s", c);
 RETURN:
   if (nd.event) {
-    if (nd.event->time_ms < 0) {
+    if (nd.event->time_ms < 0)
       nd.event->time_ms = o->def_time_ms; /* use default */
-      nd.event->time_ms += nd.event->silence_ms;
-    }
     end_operator(o, &nd);
   }
-  if (nd.last)
-    nd.last->groupfrom = nd.group;
+  if (nd.current)
+    nd.current->groupfrom = nd.group;
   if (nd.setsym)
     free(nd.setsym);
   --o->calllevel;
@@ -1183,29 +1186,87 @@ static void group_events(EventNode *to, int def_time_ms) {
     until->wait_ms += wait;
 }
 
+static void time_event(EventNode *e) {
+  /* Fill in blank valit durations */
+  if (e->valitfreq.time_ms < 0)
+    e->valitfreq.time_ms = e->time_ms;
+  if (e->valitamp.time_ms < 0)
+    e->valitamp.time_ms = e->time_ms;
+  if (e->optype == SGS_TYPE_TOP) {
+    if (e->topop.valitpanning.time_ms < 0)
+      e->topop.valitpanning.time_ms = e->time_ms;
+  }
+  if (e->time_ms >= 0 && !(e->parseflags & SILENCE_ADDED)) {
+    e->time_ms += e->silence_ms;
+    e->parseflags |= SILENCE_ADDED;
+  }
+  if (e->parseflags & ADD_WAIT_DURATION) {
+    if (e->next)
+      e->next->wait_ms += e->time_ms;
+    e->parseflags &= ~ADD_WAIT_DURATION;
+  }
+}
+
+static void flatten_events(EventNode *e) {
+  EventNode *ce = e->composite;
+  EventNode *se = e->next, *se_prev = e;
+  int wait_ms = 0;
+  int added_wait_ms = 0;
+  if (!ce)
+    return;
+  /* Flatten composites */
+  do {
+    if (!se) {
+      se_prev->next = ce;
+      break;
+    }
+    wait_ms += se->wait_ms;
+    if (se->next) {
+      if ((wait_ms + se->next->wait_ms) <= (ce->wait_ms + added_wait_ms)) {
+        se_prev = se;
+        se = se->next;
+        continue;
+      }
+    }
+    if (se->wait_ms >= (ce->wait_ms + added_wait_ms)) {
+      EventNode *ce_next = ce->next;
+      se->wait_ms -= ce->wait_ms + added_wait_ms;
+      added_wait_ms = 0;
+      wait_ms = 0;
+      se_prev->next = ce;
+      se_prev = ce;
+      se_prev->next = se;
+      ce = ce_next;
+    } else {
+      EventNode *se_next, *ce_next;
+      se_next = se->next;
+      ce_next = ce->next;
+      ce->wait_ms -= wait_ms;
+      added_wait_ms += ce->wait_ms;
+      wait_ms = 0;
+      se->next = ce;
+      ce->next = se_next;
+      se_prev = ce;
+      se = se_next;
+      ce = ce_next;
+    }
+  } while (ce);
+  e->composite = 0;
+}
+
 static SGSProgram* build(SGSParser *o) {
   SGSProgram *prg = o->prg;
   EventNode *e;
   SGSProgramEvent *oe;
-  uint id = 0;
+  uint id;
   uint alloc = 0;
+  /* Pass #1 - perform timing adjustments */
   for (e = o->events; e; e = e->next) {
-    EventNode *e_next = e->next; /* next before flattening if any */
-    /* Fill in blank valit durations */
-    if (e->valitfreq.time_ms < 0)
-      e->valitfreq.time_ms = e->time_ms;
-    if (e->valitamp.time_ms < 0)
-      e->valitamp.time_ms = e->time_ms;
-    if (e->optype == SGS_TYPE_TOP) {
-      if (e->topop.valitpanning.time_ms < 0)
-        e->topop.valitpanning.time_ms = e->time_ms;
-    }
-    /* Handle composites */
+    time_event(e);
+    /* Handle composites (flatten in next loop) */
     if (e->composite) {
       EventNode *ce = e->composite, *ce_prev = e;
-      EventNode *se = e->next, *se_prev = e;
-      int wait_ms = 0;
-      int added_wait_ms = 0;
+      EventNode *se = e->next;
       if (ce->time_ms < 0)
         ce->time_ms = o->def_time_ms;
       /* Timing for composites */
@@ -1213,79 +1274,32 @@ static SGSProgram* build(SGSParser *o) {
         if (ce->wait_ms) { /* Simulate delay with silence */
           ce->silence_ms += ce->wait_ms;
           ce->params |= SGS_SILENCE;
-          if (e_next)
-            e_next->wait_ms += ce->wait_ms;
+          if (se)
+            se->wait_ms += ce->wait_ms;
           ce->wait_ms = 0;
         }
         ce->wait_ms += ce_prev->time_ms;
         if (ce->time_ms < 0)
           ce->time_ms = ce_prev->time_ms - ce_prev->silence_ms;
-        ce->time_ms += ce->silence_ms;
-        ce->parseflags |= SILENCE_ADDED;
+        time_event(ce);
         e->time_ms += ce->time_ms;
         ce_prev = ce;
         ce = ce->next;
       } while (ce);
-      /* Time |-terminated sequence before flattening */
-      if (e->groupfrom)
-        group_events(e, o->def_time_ms);
-      /* Flatten composites */
-      ce = e->composite;
-      do {
-        if (!se) {
-          se_prev->next = ce;
-          break;
-        }
-        wait_ms += se->wait_ms;
-        if (se->next) {
-          if ((wait_ms + se->next->wait_ms) <= (ce->wait_ms + added_wait_ms)) {
-            se_prev = se;
-            se = se->next;
-            continue;
-          }
-        }
-        if (se->wait_ms >= (ce->wait_ms + added_wait_ms)) {
-          EventNode *ce_next = ce->next;
-          se->wait_ms -= ce->wait_ms + added_wait_ms;
-          added_wait_ms = 0;
-          wait_ms = 0;
-          se_prev->next = ce;
-          se_prev = ce;
-          se_prev->next = se;
-          ce = ce_next;
-        } else {
-          EventNode *se_next, *ce_next;
-          se_next = se->next;
-          ce_next = ce->next;
-          ce->wait_ms -= wait_ms;
-          added_wait_ms += ce->wait_ms;
-          wait_ms = 0;
-          se->next = ce;
-          ce->next = se_next;
-          se_prev = ce;
-          se = se_next;
-          ce = ce_next;
-        }
-      } while (ce);
-      e->composite = 0;
-    } else {
-      /* Time |-terminated sequences */
-      if (e->groupfrom)
-        group_events(e, o->def_time_ms);
     }
-    if (e->time_ms >= 0 && !(e->parseflags & SILENCE_ADDED)) {
-      e->time_ms += e->silence_ms;
-      e->parseflags |= SILENCE_ADDED;
-    }
-    if (e->parseflags & ADD_WAIT_DURATION) {
-      if (e_next)
-        e_next->wait_ms += e->time_ms;
-      e->parseflags &= ~ADD_WAIT_DURATION;
-    }
+    /* Time |-terminated sequences */
+    if (e->groupfrom)
+      group_events(e, o->def_time_ms);
   }
-  for (e = o->events; e; ) {
+  /* Pass #2 - flatten list */
+  for (id = 0, e = o->events; e; e = e->next) {
+    if (e->composite)
+      flatten_events(e);
+    e->id = id++;
+  }
+  /* Pass #3 - produce output */
+  for (id = 0, e = o->events; e; ) {
     EventNode *e_next = e->next;
-    e->id = id;
     /* Add to final output list */
     if (id >= alloc) {
       if (!alloc) alloc = 1;
@@ -1293,6 +1307,8 @@ static SGSProgram* build(SGSParser *o) {
       prg->events = realloc(prg->events, sizeof(SGSProgramEvent) * alloc);
     }
     oe = &prg->events[id];
+    oe->opprevid = (e->opprev ? (int)e->opprev->id : -1);
+    oe->opnextid = (e->opnext ? (int)e->opnext->id : -1);
     oe->optype = e->optype;
     oe->opid = e->opid;
     oe->parentid = e->parentid;

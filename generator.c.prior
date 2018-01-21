@@ -141,7 +141,6 @@ SGSGenerator* SGSGenerator_create(uint srate, struct SGSProgram *prg) {
   o->voices = (void*)(((uchar*)o) + size + opssize + eventssize);
   data      = (void*)(((uchar*)o) + size + opssize + eventssize + voicessize);
   SGSOsc_init();
-  step = prg->events;
   voice = op = 0;
   indexwaittime = 0;
   for (i = 0; i < prg->eventc; ++i) {
@@ -210,7 +209,7 @@ SGSGenerator* SGSGenerator_create(uint srate, struct SGSProgram *prg) {
                    (sizeof(SetNode) - sizeof(Data)) +
                    (((uchar*)set) - ((uchar*)s->data)));
     indexwaittime += e->waittime;
-    if (!step->opprev) { /* new operator */
+    if (step->opprevid == -1) { /* new operator */
       OperatorNode *n = &o->ops[s->setid];
       n->type = step->optype;
       if (step->optype == SGS_TYPE_TOP) {

@@ -6,8 +6,8 @@ enum {
 
 /* operator parameters */
 enum {
-  /* voice-operators or operator-operators linkage */
-  SGS_ADJC = 1<<0,
+  /* connection scheme (voice-operator and operator-operator linkage) */
+  SGS_CNCSCH = 1<<0,
   /* voice values */
   SGS_PANNING = 1<<1,
   SGS_VALITPANNING = 1<<2,
@@ -61,6 +61,12 @@ typedef struct SGSProgramOpAdjc {
   int adjcs[1]; /* sized to total number */
 } SGSProgramOpAdjc;
 
+/* Connection scheme - a per-voice list of adjacent nodes for each node,
+ * beginning with the voice itself. Swapping it out (on an event giving a
+ * new) will reconfigure the operators for the voice. Main index corresponds
+ * to counter increased at each new subnode reached. */
+typedef SGSProgramOpAdjc *SGSProgramCncSch;
+
 typedef struct SGSProgramValit {
   int time_ms, pos_ms;
   float goal;
@@ -76,13 +82,12 @@ typedef struct SGSProgramEvent {
   union {
     struct {
       uint id;
-      const SGSProgramOpAdjc *graph;
+      SGSProgramCncSch *cncsch;
       float panning;
       SGSProgramValit valitpanning;
     } voice;
     struct {
       uint id;
-      const SGSProgramOpAdjc *adjc;
       uchar attr, wave;
       int time_ms, silence_ms;
       float freq, dynfreq, phase, amp, dynamp;
