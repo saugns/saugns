@@ -21,6 +21,7 @@ which the < was given.
 
 Operations will output audio at the same time unless time shifts/delays are
 involved. Each delaying will delay (shift the time of) all future operations.
+
 The following operations are supported:
 
 S:
@@ -43,3 +44,9 @@ The following operators are supported:
 E:	Add time shift/delay independent of / so that the next operation
 	begins at the end of that which preceeds it, though / and \ may
 	further delay it.
+
+Any W operation may be prefixed by "'label " in order to define a label for
+it, where label is anything followed by whitespace; thereafter the label may
+be referenced as ":label", allowing future changes to an operation
+previously defined. For practical purposes, label referencing can be
+considered an operation, behaving the same.
