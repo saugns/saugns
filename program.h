@@ -1,75 +1,66 @@
+/* operator types */
 enum {
-  MGS_TYPE_TOP = 0,
-  MGS_TYPE_NESTED,
-  MGS_TYPE_SETTOP,
-  MGS_TYPE_SETNESTED,
-  MGS_TYPE_ENV
+  SGS_TYPE_TOP = 0,
+  SGS_TYPE_NESTED,
 };
 
+/* operator parameters */
 enum {
-  MGS_FLAG_EXEC = 1<<0,
-  MGS_FLAG_ENTERED = 1<<1
+  /* operator linkage */
+  SGS_PMOD = 1<<0,
+  SGS_FMOD = 1<<1,
+  SGS_AMOD = 1<<2,
+  SGS_LINK = 1<<3,
+  /* operator values */
+  SGS_WAVE = 1<<4,
+  SGS_TIME = 1<<5,
+  SGS_SILENCE = 1<<6,
+  SGS_FREQ = 1<<7,
+  SGS_DYNFREQ = 1<<8,
+  SGS_PHASE = 1<<9,
+  SGS_AMP = 1<<10,
+  SGS_DYNAMP = 1<<11,
+  SGS_PANNING = 1<<12,
+  SGS_ATTR = 1<<13
 };
 
+/* operator wave types */
 enum {
-  MGS_ATTR_FREQRATIO = 1<<0,
-  MGS_ATTR_DYNFREQRATIO = 1<<1
+  SGS_WAVE_SIN = 0,
+  SGS_WAVE_SQR,
+  SGS_WAVE_TRI,
+  SGS_WAVE_SAW
 };
 
+/* operator atttributes */
 enum {
-  MGS_WAVE_SIN = 0,
-  MGS_WAVE_SQR,
-  MGS_WAVE_TRI,
-  MGS_WAVE_SAW
+  SGS_ATTR_FREQRATIO = 1<<1,
+  SGS_ATTR_DYNFREQRATIO = 1<<2
 };
 
-enum {
-  MGS_MODE_CENTER = 0,
-  MGS_MODE_LEFT   = 1,
-  MGS_MODE_RIGHT  = 2
-};
-
-enum {
-  MGS_TIME = 1<<0,
-  MGS_FREQ = 1<<1,
-  MGS_DYNFREQ = 1<<2,
-  MGS_PHASE = 1<<3,
-  MGS_AMP = 1<<4,
-  MGS_DYNAMP = 1<<5,
-  MGS_ATTR = 1<<6
-};
-
-enum {
-  MGS_PMODS = 1<<0,
-  MGS_FMODS = 1<<1,
-  MGS_AMODS = 1<<2
-};
-
-typedef struct MGSProgramNodeChain {
-  uint count;
-  struct MGSProgramNode *chain;
-} MGSProgramNodeChain;
-
-typedef struct MGSProgramNode {
-  struct MGSProgramNode *next;
-  uchar type, flag, attr, wave, mode;
-  float time, delay, freq, dynfreq, phase, amp, dynamp;
+typedef struct SGSProgramEvent {
+  struct SGSProgramEvent *next;
+  struct SGSProgramEvent *lvnext;
+  struct SGSProgramEvent *opprev, *opnext; /* linked list per topopid */
+  int wait_ms;
   uint id;
-  MGSProgramNodeChain pmod, fmod, amod;
-  union { /* type-specific data */
-    struct {
-      struct MGSProgramNode *link;
-    } nested;
-    struct {
-      uchar values;
-      uchar mods;
-      struct MGSProgramNode *ref;
-    } set;
-  } spec;
-} MGSProgramNode;
+  uint opid; /* counts up from 0 separately for different optypes */
+  uchar optype;
+  uchar opfirst;
+  uint topopid; /* top operator for operator set */
+  /* operator parameters possibly set: (-1 id = none) */
+  ushort params;
+  uchar attr;
+  uchar wave;
+  int time_ms, silence_ms;
+  float freq, dynfreq, phase, amp, dynamp, panning;
+  int pmodid, fmodid, amodid;
+  int linkid;
+} SGSProgramEvent;
 
-struct MGSProgram {
-  MGSProgramNode *nodelist;
-  uint nodec;
-  uint topc; /* nodes >= topc are nested ones, ids starting over from 0 */
+struct SGSProgram {
+  SGSProgramEvent *events;
+  uint eventc;
+  uint operatorc,
+       topopc; /* top-level operators */
 };
