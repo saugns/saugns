@@ -19,169 +19,215 @@ typedef struct SGSParser {
   /* node state */
   uint level;
   uint setdef, setnode;
-  uint nestedc;
-  SGSProgramNode *nested; /* list added to end of top nodes at end of parsing */
-  SGSProgramNode *last_top, *last_nested;
-  SGSProgramNode *undo_last;
+  uint nestedopc;
+  SGSProgramEvent *last_event;
+  SGSProgramEvent *undo_last;
   /* settings/ops */
-  uchar n_mode;
-  float n_ampmult;
-  float n_time;
-  float n_freq, n_ratio;
+  float ampmult;
+  uint def_time_ms;
+  float def_freq, def_ratio;
 } SGSParser;
 
 /* things that need to be separate for each nested parse_level() go here */
 typedef struct NodeData {
-  SGSProgramNode *node; /* state for tentative node until end_node() */
-  SGSProgramNodeChain *target;
-  SGSProgramNode *last;
+  SGSProgramEvent *opevent; /* event for current operator */
+  SGSProgramEvent *oplast;
+  int *idtarget;
+  SGSProgramEvent *event; /* state for tentative event until end_event() */
+  SGSProgramEvent *last;
   char *setsym;
   /* timing/delay */
-  SGSProgramNode *n_begin;
-  uchar n_end;
-  uchar n_time_delay;
-  float n_add_delay; /* added to node's delay in end_node */
-  float n_next_add_delay;
+  SGSProgramEvent *group;
+  uchar end_group;
+  uchar wait_duration;
+  uint next_wait_ms; /* added for next event; adjusted in parser */
+  uint add_wait_ms; /* added to event's wait in end_event() */
 } NodeData;
 
-static void end_node(SGSParser *o, NodeData *nd);
+static void new_event(SGSParser *o, NodeData *nd, SGSProgramEvent *opevent);
+static void end_operator(SGSParser *o, NodeData *nd);
+static void end_event(SGSParser *o, NodeData *nd);
 
-static void new_node(SGSParser *o, NodeData *nd, SGSProgramNodeChain *target, uchar type) {
+static void new_operator(SGSParser *o, NodeData *nd, int *idtarget, uchar wave) {
   SGSProgram *p = o->prg;
-  SGSProgramNode *n;
-  end_node(o, nd);
-  n = nd->node = calloc(1, sizeof(SGSProgramNode));
-  nd->target = target;
-  n->type = type;
-  /* defaults */
-  n->amp = 1.f;
-  n->mode = o->n_mode;
-  if (type == SGS_TYPE_TOP)
-    n->time = -1.f; /* set later */
-  else if (type == SGS_TYPE_NESTED)
-    n->time = o->n_time;
-  n->freq = o->n_freq;
-
-  /* tentative linking */
-  if (!nd->target) {
-    if (!p->nodelist)
-      p->nodelist = n;
-    else
-      o->last_top->next = n;
+  SGSProgramEvent *e;
+  end_operator(o, nd);
+  new_event(o, nd, 0);
+  e = nd->event;
+  e->wave = wave;
+  if (!idtarget) {
+    e->optype = SGS_TYPE_TOP;
+    e->opid = p->topopc++;
   } else {
-    if (!o->nested)
-      o->nested = n;
-    else
-      o->last_nested->next = n;
-    n->id = o->nestedc++;
+    e->optype = SGS_TYPE_NESTED;
+    e->opid = o->nestedopc++;
+    if (*idtarget < 0)
+      *idtarget = e->opid;
+    else {
+      nd->oplast->params |= SGS_LINK;
+      nd->oplast->linkid = e->opid;
+    }
   }
+  nd->idtarget = idtarget;
+  nd->oplast = e;
 
-  /* prepare timing adjustment */
-  nd->n_add_delay += nd->n_next_add_delay;
-  if (nd->n_time_delay) {
-    if (o->last_top)
-      nd->n_add_delay += o->last_top->time;
-    nd->n_time_delay = 0;
-  }
-  nd->n_next_add_delay = 0.f;
-
-  if (nd->target) {
-    o->undo_last = o->last_nested;
-    o->last_nested = n; /* can't wait due to recursion for nesting */
-  }
+  /* Set defaults */
+  e->amp = 1.f;
+  if (e->optype == SGS_TYPE_TOP) {
+    e->time_ms = -1; /* set later */
+    e->panning = .5f; /* default - center */
+  } else
+    e->time_ms = o->def_time_ms;
+  e->freq = o->def_freq;
 }
 
-static void end_node(SGSParser *o, NodeData *nd) {
+static void new_event(SGSParser *o, NodeData *nd, SGSProgramEvent *opevent) {
+  SGSProgramEvent *e, *pe;
+  end_event(o, nd);
+  e = nd->event = calloc(1, sizeof(SGSProgramEvent));
+  pe = e->opprev = opevent;
+  if (pe) {
+    e->opid = pe->opid;
+    e->optype = pe->optype;
+    e->attr = pe->attr;
+    e->wave = pe->wave;
+    e->freq = pe->freq;
+    e->dynfreq = pe->dynfreq;
+    e->amp = pe->amp;
+    e->dynamp = pe->dynamp;
+    e->panning = pe->panning;
+    e->pmodid = pe->pmodid;
+    e->fmodid = pe->fmodid;
+    e->amodid = pe->amodid;
+    e->linkid = pe->linkid;
+  } else { /* init event - everything set to defaults */
+    e->params |= SGS_PMOD |
+                 SGS_FMOD |
+                 SGS_AMOD |
+                 SGS_LINK |
+                 SGS_WAVE |
+                 SGS_TIME |
+                 SGS_SILENCE |
+                 SGS_FREQ  |
+                 SGS_DYNFREQ  |
+                 SGS_PHASE  |
+                 SGS_AMP  |
+                 SGS_DYNAMP  |
+                 SGS_PANNING  |
+                 SGS_ATTR;
+    e->pmodid = e->fmodid = e->amodid = e->linkid = -1;
+  }
+
+  /* Prepare timing adjustment */
+  nd->add_wait_ms += nd->next_wait_ms;
+  nd->next_wait_ms = 0;
+  if (nd->wait_duration) {
+    if (o->last_event)
+      nd->add_wait_ms += o->last_event->time_ms;
+    nd->wait_duration = 0;
+  }
+
+  o->undo_last = o->last_event;
+}
+
+static void end_operator(SGSParser *o, NodeData *nd) {
   SGSProgram *p = o->prg;
-  SGSProgramNode *n = nd->node;
-  if (!n)
+  SGSProgramEvent *oe = nd->opevent;
+  end_event(o, nd);
+  if (!oe)
     return; /* nothing to do */
-  nd->node = 0;
-  if (n->type == SGS_TYPE_SETTOP ||
-      n->type == SGS_TYPE_SETNESTED) {
-    /* check what the set-node changes */
-    SGSProgramNode *ref = n->spec.set.ref;
-    /* SGS_TIME set when time set */
-    if (n->freq != ref->freq)
-      n->spec.set.values |= SGS_FREQ;
-    if (n->dynfreq != ref->dynfreq)
-      n->spec.set.values |= SGS_DYNFREQ;
-    if (n->phase != ref->phase)
-      n->spec.set.values |= SGS_PHASE;
-    if (n->amp != ref->amp)
-      n->spec.set.values |= SGS_AMP;
-    if (n->dynamp != ref->dynamp)
-      n->spec.set.values |= SGS_DYNAMP;
-    if (n->attr != ref->attr)
-      n->spec.set.values |= SGS_ATTR;
-    if (n->amod.chain != ref->amod.chain)
-      n->spec.set.mods |= SGS_AMODS;
-    if (n->fmod.chain != ref->fmod.chain)
-      n->spec.set.mods |= SGS_FMODS;
-    if (n->pmod.chain != ref->pmod.chain)
-      n->spec.set.mods |= SGS_PMODS;
+  nd->opevent = 0;
 
-    if (!n->spec.set.values && !n->spec.set.mods) {
-      /* Remove no-operation set node; made simpler
-       * by all set nodes being top nodes.
-       */
-      if (o->last_nested == n)
-        o->last_nested = o->undo_last;
-      if (o->last_top == n)
-        o->last_top->next = 0;
-      free(n);
-      return;
-    }
-  }
-
-  if (!nd->target) {
-    n->flag |= SGS_FLAG_EXEC;
-    o->last_top = n;
-    n->id = p->topc++;
-  } else {
-    if (!nd->target->chain)
-      nd->target->chain = n;
-    else
-      nd->last->spec.nested.link = n;
-    ++nd->target->count;
-    /*o->last_nested = n;*/ /* already done */
-  }
-  nd->last = n;
-  ++p->nodec;
-
-  if (n->type != SGS_TYPE_NESTED) /* don't mess with modulation depth */
-    n->amp *= o->n_ampmult;
-  /* node-to-| sequence timing */
-  if (!nd->n_begin)
-    nd->n_begin = n;
-  else if (nd->n_end) {
-    double delay = 0.f, delaycount = 0.f;
-    SGSProgramNode *step;
-    for (step = nd->n_begin; step != n; step = step->next) {
-      if (step->next == n && step->time < 0.f)
-        step->time = o->n_time; /* set and use default for last node in group */
-      if (delay < step->time)
-        delay = step->time;
-      delay -= step->next->delay;
-      delaycount += step->next->delay;
-    }
-    for (step = nd->n_begin; step != n; step = step->next) {
-      if (step->time < 0.f)
-        step->time = delay + delaycount; /* fill in sensible default time */
-      delaycount -= step->next->delay;
-    }
-    nd->n_add_delay += delay;
-    nd->n_begin = n;
-    nd->n_end = 0;
-  }
-  n->delay += nd->n_add_delay;
-  nd->n_add_delay = 0.f;
+  ++p->operatorc;
 
   if (nd->setsym) {
-    SGSSymtab_set(o->st, nd->setsym, n);
+    SGSSymtab_set(o->st, nd->setsym, oe);
     free(nd->setsym);
     nd->setsym = 0;
   }
+}
+
+static void end_event(SGSParser *o, NodeData *nd) {
+  SGSProgram *p = o->prg;
+  SGSProgramEvent *e = nd->event, *pe;
+  if (!e)
+    return; /* nothing to do */
+  nd->event = 0;
+
+  pe = e->opprev;
+  if (pe) { /* Check what the event changes */
+    if (e->amodid != pe->amodid)
+      e->params |= SGS_AMOD;
+    if (e->fmodid != pe->fmodid)
+      e->params |= SGS_FMOD;
+    if (e->pmodid != pe->pmodid)
+      e->params |= SGS_PMOD;
+    if (e->linkid != pe->linkid)
+      e->params |= SGS_LINK;
+    if (e->attr != pe->attr)
+      e->params |= SGS_ATTR;
+    if (e->wave != pe->wave)
+      e->params |= SGS_WAVE;
+    /* SGS_TIME set when time set */
+    /* SGS_SILENCE set when silence set */
+    if (e->freq != pe->freq)
+      e->params |= SGS_FREQ;
+    if (e->dynfreq != pe->dynfreq)
+      e->params |= SGS_DYNFREQ;
+    /* SGS_PHASE set when phase set */
+    if (e->amp != pe->amp)
+      e->params |= SGS_AMP;
+    if (e->dynamp != pe->dynamp)
+      e->params |= SGS_DYNAMP;
+    if (e->panning != pe->panning)
+      e->params |= SGS_PANNING;
+
+    if (!e->params) { /* Remove empty event */
+      if (o->last_event == e)
+        o->last_event = o->undo_last;
+      free(e);
+      return;
+    } else { /* Link previous event */
+      pe->opnext = e;
+    }
+  }
+
+  nd->opevent = e;
+  if (!p->events)
+    p->events = e;
+  else
+    o->last_event->next = e;
+  o->last_event = e;
+  e->id = p->eventc++;
+
+  if (e->optype == SGS_TYPE_TOP) /* Adjust for "voice" (output level) only */
+    e->amp *= o->ampmult;
+
+  /* Timing of |-terminated sequence */
+  if (!nd->group)
+    nd->group = e;
+  else if (nd->end_group) {
+    int wait = 0, waitcount = 0;
+    SGSProgramEvent *step;
+    for (step = nd->group; step != e; step = step->next) {
+      if (step->next == e && step->time_ms < 0) /* Set and use default for last node in group */
+        step->time_ms = o->def_time_ms;
+      if (wait < step->time_ms)
+        wait = step->time_ms;
+      wait -= step->next->wait_ms;
+      waitcount += step->next->wait_ms;
+    }
+    for (step = nd->group; step != e; step = step->next) {
+      if (step->time_ms < 0)
+        step->time_ms = wait + waitcount; /* fill in sensible default time */
+      waitcount -= step->next->wait_ms;
+    }
+    nd->add_wait_ms += wait;
+    nd->group = e;
+    nd->end_group = 0;
+  }
+  e->wait_ms += nd->add_wait_ms;
+  nd->add_wait_ms = 0;
 }
 
 static double getnum_r(FILE *f, char *buf, uint len, uchar pri) {
@@ -356,7 +402,7 @@ static uchar read_sym(SGSParser *o, char **sym, char op) {
   return 0;
 }
 
-static void parse_level(SGSParser *o, SGSProgramNodeChain *chain, uchar modtype);
+static void parse_level(SGSParser *o, int *chainid, uchar modtype);
 
 static SGSProgram* parse(FILE *f, const char *fn, SGSParser *o) {
   memset(o, 0, sizeof(SGSParser));
@@ -365,40 +411,34 @@ static SGSProgram* parse(FILE *f, const char *fn, SGSParser *o) {
   o->prg = calloc(1, sizeof(SGSProgram));
   o->st = SGSSymtab_create();
   o->line = 1;
-  o->n_mode = SGS_MODE_CENTER; /* default until changed */
-  o->n_ampmult = 1.f; /* default until changed */
-  o->n_time = 1.f; /* default until changed */
-  o->n_freq = 100.f; /* default until changed */
-  o->n_ratio = 1.f; /* default until changed */
+  o->ampmult = 1.f; /* default until changed */
+  o->def_time_ms = 1000; /* default until changed */
+  o->def_freq = 100.f; /* default until changed */
+  o->def_ratio = 1.f; /* default until changed */
   parse_level(o, 0, 0);
   SGSSymtab_destroy(o->st);
-  /* concatenate linked lists */
-  if (o->last_top)
-    o->last_top->next = o->nested;
   return o->prg;
 }
 
-static void parse_level(SGSParser *o, SGSProgramNodeChain *chain, uchar modtype) {
+static void parse_level(SGSParser *o, int *chainid, uchar modtype) {
   char c;
   NodeData nd;
   uint entrylevel = o->level;
   ++o->reclevel;
   memset(&nd, 0, sizeof(NodeData));
-  if (chain) {
-    chain->count = 0;
-    chain->chain = 0;
-  }
+  if (chainid)
+    *chainid = -1;
   while ((c = getc(o->f)) != EOF) {
     eatws(o->f);
     switch (c) {
     case '\n':
     EOL:
-      if (!chain) {
+      if (!chainid) {
         if (o->setdef > o->level)
           o->setdef = (o->level) ? (o->level - 1) : 0;
         else if (o->setnode > o->level) {
           o->setnode = (o->level) ? (o->level - 1) : 0;
-          end_node(o, &nd);
+          end_operator(o, &nd);
         }
       }
       ++o->line;
@@ -414,10 +454,15 @@ static void parse_level(SGSParser *o, SGSProgramNodeChain *chain, uchar modtype)
     case '/':
       if (o->setdef > o->setnode) goto INVALID;
       if (testgetc('t', o->f))
-        nd.n_time_delay = 1;
+        nd.wait_duration = 1;
       else {
-        nd.n_time_delay = 0;
-        nd.n_next_add_delay += getnum(o->f);
+        float wait = getnum(o->f);
+        if (wait < 0.f) {
+          warning(o, "ignoring '/' with sub-zero time", c);
+          break;
+        }
+        nd.wait_duration = 0;
+        nd.next_wait_ms += wait * 1000.f;
       }
       break;
     case '{':
@@ -425,7 +470,7 @@ static void parse_level(SGSParser *o, SGSProgramNodeChain *chain, uchar modtype)
       warning(o, "opening curly brace out of place", c);
       break;
     case '}':
-      if (!chain)
+      if (!chainid)
         goto INVALID;
       if (o->level != entrylevel) {
         o->level = entrylevel;
@@ -444,25 +489,12 @@ static void parse_level(SGSParser *o, SGSProgramNodeChain *chain, uchar modtype)
         o->setdef = (o->level) ? (o->level - 1) : 0;
       else if (o->setnode > o->level) {
         o->setnode = (o->level) ? (o->level - 1) : 0;
-        end_node(o, &nd);
+        end_operator(o, &nd);
       }
       --o->level;
       break;
-    case 'C':
-      o->n_mode = SGS_MODE_CENTER;
-      break;
-    case 'E':
-      new_node(o, &nd, 0, SGS_TYPE_ENV);
-      o->setnode = o->level + 1;
-      break;
-    case 'L':
-      o->n_mode = SGS_MODE_LEFT;
-      break;
     case 'Q':
       goto FINISH;
-    case 'R':
-      o->n_mode = SGS_MODE_RIGHT;
-      break;
     case 'S':
       o->setdef = o->level + 1;
       break;
@@ -480,25 +512,30 @@ static void parse_level(SGSParser *o, SGSProgramNodeChain *chain, uchar modtype)
         warning(o, "invalid wave type follows W in file; sin, sqr, tri, saw available", c);
         break;
       }
-      new_node(o, &nd, chain, (chain ? SGS_TYPE_NESTED : SGS_TYPE_TOP));
-      nd.node->wave = wave;
+      new_operator(o, &nd, chainid, wave);
       o->setnode = o->level + 1;
       break; }
     case '|':
-      end_node(o, &nd);
-      if (!nd.n_begin)
+      end_operator(o, &nd);
+      if (!nd.group)
         warning(o, "end of sequence before any parts given", c);
       else
-        nd.n_end = 1;
+        nd.end_group = 1;
       break;
     case '\\':
       if (o->setdef > o->setnode)
         goto INVALID;
-      else
-        nd.node->delay += getnum(o->f);
+      else {
+        float wait = getnum(o->f);
+        if (wait < 0.f) {
+          warning(o, "ignoring '\\' with sub-zero time", c);
+          break;
+        }
+        nd.event->wait_ms += wait * 1000.f;
+      }
       break;
     case '\'':
-      end_node(o, &nd);
+      end_operator(o, &nd);
       if (nd.setsym) {
         warning(o, "ignoring label assignment to label assignment", c);
         break;
@@ -506,80 +543,62 @@ static void parse_level(SGSParser *o, SGSProgramNodeChain *chain, uchar modtype)
       read_sym(o, &nd.setsym, '\'');
       break;
     case ':':
-      end_node(o, &nd);
+      end_operator(o, &nd);
       if (nd.setsym)
         warning(o, "ignoring label assignment to label reference", c);
-      else if (chain)
+      else if (chainid)
         goto INVALID;
       if (read_sym(o, &nd.setsym, ':')) {
-        SGSProgramNode *ref = SGSSymtab_get(o->st, nd.setsym);
+        SGSProgramEvent *ref = SGSSymtab_get(o->st, nd.setsym);
         if (!ref)
           warning(o, "ignoring reference to undefined label", c);
         else {
-          uint type;
-          switch (ref->type) {
-          case SGS_TYPE_TOP:
-          case SGS_TYPE_SETTOP:
-            type = SGS_TYPE_SETTOP;
-            break;
-          case SGS_TYPE_NESTED:
-          case SGS_TYPE_SETNESTED:
-            type = SGS_TYPE_SETNESTED;
-            break;
-          default:
-            type = 0; /* silence warning */
-          }
-          new_node(o, &nd, 0, type);
-          nd.node->spec.set.ref = ref;
-          nd.node->wave = ref->wave;
-          nd.node->mode = ref->mode;
-          nd.node->amp = ref->amp;
-          nd.node->dynamp = ref->dynamp;
-          nd.node->freq = ref->freq;
-          nd.node->dynfreq = ref->dynfreq;
-          nd.node->attr = ref->attr;
-          nd.node->pmod = ref->pmod;
-          nd.node->fmod = ref->fmod;
-          nd.node->amod = ref->amod;
+          new_event(o, &nd, ref);
           o->setnode = o->level + 1;
         }
       }
       break;
     case 'a':
       if (o->setdef > o->setnode)
-        o->n_ampmult = getnum(o->f);
+        o->ampmult = getnum(o->f);
       else if (o->setnode > 0) {
-        if (modtype == SGS_AMODS ||
-            modtype == SGS_FMODS)
+        if (modtype == SGS_AMOD ||
+            modtype == SGS_FMOD)
           goto INVALID;
         if (testgetc('!', o->f)) {
           if (!testc('{', o->f)) {
-            nd.node->dynamp = getnum(o->f);
+            nd.event->dynamp = getnum(o->f);
           }
           if (testgetc('{', o->f)) {
-            parse_level(o, &nd.node->amod, SGS_AMODS);
+            parse_level(o, &nd.event->amodid, SGS_AMOD);
           }
         } else {
-          nd.node->amp = getnum(o->f);
+          nd.event->amp = getnum(o->f);
         }
       } else
         goto INVALID;
       break;
+    case 'b':
+      if (o->setdef > o->setnode || o->setnode <= 0 ||
+          nd.event->optype == SGS_TYPE_NESTED)
+        goto INVALID;
+      nd.event->panning = getnum(o->f);
+      break;
     case 'f':
       if (o->setdef > o->setnode)
-        o->n_freq = getnum(o->f);
+        o->def_freq = getnum(o->f);
       else if (o->setnode > 0) {
         if (testgetc('!', o->f)) {
           if (!testc('{', o->f)) {
-            nd.node->dynfreq = getnum(o->f);
-            nd.node->attr &= ~SGS_ATTR_DYNFREQRATIO;
+            nd.event->dynfreq = getnum(o->f);
+            nd.event->attr &= ~SGS_ATTR_DYNFREQRATIO;
           }
           if (testgetc('{', o->f)) {
-            parse_level(o, &nd.node->fmod, SGS_FMODS);
+            parse_level(o, &nd.event->fmodid, SGS_FMOD);
           }
         } else {
-          nd.node->freq = getnum(o->f);
-          nd.node->attr &= ~SGS_ATTR_FREQRATIO;
+          nd.event->freq = getnum(o->f);
+          nd.event->attr &= ~SGS_ATTR_FREQRATIO;
         }
       } else
         goto INVALID;
@@ -589,43 +608,64 @@ static void parse_level(SGSParser *o, SGSProgramNodeChain *chain, uchar modtype)
         goto INVALID;
       if (testgetc('!', o->f)) {
         if (testgetc('{', o->f)) {
-          parse_level(o, &nd.node->pmod, SGS_PMODS);
+          parse_level(o, &nd.event->pmodid, SGS_PMOD);
         }
       } else {
-        nd.node->phase = fmod(getnum(o->f), 1.f);
-        if (nd.node->phase < 0.f)
-          nd.node->phase += 1.f;
+        nd.event->phase = fmod(getnum(o->f), 1.f);
+        if (nd.event->phase < 0.f)
+          nd.event->phase += 1.f;
+        nd.event->params |= SGS_PHASE;
       }
       break; }
     case 'r':
       if (o->setdef > o->setnode)
-        o->n_ratio = 1.f / getnum(o->f);
+        o->def_ratio = 1.f / getnum(o->f);
       else if (o->setnode > 0) {
-        if (!chain)
+        if (!chainid)
           goto INVALID;
         if (testgetc('!', o->f)) {
           if (!testc('{', o->f)) {
-            nd.node->dynfreq = 1.f / getnum(o->f);
-            nd.node->attr |= SGS_ATTR_DYNFREQRATIO;
+            nd.event->dynfreq = 1.f / getnum(o->f);
+            nd.event->attr |= SGS_ATTR_DYNFREQRATIO;
           }
           if (testgetc('{', o->f)) {
-            parse_level(o, &nd.node->fmod, SGS_FMODS);
+            parse_level(o, &nd.event->fmodid, SGS_FMOD);
           }
         } else {
-          nd.node->freq = 1.f / getnum(o->f);
-          nd.node->attr |= SGS_ATTR_FREQRATIO;
+          nd.event->freq = 1.f / getnum(o->f);
+          nd.event->attr |= SGS_ATTR_FREQRATIO;
         }
       } else
         goto INVALID;
       break;
+    case 's': {
+      float silence;
+      if (o->setdef > o->setnode || o->setnode <= 0)
+        goto INVALID;
+      silence = getnum(o->f);
+      if (silence < 0.f) {
+        warning(o, "ignoring 's' with sub-zero time", c);
+        break;
+      }
+      nd.event->silence_ms = silence * 1000.f;
+      nd.event->params |= SGS_SILENCE;
+      break; }
     case 't':
-      if (o->setdef > o->setnode)
-        o->n_time = getnum(o->f);
-      else if (o->setnode > 0) {
-        nd.node->time = getnum(o->f);
-        if (nd.node->type == SGS_TYPE_SETTOP ||
-            nd.node->type == SGS_TYPE_SETNESTED)
-          nd.node->spec.set.values |= SGS_TIME;
+      if (o->setdef > o->setnode) {
+        float time = getnum(o->f);
+        if (time < 0.f) {
+          warning(o, "ignoring 't' with sub-zero time", c);
+          break;
+        }
+        o->def_time_ms = time * 1000.f;
+      } else if (o->setnode > 0) {
+        float time = getnum(o->f);
+        if (time < 0.f) {
+          warning(o, "ignoring 't' with sub-zero time", c);
+          break;
+        }
+        nd.event->time_ms = time * 1000.f;
+        nd.event->params |= SGS_TIME;
       } else
         goto INVALID;
       break;
@@ -641,11 +681,11 @@ FINISH:
   if (o->reclevel > 1)
     warning(o, "end of file without closing '}'s", c);
 RETURN:
-  if (nd.node) {
-    if (nd.node->time < 0.f)
-      nd.node->time = o->n_time; /* use default */
-    nd.n_end = 1; /* end grouping if any */
-    end_node(o, &nd);
+  if (nd.event) {
+    if (nd.event->time_ms < 0)
+      nd.event->time_ms = o->def_time_ms; /* use default */
+    nd.end_group = 1; /* end grouping if any */
+    end_operator(o, &nd);
   }
   if (nd.setsym)
     free(nd.setsym);
@@ -664,10 +704,10 @@ SGSProgram* SGSProgram_create(const char *filename) {
 }
 
 void SGSProgram_destroy(SGSProgram *o) {
-  SGSProgramNode *n = o->nodelist;
-  while (n) {
-    SGSProgramNode *nn = n->next;
-    free(n);
-    n = nn;
+  SGSProgramEvent *e = o->events;
+  while (e) {
+    SGSProgramEvent *ne = e->next;
+    free(e);
+    e = ne;
   }
 }
