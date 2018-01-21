@@ -1,5 +1,6 @@
 #include "mgensys.h"
 #include "osc.h"
+#include "env.h"
 #include "program.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -7,125 +8,193 @@
 typedef struct MGSGeneratorNode {
   int pos;
   uint time;
-  uchar mode, active, cont;
+  uchar type, flag, mode;
+  uchar modc;
   short *osctype;
-  union MGSGeneratorComponent *component;
-  ui16_16 amp;
+  MGSOsc osc;
   float freq;
+  struct MGSGeneratorNode *ref;
+  struct MGSGeneratorNode *mods[1]; /* sized to modc */
 } MGSGeneratorNode;
 
-typedef union MGSGeneratorComponent {
-  MGSOsc osc;
-} MGSGeneratorComponent;
+#define MGSGeneratorNode_NEXT(o) \
+  (((MGSGeneratorNode*)(((uchar*)(o)) + \
+                        ((o)->modc-1) * sizeof(MGSGeneratorNode*))) + \
+   1)
 
 #define NO_DELAY_OFFS (0x80000000)
 struct MGSGenerator {
   const struct MGSProgram *program;
-  MGSGeneratorComponent *components;
   uint srate;
-  uint cpos;
-  uint node, nodec;
+  double osc_coeff;
   int delay_offs;
-  MGSGeneratorNode nodes[1]; /* sized at construction */
+  MGSGeneratorNode *node, *end,
+                   *nodes; /* node size varies, so no direct indexing! */
 };
 
 MGSGenerator* MGSGenerator_create(uint srate, struct MGSProgram *prg) {
-  MGSGenerator *o = calloc(1, sizeof(MGSGenerator) +
-                              sizeof(MGSGeneratorNode) * (prg->stepc-1));
+  MGSGenerator *o;
   MGSProgramNode *step;
-  uint i, componentc = 0;
-  MGSOsc_init();
+  MGSGeneratorNode *n, *ref;
+  uint i, j, size, nodessize;
+  size = sizeof(MGSGenerator);
+  nodessize = sizeof(MGSGeneratorNode) * prg->stepc;
+  for (step = prg->steps; step; step = step->next)
+    nodessize += (step->modc-1) * sizeof(MGSGeneratorNode*);
+  o = calloc(1, size + nodessize);
   o->program = prg;
   o->srate = srate;
-  o->nodec = prg->stepc;
+  o->osc_coeff = MGSOsc_COEFF(srate);
+  o->node = o->nodes = (void*)(((uchar*)o) + size);
+  o->end = (void*)(((uchar*)o->node) + nodessize);
+  MGSOsc_init();
   step = prg->steps;
-  for (i = 0; i < o->nodec; ++i) {
+  for (n = o->nodes; n != o->end; n = MGSGeneratorNode_NEXT(n)) {
     float amp = step->amp;
     uint delay = step->delay * srate;
     uint time = step->time * srate;
     float freq = step->freq;
-    if (!step->ref)
-      ++componentc;
-    o->nodes[i].pos = -delay;
-    o->nodes[i].time = time;
+    if (!step->ref) {
+      n->ref = 0;
+    } else {
+      ref = o->nodes;
+      for (i = step->ref->id; i; --i)
+        ref = MGSGeneratorNode_NEXT(ref);
+      n->ref = ref;
+    }
+    n->pos = -delay;
+    n->time = time;
     switch (step->wave) {
     case MGS_WAVE_SIN:
-      o->nodes[i].osctype = MGSOsc_sin;
+      n->osctype = MGSOsc_sin;
       break;
     case MGS_WAVE_SQR:
-      o->nodes[i].osctype = MGSOsc_sqr;
+      n->osctype = MGSOsc_sqr;
       break;
     case MGS_WAVE_TRI:
-      o->nodes[i].osctype = MGSOsc_tri;
+      n->osctype = MGSOsc_tri;
       break;
     case MGS_WAVE_SAW:
-      o->nodes[i].osctype = MGSOsc_saw;
+      n->osctype = MGSOsc_saw;
       break;
     }
-    o->nodes[i].mode = step->mode;
-    SET_I16_162F(o->nodes[i].amp, amp);
-    o->nodes[i].freq = freq;
+    n->type = step->type;
+    n->flag = step->flag;
+    n->mode = step->mode;
+    MGSOsc_SET_AMP(&n->osc, amp);
+    n->freq = freq;
+    n->modc = step->modc;
+    for (i = 0; i < n->modc; ++i)
+      n->mods[i] = (void*)step->mods[i]; /* replace with proper entry below */
     step = step->next;
   }
-  o->components = calloc(componentc, sizeof(MGSGeneratorComponent));
-  /* step through again to assign components */
-  step = prg->steps;
-  for (i = 0; i < o->nodec; ++i) {
-    if (!step->ref)
-      o->nodes[i].component = &o->components[o->cpos++];
-    else {
-      o->nodes[i].component = o->nodes[step->ref->id].component;
-      o->nodes[i].cont = 1;
+  for (n = o->nodes, j = 0; n != o->end; n = MGSGeneratorNode_NEXT(n), ++j) {
+    if (n->modc) {
+      for (i = 0; i < n->modc; ++i) {
+        uint id = 0;
+        ref = o->nodes;
+        step = (void*)n->mods[i];
+        while (id < step->id) {
+          ref = MGSGeneratorNode_NEXT(ref);
+          ++id;
+        }
+        n->mods[i] = ref; /* now given proper entry */
+      }
     }
-    step = step->next;
   }
   return o;
 }
 
-static void MGSGenerator_enter_node(MGSGenerator *o, uint index) {
-  MGSGeneratorComponent *comp;
-  MGSGeneratorNode *node = &o->nodes[index];
+static void MGSGenerator_enter_node(MGSGenerator *o, MGSGeneratorNode *n) {
   int pos_offs;
-  comp = node->component;
-  MGSOsc_SET_COEFF(&comp->osc, node->freq, o->srate);
-  if (!node->cont)
-    MGSOsc_SET_PHASE(&comp->osc, 0);
-  MGSOsc_SET_RANGE(&comp->osc, node->amp);
-  node->active = 1;
-  /* click reduction: increase time to make it end at wave cycle's end */
-  MGSOsc_WAVE_OFFS(&comp->osc, node->time, pos_offs);
-  node->time -= pos_offs;
-  if ((uint)o->delay_offs == NO_DELAY_OFFS || o->delay_offs > pos_offs)
-    o->delay_offs = pos_offs;
+  switch (n->type) {
+  case MGS_TYPE_WAVE:
+    if (!n->ref) { /* beginning */
+      MGSOsc_SET_FREQ(&n->osc, n->freq);
+      MGSOsc_SET_PHASE(&n->osc, 0);
+    } else { /* continuation */
+      MGSGeneratorNode *ref = n->ref;
+      if (n->flag & MGS_FLAG_REFTIME) {
+        n->time = ref->time;
+        n->pos = ref->pos;
+      }
+      ref->pos = ref->time;
+      if (n->flag & MGS_FLAG_REFFREQ)
+        n->freq = ref->freq;
+      MGSOsc_SET_FREQ(&n->osc, n->freq);
+      MGSOsc_SET_PHASE(&n->osc, ref->osc.phase);
+      if (n->flag & MGS_FLAG_REFAMP)
+        MGSOsc_SET_AMP(&n->osc, ref->osc.amp);
+    }
+    /* click reduction: increase time to make it end at wave cycle's end */
+    MGSOsc_WAVE_OFFS(&n->osc, o->osc_coeff, n->time, pos_offs);
+    n->time -= pos_offs;
+    if ((uint)o->delay_offs == NO_DELAY_OFFS || o->delay_offs > pos_offs)
+      o->delay_offs = pos_offs;
+    break;
+  case MGS_TYPE_ENV:
+    break;
+  }
+  n->flag |= MGS_FLAG_ENTERED;
 }
 
 void MGSGenerator_destroy(MGSGenerator *o) {
-  free(o->components);
   free(o);
 }
 
 /*
- * oscillator block processing
+ * node sample processing
  */
 
-uint run_osc(MGSGeneratorNode *n, short *sp, uint len) {
-  MGSGeneratorComponent *c = n->component;
-  if (n->mode == MGS_MODE_CENTER) {
-    for (; len-- && n->pos++ < (int)n->time; sp += 2) {
-      int s;
-      MGSOsc_RUN(&c->osc, n->osctype, s);
-      sp[0] += s;
-      sp[1] += s;
-    }
-  } else {
-    if (n->mode == MGS_MODE_RIGHT) ++sp;
-    for (; len-- && n->pos++ < (int)n->time; sp += 2) {
-      int s;
-      MGSOsc_RUN(&c->osc, n->osctype, s);
-      sp[0] += s;
+static uint run_pm(MGSGeneratorNode *n, double osc_coeff) {
+  uint i;
+  int s = 0;
+  for (i = 0; i < n->modc; ++i) {
+    MGSGeneratorNode *mn = n->mods[i];
+    if (mn->flag & MGS_FLAG_FREQRATIO)
+      MGSOsc_SET_FREQ(&mn->osc, (n->freq * mn->freq));
+    if (mn->modc)
+      s += run_pm(mn, osc_coeff);
+    else {
+      int v;
+      MGSOsc_RUN(&mn->osc, mn->osctype, osc_coeff, v);
+      s += v;
     }
   }
-  return len;
+  MGSOsc_RUN_PM(&n->osc, n->osctype, osc_coeff, s, s);
+  return s;
+}
+
+/*
+ * node block processing
+ */
+
+static void run_node(MGSGeneratorNode *n, short *sp, uint len, double osc_coeff) {
+  uint time = n->time - n->pos;
+  if (time > len)
+    time = len;
+  n->pos += time;
+  if (n->type != MGS_TYPE_WAVE) return;
+  if (n->mode == MGS_MODE_RIGHT) ++sp;
+  if (n->modc) {
+    for (; time; --time, sp += 2) {
+      int s;
+      s = run_pm(n, osc_coeff);
+      sp[0] += s;
+      if (n->mode == MGS_MODE_CENTER)
+        sp[1] += s;
+    }
+  } else {
+    for (; time; --time, sp += 2) {
+      int s;
+      MGSOsc_RUN(&n->osc, n->osctype, osc_coeff, s);
+      sp[0] += s;
+      if (n->mode == MGS_MODE_CENTER)
+        sp[1] += s;
+    }
+  }
+  if ((uint)n->pos == n->time)
+    n->flag &= ~MGS_FLAG_PLAY;
 }
 
 /*
@@ -133,40 +202,68 @@ uint run_osc(MGSGeneratorNode *n, short *sp, uint len) {
  */
 
 uchar MGSGenerator_run(MGSGenerator *o, short *buf, uint len) {
-  short *sp = buf;
-  uint i;
   MGSGeneratorNode *n;
+  short *sp;
+  uint i, skiplen;
+  sp = buf;
   for (i = len; i--; sp += 2) {
     sp[0] = 0;
     sp[1] = 0;
   }
-  for (i = o->node; i < o->nodec; ++i) {
-    n = &o->nodes[i];
+PROCESS:
+  skiplen = 0;
+  for (n = o->node; n != o->end; n = MGSGeneratorNode_NEXT(n)) {
     if (n->pos < 0) {
-      uint offs;
+      uint delay = -n->pos;
+      if ((uint)o->delay_offs != NO_DELAY_OFFS)
+        delay -= o->delay_offs; /* delay inc == previous time inc */
+      if (delay <= len) {
+        /* Split processing so that len is no longer than delay, avoiding
+         * cases where the node prior to a node disabling it plays too
+         * long.
+         */
+        skiplen = len - delay;
+        len = delay;
+      }
+      break;
+    }
+    if (!(n->flag & MGS_FLAG_ENTERED))
+      /* After return to PROCESS, ensures disabling node is initialized before
+       * disabled node would otherwise play.
+       */
+      MGSGenerator_enter_node(o, n);
+  }
+  for (n = o->node; n != o->end; n = MGSGeneratorNode_NEXT(n)) {
+    if (n->pos < 0) {
+      uint delay = -n->pos;
       if ((uint)o->delay_offs != NO_DELAY_OFFS) {
-        n->pos += o->delay_offs; /* delay increase == previous time increase */
+        n->pos += o->delay_offs; /* delay inc == previous time inc */
         o->delay_offs = NO_DELAY_OFFS;
       }
-      offs = - n->pos;
-      if (offs >= len) {
+      if (delay >= len) {
         n->pos += len;
         break; /* end for now; delays accumulate across steps */
       }
-      n->pos += offs;
-      len -= offs;
-      buf += offs+offs; /* doubled due to stereo interleaving */
-    } else if (n->pos == (int)n->time)
-      continue;
-    if (!n->active)
-      MGSGenerator_enter_node(o, i);
-    run_osc(n, buf, len);
+      buf += delay+delay; /* doubled due to stereo interleaving */
+      len -= delay;
+      n->pos = 0;
+    } else
+    if (!(n->flag & MGS_FLAG_ENTERED))
+      MGSGenerator_enter_node(o, n);
+    if (n->flag & MGS_FLAG_PLAY)
+      run_node(n, buf, len, o->osc_coeff);
+  }
+  if (skiplen) {
+    buf += len+len; /* doubled due to stereo interleaving */
+    len = skiplen;
+    goto PROCESS;
   }
   for(;;) {
-    if (o->node == o->nodec) return 0;
-    n = &o->nodes[o->node];
-    if (n->pos < (int)n->time) break;
-    ++o->node;
+    if (o->node == o->end)
+      return 0;
+    if (o->node->flag & MGS_FLAG_PLAY)
+      break;
+    o->node = MGSGeneratorNode_NEXT(o->node);
   }
   return 1;
 }

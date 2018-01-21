@@ -40,7 +40,7 @@ MGSGenerator* MGSGenerator_create(uint srate, struct MGSProgram *prg) {
   size = sizeof(MGSGenerator);
   nodessize = sizeof(MGSGeneratorNode) * prg->stepc;
   for (step = prg->steps; step; step = step->next)
-    nodessize += (step->modc-1) * sizeof(MGSGeneratorNode*);
+    nodessize += (step->pmodc-1) * sizeof(MGSGeneratorNode*);
   o = calloc(1, size + nodessize);
   o->program = prg;
   o->srate = srate;
@@ -83,9 +83,9 @@ MGSGenerator* MGSGenerator_create(uint srate, struct MGSProgram *prg) {
     n->mode = step->mode;
     MGSOsc_SET_AMP(&n->osc, amp);
     n->freq = freq;
-    n->modc = step->modc;
+    n->modc = step->pmodc;
     for (i = 0; i < n->modc; ++i)
-      n->mods[i] = (void*)step->mods[i]; /* replace with proper entry below */
+      n->mods[i] = (void*)step->pmods[i]; /* replace with proper entry below */
     step = step->next;
   }
   for (n = o->nodes, j = 0; n != o->end; n = MGSGeneratorNode_NEXT(n), ++j) {
@@ -119,12 +119,8 @@ static void MGSGenerator_enter_node(MGSGenerator *o, MGSGeneratorNode *n) {
         n->pos = ref->pos;
       }
       ref->pos = ref->time;
-      if (n->flag & MGS_FLAG_REFFREQ)
-        n->freq = ref->freq;
       MGSOsc_SET_FREQ(&n->osc, n->freq);
       MGSOsc_SET_PHASE(&n->osc, ref->osc.phase);
-      if (n->flag & MGS_FLAG_REFAMP)
-        MGSOsc_SET_AMP(&n->osc, ref->osc.amp);
     }
     /* click reduction: increase time to make it end at wave cycle's end */
     MGSOsc_WAVE_OFFS(&n->osc, o->osc_coeff, n->time, pos_offs);
