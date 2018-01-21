@@ -63,13 +63,20 @@ typedef struct SGSProgramValit {
 } SGSProgramValit;
 
 typedef struct SGSProgramEvent {
-  /* event info: (-1 for blank id) */
-  int opprevid, opnextid; /* previous & next event for same operator */
+  struct SGSProgramEvent *next;
+  struct SGSProgramEvent *lvnext;
+  struct SGSProgramEvent *opprev, *opnext; /* linked list per topopid */
+  /* only used during parsing: */
+  struct SGSProgramEvent *composite,
+                         *groupfrom;
+  uchar parseflags;
+  /* event info: */
   uchar optype;
   uint opid; /* counts up from 0 separately for different optypes */
   uint parentid, topopid; /* top operator for operator set */
+  uint id;
   int wait_ms;
-  /* operator parameters possibly set: (-1 for blank id) */
+  /* operator parameters possibly set: (-1 id = none) */
   uint params;
   int voiceid;
   uchar attr;
