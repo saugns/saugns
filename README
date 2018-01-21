@@ -1,0 +1,45 @@
+mgensys will read a script file and produce audio output; once more developed
+writing to audio files will be implemented.
+
+Script syntax:
+
+Whitespace is not allowed within names that come after the initial letter of
+an operation, such as sin, tri. Nor is it allowed within numbers. Apart from
+this, spaces and tabs may be freely placed, or - not recommended - omitted.
+
+Newlines terminate steps, though a new step will also terminate the previous
+one allowing multiple steps on one line.
+
+< and > allow nesting of scope; the step prior to the < remains in scope
+until new steps are given, and a newline or a > will return to the step for
+which the < was given.
+
+* Operations consist of a name followed by optional arguments for parameters.
+* Arguments are given for an operation.
+* Operators affect operations much like arguments, but may be more freely
+  placed and do not belong to the present operation.
+
+Operations will output audio at the same time unless time shifts/delays are
+involved. Each delaying will delay (shift the time of) all future operations.
+The following operations are supported:
+
+S:
+	Set default values for parameters f, t, a, \.
+
+Wsin, Wsqr, Wtri, Wsaw:
+	Play sine, square, triangle or saw wave.
+	Supports f, t, a, \ parameters.
+
+The following parameters can be found in operations:
+	f	Frequency in Hz.
+	t	Time in seconds.
+	a	Amplitude, where 1.0 is full-range.
+	\	Time shift/delay current operation and following ones, time
+		in seconds.
+
+The following operators are supported:
+
+/:	Time shift/delay next operation and following ones, time in seconds.
+E:	Add time shift/delay independent of / so that the next operation
+	begins at the end of that which preceeds it, though / and \ may
+	further delay it.
