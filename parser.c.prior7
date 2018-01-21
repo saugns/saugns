@@ -93,60 +93,53 @@ static void eatws(FILE *f) {
  */
 
 enum {
-  /* link types */
-  GRAPH = 1<<0,
-  PMODS = 1<<1,
-  FMODS = 1<<2,
-  AMODS = 1<<3,
-  /* other flags */
-  OLD_VOICE_EVENT = 1<<4,
-  ADD_WAIT_DURATION = 1<<5,
-  SILENCE_ADDED = 1<<6
+  SGS_PMOD,
+  SGS_FMOD,
+  SGS_AMOD
 };
 
-typedef struct VoiceData {
-  struct EventNode *voprev; /* previous event with data for same voice */
-  uint voiceid;
-  /* parameters */
-  uchar attr;
-  float panning;
-  SGSProgramValit valitpanning;
-  /* operator linkage graph */
-  uchar operatorc;
-  struct EventNode **graph;
-} VoiceData;
+typedef struct NodeAdjacents {
+  uchar mainc;
+  uchar fmodc;
+  uchar amodc;
+  struct EventNode **main_adjcs;
+  struct EventNode **fmod_adjcs;
+  struct EventNode **amod_adjcs;
+} NodeAdjacents;
 
-typedef struct OperatorData {
-  struct EventNode *opprev; /* previous event with data for same operator */
-  uint operatorid;
-  struct EventNode *voice;
-  /* parameters */
+typedef struct EventNode {
+  struct EventNode *next;
+  struct EventNode *lvnext;
+  struct EventNode *opprev, *opnext; /* per-operator linked list */
+  /* only used during parsing: */
+  struct EventNode *composite,
+                   *groupfrom;
+  uint nestlevel;
+  uchar parseflags;
+  /* event info: */
+  uchar type;
+  uint opid; /* counts up from 0 separately for different optypes */
+  uint id;
+  int wait_ms;
+  /* operator parameters possibly set: (-1 id = none) */
+  uint params;
+  uint voiceid;
   uchar attr;
   uchar wave;
   int time_ms, silence_ms;
   float freq, dynfreq, phase, amp, dynamp;
   SGSProgramValit valitfreq, valitamp;
-  /* node adjacents in operator linkage graph */
-  uchar pmodc;
-  uchar fmodc;
-  uchar amodc;
-  struct EventNode **pmods;
-  struct EventNode **fmods;
-  struct EventNode **amods;
-} OperatorData;
-
-typedef struct EventNode {
-  struct EventNode *next, *lvnext;
-  struct EventNode *groupfrom;
-  struct EventNode *composite;
-  int wait_ms;
-  uint id;
-  uint params;
-  uint nestlevel;
-  uchar parseflags;
-  VoiceData *voice;
-  OperatorData *operator;
+  NodeAdjacents *adjcs;
+  /* struct ends here if event not for top operator */
+  struct EventNodeExt {
+    float panning;
+    SGSProgramValit valitpanning;
+  } topop;
 } EventNode;
+
+typedef struct VoiceNode {
+  NodeAdjacents adjcs;
+} VoiceNode;
 
 typedef struct SGSParser {
   FILE *f;
@@ -159,206 +152,136 @@ typedef struct SGSParser {
   char nextc;
   /* node state */
   EventNode *events;
-  EventNode *last_event;
   uint eventc;
-  uint operatorc;
+  uint opc;
+  VoiceNode *voices;
   uint voicec;
+  EventNode *last_event;
+  EventNode *undo_last;
   /* settings/ops */
   float ampmult;
   uint def_time_ms;
   float def_freq, def_A4tuning, def_ratio;
 } SGSParser;
 
+typedef struct NodeTarget {
+  EventNode *parent;
+  NodeAdjacents *linkfrom;
+  uchar modtype;
+} NodeTarget;
+
 /* things that need to be separate for each nested parse_level() go here */
 typedef struct NodeData {
-  uchar set_settings, /* adjusting default values */
-        set_step;     /* adjusting operator and/or voice */
+  uchar setdef; /* adjusting default values */
   char scope;
-  VoiceData voice;       /* state of voice changes for current event */
-  OperatorData operator; /* state of operator changes for current event */
-  EventNode *event, *voevent;
+  EventNode *event; /* state for tentative event until end_event() */
   EventNode *first, *current, *last;
-  EventNode *parent;
-  uchar linktype;
+  EventNode *oplast; /* last event for last operator */
+  NodeTarget *target;
   char *setsym;
   /* timing/delay */
-  EventNode *group;
-  EventNode *composite; /* grouping of events for a voice and/or operator */
+  EventNode *group,
+            *composite; /* allows specifying events out of linear order*/
   uchar end_composite;
-  uint next_wait_ms; /* added for next event */
+  uint next_wait_ms; /* added for next event; adjusted in parser */
+  uint add_wait_ms; /* added to event's wait in end_event() */
 } NodeData;
 
-static void add_adjc(EventNode *e, EventNode *adjc, uchar type) {
-  EventNode ***adjcs = 0;
-  uchar *count = 0;
+enum {
+  ADD_WAIT_DURATION = 1<<0,
+  SILENCE_ADDED = 1<<1
+};
+
+static void add_adjc(NodeAdjacents *adjcs, EventNode *adjc, uchar type) {
+  EventNode ***linkto = 0;
+  uint count = 0;
   switch (type) {
-  case GRAPH:
-    count = &e->voice->operatorc;
-    adjcs = &e->voice->graph;
+  case SGS_PMOD:
+    count = ++adjcs->mainc;
+    linkto = &adjcs->main_adjcs;
     break;
-  case PMODS:
-    count = &e->operator->pmodc;
-    adjcs = &e->operator->pmods;
+  case SGS_FMOD:
+    count = ++adjcs->fmodc;
+    linkto = &adjcs->fmod_adjcs;
     break;
-  case FMODS:
-    count = &e->operator->fmodc;
-    adjcs = &e->operator->fmods;
-    break;
-  case AMODS:
-    count = &e->operator->amodc;
-    adjcs = &e->operator->amods;
+  case SGS_AMOD:
+    count = ++adjcs->amodc;
+    linkto = &adjcs->amod_adjcs;
     break;
   }
-  if (*count && !(e->parseflags & type)) { /* adjacents were inherited */
-    *count = 0;
-    *adjcs = 0;
-  }
-  ++(*count);
-  *adjcs = realloc(*adjcs, sizeof(OperatorData*) * (*count));
-  (*adjcs)[*count - 1] = adjc;
-  e->parseflags |= type;
+  *linkto = realloc(*linkto, sizeof(EventNode*) * count);
+  (*linkto)[count-1] = adjc;
 }
 
+static void new_event(SGSParser *o, NodeData *nd, EventNode *opevent,
+                      uchar composite);
 static void end_operator(SGSParser *o, NodeData *nd);
-static void end_voice(SGSParser *o, NodeData *nd);
+static void end_event(SGSParser *o, NodeData *nd);
 
-static void new_event(SGSParser *o, NodeData *nd, EventNode *previous,
-                      uchar linktype, uchar composite) {
-  EventNode *e, *pve;
-  VoiceData *vd;
-  OperatorData *od;
+static void new_operator(SGSParser *o, NodeData *nd, NodeTarget *target,
+                         uchar wave) {
+  EventNode *e, *parent = target->parent;
   end_operator(o, nd);
-  end_voice(o, nd);
-  if (previous) {
-    if (!nd->next_wait_ms) {
-      if (!previous->voice)
-        previous->voice = &nd->voice;
-      if (!previous->operator)
-        previous->operator = &nd->operator;
-      return; /* nothing to do; event continues */
-    }
-    if (!previous->params) {
-      previous->wait_ms += nd->next_wait_ms;
-      previous->voice = &nd->voice;
-      previous->operator = &nd->operator;
-      nd->next_wait_ms = 0;
-      return; /* reuse repositioned event */
-    }
+  new_event(o, nd, 0, 0);
+  e = nd->event;
+  e->wave = wave;
+  nd->target = target;
+
+  e->opid = o->opc++;
+  if (!o->nestlevel) {
+    e->voiceid = o->voicec++;
+  } else {
+    e->voiceid = parent->voiceid;
   }
-  e = calloc(1, sizeof(EventNode));
-  e->wait_ms = nd->next_wait_ms;
-  nd->next_wait_ms = 0;
+  if (parent && (!parent->adjcs || !(parent->params & SGS_ADJC))) {
+    parent->adjcs = calloc(1, sizeof(NodeAdjacents));
+    parent->params |= SGS_ADJC;
+    target->linkfrom = parent->adjcs;
+  }
+  add_adjc(target->linkfrom, e, target->modtype);
+  nd->oplast = e;
+
+  /* Set defaults */
+  e->amp = 1.f;
+  if (!e->nestlevel) {
+    e->time_ms = -1; /* later fitted or set to default */
+    e->freq = o->def_freq;
+    e->params |= SGS_PANNING;
+    e->topop.panning = .5f; /* default - center */
+  } else {
+    e->time_ms = o->def_time_ms;
+    e->freq = o->def_ratio;
+    e->attr |= SGS_ATTR_FREQRATIO;
+  }
+}
+
+static void new_event(SGSParser *o, NodeData *nd, EventNode *opevent,
+                      uchar composite) {
+  EventNode *e, *pe;
+  size_t size;
+  end_event(o, nd);
+  size = sizeof(EventNode) - sizeof(struct EventNodeExt);
+  if (!o->nestlevel || (opevent && !opevent->nestlevel)) {
+    size += sizeof(struct EventNodeExt);
+  }
+  e = nd->event = calloc(1, size);
+  pe = e->opprev = opevent;
   e->id = o->eventc++;
   e->nestlevel = o->nestlevel;
-  e->voice = &nd->voice;
-  vd = &nd->voice;
-  e->operator = &nd->operator;
-  od = &nd->operator;
-  if (previous) {
-    pve = (linktype) ? nd->parent : previous;
-    if (pve && pve->voice) {
-      *vd = *pve->voice;
-      vd->voprev = pve;
-    } else { /* set defaults */
-      vd->voiceid = o->voicec++;
-      vd->panning = 0.5f; /* center */
-    }
-
-    if (previous->operator) {
-      *od = *previous->operator;
-      od->opprev = previous;
-    } else { /* set defaults */
-      od->operatorid = o->operatorc++;
-      od->amp = 1.0f;
-      if (e->nestlevel == 0) {
-        od->time_ms = -1; /* dynamically fitted, or set to default */
-        od->freq = o->def_freq;
-      } else {
-        od->time_ms = o->def_time_ms;
-        od->freq = o->def_ratio;
-        od->attr |= SGS_ATTR_FREQRATIO;
-      }
-    }
-  }
-
-  /* Linkage */
-  if (linktype) {
-    if (!nd->parent) {
-      nd->parent = e; /* operator has new voice for parent */
-      linktype = GRAPH;
-    }
-    nd->parent->params |= (linktype == GRAPH) ? SGS_GRAPH : SGS_ADJC;
-    add_adjc(nd->parent, e, linktype);
-  }
-  nd->event = e;
-  if (!nd->first)
-    nd->first = e;
-  if (!nd->group)
-    nd->group = e;
-  if (composite) {
-    if (!nd->composite) {
-      nd->composite = nd->current;
-      nd->composite->composite = e;
-      nd->last = nd->composite;
-    } else {
-      nd->last = (nd->last->composite) ? nd->last->composite :
-                 nd->last->next;
-      nd->last->next = e;
-    }
-    od->time_ms = -1; /* defaults to time of previous step of composite */
-  } else {
-    nd->last = nd->current;
-    nd->current = e; /* then remains the same during composite events */
-    nd->composite = 0;
-  }
-  if (!o->events)
-    o->events = e;
-  else
-    o->last_event->next = e;
-  o->last_event = e;
-
-  /* Assign label? */
-  if (nd->setsym) {
-    SGSSymtab_set(o->st, nd->setsym, e);
-    free(nd->setsym);
-    nd->setsym = 0;
-  }
-}
-
-static void end_voice(SGSParser *o, NodeData *nd) {
-  EventNode *e = nd->current;
-  VoiceData *vd = &nd->voice;
-  if (!e)
-    return; /* nothing to do */
-  if (!vd->voprev) { /* initial event should reset its parameters */
-    e->params |= SGS_VOATTR |
-                 SGS_GRAPH |
-                 SGS_PANNING;
-  } else {
-    VoiceData *pvd = vd->voprev->voice;
-    if (vd->panning != pvd->panning)
-      e->params |= SGS_PANNING;
-  }
-  if (vd->valitpanning.type)
-    e->params |= SGS_VOATTR |
-                 SGS_VALITPANNING;
-  if (e->params) {
-    e->voice = malloc(sizeof(VoiceData));
-    *e->voice = *vd;
-  } else {
-    e->voice = 0;
-    if (!vd->voprev)
-      --o->voicec;
-  }
-  memset(vd, 0, sizeof(VoiceData));
-}
-
-static void end_operator(SGSParser *o, NodeData *nd) {
-  EventNode *e = nd->current;
-  OperatorData *od = &nd->operator;
-  if (!e)
-    return; /* nothing to do */
-  if (!od->opprev) { /* initial event should reset its parameters */
+  if (pe) {
+    e->opid = pe->opid;
+    e->type = pe->type;
+    e->voiceid = pe->voiceid;
+    e->attr = pe->attr;
+    e->wave = pe->wave;
+    e->freq = pe->freq;
+    e->dynfreq = pe->dynfreq;
+    e->amp = pe->amp;
+    e->dynamp = pe->dynamp;
+    e->adjcs = pe->adjcs;
+    if (!e->nestlevel)
+      e->topop.panning = pe->topop.panning;
+  } else { /* init event - everything set to defaults */
     e->params |= SGS_ADJC |
                  SGS_WAVE |
                  SGS_TIME |
@@ -368,43 +291,117 @@ static void end_operator(SGSParser *o, NodeData *nd) {
                  SGS_PHASE |
                  SGS_AMP |
                  SGS_DYNAMP |
-                 SGS_OPATTR;
+                 SGS_ATTR;
+  }
+
+  if (composite) {
+    if (!nd->composite) {
+      nd->composite = nd->last;
+    }
+    e->time_ms = -1; /* defaults to time of previous step of composite */
+
+    pe = nd->last;
   } else {
-    OperatorData *pod = od->opprev->operator;
-    if (od->attr != pod->attr)
-      e->params |= SGS_OPATTR;
-    if (od->wave != pod->wave)
+    nd->current = e; /* remains the same for composite events */
+    nd->composite = 0;
+
+    /* Linkage */
+    o->undo_last = o->last_event;
+    if (!o->events)
+      o->events = e;
+    else
+      o->last_event->next = e;
+    o->last_event = e;
+
+    pe = o->last_event;
+  }
+  /* Prepare timing adjustment */
+  nd->add_wait_ms += nd->next_wait_ms;
+  nd->next_wait_ms = 0;
+}
+
+static void end_operator(SGSParser *o, NodeData *nd) {
+  SGSProgram *p = o->prg;
+  EventNode *oe = nd->event;
+  end_event(o, nd);
+  if (!oe)
+    return; /* nothing to do */
+
+  ++p->operatorc;
+
+  if (nd->setsym) {
+    SGSSymtab_set(o->st, nd->setsym, oe);
+    free(nd->setsym);
+    nd->setsym = 0;
+  }
+}
+
+static void end_event(SGSParser *o, NodeData *nd) {
+  EventNode *e = nd->event, *pe;
+  if (!e)
+    return; /* nothing to do */
+  nd->event = 0;
+
+  pe = e->opprev;
+  if (e->valitfreq.type)
+    e->params |= SGS_ATTR | SGS_VALITFREQ;
+  if (e->valitamp.type)
+    e->params |= SGS_ATTR | SGS_VALITAMP;
+  if (!e->nestlevel && e->topop.valitpanning.type)
+    e->params |= SGS_ATTR | SGS_VALITPANNING;
+  if (pe) { /* Check what the event changes */
+    if (e->attr != pe->attr)
+      e->params |= SGS_ATTR;
+    if (e->wave != pe->wave)
       e->params |= SGS_WAVE;
     /* SGS_TIME set when time set */
-    if (od->silence_ms)
+    if (e->silence_ms)
       e->params |= SGS_SILENCE;
     /* SGS_FREQ set when freq set */
-    if (od->dynfreq != pod->dynfreq)
+    if (e->dynfreq != pe->dynfreq)
       e->params |= SGS_DYNFREQ;
     /* SGS_PHASE set when phase set */
     /* SGS_AMP set when amp set */
-    if (od->dynamp != pod->dynamp)
+    if (e->dynamp != pe->dynamp)
       e->params |= SGS_DYNAMP;
+    if (!e->nestlevel) {
+      if (e->topop.panning != pe->topop.panning)
+        e->params |= SGS_PANNING;
+    }
+
+    if (!e->params) { /* Remove empty event */
+      if (o->last_event == e) {
+        o->last_event = o->undo_last;
+        o->undo_last->next = 0;
+      }
+      --o->eventc;
+      free(e);
+      return;
+    } else { /* Link previous event */
+      pe->opnext = e;
+    }
   }
-  if (od->valitfreq.type)
-    e->params |= SGS_OPATTR |
-                 SGS_VALITFREQ;
-  if (od->valitamp.type)
-    e->params |= SGS_OPATTR |
-                 SGS_VALITAMP;
-  if (e->params) {
-    e->operator = malloc(sizeof(OperatorData));
-    *e->operator = *od;
-    /* further changes */
-    od = e->operator;
-    if (e->nestlevel == 0)
-      od->amp *= o->ampmult;
-  } else {
-    e->operator = 0;
-    if (!od->opprev)
-      --o->operatorc;
+
+  if (!nd->group)
+    nd->group = e;
+  if (nd->composite) {
+    if (!nd->composite->composite)
+      nd->composite->composite = e;
+    else
+      nd->last->next = e;
   }
-  memset(od, 0, sizeof(OperatorData));
+  e->wait_ms += nd->add_wait_ms;
+  nd->add_wait_ms = 0;
+
+  if (!e->nestlevel)
+    e->amp *= o->ampmult; /* Adjust for "voice" (output level) only */
+ 
+  if (!nd->first)
+    nd->first = e;
+  nd->last = e;
+  if (nd->oplast->nestlevel == e->nestlevel &&
+    nd->oplast->opid == e->opid)
+  nd->oplast = e;
 }
 
 /*
@@ -772,10 +769,8 @@ enum {
   SCOPE_TOP = 1
 };
 
-static uchar parse_settings(SGSParser *o, NodeData *nd) {
+static uchar parse_settings(SGSParser *o) {
   char c;
-  nd->set_settings = 1;
-  nd->set_step = 0;
   while ((c = read_char(o)) != EOF) {
     switch (c) {
     case 'a':
@@ -816,123 +811,126 @@ static uchar parse_settings(SGSParser *o, NodeData *nd) {
 }
 
 static uchar parse_level(SGSParser *o, NodeData *parentnd,
-                         uchar linktype, char newscope);
+                         NodeTarget *target, char newscope);
 
 static uchar parse_step(SGSParser *o, NodeData *nd) {
   char c;
   EventNode *e = nd->event;
-  OperatorData *od = &nd->operator;
-  VoiceData *vd = &nd->voice;
-  nd->set_settings = 0;
-  nd->set_step = 1;
+  NodeTarget *target = nd->target;
   while ((c = read_char(o)) != EOF) {
     switch (c) {
     case '\\':
       if (read_waittime(o, nd, c)) {
-        new_event(o, nd, nd->event, 0, 0);
+        end_event(o, nd);
+        new_event(o, nd, nd->last, 0);
+        e = nd->event;
       }
       break;
     case 'a':
-      if (nd->linktype == AMODS ||
-          nd->linktype == FMODS)
+      if (target &&
+          (target->modtype == SGS_AMOD ||
+           target->modtype == SGS_FMOD))
         goto UNKNOWN;
       if (testgetc('!', o->f)) {
         if (!testc('{', o->f)) {
-          read_num(o, 0, &od->dynamp);
+          read_num(o, 0, &e->dynamp);
         }
         if (testgetc('{', o->f)) {
+          NodeTarget nt = {e, 0, SGS_AMOD};
           if (e->params & SGS_ADJC)
-            od->amodc = 0;
+            e->adjcs->amodc = 0;
           ++o->nestlevel;
-          parse_level(o, nd, AMODS, '{');
+          parse_level(o, nd, &nt, '{');
           --o->nestlevel;
         }
       } else if (testgetc('[', o->f)) {
-        if (read_valit(o, 0, &od->valitamp))
-          od->attr |= SGS_ATTR_VALITAMP;
+        if (read_valit(o, 0, &e->valitamp))
+          e->attr |= SGS_ATTR_VALITAMP;
       } else {
-        read_num(o, 0, &od->amp);
+        read_num(o, 0, &e->amp);
         e->params |= SGS_AMP;
-        if (!od->valitamp.type)
-          od->attr &= ~SGS_ATTR_VALITAMP;
+        if (!e->valitamp.type)
+          e->attr &= ~SGS_ATTR_VALITAMP;
       }
       break;
     case 'b':
       if (e->nestlevel)
         goto UNKNOWN;
       if (testgetc('[', o->f)) {
-        if (read_valit(o, 0, &vd->valitpanning))
-          vd->attr |= SGS_ATTR_VALITPANNING;
-      } else if (read_num(o, 0, &vd->panning)) {
-        if (!vd->valitpanning.type)
-          vd->attr &= ~SGS_ATTR_VALITPANNING;
+        if (read_valit(o, 0, &e->topop.valitpanning))
+          e->attr |= SGS_ATTR_VALITPANNING;
+      } else if (read_num(o, 0, &e->topop.panning)) {
+        if (!e->topop.valitpanning.type)
+          e->attr &= ~SGS_ATTR_VALITPANNING;
       }
       break;
     case 'f':
       if (testgetc('!', o->f)) {
         if (!testc('{', o->f)) {
-          if (read_num(o, 0, &od->dynfreq)) {
-            od->attr &= ~SGS_ATTR_DYNFREQRATIO;
+          if (read_num(o, 0, &e->dynfreq)) {
+            e->attr &= ~SGS_ATTR_DYNFREQRATIO;
           }
         }
         if (testgetc('{', o->f)) {
+          NodeTarget nt = {e, 0, SGS_FMOD};
           if (e->params & SGS_ADJC)
-            od->fmodc = 0;
+            e->adjcs->fmodc = 0;
           ++o->nestlevel;
-          parse_level(o, nd, FMODS, '{');
+          parse_level(o, nd, &nt, '{');
           --o->nestlevel;
         }
       } else if (testgetc('[', o->f)) {
-        if (read_valit(o, read_note, &od->valitfreq)) {
-          od->attr |= SGS_ATTR_VALITFREQ;
-          od->attr &= ~SGS_ATTR_VALITFREQRATIO;
+        if (read_valit(o, read_note, &e->valitfreq)) {
+          e->attr |= SGS_ATTR_VALITFREQ;
+          e->attr &= ~SGS_ATTR_VALITFREQRATIO;
         }
-      } else if (read_num(o, read_note, &od->freq)) {
-        od->attr &= ~SGS_ATTR_FREQRATIO;
+      } else if (read_num(o, read_note, &e->freq)) {
+        e->attr &= ~SGS_ATTR_FREQRATIO;
         e->params |= SGS_FREQ;
-        if (!od->valitfreq.type)
-          od->attr &= ~(SGS_ATTR_VALITFREQ |
-                        SGS_ATTR_VALITFREQRATIO);
+        if (!e->valitfreq.type)
+          e->attr &= ~(SGS_ATTR_VALITFREQ |
+                              SGS_ATTR_VALITFREQRATIO);
       }
       break;
     case 'p':
-      if (read_num(o, 0, &od->phase)) {
-        od->phase = fmod(od->phase, 1.f);
-        if (od->phase < 0.f)
-          od->phase += 1.f;
+      if (read_num(o, 0, &e->phase)) {
+        e->phase = fmod(e->phase, 1.f);
+        if (e->phase < 0.f)
+          e->phase += 1.f;
         e->params |= SGS_PHASE;
       }
       break;
     case 'r':
-      if (e->nestlevel == 0)
+      if (!target)
         goto UNKNOWN;
       if (testgetc('!', o->f)) {
         if (!testc('{', o->f)) {
-          if (read_num(o, 0, &od->dynfreq)) {
-            od->dynfreq = 1.f / od->dynfreq;
-            od->attr |= SGS_ATTR_DYNFREQRATIO;
+          if (read_num(o, 0, &e->dynfreq)) {
+            e->dynfreq = 1.f / e->dynfreq;
+            e->attr |= SGS_ATTR_DYNFREQRATIO;
           }
         }
         if (testgetc('{', o->f)) {
+          NodeTarget nt = {e, 0, SGS_FMOD};
           if (e->params & SGS_ADJC)
-            od->fmodc = 0;
+            e->adjcs->fmodc = 0;
           ++o->nestlevel;
-          parse_level(o, nd, FMODS, '{');
+          parse_level(o, nd, &nt, '{');
           --o->nestlevel;
         }
       } else if (testgetc('[', o->f)) {
-        if (read_valit(o, read_note, &od->valitfreq)) {
-          od->valitfreq.goal = 1.f / od->valitfreq.goal;
-          od->attr |= SGS_ATTR_VALITFREQ |
-                      SGS_ATTR_VALITFREQRATIO;
+        if (read_valit(o, read_note, &e->valitfreq)) {
+          e->valitfreq.goal = 1.f / e->valitfreq.goal;
+          e->attr |= SGS_ATTR_VALITFREQ |
+                            SGS_ATTR_VALITFREQRATIO;
         }
-      } else if (read_num(o, 0, &od->freq)) {
-        od->freq = 1.f / od->freq;
-        od->attr |= SGS_ATTR_FREQRATIO;
+      } else if (read_num(o, 0, &e->freq)) {
+        e->freq = 1.f / e->freq;
+        e->attr |= SGS_ATTR_FREQRATIO;
         e->params |= SGS_FREQ;
-        if (!od->valitfreq.type)
-          od->attr &= ~(SGS_ATTR_VALITFREQ |
-                        SGS_ATTR_VALITFREQRATIO);
+        if (!e->valitfreq.type)
+          e->attr &= ~(SGS_ATTR_VALITFREQ |
+                              SGS_ATTR_VALITFREQRATIO);
       }
       break;
     case 's': {
@@ -942,11 +940,11 @@ static uchar parse_step(SGSParser *o, NodeData *nd) {
         warning(o, "ignoring 's' with sub-zero time", c);
         break;
       }
-      SET_I2F(od->silence_ms, silence*1000.f);
+      SET_I2F(e->silence_ms, silence*1000.f);
       break; }
     case 't':
       if (testgetc('*', o->f))
-        od->time_ms = -1; /* later fitted or set to default */
+        e->time_ms = -1; /* later fitted or set to default */
       else {
         float time;
         read_num(o, 0, &time);
@@ -954,7 +952,7 @@ static uchar parse_step(SGSParser *o, NodeData *nd) {
           warning(o, "ignoring 't' with sub-zero time", c);
           break;
         }
-        SET_I2F(od->time_ms, time*1000.f);
+        SET_I2F(e->time_ms, time*1000.f);
       }
       e->params |= SGS_TIME;
       break;
@@ -962,7 +960,7 @@ static uchar parse_step(SGSParser *o, NodeData *nd) {
       int wave = read_wavetype(o, c);
       if (wave < 0)
         break;
-      od->wave = wave;
+      e->wave = wave;
       break; }
     default:
     UNKNOWN:
@@ -979,61 +977,58 @@ enum {
   DEFERRED_SETTINGS = 1<<4
 };
 static uchar parse_level(SGSParser *o, NodeData *parentnd,
-                         uchar linktype, char newscope) {
+                         NodeTarget *target, char newscope) {
   char c;
   uchar endscope = 0;
   uchar flags = 0;
   NodeData nd;
   ++o->calllevel;
   memset(&nd, 0, sizeof(NodeData));
+  if (parentnd)
+    nd.setdef = parentnd->setdef;
   nd.scope = newscope;
-  if (parentnd) {
-    nd.set_settings = parentnd->set_settings;
-    nd.set_step = parentnd->set_step;
-    if (newscope == SCOPE_SAME)
-      nd.scope = parentnd->scope;
-    nd.event = parentnd->event;
-    nd.parent = parentnd->event;
-    nd.voevent = parentnd->voevent;
-  }
-  nd.linktype = linktype;
+  if (newscope == SCOPE_SAME && parentnd)
+    nd.scope = parentnd->scope;
   while ((c = read_char(o)) != EOF) {
     flags &= ~HANDLE_DEFER;
     switch (c) {
     case NEWLINE:
       ++o->line;
       if (nd.scope == SCOPE_TOP) {
+        end_operator(o, &nd);
         if (o->calllevel > 1)
           goto RETURN;
         flags = 0;
         nd.first = 0;
-        nd.set_settings = 0;
-        nd.set_step = 0;
+        nd.setdef = 0;
       }
       break;
     case '-': {
       EventNode *first, *last;
+      NodeTarget nt;
       uchar ret;
       end_operator(o, &nd);
       first = nd.first;
-      last = nd.event;
-      if (!first) {
+      last = nd.last;
+      if (!last) {
         if (o->calllevel == 1) NO_CARRIER: {
           warning(o, "no preceding carrier operators", c);
           break;
         }
         first = parentnd->first;
+        last = (parentnd->event ? parentnd->event : parentnd->last);
         if (!last)
           goto NO_CARRIER;
       }
+      nt = (NodeTarget){last, 0, SGS_PMOD};
       if (first && first != last) {
         warning(o, "multiple carriers not yet supported", c);
         break;
       }
       if (last->params & SGS_ADJC)
-        last->operator->pmodc = 0;
+        last->adjcs->mainc = 0;
       ++o->nestlevel;
-      ret = parse_level(o, &nd, PMODS, SCOPE_SAME);
+      ret = parse_level(o, &nd, &nt, SCOPE_SAME);
       --o->nestlevel;
       if (ret)
         goto RETURN;
@@ -1042,13 +1037,13 @@ static uchar parse_level(SGSParser *o, NodeData *parentnd,
       end_operator(o, &nd);
       if (nd.setsym)
         warning(o, "ignoring label assignment to label reference", c);
-      nd.set_settings = 0;
+      nd.setdef = 0;
       if (read_sym(o, &nd.setsym, ':')) {
         EventNode *ref = SGSSymtab_get(o->st, nd.setsym);
         if (!ref)
           warning(o, "ignoring reference to undefined label", c);
         else {
-          new_event(o, &nd, ref, 0, 0);
+          new_event(o, &nd, ref, 0);
           flags = parse_step(o, &nd) ? (HANDLE_DEFER | DEFERRED_STEP) : 0;
         }
       }
@@ -1058,13 +1053,14 @@ static uchar parse_level(SGSParser *o, NodeData *parentnd,
         o->nextc = c;
         goto RETURN;
       }
-      if (nd.set_settings || !nd.event)
+      if (nd.setdef || (!nd.event && !nd.last))
         goto INVALID;
-      new_event(o, &nd, nd.event, 0, 1);
+      end_event(o, &nd);
+      new_event(o, &nd, nd.last, 1);
       flags = parse_step(o, &nd) ? (HANDLE_DEFER | DEFERRED_STEP) : 0;
       break;
     case '<':
-      if (parse_level(o, &nd, nd.linktype, '<'))
+      if (parse_level(o, &nd, target, '<'))
         goto RETURN;
       break;
     case '>':
@@ -1079,22 +1075,24 @@ static uchar parse_level(SGSParser *o, NodeData *parentnd,
       int wave = read_wavetype(o, c);
       if (wave < 0)
         break;
-      new_event(o, &nd, 0, nd.linktype, 0);
-      nd.operator.wave = wave;
+      nd.setdef = 0;
+      new_operator(o, &nd, target, wave);
       flags = parse_step(o, &nd) ? (HANDLE_DEFER | DEFERRED_STEP) : 0;
       break; }
     case 'Q':
       goto FINISH;
     case 'S':
-      flags = parse_settings(o, &nd) ? (HANDLE_DEFER | DEFERRED_SETTINGS) : 0;
+      nd.setdef = 1;
+      flags = parse_settings(o) ? (HANDLE_DEFER | DEFERRED_SETTINGS) : 0;
       break;
     case '\\':
-      if (nd.set_settings ||
-          (nd.event && nd.event->nestlevel != 0))
+      if (nd.setdef ||
+          (nd.event && nd.event->nestlevel))
         goto INVALID;
       read_waittime(o, &nd, c);
       break;
     case '\'':
+      end_operator(o, &nd);
       if (nd.setsym) {
         warning(o, "ignoring label assignment to label assignment", c);
         break;
@@ -1106,14 +1104,15 @@ static uchar parse_level(SGSParser *o, NodeData *parentnd,
       warning(o, "opening curly brace out of place", c);
       break;
     case '|':
-      if (nd.set_settings ||
-          (nd.event && nd.event->nestlevel != 0))
+      if (nd.setdef ||
+          (nd.event && nd.event->nestlevel))
         goto INVALID;
       if (newscope == SCOPE_SAME) {
         o->nextc = c;
         goto RETURN;
       }
-      if (!nd.event) {
+      end_operator(o, &nd);
+      if (!nd.last) {
         warning(o, "end of sequence before any parts given", c);
         break;
       }
@@ -1121,7 +1120,6 @@ static uchar parse_level(SGSParser *o, NodeData *parentnd,
         nd.current->groupfrom = nd.group;
         nd.group = 0;
       }
-      nd.set_step = 0;
       break;
     case '}':
       if (nd.scope != '{') {
@@ -1143,7 +1141,7 @@ static uchar parse_level(SGSParser *o, NodeData *parentnd,
         if (parse_step(o, &nd))
           flags = HANDLE_DEFER | DEFERRED_STEP;
       } else if (test & DEFERRED_SETTINGS)
-        if (parse_settings(o, &nd))
+        if (parse_settings(o))
           flags = HANDLE_DEFER | DEFERRED_SETTINGS;
     }
   }
@@ -1153,11 +1151,10 @@ FINISH:
   if (newscope == '{')
     warning(o, "end of file without closing '}'s", c);
 RETURN:
-  end_operator(o, &nd);
-  end_voice(o, &nd);
-  if (nd.event && nd.event->operator) {
-    if (nd.event->operator->time_ms < 0)
-      nd.event->operator->time_ms = o->def_time_ms; /* use default */
+  if (nd.event) {
+    if (nd.event->time_ms < 0)
+      nd.event->time_ms = o->def_time_ms; /* use default */
+    end_operator(o, &nd);
   }
   if (nd.current)
     nd.current->groupfrom = nd.group;
@@ -1169,6 +1166,7 @@ RETURN:
 }
 
 static void parse(FILE *f, const char *fn, SGSParser *o) {
+  NodeTarget nt = {0, 0, 0};
   memset(o, 0, sizeof(SGSParser));
   o->f = f;
   o->fn = fn;
@@ -1180,7 +1178,7 @@ static void parse(FILE *f, const char *fn, SGSParser *o) {
   o->def_freq = 444.f; /* default until changed */
   o->def_A4tuning = 444.f; /* default until changed */
   o->def_ratio = 1.f; /* default until changed */
-  parse_level(o, 0, GRAPH, SCOPE_TOP);
+  parse_level(o, 0, &nt, SCOPE_TOP);
   SGSSymtab_destroy(o->st);
 }
 
@@ -1190,59 +1188,46 @@ static void group_events(EventNode *to, int def_time_ms) {
   for (until = to->next;
        until && until->nestlevel;
        until = until->next) ;
-  for (ge = from; ge != until; ) {
-    OperatorData *od;
+  for (ge = from; ge != until; ge = ge->next) {
     if (ge->nestlevel)
       continue;
-    if ((od = ge->operator)) {
-      if (ge->next == until && od->time_ms < 0) /* Set and use default for last node in group */
-        od->time_ms = def_time_ms;
-      if (wait < od->time_ms)
-        wait = od->time_ms;
-    }
-    ge = ge->next;
-    if (ge) {
-      //wait -= ge->wait_ms;
-      waitcount += ge->wait_ms;
+    if (ge->next == until && ge->time_ms < 0) /* Set and use default for last node in group */
+      ge->time_ms = def_time_ms;
+    if (wait < ge->time_ms)
+      wait = ge->time_ms;
+    if (ge->next) {
+      //wait -= ge->next->wait_ms;
+      waitcount += ge->next->wait_ms;
     }
   }
-  for (ge = from; ge != until; ) {
-    OperatorData *od;
-    if ((od = ge->operator)) {
-      if (od->time_ms < 0)
-        od->time_ms = wait + waitcount; /* fill in sensible default time */
-    }
-    ge = ge->next;
-    if (ge) {
-      waitcount -= ge->wait_ms;
-    }
+  for (ge = from; ge != until; ge = ge->next) {
+    if (ge->time_ms < 0)
+      ge->time_ms = wait + waitcount; /* fill in sensible default time */
+    if (ge->next)
+      waitcount -= ge->next->wait_ms;
   }
   to->groupfrom = 0;
   if (until)
     until->wait_ms += wait;
 }
 
-static void time_event(EventNode *e, int def_time_ms) {
-  OperatorData *od = e->operator;
-  VoiceData *vd = e->voice;
+static void time_event(EventNode *e) {
   /* Fill in blank valit durations */
-  if (vd) {
-    if (vd->valitpanning.time_ms < 0)
-      vd->valitpanning.time_ms = def_time_ms;
+  if (e->valitfreq.time_ms < 0)
+    e->valitfreq.time_ms = e->time_ms;
+  if (e->valitamp.time_ms < 0)
+    e->valitamp.time_ms = e->time_ms;
+  if (!e->nestlevel) {
+    if (e->topop.valitpanning.time_ms < 0)
+      e->topop.valitpanning.time_ms = e->time_ms;
   }
-  if (od) {
-    if (od->valitfreq.time_ms < 0)
-      od->valitfreq.time_ms = od->time_ms;
-    if (od->valitamp.time_ms < 0)
-      od->valitamp.time_ms = od->time_ms;
-    if (od->time_ms >= 0 && !(e->parseflags & SILENCE_ADDED)) {
-      od->time_ms += od->silence_ms;
-      e->parseflags |= SILENCE_ADDED;
-    }
+  if (e->time_ms >= 0 && !(e->parseflags & SILENCE_ADDED)) {
+    e->time_ms += e->silence_ms;
+    e->parseflags |= SILENCE_ADDED;
   }
   if (e->parseflags & ADD_WAIT_DURATION) {
     if (e->next)
-      ((EventNode*)e->next)->wait_ms += od->time_ms;
+      e->next->wait_ms += e->time_ms;
     e->parseflags &= ~ADD_WAIT_DURATION;
   }
 }
@@ -1297,39 +1282,35 @@ static void flatten_events(EventNode *e) {
 static SGSProgram* build(SGSParser *o) {
   SGSProgram *prg = o->prg;
   EventNode *e;
-  SGSProgramEvent *oevents, *oe;
+  SGSProgramEvent *oe;
   uint id;
   uint alloc = 0;
   /* Pass #1 - perform timing adjustments */
   for (e = o->events; e; e = e->next) {
-    time_event(e, o->def_time_ms);
+    time_event(e);
     /* Handle composites (flatten in next loop) */
     if (e->composite) {
       EventNode *ce = e->composite, *ce_prev = e;
       EventNode *se = e->next;
-      OperatorData *ceod = ce->operator;
-      if (ceod->time_ms < 0)
-        ceod->time_ms = o->def_time_ms;
+      if (ce->time_ms < 0)
+        ce->time_ms = o->def_time_ms;
       /* Timing for composites */
-      for (;;) {
-        OperatorData *ceod_prev = ce_prev->operator;
+      do {
         if (ce->wait_ms) { /* Simulate delay with silence */
-          ceod->silence_ms += ce->wait_ms;
+          ce->silence_ms += ce->wait_ms;
           ce->params |= SGS_SILENCE;
           if (se)
             se->wait_ms += ce->wait_ms;
           ce->wait_ms = 0;
         }
-        ce->wait_ms += ceod_prev->time_ms;
-        if (ceod->time_ms < 0)
-          ceod->time_ms = ceod_prev->time_ms - ceod_prev->silence_ms;
-        time_event(ce, o->def_time_ms);
-        e->operator->time_ms += ceod->time_ms;
+        ce->wait_ms += ce_prev->time_ms;
+        if (ce->time_ms < 0)
+          ce->time_ms = ce_prev->time_ms - ce_prev->silence_ms;
+        time_event(ce);
+        e->time_ms += ce->time_ms;
         ce_prev = ce;
         ce = ce->next;
-        if (!ce) break;
-        ceod = ce->operator;
-      }
+      } while (ce);
     }
     /* Time |-terminated sequences */
     if (e->groupfrom)
@@ -1344,65 +1325,53 @@ static SGSProgram* build(SGSParser *o) {
   /* Pass #3 - produce output */
   for (id = 0, e = o->events; e; ) {
     EventNode *e_next = e->next;
-    OperatorData *od = e->operator;
-    SGSProgramOperatorData *ood;
-    VoiceData *vd = e->voice;
-    SGSProgramVoiceData *ovd;
     /* Add to final output list */
     if (id >= alloc) {
       if (!alloc) alloc = 1;
       alloc <<= 1;
-      oevents = realloc(oevents, sizeof(SGSProgramEvent) * alloc);
+      prg->events = realloc(prg->events, sizeof(SGSProgramEvent) * alloc);
     }
-    oe = &oevents[id];
+    oe = &prg->events[id];
+    oe->opprevid = (e->opprev ? (int)e->opprev->id : -1);
+    oe->opnextid = (e->opnext ? (int)e->opnext->id : -1);
+    oe->type = e->type;
     oe->wait_ms = e->wait_ms;
     oe->params = e->params;
-    if (vd) {
-      ovd = calloc(1, sizeof(SGSProgramVoiceData));
-      oe->voice = ovd;
-      ovd->id = vd->voiceid;
-      ovd->attr = vd->attr;
-      ovd->graph = 0;
-      ovd->panning = vd->panning;
-      ovd->valitpanning = vd->valitpanning;
-      free(vd);
-    }
-    if (od) {
-      ood = calloc(1, sizeof(SGSProgramOperatorData));
-      oe->operator = ood;
-      ood->id = od->operatorid;
-      ood->adjcs = 0;
-      ood->attr = od->attr;
-      ood->wave = od->wave;
-      ood->time_ms = od->time_ms;
-      ood->silence_ms = od->silence_ms;
-      ood->freq = od->freq;
-      ood->dynfreq = od->dynfreq;
-      ood->phase = od->phase;
-      ood->amp = od->amp;
-      ood->dynamp = od->dynamp;
-      ood->valitfreq = od->valitfreq;
-      ood->valitamp = od->valitamp;
-      free(od);
+    if (oe->type == SGS_EVENT_VOICE) {
+      oe->data.voice.id = e->voiceid;
+      oe->data.voice.graph = 0;
+      oe->data.voice.panning = e->topop.panning;
+      oe->data.voice.valitpanning = e->topop.valitpanning;
+    } else {
+      oe->data.operator.id = e->opid;
+      oe->data.operator.adjc = 0;
+      oe->data.operator.attr = e->attr;
+      oe->data.operator.wave = e->wave;
+      oe->data.operator.time_ms = e->time_ms;
+      oe->data.operator.silence_ms = e->silence_ms;
+      oe->data.operator.freq = e->freq;
+      oe->data.operator.dynfreq = e->dynfreq;
+      oe->data.operator.phase = e->phase;
+      oe->data.operator.amp = e->amp;
+      oe->data.operator.dynamp = e->dynamp;
+      oe->data.operator.valitfreq = e->valitfreq;
+      oe->data.operator.valitamp = e->valitamp;
     }
     ++id;
     free(e);
     e = e_next;
   }
-  *(SGSProgramEvent**)&prg->events = oevents;
   prg->eventc = id;
-  prg->operatorc = o->operatorc;
-  prg->voicec = o->voicec;
 #if 1
   /* Debug printing */
-  oe = oevents;
+  oe = prg->events;
   putchar('\n');
   for (id = 0; id < prg->eventc; ++id) {
-    oe = &oevents[id];
-    if (oe->voice)
-      printf("ev %d, vo %d: \t/=%d", id, oe->voice->id, oe->wait_ms);
-    if (oe->operator)
-      printf("ev %d, op %d: \t/=%d \tt=%d\n", id, oe->operator->id, oe->wait_ms, oe->operator->time_ms);
+    oe = &prg->events[id];
+    if (oe->type == SGS_EVENT_VOICE)
+      printf("ev %d, vo %d: \t/=%d", id, oe->data.voice.id, oe->wait_ms);
+    else
+      printf("ev %d, op %d: \t/=%d \tt=%d\n", id, oe->data.operator.id, oe->wait_ms, oe->data.operator.time_ms);
   }
 #else
   /* Debug printing */
@@ -1429,14 +1398,6 @@ SGSProgram* SGSProgram_create(const char *filename) {
 void SGSProgram_destroy(SGSProgram *o) {
   uint i;
   for (i = 0; i < o->eventc; ++i) {
-    if (o->events->voice) {
-      free((void*)o->events->voice->graph);
-      free((void*)o->events->voice);
-    }
-    if (o->events->operator) {
-      free((void*)o->events->operator->adjcs);
-      free((void*)o->events->operator);
-    }
   }
-  free((void*)o->events);
+  free(o->events);
 }
