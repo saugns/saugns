@@ -26,6 +26,7 @@ typedef struct MGSGeneratorNode {
 struct MGSGenerator {
   const struct MGSProgram *program;
   uint srate;
+  double osc_coeff;
   int delay_offs;
   MGSGeneratorNode *node, *end,
                    *nodes; /* node size varies, so no direct indexing! */
@@ -39,20 +40,20 @@ MGSGenerator* MGSGenerator_create(uint srate, struct MGSProgram *prg) {
   size = sizeof(MGSGenerator);
   nodessize = sizeof(MGSGeneratorNode) * prg->stepc;
   for (step = prg->steps; step; step = step->next)
-    nodessize += (step->modc-1) * sizeof(MGSGeneratorNode*);
+    nodessize += (step->pmodc-1) * sizeof(MGSGeneratorNode*);
   o = calloc(1, size + nodessize);
   o->program = prg;
   o->srate = srate;
+  o->osc_coeff = MGSOsc_COEFF(srate);
   o->node = o->nodes = (void*)(((uchar*)o) + size);
   o->end = (void*)(((uchar*)o->node) + nodessize);
   MGSOsc_init();
   step = prg->steps;
   for (n = o->nodes; n != o->end; n = MGSGeneratorNode_NEXT(n)) {
-    uint amp;
+    float amp = step->amp;
     uint delay = step->delay * srate;
     uint time = step->time * srate;
     float freq = step->freq;
-    SET_I16_162F(amp, step->amp);
     if (!step->ref) {
       n->ref = 0;
     } else {
@@ -80,11 +81,11 @@ MGSGenerator* MGSGenerator_create(uint srate, struct MGSProgram *prg) {
     n->type = step->type;
     n->flag = step->flag;
     n->mode = step->mode;
-    MGSOsc_SET_RANGE(&n->osc, amp);
+    MGSOsc_SET_AMP(&n->osc, amp);
     n->freq = freq;
-    n->modc = step->modc;
+    n->modc = step->pmodc;
     for (i = 0; i < n->modc; ++i)
-      n->mods[i] = (void*)step->mods[i]; /* replace with proper entry below */
+      n->mods[i] = (void*)step->pmods[i]; /* replace with proper entry below */
     step = step->next;
   }
   for (n = o->nodes, j = 0; n != o->end; n = MGSGeneratorNode_NEXT(n), ++j) {
@@ -109,7 +110,7 @@ static void MGSGenerator_enter_node(MGSGenerator *o, MGSGeneratorNode *n) {
   switch (n->type) {
   case MGS_TYPE_WAVE:
     if (!n->ref) { /* beginning */
-      MGSOsc_SET_COEFF(&n->osc, n->freq, o->srate);
+      MGSOsc_SET_FREQ(&n->osc, n->freq);
       MGSOsc_SET_PHASE(&n->osc, 0);
     } else { /* continuation */
       MGSGeneratorNode *ref = n->ref;
@@ -118,15 +119,11 @@ static void MGSGenerator_enter_node(MGSGenerator *o, MGSGeneratorNode *n) {
         n->pos = ref->pos;
       }
       ref->pos = ref->time;
-      if (n->flag & MGS_FLAG_REFFREQ)
-        n->freq = ref->freq;
-      MGSOsc_SET_COEFF(&n->osc, n->freq, o->srate);
+      MGSOsc_SET_FREQ(&n->osc, n->freq);
       MGSOsc_SET_PHASE(&n->osc, ref->osc.phase);
-      if (n->flag & MGS_FLAG_REFAMP)
-        MGSOsc_SET_RANGE(&n->osc, ref->osc.amp);
     }
     /* click reduction: increase time to make it end at wave cycle's end */
-    MGSOsc_WAVE_OFFS(&n->osc, n->time, pos_offs);
+    MGSOsc_WAVE_OFFS(&n->osc, o->osc_coeff, n->time, pos_offs);
     n->time -= pos_offs;
     if ((uint)o->delay_offs == NO_DELAY_OFFS || o->delay_offs > pos_offs)
       o->delay_offs = pos_offs;
@@ -145,22 +142,22 @@ void MGSGenerator_destroy(MGSGenerator *o) {
  * node sample processing
  */
 
-static uint run_pm(MGSGeneratorNode *n, uint srate) {
+static uint run_pm(MGSGeneratorNode *n, double osc_coeff) {
   uint i;
   int s = 0;
   for (i = 0; i < n->modc; ++i) {
     MGSGeneratorNode *mn = n->mods[i];
     if (mn->flag & MGS_FLAG_FREQRATIO)
-      MGSOsc_SET_COEFF(&mn->osc, (n->freq * mn->freq), srate);
+      MGSOsc_SET_FREQ(&mn->osc, (n->freq * mn->freq));
     if (mn->modc)
-      s += run_pm(mn, srate);
+      s += run_pm(mn, osc_coeff);
     else {
       int v;
-      MGSOsc_RUN(&mn->osc, mn->osctype, v);
+      MGSOsc_RUN(&mn->osc, mn->osctype, osc_coeff, v);
       s += v;
     }
   }
-  MGSOsc_RUN_PM(&n->osc, n->osctype, s, s);
+  MGSOsc_RUN_PM(&n->osc, n->osctype, osc_coeff, s, s);
   return s;
 }
 
@@ -168,7 +165,7 @@ static uint run_pm(MGSGeneratorNode *n, uint srate) {
  * node block processing
  */
 
-static void run_node(MGSGeneratorNode *n, short *sp, uint len, uint srate) {
+static void run_node(MGSGeneratorNode *n, short *sp, uint len, double osc_coeff) {
   uint time = n->time - n->pos;
   if (time > len)
     time = len;
@@ -178,7 +175,7 @@ static void run_node(MGSGeneratorNode *n, short *sp, uint len, uint srate) {
   if (n->modc) {
     for (; time; --time, sp += 2) {
       int s;
-      s = run_pm(n, srate);
+      s = run_pm(n, osc_coeff);
       sp[0] += s;
       if (n->mode == MGS_MODE_CENTER)
         sp[1] += s;
@@ -186,7 +183,7 @@ static void run_node(MGSGeneratorNode *n, short *sp, uint len, uint srate) {
   } else {
     for (; time; --time, sp += 2) {
       int s;
-      MGSOsc_RUN(&n->osc, n->osctype, s);
+      MGSOsc_RUN(&n->osc, n->osctype, osc_coeff, s);
       sp[0] += s;
       if (n->mode == MGS_MODE_CENTER)
         sp[1] += s;
@@ -250,7 +247,7 @@ PROCESS:
     if (!(n->flag & MGS_FLAG_ENTERED))
       MGSGenerator_enter_node(o, n);
     if (n->flag & MGS_FLAG_PLAY)
-      run_node(n, buf, len, o->srate);
+      run_node(n, buf, len, o->osc_coeff);
   }
   if (skiplen) {
     buf += len+len; /* doubled due to stereo interleaving */

@@ -14,6 +14,9 @@ one allowing multiple steps on one line.
 until new steps are given, and a newline or a > will return to the step for
 which the < was given.
 
+Parameters with nesting use { and } instead, differentiating the two, though
+such nesting also allows newlines.
+
 When a number is given for a parameter, specifying it within parentheses will
 make the syntax freer, allowing mathematical operations and further nesting of
 parentheses. Whitespace including newlines may be freely placed until the
@@ -37,15 +40,24 @@ Wsin, Wsqr, Wtri, Wsaw:
 	Supports f, t, a, \ parameters.
 
 The following parameters can be found in wave operations:
+	t	Time duration in seconds.
 	f	Frequency in Hz.
-	r	Frequency ratio (modulator waves only). Keeps frequency the
-		multiple of that of the carrier and the number given. Often
-		used in the form r(n/m) to give an n:m ratio.
-	t	Time in seconds.
+	f!{}	Second frequency in Hz to modulate (FM) to by wave or envelope,
+		and/or a list of modulators given within {} following the
+		number if given.
+	r	Frequency ratio (modulator waves only) of carrier to modulator.
+		Keeps frequency that of that of the carrier divided by the
+		given. Often used in the form r(n/m) to give an n:m ratio.
+	r!{}	Second frequency ratio (modulator waves only) to modulate (FM)
+		to by wave or envelope, and/or a list of modulators given
+		within {} following the number if given.
 	a	Amplitude, where 1.0 gives a level of 0dB, which is the signal
 		max of the output. For a modulator wave, this however simply
 		adjusts the effect strength.
-	m<>	A list of modulator waves is given within the <>, the
+	a!{}	Second amplitude to modulate (AM) to by wave or envelope,
+		and/or a list of modulators given within {} following the
+		number if given.
+	m{}	A list of modulator (PM) waves is given within the {}, the
 		per-sample sum of which is used to phase-modulate the carrier,
 		be it the final carrier or in turn another modulator.
 	\	Time shift/delay current operation and following ones, time
