@@ -99,7 +99,7 @@ enum {
   FMODS = 1<<2,
   AMODS = 1<<3,
   /* other flags */
-  OLD_VOICE_EVENT = 1<<4,
+  PARENT_OLD = 1<<4,
   ADD_WAIT_DURATION = 1<<5,
   SILENCE_ADDED = 1<<6
 };
@@ -119,7 +119,7 @@ typedef struct VoiceData {
 typedef struct OperatorData {
   struct EventNode *opprev; /* previous event with data for same operator */
   uint operatorid;
-  struct EventNode *voice;
+  uint voiceid;
   /* parameters */
   uchar attr;
   uchar wave;
@@ -143,6 +143,7 @@ typedef struct EventNode {
   uint id;
   uint params;
   uint nestlevel;
+  uint scopeid;
   uchar parseflags;
   VoiceData *voice;
   OperatorData *operator;
@@ -156,6 +157,7 @@ typedef struct SGSParser {
   uint line;
   uint calllevel;
   uint nestlevel;
+  uint scopeid;
   char nextc;
   /* node state */
   EventNode *events;
@@ -174,6 +176,7 @@ typedef struct NodeData {
   uchar set_settings, /* adjusting default values */
         set_step;     /* adjusting operator and/or voice */
   char scope;
+  uint scopeid;
   VoiceData voice;       /* state of voice changes for current event */
   OperatorData operator; /* state of operator changes for current event */
   EventNode *event, *voevent;
@@ -227,9 +230,10 @@ static void new_event(SGSParser *o, NodeData *nd, EventNode *previous,
   EventNode *e, *pve;
   VoiceData *vd;
   OperatorData *od;
+  uchar setop = 0, setvo = 0;
   end_operator(o, nd);
   end_voice(o, nd);
-  if (previous) {
+  if (previous && previous->scopeid == nd->scopeid) {
     if (!nd->next_wait_ms) {
       if (!previous->voice)
         previous->voice = &nd->voice;
@@ -245,11 +249,14 @@ static void new_event(SGSParser *o, NodeData *nd, EventNode *previous,
       return; /* reuse repositioned event */
     }
   }
+  if (nd->parent && !composite && nd->next_wait_ms != 0)
+    nd->parent->parseflags |= PARENT_OLD;
   e = calloc(1, sizeof(EventNode));
   e->wait_ms = nd->next_wait_ms;
   nd->next_wait_ms = 0;
   e->id = o->eventc++;
   e->nestlevel = o->nestlevel;
+  e->scopeid = nd->scopeid;
   e->voice = &nd->voice;
   vd = &nd->voice;
   e->operator = &nd->operator;
@@ -257,27 +264,31 @@ static void new_event(SGSParser *o, NodeData *nd, EventNode *previous,
   if (previous) {
     pve = (linktype) ? nd->parent : previous;
     if (pve && pve->voice) {
+      setvo = 1;
       *vd = *pve->voice;
       vd->voprev = pve;
-    } else { /* set defaults */
-      vd->voiceid = o->voicec++;
-      vd->panning = 0.5f; /* center */
     }
-
     if (previous->operator) {
+      setop = 1;
       *od = *previous->operator;
       od->opprev = previous;
-    } else { /* set defaults */
-      od->operatorid = o->operatorc++;
-      od->amp = 1.0f;
-      if (e->nestlevel == 0) {
-        od->time_ms = -1; /* dynamically fitted, or set to default */
-        od->freq = o->def_freq;
-      } else {
-        od->time_ms = o->def_time_ms;
-        od->freq = o->def_ratio;
-        od->attr |= SGS_ATTR_FREQRATIO;
-      }
+    }
+  }
+  if (!setvo) { /* set defaults */
+    vd->voiceid = o->voicec++;
+    vd->panning = 0.5f; /* center */
+  }
+  if (!setop) { /* set defaults */
+    od->operatorid = o->operatorc++;
+    od->voiceid = vd->voiceid;
+    od->amp = 1.0f;
+    if (e->nestlevel == 0) {
+      od->time_ms = -1; /* dynamically fitted, or set to default */
+      od->freq = o->def_freq;
+    } else {
+      od->time_ms = o->def_time_ms;
+      od->freq = o->def_ratio;
+      od->attr |= SGS_ATTR_FREQRATIO;
     }
   }
 
@@ -286,6 +297,10 @@ static void new_event(SGSParser *o, NodeData *nd, EventNode *previous,
     if (!nd->parent) {
       nd->parent = e; /* operator has new voice for parent */
       linktype = GRAPH;
+    } else if ((nd->parent->parseflags & PARENT_OLD) ||
+               (nd->parent->scopeid != nd->scopeid)) {
+      if (linktype == GRAPH)
+        nd->parent = e;
     }
     nd->parent->params |= (linktype == GRAPH) ? SGS_GRAPH : SGS_ADJC;
     add_adjc(nd->parent, e, linktype);
@@ -350,7 +365,7 @@ static void end_voice(SGSParser *o, NodeData *nd) {
     if (!vd->voprev)
       --o->voicec;
   }
-  memset(vd, 0, sizeof(VoiceData));
+  memset(&nd->voice, 0, sizeof(VoiceData));
 }
 
 static void end_operator(SGSParser *o, NodeData *nd) {
@@ -404,7 +419,7 @@ static void end_operator(SGSParser *o, NodeData *nd) {
     if (!od->opprev)
       --o->operatorc;
   }
-  memset(od, 0, sizeof(OperatorData));
+  memset(&nd->operator, 0, sizeof(OperatorData));
 }
 
 /*
@@ -992,6 +1007,7 @@ static uchar parse_level(SGSParser *o, NodeData *parentnd,
     nd.set_step = parentnd->set_step;
     if (newscope == SCOPE_SAME)
       nd.scope = parentnd->scope;
+    nd.scopeid = parentnd->scopeid;
     nd.event = parentnd->event;
     nd.parent = parentnd->event;
     nd.voevent = parentnd->voevent;
@@ -1008,7 +1024,10 @@ static uchar parse_level(SGSParser *o, NodeData *parentnd,
         flags = 0;
         nd.first = 0;
         nd.set_settings = 0;
-        nd.set_step = 0;
+        if (nd.set_step) {
+          nd.set_step = 0;
+          nd.scopeid = ++o->scopeid;
+        }
       }
       break;
     case '-': {
@@ -1294,6 +1313,23 @@ static void flatten_events(EventNode *e) {
   e->composite = 0;
 }
 
+static void build_graph(SGSProgramEvent *root, EventNode *root_in) {
+  SGSProgramGraph *graph;
+  uint i;
+  uint size;
+  VoiceData *voice_in = root_in->voice;
+  if (!voice_in)
+    return;
+  size = voice_in->operatorc;
+  if (!size)
+    return;
+  graph = malloc(sizeof(SGSProgramGraph) + sizeof(int) * (size - 1));
+  graph->opc = size;
+  for (i = 0; i < size; ++i)
+    graph->ops[i] = voice_in->graph[i]->operator->operatorid;
+  *(SGSProgramGraph**)&root->voice->graph = graph;
+}
+
 static SGSProgram* build(SGSParser *o) {
   SGSProgram *prg = o->prg;
   EventNode *e;
@@ -1359,18 +1395,19 @@ static SGSProgram* build(SGSParser *o) {
     oe->params = e->params;
     if (vd) {
       ovd = calloc(1, sizeof(SGSProgramVoiceData));
+      oe->voiceid = vd->voiceid;
       oe->voice = ovd;
-      ovd->id = vd->voiceid;
       ovd->attr = vd->attr;
-      ovd->graph = 0;
       ovd->panning = vd->panning;
       ovd->valitpanning = vd->valitpanning;
+      build_graph(oe, e);
       free(vd);
     }
     if (od) {
       ood = calloc(1, sizeof(SGSProgramOperatorData));
+      oe->voiceid = od->voiceid;
       oe->operator = ood;
-      ood->id = od->operatorid;
+      ood->operatorid = od->operatorid;
       ood->adjcs = 0;
       ood->attr = od->attr;
       ood->wave = od->wave;
@@ -1397,20 +1434,16 @@ static SGSProgram* build(SGSParser *o) {
   /* Debug printing */
   oe = oevents;
   putchar('\n');
+  printf("events: %d\tvoices: %d\toperators: %d\n", prg->eventc, o->voicec, o->operatorc);
   for (id = 0; id < prg->eventc; ++id) {
     oe = &oevents[id];
+    printf("\\%d \tEV %d", oe->wait_ms, id);
     if (oe->voice)
-      printf("ev %d, vo %d: \t/=%d", id, oe->voice->id, oe->wait_ms);
+      printf("\n\tvo %d", oe->voiceid);
     if (oe->operator)
-      printf("ev %d, op %d: \t/=%d \tt=%d\n", id, oe->operator->id, oe->wait_ms, oe->operator->time_ms);
+      printf("\n\top %d \tt=%d \tf=%.f", oe->operator->operatorid, oe->operator->time_ms, oe->operator->freq);
+    putchar('\n');
   }
-#else
-  /* Debug printing */
-  e = o->events;
-  putchar('\n');
-  do{
-    printf("ev %d, op %d (%s): \t/=%d \tt=%d\n", e->id, e->opid, e->optype ? "nested" : "top", e->wait_ms, e->time_ms);
-  } while ((e = e->next));
 #endif
 
   return o->prg;
@@ -1429,13 +1462,14 @@ SGSProgram* SGSProgram_create(const char *filename) {
 void SGSProgram_destroy(SGSProgram *o) {
   uint i;
   for (i = 0; i < o->eventc; ++i) {
-    if (o->events->voice) {
-      free((void*)o->events->voice->graph);
-      free((void*)o->events->voice);
+    SGSProgramEvent *e = (void*)&o->events[i];
+    if (e->voice) {
+      free((void*)e->voice->graph);
+      free((void*)e->voice);
     }
-    if (o->events->operator) {
-      free((void*)o->events->operator->adjcs);
-      free((void*)o->events->operator);
+    if (e->operator) {
+      free((void*)e->operator->adjcs);
+      free((void*)e->operator);
     }
   }
   free((void*)o->events);
