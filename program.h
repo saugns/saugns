@@ -47,7 +47,8 @@ enum {
 enum {
   SGS_VALIT_NONE = 0, /* when none given */
   SGS_VALIT_LIN,
-  SGS_VALIT_EXP
+  SGS_VALIT_EXP,
+  SGS_VALIT_LOG
 };
 
 typedef struct SGSProgramValit {

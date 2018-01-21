@@ -1,2 +1,2 @@
-Wsin	fF4 f[se t1 v10000] t2
-;	f[se t1 v300] t20
+Wsin	fF4 f[cexp t1 v1000] t1
+;	f[cexp t1 v300] t20
