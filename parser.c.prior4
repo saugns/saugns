@@ -1186,6 +1186,27 @@ static void group_events(EventNode *to, int def_time_ms) {
     until->wait_ms += wait;
 }
 
+static void time_event(EventNode *e) {
+  /* Fill in blank valit durations */
+  if (e->valitfreq.time_ms < 0)
+    e->valitfreq.time_ms = e->time_ms;
+  if (e->valitamp.time_ms < 0)
+    e->valitamp.time_ms = e->time_ms;
+  if (e->optype == SGS_TYPE_TOP) {
+    if (e->topop.valitpanning.time_ms < 0)
+      e->topop.valitpanning.time_ms = e->time_ms;
+  }
+  if (e->time_ms >= 0 && !(e->parseflags & SILENCE_ADDED)) {
+    e->time_ms += e->silence_ms;
+    e->parseflags |= SILENCE_ADDED;
+  }
+  if (e->parseflags & ADD_WAIT_DURATION) {
+    if (e->next)
+      e->next->wait_ms += e->time_ms;
+    e->parseflags &= ~ADD_WAIT_DURATION;
+  }
+}
+
 static void flatten_events(EventNode *e) {
   EventNode *ce = e->composite;
   EventNode *se = e->next, *se_prev = e;
@@ -1239,17 +1260,9 @@ static SGSProgram* build(SGSParser *o) {
   SGSProgramEvent *oe;
   uint id = 0;
   uint alloc = 0;
+  /* Pass #1 - perform timing adjustments */
   for (e = o->events; e; e = e->next) {
-    EventNode *e_next = e->next; /* next before flattening if any */
-    /* Fill in blank valit durations */
-    if (e->valitfreq.time_ms < 0)
-      e->valitfreq.time_ms = e->time_ms;
-    if (e->valitamp.time_ms < 0)
-      e->valitamp.time_ms = e->time_ms;
-    if (e->optype == SGS_TYPE_TOP) {
-      if (e->topop.valitpanning.time_ms < 0)
-        e->topop.valitpanning.time_ms = e->time_ms;
-    }
+    time_event(e);
     /* Handle composites (flatten in next loop) */
     if (e->composite) {
       EventNode *ce = e->composite, *ce_prev = e;
@@ -1268,8 +1281,7 @@ static SGSProgram* build(SGSParser *o) {
         ce->wait_ms += ce_prev->time_ms;
         if (ce->time_ms < 0)
           ce->time_ms = ce_prev->time_ms - ce_prev->silence_ms;
-        ce->time_ms += ce->silence_ms;
-        ce->parseflags |= SILENCE_ADDED;
+        time_event(ce);
         e->time_ms += ce->time_ms;
         ce_prev = ce;
         ce = ce->next;
@@ -1278,17 +1290,8 @@ static SGSProgram* build(SGSParser *o) {
     /* Time |-terminated sequences */
     if (e->groupfrom)
       group_events(e, o->def_time_ms);
-
-    if (e->time_ms >= 0 && !(e->parseflags & SILENCE_ADDED)) {
-      e->time_ms += e->silence_ms;
-      e->parseflags |= SILENCE_ADDED;
-    }
-    if (e->parseflags & ADD_WAIT_DURATION) {
-      if (e_next)
-        e_next->wait_ms += e->time_ms;
-      e->parseflags &= ~ADD_WAIT_DURATION;
-    }
   }
+  /* Pass #2 - flatten list and produce output */
   for (e = o->events; e; ) {
     EventNode *e_next;
     if (e->composite)

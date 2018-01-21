@@ -1,15 +1,15 @@
-Wsin	f220 p!{
-		Wsin r(2/7) a0.5
-		Wsin r(5/7) a0.5 p!{Wsin r(7/10) a(1/2)} 
-	} t1.0
-;	f440 t1.5
-;	f400 t0.5
-;	f350
-;	f325 t1.5
-;s1	f220 t(1+1)
-;	f440 t1.5
-;	f415 t0.5
-;	f445
-;	f490 t1.0
-;	f420
-;	f440 t1.5
+Osin	f220 <-
+		Osin r(2/7) a0.5
+		<Osin r(5/7) a0.5 - Osin r(7/10) a(1/2)>
+	> t1.0
+;	f[cexp v440 t0.15] t1.5
+;	f[cexp v400 t0.15] t0.5
+;	f[cexp v350 t0.15] t0.5
+;	f[cexp v325 t0.15] t1.5
+;s1	f[cexp v220 t0.15] t1
+;	f[cexp v440 t0.15] t1.5
+;	f[cexp v415 t0.15] t0.5
+;	f[cexp v445 t0.15] t0.5
+;	f[cexp v490 t0.15] t1.0
+;	f[cexp v420 t0.15] t1.0
+;	f[cexp v440 t0.15] t1.5
