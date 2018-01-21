@@ -51,7 +51,7 @@ typedef struct MGSOsc {
 #define MGSOsc_RUN_FM(o, osctab, fm, out) do{ \
   int MGSOsc__s, MGSOsc__d; \
   uint MGSOsc__i; \
-  (o)->phase += (o)->inc + (fm); \
+  (o)->phase += (o)->inc + ((fm) * (((o)->inc >> 11) - ((o)->inc >> 14) + ((o)->inc >> 18))); \
   MGSOsc__i = (o)->phase >> (32-MGSOsc_TABINDEXBITS); \
   MGSOsc__s = (osctab)[MGSOsc__i]; \
   SET_I2F(MGSOsc__d, \
@@ -70,7 +70,7 @@ typedef struct MGSOsc {
   int MGSOsc__s, MGSOsc__d; \
   uint MGSOsc__i, MGSOsc__p; \
   (o)->phase += (o)->inc; \
-  MGSOsc__p = (o)->phase + ((pm) * ((o)->inc >> 7)); \
+  MGSOsc__p = (o)->phase + ((pm) << 16); \
   MGSOsc__i = MGSOsc__p >> (32-MGSOsc_TABINDEXBITS); \
   MGSOsc__s = (osctab)[MGSOsc__i]; \
   SET_I2F(MGSOsc__d, \
