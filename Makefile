@@ -1,25 +1,25 @@
 CFLAGS=-W -Wall -O2 -ffast-math
-LFLAGS=-s
-OBJ=mgensys.o parser.o symtab.o generator.o osc.o
+LFLAGS=-s -lm
+OBJ=sgensys.o parser.o symtab.o generator.o osc.o
 
-all: mgensys
+all: sgensys
 
 clean:
-	rm -f $(OBJ) mgensys
+	rm -f $(OBJ) sgensys
 
-mgensys: $(OBJ)
-	$(CC) $(LFLAGS) $(OBJ) -o mgensys
+sgensys: $(OBJ)
+	$(CC) $(LFLAGS) $(OBJ) -o sgensys
 
-mgensys.o: mgensys.c mgensys.h
-	$(CC) -c $(CFLAGS) mgensys.c
+sgensys.o: sgensys.c sgensys.h
+	$(CC) -c $(CFLAGS) sgensys.c
 
-parser.o: parser.c mgensys.h program.h
+parser.o: parser.c sgensys.h program.h
 	$(CC) -c $(CFLAGS) parser.c
 
-symtab.o: symtab.c mgensys.h symtab.h
+symtab.o: symtab.c sgensys.h symtab.h
 	$(CC) -c $(CFLAGS) symtab.c
 
-generator.o: generator.c mgensys.h program.h osc.h
+generator.o: generator.c sgensys.h program.h osc.h
 	$(CC) -c $(CFLAGS) generator.c
 
 osc.o: osc.c osc.h
