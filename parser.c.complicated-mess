@@ -16,86 +16,205 @@ typedef struct MGSParser {
   char setsymkey[SYMKEY_LEN];
   uchar setsym;
   uint line;
+  uint reclevel;
   /* node state */
-  uint nest;
+  uint level;
   uint setdef, setnode;
-  MGSProgramNode *last, *last_play;
+  uint nestedc;
+  MGSProgramNode *nested; /* list added to end of top nodes at end of parsing */
+  MGSProgramNode *last_top, *last_nested;
   /* settings/ops */
   uchar n_mode;
-  float n_amp;
-  float n_delay;
+  float n_ampmult;
   float n_time;
   float n_freq, n_ratio;
+} MGSParser;
+
+/* things that need to be separate for each nested parse_level() go here */
+typedef struct NodeData {
+  MGSProgramNode node; /* state for tentative node until end_node() */
+  MGSProgramNodeChain *target;
+  MGSProgramNode *last;
+  uchar make_node;
+  /* timing/delay */
   MGSProgramNode *n_begin;
   uchar n_end;
   uchar n_time_delay;
-  float n_add_delay; /* added to n_delay when n_delay set */
+  float n_add_delay; /* added to node's delay in end_node */
   float n_next_add_delay;
-} MGSParser;
+} NodeData;
 
-static void end_node(MGSParser *o) {
-  MGSProgramNode *n = o->last;
-  if (!n) return;
-  if (n->ref) {
-  }
-}
+static void end_node(MGSParser *o, NodeData *nd);
 
-static MGSProgramNode* make_node(MGSParser *o, MGSProgramNodeChain *chain) {
+static void new_node(MGSParser *o, NodeData *nd, MGSProgramNodeChain *target, uchar type) {
   MGSProgram *p = o->prg;
-  MGSProgramNode *n = calloc(1, sizeof(MGSProgramNode));
-  if (!p->steps)
-    p->steps = n;
-  else {
-    o->last->next = n;
-    if (o->last->flag & MGS_FLAG_PLAY)
-      o->last_play = o->last;
-    end_node(o);
-  }
-
-  /* settings/ops */
+  MGSProgramNode *n = &nd->node;
+  end_node(o, nd);
+  memset(n, 0, sizeof(MGSProgramNode));
+  nd->make_node = 1;
+  nd->target = target;
+  n->type = type;
+  /* defaults */
+  n->amp = 1.f;
   n->mode = o->n_mode;
-  n->amp = o->n_amp;
-  o->n_add_delay = o->n_next_add_delay;
-  if (o->n_time_delay) {
-    if (o->last_play)
-      o->n_add_delay += o->last_play->time;
-    o->n_time_delay = 0;
-  }
-  if (!o->n_begin)
-    o->n_begin = n;
-  else if (o->n_end) {
-    double delay = 0.f;
-    MGSProgramNode *step;
-    for (step = o->n_begin; step != n; step = step->next) {
-      if (step->flag & MGS_FLAG_PLAY) {
-        if (delay < step->time)
-          delay = step->time;
-        delay -= step->next->delay;
-      }
-    }
-    o->n_add_delay += delay;
-    o->n_begin = n;
-    o->n_end = 0;
-  }
-  o->n_next_add_delay = 0.f;
-  n->delay = o->n_delay + o->n_add_delay;
   n->time = o->n_time;
   n->freq = o->n_freq;
 
-  o->last = n;
-
-  if (0){//chain) {
-    n->id = chain->count++;
+  /* tentative linking */
+  if (!nd->target) {
+    if (!p->nodelist)
+      p->nodelist = n;
+    else
+      o->last_top->next = n;
   } else {
-    n->id = p->stepc++;
+    if (!o->nested)
+      o->nested = n;
+    else
+      o->last_nested->next = n;
+
+    if (!nd->target->chain)
+      nd->target->chain = n;
+    else
+      nd->last->spec.nested.link = n;
   }
+
+  /* prepare timing adjustment */
+  nd->n_add_delay = nd->n_next_add_delay;
+  if (nd->n_time_delay) {
+    if (o->last_top)
+      nd->n_add_delay += o->last_top->time;
+    nd->n_time_delay = 0;
+  }
+  if (!nd->n_begin)
+    nd->n_begin = n;
+  else if (nd->n_end) {
+    double delay = 0.f;
+    MGSProgramNode *step;
+    for (step = nd->n_begin; step != n; step = step->next) {
+      if (delay < step->time)
+        delay = step->time;
+      delay -= step->next->delay;
+    }
+    nd->n_add_delay += delay;
+    nd->n_begin = n;
+    nd->n_end = 0;
+  }
+}
+
+static void end_node(MGSParser *o, NodeData *nd) {
+  MGSProgram *p = o->prg;
+  MGSProgramNode *n = &nd->node;
+  if (!nd->make_node)
+    return; /* nothing to do */
+  nd->make_node = 0;
+  if (n->type == MGS_TYPE_SETTOP ||
+      n->type == MGS_TYPE_SETNESTED) {
+    /* check what the set-node changes */
+    MGSProgramNode *ref = n->spec.set.ref;
+    if (n->time != ref->time)
+      n->spec.set.values |= MGS_TIME;
+    if (n->freq != ref->freq)
+      n->spec.set.values |= MGS_FREQ;
+    if (n->dynfreq != ref->dynfreq)
+      n->spec.set.values |= MGS_DYNFREQ;
+    if (n->phase != ref->phase)
+      n->spec.set.values |= MGS_PHASE;
+    if (n->amp != ref->amp)
+      n->spec.set.values |= MGS_AMP;
+    if (n->dynamp != ref->dynamp)
+      n->spec.set.values |= MGS_DYNAMP;
+    if (n->attr != ref->attr)
+      n->spec.set.values |= MGS_ATTR;
+    if (n->amod.chain != ref->amod.chain)
+      n->spec.set.mods |= MGS_AMODS;
+    if (n->fmod.chain != ref->fmod.chain)
+      n->spec.set.mods |= MGS_FMODS;
+    if (n->pmod.chain != ref->pmod.chain)
+      n->spec.set.mods |= MGS_PMODS;
+
+    if (!n->spec.set.values && !n->spec.set.mods) {
+      /* remove no-operation set node */
+      if (!nd->target) {
+        if (p->nodelist == n)
+          p->nodelist = 0;
+        else
+          o->last_top->next = 0;
+      } else {
+        if (o->nested == n)
+          o->nested = 0;
+        else
+          o->last_nested->next = 0;
+
+        if (nd->target->chain == n)
+          nd->target->chain = 0;
+        else
+          nd->last->spec.nested.link = 0;
+      }
+      return;
+    }
+  }
+
+  n = malloc(sizeof(MGSProgramNode));
+  memcpy(n, &nd->node, sizeof(MGSProgramNode));
+
+#if 0
+  if (!nd->target) {
+    if (!p->nodelist)
+      p->nodelist = n;
+    else
+      o->last_top->next = n;
+    o->last_top = n;
+    n->id = p->topc++;
+  } else {
+    if (!o->nested)
+      o->nested = n;
+    else
+      o->last_nested->next = n;
+    o->last_nested = n;
+    n->id = o->nestedc++;
+
+    if (!nd->target->chain)
+      nd->target->chain = n;
+    else
+      nd->last->spec.nested.link = n;
+    ++nd->target->count;
+  }
+  ++p->nodec;
+#else
+  if (!nd->target) {
+    n->flag |= MGS_FLAG_EXEC;
+    if (p->nodelist == &nd->node)
+      p->nodelist = n;
+    else
+      o->last_top->next = n;
+    o->last_top = n;
+    n->id = p->topc++;
+  } else {
+    if (nd->target->chain == &nd->node)
+      nd->target->chain = n;
+    else
+      nd->last->spec.nested.link = n;
+    ++nd->target->count;
+    if (o->nested == &nd->node)
+      o->nested = n;
+    else
+      o->last_nested->next = n;
+    o->last_nested = n;
+    n->id = o->nestedc++;
+  }
+  ++p->nodec;
+#endif
+
+  n->amp *= o->n_ampmult;
+  nd->n_next_add_delay = 0.f;
+  n->delay += nd->n_add_delay;
 
   if (o->setsym) {
     o->setsym = 0;
     MGSSymtab_set(o->st, o->setsymkey, n);
   }
 
-  return n;
+  nd->last = n;
 }
 
 static double getnum_r(FILE *f, char *buf, uint len, uchar pri) {
@@ -243,45 +362,48 @@ static void warning(MGSParser *o, const char *s, char c) {
   printf("warning: %s [line %d, at %s] - %s\n", o->fn, o->line, buf, s);
 }
 
-static void parse_level(MGSParser *o, MGSProgramNode *node, MGSProgramNodeChain *chain, uchar modtype);
+static void parse_level(MGSParser *o, MGSProgramNodeChain *chain, uchar modtype);
 
 static MGSProgram* parse(FILE *f, const char *fn, MGSParser *o) {
+  memset(o, 0, sizeof(MGSParser));
   o->f = f;
   o->fn = fn;
   o->prg = calloc(1, sizeof(MGSProgram));
   o->st = MGSSymtab_create();
-  o->setsym = 0;
   o->line = 1;
-  o->nest = 0;
-  o->setnode = o->setdef = 0;
-  o->last = 0;
   o->n_mode = MGS_MODE_CENTER; /* default until changed */
-  o->n_amp = 1.f; /* default until changed */
-  o->n_delay = 0.f; /* default until changed */
+  o->n_ampmult = 1.f; /* default until changed */
   o->n_time = 1.f; /* default until changed */
   o->n_freq = 100.f; /* default until changed */
   o->n_ratio = 1.f; /* default until changed */
-  o->n_begin = 0;
-  o->n_time_delay = o->n_end = 0;
-  o->n_next_add_delay = o->n_add_delay = 0.f;
-  parse_level(o, 0, 0, 0);
+  parse_level(o, 0, 0);
   MGSSymtab_destroy(o->st);
+  /* concatenate linked lists */
+  if (o->last_top)
+    o->last_top->next = o->nested;
   return o->prg;
 }
 
-static void parse_level(MGSParser *o, MGSProgramNode *node, MGSProgramNodeChain *chain, uchar modtype) {
+static void parse_level(MGSParser *o, MGSProgramNodeChain *chain, uchar modtype) {
   char c;
-  uint entrynest = o->nest;
+  NodeData nd;
+  uint entrylevel = o->level;
+  ++o->reclevel;
+  memset(&nd, 0, sizeof(NodeData));
+  if (chain) {
+    chain->count = 0;
+    chain->chain = 0;
+  }
   while ((c = getc(o->f)) != EOF) {
     eatws(o->f);
     switch (c) {
     case '\n':
     EOL:
       if (!chain) {
-        if (o->setdef > o->nest)
-          o->setdef = (o->nest) ? (o->nest - 1) : 0;
-        else if (o->setnode > o->nest)
-          o->setnode = (o->nest) ? (o->nest - 1) : 0;
+        if (o->setdef > o->level)
+          o->setdef = (o->level) ? (o->level - 1) : 0;
+        else if (o->setnode > o->level)
+          o->setnode = (o->level) ? (o->level - 1) : 0;
       }
       ++o->line;
       break;
@@ -296,10 +418,10 @@ static void parse_level(MGSParser *o, MGSProgramNode *node, MGSProgramNodeChain 
     case '/':
       if (o->setdef > o->setnode) goto INVALID;
       if (testgetc('t', o->f))
-        o->n_time_delay = 1;
+        nd.n_time_delay = 1;
       else {
-        o->n_time_delay = 0;
-        o->n_next_add_delay = getnum(o->f);
+        nd.n_time_delay = 0;
+        nd.n_next_add_delay = getnum(o->f);
       }
       break;
     case '{':
@@ -309,30 +431,31 @@ static void parse_level(MGSParser *o, MGSProgramNode *node, MGSProgramNodeChain 
     case '}':
       if (!chain)
         goto INVALID;
-      //warning or change to recursion on '<'?
-      //if (o->nest != entrynest)
-      return;
+      if (o->level != entrylevel) {
+        o->level = entrylevel;
+        warning(o, "closing '}' before closing '>'s", c);
+      }
+      goto RETURN;
     case '<':
-      ++o->nest;
+      ++o->level;
       break;
     case '>':
-      if (!o->nest) {
-        warning(o, "closing marker without opening '<'", c);
+      if (!o->level) {
+        warning(o, "closing '>' without opening '<'", c);
         break;
       }
-      if (o->setdef > o->nest)
-        o->setdef = (o->nest) ? (o->nest - 1) : 0;
-      else if (o->setnode > o->nest)
-        o->setnode = (o->nest) ? (o->nest - 1) : 0;
-      --o->nest;
+      if (o->setdef > o->level)
+        o->setdef = (o->level) ? (o->level - 1) : 0;
+      else if (o->setnode > o->level)
+        o->setnode = (o->level) ? (o->level - 1) : 0;
+      --o->level;
       break;
     case 'C':
       o->n_mode = MGS_MODE_CENTER;
       break;
     case 'E':
-      node = make_node(o, 0);
-      node->type = MGS_TYPE_ENV;
-      o->setnode = o->nest + 1;
+      new_node(o, &nd, 0, MGS_TYPE_ENV);
+      o->setnode = o->level + 1;
       break;
     case 'L':
       o->n_mode = MGS_MODE_LEFT;
@@ -343,7 +466,7 @@ static void parse_level(MGSParser *o, MGSProgramNode *node, MGSProgramNodeChain 
       o->n_mode = MGS_MODE_RIGHT;
       break;
     case 'S':
-      o->setdef = o->nest + 1;
+      o->setdef = o->level + 1;
       break;
     case 'W': {
       const char *simples[] = {
@@ -359,34 +482,21 @@ static void parse_level(MGSParser *o, MGSProgramNode *node, MGSProgramNodeChain 
         warning(o, "invalid wave type follows W in file; sin, sqr, tri, saw available", c);
         break;
       }
-      if (chain) {
-        if (!chain->chain) {
-          chain->chain = make_node(o, chain);
-          node = chain->chain;
-        } else {
-          node->link = make_node(o, chain);
-          node = node->link;
-        }
-        ++chain->count;
-      } else {
-        node = make_node(o, 0);
-        node->flag |= MGS_FLAG_PLAY;
-      }
-      node->type = MGS_TYPE_SOUND;
-      node->wave = wave;
-      o->setnode = o->nest + 1;
+      new_node(o, &nd, chain, MGS_TYPE_TOP);
+      nd.node.wave = wave;
+      o->setnode = o->level + 1;
       break; }
     case '|':
-      if (!o->n_begin)
+      if (!nd.n_begin)
         warning(o, "end of sequence before any parts given", c);
       else
-        o->n_end = 1;
+        nd.n_end = 1;
       break;
     case '\\':
       if (o->setdef > o->setnode)
-        o->n_delay = getnum(o->f);
+        goto INVALID;
       else
-        node->delay = getnum(o->f) + o->n_add_delay;
+        nd.node.delay = getnum(o->f);
       break;
     case '\'': {
       uint i = 0;
@@ -421,34 +531,33 @@ static void parse_level(MGSParser *o, MGSProgramNode *node, MGSProgramNodeChain 
             if (!ref)
               warning(o, "ignoring reference to undefined label", c);
             else {
-              o->setsym = 1; /* update */
-              if (chain) {
-                if (!chain->chain) {
-                  chain->chain = make_node(o, chain);
-                  node = chain->chain;
-                } else {
-                  node->link = make_node(o, chain);
-                  node = node->link;
-                }
-                ++chain->count;
-              } else {
-                node = make_node(o, 0);
-                node->flag |= MGS_FLAG_PLAY;
+              uint type;
+              switch (ref->type) {
+              case MGS_TYPE_TOP:
+              case MGS_TYPE_SETTOP:
+                type = MGS_TYPE_SETTOP;
+                break;
+              case MGS_TYPE_NESTED:
+              case MGS_TYPE_SETNESTED:
+                type = MGS_TYPE_SETNESTED;
+                break;
+              default:
+                type = 0; /* silence warning */
               }
-              node->ref = ref;
-              node->type = node->ref->type;
-              node->wave = node->ref->wave;
-              node->mode = node->ref->mode;
-              node->amp = node->ref->amp;
-              node->dynamp = node->ref->dynamp;
-              node->freq = node->ref->freq;
-              node->dynfreq = node->ref->dynfreq;
-              node->flag |= MGS_FLAG_REFTIME | MGS_FLAG_REFPHASE;
-              node->attr = node->ref->attr;
-              node->pmod = node->ref->pmod;
-              node->fmod = node->ref->fmod;
-              node->amod = node->ref->amod;
-              o->setnode = o->nest + 1;
+              o->setsym = 1; /* update */
+              new_node(o, &nd, chain, type);
+              nd.node.spec.set.ref = ref;
+              nd.node.wave = ref->wave;
+              nd.node.mode = ref->mode;
+              nd.node.amp = ref->amp;
+              nd.node.dynamp = ref->dynamp;
+              nd.node.freq = ref->freq;
+              nd.node.dynfreq = ref->dynfreq;
+              nd.node.attr = ref->attr;
+              nd.node.pmod = ref->pmod;
+              nd.node.fmod = ref->fmod;
+              nd.node.amod = ref->amod;
+              o->setnode = o->level + 1;
             }
           }
           break;
@@ -458,20 +567,20 @@ static void parse_level(MGSParser *o, MGSProgramNode *node, MGSProgramNodeChain 
       break; }
     case 'a':
       if (o->setdef > o->setnode)
-        o->n_amp = getnum(o->f);
+        o->n_ampmult = getnum(o->f);
       else if (o->setnode > 0) {
         if (modtype == MGS_AMODS ||
             modtype == MGS_FMODS)
           goto INVALID;
         if (testgetc('!', o->f)) {
           if (!testc('{', o->f)) {
-            node->dynamp = getnum(o->f);
+            nd.node.dynamp = getnum(o->f);
           }
           if (testgetc('{', o->f)) {
-            parse_level(o, node, &node->amod, MGS_AMODS);
+            parse_level(o, &nd.node.amod, MGS_AMODS);
           }
         } else {
-          node->amp = getnum(o->f);
+          nd.node.amp = getnum(o->f);
         }
       } else
         goto INVALID;
@@ -482,15 +591,15 @@ static void parse_level(MGSParser *o, MGSProgramNode *node, MGSProgramNodeChain 
       else if (o->setnode > 0) {
         if (testgetc('!', o->f)) {
           if (!testc('{', o->f)) {
-            node->dynfreq = getnum(o->f);
-            node->attr &= ~MGS_ATTR_DYNFREQRATIO;
+            nd.node.dynfreq = getnum(o->f);
+            nd.node.attr &= ~MGS_ATTR_DYNFREQRATIO;
           }
           if (testgetc('{', o->f)) {
-            parse_level(o, node, &node->fmod, MGS_FMODS);
+            parse_level(o, &nd.node.fmod, MGS_FMODS);
           }
         } else {
-          node->freq = getnum(o->f);
-          node->attr &= ~MGS_ATTR_FREQRATIO;
+          nd.node.freq = getnum(o->f);
+          nd.node.attr &= ~MGS_ATTR_FREQRATIO;
         }
       } else
         goto INVALID;
@@ -502,13 +611,12 @@ static void parse_level(MGSParser *o, MGSProgramNode *node, MGSProgramNodeChain 
         if (o->setdef > o->setnode || o->setnode <= 0)
           goto INVALID;
         if (testgetc('{', o->f)) {
-          parse_level(o, node, &node->pmod, MGS_PMODS);
+          parse_level(o, &nd.node.pmod, MGS_PMODS);
         }
       } else {
-        node->phase = fmod(getnum(o->f), 1.f);
-        if (node->phase < 0.f)
-          node->phase += 1.f;
-        node->flag &= ~MGS_FLAG_REFPHASE;
+        nd.node.phase = fmod(getnum(o->f), 1.f);
+        if (nd.node.phase < 0.f)
+          nd.node.phase += 1.f;
       }
       break; }
     case 'r':
@@ -519,15 +627,15 @@ static void parse_level(MGSParser *o, MGSProgramNode *node, MGSProgramNodeChain 
           goto INVALID;
         if (testgetc('!', o->f)) {
           if (!testc('{', o->f)) {
-            node->dynfreq = 1.f / getnum(o->f);
-            node->attr |= MGS_ATTR_DYNFREQRATIO;
+            nd.node.dynfreq = 1.f / getnum(o->f);
+            nd.node.attr |= MGS_ATTR_DYNFREQRATIO;
           }
           if (testgetc('{', o->f)) {
-            parse_level(o, node, &node->fmod, MGS_FMODS);
+            parse_level(o, &nd.node.fmod, MGS_FMODS);
           }
         } else {
-          node->freq = 1.f / getnum(o->f);
-          node->attr |= MGS_ATTR_FREQRATIO;
+          nd.node.freq = 1.f / getnum(o->f);
+          nd.node.attr |= MGS_ATTR_FREQRATIO;
         }
       } else
         goto INVALID;
@@ -536,8 +644,7 @@ static void parse_level(MGSParser *o, MGSProgramNode *node, MGSProgramNodeChain 
       if (o->setdef > o->setnode)
         o->n_time = getnum(o->f);
       else if (o->setnode > 0) {
-        node->time = getnum(o->f);
-        node->flag &= ~MGS_FLAG_REFTIME;
+        nd.node.time = getnum(o->f);
       } else
         goto INVALID;
       break;
@@ -548,9 +655,13 @@ static void parse_level(MGSParser *o, MGSProgramNode *node, MGSProgramNodeChain 
     }
   }
 FINISH:
-  if (o->nest)
+  if (o->level)
     warning(o, "end of file without closing '>'s", c);
-  end_node(o);
+  if (o->reclevel > 1)
+    warning(o, "end of file without closing '}'s", c);
+RETURN:
+  end_node(o, &nd);
+  --o->reclevel;
 }
 
 MGSProgram* MGSProgram_create(const char *filename) {
@@ -565,7 +676,7 @@ MGSProgram* MGSProgram_create(const char *filename) {
 }
 
 void MGSProgram_destroy(MGSProgram *o) {
-  MGSProgramNode *n = o->steps;
+  MGSProgramNode *n = o->nodelist;
   while (n) {
     MGSProgramNode *nn = n->next;
     free(n);
