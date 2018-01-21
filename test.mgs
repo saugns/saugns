@@ -1,0 +1,18 @@
+Wsin f444 t2 m<Wsin r1.23456789> |
+'a Wsin f444 t2 m<Wsin r(1/7.12)> |
+:a t2 m<Wsin r(1/2.255)> |
+:a f222 t2 |
+/2
+
+Wsin f137 t1 m<Wsin f032 m<Wsin f42>> |
+Wsin f137 t1 m<Wsin f132 m<Wsin f42>> |
+Wsin f137 t1 m<Wsin f232 m<Wsin f42>> |
+Wsin f137 t1 m<Wsin f332 m<Wsin f42>> |
+Wsin f137 t1 m<Wsin f432 m<Wsin f42>> |
+Wsin f137 t1 m<Wsin f532 m<Wsin f42>> |
+Wsin f137 t1 m<Wsin f632 m<Wsin f42>> |
+Wsin f137 t1 m<Wsin f732 m<Wsin f42>> |
+Wsin f137 t.5 m<Wsin f832 m<Wsin f42>> |
+Wsin f137 t.5 m<Wsin f932 m<Wsin f42>> |
+Wsin f137 t2 m<Wsin f1032 m<Wsin f42>>
+Q
