@@ -347,38 +347,66 @@ void SGSGenerator_destroy(SGSGenerator *o) {
  * node block processing
  */
 
-static uchar run_valit(ParameterValit *o, Data *buf, uint buflen, float *state) {
-  uint i, end, len, filllen;
-  float coeff, s0 = *state;
-  len = o->time - o->pos;
+static uchar run_param(Data *buf, uint buflen, ParameterValit *vi,
+                       float *state, const Data *modbuf) {
+  uint i, end, len = 0, filllen;
+  double coeff;
+  float s0 = *state;
+  if (!vi) {
+    filllen = buflen;
+    goto FILL;
+  }
+  coeff = 1.f / vi->time;
+  len = vi->time - vi->pos;
   if (len > buflen) {
     len = buflen;
     filllen = 0;
   } else {
     filllen = buflen - len;
   }
-  switch (o->type) {
+  switch (vi->type) {
   case SGS_VALIT_LIN:
-    coeff = 1.f / o->time;
-    for (i = o->pos, end = i + len; i < end; ++i) {
-      (*buf++).f = s0 + (o->goal - s0) * (i * coeff);
+    for (i = vi->pos, end = i + len; i < end; ++i) {
+      (*buf++).f = s0 + (vi->goal - s0) * (i * coeff);
     }
-//    *state = buf[-1].f;
     break;
   case SGS_VALIT_EXP:
-    coeff = RC_TIME(o->time * 0.1575f);
-    for (i = o->pos, end = i + len; i < end; ++i) {
-      s0 = RC_CALC(coeff, o->goal, s0);
-      (*buf++).f = s0;
+    for (i = vi->pos, end = i + len; i < end; ++i) {
+      double mod = 1.f - i * coeff,
+             modp2 = mod * mod,
+             modp3 = modp2 * mod;
+      mod = modp3 + (modp2 * modp3 - modp2) *
+                    (mod * (629.f/1792.f) + modp2 * (1163.f/1792.f));
+      (*buf++).f = vi->goal + (s0 - vi->goal) * mod;
     }
-    *state = s0;
+    break;
+  case SGS_VALIT_LOG:
+    for (i = vi->pos, end = i + len; i < end; ++i) {
+      double mod = i * coeff,
+             modp2 = mod * mod,
+             modp3 = modp2 * mod;
+      mod = modp3 + (modp2 * modp3 - modp2) *
+                    (mod * (629.f/1792.f) + modp2 * (1163.f/1792.f));
+      (*buf++).f = s0 + (vi->goal - s0) * mod;
+    }
     break;
   }
-  o->pos += len;
-  if (o->time == o->pos) {
-    *state = o->goal;
-    for (i = 0; i < filllen; ++i)
-      buf[i].f = o->goal;
+  if (modbuf) {
+    Data *src = buf - len;
+    for (i = 0; i < len; ++i) {
+      src[i].f *= modbuf[i].f;
+    }
+  }
+  vi->pos += len;
+  if (vi->time == vi->pos) {
+    s0 = *state = vi->goal;
+  FILL:
+    if (modbuf) {
+      modbuf += len;
+      for (i = 0; i < filllen; ++i)
+        buf[i].f = s0 * modbuf[i].f;
+    } else for (i = 0; i < filllen; ++i)
+      buf[i].f = s0;
     return 1;
   }
   return 0;
@@ -390,6 +418,7 @@ static void run_block(Buf *bufs, uint buflen, OperatorNode *n,
   uint i, len;
   Data *sbuf, *freq, *pm, *amp;
   Buf *nextbuf = bufs;
+  ParameterValit *vi;
 BEGIN:
   sbuf = *bufs;
   len = buflen;
@@ -406,17 +435,10 @@ BEGIN:
     sbuf += zerolen;
   }
   freq = *(nextbuf++);
-  if (n->attr & SGS_ATTR_FREQRATIO) {
-    for (i = 0; i < len; ++i)
-      freq[i].f = n->freq * parentfreq[i].f;
-  } else {
-    if (n->attr & SGS_ATTR_VALITFREQ) {
-      if (run_valit(&n->valitfreq, freq, len, &n->freq))
-        n->attr &= ~SGS_ATTR_VALITFREQ;
-    }
-    else for (i = 0; i < len; ++i)
-      freq[i].f = n->freq;
-  }
+  vi = (n->attr & SGS_ATTR_VALITFREQ) ? &n->valitfreq : 0;
+  if (run_param(freq, len, vi, &n->freq,
+                0))
+    n->attr &= ~SGS_ATTR_VALITFREQ;
   if (n->fmodchain) {
     Data *fmbuf;
     run_block(nextbuf, len, n->fmodchain, freq, osc_coeff, 1);
@@ -443,11 +465,9 @@ BEGIN:
         amp[i].f = n->amp + amp[i].f * dynampdiff;
     } else {
       amp = *(nextbuf++);
-      if (n->attr & SGS_ATTR_VALITAMP) {
-        if (run_valit(&n->valitamp, amp, len, &n->amp))
-          n->attr &= ~SGS_ATTR_VALITAMP;
-      } else for (i = 0; i < len; ++i)
-        amp[i].f = n->amp;
+      vi = (n->attr & SGS_ATTR_VALITAMP) ? &n->valitamp : 0;
+      if (run_param(amp, len, vi, &n->amp, 0))
+        n->attr &= ~SGS_ATTR_VALITAMP;
     }
     for (i = 0; i < len; ++i) {
       int s, spm = 0;
@@ -503,7 +523,7 @@ static uint run_node(SGSGenerator *o, VoiceNode *n, short *sp, uint pos,
     run_block(o->bufs, len, &n->o, 0, osc_coeff, 0);
     if (n->o.attr & SGS_ATTR_VALITPANNING) {
       Data *buf = o->bufs[1];
-      if (run_valit(&n->valitpanning, buf, len, &n->panning))
+      if (run_param(buf, len, &n->valitpanning, &n->panning, 0))
         n->o.attr &= ~SGS_ATTR_VALITPANNING;
       for (i = 0; i < len; ++i, sp += 2) {
         int s = (*o->bufs)[i].i, p;

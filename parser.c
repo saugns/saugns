@@ -635,10 +635,17 @@ static int read_wavetype(SGSParser *o, char lastc) {
   return wave;
 }
 
+static const char *const valittypes[] = {
+  "lin",
+  "exp",
+  "log",
+  0
+};
 static uchar read_valit(SGSParser *o, float (*read_symbol)(SGSParser *o),
                         SGSProgramValit *vi) {
   char c;
   uchar goal = 0;
+  int type;
   vi->time_ms = -1;
   vi->type = SGS_VALIT_LIN; /* default */
   while ((c = getc(o->f)) != EOF) {
@@ -649,14 +656,13 @@ static uchar read_valit(SGSParser *o, float (*read_symbol)(SGSParser *o),
     case ' ':
       eatws(o->f);
       break;
-    case 's':
-      if (testgetc('l', o->f))
-        vi->type = SGS_VALIT_LIN;
-      else if (testgetc('e', o->f))
-        vi->type = SGS_VALIT_EXP;
-      else
-        goto INVALID;
-      break;
+    case 'c':
+      type = strfind(o->f, valittypes);
+      if (type >= 0) {
+        vi->type = type + SGS_VALIT_LIN;
+        break;
+      }
+      goto INVALID;
     case 't': {
       float time;
       if (read_num(o, 0, &time)) {
