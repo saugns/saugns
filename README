@@ -57,7 +57,10 @@ The following parameters can be found in wave operations:
 	a!{}	Second amplitude to modulate (AM) to by wave or envelope,
 		and/or a list of modulators given within {} following the
 		number if given.
-	m{}	A list of modulator (PM) waves is given within the {}, the
+	p	Set the beginning phase of the wave. For example, p(3/4) will
+		make a sine or triangle wave begin at its "bottom". This is
+		mostly used where wanted for waves used by f!/r! or a!.
+	p!{}	A list of modulator (PM) waves is given within the {}, the
 		per-sample sum of which is used to phase-modulate the carrier,
 		be it the final carrier or in turn another modulator.
 	\	Time shift/delay current operation and following ones, time
