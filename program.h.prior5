@@ -4,20 +4,19 @@ enum {
   SGS_GRAPH = 1<<0,
   SGS_PANNING = 1<<1,
   SGS_VALITPANNING = 1<<2,
-  SGS_VOATTR = 1<<3,
   /* operator values */
-  SGS_ADJC = 1<<4,
-  SGS_WAVE = 1<<5,
-  SGS_TIME = 1<<6,
-  SGS_SILENCE = 1<<7,
-  SGS_FREQ = 1<<8,
-  SGS_VALITFREQ = 1<<9,
-  SGS_DYNFREQ = 1<<10,
-  SGS_PHASE = 1<<11,
-  SGS_AMP = 1<<12,
-  SGS_VALITAMP = 1<<13,
-  SGS_DYNAMP = 1<<14,
-  SGS_OPATTR = 1<<15
+  SGS_ADJC = 1<<3,
+  SGS_WAVE = 1<<4,
+  SGS_TIME = 1<<5,
+  SGS_SILENCE = 1<<6,
+  SGS_FREQ = 1<<7,
+  SGS_VALITFREQ = 1<<8,
+  SGS_DYNFREQ = 1<<9,
+  SGS_PHASE = 1<<10,
+  SGS_AMP = 1<<11,
+  SGS_VALITAMP = 1<<12,
+  SGS_DYNAMP = 1<<13,
+  SGS_ATTR = 1<<14
 };
 
 /* operator wave types */
@@ -47,19 +46,14 @@ enum {
   SGS_VALIT_LOG
 };
 
-typedef struct SGSProgramGraph {
-  uchar opc;
-  int ops[1]; /* sized to opc */
-} SGSProgramGraph;
-
-typedef struct SGSProgramGraphAdjcs {
-  uchar pmodc;
+typedef struct SGSProgramGraphAdjc {
+  uchar mainc;  /* either pmod count or operator-per-voice count */
   uchar fmodc;
   uchar amodc;
   uchar level;  /* index for buffer used to store result to use if node
                    revisited when traversing the graph. */
   int adjcs[1]; /* sized to total number */
-} SGSProgramGraphAdjcs;
+} SGSProgramGraphAdjc;
 
 typedef struct SGSProgramValit {
   int time_ms, pos_ms;
@@ -68,15 +62,14 @@ typedef struct SGSProgramValit {
 } SGSProgramValit;
 
 typedef struct SGSProgramVoiceData {
-  const SGSProgramGraph *graph;
+  const SGSProgramGraphAdjc *graph;
   uint id;
-  uchar attr;
   float panning;
   SGSProgramValit valitpanning;
 } SGSProgramVoiceData;
 
 typedef struct SGSProgramOperatorData {
-  const SGSProgramGraphAdjcs *adjcs;
+  const SGSProgramGraphAdjc *adjc;
   uint id;
   uchar attr, wave;
   int time_ms, silence_ms;

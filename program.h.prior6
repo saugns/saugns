@@ -47,19 +47,14 @@ enum {
   SGS_VALIT_LOG
 };
 
-typedef struct SGSProgramGraph {
-  uchar opc;
-  int ops[1]; /* sized to opc */
-} SGSProgramGraph;
-
-typedef struct SGSProgramGraphAdjcs {
-  uchar pmodc;
+typedef struct SGSProgramGraphAdjc {
+  uchar mainc;  /* either pmod count or operator-per-voice count */
   uchar fmodc;
   uchar amodc;
   uchar level;  /* index for buffer used to store result to use if node
                    revisited when traversing the graph. */
   int adjcs[1]; /* sized to total number */
-} SGSProgramGraphAdjcs;
+} SGSProgramGraphAdjc;
 
 typedef struct SGSProgramValit {
   int time_ms, pos_ms;
@@ -68,7 +63,7 @@ typedef struct SGSProgramValit {
 } SGSProgramValit;
 
 typedef struct SGSProgramVoiceData {
-  const SGSProgramGraph *graph;
+  const SGSProgramGraphAdjc *graph;
   uint id;
   uchar attr;
   float panning;
@@ -76,7 +71,7 @@ typedef struct SGSProgramVoiceData {
 } SGSProgramVoiceData;
 
 typedef struct SGSProgramOperatorData {
-  const SGSProgramGraphAdjcs *adjcs;
+  const SGSProgramGraphAdjc *adjc;
   uint id;
   uchar attr, wave;
   int time_ms, silence_ms;

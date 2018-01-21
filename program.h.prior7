@@ -52,14 +52,14 @@ typedef struct SGSProgramGraph {
   int ops[1]; /* sized to opc */
 } SGSProgramGraph;
 
-typedef struct SGSProgramGraphAdjcs {
+typedef struct SGSProgramGraphAdjc {
   uchar pmodc;
   uchar fmodc;
   uchar amodc;
   uchar level;  /* index for buffer used to store result to use if node
                    revisited when traversing the graph. */
   int adjcs[1]; /* sized to total number */
-} SGSProgramGraphAdjcs;
+} SGSProgramGraphAdjc;
 
 typedef struct SGSProgramValit {
   int time_ms, pos_ms;
@@ -76,7 +76,7 @@ typedef struct SGSProgramVoiceData {
 } SGSProgramVoiceData;
 
 typedef struct SGSProgramOperatorData {
-  const SGSProgramGraphAdjcs *adjcs;
+  const SGSProgramGraphAdjc *adjc;
   uint id;
   uchar attr, wave;
   int time_ms, silence_ms;

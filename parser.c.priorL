@@ -1371,7 +1371,7 @@ static SGSProgram* build(SGSParser *o) {
       ood = calloc(1, sizeof(SGSProgramOperatorData));
       oe->operator = ood;
       ood->id = od->operatorid;
-      ood->adjcs = 0;
+      ood->adjc = 0;
       ood->attr = od->attr;
       ood->wave = od->wave;
       ood->time_ms = od->time_ms;
@@ -1434,7 +1434,7 @@ void SGSProgram_destroy(SGSProgram *o) {
       free((void*)o->events->voice);
     }
     if (o->events->operator) {
-      free((void*)o->events->operator->adjcs);
+      free((void*)o->events->operator->adjc);
       free((void*)o->events->operator);
     }
   }
