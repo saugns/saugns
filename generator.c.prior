@@ -143,7 +143,7 @@ SGSGenerator* SGSGenerator_create(uint srate, struct SGSProgram *prg) {
   step = prg->events;
   indexwaittime = 0;
   for (i = 0; i < prg->eventc; ++i) {
-    EventNode *e = &o->events[step->id];
+    EventNode *e = &o->events[i];
     SetNode *s = data;
     Data *set = s->data;
     e->node = s;
