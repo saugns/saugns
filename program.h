@@ -1,13 +1,14 @@
 enum {
-  MGS_TYPE_SOUND = 0,
-  MGS_TYPE_ENV = 1
+  MGS_TYPE_TOP = 0,
+  MGS_TYPE_NESTED,
+  MGS_TYPE_SETTOP,
+  MGS_TYPE_SETNESTED,
+  MGS_TYPE_ENV
 };
 
 enum {
-  MGS_FLAG_PLAY = 1<<0,
-  MGS_FLAG_REFTIME = 1<<1,
-  MGS_FLAG_REFPHASE = 1<<2,
-  MGS_FLAG_ENTERED = 1<<3
+  MGS_FLAG_EXEC = 1<<0,
+  MGS_FLAG_ENTERED = 1<<1
 };
 
 enum {
@@ -29,6 +30,16 @@ enum {
 };
 
 enum {
+  MGS_TIME = 1<<0,
+  MGS_FREQ = 1<<1,
+  MGS_DYNFREQ = 1<<2,
+  MGS_PHASE = 1<<3,
+  MGS_AMP = 1<<4,
+  MGS_DYNAMP = 1<<5,
+  MGS_ATTR = 1<<6
+};
+
+enum {
   MGS_PMODS = 1<<0,
   MGS_FMODS = 1<<1,
   MGS_AMODS = 1<<2
@@ -40,15 +51,25 @@ typedef struct MGSProgramNodeChain {
 } MGSProgramNodeChain;
 
 typedef struct MGSProgramNode {
-  struct MGSProgramNode *next, *ref;
+  struct MGSProgramNode *next;
   uchar type, flag, attr, wave, mode;
-  float amp, dynamp, delay, time, freq, dynfreq, phase;
+  float time, delay, freq, dynfreq, phase, amp, dynamp;
   uint id;
   MGSProgramNodeChain pmod, fmod, amod;
-  struct MGSProgramNode *link;
+  union { /* type-specific data */
+    struct {
+      struct MGSProgramNode *link;
+    } nested;
+    struct {
+      uchar values;
+      uchar mods;
+      struct MGSProgramNode *ref;
+    } set;
+  } spec;
 } MGSProgramNode;
 
 struct MGSProgram {
-  MGSProgramNode *steps;
-  uint stepc;
+  MGSProgramNode *nodelist;
+  uint nodec;
+  uint topc; /* nodes >= topc are nested ones, ids starting over from 0 */
 };
