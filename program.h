@@ -1,7 +1,14 @@
 enum {
-  MGS_TYPE_SETAMP = 1<<0,
-  MGS_TYPE_SETTIME = 1<<1,
-  MGS_TYPE_SETFREQ = 1<<2
+  MGS_TYPE_WAVE = 0,
+  MGS_TYPE_ENV = 1
+};
+
+enum {
+  MGS_FLAG_PLAY = 1<<0,
+  MGS_FLAG_SETAMP = 1<<1,
+  MGS_FLAG_SETTIME = 1<<2,
+  MGS_FLAG_SETFREQ = 1<<3,
+  MGS_FLAG_ENTERED = 1<<4
 };
 
 enum {
@@ -19,9 +26,11 @@ enum {
 
 typedef struct MGSProgramNode {
   struct MGSProgramNode *next, *ref;
-  uchar type, wave, mode;
+  uchar type, flag, wave, mode;
   float amp, delay, time, freq;
   uint id;
+  uchar modc;
+  struct MGSProgramNode **mods;
 } MGSProgramNode;
 
 struct MGSProgram {
