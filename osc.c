@@ -1,15 +1,15 @@
-#include "mgensys.h"
+#include "sgensys.h"
 #include "osc.h"
 
-#define MGSOsc_TABSCALE ((float)((1<<15) - 1))
-#define HALFLEN (MGSOsc_TABLEN>>1)
+#define SGSOsc_TABSCALE ((float)((1<<15) - 1))
+#define HALFLEN (SGSOsc_TABLEN>>1)
 
-MGSOscTab MGSOsc_sin,
-          MGSOsc_sqr,
-          MGSOsc_tri,
-          MGSOsc_saw;
+SGSOscTab SGSOsc_sin,
+          SGSOsc_sqr,
+          SGSOsc_tri,
+          SGSOsc_saw;
 
-void MGSOsc_init(void) {
+void SGSOsc_init(void) {
   int i;
   static uchar done = 0;
   if (done) return;
@@ -17,24 +17,24 @@ void MGSOsc_init(void) {
 
   /* first half */
   for (i = 0; i < HALFLEN; ++i) {
-    MGSOsc_sin[i] = MGSOsc_TABSCALE * sin(PI * i/HALFLEN);
-    MGSOsc_sqr[i] = MGSOsc_TABSCALE;
+    SGSOsc_sin[i] = SGSOsc_TABSCALE * sin(PI * i/HALFLEN);
+    SGSOsc_sqr[i] = SGSOsc_TABSCALE;
     if (i < (HALFLEN>>1))
-      MGSOsc_tri[i] = MGSOsc_TABSCALE * (2.f * i/HALFLEN);
+      SGSOsc_tri[i] = SGSOsc_TABSCALE * (2.f * i/HALFLEN);
     else
-      MGSOsc_tri[i] = MGSOsc_TABSCALE * (2.f * (HALFLEN-i)/HALFLEN);
-    MGSOsc_saw[i] = MGSOsc_TABSCALE * (1.f * (HALFLEN-i)/HALFLEN);
+      SGSOsc_tri[i] = SGSOsc_TABSCALE * (2.f * (HALFLEN-i)/HALFLEN);
+    SGSOsc_saw[i] = SGSOsc_TABSCALE * (1.f * (HALFLEN-i)/HALFLEN);
   }
   /* second half */
-  for (; i < MGSOsc_TABLEN; ++i) {
-    MGSOsc_sin[i] = -MGSOsc_sin[i - HALFLEN];
-    MGSOsc_sqr[i] = -MGSOsc_sqr[i - HALFLEN];
-    MGSOsc_tri[i] = -MGSOsc_tri[i - HALFLEN];
-    MGSOsc_saw[i] = -MGSOsc_saw[MGSOsc_TABLEN - i];
+  for (; i < SGSOsc_TABLEN; ++i) {
+    SGSOsc_sin[i] = -SGSOsc_sin[i - HALFLEN];
+    SGSOsc_sqr[i] = -SGSOsc_sqr[i - HALFLEN];
+    SGSOsc_tri[i] = -SGSOsc_tri[i - HALFLEN];
+    SGSOsc_saw[i] = -SGSOsc_saw[SGSOsc_TABLEN - i];
   }
   /* wrap value */
-  MGSOsc_sin[MGSOsc_TABLEN] = MGSOsc_sin[0];
-  MGSOsc_sqr[MGSOsc_TABLEN] = MGSOsc_sqr[0];
-  MGSOsc_tri[MGSOsc_TABLEN] = MGSOsc_tri[0];
-  MGSOsc_saw[MGSOsc_TABLEN] = MGSOsc_saw[0];
+  SGSOsc_sin[SGSOsc_TABLEN] = SGSOsc_sin[0];
+  SGSOsc_sqr[SGSOsc_TABLEN] = SGSOsc_sqr[0];
+  SGSOsc_tri[SGSOsc_TABLEN] = SGSOsc_tri[0];
+  SGSOsc_saw[SGSOsc_TABLEN] = SGSOsc_saw[0];
 }
