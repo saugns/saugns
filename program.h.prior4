@@ -1,22 +1,28 @@
+/* event types */
+enum {
+  SGS_EVENT_VOICE = 0,
+  SGS_EVENT_OPERATOR
+};
+
 /* operator parameters */
 enum {
+  /* voice-operators or operator-operators linkage */
+  SGS_ADJC = 1<<0,
   /* voice values */
-  SGS_GRAPH = 1<<0,
   SGS_PANNING = 1<<1,
   SGS_VALITPANNING = 1<<2,
   /* operator values */
-  SGS_ADJC = 1<<3,
-  SGS_WAVE = 1<<4,
-  SGS_TIME = 1<<5,
-  SGS_SILENCE = 1<<6,
-  SGS_FREQ = 1<<7,
-  SGS_VALITFREQ = 1<<8,
-  SGS_DYNFREQ = 1<<9,
-  SGS_PHASE = 1<<10,
-  SGS_AMP = 1<<11,
-  SGS_VALITAMP = 1<<12,
-  SGS_DYNAMP = 1<<13,
-  SGS_ATTR = 1<<14
+  SGS_WAVE = 1<<3,
+  SGS_TIME = 1<<4,
+  SGS_SILENCE = 1<<5,
+  SGS_FREQ = 1<<6,
+  SGS_VALITFREQ = 1<<7,
+  SGS_DYNFREQ = 1<<8,
+  SGS_PHASE = 1<<9,
+  SGS_AMP = 1<<10,
+  SGS_VALITAMP = 1<<11,
+  SGS_DYNAMP = 1<<12,
+  SGS_ATTR = 1<<13
 };
 
 /* operator wave types */
@@ -46,14 +52,14 @@ enum {
   SGS_VALIT_LOG
 };
 
-typedef struct SGSProgramGraphAdjc {
+typedef struct SGSProgramOpAdjc {
   uchar mainc;  /* either pmod count or operator-per-voice count */
   uchar fmodc;
   uchar amodc;
   uchar level;  /* index for buffer used to store result to use if node
                    revisited when traversing the graph. */
   int adjcs[1]; /* sized to total number */
-} SGSProgramGraphAdjc;
+} SGSProgramOpAdjc;
 
 typedef struct SGSProgramValit {
   int time_ms, pos_ms;
@@ -61,31 +67,32 @@ typedef struct SGSProgramValit {
   uchar type;
 } SGSProgramValit;
 
-typedef struct SGSProgramVoiceData {
-  const SGSProgramGraphAdjc *graph;
-  uint id;
-  float panning;
-  SGSProgramValit valitpanning;
-} SGSProgramVoiceData;
-
-typedef struct SGSProgramOperatorData {
-  const SGSProgramGraphAdjc *adjc;
-  uint id;
-  uchar attr, wave;
-  int time_ms, silence_ms;
-  float freq, dynfreq, phase, amp, dynamp;
-  SGSProgramValit valitfreq, valitamp;
-} SGSProgramOperatorData;
-
 typedef struct SGSProgramEvent {
+  /* event info: (-1 for blank id) */
+  int opprevid, opnextid; /* previous & next event for same operator */
+  uchar type;
   int wait_ms;
   uint params;
-  const SGSProgramVoiceData *voice;
-  const SGSProgramOperatorData *operator;
+  union {
+    struct {
+      uint id;
+      const SGSProgramOpAdjc *graph;
+      float panning;
+      SGSProgramValit valitpanning;
+    } voice;
+    struct {
+      uint id;
+      const SGSProgramOpAdjc *adjc;
+      uchar attr, wave;
+      int time_ms, silence_ms;
+      float freq, dynfreq, phase, amp, dynamp;
+      SGSProgramValit valitfreq, valitamp;
+    } operator;
+  } data;
 } SGSProgramEvent;
 
 struct SGSProgram {
-  const SGSProgramEvent *events;
+  SGSProgramEvent *events;
   uint eventc;
   uint operatorc,
        voicec;

@@ -178,7 +178,7 @@ typedef struct NodeData {
   VoiceData voice;       /* state of voice changes for current event */
   OperatorData operator; /* state of operator changes for current event */
   EventNode *first, *current, *last;
-  NodeTarget target;
+  NodeTarget *target;
   char *setsym;
   /* timing/delay */
   EventNode *group;
@@ -222,12 +222,10 @@ static void end_operator(SGSParser *o, NodeData *nd);
 static void end_voice(SGSParser *o, NodeData *nd);
 
 static void new_event(SGSParser *o, NodeData *nd, EventNode *previous,
-                      uchar composite) {
+                      NodeTarget *target, uchar composite) {
   EventNode *e;
-  VoiceData *vd, *pvd;
+  VoiceData *vd;
   OperatorData *od;
-  EventNode *parent;
-  uchar linktype;
   if (previous) {
     if (!nd->next_wait_ms)
       return; /* nothing to do; event continues */
@@ -246,14 +244,15 @@ static void new_event(SGSParser *o, NodeData *nd, EventNode *previous,
   e->nestlevel = o->nestlevel;
   e->voice = &nd->voice;
   vd = &nd->voice;
+  vd->voiceid = o->voicec++;
   e->operator = &nd->operator;
   od = &nd->operator;
+  od->operatorid = o->operatorc++;
   if (previous) {
     if (previous->voice) {
       *vd = *previous->voice;
       vd->voprev = previous;
     } else { /* set defaults */
-      vd->voiceid = o->voicec++;
       vd->panning = 0.5f; /* center */
     }
 
@@ -261,18 +260,9 @@ static void new_event(SGSParser *o, NodeData *nd, EventNode *previous,
       *od = *previous->operator;
       od->opprev = previous;
     } else { /* set defaults */
-      od->operatorid = o->operatorc++;
       od->amp = 1.0f;
     }
   }
-  if (!nd->target.parent) {
-    nd->target.parent = e; /* operator has new voice for parent */
-    nd->target.linktype = GRAPH;
-  }
-  parent = nd->target.parent;
-  linktype = nd->target.linktype;
-  parent->params |= (linktype == GRAPH) ? SGS_GRAPH : SGS_ADJC;
-  add_adjc(parent, e, linktype);
 
   /* Linkage */
   if (!nd->first)
@@ -330,8 +320,7 @@ static void end_voice(SGSParser *o, NodeData *nd) {
     *e->voice = *vd;
   } else {
     e->voice = 0;
-    if (!vd->voprev)
-      --o->voicec;
+    --o->voicec;
   }
   memset(vd, 0, sizeof(VoiceData));
 }
@@ -384,8 +373,7 @@ static void end_operator(SGSParser *o, NodeData *nd) {
       od->amp *= o->ampmult;
   } else {
     e->operator = 0;
-    if (!od->opprev)
-      --o->operatorc;
+    --o->operatorc;
   }
   memset(od, 0, sizeof(OperatorData));
 }
@@ -393,11 +381,22 @@ static void end_operator(SGSParser *o, NodeData *nd) {
 static void new_operator(SGSParser *o, NodeData *nd, NodeTarget *target,
                          uchar wave) {
   OperatorData *oe;
+  EventNode *parent;
+  uchar linktype;
   end_operator(o, nd);
   new_event(o, nd, 0, SGS_EVENT_OPERATOR, 0);
   oe = nd->operator;
   od->wave = wave;
   nd->target = target;
+  if (target) {
+    parent = target->parent;
+    linktype = target->linktype;
+  } else {
+    parent = &nd->voice->e;
+    linktype = MAIN_ADJCS;
+  }
+  parent->params |= SGS_ADJC;
+  add_adjc(parent, oe, linktype);
 
   /* Set defaults */
   od->amp = 1.f;
