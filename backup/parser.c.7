@@ -117,30 +117,23 @@ static void node_list_clear(NodeList *nl) {
 }
 
 enum {
-  /* parsing scopes */
-  SCOPE_SAME = 0,
-  SCOPE_TOP = 1
-};
-
-enum {
   /* link types */
   GRAPH = 1<<0,
   PMODS = 1<<1,
   FMODS = 1<<2,
   AMODS = 1<<3,
   /* other flags */
-  MAKE_EVENT = 1<<4,
-  MAKE_COMPOSITE = 1<<5,
-  NODE_LINKED = 1<<6,
-  PARENT_OLD = 1<<7,
-  ADD_WAIT_DURATION = 1<<8,
-  SILENCE_ADDED = 1<<9
+  MAKE_COMPOSITE = 1<<4,
+  NODE_LINKED = 1<<5,
+  PARENT_OLD = 1<<6,
+  ADD_WAIT_DURATION = 1<<7,
+  SILENCE_ADDED = 1<<8
 };
 
 #define DEFAULT_TIME (-1)
 
 typedef struct VoiceData {
-  struct EventData *voice_prev; /* preceding event for same voice */
+  struct EventData *voice_prev; /* previous event for same voice */
   uint voiceid;
   /* parameters */
   uchar attr;
@@ -151,7 +144,7 @@ typedef struct VoiceData {
 } VoiceData;
 
 typedef struct OperatorData {
-  struct EventData *operator_prev; /* preceding event for same operator */
+  struct EventData *operator_prev; /* previous event for same operator */
   uint operatorid;
   uint voiceid;
   /* parameters */
@@ -170,7 +163,6 @@ typedef struct EventData {
   struct EventData *subcomposite;
   int wait_ms;
   uint id;
-  const char *sym;
   uint params;
   uint listid; /* for NodeData operators list */
   uint nestlevel;
@@ -218,8 +210,7 @@ typedef struct NodeData {
   uchar linktype;
   char *setsym;
   /* event tracking for current scope */
-  EventData *preceding;
-  EventData *voice_event;
+  EventData *present, *voice_event;
   EventData *first, *current, *last;
   NodeList operators;
   uint parseflags;
@@ -271,12 +262,11 @@ static void nd_composite_event(NodeData *nd) {
   nd->parseflags |= MAKE_COMPOSITE;
 }
 
-static void nd_end_event(NodeData *nd) {
+static void nd_flush_event(NodeData *nd) {
   SGSParser *o = nd->o;
   EventData *e = &nd->event;
   VoiceData *vd = &nd->voice;
   OperatorData *od = &nd->operator;
-  if (!(nd->parseflags & MAKE_EVENT)) return;
   /*
    * Flush voice sub-event
    */
@@ -368,13 +358,15 @@ static void nd_end_event(NodeData *nd) {
       nd->composite = 0;
     }
     nd->last = e;
+
+    /* FIXME: Linkage */
     if (link_for) {
       uint i;
       NodeList *parents = (nd->parent) ? &nd->parent->operators : 0;
       if (parents) {
         for (i = 0; i < parents->count; ++i) {
           parents->na[i]->params |= (link_for == GRAPH) ? SGS_GRAPH :
-                                                          SGS_ADJCS;
+                                                            SGS_ADJCS;
           add_adjc(parents->na[i], e, link_for);
         }
       } else {
@@ -388,49 +380,35 @@ static void nd_end_event(NodeData *nd) {
           nd->parent = e;
       }*/
     }
-    /*FIXME*/if (e->operator) node_list_add(&nd->operators, e);
   }
-  /* Assign label */
-  if (nd->setsym) {
-//    if (e->sym) free(e->sym);
-    e->sym = nd->setsym;
-    nd->setsym = 0;
-    SGSSymtab_set(o->st, e->sym, e);
-    e->parseflags |= NODE_LINKED;
-  }
-  nd->parseflags &= ~MAKE_EVENT;
-  nd->preceding = 0;
 }
 
-static void nd_begin_event(NodeData *nd, EventData *preceding) {
+static void nd_init_event(NodeData *nd, EventData *previous) {
   SGSParser *o = nd->o;
   EventData *e = &nd->event, *pve;
   VoiceData *vd = &nd->voice;
   OperatorData *od = &nd->operator;
   uint link_for = ND_LINK_FOR(nd);
   uint i;
-  nd_end_event(nd);
-  if (preceding == &nd->event) preceding = nd->last;
-  nd->preceding = preceding;
   /*
    * Prepare next event
    */
+  nd_flush_event(nd);
   e->wait_ms += nd->add_wait_ms;
   nd->add_wait_ms = 0;
   e->nestlevel = o->nestlevel;
   e->scopeid = nd->scopeid;
-  od->time_ms = DEFAULT_TIME; /* context-specific default timing */
-  if (nd->preceding) {
+  if (previous) {
     /* if there's a linktype, nested, therefore active voice is changed */
-    pve = (link_for) ? nd->voice_event : nd->preceding;
+    pve = (link_for) ? nd->voice_event : previous;
     if (pve && pve->voice) {
       *vd = *pve->voice;
       vd->voice_prev = pve;
     }
-    if (nd->preceding->operator) {
-      *od = *nd->preceding->operator;
+    if (previous->operator) {
+      *od = *previous->operator;
       od->silence_ms = 0;
-      od->operator_prev = nd->preceding;
+      od->operator_prev = previous;
     }
   }
   if (!vd->voice_prev) { /* set defaults */
@@ -439,6 +417,7 @@ static void nd_begin_event(NodeData *nd, EventData *preceding) {
   if (!od->operator_prev) { /* set defaults */
     od->amp = 1.0f;
     if (e->nestlevel == 0) {
+      od->time_ms = DEFAULT_TIME; /* dynamically fitted, or set to default */
       od->freq = o->def_freq;
     } else {
       od->time_ms = o->def_time_ms;
@@ -446,17 +425,26 @@ static void nd_begin_event(NodeData *nd, EventData *preceding) {
       od->attr |= SGS_ATTR_FREQRATIO;
     }
   }
+  od->time_ms = DEFAULT_TIME; /* context-specific default timing */
+
 #if 0
+  /* Assign label? */
+  if (nd->setsym) {
+    SGSSymtab_set(o->st, nd->setsym, e);
+    e->parseflags |= NODE_LINKED;
+    free(nd->setsym);
+    nd->setsym = 0;
+  }
   /*FIXME:*/
+  node_list_add(&nd->operators, e);
 #endif
-  nd->parseflags |= MAKE_EVENT;
 }
 
 static void nd_add_waittime(NodeData *nd, float wait) {
   uint wait_ms;
   SET_I2F(wait_ms, wait*1000.f);
   nd->add_wait_ms += wait_ms;
-  if (nd->parseflags & MAKE_EVENT) nd_begin_event(nd, &nd->event);
+  nd_init_event(nd, nd->present);
 }
 
 static void nd_set_silence(NodeData *nd, float f) {
@@ -500,7 +488,7 @@ static void nd_set_panning(NodeData *nd, float *f, SGSProgramValit *vi) {
     vd->attr |= SGS_ATTR_VALITPANNING;
     vd->valitpanning = *vi;
   }
-  /* compare to preceding voice event if any */
+  /* compare to previous event if any */
   if (vd->voice_prev) {
     VoiceData *pvd = vd->voice_prev->voice;
     if (vd->panning == pvd->panning)
@@ -543,35 +531,6 @@ static void nd_set_freq(NodeData *nd, float *f, SGSProgramValit *vi,
     } else
       od->attr &= ~SGS_ATTR_VALITFREQRATIO;
   }
-}
-
-static void nd_init(NodeData *nd, SGSParser *o, NodeData *parentnd,
-                    char scope) {
-  memset(nd, 0, sizeof(NodeData));
-  nd->o = o;
-  nd->scope = scope;
-  if (parentnd) {
-    nd->parent = parentnd;
-    nd->set_settings = parentnd->set_settings;
-    nd->set_step = parentnd->set_step;
-    if (scope == SCOPE_SAME)
-      nd->scope = parentnd->scope;
-    nd->scopeid = parentnd->scopeid;
-    nd->voice_event = parentnd->voice_event;
-  }
-  nd_set_linktype(nd, GRAPH);
-}
-
-static void nd_fini(NodeData *nd) {
-  nd_end_event(nd);
-  if (nd->last && nd->last->operator) {
-    if (nd->last->operator->time_ms < 0)
-      nd->last->operator->time_ms = nd->o->def_time_ms; /* use default */
-  }
-  if (nd->current)
-    nd->current->groupfrom = nd->group;
-  if (nd->setsym)
-    free(nd->setsym);
 }
 
 /*
@@ -927,6 +886,11 @@ static uchar read_waittime(SGSParser *o, NodeData *nd, char c) {
  * Main parser functions
  */
 
+enum {
+  SCOPE_SAME = 0,
+  SCOPE_TOP = 1
+};
+
 static uchar parse_settings(SGSParser *o, NodeData *nd) {
   char c;
   nd->set_settings = 1;
@@ -974,7 +938,7 @@ static uchar parse_level(SGSParser *o, NodeData *parentnd, char newscope);
 
 static uchar parse_step(SGSParser *o, NodeData *nd) {
   char c;
-  EventData *e = &nd->event;
+  EventData *e = nd->present;
   OperatorData *od = &nd->operator;
   VoiceData *vd = &nd->voice;
   uint link_for = ND_LINK_FOR(nd);
@@ -1120,8 +1084,21 @@ static uchar parse_level(SGSParser *o, NodeData *parentnd, char newscope) {
   uchar endscope = 0;
   uchar flags = 0;
   NodeData nd;
-  nd_init(&nd, o, parentnd, newscope);
   ++o->calllevel;
+  memset(&nd, 0, sizeof(NodeData));
+  nd.o = o;
+  nd.scope = newscope;
+  if (parentnd) {
+    nd.parent = parentnd;
+    nd.set_settings = parentnd->set_settings;
+    nd.set_step = parentnd->set_step;
+    if (newscope == SCOPE_SAME)
+      nd.scope = parentnd->scope;
+    nd.scopeid = parentnd->scopeid;
+    nd.present = parentnd->present;
+    nd.voice_event = parentnd->voice_event;
+  }
+  nd_set_linktype(&nd, GRAPH);
   while ((c = read_char(o)) != EOF) {
     flags &= ~HANDLE_DEFER;
     switch (c) {
@@ -1143,7 +1120,7 @@ static uchar parse_level(SGSParser *o, NodeData *parentnd, char newscope) {
       EventData *first, *last;
       uchar ret;
       first = nd.first;
-      last = &nd.event;
+      last = nd.present;
       if (!first) {
         if (o->calllevel == 1) NO_CARRIER: {
           warning(o, "no preceding carrier operators", c);
@@ -1167,36 +1144,31 @@ static uchar parse_level(SGSParser *o, NodeData *parentnd, char newscope) {
       if (ret)
         goto RETURN;
       break; }
-    case ':': {
-      char *getsym = 0;
-      if (nd.setsym) {
+    case ':':
+      if (nd.setsym)
         warning(o, "ignoring label assignment to label reference", c);
-        free(nd.setsym);
-        nd.setsym = 0;
-      }
       nd.set_settings = 0;
       nd.set_step = 0;
-      if (read_sym(o, &getsym, ':')) {
-        EventData *ref = SGSSymtab_get(o->st, getsym);
+      if (read_sym(o, &nd.setsym, ':')) {
+        EventData *ref = SGSSymtab_get(o->st, nd.setsym);
         if (!ref)
           warning(o, "ignoring reference to undefined label", c);
         else {
-          nd_begin_event(&nd, ref);
+          nd_init_event(&nd, ref);
           nd_standard_event(&nd);
-          nd.setsym = getsym;
           flags = parse_step(o, &nd) ? (HANDLE_DEFER | DEFERRED_STEP) : 0;
         }
       }
-      break; }
+      break;
     case ';':
       if (newscope == SCOPE_SAME) {
         o->nextc = c;
         goto RETURN;
       }
-      if (nd.set_settings || !(nd.parseflags & MAKE_EVENT))
+      if (nd.set_settings || !nd.present)
         goto INVALID;
       nd_composite_event(&nd);
-      nd_begin_event(&nd, &nd.event);
+      nd_init_event(&nd, nd.last);
       nd_composite_event(&nd);
       flags = parse_step(o, &nd) ? (HANDLE_DEFER | DEFERRED_STEP) : 0;
       break;
@@ -1209,13 +1181,14 @@ static uchar parse_level(SGSParser *o, NodeData *parentnd, char newscope) {
         warning(o, "closing '>' without opening '<'", c);
         break;
       }
+      nd_flush_event(&nd);
       endscope = 1;
       goto RETURN;
     case 'O': {
       int wave = read_wavetype(o, c);
       if (wave < 0)
         break;
-      nd_begin_event(&nd, 0);
+      nd_init_event(&nd, 0);
       nd_standard_event(&nd);
       nd.operator.wave = wave;
       flags = parse_step(o, &nd) ? (HANDLE_DEFER | DEFERRED_STEP) : 0;
@@ -1226,12 +1199,13 @@ static uchar parse_level(SGSParser *o, NodeData *parentnd, char newscope) {
       flags = parse_settings(o, &nd) ? (HANDLE_DEFER | DEFERRED_SETTINGS) : 0;
       break;
     case '\\':
-      if (nd.set_settings || nd.event.nestlevel != 0) goto INVALID;
+      if (nd.set_settings ||
+          (nd.present && nd.present->nestlevel != 0))
+        goto INVALID;
       read_waittime(o, &nd, c);
       break;
     case '\'':
-      if (nd.parseflags & MAKE_EVENT) nd_end_event(&nd);
-      else if (nd.setsym) {
+      if (nd.setsym) {
         warning(o, "ignoring label assignment to label assignment", c);
         break;
       }
@@ -1242,14 +1216,14 @@ static uchar parse_level(SGSParser *o, NodeData *parentnd, char newscope) {
       warning(o, "opening curly brace out of place", c);
       break;
     case '|':
-      if (nd.set_settings || nd.event.nestlevel != 0)
+      if (nd.set_settings ||
+          (nd.present && nd.present->nestlevel != 0))
         goto INVALID;
       if (newscope == SCOPE_SAME) {
         o->nextc = c;
         goto RETURN;
       }
-      nd_end_event(&nd);
-      if (!nd.last) {
+      if (!nd.present) {
         warning(o, "end of sequence before any parts given", c);
         break;
       }
@@ -1289,8 +1263,16 @@ FINISH:
   if (newscope == '{')
     warning(o, "end of file without closing '}'s", c);
 RETURN:
+  nd_flush_event(&nd);
+  if (nd.present && nd.present->operator) {
+    if (nd.present->operator->time_ms < 0)
+      nd.present->operator->time_ms = o->def_time_ms; /* use default */
+  }
+  if (nd.current)
+    nd.current->groupfrom = nd.group;
+  if (nd.setsym)
+    free(nd.setsym);
   --o->calllevel;
-  nd_fini(&nd);
   /* Should return from the calling scope if/when the parent scope is ended. */
   return (endscope && nd.scope != newscope);
 }
@@ -1573,7 +1555,6 @@ static SGSProgram* build(SGSParser *o) {
       free(od);
     }
     ++id;
-    free((void*)e->sym);
     free(e);
     e = e_next;
   }

@@ -91,7 +91,6 @@ static uint calc_bufs(SGSGenerator *o, OperatorNode *n) {
     const int *mods = n->adjcs->adjcs;
     const uint modc = n->adjcs->pmodc + n->adjcs->fmodc + n->adjcs->amodc;
     for (i = 0; i < modc; ++i) {
-  printf("visit node %d\n", mods[i]);
       res = calc_bufs(o, &o->operators[mods[i]]);
       if (res > count) count = res;
     }
@@ -103,11 +102,9 @@ static void upsize_bufs(SGSGenerator *o, VoiceNode *vn) {
   uint count = 0, i, res;
   if (!vn->graph) return;
   for (i = 0; i < vn->graph->opc; ++i) {
-  printf("visit node %d\n", vn->graph->ops[i]);
     res = calc_bufs(o, &o->operators[vn->graph->ops[i]]);
     if (res > count) count = res;
   }
-  printf("%d -?!\n", count);
   if (count > o->bufc) {
     o->bufs = realloc(o->bufs, sizeof(Buf) * count);
     o->bufc = count;
