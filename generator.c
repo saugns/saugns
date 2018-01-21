@@ -124,7 +124,7 @@ MGSGenerator* MGSGenerator_create(uint srate, struct MGSProgram *prg) {
       Data *set = n->data;
       MGSProgramNode *ref = step->spec.set.ref;
       in->ref = ref->id;
-      if (i >= prg->topc) /* ids start from zero for nested nodes */
+      if (ref->type == MGS_TYPE_NESTED)
         in->ref += prg->topc;
       n->values = step->spec.set.values;
       n->values &= ~MGS_DYNAMP;
@@ -174,7 +174,8 @@ MGSGenerator* MGSGenerator_create(uint srate, struct MGSProgram *prg) {
   /* mods init part two - give proper entries */
   for (i = 0; i < prg->nodec; ++i) {
     IndexNode *in = &o->nodes[i];
-    if (in->type == MGS_TYPE_TOP) {
+    if (in->type == MGS_TYPE_TOP ||
+        in->type == MGS_TYPE_NESTED) {
       SoundNode *n = in->node;
       if (n->amodchain) {
         uint id = ((MGSProgramNode*)n->amodchain)->id + prg->topc;
@@ -209,48 +210,61 @@ static void adjust_time(MGSGenerator *o, SoundNode *n) {
 static void MGSGenerator_enter_node(MGSGenerator *o, IndexNode *in) {
   switch (in->type) {
   case MGS_TYPE_TOP:
-  case MGS_TYPE_NESTED:
     adjust_time(o, in->node);
+  case MGS_TYPE_NESTED:
     break;
   case MGS_TYPE_SETTOP:
   case MGS_TYPE_SETNESTED: {
-    SetNode *n = in->node;
-    Data *data = n->data;
-    IndexNode *targetin = &o->nodes[in->ref];
-    SoundNode *targetn = targetin->node;
-    if (n->values & MGS_TIME) {
-      targetn->time = (*data).i; ++data;
-      adjust_time(o, targetn);
+    IndexNode *refin = &o->nodes[in->ref];
+    SoundNode *refn = refin->node;
+    SetNode *setn = in->node;
+    Data *data = setn->data;
+    uchar adjtime = 0;
+    /* set state */
+    if (setn->values & MGS_TIME) {
+      refn->time = (*data).i; ++data;
+      refin->pos = 0;
+      if (refn->time) {
+        if (refin->type == MGS_TYPE_TOP)
+          refin->flag |= MGS_FLAG_EXEC;
+        adjtime = 1;
+      } else
+        refin->flag &= ~MGS_FLAG_EXEC;
     }
-    if (n->values & MGS_FREQ) {
-      targetn->freq = (*data).f; ++data;
+    if (setn->values & MGS_FREQ) {
+      refn->freq = (*data).f; ++data;
+      adjtime = 1;
     }
-    if (n->values & MGS_DYNFREQ) {
-      targetn->dynfreq = (*data).f; ++data;
+    if (setn->values & MGS_DYNFREQ) {
+      refn->dynfreq = (*data).f; ++data;
     }
-    if (n->values & MGS_PHASE) {
-      MGSOsc_SET_PHASE(&targetn->osc, (uint)(*data).i); ++data;
+    if (setn->values & MGS_PHASE) {
+      MGSOsc_SET_PHASE(&refn->osc, (uint)(*data).i); ++data;
     }
-    if (n->values & MGS_AMP) {
-      targetn->amp = (*data).f; ++data;
+    if (setn->values & MGS_AMP) {
+      refn->amp = (*data).f; ++data;
     }
-    if (n->values & MGS_DYNAMP) {
-      targetn->dynampdiff = (*data).f; ++data;
+    if (setn->values & MGS_DYNAMP) {
+      refn->dynampdiff = (*data).f; ++data;
     }
-    if (n->values & MGS_ATTR) {
-      targetn->attr = (uchar)(*data).i; ++data;
+    if (setn->values & MGS_ATTR) {
+      refn->attr = (uchar)(*data).i; ++data;
     }
-    if (n->mods & MGS_AMODS) {
-      targetn->amodchain = o->nodes[(*data).i].node; ++data;
+    if (setn->mods & MGS_AMODS) {
+      refn->amodchain = o->nodes[(*data).i].node; ++data;
     }
-    if (n->mods & MGS_FMODS) {
-      targetn->fmodchain = o->nodes[(*data).i].node; ++data;
+    if (setn->mods & MGS_FMODS) {
+      refn->fmodchain = o->nodes[(*data).i].node; ++data;
     }
-    if (n->mods & MGS_PMODS) {
-      targetn->pmodchain = o->nodes[(*data).i].node; ++data;
+    if (setn->mods & MGS_PMODS) {
+      refn->pmodchain = o->nodes[(*data).i].node; ++data;
     }
-    *in = *targetin;
-    targetin->flag &= ~MGS_FLAG_EXEC;
+    if (adjtime && refn->type == MGS_TYPE_TOP)
+      /* here so new freq also used if set */
+      adjust_time(o, refn);
+    /* take over place of ref'd node */
+    *in = *refin;
+    refin->flag &= ~MGS_FLAG_EXEC;
     break; }
   case MGS_TYPE_ENV:
     break;
@@ -270,12 +284,14 @@ static float run_waveenv_sample(SoundNode *n, float freq_mult, double osc_coeff)
 
 static uint run_sample(SoundNode *n, float freq_mult, double osc_coeff) {
   int ret = 0, s;
-  float freq = n->freq;
-  float amp = n->amp;
+  float freq;
+  float amp;
   int pm = 0;
   do {
+    freq = n->freq;
     if (n->attr & MGS_ATTR_FREQRATIO)
       freq *= freq_mult;
+    amp = n->amp;
     if (n->amodchain) {
       float am = n->dynampdiff;
       am *= run_waveenv_sample(n->amodchain, freq, osc_coeff);
@@ -299,9 +315,10 @@ static uint run_sample(SoundNode *n, float freq_mult, double osc_coeff) {
 
 static float run_waveenv_sample(SoundNode *n, float freq_mult, double osc_coeff) {
   float ret = 1.f, s;
-  float freq = n->freq;
+  float freq;
   int pm = 0;
   do {
+    freq = n->freq;
     if (n->attr & MGS_ATTR_FREQRATIO)
       freq *= freq_mult;
     if (n->fmodchain) {

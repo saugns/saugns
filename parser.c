@@ -6,15 +6,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define SYMKEY_LEN 256
 
 typedef struct MGSParser {
   FILE *f;
   const char *fn;
   MGSProgram *prg;
   MGSSymtab *st;
-  char setsymkey[SYMKEY_LEN];
-  uchar setsym;
   uint line;
   uint reclevel;
   /* node state */
@@ -36,6 +33,7 @@ typedef struct NodeData {
   MGSProgramNode *node; /* state for tentative node until end_node() */
   MGSProgramNodeChain *target;
   MGSProgramNode *last;
+  char *setsym;
   /* timing/delay */
   MGSProgramNode *n_begin;
   uchar n_end;
@@ -56,7 +54,9 @@ static void new_node(MGSParser *o, NodeData *nd, MGSProgramNodeChain *target, uc
   /* defaults */
   n->amp = 1.f;
   n->mode = o->n_mode;
-  n->time = o->n_time;
+  if (type == MGS_TYPE_TOP ||
+      type == MGS_TYPE_NESTED)
+    n->time = o->n_time;
   n->freq = o->n_freq;
 
   /* tentative linking */
@@ -70,11 +70,7 @@ static void new_node(MGSParser *o, NodeData *nd, MGSProgramNodeChain *target, uc
       o->nested = n;
     else
       o->last_nested->next = n;
-
-    if (!nd->target->chain)
-      nd->target->chain = n;
-    else
-      nd->last->spec.nested.link = n;
+    n->id = o->nestedc++;
   }
 
   /* prepare timing adjustment */
@@ -116,8 +112,7 @@ static void end_node(MGSParser *o, NodeData *nd) {
       n->type == MGS_TYPE_SETNESTED) {
     /* check what the set-node changes */
     MGSProgramNode *ref = n->spec.set.ref;
-    if (n->time != ref->time)
-      n->spec.set.values |= MGS_TIME;
+    /* MGS_TIME set when time set */
     if (n->freq != ref->freq)
       n->spec.set.values |= MGS_FREQ;
     if (n->dynfreq != ref->dynfreq)
@@ -138,51 +133,43 @@ static void end_node(MGSParser *o, NodeData *nd) {
       n->spec.set.mods |= MGS_PMODS;
 
     if (!n->spec.set.values && !n->spec.set.mods) {
-      /* remove no-operation set node */
+      /* Remove no-operation set node; made simpler
+       * by all set nodes being top nodes.
+       */
       if (o->last_nested == n)
         o->last_nested = o->undo_last;
       if (nd->n_begin == n)
         nd->n_begin = 0;
-      if (!nd->target) {
-        if (p->nodelist == n)
-          p->nodelist = 0;
-        else
-          o->last_top->next = 0;
-      } else {
-        if (o->nested == n)
-          o->nested = 0;
-        else
-          o->last_nested->next = 0;
-
-        if (nd->target->chain == n)
-          nd->target->chain = 0;
-        else
-          nd->last->spec.nested.link = 0;
-      }
+      if (o->last_top == n)
+        o->last_top->next = 0;
       free(n);
       return;
     }
   }
 
-  nd->last = n;
   if (!nd->target) {
     n->flag |= MGS_FLAG_EXEC;
     o->last_top = n;
     n->id = p->topc++;
   } else {
+    if (!nd->target->chain)
+      nd->target->chain = n;
+    else
+      nd->last->spec.nested.link = n;
     ++nd->target->count;
     /*o->last_nested = n;*/ /* already done */
-    n->id = o->nestedc++;
   }
+  nd->last = n;
   ++p->nodec;
 
   n->amp *= o->n_ampmult;
   n->delay += nd->n_add_delay;
   nd->n_add_delay = 0.f;
 
-  if (o->setsym) {
-    o->setsym = 0;
-    MGSSymtab_set(o->st, o->setsymkey, n);
+  if (nd->setsym) {
+    MGSSymtab_set(o->st, nd->setsym, n);
+    free(nd->setsym);
+    nd->setsym = 0;
   }
 }
 
@@ -331,6 +318,33 @@ static void warning(MGSParser *o, const char *s, char c) {
   printf("warning: %s [line %d, at %s] - %s\n", o->fn, o->line, buf, s);
 }
 
+#define SYMKEY_LEN 80
+#define SYMKEY_LEN_A "80"
+static uchar read_sym(MGSParser *o, char **sym, char op) {
+  uint i = 0;
+  char nosym_msg[] = "ignoring ? without symbol name";
+  nosym_msg[9] = op; /* replace ? */
+  if (!*sym)
+    *sym = malloc(SYMKEY_LEN);
+  for (;;) {
+    char c = getc(o->f);
+    if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+      if (i == 0)
+        warning(o, nosym_msg, c);
+      else END_OF_SYM: {
+        (*sym)[i] = '\0';
+        return 1;
+      }
+      break;
+    } else if (i == SYMKEY_LEN) {
+      warning(o, "ignoring symbol name from "SYMKEY_LEN_A"th digit", c);
+      goto END_OF_SYM;
+    }
+    (*sym)[i++] = c;
+  }
+  return 0;
+}
+
 static void parse_level(MGSParser *o, MGSProgramNodeChain *chain, uchar modtype);
 
 static MGSProgram* parse(FILE *f, const char *fn, MGSParser *o) {
@@ -371,8 +385,10 @@ static void parse_level(MGSParser *o, MGSProgramNodeChain *chain, uchar modtype)
       if (!chain) {
         if (o->setdef > o->level)
           o->setdef = (o->level) ? (o->level - 1) : 0;
-        else if (o->setnode > o->level)
+        else if (o->setnode > o->level) {
           o->setnode = (o->level) ? (o->level - 1) : 0;
+          end_node(o, &nd);
+        }
       }
       ++o->line;
       break;
@@ -415,8 +431,10 @@ static void parse_level(MGSParser *o, MGSProgramNodeChain *chain, uchar modtype)
       }
       if (o->setdef > o->level)
         o->setdef = (o->level) ? (o->level - 1) : 0;
-      else if (o->setnode > o->level)
+      else if (o->setnode > o->level) {
         o->setnode = (o->level) ? (o->level - 1) : 0;
+        end_node(o, &nd);
+      }
       --o->level;
       break;
     case 'C':
@@ -451,7 +469,7 @@ static void parse_level(MGSParser *o, MGSProgramNodeChain *chain, uchar modtype)
         warning(o, "invalid wave type follows W in file; sin, sqr, tri, saw available", c);
         break;
       }
-      new_node(o, &nd, chain, MGS_TYPE_TOP);
+      new_node(o, &nd, chain, (chain ? MGS_TYPE_NESTED : MGS_TYPE_TOP));
       nd.node->wave = wave;
       o->setnode = o->level + 1;
       break; }
@@ -468,75 +486,54 @@ static void parse_level(MGSParser *o, MGSProgramNodeChain *chain, uchar modtype)
       else
         nd.node->delay += getnum(o->f);
       break;
-    case '\'': {
-      uint i = 0;
+    case '\'':
       end_node(o, &nd);
-      if (o->setsym)
+      if (nd.setsym) {
         warning(o, "ignoring label assignment to label assignment", c);
-      for (;;) {
-        c = getc(o->f);
-        if (c == ' ' || c == '\t' || c == '\n') {
-          if (i == 0)
-            warning(o, "ignoring ' without symbol name", c);
-          else {
-            o->setsymkey[i] = '\0';
-            o->setsym = 1;
-          }
-          break;
-        }
-        o->setsymkey[i++] = c;
+        break;
       }
-      break; }
-    case ':': {
-      uint i = 0;
+      read_sym(o, &nd.setsym, '\'');
+      break;
+    case ':':
       end_node(o, &nd);
-      if (o->setsym)
+      if (nd.setsym)
         warning(o, "ignoring label assignment to label reference", c);
-      for (;;) {
-        c = getc(o->f);
-        if (c == ' ' || c == '\t' || c == '\n') {
-          if (i == 0)
-            warning(o, "ignoring : without symbol name", c);
-          else {
-            o->setsymkey[i] = '\0';
-            MGSProgramNode *ref = MGSSymtab_get(o->st, o->setsymkey);
-            if (!ref)
-              warning(o, "ignoring reference to undefined label", c);
-            else {
-              uint type;
-              switch (ref->type) {
-              case MGS_TYPE_TOP:
-              case MGS_TYPE_SETTOP:
-                type = MGS_TYPE_SETTOP;
-                break;
-              case MGS_TYPE_NESTED:
-              case MGS_TYPE_SETNESTED:
-                type = MGS_TYPE_SETNESTED;
-                break;
-              default:
-                type = 0; /* silence warning */
-              }
-              o->setsym = 1; /* update */
-              new_node(o, &nd, chain, type);
-              nd.node->spec.set.ref = ref;
-              nd.node->wave = ref->wave;
-              nd.node->mode = ref->mode;
-              nd.node->amp = ref->amp;
-              nd.node->dynamp = ref->dynamp;
-              nd.node->freq = ref->freq;
-              nd.node->dynfreq = ref->dynfreq;
-              nd.node->attr = ref->attr;
-              nd.node->pmod = ref->pmod;
-              nd.node->fmod = ref->fmod;
-              nd.node->amod = ref->amod;
-              o->setnode = o->level + 1;
-            }
+      else if (chain)
+        goto INVALID;
+      if (read_sym(o, &nd.setsym, ':')) {
+        MGSProgramNode *ref = MGSSymtab_get(o->st, nd.setsym);
+        if (!ref)
+          warning(o, "ignoring reference to undefined label", c);
+        else {
+          uint type;
+          switch (ref->type) {
+          case MGS_TYPE_TOP:
+          case MGS_TYPE_SETTOP:
+            type = MGS_TYPE_SETTOP;
+            break;
+          case MGS_TYPE_NESTED:
+          case MGS_TYPE_SETNESTED:
+            type = MGS_TYPE_SETNESTED;
+            break;
+          default:
+            type = 0; /* silence warning */
           }
-          break;
+          new_node(o, &nd, 0, type);
+          nd.node->spec.set.ref = ref;
+          nd.node->wave = ref->wave;
+          nd.node->mode = ref->mode;
+          nd.node->amp = ref->amp;
+          nd.node->dynamp = ref->dynamp;
+          nd.node->freq = ref->freq;
+          nd.node->dynfreq = ref->dynfreq;
+          nd.node->attr = ref->attr;
+          nd.node->pmod = ref->pmod;
+          nd.node->fmod = ref->fmod;
+          nd.node->amod = ref->amod;
+          o->setnode = o->level + 1;
         }
-        o->setsymkey[i++] = c;
       }
-      break; }
+      break;
     case 'a':
       if (o->setdef > o->setnode)
         o->n_ampmult = getnum(o->f);
@@ -580,8 +577,6 @@ static void parse_level(MGSParser *o, MGSProgramNodeChain *chain, uchar modtype)
       if (o->setdef > o->setnode || o->setnode <= 0)
         goto INVALID;
       if (testgetc('!', o->f)) {
-        if (o->setdef > o->setnode || o->setnode <= 0)
-          goto INVALID;
         if (testgetc('{', o->f)) {
           parse_level(o, &nd.node->pmod, MGS_PMODS);
         }
@@ -617,6 +612,9 @@ static void parse_level(MGSParser *o, MGSProgramNodeChain *chain, uchar modtype)
         o->n_time = getnum(o->f);
       else if (o->setnode > 0) {
         nd.node->time = getnum(o->f);
+        if (nd.node->type == MGS_TYPE_SETTOP ||
+            nd.node->type == MGS_TYPE_SETNESTED)
+          nd.node->spec.set.values |= MGS_TIME;
       } else
         goto INVALID;
       break;
@@ -633,6 +631,8 @@ FINISH:
     warning(o, "end of file without closing '}'s", c);
 RETURN:
   end_node(o, &nd);
+  if (nd.setsym)
+    free(nd.setsym);
   --o->reclevel;
 }
 
