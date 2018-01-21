@@ -6,8 +6,91 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+/*
+ * General-purpose functions
+ */
+
 #define IS_WHITESPACE(c) \
   ((c) == ' ' || (c) == '\t' || (c) == '\n' || (c) == '\r')
+
+static uchar testc(char c, FILE *f) {
+  char gc = getc(f);
+  ungetc(gc, f);
+  return (gc == c);
+}
+
+static uchar testgetc(char c, FILE *f) {
+  char gc;
+  if ((gc = getc(f)) == c) return 1;
+  ungetc(gc, f);
+  return 0;
+}
+
+static int getinum(FILE *f) {
+  char c;
+  int num = -1;
+  c = getc(f);
+  if (c >= '0' && c <= '9') {
+    num = c - '0';
+    for (;;) {
+      c = getc(f);
+      if (c >= '0' && c <= '9')
+        num = num * 10 + (c - '0');
+      else
+        break;
+    }
+  }
+  ungetc(c, f);
+  return num;
+}
+
+static int strfind(FILE *f, const char *const*str) {
+  int search, ret;
+  uint i, len, pos, matchpos;
+  char c, undo[256];
+  uint strc;
+  const char **s;
+
+  for (len = 0, strc = 0; str[strc]; ++strc)
+    if ((i = strlen(str[strc])) > len) len = i;
+  s = malloc(sizeof(const char*) * strc);
+  for (i = 0; i < strc; ++i)
+    s[i] = str[i];
+  search = ret = -1;
+  pos = matchpos = 0;
+  while ((c = getc(f)) != EOF) {
+    undo[pos] = c;
+    for (i = 0; i < strc; ++i) {
+      if (!s[i]) continue;
+      else if (!s[i][pos]) {
+        s[i] = 0;
+        if (search == (int)i) {
+          ret = i;
+          matchpos = pos-1;
+        }
+      } else if (c != s[i][pos]) {
+        s[i] = 0;
+        search = -1;
+      } else
+        search = i;
+    }
+    if (pos == len) break;
+    ++pos;
+  }
+  free(s);
+  for (i = pos; i > matchpos; --i) ungetc(undo[i], f);
+  return ret;
+}
+
+static void eatws(FILE *f) {
+  char c;
+  while ((c = getc(f)) == ' ' || c == '\t') ;
+  ungetc(c, f);
+}
+
+/*
+ * Parsing code
+ */
 
 typedef struct SGSParser {
   FILE *f;
@@ -36,6 +119,7 @@ typedef struct NodeTarget {
 
 /* things that need to be separate for each nested parse_level() go here */
 typedef struct NodeData {
+  uchar topopevent; /* ensure new_event() type is SGS_TYPE_TOP */
   SGSProgramEvent *event; /* state for tentative event until end_event() */
   SGSProgramEvent *last;
   SGSProgramEvent *oplast; /* last event for last operator */
@@ -62,6 +146,8 @@ static void new_operator(SGSParser *o, NodeData *nd, NodeTarget *target,
   SGSProgram *p = o->prg;
   SGSProgramEvent *e;
   end_operator(o, nd);
+  if (!target)
+    nd->topopevent = 1;
   new_event(o, nd, 0, 0);
   e = nd->event;
   e->wave = wave;
@@ -87,8 +173,9 @@ static void new_operator(SGSParser *o, NodeData *nd, NodeTarget *target,
   e->amp = 1.f;
   if (e->optype == SGS_TYPE_TOP) {
     e->time_ms = -1; /* later fitted or set to default */
-    e->panning = .5f; /* default - center */
     e->freq = o->def_freq;
+    e->params |= SGS_PANNING;
+    e->topop.panning = .5f; /* default - center */
   } else {
     e->time_ms = o->def_time_ms;
     e->freq = o->def_ratio;
@@ -100,8 +187,14 @@ static void new_event(SGSParser *o, NodeData *nd, SGSProgramEvent *opevent,
                       uchar composite) {
   SGSProgram *p = o->prg;
   SGSProgramEvent *e, *pe;
+  size_t size;
   end_event(o, nd);
-  e = nd->event = calloc(1, sizeof(SGSProgramEvent));
+  size = sizeof(SGSProgramEvent) - sizeof(struct SGSProgramEventExt);
+  if (nd->topopevent || (opevent && opevent->optype == SGS_TYPE_TOP)) {
+    nd->topopevent = 0;
+    size += sizeof(struct SGSProgramEventExt);
+  }
+  e = nd->event = calloc(1, size);
   pe = e->opprev = opevent;
   e->id = p->eventc++;
   if (pe) {
@@ -114,11 +207,12 @@ static void new_event(SGSParser *o, NodeData *nd, SGSProgramEvent *opevent,
     e->dynfreq = pe->dynfreq;
     e->amp = pe->amp;
     e->dynamp = pe->dynamp;
-    e->panning = pe->panning;
     e->pmodid = pe->pmodid;
     e->fmodid = pe->fmodid;
     e->amodid = pe->amodid;
     e->linkid = pe->linkid;
+    if (e->optype == SGS_TYPE_TOP)
+      e->topop.panning = pe->topop.panning;
   } else { /* init event - everything set to defaults */
     e->opfirst = 1;
     e->params |= SGS_PMOD |
@@ -128,12 +222,11 @@ static void new_event(SGSParser *o, NodeData *nd, SGSProgramEvent *opevent,
                  SGS_WAVE |
                  SGS_TIME |
                  SGS_SILENCE |
-                 SGS_FREQ  |
-                 SGS_DYNFREQ  |
-                 SGS_PHASE  |
-                 SGS_AMP  |
-                 SGS_DYNAMP  |
-                 SGS_PANNING  |
+                 SGS_FREQ |
+                 SGS_DYNFREQ |
+                 SGS_PHASE |
+                 SGS_AMP |
+                 SGS_DYNAMP |
                  SGS_ATTR;
     e->pmodid = e->fmodid = e->amodid = e->linkid = -1;
   }
@@ -215,15 +308,23 @@ static void end_event(SGSParser *o, NodeData *nd) {
     /* SGS_SILENCE set when silence set */
     if (e->freq != pe->freq)
       e->params |= SGS_FREQ;
+    if (e->valitfreq.type)
+      e->params |= SGS_ATTR;
     if (e->dynfreq != pe->dynfreq)
       e->params |= SGS_DYNFREQ;
     /* SGS_PHASE set when phase set */
     if (e->amp != pe->amp)
       e->params |= SGS_AMP;
+    if (e->valitamp.type)
+      e->params |= SGS_ATTR;
     if (e->dynamp != pe->dynamp)
       e->params |= SGS_DYNAMP;
-    if (e->panning != pe->panning)
-      e->params |= SGS_PANNING;
+    if (e->optype == SGS_TYPE_TOP) {
+      if (e->topop.panning != pe->topop.panning)
+        e->params |= SGS_PANNING;
+      if (e->topop.valitpanning.type)
+        e->params |= SGS_ATTR;
+    }
 
     if (!e->params) { /* Remove empty event */
       if (nd->group == e)
@@ -240,9 +341,6 @@ static void end_event(SGSParser *o, NodeData *nd) {
     }
   }
 
-  if (e->optype == SGS_TYPE_TOP) /* Adjust for "voice" (output level) only */
-    e->amp *= o->ampmult;
-
   if (nd->composite) {
     if (nd->add_wait_ms) { /* Simulate with silence */
       e->silence_ms += nd->add_wait_ms;
@@ -256,6 +354,8 @@ static void end_event(SGSParser *o, NodeData *nd) {
     nd->composite->time_ms += e->time_ms + e->silence_ms;
     e->params &= ~SGS_TIME;
     if (!e->params) {
+      nd->last->time_ms += e->time_ms;
+      --p->eventc;
       free(e);
       return;
     }
@@ -293,6 +393,9 @@ static void end_event(SGSParser *o, NodeData *nd) {
   }
   if (e->time_ms >= 0)
     e->time_ms += e->silence_ms;
+
+  if (e->optype == SGS_TYPE_TOP)
+    e->amp *= o->ampmult; /* Adjust for "voice" (output level) only */
  
   nd->last = e;
   if (nd->oplast->optype == e->optype &&
@@ -300,167 +403,102 @@ static void end_event(SGSParser *o, NodeData *nd) {
   nd->oplast = e;
 }
 
-static double getnum_r(FILE *f, char *buf, uint len, uchar pri) {
+/*
+ * Parsing routines
+ */
+
+static float read_num_r(SGSParser *o, float (*read_symbol)(SGSParser *o), char *buf, uint len, uchar pri, uint level) {
   char *p = buf;
   uchar dot = 0;
-  double num;
+  float num;
   char c;
-  do {
-    c = getc(f);
-  } while (IS_WHITESPACE(c));
+  c = getc(o->f);
+  if (level) while (IS_WHITESPACE(c)) {
+    c = getc(o->f);
+  }
   if (c == '(') {
-    return getnum_r(f, buf, len, 255);
+    return read_num_r(o, read_symbol, buf, len, 255, level+1);
+  }
+  if (read_symbol &&
+      ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))) {
+    ungetc(c, o->f);
+    num = read_symbol(o);
+    if (num == num) { /* not NAN; was recognized */
+      c = getc(o->f);
+      goto LOOP;
+    }
   }
   if (c == '-') {
     *p++ = c;
-    do {
-      c = getc(f);
-    } while (IS_WHITESPACE(c));
+    c = getc(o->f);
+    if (level) while (IS_WHITESPACE(c)) {
+      c = getc(o->f);
+    }
   }
   while ((c >= '0' && c <= '9') || (!dot && (dot = (c == '.')))) {
     if ((p+1) == (buf+len)) {
       break;
     }
     *p++ = c;
-    c = getc(f);
+    c = getc(o->f);
   }
   if (p == buf) {
-    ungetc(c, f);
+    ungetc(c, o->f);
     return NAN;
   }
   *p = '\0';
   num = strtod(buf, 0);
+LOOP:
   for (;;) {
-    while (IS_WHITESPACE(c))
-      c = getc(f);
+    if (level) while (IS_WHITESPACE(c))
+      c = getc(o->f);
     switch (c) {
     case '(':
-      num *= getnum_r(f, buf, len, 255);
+      num *= read_num_r(o, read_symbol, buf, len, 255, level+1);
       break;
     case ')':
       if (pri < 255)
-        ungetc(c, f);
+        ungetc(c, o->f);
       return num;
       break;
     case '^':
-      num = exp(log(num) * getnum_r(f, buf, len, 0));
+      num = exp(log(num) * read_num_r(o, read_symbol, buf, len, 0, level));
       break;
     case '*':
-      num *= getnum_r(f, buf, len, 1);
+      num *= read_num_r(o, read_symbol, buf, len, 1, level);
       break;
     case '/':
-      num /= getnum_r(f, buf, len, 1);
+      num /= read_num_r(o, read_symbol, buf, len, 1, level);
       break;
     case '+':
       if (pri < 2)
         return num;
-      num += getnum_r(f, buf, len, 2);
+      num += read_num_r(o, read_symbol, buf, len, 2, level);
       break;
     case '-':
       if (pri < 2)
         return num;
-      num -= getnum_r(f, buf, len, 2);
+      num -= read_num_r(o, read_symbol, buf, len, 2, level);
       break;
     default:
+      ungetc(c, o->f);
       return num;
     }
     if (num != num) {
-      ungetc(c, f);
+      ungetc(c, o->f);
       return num;
     }
-    c = getc(f);
+    c = getc(o->f);
   }
 }
-static double getnum(FILE *f) {
+static uchar read_num(SGSParser *o, float (*read_symbol)(SGSParser *o),
+                      float *var) {
   char buf[64];
-  char *p = buf;
-  uchar dot = 0;
-  if ((*p = getc(f)) == '(')
-    return getnum_r(f, buf, 64, 255);
-  do {
-    if ((*p >= '0' && *p <= '9') || (!dot && (dot = (*p == '.'))))
-      ++p;
-    else
-      break;
-  } while ((*p = getc(f)) && p < (buf+64));
-  ungetc(*p, f);
-  *p = '\0';
-  return strtod(buf, 0);
-}
-
-static int getinum(FILE *f) {
-  char c;
-  int num = -1;
-  c = getc(f);
-  if (c >= '0' && c <= '9') {
-    num = c - '0';
-    for (;;) {
-      c = getc(f);
-      if (c >= '0' && c <= '9')
-        num = num * 10 + (c - '0');
-      else
-        break;
-    }
-  }
-  ungetc(c, f);
-  return num;
-}
-
-static int strfind(FILE *f, const char *const*str) {
-  int search, ret;
-  uint i, len, pos, matchpos;
-  char c, undo[256];
-  uint strc;
-  const char **s;
-
-  for (len = 0, strc = 0; str[strc]; ++strc)
-    if ((i = strlen(str[strc])) > len) len = i;
-  s = malloc(sizeof(const char*) * strc);
-  for (i = 0; i < strc; ++i)
-    s[i] = str[i];
-  search = ret = -1;
-  pos = matchpos = 0;
-  while ((c = getc(f)) != EOF) {
-    undo[pos] = c;
-    for (i = 0; i < strc; ++i) {
-      if (!s[i]) continue;
-      else if (!s[i][pos]) {
-        s[i] = 0;
-        if (search == (int)i) {
-          ret = i;
-          matchpos = pos-1;
-        }
-      } else if (c != s[i][pos]) {
-        s[i] = 0;
-        search = -1;
-      } else
-        search = i;
-    }
-    if (pos == len) break;
-    ++pos;
-  }
-  free(s);
-  for (i = pos; i > matchpos; --i) ungetc(undo[i], f);
-  return ret;
-}
-
-static void eatws(FILE *f) {
-  char c;
-  while ((c = getc(f)) == ' ' || c == '\t') ;
-  ungetc(c, f);
-}
-
-static uchar testc(char c, FILE *f) {
-  char gc = getc(f);
-  ungetc(gc, f);
-  return (gc == c);
-}
-
-static uchar testgetc(char c, FILE *f) {
-  char gc;
-  if ((gc = getc(f)) == c) return 1;
-  ungetc(gc, f);
-  return 0;
+  float num = read_num_r(o, read_symbol, buf, 64, 254, 0);
+  if (num != num)
+    return 0;
+  *var = num;
+  return 1;
 }
 
 static void warning(SGSParser *o, const char *s, char c) {
@@ -529,7 +567,7 @@ static float read_note(SGSParser *o) {
   }
   if (c < 'A' || c > 'G') {
     warning(o, "invalid note specified - should be C, D, E, F, G, A or B", c);
-    return -1.f;
+    return NAN;
   }
   note = c - 'C';
   if (note < 0) /* A, B */
@@ -597,6 +635,64 @@ static int read_wavetype(SGSParser *o, char lastc) {
   return wave;
 }
 
+static uchar read_valit(SGSParser *o, float (*read_symbol)(SGSParser *o),
+                        SGSProgramValit *vi) {
+  char c;
+  uchar goal = 0;
+  vi->time_ms = -1;
+  vi->type = SGS_VALIT_LIN; /* default */
+  while ((c = getc(o->f)) != EOF) {
+    eatws(o->f);
+    switch (c) {
+    case '\n':
+    case '\t':
+    case ' ':
+      eatws(o->f);
+      break;
+    case 's':
+      if (testgetc('l', o->f))
+        vi->type = SGS_VALIT_LIN;
+      else if (testgetc('e', o->f))
+        vi->type = SGS_VALIT_EXP;
+      else
+        goto INVALID;
+      break;
+    case 't': {
+      float time;
+      if (read_num(o, 0, &time)) {
+        if (time < 0.f) {
+          warning(o, "ignoring 't' with sub-zero time", c);
+          break;
+        }
+        SET_I2F(vi->time_ms, time*1000.f);
+      }
+      break; }
+    case 'v':
+      if (read_num(o, read_symbol, &vi->goal))
+        goal = 1;
+      break;
+    case ']':
+      goto RETURN;
+    default:
+    INVALID:
+      warning(o, "invalid character", c);
+      break;
+    }
+  }
+  warning(o, "end of file without closing ']'", c);
+RETURN:
+  if (!goal) {
+    warning(o, "ignoring gradual parameter change with no target value", c);
+    vi->type = SGS_VALIT_NONE;
+    return 0;
+  }
+  return 1;
+}
+
+/*
+ * Main parser functions
+ */
+
 static void parse_level(SGSParser *o, NodeTarget *chaintarget);
 
 static SGSProgram* parse(FILE *f, const char *fn, SGSParser *o) {
@@ -608,12 +704,12 @@ static SGSProgram* parse(FILE *f, const char *fn, SGSParser *o) {
   o->line = 1;
   o->ampmult = 1.f; /* default until changed */
   o->def_time_ms = 1000; /* default until changed */
-  o->def_freq = 100.f; /* default until changed */
+  o->def_freq = 444.f; /* default until changed */
   o->def_A4tuning = 444.f; /* default until changed */
   o->def_ratio = 1.f; /* default until changed */
   parse_level(o, 0);
   SGSSymtab_destroy(o->st);
-  /* Flatten composites */
+  /* Flatten composites, final adjustments */
   {/**/
   SGSProgramEvent *e;
   uint id = 0;
@@ -664,6 +760,15 @@ static SGSProgram* parse(FILE *f, const char *fn, SGSParser *o) {
       e->composite = 0;
     }
     e->id = id++;
+    /* Fill in blank valit durations */
+    if (e->valitfreq.time_ms < 0)
+      e->valitfreq.time_ms = e->time_ms;
+    if (e->valitamp.time_ms < 0)
+      e->valitamp.time_ms = e->time_ms;
+    if (e->optype == SGS_TYPE_TOP) {
+      if (e->topop.valitpanning.time_ms < 0)
+        e->topop.valitpanning.time_ms = e->time_ms;
+    }
   }
   /**/}
 {SGSProgramEvent *e = o->prg->events;
@@ -672,6 +777,26 @@ do{
 printf("ev %d, op %d (%s): \t/=%d \tt=%d\n", e->id, e->opid, e->optype ? "nested" : "top", e->wait_ms, e->time_ms);
 } while ((e = e->next));}
   return o->prg;
+}
+
+SGSProgram* SGSProgram_create(const char *filename) {
+  SGSProgram *o;
+  SGSParser p;
+  FILE *f = fopen(filename, "r");
+  if (!f) return 0;
+
+  o = parse(f, filename, &p);
+  fclose(f);
+  return o;
+}
+
+void SGSProgram_destroy(SGSProgram *o) {
+  SGSProgramEvent *e = o->events;
+  while (e) {
+    SGSProgramEvent *ne = e->next;
+    free(e);
+    e = ne;
+  }
 }
 
 static void parse_level(SGSParser *o, NodeTarget *chaintarget) {
@@ -710,13 +835,16 @@ static void parse_level(SGSParser *o, NodeTarget *chaintarget) {
       if (testgetc('t', o->f))
         nd.wait_duration = 1;
       else {
-        float wait = getnum(o->f);
+        float wait;
+        int wait_ms;
+        read_num(o, 0, &wait);
         if (wait < 0.f) {
           warning(o, "ignoring '/' with sub-zero time", c);
           break;
         }
         nd.wait_duration = 0;
-        nd.next_wait_ms += wait * 1000.f;
+        SET_I2F(wait_ms, wait*1000.f);
+        nd.next_wait_ms += wait_ms;
       }
       break;
     case ':':
@@ -738,7 +866,8 @@ static void parse_level(SGSParser *o, NodeTarget *chaintarget) {
     case ';':
       if (o->setdef > o->setnode || !nd.event)
         goto INVALID;
-      new_event(o, &nd, nd.event, 1);
+      end_event(o, &nd);
+      new_event(o, &nd, nd.last, 1);
       o->setnode = o->level + 1;
       break;
     case '<':
@@ -774,12 +903,15 @@ static void parse_level(SGSParser *o, NodeTarget *chaintarget) {
           nd.event->optype == SGS_TYPE_NESTED)
         goto INVALID;
       else {
-        float wait = getnum(o->f);
+        float wait;
+        int wait_ms;
+        read_num(o, 0, &wait);
         if (wait < 0.f) {
           warning(o, "ignoring '\\' with sub-zero time", c);
           break;
         }
-        nd.add_wait_ms += wait * 1000.f;
+        SET_I2F(wait_ms, wait*1000.f);
+        nd.add_wait_ms += wait_ms;
       }
       break;
     case '\'':
@@ -792,7 +924,7 @@ static void parse_level(SGSParser *o, NodeTarget *chaintarget) {
       break;
     case 'a':
       if (o->setdef > o->setnode)
-        o->ampmult = getnum(o->f);
+        read_num(o, 0, &o->ampmult);
       else if (o->setnode > 0) {
         if (chaintarget &&
             (chaintarget->modtype == SGS_AMOD ||
@@ -800,93 +932,120 @@ static void parse_level(SGSParser *o, NodeTarget *chaintarget) {
           goto INVALID;
         if (testgetc('!', o->f)) {
           if (!testc('{', o->f)) {
-            nd.event->dynamp = getnum(o->f);
+            read_num(o, 0, &nd.event->dynamp);
           }
           if (testgetc('{', o->f)) {
             NodeTarget nt = {&nd.event->amodid, nd.event->topopid, SGS_AMOD};
             parse_level(o, &nt);
           }
+        } else if (testgetc('[', o->f)) {
+          if (read_valit(o, 0, &nd.event->valitamp))
+            nd.event->attr |= SGS_ATTR_VALITAMP;
         } else {
-          nd.event->amp = getnum(o->f);
+          read_num(o, 0, &nd.event->amp);
+          if (!nd.event->valitamp.type)
+            nd.event->attr &= ~SGS_ATTR_VALITAMP;
         }
       } else
         goto INVALID;
       break;
     case 'b':
       if (o->setdef > o->setnode || !o->setnode ||
-          nd.event->optype == SGS_TYPE_NESTED)
+          nd.event->optype != SGS_TYPE_TOP)
         goto INVALID;
-      nd.event->panning = getnum(o->f);
+      if (testgetc('[', o->f)) {
+        if (read_valit(o, 0, &nd.event->topop.valitpanning))
+          nd.event->attr |= SGS_ATTR_VALITPANNING;
+      } else if (read_num(o, 0, &nd.event->topop.panning)) {
+        if (!nd.event->topop.valitpanning.type)
+          nd.event->attr &= ~SGS_ATTR_VALITPANNING;
+      }
       break;
     case 'f':
       if (o->setdef > o->setnode)
-        o->def_freq = getnum(o->f);
+        read_num(o, read_note, &o->def_freq);
       else if (o->setnode > 0) {
         if (testgetc('!', o->f)) {
           if (!testc('{', o->f)) {
-            nd.event->dynfreq = getnum(o->f);
-            nd.event->attr &= ~SGS_ATTR_DYNFREQRATIO;
+            if (read_num(o, 0, &nd.event->dynfreq)) {
+              nd.event->dynfreq = 1.f / nd.event->dynfreq;
+              nd.event->attr &= ~SGS_ATTR_DYNFREQRATIO;
+            }
           }
           if (testgetc('{', o->f)) {
             NodeTarget nt = {&nd.event->fmodid, nd.event->topopid, SGS_FMOD};
             parse_level(o, &nt);
           }
-        } else {
-          nd.event->freq = getnum(o->f);
+        } else if (testgetc('[', o->f)) {
+          if (read_valit(o, read_note, &nd.event->valitfreq)) {
+            nd.event->attr |= SGS_ATTR_VALITFREQ;
+            nd.event->attr &= ~SGS_ATTR_VALITFREQRATIO;
+          }
+        } else if (read_num(o, read_note, &nd.event->freq)) {
           nd.event->attr &= ~SGS_ATTR_FREQRATIO;
+          if (!nd.event->valitamp.type)
+            nd.event->attr &= ~(SGS_ATTR_VALITFREQ |
+                                SGS_ATTR_VALITFREQRATIO);
         }
       } else
         goto INVALID;
       break;
-    case 'n': {
-      float freq;
+    case 'n':
       if (o->setdef > o->setnode) {
-        freq = getnum(o->f);
+        float freq;
+        read_num(o, 0, &freq);
         if (freq < 1.f) {
           warning(o, "ignoring tuning frequency smaller than 1.0", c);
           break;
         }
         o->def_A4tuning = freq;
-      } else if (o->setnode) {
-        freq = read_note(o);
-        if (freq < 0.f)
-          break;
-        nd.event->freq = freq;
-      }
-      break; }
+      } else
+        goto INVALID;
+      break;
     case 'p': {
       if (o->setdef > o->setnode || !o->setnode)
         goto INVALID;
       if (testgetc('!', o->f)) {
         if (testgetc('{', o->f)) {
-            NodeTarget nt = {&nd.event->pmodid, nd.event->topopid, SGS_PMOD};
-            parse_level(o, &nt);
+          NodeTarget nt = {&nd.event->pmodid, nd.event->topopid, SGS_PMOD};
+          parse_level(o, &nt);
         }
-      } else {
-        nd.event->phase = fmod(getnum(o->f), 1.f);
+      } else if (read_num(o, 0, &nd.event->phase)) {
+        nd.event->phase = fmod(nd.event->phase, 1.f);
         if (nd.event->phase < 0.f)
           nd.event->phase += 1.f;
         nd.event->params |= SGS_PHASE;
       }
       break; }
     case 'r':
-      if (o->setdef > o->setnode)
-        o->def_ratio = 1.f / getnum(o->f);
-      else if (o->setnode > 0) {
+      if (o->setdef > o->setnode) {
+        if (read_num(o, 0, &o->def_ratio))
+          o->def_ratio = 1.f / o->def_ratio;
+      } else if (o->setnode > 0) {
         if (!chaintarget)
           goto INVALID;
         if (testgetc('!', o->f)) {
           if (!testc('{', o->f)) {
-            nd.event->dynfreq = 1.f / getnum(o->f);
-            nd.event->attr |= SGS_ATTR_DYNFREQRATIO;
+            if (read_num(o, 0, &nd.event->dynfreq)) {
+              nd.event->dynfreq = 1.f / nd.event->dynfreq;
+              nd.event->attr |= SGS_ATTR_DYNFREQRATIO;
+            }
           }
           if (testgetc('{', o->f)) {
             NodeTarget nt = {&nd.event->fmodid, nd.event->topopid, SGS_FMOD};
             parse_level(o, &nt);
           }
-        } else {
-          nd.event->freq = 1.f / getnum(o->f);
+        } else if (testgetc('[', o->f)) {
+          if (read_valit(o, read_note, &nd.event->valitfreq)) {
+            nd.event->attr |= SGS_ATTR_VALITFREQ |
+                              SGS_ATTR_VALITFREQRATIO;
+          }
+        } else if (read_num(o, 0, &nd.event->freq)) {
+          nd.event->freq = 1.f / nd.event->freq;
           nd.event->attr |= SGS_ATTR_FREQRATIO;
+          if (!nd.event->valitamp.type)
+            nd.event->attr &= ~(SGS_ATTR_VALITFREQ |
+                                SGS_ATTR_VALITFREQRATIO);
         }
       } else
         goto INVALID;
@@ -895,33 +1054,34 @@ static void parse_level(SGSParser *o, NodeTarget *chaintarget) {
       float silence;
       if (o->setdef > o->setnode || !o->setnode)
         goto INVALID;
-      silence = getnum(o->f);
+      read_num(o, 0, &silence);
       if (silence < 0.f) {
         warning(o, "ignoring 's' with sub-zero time", c);
         break;
       }
-      nd.event->silence_ms = silence * 1000.f;
+      SET_I2F(nd.event->silence_ms, silence*1000.f);
       nd.event->params |= SGS_SILENCE;
       break; }
     case 't':
       if (o->setdef > o->setnode) {
-        float time = getnum(o->f);
+        float time;
+        read_num(o, 0, &time);
         if (time < 0.f) {
           warning(o, "ignoring 't' with sub-zero time", c);
           break;
         }
-        o->def_time_ms = time * 1000.f;
+        SET_I2F(o->def_time_ms, time*1000.f);
       } else if (o->setnode > 0) {
         if (testgetc('*', o->f))
           nd.event->time_ms = -1; /* later fitted or set to default */
         else {
           float time;
-          time = getnum(o->f);
+          read_num(o, 0, &time);
           if (time < 0.f) {
             warning(o, "ignoring 't' with sub-zero time", c);
             break;
           }
-          nd.event->time_ms = time * 1000.f;
+          SET_I2F(nd.event->time_ms, time*1000.f);
         }
         nd.event->params |= SGS_TIME;
       } else
@@ -982,24 +1142,4 @@ RETURN:
   if (nd.setsym)
     free(nd.setsym);
   --o->reclevel;
-}
-
-SGSProgram* SGSProgram_create(const char *filename) {
-  SGSProgram *o;
-  SGSParser p;
-  FILE *f = fopen(filename, "r");
-  if (!f) return 0;
-
-  o = parse(f, filename, &p);
-  fclose(f);
-  return o;
-}
-
-void SGSProgram_destroy(SGSProgram *o) {
-  SGSProgramEvent *e = o->events;
-  while (e) {
-    SGSProgramEvent *ne = e->next;
-    free(e);
-    e = ne;
-  }
 }
