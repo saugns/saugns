@@ -1,0 +1,20 @@
+# This is the first mgensys script made
+	S	a0.5
+			/0.5
+'a	Wsin	f220 t1
+'b	Wsin	f110 t0.5 a.05 	E
+	:a	f440 t1.5
+	:b	f220 t0.5 a.05 	E
+	:a	f400 t0.5 	E
+	:a	f350 t0.5 	E
+	:a	f325 t1.5 	/1 E
+	:a	f220 t1 	E
+	:a	f440 t1.5 	E
+	:a	f415 t0.5 	E
+	:a	f445 t0.5 	E
+	:a	f490 t1 	E
+	:a	f420 t1 	E
+	:a	f440 t1.5 	/1 E
+
+'a	Wsin	f660 t2
+Q

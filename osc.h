@@ -18,11 +18,14 @@ typedef struct MGSOsc {
   ui16_16 amp;
 } MGSOsc;
 
+#define MGSOsc_COEFF(fq, sr) \
+  ((4294967296.0 * (fq))/(sr))
+
 #define MGSOsc_SET_PHASE(o, p) \
   ((void)((o)->phase = (p)))
 
 #define MGSOsc_SET_COEFF(o, fq, sr) \
-  ((void)((o)->inc = (4294967296.0 * (fq))/(sr)))
+  ((void)((o)->inc = MGSOsc_COEFF(fq, sr)))
 
 #define MGSOsc_SET_RANGE(o, r) \
   ((void)((o)->amp = (r)))
@@ -79,6 +82,12 @@ typedef struct MGSOsc {
   MGSOsc__s *= (o)->amp; \
   MGSOsc__s >>= 16; \
   (out) = MGSOsc__s; \
+}while(0)
+
+#define MGSOsc_WAVE_OFFS(o, timepos, out) do{ \
+  uint MGSOsc__p = (o)->inc * (uint)(timepos); \
+  int MGSOsc__o = MGSOsc__p - (MGSOsc_TABINDEXMASK+1); \
+  (out) = (MGSOsc__o / (o)->inc); \
 }while(0)
 
 /**/
