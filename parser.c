@@ -47,7 +47,8 @@ typedef struct NodeData {
   uchar end_composite;
   uchar end_group;
   uchar wait_duration;
-  uint next_wait_ms; /* added for next event; adjusted in parser */
+  uint next_wait_ms, /* added for next event; adjusted in parser */
+       acc_wait_ms; /* accumulates next_wait_ms while composite events made */
   uint add_wait_ms; /* added to event's wait in end_event() */
 } NodeData;
 
@@ -85,7 +86,7 @@ static void new_operator(SGSParser *o, NodeData *nd, NodeTarget *target,
   /* Set defaults */
   e->amp = 1.f;
   if (e->optype == SGS_TYPE_TOP) {
-    e->time_ms = -1; /* set later */
+    e->time_ms = -1; /* later fitted or set to default */
     e->panning = .5f; /* default - center */
   } else
     e->time_ms = o->def_time_ms;
@@ -135,20 +136,18 @@ static void new_event(SGSParser *o, NodeData *nd, SGSProgramEvent *opevent,
   }
 
   if (composite) {
-    if (!nd->composite)
+    if (!nd->composite) {
       nd->composite = nd->last;
+      if (nd->composite->time_ms < 0)
+        nd->composite->time_ms = o->def_time_ms;
+    }
     /* Composite timing - add previous time to wait */
     e->wait_ms += nd->last->time_ms;
+    e->time_ms = -1; /* defaults to time of previous step of composite */
+
+    pe = nd->last;
   } else {
     nd->composite = 0;
-    /* Prepare ordinary timing adjustment */
-    nd->add_wait_ms += nd->next_wait_ms;
-    nd->next_wait_ms = 0;
-    if (nd->wait_duration) {
-      if (o->last_event)
-        nd->add_wait_ms += o->last_event->time_ms;
-      nd->wait_duration = 0;
-    }
     if (!nd->group)
       nd->group = e;
 
@@ -159,6 +158,16 @@ static void new_event(SGSParser *o, NodeData *nd, SGSProgramEvent *opevent,
     else
       o->last_event->next = e;
     o->last_event = e;
+
+    pe = o->last_event;
+  }
+  /* Prepare timing adjustment */
+  nd->add_wait_ms += nd->next_wait_ms;
+  nd->next_wait_ms = 0;
+  if (nd->wait_duration) {
+    if (pe)
+      nd->add_wait_ms += pe->time_ms;
+    nd->wait_duration = 0;
   }
 }
 
@@ -232,7 +241,16 @@ static void end_event(SGSParser *o, NodeData *nd) {
     e->amp *= o->ampmult;
 
   if (nd->composite) {
+    if (nd->add_wait_ms) { /* Simulate with silence and time increase */
+      e->time_ms += nd->add_wait_ms;
+      e->silence_ms += nd->add_wait_ms;
+      e->params |= SGS_SILENCE;
+      nd->acc_wait_ms += nd->add_wait_ms; /* ...and keep for non-composite */
+      nd->add_wait_ms = 0;
+    }
     /* Add time of composites */
+    if (e->time_ms < 0)
+      e->time_ms = nd->last->time_ms;
     nd->composite->time_ms += e->time_ms;
     e->params &= ~SGS_TIME;
     if (!e->params) {
@@ -267,8 +285,9 @@ static void end_event(SGSParser *o, NodeData *nd) {
       nd->group = e;
       nd->end_group = 0;
     }
-    e->wait_ms += nd->add_wait_ms;
+    e->wait_ms += nd->add_wait_ms + nd->acc_wait_ms;
     nd->add_wait_ms = 0;
+    nd->acc_wait_ms = 0;
   }
 
   nd->last = e;
@@ -495,7 +514,7 @@ static SGSProgram* parse(FILE *f, const char *fn, SGSParser *o) {
         }
         wait_ms += se->wait_ms;
         if (se->next) {
-          if ((wait_ms + se->next->wait_ms) <= ce->wait_ms) {
+          if ((wait_ms + se->next->wait_ms) <= (ce->wait_ms + added_wait_ms)) {
             se_prev = se;
             se = se->next;
             continue;
@@ -555,10 +574,8 @@ static void parse_level(SGSParser *o, NodeTarget *chaintarget) {
       if (!chaintarget) {
         if (o->setdef > o->level)
           o->setdef = (o->level) ? (o->level - 1) : 0;
-        else if (o->setnode > o->level) {
+        else if (o->setnode > o->level)
           o->setnode = (o->level) ? (o->level - 1) : 0;
-          end_operator(o, &nd);
-        }
       }
       ++o->line;
       break;
@@ -606,6 +623,7 @@ static void parse_level(SGSParser *o, NodeTarget *chaintarget) {
       if (o->setdef > o->setnode || !nd.event)
         goto INVALID;
       new_event(o, &nd, nd.event, 1);
+      o->setnode = o->level + 1;
       break;
     case '<':
       ++o->level;
@@ -645,7 +663,7 @@ static void parse_level(SGSParser *o, NodeTarget *chaintarget) {
           warning(o, "ignoring '\\' with sub-zero time", c);
           break;
         }
-        nd.event->wait_ms += wait * 1000.f;
+        nd.add_wait_ms += wait * 1000.f;
       }
       break;
     case '\'':
@@ -762,12 +780,17 @@ static void parse_level(SGSParser *o, NodeTarget *chaintarget) {
         }
         o->def_time_ms = time * 1000.f;
       } else if (o->setnode > 0) {
-        float time = getnum(o->f);
-        if (time < 0.f) {
-          warning(o, "ignoring 't' with sub-zero time", c);
-          break;
+        if (testgetc('*', o->f))
+          nd.event->time_ms = -1; /* later fitted or set to default */
+        else {
+          float time;
+          time = getnum(o->f);
+          if (time < 0.f) {
+            warning(o, "ignoring 't' with sub-zero time", c);
+            break;
+          }
+          nd.event->time_ms = time * 1000.f;
         }
-        nd.event->time_ms = time * 1000.f;
         nd.event->params |= SGS_TIME;
       } else
         goto INVALID;

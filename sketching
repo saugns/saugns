@@ -1,5 +1,7 @@
 S a.5
-Wsin f100 t2 ; f200 t1 ; f300 t1
+Wsin	f100 t2
+;	f200 t1
+;	f300 t1
 /1
-Wsin f500 t10
+Wsin	f500 t10
 
