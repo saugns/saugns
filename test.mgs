@@ -1,4 +1,4 @@
-'0	Wsin f600 t.1 m<Wsin r(1/(3+(1/3))) m<Wsin r(3/4)>> |
+'0	Wsin f600 t.1 m{Wsin r(1/(3+(1/3))) m{Wsin r(3/4)}} |
 	:0 f550 t.1 |
 	:0 f500 t.1 |
 	:0 f450 t.1 |
@@ -20,10 +20,10 @@
 	:0 f550 t.1 |
 /2
 
-	Wsin f444 t1 m<Wsin r1.23456789> |
-'a	Wsin f444 t1 m<Wsin r(1/7.12)> |
-	:a t1 m<Wsin r(1/2.255)> |
-'b	Wsin f444 t1 m<Wsin f(444 * (1/2.255))> |
+	Wsin f444 t1 m{Wsin r1.23456789} |
+'a	Wsin f444 t1 m{Wsin r(1/7.12)} |
+	:a t1 m{Wsin r(1/2.255)} |
+'b	Wsin f444 t1 m{Wsin f(444 * (2.255))} |
 	:a f400 t1 |
 	:a f389 t1 |
 	:a f339 t1 |
@@ -42,15 +42,15 @@
 	:b f50 t1 |
 /2
 
-'a	Wsin f137 t1 m<Wsin f032 m<Wsin f42>> |
-	:a	t1 m<Wsin f132 m<Wsin f42>> |
-	:a	t1 m<Wsin f232 m<Wsin f42>> |
-	:a	t1 m<Wsin f332 m<Wsin f42>> |
-	:a	t1 m<Wsin f432 m<Wsin f42>> |
-	:a	t1 m<Wsin f532 m<Wsin f42>> |
-	:a	t1 m<Wsin f632 m<Wsin f42>> |
-	:a	t1 m<Wsin f732 m<Wsin f42>> |
-	:a	t.5 m<Wsin f832 m<Wsin f42>> |
-	:a	t.5 m<Wsin f932 m<Wsin f42>> |
-	:a	t2 m<Wsin f1032 m<Wsin f42>>
+'a	Wsin f137 t1 m{Wsin f032 m{Wsin f42}} |
+	:a	t1 m{Wsin f132 m{Wsin f42}} |
+	:a	t1 m{Wsin f232 m{Wsin f42}} |
+	:a	t1 m{Wsin f332 m{Wsin f42}} |
+	:a	t1 m{Wsin f432 m{Wsin f42}} |
+	:a	t1 m{Wsin f532 m{Wsin f42}} |
+	:a	t1 m{Wsin f632 m{Wsin f42}} |
+	:a	t1 m{Wsin f732 m{Wsin f42}} |
+	:a	t.5 m{Wsin f832 m{Wsin f42}} |
+	:a	t.5 m{Wsin f932 m{Wsin f42}} |
+	:a	t2 m{Wsin f1032 m{Wsin f42}}
 Q
