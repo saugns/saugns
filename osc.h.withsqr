@@ -1,0 +1,43 @@
+#include "math.h"
+
+/*
+ * MGSSinOsc - thanks to anonymous musicdsp archive contributor for algorithm
+ */
+
+typedef struct MGSSinOsc {
+  float coeff;
+  float sin, cos;
+} MGSSinOsc;
+
+#define MGSSinOsc_SET_COEFF(o, fq, sr) \
+  ((void)((o)->coeff = (2.f * sin(PI * (fq)/(sr)))))
+
+#define MGSSinOsc_SET_RANGE(o, r) \
+  ((void)(((o)->sin = (r)), (o)->cos = 0.f))
+
+#define MGSSinOsc_RUN(o) do{ \
+  (o)->sin -= (o)->coeff * (o)->cos; \
+  (o)->cos += (o)->coeff * (o)->sin; \
+}while(0)
+
+/*
+ * MGSSqrOsc
+ */
+
+typedef struct MGSSqrOsc {
+  uint len, pos;
+  float sqr;
+} MGSSqrOsc;
+
+#define MGSSqrOsc_SET_COEFF(o, fq, sr) \
+  ((void)((o)->len = (sr)/((fq)*2.f)))
+
+#define MGSSqrOsc_SET_RANGE(o, r) \
+  ((void)(((o)->pos = 0), (o)->sqr = (r)))
+
+#define MGSSqrOsc_RUN(o) do{ \
+  if ((o)->pos++ >= (o)->len) { \
+    (o)->pos = 0; \
+    (o)->sqr = -(o)->sqr; \
+  } \
+}while(0)
