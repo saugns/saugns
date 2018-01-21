@@ -272,15 +272,8 @@ static void SGSGenerator_handle_event(SGSGenerator *o, EventNode *e) {
       } else
         refn->link = 0;
     }
-    if (s->params & SGS_ATTR) {
-      uchar attr = (uchar)(*data++).i;
-      if (!(s->params & SGS_FREQ)) {
-        /* May change during processing, so preserve state of FREQRATIO flag */
-        attr &= ~SGS_ATTR_FREQRATIO;
-        attr |= refn->attr & SGS_ATTR_FREQRATIO;
-      }
-      refn->attr = attr;
-    }
+    if (s->params & SGS_ATTR)
+      refn->attr = (uchar)(*data++).i;
     if (s->params & SGS_WAVE) switch ((*data++).i) {
     case SGS_WAVE_SIN:
       refn->osctype = SGSOsc_sin;
@@ -441,7 +434,10 @@ BEGIN:
     sbuf += zerolen;
   }
   freq = *(nextbuf++);
-  if (n->attr & SGS_ATTR_VALITFREQ) {
+  if (!(n->attr & SGS_ATTR_VALITFREQ)) {
+    vi = 0;
+    freqmod = (n->attr & SGS_ATTR_FREQRATIO) ? parentfreq : 0;
+  } else {
     vi = &n->valitfreq;
     if (n->attr & SGS_ATTR_VALITFREQRATIO) {
       freqmod = parentfreq;
@@ -456,12 +452,26 @@ BEGIN:
         n->freq *= parentfreq[0].f;
       }
     }
-  } else {
-    vi = 0;
-    freqmod = (n->attr & SGS_ATTR_FREQRATIO) ? parentfreq : 0;
   }
   if (run_param(freq, len, vi, &n->freq, freqmod))
     n->attr &= ~(SGS_ATTR_VALITFREQ|SGS_ATTR_VALITFREQRATIO);
+  //if (n->attr & SGS_ATTR_FREQRATIO) {
+  //  Data *freqmod;
+  //  if (n->attr & SGS_ATTR_VALITFREQ) {
+  //    vi = &n->valitfreq;
+  //    if (!(n->attr & SGS_ATTR_VALITFREQRATIO)) {
+  //      n->attr &= ~SGS_ATTR_FREQRATIO;
+  //      n->freq *= parentfreq[0].f;
+  //    }
+  //  } else {
+  //    vi = 0;
+  //  }
+  //  if (run_param(freq, len, vi, &n->freq, 
+  //}
+  //vi = (n->attr & SGS_ATTR_VALITFREQ) ? &n->valitfreq : 0;
+  //if (run_param(freq, len, vi, &n->freq,
+  //              0))
+  //  n->attr &= ~SGS_ATTR_VALITFREQ;
   if (n->fmodchain) {
     Data *fmbuf;
     run_block(nextbuf, len, n->fmodchain, freq, osc_coeff, 1);

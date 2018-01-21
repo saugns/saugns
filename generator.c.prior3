@@ -272,15 +272,8 @@ static void SGSGenerator_handle_event(SGSGenerator *o, EventNode *e) {
       } else
         refn->link = 0;
     }
-    if (s->params & SGS_ATTR) {
-      uchar attr = (uchar)(*data++).i;
-      if (!(s->params & SGS_FREQ)) {
-        /* May change during processing, so preserve state of FREQRATIO flag */
-        attr &= ~SGS_ATTR_FREQRATIO;
-        attr |= refn->attr & SGS_ATTR_FREQRATIO;
-      }
-      refn->attr = attr;
-    }
+    if (s->params & SGS_ATTR)
+      refn->attr = (uchar)(*data++).i;
     if (s->params & SGS_WAVE) switch ((*data++).i) {
     case SGS_WAVE_SIN:
       refn->osctype = SGSOsc_sin;
@@ -422,7 +415,7 @@ static void run_block(Buf *bufs, uint buflen, OperatorNode *n,
                       Data *parentfreq, double osc_coeff, uchar waveenv) {
   uchar acc = 0;
   uint i, len;
-  Data *sbuf, *freq, *freqmod, *pm, *amp;
+  Data *sbuf, *freq, *pm, *amp;
   Buf *nextbuf = bufs;
   ParameterValit *vi;
 BEGIN:
@@ -444,13 +437,11 @@ BEGIN:
   if (n->attr & SGS_ATTR_VALITFREQ) {
     vi = &n->valitfreq;
     if (n->attr & SGS_ATTR_VALITFREQRATIO) {
-      freqmod = parentfreq;
       if (!(n->attr & SGS_ATTR_FREQRATIO)) {
         n->attr |= SGS_ATTR_FREQRATIO;
         n->freq /= parentfreq[0].f;
       }
     } else {
-      freqmod = 0;
       if (n->attr & SGS_ATTR_FREQRATIO) {
         n->attr &= ~SGS_ATTR_FREQRATIO;
         n->freq *= parentfreq[0].f;
@@ -458,9 +449,10 @@ BEGIN:
     }
   } else {
     vi = 0;
-    freqmod = (n->attr & SGS_ATTR_FREQRATIO) ? parentfreq : 0;
   }
-  if (run_param(freq, len, vi, &n->freq, freqmod))
+  if (run_param(freq, len, vi, &n->freq,
+                (n->attr & (SGS_ATTR_FREQRATIO |
+                            SGS_ATTR_VALITFREQRATIO)) ? parentfreq : 0))
     n->attr &= ~(SGS_ATTR_VALITFREQ|SGS_ATTR_VALITFREQRATIO);
   if (n->fmodchain) {
     Data *fmbuf;
