@@ -1,6 +1,7 @@
-sgensys is the Sound/scriptable GENeration SYStem, a sound synthesis program
-developed for musical purposes; it will read a script file and produce audio
-output; once more developed writing to audio files will be implemented.
+sgensys is the Sound GENeration SYStem, a sound synthesis program developed
+for musical purposes; it will read a script file of its SGS (Sound Generation
+Script) format and produce audio output; once more developed writing to audio
+files will be implemented.
 
 Script syntax:
 
@@ -9,7 +10,8 @@ an operation, such as sin, tri. Nor is it allowed within numbers. Apart from
 this, spaces and tabs may be freely placed, or - not recommended - omitted.
 
 Newlines terminate steps, though a new step will also terminate the previous
-one allowing multiple steps on one line.
+one allowing multiple steps on one line. In short, it is always possible to
+remove newlines, but not to insert them anywhere.
 
 < and > allow nesting of scope; the step prior to the < remains in scope
 until new steps are given, and a newline or a > will return to the step for
@@ -19,35 +21,39 @@ Parameters with nesting use { and } instead, differentiating the two, though
 such nesting also allows newlines.
 
 When a number is given for a parameter, specifying it within parentheses will
-make the syntax freer, allowing mathematical operations and further nesting of
-parentheses. Whitespace including newlines may be freely placed until the
-final closing parenthesis.
+make the syntax freer, allowing arithmetic and further nesting of parentheses.
+Whitespace including newlines may be freely placed until the final closing
+parenthesis.
 
-* Operations consist of a name followed by optional arguments for parameters.
+* Operations are specified followed by optional arguments for parameters.
 * Arguments are given for an operation.
-* Operators affect operations much like arguments, but may be more freely
-  placed and do not belong to the present operation.
+* Other kinds of modifiers exist that affect operations much like arguments,
+  but may be more freely placed and do not belong to the present operation.
 
-Operations will output audio at the same time unless time shifts/delays are
-involved. Each delaying will delay (shift the time of) all future operations.
+Operations will output audio at the same time unless wait times are involved.
+Each delaying will delay (shift the time of) all future operations.
 
 The following operations are supported:
 
 S:
+	Set defaults and parameter modifiers.
 	f, r, t	Set default values for parameters f (default 100),
 		r (default 1), t (default 1).
 	a	Sets a multiplier for the amplitude for all non-modulator
 		waves; effectively a volume control for the combined output.
 
-Wsin, Wsqr, Wtri, Wsaw:
-	Play sine, square, triangle or saw wave.
+Wsin, Wtri, Wsqr, Wsaw:
+	Play sine, triangle, square or saw wave.
 	Supports f, t, a, \ parameters.
 
 The following parameters can be found in wave operations:
-	t	Time duration in seconds. If no t setting given, default time
-		depends on context - either scaling to fit the duration of
-		play until the end of the current group of sounds, or the
-		default value if alone.
+	t	Time duration in seconds. If no t setting given, or t*
+		(blank time setting) is explicitly given, default time depends
+		on context: For a composite step, the value of the previous
+		part (default time if none) will be used for the new part;
+		otherwise, if there are simultaneous operations it is fitted
+		to the duration of their play; otherwise, the default value
+                is used.
 	f	Frequency in Hz.
 	f!{}	Second frequency in Hz to modulate (FM) to by wave or envelope,
 		and/or a list of modulators given within {} following the
@@ -70,19 +76,33 @@ The following parameters can be found in wave operations:
 	p!{}	A list of modulator (PM) waves is given within the {}, the
 		per-sample sum of which is used to phase-modulate the carrier,
 		be it the final carrier or in turn another modulator.
-	\	Time shift/delay current operation and following ones, time
-		in seconds.
+	s	Silent time at the beginning of the operation, time in seconds.
+		Works like adding delay, except it only affects this operation.
+	\	Delay current operation and all following ones, time in
+		seconds.
+	w	Set wave type (sin, tri, sqr, saw).
 
-The following operators are supported:
+The following other modifiers are supported:
+	/	Delay next operation and all following ones, time in seconds.
+		Alternatively, /t will delay by the time of the previous
+		operation.
+	|	Add (independently of /) just enough delay to make the next
+		operation(s) begin at the expiration of all that preceeds it,
+		though / and \ may further delay it.
 
-/:	Time shift/delay next operation and following ones, time in seconds.
-	Alternatively, /t will delay by the time of the previous operation.
-|:	Add (independently of /) enough time shift/delay for the next operation
-	to begin at the end of all that preceeds it, though / and \ may
-	further delay it.
+Compound steps:
+	Writing a ";" (on new line or same line) after an operation will allow
+	specifying new arguments to apply at the end of the previous duration;
+	this can also be repeated.
+		This is mostly syntactic sugar, making it possible to write a
+	sequence of steps as a single "compound step", rather than having to
+	(when other simultaneous operations are going on) intersperse them
+	with a mixture of delay times and steps for those other simultaneous
+	operations.
 
-Any W operation may be prefixed by "'label " in order to define a label for
-it, where label is anything followed by whitespace; thereafter the label may
-be referenced as ":label", allowing future changes to an operation
-previously defined. For practical purposes, label referencing can be
-considered an operation, behaving the same.
+Labels and referencing:
+	Any W operation may be prefixed by "'label " in order to define a
+	label for it, where label is anything followed by whitespace;
+	thereafter the label may be referenced as ":label", allowing future
+	changes to an operation previously defined. For practical purposes,
+	label referencing can be considered an operation, behaving the same.
