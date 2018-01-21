@@ -147,7 +147,7 @@ SGSGenerator* SGSGenerator_create(uint srate, struct SGSProgram *prg) {
     SetNode *s = data;
     Data *set = s->data;
     e->node = s;
-    e->waittime = step->wait_ms * srate * .001f;
+    e->waittime = ((float)step->wait_ms) * srate * .001f;
     s->setid = step->opid;
     if (step->optype == SGS_TYPE_NESTED)
       s->setid += prg->topopc;
@@ -165,9 +165,9 @@ SGSGenerator* SGSGenerator_create(uint srate, struct SGSProgram *prg) {
     if (s->params & SGS_WAVE)
       (*set++).i = step->wave;
     if (s->params & SGS_TIME)
-      (*set++).i = step->time_ms * srate * .001f;
+      (*set++).i = ((float)step->time_ms) * srate * .001f;
     if (s->params & SGS_SILENCE)
-      (*set++).i = step->silence_ms * srate * .001f;
+      (*set++).i = ((float)step->silence_ms) * srate * .001f;
     if (s->params & SGS_FREQ)
       (*set++).f = step->freq;
     if (s->params & SGS_DYNFREQ)
