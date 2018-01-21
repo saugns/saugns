@@ -1,54 +1,54 @@
 S a(1/3)
 
-'0 Wsin	f250 p!{Wsin r(5/6)} t.1
+'0 Wsin	nB3 p!{Wsin r(5/6)} t.1
 ;	s.1 ; s.1
 |
 
-'1 Wsin	f200 p!{Wsin r(3/4)} t.1 ; f220 t.2
+'1 Wsin	nG3 p!{Wsin r(3/4)} t.1 ; nA3 t.2
 |
 
-:0	f200 s.1 t.1 ; s.1
-;	f250 s.1 ; s.1
+:0	nG3 s.1 t.1 ; s.1
+;	nB3 s.1 ; s.1
 |
 
-:0	f200 s.1 t.1 ; s.1
-;	f225 s.1 ; s.1
+:0	nG3 s.1 t.1 ; s.1
+;	nA3 s.1 ; s.1
 |
-:1	f185 s.1 t.1 ; s.1 | 
+:1	nFs3 s.1 t.1 ; s.1 | 
 /.45
-:0	f200 s.1 t.1 ; s.1
-;	f225 s.1 ; s.1
+:0	nG3 s.1 t.1 ; s.1
+;	nA3 s.1 ; s.1
 |
-:1	f185 s.1 t.1 ; s.1
+:1	nFs3 s.1 t.1 ; s.1
 |
 
 /.45
-:0	f200 s.1 t.1 ; s.1
-;	f225 s.1 ; s.1
+:0	nG3 s.1 t.1 ; s.1
+;	nA3 s.1 ; s.1
 |
-:1	f185 s.1 t.1 ; s.1 ; s.1 ; s.1
+:1	nFs3 s.1 t.1 ; s.1 ; s.1 ; s.1
 ;	a2 ; s.1 ; s.1 ; s.1 ; s.1 
 |
 
 /.1
-Wsin	f250 p!{Wsin r(3/4) Wsin f17} t.2
-;	f500
-;	f750
-;	s.3 f375 t.2
-;	f750 t.1
-;	f375 t.2
-;	f625 t.1
-;	f750 s.1 t.2
+Wsin	nB3 p!{Wsin r(3/4) Wsin f17} t.2
+;	nA4
+;	nG5
+;	s.3 nA4 t.3
+;	nG5 t.1
+;	s.1 nA4 t.2
+;	nG5 t.1
+;	nG5 s.1 t.3
 
 Q
 
-'0 Wsin f200 p!{
+'0 Wsin nG3 p!{
 	Wsin r(3/4)
 } /.1
 :0 f220 /.2
 '1 Wsin f500 p!{
 	Wsin r(5/6)
-} t.3 ; s.1 t.2 ; s.1 t.2 ; s.1 f250 t.2
+} t.3 ; s.1 t.2 ; s.1 t.2 ; s.1 nB3 t.2
 :0 t100 f232
 /.7
 

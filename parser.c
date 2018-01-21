@@ -25,7 +25,7 @@ typedef struct SGSParser {
   /* settings/ops */
   float ampmult;
   uint def_time_ms;
-  float def_freq, def_ratio;
+  float def_freq, def_A4tuning, def_ratio;
 } SGSParser;
 
 typedef struct NodeTarget {
@@ -88,9 +88,12 @@ static void new_operator(SGSParser *o, NodeData *nd, NodeTarget *target,
   if (e->optype == SGS_TYPE_TOP) {
     e->time_ms = -1; /* later fitted or set to default */
     e->panning = .5f; /* default - center */
-  } else
+    e->freq = o->def_freq;
+  } else {
     e->time_ms = o->def_time_ms;
-  e->freq = o->def_freq;
+    e->freq = o->def_ratio;
+    e->attr |= SGS_ATTR_FREQRATIO;
+  }
 }
 
 static void new_event(SGSParser *o, NodeData *nd, SGSProgramEvent *opevent,
@@ -308,6 +311,12 @@ static double getnum_r(FILE *f, char *buf, uint len, uchar pri) {
   if (c == '(') {
     return getnum_r(f, buf, len, 255);
   }
+  if (c == '-') {
+    *p++ = c;
+    do {
+      c = getc(f);
+    } while (IS_WHITESPACE(c));
+  }
   while ((c >= '0' && c <= '9') || (!dot && (dot = (c == '.')))) {
     if ((p+1) == (buf+len)) {
       break;
@@ -379,6 +388,24 @@ static double getnum(FILE *f) {
   return strtod(buf, 0);
 }
 
+static int getinum(FILE *f) {
+  char c;
+  int num = -1;
+  c = getc(f);
+  if (c >= '0' && c <= '9') {
+    num = c - '0';
+    for (;;) {
+      c = getc(f);
+      if (c >= '0' && c <= '9')
+        num = num * 10 + (c - '0');
+      else
+        break;
+    }
+  }
+  ungetc(c, f);
+  return num;
+}
+
 static int strfind(FILE *f, const char *const*str) {
   int search, ret;
   uint i, len, pos, matchpos;
@@ -442,6 +469,93 @@ static void warning(SGSParser *o, const char *s, char c) {
   printf("warning: %s [line %d, at %s] - %s\n", o->fn, o->line, buf, s);
 }
 
+#define OCTAVES 11
+static float read_note(SGSParser *o) {
+  static const float octaves[OCTAVES] = {
+    (1.f/16.f),
+    (1.f/8.f),
+    (1.f/4.f),
+    (1.f/2.f),
+    1.f, /* no. 4 - standard tuning here */
+    2.f,
+    4.f,
+    8.f,
+    16.f,
+    32.f,
+    64.f
+  };
+  static const float notes[3][8] = {
+    { /* flat */
+      48.f/25.f,
+      16.f/15.f,
+      6.f/5.f,
+      32.f/25.f,
+      36.f/25.f,
+      8.f/5.f,
+      9.f/5.f,
+      96.f/25.f
+    },
+    { /* normal (9/8 replaced with 10/9 for symmetry) */
+      1.f,
+      10.f/9.f,
+      5.f/4.f,
+      4.f/3.f,
+      3.f/2.f,
+      5.f/3.f,
+      15.f/8.f,
+      2.f
+    },
+    { /* sharp */
+      25.f/24.f,
+      75.f/64.f,
+      125.f/96.f,
+      25.f/18.f,
+      25.f/16.f,
+      225.f/128.f,
+      125.f/64.f,
+      25.f/12.f
+    }
+  };
+  float freq;
+  char c = getc(o->f);
+  int octave;
+  int semitone = 1, note;
+  int subnote = -1;
+  if (c >= 'a' && c <= 'g') {
+    subnote = c - 'c';
+    if (subnote < 0) /* a, b */
+      subnote += 7;
+    c = getc(o->f);
+  }
+  if (c < 'A' || c > 'G') {
+    warning(o, "invalid note specified - should be C, D, E, F, G, A or B", c);
+    return -1.f;
+  }
+  note = c - 'C';
+  if (note < 0) /* A, B */
+    note += 7;
+  c = getc(o->f);
+  if (c == 's')
+    semitone = 2;
+  else if (c == 'f')
+    semitone = 0;
+  else
+    ungetc(c, o->f);
+  octave = getinum(o->f);
+  if (octave < 0) /* none given, default to 4 */
+    octave = 4;
+  else if (octave >= OCTAVES) {
+    warning(o, "invalid octave specified for note - valid range 0-10", c);
+    octave = 4;
+  }
+  freq = o->def_A4tuning * (3.f/5.f); /* get C4 */
+  freq *= octaves[octave] * notes[semitone][note];
+  if (subnote >= 0)
+    freq *= 1.f + (notes[semitone][note+1] / notes[semitone][note] - 1.f) *
+                  (notes[1][subnote] - 1.f);
+  return freq;
+}
+
 #define SYMKEY_LEN 80
 #define SYMKEY_LEN_A "80"
 static uchar read_sym(SGSParser *o, char **sym, char op) {
@@ -470,7 +584,7 @@ static uchar read_sym(SGSParser *o, char **sym, char op) {
 }
 
 static int read_wavetype(SGSParser *o, char lastc) {
-  static const char *wavetypes[] = {
+  static const char *const wavetypes[] = {
     "sin",
     "sqr",
     "tri",
@@ -495,6 +609,7 @@ static SGSProgram* parse(FILE *f, const char *fn, SGSParser *o) {
   o->ampmult = 1.f; /* default until changed */
   o->def_time_ms = 1000; /* default until changed */
   o->def_freq = 100.f; /* default until changed */
+  o->def_A4tuning = 444.f; /* default until changed */
   o->def_ratio = 1.f; /* default until changed */
   parse_level(o, 0);
   SGSSymtab_destroy(o->st);
@@ -723,6 +838,22 @@ static void parse_level(SGSParser *o, NodeTarget *chaintarget) {
       } else
         goto INVALID;
       break;
+    case 'n': {
+      float freq;
+      if (o->setdef > o->setnode) {
+        freq = getnum(o->f);
+        if (freq < 1.f) {
+          warning(o, "ignoring tuning frequency smaller than 1.0", c);
+          break;
+        }
+        o->def_A4tuning = freq;
+      } else if (o->setnode) {
+        freq = read_note(o);
+        if (freq < 0.f)
+          break;
+        nd.event->freq = freq;
+      }
+      break; }
     case 'p': {
       if (o->setdef > o->setnode || !o->setnode)
         goto INVALID;
