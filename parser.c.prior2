@@ -308,23 +308,16 @@ static void end_event(SGSParser *o, NodeData *nd) {
     /* SGS_SILENCE set when silence set */
     if (e->freq != pe->freq)
       e->params |= SGS_FREQ;
-    if (e->valitfreq.type)
-      e->params |= SGS_ATTR;
     if (e->dynfreq != pe->dynfreq)
       e->params |= SGS_DYNFREQ;
     /* SGS_PHASE set when phase set */
     if (e->amp != pe->amp)
       e->params |= SGS_AMP;
-    if (e->valitamp.type)
-      e->params |= SGS_ATTR;
     if (e->dynamp != pe->dynamp)
       e->params |= SGS_DYNAMP;
-    if (e->optype == SGS_TYPE_TOP) {
+    if (e->optype == SGS_TYPE_TOP)
       if (e->topop.panning != pe->topop.panning)
         e->params |= SGS_PANNING;
-      if (e->topop.valitpanning.type)
-        e->params |= SGS_ATTR;
-    }
 
     if (!e->params) { /* Remove empty event */
       if (nd->group == e)
@@ -659,7 +652,7 @@ static uchar read_valit(SGSParser *o, float (*read_symbol)(SGSParser *o),
       break;
     case 't': {
       float time;
-      if (read_num(o, 0, &time)) {
+      if (read_num(o, read_symbol, &time)) {
         if (time < 0.f) {
           warning(o, "ignoring 't' with sub-zero time", c);
           break;
@@ -668,7 +661,7 @@ static uchar read_valit(SGSParser *o, float (*read_symbol)(SGSParser *o),
       }
       break; }
     case 'v':
-      if (read_num(o, read_symbol, &vi->goal))
+      if (read_num(o, 0, &vi->goal))
         goal = 1;
       break;
     case ']':
