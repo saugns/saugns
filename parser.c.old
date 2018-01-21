@@ -1,5 +1,6 @@
 #include "mgensys.h"
 #include "program.h"
+#include "symtab.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -7,7 +8,11 @@
 typedef struct MGSParser {
   FILE *f;
   const char *fn;
+  MGSSymtab *st;
+  uint line;
   /* node state */
+  uint nest;
+  uint setdef, setnode;
   MGSProgramNode *last;
   /* settings/ops */
   uchar n_mode;
@@ -123,12 +128,26 @@ static uchar testchar(FILE *f, char c) {
   return 0;
 }
 
-static MGSProgram* parse(MGSParser *o) {
+static void warning(MGSParser *o, const char *s, char c) {
+  char buf[4] = {'\'', c, '\'', 0};
+  if (c == EOF) strcpy(buf, "EOF");
+  printf("warning: %s [line %d, at %s] - %s\n", o->fn, o->line, buf, s);
+}
+
+#define SYMKEY_LEN 256
+
+static MGSProgram* parse(FILE *f, const char *fn, MGSParser *o) {
   char c;
-  uint line = 1;
   MGSProgram *program = calloc(1, sizeof(MGSProgram));
   MGSProgramNode *node = 0;
-  uchar setdef = 0, setnode = 0;
+  char symkey[SYMKEY_LEN];
+  uchar setsym = 0;
+  o->f = f;
+  o->fn = fn;
+  o->st = MGSSymtab_create();
+  o->line = 1;
+  o->nest = 0;
+  o->setnode = o->setdef = 0;
   o->last = 0;
   o->n_mode = MGS_MODE_CENTER; /* default until changed */
   o->n_amp = 1.f; /* default until changed */
@@ -142,9 +161,11 @@ static MGSProgram* parse(MGSParser *o) {
     eatws(o->f);
     switch (c) {
     case '\n':
-      setdef = 0;
-      setnode = 0;
-      ++line;
+      if (o->setdef > o->nest)
+        o->setdef = (o->nest) ? (o->nest - 1) : 0;
+      else if (o->setnode > o->nest)
+        o->setnode = (o->nest) ? (o->nest - 1) : 0;
+      ++o->line;
       break;
     case '\t':
     case ' ':
@@ -152,10 +173,10 @@ static MGSProgram* parse(MGSParser *o) {
       break;
     case '#':
       while ((c = getc(o->f)) != '\n' && c != EOF) ;
-      ++line;
+      ++o->line;
       break;
     case '/':
-      if (setdef) goto INVALID;
+      if (o->setdef > o->setnode) goto INVALID;
       if (testchar(o->f, 't'))
         o->n_time_delay = 1;
       else {
@@ -163,12 +184,26 @@ static MGSProgram* parse(MGSParser *o) {
         o->n_next_add_delay = getnum(o->f);
       }
       break;
+    case '<':
+      ++o->nest;
+      break;
+    case '>':
+      if (!o->nest)
+        warning(o, "closing marker without opening '<'", c);
+      else {
+        if (o->setdef > o->nest)
+          o->setdef = (o->nest) ? (o->nest - 1) : 0;
+        else if (o->setnode > o->nest)
+          o->setnode = (o->nest) ? (o->nest - 1) : 0;
+        --o->nest;
+      }
+      break;
     case 'C':
       o->n_mode = MGS_MODE_CENTER;
       break;
     case 'E':
       if (!o->n_begin)
-        printf("warning: %s - E (end of step) before any parts given", o->fn);
+        warning(o, "end of sequence before any parts given", c);
       else
         o->n_end = 1;
       break;
@@ -181,8 +216,7 @@ static MGSProgram* parse(MGSParser *o) {
       o->n_mode = MGS_MODE_RIGHT;
       break;
     case 'S':
-      setdef = 1;
-      setnode = 0;
+      o->setdef = o->nest + 1;
       break;
     case 'W': {
       const char *simples[] = {
@@ -192,56 +226,93 @@ static MGSProgram* parse(MGSParser *o) {
         "saw",
         0
       };
-      int type = strfind(o->f, simples) + MGS_TYPE_SIN;
-      if (type < MGS_TYPE_SIN)
-        printf("warning: %s - invalid sequence follows S in file; sin, sqr, tri, saw available\n", o->fn);
+      int wave = strfind(o->f, simples) + MGS_WAVE_SIN;
+      if (wave < MGS_WAVE_SIN)
+        warning(o, "invalid wave type follows W in file; sin, sqr, tri, saw available", c);
       else {
         node = make_node(o, program);
-        node->type = type;
+        if (setsym) {
+          setsym = 0;
+          MGSSymtab_set(o->st, symkey, node);
+        }
+        node->wave = wave;
         ++program->componentc;
+        o->setnode = o->nest + 1;
       }
-      setdef = 0;
-      setnode = 1;
       break; }
     case '\\':
-      if (setdef)
+      if (o->setdef > o->setnode)
         o->n_delay = getnum(o->f);
       else
         node->delay = getnum(o->f) + o->n_add_delay;
       break;
+    case '\'': {
+      uint i = 0;
+      for (;;) {
+        c = getc(o->f);
+        if (c == ' ' || c == '\t' || c == '\n') {
+          if (i == 0)
+            warning(o, "ignoring ' without symbol name", c);
+          else {
+            symkey[i] = '\0';
+            setsym = 1;
+          }
+          break;
+        }
+        symkey[i++] = c;
+      }
+      break; }
+    case ':': {
+      uint i = 0;
+      for (;;) {
+        c = getc(o->f);
+        if (c == ' ' || c == '\t' || c == '\n') {
+          if (i == 0)
+            warning(o, "ignoring : without symbol name", c);
+          else {
+            symkey[i] = '\0';
+            /* new node type (set value for node) needs to be used here */
+            node = MGSSymtab_get(o->st, symkey);
+            o->setnode = o->nest + 1;
+          }
+          break;
+        }
+        symkey[i++] = c;
+      }
+      break; }
     case 'a':
-      if (setdef)
+      if (o->setdef > o->setnode)
         o->n_amp = getnum(o->f);
-      else if (setnode)
+      else if (o->setnode > 0)
         node->amp = getnum(o->f);
       else
         goto INVALID;
       break;
     case 'f':
-      if (setdef)
+      if (o->setdef > o->setnode)
         o->n_freq = getnum(o->f);
-      else if (setnode)
+      else if (o->setnode > 0)
         node->freq = getnum(o->f);
       else
         goto INVALID;
       break;
     case 't':
-      if (setdef)
+      if (o->setdef > o->setnode)
         o->n_time = getnum(o->f);
-      else if (setnode)
+      else if (o->setnode > 0)
         node->time = getnum(o->f);
       else
         goto INVALID;
       break;
     default:
     INVALID:
-      printf("warning: %s - ignoring invalid character '%c' on line %d\n",
-             o->fn, c, line);
+      warning(o, "ignoring invalid character", c);
       break;
     }
   }
-  printf("warning: %s - no terminating Q in file.\n", o->fn);
+  warning(o, "no terminating Q in file", c);
 FINISH:
+  MGSSymtab_destroy(o->st);
   return program;
 }
 
@@ -251,10 +322,8 @@ MGSProgram* MGSProgram_create(const char *filename) {
   FILE *f = fopen(filename, "r");
   if (!f) return 0;
 
-  p.f = f;
-  p.fn = filename;
-  o = parse(&p);
-  fclose(p.f);
+  o = parse(f, filename, &p);
+  fclose(f);
   return o;
 }
 
