@@ -41,6 +41,7 @@ S:
 		r (default 1), t (default 1).
 	a	Sets a multiplier for the amplitude for all non-modulator
 		waves; effectively a volume control for the combined output.
+	n	Sets A4 tuning (default 444) for notes specified with n.
 
 Wsin, Wtri, Wsqr, Wsaw:
 	Play sine, triangle, square or saw wave.
@@ -58,9 +59,14 @@ The following parameters can be found in wave operations:
 	f!{}	Second frequency in Hz to modulate (FM) to by wave or envelope,
 		and/or a list of modulators given within {} following the
 		number if given.
+	n	Frequency as note in justly intoned C-major scale; optional
+		subnote (c, d, e, f, g, a or b) inside inner octave (between
+		note and next note), then note (C, D, E, F, G, A or B), then
+		optionally s (sharp) or f (flat), then optionally the octave
+		of the note (0-10), default being 4.
 	r	Frequency ratio (modulator waves only) of carrier to modulator.
-		Keeps frequency that of that of the carrier divided by the
-		given. Often used in the form r(n/m) to give an n:m ratio.
+		Keeps frequency that of the carrier divided by the given
+		number. Often used in the form r(n/m) to give an n:m ratio.
 	r!{}	Second frequency ratio (modulator waves only) to modulate (FM)
 		to by wave or envelope, and/or a list of modulators given
 		within {} following the number if given.
