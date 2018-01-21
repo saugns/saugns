@@ -40,14 +40,17 @@ enum {
 
 typedef struct SGSProgramEvent {
   struct SGSProgramEvent *next;
-  struct SGSProgramEvent *opprev, *opnext;
+  struct SGSProgramEvent *lvnext;
+  struct SGSProgramEvent *opprev, *opnext; /* linked list per topopid */
   int wait_ms;
   uint id;
   uint opid; /* counts up from 0 separately for different optypes */
   uchar optype;
+  uchar opfirst;
+  uint topopid; /* top operator for operator set */
   /* operator parameters possibly set: (-1 id = none) */
-  uchar attr;
   ushort params;
+  uchar attr;
   uchar wave;
   int time_ms, silence_ms;
   float freq, dynfreq, phase, amp, dynamp, panning;
