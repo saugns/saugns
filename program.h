@@ -42,6 +42,7 @@ typedef struct SGSProgramEvent {
   struct SGSProgramEvent *next;
   struct SGSProgramEvent *lvnext;
   struct SGSProgramEvent *opprev, *opnext; /* linked list per topopid */
+  struct SGSProgramEvent *composite; /* only used during parsing */
   int wait_ms;
   uint id;
   uint opid; /* counts up from 0 separately for different optypes */
