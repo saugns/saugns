@@ -20,8 +20,9 @@ enum {
   SGS_PHASE = 1<<9,
   SGS_AMP = 1<<10,
   SGS_DYNAMP = 1<<11,
-  SGS_PANNING = 1<<12,
-  SGS_ATTR = 1<<13
+  SGS_ATTR = 1<<12,
+  /* top-operator-specific values */
+  SGS_PANNING = 1<<13
 };
 
 /* operator wave types */
@@ -35,8 +36,25 @@ enum {
 /* operator atttributes */
 enum {
   SGS_ATTR_FREQRATIO = 1<<1,
-  SGS_ATTR_DYNFREQRATIO = 1<<2
+  SGS_ATTR_DYNFREQRATIO = 1<<2,
+  SGS_ATTR_VALITFREQ = 1<<3,
+  SGS_ATTR_VALITFREQRATIO = 1<<4,
+  SGS_ATTR_VALITAMP = 1<<5,
+  SGS_ATTR_VALITPANNING = 1<<6
 };
+
+/* value iteration types */
+enum {
+  SGS_VALIT_NONE = 0, /* when none given */
+  SGS_VALIT_LIN,
+  SGS_VALIT_EXP
+};
+
+typedef struct SGSProgramValit {
+  int time_ms, pos_ms;
+  float goal;
+  uchar type;
+} SGSProgramValit;
 
 typedef struct SGSProgramEvent {
   struct SGSProgramEvent *next;
@@ -54,9 +72,15 @@ typedef struct SGSProgramEvent {
   uchar attr;
   uchar wave;
   int time_ms, silence_ms;
-  float freq, dynfreq, phase, amp, dynamp, panning;
+  float freq, dynfreq, phase, amp, dynamp;
+  SGSProgramValit valitfreq, valitamp;
   int pmodid, fmodid, amodid;
   int linkid;
+  /* struct ends here if event not for top operator */
+  struct SGSProgramEventExt {
+    float panning;
+    SGSProgramValit valitpanning;
+  } topop;
 } SGSProgramEvent;
 
 struct SGSProgram {
