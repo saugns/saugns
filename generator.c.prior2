@@ -366,17 +366,11 @@ static uchar run_valit(ParameterValit *o, Data *buf, uint buflen, float *state) 
 //    *state = buf[-1].f;
     break;
   case SGS_VALIT_EXP:
-    coeff = RC_TIME(o->time * 0.1575f);
-    for (i = o->pos, end = i + len; i < end; ++i) {
-      s0 = RC_CALC(coeff, o->goal, s0);
-      (*buf++).f = s0;
-    }
-    *state = s0;
     break;
   }
   o->pos += len;
   if (o->time == o->pos) {
-    *state = o->goal;
+    *state = buf[-1].f;
     for (i = 0; i < filllen; ++i)
       buf[i].f = o->goal;
     return 1;
