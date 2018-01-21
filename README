@@ -1,5 +1,5 @@
-mgensys will read a script file and produce audio output; once more developed
-writing to audio files will be implemented.
+mgensys is the Music GENeration SYStem; it will read a script file and produce
+audio output; once more developed writing to audio files will be implemented.
 
 Script syntax:
 
@@ -14,6 +14,11 @@ one allowing multiple steps on one line.
 until new steps are given, and a newline or a > will return to the step for
 which the < was given.
 
+When a number is given for a parameter, specifying it within parentheses will
+make the syntax freer, allowing mathematical operations and further nesting of
+parentheses. Whitespace including newlines may be freely placed until the
+final closing parenthesis.
+
 * Operations consist of a name followed by optional arguments for parameters.
 * Arguments are given for an operation.
 * Operators affect operations much like arguments, but may be more freely
@@ -25,24 +30,33 @@ involved. Each delaying will delay (shift the time of) all future operations.
 The following operations are supported:
 
 S:
-	Set default values for parameters f, t, a, \.
+	Set default values for parameters f, r, t, a, \.
 
 Wsin, Wsqr, Wtri, Wsaw:
 	Play sine, square, triangle or saw wave.
 	Supports f, t, a, \ parameters.
 
-The following parameters can be found in operations:
+The following parameters can be found in wave operations:
 	f	Frequency in Hz.
+	r	Frequency ratio (modulator waves only). Keeps frequency the
+		multiple of that of the carrier and the number given. Often
+		used in the form r(n/m) to give an n:m ratio.
 	t	Time in seconds.
-	a	Amplitude, where 1.0 is full-range.
+	a	Amplitude, where 1.0 gives a level of 0dB, which is the signal
+		max of the output. For a modulator wave, this however simply
+		adjusts the effect strength.
+	m<>	A list of modulator waves is given within the <>, the
+		per-sample sum of which is used to phase-modulate the carrier,
+		be it the final carrier or in turn another modulator.
 	\	Time shift/delay current operation and following ones, time
 		in seconds.
 
 The following operators are supported:
 
 /:	Time shift/delay next operation and following ones, time in seconds.
-E:	Add time shift/delay independent of / so that the next operation
-	begins at the end of that which preceeds it, though / and \ may
+	Alternatively, /t will delay by the time of the previous operation.
+|:	Add (independently of /) enough time shift/delay for the next operation
+	to begin at the end of all that preceeds it, though / and \ may
 	further delay it.
 
 Any W operation may be prefixed by "'label " in order to define a label for
