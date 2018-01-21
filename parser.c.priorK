@@ -224,27 +224,20 @@ static void end_voice(SGSParser *o, NodeData *nd);
 
 static void new_event(SGSParser *o, NodeData *nd, EventNode *previous,
                       uchar linktype, uchar composite) {
-  EventNode *e, *pve;
-  VoiceData *vd;
+  EventNode *e;
+  VoiceData *vd, *pvd;
   OperatorData *od;
-  end_operator(o, nd);
-  end_voice(o, nd);
   if (previous) {
-    if (!nd->next_wait_ms) {
-      if (!previous->voice)
-        previous->voice = &nd->voice;
-      if (!previous->operator)
-        previous->operator = &nd->operator;
+    if (!nd->next_wait_ms)
       return; /* nothing to do; event continues */
-    }
     if (!previous->params) {
       previous->wait_ms += nd->next_wait_ms;
-      previous->voice = &nd->voice;
-      previous->operator = &nd->operator;
       nd->next_wait_ms = 0;
       return; /* reuse repositioned event */
     }
   }
+  end_operator(o, nd);
+  end_voice(o, nd);
   e = calloc(1, sizeof(EventNode));
   e->wait_ms = nd->next_wait_ms;
   nd->next_wait_ms = 0;
@@ -255,10 +248,9 @@ static void new_event(SGSParser *o, NodeData *nd, EventNode *previous,
   e->operator = &nd->operator;
   od = &nd->operator;
   if (previous) {
-    pve = (linktype) ? nd->parent : previous;
-    if (pve && pve->voice) {
-      *vd = *pve->voice;
-      vd->voprev = pve;
+    if (previous->voice) {
+      *vd = *previous->voice;
+      vd->voprev = previous;
     } else { /* set defaults */
       vd->voiceid = o->voicec++;
       vd->panning = 0.5f; /* center */
@@ -283,10 +275,8 @@ static void new_event(SGSParser *o, NodeData *nd, EventNode *previous,
 
   /* Linkage */
   if (linktype) {
-    if (!nd->parent) {
+    if (!nd->parent)
       nd->parent = e; /* operator has new voice for parent */
-      linktype = GRAPH;
-    }
     nd->parent->params |= (linktype == GRAPH) ? SGS_GRAPH : SGS_ADJC;
     add_adjc(nd->parent, e, linktype);
   }
@@ -1371,7 +1361,7 @@ static SGSProgram* build(SGSParser *o) {
       ood = calloc(1, sizeof(SGSProgramOperatorData));
       oe->operator = ood;
       ood->id = od->operatorid;
-      ood->adjcs = 0;
+      ood->adjc = 0;
       ood->attr = od->attr;
       ood->wave = od->wave;
       ood->time_ms = od->time_ms;
@@ -1434,7 +1424,7 @@ void SGSProgram_destroy(SGSProgram *o) {
       free((void*)o->events->voice);
     }
     if (o->events->operator) {
-      free((void*)o->events->operator->adjcs);
+      free((void*)o->events->operator->adjc);
       free((void*)o->events->operator);
     }
   }
