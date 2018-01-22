@@ -430,7 +430,7 @@ static uchar run_param(BufData *buf, uint buflen, ParameterValit *vi,
  */
 static void run_block(SGSGenerator *o, Buf *bufs, uint buflen,
                       OperatorNode *n, BufData *parentfreq,
-                      uchar waveenv, uchar acc) {
+                      uchar waveenv, uint acc_ind) {
   uint i, len, zerolen;
   BufData *sbuf, *freq, *freqmod, *pm, *amp;
   Buf *nextbuf = bufs + 1;
@@ -451,7 +451,7 @@ static void run_block(SGSGenerator *o, Buf *bufs, uint buflen,
     zerolen = n->silence;
     if (zerolen > len)
       zerolen = len;
-    if (!acc) for (i = 0; i < zerolen; ++i)
+    if (!acc_ind) for (i = 0; i < zerolen; ++i)
       sbuf[i].i = 0;
     len -= zerolen;
     if (n->time != SGS_TIME_INF) n->time -= zerolen;
@@ -547,7 +547,7 @@ static void run_block(SGSGenerator *o, Buf *bufs, uint buflen,
       if (pm)
         spm = pm[i].i;
       SGSOsc_RUN_PM(&n->osc, n->osctype, o->osc_coeff, sfreq, spm, samp, s);
-      if (acc)
+      if (acc_ind)
         s += sbuf[i].i;
       sbuf[i].i = s;
     }
@@ -562,7 +562,7 @@ static void run_block(SGSGenerator *o, Buf *bufs, uint buflen,
       if (pm)
         spm = pm[i].i;
       SGSOsc_RUN_PM_ENVO(&n->osc, n->osctype, o->osc_coeff, sfreq, spm, s);
-      if (acc)
+      if (acc_ind)
         s *= sbuf[i].f;
       sbuf[i].f = s;
     }
@@ -571,7 +571,7 @@ static void run_block(SGSGenerator *o, Buf *bufs, uint buflen,
    * Update time duration left, zero rest of buffer if unfilled.
    */
   if (n->time != SGS_TIME_INF) {
-    if (!acc && zerolen > 0) {
+    if (!acc_ind && zerolen > 0) {
       sbuf += len;
       for (i = 0; i < zerolen; ++i)
         sbuf[i].i = 0;
@@ -607,13 +607,13 @@ static void run_voice(SGSGenerator *o, VoiceNode *vn, short *out, uint len) {
    */
   sp = out;
   while (time) {
-    uint acc = 0;
+    uint acc_ind = 0;
     len = (time < BUF_LEN) ? time : BUF_LEN;
     time -= len;
     for (i = 0; i < opc; ++i) {
       OperatorNode *n = &o->operators[ops[i]];
       if (n->time == 0) continue;
-      run_block(o, o->bufs, len, n, 0, 0, acc++);
+      run_block(o, o->bufs, len, n, 0, 0, acc_ind++);
     }
     if (vn->attr & SGS_ATTR_VALITPANNING) {
       BufData *buf = o->bufs[1];
