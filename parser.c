@@ -646,7 +646,6 @@ static void end_event(NodeScope *ns) {
 static void begin_event(NodeScope *ns, uchar linktype, uchar composite) {
   SGSParser *o = ns->o;
   SGSEventNode *e, *pve;
-  uchar setvo = 0;
   end_event(ns);
   ns->event = calloc(1, sizeof(SGSEventNode));
   e = ns->event;
@@ -655,16 +654,21 @@ static void begin_event(NodeScope *ns, uchar linktype, uchar composite) {
   e->scopeid = ns->scopeid;
   if (ns->previous_on) {
     pve = ns->previous_on->event;
-    if (pve) {
-      setvo = 1;
-      e->voice_prev = pve;
-      e->voice_attr = pve->voice_attr;
-      e->panning = pve->panning;
-      e->valitpanning = pve->valitpanning;
-      pve->en_flags |= EN_VOICE_LATER_USED;
+    pve->en_flags |= EN_VOICE_LATER_USED;
+    if (!composite && pve->composite) {
+      SGSEventNode *last_ce;
+      for (last_ce = pve->composite; ; last_ce = last_ce->next) {
+        if (!last_ce->next) {
+          last_ce->en_flags |= EN_VOICE_LATER_USED;
+          break;
+        }
+      }
     }
-  }
-  if (!setvo) { /* set defaults */
+    e->voice_prev = pve;
+    e->voice_attr = pve->voice_attr;
+    e->panning = pve->panning;
+    e->valitpanning = pve->valitpanning;
+  } else { /* set defaults */
     e->panning = 0.5f; /* center */
   }
   if (!ns->group_from)
@@ -705,6 +709,7 @@ static void begin_operator(NodeScope *ns, uchar linktype, uchar composite) {
    * Initialize node.
    */
   if (pop) {
+    pop->on_flags |= ON_OPERATOR_LATER_USED;
     op->previous_on = pop;
     op->operatorid = pop->operatorid;
     op->on_flags = pop->on_flags & ON_OPERATOR_NESTED;
@@ -720,7 +725,6 @@ static void begin_operator(NodeScope *ns, uchar linktype, uchar composite) {
     op->dynamp = pop->dynamp;
     op->valitfreq = pop->valitfreq;
     op->valitamp = pop->valitamp;
-    pop->on_flags |= ON_OPERATOR_LATER_USED;
   } else {
     /*
      * New operator with initial parameter values.
@@ -778,6 +782,7 @@ static void begin_operator(NodeScope *ns, uchar linktype, uchar composite) {
     ns->set_label = 0;
   } else if (!composite && pop && pop->label) {
     SGS_symtab_set(o->st, pop->label, op);
+    op->label = pop->label;
   }
 }
 

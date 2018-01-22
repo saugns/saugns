@@ -90,7 +90,7 @@ static uint calc_bufs(SGSGenerator *o, OperatorNode *n) {
   uint count = 0, i, res;
   if (n->adjcs) {
     const int *mods = n->adjcs->adjcs;
-    const uint modc = n->adjcs->pmodc + n->adjcs->fmodc + n->adjcs->amodc;
+    const uint modc = n->adjcs->fmodc + n->adjcs->pmodc + n->adjcs->amodc;
     for (i = 0; i < modc; ++i) {
   printf("visit node %d\n", mods[i]);
       res = calc_bufs(o, &o->operators[mods[i]]);
@@ -495,7 +495,7 @@ static void run_block(SGSGenerator *o, Buf *bufs, uint buflen,
   if (run_param(freq, len, vi, &n->freq, freqmod))
     n->attr &= ~(SGS_ATTR_VALITFREQ|SGS_ATTR_VALITFREQRATIO);
   if (fmodc) {
-    const int *fmods = &n->adjcs->adjcs[pmodc];
+    const int *fmods = n->adjcs->adjcs;
     BufData *fmbuf;
     for (i = 0; i < fmodc; ++i)
       run_block(o, nextbuf, len, &o->operators[fmods[i]], freq, 1, i);
@@ -513,7 +513,7 @@ static void run_block(SGSGenerator *o, Buf *bufs, uint buflen,
    */
   pm = 0;
   if (pmodc) {
-    const int *pmods = n->adjcs->adjcs;
+    const int *pmods = &n->adjcs->adjcs[fmodc];
     for (i = 0; i < pmodc; ++i)
       run_block(o, nextbuf, len, &o->operators[pmods[i]], freq, 0, i);
     pm = *(nextbuf++);
@@ -524,7 +524,7 @@ static void run_block(SGSGenerator *o, Buf *bufs, uint buflen,
      * modulators linked.
      */
     if (amodc) {
-      const int *amods = &n->adjcs->adjcs[pmodc+fmodc];
+      const int *amods = &n->adjcs->adjcs[fmodc+pmodc];
       float dynampdiff = n->dynamp - n->amp;
       for (i = 0; i < amodc; ++i)
         run_block(o, nextbuf, len, &o->operators[amods[i]], freq, 1, i);
