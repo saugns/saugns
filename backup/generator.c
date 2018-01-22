@@ -611,13 +611,7 @@ static void run_voice(SGSGenerator *o, VoiceNode *vn, short *out, uint len) {
         len = t;
       t -= len;
       run_block(o, o->bufs, len, n, 0, 0, 0);
-      /*
-       * Handle panning parameter and mixing of output.
-       */
       if (n->attr & SGS_ATTR_VALITPANNING) {
-        /*
-         * TODO: Adapt fully to multiple-output operator voices.
-         */
         BufData *buf = o->bufs[1];
         if (run_param(buf, len, &vn->valitpanning, &vn->panning, 0))
           n->attr &= ~SGS_ATTR_VALITPANNING;
