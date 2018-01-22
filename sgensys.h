@@ -21,4 +21,5 @@ typedef struct SGSGenerator SGSGenerator;
 
 SGSGenerator* SGS_generator_create(uint srate, SGSProgram *prg);
 void SGS_generator_destroy(SGSGenerator *o);
-uchar SGS_generator_run(SGSGenerator *o, short *buf, uint len);
+uchar SGS_generator_run(SGSGenerator *o, short *buf, uint buf_len,
+                        uint *gen_len);
