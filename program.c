@@ -8,26 +8,39 @@ static int count_operators(SGSOperatorNode *op, void *arg) {
   return 1; /* summed for each operator */
 }
 
+static void print_linked(const char *header, const char *footer, uint count,
+                         const int *nodes) {
+  uint i;
+  if (!count) return;
+  printf("%s%d", header, nodes[0]);
+  for (i = 0; ++i < count; )
+    printf(", %d", nodes[i]);
+  printf("%s", footer);
+}
+
 static void build_graph(SGSProgramEvent *root,
                         const SGSEventNode *voice_in) {
-  SGSProgramGraph *graph;
+  SGSProgramGraph *graph, **graph_out;
   uint i;
   uint size;
   if (!voice_in->voice_params & SGS_GRAPH)
     return;
-  size = voice_in->operators.count;
-  if (!size)
+  size = voice_in->graph.count;
+  graph_out = (SGSProgramGraph**)&root->voice->graph;
+  if (!size) {
+    *graph_out = graph;
     return;
+  }
   graph = malloc(sizeof(SGSProgramGraph) + sizeof(int) * (size - 1));
   graph->opc = size;
   for (i = 0; i < size; ++i)
-    graph->ops[i] = voice_in->operators.na[i]->operatorid;
-  *(SGSProgramGraph**)&root->voice->graph = graph;
+    graph->ops[i] = voice_in->graph.na[i]->operatorid;
+  *graph_out = graph;
 }
 
 static void build_adjcs(SGSProgramEvent *root,
                         const SGSOperatorNode *operator_in) {
-  SGSProgramGraphAdjcs *adjcs;
+  SGSProgramGraphAdjcs *adjcs, **adjcs_out;
   int *data;
   uint i;
   uint size;
@@ -36,8 +49,11 @@ static void build_adjcs(SGSProgramEvent *root,
   size = operator_in->fmods.count +
          operator_in->pmods.count +
          operator_in->amods.count;
-  if (!size)
+  adjcs_out = (SGSProgramGraphAdjcs**)&root->operator->adjcs;
+  if (!size) {
+    *adjcs_out = 0;
     return;
+  }
   adjcs = malloc(sizeof(SGSProgramGraphAdjcs) + sizeof(int) * (size - 1));
   adjcs->fmodc = operator_in->fmods.count;
   adjcs->pmodc = operator_in->pmods.count;
@@ -49,7 +65,7 @@ static void build_adjcs(SGSProgramEvent *root,
     *data++ = operator_in->pmods.na[i]->operatorid;
   for (i = 0; i < adjcs->amodc; ++i)
     *data++ = operator_in->amods.na[i]->operatorid;
-  *(SGSProgramGraphAdjcs**)&root->operator->adjcs = adjcs;
+  *adjcs_out = adjcs;
 }
 
 typedef struct VoiceAlloc {
@@ -230,17 +246,30 @@ static SGSProgram* build(SGSParser *o) {
   putchar('\n');
   printf("events: %d\tvoices: %d\toperators: %d\n", prg->eventc, prg->voicec, o->operatorc);
   for (id = 0; id < prg->eventc; ++id) {
+    const SGSProgramVoiceData *ovo;
     const SGSProgramOperatorData *oop;
     oe = &oevents[id];
+    ovo = oe->voice;
     oop = oe->operator;
     printf("\\%d \tEV %d \t(VI %d)", oe->wait_ms, id, oe->voiceid);
-    if (oe->voice)
+    if (ovo) {
+      const SGSProgramGraph *g = ovo->graph;
       printf("\n\tvo %d", oe->voiceid);
+      if (g)
+        print_linked("\n\t    {", "}", g->opc, g->ops);
+    }
     if (oop) {
+      const SGSProgramGraphAdjcs *ga = oop->adjcs;
       if (oop->time_ms == SGS_TIME_INF)
         printf("\n\top %d \tt=INF \tf=%.f", oop->operatorid, oop->freq);
       else
         printf("\n\top %d \tt=%d \tf=%.f", oop->operatorid, oop->time_ms, oop->freq);
+      if (ga) {
+        print_linked("\n\t    f!<", ">", ga->fmodc, ga->adjcs);
+        print_linked("\n\t    p!<", ">", ga->pmodc, &ga->adjcs[ga->fmodc]);
+        print_linked("\n\t    a!<", ">", ga->amodc, &ga->adjcs[ga->fmodc +
+                                                               ga->pmodc]);
+      }
     }
     putchar('\n');
   }
