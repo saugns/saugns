@@ -113,7 +113,7 @@ static void eatws(FILE *f) {
  * Parsing code
  */
 
-#define DEFAULT_TIME (-1)
+#define VI_TIME_DEFAULT (-1) /* for valits only; masks SGS_TIME_INF */
 
 enum {
   /* parsing scopes */
@@ -434,7 +434,7 @@ static uchar read_valit(SGSParser *o, float (*read_symbol)(SGSParser *o),
   char c;
   uchar goal = 0;
   int type;
-  vi->time_ms = DEFAULT_TIME;
+  vi->time_ms = VI_TIME_DEFAULT;
   vi->type = SGS_VALIT_LIN; /* default */
   while ((c = read_char(o)) != EOF) {
     switch (c) {
@@ -707,6 +707,9 @@ static void begin_operator(NodeScope *ns, uchar linktype, uchar composite) {
   if (pop) {
     op->previous_on = pop;
     op->operatorid = pop->operatorid;
+    op->on_flags = pop->on_flags & ON_OPERATOR_NESTED;
+    if (composite)
+      op->on_flags |= ON_TIME_DEFAULT; /* default: previous or infinite time */
     op->attr = pop->attr;
     op->wave = pop->wave;
     op->time_ms = pop->time_ms;
@@ -717,25 +720,24 @@ static void begin_operator(NodeScope *ns, uchar linktype, uchar composite) {
     op->dynamp = pop->dynamp;
     op->valitfreq = pop->valitfreq;
     op->valitamp = pop->valitamp;
-    op->previous_on->on_flags |= ON_OPERATOR_LATER_USED;
+    pop->on_flags |= ON_OPERATOR_LATER_USED;
   } else {
     /*
      * New operator with initial parameter values.
      */
     op->operatorid = o->operatorc++;
+    op->on_flags = ON_TIME_DEFAULT; /* default: depends on context */
+    op->time_ms = o->def_time_ms;
     op->amp = 1.0f;
     if (!(ns->ns_flags & NS_NESTED_SCOPE)) {
-      op->time_ms = DEFAULT_TIME; /* dynamically fitted, or set to default */
       op->freq = o->def_freq;
     } else {
-      op->time_ms = o->def_time_ms;
+      op->on_flags |= ON_OPERATOR_NESTED;
       op->freq = o->def_ratio;
       op->attr |= SGS_ATTR_FREQRATIO;
     }
   }
   op->event = e;
-  if (composite)
-    op->time_ms = DEFAULT_TIME; /* defaults to previous time in composite */
   /*
    * Add new operator to parent(s), ie. either the current event node, or an
    * operator node (either ordinary or representing multiple carriers) in the
@@ -835,10 +837,12 @@ static void begin_scope(SGSParser *o, NodeScope *ns, NodeScope *parent,
 static void end_scope(NodeScope *ns) {
   SGSParser *o = ns->o;
   end_event(ns);
+#if 0 /* Should be removed - if it did anything sensible, move adjustment */
   if (ns->last_operator) {
-    if (ns->last_operator->time_ms < 0)
+    if (ns->last_operator->time_ms == TIME_DEFAULT)
       ns->last_operator->time_ms = o->def_time_ms; /* use default */
   }
+#endif
   if (ns->scope == SCOPE_BIND) {
     if (!ns->parent->group_from)
       ns->parent->group_from = ns->group_from;
@@ -1050,9 +1054,16 @@ static uchar parse_step(NodeScope *ns) {
       SET_I2FV(op->silence_ms, silence*1000.f);
       break; }
     case 't':
-      if (testgetc('*', o->f))
-        op->time_ms = DEFAULT_TIME; /* later fitted or set to default */
-      else {
+      if (testgetc('*', o->f)) {
+        op->on_flags |= ON_TIME_DEFAULT; /* later fitted or kept to default */
+        op->time_ms = o->def_time_ms;
+      } else if (testgetc('i', o->f)) {
+        if (!(ns->ns_flags & NS_NESTED_SCOPE)) {
+          warning(o, "ignoring 'ti' (infinite time) for non-nested operator");
+          break;
+        }
+        op->time_ms = SGS_TIME_INF;
+      } else {
         float time;
         read_num(o, 0, &time);
         if (time < 0.f) {
@@ -1269,7 +1280,7 @@ void SGS_parse(SGSParser *o, FILE *f, const char *fn) {
  * only allowed on the "top" operator level, so the algorithm only deals with
  * this for the events involved.
  */
-static void group_events(SGSEventNode *to, int def_time_ms) {
+static void group_events(SGSEventNode *to) {
   SGSEventNode *e, *e_after = to->next;
   int i;
   int wait = 0, waitcount = 0;
@@ -1278,8 +1289,8 @@ static void group_events(SGSEventNode *to, int def_time_ms) {
       SGSOperatorNode *op = e->operators.na[i];
       if (e->next == e_after &&
           i == (e->operators.count - 1) &&
-          op->time_ms < 0) /* Use default for last node in group */
-        op->time_ms = def_time_ms;
+          op->on_flags & ON_TIME_DEFAULT) /* default for last node in group */
+        op->on_flags &= ~ON_TIME_DEFAULT;
       if (wait < op->time_ms)
         wait = op->time_ms;
     }
@@ -1292,8 +1303,10 @@ static void group_events(SGSEventNode *to, int def_time_ms) {
   for (e = to->groupfrom; e != e_after; ) {
     for (i = 0; i < e->operators.count; ++i) {
       SGSOperatorNode *op = e->operators.na[i];
-      if (op->time_ms < 0)
+      if (op->on_flags & ON_TIME_DEFAULT) {
+        op->on_flags &= ~ON_TIME_DEFAULT;
         op->time_ms = wait + waitcount; /* fill in sensible default time */
+      }
     }
     e = e->next;
     if (e) {
@@ -1307,10 +1320,15 @@ static void group_events(SGSEventNode *to, int def_time_ms) {
 
 static int time_operator(SGSOperatorNode *op, void *arg) {
   SGSEventNode *e = op->event;
-  if (op->valitfreq.time_ms < 0)
+  if (op->valitfreq.time_ms == VI_TIME_DEFAULT)
     op->valitfreq.time_ms = op->time_ms;
-  if (op->valitamp.time_ms < 0)
+  if (op->valitamp.time_ms == VI_TIME_DEFAULT)
     op->valitamp.time_ms = op->time_ms;
+  if ((op->on_flags & (ON_TIME_DEFAULT | ON_OPERATOR_NESTED)) ==
+                      (ON_TIME_DEFAULT | ON_OPERATOR_NESTED)) {
+    op->on_flags &= ~ON_TIME_DEFAULT;
+    op->time_ms = SGS_TIME_INF;
+  }
   if (op->time_ms >= 0 && !(op->on_flags & ON_SILENCE_ADDED)) {
     op->time_ms += op->silence_ms;
     op->on_flags |= ON_SILENCE_ADDED;
@@ -1323,13 +1341,13 @@ static int time_operator(SGSOperatorNode *op, void *arg) {
   return 0;
 }
 
-static void time_event(SGSEventNode *e, int def_time_ms) {
+static void time_event(SGSEventNode *e) {
   /*
    * Fill in blank valit durations, handle silence as well as the case of
    * adding present event duration to wait time of next event.
    */
-  if (e->valitpanning.time_ms < 0)
-    e->valitpanning.time_ms = def_time_ms;
+  if (e->valitpanning.time_ms == VI_TIME_DEFAULT)
+    e->valitpanning.time_ms = 1000; /* FIXME! */
   SGS_node_list_rforeach(&e->operators, time_operator, 0);
   /*
    * Timing for composites - done before event list flattened.
@@ -1337,6 +1355,9 @@ static void time_event(SGSEventNode *e, int def_time_ms) {
   if (e->composite) {
     SGSEventNode *ce = e->composite, *ce_prev = e;
     SGSEventNode *se = e->next;
+    SGSOperatorNode *ce_op = ce->operators.na[0],
+                    *ce_op_prev = ce_op->previous_on,
+                    *e_op = ce_op_prev;
     int i;
     for (i = 0; i < e->operators.count; ++i) {
       SGSOperatorNode *op = e->operators.na[i];
@@ -1344,49 +1365,30 @@ static void time_event(SGSEventNode *e, int def_time_ms) {
       if (e->duration_ms < op_duration)
         e->duration_ms = op_duration;
     }
-    for (i = 0; i < ce->operators.count; ++i) {
-      SGSOperatorNode *ceop = ce->operators.na[i];
-      if (ceop->time_ms < 0)
-        ceop->time_ms = def_time_ms;
-    }
+    if (ce_op_prev->on_flags & ON_TIME_DEFAULT)
+      ce_op_prev->on_flags &= ~ON_TIME_DEFAULT;
     for (;;) {
       if (ce->wait_ms) { /* Simulate delay with silence */
-        for (i = 0; i < ce->operators.count; ++i) {
-          SGSOperatorNode *ceop = ce->operators.na[i];
-          ceop->silence_ms += ce->wait_ms;
-          ceop->operator_params |= SGS_SILENCE;
-        }
+        ce_op->silence_ms += ce->wait_ms;
+        ce_op->operator_params |= SGS_SILENCE;
         if (se)
           se->wait_ms += ce->wait_ms;
         ce->wait_ms = 0;
       }
-      ce->wait_ms += ce_prev->duration_ms;
-      for (i = 0; i < ce->operators.count; ++i) {
-        SGSOperatorNode *ceop = ce->operators.na[i];
-        int ceop_duration;
-        if (ceop->time_ms < 0) {
-          if (i < ce_prev->operators.count) {
-            SGSOperatorNode *ceop_prev = ce_prev->operators.na[i];
-            ceop->time_ms = ceop_prev->time_ms - ceop_prev->silence_ms;
-          } else {
-            ceop->time_ms = ce_prev->duration_ms - ceop->silence_ms;
-            if (ceop->time_ms < 0)
-              ceop->time_ms = 0;
-          }
-        }
-        ceop_duration = ceop->time_ms + ceop->silence_ms;
-        if (ce->duration_ms < ceop_duration)
-          ce->duration_ms = ceop_duration;
+      ce->wait_ms += ce_op_prev->time_ms;
+      if (ce_op->on_flags & ON_TIME_DEFAULT) {
+        ce_op->on_flags &= ~ON_TIME_DEFAULT;
+        ce_op->time_ms = (ce->next) ?
+                         ce_op_prev->time_ms - ce_op_prev->silence_ms :
+                         SGS_TIME_INF;
       }
-      time_event(ce, def_time_ms);
-      for (i = 0; i < e->operators.count; ++i) {
-        SGSOperatorNode *op = e->operators.na[i];
-        op->time_ms += ce->duration_ms;
-      }
-      e->duration_ms += ce->duration_ms; /* currently unused */
+      time_event(ce);
+      e_op->time_ms += ce_op->time_ms;
       ce_prev = ce;
+      ce_op_prev = ce_op;
       ce = ce->next;
       if (!ce) break;
+      ce_op = ce->operators.na[0];
     }
   }
 }
@@ -1460,10 +1462,10 @@ static void pp_pass1(SGSParser *o) {
   SGSEventNode *e;
   for (e = o->events; e; ) {
     SGSEventNode *e_next = e->next;
-    time_event(e, o->def_time_ms);
+    time_event(e);
     /* Time |-terminated sequences */
     if (e->groupfrom)
-      group_events(e, o->def_time_ms);
+      group_events(e);
     /*
      * Flatten composite events; inner loop ends when event after
      * composite parts (ie. the original next event) is reached.

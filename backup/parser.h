@@ -28,8 +28,10 @@ enum {
   ON_MULTIPLE_OPERATORS = 1<<1,
   ON_FIRST_IN_SCOPE = 1<<2,
   ON_LAST_IN_SCOPE = 1<<3,
-  ON_LABEL_ALLOC = 1<<4,
-  ON_SILENCE_ADDED = 1<<5,
+  ON_OPERATOR_NESTED = 1<<4,
+  ON_LABEL_ALLOC = 1<<5,
+  ON_TIME_DEFAULT = 1<<6,
+  ON_SILENCE_ADDED = 1<<7,
 };
 
 typedef struct SGSOperatorNode {
