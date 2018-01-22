@@ -1,8 +1,8 @@
 sgensys is the Sound GENeration SYStem, a sound synthesis program developed
 to be usable for musical purposes, as well as capable of generating all manner
 of sounds; it will read a script file of its SGS (Sound Generation Script)
-format and produce audio output; once more developed, writing to audio files
-will also be implemented.
+format and produce audio output, either sent to the audio device or, if
+specified, written to a 16-bit PCM WAV file.
 
 Script syntax overview:
 
