@@ -49,13 +49,13 @@ ERROR:
 static void make_audio(int fd, uint srate, struct SGSProgram *prg) {
   short buf[2048];
   uchar run;
-  SGSGenerator *gen = SGSGenerator_create(srate, prg);
+  SGSGenerator *gen = SGS_generator_create(srate, prg);
   do {
-    run = SGSGenerator_run(gen, buf, 1024);
+    run = SGS_generator_run(gen, buf, 1024);
     if (write(fd, buf, sizeof(buf)) != sizeof(buf))
       puts("warning: audio write failed");
   } while (run);
-  SGSGenerator_destroy(gen);
+  SGS_generator_destroy(gen);
 }
 
 int main(int argc, char **argv) {
@@ -66,13 +66,13 @@ int main(int argc, char **argv) {
     puts("usage: sgensys scriptfile");
     return 0;
   }
-  if (!(prg = SGSProgram_create(argv[1]))) {
+  if (!(prg = SGS_program_create(argv[1]))) {
     printf("error: couldn't open script file \"%s\"\n", argv[1]);
     return 1;
   }
   fd_out = open_audio_dev(NAME_OUT, O_WRONLY, &srate);
   make_audio(fd_out, srate, prg);
   close(fd_out);
-  SGSProgram_destroy(prg);
+  SGS_program_destroy(prg);
   return 0;
 }

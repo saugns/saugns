@@ -1,0 +1,18 @@
+# This (updated) was the first sgensys script made
+S	a0.5
+			\0.5
+Osin	f220 t1
+Osin	f110 t0.5 a.05 	|
+Osin	f440 t1.5
+Osin	f220 t0.5 a.05 	|
+Osin	f400 t0.5 	|
+Osin	f350 t0.5 	|
+Osin	f325 t1.5 	|
+Osin	f220 t1 	|
+Osin	f440 t1.5 	|
+Osin	f415 t0.5 	|
+Osin	f445 t0.5 	|
+Osin	f490 t1 	|
+Osin	f420 t1 	|
+Osin	f440 t1.5 	|
+Q

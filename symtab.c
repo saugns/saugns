@@ -15,12 +15,12 @@ struct SGSSymtab {
   SGSSymnode *node;
 };
 
-SGSSymtab* SGSSymtab_create(void) {
+SGSSymtab* SGS_symtab_create(void) {
   SGSSymtab *o = calloc(1, sizeof(SGSSymtab));
   return o;
 }
 
-void SGSSymtab_destroy(SGSSymtab *o) {
+void SGS_symtab_destroy(SGSSymtab *o) {
   SGSSymnode *n = o->node;
   while (n) {
     SGSSymnode *nn = n->next;
@@ -30,7 +30,7 @@ void SGSSymtab_destroy(SGSSymtab *o) {
   }
 }
 
-void* SGSSymtab_get(SGSSymtab *o, const char *key) {
+void* SGS_symtab_get(SGSSymtab *o, const char *key) {
   SGSSymnode *n = o->node;
   while (n) {
     if (!strcmp(n->key, key))
@@ -50,7 +50,7 @@ static SGSSymnode* SGSSymnode_alloc(const char *key, void *value) {
   return o;
 }
 
-void* SGSSymtab_set(SGSSymtab *o, const char *key, void *value) {
+void* SGS_symtab_set(SGSSymtab *o, const char *key, void *value) {
   SGSSymnode *n = o->node;
   if (!n) {
     o->node = SGSSymnode_alloc(key, value);
