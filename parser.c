@@ -167,6 +167,7 @@ void SGS_node_list_rcleanup(SGSNodeList *list) {
     SGS_node_list_rcleanup(&op->fmods);
     SGS_node_list_rcleanup(&op->pmods);
     SGS_node_list_rcleanup(&op->amods);
+    if (op->on_flags & ON_OPERATOR_LABEL_ALLOC) free((char*)op->label);
     free(op);
   }
   SGS_node_list_clear(list);
@@ -211,7 +212,7 @@ typedef struct NodeScope {
   SGSEventNode *current;
   SGSOperatorNode *bind_from;
   uchar linktype;
-  char *setsym;
+  char *set_label;
   /* timing/delay */
   SGSEventNode *group;
   SGSEventNode *composite; /* grouping of events for a voice and/or operator */
@@ -286,7 +287,7 @@ static void end_event(NodeScope *ns) {
   ns->event = 0;
 }
 
-static void begin_event(NodeScope *ns, uchar composite) {
+static void begin_event(NodeScope *ns, uchar linktype, uchar composite) {
   SGSParser *o = ns->o;
   SGSEventNode *e, *pve;
   uchar setvo = 0;
@@ -297,7 +298,7 @@ static void begin_event(NodeScope *ns, uchar composite) {
   ns->next_wait_ms = 0;
   e->scopeid = ns->scopeid;
   if (ns->on_prev) {
-    pve = (ns->linktype) ? e : ns->on_prev->event;
+    pve = (linktype) ? e : ns->on_prev->event;
     if (pve) {
       setvo = 1;
       e->voice_prev = pve;
@@ -335,10 +336,10 @@ static void begin_event(NodeScope *ns, uchar composite) {
   }
 }
 
-static void begin_operator(NodeScope *ns, uchar composite) {
+static void begin_operator(NodeScope *ns, uchar linktype, uchar composite) {
   SGSParser *o = ns->o;
   SGSEventNode *e = ns->event;
-  SGSOperatorNode *op;
+  SGSOperatorNode *op, *pop = ns->on_prev;
   /*
    * It is assumed that a valid voice event exists.
    */
@@ -353,8 +354,7 @@ static void begin_operator(NodeScope *ns, uchar composite) {
   /*
    * Initialize node.
    */
-  if (ns->on_prev) {
-    SGSOperatorNode *pop = ns->on_prev;
+  if (pop) {
     op->on_prev = pop;
     op->operatorid = pop->operatorid;
     op->attr = pop->attr;
@@ -390,12 +390,12 @@ static void begin_operator(NodeScope *ns, uchar composite) {
    * Add new operator to parent(s), ie. either the current event, or one or
    * more operators in the case of operator linking/nesting.
    */
-  if (ns->linktype == NL_REFER ||
-      ns->linktype == NL_GRAPH) {
-    if (ns->linktype == NL_GRAPH)
+  if (linktype == NL_REFER ||
+      linktype == NL_GRAPH) {
+    if (linktype == NL_GRAPH)
       e->voice_params |= SGS_GRAPH;
     SGS_node_list_add(&e->operators, op);
-    e->operators.type = ns->linktype;
+    e->operators.type = linktype;
   } else {
     SGSOperatorNode *parent;
     NodeScope *target_ns = ns;
@@ -403,7 +403,7 @@ static void begin_operator(NodeScope *ns, uchar composite) {
     target_ns = target_ns->parent;
     for (parent = target_ns->bind_from; parent; parent = parent->bind_next) {
       SGSNodeList *list = 0;
-      switch (ns->linktype) {
+      switch (linktype) {
       case NL_FMODS:
         list = &parent->fmods;
         break;
@@ -416,34 +416,54 @@ static void begin_operator(NodeScope *ns, uchar composite) {
       }
       parent->operator_params |= SGS_ADJCS;
       SGS_node_list_add(list, op);
-      list->type = ns->linktype;
+      list->type = linktype;
     }
   }
   /*
-   * Assign label.
+   * Assign label. If no new label but previous node (for a non-composite)
+   * has one, update label to point to new node, but keep pointer (and flag
+   * exclusively for safe deallocation) in previous node.
    */
-  if (ns->setsym) {
-    SGS_symtab_set(o->st, ns->setsym, op);
-//    e->en_flags |= EVENT_LINKED;
-    free(ns->setsym);
-    ns->setsym = 0;
+  if (ns->set_label) {
+    SGS_symtab_set(o->st, ns->set_label, op);
+    op->on_flags |= ON_OPERATOR_LABEL_ALLOC;
+    op->label = ns->set_label;
+    ns->set_label = 0;
+  } else if (!composite && pop && pop->label) {
+    SGS_symtab_set(o->st, pop->label, op);
   }
+}
+
+/*
+ * Assign label to next node (specifically, the next operator).
+ */
+static void label_next_node(NodeScope *ns, const char *label) {
+  if (ns->set_label || !label) {
+    free((char*)ns->set_label);
+    ns->set_label = 0;
+  }
+  ns->set_label = strdup(label);
 }
 
 #define in_current_node(ns) ((ns)->ns_flags & NS_IN_NODE)
 #define enter_current_node(ns) ((void)((ns)->ns_flags |= NS_IN_NODE))
 #define leave_current_node(ns) ((void)((ns)->ns_flags &= ~NS_IN_NODE))
 
+/*
+ * Begin a new operator - depending on the context, either for the present
+ * event or for a new event begun.
+ *
+ * Used instead of directly calling begin_operator() and/or begin_event().
+ */
 static void begin_node(NodeScope *ns, SGSOperatorNode *previous,
                        uchar linktype, uchar composite) {
-  ns->linktype = linktype;
   ns->on_prev = previous;
   if (!ns->event ||
       !in_current_node(ns) /* previous event implicitly ended */ ||
       ns->next_wait_ms ||
       composite)
-    begin_event(ns, composite);
-  begin_operator(ns, composite);
+    begin_event(ns, linktype, composite);
+  begin_operator(ns, linktype, composite);
 }
 
 static void begin_scope(SGSParser *o, NodeScope *ns, NodeScope *parent,
@@ -493,8 +513,6 @@ static void end_scope(NodeScope *ns) {
     if (ns->current)
       ns->current->groupfrom = ns->group;
   }
-  if (ns->setsym)
-    free(ns->setsym);
 }
 
 /*
@@ -727,30 +745,29 @@ static float read_note(SGSParser *o) {
   return freq;
 }
 
-#define SYMKEY_LEN 80
-#define SYMKEY_LEN_A "80"
-static uchar read_sym(SGSParser *o, char **sym, char op) {
+#define LABEL_LEN 80
+#define LABEL_LEN_A "80"
+typedef char LabelBuf[LABEL_LEN];
+static uchar read_label(SGSParser *o, LabelBuf label, char op) {
   uint i = 0;
-  char nosym_msg[] = "ignoring ? without symbol name";
-  nosym_msg[9] = op; /* replace ? */
-  if (!*sym)
-    *sym = malloc(SYMKEY_LEN);
+  char nolabel_msg[] = "ignoring ? without label name";
+  nolabel_msg[9] = op; /* replace ? */
   for (;;) {
     char c = getc(o->f);
     if (IS_WHITESPACE(c) || c == EOF) {
       ungetc(c, o->f);
       if (i == 0)
-        warning(o, nosym_msg, c);
-      else ENS_OF_SYM: {
-        (*sym)[i] = '\0';
+        warning(o, nolabel_msg, c);
+      else END_OF_LABEL: {
+        label[i] = '\0';
         return 1;
       }
       break;
-    } else if (i == SYMKEY_LEN) {
-      warning(o, "ignoring symbol name from "SYMKEY_LEN_A"th digit", c);
-      goto ENS_OF_SYM;
+    } else if (i == LABEL_LEN) {
+      warning(o, "ignoring label name from "LABEL_LEN_A"th digit", c);
+      goto END_OF_LABEL;
     }
-    (*sym)[i++] = c;
+    label[i++] = c;
   }
   return 0;
 }
@@ -853,7 +870,8 @@ static uchar read_waittime(SGSParser *o, NodeScope *ns, char c) {
  * Main parser functions
  */
 
-static uchar parse_settings(SGSParser *o, NodeScope *ns) {
+static uchar parse_settings(NodeScope *ns) {
+  SGSParser *o = ns->o;
   char c;
   ns->ns_flags |= NS_SET_SETTINGS;
   leave_current_node(ns);
@@ -899,10 +917,11 @@ static uchar parse_settings(SGSParser *o, NodeScope *ns) {
 static uchar parse_level(SGSParser *o, NodeScope *parentnd,
                          uchar linktype, char newscope);
 
-static uchar parse_step(SGSParser *o, NodeScope *ns) {
-  char c;
+static uchar parse_step(NodeScope *ns) {
+  SGSParser *o = ns->o;
   SGSEventNode *e = ns->event;
   SGSOperatorNode *op = ns->operator;
+  char c;
   ns->ns_flags &= ~NS_SET_SETTINGS;
   enter_current_node(ns);
   while ((c = read_char(o)) != EOF) {
@@ -920,7 +939,7 @@ static uchar parse_step(SGSParser *o, NodeScope *ns) {
       break;
     case '\\':
       if (read_waittime(o, ns, c)) {
-        begin_node(ns, ns->operator, 0, 0);
+        begin_node(ns, ns->operator, NL_REFER, 0);
       }
       break;
     case 'a':
@@ -1057,6 +1076,7 @@ static uchar parse_level(SGSParser *o, NodeScope *parentns,
   char c;
   uchar endscope = 0;
   uchar flags = 0;
+  LabelBuf label;
   NodeScope ns;
   begin_scope(o, &ns, parentns, linktype, newscope);
   ++o->calllevel;
@@ -1106,17 +1126,19 @@ static uchar parse_level(SGSParser *o, NodeScope *parentns,
         goto RETURN;
       break; }
     case ':':
-      if (ns.setsym)
+      if (ns.set_label) {
         warning(o, "ignoring label assignment to label reference", c);
+        label_next_node(&ns, NULL);
+      }
       ns.ns_flags &= ~NS_SET_SETTINGS;
       leave_current_node(&ns);
-      if (read_sym(o, &ns.setsym, ':')) {
-        SGSOperatorNode *ref = SGS_symtab_get(o->st, ns.setsym);
+      if (read_label(o, label, ':')) {
+        SGSOperatorNode *ref = SGS_symtab_get(o->st, label);
         if (!ref)
           warning(o, "ignoring reference to undefined label", c);
         else {
-          begin_node(&ns, ref, 0, 0);
-          flags = parse_step(o, &ns) ? (HANDLE_DEFER | DEFERRED_STEP) : 0;
+          begin_node(&ns, ref, NL_REFER, 0);
+          flags = parse_step(&ns) ? (HANDLE_DEFER | DEFERRED_STEP) : 0;
         }
       }
       break;
@@ -1127,8 +1149,8 @@ static uchar parse_level(SGSParser *o, NodeScope *parentns,
       }
       if (ns.ns_flags & NS_SET_SETTINGS || !ns.event)
         goto INVALID;
-      begin_node(&ns, ns.operator, 0, 1);
-      flags = parse_step(o, &ns) ? (HANDLE_DEFER | DEFERRED_STEP) : 0;
+      begin_node(&ns, ns.operator, NL_REFER, 1);
+      flags = parse_step(&ns) ? (HANDLE_DEFER | DEFERRED_STEP) : 0;
       break;
     case '<':
       if (parse_level(o, &ns, ns.linktype, '<'))
@@ -1148,12 +1170,12 @@ static uchar parse_level(SGSParser *o, NodeScope *parentns,
         break;
       begin_node(&ns, 0, ns.linktype, 0);
       ns.operator->wave = wave;
-      flags = parse_step(o, &ns) ? (HANDLE_DEFER | DEFERRED_STEP) : 0;
+      flags = parse_step(&ns) ? (HANDLE_DEFER | DEFERRED_STEP) : 0;
       break; }
     case 'Q':
       goto FINISH;
     case 'S':
-      flags = parse_settings(o, &ns) ? (HANDLE_DEFER | DEFERRED_SETTINGS) : 0;
+      flags = parse_settings(&ns) ? (HANDLE_DEFER | DEFERRED_SETTINGS) : 0;
       break;
     case '\\':
       if (ns.ns_flags & NS_SET_SETTINGS ||
@@ -1162,11 +1184,12 @@ static uchar parse_level(SGSParser *o, NodeScope *parentns,
       read_waittime(o, &ns, c);
       break;
     case '\'':
-      if (ns.setsym) {
+      if (ns.set_label) {
         warning(o, "ignoring label assignment to label assignment", c);
         break;
       }
-      read_sym(o, &ns.setsym, '\'');
+      read_label(o, label, '\'');
+      label_next_node(&ns, label);
       break;
     case '{':
       /* is always got elsewhere before a nesting call to this function */
@@ -1208,10 +1231,10 @@ static uchar parse_level(SGSParser *o, NodeScope *parentns,
       uchar test = flags;
       flags = 0;
       if (test & DEFERRED_STEP) {
-        if (parse_step(o, &ns))
+        if (parse_step(&ns))
           flags = HANDLE_DEFER | DEFERRED_STEP;
       } else if (test & DEFERRED_SETTINGS)
-        if (parse_settings(o, &ns))
+        if (parse_settings(&ns))
           flags = HANDLE_DEFER | DEFERRED_SETTINGS;
     }
   }
@@ -1307,36 +1330,6 @@ static int time_operators(SGSOperatorNode *op, void *arg) {
   return 0;
 }
 
-#if 0
-static int time_composite_operators(SGSOperatorNode *op, void *arg) {
-  SGSEventNode *e = op->event;
-  SGSEventNode *ce = e->composite, *ce_prev = e;
-  SGSEventNode *se = e->next;
-  SGSOperatorNode *ceop = ce->operator;
-  if (ceop->time_ms < 0)
-    ceop->time_ms = def_time_ms;
-  for (;;) {
-    SGSOperatorNode *ceop_prev = ce_prev->operator;
-    if (ce->wait_ms) { /* Simulate delay with silence */
-      ceop->silence_ms += ce->wait_ms;
-      ceop->operator_params |= SGS_SILENCE;
-      if (se)
-        se->wait_ms += ce->wait_ms;
-      ce->wait_ms = 0;
-    }
-    ce->wait_ms += ceop_prev->time_ms;
-    if (ceop->time_ms < 0)
-      ceop->time_ms = ceop_prev->time_ms - ceop_prev->silence_ms;
-    time_events(ce, def_time_ms);
-    e->operator->time_ms += ceop->time_ms;
-    ce_prev = ce;
-    ce = ce->next;
-    if (!ce) break;
-    ceop = ce->operator;
-  }
-}
-#endif
-
 static void time_events(SGSEventNode *e, int def_time_ms) {
   /*
    * Fill in blank valit durations, handle silence as well as the case of
@@ -1354,8 +1347,9 @@ static void time_events(SGSEventNode *e, int def_time_ms) {
     int i;
     for (i = 0; i < e->operators.count; ++i) {
       SGSOperatorNode *op = e->operators.na[i];
-      if (e->duration_ms < op->time_ms)
-        e->duration_ms = op->time_ms;
+      int op_duration = op->time_ms + op->silence_ms;
+      if (e->duration_ms < op_duration)
+        e->duration_ms = op_duration;
     }
     for (i = 0; i < ce->operators.count; ++i) {
       SGSOperatorNode *ceop = ce->operators.na[i];
@@ -1376,6 +1370,7 @@ static void time_events(SGSEventNode *e, int def_time_ms) {
       ce->wait_ms += ce_prev->duration_ms;
       for (i = 0; i < ce->operators.count; ++i) {
         SGSOperatorNode *ceop = ce->operators.na[i];
+        int ceop_duration;
         if (ceop->time_ms < 0) {
           if (i < ce_prev->operators.count) {
             SGSOperatorNode *ceop_prev = ce_prev->operators.na[i];
@@ -1386,8 +1381,9 @@ static void time_events(SGSEventNode *e, int def_time_ms) {
               ceop->time_ms = 0;
           }
         }
-        if (ce->duration_ms < ceop->time_ms)
-          ce->duration_ms = ceop->time_ms;
+        ceop_duration = ceop->time_ms + ceop->silence_ms;
+        if (ce->duration_ms < ceop_duration)
+          ce->duration_ms = ceop_duration;
       }
       time_events(ce, def_time_ms);
       for (i = 0; i < e->operators.count; ++i) {

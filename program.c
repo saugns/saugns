@@ -99,15 +99,9 @@ static uint voice_alloc_inc(VoiceAlloc *va, SGSEventNode *e) {
     else
       va->data[voice].duration_ms -= e->wait_ms;
   }
-#if 0
-  if (e->nestlevel > 0) {
-    return 0; /* FIXME */
-  }
-#endif
   if (e->voice_prev) {
     SGSEventNode *prev = e->voice_prev;
-    for (voice = 0; voice < va->voicec; ++voice)
-      if (va->data[voice].last == prev) break;
+    voice = prev->voice_id;
   } else {
     for (voice = 0; voice < va->voicec; ++voice)
       if (!(va->data[voice].last->en_flags & EN_VOICE_LATER_USED) &&
@@ -129,6 +123,7 @@ static uint voice_alloc_inc(VoiceAlloc *va, SGSEventNode *e) {
       }
     }
   }
+  e->voice_id = voice;
   va->data[voice].last = e;
   if (e->voice_params & SGS_GRAPH)
     va->data[voice].duration_ms = voice_duration(e);
@@ -189,12 +184,11 @@ static SGSProgram* build(SGSParser *o) {
   prg->eventc = count;
   /*
    * Pass #2 - Output event allocation, voice allocation,
-   *           parameter data copying, cleanup of parsing data.
+   *           parameter data copying.
    */
   oevents = calloc(prg->eventc, sizeof(SGSProgramEvent));
   VOICE_ALLOC_INIT(&va);
   for (oe = oevents, e = o->events; e; ) {
-    SGSEventNode *e_next = e->next;
     SGSProgramVoiceData *ovd;
     /* Add to final output list */
     oe->wait_ms = e->wait_ms;
@@ -211,14 +205,22 @@ static SGSProgram* build(SGSParser *o) {
         build_graph(oe, e);
       }
     }
-    SGS_event_node_destroy(e);
-    e = e_next;
+    e = e->next;
     ++oe;
   }
   prg->voicec = VOICE_ALLOC_COUNT(&va);
   VOICE_ALLOC_FINI(&va);
   *(SGSProgramEvent**)&prg->events = oevents;
   prg->operatorc = o->operatorc;
+  /*
+   * Pass #3 - Cleanup of parsing data.
+   */
+  for (oe = oevents, e = o->events; e; ) {
+    SGSEventNode *e_next = e->next;
+    SGS_event_node_destroy(e);
+    e = e_next;
+    ++oe;
+  }
   //puts("/build()");
 #if 1
   /*
@@ -229,7 +231,7 @@ static SGSProgram* build(SGSParser *o) {
   printf("events: %d\tvoices: %d\toperators: %d\n", prg->eventc, prg->voicec, o->operatorc);
   for (id = 0; id < prg->eventc; ++id) {
     oe = &oevents[id];
-    printf("\\%d \tEV %d", oe->wait_ms, id);
+    printf("\\%d \tEV %d \t(VI %d)", oe->wait_ms, id, oe->voiceid);
     if (oe->voice)
       printf("\n\tvo %d", oe->voiceid);
     if (oe->operator)

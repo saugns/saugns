@@ -25,7 +25,8 @@ void SGS_node_list_rcleanup(SGSNodeList *list);
 enum {
   /* parse flags */
   ON_OPERATOR_LATER_USED = 1<<0,
-  ON_SILENCE_ADDED = 1<<1,
+  ON_OPERATOR_LABEL_ALLOC = 1<<1,
+  ON_SILENCE_ADDED = 1<<2,
 };
 
 typedef struct SGSOperatorNode {
@@ -34,6 +35,7 @@ typedef struct SGSOperatorNode {
   struct SGSOperatorNode *bind_next;
   uint operatorid;
   uint on_flags;
+  const char *label;
   /* parameters */
   uint operator_params;
   uchar attr;
@@ -48,9 +50,7 @@ typedef struct SGSOperatorNode {
 enum {
   /* parse flags */
   EN_VOICE_LATER_USED = 1<<0,
-  EN_EVENT_LINKED = 1<<1,
-  EN_PARENT_OLD = 1<<2,
-  EN_ADD_WAIT_DURATION = 1<<3,
+  EN_ADD_WAIT_DURATION = 1<<1,
 };
 
 typedef struct SGSEventNode {
@@ -63,6 +63,7 @@ typedef struct SGSEventNode {
   uint scopeid;
   uint en_flags;
   /* voice parameters */
+  uint voice_id; /* not filled in by parser; for later use (program.c) */
   uint voice_params;
   struct SGSEventNode *voice_prev; /* preceding event for same voice */
   uchar voice_attr;
