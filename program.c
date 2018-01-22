@@ -8,6 +8,16 @@ static int count_operators(SGSOperatorNode *op, void *arg) {
   return 1; /* summed for each operator */
 }
 
+static void print_linked(const char *header, const char *footer, uint count,
+                         const int *nodes) {
+  uint i;
+  if (!count) return;
+  printf("%s%d", header, nodes[0]);
+  for (i = 0; ++i < count; )
+    printf(", %d", nodes[i]);
+  printf("%s", footer);
+}
+
 static void build_graph(SGSProgramEvent *root,
                         const SGSEventNode *voice_in) {
   SGSProgramGraph *graph, **graph_out;
@@ -236,17 +246,30 @@ static SGSProgram* build(SGSParser *o) {
   putchar('\n');
   printf("events: %d\tvoices: %d\toperators: %d\n", prg->eventc, prg->voicec, o->operatorc);
   for (id = 0; id < prg->eventc; ++id) {
+    const SGSProgramVoiceData *ovo;
     const SGSProgramOperatorData *oop;
     oe = &oevents[id];
+    ovo = oe->voice;
     oop = oe->operator;
     printf("\\%d \tEV %d \t(VI %d)", oe->wait_ms, id, oe->voiceid);
-    if (oe->voice)
+    if (ovo) {
+      const SGSProgramGraph *g = ovo->graph;
       printf("\n\tvo %d", oe->voiceid);
+      if (g)
+        print_linked("\n\t    {", "}", g->opc, g->ops);
+    }
     if (oop) {
+      const SGSProgramGraphAdjcs *ga = oop->adjcs;
       if (oop->time_ms == SGS_TIME_INF)
         printf("\n\top %d \tt=INF \tf=%.f", oop->operatorid, oop->freq);
       else
         printf("\n\top %d \tt=%d \tf=%.f", oop->operatorid, oop->time_ms, oop->freq);
+      if (ga) {
+        print_linked("\n\t    f!<", ">", ga->fmodc, ga->adjcs);
+        print_linked("\n\t    p!<", ">", ga->pmodc, &ga->adjcs[ga->fmodc]);
+        print_linked("\n\t    a!<", ">", ga->amodc, &ga->adjcs[ga->fmodc +
+                                                               ga->pmodc]);
+      }
     }
     putchar('\n');
   }
