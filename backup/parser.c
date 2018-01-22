@@ -1062,6 +1062,7 @@ static uchar parse_step(NodeScope *ns) {
           warning(o, "ignoring 'ti' (infinite time) for non-nested operator");
           break;
         }
+        op->on_flags &= ~ON_TIME_DEFAULT;
         op->time_ms = SGS_TIME_INF;
       } else {
         float time;
@@ -1070,6 +1071,7 @@ static uchar parse_step(NodeScope *ns) {
           warning(o, "ignoring 't' with sub-zero time");
           break;
         }
+        op->on_flags &= ~ON_TIME_DEFAULT;
         SET_I2FV(op->time_ms, time*1000.f);
       }
       op->operator_params |= SGS_TIME;
@@ -1358,15 +1360,8 @@ static void time_event(SGSEventNode *e) {
     SGSOperatorNode *ce_op = ce->operators.na[0],
                     *ce_op_prev = ce_op->previous_on,
                     *e_op = ce_op_prev;
-    int i;
-    for (i = 0; i < e->operators.count; ++i) {
-      SGSOperatorNode *op = e->operators.na[i];
-      int op_duration = op->time_ms + op->silence_ms;
-      if (e->duration_ms < op_duration)
-        e->duration_ms = op_duration;
-    }
-    if (ce_op_prev->on_flags & ON_TIME_DEFAULT)
-      ce_op_prev->on_flags &= ~ON_TIME_DEFAULT;
+    if (e_op->on_flags & ON_TIME_DEFAULT)
+      e_op->on_flags &= ~ON_TIME_DEFAULT;
     for (;;) {
       if (ce->wait_ms) { /* Simulate delay with silence */
         ce_op->silence_ms += ce->wait_ms;
@@ -1378,12 +1373,15 @@ static void time_event(SGSEventNode *e) {
       ce->wait_ms += ce_op_prev->time_ms;
       if (ce_op->on_flags & ON_TIME_DEFAULT) {
         ce_op->on_flags &= ~ON_TIME_DEFAULT;
-        ce_op->time_ms = (ce->next) ?
-                         ce_op_prev->time_ms - ce_op_prev->silence_ms :
-                         SGS_TIME_INF;
+        ce_op->time_ms = (ce_op->on_flags & ON_OPERATOR_NESTED && !ce->next) ?
+                         SGS_TIME_INF :
+                         ce_op_prev->time_ms - ce_op_prev->silence_ms;
       }
       time_event(ce);
-      e_op->time_ms += ce_op->time_ms;
+      if (ce_op->time_ms == SGS_TIME_INF)
+        e_op->time_ms = SGS_TIME_INF;
+      else
+        e_op->time_ms += ce_op->time_ms;
       ce_prev = ce;
       ce_op_prev = ce_op;
       ce = ce->next;
@@ -1471,7 +1469,6 @@ static void pp_pass1(SGSParser *o) {
      * composite parts (ie. the original next event) is reached.
      */
     do {
-      int ops;
       if (e->composite)
         flatten_events(e);
       e = e->next;

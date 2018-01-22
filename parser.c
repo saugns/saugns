@@ -1256,7 +1256,7 @@ RETURN:
   return (endscope && ns.scope != newscope);
 }
 
-static void pp_pass1(SGSParser *o);
+static void pp_passes(SGSParser *o);
 
 /*
  * "Main" parsing function.
@@ -1274,7 +1274,7 @@ void SGS_parse(SGSParser *o, FILE *f, const char *fn) {
   o->def_ratio = 1.f; /* default until changed */
   parse_level(o, 0, NL_GRAPH, SCOPE_TOP);
   SGS_symtab_destroy(o->st);
-  pp_pass1(o);
+  pp_passes(o);
 }
 
 /*
@@ -1363,13 +1363,6 @@ static void time_event(SGSEventNode *e) {
     if (e_op->on_flags & ON_TIME_DEFAULT)
       e_op->on_flags &= ~ON_TIME_DEFAULT;
     for (;;) {
-      if (ce->wait_ms) { /* Simulate delay with silence */
-        ce_op->silence_ms += ce->wait_ms;
-        ce_op->operator_params |= SGS_SILENCE;
-        if (se)
-          se->wait_ms += ce->wait_ms;
-        ce->wait_ms = 0;
-      }
       ce->wait_ms += ce_op_prev->time_ms;
       if (ce_op->on_flags & ON_TIME_DEFAULT) {
         ce_op->on_flags &= ~ON_TIME_DEFAULT;
@@ -1380,8 +1373,10 @@ static void time_event(SGSEventNode *e) {
       time_event(ce);
       if (ce_op->time_ms == SGS_TIME_INF)
         e_op->time_ms = SGS_TIME_INF;
-      else
-        e_op->time_ms += ce_op->time_ms;
+      else if (e_op->time_ms != SGS_TIME_INF)
+        e_op->time_ms += ce_op->time_ms +
+                         (ce->wait_ms - ce_op_prev->time_ms);
+      ce_op->operator_params &= ~SGS_TIME;
       ce_prev = ce;
       ce_op_prev = ce_op;
       ce = ce->next;
@@ -1453,25 +1448,20 @@ static void flatten_events(SGSEventNode *e) {
 }
 
 /*
- * Post-parsing pass #1 - perform timing adjustments, flatten event list.
- * Return final number of events.
+ * Post-parsing passes - perform timing adjustments, flatten event list.
  */
-static void pp_pass1(SGSParser *o) {
+static void pp_passes(SGSParser *o) {
   SGSEventNode *e;
-  for (e = o->events; e; ) {
-    SGSEventNode *e_next = e->next;
+  for (e = o->events; e; e = e->next) {
     time_event(e);
-    /* Time |-terminated sequences */
-    if (e->groupfrom)
-      group_events(e);
-    /*
-     * Flatten composite events; inner loop ends when event after
-     * composite parts (ie. the original next event) is reached.
-     */
-    do {
-      if (e->composite)
-        flatten_events(e);
-      e = e->next;
-    } while (e != e_next);
+    if (e->groupfrom) group_events(e);
+  }
+  /*
+   * Must be separated into pass following timing adjustments for events;
+   * otherwise, flattening will fail to arrange events in the correct order
+   * in some cases.
+   */
+  for (e = o->events; e; e = e->next) {
+    if (e->composite) flatten_events(e);
   }
 }
