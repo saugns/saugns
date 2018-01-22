@@ -55,11 +55,10 @@ ERROR:
 static void wav_file_out(SGSWAVFile *wf, uint srate, struct SGSProgram *prg) {
   short buf[2048];
   uchar run;
-  uint len;
   SGSGenerator *gen = SGS_generator_create(srate, prg);
   do {
-    run = SGS_generator_run(gen, buf, 1024, &len);
-    if (SGS_wav_file_write(wf, buf, len) != 0)
+    run = SGS_generator_run(gen, buf, 1024);
+    if (SGS_wav_file_write(wf, buf, 1024) != 0)
       puts("warning: audio write failed");
   } while (run);
   SGS_generator_destroy(gen);
@@ -68,13 +67,10 @@ static void wav_file_out(SGSWAVFile *wf, uint srate, struct SGSProgram *prg) {
 static void audio_dev_out(int fd, uint srate, struct SGSProgram *prg) {
   short buf[2048];
   uchar run;
-  uint len;
   SGSGenerator *gen = SGS_generator_create(srate, prg);
   do {
-    int size;
-    run = SGS_generator_run(gen, buf, 1024, &len);
-    size = len * NUM_CHANNELS * sizeof(short);
-    if (write(fd, buf, size) != size)
+    run = SGS_generator_run(gen, buf, 1024);
+    if (write(fd, buf, sizeof(buf)) != sizeof(buf))
       puts("warning: audio write failed");
   } while (run);
   SGS_generator_destroy(gen);

@@ -24,7 +24,8 @@ typedef struct ParameterValit {
 } ParameterValit;
 
 typedef struct OperatorNode {
-  uint time, silence;
+  int time;
+  uint silence;
   const SGSProgramGraphAdjcs *adjcs;
   uchar type, attr;
   float freq, dynfreq;
@@ -89,7 +90,7 @@ static uint calc_bufs(SGSGenerator *o, OperatorNode *n) {
   uint count = 0, i, res;
   if (n->adjcs) {
     const int *mods = n->adjcs->adjcs;
-    const uint modc = n->adjcs->pmodc + n->adjcs->fmodc + n->adjcs->amodc;
+    const uint modc = n->adjcs->fmodc + n->adjcs->pmodc + n->adjcs->amodc;
     for (i = 0; i < modc; ++i) {
   printf("visit node %d\n", mods[i]);
       res = calc_bufs(o, &o->operators[mods[i]]);
@@ -206,8 +207,11 @@ SGSGenerator* SGS_generator_create(uint srate, struct SGSProgram *prg) {
         (*set++).i = od->attr;
       if (s->params & SGS_WAVE)
         (*set++).i = od->wave;
-      if (s->params & SGS_TIME)
-        (*set++).i = ((float)od->time_ms) * srate * .001f;
+      if (s->params & SGS_TIME) {
+        (*set++).i = (od->time_ms == SGS_TIME_INF) ?
+                     SGS_TIME_INF :
+                     (int) ((float)od->time_ms) * srate * .001f;
+      }
       if (s->params & SGS_SILENCE)
         (*set++).i = ((float)od->silence_ms) * srate * .001f;
       if (s->params & SGS_FREQ)
@@ -426,8 +430,8 @@ static uchar run_param(BufData *buf, uint buflen, ParameterValit *vi,
  */
 static void run_block(SGSGenerator *o, Buf *bufs, uint buflen,
                       OperatorNode *n, BufData *parentfreq,
-                      uchar waveenv, uchar acc) {
-  uint i, len;
+                      uchar waveenv, uint acc_ind) {
+  uint i, len, zerolen;
   BufData *sbuf, *freq, *freqmod, *pm, *amp;
   Buf *nextbuf = bufs + 1;
   ParameterValit *vi;
@@ -444,17 +448,25 @@ static void run_block(SGSGenerator *o, Buf *bufs, uint buflen,
    * If silence, zero-fill and delay processing for duration.
    */
   if (n->silence) {
-    uint zerolen = n->silence;
+    zerolen = n->silence;
     if (zerolen > len)
       zerolen = len;
-    if (!acc) for (i = 0; i < zerolen; ++i)
+    if (!acc_ind) for (i = 0; i < zerolen; ++i)
       sbuf[i].i = 0;
     len -= zerolen;
-    n->time -= zerolen;
+    if (n->time != SGS_TIME_INF) n->time -= zerolen;
     n->silence -= zerolen;
     if (!len)
       return;
     sbuf += zerolen;
+  }
+  /*
+   * Limit length to time duration of operator.
+   */
+  zerolen = 0;
+  if (n->time < (int)len && n->time != SGS_TIME_INF) {
+    zerolen = len - n->time;
+    len = n->time;
   }
   /*
    * Handle frequency (alternatively ratio) parameter, including frequency
@@ -483,7 +495,7 @@ static void run_block(SGSGenerator *o, Buf *bufs, uint buflen,
   if (run_param(freq, len, vi, &n->freq, freqmod))
     n->attr &= ~(SGS_ATTR_VALITFREQ|SGS_ATTR_VALITFREQRATIO);
   if (fmodc) {
-    const int *fmods = &n->adjcs->adjcs[pmodc];
+    const int *fmods = n->adjcs->adjcs;
     BufData *fmbuf;
     for (i = 0; i < fmodc; ++i)
       run_block(o, nextbuf, len, &o->operators[fmods[i]], freq, 1, i);
@@ -501,7 +513,7 @@ static void run_block(SGSGenerator *o, Buf *bufs, uint buflen,
    */
   pm = 0;
   if (pmodc) {
-    const int *pmods = n->adjcs->adjcs;
+    const int *pmods = &n->adjcs->adjcs[fmodc];
     for (i = 0; i < pmodc; ++i)
       run_block(o, nextbuf, len, &o->operators[pmods[i]], freq, 0, i);
     pm = *(nextbuf++);
@@ -512,7 +524,7 @@ static void run_block(SGSGenerator *o, Buf *bufs, uint buflen,
      * modulators linked.
      */
     if (amodc) {
-      const int *amods = &n->adjcs->adjcs[pmodc+fmodc];
+      const int *amods = &n->adjcs->adjcs[fmodc+pmodc];
       float dynampdiff = n->dynamp - n->amp;
       for (i = 0; i < amodc; ++i)
         run_block(o, nextbuf, len, &o->operators[amods[i]], freq, 1, i);
@@ -535,7 +547,7 @@ static void run_block(SGSGenerator *o, Buf *bufs, uint buflen,
       if (pm)
         spm = pm[i].i;
       SGSOsc_RUN_PM(&n->osc, n->osctype, o->osc_coeff, sfreq, spm, samp, s);
-      if (acc)
+      if (acc_ind)
         s += sbuf[i].i;
       sbuf[i].i = s;
     }
@@ -550,12 +562,22 @@ static void run_block(SGSGenerator *o, Buf *bufs, uint buflen,
       if (pm)
         spm = pm[i].i;
       SGSOsc_RUN_PM_ENVO(&n->osc, n->osctype, o->osc_coeff, sfreq, spm, s);
-      if (acc)
+      if (acc_ind)
         s *= sbuf[i].f;
       sbuf[i].f = s;
     }
   }
-  n->time -= len;
+  /*
+   * Update time duration left, zero rest of buffer if unfilled.
+   */
+  if (n->time != SGS_TIME_INF) {
+    if (!acc_ind && zerolen > 0) {
+      sbuf += len;
+      for (i = 0; i < zerolen; ++i)
+        sbuf[i].i = 0;
+    }
+    n->time -= len;
+  }
 }
 
 /*
@@ -564,8 +586,8 @@ static void run_block(SGSGenerator *o, Buf *bufs, uint buflen,
  */
 static void run_voice(SGSGenerator *o, VoiceNode *vn, short *out, uint len) {
   const int *ops;
-  uint i, opc, time = 0;
-  uchar finished = 1;
+  uint i, opc, finished = 1;
+  int time = 0;
   short *sp;
   if (!vn->graph)
     goto RETURN;
@@ -576,69 +598,49 @@ static void run_voice(SGSGenerator *o, VoiceNode *vn, short *out, uint len) {
     OperatorNode *n = &o->operators[ops[i]];
     if (n->time == 0)
       continue;
-    if (time > n->time)
+    if (time > n->time && n->time != SGS_TIME_INF)
       time = n->time;
   }
+  vn->pos += time;
   /*
-   * Generate sound from all active operators for voice.
+   * Repeatedly generate up to BUF_LEN samples until done.
    */
-  for (i = 0; i < opc; ++i) {
-    OperatorNode *n = &o->operators[ops[i]];
-    uint t = time;
-    if (n->time == 0)
-      continue;
-    sp = out;
-    /*
-     * More efficient silence skipping.
-     */
-    if (n->silence) {
-      if (n->silence >= t) {
-        n->time -= t;
-        n->silence -= t;
-        goto NEXT;
-      }
-      sp += n->silence + n->silence; /* doubled given stereo interleaving */
-      t -= n->silence;
-      n->time -= n->silence;
-      n->silence = 0;
+  sp = out;
+  while (time) {
+    uint acc_ind = 0;
+    len = (time < BUF_LEN) ? time : BUF_LEN;
+    time -= len;
+    for (i = 0; i < opc; ++i) {
+      OperatorNode *n = &o->operators[ops[i]];
+      if (n->time == 0) continue;
+      run_block(o, o->bufs, len, n, 0, 0, acc_ind++);
     }
-    /*
-     * Repeatedly generate up to BUF_LEN samples for operator until done.
-     */
-    while (t) {
-      len = BUF_LEN;
-      if (len > t)
-        len = t;
-      t -= len;
-      run_block(o, o->bufs, len, n, 0, 0, 0);
-      /*
-       * Handle panning parameter and mixing of output.
-       */
-      if (n->attr & SGS_ATTR_VALITPANNING) {
-        /*
-         * TODO: Adapt fully to multiple-output operator voices.
-         */
-        BufData *buf = o->bufs[1];
-        if (run_param(buf, len, &vn->valitpanning, &vn->panning, 0))
-          n->attr &= ~SGS_ATTR_VALITPANNING;
-        for (i = 0; i < len; ++i) {
-          int s = (*o->bufs)[i].i, p;
-          SET_I2FV(p, ((float)s) * buf[i].f);
-          *sp++ += s - p;
-          *sp++ += p;
-        }
-      } else for (i = 0; i < len; ++i) {
+    if (vn->attr & SGS_ATTR_VALITPANNING) {
+      BufData *buf = o->bufs[1];
+      if (run_param(buf, len, &vn->valitpanning, &vn->panning, 0))
+        vn->attr &= ~SGS_ATTR_VALITPANNING;
+      for (i = 0; i < len; ++i) {
+        int s = (*o->bufs)[i].i, p;
+        SET_I2FV(p, ((float)s) * buf[i].f);
+        *sp++ += s - p;
+        *sp++ += p;
+      }
+    } else {
+      for (i = 0; i < len; ++i) {
         int s = (*o->bufs)[i].i, p;
         SET_I2FV(p, ((float)s) * vn->panning);
         *sp++ += s - p;
         *sp++ += p;
       }
     }
-  NEXT:
-    if (n->time != 0)
-      finished = 0;
   }
-  vn->pos += time;
+  for (i = 0; i < opc; ++i) {
+    OperatorNode *n = &o->operators[ops[i]];
+    if (n->time != 0) {
+      finished = 0;
+      break;
+    }
+  }
 RETURN:
   if (finished)
     vn->flag &= ~SGS_FLAG_EXEC;
