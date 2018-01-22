@@ -5,8 +5,8 @@
  */
 
 typedef struct SGSNodeList {
-  ushort count;
-  uchar type;
+  ushort count,
+         inactive_count; /* used when nodes are inherited from another list */
   struct SGSOperatorNode **na;
 } SGSNodeList;
 
@@ -16,7 +16,6 @@ int SGS_node_list_rforeach(SGSNodeList *list,
                            int (*callback)(struct SGSOperatorNode *op,
                                            void *arg),
                            void *arg);
-void SGS_node_list_rcleanup(SGSNodeList *list);
 
 /*
  * Parsing nodes.
@@ -26,12 +25,10 @@ enum {
   /* parse flags */
   ON_OPERATOR_LATER_USED = 1<<0,
   ON_MULTIPLE_OPERATORS = 1<<1,
-  ON_FIRST_IN_SCOPE = 1<<2,
-  ON_LAST_IN_SCOPE = 1<<3,
-  ON_OPERATOR_NESTED = 1<<4,
-  ON_LABEL_ALLOC = 1<<5,
-  ON_TIME_DEFAULT = 1<<6,
-  ON_SILENCE_ADDED = 1<<7,
+  ON_OPERATOR_NESTED = 1<<2,
+  ON_LABEL_ALLOC = 1<<3,
+  ON_TIME_DEFAULT = 1<<4,
+  ON_SILENCE_ADDED = 1<<5,
 };
 
 typedef struct SGSOperatorNode {
@@ -63,7 +60,7 @@ typedef struct SGSEventNode {
   struct SGSEventNode *groupfrom;
   struct SGSEventNode *composite;
   int wait_ms;
-  SGSNodeList operators; /* operator linkage graph */
+  SGSNodeList operators; /* operators included in event */
   uint scopeid;
   uint en_flags;
   /* voice parameters */
@@ -73,6 +70,7 @@ typedef struct SGSEventNode {
   uchar voice_attr;
   float panning;
   SGSProgramValit valitpanning;
+  SGSNodeList graph;
 } SGSEventNode;
 
 void SGS_event_node_destroy(SGSEventNode *e);
