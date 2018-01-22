@@ -12,25 +12,34 @@ They, along with their timing relative to each other, are the main objects
 described by the script syntax.
 
 When specified - or later referenced - operators are optionally followed by
-arguments for their parameters. Other kinds of modifiers also exist that affect
+arguments for its parameters. Other kinds of modifiers also exist that affect
 operators but having other syntactical rules; such are used to affect the
 relative timing of operators and their changes. These changes - including
-setting the initial state - can be seen as events, each having its specific
+setting the initial state - are grouped into "steps", each having its specific
 target as well as location in time.
 
-A new event terminates the previous one. On the topmost script scope, newlines
-also terminate events; within sub-scopes, however, newlines may be placed
-freely. This means that multiple events may be placed on one line - and that,
-in short, it is always possible to omit newlines, but not to insert them
-everywhere.
+a new step terminating the previous one. (on the topmost script
+scope, newlines also terminate steps; scope nesting - see below - allows
+exceptions. this allows multiple steps on one line; in short, it is always
+possible to omit newlines, but not to insert them everywhere)
 
-Whitespace is not allowed within multi-character names, keywords or numbers.
-Apart from this, spaces and tabs may be freely placed, or - not recommended -
-omitted.
+Whitespace is not allowed within multi-character names or keywords, such as
+sin, tri. Nor is it allowed within numbers. Apart from this, spaces and tabs
+may be freely placed, or - not recommended - omitted.
 
-When a numerical expression is given, specifying it within parentheses will
-make the syntax freer, allowing whitespace to be freely placed; outside
-parentheses, whitespace will mark the end of the expression.
+When a numerical expression is given for a parameter, specifying it within
+parentheses will make the syntax freer, allowing whitespace to be freely
+placed; outside parentheses, whitespace will terminate the expression.
+
+< and > allow nesting of scope; the scope prior to the < returns upon the >.
+For the top-level scope, each line is considered a sub-scope, so the present
+list of steps will end with it. Nesting scopes with < and >, the sub-scope is
+not line-dependent, and the list of steps will continue for the remainder of
+the scope. Individual steps are still line-bound, though the last one
+preceding a < on its line will be returned to after the >.
+
+Parameters with nesting use { and } instead, differentiating the two, though
+such nesting also allows newlines.
 
 The following main keywords - and sub-keywords - are supported:
 
@@ -61,7 +70,7 @@ Osin, Osrs, Otri, Osqr, Osaw:
 		whenever a carrier they are linked to does. Infinite duration
 		is only supported for nested operators, all scripts having
 		finite duration.
-			For a composite event, the first part is given the
+			For a composite step, the first part is given the
 		S default value if none set. The following parts will each in
 		turn be given the value of the preceding part if not explicitly
 		set - with the exception for nested operators of the last
@@ -124,11 +133,11 @@ P:
 			Gradual value adjustment also supported; see section.
 
 The following other modifiers are supported:
-	\	Delay the next event and all following ones, time in seconds.
+	\	Delay next step and all following ones, time in seconds.
 		Alternatively, \t will delay by the time of the previous
-		event.
+		step.
 	|	Add (independently of \) just enough delay to make the next
-		event(s) begin at the expiration of all that preceeds it,
+		step(s) begin at the expiration of all that preceeds it,
 		though \ may further delay it.
 
 Gradual value adjustment:
@@ -143,24 +152,15 @@ Gradual value adjustment:
 		definite, finite timing, whereas a real exponential
 		calculation wouldn't)
 
+Composite steps:
+	Writing a ";" (on new line or same line) after a step will allow
+	specifying new arguments to apply at the end of the previous duration;
+	this can be repeated.
+		This makes it possible to write a sequence of steps as if a
+	single "composite step".
+
 Labels and referencing:
 	Any operator when specified may be prefixed by "'label " in order to
 	define a label for it, where the label is anything followed by
 	whitespace; thereafter the label may be referenced as ":label",
 	allowing future changes to be placed at any later point in the script.
-
-Parameters and operator binding:
-	When specifying or referencing operators within {} brackets, any
-	arguments that follow the closing '}' will be bound to and apply to all
-	of them.
-		Significantly, this allows multiple carriers (given within the
-	{}) to be linked to the same modulator(s), whether for FM, PM, or AM.
-
-Composite events:
-	Writing a ';' (on a new line or the same line) after an event will
-	allow specifying new arguments to apply at the end of the previous
-	duration; this can be repeated.
-		This makes it possible to write a sequence of events as if a
-	single "composite event", not having to insert delays that affect the
-	timing of events later written, thus increasing the flexibility of how
-	changes to operators may be positioned in a script.

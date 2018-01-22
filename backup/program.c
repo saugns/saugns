@@ -230,18 +230,12 @@ static SGSProgram* build(SGSParser *o) {
   putchar('\n');
   printf("events: %d\tvoices: %d\toperators: %d\n", prg->eventc, prg->voicec, o->operatorc);
   for (id = 0; id < prg->eventc; ++id) {
-    const SGSProgramOperatorData *oop;
     oe = &oevents[id];
-    oop = oe->operator;
     printf("\\%d \tEV %d \t(VI %d)", oe->wait_ms, id, oe->voiceid);
     if (oe->voice)
       printf("\n\tvo %d", oe->voiceid);
-    if (oop) {
-      if (oop->time_ms == SGS_TIME_INF)
-        printf("\n\top %d \tt=INF \tf=%.f", oop->operatorid, oop->freq);
-      else
-        printf("\n\top %d \tt=%d \tf=%.f", oop->operatorid, oop->time_ms, oop->freq);
-    }
+    if (oe->operator)
+      printf("\n\top %d \tt=%d \tf=%.f", oe->operator->operatorid, oe->operator->time_ms, oe->operator->freq);
     putchar('\n');
   }
 #endif

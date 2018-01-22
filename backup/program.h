@@ -36,11 +36,6 @@ enum {
   SGS_WAVE_SAW
 };
 
-/* special operator timing values */
-enum {
-  SGS_TIME_INF = -1 /* used for nested operators */
-};
-
 /* operator atttributes */
 enum {
   SGS_ATTR_FREQRATIO = 1<<1,
