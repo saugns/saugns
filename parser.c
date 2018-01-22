@@ -145,17 +145,18 @@ enum {
   FMODS = 1<<2,
   AMODS = 1<<3,
   /* other flags */
-  EVENT_LINKED = 1<<4,
-  PARENT_OLD = 1<<5,
-  ADD_WAIT_DURATION = 1<<6,
-  SILENCE_ADDED = 1<<7
+  VOICE_LATER_USED = 1<<4,
+  OPERATOR_LATER_USED = 1<<5,
+  EVENT_LINKED = 1<<6,
+  PARENT_OLD = 1<<7,
+  ADD_WAIT_DURATION = 1<<8,
+  SILENCE_ADDED = 1<<9
 };
 
 #define DEFAULT_TIME (-1)
 
 typedef struct VoiceData {
   struct EventNode *voice_prev; /* preceding event for same voice */
-  uint voiceid;
   /* parameters */
   uchar attr;
   float panning;
@@ -167,7 +168,6 @@ typedef struct VoiceData {
 typedef struct OperatorData {
   struct EventNode *operator_prev; /* preceding event for same operator */
   uint operatorid;
-  uint voiceid;
   /* parameters */
   uchar attr;
   uchar wave;
@@ -183,7 +183,6 @@ typedef struct EventNode {
   struct EventNode *groupfrom;
   struct EventNode *composite;
   int wait_ms;
-  uint id;
   uint params;
   uint nestlevel;
   uint scopeid;
@@ -205,9 +204,7 @@ typedef struct SGSParser {
   /* node state */
   EventNode *events;
   EventNode *last_event;
-  uint eventc;
   uint operatorc;
-  uint voicec;
   /* settings/ops */
   float ampmult;
   int def_time_ms;
@@ -338,7 +335,6 @@ static void init_event(SGSParser *o, NodeData *nd, EventNode *previous,
   e = nd->event;
   e->wait_ms = nd->next_wait_ms;
   nd->next_wait_ms = 0;
-  e->id = o->eventc++;
   e->nestlevel = o->nestlevel;
   e->scopeid = nd->scopeid;
   e->voice = &nd->voice;
@@ -351,21 +347,21 @@ static void init_event(SGSParser *o, NodeData *nd, EventNode *previous,
       setvo = 1;
       *vd = *pve->voice;
       vd->voice_prev = pve;
+      pve->parse_flags |= VOICE_LATER_USED;
     }
     if (previous->operator) {
       setop = 1;
       *od = *previous->operator;
       od->silence_ms = 0;
       od->operator_prev = previous;
+      previous->parse_flags |= OPERATOR_LATER_USED;
     }
   }
   if (!setvo) { /* set defaults */
-    vd->voiceid = o->voicec++;
     vd->panning = 0.5f; /* center */
   }
   if (!setop) { /* set defaults */
     od->operatorid = o->operatorc++;
-    od->voiceid = vd->voiceid;
     od->amp = 1.0f;
     if (e->nestlevel == 0) {
       od->time_ms = DEFAULT_TIME; /* dynamically fitted, or set to default */
@@ -424,8 +420,6 @@ static void end_voice(SGSParser *o, NodeData *nd) {
     *e->voice = *vd;
   } else {
     e->voice = 0;
-    if (!vd->voice_prev)
-      --o->voicec;
   }
   memset(&nd->voice, 0, sizeof(VoiceData));
 }
@@ -1299,10 +1293,13 @@ static void group_events(EventNode *to, int def_time_ms) {
     until->wait_ms += wait;
 }
 
-static void time_event(EventNode *e, int def_time_ms) {
+static void time_events(EventNode *e, int def_time_ms) {
   OperatorData *od = e->operator;
   VoiceData *vd = e->voice;
-  /* Fill in blank valit durations */
+  /*
+   * Fill in blank valit durations, handle silence as well as the case of
+   * adding present event duration to wait time of next event.
+   */
   if (vd) {
     if (vd->valitpanning.time_ms < 0)
       vd->valitpanning.time_ms = def_time_ms;
@@ -1321,6 +1318,35 @@ static void time_event(EventNode *e, int def_time_ms) {
     if (e->next)
       ((EventNode*)e->next)->wait_ms += od->time_ms;
     e->parse_flags &= ~ADD_WAIT_DURATION;
+  }
+  /*
+   * Timing for composites - done before event list flattened.
+   */
+  if (e->composite) {
+    EventNode *ce = e->composite, *ce_prev = e;
+    EventNode *se = e->next;
+    OperatorData *ceod = ce->operator;
+    if (ceod->time_ms < 0)
+      ceod->time_ms = def_time_ms;
+    for (;;) {
+      OperatorData *ceod_prev = ce_prev->operator;
+      if (ce->wait_ms) { /* Simulate delay with silence */
+        ceod->silence_ms += ce->wait_ms;
+        ce->params |= SGS_SILENCE;
+        if (se)
+          se->wait_ms += ce->wait_ms;
+        ce->wait_ms = 0;
+      }
+      ce->wait_ms += ceod_prev->time_ms;
+      if (ceod->time_ms < 0)
+        ceod->time_ms = ceod_prev->time_ms - ceod_prev->silence_ms;
+      time_events(ce, def_time_ms);
+      e->operator->time_ms += ceod->time_ms;
+      ce_prev = ce;
+      ce = ce->next;
+      if (!ce) break;
+      ceod = ce->operator;
+    }
   }
 }
 
@@ -1415,54 +1441,105 @@ static void build_adjcs(SGSProgramEvent *root, EventNode *root_in) {
   *(SGSProgramGraphAdjcs**)&root->operator->adjcs = adjcs;
 }
 
+typedef struct VoiceAlloc {
+  struct VoiceAllocData {
+    EventNode *last;
+    uint duration;
+  } *data;
+  uint voicec;
+  uint alloc;
+} VoiceAlloc;
+
+typedef struct VoiceAllocData VoiceAllocData;
+
+#define VOICE_ALLOC_INIT(va) do{ \
+  (va)->data = calloc(1, sizeof(VoiceAllocData)); \
+  (va)->voicec = 0; \
+  (va)->alloc = 1; \
+}while(0)
+
+#define VOICE_ALLOC_FINI(va) \
+  free((va)->data)
+
+/*
+ * Incremental voice allocation - allocate voice for event,
+ * returning voice id.
+ */
+static uint voice_alloc_inc(VoiceAlloc *va, EventNode *e) {
+  uint i, voice;
+  if (e->nestlevel > 0) {
+    return 0; /* FIXME */
+  }
+  if (e->voice) {
+    if (e->voice->voice_prev) {
+      EventNode *prev = e->voice->voice_prev;
+      for (voice = 0; voice < va->voicec; ++voice)
+        if (va->data[voice].last == prev) break;
+    } else {
+      for (voice = 0; voice < va->voicec; ++voice)
+        if (!(va->data[voice].last->parse_flags & VOICE_LATER_USED)) break;
+      /*
+       * If no unused voice found, allocate new one.
+       */
+      if (voice == va->voicec) {
+        ++va->voicec;
+        if (va->voicec > va->alloc) {
+          uint i = va->alloc;
+          va->alloc <<= 1;
+          va->data = realloc(va->data, va->alloc * sizeof(VoiceAllocData));
+          while (i < va->alloc) {
+            va->data[i].last = 0;
+            va->data[i].duration = 0;
+            ++i;
+          }
+        }
+      }
+    }
+  } else {
+    voice = va->voicec - 1;
+  }
+  va->data[voice].last = e;
+  return voice;
+}
+
+#define VOICE_ALLOC_COUNT(va) ((uint)((va)->voicec))
+
 static SGSProgram* build(SGSParser *o) {
+  VoiceAlloc va;
   SGSProgram *prg = o->prg;
   EventNode *e;
   SGSProgramEvent *oevents, *oe;
   uint id;
-  uint alloc = 0;
-  /* Pass #1 - perform timing adjustments */
-  for (e = o->events; e; e = e->next) {
-    time_event(e, o->def_time_ms);
-    /* Handle composites (flatten in next loop) */
-    if (e->composite) {
-      EventNode *ce = e->composite, *ce_prev = e;
-      EventNode *se = e->next;
-      OperatorData *ceod = ce->operator;
-      if (ceod->time_ms < 0)
-        ceod->time_ms = o->def_time_ms;
-      /* Timing for composites */
-      for (;;) {
-        OperatorData *ceod_prev = ce_prev->operator;
-        if (ce->wait_ms) { /* Simulate delay with silence */
-          ceod->silence_ms += ce->wait_ms;
-          ce->params |= SGS_SILENCE;
-          if (se)
-            se->wait_ms += ce->wait_ms;
-          ce->wait_ms = 0;
-        }
-        ce->wait_ms += ceod_prev->time_ms;
-        if (ceod->time_ms < 0)
-          ceod->time_ms = ceod_prev->time_ms - ceod_prev->silence_ms;
-        time_event(ce, o->def_time_ms);
-        e->operator->time_ms += ceod->time_ms;
-        ce_prev = ce;
-        ce = ce->next;
-        if (!ce) break;
-        ceod = ce->operator;
-      }
-    }
+  /* Pass #1 - perform timing adjustments, flatten list */
+  for (id = 0, e = o->events; e; ) {
+    EventNode *e_next = e->next;
+    time_events(e, o->def_time_ms);
     /* Time |-terminated sequences */
     if (e->groupfrom)
       group_events(e, o->def_time_ms);
+    /*
+     * Flatten composite events; inner loop ends when event after
+     * composite parts (ie. the original next event) is reached.
+     */
+    do {
+      if (e->composite)
+        flatten_events(e);
+      ++id;
+      e = e->next;
+    } while (e != e_next);
   }
-  /* Pass #2 - flatten list */
+  prg->eventc = id; /* use for event count */
+  oevents = malloc(sizeof(SGSProgramEvent) * prg->eventc);
+  /* Pass #2 - voice allocation */
+  VOICE_ALLOC_INIT(&va);
   for (id = 0, e = o->events; e; e = e->next) {
-    if (e->composite)
-      flatten_events(e);
-    e->id = id++;
+    oe = &oevents[id];
+    oe->voiceid = voice_alloc_inc(&va, e);
+    ++id;
   }
-  /* Pass #3 - produce output */
+  prg->voicec = VOICE_ALLOC_COUNT(&va);
+  VOICE_ALLOC_FINI(&va);
+  /* Pass #3 - copy parameter data, cleanup */
   for (id = 0, e = o->events; e; ) {
     EventNode *e_next = e->next;
     OperatorData *od = e->operator;
@@ -1470,17 +1547,11 @@ static SGSProgram* build(SGSParser *o) {
     VoiceData *vd = e->voice;
     SGSProgramVoiceData *ovd;
     /* Add to final output list */
-    if (id >= alloc) {
-      if (!alloc) alloc = 1;
-      alloc <<= 1;
-      oevents = realloc(oevents, sizeof(SGSProgramEvent) * alloc);
-    }
     oe = &oevents[id];
     oe->wait_ms = e->wait_ms;
     oe->params = e->params;
     if (vd) {
       ovd = calloc(1, sizeof(SGSProgramVoiceData));
-      oe->voiceid = vd->voiceid;
       oe->voice = ovd;
       ovd->attr = vd->attr;
       ovd->panning = vd->panning;
@@ -1493,7 +1564,6 @@ static SGSProgram* build(SGSParser *o) {
     }
     if (od) {
       ood = calloc(1, sizeof(SGSProgramOperatorData));
-      oe->voiceid = od->voiceid;
       oe->operator = ood;
       ood->operatorid = od->operatorid;
       ood->adjcs = 0;
@@ -1516,19 +1586,17 @@ static SGSProgram* build(SGSParser *o) {
       }
       free(od);
     }
-    ++id;
     free(e);
     e = e_next;
+    ++id;
   }
   *(SGSProgramEvent**)&prg->events = oevents;
-  prg->eventc = id;
   prg->operatorc = o->operatorc;
-  prg->voicec = o->voicec;
 #if 1
   /* Debug printing */
   oe = oevents;
   putchar('\n');
-  printf("events: %d\tvoices: %d\toperators: %d\n", prg->eventc, o->voicec, o->operatorc);
+  printf("events: %d\tvoices: %d\toperators: %d\n", prg->eventc, prg->voicec, o->operatorc);
   for (id = 0; id < prg->eventc; ++id) {
     oe = &oevents[id];
     printf("\\%d \tEV %d", oe->wait_ms, id);
