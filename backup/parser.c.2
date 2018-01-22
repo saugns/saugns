@@ -285,14 +285,10 @@ static uchar read_num(SGSParser *o, float (*read_symbol)(SGSParser *o),
   return 1;
 }
 
-/*
- * Common warning printing function for script errors; requires that o->c
- * is set to the character where the error was detected.
- */
-static void warning(SGSParser *o, const char *str) {
-  char buf[4] = {'\'', o->c, '\'', 0};
+static void warning(SGSParser *o, const char *s, char c) {
+  char buf[4] = {'\'', c, '\'', 0};
   printf("warning: %s [line %d, at %s] - %s\n", o->fn, o->line,
-         (o->c == EOF ? "EOF" : buf), str);
+         (c == EOF ? "EOF" : buf), s);
 }
 #define WARN_INVALID "invalid character"
 
@@ -344,35 +340,35 @@ static float read_note(SGSParser *o) {
     }
   };
   float freq;
-  o->c = getc(o->f);
+  char c = getc(o->f);
   int octave;
   int semitone = 1, note;
   int subnote = -1;
-  if (o->c >= 'a' && o->c <= 'g') {
-    subnote = o->c - 'c';
+  if (c >= 'a' && c <= 'g') {
+    subnote = c - 'c';
     if (subnote < 0) /* a, b */
       subnote += 7;
-    o->c = getc(o->f);
+    c = getc(o->f);
   }
-  if (o->c < 'A' || o->c > 'G') {
-    warning(o, "invalid note specified - should be C, D, E, F, G, A or B");
+  if (c < 'A' || c > 'G') {
+    warning(o, "invalid note specified - should be C, D, E, F, G, A or B", c);
     return NAN;
   }
-  note = o->c - 'C';
+  note = c - 'C';
   if (note < 0) /* A, B */
     note += 7;
-  o->c = getc(o->f);
-  if (o->c == 's')
+  c = getc(o->f);
+  if (c == 's')
     semitone = 2;
-  else if (o->c == 'f')
+  else if (c == 'f')
     semitone = 0;
   else
-    ungetc(o->c, o->f);
+    ungetc(c, o->f);
   octave = getinum(o->f);
   if (octave < 0) /* none given, default to 4 */
     octave = 4;
   else if (octave >= OCTAVES) {
-    warning(o, "invalid octave specified for note - valid range 0-10");
+    warning(o, "invalid octave specified for note - valid range 0-10", c);
     octave = 4;
   }
   freq = o->def_A4tuning * (3.f/5.f); /* get C4 */
@@ -391,26 +387,26 @@ static uchar read_label(SGSParser *o, LabelBuf label, char op) {
   char nolabel_msg[] = "ignoring ? without label name";
   nolabel_msg[9] = op; /* replace ? */
   for (;;) {
-    o->c = getc(o->f);
-    if (IS_WHITESPACE(o->c) || o->c == EOF) {
-      ungetc(o->c, o->f);
+    char c = getc(o->f);
+    if (IS_WHITESPACE(c) || c == EOF) {
+      ungetc(c, o->f);
       if (i == 0)
-        warning(o, nolabel_msg);
+        warning(o, nolabel_msg, c);
       else END_OF_LABEL: {
         label[i] = '\0';
         return 1;
       }
       break;
     } else if (i == LABEL_LEN) {
-      warning(o, "ignoring label name from "LABEL_LEN_A"th digit");
+      warning(o, "ignoring label name from "LABEL_LEN_A"th digit", c);
       goto END_OF_LABEL;
     }
-    label[i++] = o->c;
+    label[i++] = c;
   }
   return 0;
 }
 
-static int read_wavetype(SGSParser *o) {
+static int read_wavetype(SGSParser *o, char lastc) {
   static const char *const wavetypes[] = {
     "sin",
     "srs",
@@ -421,7 +417,7 @@ static int read_wavetype(SGSParser *o) {
   };
   int wave = strfind(o->f, wavetypes);
   if (wave < 0)
-    warning(o, "invalid wave type follows; sin, sqr, tri, saw available");
+    warning(o, "invalid wave type follows; sin, sqr, tri, saw available", lastc);
   return wave;
 }
 
@@ -454,7 +450,7 @@ static uchar read_valit(SGSParser *o, float (*read_symbol)(SGSParser *o),
       float time;
       if (read_num(o, 0, &time)) {
         if (time < 0.f) {
-          warning(o, "ignoring 't' with sub-zero time");
+          warning(o, "ignoring 't' with sub-zero time", c);
           break;
         }
         SET_I2FV(vi->time_ms, time*1000.f);
@@ -468,26 +464,26 @@ static uchar read_valit(SGSParser *o, float (*read_symbol)(SGSParser *o),
       goto RETURN;
     default:
     INVALID:
-      warning(o, WARN_INVALID);
+      warning(o, WARN_INVALID, c);
       break;
     }
   }
-  warning(o, "end of file without closing ']'");
+  warning(o, "end of file without closing ']'", c);
 RETURN:
   if (!goal) {
-    warning(o, "ignoring gradual parameter change with no target value");
+    warning(o, "ignoring gradual parameter change with no target value", c);
     vi->type = SGS_VALIT_NONE;
     return 0;
   }
   return 1;
 }
 
-static uchar read_waittime(NodeScope *ns) {
+static uchar read_waittime(NodeScope *ns, char c) {
   SGSParser *o = ns->o;
   /* FIXME: ADD_WAIT_DURATION */
   if (testgetc('t', o->f)) {
     if (!ns->last_operator) {
-      warning(o, "add wait for last duration before any parts given");
+      warning(o, "add wait for last duration before any parts given", c);
       return 0;
     }
     ns->last_event->en_flags |= EN_ADD_WAIT_DURATION;
@@ -496,7 +492,7 @@ static uchar read_waittime(NodeScope *ns) {
     int wait_ms;
     read_num(o, 0, &wait);
     if (wait < 0.f) {
-      warning(o, "ignoring '\\' with sub-zero time");
+      warning(o, "ignoring '\\' with sub-zero time", c);
       return 0;
     }
     SET_I2FV(wait_ms, wait*1000.f);
@@ -655,7 +651,7 @@ static void begin_event(NodeScope *ns, uchar linktype, uchar composite) {
   ns->next_wait_ms = 0;
   e->scopeid = ns->scopeid;
   if (ns->on_prev) {
-    pve = ns->on_prev->event;
+    pve = (linktype) ? e : ns->on_prev->event;
     if (pve) {
       setvo = 1;
       e->voice_prev = pve;
@@ -754,27 +750,27 @@ static void begin_operator(NodeScope *ns, uchar linktype, uchar composite) {
     SGS_node_list_add(&e->operators, op);
     e->operators.type = linktype;
   } else {
-    NodeScope *scope_parent = ns;
-    SGSOperatorNode *op_parent;
-    SGSNodeList *list = 0;
-    do {
-      scope_parent = scope_parent->parent;
-    } while (!scope_parent->operator);
-    op_parent = scope_parent->operator;
-    switch (linktype) {
-    case NL_FMODS:
-      list = &op_parent->fmods;
-      break;
-    case NL_PMODS:
-      list = &op_parent->pmods;
-      break;
-    case NL_AMODS:
-      list = &op_parent->amods;
-      break;
+    SGSOperatorNode *parent;
+    NodeScope *target_ns = ns;
+    while (target_ns->scope != SCOPE_NEST) target_ns = target_ns->parent;
+    target_ns = target_ns->parent;
+    for (parent = target_ns->bind_from; parent; parent = parent->bind_next) {
+      SGSNodeList *list = 0;
+      switch (linktype) {
+      case NL_FMODS:
+        list = &parent->fmods;
+        break;
+      case NL_PMODS:
+        list = &parent->pmods;
+        break;
+      case NL_AMODS:
+        list = &parent->amods;
+        break;
+      }
+      parent->operator_params |= SGS_ADJCS;
+      SGS_node_list_add(list, op);
+      list->type = linktype;
     }
-    op_parent->operator_params |= SGS_ADJCS;
-    SGS_node_list_add(list, op);
-    list->type = linktype;
   }
   /*
    * Assign label. If no new label but previous node (for a non-composite)
@@ -869,7 +865,7 @@ static void end_scope(NodeScope *ns) {
   }
   if (ns->set_label) {
     free((char*)ns->set_label);
-    warning(o, "ignoring label assignment without operator");
+    warning(o, "ignoring label assignment without operator", o->c);
   }
 }
 
@@ -894,7 +890,7 @@ static uchar parse_settings(NodeScope *ns) {
       float freq;
       read_num(o, 0, &freq);
       if (freq < 1.f) {
-        warning(o, "ignoring tuning frequency smaller than 1.0");
+        warning(o, "ignoring tuning frequency smaller than 1.0", c);
         break;
       }
       o->def_A4tuning = freq;
@@ -907,7 +903,7 @@ static uchar parse_settings(NodeScope *ns) {
       float time;
       read_num(o, 0, &time);
       if (time < 0.f) {
-        warning(o, "ignoring 't' with sub-zero time");
+        warning(o, "ignoring 't' with sub-zero time", c);
         break;
       }
       SET_I2FV(o->def_time_ms, time*1000.f);
@@ -945,7 +941,7 @@ static uchar parse_step(NodeScope *ns) {
       }
       break;
     case '\\':
-      if (read_waittime(ns)) {
+      if (read_waittime(ns, c)) {
         begin_node(ns, ns->operator, NL_REFER, 0);
       }
       break;
@@ -954,13 +950,13 @@ static uchar parse_step(NodeScope *ns) {
           ns->linktype == NL_FMODS)
         goto UNKNOWN;
       if (testgetc('!', o->f)) {
-        if (!testc('<', o->f)) {
+        if (!testc('{', o->f)) {
           read_num(o, 0, &op->dynamp);
         }
-        if (testgetc('<', o->f)) {
+        if (testgetc('{', o->f)) {
           if (op->operator_params & SGS_ADJCS)
             SGS_node_list_clear(&op->amods);
-          parse_level(o, ns, NL_AMODS, SCOPE_NEST);
+          parse_level(o, ns, NL_AMODS, '{');
         }
       } else if (testgetc('[', o->f)) {
         if (read_valit(o, 0, &op->valitamp))
@@ -974,15 +970,15 @@ static uchar parse_step(NodeScope *ns) {
       break;
     case 'f':
       if (testgetc('!', o->f)) {
-        if (!testc('<', o->f)) {
+        if (!testc('{', o->f)) {
           if (read_num(o, 0, &op->dynfreq)) {
             op->attr &= ~SGS_ATTR_DYNFREQRATIO;
           }
         }
-        if (testgetc('<', o->f)) {
+        if (testgetc('{', o->f)) {
           if (op->operator_params & SGS_ADJCS)
             SGS_node_list_clear(&op->fmods);
-          parse_level(o, ns, NL_FMODS, SCOPE_NEST);
+          parse_level(o, ns, NL_FMODS, '{');
         }
       } else if (testgetc('[', o->f)) {
         if (read_valit(o, read_note, &op->valitfreq)) {
@@ -998,14 +994,7 @@ static uchar parse_step(NodeScope *ns) {
       }
       break;
     case 'p':
-      if (testgetc('!', o->f)) {
-        if (testgetc('<', o->f)) {
-          if (op->operator_params & SGS_ADJCS)
-            SGS_node_list_clear(&op->pmods);
-          parse_level(o, ns, NL_PMODS, SCOPE_NEST);
-        } else
-          goto UNKNOWN;
-      } else if (read_num(o, 0, &op->phase)) {
+      if (read_num(o, 0, &op->phase)) {
         op->phase = fmod(op->phase, 1.f);
         if (op->phase < 0.f)
           op->phase += 1.f;
@@ -1016,16 +1005,16 @@ static uchar parse_step(NodeScope *ns) {
       if (!(ns->ns_flags & NS_NESTED_SCOPE))
         goto UNKNOWN;
       if (testgetc('!', o->f)) {
-        if (!testc('<', o->f)) {
+        if (!testc('{', o->f)) {
           if (read_num(o, 0, &op->dynfreq)) {
             op->dynfreq = 1.f / op->dynfreq;
             op->attr |= SGS_ATTR_DYNFREQRATIO;
           }
         }
-        if (testgetc('<', o->f)) {
+        if (testgetc('{', o->f)) {
           if (op->operator_params & SGS_ADJCS)
             SGS_node_list_clear(&op->fmods);
-          parse_level(o, ns, NL_FMODS, SCOPE_NEST);
+          parse_level(o, ns, NL_FMODS, '{');
         }
       } else if (testgetc('[', o->f)) {
         if (read_valit(o, read_note, &op->valitfreq)) {
@@ -1046,7 +1035,7 @@ static uchar parse_step(NodeScope *ns) {
       float silence;
       read_num(o, 0, &silence);
       if (silence < 0.f) {
-        warning(o, "ignoring 's' with sub-zero time");
+        warning(o, "ignoring 's' with sub-zero time", c);
         break;
       }
       SET_I2FV(op->silence_ms, silence*1000.f);
@@ -1058,7 +1047,7 @@ static uchar parse_step(NodeScope *ns) {
         float time;
         read_num(o, 0, &time);
         if (time < 0.f) {
-          warning(o, "ignoring 't' with sub-zero time");
+          warning(o, "ignoring 't' with sub-zero time", c);
           break;
         }
         SET_I2FV(op->time_ms, time*1000.f);
@@ -1066,7 +1055,7 @@ static uchar parse_step(NodeScope *ns) {
       op->operator_params |= SGS_TIME;
       break;
     case 'w': {
-      int wave = read_wavetype(o);
+      int wave = read_wavetype(o, c);
       if (wave < 0)
         break;
       op->wave = wave;
@@ -1114,9 +1103,34 @@ static uchar parse_level(SGSParser *o, NodeScope *parentns,
         ns.first_operator = 0;
       }
       break;
+    case '-': {
+      SGSOperatorNode *first, *last;
+      uchar ret;
+      end_operator(&ns);
+      first = ns.first_operator;
+      last = ns.last_operator;
+      if (!first) {
+        if (o->calllevel == 1) NO_CARRIER: {
+          warning(o, "no preceding carrier operators", c);
+          break;
+        }
+        first = parentns->first_operator;
+        if (!last)
+          goto NO_CARRIER;
+      }
+      if (first && first != last) {
+        warning(o, "multiple carriers not yet supported", c);
+        break;
+      }
+      if (last->operator_params & SGS_ADJCS)
+        SGS_node_list_clear(&last->pmods);
+      ret = parse_level(o, &ns, NL_PMODS, SCOPE_SAME);
+      if (ret)
+        goto RETURN;
+      break; }
     case ':':
       if (ns.set_label) {
-        warning(o, "ignoring label assignment to label reference");
+        warning(o, "ignoring label assignment to label reference", c);
         label_next_node(&ns, NULL);
       }
       ns.ns_flags &= ~NS_SET_SETTINGS;
@@ -1124,7 +1138,7 @@ static uchar parse_level(SGSParser *o, NodeScope *parentns,
       if (read_label(o, label, ':')) {
         SGSOperatorNode *ref = SGS_symtab_get(o->st, label);
         if (!ref)
-          warning(o, "ignoring reference to undefined label");
+          warning(o, "ignoring reference to undefined label", c);
         else {
           begin_node(&ns, ref, NL_REFER, 0);
           flags = parse_step(&ns) ? (HANDLE_DEFER | DEFERRED_STEP) : 0;
@@ -1146,15 +1160,15 @@ static uchar parse_level(SGSParser *o, NodeScope *parentns,
         goto RETURN;
       break;
     case '>':
-      if (ns.scope != SCOPE_NEST) {
-        warning(o, "closing '>' without opening '<'");
+      if (ns.scope != '<') {
+        warning(o, "closing '>' without opening '<'", c);
         break;
       }
       end_operator(&ns);
       endscope = 1;
       goto RETURN;
     case 'O': {
-      int wave = read_wavetype(o);
+      int wave = read_wavetype(o, c);
       if (wave < 0)
         break;
       begin_node(&ns, 0, ns.linktype, 0);
@@ -1170,22 +1184,19 @@ static uchar parse_level(SGSParser *o, NodeScope *parentns,
       if (ns.ns_flags & NS_SET_SETTINGS ||
           (ns.ns_flags & NS_NESTED_SCOPE && ns.event))
         goto INVALID;
-      read_waittime(&ns);
+      read_waittime(&ns, c);
       break;
     case '\'':
       if (ns.set_label) {
-        warning(o, "ignoring label assignment to label assignment");
+        warning(o, "ignoring label assignment to label assignment", c);
         break;
       }
       read_label(o, label, '\'');
       label_next_node(&ns, label);
       break;
-    case '{': /* FIXME: newest design - detail, put in place */
-      end_operator(&ns);
-      if (parse_level(o, &ns, ns.linktype, SCOPE_BIND))
-        goto RETURN;
-      if (ns.bind_from)
-        flags = parse_step(&ns) ? (HANDLE_DEFER | DEFERRED_STEP) : 0;
+    case '{':
+      /* is always got elsewhere before a nesting call to this function */
+      warning(o, "opening curly brace out of place", c);
       break;
     case '|':
       if (ns.ns_flags & NS_SET_SETTINGS ||
@@ -1196,7 +1207,7 @@ static uchar parse_level(SGSParser *o, NodeScope *parentns,
         goto RETURN;
       }
       if (!ns.event) {
-        warning(o, "end of sequence before any parts given");
+        warning(o, "end of sequence before any parts given", c);
         break;
       }
       if (ns.group) {
@@ -1207,15 +1218,15 @@ static uchar parse_level(SGSParser *o, NodeScope *parentns,
       leave_current_node(&ns);
       break;
     case '}':
-      if (ns.scope != SCOPE_BIND) {
-        warning(o, "closing '}' without opening '{'");
+      if (ns.scope != '{') {
+        warning(o, "closing '}' without opening '{'", c);
         break;
       }
       endscope = 1;
       goto RETURN;
     default:
     INVALID:
-      warning(o, WARN_INVALID);
+      warning(o, WARN_INVALID, c);
       break;
     }
     /* Return to sub-parsing routines. */
@@ -1231,10 +1242,10 @@ static uchar parse_level(SGSParser *o, NodeScope *parentns,
     }
   }
 FINISH:
-  if (newscope == SCOPE_NEST)
-    warning(o, "end of file without closing '>'s");
-  if (newscope == SCOPE_BIND)
-    warning(o, "end of file without closing '}'s");
+  if (newscope == '<')
+    warning(o, "end of file without closing '>'s", c);
+  if (newscope == '{')
+    warning(o, "end of file without closing '}'s", c);
 RETURN:
   end_scope(&ns);
   --o->calllevel;

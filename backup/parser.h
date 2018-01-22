@@ -25,11 +25,8 @@ void SGS_node_list_rcleanup(SGSNodeList *list);
 enum {
   /* parse flags */
   ON_OPERATOR_LATER_USED = 1<<0,
-  ON_MULTIPLE_OPERATORS = 1<<1,
-  ON_FIRST_IN_SCOPE = 1<<2,
-  ON_LAST_IN_SCOPE = 1<<3,
-  ON_LABEL_ALLOC = 1<<4,
-  ON_SILENCE_ADDED = 1<<5,
+  ON_OPERATOR_LABEL_ALLOC = 1<<1,
+  ON_SILENCE_ADDED = 1<<2,
 };
 
 typedef struct SGSOperatorNode {
@@ -83,7 +80,7 @@ typedef struct SGSParser {
   uint line;
   uint calllevel;
   uint scopeid;
-  char c, nextc;
+  char nextc;
   /* node state */
   SGSEventNode *events;
   SGSEventNode *last_event;

@@ -655,7 +655,7 @@ static void begin_event(NodeScope *ns, uchar linktype, uchar composite) {
   ns->next_wait_ms = 0;
   e->scopeid = ns->scopeid;
   if (ns->on_prev) {
-    pve = ns->on_prev->event;
+    pve = (linktype) ? e : ns->on_prev->event;
     if (pve) {
       setvo = 1;
       e->voice_prev = pve;
@@ -754,27 +754,27 @@ static void begin_operator(NodeScope *ns, uchar linktype, uchar composite) {
     SGS_node_list_add(&e->operators, op);
     e->operators.type = linktype;
   } else {
-    NodeScope *scope_parent = ns;
-    SGSOperatorNode *op_parent;
-    SGSNodeList *list = 0;
-    do {
-      scope_parent = scope_parent->parent;
-    } while (!scope_parent->operator);
-    op_parent = scope_parent->operator;
-    switch (linktype) {
-    case NL_FMODS:
-      list = &op_parent->fmods;
-      break;
-    case NL_PMODS:
-      list = &op_parent->pmods;
-      break;
-    case NL_AMODS:
-      list = &op_parent->amods;
-      break;
+    SGSOperatorNode *parent;
+    NodeScope *target_ns = ns;
+    while (target_ns->scope != SCOPE_NEST) target_ns = target_ns->parent;
+    target_ns = target_ns->parent;
+    for (parent = target_ns->bind_from; parent; parent = parent->bind_next) {
+      SGSNodeList *list = 0;
+      switch (linktype) {
+      case NL_FMODS:
+        list = &parent->fmods;
+        break;
+      case NL_PMODS:
+        list = &parent->pmods;
+        break;
+      case NL_AMODS:
+        list = &parent->amods;
+        break;
+      }
+      parent->operator_params |= SGS_ADJCS;
+      SGS_node_list_add(list, op);
+      list->type = linktype;
     }
-    op_parent->operator_params |= SGS_ADJCS;
-    SGS_node_list_add(list, op);
-    list->type = linktype;
   }
   /*
    * Assign label. If no new label but previous node (for a non-composite)
@@ -954,13 +954,13 @@ static uchar parse_step(NodeScope *ns) {
           ns->linktype == NL_FMODS)
         goto UNKNOWN;
       if (testgetc('!', o->f)) {
-        if (!testc('<', o->f)) {
+        if (!testc('{', o->f)) {
           read_num(o, 0, &op->dynamp);
         }
-        if (testgetc('<', o->f)) {
+        if (testgetc('{', o->f)) {
           if (op->operator_params & SGS_ADJCS)
             SGS_node_list_clear(&op->amods);
-          parse_level(o, ns, NL_AMODS, SCOPE_NEST);
+          parse_level(o, ns, NL_AMODS, '{');
         }
       } else if (testgetc('[', o->f)) {
         if (read_valit(o, 0, &op->valitamp))
@@ -974,15 +974,15 @@ static uchar parse_step(NodeScope *ns) {
       break;
     case 'f':
       if (testgetc('!', o->f)) {
-        if (!testc('<', o->f)) {
+        if (!testc('{', o->f)) {
           if (read_num(o, 0, &op->dynfreq)) {
             op->attr &= ~SGS_ATTR_DYNFREQRATIO;
           }
         }
-        if (testgetc('<', o->f)) {
+        if (testgetc('{', o->f)) {
           if (op->operator_params & SGS_ADJCS)
             SGS_node_list_clear(&op->fmods);
-          parse_level(o, ns, NL_FMODS, SCOPE_NEST);
+          parse_level(o, ns, NL_FMODS, '{');
         }
       } else if (testgetc('[', o->f)) {
         if (read_valit(o, read_note, &op->valitfreq)) {
@@ -998,14 +998,7 @@ static uchar parse_step(NodeScope *ns) {
       }
       break;
     case 'p':
-      if (testgetc('!', o->f)) {
-        if (testgetc('<', o->f)) {
-          if (op->operator_params & SGS_ADJCS)
-            SGS_node_list_clear(&op->pmods);
-          parse_level(o, ns, NL_PMODS, SCOPE_NEST);
-        } else
-          goto UNKNOWN;
-      } else if (read_num(o, 0, &op->phase)) {
+      if (read_num(o, 0, &op->phase)) {
         op->phase = fmod(op->phase, 1.f);
         if (op->phase < 0.f)
           op->phase += 1.f;
@@ -1016,16 +1009,16 @@ static uchar parse_step(NodeScope *ns) {
       if (!(ns->ns_flags & NS_NESTED_SCOPE))
         goto UNKNOWN;
       if (testgetc('!', o->f)) {
-        if (!testc('<', o->f)) {
+        if (!testc('{', o->f)) {
           if (read_num(o, 0, &op->dynfreq)) {
             op->dynfreq = 1.f / op->dynfreq;
             op->attr |= SGS_ATTR_DYNFREQRATIO;
           }
         }
-        if (testgetc('<', o->f)) {
+        if (testgetc('{', o->f)) {
           if (op->operator_params & SGS_ADJCS)
             SGS_node_list_clear(&op->fmods);
-          parse_level(o, ns, NL_FMODS, SCOPE_NEST);
+          parse_level(o, ns, NL_FMODS, '{');
         }
       } else if (testgetc('[', o->f)) {
         if (read_valit(o, read_note, &op->valitfreq)) {
@@ -1114,6 +1107,31 @@ static uchar parse_level(SGSParser *o, NodeScope *parentns,
         ns.first_operator = 0;
       }
       break;
+    case '-': {
+      SGSOperatorNode *first, *last;
+      uchar ret;
+      end_operator(&ns);
+      first = ns.first_operator;
+      last = ns.last_operator;
+      if (!first) {
+        if (o->calllevel == 1) NO_CARRIER: {
+          warning(o, "no preceding carrier operators");
+          break;
+        }
+        first = parentns->first_operator;
+        if (!last)
+          goto NO_CARRIER;
+      }
+      if (first && first != last) {
+        warning(o, "multiple carriers not yet supported");
+        break;
+      }
+      if (last->operator_params & SGS_ADJCS)
+        SGS_node_list_clear(&last->pmods);
+      ret = parse_level(o, &ns, NL_PMODS, SCOPE_SAME);
+      if (ret)
+        goto RETURN;
+      break; }
     case ':':
       if (ns.set_label) {
         warning(o, "ignoring label assignment to label reference");
@@ -1146,7 +1164,7 @@ static uchar parse_level(SGSParser *o, NodeScope *parentns,
         goto RETURN;
       break;
     case '>':
-      if (ns.scope != SCOPE_NEST) {
+      if (ns.scope != '<') {
         warning(o, "closing '>' without opening '<'");
         break;
       }
@@ -1180,12 +1198,9 @@ static uchar parse_level(SGSParser *o, NodeScope *parentns,
       read_label(o, label, '\'');
       label_next_node(&ns, label);
       break;
-    case '{': /* FIXME: newest design - detail, put in place */
-      end_operator(&ns);
-      if (parse_level(o, &ns, ns.linktype, SCOPE_BIND))
-        goto RETURN;
-      if (ns.bind_from)
-        flags = parse_step(&ns) ? (HANDLE_DEFER | DEFERRED_STEP) : 0;
+    case '{':
+      /* is always got elsewhere before a nesting call to this function */
+      warning(o, "opening curly brace out of place");
       break;
     case '|':
       if (ns.ns_flags & NS_SET_SETTINGS ||
@@ -1207,7 +1222,7 @@ static uchar parse_level(SGSParser *o, NodeScope *parentns,
       leave_current_node(&ns);
       break;
     case '}':
-      if (ns.scope != SCOPE_BIND) {
+      if (ns.scope != '{') {
         warning(o, "closing '}' without opening '{'");
         break;
       }
@@ -1231,9 +1246,9 @@ static uchar parse_level(SGSParser *o, NodeScope *parentns,
     }
   }
 FINISH:
-  if (newscope == SCOPE_NEST)
+  if (newscope == '<')
     warning(o, "end of file without closing '>'s");
-  if (newscope == SCOPE_BIND)
+  if (newscope == '{')
     warning(o, "end of file without closing '}'s");
 RETURN:
   end_scope(&ns);
