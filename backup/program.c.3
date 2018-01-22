@@ -10,27 +10,24 @@ static int count_operators(SGSOperatorNode *op, void *arg) {
 
 static void build_graph(SGSProgramEvent *root,
                         const SGSEventNode *voice_in) {
-  SGSProgramGraph *graph, **graph_out;
+  SGSProgramGraph *graph;
   uint i;
   uint size;
   if (!voice_in->voice_params & SGS_GRAPH)
     return;
-  size = voice_in->graph.count;
-  graph_out = (SGSProgramGraph**)&root->voice->graph;
-  if (!size) {
-    *graph_out = graph;
+  size = voice_in->operators.count;
+  if (!size)
     return;
-  }
   graph = malloc(sizeof(SGSProgramGraph) + sizeof(int) * (size - 1));
   graph->opc = size;
   for (i = 0; i < size; ++i)
-    graph->ops[i] = voice_in->graph.na[i]->operatorid;
-  *graph_out = graph;
+    graph->ops[i] = voice_in->operators.na[i]->operatorid;
+  *(SGSProgramGraph**)&root->voice->graph = graph;
 }
 
 static void build_adjcs(SGSProgramEvent *root,
                         const SGSOperatorNode *operator_in) {
-  SGSProgramGraphAdjcs *adjcs, **adjcs_out;
+  SGSProgramGraphAdjcs *adjcs;
   int *data;
   uint i;
   uint size;
@@ -39,11 +36,8 @@ static void build_adjcs(SGSProgramEvent *root,
   size = operator_in->fmods.count +
          operator_in->pmods.count +
          operator_in->amods.count;
-  adjcs_out = (SGSProgramGraphAdjcs**)&root->operator->adjcs;
-  if (!size) {
-    *adjcs_out = 0;
+  if (!size)
     return;
-  }
   adjcs = malloc(sizeof(SGSProgramGraphAdjcs) + sizeof(int) * (size - 1));
   adjcs->fmodc = operator_in->fmods.count;
   adjcs->pmodc = operator_in->pmods.count;
@@ -55,7 +49,7 @@ static void build_adjcs(SGSProgramEvent *root,
     *data++ = operator_in->pmods.na[i]->operatorid;
   for (i = 0; i < adjcs->amodc; ++i)
     *data++ = operator_in->amods.na[i]->operatorid;
-  *adjcs_out = adjcs;
+  *(SGSProgramGraphAdjcs**)&root->operator->adjcs = adjcs;
 }
 
 typedef struct VoiceAlloc {

@@ -5,8 +5,8 @@
  */
 
 typedef struct SGSNodeList {
-  ushort count,
-         inactive_count; /* used when nodes are inherited from another list */
+  ushort count;
+  uchar type;
   struct SGSOperatorNode **na;
 } SGSNodeList;
 
@@ -16,6 +16,7 @@ int SGS_node_list_rforeach(SGSNodeList *list,
                            int (*callback)(struct SGSOperatorNode *op,
                                            void *arg),
                            void *arg);
+void SGS_node_list_rcleanup(SGSNodeList *list);
 
 /*
  * Parsing nodes.
@@ -60,7 +61,7 @@ typedef struct SGSEventNode {
   struct SGSEventNode *groupfrom;
   struct SGSEventNode *composite;
   int wait_ms;
-  SGSNodeList operators; /* operators included in event */
+  SGSNodeList operators; /* operator linkage graph */
   uint scopeid;
   uint en_flags;
   /* voice parameters */
@@ -70,7 +71,6 @@ typedef struct SGSEventNode {
   uchar voice_attr;
   float panning;
   SGSProgramValit valitpanning;
-  SGSNodeList graph;
 } SGSEventNode;
 
 void SGS_event_node_destroy(SGSEventNode *e);
