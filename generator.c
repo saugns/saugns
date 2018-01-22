@@ -78,8 +78,7 @@ struct SGSGenerator {
   EventNode *events;
   uint voice, voicec;
   VoiceNode *voices;
-  OperatorNode operators[1]; /* sized to total number of nodes */
-  /* actual nodes of varying type stored here */
+  OperatorNode operators[1]; /* sized to number of nodes */
 };
 
 /*
@@ -129,6 +128,9 @@ SGSGenerator* SGSGenerator_create(uint srate, struct SGSProgram *prg) {
   void *data;
   uint i, indexwaittime;
   uint size, eventssize, voicessize, operatorssize, setssize;
+  /*
+   * Establish allocation sizes.
+   */
   size = sizeof(SGSGenerator) - sizeof(OperatorNode);
   eventssize = sizeof(EventNode) * prg->eventc;
   voicessize = sizeof(VoiceNode) * prg->voicec;
@@ -143,6 +145,9 @@ SGSGenerator* SGSGenerator_create(uint srate, struct SGSProgram *prg) {
                                               SGS_VALITAMP |
                                               SGS_VALITPANNING))*2 - 1));
   }
+  /*
+   * Allocate & initialize.
+   */
   o = calloc(1, size + operatorssize + eventssize + voicessize + setssize);
   o->srate = srate;
   o->osc_coeff = SGSOsc_COEFF(srate);
@@ -156,7 +161,8 @@ SGSGenerator* SGSGenerator_create(uint srate, struct SGSProgram *prg) {
   data      = (void*)(((uchar*)o) + size + operatorssize + eventssize + voicessize);
   SGSOsc_init();
   /*
-   * Fill in events according to the SGSProgram.
+   * Fill in events according to the SGSProgram, ie. copy timed state
+   * changes for voices and operators.
    */
   indexwaittime = 0;
   for (i = 0; i < prg->eventc; ++i) {
@@ -235,7 +241,7 @@ SGSGenerator* SGSGenerator_create(uint srate, struct SGSProgram *prg) {
 }
 
 /*
- * Processes one event; to be called for an event when its time comes.
+ * Processes one event; to be called for the event when its time comes.
  */
 static void SGSGenerator_handle_event(SGSGenerator *o, EventNode *e) {
   if (1) /* more types to be added in the future */ {
@@ -243,7 +249,9 @@ static void SGSGenerator_handle_event(SGSGenerator *o, EventNode *e) {
     VoiceNode *vn;
     OperatorNode *on;
     const Data *data = s->data;
-    /* set state */
+    /*
+     * Set state of voice and/or operator.
+     */
     if (s->voiceid >= 0) {
       vn = &o->voices[s->voiceid];
       if (s->params & SGS_GRAPH)
@@ -395,13 +403,18 @@ static uchar run_param(BufData *buf, uint buflen, ParameterValit *vi,
   }
   vi->pos += len;
   if (vi->time == vi->pos) {
-    s0 = *state = vi->goal;
+    s0 = *state = vi->goal; /* when reached, valit target becomes new state */
   FILL:
+    /*
+     * Set the remaining values, if any, using the state.
+     */
     if (modbuf) {
       for (i = 0; i < filllen; ++i)
         buf[i].f = s0 * modbuf[i].f;
-    } else for (i = 0; i < filllen; ++i)
-      buf[i].f = s0;
+    } else {
+      for (i = 0; i < filllen; ++i)
+        buf[i].f = s0;
+    }
     return (vi != 0);
   }
   return 0;
@@ -409,7 +422,7 @@ static uchar run_param(BufData *buf, uint buflen, ParameterValit *vi,
 
 /*
  * Generate buflen samples for an operator node, recursively visiting
- * its subnodes.
+ * its subnodes, if any.
  */
 static void run_block(SGSGenerator *o, Buf *bufs, uint buflen,
                       OperatorNode *n, BufData *parentfreq,
@@ -427,6 +440,9 @@ static void run_block(SGSGenerator *o, Buf *bufs, uint buflen,
   }
   sbuf = *bufs;
   len = buflen;
+  /*
+   * If silence, zero-fill and delay processing for duration.
+   */
   if (n->silence) {
     uint zerolen = n->silence;
     if (zerolen > len)
@@ -440,6 +456,10 @@ static void run_block(SGSGenerator *o, Buf *bufs, uint buflen,
       return;
     sbuf += zerolen;
   }
+  /*
+   * Handle frequency (alternatively ratio) parameter, including frequency
+   * modulation if modulators linked.
+   */
   freq = *(nextbuf++);
   if (n->attr & SGS_ATTR_VALITFREQ) {
     vi = &n->valitfreq;
@@ -476,6 +496,9 @@ static void run_block(SGSGenerator *o, Buf *bufs, uint buflen,
         freq[i].f += (n->dynfreq - freq[i].f) * fmbuf[i].f;
     }
   }
+  /*
+   * If phase modulators linked, get phase offsets for modulation.
+   */
   pm = 0;
   if (pmodc) {
     const int *pmods = n->adjcs->adjcs;
@@ -484,6 +507,10 @@ static void run_block(SGSGenerator *o, Buf *bufs, uint buflen,
     pm = *(nextbuf++);
   }
   if (!waveenv) {
+    /*
+     * Handle amplitude parameter, including amplitude modulation if
+     * modulators linked.
+     */
     if (amodc) {
       const int *amods = &n->adjcs->adjcs[pmodc+fmodc];
       float dynampdiff = n->dynamp - n->amp;
@@ -498,6 +525,10 @@ static void run_block(SGSGenerator *o, Buf *bufs, uint buflen,
       if (run_param(amp, len, vi, &n->amp, 0))
         n->attr &= ~SGS_ATTR_VALITAMP;
     }
+    /*
+     * Generate integer output - either for voice output or phase modulation
+     * input.
+     */
     for (i = 0; i < len; ++i) {
       int s, spm = 0;
       float sfreq = freq[i].f, samp = amp[i].f;
@@ -509,6 +540,10 @@ static void run_block(SGSGenerator *o, Buf *bufs, uint buflen,
       sbuf[i].i = s;
     }
   } else {
+    /*
+     * Generate float output - used as waveform envelopes for modulating
+     * frequency or amplitude.
+     */
     for (i = 0; i < len; ++i) {
       float s, sfreq = freq[i].f;
       int spm = 0;
@@ -539,18 +574,23 @@ static void run_voice(SGSGenerator *o, VoiceNode *vn, short *out, uint len) {
   time = len;
   for (i = 0; i < opc; ++i) {
     OperatorNode *n = &o->operators[ops[i]];
-    int t = n->time;
-    if (t == 0)
+    if (n->time == 0)
       continue;
-    if (time > t)
-      time = t;
+    if (time > n->time)
+      time = n->time;
   }
+  /*
+   * Generate sound from all active operators for voice.
+   */
   for (i = 0; i < opc; ++i) {
     OperatorNode *n = &o->operators[ops[i]];
-    int t = time;
+    uint t = time;
     if (n->time == 0)
       continue;
     sp = out;
+    /*
+     * More efficient silence skipping.
+     */
     if (n->silence) {
       if (n->silence >= t) {
         n->time -= t;
@@ -562,13 +602,22 @@ static void run_voice(SGSGenerator *o, VoiceNode *vn, short *out, uint len) {
       n->time -= n->silence;
       n->silence = 0;
     }
+    /*
+     * Repeatedly generate up to BUF_LEN samples for operator until done.
+     */
     while (t) {
       len = BUF_LEN;
       if (len > t)
         len = t;
       t -= len;
       run_block(o, o->bufs, len, n, 0, 0, 0);
+      /*
+       * Handle panning parameter and mixing of output.
+       */
       if (n->attr & SGS_ATTR_VALITPANNING) {
+        /*
+         * TODO: Adapt fully to multiple-output operator voices.
+         */
         BufData *buf = o->bufs[1];
         if (run_param(buf, len, &vn->valitpanning, &vn->panning, 0))
           n->attr &= ~SGS_ATTR_VALITPANNING;
@@ -618,8 +667,9 @@ PROCESS:
       uint waittime = e->waittime - o->eventpos;
       if (waittime < len) {
         /*
-         * Split processing so that len is no longer than waittime, ensuring
-         * event is handled before its operator is used.
+         * Limit len to waittime, further splitting processing into two
+         * blocks; otherwise, voice processing could get ahead of event
+         * handling in some cases - which would give undefined results!
          */
         skiplen = len - waittime;
         len = waittime;
@@ -651,6 +701,9 @@ PROCESS:
     len = skiplen;
     goto PROCESS;
   }
+  /*
+   * Advance starting voice and check for end of signal.
+   */
   for(;;) {
     VoiceNode *vn;
     if (o->voice == o->voicec)
