@@ -1,4 +1,5 @@
-/* Copyright (c) 2011-2012 Joel K. Pettersson <joelkpettersson@gmail.com>
+/* sgensys parsing data to program data translator module.
+ * Copyright (c) 2011-2012 Joel K. Pettersson <joelkpettersson@gmail.com>
  *
  * This file and the software of which it is part is distributed under the
  * terms of the GNU Lesser General Public License, either version 3 or (at
@@ -6,7 +7,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>
+ * <http://www.gnu.org/licenses/>.
  */
 
 #include "sgensys.h"
@@ -31,6 +32,7 @@ static void print_linked(const char *header, const char *footer, uint count,
 
 static void build_graph(SGSProgramEvent *root,
                         const SGSEventNode *voice_in) {
+  SGSOperatorNode **nl;
   SGSProgramGraph *graph, **graph_out;
   uint i;
   uint size;
@@ -42,15 +44,17 @@ static void build_graph(SGSProgramEvent *root,
     *graph_out = graph;
     return;
   }
+  nl = SGS_NODE_LIST_GET(&voice_in->graph);
   graph = malloc(sizeof(SGSProgramGraph) + sizeof(int) * (size - 1));
   graph->opc = size;
   for (i = 0; i < size; ++i)
-    graph->ops[i] = voice_in->graph.na[i]->operatorid;
+    graph->ops[i] = nl[i]->operatorid;
   *graph_out = graph;
 }
 
 static void build_adjcs(SGSProgramEvent *root,
                         const SGSOperatorNode *operator_in) {
+  SGSOperatorNode **nl;
   SGSProgramGraphAdjcs *adjcs, **adjcs_out;
   int *data;
   uint i;
@@ -70,12 +74,15 @@ static void build_adjcs(SGSProgramEvent *root,
   adjcs->pmodc = operator_in->pmods.count;
   adjcs->amodc = operator_in->amods.count;
   data = adjcs->adjcs;
+  nl = SGS_NODE_LIST_GET(&operator_in->fmods);
   for (i = 0; i < adjcs->fmodc; ++i)
-    *data++ = operator_in->fmods.na[i]->operatorid;
+    *data++ = nl[i]->operatorid;
+  nl = SGS_NODE_LIST_GET(&operator_in->pmods);
   for (i = 0; i < adjcs->pmodc; ++i)
-    *data++ = operator_in->pmods.na[i]->operatorid;
+    *data++ = nl[i]->operatorid;
+  nl = SGS_NODE_LIST_GET(&operator_in->amods);
   for (i = 0; i < adjcs->amodc; ++i)
-    *data++ = operator_in->amods.na[i]->operatorid;
+    *data++ = nl[i]->operatorid;
   *adjcs_out = adjcs;
 }
 
@@ -104,10 +111,11 @@ typedef struct VoiceAllocData VoiceAllocData;
  * the graph of the voice event.
  */
 static uint voice_duration(SGSEventNode *ve) {
+  SGSOperatorNode **nl = SGS_NODE_LIST_GET(&ve->operators);
   uint i, duration_ms = 0;
   /* FIXME: node list type? */
   for (i = 0; i < ve->operators.count; ++i) {
-    SGSOperatorNode *op = ve->operators.na[i];
+    SGSOperatorNode *op = nl[i];
     if (op->time_ms > (int)duration_ms)
       duration_ms = op->time_ms;
   }
@@ -160,22 +168,34 @@ static uint voice_alloc_inc(VoiceAlloc *va, SGSEventNode *e) {
 #define VOICE_ALLOC_COUNT(va) ((uint)((va)->voicec))
 
 /*
- * Called for each operator for an event - inserts operator data, advancing
- * the event pointer (pointed to by arg) and inserting a new output event
- * if the current one already holds operator data.
+ * Overwrite parameters in dst that have values in src.
  */
-static int build_oe(SGSOperatorNode *op, void *arg) {
-  //puts("build_oe():");
-  SGSProgramEvent **oe = (SGSProgramEvent**)arg;
+static void copy_params(SGSOperatorNode *dst, const SGSOperatorNode *src) {
+  if (src->operator_params & SGS_AMP) dst->amp = src->amp;
+}
+
+static void expand_operator(SGSOperatorNode *op) {
+  SGSOperatorNode *pop;
+  if (!(op->on_flags & ON_MULTIPLE_OPERATORS)) return;
+  pop = op->on_prev;
+  do {
+    copy_params(pop, op);
+    expand_operator(pop);
+  } while ((pop = pop->next_bound));
+  SGS_node_list_clear(&op->fmods);
+  SGS_node_list_clear(&op->pmods);
+  SGS_node_list_clear(&op->amods);
+  op->operator_params = 0;
+}
+
+/*
+ * Convert data for an operator to program operator data, setting it for the
+ * program event given.
+ */
+static void convert_operator(SGSProgramEvent *oe, const SGSOperatorNode *op) {
   SGSProgramOperatorData *ood = calloc(1, sizeof(SGSProgramOperatorData));
-  if ((*oe)->operator) {
-    //puts(">1 operators: next");
-    SGSProgramEvent *oe_prev = *oe;
-    ++(*oe);
-    (*oe)->voiceid = oe_prev->voiceid;
-  }
-  (*oe)->operator = ood;
-  (*oe)->params |= op->operator_params;
+  oe->operator = ood;
+  oe->params |= op->operator_params;
   //printf("operatorid == %d | address == %x\n", op->operatorid, op);
   ood->operatorid = op->operatorid;
   ood->adjcs = 0;
@@ -191,8 +211,25 @@ static int build_oe(SGSOperatorNode *op, void *arg) {
   ood->valitfreq = op->valitfreq;
   ood->valitamp = op->valitamp;
   if (op->operator_params & SGS_ADJCS) {
-    build_adjcs((*oe), op);
+    build_adjcs(oe, op);
   }
+}
+
+/*
+ * Called for each operator for an event - inserts operator data, advancing
+ * the event pointer (pointed to by arg) and inserting a new output event
+ * if the current one already holds operator data.
+ */
+static int build_oe(SGSOperatorNode *op, void *arg) {
+  //puts("build_oe():");
+  SGSProgramEvent **oe = (SGSProgramEvent**)arg;
+  if ((*oe)->operator) {
+    //puts(">1 operators: next");
+    SGSProgramEvent *oe_prev = *oe;
+    ++(*oe);
+    (*oe)->voiceid = oe_prev->voiceid;
+  }
+  convert_operator(*oe, op);
   //puts("/build_oe()");
   return 0;
 }
@@ -242,11 +279,10 @@ static SGSProgram* build(SGSParser *o) {
   /*
    * Pass #3 - Cleanup of parsing data.
    */
-  for (oe = oevents, e = o->events; e; ) {
+  for (e = o->events; e; ) {
     SGSEventNode *e_next = e->next;
     SGS_event_node_destroy(e);
     e = e_next;
-    ++oe;
   }
   //puts("/build()");
 #if 1
