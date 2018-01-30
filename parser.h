@@ -6,10 +6,12 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>
+ * <http://www.gnu.org/licenses/>.
  */
 
 #include <stdio.h>
+
+struct SGSOperatorNode;
 
 /*
  * SGSNodeList
@@ -18,11 +20,15 @@
 typedef struct SGSNodeList {
   ushort count,
          inactive_count; /* used when nodes are inherited from another list */
-  struct SGSOperatorNode **na;
+  void *data;
 } SGSNodeList;
 
-void SGS_node_list_add(SGSNodeList *nl, struct SGSOperatorNode *n);
-void SGS_node_list_clear(SGSNodeList *nl);
+#define SGS_NODE_LIST_GET(nl) \
+ ((struct SGSOperatorNode**)(((nl)->count > 1) ? (nl)->data : &(nl)->data))
+
+void SGS_node_list_add(SGSNodeList *list, struct SGSOperatorNode *n);
+void SGS_node_list_clear(SGSNodeList *list);
+void SGS_node_list_safe_copy(SGSNodeList *dst, const SGSNodeList *src);
 int SGS_node_list_rforeach(SGSNodeList *list,
                            int (*callback)(struct SGSOperatorNode *op,
                                            void *arg),
@@ -44,9 +50,10 @@ enum {
 
 typedef struct SGSOperatorNode {
   struct SGSEventNode *event;
-  struct SGSOperatorNode *previous_on; /* node for preceding event */
-  struct SGSOperatorNode *next_bound;
   uint operatorid;
+  SGSNodeList on_next; /* all immediate forward references for operator(s) */
+  struct SGSOperatorNode *on_prev; /* preceding node(s) for same operator(s) */
+  struct SGSOperatorNode *next_bound;
   uint on_flags;
   const char *label;
   /* parameters */
@@ -72,7 +79,6 @@ typedef struct SGSEventNode {
   struct SGSEventNode *composite;
   int wait_ms;
   SGSNodeList operators; /* operators included in event */
-  uint scopeid;
   uint en_flags;
   /* voice parameters */
   uint voice_id; /* not filled in by parser; for later use (program.c) */
