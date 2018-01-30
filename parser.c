@@ -1,3 +1,14 @@
+/* Copyright (c) 2011-2012 Joel K. Pettersson <joelkpettersson@gmail.com>
+ *
+ * This file and the software of which it is part is distributed under the
+ * terms of the GNU Lesser General Public License, either version 3 or (at
+ * your option) any later version; WITHOUT ANY WARRANTY, not even of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ *
+ * View the file COPYING for details, or if missing, see
+ * <http://www.gnu.org/licenses/>
+ */
+
 #include "sgensys.h"
 #include "program.h"
 #include "parser.h"
@@ -124,13 +135,16 @@ enum {
 };
 
 enum {
-  NS_SET_SETTINGS = 1<<0, /* adjusting default values */
+  NS_IN_DEFAULTS = 1<<0, /* adjusting default values */
   NS_IN_NODE = 1<<1,     /* adjusting operator and/or voice */
   NS_NESTED_SCOPE = 1<<2,
+  NS_BIND_MULTIPLE = 1<<3, /* previous node interpreted as set of nodes */
 };
 
 /*
  * Things that need to be separate for each nested parse_level() go here.
+ *
+ *
  */
 typedef struct NodeScope {
   SGSParser *o;
@@ -141,7 +155,6 @@ typedef struct NodeScope {
   SGSEventNode *event, *last_event;
   SGSOperatorNode *operator, *first_operator, *last_operator;
   SGSOperatorNode *parent_on, *previous_on;
-  SGSOperatorNode *bind_from;
   uchar linktype;
   uchar last_linktype; /* FIXME: kludge */
   char *set_label;
@@ -701,7 +714,7 @@ static void begin_operator(NodeScope *ns, uchar linktype, uchar composite) {
   op = ns->operator;
   if (!ns->first_operator)
     ns->first_operator = op;
-  if (ns->last_operator)
+  if (!composite && ns->last_operator)
     ns->last_operator->next_bound = op;
   /*
    * Initialize node.
@@ -712,10 +725,6 @@ static void begin_operator(NodeScope *ns, uchar linktype, uchar composite) {
     op->operatorid = pop->operatorid;
     op->on_flags = pop->on_flags & (ON_OPERATOR_NESTED |
                                     ON_MULTIPLE_OPERATORS);
-    if (ns->bind_from) {
-      op->on_flags |= ON_MULTIPLE_OPERATORS;
-      ns->bind_from = 0;
-    }
     if (composite)
       op->on_flags |= ON_TIME_DEFAULT; /* default: previous or infinite time */
     op->attr = pop->attr;
@@ -740,6 +749,16 @@ static void begin_operator(NodeScope *ns, uchar linktype, uchar composite) {
     op->amods.inactive_count = pop->amods.count;
     op->amods.na = memdup(pop->amods.na, sizeof(SGSOperatorNode*) *
                                          pop->amods.count);
+    if (ns->ns_flags & NS_BIND_MULTIPLE) {
+      const SGSOperatorNode *mpop = pop;
+      int max_time = pop->time_ms;
+      while ((mpop = mpop->next_bound)) {
+        if (max_time < mpop->time_ms) max_time = mpop->time_ms;
+      }
+      op->on_flags |= ON_MULTIPLE_OPERATORS;
+      op->time_ms = max_time;
+      ns->ns_flags &= ~NS_BIND_MULTIPLE;
+    }
   } else {
     /*
      * New operator with initial parameter values.
@@ -809,6 +828,16 @@ static void label_next_node(NodeScope *ns, const char *label) {
   ns->set_label = strdup(label);
 }
 
+/*
+ * Default values for new nodes are being set.
+ */
+#define in_defaults(ns) ((ns)->ns_flags & NS_IN_DEFAULTS)
+#define enter_defaults(ns) ((void)((ns)->ns_flags |= NS_IN_DEFAULTS))
+#define leave_defaults(ns) ((void)((ns)->ns_flags &= ~NS_IN_DEFAULTS))
+
+/*
+ * Values for current node are being set.
+ */
 #define in_current_node(ns) ((ns)->ns_flags & NS_IN_NODE)
 #define enter_current_node(ns) ((void)((ns)->ns_flags |= NS_IN_NODE))
 #define leave_current_node(ns) ((void)((ns)->ns_flags &= ~NS_IN_NODE))
@@ -866,7 +895,7 @@ static void end_scope(NodeScope *ns) {
      * this scope, provided any are present.
      */
     if (ns->first_operator) {
-      ns->parent->bind_from = ns->first_operator;
+      ns->parent->ns_flags |= NS_BIND_MULTIPLE;
       begin_node(ns->parent, ns->first_operator, ns->parent->last_linktype, 0);
     }
   } else if (!ns->parent) {
@@ -893,7 +922,7 @@ static void end_scope(NodeScope *ns) {
 static uchar parse_settings(NodeScope *ns) {
   SGSParser *o = ns->o;
   char c;
-  ns->ns_flags |= NS_SET_SETTINGS;
+  enter_defaults(ns);
   leave_current_node(ns);
   while ((c = read_char(o)) != EOF) {
     switch (c) {
@@ -942,7 +971,7 @@ static uchar parse_step(NodeScope *ns) {
   SGSEventNode *e = ns->event;
   SGSOperatorNode *op = ns->operator;
   char c;
-  ns->ns_flags &= ~NS_SET_SETTINGS;
+  leave_defaults(ns);
   enter_current_node(ns);
   while ((c = read_char(o)) != EOF) {
     switch (c) {
@@ -1136,7 +1165,7 @@ static uchar parse_level(SGSParser *o, NodeScope *parentns,
         if (o->calllevel > 1)
           goto RETURN;
         flags = 0;
-        ns.ns_flags &= ~NS_SET_SETTINGS;
+        leave_defaults(&ns);
         if (in_current_node(&ns)) {
           leave_current_node(&ns);
           ns.scopeid = ++o->scopeid;
@@ -1149,7 +1178,7 @@ static uchar parse_level(SGSParser *o, NodeScope *parentns,
         warning(o, "ignoring label assignment to label reference");
         label_next_node(&ns, NULL);
       }
-      ns.ns_flags &= ~NS_SET_SETTINGS;
+      leave_defaults(&ns);
       leave_current_node(&ns);
       if (read_label(o, label, ':')) {
         SGSOperatorNode *ref = SGS_symtab_get(o->st, label);
@@ -1166,7 +1195,7 @@ static uchar parse_level(SGSParser *o, NodeScope *parentns,
         o->nextc = c;
         goto RETURN;
       }
-      if (ns.ns_flags & NS_SET_SETTINGS || !ns.event)
+      if (in_defaults(&ns) || !ns.event)
         goto INVALID;
       begin_node(&ns, ns.operator, NL_REFER, 1);
       flags = parse_step(&ns) ? (HANDLE_DEFER | DEFERRED_STEP) : 0;
@@ -1197,7 +1226,7 @@ static uchar parse_level(SGSParser *o, NodeScope *parentns,
       flags = parse_settings(&ns) ? (HANDLE_DEFER | DEFERRED_SETTINGS) : 0;
       break;
     case '\\':
-      if (ns.ns_flags & NS_SET_SETTINGS ||
+      if (in_defaults(&ns) ||
           (ns.ns_flags & NS_NESTED_SCOPE && ns.event))
         goto INVALID;
       read_waittime(&ns);
@@ -1220,7 +1249,7 @@ static uchar parse_level(SGSParser *o, NodeScope *parentns,
       flags = parse_step(&ns) ? (HANDLE_DEFER | DEFERRED_STEP) : 0;
       break;
     case '|':
-      if (ns.ns_flags & NS_SET_SETTINGS ||
+      if (in_defaults(&ns) ||
           (ns.ns_flags & NS_NESTED_SCOPE && ns.event))
         goto INVALID;
       if (newscope == SCOPE_SAME) {
