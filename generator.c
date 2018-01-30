@@ -6,7 +6,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>
+ * <http://www.gnu.org/licenses/>.
  */
 
 #include "sgensys.h"
@@ -447,7 +447,7 @@ static uchar run_param(BufData *buf, uint buf_len, ParameterValit *vi,
 static uint run_block(SGSGenerator *o, Buf *bufs, uint buf_len,
                       OperatorNode *n, BufData *parent_freq,
                       uchar wave_env, uint acc_ind) {
-  uint i, len, zerolen;
+  uint i, len, zero_len, skip_len;
   BufData *sbuf, *freq, *freqmod, *pm, *amp;
   Buf *nextbuf = bufs + 1;
   ParameterValit *vi;
@@ -463,24 +463,25 @@ static uint run_block(SGSGenerator *o, Buf *bufs, uint buf_len,
   /*
    * If silence, zero-fill and delay processing for duration.
    */
+  zero_len = 0;
   if (n->silence) {
-    zerolen = n->silence;
-    if (zerolen > len)
-      zerolen = len;
-    if (!acc_ind) for (i = 0; i < zerolen; ++i)
+    zero_len = n->silence;
+    if (zero_len > len)
+      zero_len = len;
+    if (!acc_ind) for (i = 0; i < zero_len; ++i)
       sbuf[i].i = 0;
-    len -= zerolen;
-    if (n->time != SGS_TIME_INF) n->time -= zerolen;
-    n->silence -= zerolen;
-    if (!len) return 0;
-    sbuf += zerolen;
+    len -= zero_len;
+    if (n->time != SGS_TIME_INF) n->time -= zero_len;
+    n->silence -= zero_len;
+    if (!len) return zero_len;
+    sbuf += zero_len;
   }
   /*
    * Limit length to time duration of operator.
    */
-  zerolen = 0;
+  skip_len = 0;
   if (n->time < (int)len && n->time != SGS_TIME_INF) {
-    zerolen = len - n->time;
+    skip_len = len - n->time;
     len = n->time;
   }
   /*
@@ -582,14 +583,14 @@ static uint run_block(SGSGenerator *o, Buf *bufs, uint buf_len,
    * Update time duration left, zero rest of buffer if unfilled.
    */
   if (n->time != SGS_TIME_INF) {
-    if (!acc_ind && zerolen > 0) {
+    if (!acc_ind && skip_len > 0) {
       sbuf += len;
-      for (i = 0; i < zerolen; ++i)
+      for (i = 0; i < skip_len; ++i)
         sbuf[i].i = 0;
     }
     n->time -= len;
   }
-  return len;
+  return zero_len + len;
 }
 
 /*
