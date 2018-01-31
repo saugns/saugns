@@ -340,7 +340,9 @@ static void program_follow_onodes(ProgramAlloc *pa, SGSNodeList *nl) {
   for (i = nl->inactive_count; i < nl->count; ++i) {
     SGSOperatorNode *op = list[i];
     OperatorAllocData *ad;
-    uint operator_id = operator_alloc_inc(&pa->oa, op);
+    uint operator_id;
+    if (op->on_flags & ON_MULTIPLE_OPERATORS) continue;
+    operator_id = operator_alloc_inc(&pa->oa, op);
     program_follow_onodes(pa, &op->fmods);
     program_follow_onodes(pa, &op->pmods);
     program_follow_onodes(pa, &op->amods);
