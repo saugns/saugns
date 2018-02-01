@@ -1,4 +1,5 @@
-/* Copyright (c) 2011-2012 Joel K. Pettersson <joelkpettersson@gmail.com>
+/* sgensys script parser module.
+ * Copyright (c) 2011-2012 Joel K. Pettersson <joelkpettersson@gmail.com>
  *
  * This file and the software of which it is part is distributed under the
  * terms of the GNU Lesser General Public License, either version 3 or (at
@@ -771,7 +772,6 @@ static void begin_operator(NodeScope *ns, uchar linktype, uchar composite) {
   if (pop) {
     pop->on_flags |= ON_OPERATOR_LATER_USED;
     op->on_prev = pop;
-    op->operatorid = pop->operatorid;
     op->on_flags = pop->on_flags & (ON_OPERATOR_NESTED |
                                     ON_MULTIPLE_OPERATORS);
     if (composite)
@@ -806,7 +806,6 @@ static void begin_operator(NodeScope *ns, uchar linktype, uchar composite) {
     /*
      * New operator with initial parameter values.
      */
-    op->operatorid = o->operatorc++;
     op->on_flags = ON_TIME_DEFAULT; /* default: depends on context */
     op->time_ms = o->def_time_ms;
     op->amp = 1.0f;
@@ -819,35 +818,33 @@ static void begin_operator(NodeScope *ns, uchar linktype, uchar composite) {
     }
   }
   op->event = e;
-  if (ns->scope != SCOPE_BIND) {
-    /*
-     * Add new operator to parent(s), ie. either the current event node, or an
-     * operator node (either ordinary or representing multiple carriers) in the
-     * case of operator linking/nesting.
-     */
-    if (linktype == NL_REFER ||
-        linktype == NL_GRAPH) {
-      SGS_node_list_add(&e->operators, op);
-      if (linktype == NL_GRAPH) {
-        e->voice_params |= SGS_GRAPH;
-        SGS_node_list_add(&e->graph, op);
-      }
-    } else {
-      SGSNodeList *list = 0;
-      switch (linktype) {
-      case NL_FMODS:
-        list = &ns->parent_on->fmods;
-        break;
-      case NL_PMODS:
-        list = &ns->parent_on->pmods;
-        break;
-      case NL_AMODS:
-        list = &ns->parent_on->amods;
-        break;
-      }
-      ns->parent_on->operator_params |= SGS_ADJCS;
-      SGS_node_list_add(list, op);
+  /*
+   * Add new operator to parent(s), ie. either the current event node, or an
+   * operator node (either ordinary or representing multiple carriers) in the
+   * case of operator linking/nesting.
+   */
+  if (linktype == NL_REFER ||
+      linktype == NL_GRAPH) {
+    SGS_node_list_add(&e->operators, op);
+    if (linktype == NL_GRAPH) {
+      e->voice_params |= SGS_GRAPH;
+      SGS_node_list_add(&e->graph, op);
     }
+  } else {
+    SGSNodeList *list = 0;
+    switch (linktype) {
+    case NL_FMODS:
+      list = &ns->parent_on->fmods;
+      break;
+    case NL_PMODS:
+      list = &ns->parent_on->pmods;
+      break;
+    case NL_AMODS:
+      list = &ns->parent_on->amods;
+      break;
+    }
+    ns->parent_on->operator_params |= SGS_ADJCS;
+    SGS_node_list_add(list, op);
   }
   /*
    * Assign label. If no new label but previous node (for a non-composite)
