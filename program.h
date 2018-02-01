@@ -1,4 +1,5 @@
-/* Copyright (c) 2011-2012 Joel K. Pettersson <joelkpettersson@gmail.com>
+/* sgensys parsing data to program data translator module.
+ * Copyright (c) 2011-2012 Joel K. Pettersson <joelkpettersson@gmail.com>
  *
  * This file and the software of which it is part is distributed under the
  * terms of the GNU Lesser General Public License, either version 3 or (at
@@ -6,7 +7,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>
+ * <http://www.gnu.org/licenses/>.
  */
 
 enum {
@@ -99,7 +100,7 @@ typedef struct SGSProgramVoiceData {
 
 typedef struct SGSProgramOperatorData {
   const SGSProgramGraphAdjcs *adjcs;
-  uint operatorid;
+  uint operator_id;
   uchar attr, wave;
   int time_ms, silence_ms;
   float freq, dynfreq, phase, amp, dynamp;
@@ -109,7 +110,7 @@ typedef struct SGSProgramOperatorData {
 typedef struct SGSProgramEvent {
   int wait_ms;
   uint params;
-  uint voiceid; /* needed for both voice and operator data */
+  uint voice_id; /* needed for both voice and operator data */
   const SGSProgramVoiceData *voice;
   const SGSProgramOperatorData *operator;
 } SGSProgramEvent;
