@@ -1,4 +1,5 @@
-/* Copyright (c) 2011-2012 Joel K. Pettersson <joelkpettersson@gmail.com>
+/* sgensys script parser module.
+ * Copyright (c) 2011-2012 Joel K. Pettersson <joelkpettersson@gmail.com>
  *
  * This file and the software of which it is part is distributed under the
  * terms of the GNU Lesser General Public License, either version 3 or (at
@@ -50,13 +51,13 @@ enum {
 
 typedef struct SGSOperatorNode {
   struct SGSEventNode *event;
-  uint operatorid;
   SGSNodeList on_next; /* all immediate forward references for operator(s) */
   struct SGSOperatorNode *on_prev; /* preceding node(s) for same operator(s) */
   struct SGSOperatorNode *next_bound;
   uint on_flags;
   const char *label;
-  /* parameters */
+  /* operator parameters */
+  uint operator_id; /* not filled in by parser; for later use (program.c) */
   uint operator_params;
   uchar attr;
   uchar wave;
@@ -103,7 +104,6 @@ typedef struct SGSParser {
   /* node state */
   SGSEventNode *events;
   SGSEventNode *last_event;
-  uint operatorc;
   /* settings/ops */
   float ampmult;
   int def_time_ms;
