@@ -66,7 +66,7 @@ typedef struct EventNode {
 } EventNode;
 
 typedef struct SetNode {
-  int voiceid, operatorid;
+  int voice_id, operator_id;
   uint params;
   Data data[1]; /* sized for number of parameters set */
 } SetNode;
@@ -123,8 +123,9 @@ static void upsize_bufs(SGSGenerator *o, VoiceNode *vn) {
     res = calc_bufs(o, &o->operators[vn->graph->ops[i]]);
     if (res > count) count = res;
   }
-  printf("%d -?!\n", count);
+  printf("need %d buffers (have %d)\n", count, o->bufc);
   if (count > o->bufc) {
+    printf("new alloc size 0x%x\n", sizeof(Buf) * count);
     o->bufs = realloc(o->bufs, sizeof(Buf) * count);
     o->bufc = count;
   }
@@ -188,30 +189,13 @@ SGSGenerator* SGS_generator_create(uint srate, struct SGSProgram *prg) {
     e->node = s;
     e->waittime = ((float)step->wait_ms) * srate * .001f;
     indexwaittime += e->waittime;
+    s->voice_id = -1;
+    s->operator_id = -1;
     s->params = step->params;
-    if (step->voice) {
-      const SGSProgramVoiceData *vd = step->voice;
-      s->voiceid = step->voiceid;
-      if (s->params & SGS_GRAPH)
-        (*set++).v = (void*)vd->graph;
-      if (s->params & SGS_VOATTR)
-        (*set++).i = vd->attr;
-      if (s->params & SGS_PANNING)
-        (*set++).f = vd->panning;
-      if (s->params & SGS_VALITPANNING) {
-        (*set++).i = ((float)vd->valitpanning.time_ms) * srate * .001f;
-        (*set++).f = vd->valitpanning.goal;
-        (*set++).i = vd->valitpanning.type;
-      }
-      o->voices[s->voiceid].pos = -indexwaittime;
-      indexwaittime = 0;
-    } else {
-      s->voiceid = -1;
-    }
     if (step->operator) {
       const SGSProgramOperatorData *od = step->operator;
-      s->voiceid = step->voiceid;
-      s->operatorid = od->operatorid;
+      s->operator_id = od->operator_id;
+      s->voice_id = step->voice_id;
       if (s->params & SGS_ADJCS)
         (*set++).v = (void*)od->adjcs;
       if (s->params & SGS_OPATTR)
@@ -245,8 +229,23 @@ SGSGenerator* SGS_generator_create(uint srate, struct SGSProgram *prg) {
       }
       if (s->params & SGS_DYNAMP)
         (*set++).f = od->dynamp;
-    } else {
-      s->operatorid = -1;
+    }
+    if (step->voice) {
+      const SGSProgramVoiceData *vd = step->voice;
+      s->voice_id = step->voice_id;
+      if (s->params & SGS_GRAPH)
+        (*set++).v = (void*)vd->graph;
+      if (s->params & SGS_VOATTR)
+        (*set++).i = vd->attr;
+      if (s->params & SGS_PANNING)
+        (*set++).f = vd->panning;
+      if (s->params & SGS_VALITPANNING) {
+        (*set++).i = ((float)vd->valitpanning.time_ms) * srate * .001f;
+        (*set++).f = vd->valitpanning.goal;
+        (*set++).i = vd->valitpanning.type;
+      }
+      o->voices[s->voice_id].pos = -indexwaittime;
+      indexwaittime = 0;
     }
     data = (void*)(((uchar*)data) +
                    (sizeof(SetNode) - sizeof(Data)) +
@@ -265,32 +264,12 @@ static void SGS_generator_handle_event(SGSGenerator *o, EventNode *e) {
     OperatorNode *on;
     const Data *data = s->data;
     /*
-     * Set state of voice and/or operator.
+     * Set state of operator and/or voice. Voice updates must be done last,
+     * as operator updates may change node adjacents and buffer recalculation
+     * is currently done during voice updates.
      */
-    if (s->voiceid >= 0) {
-      vn = &o->voices[s->voiceid];
-      if (s->params & SGS_GRAPH)
-        vn->graph = (*data++).v;
-      if (s->params & SGS_VOATTR) {
-        uchar attr = (uchar)(*data++).i;
-        vn->attr = attr;
-      }
-      if (s->params & SGS_PANNING)
-        vn->panning = (*data++).f;
-      if (s->params & SGS_VALITPANNING) {
-        vn->valitpanning.time = (*data++).i;
-        vn->valitpanning.pos = 0;
-        vn->valitpanning.goal = (*data++).f;
-        vn->valitpanning.type = (*data++).i;
-      }
-      upsize_bufs(o, vn);
-      vn->flag |= SGS_FLAG_INIT | SGS_FLAG_EXEC;
-      vn->pos = 0;
-      if ((int)o->voice > s->voiceid) /* go back to re-activated node */
-        o->voice = s->voiceid;
-    }
-    if (s->operatorid >= 0) {
-      on = &o->operators[s->operatorid];
+    if (s->operator_id >= 0) {
+      on = &o->operators[s->operator_id];
       if (s->params & SGS_ADJCS)
         on->adjcs = (*data++).v;
       if (s->params & SGS_OPATTR) {
@@ -345,6 +324,28 @@ static void SGS_generator_handle_event(SGSGenerator *o, EventNode *e) {
       }
       if (s->params & SGS_DYNAMP)
         on->dynamp = (*data++).f;
+    }
+    if (s->voice_id >= 0) {
+      vn = &o->voices[s->voice_id];
+      if (s->params & SGS_GRAPH)
+        vn->graph = (*data++).v;
+      if (s->params & SGS_VOATTR) {
+        uchar attr = (uchar)(*data++).i;
+        vn->attr = attr;
+      }
+      if (s->params & SGS_PANNING)
+        vn->panning = (*data++).f;
+      if (s->params & SGS_VALITPANNING) {
+        vn->valitpanning.time = (*data++).i;
+        vn->valitpanning.pos = 0;
+        vn->valitpanning.goal = (*data++).f;
+        vn->valitpanning.type = (*data++).i;
+      }
+      upsize_bufs(o, vn);
+      vn->flag |= SGS_FLAG_INIT | SGS_FLAG_EXEC;
+      vn->pos = 0;
+      if ((int)o->voice > s->voice_id) /* go back to re-activated node */
+        o->voice = s->voice_id;
     }
   }
 }
