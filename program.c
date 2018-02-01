@@ -16,10 +16,6 @@
 #include <string.h>
 #include <stdlib.h>
 
-static int count_operators(SGSOperatorNode *op, void *arg) {
-  return 1; /* summed for each operator */
-}
-
 static void print_linked(const char *header, const char *footer, uint count,
                          const int *nodes) {
   uint i;
@@ -86,6 +82,10 @@ static void build_adjcs(SGSProgramEvent *root,
   *adjcs_out = adjcs;
 }
 
+/*
+ * Voice allocation
+ */
+
 typedef struct VoiceAlloc {
   struct VoiceAllocData {
     SGSEventNode *last;
@@ -103,8 +103,10 @@ typedef struct VoiceAllocData VoiceAllocData;
   (va)->alloc = 1; \
 }while(0)
 
-#define VOICE_ALLOC_FINI(va) \
-  free((va)->data)
+#define VOICE_ALLOC_FINI(va, prg) do{ \
+  (prg)->voicec = (va)->voicec; \
+  free((va)->data); \
+}while(0)
 
 /*
  * Returns the longest operator duration among top-level operators for
@@ -165,7 +167,43 @@ static uint voice_alloc_inc(VoiceAlloc *va, SGSEventNode *e) {
   return voice;
 }
 
-#define VOICE_ALLOC_COUNT(va) ((uint)((va)->voicec))
+/*
+ * Output event allocation
+ */
+
+typedef struct OEventAlloc {
+  SGSProgramEvent *oe, *oevents;
+  uint eventc;
+  uint alloc;
+} OEventAlloc;
+
+#define OEVENT_ALLOC_INIT(oea) do{ \
+  (oea)->oe = 0; \
+  (oea)->oevents = 0; \
+  (oea)->eventc = 0; \
+  (oea)->alloc = 0; \
+}while(0)
+
+#define OEVENT_ALLOC_FINI(oea, prg) do{ \
+  /* output events passed on to program, not freed */ \
+  *(SGSProgramEvent**)&(prg)->events = (oea)->oevents; \
+  (prg)->eventc = (oea)->eventc; \
+}while(0)
+
+static SGSProgramEvent *oevent_alloc(OEventAlloc *oea, uint voice_id) {
+  SGSProgramEvent *oe;
+  ++oea->eventc;
+  if (oea->eventc > oea->alloc) {
+    oea->alloc = (oea->alloc > 0) ? oea->alloc << 1 : 1;
+    oea->oevents = realloc(oea->oevents, oea->alloc * sizeof(SGSProgramEvent));
+    memset(&oea->oevents[oea->eventc - 1], 0,
+           sizeof(SGSProgramEvent) * (oea->alloc - (oea->eventc - 1)));
+  }
+  oea->oe = &oea->oevents[oea->eventc - 1];
+  oe = oea->oe;
+  oe->voiceid = voice_id;
+  return oe;
+}
 
 /*
  * Overwrite parameters in dst that have values in src.
@@ -216,20 +254,18 @@ static void convert_operator(SGSProgramEvent *oe, const SGSOperatorNode *op) {
 }
 
 /*
- * Called for each operator for an event - inserts operator data, advancing
- * the event pointer (pointed to by arg) and inserting a new output event
- * if the current one already holds operator data.
+ * Called for each operator for an event - inserts operator data, allocating
+ * a new output event if the current one already holds operator data.
  */
 static int build_oe(SGSOperatorNode *op, void *arg) {
+  OEventAlloc *oea = arg;
+  SGSProgramEvent *oe = oea->oe;
   //puts("build_oe():");
-  SGSProgramEvent **oe = (SGSProgramEvent**)arg;
-  if ((*oe)->operator) {
-    //puts(">1 operators: next");
-    SGSProgramEvent *oe_prev = *oe;
-    ++(*oe);
-    (*oe)->voiceid = oe_prev->voiceid;
+  if (oe->operator) {
+    uint voice_id = oe->voiceid;
+    oe = oevent_alloc(oea, voice_id);
   }
-  convert_operator(*oe, op);
+  convert_operator(oe, op);
   //puts("/build_oe()");
   return 0;
 }
@@ -237,27 +273,24 @@ static int build_oe(SGSOperatorNode *op, void *arg) {
 static SGSProgram* build(SGSParser *o) {
   //puts("build():");
   VoiceAlloc va;
+  OEventAlloc oea;
   SGSProgram *prg = calloc(1, sizeof(SGSProgram));
   SGSEventNode *e;
-  SGSProgramEvent *oevents, *oe;
-  uint count, id;
-  for (count = 0, e = o->events; e; e = e->next) {
-    uint ops = SGS_node_list_rforeach(&e->operators, count_operators, 0);
-    count += (ops > 0) ? ops : 1; /* one voice-only event if none */
-  }
-  prg->eventc = count;
+  uint id;
   /*
-   * Pass #2 - Output event allocation, voice allocation,
+   * Pass #1 - Output event allocation, voice allocation,
    *           parameter data copying.
    */
-  oevents = calloc(prg->eventc, sizeof(SGSProgramEvent));
   VOICE_ALLOC_INIT(&va);
-  for (oe = oevents, e = o->events; e; ) {
+  OEVENT_ALLOC_INIT(&oea);
+  for (e = o->events; e; ) {
+    SGSProgramEvent *oe;
     SGSProgramVoiceData *ovd;
     /* Add to final output list */
+    oe = oevent_alloc(&oea, voice_alloc_inc(&va, e));
     oe->wait_ms = e->wait_ms;
-    oe->voiceid = voice_alloc_inc(&va, e);
-    SGS_node_list_rforeach(&e->operators, build_oe, (void*)&oe);
+    SGS_node_list_rforeach(&e->operators, build_oe, (void*)&oea);
+    oe = oea.oe; /* oe may have re(al)located */
     if (e->voice_params) {
       ovd = calloc(1, sizeof(SGSProgramVoiceData));
       oe->voice = ovd;
@@ -270,14 +303,12 @@ static SGSProgram* build(SGSParser *o) {
       }
     }
     e = e->next;
-    ++oe;
   }
-  prg->voicec = VOICE_ALLOC_COUNT(&va);
-  VOICE_ALLOC_FINI(&va);
-  *(SGSProgramEvent**)&prg->events = oevents;
+  OEVENT_ALLOC_FINI(&oea, prg);
+  VOICE_ALLOC_FINI(&va, prg);
   prg->operatorc = o->operatorc;
   /*
-   * Pass #3 - Cleanup of parsing data.
+   * Pass #2 - Cleanup of parsing data.
    */
   for (e = o->events; e; ) {
     SGSEventNode *e_next = e->next;
@@ -289,13 +320,13 @@ static SGSProgram* build(SGSParser *o) {
   /*
    * Debug printing.
    */
-  oe = oevents;
   putchar('\n');
   printf("events: %d\tvoices: %d\toperators: %d\n", prg->eventc, prg->voicec, o->operatorc);
   for (id = 0; id < prg->eventc; ++id) {
+    const SGSProgramEvent *oe;
     const SGSProgramVoiceData *ovo;
     const SGSProgramOperatorData *oop;
-    oe = &oevents[id];
+    oe = &prg->events[id];
     ovo = oe->voice;
     oop = oe->operator;
     printf("\\%d \tEV %d \t(VI %d)", oe->wait_ms, id, oe->voiceid);
