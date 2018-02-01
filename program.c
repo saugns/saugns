@@ -86,28 +86,6 @@ static void build_adjcs(SGSProgramEvent *root,
  * Program (event, voice, operator) allocation
  */
 
-typedef struct OperatorAllocData {
-  SGSOperatorNode *last;
-  uint duration_ms;
-} OperatorAllocData;
-
-typedef struct OperatorAlloc {
-  OperatorAllocData *data;
-  uint operatorc;
-  uint alloc;
-} OperatorAlloc;
-
-#define OPERATOR_ALLOC_INIT(oa) do{ \
-  (oa)->data = calloc(1, sizeof(OperatorAllocData)); \
-  (oa)->operatorc = 0; \
-  (oa)->alloc = 1; \
-}while(0)
-
-#define OPERATOR_ALLOC_FINI(oa, prg) do{ \
-  (prg)->operatorc = (oa)->operatorc; \
-  free((oa)->data); \
-}while(0)
-
 typedef struct VoiceAllocData {
   SGSEventNode *last;
   uint duration_ms;
@@ -189,9 +167,34 @@ static uint voice_alloc_inc(VoiceAlloc *va, SGSEventNode *e) {
   return voice;
 }
 
+typedef struct OperatorAllocData {
+  SGSOperatorNode *last;
+  SGSProgramEvent *out;
+  uint duration_ms;
+} OperatorAllocData;
+
+typedef struct OperatorAlloc {
+  OperatorAllocData *data;
+  uint operatorc;
+  uint alloc;
+} OperatorAlloc;
+
+#define OPERATOR_ALLOC_INIT(oa) do{ \
+  (oa)->data = calloc(1, sizeof(OperatorAllocData)); \
+  (oa)->operatorc = 0; \
+  (oa)->alloc = 1; \
+}while(0)
+
+#define OPERATOR_ALLOC_FINI(oa, prg) do{ \
+  (prg)->operatorc = (oa)->operatorc; \
+  free((oa)->data); \
+}while(0)
+
 /*
  * Incremental operator allocation - allocate operator for event,
  * returning operator id.
+ *
+ * Only valid to call for single-operator nodes.
  */
 static uint operator_alloc_inc(OperatorAlloc *oa, SGSOperatorNode *op) {
   SGSEventNode *e = op->event;
@@ -206,9 +209,9 @@ static uint operator_alloc_inc(OperatorAlloc *oa, SGSOperatorNode *op) {
     SGSOperatorNode *pop = op->on_prev;
     operator = pop->operator_id;
   } else {
-    for (operator = 0; operator < oa->operatorc; ++operator)
-      if (!(oa->data[operator].last->on_flags & ON_OPERATOR_LATER_USED) &&
-          oa->data[operator].duration_ms == 0) break;
+//    for (operator = 0; operator < oa->operatorc; ++operator)
+//      if (!(oa->data[operator].last->on_flags & ON_OPERATOR_LATER_USED) &&
+//          oa->data[operator].duration_ms == 0) break;
     /*
      * If no unused operator found, allocate new one.
      */
@@ -228,8 +231,7 @@ static uint operator_alloc_inc(OperatorAlloc *oa, SGSOperatorNode *op) {
   }
   op->operator_id = operator;
   oa->data[operator].last = op;
-//  if (op->operator_params & SGS_ADJCS)
-//    oa->data[operator].duration_ms = operator_duration(e);
+//  oa->data[operator].duration_ms = op->time_ms;
   return operator;
 }
 
@@ -261,20 +263,19 @@ typedef struct ProgramAlloc {
   } \
   free((pa)->oevents); \
   (prg)->eventc = (pa)->eventc; \
-  OPERATOR_ALLOC_FINI(&(pa)->oa, prg); \
-  VOICE_ALLOC_FINI(&(pa)->va, prg); \
+  OPERATOR_ALLOC_FINI(&(pa)->oa, (prg)); \
+  VOICE_ALLOC_FINI(&(pa)->va, (prg)); \
 }while(0)
 
 static SGSProgramEvent *program_alloc_oevent(ProgramAlloc *pa, uint voice_id) {
   ++pa->eventc;
   if (pa->eventc > pa->alloc) {
     pa->alloc = (pa->alloc > 0) ? pa->alloc << 1 : 1;
-    pa->oevents = realloc(pa->oevents, sizeof(SGSProgramEvent*) *
-                                         pa->alloc);
+    pa->oevents = realloc(pa->oevents, sizeof(SGSProgramEvent*) * pa->alloc);
   }
   pa->oevents[pa->eventc - 1] = calloc(1, sizeof(SGSProgramEvent));
   pa->oe = pa->oevents[pa->eventc - 1];
-  pa->oe->voiceid = voice_id;
+  pa->oe->voice_id = voice_id;
   return pa->oe;
 }
 
@@ -303,14 +304,14 @@ static void expand_operator(SGSOperatorNode *op) {
  * Convert data for an operator node to program operator data, setting it for
  * the program event given.
  */
-static void program_convert_onode(ProgramAlloc *pa, SGSOperatorNode *op) {
-  SGSProgramEvent *oe = pa->oe;
+static void program_convert_onode(ProgramAlloc *pa, SGSOperatorNode *op,
+                                  uint operator_id) {
+  SGSProgramEvent *oe = pa->oa.data[operator_id].out;
   SGSProgramOperatorData *ood = calloc(1, sizeof(SGSProgramOperatorData));
   oe->operator = ood;
   oe->params |= op->operator_params;
   //printf("operator_id == %d | address == %x\n", op->operator_id, op);
-  //ood->operatorid = op->operator_id;
-  ood->operatorid = operator_alloc_inc(&pa->oa, op);
+  ood->operator_id = operator_id;
   ood->adjcs = 0;
   ood->attr = op->attr;
   ood->wave = op->wave;
@@ -329,20 +330,28 @@ static void program_convert_onode(ProgramAlloc *pa, SGSOperatorNode *op) {
 }
 
 /*
- * Called for each operator for an event - inserts operator data, allocating
- * a new output event if the current one already holds operator data.
+ * Visit each operator node in the node list and recurse through each node's
+ * sublists in turn, following and converting operator data and allocating
+ * new output events as needed.
  */
-static int build_oe(SGSOperatorNode *op, void *arg) {
-  ProgramAlloc *pa = arg;
-  SGSProgramEvent *oe = pa->oe;
-  //puts("build_oe():");
-  if (oe->operator) {
-    uint voice_id = oe->voiceid;
-    oe = program_alloc_oevent(pa, voice_id);
+static void program_follow_onodes(ProgramAlloc *pa, SGSNodeList *nl) {
+  uint i;
+  SGSOperatorNode **list = SGS_NODE_LIST_GET(nl);
+  for (i = nl->inactive_count; i < nl->count; ++i) {
+    SGSOperatorNode *op = list[i];
+    OperatorAllocData *ad;
+    uint operator_id = operator_alloc_inc(&pa->oa, op);
+    program_follow_onodes(pa, &op->fmods);
+    program_follow_onodes(pa, &op->pmods);
+    program_follow_onodes(pa, &op->amods);
+    ad = &pa->oa.data[operator_id];
+    if (pa->oe->operator) {
+      uint voice_id = pa->oe->voice_id;
+      program_alloc_oevent(pa, voice_id);
+    }
+    ad->out = pa->oe;
+    program_convert_onode(pa, op, operator_id);
   }
-  program_convert_onode(pa, op);
-  //puts("/build_oe()");
-  return 0;
 }
 
 /*
@@ -358,7 +367,7 @@ static void program_convert_enode(ProgramAlloc *pa, SGSEventNode *e) {
   /* Add to final output list */
   oe = program_alloc_oevent(pa, voice_alloc_inc(&pa->va, e));
   oe->wait_ms = e->wait_ms;
-  SGS_node_list_rforeach(&e->operators, build_oe, (void*)pa);
+  program_follow_onodes(pa, &e->operators);
   oe = pa->oe; /* oe may have re(al)located */
   if (e->voice_params) {
     ovd = calloc(1, sizeof(SGSProgramVoiceData));
@@ -410,19 +419,19 @@ static SGSProgram* build(SGSParser *o) {
     oe = &prg->events[id];
     ovo = oe->voice;
     oop = oe->operator;
-    printf("\\%d \tEV %d \t(VI %d)", oe->wait_ms, id, oe->voiceid);
+    printf("\\%d \tEV %d \t(VI %d)", oe->wait_ms, id, oe->voice_id);
     if (ovo) {
       const SGSProgramGraph *g = ovo->graph;
-      printf("\n\tvo %d", oe->voiceid);
+      printf("\n\tvo %d", oe->voice_id);
       if (g)
         print_linked("\n\t    {", "}", g->opc, g->ops);
     }
     if (oop) {
       const SGSProgramGraphAdjcs *ga = oop->adjcs;
       if (oop->time_ms == SGS_TIME_INF)
-        printf("\n\top %d \tt=INF \tf=%.f", oop->operatorid, oop->freq);
+        printf("\n\top %d \tt=INF \tf=%.f", oop->operator_id, oop->freq);
       else
-        printf("\n\top %d \tt=%d \tf=%.f", oop->operatorid, oop->time_ms, oop->freq);
+        printf("\n\top %d \tt=%d \tf=%.f", oop->operator_id, oop->time_ms, oop->freq);
       if (ga) {
         print_linked("\n\t    f!<", ">", ga->fmodc, ga->adjcs);
         print_linked("\n\t    p!<", ">", ga->pmodc, &ga->adjcs[ga->fmodc]);
