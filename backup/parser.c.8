@@ -140,7 +140,7 @@ enum {
 #define DEFAULT_TIME (-1)
 
 typedef struct VoiceData {
-  struct EventData *voice_prev; /* preceding event for same voice */
+  struct EventData *voice_prev; /* previous event for same voice */
   uint voiceid;
   /* parameters */
   uchar attr;
@@ -151,7 +151,7 @@ typedef struct VoiceData {
 } VoiceData;
 
 typedef struct OperatorData {
-  struct EventData *operator_prev; /* preceding event for same operator */
+  struct EventData *operator_prev; /* previous event for same operator */
   uint operatorid;
   uint voiceid;
   /* parameters */
@@ -170,7 +170,6 @@ typedef struct EventData {
   struct EventData *subcomposite;
   int wait_ms;
   uint id;
-  const char *sym;
   uint params;
   uint listid; /* for NodeData operators list */
   uint nestlevel;
@@ -218,7 +217,6 @@ typedef struct NodeData {
   uchar linktype;
   char *setsym;
   /* event tracking for current scope */
-  EventData *preceding;
   EventData *voice_event;
   EventData *first, *current, *last;
   NodeList operators;
@@ -389,20 +387,18 @@ static void nd_end_event(NodeData *nd) {
       }*/
     }
     /*FIXME*/if (e->operator) node_list_add(&nd->operators, e);
-  }
-  /* Assign label */
-  if (nd->setsym) {
-//    if (e->sym) free(e->sym);
-    e->sym = nd->setsym;
-    nd->setsym = 0;
-    SGSSymtab_set(o->st, e->sym, e);
-    e->parseflags |= NODE_LINKED;
+    /* Assign label */
+    if (nd->setsym) {
+      SGSSymtab_set(o->st, nd->setsym, e);
+      e->parseflags |= NODE_LINKED;
+      free(nd->setsym);
+      nd->setsym = 0;
+    }
   }
   nd->parseflags &= ~MAKE_EVENT;
-  nd->preceding = 0;
 }
 
-static void nd_begin_event(NodeData *nd, EventData *preceding) {
+static void nd_begin_event(NodeData *nd, EventData *previous) {
   SGSParser *o = nd->o;
   EventData *e = &nd->event, *pve;
   VoiceData *vd = &nd->voice;
@@ -410,8 +406,7 @@ static void nd_begin_event(NodeData *nd, EventData *preceding) {
   uint link_for = ND_LINK_FOR(nd);
   uint i;
   nd_end_event(nd);
-  if (preceding == &nd->event) preceding = nd->last;
-  nd->preceding = preceding;
+  if (previous == &nd->event) previous = nd->last;
   /*
    * Prepare next event
    */
@@ -420,17 +415,17 @@ static void nd_begin_event(NodeData *nd, EventData *preceding) {
   e->nestlevel = o->nestlevel;
   e->scopeid = nd->scopeid;
   od->time_ms = DEFAULT_TIME; /* context-specific default timing */
-  if (nd->preceding) {
+  if (previous) {
     /* if there's a linktype, nested, therefore active voice is changed */
-    pve = (link_for) ? nd->voice_event : nd->preceding;
+    pve = (link_for) ? nd->voice_event : previous;
     if (pve && pve->voice) {
       *vd = *pve->voice;
       vd->voice_prev = pve;
     }
-    if (nd->preceding->operator) {
-      *od = *nd->preceding->operator;
+    if (previous->operator) {
+      *od = *previous->operator;
       od->silence_ms = 0;
-      od->operator_prev = nd->preceding;
+      od->operator_prev = previous;
     }
   }
   if (!vd->voice_prev) { /* set defaults */
@@ -500,7 +495,7 @@ static void nd_set_panning(NodeData *nd, float *f, SGSProgramValit *vi) {
     vd->attr |= SGS_ATTR_VALITPANNING;
     vd->valitpanning = *vi;
   }
-  /* compare to preceding voice event if any */
+  /* compare to previous event if any */
   if (vd->voice_prev) {
     VoiceData *pvd = vd->voice_prev->voice;
     if (vd->panning == pvd->panning)
@@ -1168,7 +1163,7 @@ static uchar parse_level(SGSParser *o, NodeData *parentnd, char newscope) {
         goto RETURN;
       break; }
     case ':': {
-      char *getsym = 0;
+      char *getsym;
       if (nd.setsym) {
         warning(o, "ignoring label assignment to label reference", c);
         free(nd.setsym);
@@ -1196,7 +1191,7 @@ static uchar parse_level(SGSParser *o, NodeData *parentnd, char newscope) {
       if (nd.set_settings || !(nd.parseflags & MAKE_EVENT))
         goto INVALID;
       nd_composite_event(&nd);
-      nd_begin_event(&nd, &nd.event);
+      nd_begin_event(&nd, nd.last);
       nd_composite_event(&nd);
       flags = parse_step(o, &nd) ? (HANDLE_DEFER | DEFERRED_STEP) : 0;
       break;
@@ -1573,7 +1568,6 @@ static SGSProgram* build(SGSParser *o) {
       free(od);
     }
     ++id;
-    free((void*)e->sym);
     free(e);
     e = e_next;
   }
