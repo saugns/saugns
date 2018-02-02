@@ -331,7 +331,7 @@ static void init_event(SGSParser *o, NodeData *nd, EventNode *previous,
   od = &nd->operator;
   if (previous) {
     pve = (linktype) ? nd->parent : previous;
-    if (pve) {
+    if (pve && SGS_VOICE_PARAMS(pve->parameters)) {
       setvo = 1;
       e->voice_prev = pve;
       e->voice_attr = pve->voice_attr;
@@ -343,8 +343,8 @@ static void init_event(SGSParser *o, NodeData *nd, EventNode *previous,
     if (previous->operator) {
       setop = 1;
       *od = *previous->operator;
-      od->operator_prev = previous;
       od->silence_ms = 0;
+      od->operator_prev = previous;
       previous->parse_flags |= OPERATOR_LATER_USED;
     }
   }
@@ -392,20 +392,20 @@ static void init_event(SGSParser *o, NodeData *nd, EventNode *previous,
 static void end_voice(SGSParser *o, NodeData *nd) {
   EventNode *e = nd->event;
   EventNode *pve;
-  if (!e)
+  if (!e || SGS_VOICE_PARAMS(e->parameters))
     return; /* nothing to do */
   pve = e->voice_prev;
   if (!pve) { /* initial event should reset its parameters */
     e->parameters |= SGS_VOATTR |
-                     SGS_GRAPH |
-                     SGS_PANNING;
+                 SGS_GRAPH |
+                 SGS_PANNING;
   } else {
     if (e->panning != pve->panning)
       e->parameters |= SGS_PANNING;
   }
   if (e->valitpanning.type)
     e->parameters |= SGS_VOATTR |
-                     SGS_VALITPANNING;
+                 SGS_VALITPANNING;
 }
 
 static void end_operator(SGSParser *o, NodeData *nd) {
@@ -1282,7 +1282,7 @@ static void time_events(EventNode *e, int def_time_ms) {
    * Fill in blank valit durations, handle silence as well as the case of
    * adding present event duration to wait time of next event.
    */
-  if (e->valitpanning.type) {
+  if (e->parameters & SGS_VALITPANNING) {
     if (e->valitpanning.time_ms < 0)
       e->valitpanning.time_ms = def_time_ms;
   }
