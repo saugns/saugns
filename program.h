@@ -6,7 +6,7 @@ enum {
   SGS_VALITPANNING = 1<<2,
   SGS_VOATTR = 1<<3,
   /* operator values */
-  SGS_ADJC = 1<<4,
+  SGS_ADJCS = 1<<4,
   SGS_WAVE = 1<<5,
   SGS_TIME = 1<<6,
   SGS_SILENCE = 1<<7,
@@ -69,7 +69,6 @@ typedef struct SGSProgramValit {
 
 typedef struct SGSProgramVoiceData {
   const SGSProgramGraph *graph;
-  uint id;
   uchar attr;
   float panning;
   SGSProgramValit valitpanning;
@@ -77,7 +76,7 @@ typedef struct SGSProgramVoiceData {
 
 typedef struct SGSProgramOperatorData {
   const SGSProgramGraphAdjcs *adjcs;
-  uint id;
+  uint operatorid;
   uchar attr, wave;
   int time_ms, silence_ms;
   float freq, dynfreq, phase, amp, dynamp;
@@ -87,6 +86,7 @@ typedef struct SGSProgramOperatorData {
 typedef struct SGSProgramEvent {
   int wait_ms;
   uint params;
+  uint voiceid; /* needed for both voice and operator data */
   const SGSProgramVoiceData *voice;
   const SGSProgramOperatorData *operator;
 } SGSProgramEvent;
