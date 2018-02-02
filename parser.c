@@ -182,7 +182,7 @@ typedef struct OperatorData {
 } OperatorData;
 
 typedef struct EventData {
-  struct EventData *next, *scope_next;
+  struct EventData *next, *bind_next;
   struct EventData *group_from;
   struct EventData *sub_composite;
   int wait_ms;
@@ -234,7 +234,8 @@ typedef struct NodeData {
   uint add_wait_ms; /* added for event after next */
   uchar linktype;
   /* event tracking for current scope */
-  EventData *bind_from, *preceding;
+  EventData *bind_from; /* events which may be changed by arguments */
+  EventData *preceding;
   EventData *voice_event;
   EventData *first, *last, *last_main;
   NodeList operators;
@@ -301,6 +302,9 @@ static void nd_label_event(NodeData *nd, const char *label) {
 /* Current label for event or event to be made */
 #define nd_current_label(nd) ((const char*)(nd)->event.sym)
 
+/* Event(s) subject to arguments exist. */
+#define nd_events_bound(nd) ((nd)->bind_from != 0)
+
 /* Next operator defined will not belong to present voice. */
 static void nd_new_voice(NodeData *nd) {
   nd->voice_event = 0;
@@ -329,6 +333,8 @@ static void nd_end_event(NodeData *nd) {
       od->voiceid = vd->voiceid;
     }
     e->voice = memdup(vd, sizeof(VoiceData));
+  } else {
+    e->voice = 0;
   }
   memset(&nd->voice, 0, sizeof(VoiceData));
   /*
@@ -374,7 +380,10 @@ static void nd_end_event(NodeData *nd) {
     if (!od->operator_prev)
       od->operatorid = o->operatorc++;
     e->operator = memdup(od, sizeof(OperatorData));
+  } else {
+    e->operator = 0;
   }
+
   memset(&nd->operator, 0, sizeof(OperatorData));
   /*
    * Flush event as whole
@@ -402,6 +411,7 @@ static void nd_end_event(NodeData *nd) {
       /* link all events that are not composite sub-parts */
       if (o->last_event) o->last_event->next = e;
       o->last_event = e;
+      if (nd->last_main) nd->last_main->bind_next = e;
       nd->last_main = e; /* then remains the same during composite events */
       nd->composite = 0;
     }
@@ -418,17 +428,17 @@ static void nd_end_event(NodeData *nd) {
     }
     if (link_for) {
       uint i;
-      NodeList *parents = (nd->parent) ? &nd->parent->operators : 0;
+/*      NodeList *parents = (nd->parent) ? &nd->parent->operators : 0;
       if (parents) {
         for (i = 0; i < parents->count; ++i) {
           parents->na[i]->params |= (link_for == GRAPH) ? SGS_GRAPH :
                                                           SGS_ADJCS;
           add_adjc(parents->na[i], e, link_for);
         }
-      } else {
+      } else {*/
         e->params |= SGS_GRAPH; /* operator has new voice for parent */
         add_adjc(nd->voice_event, e, GRAPH);
-      }
+/*      }*/
       /* FIXME:sync function?
        *else if ((nd->parent->parse_flags & PARENT_OLD) ||
                  (nd->parent->scope_id != nd->scope_id)) {
@@ -443,8 +453,9 @@ static void nd_end_event(NodeData *nd) {
       e->parse_flags |= EVENT_LABELED;
     }
   }
-  nd->parse_flags &= ~MAKE_EVENT;
+  nd->bind_from = 0;
   nd->preceding = 0;
+  nd->parse_flags &= ~MAKE_EVENT;
 }
 
 static void nd_begin_event(NodeData *nd, EventData *preceding) {
@@ -458,6 +469,9 @@ static void nd_begin_event(NodeData *nd, EventData *preceding) {
   /*
    * Prepare next event
    */
+  e->operator = od;
+  e->voice = vd;
+  nd->bind_from = e;
   if (preceding == &nd->event) preceding = nd->last;
   nd->preceding = preceding;
   if (!nd->preceding && !nd->parent) nd_new_voice(nd);
@@ -560,29 +574,41 @@ static void nd_set_phase(NodeData *nd, float f) {
 
 static void nd_set_freq(NodeData *nd, float *f, SGSProgramValit *vi,
                         uchar ratio) {
-  EventData *e = &nd->event;
-  OperatorData *od = &nd->operator;
+  EventData *e;
+  float freq = 0.f;
+  float vifreq = 0.f;
   if (f) {
-    if (!od->valitamp.type)
-      od->attr &= ~(SGS_ATTR_VALITFREQ |
-                    SGS_ATTR_VALITFREQRATIO);
-    if (ratio) {
-      od->freq = 1.f / *f;
-      od->attr |= SGS_ATTR_FREQRATIO;
-    } else {
-      od->freq = *f;
-      od->attr &= ~SGS_ATTR_FREQRATIO;
-    }
-    e->params |= SGS_FREQ;
+    freq = *f;
+    if (ratio) freq = 1.f / freq;
   }
   if (vi) {
-    od->attr |= SGS_ATTR_VALITFREQ;
-    od->valitamp = *vi;
-    if (ratio) {
-      od->valitamp.goal = 1.f / od->valitamp.goal;
-      od->attr |= SGS_ATTR_VALITFREQRATIO;
-    } else
-      od->attr &= ~SGS_ATTR_VALITFREQRATIO;
+    vifreq = vi->goal;
+    if (ratio) vifreq = 1.f / vifreq;
+  }
+  for (e = nd->bind_from; e; e = e->bind_next) {
+    OperatorData *od = e->operator;
+    if (f) {
+      if (!od->valitfreq.type)
+        od->attr &= ~(SGS_ATTR_VALITFREQ |
+                      SGS_ATTR_VALITFREQRATIO);
+      od->freq = freq;
+      if (ratio) {
+        od->attr |= SGS_ATTR_FREQRATIO;
+      } else {
+        od->attr &= ~SGS_ATTR_FREQRATIO;
+      }
+      e->params |= SGS_FREQ;
+    }
+    if (vi) {
+      od->attr |= SGS_ATTR_VALITFREQ;
+      od->valitfreq = *vi;
+      od->valitfreq.goal = vifreq;
+      if (ratio) {
+        od->attr |= SGS_ATTR_VALITFREQRATIO;
+      } else {
+        od->attr &= ~SGS_ATTR_VALITFREQRATIO;
+      }
+    }
   }
 }
 
@@ -599,6 +625,8 @@ static void nd_init(NodeData *nd, SGSParser *o, NodeData *parentnd,
       nd->scope = parentnd->scope;
     nd->scope_id = parentnd->scope_id;
     nd->voice_event = parentnd->voice_event;
+    if (scope == SCOPE_BIND)
+      nd->group = parentnd->group;
   }
   nd_set_linktype(nd, GRAPH);
 }
@@ -609,13 +637,18 @@ static void nd_fini(NodeData *nd) {
     if (nd->last->operator->time_ms < 0)
       nd->last->operator->time_ms = nd->o->def_time_ms; /* use default */
   }
-  if (nd->last_main)
-    nd->last_main->group_from = nd->group;
   /* Event linkage across scopes */
   if (nd->scope == SCOPE_BIND) {
-    nd->parent->bind_from = nd->first;
-    if (nd->parent->last) nd->parent->last->scope_next = nd->first;
+    /* Event binding */
+    EventData *bind_from = (nd->first) ? nd->first : nd->bind_from;
+    nd->parent->bind_from = bind_from;
+    if (nd->parent->last) nd->parent->last->bind_next = bind_from;
     nd->parent->last = nd->last;
+    /* Event timing */
+    if (!nd->parent->group) nd->parent->group = nd->group;
+  } else {
+    if (nd->last_main)
+      nd->last_main->group_from = nd->group;
   }
 }
 
@@ -1285,6 +1318,8 @@ static uchar parse_level(SGSParser *o, NodeData *parentnd, char newscope) {
       nd_end_event(&nd);
       if (parse_level(o, &nd, SCOPE_BIND))
         goto RETURN;
+      if (nd_events_bound(&nd))
+        flags = parse_step(o, &nd) ? (HANDLE_DEFER | DEFERRED_STEP) : 0;
       break;
     case '|':
       if (nd.set_settings || nd.event.nest_level != 0)

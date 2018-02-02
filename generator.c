@@ -1,6 +1,5 @@
 #include "sgensys.h"
 #include "osc.h"
-#include "env.h"
 #include "program.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,7 +24,6 @@ typedef struct ParameterValit {
 } ParameterValit;
 
 typedef struct OperatorNode {
-  Buf data;
   uint time, silence;
   const SGSProgramGraphAdjcs *adjcs;
   uchar type, attr;
@@ -70,7 +68,6 @@ static uint count_flags(uint flags) {
   return count;
 }
 
-#define NO_DELAY_OFFS (0x80000000)
 struct SGSGenerator {
   uint srate;
   Buf *bufs;
@@ -85,6 +82,10 @@ struct SGSGenerator {
   /* actual nodes of varying type stored here */
 };
 
+/*
+ * Count buffers needed for operator, including linked operators.
+ * TODO: Verify, remove debug printing when parser module done.
+ */
 static uint calc_bufs(SGSGenerator *o, OperatorNode *n) {
   uint count = 0, i, res;
   if (n->adjcs) {
@@ -99,6 +100,10 @@ static uint calc_bufs(SGSGenerator *o, OperatorNode *n) {
   return count + 5;
 }
 
+/*
+ * Check operators for voice and increase the buffer allocation if needed.
+ * TODO: Verify, remove debug printing when parser module done.
+ */
 static void upsize_bufs(SGSGenerator *o, VoiceNode *vn) {
   uint count = 0, i, res;
   if (!vn->graph) return;
@@ -114,6 +119,10 @@ static void upsize_bufs(SGSGenerator *o, VoiceNode *vn) {
   }
 }
 
+/*
+ * Allocate SGSGenerator with the passed sample rate and using the
+ * given SGSProgram.
+ */
 SGSGenerator* SGSGenerator_create(uint srate, struct SGSProgram *prg) {
   SGSGenerator *o;
   const SGSProgramEvent *step;
@@ -146,6 +155,9 @@ SGSGenerator* SGSGenerator_create(uint srate, struct SGSProgram *prg) {
   o->voices = (void*)(((uchar*)o) + size + operatorssize + eventssize);
   data      = (void*)(((uchar*)o) + size + operatorssize + eventssize + voicessize);
   SGSOsc_init();
+  /*
+   * Fill in events according to the SGSProgram.
+   */
   indexwaittime = 0;
   for (i = 0; i < prg->eventc; ++i) {
     EventNode *e;
@@ -222,8 +234,11 @@ SGSGenerator* SGSGenerator_create(uint srate, struct SGSProgram *prg) {
   return o;
 }
 
+/*
+ * Processes one event; to be called for an event when its time comes.
+ */
 static void SGSGenerator_handle_event(SGSGenerator *o, EventNode *e) {
-  if (1) {
+  if (1) /* more types to be added in the future */ {
     const SetNode *s = e->node;
     VoiceNode *vn;
     OperatorNode *on;
@@ -317,9 +332,17 @@ void SGSGenerator_destroy(SGSGenerator *o) {
 }
 
 /*
- * node block processing
+ * Fill buffer with buflen float values for a parameter; these may
+ * either simply be a copy of the supplied state, or modified.
+ *
+ * If a parameter valit (VALue ITeration) is supplied, the values
+ * are shaped according to its timing, target value and curve
+ * selection. Once elapsed, the state will also be set to its final
+ * value.
+ *
+ * Passing a modifier buffer will accordingly multiply each output
+ * value, done to get absolute values from ratios.
  */
-
 static uchar run_param(BufData *buf, uint buflen, ParameterValit *vi,
                        float *state, const BufData *modbuf) {
   uint i, end, len, filllen;
@@ -384,6 +407,10 @@ static uchar run_param(BufData *buf, uint buflen, ParameterValit *vi,
   return 0;
 }
 
+/*
+ * Generate buflen samples for an operator node, recursively visiting
+ * its subnodes.
+ */
 static void run_block(SGSGenerator *o, Buf *bufs, uint buflen,
                       OperatorNode *n, BufData *parentfreq,
                       uchar waveenv, uchar acc) {
@@ -496,6 +523,10 @@ static void run_block(SGSGenerator *o, Buf *bufs, uint buflen,
   n->time -= len;
 }
 
+/*
+ * Generate up to len samples for a voice, these mixed into the
+ * interleaved output stereo buffer by simple addition.
+ */
 static void run_voice(SGSGenerator *o, VoiceNode *vn, short *out, uint len) {
   const int *ops;
   uint i, opc, time = 0;
@@ -565,9 +596,12 @@ RETURN:
 }
 
 /*
- * main run-function
+ * Main sound generation/processing function. Call repeatedly to fill
+ * interleaved stereo buffer buf with len new samples.
+ *
+ * Returns non-zero until the end of the generated signal has been
+ * reached.
  */
-
 uchar SGSGenerator_run(SGSGenerator *o, short *buf, uint len) {
   short *sp;
   uint i, skiplen;
@@ -583,7 +617,8 @@ PROCESS:
     if (o->eventpos < e->waittime) {
       uint waittime = e->waittime - o->eventpos;
       if (waittime < len) {
-        /* Split processing so that len is no longer than waittime, ensuring
+        /*
+         * Split processing so that len is no longer than waittime, ensuring
          * event is handled before its operator is used.
          */
         skiplen = len - waittime;
