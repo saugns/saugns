@@ -10,6 +10,14 @@ enum {
   SGS_FLAG_EXEC = 1<<1
 };
 
+typedef union BufData {
+  int i;
+  float f;
+} BufData;
+
+#define BUF_LEN 256
+typedef BufData Buf[BUF_LEN];
+
 typedef struct ParameterValit {
   uint time, pos;
   float goal;
@@ -17,6 +25,7 @@ typedef struct ParameterValit {
 } ParameterValit;
 
 typedef struct OperatorNode {
+  Buf data;
   uint time, silence;
   const SGSProgramGraphAdjcs *adjcs;
   uchar type, attr;
@@ -55,19 +64,11 @@ typedef struct SetNode {
 static uint count_flags(uint flags) {
   uint i, count = 0;
   for (i = 0; i < (8 * sizeof(uint)); ++i) {
-    if (flags & 1) ++count;
+    count += flags & 1;
     flags >>= 1;
   }
   return count;
 }
-
-typedef union BufData {
-  int i;
-  float f;
-} BufData;
-
-#define BUF_LEN 256
-typedef BufData Buf[BUF_LEN];
 
 #define NO_DELAY_OFFS (0x80000000)
 struct SGSGenerator {
@@ -84,8 +85,29 @@ struct SGSGenerator {
   /* actual nodes of varying type stored here */
 };
 
-static void upsize_bufs(SGSGenerator *o) {//, OperatorNode *n) {
-  uint count = 3;//calc_bufs(n, 0);
+static uint calc_bufs(SGSGenerator *o, OperatorNode *n) {
+  uint count = 0, i, res;
+  if (n->adjcs) {
+    const int *mods = n->adjcs->adjcs;
+    const uint modc = n->adjcs->pmodc + n->adjcs->fmodc + n->adjcs->amodc;
+    for (i = 0; i < modc; ++i) {
+  printf("visit node %d\n", mods[i]);
+      res = calc_bufs(o, &o->operators[mods[i]]);
+      if (res > count) count = res;
+    }
+  }
+  return count + 5;
+}
+
+static void upsize_bufs(SGSGenerator *o, VoiceNode *vn) {
+  uint count = 0, i, res;
+  if (!vn->graph) return;
+  for (i = 0; i < vn->graph->opc; ++i) {
+  printf("visit node %d\n", vn->graph->ops[i]);
+    res = calc_bufs(o, &o->operators[vn->graph->ops[i]]);
+    if (res > count) count = res;
+  }
+  printf("%d -?!\n", count);
   if (count > o->bufc) {
     o->bufs = realloc(o->bufs, sizeof(Buf) * count);
     o->bufc = count;
@@ -223,7 +245,7 @@ static void SGSGenerator_handle_event(SGSGenerator *o, EventNode *e) {
         vn->valitpanning.goal = (*data++).f;
         vn->valitpanning.type = (*data++).i;
       }
-      upsize_bufs(o);//, topn);
+      upsize_bufs(o, vn);
       vn->flag |= SGS_FLAG_INIT | SGS_FLAG_EXEC;
       vn->pos = 0;
       if ((int)o->voice > s->voiceid) /* go back to re-activated node */
