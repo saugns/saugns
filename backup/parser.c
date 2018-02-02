@@ -1168,7 +1168,7 @@ static uchar parse_level(SGSParser *o, NodeData *parentnd, char newscope) {
         goto RETURN;
       break; }
     case ':': {
-      char *getsym;
+      char *getsym = 0;
       if (nd.setsym) {
         warning(o, "ignoring label assignment to label reference", c);
         free(nd.setsym);
