@@ -1,10 +1,11 @@
+/* operator parameters */
 enum {
-  /* voice parameters */
+  /* voice values */
   SGS_GRAPH = 1<<0,
   SGS_PANNING = 1<<1,
   SGS_VALITPANNING = 1<<2,
   SGS_VOATTR = 1<<3,
-  /* operator parameters */
+  /* operator values */
   SGS_ADJCS = 1<<4,
   SGS_WAVE = 1<<5,
   SGS_TIME = 1<<6,
@@ -18,14 +19,6 @@ enum {
   SGS_DYNAMP = 1<<14,
   SGS_OPATTR = 1<<15
 };
-
-#define SGS_VOICE_PARAMS(flags) \
-  ((flags) & (SGS_GRAPH|SGS_PANNING|SGS_VALITPANNING|SGS_VOATTR))
-
-#define SGS_OPERATOR_PARAMS(flags) \
-  ((flags) & (SGS_ADJCS|SGS_WAVE|SGS_SILENCE|SGS_FREQ|SGS_VALITFREQ| \
-              SGS_DYNFREQ|SGS_PHASE|SGS_AMP|SGS_VALITAMP|SGS_DYNAMP| \
-              SGS_OPATTR))
 
 /* operator wave types */
 enum {
