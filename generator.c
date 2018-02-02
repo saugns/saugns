@@ -385,6 +385,7 @@ static void run_block(SGSGenerator *o, Buf *bufs, uint buflen,
     if (!acc) for (i = 0; i < zerolen; ++i)
       sbuf[i].i = 0;
     len -= zerolen;
+    n->time -= zerolen;
     n->silence -= zerolen;
     if (!len)
       return;
@@ -499,11 +500,13 @@ static void run_voice(SGSGenerator *o, VoiceNode *vn, short *out, uint len) {
     sp = out;
     if (n->silence) {
       if (n->silence >= t) {
+        n->time -= t;
         n->silence -= t;
-        continue;
+        goto NEXT;
       }
       sp += n->silence + n->silence; /* doubled given stereo interleaving */
       t -= n->silence;
+      n->time -= n->silence;
       n->silence = 0;
     }
     while (t) {
@@ -529,6 +532,7 @@ static void run_voice(SGSGenerator *o, VoiceNode *vn, short *out, uint len) {
         *sp++ += p;
       }
     }
+  NEXT:
     if (n->time != 0)
       finished = 0;
   }
