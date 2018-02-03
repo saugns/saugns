@@ -1,5 +1,5 @@
-'a	Osin f444 t1 - <Osin r(1/2.255)> |
-'b	Osin f444 t1 - <Osin f(444 * (2.255))> |
+'a	Osin f444 t1 p!<Osin r(1/2.255)> |
+'b	Osin f444 t1 p!<Osin f(444 * (2.255))> |
 	:a f400 t1
 	; f389 t1
 	; f339 t1

@@ -6,7 +6,7 @@
 /* a plain linked list is sufficient at present */
 
 typedef struct SGSSymnode {
-  char *key;
+  const char *key;
   void *value;
   struct SGSSymnode *next;
 } SGSSymnode;
@@ -15,22 +15,21 @@ struct SGSSymtab {
   SGSSymnode *node;
 };
 
-SGSSymtab* SGSSymtab_create(void) {
+SGSSymtab* SGS_symtab_create(void) {
   SGSSymtab *o = calloc(1, sizeof(SGSSymtab));
   return o;
 }
 
-void SGSSymtab_destroy(SGSSymtab *o) {
+void SGS_symtab_destroy(SGSSymtab *o) {
   SGSSymnode *n = o->node;
   while (n) {
     SGSSymnode *nn = n->next;
-    free(n->key);
     free(n);
     n = nn;
   }
 }
 
-void* SGSSymtab_get(SGSSymtab *o, const char *key) {
+void* SGS_symtab_get(SGSSymtab *o, const char *key) {
   SGSSymnode *n = o->node;
   while (n) {
     if (!strcmp(n->key, key))
@@ -40,20 +39,18 @@ void* SGSSymtab_get(SGSSymtab *o, const char *key) {
   return 0;
 }
 
-static SGSSymnode* SGSSymnode_alloc(const char *key, void *value) {
+static SGSSymnode* SGS_symnode_alloc(const char *key, void *value) {
   SGSSymnode *o = malloc(sizeof(SGSSymnode));
-  int len = strlen(key);
-  o->key = malloc(len);
-  strcpy(o->key, key);
+  o->key = key;
   o->value = value;
   o->next = 0;
   return o;
 }
 
-void* SGSSymtab_set(SGSSymtab *o, const char *key, void *value) {
+void* SGS_symtab_set(SGSSymtab *o, const char *key, void *value) {
   SGSSymnode *n = o->node;
   if (!n) {
-    o->node = SGSSymnode_alloc(key, value);
+    o->node = SGS_symnode_alloc(key, value);
     return 0;
   }
   for (;;) {
@@ -66,6 +63,6 @@ void* SGSSymtab_set(SGSSymtab *o, const char *key, void *value) {
       break;
     n = n->next;
   }
-  n->next = SGSSymnode_alloc(key, value);
+  n->next = SGS_symnode_alloc(key, value);
   return 0;
 }
