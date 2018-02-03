@@ -1,1 +1,13 @@
-Osin fD3 t2 -p< Osin r(1/3) a0 a[v1 t0.05 cexp] t0.05 >
+'a	Osin f137 t11 p!<
+		Osin f032 t1 p!<Osin f42>
+		; f132 t1
+		; f232 t1
+		; f332 t1
+		; f432 t1
+		; f532 t1
+		; f632 t1
+		; f732 t1
+		; f832 t.5
+		; f932 t.5
+		; f1032 t2
+	>
