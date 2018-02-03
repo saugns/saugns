@@ -34,12 +34,12 @@ typedef struct SGSOsc {
 #define SGSOsc_RUN(o, osctab, coeff, freq, amp, out) do{ \
   int SGSOsc__s; \
   uint SGSOsc__i; \
-  SET_I2F(SGSOsc__i, (coeff)*(freq)); \
+  SET_I2FV(SGSOsc__i, (coeff)*(freq)); \
   (o)->phase += SGSOsc__i; \
   SGSOsc__i = (o)->phase >> (32-SGSOsc_TABINDEXBITS); \
   SGSOsc__s = (osctab)[SGSOsc__i]; \
   /* write lerp'd & scaled result */ \
-  SET_I2F((out), \
+  SET_I2FV((out), \
     (((float)SGSOsc__s) + \
      ((float)(((osctab)[SGSOsc__i + 1] - SGSOsc__s))) * \
      ((float)((o)->phase & SGSOsc_TABINDEXMASK)) * \
@@ -51,12 +51,12 @@ typedef struct SGSOsc {
 #define SGSOsc_RUN_FM(o, osctab, coeff, freq, fm, amp, out) do{ \
   int SGSOsc__s; \
   uint SGSOsc__i; \
-  SET_I2F(SGSOsc__i, (coeff)*(freq)); \
+  SET_I2FV(SGSOsc__i, (coeff)*(freq)); \
   (o)->phase += SGSOsc__i + ((fm) * ((SGSOsc__i >> 11) - (SGSOsc__i >> 14) + (SGSOsc__i >> 18))); \
   SGSOsc__i = (o)->phase >> (32-SGSOsc_TABINDEXBITS); \
   SGSOsc__s = (osctab)[SGSOsc__i]; \
   /* write lerp'd & scaled result */ \
-  SET_I2F((out), \
+  SET_I2FV((out), \
     (((float)SGSOsc__s) + \
      ((float)(((osctab)[SGSOsc__i + 1] - SGSOsc__s))) * \
      ((float)((o)->phase & SGSOsc_TABINDEXMASK)) * \
@@ -68,13 +68,13 @@ typedef struct SGSOsc {
 #define SGSOsc_RUN_PM(o, osctab, coeff, freq, pm, amp, out) do{ \
   int SGSOsc__s; \
   uint SGSOsc__i, SGSOsc__p; \
-  SET_I2F(SGSOsc__i, (coeff)*(freq)); \
+  SET_I2FV(SGSOsc__i, (coeff)*(freq)); \
   (o)->phase += SGSOsc__i; \
   SGSOsc__p = (o)->phase + ((pm) << 16); \
   SGSOsc__i = SGSOsc__p >> (32-SGSOsc_TABINDEXBITS); \
   SGSOsc__s = (osctab)[SGSOsc__i]; \
   /* write lerp'd & scaled result */ \
-  SET_I2F((out), \
+  SET_I2FV((out), \
     (((float)SGSOsc__s) + \
      ((float)(((osctab)[SGSOsc__i + 1] - SGSOsc__s))) * \
      ((float)(SGSOsc__p & SGSOsc_TABINDEXMASK)) * \
@@ -87,7 +87,7 @@ typedef struct SGSOsc {
 #define SGSOsc_RUN_PM_ENVO(o, osctab, coeff, freq, pm, out) do{ \
   int SGSOsc__s; \
   uint SGSOsc__i, SGSOsc__p; \
-  SET_I2F(SGSOsc__i, (coeff)*(freq)); \
+  SET_I2FV(SGSOsc__i, (coeff)*(freq)); \
   (o)->phase += SGSOsc__i; \
   SGSOsc__p = (o)->phase + ((pm) << 16); \
   SGSOsc__i = SGSOsc__p >> (32-SGSOsc_TABINDEXBITS); \
@@ -103,7 +103,7 @@ typedef struct SGSOsc {
 
 #define SGSOsc_WAVE_OFFS(o, coeff, freq, timepos, out) do{ \
   uint SGSOsc__i; \
-  SET_I2F(SGSOsc__i, (coeff)*(freq)); \
+  SET_I2FV(SGSOsc__i, (coeff)*(freq)); \
   uint SGSOsc__p = SGSOsc__i * (uint)(timepos); \
   int SGSOsc__o = SGSOsc__p - (SGSOsc_TABINDEXMASK+1); \
   (out) = (SGSOsc__o / SGSOsc__i); \
