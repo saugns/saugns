@@ -4,7 +4,7 @@
 
 typedef long long int llong;
 
-#define SET_I2F(i, f) \
+#define SET_I2FV(i, f) \
   asm(\
 "fistpl %0\n\t" \
 : "=m"(i) \
