@@ -19,8 +19,8 @@ static void *memdup(const void *src, size_t size) {
 
 #ifdef strdup /* deal with libc issues when already provided */
 # undef strdup
-# define strdup _strdup
 #endif
+#define strdup _strdup
 static char *_strdup(const char *src) {
   size_t len = strlen(src);
   char *ret;
@@ -113,6 +113,402 @@ static void eatws(FILE *f) {
  * Parsing code
  */
 
+#define DEFAULT_TIME (-1)
+
+enum {
+  /* parsing scopes */
+  SCOPE_SAME = 0,
+  SCOPE_TOP = 1,
+  SCOPE_BIND = '{',
+  SCOPE_NEST = '<'
+};
+
+enum {
+  NS_SET_SETTINGS = 1<<0, /* adjusting default values */
+  NS_IN_NODE = 1<<1,     /* adjusting operator and/or voice */
+  NS_NESTED_SCOPE = 1<<2,
+};
+
+/*
+ * Things that need to be separate for each nested parse_level() go here.
+ */
+typedef struct NodeScope {
+  SGSParser *o;
+  struct NodeScope *parent;
+  uint ns_flags;
+  char scope;
+  uint scopeid;
+  SGSEventNode *event, *last_event;
+  SGSOperatorNode *operator, *first_operator, *last_operator;
+  SGSOperatorNode *on_prev;
+  SGSEventNode *current;
+  SGSOperatorNode *bind_from;
+  uchar linktype;
+  char *set_label;
+  /* timing/delay */
+  SGSEventNode *group;
+  SGSEventNode *composite; /* grouping of events for a voice and/or operator */
+  uchar end_composite;
+  uint next_wait_ms; /* added for next event */
+} NodeScope;
+
+#define NEWLINE '\n'
+static char read_char(SGSParser *o) {
+  char c;
+  eatws(o->f);
+  if (o->nextc) {
+    c = o->nextc;
+    o->nextc = 0;
+  } else {
+    c = getc(o->f);
+  }
+  if (c == '#')
+    while ((c = getc(o->f)) != '\n' && c != '\r' && c != EOF) ;
+  if (c == '\n') {
+    testgetc('\r', o->f);
+    c = NEWLINE;
+  } else if (c == '\r') {
+    testgetc('\n', o->f);
+    c = NEWLINE;
+  } else {
+    eatws(o->f);
+  }
+  o->c = c;
+  return c;
+}
+
+static void read_ws(SGSParser *o) {
+  char c;
+  do {
+    c = getc(o->f);
+    if (c == ' ' || c == '\t')
+      continue;
+    if (c == '\n') {
+      ++o->line;
+      testgetc('\r', o->f);
+    } else if (c == '\r') {
+      ++o->line;
+      testgetc('\n', o->f);
+    } else if (c == '#') {
+      while ((c = getc(o->f)) != '\n' && c != '\r' && c != EOF) ;
+    } else {
+      ungetc(c, o->f);
+      break;
+    }
+  } while (c != EOF);
+}
+
+static float read_num_r(SGSParser *o, float (*read_symbol)(SGSParser *o),
+                        char *buf, uint len, uchar pri, uint level) {
+  char *p = buf;
+  uchar dot = 0;
+  float num;
+  char c;
+  c = getc(o->f);
+  if (level) read_ws(o);
+  if (c == '(') {
+    return read_num_r(o, read_symbol, buf, len, 255, level+1);
+  }
+  if (read_symbol &&
+      ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))) {
+    ungetc(c, o->f);
+    num = read_symbol(o);
+    if (num == num) /* not NAN; was recognized */
+      goto LOOP;
+  }
+  if (c == '-') {
+    *p++ = c;
+    c = getc(o->f);
+    if (level) read_ws(o);
+  }
+  while ((c >= '0' && c <= '9') || (!dot && (dot = (c == '.')))) {
+    if ((p+1) == (buf+len)) {
+      break;
+    }
+    *p++ = c;
+    c = getc(o->f);
+  }
+  ungetc(c, o->f);
+  if (p == buf) return NAN;
+  *p = '\0';
+  num = strtod(buf, 0);
+LOOP:
+  if (level) read_ws(o);
+  for (;;) {
+    c = getc(o->f);
+    if (level) read_ws(o);
+    switch (c) {
+    case '(':
+      num *= read_num_r(o, read_symbol, buf, len, 255, level+1);
+      break;
+    case ')':
+      if (pri < 255)
+        ungetc(c, o->f);
+      return num;
+      break;
+    case '^':
+      num = exp(log(num) * read_num_r(o, read_symbol, buf, len, 0, level));
+      break;
+    case '*':
+      num *= read_num_r(o, read_symbol, buf, len, 1, level);
+      break;
+    case '/':
+      num /= read_num_r(o, read_symbol, buf, len, 1, level);
+      break;
+    case '+':
+      if (pri < 2)
+        return num;
+      num += read_num_r(o, read_symbol, buf, len, 2, level);
+      break;
+    case '-':
+      if (pri < 2)
+        return num;
+      num -= read_num_r(o, read_symbol, buf, len, 2, level);
+      break;
+    default:
+      ungetc(c, o->f);
+      return num;
+    }
+    if (num != num) {
+      ungetc(c, o->f);
+      return num;
+    }
+  }
+}
+static uchar read_num(SGSParser *o, float (*read_symbol)(SGSParser *o),
+                      float *var) {
+  char buf[64];
+  float num = read_num_r(o, read_symbol, buf, 64, 254, 0);
+  if (num != num)
+    return 0;
+  *var = num;
+  return 1;
+}
+
+/*
+ * Common warning printing function for script errors; requires that o->c
+ * is set to the character where the error was detected.
+ */
+static void warning(SGSParser *o, const char *str) {
+  char buf[4] = {'\'', o->c, '\'', 0};
+  printf("warning: %s [line %d, at %s] - %s\n", o->fn, o->line,
+         (o->c == EOF ? "EOF" : buf), str);
+}
+#define WARN_INVALID "invalid character"
+
+#define OCTAVES 11
+static float read_note(SGSParser *o) {
+  static const float octaves[OCTAVES] = {
+    (1.f/16.f),
+    (1.f/8.f),
+    (1.f/4.f),
+    (1.f/2.f),
+    1.f, /* no. 4 - standard tuning here */
+    2.f,
+    4.f,
+    8.f,
+    16.f,
+    32.f,
+    64.f
+  };
+  static const float notes[3][8] = {
+    { /* flat */
+      48.f/25.f,
+      16.f/15.f,
+      6.f/5.f,
+      32.f/25.f,
+      36.f/25.f,
+      8.f/5.f,
+      9.f/5.f,
+      96.f/25.f
+    },
+    { /* normal (9/8 replaced with 10/9 for symmetry) */
+      1.f,
+      10.f/9.f,
+      5.f/4.f,
+      4.f/3.f,
+      3.f/2.f,
+      5.f/3.f,
+      15.f/8.f,
+      2.f
+    },
+    { /* sharp */
+      25.f/24.f,
+      75.f/64.f,
+      125.f/96.f,
+      25.f/18.f,
+      25.f/16.f,
+      225.f/128.f,
+      125.f/64.f,
+      25.f/12.f
+    }
+  };
+  float freq;
+  o->c = getc(o->f);
+  int octave;
+  int semitone = 1, note;
+  int subnote = -1;
+  if (o->c >= 'a' && o->c <= 'g') {
+    subnote = o->c - 'c';
+    if (subnote < 0) /* a, b */
+      subnote += 7;
+    o->c = getc(o->f);
+  }
+  if (o->c < 'A' || o->c > 'G') {
+    warning(o, "invalid note specified - should be C, D, E, F, G, A or B");
+    return NAN;
+  }
+  note = o->c - 'C';
+  if (note < 0) /* A, B */
+    note += 7;
+  o->c = getc(o->f);
+  if (o->c == 's')
+    semitone = 2;
+  else if (o->c == 'f')
+    semitone = 0;
+  else
+    ungetc(o->c, o->f);
+  octave = getinum(o->f);
+  if (octave < 0) /* none given, default to 4 */
+    octave = 4;
+  else if (octave >= OCTAVES) {
+    warning(o, "invalid octave specified for note - valid range 0-10");
+    octave = 4;
+  }
+  freq = o->def_A4tuning * (3.f/5.f); /* get C4 */
+  freq *= octaves[octave] * notes[semitone][note];
+  if (subnote >= 0)
+    freq *= 1.f + (notes[semitone][note+1] / notes[semitone][note] - 1.f) *
+                  (notes[1][subnote] - 1.f);
+  return freq;
+}
+
+#define LABEL_LEN 80
+#define LABEL_LEN_A "80"
+typedef char LabelBuf[LABEL_LEN];
+static uchar read_label(SGSParser *o, LabelBuf label, char op) {
+  uint i = 0;
+  char nolabel_msg[] = "ignoring ? without label name";
+  nolabel_msg[9] = op; /* replace ? */
+  for (;;) {
+    o->c = getc(o->f);
+    if (IS_WHITESPACE(o->c) || o->c == EOF) {
+      ungetc(o->c, o->f);
+      if (i == 0)
+        warning(o, nolabel_msg);
+      else END_OF_LABEL: {
+        label[i] = '\0';
+        return 1;
+      }
+      break;
+    } else if (i == LABEL_LEN) {
+      warning(o, "ignoring label name from "LABEL_LEN_A"th digit");
+      goto END_OF_LABEL;
+    }
+    label[i++] = o->c;
+  }
+  return 0;
+}
+
+static int read_wavetype(SGSParser *o) {
+  static const char *const wavetypes[] = {
+    "sin",
+    "srs",
+    "tri",
+    "sqr",
+    "saw",
+    0
+  };
+  int wave = strfind(o->f, wavetypes);
+  if (wave < 0)
+    warning(o, "invalid wave type follows; sin, sqr, tri, saw available");
+  return wave;
+}
+
+static uchar read_valit(SGSParser *o, float (*read_symbol)(SGSParser *o),
+                        SGSProgramValit *vi) {
+  static const char *const valittypes[] = {
+    "lin",
+    "exp",
+    "log",
+    0
+  };
+  char c;
+  uchar goal = 0;
+  int type;
+  vi->time_ms = DEFAULT_TIME;
+  vi->type = SGS_VALIT_LIN; /* default */
+  while ((c = read_char(o)) != EOF) {
+    switch (c) {
+    case NEWLINE:
+      ++o->line;
+      break;
+    case 'c':
+      type = strfind(o->f, valittypes);
+      if (type >= 0) {
+        vi->type = type + SGS_VALIT_LIN;
+        break;
+      }
+      goto INVALID;
+    case 't': {
+      float time;
+      if (read_num(o, 0, &time)) {
+        if (time < 0.f) {
+          warning(o, "ignoring 't' with sub-zero time");
+          break;
+        }
+        SET_I2FV(vi->time_ms, time*1000.f);
+      }
+      break; }
+    case 'v':
+      if (read_num(o, read_symbol, &vi->goal))
+        goal = 1;
+      break;
+    case ']':
+      goto RETURN;
+    default:
+    INVALID:
+      warning(o, WARN_INVALID);
+      break;
+    }
+  }
+  warning(o, "end of file without closing ']'");
+RETURN:
+  if (!goal) {
+    warning(o, "ignoring gradual parameter change with no target value");
+    vi->type = SGS_VALIT_NONE;
+    return 0;
+  }
+  return 1;
+}
+
+static uchar read_waittime(NodeScope *ns) {
+  SGSParser *o = ns->o;
+  /* FIXME: ADD_WAIT_DURATION */
+  if (testgetc('t', o->f)) {
+    if (!ns->last_operator) {
+      warning(o, "add wait for last duration before any parts given");
+      return 0;
+    }
+    ns->last_event->en_flags |= EN_ADD_WAIT_DURATION;
+  } else {
+    float wait;
+    int wait_ms;
+    read_num(o, 0, &wait);
+    if (wait < 0.f) {
+      warning(o, "ignoring '\\' with sub-zero time");
+      return 0;
+    }
+    SET_I2FV(wait_ms, wait*1000.f);
+    ns->next_wait_ms += wait_ms;
+  }
+  return 1;
+}
+
+/*
+ * Node- and scope-handling functions
+ */
+
 enum {
   /* node list/node link types */
   NL_REFER = 0,
@@ -167,7 +563,7 @@ void SGS_node_list_rcleanup(SGSNodeList *list) {
     SGS_node_list_rcleanup(&op->fmods);
     SGS_node_list_rcleanup(&op->pmods);
     SGS_node_list_rcleanup(&op->amods);
-    if (op->on_flags & ON_OPERATOR_LABEL_ALLOC) free((char*)op->label);
+    if (op->on_flags & ON_LABEL_ALLOC) free((char*)op->label);
     free(op);
   }
   SGS_node_list_clear(list);
@@ -180,45 +576,6 @@ void SGS_event_node_destroy(SGSEventNode *e) {
   SGS_node_list_rcleanup(&e->operators);
   free(e);
 }
-
-enum {
-  /* parsing scopes */
-  SCOPE_SAME = 0,
-  SCOPE_TOP = 1,
-  SCOPE_BIND = '{',
-  SCOPE_NEST = '<'
-};
-
-#define DEFAULT_TIME (-1)
-
-enum {
-  NS_SET_SETTINGS = 1<<0, /* adjusting default values */
-  NS_IN_NODE = 1<<1,     /* adjusting operator and/or voice */
-  NS_NESTED_SCOPE = 1<<2,
-};
-
-/*
- * Things that need to be separate for each nested parse_level() go here.
- */
-typedef struct NodeScope {
-  SGSParser *o;
-  struct NodeScope *parent;
-  uint ns_flags;
-  char scope;
-  uint scopeid;
-  SGSEventNode *event, *last_event;
-  SGSOperatorNode *operator, *first_operator, *last_operator;
-  SGSOperatorNode *on_prev;
-  SGSEventNode *current;
-  SGSOperatorNode *bind_from;
-  uchar linktype;
-  char *set_label;
-  /* timing/delay */
-  SGSEventNode *group;
-  SGSEventNode *composite; /* grouping of events for a voice and/or operator */
-  uchar end_composite;
-  uint next_wait_ms; /* added for next event */
-} NodeScope;
 
 static void end_operator(NodeScope *ns) {
   SGSParser *o = ns->o;
@@ -426,7 +783,7 @@ static void begin_operator(NodeScope *ns, uchar linktype, uchar composite) {
    */
   if (ns->set_label) {
     SGS_symtab_set(o->st, ns->set_label, op);
-    op->on_flags |= ON_OPERATOR_LABEL_ALLOC;
+    op->on_flags |= ON_LABEL_ALLOC;
     op->label = ns->set_label;
     ns->set_label = 0;
   } else if (!composite && pop && pop->label) {
@@ -438,10 +795,7 @@ static void begin_operator(NodeScope *ns, uchar linktype, uchar composite) {
  * Assign label to next node (specifically, the next operator).
  */
 static void label_next_node(NodeScope *ns, const char *label) {
-  if (ns->set_label || !label) {
-    free((char*)ns->set_label);
-    ns->set_label = 0;
-  }
+  if (ns->set_label || !label) free((char*)ns->set_label);
   ns->set_label = strdup(label);
 }
 
@@ -513,357 +867,10 @@ static void end_scope(NodeScope *ns) {
     if (ns->current)
       ns->current->groupfrom = ns->group;
   }
-}
-
-/*
- * Parsing routines
- */
-
-#define NEWLINE '\n'
-static char read_char(SGSParser *o) {
-  char c;
-  eatws(o->f);
-  if (o->nextc) {
-    c = o->nextc;
-    o->nextc = 0;
-  } else {
-    c = getc(o->f);
+  if (ns->set_label) {
+    free((char*)ns->set_label);
+    warning(o, "ignoring label assignment without operator");
   }
-  if (c == '#')
-    while ((c = getc(o->f)) != '\n' && c != '\r' && c != EOF) ;
-  if (c == '\n') {
-    testgetc('\r', o->f);
-    c = NEWLINE;
-  } else if (c == '\r') {
-    testgetc('\n', o->f);
-    c = NEWLINE;
-  } else {
-    eatws(o->f);
-  }
-  return c;
-}
-
-static void read_ws(SGSParser *o) {
-  char c;
-  do {
-    c = getc(o->f);
-    if (c == ' ' || c == '\t')
-      continue;
-    if (c == '\n') {
-      ++o->line;
-      testgetc('\r', o->f);
-    } else if (c == '\r') {
-      ++o->line;
-      testgetc('\n', o->f);
-    } else if (c == '#') {
-      while ((c = getc(o->f)) != '\n' && c != '\r' && c != EOF) ;
-    } else {
-      ungetc(c, o->f);
-      break;
-    }
-  } while (c != EOF);
-}
-
-static float read_num_r(SGSParser *o, float (*read_symbol)(SGSParser *o),
-                        char *buf, uint len, uchar pri, uint level) {
-  char *p = buf;
-  uchar dot = 0;
-  float num;
-  char c;
-  c = getc(o->f);
-  if (level) read_ws(o);
-  if (c == '(') {
-    return read_num_r(o, read_symbol, buf, len, 255, level+1);
-  }
-  if (read_symbol &&
-      ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))) {
-    ungetc(c, o->f);
-    num = read_symbol(o);
-    if (num == num) /* not NAN; was recognized */
-      goto LOOP;
-  }
-  if (c == '-') {
-    *p++ = c;
-    c = getc(o->f);
-    if (level) read_ws(o);
-  }
-  while ((c >= '0' && c <= '9') || (!dot && (dot = (c == '.')))) {
-    if ((p+1) == (buf+len)) {
-      break;
-    }
-    *p++ = c;
-    c = getc(o->f);
-  }
-  ungetc(c, o->f);
-  if (p == buf) return NAN;
-  *p = '\0';
-  num = strtod(buf, 0);
-LOOP:
-  if (level) read_ws(o);
-  for (;;) {
-    c = getc(o->f);
-    if (level) read_ws(o);
-    switch (c) {
-    case '(':
-      num *= read_num_r(o, read_symbol, buf, len, 255, level+1);
-      break;
-    case ')':
-      if (pri < 255)
-        ungetc(c, o->f);
-      return num;
-      break;
-    case '^':
-      num = exp(log(num) * read_num_r(o, read_symbol, buf, len, 0, level));
-      break;
-    case '*':
-      num *= read_num_r(o, read_symbol, buf, len, 1, level);
-      break;
-    case '/':
-      num /= read_num_r(o, read_symbol, buf, len, 1, level);
-      break;
-    case '+':
-      if (pri < 2)
-        return num;
-      num += read_num_r(o, read_symbol, buf, len, 2, level);
-      break;
-    case '-':
-      if (pri < 2)
-        return num;
-      num -= read_num_r(o, read_symbol, buf, len, 2, level);
-      break;
-    default:
-      ungetc(c, o->f);
-      return num;
-    }
-    if (num != num) {
-      ungetc(c, o->f);
-      return num;
-    }
-  }
-}
-static uchar read_num(SGSParser *o, float (*read_symbol)(SGSParser *o),
-                      float *var) {
-  char buf[64];
-  float num = read_num_r(o, read_symbol, buf, 64, 254, 0);
-  if (num != num)
-    return 0;
-  *var = num;
-  return 1;
-}
-
-static void warning(SGSParser *o, const char *s, char c) {
-  char buf[4] = {'\'', c, '\'', 0};
-  printf("warning: %s [line %d, at %s] - %s\n", o->fn, o->line,
-         (c == EOF ? "EOF" : buf), s);
-}
-#define WARN_INVALID "invalid character"
-
-#define OCTAVES 11
-static float read_note(SGSParser *o) {
-  static const float octaves[OCTAVES] = {
-    (1.f/16.f),
-    (1.f/8.f),
-    (1.f/4.f),
-    (1.f/2.f),
-    1.f, /* no. 4 - standard tuning here */
-    2.f,
-    4.f,
-    8.f,
-    16.f,
-    32.f,
-    64.f
-  };
-  static const float notes[3][8] = {
-    { /* flat */
-      48.f/25.f,
-      16.f/15.f,
-      6.f/5.f,
-      32.f/25.f,
-      36.f/25.f,
-      8.f/5.f,
-      9.f/5.f,
-      96.f/25.f
-    },
-    { /* normal (9/8 replaced with 10/9 for symmetry) */
-      1.f,
-      10.f/9.f,
-      5.f/4.f,
-      4.f/3.f,
-      3.f/2.f,
-      5.f/3.f,
-      15.f/8.f,
-      2.f
-    },
-    { /* sharp */
-      25.f/24.f,
-      75.f/64.f,
-      125.f/96.f,
-      25.f/18.f,
-      25.f/16.f,
-      225.f/128.f,
-      125.f/64.f,
-      25.f/12.f
-    }
-  };
-  float freq;
-  char c = getc(o->f);
-  int octave;
-  int semitone = 1, note;
-  int subnote = -1;
-  if (c >= 'a' && c <= 'g') {
-    subnote = c - 'c';
-    if (subnote < 0) /* a, b */
-      subnote += 7;
-    c = getc(o->f);
-  }
-  if (c < 'A' || c > 'G') {
-    warning(o, "invalid note specified - should be C, D, E, F, G, A or B", c);
-    return NAN;
-  }
-  note = c - 'C';
-  if (note < 0) /* A, B */
-    note += 7;
-  c = getc(o->f);
-  if (c == 's')
-    semitone = 2;
-  else if (c == 'f')
-    semitone = 0;
-  else
-    ungetc(c, o->f);
-  octave = getinum(o->f);
-  if (octave < 0) /* none given, default to 4 */
-    octave = 4;
-  else if (octave >= OCTAVES) {
-    warning(o, "invalid octave specified for note - valid range 0-10", c);
-    octave = 4;
-  }
-  freq = o->def_A4tuning * (3.f/5.f); /* get C4 */
-  freq *= octaves[octave] * notes[semitone][note];
-  if (subnote >= 0)
-    freq *= 1.f + (notes[semitone][note+1] / notes[semitone][note] - 1.f) *
-                  (notes[1][subnote] - 1.f);
-  return freq;
-}
-
-#define LABEL_LEN 80
-#define LABEL_LEN_A "80"
-typedef char LabelBuf[LABEL_LEN];
-static uchar read_label(SGSParser *o, LabelBuf label, char op) {
-  uint i = 0;
-  char nolabel_msg[] = "ignoring ? without label name";
-  nolabel_msg[9] = op; /* replace ? */
-  for (;;) {
-    char c = getc(o->f);
-    if (IS_WHITESPACE(c) || c == EOF) {
-      ungetc(c, o->f);
-      if (i == 0)
-        warning(o, nolabel_msg, c);
-      else END_OF_LABEL: {
-        label[i] = '\0';
-        return 1;
-      }
-      break;
-    } else if (i == LABEL_LEN) {
-      warning(o, "ignoring label name from "LABEL_LEN_A"th digit", c);
-      goto END_OF_LABEL;
-    }
-    label[i++] = c;
-  }
-  return 0;
-}
-
-static int read_wavetype(SGSParser *o, char lastc) {
-  static const char *const wavetypes[] = {
-    "sin",
-    "srs",
-    "tri",
-    "sqr",
-    "saw",
-    0
-  };
-  int wave = strfind(o->f, wavetypes);
-  if (wave < 0)
-    warning(o, "invalid wave type follows; sin, sqr, tri, saw available", lastc);
-  return wave;
-}
-
-static uchar read_valit(SGSParser *o, float (*read_symbol)(SGSParser *o),
-                        SGSProgramValit *vi) {
-  static const char *const valittypes[] = {
-    "lin",
-    "exp",
-    "log",
-    0
-  };
-  char c;
-  uchar goal = 0;
-  int type;
-  vi->time_ms = DEFAULT_TIME;
-  vi->type = SGS_VALIT_LIN; /* default */
-  while ((c = read_char(o)) != EOF) {
-    switch (c) {
-    case NEWLINE:
-      ++o->line;
-      break;
-    case 'c':
-      type = strfind(o->f, valittypes);
-      if (type >= 0) {
-        vi->type = type + SGS_VALIT_LIN;
-        break;
-      }
-      goto INVALID;
-    case 't': {
-      float time;
-      if (read_num(o, 0, &time)) {
-        if (time < 0.f) {
-          warning(o, "ignoring 't' with sub-zero time", c);
-          break;
-        }
-        SET_I2FV(vi->time_ms, time*1000.f);
-      }
-      break; }
-    case 'v':
-      if (read_num(o, read_symbol, &vi->goal))
-        goal = 1;
-      break;
-    case ']':
-      goto RETURN;
-    default:
-    INVALID:
-      warning(o, WARN_INVALID, c);
-      break;
-    }
-  }
-  warning(o, "end of file without closing ']'", c);
-RETURN:
-  if (!goal) {
-    warning(o, "ignoring gradual parameter change with no target value", c);
-    vi->type = SGS_VALIT_NONE;
-    return 0;
-  }
-  return 1;
-}
-
-static uchar read_waittime(SGSParser *o, NodeScope *ns, char c) {
-  /* FIXME: ADD_WAIT_DURATION */
-  if (testgetc('t', o->f)) {
-    if (!ns->last_operator) {
-      warning(o, "add wait for last duration before any parts given", c);
-      return 0;
-    }
-    ns->last_event->en_flags |= EN_ADD_WAIT_DURATION;
-  } else {
-    float wait;
-    int wait_ms;
-    read_num(o, 0, &wait);
-    if (wait < 0.f) {
-      warning(o, "ignoring '\\' with sub-zero time", c);
-      return 0;
-    }
-    SET_I2FV(wait_ms, wait*1000.f);
-    ns->next_wait_ms += wait_ms;
-  }
-  return 1;
 }
 
 /*
@@ -887,7 +894,7 @@ static uchar parse_settings(NodeScope *ns) {
       float freq;
       read_num(o, 0, &freq);
       if (freq < 1.f) {
-        warning(o, "ignoring tuning frequency smaller than 1.0", c);
+        warning(o, "ignoring tuning frequency smaller than 1.0");
         break;
       }
       o->def_A4tuning = freq;
@@ -900,7 +907,7 @@ static uchar parse_settings(NodeScope *ns) {
       float time;
       read_num(o, 0, &time);
       if (time < 0.f) {
-        warning(o, "ignoring 't' with sub-zero time", c);
+        warning(o, "ignoring 't' with sub-zero time");
         break;
       }
       SET_I2FV(o->def_time_ms, time*1000.f);
@@ -938,7 +945,7 @@ static uchar parse_step(NodeScope *ns) {
       }
       break;
     case '\\':
-      if (read_waittime(o, ns, c)) {
+      if (read_waittime(ns)) {
         begin_node(ns, ns->operator, NL_REFER, 0);
       }
       break;
@@ -1032,7 +1039,7 @@ static uchar parse_step(NodeScope *ns) {
       float silence;
       read_num(o, 0, &silence);
       if (silence < 0.f) {
-        warning(o, "ignoring 's' with sub-zero time", c);
+        warning(o, "ignoring 's' with sub-zero time");
         break;
       }
       SET_I2FV(op->silence_ms, silence*1000.f);
@@ -1044,7 +1051,7 @@ static uchar parse_step(NodeScope *ns) {
         float time;
         read_num(o, 0, &time);
         if (time < 0.f) {
-          warning(o, "ignoring 't' with sub-zero time", c);
+          warning(o, "ignoring 't' with sub-zero time");
           break;
         }
         SET_I2FV(op->time_ms, time*1000.f);
@@ -1052,7 +1059,7 @@ static uchar parse_step(NodeScope *ns) {
       op->operator_params |= SGS_TIME;
       break;
     case 'w': {
-      int wave = read_wavetype(o, c);
+      int wave = read_wavetype(o);
       if (wave < 0)
         break;
       op->wave = wave;
@@ -1108,7 +1115,7 @@ static uchar parse_level(SGSParser *o, NodeScope *parentns,
       last = ns.last_operator;
       if (!first) {
         if (o->calllevel == 1) NO_CARRIER: {
-          warning(o, "no preceding carrier operators", c);
+          warning(o, "no preceding carrier operators");
           break;
         }
         first = parentns->first_operator;
@@ -1116,7 +1123,7 @@ static uchar parse_level(SGSParser *o, NodeScope *parentns,
           goto NO_CARRIER;
       }
       if (first && first != last) {
-        warning(o, "multiple carriers not yet supported", c);
+        warning(o, "multiple carriers not yet supported");
         break;
       }
       if (last->operator_params & SGS_ADJCS)
@@ -1127,7 +1134,7 @@ static uchar parse_level(SGSParser *o, NodeScope *parentns,
       break; }
     case ':':
       if (ns.set_label) {
-        warning(o, "ignoring label assignment to label reference", c);
+        warning(o, "ignoring label assignment to label reference");
         label_next_node(&ns, NULL);
       }
       ns.ns_flags &= ~NS_SET_SETTINGS;
@@ -1135,7 +1142,7 @@ static uchar parse_level(SGSParser *o, NodeScope *parentns,
       if (read_label(o, label, ':')) {
         SGSOperatorNode *ref = SGS_symtab_get(o->st, label);
         if (!ref)
-          warning(o, "ignoring reference to undefined label", c);
+          warning(o, "ignoring reference to undefined label");
         else {
           begin_node(&ns, ref, NL_REFER, 0);
           flags = parse_step(&ns) ? (HANDLE_DEFER | DEFERRED_STEP) : 0;
@@ -1157,15 +1164,15 @@ static uchar parse_level(SGSParser *o, NodeScope *parentns,
         goto RETURN;
       break;
     case '>':
-      if (ns.scope != '<') {
-        warning(o, "closing '>' without opening '<'", c);
+      if (ns.scope != SCOPE_NEST) {
+        warning(o, "closing '>' without opening '<'");
         break;
       }
       end_operator(&ns);
       endscope = 1;
       goto RETURN;
     case 'O': {
-      int wave = read_wavetype(o, c);
+      int wave = read_wavetype(o);
       if (wave < 0)
         break;
       begin_node(&ns, 0, ns.linktype, 0);
@@ -1181,19 +1188,22 @@ static uchar parse_level(SGSParser *o, NodeScope *parentns,
       if (ns.ns_flags & NS_SET_SETTINGS ||
           (ns.ns_flags & NS_NESTED_SCOPE && ns.event))
         goto INVALID;
-      read_waittime(o, &ns, c);
+      read_waittime(&ns);
       break;
     case '\'':
       if (ns.set_label) {
-        warning(o, "ignoring label assignment to label assignment", c);
+        warning(o, "ignoring label assignment to label assignment");
         break;
       }
       read_label(o, label, '\'');
       label_next_node(&ns, label);
       break;
-    case '{':
-      /* is always got elsewhere before a nesting call to this function */
-      warning(o, "opening curly brace out of place", c);
+    case '{': /* FIXME: newest design - detail, put in place */
+      end_operator(&ns);
+      if (parse_level(o, &ns, ns.linktype, SCOPE_BIND))
+        goto RETURN;
+      if (ns.bind_from)
+        flags = parse_step(&ns) ? (HANDLE_DEFER | DEFERRED_STEP) : 0;
       break;
     case '|':
       if (ns.ns_flags & NS_SET_SETTINGS ||
@@ -1204,7 +1214,7 @@ static uchar parse_level(SGSParser *o, NodeScope *parentns,
         goto RETURN;
       }
       if (!ns.event) {
-        warning(o, "end of sequence before any parts given", c);
+        warning(o, "end of sequence before any parts given");
         break;
       }
       if (ns.group) {
@@ -1215,15 +1225,15 @@ static uchar parse_level(SGSParser *o, NodeScope *parentns,
       leave_current_node(&ns);
       break;
     case '}':
-      if (ns.scope != '{') {
-        warning(o, "closing '}' without opening '{'", c);
+      if (ns.scope != SCOPE_BIND) {
+        warning(o, "closing '}' without opening '{'");
         break;
       }
       endscope = 1;
       goto RETURN;
     default:
     INVALID:
-      warning(o, WARN_INVALID, c);
+      warning(o, WARN_INVALID);
       break;
     }
     /* Return to sub-parsing routines. */
@@ -1239,10 +1249,10 @@ static uchar parse_level(SGSParser *o, NodeScope *parentns,
     }
   }
 FINISH:
-  if (newscope == '<')
-    warning(o, "end of file without closing '>'s", c);
-  if (newscope == '{')
-    warning(o, "end of file without closing '}'s", c);
+  if (newscope == SCOPE_NEST)
+    warning(o, "end of file without closing '>'s");
+  if (newscope == SCOPE_BIND)
+    warning(o, "end of file without closing '}'s");
 RETURN:
   end_scope(&ns);
   --o->calllevel;
@@ -1253,7 +1263,7 @@ RETURN:
 static void pp_pass1(SGSParser *o);
 
 /*
- * Main parsing function.
+ * "Main" parsing function.
  */
 void SGS_parse(SGSParser *o, FILE *f, const char *fn) {
   memset(o, 0, sizeof(SGSParser));

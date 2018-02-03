@@ -60,8 +60,8 @@ typedef struct SGSProgramGraph {
 } SGSProgramGraph;
 
 typedef struct SGSProgramGraphAdjcs {
-  uchar pmodc;
   uchar fmodc;
+  uchar pmodc;
   uchar amodc;
   uchar level;  /* index for buffer used to store result to use if node
                    revisited when traversing the graph. */
