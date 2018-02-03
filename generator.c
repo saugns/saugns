@@ -122,7 +122,7 @@ static void upsize_bufs(SGSGenerator *o, VoiceNode *vn) {
  * Allocate SGSGenerator with the passed sample rate and using the
  * given SGSProgram.
  */
-SGSGenerator* SGSGenerator_create(uint srate, struct SGSProgram *prg) {
+SGSGenerator* SGS_generator_create(uint srate, struct SGSProgram *prg) {
   SGSGenerator *o;
   const SGSProgramEvent *step;
   void *data;
@@ -243,7 +243,7 @@ SGSGenerator* SGSGenerator_create(uint srate, struct SGSProgram *prg) {
 /*
  * Processes one event; to be called for the event when its time comes.
  */
-static void SGSGenerator_handle_event(SGSGenerator *o, EventNode *e) {
+static void SGS_generator_handle_event(SGSGenerator *o, EventNode *e) {
   if (1) /* more types to be added in the future */ {
     const SetNode *s = e->node;
     VoiceNode *vn;
@@ -334,7 +334,7 @@ static void SGSGenerator_handle_event(SGSGenerator *o, EventNode *e) {
   }
 }
 
-void SGSGenerator_destroy(SGSGenerator *o) {
+void SGS_generator_destroy(SGSGenerator *o) {
   free(o->bufs);
   free(o);
 }
@@ -623,13 +623,13 @@ static void run_voice(SGSGenerator *o, VoiceNode *vn, short *out, uint len) {
           n->attr &= ~SGS_ATTR_VALITPANNING;
         for (i = 0; i < len; ++i) {
           int s = (*o->bufs)[i].i, p;
-          SET_I2F(p, ((float)s) * buf[i].f);
+          SET_I2FV(p, ((float)s) * buf[i].f);
           *sp++ += s - p;
           *sp++ += p;
         }
       } else for (i = 0; i < len; ++i) {
         int s = (*o->bufs)[i].i, p;
-        SET_I2F(p, ((float)s) * vn->panning);
+        SET_I2FV(p, ((float)s) * vn->panning);
         *sp++ += s - p;
         *sp++ += p;
       }
@@ -651,7 +651,7 @@ RETURN:
  * Returns non-zero until the end of the generated signal has been
  * reached.
  */
-uchar SGSGenerator_run(SGSGenerator *o, short *buf, uint len) {
+uchar SGS_generator_run(SGSGenerator *o, short *buf, uint len) {
   short *sp;
   uint i, skiplen;
   sp = buf;
@@ -677,7 +677,7 @@ PROCESS:
       o->eventpos += len;
       break;
     }
-    SGSGenerator_handle_event(o, e);
+    SGS_generator_handle_event(o, e);
     ++o->event;
     o->eventpos = 0;
   }
