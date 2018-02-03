@@ -24,7 +24,8 @@ typedef struct ParameterValit {
 } ParameterValit;
 
 typedef struct OperatorNode {
-  uint time, silence;
+  int time;
+  uint silence;
   const SGSProgramGraphAdjcs *adjcs;
   uchar type, attr;
   float freq, dynfreq;
@@ -206,8 +207,11 @@ SGSGenerator* SGS_generator_create(uint srate, struct SGSProgram *prg) {
         (*set++).i = od->attr;
       if (s->params & SGS_WAVE)
         (*set++).i = od->wave;
-      if (s->params & SGS_TIME)
-        (*set++).i = ((float)od->time_ms) * srate * .001f;
+      if (s->params & SGS_TIME) {
+        (*set++).i = (od->time_ms == SGS_TIME_INF) ?
+                     SGS_TIME_INF :
+                     (int) ((float)od->time_ms) * srate * .001f;
+      }
       if (s->params & SGS_SILENCE)
         (*set++).i = ((float)od->silence_ms) * srate * .001f;
       if (s->params & SGS_FREQ)
@@ -427,7 +431,7 @@ static uchar run_param(BufData *buf, uint buflen, ParameterValit *vi,
 static void run_block(SGSGenerator *o, Buf *bufs, uint buflen,
                       OperatorNode *n, BufData *parentfreq,
                       uchar waveenv, uchar acc) {
-  uint i, len;
+  uint i, len, zerolen;
   BufData *sbuf, *freq, *freqmod, *pm, *amp;
   Buf *nextbuf = bufs + 1;
   ParameterValit *vi;
@@ -444,17 +448,25 @@ static void run_block(SGSGenerator *o, Buf *bufs, uint buflen,
    * If silence, zero-fill and delay processing for duration.
    */
   if (n->silence) {
-    uint zerolen = n->silence;
+    zerolen = n->silence;
     if (zerolen > len)
       zerolen = len;
     if (!acc) for (i = 0; i < zerolen; ++i)
       sbuf[i].i = 0;
     len -= zerolen;
-    n->time -= zerolen;
+    if (n->time != SGS_TIME_INF) n->time -= zerolen;
     n->silence -= zerolen;
     if (!len)
       return;
     sbuf += zerolen;
+  }
+  /*
+   * Limit length to time duration of operator.
+   */
+  zerolen = 0;
+  if (n->time < (int)len && n->time != SGS_TIME_INF) {
+    zerolen = len - n->time;
+    len = n->time;
   }
   /*
    * Handle frequency (alternatively ratio) parameter, including frequency
@@ -555,7 +567,17 @@ static void run_block(SGSGenerator *o, Buf *bufs, uint buflen,
       sbuf[i].f = s;
     }
   }
-  n->time -= len;
+  /*
+   * Update time duration left, zero rest of buffer if unfilled.
+   */
+  if (n->time != SGS_TIME_INF) {
+    if (!acc && zerolen > 0) {
+      sbuf += len;
+      for (i = 0; i < zerolen; ++i)
+        sbuf[i].i = 0;
+    }
+    n->time -= len;
+  }
 }
 
 /*
@@ -564,7 +586,8 @@ static void run_block(SGSGenerator *o, Buf *bufs, uint buflen,
  */
 static void run_voice(SGSGenerator *o, VoiceNode *vn, short *out, uint len) {
   const int *ops;
-  uint i, opc, time = 0;
+  uint i, opc;
+  int time = 0;
   uchar finished = 1;
   short *sp;
   if (!vn->graph)
@@ -576,7 +599,7 @@ static void run_voice(SGSGenerator *o, VoiceNode *vn, short *out, uint len) {
     OperatorNode *n = &o->operators[ops[i]];
     if (n->time == 0)
       continue;
-    if (time > n->time)
+    if (time > n->time && n->time != SGS_TIME_INF)
       time = n->time;
   }
   /*
@@ -593,13 +616,13 @@ static void run_voice(SGSGenerator *o, VoiceNode *vn, short *out, uint len) {
      */
     if (n->silence) {
       if (n->silence >= t) {
-        n->time -= t;
+        if (n->time != SGS_TIME_INF) n->time -= t;
         n->silence -= t;
         goto NEXT;
       }
       sp += n->silence + n->silence; /* doubled given stereo interleaving */
       t -= n->silence;
-      n->time -= n->silence;
+      if (n->time != SGS_TIME_INF) n->time -= n->silence;
       n->silence = 0;
     }
     /*
