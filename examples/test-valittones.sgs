@@ -1,7 +1,7 @@
-Wsin	f220 p!{
-		Wsin r(2/7) a0.5
-		Wsin r(5/7) a0.5 p!{Wsin r(7/10) a(1/2)} 
-	} t1.0
+Osin	f220 p!<
+		Osin r(2/7) a0.5
+		Osin r(5/7) a0.5 p!<Osin r(7/10) a(1/2)>
+	> t1.0
 ;	f[v440 t0.15 cexp] t1.5
 ;	f[v400] t0.5
 ;	f[v350]
