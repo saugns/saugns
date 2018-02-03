@@ -9,8 +9,8 @@ typedef unsigned char uchar;
 struct SGSProgram;
 typedef struct SGSProgram SGSProgram;
 
-SGSProgram* SGSProgram_create(const char *filename);
-void SGSProgram_destroy(SGSProgram *o);
+SGSProgram* SGS_program_create(const char *filename);
+void SGS_program_destroy(SGSProgram *o);
 
 /*
  * SGSGenerator
@@ -19,6 +19,6 @@ void SGSProgram_destroy(SGSProgram *o);
 struct SGSGenerator;
 typedef struct SGSGenerator SGSGenerator;
 
-SGSGenerator* SGSGenerator_create(uint srate, SGSProgram *prg);
-void SGSGenerator_destroy(SGSGenerator *o);
-uchar SGSGenerator_run(SGSGenerator *o, short *buf, uint len);
+SGSGenerator* SGS_generator_create(uint srate, SGSProgram *prg);
+void SGS_generator_destroy(SGSGenerator *o);
+uchar SGS_generator_run(SGSGenerator *o, short *buf, uint len);
