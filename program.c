@@ -37,7 +37,7 @@ static void build_graph(SGSProgramEvent *root,
   size = voice_in->graph.count;
   graph_out = (SGSProgramGraph**)&root->voice->graph;
   if (!size) {
-    *graph_out = graph;
+    *graph_out = 0;
     return;
   }
   nl = SGS_NODE_LIST_GET(&voice_in->graph);
