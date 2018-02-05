@@ -1,4 +1,6 @@
-/* Copyright (c) 2011-2012 Joel K. Pettersson <joelkpettersson@gmail.com>
+/* sgensys: oscillator module.
+ * Copyright (c) 2011-2012, 2018 Joel K. Pettersson
+ * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
  * terms of the GNU Lesser General Public License, either version 3 or (at
@@ -9,7 +11,6 @@
  * <http://www.gnu.org/licenses/>.
  */
 
-#include "sgensys.h"
 #include "osc.h"
 
 #define SGSOsc_TABSCALE ((float)((1<<15) - 1))
@@ -23,9 +24,9 @@ SGSOscLut SGSOsc_sin,
 
 void SGSOsc_init(void) {
   int i;
-  static uchar done = 0;
+  static bool done = false;
   if (done) return;
-  done = 1;
+  done = true;
 
   /* first half */
   for (i = 0; i < HALFLEN; ++i) {

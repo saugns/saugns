@@ -1,4 +1,6 @@
-/* Copyright (c) 2011-2012 Joel K. Pettersson <joelkpettersson@gmail.com>
+/* sgensys: Symbol table module.
+ * Copyright (c) 2011-2012, 2018 Joel K. Pettersson
+ * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
  * terms of the GNU Lesser General Public License, either version 3 or (at
@@ -8,6 +10,8 @@
  * View the file COPYING for details, or if missing, see
  * <http://www.gnu.org/licenses/>.
  */
+
+#pragma once
 
 struct SGSSymtab;
 typedef struct SGSSymtab SGSSymtab;

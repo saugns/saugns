@@ -1,4 +1,4 @@
-/* sgensys: common definitions.
+/* sgensys: sound generator module.
  * Copyright (c) 2011-2012, 2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -12,9 +12,17 @@
  */
 
 #pragma once
+#include "program.h"
 
-#include <stdint.h>
-#include <stdbool.h>
-#include <stddef.h>
+/*
+ * SGSGenerator
+ */
 
-typedef unsigned int uint;
+struct SGSGenerator;
+typedef struct SGSGenerator SGSGenerator;
+
+SGSGenerator* SGS_create_generator(SGSProgram *prg, uint32_t srate);
+void SGS_destroy_generator(SGSGenerator *o);
+
+bool SGS_generator_run(SGSGenerator *o, int16_t *buf, size_t buf_len,
+                        size_t *gen_len);
