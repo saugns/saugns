@@ -14,113 +14,128 @@
 #pragma once
 #include "math.h"
 
-extern void SGSOsc_init(void);
+/**
+ * Oscillator wave types.
+ */
+enum {
+  SGS_WAVE_SIN = 0,
+  SGS_WAVE_SRS,
+  SGS_WAVE_TRI,
+  SGS_WAVE_SQR,
+  SGS_WAVE_SAW,
+  SGS_WAVE_TYPES
+};
 
-#define SGSOsc_TABLEN 1024
-#define SGSOsc_TABINDEXBITS 10
-#define SGSOsc_TABINDEXMASK ((1<<(32-SGSOsc_TABINDEXBITS))-1)
+#define SGSOsc_LUT_LEN 1024
+#define SGSOsc_LUT_INDEXBITS 10
+#define SGSOsc_LUT_INDEXMASK ((1<<SGSOsc_LUT_INDEXBITS) - 1)
+#define SGSOsc_LUT_MAX ((float)((1<<15) - 1))
 
-/* for different waveforms (use SGSOscLuv* as pointer type) */
-typedef int16_t SGSOscLuv;
-typedef SGSOscLuv SGSOscLut[SGSOsc_TABLEN+1]; /* one extra for no-check lerp */
-extern SGSOscLut SGSOsc_sin,
-                 SGSOsc_srs,
-                 SGSOsc_tri,
-                 SGSOsc_sqr,
-                 SGSOsc_saw;
+#define SGSOsc_PHASE_LERPMASK ((1<<(32-SGSOsc_LUT_INDEXBITS)) - 1)
 
+typedef int16_t SGSOscLUV; /* use const SGSOscLUV* as LUT pointer type */
+typedef SGSOscLUV SGSOscLUT[SGSOsc_LUT_LEN];
+extern SGSOscLUT SGSOsc_luts[SGS_WAVE_TYPES];
+
+extern void SGSOsc_init_luts(void);
+
+/**
+ * Oscillator data. Only includes phase, as most parameters are
+ * either common to several instances or may differ each sample.
+ */
 typedef struct SGSOsc {
-  uint32_t phase;
+	uint32_t phase;
 } SGSOsc;
 
-#define SGSOsc_COEFF(sr) \
-  (4294967296.0/(sr))
+/**
+ * Calculate sample rate-dependent coefficent. (This value is multiplied
+ * by the frequency to give the phase increment for each sample.)
+ */
+#define SGSOsc_SR_COEFF(sr) \
+	(4294967296.0/(sr))
 
+/**
+ * Convert floating point (0.0 to 1.0) phase value to 32-bit unsigned int,
+ * as used by oscillator.
+ */
 #define SGSOsc_PHASE(p) \
-  ((uint32_t)((p) * 4294967296.0))
+	((uint32_t)((p) * 4294967296.0))
 
 #define SGSOsc_GET_PHASE(o) \
-  ((uint32_t)((o)->phase))
+	((o)->phase)
 
 #define SGSOsc_SET_PHASE(o, p) \
-  ((void)((o)->phase = (p)))
+	((void)((o)->phase = (p)))
 
-#define SGSOsc_RUN(o, osctab, coeff, freq, amp, out) do{ \
-  int32_t SGSOsc__s; \
-  uint32_t SGSOsc__i; \
-  SET_I2FV(SGSOsc__i, (coeff)*(freq)); \
-  (o)->phase += SGSOsc__i; \
-  SGSOsc__i = (o)->phase >> (32-SGSOsc_TABINDEXBITS); \
-  SGSOsc__s = (osctab)[SGSOsc__i]; \
-  /* write lerp'd & scaled result */ \
-  SET_I2FV((out), \
-    (((float)SGSOsc__s) + \
-     ((float)(((osctab)[SGSOsc__i + 1] - SGSOsc__s))) * \
-     ((float)((o)->phase & SGSOsc_TABINDEXMASK)) * \
-     (1.f / (1 << (32-SGSOsc_TABINDEXBITS)))) * \
-    (amp) \
-  ); \
+/**
+ * Produce 16-bit integer output.
+ */
+#define SGSOsc_RUN_S16(o, lut, sr_coeff, \
+		freq, fm_s16, pm_s16, amp, s16_out) do{ \
+	uint32_t SGSOsc__inc; \
+	SET_I2FV(SGSOsc__inc, (sr_coeff)*(freq)); \
+	SGSOsc__inc += (fm_s16) << 16; \
+	uint32_t SGSOsc__phs = (o)->phase + ((pm_s16) << 16); \
+	uint32_t SGSOsc__ind = SGSOsc__phs >> (32-SGSOsc_LUT_INDEXBITS); \
+	int32_t SGSOsc__s16 = (lut)[SGSOsc__ind]; \
+	/* write lerp'd & scaled result */ \
+	SET_I2FV((s16_out), \
+		 (((float)SGSOsc__s16) + \
+		  ((float)((lut)[(SGSOsc__ind + 1) & SGSOsc_LUT_INDEXMASK] - \
+		           SGSOsc__s16)) * \
+		  ((float)(SGSOsc__phs & SGSOsc_PHASE_LERPMASK)) * \
+		  (1.f / (1 << (32-SGSOsc_LUT_INDEXBITS)))) * \
+		 (amp) \
+	); \
+	/* update phase */ \
+	(o)->phase += SGSOsc__inc; \
 }while(0)
 
-#define SGSOsc_RUN_FM(o, osctab, coeff, freq, fm, amp, out) do{ \
-  int32_t SGSOsc__s; \
-  uint32_t SGSOsc__i; \
-  SET_I2FV(SGSOsc__i, (coeff)*(freq)); \
-  (o)->phase += SGSOsc__i + ((fm) * ((SGSOsc__i >> 11) - (SGSOsc__i >> 14) + (SGSOsc__i >> 18))); \
-  SGSOsc__i = (o)->phase >> (32-SGSOsc_TABINDEXBITS); \
-  SGSOsc__s = (osctab)[SGSOsc__i]; \
-  /* write lerp'd & scaled result */ \
-  SET_I2FV((out), \
-    (((float)SGSOsc__s) + \
-     ((float)(((osctab)[SGSOsc__i + 1] - SGSOsc__s))) * \
-     ((float)((o)->phase & SGSOsc_TABINDEXMASK)) * \
-     (1.f / (1 << (32-SGSOsc_TABINDEXBITS)))) * \
-    (amp) \
-  ); \
+/**
+ * Produce floating point output in the 0.0 to 1.0 range.
+ */
+#define SGSOsc_RUN_SF(o, lut, sr_coeff, \
+	       	freq, fm_s16, pm_s16, sf_out) do{ \
+	uint32_t SGSOsc__inc; \
+	SET_I2FV(SGSOsc__inc, (sr_coeff)*(freq)); \
+	SGSOsc__inc += (fm_s16) << 16; \
+	uint32_t SGSOsc__phs = (o)->phase + ((pm_s16) << 16); \
+	uint32_t SGSOsc__ind = SGSOsc__phs >> (32-SGSOsc_LUT_INDEXBITS); \
+	int32_t SGSOsc__s16 = (lut)[SGSOsc__ind]; \
+	/* write lerp'd & scaled result */ \
+	(sf_out) = (((float)SGSOsc__s16) + \
+		    ((float)((lut)[(SGSOsc__ind + 1) & SGSOsc_LUT_INDEXMASK] - \
+		             SGSOsc__s16)) * \
+	            ((float)(SGSOsc__phs & SGSOsc_PHASE_LERPMASK)) * \
+	            (1.f / (1 << (32-SGSOsc_LUT_INDEXBITS)))) * \
+	           (1.f / (SGSOsc_LUT_MAX * 2)) + \
+	           .5f; \
+	/* update phase */ \
+	(o)->phase += SGSOsc__inc; \
 }while(0)
 
-#define SGSOsc_RUN_PM(o, osctab, coeff, freq, pm, amp, out) do{ \
-  int32_t SGSOsc__s; \
-  uint32_t SGSOsc__i, SGSOsc__p; \
-  SET_I2FV(SGSOsc__i, (coeff)*(freq)); \
-  (o)->phase += SGSOsc__i; \
-  SGSOsc__p = (o)->phase + ((pm) << 16); \
-  SGSOsc__i = SGSOsc__p >> (32-SGSOsc_TABINDEXBITS); \
-  SGSOsc__s = (osctab)[SGSOsc__i]; \
-  /* write lerp'd & scaled result */ \
-  SET_I2FV((out), \
-    (((float)SGSOsc__s) + \
-     ((float)(((osctab)[SGSOsc__i + 1] - SGSOsc__s))) * \
-     ((float)(SGSOsc__p & SGSOsc_TABINDEXMASK)) * \
-     (1.f / (1 << (32-SGSOsc_TABINDEXBITS)))) * \
-    (amp) \
-  ); \
+/**
+ * Calculate the number of samples in a wave cycle.
+ *
+ * Can be used for timing adjustments (without accounting for
+ * dynamic frequency).
+ */
+#define SGSOsc_CYCLE_SAMPLES(sr_coeff, freq, sc_out) do{ \
+	uint32_t SGSOsc__inc; \
+	SET_I2FV(SGSOsc__inc, (sr_coeff)*(freq)); \
+	(sc_out) = (((uint32_t) -1) / SGSOsc__inc) + 1; \
 }while(0)
 
-/* Gives output in 0.0 to 1.0 range for AM use as envelope */
-#define SGSOsc_RUN_PM_ENVO(o, osctab, coeff, freq, pm, out) do{ \
-  int32_t SGSOsc__s; \
-  uint32_t SGSOsc__i, SGSOsc__p; \
-  SET_I2FV(SGSOsc__i, (coeff)*(freq)); \
-  (o)->phase += SGSOsc__i; \
-  SGSOsc__p = (o)->phase + ((pm) << 16); \
-  SGSOsc__i = SGSOsc__p >> (32-SGSOsc_TABINDEXBITS); \
-  SGSOsc__s = (osctab)[SGSOsc__i]; \
-  /* write lerp'd & scaled result */ \
-  (out) = (((float)SGSOsc__s) + \
-           ((float)(((osctab)[SGSOsc__i + 1] - SGSOsc__s))) * \
-           ((float)(SGSOsc__p & SGSOsc_TABINDEXMASK)) * \
-           (1.f / (1 << (32-SGSOsc_TABINDEXBITS)))) * \
-          (1.f / ((1 << 16) - 2)) + \
-          .5f; \
+/**
+ * Calculate number of samples from the beginning of a wave cycle to
+ * the given sample position.
+ *
+ * Can be used to adjust timing to wave cycle boundaries (without
+ * accounting for dynamic frequency).
+ */
+#define SGSOsc_CYCLE_SAMPLE_OFFSET(sr_coeff, freq, spos, spos_out) do{ \
+	uint32_t SGSOsc__inc; \
+	SET_I2FV(SGSOsc__inc, (sr_coeff)*(freq)); \
+	uint32_t SGSOsc__phs = SGSOsc__inc * (uint32_t)(spos); \
+	(spos_out) = SGSOsc__phs / SGSOsc__inc; \
 }while(0)
-
-#define SGSOsc_WAVE_OFFS(o, coeff, freq, timepos, out) do{ \
-  uint32_t SGSOsc__i; \
-  SET_I2FV(SGSOsc__i, (coeff)*(freq)); \
-  uint32_t SGSOsc__p = SGSOsc__i * (uint32_t)(timepos); \
-  int32_t SGSOsc__o = SGSOsc__p - (SGSOsc_TABINDEXMASK+1); \
-  (out) = (SGSOsc__o / SGSOsc__i); \
-}while(0)
-
-/**/

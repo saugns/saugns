@@ -13,45 +13,44 @@
 
 #include "osc.h"
 
-#define SGSOsc_TABSCALE ((float)((1<<15) - 1))
-#define HALFLEN (SGSOsc_TABLEN>>1)
+#define HALFLEN (SGSOsc_LUT_LEN>>1)
 
-SGSOscLut SGSOsc_sin,
-          SGSOsc_srs,
-          SGSOsc_tri,
-          SGSOsc_sqr,
-          SGSOsc_saw;
+SGSOscLUT SGSOsc_luts[SGS_WAVE_TYPES];
 
-void SGSOsc_init(void) {
-  int i;
-  static bool done = false;
-  if (done) return;
-  done = true;
+/**
+ * Fill in the look-up tables enumerated by SGS_WAVE_*.
+ *
+ * If already initialized, return without doing anything.
+ */
+void SGSOsc_init_luts(void) {
+	static bool done = false;
+	if (done) return;
+	done = true;
 
-  /* first half */
-  for (i = 0; i < HALFLEN; ++i) {
-    double sinval = sin(PI * i/HALFLEN);
-    SGSOsc_sin[i] = SGSOsc_TABSCALE * sinval;
-    SGSOsc_srs[i] = SGSOsc_TABSCALE * sqrtf(sinval);
-    if (i < (HALFLEN>>1))
-      SGSOsc_tri[i] = SGSOsc_TABSCALE * (2.f * i/HALFLEN);
-    else
-      SGSOsc_tri[i] = SGSOsc_TABSCALE * (2.f * (HALFLEN-i)/HALFLEN);
-    SGSOsc_sqr[i] = SGSOsc_TABSCALE;
-    SGSOsc_saw[i] = SGSOsc_TABSCALE * (1.f * (HALFLEN-i)/HALFLEN);
-  }
-  /* second half */
-  for (; i < SGSOsc_TABLEN; ++i) {
-    SGSOsc_sin[i] = -SGSOsc_sin[i - HALFLEN];
-    SGSOsc_srs[i] = -SGSOsc_srs[i - HALFLEN];
-    SGSOsc_tri[i] = -SGSOsc_tri[i - HALFLEN];
-    SGSOsc_sqr[i] = -SGSOsc_sqr[i - HALFLEN];
-    SGSOsc_saw[i] = -SGSOsc_saw[SGSOsc_TABLEN - i];
-  }
-  /* wrap value */
-  SGSOsc_sin[SGSOsc_TABLEN] = SGSOsc_sin[0];
-  SGSOsc_srs[SGSOsc_TABLEN] = SGSOsc_srs[0];
-  SGSOsc_sqr[SGSOsc_TABLEN] = SGSOsc_sqr[0];
-  SGSOsc_tri[SGSOsc_TABLEN] = SGSOsc_tri[0];
-  SGSOsc_saw[SGSOsc_TABLEN] = SGSOsc_saw[0];
+	SGSOscLUV *const sin_lut = SGSOsc_luts[SGS_WAVE_SIN];
+	SGSOscLUV *const srs_lut = SGSOsc_luts[SGS_WAVE_SRS];
+	SGSOscLUV *const tri_lut = SGSOsc_luts[SGS_WAVE_TRI];
+	SGSOscLUV *const sqr_lut = SGSOsc_luts[SGS_WAVE_SQR];
+	SGSOscLUV *const saw_lut = SGSOsc_luts[SGS_WAVE_SAW];
+	int i;
+	/* first half */
+	for (i = 0; i < HALFLEN; ++i) {
+		double sinval = sin(PI * i/HALFLEN);
+		sin_lut[i] = SGSOsc_LUT_MAX * sinval;
+		srs_lut[i] = SGSOsc_LUT_MAX * sqrtf(sinval);
+		if (i < (HALFLEN>>1))
+			tri_lut[i] = SGSOsc_LUT_MAX * (2.f * i/HALFLEN);
+		else
+			tri_lut[i] = SGSOsc_LUT_MAX * (2.f * (HALFLEN-i)/HALFLEN);
+		sqr_lut[i] = SGSOsc_LUT_MAX;
+		saw_lut[i] = SGSOsc_LUT_MAX * (1.f * (HALFLEN-i)/HALFLEN);
+	}
+	/* second half */
+	for (; i < SGSOsc_LUT_LEN; ++i) {
+		sin_lut[i] = -sin_lut[i - HALFLEN];
+		srs_lut[i] = -srs_lut[i - HALFLEN];
+		tri_lut[i] = -tri_lut[i - HALFLEN];
+		sqr_lut[i] = -sqr_lut[i - HALFLEN];
+		saw_lut[i] = -saw_lut[(SGSOsc_LUT_LEN-1) - i];
+	}
 }
