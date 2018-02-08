@@ -1,4 +1,4 @@
-/* sgensys: WAV file writer module.
+/* sgensys: sound generator module.
  * Copyright (c) 2011-2012, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -8,16 +8,21 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>
+ * <http://www.gnu.org/licenses/>.
  */
 
 #pragma once
-#include "sgensys.h"
+#include "program.h"
 
-struct SGSWAVFile;
-typedef struct SGSWAVFile SGSWAVFile;
+/*
+ * SGSGenerator
+ */
 
-SGSWAVFile *SGS_create_wavfile(const char *fpath, uint16_t channels, uint32_t srate);
-int SGS_close_wavfile(SGSWAVFile *wf);
+struct SGSGenerator;
+typedef struct SGSGenerator SGSGenerator;
 
-bool SGS_wavfile_write(SGSWAVFile *wf, const int16_t *buf, uint32_t samples);
+SGSGenerator* SGS_create_generator(SGSProgram *prg, uint32_t srate);
+void SGS_destroy_generator(SGSGenerator *o);
+
+bool SGS_generator_run(SGSGenerator *o, int16_t *buf, size_t buf_len,
+                        size_t *gen_len);

@@ -1,4 +1,6 @@
-/* Copyright (c) 2011-2012 Joel K. Pettersson <joelkpettersson@gmail.com>
+/* sgensys: Symbol table module.
+ * Copyright (c) 2011-2012, 2017-2018 Joel K. Pettersson
+ * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
  * terms of the GNU Lesser General Public License, either version 3 or (at
@@ -9,12 +11,13 @@
  * <http://www.gnu.org/licenses/>
  */
 
-#include "sgensys.h"
 #include "symtab.h"
 #include <string.h>
 #include <stdlib.h>
 
-/* a plain linked list is sufficient at present */
+/*
+ * Placeholder until a better module is created.
+ */
 
 typedef struct SGSSymnode {
   const char *key;
@@ -26,12 +29,12 @@ struct SGSSymtab {
   SGSSymnode *node;
 };
 
-SGSSymtab* SGS_symtab_create(void) {
+SGSSymtab* SGS_create_symtab(void) {
   SGSSymtab *o = calloc(1, sizeof(SGSSymtab));
   return o;
 }
 
-void SGS_symtab_destroy(SGSSymtab *o) {
+void SGS_destroy_symtab(SGSSymtab *o) {
   SGSSymnode *n = o->node;
   while (n) {
     SGSSymnode *nn = n->next;
