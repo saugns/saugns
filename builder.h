@@ -1,5 +1,5 @@
-/* sgensys: common definitions.
- * Copyright (c) 2011-2012, 2018 Joel K. Pettersson
+/* sgensys: Program builder module.
+ * Copyright (c) 2011-2012, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -12,9 +12,8 @@
  */
 
 #pragma once
+#include "parser.h"
 
-#include <stdint.h>
-#include <stdbool.h>
-#include <stddef.h>
+SGSProgram_t SGS_build_program(SGSParseResult_t parse_res);
+void SGS_destroy_program(SGSProgram_t o);
 
-typedef unsigned int uint;

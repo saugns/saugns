@@ -1,4 +1,6 @@
-/* Copyright (c) 2011-2012 Joel K. Pettersson <joelkpettersson@gmail.com>
+/* sgensys: Symbol table module.
+ * Copyright (c) 2011-2012, 2017-2018 Joel K. Pettersson
+ * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
  * terms of the GNU Lesser General Public License, either version 3 or (at
@@ -9,39 +11,40 @@
  * <http://www.gnu.org/licenses/>.
  */
 
-#include "sgensys.h"
 #include "symtab.h"
 #include <string.h>
 #include <stdlib.h>
 
-/* a plain linked list is sufficient at present */
+/*
+ * Placeholder until a better module is created.
+ */
 
-typedef struct SGSSymnode {
+struct SGSSymNode {
   const char *key;
   void *value;
-  struct SGSSymnode *next;
-} SGSSymnode;
-
-struct SGSSymtab {
-  SGSSymnode *node;
+  struct SGSSymNode *next;
 };
 
-SGSSymtab* SGS_symtab_create(void) {
-  SGSSymtab *o = calloc(1, sizeof(SGSSymtab));
+struct SGSSymTab {
+  struct SGSSymNode *node;
+};
+
+SGSSymTab_t SGS_create_symtab(void) {
+  SGSSymTab_t o = calloc(1, sizeof(struct SGSSymTab));
   return o;
 }
 
-void SGS_symtab_destroy(SGSSymtab *o) {
-  SGSSymnode *n = o->node;
+void SGS_destroy_symtab(SGSSymTab_t o) {
+  struct SGSSymNode *n = o->node;
   while (n) {
-    SGSSymnode *nn = n->next;
+    struct SGSSymNode *nn = n->next;
     free(n);
     n = nn;
   }
 }
 
-void* SGS_symtab_get(SGSSymtab *o, const char *key) {
-  SGSSymnode *n = o->node;
+void* SGS_symtab_get(SGSSymTab_t o, const char *key) {
+  struct SGSSymNode *n = o->node;
   while (n) {
     if (!strcmp(n->key, key))
       return n->value;
@@ -50,16 +53,16 @@ void* SGS_symtab_get(SGSSymtab *o, const char *key) {
   return 0;
 }
 
-static SGSSymnode* SGS_symnode_alloc(const char *key, void *value) {
-  SGSSymnode *o = malloc(sizeof(SGSSymnode));
+static struct SGSSymNode* SGS_symnode_alloc(const char *key, void *value) {
+  struct SGSSymNode *o = malloc(sizeof(struct SGSSymNode));
   o->key = key;
   o->value = value;
   o->next = 0;
   return o;
 }
 
-void* SGS_symtab_set(SGSSymtab *o, const char *key, void *value) {
-  SGSSymnode *n = o->node;
+void* SGS_symtab_set(SGSSymTab_t o, const char *key, void *value) {
+  struct SGSSymNode *n = o->node;
   if (!n) {
     o->node = SGS_symnode_alloc(key, value);
     return 0;
