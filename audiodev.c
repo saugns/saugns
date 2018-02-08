@@ -1,4 +1,6 @@
-/* Copyright (c) 2011-2013 Joel K. Pettersson <joelkpettersson@gmail.com>
+/* sgensys: system audio output support module.
+ * Copyright (c) 2011-2013, 2017-2018 Joel K. Pettersson
+ * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
  * terms of the GNU Lesser General Public License, either version 3 or (at
@@ -9,7 +11,6 @@
  * <http://www.gnu.org/licenses/>.
  */
 
-#include "sgensys.h"
 #include "audiodev.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,15 +21,15 @@ union DevRef {
 };
 
 enum {
-	TYPE_ALSA = 0,
-	TYPE_OSS
+	TYPE_OSS = 0,
+	TYPE_ALSA,
 };
 
 struct SGSAudioDev {
 	union DevRef ref;
-	uchar type;
-	ushort channels;
-	uint srate;
+	uint8_t type;
+	uint16_t channels;
+	uint32_t srate;
 };
 
 #define SOUND_BITS 16
@@ -40,44 +41,51 @@ struct SGSAudioDev {
 # include "audiodev_oss.c"
 #endif
 
-/*
+/**
  * Open audio device for 16-bit sound output. Sound data may thereafter be
- * written any number of times using SGS_audio_dev_write().
+ * written any number of times using SGS_audiodev_write().
  *
- * Returns NULL if opening the device fails.
+ * Returns SGSAudioDev or NULL if opening the device fails.
  */
-SGSAudioDev *SGS_open_audio_dev(ushort channels, uint srate) {
+SGSAudioDev *SGS_open_audiodev(uint16_t channels, uint32_t *srate) {
 #ifdef linux
-	return open_linux_audio_dev(ALSA_NAME_OUT, OSS_NAME_OUT, O_WRONLY,
+	return open_linux_audiodev(ALSA_NAME_OUT, OSS_NAME_OUT, O_WRONLY,
 			channels, srate);
 #else
-	return open_oss_audio_dev(OSS_NAME_OUT, O_WRONLY, channels, srate);
+	return open_oss_audiodev(OSS_NAME_OUT, O_WRONLY, channels, srate);
 #endif
 }
 
-/*
+/**
  * Close the given audio device. The structure is freed.
  */
-void SGS_close_audio_dev(SGSAudioDev *ad) {
+void SGS_close_audiodev(SGSAudioDev *ad) {
 #ifdef linux
-	close_linux_audio_dev(ad);
+	close_linux_audiodev(ad);
 #else
-	close_oss_audio_dev(ad);
+	close_oss_audiodev(ad);
 #endif
 }
 
-/*
+/**
+ * Return sample rate set for system audio output.
+ */
+uint32_t SGS_audiodev_get_srate(const SGSAudioDev *ad) {
+	return ad->srate;
+}
+
+/**
  * Write the given number of samples from buf to the audio device, the former
  * assumed to be in the format for which the audio device was opened. If
  * opened for multiple channels, buf is assumed to be interleaved and of
  * channels * samples length.
  *
- * Returns zero upon suceessful write, otherwise non-zero.
+ * Returns true upon suceessful write, otherwise false;
  */
-uchar SGS_audio_dev_write(SGSAudioDev *ad, const short *buf, uint samples) {
+bool SGS_audiodev_write(SGSAudioDev *ad, const int16_t *buf, uint32_t samples) {
 #ifdef linux
-	return linux_audio_dev_write(ad, buf, samples);
+	return linux_audiodev_write(ad, buf, samples);
 #else
-	return oss_audio_dev_write(ad, buf, samples);
+	return oss_audiodev_write(ad, buf, samples);
 #endif
 }
