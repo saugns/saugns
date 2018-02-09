@@ -1,4 +1,4 @@
-/* sgensys: symbol table module.
+/* sgensys: Symbol table module.
  * Copyright (c) 2011-2012, 2014, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -11,10 +11,8 @@
  * <http://www.gnu.org/licenses/>.
  */
 
-#ifndef __SGS_symtab_h
-#define __SGS_symtab_h
-
-#include <stdint.h>
+#pragma once
+#include "sgensys.h"
 
 struct SGSSymtab;
 typedef struct SGSSymtab SGSSymtab;
@@ -26,5 +24,3 @@ const char *SGS_symtab_pool_str(SGSSymtab *o, const char *str, uint32_t len);
 
 void* SGS_symtab_get(SGSSymtab *o, const char *key);
 void* SGS_symtab_set(SGSSymtab *o, const char *key, void *value);
-
-#endif /* EOF */
