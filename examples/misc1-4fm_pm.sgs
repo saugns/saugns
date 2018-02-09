@@ -1,21 +1,21 @@
-Osin t15 f500 f!501<Osin f1> p!<
+Osin t15 f500 f!501<Osin f1> p*<
 	Osin f400 f!800<Osqr f1 f!10<Osin f5000> Otri f0.1 f!10.0<Osin f0.2>>
 >
 
 |
-Osin t15 f400 f!500<Osqr f10> p!<
+Osin t15 f400 f!500<Osqr f10> p*<
 	Osin r(2/1.22) a.5
 	Osin f244 a.5
 >
 
 |
-Osin t15 f600 f!666<Osin f2> p!<
+Osin t15 f600 f!666<Osin f2> p*<
 	Osin f400
 	Osin f400 f!500<Osin f.1>
 >
 
 |
-Osin t15 f222 f!666<Osin f0.1> p!<
+Osin t15 f222 f!666<Osin f0.1> p*<
 	Osin r(1/2)
 	Osin r(3/4)
 	Osin r(7/3)
