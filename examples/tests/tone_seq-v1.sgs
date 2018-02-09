@@ -1,4 +1,6 @@
-# This (updated) was the first sgensys script made
+# This was the first sgensys script made, named "script.mgs"
+# when the program was still called mgensys; updated for
+# syntax changes.
 S	a0.5
 			\0.5
 Osin	f220 t1

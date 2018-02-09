@@ -12,32 +12,8 @@
  */
 
 #pragma once
+#include "wave.h"
 #include "math.h"
-
-#define SGSOsc_LUT_INDEXBITS 11
-#define SGSOsc_LUT_INDEXMASK (SGSOsc_LUT_LEN - 1)
-#define SGSOsc_LUT_LEN       (1<<SGSOsc_LUT_INDEXBITS) /* 2048 */
-
-#define SGSOsc_LUT_MAXVAL ((1<<15) - 1)
-#define SGSOsc_LUT_MINVAL (-SGSOsc_LUT_MAXVAL)
-
-#define SGSOsc_PHASE_LERPSCALE (1<<(32-SGSOsc_LUT_INDEXBITS))
-#define SGSOsc_PHASE_LERPMASK  (SGSOsc_PHASE_LERPSCALE - 1)
-
-/**
- * Oscillator wave types.
- */
-enum {
-	SGS_WAVE_SIN = 0,
-	SGS_WAVE_SRS,
-	SGS_WAVE_TRI,
-	SGS_WAVE_SQR,
-	SGS_WAVE_SAW,
-	SGS_WAVE_TYPES
-};
-
-/** Oscillator LUTs, indexed by wave type value. */
-extern int16_t SGSOsc_luts[SGS_WAVE_TYPES][SGSOsc_LUT_LEN];
 
 /**
  * Oscillator data. Only includes phase, as most parameters are
@@ -59,7 +35,7 @@ typedef struct SGSOsc {
 
 /**
  * Calculate the sample rate-dependent coefficent multiplied
- * by the frequency to give the phase increment.
+ * by the frequency to give the per-sample phase increment.
  */
 #define SGSOsc_SRATE_COEFF(srate) ((double) 4294967296.0/(srate))
 
@@ -88,15 +64,15 @@ typedef struct SGSOsc {
  */
 #define SGSOsc_RUN_S16(o, lut, coeff, freq, pm_s16, amp, s16_out) do{ \
 	uint32_t SGSOsc__phs = (o)->phase + ((pm_s16) << 16); \
-	uint32_t SGSOsc__ind = SGSOsc__phs >> (32-SGSOsc_LUT_INDEXBITS); \
-	int32_t SGSOsc__s16 = (lut)[SGSOsc__ind]; \
+	uint32_t SGSOsc__ind = SGSWave_INDEX(SGSOsc__phs); \
+	int_fast16_t SGSOsc__s16 = (lut)[SGSOsc__ind]; \
 	/* write lerp'd & scaled result */ \
 	SGSOsc__s16 = lrintf( \
 		(((float)SGSOsc__s16) + \
-		 ((float)((lut)[(SGSOsc__ind + 1) & SGSOsc_LUT_INDEXMASK] - \
+		 ((float)((lut)[(SGSOsc__ind + 1) & SGSWave_LENMASK] - \
 		          SGSOsc__s16)) * \
-		 (((float)(SGSOsc__phs & SGSOsc_PHASE_LERPMASK)) * \
-		  (1.f / SGSOsc_PHASE_LERPSCALE))) * \
+		 (((float)(SGSOsc__phs & SGSWave_SCALEMASK)) * \
+		  (1.f / SGSWave_SCALE))) * \
 		(amp)); \
 	(s16_out) = SGSOsc__s16; \
 	/* update phase */ \
@@ -109,19 +85,17 @@ typedef struct SGSOsc {
  */
 #define SGSOsc_RUN_SF(o, lut, coeff, freq, pm_s16, sf_out) do{ \
 	uint32_t SGSOsc__phs = (o)->phase + ((pm_s16) << 16); \
-	uint32_t SGSOsc__ind = SGSOsc__phs >> (32-SGSOsc_LUT_INDEXBITS); \
-	int32_t SGSOsc__s16 = (lut)[SGSOsc__ind]; \
+	uint32_t SGSOsc__ind = SGSWave_INDEX(SGSOsc__phs); \
+	int_fast16_t SGSOsc__s16 = (lut)[SGSOsc__ind]; \
 	/* write lerp'd & scaled result */ \
 	(sf_out) = ((float)(SGSOsc__s16) + \
-		    ((float)((lut)[(SGSOsc__ind + 1) & SGSOsc_LUT_INDEXMASK] - \
+		    ((float)((lut)[(SGSOsc__ind + 1) & SGSWave_LENMASK] - \
 		             SGSOsc__s16)) * \
-		    (((float)(SGSOsc__phs & SGSOsc_PHASE_LERPMASK)) * \
-		     (1.f / SGSOsc_PHASE_LERPSCALE))) * \
-	           (1.f / ((float) SGSOsc_LUT_MAXVAL * 2)) + \
+		    (((float)(SGSOsc__phs & SGSWave_SCALEMASK)) * \
+		     (1.f / SGSWave_SCALE))) * \
+	           (1.f / ((float) SGSWave_MAXVAL * 2)) + \
 	           .5f; \
 	/* update phase */ \
 	uint32_t SGSOsc__inc = lrint((coeff)*(freq)); \
 	(o)->phase += SGSOsc__inc; \
 }while(0)
-
-extern void SGSOsc_global_init(void);

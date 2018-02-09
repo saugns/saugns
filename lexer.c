@@ -11,7 +11,6 @@
  * <http://www.gnu.org/licenses/>.
  */
 
-#include "symtab.h"
 #include "lexer.h"
 #include "math.h"
 #include <stdio.h>
@@ -268,7 +267,7 @@ static void handle_unknown_or_end(SGSLexer *o, uint8_t c) {
 		}
 	}
 	t->type = SGS_T_INVALID;
-#if !LEXER_TEST
+#if !SGS_LEXER_QUIET
 	SGS_lexer_warning(o, "invalid character (value 0x%hhx)", c);
 #endif
 }
@@ -675,5 +674,3 @@ TEST_1STCHAR:
 	}
 	return t;
 }
-
-/* EOF */

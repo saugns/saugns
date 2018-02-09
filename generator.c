@@ -12,6 +12,7 @@
  */
 
 #include "generator.h"
+#include "osc.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -170,7 +171,7 @@ SGSGenerator* SGS_create_generator(SGSProgram *prg, uint32_t srate) {
   o->voicec = prg->voicec;
   o->voices = (void*)(((uint8_t*)o) + size + operatorssize + eventssize);
   data      = (void*)(((uint8_t*)o) + size + operatorssize + eventssize + voicessize);
-  SGSOsc_global_init();
+  SGS_global_init_Wave();
   /*
    * Fill in events according to the SGSProgram, ie. copy timed state
    * changes for voices and operators.
@@ -544,7 +545,7 @@ static uint32_t run_block(SGSGenerator *o, Buf *bufs, uint32_t buf_len,
      * Generate integer output - either for voice output or phase modulation
      * input.
      */
-    const int16_t *lut = SGSOsc_luts[n->wave];
+    const int16_t *lut = SGSWave_luts[n->wave];
     for (i = 0; i < len; ++i) {
       int32_t s, spm = 0;
       float sfreq = freq[i].f, samp = amp[i].f;
@@ -558,7 +559,7 @@ static uint32_t run_block(SGSGenerator *o, Buf *bufs, uint32_t buf_len,
      * Generate float output - used as waveform envelopes for modulating
      * frequency or amplitude.
      */
-    const int16_t *lut = SGSOsc_luts[n->wave];
+    const int16_t *lut = SGSWave_luts[n->wave];
     for (i = 0; i < len; ++i) {
       float s, sfreq = freq[i].f;
       int32_t spm = 0;

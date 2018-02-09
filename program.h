@@ -12,7 +12,7 @@
  */
 
 #pragma once
-#include "osc.h"
+#include "wave.h"
 
 /*
  * Program types and definitions.

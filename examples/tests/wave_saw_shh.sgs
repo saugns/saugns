@@ -1,0 +1,8 @@
+# Three tones with wave type saw (flatter), then shh (warmer, fuller)
+Osaw fC4 t1
+; fE4 t1
+; fF4 t1
+|\1.0
+Oshh fC4 t1
+; fE4 t1
+; fF4 t1

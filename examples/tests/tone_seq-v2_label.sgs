@@ -1,4 +1,5 @@
-# This (updated) was the first sgensys script made
+# Variation #2 of the first sgensys script made,
+# changed to test the label syntax.
 	S	a0.5
 			\0.5
 'a	Osin	f220 t1

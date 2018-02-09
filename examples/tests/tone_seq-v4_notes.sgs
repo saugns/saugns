@@ -1,4 +1,5 @@
-# This (updated) was the first sgensys script made
+# Variation #4 of the first sgensys script made,
+# changed to test specifying frequencies as notes.
 Osin	fA3 t1
 ;	fA4 t1.5
 ;	fG4 t0.5
