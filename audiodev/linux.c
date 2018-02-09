@@ -21,10 +21,10 @@
  *
  * \return instance or NULL on failure
  */
-static inline SGSAudioDev *open_linux(const char *alsa_name,
+static inline SGS_AudioDev *open_linux(const char *alsa_name,
 		const char *oss_name, int oss_mode, uint16_t channels,
 		uint32_t *srate) {
-	SGSAudioDev *o;
+	SGS_AudioDev *o;
 	uint32_t tmp;
 	int err;
 	snd_pcm_t *handle = NULL;
@@ -61,7 +61,7 @@ static inline SGSAudioDev *open_linux(const char *alsa_name,
 		*srate = tmp;
 	}
 
-	o = malloc(sizeof(SGSAudioDev));
+	o = malloc(sizeof(SGS_AudioDev));
 	o->ref.handle = handle;
 	o->type = TYPE_ALSA;
 	o->channels = channels;
@@ -81,7 +81,7 @@ ERROR:
  * Destroy instance. Close ALSA or OSS device,
  * ending playback in the process.
  */
-static inline void close_linux(SGSAudioDev *o) {
+static inline void close_linux(SGS_AudioDev *o) {
 	if (o->type == TYPE_OSS) {
 		close_oss(o);
 		return;
@@ -97,7 +97,7 @@ static inline void close_linux(SGSAudioDev *o) {
  *
  * \return true if write sucessful, otherwise false
  */
-static inline bool linux_write(SGSAudioDev *o, const int16_t *buf,
+static inline bool linux_write(SGS_AudioDev *o, const int16_t *buf,
 		uint32_t samples) {
 	if (o->type == TYPE_OSS) {
 		return oss_write(o, buf, samples);

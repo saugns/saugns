@@ -17,7 +17,7 @@
 /*
  * \return instance or NULL on failure
  */
-static inline SGSAudioDev *open_sndio(const char *name,
+static inline SGS_AudioDev *open_sndio(const char *name,
 		unsigned int mode, uint16_t channels, uint32_t *srate) {
 	struct sio_hdl *hdl = sio_open(name, mode, 0);
 	if (!hdl) goto ERROR;
@@ -42,7 +42,7 @@ static inline SGSAudioDev *open_sndio(const char *name,
 
 	if (!sio_start(hdl)) goto ERROR;
 
-	SGSAudioDev *o = malloc(sizeof(SGSAudioDev));
+	SGS_AudioDev *o = malloc(sizeof(SGS_AudioDev));
 	o->ref.handle = hdl;
 	o->type = TYPE_SNDIO;
 	o->channels = channels;
@@ -59,7 +59,7 @@ ERROR:
  * Destroy instance. Close sndio device,
  * ending playback in the process.
  */
-static inline void close_sndio(SGSAudioDev *o) {
+static inline void close_sndio(SGS_AudioDev *o) {
 	sio_close(o->ref.handle);
 	free(o);
 }
@@ -69,7 +69,7 @@ static inline void close_sndio(SGSAudioDev *o) {
  *
  * \return true if write sucessful, otherwise false
  */
-static inline bool sndio_write(SGSAudioDev *o, const int16_t *buf,
+static inline bool sndio_write(SGS_AudioDev *o, const int16_t *buf,
 		uint32_t samples) {
 	size_t bytes = samples * o->channels * SOUND_BYTES;
 	size_t wlen;
