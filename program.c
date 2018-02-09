@@ -3,7 +3,7 @@
  *
  * This file and the software of which it is part is distributed under the
  * terms of the GNU Lesser General Public License, either version 3 or (at
- * your option) any later version; WITHOUT ANY WARRANTY, not even of
+ * your option) any later version, WITHOUT ANY WARRANTY, not even of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
@@ -32,12 +32,10 @@ static void build_graph(SGSProgramEvent *root,
   SGSProgramGraph *graph, **graph_out;
   uint i;
   uint size;
-  if (!voice_in->voice_params & SGS_GRAPH)
-    return;
   size = voice_in->graph.count;
   graph_out = (SGSProgramGraph**)&root->voice->graph;
   if (!size) {
-    *graph_out = graph;
+    *graph_out = 0;
     return;
   }
   nl = SGS_NODE_LIST_GET(&voice_in->graph);
@@ -55,8 +53,6 @@ static void build_adjcs(SGSProgramEvent *root,
   int *data;
   uint i;
   uint size;
-  if (!operator_in || !(operator_in->operator_params & SGS_ADJCS))
-    return;
   size = operator_in->fmods.count +
          operator_in->pmods.count +
          operator_in->amods.count;
@@ -280,27 +276,6 @@ static SGSProgramEvent *program_alloc_oevent(ProgramAlloc *pa, uint voice_id) {
 }
 
 /*
- * Overwrite parameters in dst that have values in src.
- */
-static void copy_params(SGSOperatorNode *dst, const SGSOperatorNode *src) {
-  if (src->operator_params & SGS_AMP) dst->amp = src->amp;
-}
-
-static void expand_operator(SGSOperatorNode *op) {
-  SGSOperatorNode *pop;
-  if (!(op->on_flags & ON_MULTIPLE_OPERATORS)) return;
-  pop = op->on_prev;
-  do {
-    copy_params(pop, op);
-    expand_operator(pop);
-  } while ((pop = pop->next_bound));
-  SGS_node_list_clear(&op->fmods);
-  SGS_node_list_clear(&op->pmods);
-  SGS_node_list_clear(&op->amods);
-  op->operator_params = 0;
-}
-
-/*
  * Convert data for an operator node to program operator data, setting it for
  * the program event given.
  */
@@ -447,8 +422,16 @@ static SGSProgram* build(SGSParser *o) {
   return prg;
 }
 
+#if USE_LEXER
 #include "lexer.h"
+#endif
+/**
+ * Create SGSProgram for the given SGS file. Invokes the parser.
+ *
+ * Return SGSProgram if successful, NULL on error.
+ */
 SGSProgram* SGS_program_create(const char *filename) {
+#if USE_LEXER
 	SGSSymtab *symtab = SGS_create_symtab();
 	SGSLexer *lexer = SGS_create_lexer(filename, symtab);
 	if (!lexer) return NULL;
@@ -459,7 +442,7 @@ SGSProgram* SGS_program_create(const char *filename) {
 	SGS_destroy_lexer(lexer);
 	SGS_destroy_symtab(symtab);
 	return (SGSProgram*) calloc(1, sizeof(SGSProgram)); //0;
-#if 0 // OLD PARSER
+#else // OLD PARSER
   SGSParser p;
   FILE *f = fopen(filename, "r");
   if (!f) return 0;
