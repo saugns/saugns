@@ -1,4 +1,4 @@
-/* sgensys: sound generator module.
+/* sgensys: Audio generator module.
  * Copyright (c) 2011-2012, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
