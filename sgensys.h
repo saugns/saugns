@@ -1,5 +1,5 @@
-/* sgensys: Common definitions.
- * Copyright (c) 2011-2012, 2018 Joel K. Pettersson
+/* sgensys: Main functions and project definitions.
+ * Copyright (c) 2011-2013, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -12,23 +12,9 @@
  */
 
 #pragma once
+#include "program.h"
 
-/*
- * Common types.
- */
+SGS_Program* SGS_build(const char *fname);
 
-#include <stddef.h>
-#include <stdint.h>
-#include <stdbool.h>
-
-typedef unsigned int uint;
-
-/*
- * Debugging options.
- */
-
-/* Disable old parser, run lexer testing instead. */
-#define SGS_TEST_LEXER 0
-
-#define SGS_HASHTAB_STATS 0
-#define SGS_LEXER_QUIET 0
+bool SGS_render(SGS_Program *prg, uint32_t srate,
+		bool use_audiodev, const char *wav_path);
