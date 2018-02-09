@@ -12,7 +12,7 @@
  */
 
 #pragma once
-#include "sgensys.h"
+#include "common.h"
 
 struct SGSWAVFile;
 typedef struct SGSWAVFile SGSWAVFile;

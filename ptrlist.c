@@ -97,11 +97,10 @@ bool SGSPtrList_memdup(SGSPtrList *o, const void ***dst) {
 	}
 	size_t size = o->count * sizeof(const void*);
 	const void **src = SGSPtrList_ITEMS(o);
-	const void **a = malloc(size);
+	const void **a = SGS_memdup(src, size);
 	if (!a) {
 		return false;
 	}
-	memcpy(a, src, size);
 	*dst = a;
 	return true;
 }

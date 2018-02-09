@@ -1,4 +1,4 @@
-/* sgensys: Parsing data to audio program translator module.
+/* sgensys: Audio program data and functions.
  * Copyright (c) 2011-2013, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -12,7 +12,7 @@
  */
 
 #pragma once
-#include "osc.h"
+#include "wave.h"
 
 /*
  * Program types and definitions.
@@ -82,36 +82,52 @@ typedef struct SGSProgramValit {
 	uint8_t type;
 } SGSProgramValit;
 
-typedef struct SGSProgramVoiceData {
+typedef struct SGSProgramVoData {
 	const SGSProgramGraph *graph;
 	uint8_t attr;
 	float panning;
 	SGSProgramValit valitpanning;
-} SGSProgramVoiceData;
+} SGSProgramVoData;
 
-typedef struct SGSProgramOperatorData {
+typedef struct SGSProgramOpData {
 	const SGSProgramGraphAdjcs *adjcs;
 	uint32_t operator_id;
-	uint8_t attr, wave;
+	uint8_t attr;
+	uint8_t wave;
 	int32_t time_ms, silence_ms;
 	float freq, dynfreq, phase, amp, dynamp;
 	SGSProgramValit valitfreq, valitamp;
-} SGSProgramOperatorData;
+} SGSProgramOpData;
 
 typedef struct SGSProgramEvent {
 	int32_t wait_ms;
 	uint32_t params;
 	uint32_t voice_id; /* needed for both voice and operator data */
-	const SGSProgramVoiceData *voice;
-	const SGSProgramOperatorData *operator;
+	const SGSProgramVoData *voice;
+	const SGSProgramOpData *operator;
 } SGSProgramEvent;
 
+/**
+ * Program flags affecting interpretation.
+ */
+enum {
+	SGS_PROG_AMP_DIV_VOICES = 1<<0,
+};
+
+/**
+ * Main program type. Contains everything needed for interpretation.
+ */
 typedef struct SGSProgram {
-	const SGSProgramEvent *events;
-	size_t eventc;
-	uint32_t operatorc;
-	uint32_t voicec;
+	const SGSProgramEvent **events;
+	size_t event_count;
+	uint32_t operator_count;
+	uint16_t voice_count;
+	uint16_t flags;
+	const char *name;
 } SGSProgram;
 
-SGSProgram* SGS_open_program(const char *filename);
-void SGS_close_program(SGSProgram *o);
+struct SGSScript;
+SGSProgram* SGS_build_Program(struct SGSScript *sd);
+void SGS_discard_Program(SGSProgram *o);
+
+void SGS_Program_print_info(SGSProgram *o);
