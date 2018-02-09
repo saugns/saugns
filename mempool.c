@@ -1,4 +1,4 @@
-/* sgensys memory pool module.
+/* sgensys: Memory pool module.
  * Copyright (c) 2014 Joel K. Pettersson <joelkpettersson@gmail.com>
  *
  * This file and the software of which it is part is distributed under the
@@ -12,7 +12,6 @@
 
 #include "mempool.h"
 #include <stdlib.h>
-
 #if defined(__WIN32) || defined(__WIN64)
 # define ssize_t ptrdiff_t
 # define GET_PAGESIZE() 4096
