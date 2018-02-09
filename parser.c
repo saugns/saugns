@@ -461,17 +461,16 @@ static bool read_label(SGSParser *o, LabelBuf label, char op) {
 }
 
 static int32_t read_wavetype(SGSParser *o) {
-  static const char *const wavetypes[] = {
-    "sin",
-    "srs",
-    "tri",
-    "sqr",
-    "saw",
-    0
-  };
-  int32_t wave = strfind(o->f, wavetypes);
-  if (wave < 0)
-    warning(o, "invalid wave type follows; sin, sqr, tri, saw available");
+  int32_t wave = strfind(o->f, SGSWave_names);
+  if (wave < 0) {
+    warning(o, "invalid wave type; available types are:");
+    uint8_t i = 0;
+    fprintf(stderr, "\t%s", SGSWave_names[i]);
+    while (++i < SGS_WAVE_TYPES) {
+      fprintf(stderr, ", %s", SGSWave_names[i]);
+    }
+    putc('\n', stderr);
+  }
   return wave;
 }
 
@@ -1052,7 +1051,7 @@ static bool parse_step(NodeScope *ns) {
       }
       break;
     case 'p':
-      if (tryc('!', o->f)) {
+      if (tryc('*', o->f)) {
         if (tryc('<', o->f)) {
           if (op->pmods.count > 0) {
             op->operator_params |= SGS_P_ADJCS;
