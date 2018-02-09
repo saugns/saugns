@@ -91,10 +91,10 @@ SGSWAVFile *SGS_create_wavfile(const char *fpath, uint16_t channels,
  * Return true upon successful write, otherwise false.
  */
 bool SGS_wavfile_write(SGSWAVFile *o, const int16_t *buf, uint32_t samples) {
-	size_t length = o->channels * samples, written;
-	written = fwrite(buf, SOUND_BYTES, length, o->f);
+	uint32_t written;
+	written = fwrite(buf, o->channels * SOUND_BYTES, samples, o->f);
 	o->samples += written;
-	return (written == length);
+	return (written == samples);
 }
 
 /**

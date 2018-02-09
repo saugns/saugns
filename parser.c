@@ -1,5 +1,5 @@
 /* sgensys: Script parser module.
- * Copyright (c) 2011-2012, 2017-2018 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -172,7 +172,7 @@ enum {
   SCOPE_SAME = 0,
   SCOPE_TOP = 1,
   SCOPE_BIND = '{',
-  SCOPE_NEST = '<'
+  SCOPE_NEST = '['
 };
 
 enum {
@@ -257,7 +257,9 @@ static float read_num_r(SGSParser *o, float (*read_symbol)(SGSParser *o),
   c = getc(o->f);
   if (level > 0) read_ws(o);
   if (c == '(') {
-    return read_num_r(o, read_symbol, buf, len, 255, level+1);
+    num = read_num_r(o, read_symbol, buf, len, 255, level+1);
+    if (level == 0) return num;
+    goto LOOP;
   }
   if (read_symbol &&
       ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))) {
@@ -461,17 +463,16 @@ static bool read_label(SGSParser *o, LabelBuf label, char op) {
 }
 
 static int32_t read_wavetype(SGSParser *o) {
-  static const char *const wavetypes[] = {
-    "sin",
-    "srs",
-    "tri",
-    "sqr",
-    "saw",
-    0
-  };
-  int32_t wave = strfind(o->f, wavetypes);
-  if (wave < 0)
-    warning(o, "invalid wave type follows; sin, sqr, tri, saw available");
+  int32_t wave = strfind(o->f, SGSWave_names);
+  if (wave < 0) {
+    warning(o, "invalid wave type; available types are:");
+    uint8_t i = 0;
+    fprintf(stderr, "\t%s", SGSWave_names[i]);
+    while (++i < SGS_WAVE_TYPES) {
+      fprintf(stderr, ", %s", SGSWave_names[i]);
+    }
+    putc('\n', stderr);
+  }
   return wave;
 }
 
@@ -647,8 +648,10 @@ static void end_operator(NodeScope *ns) {
   if (op->valitamp.type != SGS_VALIT_NONE)
     op->operator_params |= SGS_P_OPATTR |
                            SGS_P_VALITAMP;
-  if (!(ns->ns_flags & NS_NESTED_SCOPE))
+  if (!(ns->ns_flags & NS_NESTED_SCOPE)) {
     op->amp *= o->ampmult;
+    op->valitamp.goal *= o->ampmult;
+  }
   ns->operator = NULL;
   ns->last_operator = op;
 }
@@ -1004,10 +1007,10 @@ static bool parse_step(NodeScope *ns) {
           ns->linktype == NL_FMODS)
         goto UNKNOWN;
       if (tryc('!', o->f)) {
-        if (!testc('<', o->f)) {
+        if (!testc('[', o->f)) {
           read_num(o, 0, &op->dynamp);
         }
-        if (tryc('<', o->f)) {
+        if (tryc('[', o->f)) {
           if (op->amods.count > 0) {
             op->operator_params |= SGS_P_ADJCS;
             SGSPtrList_clear(&op->amods);
@@ -1026,12 +1029,12 @@ static bool parse_step(NodeScope *ns) {
       break;
     case 'f':
       if (tryc('!', o->f)) {
-        if (!testc('<', o->f)) {
+        if (!testc('[', o->f)) {
           if (read_num(o, 0, &op->dynfreq)) {
             op->attr &= ~SGS_ATTR_DYNFREQRATIO;
           }
         }
-        if (tryc('<', o->f)) {
+        if (tryc('[', o->f)) {
           if (op->fmods.count > 0) {
             op->operator_params |= SGS_P_ADJCS;
             SGSPtrList_clear(&op->fmods);
@@ -1052,8 +1055,8 @@ static bool parse_step(NodeScope *ns) {
       }
       break;
     case 'p':
-      if (tryc('!', o->f)) {
-        if (tryc('<', o->f)) {
+      if (tryc('*', o->f)) {
+        if (tryc('[', o->f)) {
           if (op->pmods.count > 0) {
             op->operator_params |= SGS_P_ADJCS;
             SGSPtrList_clear(&op->pmods);
@@ -1072,13 +1075,13 @@ static bool parse_step(NodeScope *ns) {
       if (!(ns->ns_flags & NS_NESTED_SCOPE))
         goto UNKNOWN;
       if (tryc('!', o->f)) {
-        if (!testc('<', o->f)) {
+        if (!testc('[', o->f)) {
           if (read_num(o, 0, &op->dynfreq)) {
             op->dynfreq = 1.f / op->dynfreq;
             op->attr |= SGS_ATTR_DYNFREQRATIO;
           }
         }
-        if (tryc('<', o->f)) {
+        if (tryc('[', o->f)) {
           if (op->fmods.count > 0) {
             op->operator_params |= SGS_P_ADJCS;
             SGSPtrList_clear(&op->fmods);
@@ -1207,13 +1210,13 @@ static bool parse_level(SGSParser *o, NodeScope *parentns,
       begin_node(&ns, ns.operator, NL_REFER, true);
       flags = parse_step(&ns) ? (HANDLE_DEFER | DEFERRED_STEP) : 0;
       break;
-    case '<':
-      if (parse_level(o, &ns, ns.linktype, '<'))
+    case '[':
+      if (parse_level(o, &ns, ns.linktype, SCOPE_NEST))
         goto RETURN;
       break;
-    case '>':
+    case ']':
       if (ns.scope != SCOPE_NEST) {
-        warning(o, "closing '>' without opening '<'");
+        warning(o, "closing ']' without opening '['");
         break;
       }
       end_operator(&ns);
@@ -1303,7 +1306,7 @@ static bool parse_level(SGSParser *o, NodeScope *parentns,
   }
 FINISH:
   if (newscope == SCOPE_NEST)
-    warning(o, "end of file without closing '>'s");
+    warning(o, "end of file without closing ']'s");
   if (newscope == SCOPE_BIND)
     warning(o, "end of file without closing '}'s");
 RETURN:
