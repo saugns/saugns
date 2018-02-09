@@ -36,8 +36,16 @@ static void print_usage(bool by_arg) {
 "     \tdisables audio device output by default.\n"
 "  -c \tCheck script only, reporting any errors or requested info.\n"
 "  -p \tPrint info for script after loading.\n"
-"  -h \tPrint this message.\n",
+"  -h \tPrint this message.\n"
+"  -v \tPrint version.\n",
 	(by_arg) ? stdout : stderr);
+}
+
+/*
+ * Print version.
+ */
+static void print_version(void) {
+	puts("sgensys v0.5.0");
 }
 
 /*
@@ -143,6 +151,9 @@ NEXT_C:
 			if (i < 0) goto INVALID;
 			*srate = i;
 			continue;
+		case 'v':
+			print_version();
+			return false;
 		default:
 			goto INVALID;
 		}
@@ -160,9 +171,9 @@ INVALID:
  *
  * \return true unless error occurred
  */
-static bool build(const char *fname, SGSProgram **prg_out,
+static bool build(const char *fname, SGS_Program **prg_out,
 		uint32_t options) {
-	SGSProgram *prg;
+	SGS_Program *prg;
 	if (!(prg = SGS_build(fname)))
 		return false;
 	if ((options & ARG_PRINT_INFO) != 0)
@@ -182,7 +193,7 @@ static bool build(const char *fname, SGSProgram **prg_out,
  *
  * \return true unless error occurred
  */
-static bool render(SGSProgram *prg, uint32_t srate,
+static bool render(SGS_Program *prg, uint32_t srate,
 		uint32_t options, const char *wav_path) {
 	bool use_audiodev = (wav_path != NULL) ?
 			((options & ARG_ENABLE_AUDIO_DEV) != 0) :
@@ -196,7 +207,7 @@ static bool render(SGSProgram *prg, uint32_t srate,
 int main(int argc, char **argv) {
 	const char *script_path = NULL, *wav_path = NULL;
 	uint32_t options = 0;
-	SGSProgram *prg;
+	SGS_Program *prg;
 	uint32_t srate = DEFAULT_SRATE;
 
 	if (!parse_args(argc, argv, &options, &script_path, &wav_path,

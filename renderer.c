@@ -22,29 +22,29 @@
 static int16_t audio_buf[BUF_SAMPLES * NUM_CHANNELS];
 
 /*
- * Produce audio for the given SGSProgram, optionally sending it
+ * Produce audio for the given SGS_Program, optionally sending it
  * to a given audio device and/or WAV file.
  *
  * \return true unless error occurred
  */
-static bool produce_audio(SGSProgram *prg, uint32_t srate,
-		SGSAudioDev *ad, SGSWAVFile *wf) {
-	SGSGenerator *gen = SGS_create_generator(prg, srate);
+static bool produce_audio(SGS_Program *prg, uint32_t srate,
+		SGS_AudioDev *ad, SGS_WAVFile *wf) {
+	SGS_Generator *gen = SGS_create_Generator(prg, srate);
 	size_t len;
 	bool error = false;
 	bool run;
 	do {
-		run = SGS_generator_run(gen, audio_buf, BUF_SAMPLES, &len);
-		if (ad && !SGS_audiodev_write(ad, audio_buf, len)) {
+		run = SGS_Generator_run(gen, audio_buf, BUF_SAMPLES, &len);
+		if (ad && !SGS_AudioDev_write(ad, audio_buf, len)) {
 			error = true;
 			SGS_error(NULL, "audio device write failed");
 		}
-		if (wf && !SGS_wavfile_write(wf, audio_buf, len)) {
+		if (wf && !SGS_WAVFile_write(wf, audio_buf, len)) {
 			error = true;
 			SGS_error(NULL, "WAV file write failed");
 		}
 	} while (run);
-	SGS_destroy_generator(gen);
+	SGS_destroy_Generator(gen);
 	return !error;
 }
 
@@ -55,18 +55,18 @@ static bool produce_audio(SGSProgram *prg, uint32_t srate,
  *
  * \return true unless error occurred
  */
-bool SGS_render(SGSProgram *prg, uint32_t srate,
+bool SGS_render(SGS_Program *prg, uint32_t srate,
 		bool use_audiodev, const char *wav_path) {
-	SGSAudioDev *ad = NULL;
+	SGS_AudioDev *ad = NULL;
 	uint32_t ad_srate = srate;
-	SGSWAVFile *wf = NULL;
+	SGS_WAVFile *wf = NULL;
 	bool status = true;
 	if (use_audiodev) {
-		ad = SGS_open_audiodev(NUM_CHANNELS, &ad_srate);
+		ad = SGS_open_AudioDev(NUM_CHANNELS, &ad_srate);
 		if (!ad) goto CLEANUP;
 	}
 	if (wav_path) {
-		wf = SGS_create_wavfile(wav_path, NUM_CHANNELS, srate);
+		wf = SGS_create_WAVFile(wav_path, NUM_CHANNELS, srate);
 		if (!wf) goto CLEANUP;
 	}
 
@@ -81,10 +81,10 @@ bool SGS_render(SGSProgram *prg, uint32_t srate,
 
 CLEANUP:
 	if (ad) {
-		SGS_close_audiodev(ad);
+		SGS_close_AudioDev(ad);
 	}
 	if (wf) {
-		status = status && (SGS_close_wavfile(wf) == 0);
+		status = status && (SGS_close_WAVFile(wf) == 0);
 	}
 	return status;
 }

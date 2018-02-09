@@ -14,7 +14,7 @@
 #pragma once
 #include "program.h"
 
-SGSProgram* SGS_build(const char *fname);
+SGS_Program* SGS_build(const char *fname);
 
-bool SGS_render(SGSProgram *prg, uint32_t srate,
+bool SGS_render(SGS_Program *prg, uint32_t srate,
 		bool use_audiodev, const char *wav_path);

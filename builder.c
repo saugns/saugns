@@ -25,23 +25,23 @@
  *
  * \return instance or NULL on error
  */
-SGSProgram* SGS_build(const char *fname) {
+SGS_Program* SGS_build(const char *fname) {
 #if SGS_TEST_LEXER
-	SGSSymtab *symtab = SGS_create_symtab();
-	SGSLexer *lexer = SGS_create_lexer(fname, symtab);
+	SGS_SymTab *symtab = SGS_create_SymTab();
+	SGS_Lexer *lexer = SGS_create_Lexer(fname, symtab);
 	if (!lexer) return NULL;
 	for (;;) {
-		SGSToken *token = SGS_get_token(lexer);
+		SGS_ScriptToken *token = SGS_Lexer_get_token(lexer);
 		if (token->type <= 0) break;
 	}
-	SGS_destroy_lexer(lexer);
-	SGS_destroy_symtab(symtab);
-	return (SGSProgram*) calloc(1, sizeof(SGSProgram)); //0;
+	SGS_destroy_Lexer(lexer);
+	SGS_destroy_SymTab(symtab);
+	return (SGS_Program*) calloc(1, sizeof(SGS_Program)); //0;
 #else // OLD PARSER
-	SGSScript *sd = SGS_load_Script(fname);
+	SGS_Script *sd = SGS_load_Script(fname);
 	if (!sd) return NULL;
 
-	SGSProgram *o = SGS_build_Program(sd);
+	SGS_Program *o = SGS_build_Program(sd);
 	SGS_discard_Script(sd);
 	if (!o) return NULL;
 	return o;
