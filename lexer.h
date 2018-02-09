@@ -1,4 +1,4 @@
-/* sgensys: script lexer module.
+/* sgensys: Script lexer module.
  * Copyright (c) 2014, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -11,12 +11,8 @@
  * <http://www.gnu.org/licenses/>.
  */
 
-#ifndef __SGS_lexer_h
-#define __SGS_lexer_h
-
-#ifndef __SGS_symtab_h
-# include "symtab.h"
-#endif
+#pragma once
+#include "symtab.h"
 
 /**
  * For those 1-character (special character) tokens that are defined, passing
@@ -86,5 +82,3 @@ SGSToken *SGS_get_token(SGSLexer *o);
 
 void SGS_lexer_warning(SGSLexer *o, const char *fmt, ...);
 void SGS_lexer_error(SGSLexer *o, const char *fmt, ...);
-
-#endif /* EOF */
