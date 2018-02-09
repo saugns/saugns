@@ -1,0 +1,26 @@
+# Play each wave type in sequence, using the order in which they are
+# declared in the oscillator module
+Osin f200 t2
+; wsqr t2
+; wtri t2
+; wsaw t2
+; wsha t2
+; wszh t2
+; wshh t2
+; wssr t2 |
+
+\1
+# For comparison, sequence of sin and three symmetric (odd harmonics) types:
+# tri, ssr, sqr
+Osin f200 t2
+; wtri t2
+; wssr t2
+; wsqr t2 |
+
+\1
+# For comparison, sequence of sin and three assymmetric (even harmonics) types:
+# sha, saw, shh
+Osin f200 t2
+; wsha t2
+; wsaw t2
+; wshh t2 |
