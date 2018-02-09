@@ -18,3 +18,10 @@
 #include <stddef.h>
 
 typedef unsigned int uint;
+
+/*
+ * Debugging options
+ */
+
+#define HASHTAB_TEST 0
+#define LEXER_TEST 0
