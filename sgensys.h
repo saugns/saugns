@@ -29,3 +29,6 @@ typedef unsigned int uint;
 
 /* Disable old parser, run lexer testing instead. */
 #define TEST_LEXER 0
+
+#define HASHTAB_STATS 0
+#define LEXER_QUIET 0
