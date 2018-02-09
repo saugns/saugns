@@ -468,7 +468,7 @@ static bool read_valit(SGSParser *o, float (*read_symbol)(SGSParser *o),
           warning(o, "ignoring 't' with sub-zero time");
           break;
         }
-        SET_I2FV(vi->time_ms, time*1000.f);
+        vi->time_ms = lrint(time * 1000.f);
       }
       break; }
     case 'v':
@@ -510,7 +510,7 @@ static bool read_waittime(NodeScope *ns) {
       warning(o, "ignoring '\\' with sub-zero time");
       return false;
     }
-    SET_I2FV(wait_ms, wait*1000.f);
+    wait_ms = lrint(wait * 1000.f);
     ns->next_wait_ms += wait_ms;
   }
   return true;
@@ -992,7 +992,7 @@ static uint8_t parse_settings(NodeScope *ns) {
         warning(o, "ignoring 't' with sub-zero time");
         break;
       }
-      SET_I2FV(o->def_time_ms, time*1000.f);
+      o->def_time_ms = lrint(time * 1000.f);
       break; }
     default:
     /*UNKNOWN:*/
@@ -1139,7 +1139,7 @@ static uint8_t parse_step(NodeScope *ns) {
         warning(o, "ignoring 's' with sub-zero time");
         break;
       }
-      SET_I2FV(op->silence_ms, silence*1000.f);
+      op->silence_ms = lrint(silence * 1000.f);
       break; }
     case 't':
       if (testgetc('*', o->f)) {
@@ -1160,7 +1160,7 @@ static uint8_t parse_step(NodeScope *ns) {
           break;
         }
         op->on_flags &= ~ON_TIME_DEFAULT;
-        SET_I2FV(op->time_ms, time*1000.f);
+        op->time_ms = lrint(time * 1000.f);
       }
       op->operator_params |= SGS_TIME;
       break;

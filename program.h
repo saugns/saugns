@@ -12,7 +12,7 @@
  */
 
 #pragma once
-#include "sgensys.h"
+#include "osc.h"
 
 enum {
   /* voice parameters */
@@ -42,15 +42,6 @@ enum {
   ((flags) & (SGS_ADJCS|SGS_WAVE|SGS_SILENCE|SGS_FREQ|SGS_VALITFREQ| \
               SGS_DYNFREQ|SGS_PHASE|SGS_AMP|SGS_VALITAMP|SGS_DYNAMP| \
               SGS_OPATTR))
-
-/* operator wave types */
-enum {
-  SGS_WAVE_SIN = 0,
-  SGS_WAVE_SRS,
-  SGS_WAVE_TRI,
-  SGS_WAVE_SQR,
-  SGS_WAVE_SAW
-};
 
 /* special operator timing values */
 enum {
