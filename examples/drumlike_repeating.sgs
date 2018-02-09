@@ -1,0 +1,12 @@
+# Produces "drum-like" repeating sound
+
+#Osin t2 f244.4 p*<Osin r(3/2)>
+#Q
+Osin t10 f44.4 f!(44.4*4)<
+	Osaw f(1/.50) p*<
+		Osin f244.4 p*<Osin r(3/2)> a0.1
+		Osin f144.4 p*<Osin r(3/8)> a0.1
+		Osin f44.4 p*<Osin r(1/3)> a0.1
+	>
+	Osaw f(1/1)
+>

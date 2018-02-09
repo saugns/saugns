@@ -424,7 +424,7 @@ static SGSProgram* build_program(SGSParserResult *pr) {
   return prg;
 }
 
-#if USE_LEXER
+#if TEST_LEXER
 #include "lexer.h"
 #endif
 /**
@@ -433,7 +433,7 @@ static SGSProgram* build_program(SGSParserResult *pr) {
  * Return SGSProgram if successful, NULL on error.
  */
 SGSProgram* SGS_open_program(const char *filename) {
-#if USE_LEXER
+#if TEST_LEXER
 	SGSSymtab *symtab = SGS_create_symtab();
 	SGSLexer *lexer = SGS_create_lexer(filename, symtab);
 	if (!lexer) return NULL;
