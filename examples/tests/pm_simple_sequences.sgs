@@ -1,4 +1,5 @@
-'0	Osin f600 t.1 p!<Osin r(1/(3+(1/3))) p!<Osin r(3/4)>>
+# Early test script producing three sound sequences using PM.
+'0	Osin f600 t.1 p*<Osin r(1/(3+(1/3))) p*<Osin r(3/4)>>
 	; f550 t.1
 	; f500 t.1
 	; f450 t.1
@@ -20,10 +21,10 @@
 	; f550 t.1 |
 \2
 
-	Osin f444 t1 p!<Osin r1.23456789> |
-'a	Osin f444 t1 p!<Osin r(1/7.12)> |
-	:a t1 p!<Osin r(1/2.255)> |
-'b	Osin f444 t1 p!<Osin f(444 * (2.255))> |
+	Osin f444 t1 p*<Osin r1.23456789> |
+'a	Osin f444 t1 p*<Osin r(1/7.12)> |
+	:a t1 p*<Osin r(1/2.255)> |
+'b	Osin f444 t1 p*<Osin f(444 * (2.255))> |
 	:a f400 t1
 	; f389 t1
 	; f339 t1
@@ -42,8 +43,8 @@
 	; f50 t1 |
 \2
 
-'a	Osin f137 t11 p!<
-		Osin f032 t1 p!<Osin f42>
+'a	Osin f137 t11 p*<
+		Osin f032 t1 p*<Osin f42>
 		; f132 t1
 		; f232 t1
 		; f332 t1
