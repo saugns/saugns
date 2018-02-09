@@ -1,4 +1,4 @@
-/* sgensys: symbol table module.
+/* sgensys: Symbol table module.
  * Copyright (c) 2011-2012, 2014, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -32,8 +32,6 @@ typedef struct StringEntry {
 
 #define GET_STRING_ENTRY_SIZE(str_len) \
 	(offsetof(StringEntry, str) + (str_len))
-
-/* a plain linked list is sufficient at present */
 
 typedef struct SGSSymnode {
   const char *key;
