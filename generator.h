@@ -1,5 +1,5 @@
-/* sgensys: Common definitions.
- * Copyright (c) 2011-2012, 2018 Joel K. Pettersson
+/* sgensys: Audio generator module.
+ * Copyright (c) 2011-2012, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -12,21 +12,13 @@
  */
 
 #pragma once
+#include "program.h"
 
-/*
- * Common types.
- */
+struct SGSGenerator;
+typedef struct SGSGenerator SGSGenerator;
 
-#include <stddef.h>
-#include <stdint.h>
-#include <stdbool.h>
+SGSGenerator* SGS_create_generator(SGSProgram *prg, uint32_t srate);
+void SGS_destroy_generator(SGSGenerator *o);
 
-typedef unsigned int uint;
-
-/*
- * Debugging options.
- */
-
-#define USE_LEXER 0
-#define HASHTAB_TEST 0
-#define LEXER_TEST 0
+bool SGS_generator_run(SGSGenerator *o, int16_t *buf, size_t buf_len,
+                       size_t *gen_len);

@@ -1,17 +1,19 @@
-CFLAGS=-W -Wall -O2 -ffast-math
+CFLAGS=-std=c99 -W -Wall -O2 -ffast-math
 LFLAGS=-s -lm
 LFLAGS_LINUX=$(LFLAGS) -lasound
+LFLAGS_SNDIO=$(LFLAGS) -lsndio
 LFLAGS_OSSAUDIO=$(LFLAGS) -lossaudio
 OBJ=audiodev.o \
-    generator.o \
-    lexer.o \
+    wavfile.o \
+    ptrlist.o \
     mempool.o \
-    osc.o \
+    symtab.o \
+    lexer.o \
     parser.o \
     program.o \
-    sgensys.o \
-    symtab.o \
-    wavfile.o
+    osc.o \
+    generator.o \
+    sgensys.o
 
 all: sgensys
 
@@ -23,40 +25,46 @@ sgensys: $(OBJ)
 	if [ $$UNAME = 'Linux' ]; then \
 		echo "Linking for Linux (using ALSA and OSS)."; \
 		$(CC) $(OBJ) $(LFLAGS_LINUX) -o sgensys; \
-	elif [ $$UNAME = 'OpenBSD' ] || [ $$UNAME = 'NetBSD' ]; then \
-		echo "Linking for OpenBSD or NetBSD (using OSS)."; \
+	elif [ $$UNAME = 'OpenBSD' ]; then \
+		echo "Linking for OpenBSD (using sndio)."; \
+		$(CC) $(OBJ) $(LFLAGS_SNDIO) -o sgensys; \
+	elif [ $$UNAME = 'NetBSD' ]; then \
+		echo "Linking for NetBSD (using OSS)."; \
 		$(CC) $(OBJ) $(LFLAGS_OSSAUDIO) -o sgensys; \
 	else \
 		echo "Linking for generic UNIX (using OSS)."; \
 		$(CC) $(OBJ) $(LFLAGS) -o sgensys; \
 	fi
 
-audiodev.o: audiodev.c audiodev_*.c sgensys.h audiodev.h
+audiodev.o: audiodev.c audiodev/*.c audiodev.h sgensys.h
 	$(CC) -c $(CFLAGS) audiodev.c
 
-generator.o: generator.c sgensys.h math.h osc.h program.h
+generator.o: generator.c generator.h math.h osc.h program.h sgensys.h
 	$(CC) -c $(CFLAGS) generator.c
 
-lexer.o: lexer.c sgensys.h symtab.h lexer.h math.h
+lexer.o: lexer.c symtab.h lexer.h math.h sgensys.h
 	$(CC) -c $(CFLAGS) lexer.c
 
-mempool.o: mempool.c sgensys.h mempool.h
+mempool.o: mempool.c mempool.h sgensys.h
 	$(CC) -c $(CFLAGS) mempool.c
 
-osc.o: osc.c sgensys.h math.h osc.h
+osc.o: osc.c osc.h math.h sgensys.h
 	$(CC) -c $(CFLAGS) osc.c
 
-parser.o: parser.c sgensys.h math.h parser.h program.h
+parser.o: parser.c parser.h symtab.h program.h ptrlist.h osc.h math.h sgensys.h
 	$(CC) -c $(CFLAGS) parser.c
 
-program.o: program.c sgensys.h parser.h program.h
+program.o: program.c program.h ptrlist.h parser.h sgensys.h
 	$(CC) -c $(CFLAGS) program.c
 
-sgensys.o: sgensys.c sgensys.h audiodev.h wavfile.h
+ptrlist.o: ptrlist.c ptrlist.h sgensys.h
+	$(CC) -c $(CFLAGS) ptrlist.c
+
+sgensys.o: sgensys.c generator.h program.h audiodev.h wavfile.h sgensys.h
 	$(CC) -c $(CFLAGS) sgensys.c
 
-symtab.o: symtab.c sgensys.h symtab.h mempool.h
+symtab.o: symtab.c symtab.h mempool.h sgensys.h
 	$(CC) -c $(CFLAGS) symtab.c
 
-wavfile.o: wavfile.c sgensys.h wavfile.h
+wavfile.o: wavfile.c wavfile.h sgensys.h
 	$(CC) -c $(CFLAGS) wavfile.c
