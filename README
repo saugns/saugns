@@ -6,7 +6,7 @@ While developed with the aim of becoming useful for writing
 electronic music, the language is still very simple and the audio
 retro-ish. It is however easy to use for experimenting with sounds.
 
-5 basic wave types are supported, as well as AM, FM, and PM (the
+8 basic wave types are supported, as well as AM, FM, and PM (the
 "FM" of most commercial synthesizers). An arbitrary number of
 oscillators can be used.
 
@@ -125,8 +125,23 @@ Wave types:
 	sqr	Square (naive).
 	tri	Triangle (naive).
 	saw	Saw (naive, decreasing).
-	srs	Square root of sine (mirrored for the negative half);
-		a softer alternative to a square wave.
+	sha	Half-frequency absolute sine (adjusted).
+			Frequency halved to restore base frequency,
+			peak amplitude centered and doubled, phase
+			shifted to begin and end at zero amplitude.
+			A softer alternative to "saw" (saw wave).
+	szh	Half-zero'd sine (adjusted).
+			Positive half kept, negative half zero'd,
+			peak amplitude centered and doubled, phase
+			shifted to begin and end at zero amplitude.
+			A warm and full sound.
+	shh	First quarter of sine (adjusted).
+			The upwards-ramping first quarter of a sine,
+			peak amplitude centered and doubled.
+			Slightly warmer and fuller than "saw" (saw wave).
+	ssr	Square root of sine.
+			Mirrored for the negative half.
+			A softer alternative to "sqr" (square wave).
 
 Parameters:
 	t	Time duration in seconds. If no t setting is given, the
@@ -186,7 +201,7 @@ Parameters:
 	p	Set the beginning phase of the wave. For example, p(3/4) will
 		make a sine or triangle wave begin at its "bottom". This is
 		mostly used where wanted for waves used by f!/r! or a!.
-	p!<>	A list of PM modulator operators may be specified within "<>";
+	p*<>	A list of PM modulator operators may be specified within "<>";
 		this list replaces any previous PM modulators set, and may be
 		empty.
 			The sum of the modulator amplitudes is used to

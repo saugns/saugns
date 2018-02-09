@@ -25,6 +25,8 @@
  * Debugging options.
  */
 
-#define USE_LEXER 0
-#define HASHTAB_TEST 0
-#define LEXER_TEST 0
+/* Disable old parser, run lexer testing instead. */
+#define SGS_TEST_LEXER 0
+
+#define SGS_HASHTAB_STATS 0
+#define SGS_LEXER_QUIET 0

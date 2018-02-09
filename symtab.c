@@ -18,7 +18,7 @@
 
 #define INITIAL_STRTAB_ALLOC 1024
 
-#if HASHTAB_TEST
+#if SGS_HASHTAB_STATS
 static uint32_t collision_count = 0;
 #include <stdio.h>
 #endif
@@ -65,7 +65,7 @@ void SGS_destroy_symtab(SGSSymtab *o) {
     free(n);
     n = nn;
   }
-#if HASHTAB_TEST
+#if SGS_HASHTAB_STATS
   printf("collision count: %d\n", collision_count);
 #endif
 	SGS_destroy_mempool(o->mempool);
@@ -158,7 +158,7 @@ const char *SGS_symtab_pool_str(SGSSymtab *o, const char *str, uint32_t len) {
 	 */
 	entry = SGS_mempool_alloc(o->mempool, GET_STRING_ENTRY_SIZE(len + 1));
 	if (entry == NULL) return NULL;
-#if HASHTAB_TEST
+#if SGS_HASHTAB_STATS
 	if (o->strtab[hash] != NULL) {
 		++collision_count;
 	}
