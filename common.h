@@ -55,3 +55,9 @@ char *SGS_strdup(const char *src) SGS__malloc;
  */
 
 #define SGS_DEBUG_PRINT_PROGRAM 1
+
+/* Disable old parser, run test code instead. */
+#define SGS_TEST_LEXER 0
+
+#define SGS_HASHTAB_STATS 0
+#define SGS_LEXER_QUIET 0

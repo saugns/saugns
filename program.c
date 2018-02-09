@@ -12,6 +12,9 @@
  */
 
 #include "program.h"
+#if SGS_TEST_LEXER
+# include "lexer.h"
+#endif
 #include "parser.h"
 #include <string.h>
 #include <stdlib.h>
@@ -433,6 +436,18 @@ void SGS_program_print_info(SGSProgram *o) {
  * \return instance or NULL on error
  */
 SGSProgram* SGS_open_program(const char *fname) {
+#if SGS_TEST_LEXER
+	SGSSymtab *symtab = SGS_create_symtab();
+	SGSLexer *lexer = SGS_create_lexer(fname, symtab);
+	if (!lexer) return NULL;
+	for (;;) {
+		SGSToken *token = SGS_get_token(lexer);
+		if (token->type <= 0) break;
+	}
+	SGS_destroy_lexer(lexer);
+	SGS_destroy_symtab(symtab);
+	return (SGSProgram*) calloc(1, sizeof(SGSProgram)); // dummy object
+#else // OLD PARSER
   SGSScript *sd = SGS_load_Script(fname);
   if (!sd) return NULL;
 
@@ -443,6 +458,7 @@ SGSProgram* SGS_open_program(const char *fname) {
   SGS_program_print_info(o);
 #endif
   return o;
+#endif
 }
 
 /**

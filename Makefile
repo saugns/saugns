@@ -5,7 +5,9 @@ LFLAGS_SNDIO=$(LFLAGS) -lsndio
 LFLAGS_OSSAUDIO=$(LFLAGS) -lossaudio
 OBJ=common.o \
     ptrlist.o \
+    mempool.o \
     symtab.o \
+    lexer.o \
     parser.o \
     program.o \
     wave.o \
@@ -44,6 +46,12 @@ common.o: common.c common.h
 generator.o: generator.c generator.h program.h wave.h osc.h math.h common.h
 	$(CC) -c $(CFLAGS) generator.c
 
+lexer.o: lexer.c lexer.h symtab.h math.h common.h
+	$(CC) -c $(CFLAGS) lexer.c
+
+mempool.o: mempool.c mempool.h common.h
+	$(CC) -c $(CFLAGS) mempool.c
+
 parser.o: parser.c parser.h symtab.h program.h ptrlist.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) parser.c
 
@@ -56,7 +64,7 @@ ptrlist.o: ptrlist.c ptrlist.h common.h
 sgensys.o: sgensys.c generator.h program.h audiodev.h wavfile.h common.h
 	$(CC) -c $(CFLAGS) sgensys.c
 
-symtab.o: symtab.c symtab.h common.h
+symtab.o: symtab.c symtab.h mempool.h common.h
 	$(CC) -c $(CFLAGS) symtab.c
 
 wave.o: wave.c wave.h math.h common.h
