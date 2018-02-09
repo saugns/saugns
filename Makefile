@@ -6,10 +6,12 @@ LFLAGS_OSSAUDIO=$(LFLAGS) -lossaudio
 OBJ=audiodev.o \
     wavfile.o \
     ptrlist.o \
+    mempool.o \
     symtab.o \
+    lexer.o \
     parser.o \
     program.o \
-    osc.o \
+    wave.o \
     generator.o \
     sgensys.o
 
@@ -37,16 +39,19 @@ sgensys: $(OBJ)
 audiodev.o: audiodev.c audiodev/*.c audiodev.h sgensys.h
 	$(CC) -c $(CFLAGS) audiodev.c
 
-generator.o: generator.c generator.h math.h osc.h program.h sgensys.h
+generator.o: generator.c generator.h program.h wave.h math.h osc.h sgensys.h
 	$(CC) -c $(CFLAGS) generator.c
 
-osc.o: osc.c osc.h math.h sgensys.h
-	$(CC) -c $(CFLAGS) osc.c
+lexer.o: lexer.c lexer.h symtab.h math.h sgensys.h
+	$(CC) -c $(CFLAGS) lexer.c
 
-parser.o: parser.c parser.h symtab.h program.h ptrlist.h osc.h math.h sgensys.h
+mempool.o: mempool.c mempool.h sgensys.h
+	$(CC) -c $(CFLAGS) mempool.c
+
+parser.o: parser.c parser.h ptrlist.h symtab.h program.h wave.h math.h sgensys.h
 	$(CC) -c $(CFLAGS) parser.c
 
-program.o: program.c program.h ptrlist.h parser.h sgensys.h
+program.o: program.c program.h wave.h parser.h ptrlist.h sgensys.h
 	$(CC) -c $(CFLAGS) program.c
 
 ptrlist.o: ptrlist.c ptrlist.h sgensys.h
@@ -55,8 +60,11 @@ ptrlist.o: ptrlist.c ptrlist.h sgensys.h
 sgensys.o: sgensys.c generator.h program.h audiodev.h wavfile.h sgensys.h
 	$(CC) -c $(CFLAGS) sgensys.c
 
-symtab.o: symtab.c symtab.h sgensys.h
+symtab.o: symtab.c symtab.h mempool.h sgensys.h
 	$(CC) -c $(CFLAGS) symtab.c
+
+wave.o: wave.c wave.h math.h sgensys.h
+	$(CC) -c $(CFLAGS) wave.c
 
 wavfile.o: wavfile.c wavfile.h sgensys.h
 	$(CC) -c $(CFLAGS) wavfile.c

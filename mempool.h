@@ -1,6 +1,5 @@
-/* sgensys: Math definitions.
- * Copyright (c) 2011-2012, 2017-2018 Joel K. Pettersson
- * <joelkpettersson@gmail.com>.
+/* sgensys: Memory pool module.
+ * Copyright (c) 2014 Joel K. Pettersson <joelkpettersson@gmail.com>
  *
  * This file and the software of which it is part is distributed under the
  * terms of the GNU Lesser General Public License, either version 3 or (at
@@ -14,8 +13,10 @@
 #pragma once
 #include "sgensys.h"
 
-#include <math.h>
+struct SGSMemPool;
+typedef struct SGSMemPool SGSMemPool;
 
-#define SGS_PI       3.14159265358979323846
-#define SGS_ASIN_1_2 0.52359877559829887308 // asin(0.5)
-#define SGS_SQRT_1_2 0.70710678118654752440 // sqrt(0.5), 1/sqrt(2)
+SGSMemPool *SGS_create_mempool(size_t block_size);
+void SGS_destroy_mempool(SGSMemPool *o);
+
+void *SGS_mempool_alloc(SGSMemPool *o, size_t size);

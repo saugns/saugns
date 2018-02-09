@@ -22,3 +22,13 @@
 #include <stdbool.h>
 
 typedef unsigned int uint;
+
+/*
+ * Debugging options.
+ */
+
+/* Disable old parser, run lexer testing instead. */
+#define SGS_TEST_LEXER 0
+
+#define SGS_HASHTAB_STATS 0
+#define SGS_LEXER_QUIET 0
