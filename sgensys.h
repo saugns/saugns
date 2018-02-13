@@ -23,5 +23,6 @@ typedef unsigned int uint;
  * Debugging options
  */
 
+#define USE_LEXER 0
 #define HASHTAB_TEST 0
 #define LEXER_TEST 0
