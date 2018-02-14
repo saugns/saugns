@@ -17,12 +17,15 @@
 #include <stdlib.h>
 
 struct SGSInterpreter {
-	SGSSoundData *results;
+	SGSSoundData **results;
 	size_t result_count,
 	       result_alloc;
 };
 
 typedef struct SGSInterpreter SGSInterpreter;
+
+static SGSSoundData *run_program(SGSProgram *program) {
+}
 
 struct SGSInterpreter *SGS_create_interpreter() {
 	SGSInterpreter *o = calloc(1, sizeof(SGSInterpreter));
@@ -36,7 +39,7 @@ void SGS_destroy_interpreter(struct SGSInterpreter *o) {
 
 SGSSoundData *SGS_interpreter_run(struct SGSInterpreter *o,
                                   SGSProgram *program) {
-	SGSSoundData *result = run_program(SGSProgram *program);
+	SGSSoundData *result = run_program(program);
 	if (result == NULL) {
 		return NULL;
 	}

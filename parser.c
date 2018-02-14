@@ -648,39 +648,39 @@ static void end_operator(NodeScope *ns) {
   if (!op)
     return; /* nothing to do */
   if (!op->on_prev) { /* initial event should reset its parameters */
-    op->operator_params |= SGS_UNUSED |
-                           SGS_WAVE |
-                           SGS_TIME |
-                           SGS_SILENCE |
-                           SGS_FREQ |
-                           SGS_DYNFREQ |
-                           SGS_PHASE |
-                           SGS_AMP |
-                           SGS_DYNAMP |
-                           SGS_OPATTR;
+    op->operator_params |= SGS_P_ADJCS |
+                           SGS_P_WAVE |
+                           SGS_P_TIME |
+                           SGS_P_SILENCE |
+                           SGS_P_FREQ |
+                           SGS_P_DYNFREQ |
+                           SGS_P_PHASE |
+                           SGS_P_AMP |
+                           SGS_P_DYNAMP |
+                           SGS_P_OPATTR;
   } else {
     SGSOperatorNode *pop = op->on_prev;
     if (op->attr != pop->attr)
-      op->operator_params |= SGS_OPATTR;
+      op->operator_params |= SGS_P_OPATTR;
     if (op->wave != pop->wave)
-      op->operator_params |= SGS_WAVE;
+      op->operator_params |= SGS_P_WAVE;
     /* SGS_TIME set when time set */
     if (op->silence_ms)
-      op->operator_params |= SGS_SILENCE;
+      op->operator_params |= SGS_P_SILENCE;
     /* SGS_FREQ set when freq set */
     if (op->dynfreq != pop->dynfreq)
-      op->operator_params |= SGS_DYNFREQ;
+      op->operator_params |= SGS_P_DYNFREQ;
     /* SGS_PHASE set when phase set */
     /* SGS_AMP set when amp set */
     if (op->dynamp != pop->dynamp)
-      op->operator_params |= SGS_DYNAMP;
+      op->operator_params |= SGS_P_DYNAMP;
   }
   if (op->valitfreq.type)
-    op->operator_params |= SGS_OPATTR |
-                           SGS_VALITFREQ;
+    op->operator_params |= SGS_P_OPATTR |
+                           SGS_P_VALITFREQ;
   if (op->valitamp.type)
-    op->operator_params |= SGS_OPATTR |
-                           SGS_VALITAMP;
+    op->operator_params |= SGS_P_OPATTR |
+                           SGS_P_VALITAMP;
   if (!(ns->ns_flags & NS_NESTED_SCOPE))
     op->amp *= o->ampmult;
   ns->operator = 0;
@@ -696,16 +696,16 @@ static void end_event(NodeScope *ns) {
   end_operator(ns);
   pve = e->voice_prev;
   if (!pve) { /* initial event should reset its parameters */
-    e->voice_params |= SGS_OPLIST |
-                       SGS_VOATTR |
-                       SGS_PANNING;
+    e->voice_params |= SGS_P_VOATTR |
+                       SGS_P_GRAPH |
+                       SGS_P_PANNING;
   } else {
     if (e->panning != pve->panning)
-      e->voice_params |= SGS_PANNING;
+      e->voice_params |= SGS_P_PANNING;
   }
   if (e->valitpanning.type)
-    e->voice_params |= SGS_VOATTR |
-                       SGS_VALITPANNING;
+    e->voice_params |= SGS_P_VOATTR |
+                       SGS_P_VALITPANNING;
   ns->last_event = e;
   ns->event = 0;
 }
@@ -827,7 +827,7 @@ static void begin_operator(NodeScope *ns, uchar linktype, uchar composite) {
       linktype == NL_GRAPH) {
     SGS_node_list_add(&e->operators, op);
     if (linktype == NL_GRAPH) {
-      e->voice_params |= SGS_OPLIST;
+      e->voice_params |= SGS_P_GRAPH;
       SGS_node_list_add(&e->graph, op);
     }
   } else {
@@ -843,8 +843,7 @@ static void begin_operator(NodeScope *ns, uchar linktype, uchar composite) {
       list = &ns->parent_on->amods;
       break;
     }
-    //ns->parent_on->operator_params |= SGS_UNUSED;
-    e->voice_params |= SGS_OPLIST; /* needs update */
+    ns->parent_on->operator_params |= SGS_P_ADJCS;
     SGS_node_list_add(list, op);
   }
   /*
@@ -1043,8 +1042,7 @@ static uchar parse_step(NodeScope *ns) {
         }
         if (testgetc('<', o->f)) {
           if (op->amods.count) {
-            //op->operator_params |= SGS_UNUSED;
-            e->voice_params |= SGS_OPLIST; /* needs update */
+            op->operator_params |= SGS_P_ADJCS;
             SGS_node_list_clear(&op->amods);
           }
           parse_level(o, ns, NL_AMODS, SCOPE_NEST);
@@ -1054,7 +1052,7 @@ static uchar parse_step(NodeScope *ns) {
           op->attr |= SGS_ATTR_VALITAMP;
       } else {
         read_num(o, 0, &op->amp);
-        op->operator_params |= SGS_AMP;
+        op->operator_params |= SGS_P_AMP;
         if (!op->valitamp.type)
           op->attr &= ~SGS_ATTR_VALITAMP;
       }
@@ -1068,8 +1066,7 @@ static uchar parse_step(NodeScope *ns) {
         }
         if (testgetc('<', o->f)) {
           if (op->fmods.count) {
-            //op->operator_params |= SGS_UNUSED;
-            e->voice_params |= SGS_OPLIST; /* needs update */
+            op->operator_params |= SGS_P_ADJCS;
             SGS_node_list_clear(&op->fmods);
           }
           parse_level(o, ns, NL_FMODS, SCOPE_NEST);
@@ -1081,7 +1078,7 @@ static uchar parse_step(NodeScope *ns) {
         }
       } else if (read_num(o, read_note, &op->freq)) {
         op->attr &= ~SGS_ATTR_FREQRATIO;
-        op->operator_params |= SGS_FREQ;
+        op->operator_params |= SGS_P_FREQ;
         if (!op->valitfreq.type)
           op->attr &= ~(SGS_ATTR_VALITFREQ |
                         SGS_ATTR_VALITFREQRATIO);
@@ -1091,8 +1088,7 @@ static uchar parse_step(NodeScope *ns) {
       if (testgetc('!', o->f)) {
         if (testgetc('<', o->f)) {
           if (op->pmods.count) {
-            //op->operator_params |= SGS_UNUSED;
-            e->voice_params |= SGS_OPLIST; /* needs update */
+            op->operator_params |= SGS_P_ADJCS;
             SGS_node_list_clear(&op->pmods);
           }
           parse_level(o, ns, NL_PMODS, SCOPE_NEST);
@@ -1102,7 +1098,7 @@ static uchar parse_step(NodeScope *ns) {
         op->phase = fmod(op->phase, 1.f);
         if (op->phase < 0.f)
           op->phase += 1.f;
-        op->operator_params |= SGS_PHASE;
+        op->operator_params |= SGS_P_PHASE;
       }
       break;
     case 'r':
@@ -1117,8 +1113,7 @@ static uchar parse_step(NodeScope *ns) {
         }
         if (testgetc('<', o->f)) {
           if (op->fmods.count) {
-            //op->operator_params |= SGS_UNUSED;
-            e->voice_params |= SGS_OPLIST; /* needs update */
+            op->operator_params |= SGS_P_ADJCS;
             SGS_node_list_clear(&op->fmods);
           }
           parse_level(o, ns, NL_FMODS, SCOPE_NEST);
@@ -1132,7 +1127,7 @@ static uchar parse_step(NodeScope *ns) {
       } else if (read_num(o, 0, &op->freq)) {
         op->freq = 1.f / op->freq;
         op->attr |= SGS_ATTR_FREQRATIO;
-        op->operator_params |= SGS_FREQ;
+        op->operator_params |= SGS_P_FREQ;
         if (!op->valitfreq.type)
           op->attr &= ~(SGS_ATTR_VALITFREQ |
                         SGS_ATTR_VALITFREQRATIO);
@@ -1168,7 +1163,7 @@ static uchar parse_step(NodeScope *ns) {
         op->on_flags &= ~ON_TIME_DEFAULT;
         SET_I2FV(op->time_ms, time*1000.f);
       }
-      op->operator_params |= SGS_TIME;
+      op->operator_params |= SGS_P_TIME;
       break;
     case 'w': {
       int wave = read_wavetype(o);
@@ -1472,7 +1467,7 @@ static void time_event(SGSEventNode *e) {
       else if (e_op->time_ms != SGS_TIME_INF)
         e_op->time_ms += ce_op->time_ms +
                          (ce->wait_ms - ce_op_prev->time_ms);
-      ce_op->operator_params &= ~SGS_TIME;
+      ce_op->operator_params &= ~SGS_P_TIME;
       ce_prev = ce;
       ce_op_prev = ce_op;
       ce = ce->next;

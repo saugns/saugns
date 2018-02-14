@@ -1,4 +1,6 @@
-/* Copyright (c) 2011-2013 Joel K. Pettersson <joelkpettersson@gmail.com>
+/* sgensys audio renderer
+ * Copyright (c) 2011-2014, 2018 Joel K. Pettersson
+ * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
  * terms of the GNU Lesser General Public License, either version 3 or (at
@@ -12,6 +14,8 @@
 #include "sgensys.h"
 #include "osc.h"
 #include "program.h"
+#include "interpreter.h"
+#include "renderer.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -77,7 +81,7 @@ typedef struct EventNode {
 	const SGSProgramOperatorData *operator;
 } EventNode;
 
-struct SGSGenerator {
+struct SGSRenderer {
 	uint srate;
 	double osc_coeff;
 	uint event, eventc;
@@ -91,17 +95,17 @@ struct SGSGenerator {
 };
 
 /*
- * Allocate SGSGenerator with the passed sample rate and using the
+ * Allocate SGSRenderer with the passed sample rate and using the
  * given SGSProgram.
  */
-SGSGenerator* SGS_generator_create(uint srate, struct SGSProgram *prg) {
-	SGSGenerator *o;
+SGSRenderer* SGS_create_renderer(uint srate, struct SGSProgram *prg) {
+	SGSRenderer *o;
 	uint i, indexwaittime;
 	uint size, eventssize, blockssize, voicessize, operatorssize;
 	/*
 	 * Establish allocation sizes.
 	 */
-	size = sizeof(SGSGenerator) - sizeof(OperatorNode);
+	size = sizeof(SGSRenderer) - sizeof(OperatorNode);
 	eventssize = sizeof(EventNode) * prg->eventc;
 	blockssize = sizeof(Buf) * prg->blockc;
 	voicessize = sizeof(VoiceNode) * prg->voicec;
@@ -149,7 +153,7 @@ SGSGenerator* SGS_generator_create(uint srate, struct SGSProgram *prg) {
 /*
  * Processes one event; to be called for the event when its time comes.
  */
-static void SGS_generator_handle_event(SGSGenerator *o, EventNode *e) {
+static void SGS_renderer_handle_event(SGSRenderer *o, EventNode *e) {
 	if (1) /* more types to be added in the future */ {
 		VoiceNode *vn;
 		const SGSProgramVoiceData *vd = e->voice;
@@ -248,7 +252,7 @@ static void SGS_generator_handle_event(SGSGenerator *o, EventNode *e) {
 	}
 }
 
-void SGS_generator_destroy(SGSGenerator *o) {
+void SGS_destroy_renderer(SGSRenderer *o) {
 	free(o->blocks);
 	free(o);
 }
@@ -345,7 +349,7 @@ static uchar run_param(BufData *buf, uint buf_len, ParameterValit *vi,
  *
  * Returns number of samples generated for the node.
  */
-static uint run_block(SGSGenerator *o, uint len, OperatorNode *n,
+static uint run_block(SGSRenderer *o, uint len, OperatorNode *n,
 		uint acc_ind) {
 	uint i, zero_len, skip_len;
 	BufData *sbuf = o->blocks[n->output_block_id],
@@ -515,7 +519,7 @@ static uint run_block(SGSGenerator *o, uint len, OperatorNode *n,
  *
  * Returns number of samples generated for the voice.
  */
-static uint run_voice(SGSGenerator *o, VoiceNode *vn, short *out,
+static uint run_voice(SGSRenderer *o, VoiceNode *vn, short *out,
 		uint buf_len) {
 	BufData *input_block;
 	BufData *panning_block = NULL;
@@ -603,7 +607,7 @@ RETURN:
  * Returns non-zero until the end of the generated signal has been
  * reached.
  */
-uchar SGS_generator_run(SGSGenerator *o, short *buf, uint buf_len,
+uchar SGS_renderer_run(SGSRenderer *o, short *buf, uint buf_len,
 		uint *gen_len) {
 	short *sp = buf;
 	uint i, len = buf_len, skip_len, ret_len = 0, last_len;
@@ -629,7 +633,7 @@ PROCESS:
 			o->eventpos += len;
 			break;
 		}
-		SGS_generator_handle_event(o, e);
+		SGS_renderer_handle_event(o, e);
 		++o->event;
 		o->eventpos = 0;
 	}
