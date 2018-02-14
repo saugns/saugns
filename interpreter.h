@@ -1,4 +1,4 @@
-/* sgensys sound program interpreter
+/* sgensys: Audio program interpreter module.
  * Copyright (c) 2013-2014, 2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -11,52 +11,67 @@
  * <http://www.gnu.org/licenses/>.
  */
 
+/*
+ * Result data types. Represent audio to be rendered.
+ */
 
-typedef struct SGSEventVoiceData {
-	uint voice_id;
-	uint input_block_id;
-	int panning_block_id; /* -1 if none */
-	const int *operator_list;
-	uint operator_c;
-	uchar attr;
+struct SGSResultVoiceData {
+	uint32_t voice_id;
+	uint32_t input_block_id;
+	int32_t panning_block_id; /* -1 if none */
+	const int32_t *operator_list;
+	uint32_t operator_count;
+	uint8_t attr;
 	float panning;
 	SGSProgramValit valitpanning;
-} SGSEventVoiceData;
+};
+typedef const struct SGSResultVoiceData *SGSResultVoiceData_t;
 
-typedef struct SGSEventOperatorData {
-	uint operator_id;
-	uint output_block_id;
-	int freq_block_id, /* -1 if none */
-	    freq_mod_block_id,
-	    phase_mod_block_id,
-	    amp_block_id,
-	    amp_mod_block_id;
-	uchar attr, wave;
-	int time_ms, silence_ms;
+struct SGSResultOperatorData {
+	uint32_t operator_id;
+	uint32_t output_block_id;
+	int32_t freq_block_id, /* -1 if none */
+		freq_mod_block_id,
+		phase_mod_block_id,
+		amp_block_id,
+		amp_mod_block_id;
+	uint8_t attr, wave;
+	int32_t time_ms, silence_ms;
 	float freq, dynfreq, phase, amp, dynamp;
 	SGSProgramValit valitfreq, valitamp;
-} SGSEventOperatorData;
+};
+typedef const struct SGSResultOperatorData *SGSResultOperatorData_t;
 
-typedef struct SGSEvent {
-	int wait_ms;
-	uint params;
-	const SGSEventVoiceData *vo_data;
-	const SGSEventOperatorData *op_data;
-} SGSEvent;
+struct SGSResultEvent {
+	int32_t wait_ms;
+	uint32_t params;
+	SGSResultVoiceData_t voice_data;
+	SGSResultOperatorData_t operator_data;
+};
+typedef const struct SGSResultEvent *SGSResultEvent_t;
 
-typedef struct SGSSoundData {
-	const SGSEvent *events;
-	uint event_count,
-	     block_count,
-	     voice_count,
-	     operator_count;
-} SGSSoundData;
+struct SGSResult {
+	SGSResultEvent_t events;
+	uint32_t event_count,
+		block_count,
+		voice_count,
+		operator_count;
+};
+typedef const struct SGSResult *SGSResult_t;
+
+/*
+ * Interpreter for audio program. Produces results to render.
+ */
 
 struct SGSInterpreter;
+typedef struct SGSInterpreter *SGSInterpreter_t;
 
-struct SGSInterpreter *SGS_create_interpreter();
-void SGS_destroy_interpreter(struct SGSInterpreter *o);
+SGSInterpreter_t SGS_create_interpreter();
+void SGS_destroy_interpreter(SGSInterpreter_t o);
 
-SGSSoundData *SGS_interpreter_run(struct SGSInterpreter *o,
-                                  SGSProgram *program);
-void SGS_interpreter_clear(struct SGSInterpreter *o);
+SGSResult_t SGS_interpreter_run(SGSInterpreter_t o,
+                                struct SGSProgram *program);
+void SGS_interpreter_get_results(SGSInterpreter_t o,
+                                 SGSResult_t **results, size_t **count);
+
+void SGS_interpreter_clear(SGSInterpreter_t o);

@@ -1,13 +1,13 @@
-CFLAGS=-W -Wall -O2 -ffast-math
+CFLAGS=-W -Wall -Werror=implicit-function-declaration -O2 -ffast-math
 LFLAGS=-s -lm
 LFLAGS_LINUX=$(LFLAGS) -lasound
 LFLAGS_UNIX=$(LFLAGS) -lossaudio
 OBJ=audiodev.o \
-    generator.o \
     interpreter.o \
     osc.o \
     parser.o \
     program.o \
+    renderer.o \
     sgensys.o \
     symtab.o \
     wavfile.o
@@ -29,10 +29,7 @@ sgensys: $(OBJ)
 audiodev.o: audiodev.c audiodev_*.c audiodev.h
 	$(CC) -c $(CFLAGS) audiodev.c
 
-generator.o: generator.c generator.h math.h osc.h interpreter.h
-	$(CC) -c $(CFLAGS) generator.c
-
-interpreter.o: interpreter.c interpreter.h program.h
+interpreter.o: interpreter.c program.h interpreter.h
 	$(CC) -c $(CFLAGS) interpreter.c
 
 osc.o: osc.c osc.h math.h
@@ -44,7 +41,10 @@ parser.o: parser.c parser.h program.h symtab.h math.h
 program.o: program.c parser.h program.h
 	$(CC) -c $(CFLAGS) program.c
 
-sgensys.o: sgensys.c audiodev.h wavfile.h
+renderer.o: renderer.c renderer.h math.h osc.h program.h interpreter.h
+	$(CC) -c $(CFLAGS) renderer.c
+
+sgensys.o: sgensys.c program.h interpreter.h renderer.h audiodev.h wavfile.h
 	$(CC) -c $(CFLAGS) sgensys.c
 
 symtab.o: symtab.c symtab.h

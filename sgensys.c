@@ -1,5 +1,5 @@
 /* sgensys: Main module and command-line interface.
- * Copyright (c) 2011-2013, 2017 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -15,7 +15,8 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include "program.h"
-#include "generator.h"
+#include "interpreter.h"
+#include "renderer.h"
 #include "audiodev.h"
 #include "wavfile.h"
 #include <errno.h>
@@ -36,6 +37,8 @@ static bool run_program(struct SGSProgram *prg, uint8_t audio_device,
 	size_t len;
 	SGSAudioDev *ad = NULL;
 	SGSWAVFile *wf = NULL;
+	SGSInterpreter_t in;
+	SGSRenderer *ar;
 	if (wav_path) {
 		wf = SGS_begin_wav_file(wav_path, NUM_CHANNELS, srate);
 		if (!wf) {
@@ -51,12 +54,13 @@ static bool run_program(struct SGSProgram *prg, uint8_t audio_device,
 			return false;
 		}
 	}
+	in = SGS_create_interpreter();
+	ar = SGS_create_renderer(srate, SGS_interpreter_run(in, prg));
 
-	SGSGenerator *gen = SGS_generator_create(srate, prg);
 	bool run;
 	do {
-		run = SGS_generator_run(gen, buf, BUF_SAMPLES, &len);
-		if (ad && SGS_audio_dev_write(ad, buf, len) == false)
+		run = SGS_renderer_run(ar, buf, BUF_SAMPLES, &len);
+		if (ad && SGS_audio_dev_write(ad, buf, len) != 0)
 			fputs("warning: audio device write failed\n", stderr);
 		if (wf && SGS_wav_file_write(wf, buf, len) == false)
 			fputs("warning: WAV file write failed\n", stderr);
@@ -64,7 +68,8 @@ static bool run_program(struct SGSProgram *prg, uint8_t audio_device,
 
 	if (ad) SGS_close_audio_dev(ad);
 	if (wf) SGS_end_wav_file(wf);
-	SGS_generator_destroy(gen);
+	SGS_destroy_renderer(ar);
+	SGS_destroy_interpreter(in);
 	return true;
 }
 
@@ -192,7 +197,7 @@ int main(int argc, char **argv) {
 	if (parse_args(argc, argv, &options, &script_path, &wav_path,
 			&srate) != 0)
 		return 0;
-	if (!(prg = SGS_program_create(script_path))) {
+	if (!(prg = SGS_create_program(script_path))) {
 		fprintf(stderr, "error: couldn't open script file \"%s\"\n",
 				script_path);
 		return 1;
@@ -202,8 +207,7 @@ int main(int argc, char **argv) {
 	audio_dev = (wav_path ?
 			(options & ARG_ENABLE_AUDIO_DEV) :
 			!(options & ARG_DISABLE_AUDIO_DEV));
-
 	int run_status = !run_program(prg, audio_dev, wav_path, srate);
-	SGS_program_destroy(prg);
+	SGS_destroy_program(prg);
 	return run_status;
 }

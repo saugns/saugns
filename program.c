@@ -1,5 +1,5 @@
-/* sgensys: Program for sound generation from parsing data module.
- * Copyright (c) 2011-2013, 2017 Joel K. Pettersson
+/* sgensys: Parsing data to program data translator module.
+ * Copyright (c) 2011-2013, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -12,281 +12,6 @@
  */
 
 #include <stdint.h>
-#include <stdbool.h>
-#if 0 /* old generator.c code */
-
-/*
- *
- * Count buffers needed for operator, including linked operators.
- * TODO: Verify, remove debug printing when parser module done.
- */
-static uint32_t calc_blocks(SGSGenerator *o, OperatorNode *n) {
-	uint32_t count = 0, i, res;
-	if (n->adjcs) {
-		const int32_t *mods = n->adjcs->adjcs;
-		const uint32_t modc = n->adjcs->fmodc + n->adjcs->pmodc + n->adjcs->amodc;
-		for (i = 0; i < modc; ++i) {
-	printf("visit node %d\n", mods[i]);
-			res = calc_blocks(o, &o->operators[mods[i]]);
-			if (res > count) count = res;
-		}
-	}
-	return count + 5;
-}
-
-/*
- * Check operators for voice and increase the buffer allocation if needed.
- * TODO: Verify, remove debug printing when parser module done.
- */
-static void upsize_blocks(SGSGenerator *o, VoiceNode *vn) {
-	uint32_t count = 0, i, res;
-	if (!vn->graph) return;
-	for (i = 0; i < vn->graph->opc; ++i) {
-	printf("visit node %d\n", vn->graph->ops[i]);
-		res = calc_blocks(o, &o->operators[vn->graph->ops[i]]);
-		if (res > count) count = res;
-	}
-	printf("need %d buffers (have %d)\n", count, o->blockc);
-	if (count > o->blockc) {
-		printf("new alloc size 0x%x\n", sizeof(Buf) * count);
-		o->blocks = realloc(o->blocks, sizeof(Buf) * count);
-		o->blockc = count;
-	}
-}
-
-/*
- * Generate up to buf_len samples for an operator node, the remainder (if any)
- * zero-filled if acc_ind is zero.
- *
- * Recursively visits the subnodes of the operator node in the process, if
- * any.
- *
- * Returns number of samples generated for the node.
- */
-static uint32_t run_block(SGSGenerator *o, Buf *blocks, uint32_t buf_len,
-		OperatorNode *n, BufData *parent_freq, uint8_t wave_env,
-		uint32_t acc_ind) {
-	uint32_t i, len, zero_len, skip_len;
-	BufData *sbuf, *freq, *freqmod, *pm, *amp;
-	Buf *nextbuf = blocks + 1;
-	ParameterValit *vi;
-	uint8_t fmodc, pmodc, amodc;
-	fmodc = pmodc = amodc = 0;
-	if (n->adjcs) {
-		fmodc = n->adjcs->fmodc;
-		pmodc = n->adjcs->pmodc;
-		amodc = n->adjcs->amodc;
-	}
-	sbuf = *blocks;
-	len = buf_len;
-	/*
-	 * If silence, zero-fill and delay processing for duration.
-	 */
-	zero_len = 0;
-	if (n->silence) {
-		zero_len = n->silence;
-		if (zero_len > len)
-			zero_len = len;
-		if (!acc_ind) for (i = 0; i < zero_len; ++i)
-			sbuf[i].i = 0;
-		len -= zero_len;
-		if (n->time != SGS_TIME_INF) n->time -= zero_len;
-		n->silence -= zero_len;
-		if (!len) return zero_len;
-		sbuf += zero_len;
-	}
-	/*
-	 * Limit length to time duration of operator.
-	 */
-	skip_len = 0;
-	if (n->time < (int32_t)len && n->time != SGS_TIME_INF) {
-		skip_len = len - n->time;
-		len = n->time;
-	}
-	/*
-	 * Handle frequency (alternatively ratio) parameter, including frequency
-	 * modulation if modulators linked.
-	 */
-	freq = *(nextbuf++);
-	if (n->attr & SGS_ATTR_VALITFREQ) {
-		vi = &n->valitfreq;
-		if (n->attr & SGS_ATTR_VALITFREQRATIO) {
-			freqmod = parent_freq;
-			if (!(n->attr & SGS_ATTR_FREQRATIO)) {
-				n->attr |= SGS_ATTR_FREQRATIO;
-				n->freq /= parent_freq[0].f;
-			}
-		} else {
-			freqmod = 0;
-			if (n->attr & SGS_ATTR_FREQRATIO) {
-				n->attr &= ~SGS_ATTR_FREQRATIO;
-				n->freq *= parent_freq[0].f;
-			}
-		}
-	} else {
-		vi = 0;
-		freqmod = (n->attr & SGS_ATTR_FREQRATIO) ? parent_freq : 0;
-	}
-	if (run_param(freq, len, vi, &n->freq, freqmod))
-		n->attr &= ~(SGS_ATTR_VALITFREQ|SGS_ATTR_VALITFREQRATIO);
-	if (fmodc) {
-		const int32_t *fmods = n->adjcs->adjcs;
-		BufData *fmbuf;
-		for (i = 0; i < fmodc; ++i)
-			run_block(o, nextbuf, len, &o->operators[fmods[i]], freq, 1, i);
-		fmbuf = *nextbuf;
-		if (n->attr & SGS_ATTR_FREQRATIO) {
-			for (i = 0; i < len; ++i)
-				freq[i].f += (n->dynfreq * parent_freq[i].f - freq[i].f) * fmbuf[i].f;
-		} else {
-			for (i = 0; i < len; ++i)
-				freq[i].f += (n->dynfreq - freq[i].f) * fmbuf[i].f;
-		}
-	}
-	/*
-	 * If phase modulators linked, get phase offsets for modulation.
-	 */
-	pm = 0;
-	if (pmodc) {
-		const int32_t *pmods = &n->adjcs->adjcs[fmodc];
-		for (i = 0; i < pmodc; ++i)
-			run_block(o, nextbuf, len, &o->operators[pmods[i]], freq, 0, i);
-		pm = *(nextbuf++);
-	}
-	if (!wave_env) {
-		/*
-		 * Handle amplitude parameter, including amplitude modulation if
-		 * modulators linked.
-		 */
-		if (amodc) {
-			const int32_t *amods = &n->adjcs->adjcs[fmodc+pmodc];
-			float dynampdiff = n->dynamp - n->amp;
-			for (i = 0; i < amodc; ++i)
-				run_block(o, nextbuf, len, &o->operators[amods[i]], freq, 1, i);
-			amp = *(nextbuf++);
-			for (i = 0; i < len; ++i)
-				amp[i].f = n->amp + amp[i].f * dynampdiff;
-		} else {
-			amp = *(nextbuf++);
-			vi = (n->attr & SGS_ATTR_VALITAMP) ? &n->valitamp : 0;
-			if (run_param(amp, len, vi, &n->amp, 0))
-				n->attr &= ~SGS_ATTR_VALITAMP;
-		}
-		/*
-		 * Generate integer output - either for voice output or phase modulation
-		 * input.
-		 */
-		for (i = 0; i < len; ++i) {
-			int32_t s, spm = 0;
-			float sfreq = freq[i].f, samp = amp[i].f;
-			if (pm) spm = pm[i].i;
-			SGSOsc_RUN_PM(&n->osc, n->osctype, o->osc_coeff, sfreq, spm, samp, s);
-			if (acc_ind) s += sbuf[i].i;
-			sbuf[i].i = s;
-		}
-	} else {
-		/*
-		 * Generate float output - used as waveform envelopes for modulating
-		 * frequency or amplitude.
-		 */
-		for (i = 0; i < len; ++i) {
-			float s, sfreq = freq[i].f;
-			int32_t spm = 0;
-			if (pm) spm = pm[i].i;
-			SGSOsc_RUN_PM_ENVO(&n->osc, n->osctype, o->osc_coeff, sfreq, spm, s);
-			if (acc_ind) s *= sbuf[i].f;
-			sbuf[i].f = s;
-		}
-	}
-	/*
-	 * Update time duration left, zero rest of buffer if unfilled.
-	 */
-	if (n->time != SGS_TIME_INF) {
-		if (!acc_ind && skip_len > 0) {
-			sbuf += len;
-			for (i = 0; i < skip_len; ++i)
-				sbuf[i].i = 0;
-		}
-		n->time -= len;
-	}
-	return zero_len + len;
-}
-
-/*
- * Generate up to buf_len samples for a voice, these mixed into the
- * interleaved output stereo buffer by simple addition.
- *
- * Returns number of samples generated for the voice.
- */
-static uint32_t run_voice(SGSGenerator *o, VoiceNode *vn, int16_t *out,
-											uint32_t buf_len) {
-	const int32_t *ops;
-	uint32_t i, opc, ret_len = 0, finished = 1;
-	int32_t time;
-	int16_t *sp;
-	if (!vn->graph) goto RETURN;
-	opc = vn->graph->opc;
-	ops = vn->graph->ops;
-	time = 0;
-	for (i = 0; i < opc; ++i) {
-		OperatorNode *n = &o->operators[ops[i]];
-		if (n->time == 0) continue;
-		if (n->time > time && n->time != SGS_TIME_INF) time = n->time;
-	}
-	if (time > (int32_t)buf_len) time = buf_len;
-	/*
-	 * Repeatedly generate up to BUF_LEN samples until done.
-	 */
-	sp = out;
-	while (time) {
-		uint32_t acc_ind = 0;
-		uint32_t gen_len = 0;
-		uint32_t len = (time < BUF_LEN) ? time : BUF_LEN;
-		time -= len;
-		for (i = 0; i < opc; ++i) {
-			uint32_t last_len;
-			OperatorNode *n = &o->operators[ops[i]];
-			if (n->time == 0) continue;
-			last_len = run_block(o, o->blocks, len, n, 0, 0, acc_ind++);
-			if (last_len > gen_len) gen_len = last_len;
-		}
-		if (!gen_len) goto RETURN;
-		if (vn->attr & SGS_ATTR_VALITPANNING) {
-			BufData *buf = o->blocks[1];
-			if (run_param(buf, gen_len, &vn->valitpanning, &vn->panning, 0))
-				vn->attr &= ~SGS_ATTR_VALITPANNING;
-			for (i = 0; i < gen_len; ++i) {
-				int32_t s = (*o->blocks)[i].i, p;
-				SET_I2FV(p, ((float)s) * buf[i].f);
-				*sp++ += s - p;
-				*sp++ += p;
-			}
-		} else {
-			for (i = 0; i < gen_len; ++i) {
-				int32_t s = (*o->blocks)[i].i, p;
-				SET_I2FV(p, ((float)s) * vn->panning);
-				*sp++ += s - p;
-				*sp++ += p;
-			}
-		}
-		ret_len += gen_len;
-	}
-	for (i = 0; i < opc; ++i) {
-		OperatorNode *n = &o->operators[ops[i]];
-		if (n->time != 0) {
-			finished = 0;
-			break;
-		}
-	}
-RETURN:
-	vn->pos += ret_len;
-	if (finished)
-		vn->flag &= ~SGS_FLAG_EXEC;
-	return ret_len;
-}
-
-#endif
-
 #include "program.h"
 #include "parser.h"
 #include <string.h>
@@ -307,7 +32,7 @@ static void build_graph(SGSProgramEvent *root, const SGSEventNode *voice_in) {
 	SGSProgramGraph *graph, **graph_out;
 	uint32_t i;
 	uint32_t size;
-	if (!voice_in->voice_params & SGS_GRAPH)
+	if (!voice_in->voice_params & SGS_P_GRAPH)
 		return;
 	size = voice_in->graph.count;
 	graph_out = (SGSProgramGraph**)&root->voice->graph;
@@ -326,21 +51,21 @@ static void build_graph(SGSProgramEvent *root, const SGSEventNode *voice_in) {
 static void build_adjcs(SGSProgramEvent *root,
 		const SGSOperatorNode *operator_in) {
 	SGSOperatorNode **nl;
-	SGSProgramGraphNodeAdjcs *adjcs, **adjcs_out;
+	SGSProgramGraphAdjcs *adjcs, **adjcs_out;
 	int32_t *data;
 	uint32_t i;
 	uint32_t size;
-	if (!operator_in || !(operator_in->operator_params & SGS_ADJCS))
+	if (!operator_in || !(operator_in->operator_params & SGS_P_ADJCS))
 		return;
 	size = operator_in->fmods.count +
 				 operator_in->pmods.count +
 				 operator_in->amods.count;
-	adjcs_out = (SGSProgramGraphNodeAdjcs**)&root->operator->adjcs;
+	adjcs_out = (SGSProgramGraphAdjcs**)&root->operator->adjcs;
 	if (!size) {
 		*adjcs_out = 0;
 		return;
 	}
-	adjcs = malloc(sizeof(SGSProgramGraphNodeAdjcs) + sizeof(int32_t) * (size - 1));
+	adjcs = malloc(sizeof(SGSProgramGraphAdjcs) + sizeof(int32_t) * (size - 1));
 	adjcs->fmodc = operator_in->fmods.count;
 	adjcs->pmodc = operator_in->pmods.count;
 	adjcs->amodc = operator_in->amods.count;
@@ -366,7 +91,7 @@ static void build_voicedata(SGSProgramEvent *root,
 	SGSProgramVoiceData *graph, **graph_out;
 	uint32_t i;
 	uint32_t size;
-	if (!voice_in->voice_params & SGS_GRAPH)
+	if (!voice_in->voice_params & SGS_P_GRAPH)
 		return;
 	size = voice_in->graph.count;
 	graph_out = (SGSProgramGraph**)&root->voice->graph;
@@ -400,14 +125,14 @@ typedef struct VoiceAlloc {
 } VoiceAlloc;
 
 #define VOICE_ALLOC_INIT(va) do{ \
-	(va)->data = calloc(1, sizeof(VoiceAllocData)); \
-	(va)->voicec = 0; \
-	(va)->alloc = 1; \
+  (va)->data = calloc(1, sizeof(VoiceAllocData)); \
+  (va)->voicec = 0; \
+  (va)->alloc = 1; \
 }while(0)
 
 #define VOICE_ALLOC_FINI(va, prg) do{ \
-	(prg)->voicec = (va)->voicec; \
-	free((va)->data); \
+  (prg)->voicec = (va)->voicec; \
+  free((va)->data); \
 }while(0)
 
 /*
@@ -483,14 +208,14 @@ typedef struct OperatorAlloc {
 } OperatorAlloc;
 
 #define OPERATOR_ALLOC_INIT(oa) do{ \
-	(oa)->data = calloc(1, sizeof(OperatorAllocData)); \
-	(oa)->operatorc = 0; \
-	(oa)->alloc = 1; \
+  (oa)->data = calloc(1, sizeof(OperatorAllocData)); \
+  (oa)->operatorc = 0; \
+  (oa)->alloc = 1; \
 }while(0)
 
 #define OPERATOR_ALLOC_FINI(oa, prg) do{ \
-	(prg)->operatorc = (oa)->operatorc; \
-	free((oa)->data); \
+  (prg)->operatorc = (oa)->operatorc; \
+  free((oa)->data); \
 }while(0)
 
 /*
@@ -547,12 +272,12 @@ typedef struct ProgramAlloc {
 } ProgramAlloc;
 
 #define PROGRAM_ALLOC_INIT(pa) do{ \
-	VOICE_ALLOC_INIT(&(pa)->va); \
-	OPERATOR_ALLOC_INIT(&(pa)->oa); \
-	(pa)->oe = 0; \
-	(pa)->oevents = 0; \
-	(pa)->eventc = 0; \
-	(pa)->alloc = 0; \
+  VOICE_ALLOC_INIT(&(pa)->va); \
+  OPERATOR_ALLOC_INIT(&(pa)->oa); \
+  (pa)->oe = 0; \
+  (pa)->oevents = 0; \
+  (pa)->eventc = 0; \
+  (pa)->alloc = 0; \
 }while(0)
 
 #define PROGRAM_ALLOC_FINI(pa, prg) do{ \
@@ -570,7 +295,7 @@ typedef struct ProgramAlloc {
 	VOICE_ALLOC_FINI(&(pa)->va, (prg)); \
 }while(0)
 
-static SGSProgramEvent *program_alloc_oevent(ProgramAlloc *pa) {
+static SGSProgramEvent *program_alloc_oevent(ProgramAlloc *pa, uint32_t voice_id) {
 	++pa->eventc;
 	if (pa->eventc > pa->alloc) {
 		pa->alloc = (pa->alloc > 0) ? pa->alloc << 1 : 1;
@@ -578,9 +303,116 @@ static SGSProgramEvent *program_alloc_oevent(ProgramAlloc *pa) {
 	}
 	pa->oevents[pa->eventc - 1] = calloc(1, sizeof(SGSProgramEvent));
 	pa->oe = pa->oevents[pa->eventc - 1];
+	pa->oe->voice_id = voice_id;
 	return pa->oe;
 }
 
+/*
+ * Overwrite parameters in dst that have values in src.
+ */
+// UNUSED
+static void copy_params(SGSOperatorNode *dst, const SGSOperatorNode *src) {
+	if (src->operator_params & SGS_P_AMP) dst->amp = src->amp;
+}
+
+// UNUSED
+static void expand_operator(SGSOperatorNode *op) {
+	SGSOperatorNode *pop;
+	if (!(op->on_flags & ON_MULTIPLE_OPERATORS)) return;
+	pop = op->on_prev;
+	do {
+		copy_params(pop, op);
+		expand_operator(pop);
+	} while ((pop = pop->next_bound));
+	SGS_node_list_clear(&op->fmods);
+	SGS_node_list_clear(&op->pmods);
+	SGS_node_list_clear(&op->amods);
+	op->operator_params = 0;
+}
+
+/*
+ * Convert data for an operator node to program operator data, setting it for
+ * the program event given.
+ */
+static void program_convert_onode(ProgramAlloc *pa, SGSOperatorNode *op,
+		uint32_t operator_id) {
+	SGSProgramEvent *oe = pa->oa.data[operator_id].out;
+	SGSProgramOperatorData *ood = calloc(1, sizeof(SGSProgramOperatorData));
+	oe->operator = ood;
+	oe->params |= op->operator_params;
+	//printf("operator_id == %d | address == %x\n", op->operator_id, op);
+	ood->operator_id = operator_id;
+	ood->adjcs = 0;
+	ood->attr = op->attr;
+	ood->wave = op->wave;
+	ood->time_ms = op->time_ms;
+	ood->silence_ms = op->silence_ms;
+	ood->freq = op->freq;
+	ood->dynfreq = op->dynfreq;
+	ood->phase = op->phase;
+	ood->amp = op->amp;
+	ood->dynamp = op->dynamp;
+	ood->valitfreq = op->valitfreq;
+	ood->valitamp = op->valitamp;
+	if (op->operator_params & SGS_P_ADJCS) {
+		build_adjcs(oe, op);
+	}
+}
+
+/*
+ * Visit each operator node in the node list and recurse through each node's
+ * sublists in turn, following and converting operator data and allocating
+ * new output events as needed.
+ */
+static void program_follow_onodes(ProgramAlloc *pa, SGSNodeList *nl) {
+	uint32_t i;
+	SGSOperatorNode **list = SGS_NODE_LIST_GET(nl);
+	for (i = nl->inactive_count; i < nl->count; ++i) {
+		SGSOperatorNode *op = list[i];
+		OperatorAllocData *ad;
+		uint32_t operator_id;
+		if (op->on_flags & ON_MULTIPLE_OPERATORS) continue;
+		operator_id = operator_alloc_inc(&pa->oa, op);
+		program_follow_onodes(pa, &op->fmods);
+		program_follow_onodes(pa, &op->pmods);
+		program_follow_onodes(pa, &op->amods);
+		ad = &pa->oa.data[operator_id];
+		if (pa->oe->operator) {
+			uint32_t voice_id = pa->oe->voice_id;
+			program_alloc_oevent(pa, voice_id);
+		}
+		ad->out = pa->oe;
+		program_convert_onode(pa, op, operator_id);
+	}
+}
+
+/*
+ * Convert voice and operator data for an event node into a (series of) output
+ * events.
+ *
+ * This is the "main" parser data conversion function, to be called for every
+ * event.
+ */
+static void program_convert_enode(ProgramAlloc *pa, SGSEventNode *e) {
+	SGSProgramEvent *oe;
+	SGSProgramVoiceData *ovd;
+	/* Add to final output list */
+	oe = program_alloc_oevent(pa, voice_alloc_inc(&pa->va, e));
+	oe->wait_ms = e->wait_ms;
+	program_follow_onodes(pa, &e->operators);
+	oe = pa->oe; /* oe may have re(al)located */
+	if (e->voice_params) {
+		ovd = calloc(1, sizeof(SGSProgramVoiceData));
+		oe->voice = ovd;
+		oe->params |= e->voice_params;
+		ovd->attr = e->voice_attr;
+		ovd->panning = e->panning;
+		ovd->valitpanning = e->valitpanning;
+		if (e->voice_params & SGS_P_GRAPH) {
+			build_graph(oe, e);
+		}
+	}
+}
 
 static SGSProgram* build(SGSParser *o) {
 	//puts("build():");
@@ -590,7 +422,7 @@ static SGSProgram* build(SGSParser *o) {
 	uint32_t id;
 	/*
 	 * Pass #1 - Output event allocation, voice allocation,
-	 *					 parameter data copying.
+	 *           parameter data copying.
 	 */
 	PROGRAM_ALLOC_INIT(&pa);
 	for (e = o->events; e; e = e->next) {
@@ -611,7 +443,8 @@ static SGSProgram* build(SGSParser *o) {
 	 * Debug printing.
 	 */
 	putchar('\n');
-	printf("events: %d\tvoices: %d\toperators: %d\n", prg->eventc, prg->voicec, prg->operatorc);
+	printf("events: %d\tvoices: %d\toperators: %d\n",
+		prg->eventc, prg->voicec, prg->operatorc);
 	for (id = 0; id < prg->eventc; ++id) {
 		const SGSProgramEvent *oe;
 		const SGSProgramVoiceData *ovo;
@@ -619,25 +452,29 @@ static SGSProgram* build(SGSParser *o) {
 		oe = &prg->events[id];
 		ovo = oe->voice;
 		oop = oe->operator;
-		printf("\\%d \tEV %d", oe->wait_ms, id);
+		printf("\\%d \tEV %d \t(VI %d)", oe->wait_ms, id, oe->voice_id);
 		if (ovo) {
-//			const SGSProgramGraph *g = ovo->graph;
-			printf("\n\tvo %d", ovo->voice_id);
-//			if (g)
-//				print_linked("\n\t		{", "}", g->opc, g->ops);
+			const SGSProgramGraph *g = ovo->graph;
+			printf("\n\tvo %d", oe->voice_id);
+			if (g)
+				print_linked("\n\t    {", "}", g->opc, g->ops);
 		}
 		if (oop) {
-//			const SGSProgramGraphAdjcs *ga = oop->adjcs;
+			const SGSProgramGraphAdjcs *ga = oop->adjcs;
 			if (oop->time_ms == SGS_TIME_INF)
-				printf("\n\top %d \tt=INF \tf=%.f", oop->operator_id, oop->freq);
+				printf("\n\top %d \tt=INF \tf=%.f",
+					oop->operator_id, oop->freq);
 			else
-				printf("\n\top %d \tt=%d \tf=%.f", oop->operator_id, oop->time_ms, oop->freq);
-//			if (ga) {
-//				print_linked("\n\t		f!<", ">", ga->fmodc, ga->adjcs);
-//				print_linked("\n\t		p!<", ">", ga->pmodc, &ga->adjcs[ga->fmodc]);
-//				print_linked("\n\t		a!<", ">", ga->amodc, &ga->adjcs[ga->fmodc +
-//					ga->pmodc]);
-//			}
+				printf("\n\top %d \tt=%d \tf=%.f",
+					oop->operator_id, oop->time_ms, oop->freq);
+			if (ga) {
+				print_linked("\n\t    f!<", ">", ga->fmodc,
+					ga->adjcs);
+				print_linked("\n\t    p!<", ">", ga->pmodc,
+					&ga->adjcs[ga->fmodc]);
+				print_linked("\n\t    a!<", ">", ga->amodc,
+					&ga->adjcs[ga->fmodc + ga->pmodc]);
+			}
 		}
 		putchar('\n');
 	}
@@ -645,7 +482,7 @@ static SGSProgram* build(SGSParser *o) {
 	return prg;
 }
 
-SGSProgram* SGS_program_create(const char *filename) {
+SGSProgram* SGS_create_program(const char *filename) {
 	SGSParser p;
 	FILE *f = fopen(filename, "r");
 	if (!f) return 0;
@@ -660,13 +497,13 @@ void SGS_program_destroy(SGSProgram *o) {
 	for (i = 0; i < o->eventc; ++i) {
 		SGSProgramEvent *e = (void*)&o->events[i];
 		if (e->voice) {
-			free((void*)e->voice->operator_list);
+			free((void*)e->voice->graph);
 			free((void*)e->voice);
 		}
 		if (e->operator) {
+			free((void*)e->operator->adjcs);
 			free((void*)e->operator);
 		}
 	}
 	free((void*)o->events);
 }
-
