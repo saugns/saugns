@@ -40,7 +40,7 @@ parser.o: parser.c math.h parser.h program.h sgensys.h
 program.o: program.c parser.h program.h sgensys.h
 	$(CC) -c $(CFLAGS) program.c
 
-renderer.o: renderer.c renderer.h math.h osc.h interpreter.h sgensys.h
+renderer.o: renderer.c renderer.h math.h osc.h program.h interpreter.h sgensys.h
 	$(CC) -c $(CFLAGS) renderer.c
 
 sgensys.o: sgensys.c sgensys.h program.h interpreter.h renderer.h audiodev.h wavfile.h

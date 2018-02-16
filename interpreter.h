@@ -11,19 +11,21 @@
  * <http://www.gnu.org/licenses/>.
  */
 
+#include <stddef.h>
 
-typedef struct SGSEventVoiceData {
+struct SGSEventVoiceData {
 	uint voice_id;
 	uint input_block_id;
 	int panning_block_id; /* -1 if none */
 	const int *operator_list;
-	uint operator_c;
+	uint operator_count;
 	uchar attr;
 	float panning;
 	SGSProgramValit valitpanning;
-} SGSEventVoiceData;
+};
+typedef const struct SGSEventVoiceData *SGSEventVoiceData_t;
 
-typedef struct SGSEventOperatorData {
+struct SGSEventOperatorData {
 	uint operator_id;
 	uint output_block_id;
 	int freq_block_id, /* -1 if none */
@@ -35,28 +37,35 @@ typedef struct SGSEventOperatorData {
 	int time_ms, silence_ms;
 	float freq, dynfreq, phase, amp, dynamp;
 	SGSProgramValit valitfreq, valitamp;
-} SGSEventOperatorData;
+};
+typedef const struct SGSEventOperatorData *SGSEventOperatorData_t;
 
-typedef struct SGSEvent {
+struct SGSResultEvent {
 	int wait_ms;
 	uint params;
-	const SGSEventVoiceData *vo_data;
-	const SGSEventOperatorData *op_data;
-} SGSEvent;
+	SGSEventVoiceData_t voice_data;
+	SGSEventOperatorData_t operator_data;
+};
+typedef const struct SGSResultEvent *SGSResultEvent_t;
 
-typedef struct SGSSoundData {
-	const SGSEvent *events;
+struct SGSResult {
+	SGSResultEvent_t events;
 	uint event_count,
 	     block_count,
 	     voice_count,
 	     operator_count;
-} SGSSoundData;
+};
+typedef const struct SGSResult *SGSResult_t;
 
 struct SGSInterpreter;
+typedef struct SGSInterpreter *SGSInterpreter_t;
 
-struct SGSInterpreter *SGS_create_interpreter();
-void SGS_destroy_interpreter(struct SGSInterpreter *o);
+SGSInterpreter_t SGS_create_interpreter();
+void SGS_destroy_interpreter(SGSInterpreter_t o);
 
-SGSSoundData *SGS_interpreter_run(struct SGSInterpreter *o,
-                                  SGSProgram *program);
-void SGS_interpreter_clear(struct SGSInterpreter *o);
+SGSResult_t SGS_interpreter_run(SGSInterpreter_t o,
+                                struct SGSProgram *program);
+void SGS_interpreter_get_results(SGSInterpreter_t o,
+                                 SGSResult_t **results, size_t **count);
+
+void SGS_interpreter_clear(SGSInterpreter_t o);

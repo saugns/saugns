@@ -35,6 +35,7 @@ static int run_program(struct SGSProgram *prg, uchar audio_device,
 	uint len;
 	SGSAudioDev *ad = NULL;
 	SGSWAVFile *wf = NULL;
+	SGSInterpreter_t in;
 	SGSRenderer *ar;
 	if (wav_path) {
 		wf = SGS_begin_wav_file(wav_path, NUM_CHANNELS, srate);
@@ -51,7 +52,8 @@ static int run_program(struct SGSProgram *prg, uchar audio_device,
 			return 1;
 		}
 	}
-	ar = SGS_create_renderer(srate, prg);
+	in = SGS_create_interpreter();
+	ar = SGS_create_renderer(srate, SGS_interpreter_run(in, prg));
 
 	do {
 		run = SGS_renderer_run(ar, buf, BUF_SAMPLES, &len);
@@ -64,6 +66,7 @@ static int run_program(struct SGSProgram *prg, uchar audio_device,
 	if (ad) SGS_close_audio_dev(ad);
 	if (wf) SGS_end_wav_file(wf);
 	SGS_destroy_renderer(ar);
+	SGS_destroy_interpreter(in);
 	return 0;
 }
 

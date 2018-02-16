@@ -18,7 +18,7 @@
 struct SGSRenderer;
 typedef struct SGSRenderer SGSRenderer;
 
-SGSRenderer* SGS_create_renderer(uint srate, SGSProgram *prg);
+SGSRenderer* SGS_create_renderer(uint srate, SGSResult_t res);
 void SGS_destroy_renderer(SGSRenderer *o);
 
 uchar SGS_renderer_run(SGSRenderer *o, short *buf, uint buf_len,

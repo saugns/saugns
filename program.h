@@ -59,6 +59,7 @@ enum {
 
 /* operator atttributes */
 enum {
+  SGS_ATTR_WAVEENV = 1<<0,
   SGS_ATTR_FREQRATIO = 1<<1,
   SGS_ATTR_DYNFREQRATIO = 1<<2,
   SGS_ATTR_VALITFREQ = 1<<3,

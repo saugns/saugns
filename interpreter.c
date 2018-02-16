@@ -12,34 +12,32 @@
  */
 
 #include "sgensys.h"
+#include <stdlib.h>
 #include "program.h"
 #include "interpreter.h"
-#include <stdlib.h>
 
 struct SGSInterpreter {
-	SGSSoundData **results;
+	SGSResult_t *results;
 	size_t result_count,
 	       result_alloc;
 };
 
-typedef struct SGSInterpreter SGSInterpreter;
-
-static SGSSoundData *run_program(SGSProgram *program) {
+static SGSResult_t run_program(struct SGSProgram *program) {
 }
 
-struct SGSInterpreter *SGS_create_interpreter() {
-	SGSInterpreter *o = calloc(1, sizeof(SGSInterpreter));
+SGSInterpreter_t SGS_create_interpreter() {
+	SGSInterpreter_t o = calloc(1, sizeof(struct SGSInterpreter));
 	return o;
 }
 
-void SGS_destroy_interpreter(struct SGSInterpreter *o) {
+void SGS_destroy_interpreter(SGSInterpreter_t o) {
 	SGS_interpreter_clear(o);
 	free(o);
 }
 
-SGSSoundData *SGS_interpreter_run(struct SGSInterpreter *o,
-                                  SGSProgram *program) {
-	SGSSoundData *result = run_program(program);
+SGSResult_t SGS_interpreter_run(SGSInterpreter_t o,
+                                struct SGSProgram *program) {
+	SGSResult_t result = run_program(program);
 	if (result == NULL) {
 		return NULL;
 	}
@@ -51,7 +49,7 @@ SGSSoundData *SGS_interpreter_run(struct SGSInterpreter *o,
 			o->result_alloc <<= 1;
 		}
 		o->results = realloc(o->results,
-		                     o->result_alloc * sizeof(SGSSoundData));
+		                     o->result_alloc * sizeof(SGSResult_t));
 	}
 	o->results[o->result_count] = result;
 	++o->result_count;
@@ -59,7 +57,13 @@ SGSSoundData *SGS_interpreter_run(struct SGSInterpreter *o,
 	return result;
 }
 
-void SGS_interpreter_clear(struct SGSInterpreter *o) {
+void SGS_interpreter_get_results(SGSInterpreter_t o,
+                                 SGSResult_t **results, size_t **count) {
+	*results = o->results;
+	*count = &o->result_count;
+}
+
+void SGS_interpreter_clear(SGSInterpreter_t o) {
 	free(o->results);
 }
 
