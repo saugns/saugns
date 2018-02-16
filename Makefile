@@ -2,6 +2,7 @@ CFLAGS=-W -Wall -Werror=implicit-function-declaration -O2 -ffast-math
 LFLAGS=-s -lm
 LFLAGS_LINUX=$(LFLAGS) -lasound
 OBJ=audiodev.o \
+    builder.o \
     interpreter.o \
     osc.o \
     parser.o \
@@ -28,6 +29,9 @@ sgensys: $(OBJ)
 audiodev.o: audiodev.c audiodev_*.c audiodev.h sgensys.h 
 	$(CC) -c $(CFLAGS) audiodev.c
 
+builder.o: builder.c parser.h program.h builder.h sgensys.h
+	$(CC) -c $(CFLAGS) builder.c
+
 interpreter.o: interpreter.c program.h interpreter.h sgensys.h
 	$(CC) -c $(CFLAGS) interpreter.c
 
@@ -43,7 +47,7 @@ program.o: program.c parser.h program.h sgensys.h
 renderer.o: renderer.c renderer.h math.h osc.h program.h interpreter.h sgensys.h
 	$(CC) -c $(CFLAGS) renderer.c
 
-sgensys.o: sgensys.c sgensys.h program.h interpreter.h renderer.h audiodev.h wavfile.h
+sgensys.o: sgensys.c sgensys.h builder.h interpreter.h renderer.h audiodev.h wavfile.h
 	$(CC) -c $(CFLAGS) sgensys.c
 
 symtab.o: symtab.c sgensys.h symtab.h

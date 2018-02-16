@@ -195,7 +195,7 @@ int main(int argc, char **argv) {
 	if (parse_args(argc, argv, &options, &script_path, &wav_path,
 			&srate) != 0)
 		return 0;
-	if (!(prg = SGS_create_program(script_path))) {
+	if (!(prg = SGS_read_program(script_path))) {
 		fprintf(stderr, "error: couldn't open script file \"%s\"\n",
 				script_path);
 		return 1;

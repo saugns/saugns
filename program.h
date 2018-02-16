@@ -1,4 +1,4 @@
-/* sgensys parsing data to program data translator module.
+/* sgensys sound program reader
  * Copyright (c) 2011-2012, 2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -127,5 +127,5 @@ struct SGSProgram {
        voicec;
 };
 
-SGSProgram* SGS_create_program(const char *filename);
+SGSProgram* SGS_read_program(const char *filename);
 void SGS_destroy_program(SGSProgram *o);
