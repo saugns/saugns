@@ -546,6 +546,7 @@ static uint32_t run_block(SGSGenerator *o, Buf *bufs, uint32_t buf_len,
       float sfreq = freq[i].f, samp = amp[i].f;
       if (pm) spm = pm[i].i;
       SGSOsc_RUN_S16(&n->osc, lut, o->osc_coeff, sfreq, 0, spm, samp, s);
+//      SGSOsc_RUN_S16(&n->osc, lut, o->osc_coeff, sfreq, spm, 0, samp, s);
       if (acc_ind) s += sbuf[i].i;
       sbuf[i].i = s;
     }
@@ -560,6 +561,7 @@ static uint32_t run_block(SGSGenerator *o, Buf *bufs, uint32_t buf_len,
       int32_t spm = 0;
       if (pm) spm = pm[i].i;
       SGSOsc_RUN_SF(&n->osc, lut, o->osc_coeff, sfreq, 0, spm, s);
+//      SGSOsc_RUN_SF(&n->osc, lut, o->osc_coeff, sfreq, spm, 0, s);
       if (acc_ind) s *= sbuf[i].f;
       sbuf[i].f = s;
     }

@@ -72,9 +72,6 @@ typedef struct SGSOsc {
  */
 #define SGSOsc_RUN_S16(o, lut, sr_coeff, \
 		freq, fm_s16, pm_s16, amp, s16_out) do{ \
-	uint32_t SGSOsc__inc; \
-	SET_I2FV(SGSOsc__inc, (sr_coeff)*(freq)); \
-	SGSOsc__inc += (fm_s16) << 16; \
 	uint32_t SGSOsc__phs = (o)->phase + ((pm_s16) << 16); \
 	uint32_t SGSOsc__ind = SGSOsc__phs >> (32-SGSOsc_LUT_INDEXBITS); \
 	int32_t SGSOsc__s16 = (lut)[SGSOsc__ind]; \
@@ -88,6 +85,9 @@ typedef struct SGSOsc {
 		 (amp) \
 	); \
 	/* update phase */ \
+	uint32_t SGSOsc__inc; \
+	SET_I2FV(SGSOsc__inc, (sr_coeff)*(freq)); \
+	SGSOsc__inc += (fm_s16) << 16; \
 	(o)->phase += SGSOsc__inc; \
 }while(0)
 
@@ -96,9 +96,6 @@ typedef struct SGSOsc {
  */
 #define SGSOsc_RUN_SF(o, lut, sr_coeff, \
 	       	freq, fm_s16, pm_s16, sf_out) do{ \
-	uint32_t SGSOsc__inc; \
-	SET_I2FV(SGSOsc__inc, (sr_coeff)*(freq)); \
-	SGSOsc__inc += (fm_s16) << 16; \
 	uint32_t SGSOsc__phs = (o)->phase + ((pm_s16) << 16); \
 	uint32_t SGSOsc__ind = SGSOsc__phs >> (32-SGSOsc_LUT_INDEXBITS); \
 	int32_t SGSOsc__s16 = (lut)[SGSOsc__ind]; \
@@ -111,6 +108,9 @@ typedef struct SGSOsc {
 	           (1.f / (SGSOsc_LUT_MAX * 2)) + \
 	           .5f; \
 	/* update phase */ \
+	uint32_t SGSOsc__inc; \
+	SET_I2FV(SGSOsc__inc, (sr_coeff)*(freq)); \
+	SGSOsc__inc += (fm_s16) << 16; \
 	(o)->phase += SGSOsc__inc; \
 }while(0)
 
