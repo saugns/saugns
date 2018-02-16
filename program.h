@@ -1,4 +1,4 @@
-/* sgensys: Parsing data to program data translator module.
+/* sgensys: Parsing data to audio program translator module.
  * Copyright (c) 2011-2013, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -9,6 +9,14 @@
  *
  * View the file COPYING for details, or if missing, see
  * <http://www.gnu.org/licenses/>.
+ */
+
+#pragma once
+
+#include "sgensys.h"
+
+/*
+ * Program types and definitions.
  */
 
 struct SGSProgram;
@@ -128,5 +136,7 @@ struct SGSProgram {
 };
 typedef struct SGSProgram SGSProgram;
 
-SGSProgram* SGS_create_program(const char *filename);
+struct SGSParseList;
+
+SGSProgram* SGS_build_program(struct SGSParseList *parse);
 void SGS_destroy_program(SGSProgram *o);

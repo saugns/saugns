@@ -11,6 +11,10 @@
  * <http://www.gnu.org/licenses/>.
  */
 
+#pragma once
+
+#include "ptrarr.h"
+
 /*
  * Result data types. Represent audio to be rendered.
  */
@@ -72,6 +76,6 @@ void SGS_destroy_interpreter(SGSInterpreter_t o);
 SGSResult_t SGS_interpreter_run(SGSInterpreter_t o,
                                 struct SGSProgram *program);
 void SGS_interpreter_get_results(SGSInterpreter_t o,
-                                 SGSResult_t **results, size_t **count);
+                                 struct SGSPtrArr *results);
 
 void SGS_interpreter_clear(SGSInterpreter_t o);

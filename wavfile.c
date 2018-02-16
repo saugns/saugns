@@ -11,8 +11,6 @@
  * <http://www.gnu.org/licenses/>.
  */
 
-#include <stdint.h>
-#include <stdbool.h>
 #include "wavfile.h"
 #include <stdio.h>
 #include <stdlib.h>

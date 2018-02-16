@@ -11,15 +11,12 @@
  * <http://www.gnu.org/licenses/>.
  */
 
-#include <stdint.h>
-#include <stdlib.h>
 #include "program.h"
 #include "interpreter.h"
+#include <stdlib.h>
 
 struct SGSInterpreter {
-	SGSResult_t *results;
-	size_t result_count,
-	       result_alloc;
+	struct SGSPtrArr results;
 };
 
 static SGSResult_t run_program(struct SGSProgram *program) {
@@ -42,29 +39,17 @@ SGSResult_t SGS_interpreter_run(SGSInterpreter_t o,
 		return NULL;
 	}
 
-	if (o->result_count == o->result_alloc) {
-		if (o->result_alloc == 0) {
-			o->result_alloc = 1;
-		} else {
-			o->result_alloc <<= 1;
-		}
-		o->results = realloc(o->results,
-		                     o->result_alloc * sizeof(SGSResult_t));
-	}
-	o->results[o->result_count] = result;
-	++o->result_count;
-
+	SGS_ptrarr_add(&o->results, result);
 	return result;
 }
 
 void SGS_interpreter_get_results(SGSInterpreter_t o,
-                                 SGSResult_t **results, size_t **count) {
-	*results = o->results;
-	*count = &o->result_count;
+                                 struct SGSPtrArr *results) {
+	SGS_ptrarr_copy(results, &o->results);
 }
 
 void SGS_interpreter_clear(SGSInterpreter_t o) {
-	free(o->results);
+	SGS_ptrarr_clear(&o->results);
 }
 
 #if 0 /* old generator.c code */

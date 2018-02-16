@@ -11,13 +11,11 @@
  * <http://www.gnu.org/licenses/>.
  */
 
-#include <stdint.h>
-#include <stdbool.h>
-#include <stdlib.h>
 #include "osc.h"
 #include "program.h"
 #include "interpreter.h"
 #include "renderer.h"
+#include <stdlib.h>
 #include <stdio.h>
 
 #define MS_TO_ABS(x, srate) (int32_t) (((float)(x)) * (srate) * .001f)

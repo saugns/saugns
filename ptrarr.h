@@ -1,5 +1,5 @@
-/* sgensys: Symbol table module.
- * Copyright (c) 2011-2012, 2017 Joel K. Pettersson
+/* sgensys: Pointer array module.
+ * Copyright (c) 2011-2012, 2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -15,11 +15,19 @@
 
 #include "sgensys.h"
 
-struct SGSSymtab;
-typedef struct SGSSymtab SGSSymtab;
+/*
+ * Pointer array type.
+ */
 
-SGSSymtab* SGS_symtab_create(void);
-void SGS_symtab_destroy(SGSSymtab *o);
+typedef const void *SGSPtr_t;
 
-void* SGS_symtab_get(SGSSymtab *o, const char *key);
-void* SGS_symtab_set(SGSSymtab *o, const char *key, void *value);
+struct SGSPtrArr {
+	size_t count;
+	size_t copy_count;
+	SGSPtr_t *data;
+	size_t alloc;
+};
+
+bool SGS_ptrarr_add(struct SGSPtrArr *list, SGSPtr_t value);
+void SGS_ptrarr_clear(struct SGSPtrArr *list);
+void SGS_ptrarr_copy(struct SGSPtrArr *dst, const struct SGSPtrArr *src);

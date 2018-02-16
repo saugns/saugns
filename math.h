@@ -12,6 +12,8 @@
 
 #pragma once
 
+#include "sgensys.h"
+
 #include <math.h>
 #define PI 3.141592653589
 #define DC_OFFSET 1.0E-25

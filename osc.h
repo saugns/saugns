@@ -12,6 +12,7 @@
  */
 
 #pragma once
+
 #include "math.h"
 
 extern void SGSOsc_init(void);

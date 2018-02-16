@@ -1,6 +1,5 @@
-/* sgensys: Symbol table module.
- * Copyright (c) 2011-2012, 2017 Joel K. Pettersson
- * <joelkpettersson@gmail.com>.
+/* sgensys: Common header file.
+ * Copyright (c) 2018 Joel K. Pettersson <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
  * terms of the GNU Lesser General Public License, either version 3 or (at
@@ -13,13 +12,12 @@
 
 #pragma once
 
-#include "sgensys.h"
+/*
+ * Common types.
+ */
 
-struct SGSSymtab;
-typedef struct SGSSymtab SGSSymtab;
+typedef unsigned int uint;
 
-SGSSymtab* SGS_symtab_create(void);
-void SGS_symtab_destroy(SGSSymtab *o);
-
-void* SGS_symtab_get(SGSSymtab *o, const char *key);
-void* SGS_symtab_set(SGSSymtab *o, const char *key, void *value);
+#include <stddef.h>
+#include <stdint.h>
+#include <stdbool.h>

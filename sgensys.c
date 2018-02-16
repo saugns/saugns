@@ -11,20 +11,30 @@
  * <http://www.gnu.org/licenses/>.
  */
 
-#include <stdint.h>
-#include <stdbool.h>
-#include <stdlib.h>
 #include "program.h"
+#include "parser.h"
 #include "interpreter.h"
 #include "renderer.h"
 #include "audiodev.h"
 #include "wavfile.h"
+#include <stdlib.h>
 #include <errno.h>
 #include <string.h>
 #include <stdio.h>
 #define BUF_SAMPLES 1024
 #define NUM_CHANNELS 2
 #define DEFAULT_SRATE 44100
+
+/*
+ * Parse the given script and go through the steps to return
+ * the result.
+ */
+static struct SGSProgram *read_script(const char *filename) {
+	struct SGSParser *parser = SGS_create_parser();
+	struct SGSParseList *result = SGS_parser_parse(parser, filename);
+	SGS_destroy_parser(parser);
+	return SGS_build_program(result);
+}
 
 /*
  * Run the given program through the sound generator until completion.
@@ -192,12 +202,12 @@ int main(int argc, char **argv) {
 	const char *script_path = NULL, *wav_path = NULL;
 	uint32_t options = 0;
 	uint8_t audio_dev;
-	SGSProgram *prg;
+	struct SGSProgram *prg;
 	uint32_t srate = DEFAULT_SRATE;
 	if (parse_args(argc, argv, &options, &script_path, &wav_path,
 			&srate) != 0)
 		return 0;
-	if (!(prg = SGS_create_program(script_path))) {
+	if (!(prg = read_script(script_path))) {
 		fprintf(stderr, "error: couldn't open script file \"%s\"\n",
 				script_path);
 		return 1;

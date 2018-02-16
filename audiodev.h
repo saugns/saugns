@@ -13,6 +13,8 @@
 
 #pragma once
 
+#include "sgensys.h"
+
 struct SGSAudioDev;
 typedef struct SGSAudioDev SGSAudioDev;
 

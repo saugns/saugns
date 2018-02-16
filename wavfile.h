@@ -11,6 +11,10 @@
  * <http://www.gnu.org/licenses/>.
  */
 
+#pragma once
+
+#include "sgensys.h"
+
 struct SGSWAVFile;
 typedef struct SGSWAVFile SGSWAVFile;
 
