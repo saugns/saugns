@@ -1,5 +1,6 @@
 /* sgensys script parser module.
- * Copyright (c) 2011-2012 Joel K. Pettersson <joelkpettersson@gmail.com>
+ * Copyright (c) 2011-2012, 2018 Joel K. Pettersson
+ * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
  * terms of the GNU Lesser General Public License, either version 3 or (at
@@ -18,22 +19,16 @@ struct SGSOperatorNode;
  * SGSNodeList
  */
 
-typedef struct SGSNodeList {
-  ushort count,
-         inactive_count; /* used when nodes are inherited from another list */
-  void *data;
-} SGSNodeList;
+struct SGSNodeList {
+  uint count,
+       alloc;
+  void **data;
+  uint inherit_count; /* used when nodes are inherited from another list */
+};
 
-#define SGS_NODE_LIST_GET(nl) \
- ((struct SGSOperatorNode**)(((nl)->count > 1) ? (nl)->data : &(nl)->data))
-
-void SGS_node_list_add(SGSNodeList *list, struct SGSOperatorNode *n);
-void SGS_node_list_clear(SGSNodeList *list);
-void SGS_node_list_safe_copy(SGSNodeList *dst, const SGSNodeList *src);
-int SGS_node_list_rforeach(SGSNodeList *list,
-                           int (*callback)(struct SGSOperatorNode *op,
-                                           void *arg),
-                           void *arg);
+void SGS_node_list_add(struct SGSNodeList *list, void *node);
+void SGS_node_list_clear(struct SGSNodeList *list);
+void SGS_node_list_safe_copy(struct SGSNodeList *dst, const struct SGSNodeList *src);
 
 /*
  * Parsing nodes.
@@ -51,7 +46,7 @@ enum {
 
 typedef struct SGSOperatorNode {
   struct SGSEventNode *event;
-  SGSNodeList on_next; /* all immediate forward references for operator(s) */
+  struct SGSNodeList on_next; /* all immediate forward references for operator(s) */
   struct SGSOperatorNode *on_prev; /* preceding node(s) for same operator(s) */
   struct SGSOperatorNode *next_bound;
   uint on_flags;
@@ -65,7 +60,7 @@ typedef struct SGSOperatorNode {
   float freq, dynfreq, phase, amp, dynamp;
   SGSProgramValit valitfreq, valitamp;
   /* node adjacents in operator linkage graph */
-  SGSNodeList fmods, pmods, amods;
+  struct SGSNodeList fmods, pmods, amods;
 } SGSOperatorNode;
 
 enum {
@@ -79,7 +74,7 @@ typedef struct SGSEventNode {
   struct SGSEventNode *groupfrom;
   struct SGSEventNode *composite;
   int wait_ms;
-  SGSNodeList operators; /* operators included in event */
+  struct SGSNodeList operators; /* operators included in event */
   uint en_flags;
   /* voice parameters */
   uint voice_id; /* not filled in by parser; for later use (program.c) */
@@ -88,26 +83,18 @@ typedef struct SGSEventNode {
   uchar voice_attr;
   float panning;
   SGSProgramValit valitpanning;
-  SGSNodeList graph;
+  struct SGSNodeList graph;
 } SGSEventNode;
 
 void SGS_event_node_destroy(SGSEventNode *e);
 
-typedef struct SGSParser {
-  FILE *f;
-  const char *fn;
-  struct SGSSymtab *st;
-  uint line;
-  uint calllevel;
-  uint scopeid;
-  char c, nextc;
-  /* node state */
-  SGSEventNode *events;
-  SGSEventNode *last_event;
-  /* settings/ops */
-  float ampmult;
-  int def_time_ms;
-  float def_freq, def_A4tuning, def_ratio;
-} SGSParser;
+struct SGSParseList {
+	SGSEventNode *events;
+};
 
-void SGS_parse(SGSParser *o, FILE *f, const char *fn);
+struct SGSParser;
+
+struct SGSParser *SGS_create_parser(void);
+void SGS_destroy_parser(struct SGSParser *pa);
+
+struct SGSParseList *SGS_parser_parse(struct SGSParser *pa, const char *filename);

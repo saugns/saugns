@@ -11,5 +11,7 @@
  * <http://www.gnu.org/licenses/>.
  */
 
-SGSProgram* SGS_build_program(const char *filename);
+struct SGSParseList;
+
+SGSProgram* SGS_build_program(struct SGSParseList *parse);
 void SGS_destroy_program(SGSProgram *o);

@@ -1,5 +1,6 @@
 /* sgensys script parser module.
- * Copyright (c) 2011-2012 Joel K. Pettersson <joelkpettersson@gmail.com>
+ * Copyright (c) 2011-2012, 2018 Joel K. Pettersson
+ * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
  * terms of the GNU Lesser General Public License, either version 3 or (at
@@ -18,111 +19,48 @@
 #include <string.h>
 #include <stdlib.h>
 
-/*
- * General-purpose functions
- */
-
-static void *memdup(const void *src, size_t size) {
-  void *ret = malloc(size);
-  if (!ret) return 0;
-  memcpy(ret, src, size);
-  return ret;
-}
-
-#ifdef strdup /* deal with libc issues when already provided */
-# undef strdup
-#endif
-#define strdup _strdup
-static char *_strdup(const char *src) {
-  size_t len = strlen(src);
-  char *ret;
-  if (!len) return 0;
-  ret = memdup(src, len + 1);
-  if (!ret) return 0;
-  ret[len] = '\0';
-  return ret;
-}
-
-#define IS_WHITESPACE(c) \
-  ((c) == ' ' || (c) == '\t' || (c) == '\n' || (c) == '\r')
-
-static uchar testc(char c, FILE *f) {
-  char gc = getc(f);
-  ungetc(gc, f);
-  return (gc == c);
-}
-
-static uchar testgetc(char c, FILE *f) {
-  char gc;
-  if ((gc = getc(f)) == c) return 1;
-  ungetc(gc, f);
-  return 0;
-}
-
-static int getinum(FILE *f) {
-  char c;
-  int num = -1;
-  c = getc(f);
-  if (c >= '0' && c <= '9') {
-    num = c - '0';
-    for (;;) {
-      c = getc(f);
-      if (c >= '0' && c <= '9')
-        num = num * 10 + (c - '0');
-      else
-        break;
-    }
-  }
-  ungetc(c, f);
-  return num;
-}
-
-static int strfind(FILE *f, const char *const*str) {
-  int search, ret;
-  uint i, len, pos, matchpos;
-  char c, undo[256];
-  uint strc;
-  const char **s;
-  for (len = 0, strc = 0; str[strc]; ++strc)
-    if ((i = strlen(str[strc])) > len) len = i;
-  s = malloc(sizeof(const char*) * strc);
-  for (i = 0; i < strc; ++i)
-    s[i] = str[i];
-  search = ret = -1;
-  pos = matchpos = 0;
-  while ((c = getc(f)) != EOF) {
-    undo[pos] = c;
-    for (i = 0; i < strc; ++i) {
-      if (!s[i]) continue;
-      else if (!s[i][pos]) {
-        s[i] = 0;
-        if (search == (int)i) {
-          ret = i;
-          matchpos = pos-1;
-        }
-      } else if (c != s[i][pos]) {
-        s[i] = 0;
-        search = -1;
-      } else
-        search = i;
-    }
-    if (pos == len) break;
-    ++pos;
-  }
-  free(s);
-  for (i = pos; i > matchpos; --i) ungetc(undo[i], f);
-  return ret;
-}
-
-static void eatws(FILE *f) {
-  char c;
-  while ((c = getc(f)) == ' ' || c == '\t') ;
-  ungetc(c, f);
-}
+#include "parser_node_list.c"
+#include "parser_util.c"
 
 /*
- * Parsing code
+ * Parser
  */
+
+typedef struct SGSParser {
+  FILE *f;
+  const char *fn;
+  struct SGSSymtab *st;
+  uint line;
+  uint calllevel;
+  uint scopeid;
+  char c, nextc;
+  /* node state */
+  struct SGSParseList result;
+  SGSEventNode *events;
+  SGSEventNode *last_event;
+  /* settings/ops */
+  float ampmult;
+  int def_time_ms;
+  float def_freq, def_A4tuning, def_ratio;
+} SGSParser;
+
+SGSParser *SGS_create_parser(void) {
+	SGSParser *pa = calloc(1, sizeof(SGSParser));
+
+  pa->ampmult = 1.f; /* default until changed */
+  pa->def_time_ms = 1000; /* default until changed */
+  pa->def_freq = 444.f; /* default until changed */
+  pa->def_A4tuning = 444.f; /* default until changed */
+  pa->def_ratio = 1.f; /* default until changed */
+
+	pa->st = SGS_symtab_create();
+	return pa;
+}
+
+void SGS_destroy_parser(struct SGSParser *pa) {
+	SGS_symtab_destroy(pa->st);
+	free(pa);
+}
 
 #define VI_TIME_DEFAULT (-1) /* for valits only; masks SGS_TIME_INF */
 
@@ -529,115 +467,29 @@ enum {
   NL_AMODS,
 };
 
-/*
- * Add a node to the given node list.
- */
-void SGS_node_list_add(SGSNodeList *list, struct SGSOperatorNode *n) {
-  SGSOperatorNode **nl;
-  ++list->count;
-  if (list->count <= 2) {
-    if (list->count == 1) {
-      list->data = n;
-    } else {
-      void *tmp = list->data;
-      list->data = malloc(sizeof(struct SGSOperatorNode*) * 2);
-      nl = list->data;
-      nl[0] = tmp;
-      nl[1] = n;
-    }
-  } else if ((list->count - 1) == list->inactive_count) {
-    void *tmp = list->data;
-    list->data = malloc(sizeof(struct SGSOperatorNode*) * list->count);
-    memcpy(list->data, tmp,
-           sizeof(struct SGSOperatorNode*) * (list->count - 1));
-    nl = list->data;
-    nl[list->count - 1] = n;
-  } else {
-    list->data = realloc(list->data,
-                         sizeof(struct SGSOperatorNode*) * list->count);
-    nl = list->data;
-    nl[list->count - 1] = n;
-  }
-}
-
-/*
- * Clear the given node list.
- */
-void SGS_node_list_clear(SGSNodeList *list) {
-  if (list->count > 1 &&
-      list->count > list->inactive_count) free(list->data);
-  list->count = 0;
-  list->inactive_count = 0;
-  list->data = 0;
-}
-
-/*
- * Copy the node list src to dst; to save memory and limit fragmentation,
- * dst will actually merely reference the data in src unless/until modified.
- *
- * This is a "safe copy", meaning the copied node entries at the beginning
- * of the list will remain "inactive" - SGS_node_list_rforeach() as well as
- * the cleanup code of the owner of the list will ignore them, avoiding
- * duplicate operations.
- *
- * Manual (read-only) access of the list will still give access to the
- * "inactive" nodes, unless deliberately beginning iteration at
- * inactive_count.
- */
-void SGS_node_list_safe_copy(SGSNodeList *dst, const SGSNodeList *src) {
-  SGS_node_list_clear(dst);
-  dst->count = src->count;
-  dst->inactive_count = src->count;
-  dst->data = src->data;
-}
-
-/*
- * Loop and recurse through the operator hierarchy beginning with the given
- * node list, calling the provided callback with the provided argument for
- * each active operator node before entering the next level. The callback
- * return values are summed for each level and then returned.
- */
-int SGS_node_list_rforeach(SGSNodeList *list,
-                           int (*callback)(struct SGSOperatorNode *op,
-                                           void *arg),
-                           void *arg) {
-  SGSOperatorNode **nl = SGS_NODE_LIST_GET(list);
-  int ret = 0;
+static void destroy_operator(SGSOperatorNode *op) {
+  SGS_node_list_clear(&op->on_next);
   uint i;
-  for (i = list->inactive_count; i < list->count; ++i) {
-    SGSOperatorNode *op = nl[i];
-    ret += callback(op, arg);
-    ret += SGS_node_list_rforeach(&op->fmods, callback, arg);
-    ret += SGS_node_list_rforeach(&op->pmods, callback, arg);
-    ret += SGS_node_list_rforeach(&op->amods, callback, arg);
+  for (i = op->fmods.inherit_count; i < op->fmods.count; ++i) {
+    destroy_operator(op->fmods.data[i]);
   }
-  return ret;
-}
-
-/*
- * Recurse and free all active operator nodes and node lists within and
- * including the given list.
- */
-static void SGS_node_list_rcleanup(SGSNodeList *list) {
-  SGSOperatorNode **nl = SGS_NODE_LIST_GET(list);
-  uint i;
-  for (i = list->inactive_count; i < list->count; ++i) {
-    SGSOperatorNode *op = nl[i];
-    SGS_node_list_clear(&op->on_next);
-    SGS_node_list_rcleanup(&op->fmods);
-    SGS_node_list_rcleanup(&op->pmods);
-    SGS_node_list_rcleanup(&op->amods);
-    if (op->on_flags & ON_LABEL_ALLOC) free((char*)op->label);
-    free(op);
+  for (i = op->pmods.inherit_count; i < op->pmods.count; ++i) {
+    destroy_operator(op->pmods.data[i]);
   }
-  SGS_node_list_clear(list);
+  for (i = op->amods.inherit_count; i < op->amods.count; ++i) {
+    destroy_operator(op->amods.data[i]);
+  }
+  if (op->on_flags & ON_LABEL_ALLOC) free((char*)op->label);
+  free(op);
 }
 
 /*
  * Destroy the given event node and all associated operator nodes.
  */
 void SGS_event_node_destroy(SGSEventNode *e) {
-  SGS_node_list_rcleanup(&e->operators);
+  for (uint i = e->operators.inherit_count; i < e->operators.count; ++i) {
+    destroy_operator(e->operators.data[i]);
+  }
   SGS_node_list_clear(&e->graph);
   free(e);
 }
@@ -786,9 +638,9 @@ static void begin_operator(NodeScope *ns, uchar linktype, uchar composite) {
     op->dynamp = pop->dynamp;
     op->valitfreq = pop->valitfreq;
     op->valitamp = pop->valitamp;
-    SGS_node_list_safe_copy(&op->fmods, &pop->fmods);
-    SGS_node_list_safe_copy(&op->pmods, &pop->pmods);
-    SGS_node_list_safe_copy(&op->amods, &pop->amods);
+    SGS_node_list_inherit(&op->fmods, &pop->fmods);
+    SGS_node_list_inherit(&op->pmods, &pop->pmods);
+    SGS_node_list_inherit(&op->amods, &pop->amods);
     if (ns->ns_flags & NS_BIND_MULTIPLE) {
       SGSOperatorNode *mpop = pop;
       int max_time = 0;
@@ -831,7 +683,7 @@ static void begin_operator(NodeScope *ns, uchar linktype, uchar composite) {
       SGS_node_list_add(&e->graph, op);
     }
   } else {
-    SGSNodeList *list = 0;
+    struct SGSNodeList *list = 0;
     switch (linktype) {
     case NL_FMODS:
       list = &ns->parent_on->fmods;
@@ -1343,28 +1195,26 @@ RETURN:
   end_scope(&ns);
   --o->calllevel;
   /* Should return from the calling scope if/when the parent scope is ended. */
+  o->result.events = o->events;
   return (endscope && ns.scope != newscope);
 }
 
-static void pp_passes(SGSParser *o);
+static void postparse_passes(SGSParser *o);
 
 /*
  * "Main" parsing function.
  */
-void SGS_parse(SGSParser *o, FILE *f, const char *fn) {
-  memset(o, 0, sizeof(SGSParser));
-  o->f = f;
-  o->fn = fn;
-  o->st = SGS_symtab_create();
-  o->line = 1;
-  o->ampmult = 1.f; /* default until changed */
-  o->def_time_ms = 1000; /* default until changed */
-  o->def_freq = 444.f; /* default until changed */
-  o->def_A4tuning = 444.f; /* default until changed */
-  o->def_ratio = 1.f; /* default until changed */
-  parse_level(o, 0, NL_GRAPH, SCOPE_TOP);
-  SGS_symtab_destroy(o->st);
-  pp_passes(o);
+struct SGSParseList *SGS_parser_parse(SGSParser *pa, const char *filename) {
+	FILE *f = fopen(filename, "r");
+	if (!f) return NULL;
+
+  pa->line = 1;
+  parse_level(pa, 0, NL_GRAPH, SCOPE_TOP);
+  postparse_passes(pa);
+
+	fclose(pa->f);
+
+	return &pa->result;
 }
 
 /*
@@ -1377,7 +1227,7 @@ static void group_events(SGSEventNode *to) {
   uint i;
   int wait = 0, waitcount = 0;
   for (e = to->groupfrom; e != e_after; ) {
-    SGSOperatorNode **nl = SGS_NODE_LIST_GET(&e->operators);
+    SGSOperatorNode **nl = (struct SGSOperatorNode**) &e->operators;
     for (i = 0; i < e->operators.count; ++i) {
       SGSOperatorNode *op = nl[i];
       if (e->next == e_after &&
@@ -1394,7 +1244,7 @@ static void group_events(SGSEventNode *to) {
     }
   }
   for (e = to->groupfrom; e != e_after; ) {
-    SGSOperatorNode **nl = SGS_NODE_LIST_GET(&e->operators);
+    SGSOperatorNode **nl = (struct SGSOperatorNode**) e->operators.data;
     for (i = 0; i < e->operators.count; ++i) {
       SGSOperatorNode *op = nl[i];
       if (op->on_flags & ON_TIME_DEFAULT) {
@@ -1412,7 +1262,7 @@ static void group_events(SGSEventNode *to) {
     e_after->wait_ms += wait;
 }
 
-static int time_operator(SGSOperatorNode *op, void *arg) {
+static void time_operator(SGSOperatorNode *op) {
   SGSEventNode *e = op->event;
   if (op->valitfreq.time_ms == VI_TIME_DEFAULT)
     op->valitfreq.time_ms = op->time_ms;
@@ -1432,7 +1282,16 @@ static int time_operator(SGSOperatorNode *op, void *arg) {
       ((SGSEventNode*)e->next)->wait_ms += op->time_ms;
     e->en_flags &= ~EN_ADD_WAIT_DURATION;
   }
-  return 0;
+  uint i;
+  for (i = op->fmods.inherit_count; i < op->fmods.count; ++i) {
+    time_operator(op->fmods.data[i]);
+  }
+  for (i = op->pmods.inherit_count; i < op->pmods.count; ++i) {
+    time_operator(op->pmods.data[i]);
+  }
+  for (i = op->amods.inherit_count; i < op->amods.count; ++i) {
+    time_operator(op->amods.data[i]);
+  }
 }
 
 static void time_event(SGSEventNode *e) {
@@ -1442,13 +1301,15 @@ static void time_event(SGSEventNode *e) {
    */
   if (e->valitpanning.time_ms == VI_TIME_DEFAULT)
     e->valitpanning.time_ms = 1000; /* FIXME! */
-  SGS_node_list_rforeach(&e->operators, time_operator, 0);
+  for (uint i = e->operators.inherit_count; i < e->operators.count; ++i) {
+    time_operator(e->operators.data[i]);
+  }
   /*
    * Timing for composites - done before event list flattened.
    */
   if (e->composite) {
     SGSEventNode *ce = e->composite, *ce_prev = e;
-    SGSOperatorNode *ce_op = SGS_NODE_LIST_GET(&ce->operators)[0],
+    SGSOperatorNode *ce_op = (struct SGSOperatorNode*) ce->operators.data[0],
                     *ce_op_prev = ce_op->on_prev,
                     *e_op = ce_op_prev;
     if (e_op->on_flags & ON_TIME_DEFAULT)
@@ -1472,7 +1333,7 @@ static void time_event(SGSEventNode *e) {
       ce_op_prev = ce_op;
       ce = ce->next;
       if (!ce) break;
-      ce_op = SGS_NODE_LIST_GET(&ce->operators)[0];
+      ce_op = (struct SGSOperatorNode*) ce->operators.data[0];
     }
   }
 }
@@ -1541,7 +1402,7 @@ static void flatten_events(SGSEventNode *e) {
 /*
  * Post-parsing passes - perform timing adjustments, flatten event list.
  */
-static void pp_passes(SGSParser *o) {
+static void postparse_passes(SGSParser *o) {
   SGSEventNode *e;
   for (e = o->events; e; e = e->next) {
     time_event(e);
