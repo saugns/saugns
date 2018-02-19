@@ -11,6 +11,9 @@
  * <http://www.gnu.org/licenses/>.
  */
 
+#pragma once
+#include "sgensys.h"
+
 struct SGSProgram;
 typedef struct SGSProgram SGSProgram;
 

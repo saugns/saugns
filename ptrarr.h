@@ -18,13 +18,15 @@
  * Pointer array type.
  */
 
+typedef const void *SGSPtr_t;
+
 struct SGSPtrArr {
-	uint32_t count;
-	uint32_t copy_count;
-	void **data;
-	uint32_t alloc;
+	size_t count;
+	size_t copy_count;
+	SGSPtr_t *data;
+	size_t alloc;
 };
 
-void SGS_ptrarr_add(struct SGSPtrArr *list, void *node);
+bool SGS_ptrarr_add(struct SGSPtrArr *list, SGSPtr_t value);
 void SGS_ptrarr_clear(struct SGSPtrArr *list);
 void SGS_ptrarr_copy(struct SGSPtrArr *dst, const struct SGSPtrArr *src);

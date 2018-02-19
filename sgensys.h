@@ -13,4 +13,6 @@ typedef unsigned int uint;
 typedef unsigned short ushort;
 typedef unsigned char uchar;
 
+#include <stddef.h>
 #include <stdint.h>
+#include <stdbool.h>

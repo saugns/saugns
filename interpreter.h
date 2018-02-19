@@ -11,7 +11,8 @@
  * <http://www.gnu.org/licenses/>.
  */
 
-#include <stddef.h>
+#pragma once
+#include "ptrarr.h"
 
 struct SGSEventVoiceData {
 	uint voice_id;
@@ -66,6 +67,6 @@ void SGS_destroy_interpreter(SGSInterpreter_t o);
 SGSResult_t SGS_interpreter_run(SGSInterpreter_t o,
                                 struct SGSProgram *program);
 void SGS_interpreter_get_results(SGSInterpreter_t o,
-                                 SGSResult_t **results, size_t **count);
+                                 struct SGSPtrArr *results);
 
 void SGS_interpreter_clear(SGSInterpreter_t o);

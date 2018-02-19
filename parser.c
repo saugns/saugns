@@ -470,15 +470,17 @@ static void destroy_operator(SGSOperatorNode *op) {
   SGS_ptrarr_clear(&op->on_next);
   uint i;
   for (i = op->fmods.copy_count; i < op->fmods.count; ++i) {
-    destroy_operator(op->fmods.data[i]);
+    destroy_operator((struct SGSOperatorNode*) op->fmods.data[i]);
   }
   for (i = op->pmods.copy_count; i < op->pmods.count; ++i) {
-    destroy_operator(op->pmods.data[i]);
+    destroy_operator((struct SGSOperatorNode*) op->pmods.data[i]);
   }
   for (i = op->amods.copy_count; i < op->amods.count; ++i) {
-    destroy_operator(op->amods.data[i]);
+    destroy_operator((struct SGSOperatorNode*) op->amods.data[i]);
   }
-  if (op->on_flags & ON_LABEL_ALLOC) free((char*)op->label);
+  if (op->on_flags & ON_LABEL_ALLOC) {
+	  free((char*) op->label);
+  }
   free(op);
 }
 
@@ -487,7 +489,7 @@ static void destroy_operator(SGSOperatorNode *op) {
  */
 void SGS_event_node_destroy(SGSEventNode *e) {
   for (uint i = e->operators.copy_count; i < e->operators.count; ++i) {
-    destroy_operator(e->operators.data[i]);
+    destroy_operator((struct SGSOperatorNode*) e->operators.data[i]);
   }
   SGS_ptrarr_clear(&e->graph);
   free(e);
@@ -1283,13 +1285,13 @@ static void time_operator(SGSOperatorNode *op) {
   }
   uint i;
   for (i = op->fmods.copy_count; i < op->fmods.count; ++i) {
-    time_operator(op->fmods.data[i]);
+    time_operator((struct SGSOperatorNode*) op->fmods.data[i]);
   }
   for (i = op->pmods.copy_count; i < op->pmods.count; ++i) {
-    time_operator(op->pmods.data[i]);
+    time_operator((struct SGSOperatorNode*) op->pmods.data[i]);
   }
   for (i = op->amods.copy_count; i < op->amods.count; ++i) {
-    time_operator(op->amods.data[i]);
+    time_operator((struct SGSOperatorNode*) op->amods.data[i]);
   }
 }
 
@@ -1301,7 +1303,7 @@ static void time_event(SGSEventNode *e) {
   if (e->valitpanning.time_ms == VI_TIME_DEFAULT)
     e->valitpanning.time_ms = 1000; /* FIXME! */
   for (uint i = e->operators.copy_count; i < e->operators.count; ++i) {
-    time_operator(e->operators.data[i]);
+    time_operator((struct SGSOperatorNode*) e->operators.data[i]);
   }
   /*
    * Timing for composites - done before event list flattened.

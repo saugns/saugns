@@ -17,22 +17,32 @@
 
 /**
  * Add a pointer to the given array.
+ *
+ * \return true unless allocation fails
  */
-void SGS_ptrarr_add(struct SGSPtrArr *list, void *value) {
+bool SGS_ptrarr_add(struct SGSPtrArr *list, SGSPtr_t value) {
 	if (list->count == list->copy_count) {
-		void *old_list = list->data;
+		SGSPtr_t *old_list = list->data;
 		if (list->count == list->alloc) {
 			list->alloc <<= 1;
 		}
-		list->data = malloc(sizeof(void*) * list->alloc);
-		memcpy(list->data, old_list, sizeof(void*) * list->count);
+		list->data = malloc(sizeof(SGSPtr_t) * list->alloc);
+		if (!list->data) {
+			return false;
+		}
+		memcpy(list->data, old_list, sizeof(SGSPtr_t) * list->count);
 	} else if (list->count == list->alloc) {
 		list->alloc <<= 1;
-	    	list->data = realloc(list->data, sizeof(void*) * list->alloc);
+	    	list->data = realloc(list->data,
+		                     sizeof(SGSPtr_t) * list->alloc);
+		if (!list->data) {
+			return false;
+		}
 	}
 
 	list->data[list->count] = value;
 	++list->count;
+	return true;
 }
 
 /**
