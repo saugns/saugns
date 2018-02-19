@@ -7,6 +7,7 @@ OBJ=audiodev.o \
     osc.o \
     parser.o \
     program.o \
+    ptrarr.o \
     renderer.o \
     sgensys.o \
     symtab.o \
@@ -38,11 +39,14 @@ interpreter.o: interpreter.c program.h interpreter.h sgensys.h
 osc.o: osc.c math.h osc.h sgensys.h 
 	$(CC) -c $(CFLAGS) osc.c
 
-parser.o: parser.c parser_*.c math.h parser.h program.h sgensys.h
+parser.o: parser.c parser_*.c math.h ptrarr.h parser.h program.h sgensys.h
 	$(CC) -c $(CFLAGS) parser.c
 
 program.o: program.c parser.h program.h sgensys.h
 	$(CC) -c $(CFLAGS) program.c
+
+ptrarr.o: ptrarr.c ptrarr.h sgensys.h
+	$(CC) -c $(CFLAGS) ptrarr.c
 
 renderer.o: renderer.c renderer.h math.h osc.h program.h interpreter.h sgensys.h
 	$(CC) -c $(CFLAGS) renderer.c

@@ -11,24 +11,10 @@
  * <http://www.gnu.org/licenses/>.
  */
 
+#include "ptrarr.h"
 #include <stdio.h>
 
 struct SGSOperatorNode;
-
-/*
- * SGSNodeList
- */
-
-struct SGSNodeList {
-  uint count,
-       alloc;
-  void **data;
-  uint inherit_count; /* used when nodes are inherited from another list */
-};
-
-void SGS_node_list_add(struct SGSNodeList *list, void *node);
-void SGS_node_list_clear(struct SGSNodeList *list);
-void SGS_node_list_safe_copy(struct SGSNodeList *dst, const struct SGSNodeList *src);
 
 /*
  * Parsing nodes.
@@ -46,7 +32,7 @@ enum {
 
 typedef struct SGSOperatorNode {
   struct SGSEventNode *event;
-  struct SGSNodeList on_next; /* all immediate forward references for operator(s) */
+  struct SGSPtrArr on_next; /* all immediate forward references for operator(s) */
   struct SGSOperatorNode *on_prev; /* preceding node(s) for same operator(s) */
   struct SGSOperatorNode *next_bound;
   uint on_flags;
@@ -60,7 +46,7 @@ typedef struct SGSOperatorNode {
   float freq, dynfreq, phase, amp, dynamp;
   SGSProgramValit valitfreq, valitamp;
   /* node adjacents in operator linkage graph */
-  struct SGSNodeList fmods, pmods, amods;
+  struct SGSPtrArr fmods, pmods, amods;
 } SGSOperatorNode;
 
 enum {
@@ -74,7 +60,7 @@ typedef struct SGSEventNode {
   struct SGSEventNode *groupfrom;
   struct SGSEventNode *composite;
   int wait_ms;
-  struct SGSNodeList operators; /* operators included in event */
+  struct SGSPtrArr operators; /* operators included in event */
   uint en_flags;
   /* voice parameters */
   uint voice_id; /* not filled in by parser; for later use (program.c) */
@@ -83,7 +69,7 @@ typedef struct SGSEventNode {
   uchar voice_attr;
   float panning;
   SGSProgramValit valitpanning;
-  struct SGSNodeList graph;
+  struct SGSPtrArr graph;
 } SGSEventNode;
 
 void SGS_event_node_destroy(SGSEventNode *e);
