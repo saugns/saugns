@@ -1,5 +1,5 @@
 /* sgensys: Script parser module.
- * Copyright (c) 2011-2012, 2017-2018 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -28,6 +28,7 @@ enum {
   ON_LABEL_ALLOC = 1<<3,
   ON_TIME_DEFAULT = 1<<4,
   ON_SILENCE_ADDED = 1<<5,
+  ON_HAS_COMPOSITE = 1<<6,
 };
 
 typedef struct SGSOperatorNode {
