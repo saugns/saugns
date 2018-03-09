@@ -7,6 +7,7 @@ OBJ=audiodev.o \
     ptrarr.o \
     mempool.o \
     symtab.o \
+    reader.o \
     lexer.o \
     parser.o \
     program.o \
@@ -38,7 +39,10 @@ audiodev.o: audiodev.c audiodev_*.c audiodev.h sgensys.h
 generator.o: generator.c generator.h program.h osc.h math.h sgensys.h
 	$(CC) -c $(CFLAGS) generator.c
 
-lexer.o: lexer.c lexer.h symtab.h math.h sgensys.h
+reader.o: reader.c reader.h sgensys.h
+	$(CC) -c $(CFLAGS) reader.c
+
+lexer.o: lexer.c lexer.h reader.h symtab.h math.h sgensys.h
 	$(CC) -c $(CFLAGS) lexer.c
 
 mempool.o: mempool.c mempool.h sgensys.h
@@ -47,7 +51,7 @@ mempool.o: mempool.c mempool.h sgensys.h
 osc.o: osc.c osc.h math.h sgensys.h
 	$(CC) -c $(CFLAGS) osc.c
 
-parser.o: parser.c parser.h symtab.h program.h ptrarr.h osc.h math.h sgensys.h
+parser.o: parser.c parser.h reader.h symtab.h program.h ptrarr.h osc.h math.h sgensys.h
 	$(CC) -c $(CFLAGS) parser.c
 
 program.o: program.c program.h ptrarr.h parser.h sgensys.h
