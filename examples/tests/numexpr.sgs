@@ -1,0 +1,8 @@
+# Several operators with the same frequency
+Osin f400 t1
+|\0.5
+Osin f(400 + 8^1*2 - 4^2*1 + 2^1(0)) t1
+|\0.5
+Osin f(2*100 + 1 + 100*2 - 2^(1(0))) t1
+|\0.5
+Osin f(+(-(1)) + 2(200) + 1 + (16 - 2^4)*9) t1

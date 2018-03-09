@@ -77,7 +77,7 @@ default value. Some default values can be changed using the "S"
 
 Modifiers are similar to keywords, but simpler and more flexible
 in how they may be used. They may or may not be followed by an
-argument (e.g.  a delay time).
+argument (e.g. a delay time).
 
 Keywords
 --------
@@ -106,8 +106,10 @@ Parameters:
 	f	Set default O "f" (frequency, Hz) value; defaults to 444.
 	r	Set default O "r" (frequency ratio) value; defaults to 1.
 	t	Set default O "t" (time, seconds) value; defaults to 1.
-	a	Set multiplier for O "a" (amplitude) value applied to all
-		top-level carriers; defaults to 1.
+	a	Set multiplier for O "a" (amplitude) value, applied when
+		adding a top-level carrier. If used, this disables automatic
+		down-scaling of amplitude by the number of voices, for
+		manual control instead.
 	n	Sets A4 tuning (Hz) for O "f" (frequency, Hz) value using
 		note syntax; defaults to 444.
 
@@ -124,7 +126,9 @@ Wave types:
 	sin	Sine.
 	sqr	Square (naive).
 	tri	Triangle (naive).
-	saw	Saw (naive, decreasing).
+	saw	Saw (naive).
+			Increasing slope; use negative amplitude
+			or frequency for decreasing slope.
 	sha	Half-frequency absolute sine (adjusted).
 			Frequency halved to restore base frequency,
 			peak amplitude centered and doubled, phase
@@ -162,12 +166,15 @@ Parameters:
 		in turn be given the value of the preceding part if not
 		explicitly set - with the exception of nested operators for
 		the last part, which will have infinite time (ti) by default.
-	f	Frequency in Hz.
+	f	Frequency in Hz. Can be negative to flip wave shape timewise.
 			Gradual value adjustment also supported; see section.
 	f!<>	A second frequency in Hz may follow the "!", for a range to
-		use with FM by wave or envelope. A list of modulator
-		operators may be specified within "<>"; this list replaces
-		any previous FM modulators set, and may be empty.
+		use with FM by wave or envelope.
+			A list of modulator operators may be specified
+		within "<>"; this list replaces any previous FM modulators
+		set, and may be empty. Each modulator will produce a result
+		in a 0.0 to 1.0 range, i.e. a positive signal, multiplied by
+		its amplitude parameter (defaulting to 1.0).
 			The product of the modulator amplitudes is used to
 		frequency-modulate the carrier(s), be they the final
 		carrier(s) or in turn modulator(s) for one or more other
@@ -178,22 +185,30 @@ Parameters:
 		n:m ratio.
 			Gradual value adjustment also supported; see section.
 	r!<>	(For modulator operators only.) A second frequency ratio,
-		for a range to use with FM by wave or envelope. A list of
-		modulator operators may be specified within "<>"; this list
-		replaces any previous FM modulators set, and may be empty.
+		for a range to use with FM by wave or envelope.
+			A list of modulator operators may be specified
+		within "<>"; this list replaces any previous FM modulators
+		set, and may be empty. Each modulator will produce a result
+		in a 0.0 to 1.0 range, i.e. a positive signal, multiplied by
+		its amplitude parameter (defaulting to 1.0).
 			The product of the modulator amplitudes is used to
 		frequency-modulate the carrier(s), be they the final
 		carrier(s) or in turn modulator(s) for one or more other
 		carrier(s).
-	a	Amplitude, where 1.0 corresponds to a level of 0dB. (Note
-		that for top-level carriers, the "S a" value is used as a
-		multiplier. Panning will also reduce the output level
-		unless at the extreme left or right.)
+	a	Amplitude, where 1.0 corresponds to a level of 0dB and
+		0.0 is silence. (Note that the final output level is scaled
+		down by the number of voices; alternatively, the S "a" option
+		can be used to set a multiplier used when adding a top-level
+		carrier. Panning will further reduce output level unless
+		fully left or right.) Can be negative to flip sign of result.
 			Gradual value adjustment also supported; see section.
 	a!<>	A second amplitude may follow the "!", for a range to use
-		with AM by wave or envelope. A list of modulator operators
-		may be specified within "<>"; this list replaces any
-		previous AM modulators set, and may be empty.
+		with AM by wave or envelope.
+			A list of modulator operators may be specified
+		within "<>"; this list replaces any previous AM modulators
+		set, and may be empty. Each modulator will produce a result
+		in a 0.0 to 1.0 range, i.e. a positive signal, multiplied by
+		its amplitude parameter (defaulting to 1.0).
 			The product of the modulator amplitudes is used to
 		amplitude-modulate the carrier(s), be they the final
 		carrier(s) or in turn modulator(s) for one or more other
@@ -201,7 +216,7 @@ Parameters:
 	p	Set the beginning phase of the wave. For example, p(3/4) will
 		make a sine or triangle wave begin at its "bottom". This is
 		mostly used where wanted for waves used by f!/r! or a!.
-	p*<>	A list of PM modulator operators may be specified within "<>";
+	p+<>	A list of PM modulator operators may be specified within "<>";
 		this list replaces any previous PM modulators set, and may be
 		empty.
 			The sum of the modulator amplitudes is used to
@@ -267,15 +282,15 @@ Labels and referencing:
 	script.
 
 Frequencies as notes:
-		Frequency values may be specified as notes. Currently,
-		justly intoned C-major scale is supported; "S n" sets
-		the A4 tuning (default 444Hz). The value consists of the
-		note (C, D, E, F, G, A or B), optionally given a prefix
-		and/or suffix. The prefix is an optional subnote (c, d,
-		e, f, g, a or b) inside an inner octave (between note and
-		next note). The suffix is an optional s (sharp) or
-		f (flat), and/or, in the last position, an octave number
-		(from 0-10, default 4).
+	Frequency values may be specified as notes. Currently, justly
+	intoned C-major scale is supported; "S n" sets the A4 tuning
+	(default 444Hz).
+		The value consists of the note (C, D, E, F, G, A or B),
+	optionally given a prefix and/or suffix. The prefix is an optional
+	subnote (c, d, e, f, g, a or b) inside an inner octave (between
+	note and next note). The suffix is an optional s (sharp) or
+	f (flat), and/or, in the last position, an octave number
+	(from 0-10, default 4).
 
 Timing
 ------
