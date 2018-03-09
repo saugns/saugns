@@ -242,21 +242,22 @@ Numerical expressions are allowed within parentheses, allowing numbers
 to be specified using basic arithmetic and freely placed whitespace.
 
 Gradual value adjustment:
-	Some parameters are noted to support this. Instead of typing the
-	value directly, the following sub-parameters are specified within []
-	(square brackets):
-	v	Target value.
-	t	Time to reach target value.
+	To ramp, or sweep, a parameter which supports this towards a
+	goal value -- the ordinary value being the start for a trajectory --
+	following the ordinary value or by itself, the following value ramp
+	subparameters can be given values within "[]" (square brackets):
+	v	Goal value.
+	t	Time to reach goal value.
 	c	Change type; either lin, exp or log. (exp and log use
 		ear-tuned polynomial approximations designed to sound
 		natural, and which are symmetric to one another.)
 
 Parameters and operator binding:
-	When specifying or referencing operators within {} brackets, any
-	parameters set following the closing '}' will be bound to and apply
+	When specifying or referencing operators within ":<>" nesting, any
+	parameters set following the closing '>' will be bound to and apply
 	to all of them.
 		Significantly, this allows multiple carriers (given within
-	the {}) to be linked to the same modulator(s), whether for FM, PM,
+	the <>) to be linked to the same modulator(s), whether for FM, PM,
 	or AM. (Note: Support for this is experimental and incomplete.)
 
 Labels and referencing:

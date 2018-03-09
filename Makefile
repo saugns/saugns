@@ -1,4 +1,5 @@
-CFLAGS=-std=c99 -W -Wall -O2 -ffast-math
+CFLAGS=-std=c99 -W -Wall -O2
+CFLAGS_FAST=$(CFLAGS) -ffast-math
 LFLAGS=-s -lm
 LFLAGS_LINUX=$(LFLAGS) -lasound
 LFLAGS_SNDIO=$(LFLAGS) -lsndio
@@ -32,7 +33,7 @@ sgensys: $(OBJ)
 		echo "Linking for NetBSD (using OSS)."; \
 		$(CC) $(OBJ) $(LFLAGS_OSSAUDIO) -o sgensys; \
 	else \
-		echo "Linking for generic UNIX (using OSS)."; \
+		echo "Linking for UNIX with OSS."; \
 		$(CC) $(OBJ) $(LFLAGS) -o sgensys; \
 	fi
 
@@ -40,7 +41,7 @@ audiodev.o: audiodev.c audiodev/*.c audiodev.h sgensys.h
 	$(CC) -c $(CFLAGS) audiodev.c
 
 generator.o: generator.c generator.h program.h wave.h math.h osc.h sgensys.h
-	$(CC) -c $(CFLAGS) generator.c
+	$(CC) -c $(CFLAGS_FAST) generator.c
 
 lexer.o: lexer.c lexer.h symtab.h math.h sgensys.h
 	$(CC) -c $(CFLAGS) lexer.c
@@ -64,7 +65,7 @@ symtab.o: symtab.c symtab.h mempool.h sgensys.h
 	$(CC) -c $(CFLAGS) symtab.c
 
 wave.o: wave.c wave.h math.h sgensys.h
-	$(CC) -c $(CFLAGS) wave.c
+	$(CC) -c $(CFLAGS_FAST) wave.c
 
 wavfile.o: wavfile.c wavfile.h sgensys.h
 	$(CC) -c $(CFLAGS) wavfile.c

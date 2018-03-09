@@ -171,8 +171,8 @@ enum {
   /* parsing scopes */
   SCOPE_SAME = 0,
   SCOPE_TOP = 1,
-  SCOPE_BIND = '{',
-  SCOPE_NEST = '<'
+  SCOPE_BIND,
+  SCOPE_NEST,
 };
 
 enum {
@@ -257,7 +257,9 @@ static float read_num_r(SGSParser *o, float (*read_symbol)(SGSParser *o),
   c = getc(o->f);
   if (level > 0) read_ws(o);
   if (c == '(') {
-    return read_num_r(o, read_symbol, buf, len, 255, level+1);
+    num = read_num_r(o, read_symbol, buf, len, 255, level+1);
+    if (level == 0) return num;
+    goto LOOP;
   }
   if (read_symbol &&
       ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))) {
@@ -646,8 +648,10 @@ static void end_operator(NodeScope *ns) {
   if (op->valitamp.type != SGS_VALIT_NONE)
     op->operator_params |= SGS_P_OPATTR |
                            SGS_P_VALITAMP;
-  if (!(ns->ns_flags & NS_NESTED_SCOPE))
+  if (!(ns->ns_flags & NS_NESTED_SCOPE)) {
     op->amp *= o->ampmult;
+    op->valitamp.goal *= o->ampmult;
+  }
   ns->operator = NULL;
   ns->last_operator = op;
 }
@@ -740,8 +744,10 @@ static void begin_operator(NodeScope *ns, uint8_t linktype,
     op->on_prev = pop;
     op->on_flags = pop->on_flags & (ON_OPERATOR_NESTED |
                                     ON_MULTIPLE_OPERATORS);
-    if (is_composite)
+    if (is_composite) {
+      pop->on_flags |= ON_HAS_COMPOSITE;
       op->on_flags |= ON_TIME_DEFAULT; /* default: previous or infinite time */
+    }
     op->attr = pop->attr;
     op->wave = pop->wave;
     op->time_ms = pop->time_ms;
@@ -941,7 +947,7 @@ static bool parse_settings(NodeScope *ns) {
       break;
     case 'n': {
       float freq;
-      read_num(o, 0, &freq);
+      if (!read_num(o, 0, &freq)) break;
       if (freq < 1.f) {
         warning(o, "ignoring tuning frequency smaller than 1.0");
         break;
@@ -954,7 +960,7 @@ static bool parse_settings(NodeScope *ns) {
       break;
     case 't': {
       float time;
-      read_num(o, 0, &time);
+      if (!read_num(o, 0, &time)) break;
       if (time < 0.f) {
         warning(o, "ignoring 't' with sub-zero time");
         break;
@@ -985,12 +991,13 @@ static bool parse_step(NodeScope *ns) {
     case 'P':
       if ((ns->ns_flags & NS_NESTED_SCOPE) != 0)
         goto UNKNOWN;
+      if (read_num(o, 0, &e->panning)) {
+        if (e->valitpanning.type == SGS_VALIT_NONE)
+          e->voice_attr &= ~SGS_ATTR_VALITPANNING;
+      }
       if (tryc('[', o->f)) {
         if (read_valit(o, 0, &e->valitpanning))
           e->voice_attr |= SGS_ATTR_VALITPANNING;
-      } else if (read_num(o, 0, &e->panning)) {
-        if (e->valitpanning.type == SGS_VALIT_NONE)
-          e->voice_attr &= ~SGS_ATTR_VALITPANNING;
       }
       break;
     case '\\':
@@ -1002,6 +1009,15 @@ static bool parse_step(NodeScope *ns) {
       if (ns->linktype == NL_AMODS ||
           ns->linktype == NL_FMODS)
         goto UNKNOWN;
+      if (read_num(o, 0, &op->amp)) {
+        op->operator_params |= SGS_P_AMP;
+        if (op->valitamp.type == SGS_VALIT_NONE)
+          op->attr &= ~SGS_ATTR_VALITAMP;
+      }
+      if (tryc('[', o->f)) {
+        if (read_valit(o, 0, &op->valitamp))
+          op->attr |= SGS_ATTR_VALITAMP;
+      }
       if (tryc('!', o->f)) {
         if (!testc('<', o->f)) {
           read_num(o, 0, &op->dynamp);
@@ -1013,17 +1029,22 @@ static bool parse_step(NodeScope *ns) {
           }
           parse_level(o, ns, NL_AMODS, SCOPE_NEST);
         }
-      } else if (tryc('[', o->f)) {
-        if (read_valit(o, 0, &op->valitamp))
-          op->attr |= SGS_ATTR_VALITAMP;
-      } else {
-        read_num(o, 0, &op->amp);
-        op->operator_params |= SGS_P_AMP;
-        if (op->valitamp.type == SGS_VALIT_NONE)
-          op->attr &= ~SGS_ATTR_VALITAMP;
       }
       break;
     case 'f':
+      if (read_num(o, read_note, &op->freq)) {
+        op->attr &= ~SGS_ATTR_FREQRATIO;
+        op->operator_params |= SGS_P_FREQ;
+        if (op->valitfreq.type == SGS_VALIT_NONE)
+          op->attr &= ~(SGS_ATTR_VALITFREQ |
+                        SGS_ATTR_VALITFREQRATIO);
+      }
+      if (tryc('[', o->f)) {
+        if (read_valit(o, read_note, &op->valitfreq)) {
+          op->attr |= SGS_ATTR_VALITFREQ;
+          op->attr &= ~SGS_ATTR_VALITFREQRATIO;
+        }
+      }
       if (tryc('!', o->f)) {
         if (!testc('<', o->f)) {
           if (read_num(o, 0, &op->dynfreq)) {
@@ -1037,35 +1058,40 @@ static bool parse_step(NodeScope *ns) {
           }
           parse_level(o, ns, NL_FMODS, SCOPE_NEST);
         }
-      } else if (tryc('[', o->f)) {
-        if (read_valit(o, read_note, &op->valitfreq)) {
-          op->attr |= SGS_ATTR_VALITFREQ;
-          op->attr &= ~SGS_ATTR_VALITFREQRATIO;
-        }
-      } else if (read_num(o, read_note, &op->freq)) {
-        op->attr &= ~SGS_ATTR_FREQRATIO;
-        op->operator_params |= SGS_P_FREQ;
-        if (op->valitfreq.type == SGS_VALIT_NONE)
-          op->attr &= ~(SGS_ATTR_VALITFREQ |
-                        SGS_ATTR_VALITFREQRATIO);
       }
       break;
     case 'p': {
       float phase;
+      if (read_num(o, 0, &phase)) {
+        op->phase = lrint(remainder(phase, 1.f) * 2.f * (float)INT32_MAX);
+        op->operator_params |= SGS_P_PHASE;
+      }
       if (tryc('<', o->f)) {
         if (op->pmods.count > 0) {
           op->operator_params |= SGS_P_ADJCS;
           SGSPtrList_clear(&op->pmods);
         }
         parse_level(o, ns, NL_PMODS, SCOPE_NEST);
-      } else if (read_num(o, 0, &phase)) {
-        op->phase = lrint(remainder(phase, 1.f) * 2.f * (float)INT32_MAX);
-        op->operator_params |= SGS_P_PHASE;
       }
       break; }
     case 'r':
       if (!(ns->ns_flags & NS_NESTED_SCOPE))
         goto UNKNOWN;
+      if (read_num(o, 0, &op->freq)) {
+        op->freq = 1.f / op->freq;
+        op->attr |= SGS_ATTR_FREQRATIO;
+        op->operator_params |= SGS_P_FREQ;
+        if (op->valitfreq.type == SGS_VALIT_NONE)
+          op->attr &= ~(SGS_ATTR_VALITFREQ |
+                        SGS_ATTR_VALITFREQRATIO);
+      }
+      if (tryc('[', o->f)) {
+        if (read_valit(o, read_note, &op->valitfreq)) {
+          op->valitfreq.goal = 1.f / op->valitfreq.goal;
+          op->attr |= SGS_ATTR_VALITFREQ |
+                      SGS_ATTR_VALITFREQRATIO;
+        }
+      }
       if (tryc('!', o->f)) {
         if (!testc('<', o->f)) {
           if (read_num(o, 0, &op->dynfreq)) {
@@ -1080,24 +1106,11 @@ static bool parse_step(NodeScope *ns) {
           }
           parse_level(o, ns, NL_FMODS, SCOPE_NEST);
         }
-      } else if (tryc('[', o->f)) {
-        if (read_valit(o, read_note, &op->valitfreq)) {
-          op->valitfreq.goal = 1.f / op->valitfreq.goal;
-          op->attr |= SGS_ATTR_VALITFREQ |
-                      SGS_ATTR_VALITFREQRATIO;
-        }
-      } else if (read_num(o, 0, &op->freq)) {
-        op->freq = 1.f / op->freq;
-        op->attr |= SGS_ATTR_FREQRATIO;
-        op->operator_params |= SGS_P_FREQ;
-        if (op->valitfreq.type == SGS_VALIT_NONE)
-          op->attr &= ~(SGS_ATTR_VALITFREQ |
-                        SGS_ATTR_VALITFREQRATIO);
       }
       break;
     case 's': {
       float silence;
-      read_num(o, 0, &silence);
+      if (!read_num(o, 0, &silence)) break;
       if (silence < 0.f) {
         warning(o, "ignoring 's' with sub-zero time");
         break;
@@ -1117,7 +1130,7 @@ static bool parse_step(NodeScope *ns) {
         op->time_ms = SGS_TIME_INF;
       } else {
         float time;
-        read_num(o, 0, &time);
+        if (!read_num(o, 0, &time)) break;
         if (time < 0.f) {
           warning(o, "ignoring 't' with sub-zero time");
           break;
@@ -1176,13 +1189,26 @@ static bool parse_level(SGSParser *o, NodeScope *parentns,
       }
       break;
     case ':':
+      if (tryc('<', o->f)) {
+        end_operator(&ns);
+        if (parse_level(o, &ns, ns.linktype, SCOPE_BIND))
+          goto RETURN;
+        /*
+         * Multiple-operator node will now be ready for parsing.
+         */
+        flags = parse_step(&ns) ? (HANDLE_DEFER | DEFERRED_STEP) : 0;
+        break;
+      }
+      /*
+       * Label reference (get and use value).
+       */
       if (ns.set_label != NULL) {
         warning(o, "ignoring label assignment to label reference");
         label_next_node(&ns, NULL);
       }
       leave_defaults(&ns);
       leave_current_node(&ns);
-      if (read_label(o, label, ':')) {
+      if (read_label(o, label, c)) {
         SGSOperatorNode *ref = SGS_symtab_get(o->st, label);
         if (!ref)
           warning(o, "ignoring reference to undefined label");
@@ -1191,6 +1217,17 @@ static bool parse_level(SGSParser *o, NodeScope *parentns,
           flags = parse_step(&ns) ? (HANDLE_DEFER | DEFERRED_STEP) : 0;
         }
       }
+      break;
+    case '\'':
+      /*
+       * Label assignment (set to what follows).
+       */
+      if (ns.set_label != NULL) {
+        warning(o, "ignoring label assignment to label assignment");
+        break;
+      }
+      read_label(o, label, '\'');
+      label_next_node(&ns, label);
       break;
     case ';':
       if (newscope == SCOPE_SAME) {
@@ -1203,17 +1240,20 @@ static bool parse_level(SGSParser *o, NodeScope *parentns,
       flags = parse_step(&ns) ? (HANDLE_DEFER | DEFERRED_STEP) : 0;
       break;
     case '<':
-      if (parse_level(o, &ns, ns.linktype, '<'))
-        goto RETURN;
+      warning(o, "opening '<' out of place");
       break;
     case '>':
-      if (ns.scope != SCOPE_NEST) {
-        warning(o, "closing '>' without opening '<'");
-        break;
+      if (ns.scope == SCOPE_BIND) {
+        endscope = true;
+        goto RETURN;
       }
-      end_operator(&ns);
-      endscope = true;
-      goto RETURN;
+      if (ns.scope == SCOPE_NEST) {
+        end_operator(&ns);
+        endscope = true;
+        goto RETURN;
+      }
+      warning(o, "closing '>' without opening '<'");
+      break;
     case 'O': {
       int32_t wave = read_wavetype(o);
       if (wave < 0)
@@ -1233,22 +1273,11 @@ static bool parse_level(SGSParser *o, NodeScope *parentns,
         goto INVALID;
       read_waittime(&ns);
       break;
-    case '\'':
-      if (ns.set_label != NULL) {
-        warning(o, "ignoring label assignment to label assignment");
-        break;
-      }
-      read_label(o, label, '\'');
-      label_next_node(&ns, label);
+    case '[':
+      warning(o, "opening '[' out of place");
       break;
-    case '{':
-      end_operator(&ns);
-      if (parse_level(o, &ns, ns.linktype, SCOPE_BIND))
-        goto RETURN;
-      /*
-       * Multiple-operator node will now be ready for parsing.
-       */
-      flags = parse_step(&ns) ? (HANDLE_DEFER | DEFERRED_STEP) : 0;
+    case ']':
+      warning(o, "closing ']' without opening '['");
       break;
     case '|':
       if (in_defaults(&ns) ||
@@ -1272,13 +1301,6 @@ static bool parse_level(SGSParser *o, NodeScope *parentns,
       end_event(&ns);
       leave_current_node(&ns);
       break;
-    case '}':
-      if (ns.scope != SCOPE_BIND) {
-        warning(o, "closing '}' without opening '{'");
-        break;
-      }
-      endscope = true;
-      goto RETURN;
     default:
     INVALID:
       warning(o, WARN_INVALID);
@@ -1297,10 +1319,8 @@ static bool parse_level(SGSParser *o, NodeScope *parentns,
     }
   }
 FINISH:
-  if (newscope == SCOPE_NEST)
+  if (newscope == SCOPE_NEST || newscope == SCOPE_BIND)
     warning(o, "end of file without closing '>'s");
-  if (newscope == SCOPE_BIND)
-    warning(o, "end of file without closing '}'s");
 RETURN:
   end_scope(&ns);
   --o->calllevel;
@@ -1381,7 +1401,8 @@ static void time_operator(SGSOperatorNode *op) {
   if ((op->on_flags & (ON_TIME_DEFAULT | ON_OPERATOR_NESTED)) ==
                       (ON_TIME_DEFAULT | ON_OPERATOR_NESTED)) {
     op->on_flags &= ~ON_TIME_DEFAULT;
-    op->time_ms = SGS_TIME_INF;
+    if (!(op->on_flags & ON_HAS_COMPOSITE))
+      op->time_ms = SGS_TIME_INF;
   }
   if (op->time_ms >= 0 && !(op->on_flags & ON_SILENCE_ADDED)) {
     op->time_ms += op->silence_ms;
