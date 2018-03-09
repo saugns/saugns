@@ -164,9 +164,9 @@ Parameters:
 		the last part, which will have infinite time (ti) by default.
 	f	Frequency in Hz.
 			Gradual value adjustment also supported; see section.
-	f!<>	A second frequency in Hz may follow the "!", for a range to
+	f![]	A second frequency in Hz may follow the "!", for a range to
 		use with FM by wave or envelope. A list of modulator
-		operators may be specified within "<>"; this list replaces
+		operators may be specified within "[]"; this list replaces
 		any previous FM modulators set, and may be empty.
 			The product of the modulator amplitudes is used to
 		frequency-modulate the carrier(s), be they the final
@@ -177,9 +177,9 @@ Parameters:
 		the given number. May be used in the form r(n/m) for an
 		n:m ratio.
 			Gradual value adjustment also supported; see section.
-	r!<>	(For modulator operators only.) A second frequency ratio,
+	r![]	(For modulator operators only.) A second frequency ratio,
 		for a range to use with FM by wave or envelope. A list of
-		modulator operators may be specified within "<>"; this list
+		modulator operators may be specified within "[]"; this list
 		replaces any previous FM modulators set, and may be empty.
 			The product of the modulator amplitudes is used to
 		frequency-modulate the carrier(s), be they the final
@@ -190,9 +190,9 @@ Parameters:
 		multiplier. Panning will also reduce the output level
 		unless at the extreme left or right.)
 			Gradual value adjustment also supported; see section.
-	a!<>	A second amplitude may follow the "!", for a range to use
+	a![]	A second amplitude may follow the "!", for a range to use
 		with AM by wave or envelope. A list of modulator operators
-		may be specified within "<>"; this list replaces any
+		may be specified within "[]"; this list replaces any
 		previous AM modulators set, and may be empty.
 			The product of the modulator amplitudes is used to
 		amplitude-modulate the carrier(s), be they the final
@@ -201,7 +201,7 @@ Parameters:
 	p	Set the beginning phase of the wave. For example, p(3/4) will
 		make a sine or triangle wave begin at its "bottom". This is
 		mostly used where wanted for waves used by f!/r! or a!.
-	p<>	A list of PM modulator operators may be specified within "<>";
+	p[]	A list of PM modulator operators may be specified within "[]";
 		this list replaces any previous PM modulators set, and may be
 		empty.
 			The sum of the modulator amplitudes is used to
@@ -242,11 +242,12 @@ Numerical expressions are allowed within parentheses, allowing numbers
 to be specified using basic arithmetic and freely placed whitespace.
 
 Gradual value adjustment:
-	Some parameters are noted to support this. Instead of typing the
-	value directly, the following sub-parameters are specified within []
-	(square brackets):
-	v	Target value.
-	t	Time to reach target value.
+	To ramp, or sweep, a parameter which supports this towards a
+	goal value -- the ordinary value being the start for a trajectory --
+	following the ordinary value or by itself, the following value ramp
+	subparameters can be given values within "{}" (curly brackets):
+	v	Goal value.
+	t	Time to reach goal value.
 	c	Change type; either lin, exp or log. (exp and log use
 		ear-tuned polynomial approximations designed to sound
 		natural, and which are symmetric to one another.)
