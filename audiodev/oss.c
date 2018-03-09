@@ -27,17 +27,17 @@
  */
 static inline SGS_AudioDev *open_oss(const char *name, int mode,
 		uint16_t channels, uint32_t *srate) {
-	const char *err = NULL;
+	const char *error = NULL;
 	int tmp, fd;
 
 	if ((fd = open(name, mode, 0)) == -1) {
-		err = name;
+		error = name;
 		goto ERROR;
 	}
 
 	tmp = AFMT_S16_NE;
 	if (ioctl(fd, SNDCTL_DSP_SETFMT, &tmp) == -1) {
-		err = "SNDCTL_DSP_SETFMT";
+		error = "SNDCTL_DSP_SETFMT";
 		goto ERROR;
 	}
 	if (tmp != AFMT_S16_NE) {
@@ -47,7 +47,7 @@ static inline SGS_AudioDev *open_oss(const char *name, int mode,
 
 	tmp = channels;
 	if (ioctl(fd, SNDCTL_DSP_CHANNELS, &tmp) == -1) {
-		err = "SNDCTL_DSP_CHANNELS";
+		error = "SNDCTL_DSP_CHANNELS";
 		goto ERROR;
 	}
 	if (tmp != channels) {
@@ -58,7 +58,7 @@ static inline SGS_AudioDev *open_oss(const char *name, int mode,
 
 	tmp = *srate;
 	if (ioctl(fd, SNDCTL_DSP_SPEED, &tmp) == -1) {
-		err = "SNDCTL_DSP_SPEED";
+		error = "SNDCTL_DSP_SPEED";
 		goto ERROR;
 	}
 	if ((uint32_t) tmp != *srate) {
@@ -75,8 +75,8 @@ static inline SGS_AudioDev *open_oss(const char *name, int mode,
 	return o;
 
 ERROR:
-	if (err)
-		SGS_error("OSS", "%s: %s", err, strerror(errno));
+	if (error)
+		SGS_error("OSS", "%s: %s", error, strerror(errno));
 	if (fd != -1)
 		close(fd);
 	SGS_error("OSS", "configuration for device \"%s\" failed",
