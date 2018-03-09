@@ -1,5 +1,5 @@
 /* sgensys: Parsing data to audio program translator module.
- * Copyright (c) 2011-2012, 2017-2018 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -412,9 +412,9 @@ static SGSProgram* build_program(SGSParserResult *pr) {
       else
         printf("\n\top %d \tt=%d \tf=%.f", oop->operator_id, oop->time_ms, oop->freq);
       if (ga != NULL) {
-        print_linked("\n\t    f!<", ">", ga->fmodc, ga->adjcs);
-        print_linked("\n\t    p!<", ">", ga->pmodc, &ga->adjcs[ga->fmodc]);
-        print_linked("\n\t    a!<", ">", ga->amodc, &ga->adjcs[ga->fmodc +
+        print_linked("\n\t    f![", "]", ga->fmodc, ga->adjcs);
+        print_linked("\n\t    p*[", "]", ga->pmodc, &ga->adjcs[ga->fmodc]);
+        print_linked("\n\t    a![", "]", ga->amodc, &ga->adjcs[ga->fmodc +
                                                                ga->pmodc]);
       }
     }

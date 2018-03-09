@@ -1,5 +1,5 @@
 /* sgensys: Main module / Command-line interface.
- * Copyright (c) 2011-2013, 2017-2018 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -110,8 +110,16 @@ static void print_usage(void) {
 "  -o \tWrite a 16-bit PCM WAV file, always using the sample rate requested;\n"
 "     \tdisables audio device output by default.\n"
 "  -c \tCheck script only, reporting any errors.\n"
-"  -h \tPrint this message."
+"  -h \tPrint this message.\n"
+"  -v \tPrint version."
 	);
+}
+
+/*
+ * Print version.
+ */
+static void print_version(void) {
+	puts("sgensys v0.2-beta");
 }
 
 /*
@@ -205,6 +213,9 @@ static bool parse_args(int argc, char **argv, uint32_t *flags,
 				if (*flags & ARG_FULL_RUN)
 					goto USAGE;
 				*flags |= ARG_ONLY_COMPILE;
+			} else if (*arg == 'v') {
+				print_version();
+				return false;
 			} else
 				goto USAGE;
 		}
