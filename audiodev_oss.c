@@ -25,7 +25,7 @@
 /*
  * Returns instance if successful, NULL on error.
  */
-static inline SGSAudioDev *open_audiodev_oss(const char *name, int mode,
+static inline SGS_AudioDev *open_AudioDev_oss(const char *name, int mode,
 		uint16_t channels, uint32_t *srate) {
 	int tmp, fd;
 
@@ -67,7 +67,7 @@ static inline SGSAudioDev *open_audiodev_oss(const char *name, int mode,
 		*srate = tmp;
 	}
 
-	SGSAudioDev *o = malloc(sizeof(struct SGSAudioDev));
+	SGS_AudioDev *o = malloc(sizeof(SGS_AudioDev));
 	o->ref.fd = fd;
 	o->type = TYPE_OSS;
 	o->channels = channels;
@@ -84,7 +84,7 @@ ERROR:
 /*
  * Close the given audio device. Destroys the instance.
  */
-static inline void close_audiodev_oss(SGSAudioDev *o) {
+static inline void close_AudioDev_oss(SGS_AudioDev *o) {
 	close(o->ref.fd);
 	free(o);
 }
@@ -92,7 +92,7 @@ static inline void close_audiodev_oss(SGSAudioDev *o) {
 /*
  * Returns true upon suceessful write, otherwise false;
  */
-static inline bool audiodev_oss_write(SGSAudioDev *o, const int16_t *buf,
+static inline bool audiodev_oss_write(SGS_AudioDev *o, const int16_t *buf,
 		uint32_t samples) {
 	size_t length = samples * o->channels * SOUND_BYTES, written;
 

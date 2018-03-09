@@ -20,7 +20,7 @@
  *
  * \return true if successful, false if allocation failed
  */
-bool SGS_plist_add(SGSPList *o, const void *item) {
+bool SGS_PList_add(SGS_PList *o, const void *item) {
 	if (!o->alloc) {
 		if (o->count == 0) {
 			o->count = 1;
@@ -71,7 +71,7 @@ bool SGS_plist_add(SGSPList *o, const void *item) {
 /**
  * Clear the given list.
  */
-void SGS_plist_clear(SGSPList *o) {
+void SGS_PList_clear(SGS_PList *o) {
 	if (o->count > o->copy_count && o->alloc > 0) {
 		free(o->items);
 	}
@@ -89,8 +89,8 @@ void SGS_plist_clear(SGSPList *o) {
  * copy_count will be set to the count of src, so that iteration
  * beginning at that value will ignore copied entries.
  */
-void SGS_plist_copy(SGSPList *dst, const SGSPList *src) {
-	SGS_plist_clear(dst);
+void SGS_PList_copy(SGS_PList *dst, const SGS_PList *src) {
+	SGS_PList_clear(dst);
 	dst->count = src->count;
 	dst->copy_count = src->count;
 	dst->items = src->items;

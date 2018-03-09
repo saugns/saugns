@@ -29,11 +29,11 @@ static bool alsa_enabled() {
 /*
  * Returns instance if successful, NULL on error.
  */
-static inline SGSAudioDev *open_audiodev_linux(const char *alsa_name,
+static inline SGS_AudioDev *open_AudioDev_linux(const char *alsa_name,
 		const char *oss_name, int oss_mode, uint16_t channels,
 		uint32_t *srate) {
 	if (!alsa_enabled())
-		return open_audiodev_oss(oss_name, oss_mode, channels, srate);
+		return open_AudioDev_oss(oss_name, oss_mode, channels, srate);
 
 	uint32_t tmp;
 	int err;
@@ -64,7 +64,7 @@ static inline SGSAudioDev *open_audiodev_linux(const char *alsa_name,
 		*srate = tmp;
 	}
 
-	SGSAudioDev *o = malloc(sizeof(struct SGSAudioDev));
+	SGS_AudioDev *o = malloc(sizeof(SGS_AudioDev));
 	o->ref.handle = handle;
 	o->type = TYPE_ALSA;
 	o->channels = channels;
@@ -83,9 +83,9 @@ ERROR:
 /*
  * Close the given audio device. Destroys the instance.
  */
-static inline void close_audiodev_linux(SGSAudioDev *o) {
+static inline void close_AudioDev_linux(SGS_AudioDev *o) {
 	if (o->type == TYPE_OSS) {
-		close_audiodev_oss(o);
+		close_AudioDev_oss(o);
 		return;
 	}
 	
@@ -97,7 +97,7 @@ static inline void close_audiodev_linux(SGSAudioDev *o) {
 /*
  * Returns true upon suceessful write, otherwise false.
  */
-static inline bool audiodev_linux_write(SGSAudioDev *o, const int16_t *buf,
+static inline bool audiodev_linux_write(SGS_AudioDev *o, const int16_t *buf,
 		uint32_t samples) {
 	if (o->type == TYPE_OSS)
 		return audiodev_oss_write(o, buf, samples);

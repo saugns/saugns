@@ -12,6 +12,7 @@
  */
 
 #include "sgensys.h"
+#include "program.h"
 #include "parser.h"
 #include "builder.h"
 #include "generator.h"
@@ -33,24 +34,24 @@ static int16_t sound_buf[BUF_SAMPLES * NUM_CHANNELS];
  *
  * Return true if no error occurred.
  */
-static bool produce_sound(struct SGSProgram *prg,
-		SGSAudioDev *ad, SGSWAVFile *wf, uint32_t srate) {
-	SGSGenerator *gen = SGS_create_generator(prg, srate);
+static bool produce_sound(SGS_Program *prg,
+		SGS_AudioDev *ad, SGS_WavFile *wf, uint32_t srate) {
+	SGS_Generator *gen = SGS_create_Generator(prg, srate);
 	size_t len;
 	bool error = false;
 	bool run;
 	do {
-		run = SGS_generator_run(gen, sound_buf, BUF_SAMPLES, &len);
-		if (ad && !SGS_audiodev_write(ad, sound_buf, len)) {
+		run = SGS_Generator_run(gen, sound_buf, BUF_SAMPLES, &len);
+		if (ad && !SGS_AudioDev_write(ad, sound_buf, len)) {
 			error = true;
 			fputs("error: audio device write failed\n", stderr);
 		}
-		if (wf && !SGS_wavfile_write(wf, sound_buf, len)) {
+		if (wf && !SGS_WavFile_write(wf, sound_buf, len)) {
 			error = true;
 			fputs("error: WAV file write failed\n", stderr);
 		}
 	} while (run);
-	SGS_destroy_generator(gen);
+	SGS_destroy_Generator(gen);
 	return !error;
 }
 
@@ -62,21 +63,21 @@ static bool produce_sound(struct SGSProgram *prg,
  * Return true if signal generated and sent to any output(s) without
  * error, false if any error occurred.
  */
-static bool run_program(struct SGSProgram *prg,
+static bool run_program(SGS_Program *prg,
 		bool use_audiodev, const char *wav_path, uint32_t srate) {
-	SGSAudioDev *ad = NULL;
+	SGS_AudioDev *ad = NULL;
 	uint32_t ad_srate = srate;
-	SGSWAVFile *wf = NULL;
+	SGS_WavFile *wf = NULL;
 	if (use_audiodev) {
-		ad = SGS_open_audiodev(NUM_CHANNELS, &ad_srate);
+		ad = SGS_open_AudioDev(NUM_CHANNELS, &ad_srate);
 		if (!ad) {
 			return false;
 		}
 	}
 	if (wav_path) {
-		wf = SGS_create_wavfile(wav_path, NUM_CHANNELS, srate);
+		wf = SGS_create_WavFile(wav_path, NUM_CHANNELS, srate);
 		if (!wf) {
-			if (ad) SGS_close_audiodev(ad);
+			if (ad) SGS_close_AudioDev(ad);
 			return false;
 		}
 	}
@@ -91,10 +92,10 @@ static bool run_program(struct SGSProgram *prg,
 	}
 
 	if (ad) {
-		SGS_close_audiodev(ad);
+		SGS_close_AudioDev(ad);
 	}
 	if (wf) {
-		status = status && (SGS_close_wavfile(wf) == 0);
+		status = status && (SGS_close_WavFile(wf) == 0);
 	}
 	return status;
 }
@@ -225,20 +226,20 @@ USAGE:
  *
  * Return true if successful, false on error.
  */
-static bool process_script(const char *fname, SGSProgram **prg_out,
+static bool process_script(const char *fname, SGS_Program **prg_out,
 		uint32_t options) {
-	SGSParser *parser = SGS_create_parser();
-	SGSParseResult *parse = SGS_parser_process(parser, fname);
+	SGS_Parser *parser = SGS_create_Parser();
+	SGS_ParseResult *parse = SGS_Parser_process(parser, fname);
 	if (!parse) {
-		SGS_destroy_parser(parser);
+		SGS_destroy_Parser(parser);
 		return false;
 	}
 	if (options & ARG_ONLY_PARSE) {
-		SGS_destroy_parser(parser);
+		SGS_destroy_Parser(parser);
 		return true;
 	}
-	SGSProgram *prg = SGS_build_program(parse);
-	SGS_destroy_parser(parser);
+	SGS_Program *prg = SGS_create_Program(parse);
+	SGS_destroy_Parser(parser);
 	*prg_out = prg;
 	return (prg != NULL);
 }
@@ -256,7 +257,7 @@ int main(int argc, char **argv) {
 			&srate))
 		goto DONE;
 
-	struct SGSProgram *prg = NULL;
+	struct SGS_Program *prg = NULL;
 	if (!process_script(script_path, &prg, options)) {
 		error = true;
 		goto DONE;
@@ -266,7 +267,7 @@ int main(int argc, char **argv) {
 			(options & ARG_ENABLE_AUDIO_DEV) :
 			!(options & ARG_DISABLE_AUDIO_DEV));
 	error = !run_program(prg, use_audiodev, wav_path, srate);
-	SGS_destroy_program(prg);
+	SGS_destroy_Program(prg);
 
 DONE:
 	return error;

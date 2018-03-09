@@ -38,7 +38,7 @@ static void fputl(uint32_t i32, FILE *stream) {
 #define SOUND_BITS 16
 #define SOUND_BYTES (SOUND_BITS / 8)
 
-struct SGSWAVFile {
+struct SGS_WavFile {
 	FILE *f;
 	uint16_t channels;
 	uint32_t samples;
@@ -46,20 +46,20 @@ struct SGSWAVFile {
 
 /**
  * Create 16-bit WAV file for audio output. Sound data may thereafter be
- * written any number of times using SGS_wavfile_write().
+ * written any number of times using SGS_WavFile_write().
  *
  * Returns instance or NULL if fopen fails.
  */
-SGSWAVFile *SGS_create_wavfile(const char *fpath, uint16_t channels,
+SGS_WavFile *SGS_create_WavFile(const char *fpath, uint16_t channels,
 		uint32_t srate) {
-	SGSWAVFile *o;
+	SGS_WavFile *o;
 	FILE *f = fopen(fpath, "wb");
 	if (!f) {
 		fprintf(stderr, "error: couldn't open WAV file \"%s\" for writing\n",
 			fpath);
 		return NULL;
 	}
-	o = malloc(sizeof(struct SGSWAVFile));
+	o = malloc(sizeof(SGS_WavFile));
 	o->f = f;
 	o->channels = channels;
 	o->samples = 0;
@@ -91,7 +91,7 @@ SGSWAVFile *SGS_create_wavfile(const char *fpath, uint16_t channels,
  *
  * Returns true upon successful write, otherwise false.
  */
-bool SGS_wavfile_write(SGSWAVFile *o, const int16_t *buf, uint32_t samples) {
+bool SGS_WavFile_write(SGS_WavFile *o, const int16_t *buf, uint32_t samples) {
 	size_t length = o->channels * samples, written;
 	written = fwrite(buf, SOUND_BYTES, length, o->f);
 	o->samples += written;
@@ -104,7 +104,7 @@ bool SGS_wavfile_write(SGSWAVFile *o, const int16_t *buf, uint32_t samples) {
  *
  * Returns the value of ferror, checked before closing the file.
  */
-int SGS_close_wavfile(SGSWAVFile *o) {
+int SGS_close_WavFile(SGS_WavFile *o) {
 	int err;
 	FILE *f = o->f;
 	uint32_t bytes = o->channels * o->samples * SOUND_BYTES;

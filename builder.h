@@ -15,5 +15,5 @@
 #include "parser.h"
 #include "program.h"
 
-SGSProgram *SGS_build_program(SGSParseResult *parse);
-void SGS_destroy_program(SGSProgram *o);
+SGS_Program *SGS_create_Program(SGS_ParseResult *parse);
+void SGS_destroy_Program(SGS_Program *o);

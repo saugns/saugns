@@ -19,12 +19,12 @@
  * (SGS_plist_copy()) references the copied array instead
  * of duplicating it, until added to.
  */
-typedef struct SGSPList {
+typedef struct SGS_PList {
 	size_t count;
 	size_t copy_count;
 	const void **items;
 	size_t alloc;
-} SGSPList;
+} SGS_PList;
 
 /**
  * Get array holding list of items.
@@ -32,7 +32,7 @@ typedef struct SGSPList {
  * The array pointer is used in place of an array if no more
  * than 1 item has been added.
  */
-#define SGS_PLIST_ITEMS(o) \
+#define SGS_PList_ITEMS(o) \
 	((o)->count > 1 ? \
 		(o)->items : \
 		((const void**) &(o)->items))
@@ -40,9 +40,9 @@ typedef struct SGSPList {
 /**
  * Get the item \p i.
  */
-#define SGS_PLIST_GET(o, i) \
-	((const void*) SGS_PLIST_ITEMS(o)[i])
+#define SGS_PList_GET(o, i) \
+	((const void*) SGS_PList_ITEMS(o)[i])
 
-bool SGS_plist_add(SGSPList *o, const void *item);
-void SGS_plist_clear(SGSPList *o);
-void SGS_plist_copy(SGSPList *dst, const SGSPList *src);
+bool SGS_PList_add(SGS_PList *o, const void *item);
+void SGS_PList_clear(SGS_PList *o);
+void SGS_PList_copy(SGS_PList *dst, const SGS_PList *src);
