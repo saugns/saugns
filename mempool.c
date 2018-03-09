@@ -70,6 +70,7 @@ void SGS_destroy_MemPool(SGS_MemPool *o) {
 /**
  * Locate the first block with the smallest size into which \p size fits,
  * using binary search. If found, the id will be set to \p id.
+ *
  * \return true if found, false if not
  */
 static bool first_smallest_block(SGS_MemPool *o, size_t size, size_t *id) {
@@ -101,6 +102,7 @@ static bool first_smallest_block(SGS_MemPool *o, size_t size, size_t *id) {
 /**
  * Locate the first block with the smallest size greater than \p size, using
  * binary search. If found, the id will be set to \p id.
+ *
  * \return true if found, false if not
  */
 #define first_greater_block(o, size, id) \
@@ -137,24 +139,25 @@ static void copy_blocks_up_one(SGS_MemPool *o, size_t to, size_t from) {
 
 /**
  * Add blocks to the memory pool. One if none, otherwise double the number.
- * \return the new number of blocks, or -1 upon failure
+ *
+ * \return true, or false if allocation fails
  */
-static ptrdiff_t extend_mempool(SGS_MemPool *o) {
+static bool extend_mempool(SGS_MemPool *o) {
 	size_t new_block_alloc = (o->block_alloc > 0) ?
 		(o->block_alloc << 1) :
 		1;
 	o->blocks = realloc(o->blocks, sizeof(BlockEntry) * new_block_alloc);
 	if (o->blocks == NULL)
-		return -1;
+		return false;
 	o->block_alloc = new_block_alloc;
-	return o->block_alloc;
+	return true;
 }
 
 /**
- * Allocate object of \p size within the memory pool. If \p src is not
+ * Allocate block of \p size within the memory pool. If \p src is not
  * NULL, it will be copied to the new allocation.
  *
- * \return the allocated object, or NULL if allocation fails
+ * \return the allocated block, or NULL if allocation fails
  */
 void *SGS_MemPool_alloc(SGS_MemPool *o, const void *src, size_t size) {
 	size_t i;
@@ -179,7 +182,8 @@ void *SGS_MemPool_alloc(SGS_MemPool *o, const void *src, size_t size) {
 		 * Expand block entry array if needed.
 		 */
 		if (o->block_count == o->block_alloc) {
-			if (extend_mempool(o) < 0) return NULL;
+			if (!extend_mempool(o))
+				return NULL;
 		}
 		/*
 		 * Allocate new block.
@@ -206,9 +210,7 @@ void *SGS_MemPool_alloc(SGS_MemPool *o, const void *src, size_t size) {
 		size_t j;
 		size_t i_free = o->blocks[i].free;
 		o->blocks[i].free = o->blocks[i - 1].free;
-		first_greater_block(o, i_free, &j);
-		o->blocks[i].free = i_free;
-		if (j < i) {
+		if (first_greater_block(o, i_free, &j) && (j < i)) {
 			/*
 			 * Copy blocks upwards, then set the one at j to the
 			 * one originally at i.
@@ -220,6 +222,8 @@ void *SGS_MemPool_alloc(SGS_MemPool *o, const void *src, size_t size) {
 			o->blocks[i].free = o->blocks[i - 1].free;
 			copy_blocks_up_one(o, i, j);
 			o->blocks[j] = tmp;
+		} else {
+			o->blocks[i].free = i_free;
 		}
 	}
 	if (src != NULL) memcpy(ret, src, size);

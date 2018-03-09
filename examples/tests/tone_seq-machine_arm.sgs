@@ -5,9 +5,9 @@
 #
 # Tests nested PM and gradual value changes with
 # compound step syntax.
-Osin	f220 p*<
+Osin	f220 p+<
 		Osin r(2/7) a0.5
-		Osin r(5/7) a0.5 p*<Osin r(7/10) a(1/2)>
+		Osin r(5/7) a0.5 p+<Osin r(7/10) a(1/2)>
 	> t1.0
 ;	f[cexp v440 t0.15] t1.5
 ;	f[cexp v400 t0.15] t0.5

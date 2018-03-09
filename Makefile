@@ -6,6 +6,7 @@ LFLAGS_OSSAUDIO=$(LFLAGS) -lossaudio
 OBJ=common.o \
     ptrlist.o \
     builder/symtab.o \
+    builder/file.o \
     builder/lexer.o \
     builder/parser.o \
     builder/parseconv.o \
@@ -48,13 +49,16 @@ common.o: common.c common.h
 builder.o: builder.c sgensys.h builder/lexer.h script.h program.h ptrlist.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) builder.c
 
-builder/lexer.o: builder/lexer.c builder/lexer.h builder/symtab.h math.h common.h
+builder/file.o: builder/file.c builder/file.h common.h
+	$(CC) -c $(CFLAGS) builder/file.c -o builder/file.o
+
+builder/lexer.o: builder/lexer.c builder/lexer.h builder/symtab.h builder/file.h math.h common.h
 	$(CC) -c $(CFLAGS) builder/lexer.c -o builder/lexer.o
 
 builder/parseconv.o: builder/parseconv.c program.h wave.h math.h script.h ptrlist.h common.h
 	$(CC) -c $(CFLAGS) builder/parseconv.c -o builder/parseconv.o
 
-builder/parser.o: builder/parser.c script.h ptrlist.h builder/symtab.h program.h wave.h math.h common.h
+builder/parser.o: builder/parser.c script.h ptrlist.h builder/symtab.h builder/file.h program.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) builder/parser.c -o builder/parser.o
 
 builder/symtab.o: builder/symtab.c builder/symtab.h mempool.h common.h
