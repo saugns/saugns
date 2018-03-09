@@ -1,5 +1,5 @@
 /* sgensys: WAV file writer module.
- * Copyright (c) 2011-2012, 2017-2018 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -91,10 +91,10 @@ SGSWAVFile *SGS_create_wavfile(const char *fpath, uint16_t channels,
  * Return true upon successful write, otherwise false.
  */
 bool SGS_wavfile_write(SGSWAVFile *o, const int16_t *buf, uint32_t samples) {
-	size_t length = o->channels * samples, written;
-	written = fwrite(buf, SOUND_BYTES, length, o->f);
+	uint32_t written;
+	written = fwrite(buf, o->channels * SOUND_BYTES, samples, o->f);
 	o->samples += written;
-	return (written == length);
+	return (written == samples);
 }
 
 /**
