@@ -28,6 +28,7 @@ enum {
   ON_LABEL_ALLOC = 1<<3,
   ON_TIME_DEFAULT = 1<<4,
   ON_SILENCE_ADDED = 1<<5,
+  ON_HAS_COMPOSITE = 1<<6,
 };
 
 typedef struct SGSOperatorNode {
