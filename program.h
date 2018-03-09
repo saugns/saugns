@@ -1,4 +1,4 @@
-/* sgensys: Parsing data to audio program translator module.
+/* sgensys: Program from parsing data module.
  * Copyright (c) 2011-2013, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -12,14 +12,13 @@
  */
 
 #pragma once
-#include "osc.h"
+#include "wavelut.h"
+
+struct SGS_ParseList;
 
 /*
  * Program types and definitions.
  */
-
-struct SGSProgram;
-typedef struct SGSProgram SGSProgram;
 
 enum {
 	/* voice parameters */
@@ -88,57 +87,57 @@ enum {
 	SGS_VALIT_LOG
 };
 
-typedef struct SGSProgramGraph {
+struct SGS_ProgramGraph {
 	uint32_t opc;
 	int32_t ops[1]; /* sized to opc */
-} SGSProgramGraph;
+};
 
-typedef struct SGSProgramGraphAdjcs {
+struct SGS_ProgramGraphAdjcs {
 	uint32_t fmodc;
 	uint32_t pmodc;
 	uint32_t amodc;
 	uint32_t level;  /* index for buffer used to store result to use if
 	                    node revisited when traversing the graph. */
 	int32_t adjcs[1]; /* sized to total number */
-} SGSProgramGraphAdjcs;
+};
 
-typedef struct SGSProgramValit {
+struct SGS_ProgramValit {
 	int32_t time_ms, pos_ms;
 	float goal;
 	uint8_t type;
-} SGSProgramValit;
+};
 
-typedef struct SGSProgramVoiceData {
-	const SGSProgramGraph *graph;
+struct SGS_ProgramVoiceData {
+	const struct SGS_ProgramGraph *graph;
 	uint8_t attr;
 	float panning;
-	SGSProgramValit valitpanning;
-} SGSProgramVoiceData;
+	struct SGS_ProgramValit valitpanning;
+};
 
-typedef struct SGSProgramOperatorData {
-	const SGSProgramGraphAdjcs *adjcs;
+struct SGS_ProgramOperatorData {
+	const struct SGS_ProgramGraphAdjcs *adjcs;
 	uint32_t operator_id;
 	uint8_t attr, wave;
 	int32_t time_ms, silence_ms;
 	float freq, dynfreq, phase, amp, dynamp;
-	SGSProgramValit valitfreq, valitamp;
-} SGSProgramOperatorData;
+	struct SGS_ProgramValit valitfreq, valitamp;
+};
 
-typedef struct SGSProgramEvent {
+struct SGS_ProgramEvent {
 	int32_t wait_ms;
 	uint32_t params;
 	uint32_t voice_id; /* needed for both voice and operator data */
-	const SGSProgramVoiceData *voice;
-	const SGSProgramOperatorData *operator;
-} SGSProgramEvent;
+	const struct SGS_ProgramVoiceData *voice;
+	const struct SGS_ProgramOperatorData *operator;
+};
 
-struct SGSProgram {
-	const SGSProgramEvent *events;
+struct SGS_Program {
+	const struct SGS_ProgramEvent *events;
 	size_t eventc;
 	uint32_t operatorc;
 	uint32_t voicec;
 };
-typedef struct SGSProgram SGSProgram;
+typedef struct SGS_Program SGS_Program;
 
-SGSProgram* SGS_open_program(const char *filename);
-void SGS_close_program(SGSProgram *o);
+SGS_Program *SGS_create_Program(struct SGS_ParseList *parse);
+void SGS_destroy_Program(SGS_Program *o);

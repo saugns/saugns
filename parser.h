@@ -12,77 +12,77 @@
  */
 
 #pragma once
-#include "ptrarr.h"
-
-struct SGSOperatorNode;
+#include "program.h"
+#include "parr.h"
 
 /*
  * Parsing nodes.
  */
 
 enum {
-  /* parse flags */
-  ON_OPERATOR_LATER_USED = 1<<0,
-  ON_MULTIPLE_OPERATORS = 1<<1,
-  ON_OPERATOR_NESTED = 1<<2,
-  ON_LABEL_ALLOC = 1<<3,
-  ON_TIME_DEFAULT = 1<<4,
-  ON_SILENCE_ADDED = 1<<5,
+	/* Operator node parse flags */
+	POD_OPERATOR_LATER_USED = 1<<0,
+	POD_MULTIPLE_OPERATORS = 1<<1,
+	POD_OPERATOR_NESTED = 1<<2,
+	POD_TIME_DEFAULT = 1<<3,
+	POD_SILENCE_ADDED = 1<<4,
 };
 
-typedef struct SGSOperatorNode {
-  struct SGSEventNode *event;
-  struct SGSPtrArr on_next; /* all immediate forward references for operator(s) */
-  struct SGSOperatorNode *on_prev; /* preceding node(s) for same operator(s) */
-  struct SGSOperatorNode *next_bound;
-  uint32_t on_flags;
-  const char *label;
-  /* operator parameters */
-  uint32_t operator_id; /* not filled in by parser; for later use (program.c) */
-  uint32_t operator_params;
-  uint8_t attr;
-  uint8_t wave;
-  int32_t time_ms, silence_ms;
-  float freq, dynfreq, phase, amp, dynamp;
-  SGSProgramValit valitfreq, valitamp;
-  /* node adjacents in operator linkage graph */
-  struct SGSPtrArr fmods, pmods, amods;
-} SGSOperatorNode;
+struct SGS_ParseOperatorData {
+	struct SGS_ParseEventData *event;
+	SGS_PArr on_next; /* all immediate forward refs for op(s) */
+	struct SGS_ParseOperatorData *on_prev; /* preceding for same op(s) */
+	struct SGS_ParseOperatorData *next_bound;
+	uint32_t on_flags;
+	const char *label;
+	/* operator parameters */
+	uint32_t operator_id; /* not used by parser; for builder */
+	uint32_t operator_params;
+	uint8_t attr;
+	uint8_t wave;
+	int32_t time_ms, silence_ms;
+	float freq, dynfreq, phase, amp, dynamp;
+	struct SGS_ProgramValit valitfreq, valitamp;
+	/* node adjacents in operator linkage graph */
+	SGS_PArr fmods, pmods, amods;
+};
 
 enum {
-  /* parse flags */
-  EN_VOICE_LATER_USED = 1<<0,
-  EN_ADD_WAIT_DURATION = 1<<1,
+	/* Event node parse flags */
+	PED_VOICE_LATER_USED = 1<<0,
+	PED_ADD_WAIT_DURATION = 1<<1,
 };
 
-typedef struct SGSEventNode {
-  struct SGSEventNode *next;
-  struct SGSEventNode *groupfrom;
-  struct SGSEventNode *composite;
-  int32_t wait_ms;
-  struct SGSPtrArr operators; /* operators included in event */
-  uint32_t en_flags;
-  /* voice parameters */
-  uint32_t voice_id; /* not filled in by parser; for later use (program.c) */
-  uint32_t voice_params;
-  struct SGSEventNode *voice_prev; /* preceding event for same voice */
-  uint8_t voice_attr;
-  float panning;
-  SGSProgramValit valitpanning;
-  struct SGSPtrArr graph;
-} SGSEventNode;
-
-void SGS_event_node_destroy(SGSEventNode *e);
-
-struct SGSParseList {
-	SGSEventNode *events;
+struct SGS_ParseEventData {
+	struct SGS_ParseEventData *next;
+	struct SGS_ParseEventData *groupfrom;
+	struct SGS_ParseEventData *composite;
+	int32_t wait_ms;
+	SGS_PArr operators; /* operators included in event */
+	uint32_t en_flags;
+	/* voice parameters */
+	uint32_t voice_id; /* not used by parser; for builder */
+	uint32_t voice_params;
+	struct SGS_ParseEventData *voice_prev; /* preceding event for voice */
+	uint8_t voice_attr;
+	float panning;
+	struct SGS_ProgramValit valitpanning;
+	SGS_PArr graph;
 };
 
-struct SGSParser;
+void SGS_Parser_destroy_event_data(struct SGS_ParseEventData *e);
 
-struct SGSParser *SGS_create_parser(void);
-void SGS_destroy_parser(struct SGSParser *o);
+struct SGS_ParseList {
+	struct SGS_ParseEventData *events;
+	struct SGS_ParseList *next;
+};
 
-struct SGSParseList *SGS_parser_process(struct SGSParser *o, const char *filename);
+struct SGS_Parser;
+typedef struct SGS_Parser SGS_Parser;
 
-struct SGSParseList *SGS_parse(const char *filename);
+SGS_Parser *SGS_create_Parser(void);
+void SGS_destroy_Parser(SGS_Parser *o);
+
+struct SGS_ParseList *SGS_Parser_process(SGS_Parser *o, const char *fname);
+struct SGS_ParseList *SGS_Parser_get_results(SGS_Parser *o);
+void SGS_Parser_clear(SGS_Parser *o);

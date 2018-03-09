@@ -14,19 +14,16 @@
 #pragma once
 #include "sgensys.h"
 
-/*
+/**
  * Pointer array type.
  */
-
-/** Pointer array item type. */
-typedef const void *SGSPtr_t;
-
-struct SGSPtrArr {
+struct SGS_PArr {
 	size_t count;
 	size_t copy_count;
-	SGSPtr_t *items;
+	const void **items;
 	size_t alloc;
 };
+typedef struct SGS_PArr SGS_PArr;
 
 /**
  * Get array of items.
@@ -34,17 +31,17 @@ struct SGSPtrArr {
  * The array pointer is used in place of an array if no more
  * than 1 item has been added.
  */
-#define SGS_PTRARR_ITEMS(ar) \
-	((SGSPtr_t*) ((ar)->count > 1 ? \
+#define SGS_PArr_ITEMS(ar) \
+	((const void**) ((ar)->count > 1 ? \
 		(ar)->items : \
-		((SGSPtr_t*) &(ar)->items)))
+		((const void**) &(ar)->items)))
 
 /**
  * Get the item \p i.
  */
-#define SGS_PTRARR_GET(ar, i) \
-	((SGSPtr_t) SGS_PTRARR_ITEMS(ar)[i])
+#define SGS_PArr_GET(ar, i) \
+	((const void*) SGS_PArr_ITEMS(ar)[i])
 
-bool SGS_ptrarr_add(struct SGSPtrArr *ar, SGSPtr_t item);
-void SGS_ptrarr_clear(struct SGSPtrArr *ar);
-void SGS_ptrarr_copy(struct SGSPtrArr *dst, const struct SGSPtrArr *src);
+bool SGS_PArr_add(SGS_PArr *ar, const void *item);
+void SGS_PArr_clear(SGS_PArr *ar);
+void SGS_PArr_copy(SGS_PArr *dst, const SGS_PArr *src);

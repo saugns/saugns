@@ -1,4 +1,4 @@
-/* sgensys: Oscillator module.
+/* sgensys: Wave LUT module.
  * Copyright (c) 2011-2012, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -11,49 +11,50 @@
  * <http://www.gnu.org/licenses/>.
  */
 
-#include "osc.h"
+#include "wavelut.h"
+#include "math.h"
 
-#define HALFLEN (SGSOsc_LUT_LEN>>1)
+#define HALFLEN (SGS_WaveLut_LEN>>1)
 
-SGSOscLUT SGSOsc_luts[SGS_WAVE_TYPES];
+SGS_WaveLut_t SGS_waveluts[SGS_WAVE_TYPES];
 
 /**
  * Fill in the look-up tables enumerated by SGS_WAVE_*.
  *
  * If already initialized, return without doing anything.
  */
-void SGSOsc_global_init(void) {
+void SGS_global_init_WaveLut(void) {
 	static bool done = false;
 	if (done) return;
 	done = true;
 
-	int16_t *const sin_lut = SGSOsc_luts[SGS_WAVE_SIN];
-	int16_t *const srs_lut = SGSOsc_luts[SGS_WAVE_SRS];
-	int16_t *const tri_lut = SGSOsc_luts[SGS_WAVE_TRI];
-	int16_t *const sqr_lut = SGSOsc_luts[SGS_WAVE_SQR];
-	int16_t *const saw_lut = SGSOsc_luts[SGS_WAVE_SAW];
+	int16_t *const sin_lut = SGS_waveluts[SGS_WAVE_SIN];
+	int16_t *const srs_lut = SGS_waveluts[SGS_WAVE_SRS];
+	int16_t *const tri_lut = SGS_waveluts[SGS_WAVE_TRI];
+	int16_t *const sqr_lut = SGS_waveluts[SGS_WAVE_SQR];
+	int16_t *const saw_lut = SGS_waveluts[SGS_WAVE_SAW];
 	int i;
 	/* first half */
 	for (i = 0; i < HALFLEN; ++i) {
 		double sinval = sin(PI * i/HALFLEN);
-		sin_lut[i] = lrint(SGSOsc_LUT_MAXVAL * sinval);
-		srs_lut[i] = lrint(SGSOsc_LUT_MAXVAL * sqrtf(sinval));
+		sin_lut[i] = lrint(SGS_WaveLut_MAXVAL * sinval);
+		srs_lut[i] = lrint(SGS_WaveLut_MAXVAL * sqrtf(sinval));
 		if (i < (HALFLEN>>1))
-			tri_lut[i] = lrint(SGSOsc_LUT_MAXVAL *
+			tri_lut[i] = lrint(SGS_WaveLut_MAXVAL *
 				(2.f * i/(double)HALFLEN));
 		else
-			tri_lut[i] = lrint(SGSOsc_LUT_MAXVAL *
+			tri_lut[i] = lrint(SGS_WaveLut_MAXVAL *
 				(2.f * (HALFLEN-i)/(double)HALFLEN));
-		sqr_lut[i] = SGSOsc_LUT_MAXVAL;
-		saw_lut[i] = lrint(SGSOsc_LUT_MAXVAL *
+		sqr_lut[i] = SGS_WaveLut_MAXVAL;
+		saw_lut[i] = lrint(SGS_WaveLut_MAXVAL *
 				(1.f * (HALFLEN-i)/(double)HALFLEN));
 	}
 	/* second half */
-	for (; i < SGSOsc_LUT_LEN; ++i) {
+	for (; i < SGS_WaveLut_LEN; ++i) {
 		sin_lut[i] = -sin_lut[i - HALFLEN];
 		srs_lut[i] = -srs_lut[i - HALFLEN];
 		tri_lut[i] = -tri_lut[i - HALFLEN];
 		sqr_lut[i] = -sqr_lut[i - HALFLEN];
-		saw_lut[i] = -saw_lut[(SGSOsc_LUT_LEN-1) - i];
+		saw_lut[i] = -saw_lut[(SGS_WaveLut_LEN-1) - i];
 	}
 }

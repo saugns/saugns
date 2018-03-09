@@ -27,7 +27,8 @@ typedef unsigned int uint;
  * Debugging options.
  */
 
-/* Disable old parser, run lexer testing instead. */
+/* Disable old parser, run test code instead. */
+#define TEST_SCANNER 0
 #define TEST_LEXER 0
 
 #define HASHTAB_STATS 0

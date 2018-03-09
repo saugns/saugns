@@ -1,4 +1,4 @@
-/* sgensys: Script lexer module.
+/* sgensys: Script file scanner module.
  * Copyright (c) 2014, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -11,7 +11,7 @@
  * <http://www.gnu.org/licenses/>.
  */
 
-#include "lexer.h"
+#include "scanner.h"
 #include "streamf.h"
 #include "math.h"
 #include <stdarg.h>
@@ -19,96 +19,70 @@
 #include <stdio.h>
 
 /*
- * Read helper definitions & functions.
+ * Scanner implementation.
  */
 
-/* Basic character types. */
-#define IS_LOWER(c) ((c) >= 'a' && (c) <= 'z')
-#define IS_UPPER(c) ((c) >= 'A' && (c) <= 'Z')
-#define IS_DIGIT(c) ((c) >= '0' && (c) <= '9')
-#define IS_ALPHA(c) (IS_LOWER(c) || IS_UPPER(c))
-#define IS_ALNUM(c) (IS_ALPHA(c) || IS_DIGIT(c))
-#define IS_BLANK(c) ((c) == ' ' || (c) == '\t')
-#define IS_LNBRK(c) ((c) == '\n' || (c) == '\r')
+#define SCAN_EOF 0xFF
 
-/* Valid characters in identifiers. */
-#define IS_SYMCHAR(c) (IS_ALNUM(c) || (c) == '_')
-
-/* Visible ASCII character. */
-#define IS_VISIBLE(c) ((c) >= '!' && (c) <= '~')
-
-static bool read_sym(SGS_Stream *fr, char *buf, uint32_t maxlen,
-		uint32_t *sym_len) {
-	uint32_t i = 0;
-	bool error = false;
-	for (;;) {
-		if (i == maxlen) {
-			error = true;
-			break;
-		}
-		uint8_t c = SGS_CBuf_GETC(&fr->buf);
-		if (!IS_SYMCHAR(c)) {
-			SGS_CBuf_GETC(&fr->buf);
-			break;
-		}
-		buf[i++] = c;
-	}
-	buf[i] = '\0';
-	*sym_len = i;
-	return !error;
-}
-
-/*
- * Lexer implementation.
- */
-
-#define STRING_MAX_LEN 1024
-
-struct SGS_Lexer {
-	SGS_Stream fr;
-	SGS_SymTab *symtab;
-	uint32_t line_num, char_num;
-	struct SGS_Token token;
-	uint8_t string[STRING_MAX_LEN];
-};
+#define STRING_MAXLEN 255
 
 /**
- * Create instance for the given file and using the given symbol
- * table.
+ * Create instance.
  *
- * \return instance, or NULL on failure.
+ * \return instance or NULL if allocation fails
  */
-SGS_Lexer *SGS_create_Lexer(const char *fname, SGS_SymTab *symtab) {
-	SGS_Lexer *o;
-	if (symtab == NULL) return NULL;
-
-	o = calloc(1, sizeof(struct SGS_Lexer));
-	if (o == NULL) return NULL;
+SGS_Scanner *SGS_create_Scanner(void) {
+	SGS_Scanner *o = calloc(1, sizeof(struct SGS_Scanner));
 	SGS_init_Stream(&o->fr);
-	if (!SGS_Stream_fopenrb(&o->fr, fname)) {
-		SGS_fini_Stream(&o->fr);
-		free(o);
-		return NULL;
-	}
-	o->symtab = symtab;
 	return o;
 }
 
 /**
- * Destroy instance, also closing the file for which it was made.
+ * Destroy instance. Closes file if open.
  */
-void SGS_destroy_Lexer(SGS_Lexer *o) {
-	if (o == NULL) return;
-	SGS_Stream_close(&o->fr);
+void SGS_destroy_Scanner(SGS_Scanner *o) {
+	SGS_Scanner_close(o);
 	SGS_fini_Stream(&o->fr);
 	free(o);
+}
+
+/**
+ * Open file.
+ *
+ * If a file is already open, it will first be closed.
+ *
+ * The file is automatically closed when EOF or a read error occurs,
+ * but the filename remains available for printing until an explicit
+ * close; see fread module.
+ *
+ * \return true if successful
+ */
+bool SGS_Scanner_open(SGS_Scanner *o, const char *fname) {
+	if (o->fr.active != SGS_STREAM_CLOSED) {
+		SGS_Scanner_close(o);
+	}
+	if (!SGS_Stream_fopenrb(&o->fr, fname)) return false;
+	o->line_num = 0;
+	o->char_num = 0;
+	o->newline = false;
+	o->old_char_num = 0;
+	return true;
+}
+
+/**
+ * Close the current file.
+ *
+ * \return true if file was open
+ */
+void SGS_Scanner_close(SGS_Scanner *o) {
+	SGS_Stream_close(&o->fr);
 }
 
 enum {
 	PRINT_FILE_INFO = 1<<0
 };
 
-static void print_stderr(SGS_Lexer *o, uint32_t options, const char *prefix,
+static void print_stderr(SGS_Scanner *o, uint32_t options, const char *prefix,
 	const char *fmt, va_list ap) {
 	if (options & PRINT_FILE_INFO) {
 		fprintf(stderr, "%s:%d:%d: ",
@@ -124,162 +98,186 @@ static void print_stderr(SGS_Lexer *o, uint32_t options, const char *prefix,
 /**
  * Print warning message including file name and current position.
  */
-void SGS_Lexer_warning(SGS_Lexer *o, const char *fmt, ...) {
+void SGS_Scanner_warning(SGS_Scanner *o, const char *fmt, ...) {
 	va_list ap;
 	va_start(ap, fmt);
 	print_stderr(o, PRINT_FILE_INFO, "warning", fmt, ap);
 	va_end(ap);
 }
 
-/*
- * Print warning message indicating that the last character retrieved
- * is invalid.
- */
-static void warning_character(SGS_Lexer *o) {
-	uint8_t b = SGS_CBuf_RETC(&o->fr.buf);
-	if (IS_VISIBLE(b)) {
-		SGS_Lexer_warning(o, "invalid character: %c", (char) b);
-	} else {
-		SGS_Lexer_warning(o, "invalid character (value 0x%hhx)", b);
-	}
-}
-
 /**
  * Print error message including file name and current position.
  */
-void SGS_Lexer_error(SGS_Lexer *o, const char *fmt, ...) {
+void SGS_Scanner_error(SGS_Scanner *o, const char *fmt, ...) {
 	va_list ap;
 	va_start(ap, fmt);
 	print_stderr(o, PRINT_FILE_INFO, "error", fmt, ap);
 	va_end(ap);
 }
 
-typedef uint8_t (*HandleValue_f)(SGS_Lexer *o, uint8_t c);
+/* Basic character types. */
+#define IS_LOWER(c) ((c) >= 'a' && (c) <= 'z')
+#define IS_UPPER(c) ((c) >= 'A' && (c) <= 'Z')
+#define IS_DIGIT(c) ((c) >= '0' && (c) <= '9')
+#define IS_ALPHA(c) (IS_LOWER(c) || IS_UPPER(c))
+#define IS_ALNUM(c) (IS_ALPHA(c) || IS_DIGIT(c))
+#define IS_BLANK(c) ((c) == ' ' || (c) == '\t')
+#define IS_LNBRK(c) ((c) == '\n' || (c) == '\r')
 
-static uint8_t handle_invalid(SGS_Lexer *o, uint8_t c) {
-	struct SGS_Token *t = &o->token;
-	uint8_t status = o->fr.status;
-	t->type = SGS_T_INVALID;
-	t->data.b = status;
-	switch (status) {
-		case SGS_STREAM_OK:
-#if !LEXER_QUIET
-			warning_character(o);
-#endif
+/* Valid characters in identifiers. */
+#define IS_SYMCHAR(c) (IS_ALNUM(c) || (c) == '_')
+
+static bool read_sym(SGS_Stream *fr, char *buf, uint32_t maxlen,
+		uint32_t *sym_len) {
+	uint32_t i = 0;
+	bool error = false;
+	for (;;) {
+		if (i == maxlen) {
+			error = true;
 			break;
-		case SGS_STREAM_END:
+		}
+		uint8_t c = SGS_CBuf_GETC(&fr->buf);
+		if (!IS_SYMCHAR(c)) {
+			SGS_CBufMode_DECP(&fr->buf.r);
 			break;
-		default:
-			SGS_Lexer_error(o, "file reading failed (status %hhu)",
-				status);
-			break;
+		}
+		buf[i++] = c;
 	}
-	return 0;
+	buf[i] = '\0';
+	*sym_len = i;
+	return !error;
 }
 
-static uint8_t handle_blanks(SGS_Lexer *o, uint8_t c) {
-	do {
-		++o->char_num;
-		c = SGS_CBuf_GETC(&o->fr.buf);
-	} while (IS_BLANK(c));
+typedef uint8_t (*HandleValue_f)(SGS_Scanner *o, uint8_t c);
+
+static uint8_t handle_invalid(SGS_Scanner *o, uint8_t c) {
+	uint8_t status = o->fr.status;
+	switch (status) {
+		case SGS_STREAM_OK:
+			SGS_Scanner_warning(o, "invalid character (value 0x%hhx)",
+				c);
+			c = 0;
+			break;
+		case SGS_STREAM_END:
+			c = SCAN_EOF;
+			break;
+		default:
+			SGS_Scanner_error(o, "file reading failed (status %hhu)",
+				status);
+			c = SCAN_EOF;
+			break;
+	}
 	return c;
 }
 
-static uint8_t handle_linebreaks(SGS_Lexer *o, uint8_t c) {
+static uint8_t handle_blanks(SGS_Scanner *o, uint8_t c) {
+	int32_t i = 0;
+	for (;;) {
+		c = SGS_CBuf_GETC(&o->fr.buf);
+		if (!IS_BLANK(c)) break;
+		++i;
+	}
+	SGS_CBufMode_DECP(&o->fr.buf.r);
+	o->char_num += i;
+	return 0;
+}
+
+static uint8_t handle_linebreaks(SGS_Scanner *o, uint8_t c) {
 	do {
 		++o->line_num;
 		if (c == '\n') SGS_CBuf_TRYC(&o->fr.buf, '\r');
 		c = SGS_CBuf_GETC(&o->fr.buf);
 	} while (IS_LNBRK(c));
-	o->char_num = 1;
-	return c;
+	SGS_CBufMode_DECP(&o->fr.buf.r);
+	o->newline = true;
+	o->old_char_num = o->char_num;
+	o->char_num = 0;
+	return 0;
 }
 
-static uint8_t handle_linecomment(SGS_Lexer *o, uint8_t c) {
+static uint8_t handle_linecomments(SGS_Scanner *o, uint8_t c) {
 	do {
 		c = SGS_CBuf_GETC(&o->fr.buf);
 	} while (!IS_LNBRK(c));
+	SGS_CBufMode_DECP(&o->fr.buf.r);
+	return 0;
+}
+
+static uint8_t handle_ccomment(SGS_Scanner *o, uint8_t c) {
+	SGS_Scanner_warning(o, "cannot yet handle C-style comment");
+	return 0;
+}
+
+static uint8_t handle_slash(SGS_Scanner *o, uint8_t c) {
+	uint8_t next_c = SGS_CBuf_GETC(&o->fr.buf);
+	if (next_c == '/') return handle_linecomments(o, next_c);
+	if (next_c == '*') return handle_ccomment(o, next_c);
+	SGS_CBufMode_DECP(&o->fr.buf.r);
 	return c;
 }
 
-static uint8_t handle_block_comment(SGS_Lexer *o, uint8_t c) {
-	SGS_Lexer_warning(o, "cannot yet handle comment marked by '%c'", c);
-	return 0;
-}
-
-static uint8_t handle_special(SGS_Lexer *o, uint8_t c) {
-	struct SGS_Token *t = &o->token;
-	t->type = SGS_T_SPECIAL;
-	t->data.c = c;
-	return 0;
-}
-
-static uint8_t handle_numeric_value(SGS_Lexer *o, uint8_t first_digit) {
-	struct SGS_Token *t = &o->token;
-	uint32_t c = first_digit;
+static bool scan_number(SGS_Scanner *o, uint32_t *num) {
+	char str[STRING_MAXLEN + 1];
+	bool error = false;
+	uint32_t c = SGS_CBuf_GETC(&o->fr.buf);
 	uint32_t i = 0;
 	do {
-		o->string[i] = c;
+		str[i] = c;
 		c = SGS_CBuf_GETC(&o->fr.buf);
-	} while (IS_DIGIT(c) && ++i < (STRING_MAX_LEN - 1));
-	if (i == (STRING_MAX_LEN - 1)) {
-		o->string[i] = '\0';
+	} while (IS_DIGIT(c) && ++i < (STRING_MAXLEN - 1));
+	if (i == (STRING_MAXLEN - 1)) {
+		str[i] = '\0';
 		// warn and handle too-long-string
 	} else { /* string ended gracefully */
 		++i;
-		o->string[i] = '\0';
+		str[i] = '\0';
 	}
-	t->type = SGS_T_VAL_INT; /* XXX: dummy code */
-	SGS_CBuf_UNGETC(&o->fr.buf);
-	return 0;
+	SGS_CBufMode_DECP(&o->fr.buf.r);
+	return !error;
 }
 
-static uint8_t handle_identifier(SGS_Lexer *o, uint8_t id_head) {
-	struct SGS_Token *t = &o->token;
+static bool scan_identifier(SGS_Scanner *o, char *str) {
 	uint32_t len;
 	bool error;
-	error = !read_sym(&o->fr, o->string, STRING_MAX_LEN, &len);
+	error = !read_sym(&o->fr, str, STRING_MAXLEN, &len);
 	if (error) {
-		SGS_Lexer_error(o, "cannot handle identifier longer than %d characters", STRING_MAX_LEN);
+		SGS_Scanner_error(o, "cannot handle identifier longer than %d characters", STRING_MAXLEN);
 	}
 	if (len == 0) {
 	}
-	const char *pool_str;
-	uint8_t c = id_head;
+	uint8_t c = SGS_CBuf_GETC(&o->fr.buf);
 	uint32_t i = 0;
 	do {
-		o->string[i] = c;
+		str[i] = c;
 		c = SGS_CBuf_GETC(&o->fr.buf);
-	} while (IS_SYMCHAR(c) && ++i < (STRING_MAX_LEN - 1));
-	if (i == (STRING_MAX_LEN - 1)) {
-		o->string[i] = '\0';
+	} while (IS_SYMCHAR(c) && ++i < (STRING_MAXLEN - 1));
+	if (i == (STRING_MAXLEN - 1)) {
+		str[i] = '\0';
 		// TODO: warn and handle too-long-string
 	} else { /* string ended gracefully */
 		++i;
-		o->string[i] = '\0';
+		str[i] = '\0';
 	}
-	pool_str = SGS_SymTab_pool_str(o->symtab, (const char*)o->string, i);
-	if (pool_str == NULL) {
-		SGS_Lexer_error(o, "failed to register string '%s'", o->string);
-	}
-	t->type = SGS_T_ID_STR;
-	t->data.id = pool_str;
-	SGS_CBuf_UNGETC(&o->fr.buf);
-	return 0;
+	return !error;
 }
 
 /**
- * Get the next token from the current file.
+ * Get next character (with filtering); remove spaces, tabs,
+ * comments, and replace newlines with a single SGS_SCAN_NEWLINE
+ * ('\n') character.
  *
- * Upon end of file, an SGS_T_INVALID token is set and false is
- * returned. The field data.b is assigned the file reading status.
- * (If true is returned, an SGS_T_INVALID token simply means that
- * invalid input was successfully registered in the current file.)
+ * Upon end of file, 0 will be returned. Non-visible characters in
+ * the input are otherwise passed over, printing a warning.
  *
- * \return true if a token was successfully read from the file
+ * \return character or 0 upon end of file
  */
-bool SGS_Lexer_get(SGS_Lexer *o, struct SGS_Token *t) {
+char SGS_Scanner_getc(SGS_Scanner *o) {
 	uint8_t c;
+	if (o->newline) {
+		++o->line_num;
+		o->char_num = 0;
+		o->newline = false;
+	}
 	do {
 		++o->char_num;
 		c = SGS_CBuf_GETC(&o->fr.buf);
@@ -333,10 +331,9 @@ bool SGS_Lexer_get(SGS_Lexer *o, struct SGS_Token *t) {
 			break;
 		case '!':
 		case '"':
-			c = handle_special(o, c);
 			break;
 		case '#':
-			c = handle_linecomment(o, c);
+			c = handle_linecomments(o, c);
 			break;
 		case '$':
 		case '%':
@@ -349,8 +346,9 @@ bool SGS_Lexer_get(SGS_Lexer *o, struct SGS_Token *t) {
 		case ',':
 		case '-':
 		case '.':
+			break;
 		case '/':
-			c = handle_special(o, c);
+			c = handle_slash(o, c);
 			break;
 		case '0':
 		case '1':
@@ -362,7 +360,6 @@ bool SGS_Lexer_get(SGS_Lexer *o, struct SGS_Token *t) {
 		case '7':
 		case '8':
 		case '9':
-			c = handle_numeric_value(o, c);
 			break;
 		case ':':
 		case ';':
@@ -371,7 +368,6 @@ bool SGS_Lexer_get(SGS_Lexer *o, struct SGS_Token *t) {
 		case '>':
 		case '?':
 		case '@':
-			c = handle_special(o, c);
 			break;
 		case 'A':
 		case 'B':
@@ -399,7 +395,6 @@ bool SGS_Lexer_get(SGS_Lexer *o, struct SGS_Token *t) {
 		case 'X':
 		case 'Y':
 		case 'Z':
-			c = handle_identifier(o, c);
 			break;
 		case '[':
 		case '\\':
@@ -407,7 +402,6 @@ bool SGS_Lexer_get(SGS_Lexer *o, struct SGS_Token *t) {
 		case '^':
 		case '_':
 		case '`':
-			c = handle_special(o, c);
 			break;
 		case 'a':
 		case 'b':
@@ -435,13 +429,11 @@ bool SGS_Lexer_get(SGS_Lexer *o, struct SGS_Token *t) {
 		case 'x':
 		case 'y':
 		case 'z':
-			c = handle_identifier(o, c);
 			break;
 		case '{':
 		case '|':
 		case '}':
 		case '~':
-			c = handle_special(o, c);
 			break;
 		case /* DEL */ 0x7F:
 		case 0x80:
@@ -575,38 +567,41 @@ bool SGS_Lexer_get(SGS_Lexer *o, struct SGS_Token *t) {
 			c = handle_invalid(o, c);
 			break;
 		}
-	} while (c != 0);
-	if (t != NULL) {
-		*t = o->token;
+	} while (c == 0);
+	if (c == SCAN_EOF) return 0;
+	if (o->newline) {
+		/*
+		 * Handle greedy scanning past newline characters.
+		 * Unget char, set position, and return newline
+		 * (also setting preceding char to newline so a
+		 * following unget will work).
+		 */
+		SGS_CBuf_UNGETC(&o->fr.buf);
+		--o->line_num;
+		o->char_num = o->old_char_num;
+		c = SGS_SCAN_NEWLINE;
+		o->fr.buf.w.pos = o->fr.buf.r.pos - 1;
+		SGS_CBufMode_FIXP(&o->fr.buf.w);
+		SGS_CBuf_SETC_NC(&o->fr.buf, c);
 	}
-	return (o->token.type == SGS_T_INVALID) ?
-		(o->token.data.b == SGS_STREAM_OK) :
-		true;
+	return c;
 }
 
 /**
- * Get the next token from the current file. Interprets any visible ASCII
- * character as a special token character.
+ * Get next character (with filtering) if it matches \p testc.
  *
- * Upon end of file, an SGS_T_INVALID token is set and false is
- * returned. The field data.b is assigned the file reading status.
- * (If true is returned, an SGS_T_INVALID token simply means that
- * invalid input was successfully registered in the current file.)
+ * If the characters do not match, the last character read will
+ * be ungotten; any skipped characters (whitespace, etc.) will not
+ * be processed again.
  *
- * \return true if a token was successfully read from the file
+ * \return true if character matched \p testc
  */
-bool SGS_Lexer_get_special(SGS_Lexer *o, struct SGS_Token *t) {
-	uint8_t c;
-	do {
-		++o->char_num;
-		c = SGS_CBuf_GETC(&o->fr.buf);
-		if (IS_VISIBLE(c)) c = handle_special(o, c);
-		else c = handle_invalid(o, c);
-	} while (c != 0);
-	if (t != NULL) {
-		*t = o->token;
+bool SGS_Scanner_tryc(SGS_Scanner *o, char testc) {
+	char c = SGS_Scanner_getc(o);
+	if (c != testc) {
+		SGS_CBuf_UNGETC(&o->fr.buf);
+		--o->char_num;
+		return false;
 	}
-	return (o->token.type == SGS_T_INVALID) ?
-		(o->token.data.b == SGS_STREAM_OK) :
-		true;
+	return true;
 }

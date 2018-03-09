@@ -1,9 +1,10 @@
-/* sgensys memory pool module.
- * Copyright (c) 2014 Joel K. Pettersson <joelkpettersson@gmail.com>
+/* sgensys: Memory pool module.
+ * Copyright (c) 2014, 2018 Joel K. Pettersson
+ * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
  * terms of the GNU Lesser General Public License, either version 3 or (at
- * your option) any later version; WITHOUT ANY WARRANTY, not even of
+ * your option) any later version, WITHOUT ANY WARRANTY, not even of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
@@ -12,17 +13,10 @@
 
 #include "mempool.h"
 #include <stdlib.h>
+#include <string.h>
 
-#if defined(__WIN32) || defined(__WIN64)
-# define ssize_t ptrdiff_t
-# define GET_PAGESIZE() 4096
-#else
-# include <unistd.h>
-# define GET_PAGESIZE() sysconf(_SC_PAGESIZE)
-#endif
-
-#define DEFAULT_BLOCK_SIZE() \
-	((size_t)(GET_PAGESIZE() * 2))
+/* Not important enough to query page size for; use large-enough default. */
+#define DEFAULT_BLOCK_SIZE (4096 * 2)
 
 #define ALIGN_BYTES \
 	(sizeof(void*) * 2)
@@ -30,20 +24,20 @@
 #define ALIGN_SIZE(size) \
 	(((size) + (ALIGN_BYTES - 1)) & ~(ALIGN_BYTES - 1))
 
-typedef struct BlockEntry {
+struct BlockEntry {
 	void *mem;
 	size_t free;
-} BlockEntry;
+};
 
-struct SGSMemPool {
-	BlockEntry *blocks;
+struct SGS_MemPool {
+	struct BlockEntry *blocks;
 	size_t block_size;
 	size_t block_count;
 	size_t block_alloc;
 };
 
 /**
- * Create and return pointer to SGSMemPool instance.
+ * Create instance.
  *
  * \p block_size specifies the requested size of each memory block managed by
  * the memory pool. If 0 is passed, the default is used: twice the size of a
@@ -53,18 +47,18 @@ struct SGSMemPool {
  * Allocations larger than the requested block size can still be made; these
  * are given individual blocks sized according to need.
  *
- * \return SGSMemPool instance, or NULL if allocation fails
+ * \return instance, or NULL if allocation fails
  */
-SGSMemPool *SGS_create_mempool(size_t block_size) {
-	SGSMemPool *o = calloc(1, sizeof(SGSMemPool));
+SGS_MemPool *SGS_create_MemPool(size_t block_size) {
+	SGS_MemPool *o = calloc(1, sizeof(struct SGS_MemPool));
 	if (o == NULL) return NULL;
 	o->block_size = (block_size > 0) ?
 		ALIGN_SIZE(block_size) :
-		DEFAULT_BLOCK_SIZE();
+		DEFAULT_BLOCK_SIZE;
 	return o;
 }
 
-void SGS_destroy_mempool(SGSMemPool *o) {
+void SGS_destroy_MemPool(SGS_MemPool *o) {
 	size_t i;
 	for (i = 0; i < o->block_count; ++i) {
 		free(o->blocks[i].mem);
@@ -78,10 +72,10 @@ void SGS_destroy_mempool(SGSMemPool *o) {
  * using binary search.
  * \return id if found, -1 if not found
  */
-static ssize_t first_smallest_block(SGSMemPool *o, size_t size) {
+static ptrdiff_t first_smallest_block(SGS_MemPool *o, size_t size) {
 	size_t i = 0;
-	ssize_t min = 0;
-	ssize_t max = o->block_count - 1;
+	ptrdiff_t min = 0;
+	ptrdiff_t max = o->block_count - 1;
 	for (;;) {
 		i = ((size_t)(min + max) >> 1);
 		if (o->blocks[i].free < size) {
@@ -99,7 +93,7 @@ static ssize_t first_smallest_block(SGSMemPool *o, size_t size) {
 	}
 	return (i < o->block_count &&
 		o->blocks[i].free >= size) ?
-		(ssize_t)i :
+		(ptrdiff_t)i :
 		-1;
 }
 
@@ -118,7 +112,7 @@ static ssize_t first_smallest_block(SGSMemPool *o, size_t size) {
  * by the previous such block, until finally the last such block overwrites
  * the block at \p to.
  */
-static void copy_blocks_up_one(SGSMemPool *o, size_t to, size_t from) {
+static void copy_blocks_up_one(SGS_MemPool *o, size_t to, size_t from) {
 	if (from + 1 == to ||
 		o->blocks[from].free == o->blocks[to - 1].free) {
 		/*
@@ -144,11 +138,11 @@ static void copy_blocks_up_one(SGSMemPool *o, size_t to, size_t from) {
  * Add blocks to the memory pool. One if none, otherwise double the number.
  * \return the new number of blocks, or -1 upon failure
  */
-static ssize_t extend_mempool(SGSMemPool *o) {
+static ptrdiff_t mempool_extend(SGS_MemPool *o) {
 	size_t new_block_alloc = (o->block_alloc > 0) ?
 		(o->block_alloc << 1) :
 		1;
-	o->blocks = realloc(o->blocks, sizeof(BlockEntry) * new_block_alloc);
+	o->blocks = realloc(o->blocks, sizeof(struct BlockEntry) * new_block_alloc);
 	if (o->blocks == NULL)
 		return -1;
 	o->block_alloc = new_block_alloc;
@@ -156,13 +150,12 @@ static ssize_t extend_mempool(SGSMemPool *o) {
 }
 
 /**
- * Allocate object of \p size within the memory pool. If \p data is not NULL,
- * \p size bytes will be copied from it into the new object.
+ * Allocate object of \p size within the memory pool.
  *
  * \return the allocated object, or NULL if allocation fails
  */
-void *SGS_mempool_alloc(SGSMemPool *o, size_t size) {
-	ssize_t i;
+void *SGS_MemPool_alloc(SGS_MemPool *o, size_t size) {
+	ptrdiff_t i;
 	void *ret;
 	size = ALIGN_SIZE(size);
 	/*
@@ -184,7 +177,7 @@ void *SGS_mempool_alloc(SGSMemPool *o, size_t size) {
 		 * Expand block entry array if needed.
 		 */
 		if (o->block_count == o->block_alloc) {
-			if (extend_mempool(o) < 0) return NULL;
+			if (mempool_extend(o) < 0) return NULL;
 		}
 		/*
 		 * Allocate new block.
@@ -221,7 +214,7 @@ void *SGS_mempool_alloc(SGSMemPool *o, size_t size) {
 			 * Here, too, the free space at i needs to be fudged,
 			 * since copy_blocks_up_one() relies on binary search.
 			 */
-			BlockEntry tmp = o->blocks[i];
+			struct BlockEntry tmp = o->blocks[i];
 			o->blocks[i].free = o->blocks[i - 1].free;
 			copy_blocks_up_one(o, i, j);
 			o->blocks[j] = tmp;
@@ -230,4 +223,15 @@ void *SGS_mempool_alloc(SGSMemPool *o, size_t size) {
 	return ret;
 }
 
-/* EOF */
+/**
+ * Allocate object of \p size within the memory pool, copying from \p mem
+ * if not NULL.
+ *
+ * \return the allocated object, or NULL if allocation fails
+ */
+void *SGS_MemPool_dup(SGS_MemPool *o, const void *mem, size_t size) {
+	void *ret = SGS_MemPool_alloc(o, size);
+	if (ret == NULL) return NULL;
+	if (mem != NULL) memcpy(ret, mem, size);
+	return ret;
+}
