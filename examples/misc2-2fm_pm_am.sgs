@@ -7,8 +7,8 @@ Osin t4 f200 f!400<
 |
 Osin t12 f120 a0.5 a!1.0<
 	Osin f0.222
-> p*<
-	Osin f190 a1 p*<
+> p+<
+	Osin f190 a1 p+<
 		Osin f1125 a1
 	>
 	Osin f64

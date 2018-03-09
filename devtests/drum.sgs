@@ -1,5 +1,5 @@
-Osin fFs3 t0.5 p*<
-'a	Osin r(11/6) a0 a[v2 t0.025 cexp] p*<
+Osin fFs3 t0.5 p+<
+'a	Osin r(11/6) a0 a[v2 t0.025 cexp] p+<
 'b		Osin r(11/27) a0 a[v1 t0.025 cexp]
 	>
 >

@@ -1,12 +1,12 @@
 # Chowning-esque test sound(s)
 
-Osin f80 t0.2 p*<
+Osin f80 t0.2 p+<
 	Osin r(80/55) a0.75 a[v1.0 t(0.2*2/10)] t(0.2*2/10)
 	; a[v0 t(0.2*8/10) cexp] t(0.2*8/10)
 >
 
 \0.25|
-Osin f40 t0.2 p*<
+Osin f40 t0.2 p+<
 	Osin r(80/55) a0.75 a[v1.0 t(0.2*2/10)] t(0.2*2/10)
 	; a[v0 t(0.2*8/10) cexp] t(0.2*8/10)
 >
