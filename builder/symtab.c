@@ -1,5 +1,5 @@
 /* sgensys: Symbol table module.
- * Copyright (c) 2011-2012, 2014, 2017-2018 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2014, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -16,103 +16,101 @@
 #include <string.h>
 #include <stdlib.h>
 
-#define INITIAL_STRTAB_ALLOC 1024
+#define STRTAB_ALLOC_INITIAL 1024
 
 #if SGS_HASHTAB_STATS
-static uint32_t collision_count = 0;
+static size_t collision_count = 0;
 #include <stdio.h>
 #endif
 
-typedef struct StringEntry {
-	struct StringEntry *prev;
-	int32_t symbol_bucket;
-	uint32_t len;
+typedef struct StrEntry {
+	struct StrEntry *prev;
+	void *symbol_data;
+	size_t len;
 	char str[1]; /* sized to actual length */
-} StringEntry;
+} StrEntry;
 
 #define GET_STRING_ENTRY_SIZE(str_len) \
-	(offsetof(StringEntry, str) + (str_len))
-
-typedef struct SymNode {
-  const char *key;
-  void *value;
-  struct SymNode *next;
-} SymNode;
+	(offsetof(StrEntry, str) + (str_len))
 
 struct SGS_SymTab {
-	SGS_MemPool *mempool;
-	StringEntry **strtab;
-	uint32_t strtab_count;
-	uint32_t strtab_alloc;
-  SymNode *node;
+	SGS_MemPool *malc;
+	StrEntry **strtab;
+	size_t strtab_count;
+	size_t strtab_alloc;
 };
 
-SGS_SymTab* SGS_create_SymTab(void) {
+/**
+ * Create instance.
+ *
+ * \return instance, or NULL on allocation failure
+ */
+SGS_SymTab *SGS_create_SymTab(void) {
 	SGS_SymTab *o = calloc(1, sizeof(SGS_SymTab));
 	if (o == NULL) return NULL;
-	o->mempool = SGS_create_MemPool(0);
-	if (o->mempool == NULL) {
+	o->malc = SGS_create_MemPool(0);
+	if (o->malc == NULL) {
 		free(o);
 		return NULL;
 	}
 	return o;
 }
 
+/**
+ * Destroy instance.
+ */
 void SGS_destroy_SymTab(SGS_SymTab *o) {
-  SymNode *n = o->node;
-  while (n) {
-    SymNode *nn = n->next;
-    free(n);
-    n = nn;
-  }
 #if SGS_HASHTAB_STATS
-  printf("collision count: %d\n", collision_count);
+	printf("collision count: %zd\n", collision_count);
 #endif
-	SGS_destroy_MemPool(o->mempool);
+	SGS_destroy_MemPool(o->malc);
 	free(o->strtab);
 }
 
-/**
+/*
  * Return the hash of the given string \p str of lenght \p len.
- * \return the hash of \p str
+ *
+ * \return hash
  */
-static uint32_t hash_string(SGS_SymTab *o, const char *str, uint32_t len) {
-	uint32_t i;
-	uint32_t hash;
+static size_t hash_string(SGS_SymTab *o,
+		const char *str, size_t len) {
+	size_t i;
+	size_t hash;
 	/*
 	 * Calculate hash.
 	 */
 	hash = len;
 	for (i = 0; i < len; ++i) {
-		uint32_t c = str[i];
+		size_t c = str[i];
 		hash = 37 * hash + c;
 	}
 	hash &= (o->strtab_alloc - 1); /* strtab_alloc is a power of 2 */
 	return hash;
 }
 
-/**
+/*
  * Increase the size of the hash table for the string pool.
- * \return the new allocation size, or -1 upon failure
+ *
+ * \return true, or false on allocation failure
  */
-static int32_t extend_strtab(SGS_SymTab *o) {
-	StringEntry **old_strtab = o->strtab;
-	uint32_t old_strtab_alloc = o->strtab_alloc;
-	uint32_t i;
+static bool extend_strtab(SGS_SymTab *o) {
+	StrEntry **old_strtab = o->strtab;
+	size_t old_strtab_alloc = o->strtab_alloc;
+	size_t i;
 	o->strtab_alloc = (o->strtab_alloc > 0) ?
 		(o->strtab_alloc << 1) :
-		INITIAL_STRTAB_ALLOC;
-	o->strtab = calloc(o->strtab_alloc, sizeof(StringEntry*));
+		STRTAB_ALLOC_INITIAL;
+	o->strtab = calloc(o->strtab_alloc, sizeof(StrEntry*));
 	if (o->strtab == NULL)
-		return -1;
+		return false;
 	/*
 	 * Rehash entries
 	 */
 	for (i = 0; i < old_strtab_alloc; ++i) {
-		StringEntry *entry = old_strtab[i];
+		StrEntry *entry = old_strtab[i];
 		while (entry) {
-			StringEntry *prev_entry;
-			uint32_t hash;
+			StrEntry *prev_entry;
+			size_t hash;
 			hash = hash_string(o, entry->str, entry->len);
 			/*
 			 * Before adding the entry to the new table, set
@@ -128,85 +126,85 @@ static int32_t extend_strtab(SGS_SymTab *o) {
 		}
 	}
 	free(old_strtab);
-	return o->strtab_alloc;
+	return true;
 }
 
-/**
- * Place a string in the string pool of the symbol table, unless already
- * present. A copy of \p str unique for the symbol table is pointed to
- * by the return value.
+/*
+ * Get unique entry for string in symbol table, or NULL if missing.
  *
- * \return unique copy of \p str for symtab instance, or NULL on failure
+ * Initializes the string table if empty.
+ *
+ * \return StrEntry, or NULL if none
  */
-const char *SGS_SymTab_pool_str(SGS_SymTab *o, const char *str, uint32_t len) {
-	uint32_t hash;
-	StringEntry *entry;
-	if (str == NULL || len == 0) return NULL;
+static StrEntry *unique_entry(SGS_SymTab *o,
+		const void *str, size_t len) {
+	size_t hash;
+	StrEntry *entry;
 	if (o->strtab_count == (o->strtab_alloc / 2)) {
-		if (extend_strtab(o) < 0) return NULL;
+		if (!extend_strtab(o)) return NULL;
 	}
+	if (str == NULL || len == 0) return NULL;
 	hash = hash_string(o, str, len);
 	entry = o->strtab[hash];
+	if (!entry) goto ADD_ENTRY; /* missing */
 	for (;;) {
-		if (entry == NULL) break; /* missing */
 		if (entry->len == len &&
-			!strcmp(entry->str, str)) return entry->str; /* found */
+			!strcmp(entry->str, str)) return entry; /* found */
 		entry = entry->prev;
+		if (entry == NULL) break; /* missing */
 	}
-	/*
-	 * Register string.
-	 */
-	entry = SGS_MemPool_alloc(o->mempool, GET_STRING_ENTRY_SIZE(len + 1));
-	if (entry == NULL) return NULL;
 #if SGS_HASHTAB_STATS
-	if (o->strtab[hash] != NULL) {
-		++collision_count;
-	}
+	++collision_count;
 #endif
+ADD_ENTRY:
+	entry = SGS_MemPool_alloc(o->malc, NULL, GET_STRING_ENTRY_SIZE(len + 1));
+	if (entry == NULL) return NULL;
 	entry->prev = o->strtab[hash];
 	o->strtab[hash] = entry;
-	entry->symbol_bucket = -1; /* As-yet unused. */
+	entry->symbol_data = NULL;
 	entry->len = len;
 	memcpy(entry->str, str, len);
 	entry->str[len] = '\0';
 	++o->strtab_count;
-	return entry->str;
+	return entry;
 }
 
-void* SGS_SymTab_get(SGS_SymTab *o, const char *key) {
-  SymNode *n = o->node;
-  while (n) {
-    if (!strcmp(n->key, key))
-      return n->value;
-    n = n->next;
-  }
-  return 0;
+/**
+ * Add \p str to the string pool of the symbol table, unless already
+ * present. Return the copy of \p str unique to the symbol table.
+ *
+ * \return unique copy of \p str for instance, or NULL on allocation failure
+ */
+const void *SGS_SymTab_pool_str(SGS_SymTab *o,
+		const void *str, size_t len) {
+	StrEntry *entry = unique_entry(o, str, len);
+	return (entry) ? entry->str : NULL;
 }
 
-static SymNode* SymNode_alloc(const char *key, void *value) {
-  SymNode *o = malloc(sizeof(SymNode));
-  o->key = key;
-  o->value = value;
-  o->next = 0;
-  return o;
+/**
+ * Return value associated with string.
+ *
+ * \return value, or NULL if none
+ */
+void *SGS_SymTab_get(SGS_SymTab *o,
+		const void *key, size_t len) {
+	StrEntry *entry;
+	entry = unique_entry(o, key, len);
+	if (!entry) return NULL;
+	return entry->symbol_data;
 }
 
-void* SGS_SymTab_set(SGS_SymTab *o, const char *key, void *value) {
-  SymNode *n = o->node;
-  if (!n) {
-    o->node = SymNode_alloc(key, value);
-    return 0;
-  }
-  for (;;) {
-    if (!strcmp(n->key, key)) {
-      void *oldvalue = n->value;
-      n->value = value;
-      return oldvalue;
-    }
-    if (!n->next)
-      break;
-    n = n->next;
-  }
-  n->next = SymNode_alloc(key, value);
-  return 0;
+/**
+ * Set value associated with string.
+ *
+ * \return previous value, or NULL if none
+ */
+void *SGS_SymTab_set(SGS_SymTab *o,
+		const void *key, size_t len, void *value) {
+	StrEntry *entry;
+	entry = unique_entry(o, key, len);
+	if (!entry) return NULL;
+	void *old_value = entry->symbol_data;
+	entry->symbol_data = value;
+	return old_value;
 }

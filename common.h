@@ -21,8 +21,6 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-typedef unsigned int uint;
-
 /*
  * Keyword-like macros.
  */
@@ -30,11 +28,13 @@ typedef unsigned int uint;
 #if defined(__GNUC__) || defined(__clang__)
 # define SGS__malloclike __attribute__((malloc))
 # define SGS__maybe_unused __attribute__((unused))
+# define SGS__noinline __attribute__((noinline))
 # define SGS__printflike(string_index, first_to_check) \
 	__attribute__((format(printf, string_index, first_to_check)))
 #else
 # define SGS__malloclike
 # define SGS__maybe_unused
+# define SGS__noinline
 # define SGS__printflike(string_index, first_to_check)
 #endif
 
@@ -48,7 +48,6 @@ void SGS_error(const char *label, const char *fmt, ...)
 	SGS__printflike(2, 3);
 
 void *SGS_memdup(const void *src, size_t size) SGS__malloclike;
-char *SGS_strdup(const char *src) SGS__malloclike;
 
 /*
  * Debugging options.
