@@ -1,4 +1,4 @@
-/* sgensys: parser module.
+/* sgensys: Script parser module.
  * Copyright (c) 2011-2012, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -12,105 +12,108 @@
  */
 
 #pragma once
-#include "sgensys.h"
-#include <stdio.h>
+#include "program.h"
+#include "ptrlist.h"
 
-struct SGSOperatorNode;
-
-/*
- * SGSNodeList
+/**
+ * Script data operator flags.
  */
-
-typedef struct SGSNodeList {
-  uint32_t count,
-           inactive_count; /* used when nodes are inherited from another list */
-  void *data;
-} SGSNodeList;
-
-#define SGS_NODELIST_GET(nl) \
- ((struct SGSOperatorNode**)(((nl)->count > 1) ? (nl)->data : &(nl)->data))
-
-void SGS_nodelist_add(SGSNodeList *list, struct SGSOperatorNode *n);
-void SGS_nodelist_clear(SGSNodeList *list);
-void SGS_nodelist_safe_copy(SGSNodeList *dst, const SGSNodeList *src);
-int32_t SGS_nodelist_rforeach(SGSNodeList *list,
-                           int32_t (*callback)(struct SGSOperatorNode *op,
-                                           void *arg),
-                           void *arg);
-
-/*
- * Parsing nodes.
- */
-
 enum {
-  /* parse flags */
-  ON_OPERATOR_LATER_USED = 1<<0,
-  ON_MULTIPLE_OPERATORS = 1<<1,
-  ON_OPERATOR_NESTED = 1<<2,
-  ON_LABEL_ALLOC = 1<<3,
-  ON_TIME_DEFAULT = 1<<4,
-  ON_SILENCE_ADDED = 1<<5,
+	SGS_SDOP_LATER_USED = 1<<0,
+	SGS_SDOP_MULTIPLE = 1<<1,
+	SGS_SDOP_NESTED = 1<<2,
+	SGS_SDOP_LABEL_ALLOC = 1<<3,
+	SGS_SDOP_TIME_DEFAULT = 1<<4,
+	SGS_SDOP_SILENCE_ADDED = 1<<5,
 };
 
-typedef struct SGSOperatorNode {
-  struct SGSEventNode *event;
-  SGSNodeList on_next; /* all immediate forward references for operator(s) */
-  struct SGSOperatorNode *on_prev; /* preceding node(s) for same operator(s) */
-  struct SGSOperatorNode *next_bound;
-  uint32_t on_flags;
-  const char *label;
-  /* operator parameters */
-  uint32_t operator_id; /* not filled in by parser; for later use (program.c) */
-  uint32_t operator_params;
-  uint8_t attr;
-  uint8_t wave;
-  int32_t time_ms, silence_ms;
-  float freq, dynfreq, phase, amp, dynamp;
-  SGSProgramValit valitfreq, valitamp;
-  /* node adjacents in operator linkage graph */
-  SGSNodeList fmods, pmods, amods;
-} SGSOperatorNode;
+/**
+ * Node type for operator data.
+ */
+typedef struct SGSScriptOpData {
+	struct SGSScriptEvData *event;
+	SGSPtrList on_next; /* all immediate forward refs for op(s) */
+	struct SGSScriptOpData *on_prev; /* preceding for same op(s) */
+	struct SGSScriptOpData *next_bound;
+	uint32_t op_flags;
+	const char *label;
+	/* operator parameters */
+	uint32_t operator_id; /* not used by parser; for program module */
+	uint32_t operator_params;
+	uint8_t attr;
+	uint8_t wave;
+	int32_t time_ms, silence_ms;
+	float freq, dynfreq, phase, amp, dynamp;
+	SGSProgramValit valitfreq, valitamp;
+	/* node adjacents in operator linkage graph */
+	SGSPtrList fmods, pmods, amods;
+} SGSScriptOpData;
 
+/**
+ * Script data event flags.
+ */
 enum {
-  /* parse flags */
-  EN_VOICE_LATER_USED = 1<<0,
-  EN_ADD_WAIT_DURATION = 1<<1,
+	SGS_SDEV_VOICE_LATER_USED = 1<<0,
+	SGS_SDEV_ADD_WAIT_DURATION = 1<<1,
 };
 
-typedef struct SGSEventNode {
-  struct SGSEventNode *next;
-  struct SGSEventNode *groupfrom;
-  struct SGSEventNode *composite;
-  int32_t wait_ms;
-  SGSNodeList operators; /* operators included in event */
-  uint32_t en_flags;
-  /* voice parameters */
-  uint32_t voice_id; /* not filled in by parser; for later use (program.c) */
-  uint32_t voice_params;
-  struct SGSEventNode *voice_prev; /* preceding event for same voice */
-  uint8_t voice_attr;
-  float panning;
-  SGSProgramValit valitpanning;
-  SGSNodeList graph;
-} SGSEventNode;
+/**
+ * Node type for event data. Includes any voice and operator data part
+ * of the event.
+ */
+typedef struct SGSScriptEvData {
+	struct SGSScriptEvData *next;
+	struct SGSScriptEvData *groupfrom;
+	struct SGSScriptEvData *composite;
+	int32_t wait_ms;
+	SGSPtrList operators; /* operators included in event */
+	uint32_t ev_flags;
+	/* voice parameters */
+	uint32_t voice_id; /* not used by parser; for program module */
+	uint32_t voice_params;
+	struct SGSScriptEvData *voice_prev; /* preceding event for voice */
+	uint8_t voice_attr;
+	float panning;
+	SGSProgramValit valitpanning;
+	SGSPtrList graph;
+} SGSScriptEvData;
 
-void SGS_event_node_destroy(SGSEventNode *e);
+/**
+ * Script data option flags.
+ *
+ * Set after parsing the setting of script options in a script.
+ */
+enum {
+	SGS_SOPT_AMPMULT = 1<<0,
+	SGS_SOPT_A4_FREQ = 1<<1,
+	SGS_SOPT_DEF_TIME = 1<<2,
+	SGS_SOPT_DEF_FREQ = 1<<3,
+	SGS_SOPT_DEF_RATIO = 1<<4,
+};
 
-typedef struct SGSParser {
-  FILE *f;
-  const char *fn;
-  struct SGSSymtab *st;
-  uint32_t line;
-  uint32_t calllevel;
-  uint32_t scopeid;
-  char c, nextc;
-  /* node state */
-  SGSEventNode *events;
-  SGSEventNode *last_event;
-  /* settings/ops */
-  float ampmult;
-  int32_t def_time_ms;
-  float def_freq, def_A4tuning, def_ratio;
-} SGSParser;
+/**
+ * Options set for a script, affecting parsing.
+ *
+ * The final state is included in the parse result.
+ */
+typedef struct SGSScriptOptions {
+	uint32_t changed; // flags (SGS_SOPT_*) set upon change by script
+	float ampmult;    // amplitude multiplier for non-modulator operators
+	float A4_freq;    // A4 tuning for frequency as note
+	/* operator parameter default values (use depends on context) */
+	int32_t def_time_ms;
+	float def_freq,
+	      def_ratio;
+} SGSScriptOptions;
 
-void SGS_parse(SGSParser *o, FILE *f, const char *fn);
+/**
+ * Type returned after processing a file.
+ */
+typedef struct SGSScript {
+	SGSScriptEvData *events;
+	const char *name; // currently simply set to the filename
+	SGSScriptOptions sopt;
+} SGSScript;
+
+SGSScript *SGS_load_Script(const char *filename);
+void SGS_discard_Script(SGSScript *o);

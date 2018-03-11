@@ -12,6 +12,7 @@
  */
 
 #pragma once
+#include "common.h"
 
 struct SGSSymtab;
 typedef struct SGSSymtab SGSSymtab;
