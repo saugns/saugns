@@ -12,6 +12,7 @@
  */
 
 #pragma once
+#include "sgensys.h"
 
 struct SGSSymtab;
 typedef struct SGSSymtab SGSSymtab;

@@ -1,4 +1,4 @@
-/* sgensys: sound program reading module.
+/* sgensys: Parsing data to audio program translator module.
  * Copyright (c) 2011-2012, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -15,6 +15,7 @@
 #include "parser.h"
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 static void print_linked(const char *header, const char *footer,
 		uint32_t count, const int32_t *nodes) {
@@ -28,11 +29,11 @@ static void print_linked(const char *header, const char *footer,
 
 static void build_graph(SGSProgramEvent *root,
 		const SGSEventNode *voice_in) {
-  SGSOperatorNode **nl;
+  SGSOperatorNode **ops;
   SGSProgramGraph *graph, **graph_out;
   uint32_t i;
   uint32_t size;
-  if (!voice_in->voice_params & SGS_GRAPH)
+  if (!voice_in->voice_params & SGS_P_GRAPH)
     return;
   size = voice_in->graph.count;
   graph_out = (SGSProgramGraph**)&root->voice->graph;
@@ -40,22 +41,22 @@ static void build_graph(SGSProgramEvent *root,
     *graph_out = 0;
     return;
   }
-  nl = SGS_NODELIST_GET(&voice_in->graph);
+  ops = (struct SGSOperatorNode**) SGS_PTRARR_ITEMS(&voice_in->graph);
   graph = malloc(sizeof(SGSProgramGraph) + sizeof(int32_t) * (size - 1));
   graph->opc = size;
   for (i = 0; i < size; ++i)
-    graph->ops[i] = nl[i]->operator_id;
+    graph->ops[i] = ops[i]->operator_id;
   *graph_out = graph;
 }
 
 static void build_adjcs(SGSProgramEvent *root,
 		const SGSOperatorNode *operator_in) {
-  SGSOperatorNode **nl;
+  SGSOperatorNode **ops;
   SGSProgramGraphAdjcs *adjcs, **adjcs_out;
   int32_t *data;
   uint32_t i;
   uint32_t size;
-  if (!operator_in || !(operator_in->operator_params & SGS_ADJCS))
+  if (!operator_in || !(operator_in->operator_params & SGS_P_ADJCS))
     return;
   size = operator_in->fmods.count +
          operator_in->pmods.count +
@@ -70,15 +71,15 @@ static void build_adjcs(SGSProgramEvent *root,
   adjcs->pmodc = operator_in->pmods.count;
   adjcs->amodc = operator_in->amods.count;
   data = adjcs->adjcs;
-  nl = SGS_NODELIST_GET(&operator_in->fmods);
+  ops = (struct SGSOperatorNode**) SGS_PTRARR_ITEMS(&operator_in->fmods);
   for (i = 0; i < adjcs->fmodc; ++i)
-    *data++ = nl[i]->operator_id;
-  nl = SGS_NODELIST_GET(&operator_in->pmods);
+    *data++ = ops[i]->operator_id;
+  ops = (struct SGSOperatorNode**) SGS_PTRARR_ITEMS(&operator_in->pmods);
   for (i = 0; i < adjcs->pmodc; ++i)
-    *data++ = nl[i]->operator_id;
-  nl = SGS_NODELIST_GET(&operator_in->amods);
+    *data++ = ops[i]->operator_id;
+  ops = (struct SGSOperatorNode**) SGS_PTRARR_ITEMS(&operator_in->amods);
   for (i = 0; i < adjcs->amodc; ++i)
-    *data++ = nl[i]->operator_id;
+    *data++ = ops[i]->operator_id;
   *adjcs_out = adjcs;
 }
 
@@ -113,12 +114,13 @@ static void voice_alloc_fini(VoiceAlloc *va, SGSProgram *prg) {
  * the graph of the voice event.
  */
 static uint32_t voice_duration(SGSEventNode *ve) {
-  SGSOperatorNode **nl = SGS_NODELIST_GET(&ve->operators);
+  SGSOperatorNode **ops;
   uint32_t i;
   uint32_t duration_ms = 0;
   /* FIXME: node list type? */
+  ops = (struct SGSOperatorNode**) SGS_PTRARR_ITEMS(&ve->operators);
   for (i = 0; i < ve->operators.count; ++i) {
-    SGSOperatorNode *op = nl[i];
+    SGSOperatorNode *op = ops[i];
     if (op->time_ms > (int32_t)duration_ms)
       duration_ms = op->time_ms;
   }
@@ -129,7 +131,7 @@ static uint32_t voice_duration(SGSEventNode *ve) {
  * Incremental voice allocation - allocate voice for event,
  * returning voice id.
  */
-static size_t voice_alloc_inc(VoiceAlloc *va, SGSEventNode *e) {
+static uint32_t voice_alloc_inc(VoiceAlloc *va, SGSEventNode *e) {
   uint32_t voice;
   for (voice = 0; voice < va->voicec; ++voice) {
     if ((int32_t)va->data[voice].duration_ms < e->wait_ms)
@@ -163,7 +165,7 @@ static size_t voice_alloc_inc(VoiceAlloc *va, SGSEventNode *e) {
   }
   e->voice_id = voice;
   va->data[voice].last = e;
-  if (e->voice_params & SGS_GRAPH)
+  if (e->voice_params & SGS_P_GRAPH)
     va->data[voice].duration_ms = voice_duration(e);
   return voice;
 }
@@ -197,7 +199,7 @@ static void operator_alloc_fini(OperatorAlloc *oa, SGSProgram *prg) {
  *
  * Only valid to call for single-operator nodes.
  */
-static size_t operator_alloc_inc(OperatorAlloc *oa, SGSOperatorNode *op) {
+static uint32_t operator_alloc_inc(OperatorAlloc *oa, SGSOperatorNode *op) {
   SGSEventNode *e = op->event;
   uint32_t operator;
   for (operator = 0; operator < oa->operatorc; ++operator) {
@@ -285,7 +287,7 @@ static SGSProgramEvent *program_alloc_oevent(ProgramAlloc *pa,
  * Overwrite parameters in dst that have values in src.
  */
 static void copy_params(SGSOperatorNode *dst, const SGSOperatorNode *src) {
-  if (src->operator_params & SGS_AMP) dst->amp = src->amp;
+  if (src->operator_params & SGS_P_AMP) dst->amp = src->amp;
 }
 
 static void expand_operator(SGSOperatorNode *op) {
@@ -296,9 +298,9 @@ static void expand_operator(SGSOperatorNode *op) {
     copy_params(pop, op);
     expand_operator(pop);
   } while ((pop = pop->next_bound));
-  SGS_nodelist_clear(&op->fmods);
-  SGS_nodelist_clear(&op->pmods);
-  SGS_nodelist_clear(&op->amods);
+  SGS_ptrarr_clear(&op->fmods);
+  SGS_ptrarr_clear(&op->pmods);
+  SGS_ptrarr_clear(&op->amods);
   op->operator_params = 0;
 }
 
@@ -326,7 +328,7 @@ static void program_convert_onode(ProgramAlloc *pa, SGSOperatorNode *op,
   ood->dynamp = op->dynamp;
   ood->valitfreq = op->valitfreq;
   ood->valitamp = op->valitamp;
-  if (op->operator_params & SGS_ADJCS) {
+  if (op->operator_params & SGS_P_ADJCS) {
     build_adjcs(oe, op);
   }
 }
@@ -336,11 +338,12 @@ static void program_convert_onode(ProgramAlloc *pa, SGSOperatorNode *op,
  * sublists in turn, following and converting operator data and allocating
  * new output events as needed.
  */
-static void program_follow_onodes(ProgramAlloc *pa, SGSNodeList *nl) {
+static void program_follow_onodes(ProgramAlloc *pa, struct SGSPtrArr *op_ar) {
+  SGSOperatorNode **ops;
   uint32_t i;
-  SGSOperatorNode **list = SGS_NODELIST_GET(nl);
-  for (i = nl->inactive_count; i < nl->count; ++i) {
-    SGSOperatorNode *op = list[i];
+  ops = (struct SGSOperatorNode**) SGS_PTRARR_ITEMS(op_ar);
+  for (i = op_ar->copy_count; i < op_ar->count; ++i) {
+    SGSOperatorNode *op = ops[i];
     OperatorAllocData *ad;
     uint32_t operator_id;
     if (op->on_flags & ON_MULTIPLE_OPERATORS) continue;
@@ -380,14 +383,19 @@ static void program_convert_enode(ProgramAlloc *pa, SGSEventNode *e) {
     ovd->attr = e->voice_attr;
     ovd->panning = e->panning;
     ovd->valitpanning = e->valitpanning;
-    if (e->voice_params & SGS_GRAPH) {
+    if (e->voice_params & SGS_P_GRAPH) {
       build_graph(oe, e);
     }
   }
 }
 
-static SGSProgram* build(SGSParser *o) {
-  //puts("build():");
+/*
+ * Create program for the given parser output.
+ *
+ * Return program if successful, NULL on error.
+ */
+static SGSProgram* build_program(struct SGSParseList *parse) {
+  //puts("build_program():");
   ProgramAlloc pa;
   SGSProgram *prg = calloc(1, sizeof(SGSProgram));
   SGSEventNode *e;
@@ -397,19 +405,19 @@ static SGSProgram* build(SGSParser *o) {
    *           parameter data copying.
    */
   program_alloc_init(&pa);
-  for (e = o->events; e; e = e->next) {
+  for (e = parse->events; e; e = e->next) {
     program_convert_enode(&pa, e);
   }
   program_alloc_fini(&pa, prg);
   /*
    * Pass #2 - Cleanup of parsing data.
    */
-  for (e = o->events; e; ) {
+  for (e = parse->events; e; ) {
     SGSEventNode *e_next = e->next;
     SGS_event_node_destroy(e);
     e = e_next;
   }
-  //puts("/build()");
+  //puts("/build_program()");
 #if 1
   /*
    * Debug printing.
@@ -450,18 +458,16 @@ static SGSProgram* build(SGSParser *o) {
 }
 
 /**
- * Create SGSProgram for the given SGS file. Invokes the parser.
+ * Create program for the given script file. Invokes the parser.
  *
  * Return SGSProgram if successful, NULL on error.
  */
 SGSProgram* SGS_open_program(const char *filename) {
-  SGSParser p;
-  FILE *f = fopen(filename, "r");
-  if (!f) return 0;
-
-  SGS_parse(&p, f, filename);
-  fclose(f);
-  return build(&p);
+	struct SGSParseList *parse = SGS_parse(filename);
+	if (!parse) return NULL;
+	SGSProgram *prg = build_program(parse);
+	free(parse);
+	return prg;
 }
 
 /**
