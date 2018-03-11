@@ -10,14 +10,14 @@ retro-ish. It is however easy to use for experimenting with sounds.
 "FM" of most commercial synthesizers). An arbitrary number of
 oscillators can be used.
 
-The program reads SGS script files and produces audio.
+The program reads Sound Generation Script files and produces audio.
 Output can be to system audio, and/or a 16-bit PCM WAV file.
 
 Supported platforms include x86 and x86-64,
 running DragonFly, FreeBSD, Linux, NetBSD, or OpenBSD.
 Other systems are untested. The following audio systems are expected:
 	DragonFly	OSS
-	FreeBSD   	OSS
+	FreeBSD  	OSS
 	Linux    	ALSA or OSS
 	NetBSD   	OSS
 	OpenBSD  	sndio
@@ -276,10 +276,9 @@ Parameters and operator binding:
 
 Labels and referencing:
 	Any operator when specified may be prefixed by "'label " in order
-	to define a label for it, where the label is anything followed by
-	whitespace; thereafter the label may be referenced as ":label",
-	allowing future changes to be placed at any later point in the
-	script.
+	to define a label for it, where the label consists of alphanumeric
+	characters and/or '_'; thereafter the label can be referenced using
+	":label", to place future changes later in the script.
 
 Frequencies as notes:
 	Frequency values may be specified as notes. Currently, justly

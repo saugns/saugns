@@ -36,8 +36,16 @@ static void print_usage(bool by_arg) {
 "     \tdisables audio device output by default.\n"
 "  -c \tCheck script only, reporting any errors or requested info.\n"
 "  -p \tPrint info for script after loading.\n"
-"  -h \tPrint this message.\n",
+"  -h \tPrint this message.\n"
+"  -v \tPrint version.\n",
 	(by_arg) ? stdout : stderr);
+}
+
+/*
+ * Print version.
+ */
+static void print_version(void) {
+	puts("sgensys v0.4.0");
 }
 
 /*
@@ -143,6 +151,9 @@ NEXT_C:
 			if (i < 0) goto INVALID;
 			*srate = i;
 			continue;
+		case 'v':
+			print_version();
+			return false;
 		default:
 			goto INVALID;
 		}
