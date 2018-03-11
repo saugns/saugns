@@ -1,5 +1,5 @@
-/* sgensys: system audio output support module.
- * Copyright (c) 2011-2013, 2017-2018 Joel K. Pettersson
+/* sgensys: System audio output support module.
+ * Copyright (c) 2011-2014, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the

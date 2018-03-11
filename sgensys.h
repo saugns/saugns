@@ -1,4 +1,4 @@
-/* sgensys: common definitions.
+/* sgensys: Common definitions.
  * Copyright (c) 2011-2012, 2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -13,12 +13,16 @@
 
 #pragma once
 
+/*
+ * Common types.
+ */
+
+#include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
-#include <stddef.h>
 
 /*
- * Debugging options
+ * Debugging options.
  */
 
 #define USE_LEXER 0
