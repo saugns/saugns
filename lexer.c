@@ -1,4 +1,4 @@
-/* sgensys: script lexer module.
+/* sgensys: Script lexer module.
  * Copyright (c) 2014, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *

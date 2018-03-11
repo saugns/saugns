@@ -1,5 +1,5 @@
-/* sgensys: system audio output support module.
- * Copyright (c) 2011-2013, 2017-2018 Joel K. Pettersson
+/* sgensys: System audio output support module.
+ * Copyright (c) 2011-2014, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -11,9 +11,18 @@
  * <http://www.gnu.org/licenses/>.
  */
 
+#ifdef __linux
+// Needed to avoid type conflicts on Linux.
+// For now, simply define it on Linux only.
+// DragonFly's sys/soundcard.h uses BSD type names,
+// which are missing if _POSIX_C_SOURCE is defined.
+# define _POSIX_C_SOURCE 200809L
+#endif
 #include "audiodev.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <errno.h>
 
 union DevRef {
 	int fd;
@@ -23,6 +32,7 @@ union DevRef {
 enum {
 	TYPE_OSS = 0,
 	TYPE_ALSA,
+	TYPE_SNDIO,
 };
 
 struct SGSAudioDev {
@@ -35,57 +45,71 @@ struct SGSAudioDev {
 #define SOUND_BITS 16
 #define SOUND_BYTES (SOUND_BITS / 8)
 
-#ifdef linux
-# include "audiodev_linux.c"
+#ifdef __linux
+# include "audiodev/linux.c"
+#elif defined(__OpenBSD__)
+# include "audiodev/sndio.c"
 #else
-# include "audiodev_oss.c"
+# include "audiodev/oss.c"
 #endif
 
 /**
  * Open audio device for 16-bit sound output. Sound data may thereafter be
  * written any number of times using SGS_audiodev_write().
  *
- * Returns SGSAudioDev or NULL if opening the device fails.
+ * \return instance or NULL on failure
  */
 SGSAudioDev *SGS_open_audiodev(uint16_t channels, uint32_t *srate) {
-#ifdef linux
-	return open_linux_audiodev(ALSA_NAME_OUT, OSS_NAME_OUT, O_WRONLY,
+	SGSAudioDev *o;
+#ifdef __linux
+	o = open_linux(ALSA_NAME_OUT, OSS_NAME_OUT, O_WRONLY,
 			channels, srate);
+#elif defined(__OpenBSD__)
+	o = open_sndio(SNDIO_NAME_OUT, SIO_PLAY, channels, srate);
 #else
-	return open_oss_audiodev(OSS_NAME_OUT, O_WRONLY, channels, srate);
+	o = open_oss(OSS_NAME_OUT, O_WRONLY, channels, srate);
 #endif
+	if (!o) {
+		fprintf(stderr, "error: couldn't open audio device for output\n");
+		return NULL;
+	}
+	return o;
 }
 
 /**
- * Close the given audio device. The structure is freed.
+ * Close the given audio device. Destroys the instance.
  */
-void SGS_close_audiodev(SGSAudioDev *ad) {
-#ifdef linux
-	close_linux_audiodev(ad);
+void SGS_close_audiodev(SGSAudioDev *o) {
+#ifdef __linux
+	close_linux(o);
+#elif defined(__OpenBSD__)
+	close_sndio(o);
 #else
-	close_oss_audiodev(ad);
+	close_oss(o);
 #endif
 }
 
 /**
  * Return sample rate set for system audio output.
  */
-uint32_t SGS_audiodev_get_srate(const SGSAudioDev *ad) {
-	return ad->srate;
+uint32_t SGS_audiodev_get_srate(const SGSAudioDev *o) {
+	return o->srate;
 }
 
 /**
  * Write the given number of samples from buf to the audio device, the former
  * assumed to be in the format for which the audio device was opened. If
  * opened for multiple channels, buf is assumed to be interleaved and of
- * channels * samples length.
+ * (channels * samples) length.
  *
- * Returns true upon suceessful write, otherwise false;
+ * \return true upon suceessful write, otherwise false
  */
-bool SGS_audiodev_write(SGSAudioDev *ad, const int16_t *buf, uint32_t samples) {
-#ifdef linux
-	return linux_audiodev_write(ad, buf, samples);
+bool SGS_audiodev_write(SGSAudioDev *o, const int16_t *buf, uint32_t samples) {
+#ifdef __linux
+	return linux_write(o, buf, samples);
+#elif defined(__OpenBSD__)
+	return sndio_write(o, buf, samples);
 #else
-	return oss_audiodev_write(ad, buf, samples);
+	return oss_write(o, buf, samples);
 #endif
 }

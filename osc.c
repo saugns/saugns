@@ -35,7 +35,7 @@ void SGSOsc_global_init(void) {
 	int i;
 	/* first half */
 	for (i = 0; i < HALFLEN; ++i) {
-		double sinval = sin(PI * i/HALFLEN);
+		double sinval = sin(SGS_PI * i/HALFLEN);
 		sin_lut[i] = lrint(SGSOsc_LUT_MAXVAL * sinval);
 		srs_lut[i] = lrint(SGSOsc_LUT_MAXVAL * sqrtf(sinval));
 		if (i < (HALFLEN>>1))

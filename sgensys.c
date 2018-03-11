@@ -1,4 +1,4 @@
-/* sgensys: command-line interface & main module.
+/* sgensys: Main module / Command-line interface.
  * Copyright (c) 2011-2013, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -23,27 +23,27 @@
 #define NUM_CHANNELS 2
 #define DEFAULT_SRATE 44100
 
-static int16_t sound_buf[BUF_SAMPLES * NUM_CHANNELS];
+static int16_t audio_buf[BUF_SAMPLES * NUM_CHANNELS];
 
 /*
- * Produce sound for the given SGSProgram, optionally sending it
+ * Produce audio for the given SGSProgram, optionally sending it
  * to a given audio device and/or WAV file.
  *
- * Return true if no error occurred.
+ * \return true, or false on error
  */
-static bool produce_sound(struct SGSProgram *prg,
+static bool produce_audio(struct SGSProgram *prg,
 		SGSAudioDev *ad, SGSWAVFile *wf, uint32_t srate) {
 	SGSGenerator *gen = SGS_create_generator(prg, srate);
 	size_t len;
 	bool error = false;
 	bool run;
 	do {
-		run = SGS_generator_run(gen, sound_buf, BUF_SAMPLES, &len);
-		if (ad && !SGS_audiodev_write(ad, sound_buf, len)) {
+		run = SGS_generator_run(gen, audio_buf, BUF_SAMPLES, &len);
+		if (ad && !SGS_audiodev_write(ad, audio_buf, len)) {
 			error = true;
 			fputs("error: audio device write failed\n", stderr);
 		}
-		if (wf && !SGS_wavfile_write(wf, sound_buf, len)) {
+		if (wf && !SGS_wavfile_write(wf, audio_buf, len)) {
 			error = true;
 			fputs("error: WAV file write failed\n", stderr);
 		}
@@ -53,7 +53,7 @@ static bool produce_sound(struct SGSProgram *prg,
 }
 
 /*
- * Run the given program through the sound generator until completion.
+ * Run the given program through the audio generator until completion.
  * The output is sent to either none, one, or both of the audio device
  * or a WAV file.
  *
@@ -65,29 +65,25 @@ static bool run_program(struct SGSProgram *prg,
 	SGSAudioDev *ad = NULL;
 	uint32_t ad_srate = srate;
 	SGSWAVFile *wf = NULL;
+	bool status = true;
 	if (use_audiodev) {
 		ad = SGS_open_audiodev(NUM_CHANNELS, &ad_srate);
-		if (!ad) {
-			return false;
-		}
+		if (!ad) goto CLEANUP;
 	}
 	if (wav_path) {
 		wf = SGS_create_wavfile(wav_path, NUM_CHANNELS, srate);
-		if (!wf) {
-			if (ad) SGS_close_audiodev(ad);
-			return false;
-		}
+		if (!wf) goto CLEANUP;
 	}
 
-	bool status;
 	if (ad && wf && (ad_srate != srate)) {
-		fputs("warning: generating sound twice, using a different sample rate for each output\n", stderr);
-		status = produce_sound(prg, ad, NULL, ad_srate);
-		status = status && produce_sound(prg, NULL, wf, srate);
+		fputs("warning: generating audio twice, using a different sample rate for each output\n", stderr);
+		status = produce_audio(prg, ad, NULL, ad_srate);
+		status = status && produce_audio(prg, NULL, wf, srate);
 	} else {
-		status = produce_sound(prg, ad, wf, ad_srate);
+		status = produce_audio(prg, ad, wf, ad_srate);
 	}
 
+CLEANUP:
 	if (ad) {
 		SGS_close_audiodev(ad);
 	}
@@ -102,30 +98,30 @@ static bool run_program(struct SGSProgram *prg,
  */
 static void print_usage(void) {
 	puts(
-"Usage: sgensys [[-a|-m] [-r srate] [-o wavfile]|-c] scriptfile\n"
+"Usage: sgensys [-a|-m] [-r srate] [-o wavfile] scriptfile\n"
+"       sgensys [-c] scriptfile\n"
 "\n"
 "By default, audio device output is enabled.\n"
 "\n"
 "  -a \tAudible; always enable audio device output.\n"
 "  -m \tMuted; always disable audio device output.\n"
-"  -r \tSample rate in Hz (default 44100); if the audio device does not\n"
-"     \tsupport the rate requested, a warning will be printed along with\n"
-"     \tthe rate used for the audio device instead.\n"
-"  -o \tWrite a 16-bit PCM WAV file; by default, this disables audio device\n"
-"     \toutput.\n"
-"  -c \tStop after parsing the script, upon success or failure; mutually\n"
-"     \texclusive with all other options.\n"
+"  -r \tSample rate in Hz (default 44100);\n"
+"     \tif unsupported for audio device, warns and prints rate used instead.\n"
+"  -o \tWrite a 16-bit PCM WAV file, always using the sample rate requested;\n"
+"     \tdisables audio device output by default.\n"
+"  -c \tCheck script only, reporting any errors.\n"
 "  -h \tPrint this message."
 	);
 }
 
 /*
- * Read a positive integer from the given string. Returns the integer,
- * or -1 on error.
+ * Read a positive integer from the given string.
+ *
+ * \return positive value or -1 if invalid
  */
-static int get_piarg(const char *str) {
+static int32_t get_piarg(const char *str) {
 	char *endp;
-	int i;
+	int32_t i;
 	errno = 0;
 	i = strtol(str, &endp, 10);
 	if (errno || i <= 0 || endp == str || *endp) return -1;
@@ -145,10 +141,11 @@ enum {
 /*
  * Parse command line arguments.
  *
- * Returns 0 if the arguments are valid and include a script to run,
- * otherwise print usage instructions and returns 1.
+ * Print usage instructions if either requested or args invalid.
+ *
+ * \return true if args valid, false if not
  */
-static int parse_args(int argc, char **argv, uint32_t *flags,
+static bool parse_args(int argc, char **argv, uint32_t *flags,
 		const char **script_path, const char **wav_path,
 		uint32_t *srate) {
 	for (;;) {
@@ -158,7 +155,7 @@ static int parse_args(int argc, char **argv, uint32_t *flags,
 		if (argc < 1) {
 			if (!*script_path) USAGE: {
 				print_usage();
-				return 1;
+				return false;
 			}
 			break;
 		}
@@ -212,7 +209,7 @@ static int parse_args(int argc, char **argv, uint32_t *flags,
 				goto USAGE;
 		}
 	}
-	return 0;
+	return true;
 }
 
 /**
@@ -224,22 +221,26 @@ int main(int argc, char **argv) {
 	bool use_audiodev;
 	SGSProgram *prg;
 	uint32_t srate = DEFAULT_SRATE;
+	bool error = false;
 
-	if (parse_args(argc, argv, &options, &script_path, &wav_path,
-			&srate) != 0)
-		return 0;
+	if (!parse_args(argc, argv, &options, &script_path, &wav_path,
+			&srate))
+		goto RETURN;
 	if (!(prg = SGS_open_program(script_path))) {
 		fprintf(stderr, "error: couldn't open script file \"%s\" for reading\n",
 				script_path);
-		return 1;
+		error = true;
+		goto RETURN;
 	}
-	if (options & ARG_ONLY_COMPILE)
-		return 0;
-	use_audiodev = (wav_path ?
-			(options & ARG_ENABLE_AUDIO_DEV) :
-			!(options & ARG_DISABLE_AUDIO_DEV));
+	if ((options & ARG_ONLY_COMPILE) != 0)
+		goto RETURN;
 
-	int run_status = !run_program(prg, use_audiodev, wav_path, srate);
+	use_audiodev = (wav_path ?
+			((options & ARG_ENABLE_AUDIO_DEV) != 0) :
+			((options & ARG_DISABLE_AUDIO_DEV) == 0));
+	error = !run_program(prg, use_audiodev, wav_path, srate);
 	SGS_close_program(prg);
-	return run_status;
+
+RETURN:
+	return (error) ? 1 : 0;
 }
