@@ -40,9 +40,8 @@ typedef struct SGS_ScriptOpData {
 	uint32_t op_params;
 	SGS_Time time;
 	uint32_t silence_ms;
-	uint8_t attr;
 	uint8_t wave;
-	SGS_RampParam freq, amp;
+	SGS_Ramp freq, amp;
 	float phase, dynfreq, dynamp;
 	/* node adjacents in operator linkage graph */
 	SGS_PtrList fmods, pmods, amods;
@@ -76,8 +75,7 @@ typedef struct SGS_ScriptEvData {
 	uint32_t vo_id; /* not used by parser; for program module */
 	uint32_t vo_params;
 	struct SGS_ScriptEvData *voice_prev; /* preceding event for voice */
-	uint8_t vo_attr;
-	SGS_RampParam pan;
+	SGS_Ramp pan;
 	SGS_PtrList op_graph;
 } SGS_ScriptEvData;
 
@@ -91,7 +89,7 @@ enum {
 	SGS_SOPT_A4_FREQ = 1<<1,
 	SGS_SOPT_DEF_TIME = 1<<2,
 	SGS_SOPT_DEF_FREQ = 1<<3,
-	SGS_SOPT_DEF_RATIO = 1<<4,
+	SGS_SOPT_DEF_RELFREQ = 1<<4,
 };
 
 /**
@@ -106,7 +104,7 @@ typedef struct SGS_ScriptOptions {
 	/* operator parameter default values (use depends on context) */
 	uint32_t def_time_ms;
 	float def_freq,
-	      def_ratio;
+	      def_relfreq;
 } SGS_ScriptOptions;
 
 /**
