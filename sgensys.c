@@ -98,7 +98,7 @@ static bool parse_args(int argc, char **restrict argv,
 		}
 		arg = *argv;
 		if (*arg != '-') {
-			SGS_PtrList_add(script_args, arg);
+			SGS_PtrList_add(script_args, (void*) arg);
 			continue;
 		}
 NEXT_C:
