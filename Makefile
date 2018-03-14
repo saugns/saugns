@@ -98,7 +98,7 @@ builder/scanner.o: builder/scanner.c builder/scanner.h builder/file.h builder/sy
 builder/symtab.o: builder/symtab.c builder/symtab.h mempool.h common.h
 	$(CC) -c $(CFLAGS) builder/symtab.c -o builder/symtab.o
 
-mempool.o: mempool.c mempool.h common.h
+mempool.o: mempool.c mempool.h arrtype.h common.h
 	$(CC) -c $(CFLAGS) mempool.c
 
 player/audiodev.o: common.h player/audiodev.c player/audiodev.h player/audiodev/*.c
