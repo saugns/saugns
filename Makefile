@@ -1,15 +1,16 @@
-CFLAGS=-W -Wall -Werror=implicit-function-declaration -O2 -ffast-math
+CFLAGS=-std=c99 -W -Wall -O2 -ffast-math
 LFLAGS=-s -lm
 LFLAGS_LINUX=$(LFLAGS) -lasound
 LFLAGS_OSSAUDIO=$(LFLAGS) -lossaudio
-OBJ=audiodev.o \
-    wavfile.o \
+OBJ=garr.o \
     plist.o \
     symtab.o \
     parser.o \
     program.o \
-    osc.o \
+    wave.o \
     generator.o \
+    audiodev.o \
+    wavfile.o \
     sgensys.o
 
 all: sgensys
@@ -31,28 +32,30 @@ sgensys: $(OBJ)
 	fi
 
 audiodev.o: audiodev.c audiodev_*.c audiodev.h sgensys.h
-	$(CC) -c $(CFLAGS) audiodev.c
+	$(CC) -c $(CFLAGS) -D_POSIX_C_SOURCE=200809L audiodev.c
 
-generator.o: generator.c generator.h osc.h math.h program.h sgensys.h
+garr.o: garr.c garr.h sgensys.h
+	$(CC) -c $(CFLAGS) garr.c
+
+program.o: program.c program.h parser.h garr.h plist.h wave.h math.h sgensys.h
+	$(CC) -c $(CFLAGS) program.c
+
+generator.o: generator.c generator.h osc.h wave.h math.h program.h sgensys.h
 	$(CC) -c $(CFLAGS) generator.c
 
-osc.o: osc.c osc.h math.h sgensys.h
-	$(CC) -c $(CFLAGS) osc.c
-
-parser.o: parser.c parser.h program.h osc.h math.h plist.h symtab.h sgensys.h
-	$(CC) -c $(CFLAGS) parser.c
+parser.o: parser.c parser.h symtab.h program.h plist.h wave.h math.h sgensys.h
 
 plist.o: plist.c plist.h sgensys.h
 	$(CC) -c $(CFLAGS) plist.c
 
-program.o: program.c program.h osc.h parser.h plist.h sgensys.h
-	$(CC) -c $(CFLAGS) program.c
-
-sgensys.o: sgensys.c generator.h program.h audiodev.h wavfile.h sgensys.h
+sgensys.o: sgensys.c generator.h parser.h program.h wave.h plist.h audiodev.h wavfile.h sgensys.h
 	$(CC) -c $(CFLAGS) sgensys.c
 
 symtab.o: symtab.c symtab.h sgensys.h
 	$(CC) -c $(CFLAGS) symtab.c
+
+wave.o: wave.c wave.h math.h sgensys.h
+	$(CC) -c $(CFLAGS) wave.c
 
 wavfile.o: wavfile.c wavfile.h sgensys.h
 	$(CC) -c $(CFLAGS) wavfile.c

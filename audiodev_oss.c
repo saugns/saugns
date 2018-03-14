@@ -23,80 +23,83 @@
 #endif
 
 /*
- * Returns SGSAudioDev instance if successful, NULL on error.
+ * Returns instance if successful, NULL on error.
  */
-static inline SGSAudioDev *open_oss_audiodev(const char *name, int mode,
+static inline SGS_AudioDev *open_AudioDev_oss(const char *name, int mode,
 		uint16_t channels, uint32_t *srate) {
-	SGSAudioDev *ad;
+	const char *errp = NULL;
 	int tmp, fd;
 
 	if ((fd = open(name, mode, 0)) == -1) {
-		perror(name);
-		return NULL;
+		errp = name;
+		goto ERROR;
 	}
 
 	tmp = AFMT_S16_NE;
 	if (ioctl(fd, SNDCTL_DSP_SETFMT, &tmp) == -1) {
-		perror("SNDCTL_DSP_SETFMT");
+		errp = "SNDCTL_DSP_SETFMT";
 		goto ERROR;
 	}
 	if (tmp != AFMT_S16_NE) {
-		fputs("error: OSS output didn't support 16-bit signed integer native endian format\n",
-				stderr);
+		fputs("error: OSS: 16-bit signed integer native endian format unsupported\n",
+			stderr);
                 goto ERROR;
         }
 
 	tmp = channels;
 	if (ioctl(fd, SNDCTL_DSP_CHANNELS, &tmp) == -1) {
-		perror("SNDCTL_DSP_CHANNELS");
+		errp = "SNDCTL_DSP_CHANNELS";
 		goto ERROR;
 	}
 	if (tmp != channels) {
-		fprintf(stderr, "error: OSS output didn't support %d channels\n",
-				channels);
+		fprintf(stderr, "error: OSS: %d channels unsupported\n",
+			channels);
                 goto ERROR;
         }
 
 	tmp = *srate;
 	if (ioctl(fd, SNDCTL_DSP_SPEED, &tmp) == -1) {
-		perror("SNDCTL_DSP_SPEED");
+		errp = "SNDCTL_DSP_SPEED";
 		goto ERROR;
 	}
-	if (tmp != (int)*srate) {
-		fprintf(stderr, "warning: OSS output didn't support sample rate %d, setting it to %d\n",
-				*srate, tmp);
+	if ((uint32_t) tmp != *srate) {
+		fprintf(stderr, "warning: OSS: sample rate %d unsupported, using %d\n",
+			*srate, tmp);
 		*srate = tmp;
 	}
 
-	ad = malloc(sizeof(SGSAudioDev));
-	ad->ref.fd = fd;
-	ad->type = TYPE_OSS;
-	ad->channels = channels;
-	ad->srate = *srate;
-	return ad;
+	SGS_AudioDev *o = malloc(sizeof(SGS_AudioDev));
+	o->ref.fd = fd;
+	o->type = TYPE_OSS;
+	o->channels = channels;
+	o->srate = *srate;
+	return o;
 
 ERROR:
-	close(fd);
-	fprintf(stderr, "error: OSS output configuration for device \"%s\" failed\n",
-			name);
+	if (errp)
+		fprintf(stderr, "error: OSS: %s: %s\n", errp, strerror(errno));
+	if (fd != -1)
+		close(fd);
+	fprintf(stderr, "error: OSS: configuration for device \"%s\" failed\n",
+		name);
 	return NULL;
 }
 
 /*
- * Close the given audio device. The structure is freed.
+ * Close the given audio device. Destroys the instance.
  */
-static inline void close_oss_audiodev(SGSAudioDev *ad) {
-	close(ad->ref.fd);
-	free(ad);
+static inline void close_AudioDev_oss(SGS_AudioDev *o) {
+	close(o->ref.fd);
+	free(o);
 }
 
 /*
  * Returns true upon suceessful write, otherwise false;
  */
-static inline bool oss_audiodev_write(SGSAudioDev *ad, const int16_t *buf,
+static inline bool audiodev_oss_write(SGS_AudioDev *o, const int16_t *buf,
 		uint32_t samples) {
-	size_t length = samples * ad->channels * SOUND_BYTES, written;
+	size_t length = samples * o->channels * SOUND_BYTES, written;
 
-	written = write(ad->ref.fd, buf, length);
+	written = write(o->ref.fd, buf, length);
 	return (written == length);
 }

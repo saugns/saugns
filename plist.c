@@ -18,50 +18,47 @@
 /**
  * Add a pointer to the given list.
  *
- * \return true if successful, false if allocation failed
+ * If allocation fails, the list will remain unaltered.
+ *
+ * \return true unless allocation failed
  */
-bool SGS_plist_add(SGSPList *o, const void *item) {
-	if (!o->alloc) {
+bool SGS_PList_add(SGS_PList *o, const void *item) {
+	if (!o->alen) {
 		if (o->count == 0) {
-			o->count = 1;
 			o->items = (const void**) item;
+			o->count = 1;
 		} else {
-			const void **items;
-			items = malloc(sizeof(const void*) * 2);
-			if (!items) {
+			const void **a = malloc(sizeof(const void*) * 2);
+			if (!a) {
 				return false;
 			}
-			items[0] = (const void*) o->items;
-			items[1] = item;
+			a[0] = (const void*) o->items;
+			a[1] = item;
+			o->items = a;
 			o->count = 2;
-			o->alloc = 2;
-			o->items = items;
+			o->alen = 2;
 		}
 		return true;
 	}
 
-	if (o->count == o->copy_count) {
-		const void **items;
-		size_t alloc = o->alloc;
-		if (o->count == alloc) {
-			alloc <<= 1;
-		}
-		items = malloc(sizeof(const void*) * alloc);
-		if (!items) {
+	if (o->count == o->old_count) {
+		size_t alen = o->alen;
+		if (o->count == alen) alen <<= 1;
+		const void **a = malloc(sizeof(const void*) * alen);
+		if (!a) {
 			return false;
 		}
-		memcpy(items, o->items, sizeof(const void*) * o->count);
-		o->items = items;
-		o->alloc = alloc;
-	} else if (o->count == o->alloc) {
-		const void **items;
-		size_t alloc = o->alloc << 1;
-		items = realloc(o->items, sizeof(const void*) * alloc);
-		if (!items) {
+		memcpy(a, o->items, sizeof(const void*) * o->count);
+		o->items = a;
+		o->alen = alen;
+	} else if (o->count == o->alen) {
+		size_t alen = o->alen << 1;
+		const void **a = realloc(o->items, sizeof(const void*) * alen);
+		if (!a) {
 			return false;
 		}
-		o->items = items;
-		o->alloc = alloc;
+		o->items = a;
+		o->alen = alen;
 	}
 	o->items[o->count] = item;
 	++o->count;
@@ -71,14 +68,39 @@ bool SGS_plist_add(SGSPList *o, const void *item) {
 /**
  * Clear the given list.
  */
-void SGS_plist_clear(SGSPList *o) {
-	if (o->count > o->copy_count && o->alloc > 0) {
+void SGS_PList_clear(SGS_PList *o) {
+	if (o->count > o->old_count && o->alen > 0) {
 		free(o->items);
 	}
-	o->count = 0;
-	o->copy_count = 0;
 	o->items = 0;
-	o->alloc = 0;
+	o->count = 0;
+	o->old_count = 0;
+	o->alen = 0;
+}
+
+/**
+ * Memdup function for the contents of the given list.
+ *
+ * \p dst will be set to point to the new allocation
+ * (or to NULL if the list was empty). If the list was
+ * non-empty and allocation failed, \p dst will remain
+ * unaltered.
+ *
+ * \return true unless allocation failed
+ */
+bool SGS_PList_dupa(SGS_PList *o, const void **dst) {
+	if (!o->count) {
+		*dst = NULL;
+		return true;
+	}
+	size_t size = o->count * sizeof(const void*);
+	const void **a = malloc(size);
+	if (!a) {
+		return false;
+	}
+	memcpy(a, SGS_PList_ITEMS(o), size);
+	*dst = a;
+	return true;
 }
 
 /**
@@ -86,13 +108,13 @@ void SGS_plist_clear(SGSPList *o) {
  * memory, dst will actually merely reference the data in src
  * unless/until added to.
  *
- * copy_count will be set to the count of src, so that iteration
+ * old_count will be set to the count of src, so that iteration
  * beginning at that value will ignore copied entries.
  */
-void SGS_plist_copy(SGSPList *dst, const SGSPList *src) {
-	SGS_plist_clear(dst);
-	dst->count = src->count;
-	dst->copy_count = src->count;
+void SGS_PList_copy(SGS_PList *dst, const SGS_PList *src) {
+	SGS_PList_clear(dst);
 	dst->items = src->items;
-	dst->alloc = src->alloc;
+	dst->count = src->count;
+	dst->old_count = src->count;
+	dst->alen = src->alen;
 }

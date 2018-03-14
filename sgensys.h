@@ -22,3 +22,9 @@
 #include <stdbool.h>
 
 typedef unsigned int uint;
+
+/*
+ * Debugging options.
+ */
+
+#define SGS_DEBUG_PRINT_PROGRAM 1

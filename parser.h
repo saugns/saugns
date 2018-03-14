@@ -30,11 +30,11 @@ enum {
 /**
  * Node type for operator data.
  */
-typedef struct SGSParseOperatorData {
-	struct SGSParseEventData *event;
-	SGSPList on_next; /* all immediate forward refs for op(s) */
-	struct SGSParseOperatorData *on_prev; /* preceding for same op(s) */
-	struct SGSParseOperatorData *next_bound;
+typedef struct SGS_ParseOperatorData {
+	struct SGS_ParseEventData *event;
+	SGS_PList on_next; /* all immediate forward refs for op(s) */
+	struct SGS_ParseOperatorData *on_prev; /* preceding for same op(s) */
+	struct SGS_ParseOperatorData *next_bound;
 	uint32_t od_flags;
 	const char *label;
 	/* operator parameters */
@@ -42,12 +42,12 @@ typedef struct SGSParseOperatorData {
 	uint32_t operator_params;
 	uint8_t attr;
 	SGS_wave_t wave;
-	int32_t time_ms, silence_ms;
+	uint32_t time_ms, silence_ms;
 	float freq, dynfreq, phase, amp, dynamp;
-	SGSProgramValit valitfreq, valitamp;
+	SGS_ProgramValit valitfreq, valitamp;
 	/* node adjacents in operator linkage graph */
-	SGSPList fmods, pmods, amods;
-} SGSParseOperatorData;
+	SGS_PList fmods, pmods, amods;
+} SGS_ParseOperatorData;
 
 /**
  * Parse event data flags.
@@ -61,22 +61,22 @@ enum {
  * Node type for event data. Includes any voice and operator data part
  * of the event.
  */
-typedef struct SGSParseEventData {
-	struct SGSParseEventData *next;
-	struct SGSParseEventData *groupfrom;
-	struct SGSParseEventData *composite;
-	int32_t wait_ms;
-	SGSPList operators; /* operators included in event */
+typedef struct SGS_ParseEventData {
+	struct SGS_ParseEventData *next;
+	struct SGS_ParseEventData *groupfrom;
+	struct SGS_ParseEventData *composite;
+	uint32_t wait_ms;
+	SGS_PList operators; /* operators included in event */
 	uint32_t ed_flags;
 	/* voice parameters */
 	uint32_t voice_id; /* not used by parser; for program module */
 	uint32_t voice_params;
-	struct SGSParseEventData *voice_prev; /* preceding event for voice */
+	struct SGS_ParseEventData *voice_prev; /* preceding event for voice */
 	uint8_t voice_attr;
 	float panning;
-	SGSProgramValit valitpanning;
-	SGSPList graph;
-} SGSParseEventData;
+	SGS_ProgramValit valitpanning;
+	SGS_PList graph;
+} SGS_ParseEventData;
 
 /**
  * Flags set after parsing the setting of a script option by a script.
@@ -94,31 +94,31 @@ enum {
  *
  * The final state is included in the parse result.
  */
-typedef struct SGSParseScriptOptions {
+typedef struct SGS_ParseScriptOptions {
 	uint32_t changed; // flags (SGS_PSSO_*) set upon change by script
 	float ampmult;    // amplitude multiplier for non-modulator operators
 	float A4_freq;    // A4 tuning for frequency as note
 	/* operator parameter default values (use depends on context) */
-	int32_t def_time_ms;
+	uint32_t def_time_ms;
 	float def_freq,
 	      def_ratio;
-} SGSParseScriptOptions;
+} SGS_ParseScriptOptions;
 
 /**
  * Type returned after processing a file.
  */
-typedef struct SGSParseResult {
-	SGSParseEventData *events;
+typedef struct SGS_ParseResult {
+	SGS_ParseEventData *events;
 	const char *name; // currently simply set to the filename
-	SGSParseScriptOptions sopt;
-} SGSParseResult;
+	SGS_ParseScriptOptions sopt;
+} SGS_ParseResult;
 
-struct SGSParser;
-typedef struct SGSParser SGSParser;
+struct SGS_Parser;
+typedef struct SGS_Parser SGS_Parser;
 
-SGSParser *SGS_create_parser(void);
-void SGS_destroy_parser(SGSParser *o);
+SGS_Parser *SGS_create_Parser(void);
+void SGS_destroy_Parser(SGS_Parser *o);
 
-SGSParseResult *SGS_parser_process(SGSParser *o, const char *fname);
-void SGS_parser_get_results(SGSParser *o, SGSPList *dst);
-void SGS_parser_clear(SGSParser *o);
+SGS_ParseResult *SGS_Parser_process(SGS_Parser *o, const char *fname);
+void SGS_Parser_get_results(SGS_Parser *o, SGS_PList *dst);
+void SGS_Parser_clear(SGS_Parser *o);
