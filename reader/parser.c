@@ -299,8 +299,8 @@ REJECT: {
   }
   return num;
 }
-static bool scan_num(PScanner *restrict o, NumSym_f scan_numsym,
-                     double *restrict var) {
+static bool sgsNoinline scan_num(PScanner *restrict o,
+                                 NumSym_f scan_numsym, double *restrict var) {
   NumParser np = {o, scan_numsym, false, false};
   double num = scan_num_r(&np, NUMEXP_SUB, 0);
   if (isnan(num))
@@ -445,11 +445,40 @@ static bool scan_wavetype(PScanner *restrict o, size_t *restrict found_id,
   return false;
 }
 
+static bool scan_ramp_state(PScanner *restrict o,
+                            NumSym_f scan_numsym,
+                            SGS_Ramp *restrict ramp, bool ratio) {
+  double v0;
+  if (!scan_num(o, scan_numsym, &v0))
+    return false;
+  ramp->v0 = v0;
+  if (ratio) {
+    ramp->flags |= SGS_RAMPP_STATE_RATIO;
+  } else {
+    ramp->flags &= ~SGS_RAMPP_STATE_RATIO;
+  }
+  ramp->flags |= SGS_RAMPP_STATE;
+  return true;
+}
+
 static bool scan_ramp(PScanner *restrict o, NumSym_f scan_numsym,
-                      SGS_RampParam *restrict rap, bool ratio) {
+                      SGS_Ramp *restrict ramp, bool ratio) {
+  bool state = scan_ramp_state(o, scan_numsym, ramp, ratio);
+  if (!SGS_File_TRYC(o->f, '{'))
+    return state;
   bool goal = false;
-  bool time_set = false;
-  double val;
+  bool time_set = (ramp->flags & SGS_RAMPP_TIME) != 0;
+  double vt, time;
+  uint32_t time_ms = o->sl->sopt.def_time_ms;
+  uint8_t type = ramp->type; // has default
+  if ((ramp->flags & SGS_RAMPP_GOAL) != 0) {
+    // allow partial change
+    if (((ramp->flags & SGS_RAMPP_GOAL_RATIO) != 0) == ratio) {
+      goal = true;
+      vt = ramp->vt;
+    }
+    time_ms = ramp->time_ms;
+  }
   for (;;) {
     uint8_t c = scan_getc(o);
     switch (c) {
@@ -458,28 +487,26 @@ static bool scan_ramp(PScanner *restrict o, NumSym_f scan_numsym,
     case 'c': {
       SGS_SymItem *item = scan_sym(o, SGS_SYM_RAMP_ID, c);
       if (item) {
-        rap->ramp = item->data.id;
+        type = item->data.id;
         break;
       }
       const char *const *names = SGS_Ramp_names;
-      scan_warning(o, "invalid curve type; available types are:");
+      scan_warning(o, "invalid ramp type; available types are:");
       SGS_print_names(names, "\t", stderr);
       break; }
     case 't':
-      if (scan_num(o, 0, &val)) {
-        if (val < 0.f) {
+      if (scan_num(o, 0, &time)) {
+        if (time < 0.f) {
           scan_warning(o, "ignoring 't' with sub-zero time");
           break;
         }
-        rap->time_ms = lrint(val * 1000.f);
+        time_ms = lrint(time * 1000.f);
         time_set = true;
       }
       break;
     case 'v':
-      if (scan_num(o, scan_numsym, &val)) {
-        rap->vt = val;
+      if (scan_num(o, scan_numsym, &vt))
         goal = true;
-      }
       break;
     case '}':
       goto RETURN;
@@ -495,13 +522,18 @@ RETURN:
     scan_warning(o, "ignoring value ramp with no target value");
     return false;
   }
+  ramp->vt = vt;
+  ramp->time_ms = time_ms;
+  ramp->type = type;
+  ramp->flags |= SGS_RAMPP_GOAL;
+  if (ratio)
+    ramp->flags |= SGS_RAMPP_GOAL_RATIO;
+  else
+    ramp->flags &= ~SGS_RAMPP_GOAL_RATIO;
   if (time_set)
-    rap->flags &= ~SGS_RAP_TIME_DEFAULT;
-  else {
-    rap->flags |= SGS_RAP_TIME_DEFAULT;
-    rap->time_ms = o->sl->sopt.def_time_ms; // initial default
-  }
-  rap->flags |= SGS_RAP_RAMP;
+    ramp->flags |= SGS_RAMPP_TIME;
+  else
+    ramp->flags &= ~SGS_RAMPP_TIME;
   return true;
 }
 
@@ -531,7 +563,7 @@ static const SGS_ScriptOptions def_sopt = {
   .A4_freq = 440.f,
   .def_time_ms = 1000,
   .def_freq = 440.f,
-  .def_ratio = 1.f,
+  .def_relfreq = 1.f,
 };
 
 /*
@@ -704,8 +736,18 @@ static void end_operator(ParseLevel *restrict pl) {
     return;
   pl->pl_flags &= ~SDPL_ACTIVE_OP;
   SGS_ScriptOpData *op = pl->operator;
+  if (SGS_Ramp_ENABLED(&op->freq))
+    op->op_params |= SGS_POPP_FREQ;
+  if (SGS_Ramp_ENABLED(&op->amp)) {
+    op->op_params |= SGS_POPP_AMP;
+    op->amp.v0 *= pl->used_ampmult;
+    op->amp.vt *= pl->used_ampmult;
+  }
   SGS_ScriptOpData *pop = op->on_prev;
-  if (!pop) { /* initial event should reset its parameters */
+  if (!pop) {
+    /*
+     * Reset all operator state for initial event.
+     */
     op->op_params |= SGS_POPP_ADJCS |
                      SGS_POPP_WAVE |
                      SGS_POPP_TIME |
@@ -714,30 +756,19 @@ static void end_operator(ParseLevel *restrict pl) {
                      SGS_POPP_DYNFREQ |
                      SGS_POPP_PHASE |
                      SGS_POPP_AMP |
-                     SGS_POPP_DYNAMP |
-                     SGS_POPP_ATTR;
+                     SGS_POPP_DYNAMP;
   } else {
-    if (op->attr != pop->attr)
-      op->op_params |= SGS_POPP_ATTR;
     if (op->wave != pop->wave)
       op->op_params |= SGS_POPP_WAVE;
     /* SGS_TIME set when time set */
     if (op->silence_ms != 0)
       op->op_params |= SGS_POPP_SILENCE;
-    /* SGS_FREQ set when freq set */
     if (op->dynfreq != pop->dynfreq)
       op->op_params |= SGS_POPP_DYNFREQ;
     /* SGS_PHASE set when phase set */
-    /* SGS_AMP set when amp set */
     if (op->dynamp != pop->dynamp)
       op->op_params |= SGS_POPP_DYNAMP;
   }
-  if ((op->freq.flags & SGS_RAP_RAMP) != 0)
-    op->op_params |= SGS_POPP_ATTR;
-  if ((op->amp.flags & SGS_RAP_RAMP) != 0)
-    op->op_params |= SGS_POPP_ATTR;
-  op->amp.v0 *= pl->used_ampmult;
-  op->amp.vt *= pl->used_ampmult;
   pl->operator = NULL;
   pl->last_operator = op;
 }
@@ -748,21 +779,17 @@ static void end_event(ParseLevel *restrict pl) {
   pl->pl_flags &= ~SDPL_ACTIVE_EV;
   SGS_Parser *o = pl->o;
   SGS_ScriptEvData *e = pl->event;
-  SGS_ScriptEvData *pve;
   end_operator(pl);
-  pve = e->voice_prev;
-  if (!pve) { /* initial event should reset its parameters */
+  if (SGS_Ramp_ENABLED(&e->pan))
+    e->vo_params |= SGS_PVOP_PAN;
+  SGS_ScriptEvData *pve = e->voice_prev;
+  if (!pve) {
+    /*
+     * Reset all voice state for initial event.
+     */
     e->ev_flags |= SGS_SDEV_NEW_OPGRAPH;
-    e->vo_params |= SGS_PVOP_ATTR |
-                    SGS_PVOP_PAN;
-  } else {
-    if (e->vo_attr != pve->vo_attr)
-      e->vo_params |= SGS_PVOP_ATTR;
-    if (e->pan.v0 != pve->pan.v0)
-      e->vo_params |= SGS_PVOP_PAN;
+    e->vo_params |= SGS_PVOP_PAN;
   }
-  if ((e->pan.flags & SGS_RAP_RAMP) != 0)
-    e->vo_params |= SGS_PVOP_ATTR;
   pl->last_event = e;
   pl->event = NULL;
   SGS_ScriptEvData *group_e = (pl->main_ev != NULL) ? pl->main_ev : e;
@@ -779,6 +806,7 @@ static void begin_event(ParseLevel *restrict pl, bool is_compstep) {
   e = pl->event;
   e->wait_ms = pl->next_wait_ms;
   pl->next_wait_ms = 0;
+  SGS_Ramp_reset(&e->pan);
   if (pl->on_prev != NULL) {
     SGS_ScriptEvBranch *fork;
     if (pl->on_prev->op_flags & SGS_SDOP_NESTED)
@@ -806,11 +834,12 @@ static void begin_event(ParseLevel *restrict pl, bool is_compstep) {
       fork = fork->prev;
     }
     e->voice_prev = pve;
-    e->vo_attr = pve->vo_attr;
-    e->pan = pve->pan;
-  } else { /* set defaults */
+  } else {
+    /*
+     * New voice with initial parameter values.
+     */
     e->pan.v0 = 0.5f; /* center */
-    e->pan.ramp = SGS_RAMP_LIN; /* if ramp enabled */
+    e->pan.flags |= SGS_RAMPP_STATE;
   }
   if (!is_compstep) {
     if (!o->events)
@@ -844,6 +873,8 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
   /*
    * Initialize node.
    */
+  SGS_Ramp_reset(&op->freq);
+  SGS_Ramp_reset(&op->amp);
   if (pop != NULL) {
     pop->op_flags |= SGS_SDOP_LATER_USED;
     op->on_prev = pop;
@@ -851,10 +882,7 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
                                     SGS_SDOP_MULTIPLE);
     op->time = (SGS_Time){pop->time.v_ms,
       (pop->time.flags & SGS_TIMEP_IMPLICIT)};
-    op->attr = pop->attr;
     op->wave = pop->wave;
-    op->freq = pop->freq;
-    op->amp = pop->amp;
     op->phase = pop->phase;
     op->dynfreq = pop->dynfreq;
     op->dynamp = pop->dynamp;
@@ -879,16 +907,16 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
      * New operator with initial parameter values.
      */
     op->time = (SGS_Time){o->sl.sopt.def_time_ms, 0};
-    op->amp.v0 = 1.0f;
-    op->amp.ramp = SGS_RAMP_LIN; /* if ramp enabled */
     if (!(pl->pl_flags & SDPL_NESTED_SCOPE)) {
       op->freq.v0 = o->sl.sopt.def_freq;
     } else {
       op->op_flags |= SGS_SDOP_NESTED;
-      op->freq.v0 = o->sl.sopt.def_ratio;
-      op->attr |= SGS_POPA_FREQRATIO;
+      op->freq.v0 = o->sl.sopt.def_relfreq;
+      op->freq.flags |= SGS_RAMPP_STATE_RATIO;
     }
-    op->freq.ramp = SGS_RAMP_LIN; /* if ramp enabled */
+    op->freq.flags |= SGS_RAMPP_STATE;
+    op->amp.v0 = 1.0f;
+    op->amp.flags |= SGS_RAMPP_STATE;
   }
   op->event = e;
   /*
@@ -959,7 +987,7 @@ static void flush_durgroup(SGS_Parser *restrict o) {
 static void begin_scope(SGS_Parser *restrict o, ParseLevel *restrict pl,
                         ParseLevel *restrict parent_pl,
                         uint8_t linktype, uint8_t newscope) {
-  memset(pl, 0, sizeof(ParseLevel));
+  *pl = (ParseLevel){0};
   pl->o = o;
   pl->scope = newscope;
   if (parent_pl != NULL) {
@@ -1029,7 +1057,7 @@ static bool parse_settings(ParseLevel *restrict pl) {
     double val;
     switch (c) {
     case 'a':
-      if (scan_num(sc, 0, &val)) {
+      if (scan_num(sc, NULL, &val)) {
         o->sl.sopt.ampmult = val;
         o->sl.sopt.set |= SGS_SOPT_AMPMULT;
       }
@@ -1040,7 +1068,7 @@ static bool parse_settings(ParseLevel *restrict pl) {
         o->sl.sopt.set |= SGS_SOPT_DEF_FREQ;
       }
       if (SGS_File_TRYC(sc->f, ',') && SGS_File_TRYC(sc->f, 'n')) {
-        if (scan_num(sc, 0, &val)) {
+        if (scan_num(sc, NULL, &val)) {
           if (val < 1.f) {
             scan_warning(sc, "ignoring tuning frequency (Hz) below 1.0");
             break;
@@ -1051,9 +1079,9 @@ static bool parse_settings(ParseLevel *restrict pl) {
       }
       break;
     case 'r':
-      if (scan_num(sc, 0, &val)) {
-        o->sl.sopt.def_ratio = val;
-        o->sl.sopt.set |= SGS_SOPT_DEF_RATIO;
+      if (scan_num(sc, NULL, &val)) {
+        o->sl.sopt.def_relfreq = val;
+        o->sl.sopt.set |= SGS_SOPT_DEF_RELFREQ;
       }
       break;
     case 't':
@@ -1093,15 +1121,7 @@ static bool parse_step(ParseLevel *restrict pl) {
     case 'P':
       if ((pl->pl_flags & SDPL_NESTED_SCOPE) != 0)
         goto UNKNOWN;
-      if (scan_num(sc, 0, &val)) {
-        e->pan.v0 = val;
-        if (!(e->pan.flags & SGS_RAP_RAMP))
-          e->vo_attr &= ~SGS_PVOA_PAN_RAMP;
-      }
-      if (SGS_File_TRYC(f, '{')) {
-        if (scan_ramp(sc, 0, &e->pan, false))
-          e->vo_attr |= SGS_PVOA_PAN_RAMP;
-      }
+      scan_ramp(sc, NULL, &e->pan, false);
       break;
     case '\\':
       if (parse_waittime(pl)) {
@@ -1110,19 +1130,10 @@ static bool parse_step(ParseLevel *restrict pl) {
       }
       break;
     case 'a':
-      if (scan_num(sc, 0, &val)) {
-        op->amp.v0 = val;
-        op->op_params |= SGS_POPP_AMP;
-        if (!(op->amp.flags & SGS_RAP_RAMP))
-          op->attr &= ~SGS_POPA_AMP_RAMP;
-      }
-      if (SGS_File_TRYC(f, '{')) {
-        if (scan_ramp(sc, 0, &op->amp, false))
-          op->attr |= SGS_POPA_AMP_RAMP;
-      }
+      scan_ramp(sc, NULL, &op->amp, false);
       if (SGS_File_TRYC(f, ',') && SGS_File_TRYC(f, 'w')) {
         if (!SGS_File_TESTC(f, '[')) {
-          if (scan_num(sc, 0, &val)) {
+          if (scan_num(sc, NULL, &val)) {
             op->dynamp = val;
           }
         }
@@ -1136,25 +1147,11 @@ static bool parse_step(ParseLevel *restrict pl) {
       }
       break;
     case 'f':
-      if (scan_num(sc, scan_note, &val)) {
-        op->freq.v0 = val;
-        op->attr &= ~SGS_POPA_FREQRATIO;
-        op->op_params |= SGS_POPP_FREQ;
-        if (!(op->freq.flags & SGS_RAP_RAMP))
-          op->attr &= ~(SGS_POPA_FREQ_RAMP |
-                        SGS_POPA_FREQRATIO_RAMP);
-      }
-      if (SGS_File_TRYC(f, '{')) {
-        if (scan_ramp(sc, scan_note, &op->freq, false)) {
-          op->attr |= SGS_POPA_FREQ_RAMP;
-          op->attr &= ~SGS_POPA_FREQRATIO_RAMP;
-        }
-      }
+      scan_ramp(sc, scan_note, &op->freq, false);
       if (SGS_File_TRYC(f, ',') && SGS_File_TRYC(f, 'w')) {
         if (!SGS_File_TESTC(f, '[')) {
-          if (scan_num(sc, 0, &val)) {
+          if (scan_num(sc, NULL, &val)) {
             op->dynfreq = val;
-            op->attr &= ~SGS_POPA_DYNFREQRATIO;
           }
         }
         if (SGS_File_TRYC(f, '[')) {
@@ -1167,7 +1164,7 @@ static bool parse_step(ParseLevel *restrict pl) {
       }
       break;
     case 'p':
-      if (scan_num(sc, 0, &val)) {
+      if (scan_num(sc, NULL, &val)) {
         val = fmod(val, 1.f);
         if (val < 0.f)
           val += 1.f;
@@ -1185,25 +1182,11 @@ static bool parse_step(ParseLevel *restrict pl) {
     case 'r':
       if (!(op->op_flags & SGS_SDOP_NESTED))
         goto UNKNOWN;
-      if (scan_num(sc, 0, &val)) {
-        op->freq.v0 = val;
-        op->attr |= SGS_POPA_FREQRATIO;
-        op->op_params |= SGS_POPP_FREQ;
-        if (!(op->freq.flags & SGS_RAP_RAMP))
-          op->attr &= ~(SGS_POPA_FREQ_RAMP |
-                        SGS_POPA_FREQRATIO_RAMP);
-      }
-      if (SGS_File_TRYC(f, '{')) {
-        if (scan_ramp(sc, scan_note, &op->freq, true)) {
-          op->attr |= SGS_POPA_FREQ_RAMP |
-                      SGS_POPA_FREQRATIO_RAMP;
-        }
-      }
+      scan_ramp(sc, NULL, &op->freq, true);
       if (SGS_File_TRYC(f, ',') && SGS_File_TRYC(f, 'w')) {
         if (!SGS_File_TESTC(f, '[')) {
-          if (scan_num(sc, 0, &val)) {
+          if (scan_num(sc, NULL, &val)) {
             op->dynfreq = val;
-            op->attr |= SGS_POPA_DYNFREQRATIO;
           }
         }
         if (SGS_File_TRYC(f, '[')) {
@@ -1509,9 +1492,9 @@ static void time_operator(SGS_ScriptOpData *restrict op) {
     op->time.flags |= SGS_TIMEP_SET; /* no durgroup yet */
   }
   if (!(op->time.flags & SGS_TIMEP_IMPLICIT)) {
-    if ((op->freq.flags & SGS_RAP_TIME_DEFAULT) != 0)
+    if (!(op->freq.flags & SGS_RAMPP_TIME))
       op->freq.time_ms = op->time.v_ms;
-    if ((op->amp.flags & SGS_RAP_TIME_DEFAULT) != 0)
+    if (!(op->amp.flags & SGS_RAMPP_TIME))
       op->amp.time_ms = op->time.v_ms;
   }
   if (!(op->op_flags & SGS_SDOP_SILENCE_ADDED)) {
@@ -1544,7 +1527,7 @@ static void time_event(SGS_ScriptEvData *restrict e) {
    * Adjust default ramp durations, handle silence as well as the case of
    * adding present event duration to wait time of next event.
    */
-  // e->pan.flags &= ~SGS_RAP_TIME_DEFAULT; // TODO: revisit semantics
+  // e->pan.flags |= SGS_RAMPP_TIME; // TODO: revisit semantics
   size_t i;
   SGS_ScriptOpData **ops;
   ops = (SGS_ScriptOpData**) SGS_PtrList_ITEMS(&e->operators);

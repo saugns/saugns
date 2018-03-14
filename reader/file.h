@@ -1,5 +1,5 @@
 /* sgensys: Text file buffer module.
- * Copyright (c) 2014, 2017-2019 Joel K. Pettersson
+ * Copyright (c) 2014, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -180,6 +180,8 @@ bool SGS_File_stropenrb(SGS_File *restrict o,
 
 void SGS_File_close(SGS_File *restrict o);
 void SGS_File_reset(SGS_File *restrict o);
+
+void SGS_File_end(SGS_File *restrict o, size_t keep_len, bool error);
 
 /**
  * Check position and call callback if at the call position.
