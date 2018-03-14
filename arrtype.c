@@ -1,5 +1,5 @@
 /* sgensys: Generic array module.
- * Copyright (c) 2018 Joel K. Pettersson
+ * Copyright (c) 2018-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -16,27 +16,31 @@
 #include <string.h>
 
 /**
- * Add an item to the given array. If \p item is not null,
- * it will be copied (otherwise, the array is simply extended).
+ * Add an item to the given array. The memory is initialized
+ * with a copy of \p item if not NULL, otherwise zero bytes.
  *
- * If allocation fails, the array will remain unaltered.
+ * The address of the item in the array is returned, and can
+ * be used to initialize it. (If allocation fails, the array
+ * will remain unaltered and NULL be returned.) This address
+ * should however be expected to change with array resizing.
  *
  * (Generic version of the function, to be used through wrapper.)
  *
- * \return true if successful, false if allocation failed
+ * \return item in array, or NULL if allocation failed
  */
-bool SGS_ArrType_add(void *restrict _o,
+void *SGS_ArrType_add(void *restrict _o,
 		const void *restrict item, size_t item_size) {
-	SGS_UInt8Arr *restrict o = _o;
-	if (!SGS_ArrType_upsize(o, o->count + 1, item_size)) {
-		return false;
-	}
-	if (item) {
-		size_t offs = o->count * item_size;
-		memcpy(o->a + offs, item, item_size);
-	}
+	SGS_ByteArr *restrict o = _o;
+	if (!SGS_ArrType_upsize(o, o->count + 1, item_size))
+		return NULL;
+	size_t offs = o->count * item_size;
+	void *mem = o->a + offs;
+	if (item != NULL)
+		memcpy(mem, item, item_size);
+	else
+		memset(mem, 0, item_size);
 	++o->count;
-	return true;
+	return mem;
 }
 
 /**
@@ -49,21 +53,18 @@ bool SGS_ArrType_add(void *restrict _o,
  */
 bool SGS_ArrType_upsize(void *restrict _o,
 		size_t count, size_t item_size) {
-	SGS_UInt8Arr *restrict o = _o;
+	SGS_ByteArr *restrict o = _o;
 	size_t asize = o->asize;
 	if (!o->a) asize = 0;
 	size_t min_asize = count * item_size;
 	if (asize < min_asize) {
-		size_t old_asize = asize;
 		if (!asize) asize = item_size;
 		while (asize < min_asize) asize <<= 1;
 		void *a = realloc(o->a, asize);
-		if (!a) {
+		if (!a)
 			return false;
-		}
 		o->a = a;
 		o->asize = asize;
-		memset(a + old_asize, 0, asize - old_asize);
 	}
 	return true;
 }
@@ -74,8 +75,8 @@ bool SGS_ArrType_upsize(void *restrict _o,
  * (Generic version of the function, to be used through wrapper.)
  */
 void SGS_ArrType_clear(void *restrict _o) {
-	SGS_UInt8Arr *restrict o = _o;
-	if (o->a) {
+	SGS_ByteArr *restrict o = _o;
+	if (o->a != NULL) {
 		free(o->a);
 		o->a = NULL;
 	}
@@ -97,7 +98,7 @@ void SGS_ArrType_clear(void *restrict _o) {
  */
 bool SGS_ArrType_memdup(void *restrict _o,
 		const void **restrict dst, size_t item_size) {
-	SGS_UInt8Arr *restrict o = _o;
+	SGS_ByteArr *restrict o = _o;
 	if (!o->count) {
 		*dst = NULL;
 		return true;
