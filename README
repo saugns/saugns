@@ -263,7 +263,7 @@ Value ramp:
 	"{}" (curly brackets):
 	v	Target value.
 	t	Time to reach target value.
-	c	Curve type (default 'lin'):
+	c	Ramp curve type (default 'lin'):
 			hold	Hold old value until time.
 			lin	Linear trajectory over time.
 			exp	Exponential trajectory over time.
