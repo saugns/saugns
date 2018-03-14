@@ -1,5 +1,5 @@
 /* sgensys: Text file buffer module.
- * Copyright (c) 2014, 2017-2019 Joel K. Pettersson
+ * Copyright (c) 2014, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -236,7 +236,7 @@ static size_t mode_strread(SGS_File *restrict o) {
 	if (len >= SGS_FILE_ALEN) {
 		len = SGS_FILE_ALEN;
 		memcpy(&o->buf[o->pos], str, len);
-		o->ref += len;
+		o->ref = &((char*)o->ref)[len];
 		o->call_pos = (o->pos + len) & (SGS_FILE_BUFSIZ - 1);
 		return len;
 	}

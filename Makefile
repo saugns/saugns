@@ -28,6 +28,7 @@ OBJ=\
 	sgensys.o
 TEST1_OBJ=\
 	common.o \
+	arrtype.o \
 	ptrlist.o \
 	loader/file.o \
 	loader/symtab.o \
@@ -96,7 +97,7 @@ loader/scanner.o: loader/scanner.c loader/scanner.h loader/file.h loader/symtab.
 loader/symtab.o: loader/symtab.c loader/symtab.h mempool.h common.h
 	$(CC) -c $(CFLAGS) loader/symtab.c -o loader/symtab.o
 
-mempool.o: mempool.c mempool.h common.h
+mempool.o: mempool.c mempool.h arrtype.h common.h
 	$(CC) -c $(CFLAGS) mempool.c
 
 player/audiodev.o: common.h player/audiodev.c player/audiodev.h player/audiodev/*.c

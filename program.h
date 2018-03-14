@@ -1,5 +1,5 @@
 /* sgensys: Audio program data and functions.
- * Copyright (c) 2011-2013, 2017-2019 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -20,30 +20,11 @@
  */
 
 /**
- * Ramp parameter flags.
- */
-enum {
-	SGS_RAP_RAMP = 1<<0,
-	SGS_RAP_TIME_DEFAULT = 1<<1, // for use while deciding values
-};
-
-/**
- * Ramp parameter type.
- */
-typedef struct SGS_RampParam {
-	float v0, vt;
-	uint32_t time_ms;
-	uint8_t ramp;
-	uint8_t flags;
-} SGS_RampParam;
-
-/**
  * Voice parameter flags.
  */
 enum {
 	SGS_PVOP_OPLIST = 1<<0,
 	SGS_PVOP_PAN = 1<<1,
-	SGS_PVOP_ATTR = 1<<2,
 };
 
 /**
@@ -59,49 +40,24 @@ enum {
 	SGS_POPP_PHASE = 1<<6,
 	SGS_POPP_AMP = 1<<7,
 	SGS_POPP_DYNAMP = 1<<8,
-	SGS_POPP_ATTR = 1<<9,
 };
 
-/**
+/*
  * Voice ID constants.
  */
-enum {
-	SGS_PVO_NO_ID = UINT16_MAX, /* voice ID missing */
-	SGS_PVO_MAX_ID = UINT16_MAX - 1, /* error if exceeded */
-};
+#define SGS_PVO_NO_ID  UINT16_MAX       /* voice ID missing */
+#define SGS_PVO_MAX_ID (UINT16_MAX - 1) /* error if exceeded */
 
-/**
+/*
  * Operator ID constants.
  */
-enum {
-	SGS_POP_NO_ID = UINT32_MAX, /* operator ID missing */
-	SGS_POP_MAX_ID = UINT32_MAX - 1, /* error if exceeded */
-};
+#define SGS_POP_NO_ID  UINT32_MAX       /* operator ID missing */
+#define SGS_POP_MAX_ID (UINT32_MAX - 1) /* error if exceeded */
 
-/**
+/*
  * Timing special values.
  */
-enum {
-	SGS_TIME_INF = UINT32_MAX, /* special handling for nested operators */
-};
-
-/**
- * Voice atttributes.
- */
-enum {
-	SGS_PVOA_PAN_RAMP = 1<<0,
-};
-
-/**
- * Operator atttributes.
- */
-enum {
-	SGS_POPA_FREQRATIO = 1<<0,
-	SGS_POPA_DYNFREQRATIO = 1<<1,
-	SGS_POPA_FREQ_RAMP = 1<<2,
-	SGS_POPA_FREQRATIO_RAMP = 1<<3,
-	SGS_POPA_AMP_RAMP = 1<<4,
-};
+#define SGS_TIME_INF   UINT32_MAX /* set and checked for nested operator use */
 
 /**
  * Operator use types.
@@ -136,19 +92,17 @@ typedef struct SGS_ProgramVoData {
 	const SGS_ProgramOpRef *op_list;
 	uint32_t op_count;
 	uint32_t params;
-	uint8_t attr;
-	SGS_RampParam pan;
+	SGS_Ramp pan;
 } SGS_ProgramVoData;
 
 typedef struct SGS_ProgramOpData {
 	const SGS_ProgramOpAdjcs *adjcs;
 	uint32_t id;
 	uint32_t params;
-	uint8_t attr;
 	uint8_t wave;
 	uint32_t time_ms, silence_ms;
 	float dynfreq, phase, dynamp;
-	SGS_RampParam freq, amp;
+	SGS_Ramp freq, amp;
 } SGS_ProgramOpData;
 
 typedef struct SGS_ProgramEvent {

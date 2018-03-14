@@ -16,28 +16,138 @@
 #include <string.h>
 #include <stdlib.h>
 
-#define STRTAB_ALLOC_INITIAL 1024
+#define HASHTAB_ALLOC_INITIAL 1024
 
 #if SGS_HASHTAB_STATS
 static size_t collision_count = 0;
 #include <stdio.h>
 #endif
 
-typedef struct StrEntry {
-	struct StrEntry *prev;
-	void *symbol_data;
-	size_t len;
-	char str[1]; /* sized to actual length */
-} StrEntry;
+typedef struct TabItem {
+	struct TabItem *prev;
+	void *data;
+	size_t key_len;
+	char key[1];
+} TabItem;
 
-#define GET_STRING_ENTRY_SIZE(str_len) \
-	(offsetof(StrEntry, str) + (str_len))
+typedef struct HashTab {
+	TabItem **items;
+	size_t count;
+	size_t alloc;
+} HashTab;
+
+#define GET_TABITEM_SIZE(key_len) \
+	(offsetof(TabItem, key) + (key_len))
+
+static inline void fini_HashTab(HashTab *restrict o) {
+	free(o->items);
+}
+
+/*
+ * Return the hash of the given string \p key of lenght \p len.
+ *
+ * \return hash
+ */
+static size_t HashTab_hash_key(HashTab *restrict o,
+		const char *restrict key, size_t len) {
+	size_t i;
+	size_t hash;
+	/*
+	 * Calculate hash.
+	 */
+	hash = len;
+	for (i = 0; i < len; ++i) {
+		size_t c = key[i];
+		hash = 37 * hash + c;
+	}
+	hash &= (o->alloc - 1);
+	return hash;
+}
+
+/*
+ * Increase the size of the hash table.
+ *
+ * \return true, or false on allocation failure
+ */
+static bool HashTab_extend(HashTab *restrict o) {
+	TabItem **items, **old_items = o->items;
+	size_t alloc, old_alloc = o->alloc;
+	size_t i;
+	alloc = (old_alloc > 0) ?
+		(old_alloc << 1) :
+		HASHTAB_ALLOC_INITIAL;
+	items = calloc(alloc, sizeof(TabItem*));
+	if (!items)
+		return false;
+	o->alloc = alloc;
+	o->items = items;
+
+	/*
+	 * Rehash entries
+	 */
+	for (i = 0; i < old_alloc; ++i) {
+		TabItem *item = old_items[i];
+		while (item != NULL) {
+			TabItem *prev_item;
+			size_t hash;
+			hash = HashTab_hash_key(o, item->key, item->key_len);
+			/*
+			 * Before adding the entry to the new table, set
+			 * item->prev to the previous (if any) item with
+			 * the same hash in the new table. Done repeatedly,
+			 * the links are rebuilt, though not necessarily in
+			 * the same order.
+			 */
+			prev_item = item->prev;
+			item->prev = o->items[hash];
+			o->items[hash] = item;
+			item = prev_item;
+		}
+	}
+	free(old_items);
+	return true;
+}
+
+/*
+ * Get unique item for key in hash table, adding it if missing.
+ * If allocated, \p extra is added to the size of the node; use
+ * 1 to add a NULL-byte for a string key.
+ *
+ * Initializes the hash table if empty.
+ *
+ * \return TabItem, or NULL on allocation failure
+ */
+static TabItem *HashTab_unique_item(HashTab *restrict o,
+		SGS_MemPool *restrict memp,
+		const void *restrict key, size_t len, size_t extra) {
+	if (key == NULL || len == 0) return NULL;
+	if (o->count == (o->alloc / 2)) {
+		if (!HashTab_extend(o)) return NULL;
+	}
+
+	size_t hash = HashTab_hash_key(o, key, len);
+	TabItem *item = o->items[hash];
+	while (item != NULL) {
+		if (item->key_len == len &&
+			!memcmp(item->key, key, len)) return item;
+		item = item->prev;
+#if SGS_HASHTAB_STATS
+		++collision_count;
+#endif
+	}
+	item = SGS_MemPool_alloc(memp, GET_TABITEM_SIZE(len + extra));
+	if (item == NULL) return NULL;
+	item->prev = o->items[hash];
+	o->items[hash] = item;
+	item->key_len = len;
+	memcpy(item->key, key, len);
+	++o->count;
+	return item;
+}
 
 struct SGS_SymTab {
-	SGS_MemPool *malc;
-	StrEntry **strtab;
-	size_t strtab_count;
-	size_t strtab_alloc;
+	SGS_MemPool *memp;
+	HashTab strtab;
 };
 
 /**
@@ -48,8 +158,8 @@ struct SGS_SymTab {
 SGS_SymTab *SGS_create_SymTab(void) {
 	SGS_SymTab *o = calloc(1, sizeof(SGS_SymTab));
 	if (o == NULL) return NULL;
-	o->malc = SGS_create_MemPool(0);
-	if (o->malc == NULL) {
+	o->memp = SGS_create_MemPool(0);
+	if (o->memp == NULL) {
 		free(o);
 		return NULL;
 	}
@@ -63,110 +173,8 @@ void SGS_destroy_SymTab(SGS_SymTab *restrict o) {
 #if SGS_HASHTAB_STATS
 	printf("collision count: %zd\n", collision_count);
 #endif
-	SGS_destroy_MemPool(o->malc);
-	free(o->strtab);
-}
-
-/*
- * Return the hash of the given string \p str of lenght \p len.
- *
- * \return hash
- */
-static size_t hash_string(SGS_SymTab *restrict o,
-		const char *restrict str, size_t len) {
-	size_t i;
-	size_t hash;
-	/*
-	 * Calculate hash.
-	 */
-	hash = len;
-	for (i = 0; i < len; ++i) {
-		size_t c = str[i];
-		hash = 37 * hash + c;
-	}
-	hash &= (o->strtab_alloc - 1); /* strtab_alloc is a power of 2 */
-	return hash;
-}
-
-/*
- * Increase the size of the hash table for the string pool.
- *
- * \return true, or false on allocation failure
- */
-static bool extend_strtab(SGS_SymTab *restrict o) {
-	StrEntry **old_strtab = o->strtab;
-	size_t old_strtab_alloc = o->strtab_alloc;
-	size_t i;
-	o->strtab_alloc = (o->strtab_alloc > 0) ?
-		(o->strtab_alloc << 1) :
-		STRTAB_ALLOC_INITIAL;
-	o->strtab = calloc(o->strtab_alloc, sizeof(StrEntry*));
-	if (o->strtab == NULL)
-		return false;
-	/*
-	 * Rehash entries
-	 */
-	for (i = 0; i < old_strtab_alloc; ++i) {
-		StrEntry *entry = old_strtab[i];
-		while (entry) {
-			StrEntry *prev_entry;
-			size_t hash;
-			hash = hash_string(o, entry->str, entry->len);
-			/*
-			 * Before adding the entry to the new table, set
-			 * entry->prev to the previous (if any) entry with
-			 * the same hash in the new table. Done repeatedly,
-			 * the links are rebuilt, though not necessarily in
-			 * the same order.
-			 */
-			prev_entry = entry->prev;
-			entry->prev = o->strtab[hash];
-			o->strtab[hash] = entry;
-			entry = prev_entry;
-		}
-	}
-	free(old_strtab);
-	return true;
-}
-
-/*
- * Get unique entry for string in symbol table, or NULL if missing.
- *
- * Initializes the string table if empty.
- *
- * \return StrEntry, or NULL if none
- */
-static StrEntry *unique_entry(SGS_SymTab *restrict o,
-		const void *restrict str, size_t len) {
-	size_t hash;
-	StrEntry *entry;
-	if (o->strtab_count == (o->strtab_alloc / 2)) {
-		if (!extend_strtab(o)) return NULL;
-	}
-	if (str == NULL || len == 0) return NULL;
-	hash = hash_string(o, str, len);
-	entry = o->strtab[hash];
-	if (!entry) goto ADD_ENTRY; /* missing */
-	for (;;) {
-		if (entry->len == len &&
-			!strcmp(entry->str, str)) return entry; /* found */
-		entry = entry->prev;
-		if (entry == NULL) break; /* missing */
-	}
-#if SGS_HASHTAB_STATS
-	++collision_count;
-#endif
-ADD_ENTRY:
-	entry = SGS_MemPool_alloc(o->malc, NULL, GET_STRING_ENTRY_SIZE(len + 1));
-	if (entry == NULL) return NULL;
-	entry->prev = o->strtab[hash];
-	o->strtab[hash] = entry;
-	entry->symbol_data = NULL;
-	entry->len = len;
-	memcpy(entry->str, str, len);
-	entry->str[len] = '\0';
-	++o->strtab_count;
-	return entry;
+	SGS_destroy_MemPool(o->memp);
+	fini_HashTab(&o->strtab);
 }
 
 /**
@@ -177,8 +185,8 @@ ADD_ENTRY:
  */
 const void *SGS_SymTab_pool_str(SGS_SymTab *restrict o,
 		const void *restrict str, size_t len) {
-	StrEntry *entry = unique_entry(o, str, len);
-	return (entry) ? entry->str : NULL;
+	TabItem *item = HashTab_unique_item(&o->strtab, o->memp, str, len, 1);
+	return (item != NULL) ? item->key : NULL;
 }
 
 /**
@@ -195,7 +203,7 @@ const char **SGS_SymTab_pool_stra(SGS_SymTab *restrict o,
 		const char *const*restrict stra,
 		size_t n) {
 	const char **res_stra;
-	res_stra = SGS_MemPool_alloc(o->malc, NULL, sizeof(const char*) * n);
+	res_stra = SGS_MemPool_alloc(o->memp, sizeof(const char*) * n);
 	if (!res_stra) return NULL;
 	for (size_t i = 0; i < n; ++i) {
 		const char *str = SGS_SymTab_pool_str(o,
@@ -213,10 +221,9 @@ const char **SGS_SymTab_pool_stra(SGS_SymTab *restrict o,
  */
 void *SGS_SymTab_get(SGS_SymTab *restrict o,
 		const void *restrict key, size_t len) {
-	StrEntry *entry;
-	entry = unique_entry(o, key, len);
-	if (!entry) return NULL;
-	return entry->symbol_data;
+	TabItem *item = HashTab_unique_item(&o->strtab, o->memp, key, len, 1);
+	if (!item) return NULL;
+	return item->data;
 }
 
 /**
@@ -226,10 +233,9 @@ void *SGS_SymTab_get(SGS_SymTab *restrict o,
  */
 void *SGS_SymTab_set(SGS_SymTab *restrict o,
 		const void *restrict key, size_t len, void *restrict value) {
-	StrEntry *entry;
-	entry = unique_entry(o, key, len);
-	if (!entry) return NULL;
-	void *old_value = entry->symbol_data;
-	entry->symbol_data = value;
+	TabItem *item = HashTab_unique_item(&o->strtab, o->memp, key, len, 1);
+	if (!item) return NULL;
+	void *old_value = item->data;
+	item->data = value;
 	return old_value;
 }
