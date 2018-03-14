@@ -19,12 +19,12 @@
  */
 
 /** Pointer array item type. */
-typedef const void *SGSPtr_t;
+typedef const void *SGS_Ptr_t;
 
-struct SGSPtrArr {
+struct SGS_PtrArr {
 	size_t count;
 	size_t copy_count;
-	SGSPtr_t *items;
+	SGS_Ptr_t *items;
 	size_t alloc;
 };
 
@@ -35,16 +35,16 @@ struct SGSPtrArr {
  * than 1 item has been added.
  */
 #define SGS_PTRARR_ITEMS(ar) \
-	((SGSPtr_t*) ((ar)->count > 1 ? \
+	((SGS_Ptr_t*) ((ar)->count > 1 ? \
 		(ar)->items : \
-		((SGSPtr_t*) &(ar)->items)))
+		((SGS_Ptr_t*) &(ar)->items)))
 
 /**
  * Get the item \p i.
  */
 #define SGS_PTRARR_GET(ar, i) \
-	((SGSPtr_t) SGS_PTRARR_ITEMS(ar)[i])
+	((SGS_Ptr_t) SGS_PTRARR_ITEMS(ar)[i])
 
-bool SGS_ptrarr_add(struct SGSPtrArr *ar, SGSPtr_t item);
-void SGS_ptrarr_clear(struct SGSPtrArr *ar);
-void SGS_ptrarr_copy(struct SGSPtrArr *dst, const struct SGSPtrArr *src);
+bool SGS_ptrarr_add(struct SGS_PtrArr *ar, SGS_Ptr_t item);
+void SGS_ptrarr_clear(struct SGS_PtrArr *ar);
+void SGS_ptrarr_copy(struct SGS_PtrArr *dst, const struct SGS_PtrArr *src);

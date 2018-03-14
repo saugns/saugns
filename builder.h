@@ -1,4 +1,4 @@
-/* sgensys: Sound generator module.
+/* sgensys: Program builder module.
  * Copyright (c) 2011-2012, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -12,13 +12,7 @@
  */
 
 #pragma once
-#include "program.h"
+#include "parser.h"
 
-struct SGS_Generator;
-typedef struct SGS_Generator *SGS_Generator_t;
-
-SGS_Generator_t SGS_create_generator(struct SGS_Program *prg, uint32_t srate);
-void SGS_destroy_generator(SGS_Generator_t o);
-
-bool SGS_generator_run(SGS_Generator_t o, int16_t *buf, size_t buf_len,
-		size_t *out_len);
+struct SGS_Program *SGS_build_program(struct SGS_ParseList *parse);
+void SGS_destroy_program(struct SGS_Program *o);

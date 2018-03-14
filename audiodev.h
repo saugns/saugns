@@ -1,4 +1,4 @@
-/* sgensys: system audio output support module.
+/* sgensys: System audio output support module.
  * Copyright (c) 2011-2013, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -14,11 +14,11 @@
 #pragma once
 #include "sgensys.h"
 
-struct SGSAudioDev;
-typedef struct SGSAudioDev SGSAudioDev;
+struct SGS_AudioDev;
+typedef struct SGS_AudioDev *SGS_AudioDev_t;
 
-SGSAudioDev *SGS_open_audiodev(uint16_t channels, uint32_t *srate);
-void SGS_close_audiodev(SGSAudioDev *ad);
+SGS_AudioDev_t SGS_open_audiodev(uint16_t channels, uint32_t *srate);
+void SGS_close_audiodev(SGS_AudioDev_t o);
 
-uint32_t SGS_audiodev_get_srate(const SGSAudioDev *ad);
-bool SGS_audiodev_write(SGSAudioDev *ad, const int16_t *buf, uint32_t samples);
+uint32_t SGS_audiodev_get_srate(SGS_AudioDev_t o);
+bool SGS_audiodev_write(SGS_AudioDev_t o, const int16_t *buf, uint32_t samples);

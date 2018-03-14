@@ -11,25 +11,25 @@
  * <http://www.gnu.org/licenses/>.
  */
 
+#include "ptrarr.h"
 #include <stdlib.h>
 #include <string.h>
-#include "ptrarr.h"
 
 /**
  * Add a pointer to the given array.
  *
  * \return true unless allocation fails
  */
-bool SGS_ptrarr_add(struct SGSPtrArr *ar, SGSPtr_t item) {
+bool SGS_ptrarr_add(struct SGS_PtrArr *ar, SGS_Ptr_t item) {
 	if (!ar->alloc) {
 		if (ar->count == 0) {
 			ar->count = 1;
-			ar->items = (SGSPtr_t*) item;
+			ar->items = (SGS_Ptr_t*) item;
 		} else {
-			SGSPtr_t old_item = (SGSPtr_t) ar->items;
+			SGS_Ptr_t old_item = (SGS_Ptr_t) ar->items;
 			ar->count = 2;
 			ar->alloc = 2;
-			ar->items = malloc(sizeof(SGSPtr_t) * ar->alloc);
+			ar->items = malloc(sizeof(SGS_Ptr_t) * ar->alloc);
 			if (!ar->items) {
 				return false;
 			}
@@ -40,18 +40,18 @@ bool SGS_ptrarr_add(struct SGSPtrArr *ar, SGSPtr_t item) {
 	}
 
 	if (ar->count == ar->copy_count) {
-		SGSPtr_t *old_items = ar->items;
+		SGS_Ptr_t *old_items = ar->items;
 		if (ar->count == ar->alloc) {
 			ar->alloc <<= 1;
 		}
-		ar->items = malloc(sizeof(SGSPtr_t) * ar->alloc);
+		ar->items = malloc(sizeof(SGS_Ptr_t) * ar->alloc);
 		if (!ar->items) {
 			return false;
 		}
-		memcpy(ar->items, old_items, sizeof(SGSPtr_t) * ar->count);
+		memcpy(ar->items, old_items, sizeof(SGS_Ptr_t) * ar->count);
 	} else if (ar->count == ar->alloc) {
 		ar->alloc <<= 1;
-		ar->items = realloc(ar->items, sizeof(SGSPtr_t) * ar->alloc);
+		ar->items = realloc(ar->items, sizeof(SGS_Ptr_t) * ar->alloc);
 		if (!ar->items) {
 			return false;
 		}
@@ -64,7 +64,7 @@ bool SGS_ptrarr_add(struct SGSPtrArr *ar, SGSPtr_t item) {
 /**
  * Clear the given array.
  */
-void SGS_ptrarr_clear(struct SGSPtrArr *ar) {
+void SGS_ptrarr_clear(struct SGS_PtrArr *ar) {
 	if (ar->count > ar->copy_count && ar->alloc > 0) {
 		free(ar->items);
 	}
@@ -82,7 +82,7 @@ void SGS_ptrarr_clear(struct SGSPtrArr *ar) {
  * copy_count will be set to the count of src, so that iteration
  * beginning at that value will ignore copied entries.
  */
-void SGS_ptrarr_copy(struct SGSPtrArr *dst, const struct SGSPtrArr *src) {
+void SGS_ptrarr_copy(struct SGS_PtrArr *dst, const struct SGS_PtrArr *src) {
 	SGS_ptrarr_clear(dst);
 	dst->count = src->count;
 	dst->copy_count = src->count;

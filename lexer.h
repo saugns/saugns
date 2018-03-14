@@ -1,4 +1,4 @@
-/* sgensys: script lexer module.
+/* sgensys: Script lexer module.
  * Copyright (c) 2014, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -65,19 +65,19 @@ enum {
 	SGS_T_TILDE          = SGS_T_1CT('~'),
 };
 
-typedef struct SGSToken {
+struct SGS_ScriptToken {
 	int32_t type;
 	union {
 		const char *id;
 	} data;
-} SGSToken;
+};
 
-struct SGSLexer;
-typedef struct SGSLexer SGSLexer;
+struct SGS_Lexer;
+typedef struct SGS_Lexer *SGS_Lexer_t;
 
-SGSLexer *SGS_create_lexer(const char *filename, SGSSymtab *symtab);
-void SGS_destroy_lexer(SGSLexer *o);
+SGS_Lexer_t SGS_create_lexer(const char *filename, SGS_SymTab_t symtab);
+void SGS_destroy_lexer(SGS_Lexer_t o);
 
-SGSToken *SGS_get_token(SGSLexer *o);
-void SGS_lexer_warning(SGSLexer *o, const char *fmt, ...);
-void SGS_lexer_error(SGSLexer *o, const char *fmt, ...);
+struct SGS_ScriptToken *SGS_get_token(SGS_Lexer_t o);
+void SGS_lexer_warning(SGS_Lexer_t o, const char *fmt, ...);
+void SGS_lexer_error(SGS_Lexer_t o, const char *fmt, ...);

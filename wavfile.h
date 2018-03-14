@@ -14,10 +14,10 @@
 #pragma once
 #include "sgensys.h"
 
-struct SGSWAVFile;
-typedef struct SGSWAVFile SGSWAVFile;
+struct SGS_WavFile;
+typedef struct SGS_WavFile *SGS_WavFile_t;
 
-SGSWAVFile *SGS_create_wavfile(const char *fpath, uint16_t channels, uint32_t srate);
-int SGS_close_wavfile(SGSWAVFile *wf);
+SGS_WavFile_t SGS_create_wavfile(const char *fpath, uint16_t channels, uint32_t srate);
+int SGS_close_wavfile(SGS_WavFile_t o);
 
-bool SGS_wavfile_write(SGSWAVFile *wf, const int16_t *buf, uint32_t samples);
+bool SGS_wavfile_write(SGS_WavFile_t o, const int16_t *buf, uint32_t samples);

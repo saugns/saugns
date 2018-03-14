@@ -11,14 +11,14 @@
  * <http://www.gnu.org/licenses/>.
  */
 
-#include "reader.h"
+#include "fread.h"
 
 /**
  * Fill the area of the buffer currently arrived at. This should be
- * called when indicated by SGS_READER_NEED_FILL().
+ * called when indicated by SGS_FREAD_NEED_FILL().
  *
  * When EOF or a read error occurs, the file will be closed and
- * SGS_READER_STATUS() will return either SGS_READ_EOF or SGS_READ_ERROR.
+ * SGS_FREAD_STATUS() will return either SGS_READ_EOF or SGS_READ_ERROR.
  * The character after the last one successfully read will be set to 0.
  *
  * If the full length was filled, then the contents can be used normally;
@@ -26,12 +26,12 @@
  * closed, then the first value will be set to 0 the next call.
  *
  * When a value of 0 is encountered, or the returned length is less than
- * SGS_READ_LEN, check whether the file is NULL or if SGS_READER_STATUS()
+ * SGS_READ_LEN, check whether the file is NULL or if SGS_FREAD_STATUS()
  * is non-zero to detect the end and closing of the current file.
  *
  * \return number of characters read.
  */
-size_t SGS_reader_fill(struct SGSReader *o) {
+size_t SGS_fread_fill(struct SGS_FRead *o) {
 	size_t len;
 	/*
 	 * Read a buffer area's worth of data from the file.
@@ -63,4 +63,36 @@ size_t SGS_reader_fill(struct SGSReader *o) {
 		return len;
 	}
 	return len;
+}
+
+/**
+ * Read \p n characters into \p buf, or stop upon encountering a 0 byte.
+ * Null-terminates \p buf, which must be at least \p n + 1 bytes long.
+ * \p n is set to the number of characters read.
+ *
+ * If false is returned, a 0 byte was enountered; check SGS_FREAD_STATUS()
+ * to see if the file is still open or has been closed. Regardless of the
+ * status, it is still safe to unget the characters read.
+ *
+ * \return true if n characters read before 0 byte encountered
+ * \return false if buf or n are NULL
+ */
+bool SGS_fread_getn(struct SGS_FRead *o, char *buf, size_t *n) {
+	if (buf == NULL || n == NULL) return false;
+	size_t i = 0, maxlen = *n;
+	bool full = false;
+	for (;;) {
+		if (i == maxlen) {
+			full = true;
+			break;
+		}
+		char c = SGS_FREAD_GETC(o);
+		if (c == 0) {
+			break;
+		}
+		buf[i++] = c;
+	}
+	buf[i] = 0;
+	*n = i;
+	return full;
 }

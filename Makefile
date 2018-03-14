@@ -2,17 +2,17 @@ CFLAGS=-W -Wall -Werror=implicit-function-declaration -O2 -ffast-math
 LFLAGS=-s -lm
 LFLAGS_LINUX=$(LFLAGS) -lasound
 LFLAGS_OSSAUDIO=$(LFLAGS) -lossaudio
-OBJ=audiodev.o \
-    wavfile.o \
-    ptrarr.o \
-    mempool.o \
+OBJ=ptrarr.o \
+    aoalloc.o \
+    fread.o \
     symtab.o \
-    reader.o \
     lexer.o \
     parser.o \
-    program.o \
-    osc.o \
+    builder.o \
+    wavelut.o \
     generator.o \
+    audiodev.o \
+    wavfile.o \
     sgensys.o
 
 all: sgensys
@@ -33,38 +33,38 @@ sgensys: $(OBJ)
 		$(CC) $(OBJ) $(LFLAGS) -o sgensys; \
 	fi
 
+aoalloc.o: aoalloc.c aoalloc.h sgensys.h
+	$(CC) -c $(CFLAGS) aoalloc.c
+
 audiodev.o: audiodev.c audiodev_*.c audiodev.h sgensys.h
 	$(CC) -c $(CFLAGS) audiodev.c
 
-generator.o: generator.c generator.h program.h osc.h math.h sgensys.h
+builder.o: builder.c builder.h program.h parser.h ptrarr.h sgensys.h
+	$(CC) -c $(CFLAGS) builder.c
+
+fread.o: fread.c fread.h sgensys.h
+	$(CC) -c $(CFLAGS) fread.c
+
+generator.o: generator.c generator.h program.h osc.h wavelut.h math.h sgensys.h
 	$(CC) -c $(CFLAGS) generator.c
 
-reader.o: reader.c reader.h sgensys.h
-	$(CC) -c $(CFLAGS) reader.c
-
-lexer.o: lexer.c lexer.h reader.h symtab.h math.h sgensys.h
+lexer.o: lexer.c lexer.h fread.h symtab.h math.h sgensys.h
 	$(CC) -c $(CFLAGS) lexer.c
 
-mempool.o: mempool.c mempool.h sgensys.h
-	$(CC) -c $(CFLAGS) mempool.c
-
-osc.o: osc.c osc.h math.h sgensys.h
-	$(CC) -c $(CFLAGS) osc.c
-
-parser.o: parser.c parser.h reader.h symtab.h program.h ptrarr.h osc.h math.h sgensys.h
+parser.o: parser.c parser.h fread.h symtab.h program.h ptrarr.h wavelut.h math.h sgensys.h
 	$(CC) -c $(CFLAGS) parser.c
-
-program.o: program.c program.h ptrarr.h parser.h sgensys.h
-	$(CC) -c $(CFLAGS) program.c
 
 ptrarr.o: ptrarr.c ptrarr.h sgensys.h
 	$(CC) -c $(CFLAGS) ptrarr.c
 
-sgensys.o: sgensys.c generator.h program.h audiodev.h wavfile.h sgensys.h
+sgensys.o: sgensys.c generator.h builder.h parser.h program.h wavelut.h ptrarr.h audiodev.h wavfile.h sgensys.h
 	$(CC) -c $(CFLAGS) sgensys.c
 
-symtab.o: symtab.c symtab.h mempool.h sgensys.h
+symtab.o: symtab.c symtab.h aoalloc.h sgensys.h
 	$(CC) -c $(CFLAGS) symtab.c
+
+wavelut.o: wavelut.c wavelut.h math.h sgensys.h
+	$(CC) -c $(CFLAGS) wavelut.c
 
 wavfile.o: wavfile.c wavfile.h sgensys.h
 	$(CC) -c $(CFLAGS) wavfile.c

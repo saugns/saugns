@@ -1,5 +1,5 @@
-/* sgensys: Sound generator module.
- * Copyright (c) 2011-2012, 2017-2018 Joel K. Pettersson
+/* sgensys: Add-only allocator.
+ * Copyright (c) 2014, 2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -12,13 +12,13 @@
  */
 
 #pragma once
-#include "program.h"
+#include "sgensys.h"
 
-struct SGS_Generator;
-typedef struct SGS_Generator *SGS_Generator_t;
+struct SGS_AOAlloc;
+typedef struct SGS_AOAlloc *SGS_AOAlloc_t;
 
-SGS_Generator_t SGS_create_generator(struct SGS_Program *prg, uint32_t srate);
-void SGS_destroy_generator(SGS_Generator_t o);
+SGS_AOAlloc_t SGS_create_aoalloc(size_t block_size);
+void SGS_destroy_aoalloc(SGS_AOAlloc_t o);
 
-bool SGS_generator_run(SGS_Generator_t o, int16_t *buf, size_t buf_len,
-		size_t *out_len);
+void *SGS_aoalloc_alloc(SGS_AOAlloc_t o, size_t size);
+void *SGS_aoalloc_dup(SGS_AOAlloc_t o, const void *mem, size_t size);

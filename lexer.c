@@ -12,47 +12,44 @@
  */
 
 #include "lexer.h"
-#include "reader.h"
+#include "fread.h"
 #include "math.h"
-#include <stdio.h>
 #include <stdarg.h>
-#include <string.h>
 #include <stdlib.h>
 
 #define STRING_MAX_LEN 1024
 
-struct SGSLexer {
-	struct SGSReader fr;
-	SGSSymtab *symtab;
+struct SGS_Lexer {
+	struct SGS_FRead fr;
+	SGS_SymTab_t symtab;
 	uint32_t line_num, char_num;
-	SGSToken token;
+	struct SGS_ScriptToken token;
 	uint8_t string[STRING_MAX_LEN];
 };
 
 /**
- * Create SGSLexer for the given file and using the given symbol
+ * Create instance for the given file and using the given symbol
  * table.
  *
  * \return instance, or NULL on failure.
  */
-SGSLexer *SGS_create_lexer(const char *filename, SGSSymtab *symtab) {
-	SGSLexer *o;
+SGS_Lexer_t SGS_create_lexer(const char *filename, SGS_SymTab_t symtab) {
+	SGS_Lexer_t o;
 	if (symtab == NULL) return NULL;
 
-	o = calloc(1, sizeof(SGSLexer));
+	o = calloc(1, sizeof(struct SGS_Lexer));
 	if (o == NULL) return NULL;
-	if (!SGS_READER_OPEN(&o->fr, filename)) return NULL;
+	if (!SGS_FREAD_OPEN(&o->fr, filename)) return NULL;
 	o->symtab = symtab;
 	return o;
 }
 
 /**
- * Destroy instance, also closing the file for which the SGSLexer
- * was made.
+ * Destroy instance, also closing the file for which it was made.
  */
-void SGS_destroy_lexer(SGSLexer *o) {
+void SGS_destroy_lexer(SGS_Lexer_t o) {
 	if (o == NULL) return;
-	SGS_READER_CLOSE(&o->fr);
+	SGS_FREAD_CLOSE(&o->fr);
 	free(o);
 }
 
@@ -64,7 +61,7 @@ enum {
 	PRINT_FILE_INFO = 1<<0
 };
 
-static void print_stderr(SGSLexer *o, uint32_t options, const char *prefix,
+static void print_stderr(SGS_Lexer_t o, uint32_t options, const char *prefix,
 	const char *fmt, va_list ap) {
 	if (options & PRINT_FILE_INFO) {
 		fprintf(stderr, "%s:%d:%d: ",
@@ -80,7 +77,7 @@ static void print_stderr(SGSLexer *o, uint32_t options, const char *prefix,
 /**
  * Print warning message including file name and current position.
  */
-void SGS_lexer_warning(SGSLexer *o, const char *fmt, ...) {
+void SGS_lexer_warning(SGS_Lexer_t o, const char *fmt, ...) {
 	va_list ap;
 	va_start(ap, fmt);
 	print_stderr(o, PRINT_FILE_INFO, "warning", fmt, ap);
@@ -90,7 +87,7 @@ void SGS_lexer_warning(SGSLexer *o, const char *fmt, ...) {
 /**
  * Print error message including file name and current position.
  */
-void SGS_lexer_error(SGSLexer *o, const char *fmt, ...) {
+void SGS_lexer_error(SGS_Lexer_t o, const char *fmt, ...) {
 	va_list ap;
 	va_start(ap, fmt);
 	print_stderr(o, PRINT_FILE_INFO, "error", fmt, ap);
@@ -118,9 +115,9 @@ void SGS_lexer_error(SGSLexer *o, const char *fmt, ...) {
 #define IS_IDHEAD(c) IS_ALPHA(c)
 #define IS_IDTAIL(c) (IS_ALNUM(c) || (c) == '_')
 
-static void handle_unknown_or_end(SGSLexer *o, uint8_t c) {
-	SGSToken *t = &o->token;
-	uint8_t status = SGS_READER_STATUS(&o->fr);
+static void handle_unknown_or_end(SGS_Lexer_t o, uint8_t c) {
+	struct SGS_ScriptToken *t = &o->token;
+	uint8_t status = SGS_FREAD_STATUS(&o->fr);
 	switch (status) {
 		case SGS_READ_OK:
 			t->type = SGS_T_INVALID;
@@ -143,15 +140,15 @@ static void handle_unknown_or_end(SGSLexer *o, uint8_t c) {
 	}
 }
 
-static uint8_t handle_blanks(SGSLexer *o, uint8_t c) {
+static uint8_t handle_blanks(SGS_Lexer_t o, uint8_t c) {
 	do {
 		++o->char_num;
-		c = SGS_READER_GETC(&o->fr);
+		c = SGS_FREAD_GETC(&o->fr);
 	} while (IS_BLANK(c));
 	return c;
 }
 
-static uint8_t handle_linebreaks(SGSLexer *o, uint8_t c) {
+static uint8_t handle_linebreaks(SGS_Lexer_t o, uint8_t c) {
 	do {
 		uint8_t nl, nc;
 
@@ -159,7 +156,7 @@ static uint8_t handle_linebreaks(SGSLexer *o, uint8_t c) {
 		++o->line_num;
 		o->char_num = 1;
 	NEXTC:
-		nc = SGS_READER_GETC(&o->fr);
+		nc = SGS_FREAD_GETC(&o->fr);
 		if (nl && (nc == '\r')) {
 			nl = 0;
 			goto NEXTC; /* finish DOS-format newline */
@@ -169,25 +166,25 @@ static uint8_t handle_linebreaks(SGSLexer *o, uint8_t c) {
 	return c;
 }
 
-static uint8_t handle_line_comment(SGSLexer *o) {
+static uint8_t handle_line_comment(SGS_Lexer_t o) {
 	uint8_t c;
 	do {
-		c = SGS_READER_GETC(&o->fr);
+		c = SGS_FREAD_GETC(&o->fr);
 	} while (!IS_LNBRK(c));
 	return handle_linebreaks(o, c);
 }
 
-static void handle_block_comment(SGSLexer *o, uint8_t c) {
+static void handle_block_comment(SGS_Lexer_t o, uint8_t c) {
 	SGS_lexer_warning(o, "cannot yet handle comment marked by '%c'", c);
 }
 
-static void handle_numeric_value(SGSLexer *o, uint8_t first_digit) {
-	SGSToken *t = &o->token;
+static void handle_numeric_value(SGS_Lexer_t o, uint8_t first_digit) {
+	struct SGS_ScriptToken *t = &o->token;
 	uint32_t c = first_digit;
 	uint32_t i = 0;
 	do {
 		o->string[i] = c;
-		c = SGS_READER_GETC(&o->fr);
+		c = SGS_FREAD_GETC(&o->fr);
 	} while (IS_DIGIT(c) && ++i < (STRING_MAX_LEN - 1));
 	if (i == (STRING_MAX_LEN - 1)) {
 		o->string[i] = '\0';
@@ -197,17 +194,17 @@ static void handle_numeric_value(SGSLexer *o, uint8_t first_digit) {
 		o->string[i] = '\0';
 	}
 	t->type = SGS_T_INT_NUM; /* XXX: dummy code */
-	SGS_READER_UNGETC(&o->fr);
+	SGS_FREAD_UNGETC(&o->fr);
 }
 
-static void handle_identifier(SGSLexer *o, uint8_t id_head) {
-	SGSToken *t = &o->token;
+static void handle_identifier(SGS_Lexer_t o, uint8_t id_head) {
+	struct SGS_ScriptToken *t = &o->token;
 	const char *pool_str;
 	uint8_t c = id_head;
 	uint32_t i = 0;
 	do {
 		o->string[i] = c;
-		c = SGS_READER_GETC(&o->fr);
+		c = SGS_FREAD_GETC(&o->fr);
 	} while (IS_IDTAIL(c) && ++i < (STRING_MAX_LEN - 1));
 	if (i == (STRING_MAX_LEN - 1)) {
 		o->string[i] = '\0';
@@ -223,28 +220,28 @@ static void handle_identifier(SGSLexer *o, uint8_t id_head) {
 	}
 	t->type = SGS_T_ID_STR;
 	t->data.id = pool_str;
-	SGS_READER_UNGETC(&o->fr);
+	SGS_FREAD_UNGETC(&o->fr);
 }
 
 /**
  * Return the next token from the current file. The token is overwritten on
  * each call, so it must be copied before a new call if it is to be preserved.
- * Memory for the token is handled by the SGSLexer instance.
+ * Memory for the token is handled by the instance.
  *
  * Upon end of file, the SGS_T_EOF token is returned; upon any file-reading
  * error, the SGS_T_ERROR token is returned.
  *
- * See the SGSToken type and the tokens defined in lexer.h for more
+ * See the SGS_ScriptToken type and the tokens defined in lexer.h for more
  * information.
  * \return the address of the current token
  */
-SGSToken *SGS_get_token(SGSLexer *o) {
-	SGSToken *t = &o->token;
+struct SGS_ScriptToken *SGS_get_token(SGS_Lexer_t o) {
+	struct SGS_ScriptToken *t = &o->token;
 	uint8_t c;
-	c = SGS_READER_GETC(&o->fr);
+	c = SGS_FREAD_GETC(&o->fr);
 TEST_1STCHAR:
 	switch (c) {
-	case /* NUL */ 0x00: /* check SGS_READER_STATUS() */
+	case /* NUL */ 0x00: /* check SGS_FREAD_STATUS() */
 	case /* SOH */ 0x01:
 	case /* STX */ 0x02:
 	case /* ETX */ 0x03:

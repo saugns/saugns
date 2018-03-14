@@ -38,7 +38,7 @@ static void fputl(uint32_t i32, FILE *stream) {
 #define SOUND_BITS 16
 #define SOUND_BYTES (SOUND_BITS / 8)
 
-struct SGSWAVFile {
+struct SGS_WavFile {
 	FILE *f;
 	uint16_t channels;
 	uint32_t samples;
@@ -48,21 +48,21 @@ struct SGSWAVFile {
  * Create 16-bit WAV file for audio output. Sound data may thereafter be
  * written any number of times using SGS_wavfile_write().
  *
- * Return NULL after printing error if fopen fails.
+ * Returns instance or NULL if fopen fails.
  */
-SGSWAVFile *SGS_create_wavfile(const char *fpath, uint16_t channels,
+SGS_WavFile_t SGS_create_wavfile(const char *fpath, uint16_t channels,
 		uint32_t srate) {
-	SGSWAVFile *wf;
+	SGS_WavFile_t o;
 	FILE *f = fopen(fpath, "wb");
 	if (!f) {
 		fprintf(stderr, "error: couldn't open WAV file \"%s\" for writing\n",
-				fpath);
+			fpath);
 		return NULL;
 	}
-	wf = malloc(sizeof(SGSWAVFile));
-	wf->f = f;
-	wf->channels = channels;
-	wf->samples = 0;
+	o = malloc(sizeof(struct SGS_WavFile));
+	o->f = f;
+	o->channels = channels;
+	o->samples = 0;
 
 	fputs("RIFF", f);
 	fputl(36 /* update adding audio data size later */, f);
@@ -80,7 +80,7 @@ SGSWAVFile *SGS_create_wavfile(const char *fpath, uint16_t channels,
 	fputs("data", f);
 	fputl(0 /* updated with data size later */, f); /* fmt-chunk size */
 
-	return wf;
+	return o;
 }
 
 /**
@@ -89,25 +89,25 @@ SGSWAVFile *SGS_create_wavfile(const char *fpath, uint16_t channels,
  * created for multiple channels, buf is assumed to be interleaved and of
  * channels * samples length.
  *
- * Return true upon successful write, otherwise false.
+ * Returns true upon successful write, otherwise false.
  */
-bool SGS_wavfile_write(SGSWAVFile *wf, const int16_t *buf, uint32_t samples) {
-	size_t length = wf->channels * samples, written;
-	written = fwrite(buf, SOUND_BYTES, length, wf->f);
-	wf->samples += written;
+bool SGS_wavfile_write(SGS_WavFile_t o, const int16_t *buf, uint32_t samples) {
+	size_t length = o->channels * samples, written;
+	written = fwrite(buf, SOUND_BYTES, length, o->f);
+	o->samples += written;
 	return (written == length);
 }
 
 /**
- * Properly update the WAV file header with the total length/size of audio
- * data written, and then close the file and destroy the SGSWAVFile structure.
+ * Ends the WAV file and destroys the instance. Updates the file
+ * header with the length of audio data written.
  *
- * Return the value of ferror, checked before closing the file.
+ * Returns the value of ferror, checked before closing the file.
  */
-int SGS_close_wavfile(SGSWAVFile *wf) {
+int SGS_close_wavfile(SGS_WavFile_t o) {
 	int err;
-	FILE *f = wf->f;
-	uint32_t bytes = wf->channels * wf->samples * SOUND_BYTES;
+	FILE *f = o->f;
+	uint32_t bytes = o->channels * o->samples * SOUND_BYTES;
 
 	fseek(f, 4 /* after "RIFF" */, SEEK_SET);
 	fputl(36 + bytes, f);
@@ -117,6 +117,6 @@ int SGS_close_wavfile(SGSWAVFile *wf) {
 
 	err = ferror(f);
 	fclose(f);
-	free(wf);
+	free(o);
 	return err;
 }
