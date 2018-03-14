@@ -8,7 +8,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #pragma once
@@ -16,23 +16,23 @@
 
 /**
  * Pointer list type using an array with resizing. A copy
- * (SGS_plist_copy()) references the copied array instead
+ * (SGS_PList_copy()) references the copied array instead
  * of duplicating it, until added to.
  */
-typedef struct SGSPList {
+typedef struct SGS_PList {
 	size_t count;
-	size_t copy_count;
+	size_t old_count;
 	const void **items;
-	size_t alloc;
-} SGSPList;
+	size_t alen;
+} SGS_PList;
 
 /**
- * Get array holding list of items.
+ * Get the underlying array holding items.
  *
- * The array pointer is used in place of an array if no more
- * than 1 item has been added.
+ * The array pointer is used in place of an array if at most
+ * 1 item is held.
  */
-#define SGS_PLIST_ITEMS(o) \
+#define SGS_PList_ITEMS(o) \
 	((o)->count > 1 ? \
 		(o)->items : \
 		((const void**) &(o)->items))
@@ -40,9 +40,10 @@ typedef struct SGSPList {
 /**
  * Get the item \p i.
  */
-#define SGS_PLIST_GET(o, i) \
-	((const void*) SGS_PLIST_ITEMS(o)[i])
+#define SGS_PList_GET(o, i) \
+	((const void*) SGS_PList_ITEMS(o)[i])
 
-bool SGS_plist_add(SGSPList *o, const void *item);
-void SGS_plist_clear(SGSPList *o);
-void SGS_plist_copy(SGSPList *dst, const SGSPList *src);
+bool SGS_PList_add(SGS_PList *o, const void *item);
+void SGS_PList_clear(SGS_PList *o);
+bool SGS_PList_dupa(SGS_PList *o, const void **dst);
+void SGS_PList_copy(SGS_PList *dst, const SGS_PList *src);

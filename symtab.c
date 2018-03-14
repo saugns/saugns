@@ -8,7 +8,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #include "symtab.h"
@@ -19,32 +19,32 @@
  * Placeholder until a better module is created.
  */
 
-typedef struct SGSSymnode {
+typedef struct SGS_SymNode {
   const char *key;
   void *value;
-  struct SGSSymnode *next;
-} SGSSymnode;
+  struct SGS_SymNode *next;
+} SGS_SymNode;
 
-struct SGSSymtab {
-  SGSSymnode *node;
+struct SGS_SymTab {
+  SGS_SymNode *node;
 };
 
-SGSSymtab* SGS_create_symtab(void) {
-  SGSSymtab *o = calloc(1, sizeof(SGSSymtab));
+SGS_SymTab* SGS_create_SymTab(void) {
+  SGS_SymTab *o = calloc(1, sizeof(SGS_SymTab));
   return o;
 }
 
-void SGS_destroy_symtab(SGSSymtab *o) {
-  SGSSymnode *n = o->node;
+void SGS_destroy_SymTab(SGS_SymTab *o) {
+  SGS_SymNode *n = o->node;
   while (n) {
-    SGSSymnode *nn = n->next;
+    SGS_SymNode *nn = n->next;
     free(n);
     n = nn;
   }
 }
 
-void* SGS_symtab_get(SGSSymtab *o, const char *key) {
-  SGSSymnode *n = o->node;
+void* SGS_SymTab_get(SGS_SymTab *o, const char *key) {
+  SGS_SymNode *n = o->node;
   while (n) {
     if (!strcmp(n->key, key))
       return n->value;
@@ -53,18 +53,18 @@ void* SGS_symtab_get(SGSSymtab *o, const char *key) {
   return 0;
 }
 
-static SGSSymnode* SGS_symnode_alloc(const char *key, void *value) {
-  SGSSymnode *o = malloc(sizeof(SGSSymnode));
+static SGS_SymNode* SGS_SymNode_alloc(const char *key, void *value) {
+  SGS_SymNode *o = malloc(sizeof(SGS_SymNode));
   o->key = key;
   o->value = value;
   o->next = 0;
   return o;
 }
 
-void* SGS_symtab_set(SGSSymtab *o, const char *key, void *value) {
-  SGSSymnode *n = o->node;
+void* SGS_SymTab_set(SGS_SymTab *o, const char *key, void *value) {
+  SGS_SymNode *n = o->node;
   if (!n) {
-    o->node = SGS_symnode_alloc(key, value);
+    o->node = SGS_SymNode_alloc(key, value);
     return 0;
   }
   for (;;) {
@@ -77,6 +77,6 @@ void* SGS_symtab_set(SGSSymtab *o, const char *key, void *value) {
       break;
     n = n->next;
   }
-  n->next = SGS_symnode_alloc(key, value);
+  n->next = SGS_SymNode_alloc(key, value);
   return 0;
 }

@@ -8,19 +8,13 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #pragma once
 #include "sgensys.h"
 #include <math.h>
 
-#define PI 3.141592653589
-
-#define DC_OFFSET 1.0E-25
-
-#define RC_TIME(sXsr) \
-  exp(-1.0 / (sXsr))
-#define RC_CALC(coeff, in, state) \
-  ((in) + ((state) - (in)) * (coeff))
-#define RC_OFFSET 0.632121f
+#define SGS_PI       3.14159265358979323846
+#define SGS_ASIN_1_2 0.52359877559829887308 // asin(0.5)
+#define SGS_SQRT_1_2 0.70710678118654752440 // sqrt(0.5), 1/sqrt(2)

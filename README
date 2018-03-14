@@ -61,7 +61,7 @@ default value. Some default values can be changed using the "S"
 
 Modifiers are similar to keywords, but simpler and more flexible
 in how they may be used. They may or may not be followed by an
-argument (e.g.  a delay time).
+argument (e.g. a delay time).
 
 Keywords
 --------
@@ -111,18 +111,18 @@ Wave types:
 	tri	Triangle (naive).
 	sqr	Square (naive).
 	saw	Saw (naive, decreasing).
-	sab	Adjusted absolute value of sine (frequency halved to
+	sah	Half-freq absolute value of sine (frequency halved to
 		restore base frequency, peak amplitude centered and
 		doubled, phase shift to begin and end at zero amplitude);
 		a softer alternative to saw (saw wave).
-	shw	Half-wave sine (positive half kept, negative half zero'd,
+	sh	Half-wave sine (positive half kept, negative half zero'd,
 		peak amplitude centered and doubled, phase shifted to
 		begin and end at zero amplitude); a warm and full sound.
 	ssr	Square root of sine (mirrored for the negative half);
 		a softer alternative to sqr (square wave).
-	shr	Square root of half-wave sine (based on shw, with the
-		negative part unchanged); a slightly metallic-sounding
-		cross between shw and ssr.
+	shsr	Square root of half-wave sine (based on sh,
+		the negative part using minus sqrt minus value);
+		a slightly metallic-sounding cross between sh and ssr.
 
 Parameters:
 	t	Time duration in seconds. If no t setting is given, the

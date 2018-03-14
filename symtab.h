@@ -8,17 +8,17 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #pragma once
 #include "sgensys.h"
 
-struct SGSSymtab;
-typedef struct SGSSymtab SGSSymtab;
+struct SGS_SymTab;
+typedef struct SGS_SymTab SGS_SymTab;
 
-SGSSymtab* SGS_create_symtab(void);
-void SGS_destroy_symtab(SGSSymtab *o);
+SGS_SymTab* SGS_create_SymTab(void);
+void SGS_destroy_SymTab(SGS_SymTab *o);
 
-void* SGS_symtab_get(SGSSymtab *o, const char *key);
-void* SGS_symtab_set(SGSSymtab *o, const char *key, void *value);
+void* SGS_SymTab_get(SGS_SymTab *o, const char *key);
+void* SGS_SymTab_set(SGS_SymTab *o, const char *key, void *value);

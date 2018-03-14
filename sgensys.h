@@ -8,7 +8,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #pragma once
@@ -22,3 +22,9 @@
 #include <stdbool.h>
 
 typedef unsigned int uint;
+
+/*
+ * Debugging options.
+ */
+
+#define SGS_DEBUG_PRINT_PROGRAM 1
