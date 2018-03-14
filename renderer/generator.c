@@ -1,5 +1,5 @@
 /* sgensys: Audio generator module.
- * Copyright (c) 2011-2012, 2017-2019 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -34,12 +34,11 @@ typedef struct OperatorNode {
   uint32_t time;
   uint32_t silence;
   uint8_t flags;
-  uint8_t attr;
   uint8_t wave;
   const SGS_ProgramOpAdjcs *adjcs;
-  float amp, dynamp;
-  float freq, dynfreq;
-  SGS_Ramp amp_ramp, freq_ramp;
+  SGS_Ramp amp, freq;
+  uint32_t amp_pos, freq_pos;
+  float dynamp, dynfreq;
 } OperatorNode;
 
 /*
@@ -53,16 +52,16 @@ typedef struct VoiceNode {
   int32_t pos; /* negative for wait time */
   uint32_t duration;
   uint8_t flags;
-  uint8_t attr;
   const SGS_ProgramOpRef *op_list;
   uint32_t op_count;
-  float pan;
-  SGS_Ramp pan_ramp;
+  SGS_Ramp pan;
+  uint32_t pan_pos;
 } VoiceNode;
 
 typedef union EventValue {
-  int32_t i;
-  float f;
+  int32_t ival;
+  float fval;
+  const SGS_Ramp *ramp;
 } EventValue;
 
 typedef struct EventOpData {
@@ -121,20 +120,11 @@ static size_t count_ev_values(const SGS_ProgramEvent *restrict e) {
     params = e->vo_data->params;
     params &= ~(SGS_PVOP_OPLIST);
     count += count_flags(params);
-    if ((params & SGS_PVOP_ATTR) != 0) {
-      uint8_t attr = e->vo_data->attr;
-      if ((attr & SGS_PVOA_PAN_RAMP) != 0) count += 3;
-    }
   }
   for (size_t i = 0; i < e->op_data_count; ++i) {
     params = e->op_data[i].params;
     params &= ~(SGS_POPP_ADJCS);
     count += count_flags(params);
-    if ((params & SGS_POPP_ATTR) != 0) {
-      uint8_t attr = e->op_data[i].attr;
-      if ((attr & SGS_POPA_FREQ_RAMP) != 0) count += 3;
-      if ((attr & SGS_POPA_AMP_RAMP) != 0) count += 3;
-    }
   }
   return count;
 }
@@ -149,9 +139,8 @@ static bool alloc_for_program(SGS_Generator *restrict o,
   i = prg->ev_count;
   if (i > 0) {
     o->events = calloc(i, sizeof(EventNode));
-    if (!o->events) {
+    if (!o->events)
       return false;
-    }
     o->ev_count = i;
   }
   size_t ev_val_count = 0, ev_op_data_count = 0;
@@ -162,40 +151,35 @@ static bool alloc_for_program(SGS_Generator *restrict o,
   }
   if (ev_val_count > 0) {
     o->ev_values = calloc(ev_val_count, sizeof(EventValue));
-    if (!o->ev_values) {
+    if (!o->ev_values)
       return false;
-    }
     o->ev_val_count = ev_val_count;
   }
   if (ev_op_data_count > 0) {
     o->ev_op_data = calloc(ev_op_data_count, sizeof(EventOpData));
-    if (!o->ev_op_data) {
+    if (!o->ev_op_data)
       return false;
-    }
     o->ev_op_data_count = ev_op_data_count;
   }
   i = prg->vo_count;
   if (i > 0) {
     o->voices = calloc(i, sizeof(VoiceNode));
-    if (!o->voices) {
+    if (!o->voices)
       return false;
-    }
     o->vo_count = i;
   }
   i = prg->op_count;
   if (i > 0) {
     o->operators = calloc(i, sizeof(OperatorNode));
-    if (!o->operators) {
+    if (!o->operators)
       return false;
-    }
     o->op_count = i;
   }
   i = COUNT_BUFS(prg->op_nest_depth);
   if (i > 0) {
     o->bufs = calloc(i, sizeof(Buf));
-    if (!o->bufs) {
+    if (!o->bufs)
       return false;
-    }
     o->buf_count = i;
   }
 
@@ -232,67 +216,42 @@ static bool convert_program(SGS_Generator *restrict o,
       const SGS_ProgramOpData *pod = &prg_e->op_data[j];
       uint32_t op_id = pod->id;
       params = pod->params;
-      uint8_t attr = 0; // only set/use on update
       ev_od->id = op_id;
       ev_od->params = params;
       if (params & SGS_POPP_ADJCS) {
         ev_od->adjcs = pod->adjcs;
       }
-      if (params & SGS_POPP_ATTR) {
-        attr = pod->attr;
-        (*ev_v++).i = attr;
-      }
       if (params & SGS_POPP_WAVE)
-        (*ev_v++).i = pod->wave;
+        (*ev_v++).ival = pod->wave;
       if (params & SGS_POPP_TIME) {
-        (*ev_v++).i = (pod->time_ms == SGS_TIME_INF) ?
+        (*ev_v++).ival = (pod->time_ms == SGS_TIME_INF) ?
           SGS_TIME_INF :
           SGS_MS_IN_SAMPLES(pod->time_ms, srate);
       }
       if (params & SGS_POPP_SILENCE)
-        (*ev_v++).i = SGS_MS_IN_SAMPLES(pod->silence_ms, srate);
+        (*ev_v++).ival = SGS_MS_IN_SAMPLES(pod->silence_ms, srate);
       if (params & SGS_POPP_FREQ)
-        (*ev_v++).f = pod->freq.v0;
-      if (attr & SGS_POPA_FREQ_RAMP) {
-        (*ev_v++).i = pod->freq.time_ms;
-        (*ev_v++).f = pod->freq.vt;
-        (*ev_v++).i = pod->freq.ramp;
-      }
+        (*ev_v++).ramp = &pod->freq;
       if (params & SGS_POPP_DYNFREQ)
-        (*ev_v++).f = pod->dynfreq;
+        (*ev_v++).fval = pod->dynfreq;
       if (params & SGS_POPP_PHASE)
-        (*ev_v++).i = SGS_Osc_PHASE(pod->phase);
+        (*ev_v++).ival = SGS_Osc_PHASE(pod->phase);
       if (params & SGS_POPP_AMP)
-        (*ev_v++).f = pod->amp.v0;
-      if (attr & SGS_POPA_AMP_RAMP) {
-        (*ev_v++).i = pod->amp.time_ms;
-        (*ev_v++).f = pod->amp.vt;
-        (*ev_v++).i = pod->amp.ramp;
-      }
+        (*ev_v++).ramp = &pod->amp;
       if (params & SGS_POPP_DYNAMP)
-        (*ev_v++).f = pod->dynamp;
+        (*ev_v++).fval = pod->dynamp;
       ++ev_od;
     }
     if (prg_e->vo_data) {
       const SGS_ProgramVoData *pvd = prg_e->vo_data;
       params = pvd->params;
-      uint8_t attr = 0; // only set/use on update
       e->vd.params = params;
       if (params & SGS_PVOP_OPLIST) {
         e->vd.op_list = pvd->op_list;
         e->vd.op_count = pvd->op_count;
       }
-      if (params & SGS_PVOP_ATTR) {
-        attr = pvd->attr;
-        (*ev_v++).i = attr;
-      }
       if (params & SGS_PVOP_PAN)
-        (*ev_v++).f = pvd->pan.v0;
-      if (attr & SGS_PVOA_PAN_RAMP) {
-        (*ev_v++).i = pvd->pan.time_ms;
-        (*ev_v++).f = pvd->pan.vt;
-        (*ev_v++).i = pvd->pan.ramp;
-      }
+        (*ev_v++).ramp = &pvd->pan;
       o->voices[vo_id].pos = -vo_wait_time;
       vo_wait_time = 0;
     }
@@ -307,7 +266,8 @@ static bool convert_program(SGS_Generator *restrict o,
 SGS_Generator* SGS_create_Generator(const SGS_Program *restrict prg,
                                     uint32_t srate) {
   SGS_Generator *o = calloc(1, sizeof(SGS_Generator));
-  if (!o) return NULL;
+  if (!o)
+    return NULL;
   if (!convert_program(o, prg, srate)) {
     SGS_destroy_Generator(o);
     return NULL;
@@ -347,6 +307,20 @@ static void set_voice_duration(SGS_Generator *restrict o,
 }
 
 /*
+ * Process an event update for a timed parameter.
+ */
+static const EventValue *handle_ramp_update(SGS_Ramp *restrict ramp,
+                                           uint32_t *restrict ramp_pos,
+                                           const EventValue *restrict val) {
+  const SGS_Ramp *src = (*val++).ramp;
+  if ((src->flags & SGS_RAMPP_GOAL) != 0) {
+    *ramp_pos = 0;
+  }
+  SGS_Ramp_copy(ramp, src);
+  return val;
+}
+
+/*
  * Process one event; to be called for the event when its time comes.
  */
 static void handle_event(SGS_Generator *restrict o, EventNode *restrict e) {
@@ -354,117 +328,52 @@ static void handle_event(SGS_Generator *restrict o, EventNode *restrict e) {
     const EventValue *val = e->vals;
     uint32_t params;
     /*
-     * Set state of operator and/or voice. Voice updates must be done last,
-     * as recalculations may be made according to the state of the operators.
+     * Set state of operator and/or voice.
+     *
+     * Voice updates must be done last, to take into account
+     * updates for their operators.
      */
     for (size_t i = 0; i < e->od_count; ++i) {
       EventOpData *od = &e->od[i];
       OperatorNode *on = &o->operators[od->id];
       params = od->params;
-      uint8_t attr = 0; // only set/use on update
       if (params & SGS_POPP_ADJCS)
         on->adjcs = od->adjcs;
-      if (params & SGS_POPP_ATTR) {
-        attr = (uint8_t)(*val++).i;
-        if (!(params & SGS_POPP_FREQ)) {
-          /* May change during processing; preserve state of FREQRATIO flag */
-          attr &= ~SGS_POPA_FREQRATIO;
-          attr |= on->attr & SGS_POPA_FREQRATIO;
-        }
-        on->attr = attr;
-      }
       if (params & SGS_POPP_WAVE)
-        on->wave = (*val++).i;
+        on->wave = (*val++).ival;
       if (params & SGS_POPP_TIME)
-        on->time = (*val++).i;
+        on->time = (*val++).ival;
       if (params & SGS_POPP_SILENCE)
-        on->silence = (*val++).i;
+        on->silence = (*val++).ival;
       if (params & SGS_POPP_FREQ)
-        on->freq = (*val++).f;
-      if (attr & SGS_POPA_FREQ_RAMP) {
-        on->freq_ramp.time_ms = (*val++).i;
-        on->freq_ramp.pos = 0;
-        on->freq_ramp.goal = (*val++).f;
-        on->freq_ramp.type = (*val++).i;
-      }
+        val = handle_ramp_update(&on->freq, &on->freq_pos, val);
       if (params & SGS_POPP_DYNFREQ)
-        on->dynfreq = (*val++).f;
+        on->dynfreq = (*val++).fval;
       if (params & SGS_POPP_PHASE)
-        SGS_Osc_SET_PHASE(&on->osc, (uint32_t)(*val++).i);
+        SGS_Osc_SET_PHASE(&on->osc, (uint32_t)(*val++).ival);
       if (params & SGS_POPP_AMP)
-        on->amp = (*val++).f;
-      if (attr & SGS_POPA_AMP_RAMP) {
-        on->amp_ramp.time_ms = (*val++).i;
-        on->amp_ramp.pos = 0;
-        on->amp_ramp.goal = (*val++).f;
-        on->amp_ramp.type = (*val++).i;
-      }
+        val = handle_ramp_update(&on->amp, &on->amp_pos, val);
       if (params & SGS_POPP_DYNAMP)
-        on->dynamp = (*val++).f;
+        on->dynamp = (*val++).fval;
     }
     if (e->vd.id != SGS_PVO_NO_ID) {
       VoiceNode *vn = &o->voices[e->vd.id];
       params = e->vd.params;
-      uint8_t attr = 0; // only set/use on update
       if (params & SGS_PVOP_OPLIST) {
         vn->op_list = e->vd.op_list;
         vn->op_count = e->vd.op_count;
       }
-      if (params & SGS_PVOP_ATTR) {
-        attr = (uint8_t)(*val++).i;
-        vn->attr = attr;
-      }
       if (params & SGS_PVOP_PAN)
-        vn->pan = (*val++).f;
-      if (attr & SGS_PVOA_PAN_RAMP) {
-        vn->pan_ramp.time_ms = (*val++).i;
-        vn->pan_ramp.pos = 0;
-        vn->pan_ramp.goal = (*val++).f;
-        vn->pan_ramp.type = (*val++).i;
-      }
+        val = handle_ramp_update(&vn->pan, &vn->pan_pos, val);
       vn->flags |= VN_INIT;
       vn->pos = 0;
-      if (o->voice > e->vd.id) /* go back to re-activated node */
+      if (o->voice > e->vd.id) {
+        /* go back to re-activated node */
         o->voice = e->vd.id;
+      }
       set_voice_duration(o, vn);
     }
   }
-}
-
-/*
- * Fill buffer with buf_len float values for a parameter; these may
- * either simply be a copy of the supplied state, or modified.
- *
- * If a parameter ramp is supplied, it is used.
- *
- * If not NULL, \p modbuf will be used as a sequence of value
- * multipliers. This is used to get actual values from ratios.
- */
-static bool run_param(SGS_Generator *restrict o,
-                      float *restrict buf, uint32_t buf_len,
-                      SGS_Ramp *restrict ramp, float *restrict state,
-                      const float *restrict modbuf) {
-  uint32_t i;
-  if (!ramp) {
-    float s0 = *state;
-    if (modbuf) {
-      for (i = 0; i < buf_len; ++i)
-        buf[i] = s0 * modbuf[i];
-    } else {
-      for (i = 0; i < buf_len; ++i)
-        buf[i] = s0;
-    }
-    return false;
-  }
-  bool done = !SGS_Ramp_run(ramp, o->srate, buf, buf_len, *state);
-  if (done) {
-    *state = ramp->goal;
-  }
-  if (modbuf) {
-    for (i = 0; i < buf_len; ++i)
-      buf[i] *= modbuf[i];
-  }
-  return done;
 }
 
 /*
@@ -483,9 +392,8 @@ static uint32_t run_block(SGS_Generator *restrict o,
                           bool wave_env, uint32_t acc_ind) {
   uint32_t i, len;
   int32_t *sbuf = bufs->i, *pm;
-  float *freq, *freqmod, *amp;
+  float *freq, *amp;
   Buf *nextbuf = bufs + 1;
-  SGS_Ramp *ramp;
   uint32_t fmodc = 0, pmodc = 0, amodc = 0;
   if (n->adjcs) {
     fmodc = n->adjcs->fmodc;
@@ -527,43 +435,23 @@ static uint32_t run_block(SGS_Generator *restrict o,
     len = n->time;
   }
   /*
-   * Handle frequency (alternatively ratio) parameter, including frequency
-   * modulation if modulators linked.
+   * Handle frequency (alternatively ratio) parameter,
+   * including frequency modulation if modulators linked.
    */
   freq = (nextbuf++)->f;
-  if (n->attr & SGS_POPA_FREQ_RAMP) {
-    ramp = &n->freq_ramp;
-    if (n->attr & SGS_POPA_FREQRATIO_RAMP) {
-      freqmod = parent_freq;
-      if (!(n->attr & SGS_POPA_FREQRATIO)) {
-        n->attr |= SGS_POPA_FREQRATIO;
-        n->freq /= parent_freq[0];
-      }
-    } else {
-      freqmod = NULL;
-      if (n->attr & SGS_POPA_FREQRATIO) {
-        n->attr &= ~SGS_POPA_FREQRATIO;
-        n->freq *= parent_freq[0];
-      }
-    }
-  } else {
-    ramp = NULL;
-    freqmod = (n->attr & SGS_POPA_FREQRATIO) ? parent_freq : 0;
-  }
-  if (run_param(o, freq, len, ramp, &n->freq, freqmod))
-    n->attr &= ~(SGS_POPA_FREQ_RAMP|SGS_POPA_FREQRATIO_RAMP);
+  SGS_Ramp_run(&n->freq, freq, len, o->srate, &n->freq_pos, parent_freq);
   if (fmodc) {
     const uint32_t *fmods = n->adjcs->adjcs;
-    float *fmbuf;
+    float *fm_buf;
     for (i = 0; i < fmodc; ++i)
       run_block(o, nextbuf, len, &o->operators[fmods[i]], freq, true, i);
-    fmbuf = nextbuf->f;
-    if (n->attr & SGS_POPA_FREQRATIO) {
+    fm_buf = nextbuf->f;
+    if ((n->freq.flags & SGS_RAMPP_STATE_RATIO) != 0) {
       for (i = 0; i < len; ++i)
-        freq[i] += (n->dynfreq * parent_freq[i] - freq[i]) * fmbuf[i];
+        freq[i] += (n->dynfreq * parent_freq[i] - freq[i]) * fm_buf[i];
     } else {
       for (i = 0; i < len; ++i)
-        freq[i] += (n->dynfreq - freq[i]) * fmbuf[i];
+        freq[i] += (n->dynfreq - freq[i]) * fm_buf[i];
     }
   }
   /*
@@ -582,17 +470,15 @@ static uint32_t run_block(SGS_Generator *restrict o,
    */
   if (amodc) {
     const uint32_t *amods = &n->adjcs->adjcs[fmodc+pmodc];
-    float dynampdiff = n->dynamp - n->amp;
+    float dynampdiff = n->dynamp - n->amp.v0;
     for (i = 0; i < amodc; ++i)
       run_block(o, nextbuf, len, &o->operators[amods[i]], freq, true, i);
     amp = (nextbuf++)->f;
     for (i = 0; i < len; ++i)
-      amp[i] = n->amp + amp[i] * dynampdiff;
+      amp[i] = n->amp.v0 + amp[i] * dynampdiff;
   } else {
     amp = (nextbuf++)->f;
-    ramp = (n->attr & SGS_POPA_AMP_RAMP) ? &n->amp_ramp : 0;
-    if (run_param(o, amp, len, ramp, &n->amp, 0))
-      n->attr &= ~SGS_POPA_AMP_RAMP;
+    SGS_Ramp_run(&n->amp, amp, len, o->srate, &n->amp_pos, NULL);
   }
   if (!wave_env) {
     /*
@@ -656,12 +542,9 @@ static void mix_output(SGS_Generator *restrict o, VoiceNode *restrict vn,
                        int16_t **restrict st_out, uint32_t len) {
   int32_t *s_buf = o->bufs[0].i;
   float scale = o->amp_scale;
-  if (vn->attr & SGS_PVOA_PAN_RAMP) {
+  if (vn->pan.flags & SGS_RAMPP_GOAL) {
     float *pan_buf = o->bufs[1].f;
-    if (run_param(o, pan_buf, len, &vn->pan_ramp,
-        &vn->pan, 0)) {
-      vn->attr &= ~SGS_PVOA_PAN_RAMP;
-    }
+    SGS_Ramp_run(&vn->pan, pan_buf, len, o->srate, &vn->pan_pos, NULL);
     for (uint32_t i = 0; i < len; ++i) {
       float s = s_buf[i] * scale;
       float p = s * pan_buf[i];
@@ -671,7 +554,7 @@ static void mix_output(SGS_Generator *restrict o, VoiceNode *restrict vn,
   } else {
     for (uint32_t i = 0; i < len; ++i) {
       float s = s_buf[i] * scale;
-      float p = s * vn->pan;
+      float p = s * vn->pan.v0;
       *(*st_out)++ += lrintf(s - p);
       *(*st_out)++ += lrintf(p);
     }
