@@ -8,7 +8,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #include "file.h"
@@ -34,7 +34,7 @@ size_t SGS_File_wrap(SGS_File *o SGS__maybe_unused, SGS_FBufMode *m) {
  * Reset mode struct instance to default values, including
  * the default callback.
  */
-void SGS_FBufMode_reset(SGS_FBufMode *m) {
+void SGS_FBufMode_reset(SGS_FBufMode *restrict m) {
 	m->pos = 0;
 	m->call_pos = SGS_FBUF_ALEN;
 	m->f = SGS_File_wrap;
@@ -56,16 +56,16 @@ SGS_File *SGS_create_File(void) {
 /**
  * Destroy instance. Closes file if open.
  */
-void SGS_destroy_File(SGS_File *o) {
+void SGS_destroy_File(SGS_File *restrict o) {
 	if (o->close_f) {
 		o->close_f(o);
 	}
 	free(o);
 }
 
-static size_t file_mode_fread(SGS_File *o, SGS_FBufMode *m);
+static size_t file_mode_fread(SGS_File *restrict o, SGS_FBufMode *restrict m);
 
-static void file_ref_close(SGS_File *o);
+static void file_ref_close(SGS_File *restrict o);
 
 /**
  * Open file for reading.
@@ -76,7 +76,7 @@ static void file_ref_close(SGS_File *o);
  *
  * \return true on success
  */
-bool SGS_File_fopenrb(SGS_File *o, const char *path) {
+bool SGS_File_fopenrb(SGS_File *restrict o, const char *restrict path) {
 	SGS_File_close(o);
 
 	if (!path) return false;
@@ -97,7 +97,7 @@ bool SGS_File_fopenrb(SGS_File *o, const char *path) {
  * Close File if open. Reset buffer read and write modes, but not
  * buffer contents.
  */
-void SGS_File_close(SGS_File *o) {
+void SGS_File_close(SGS_File *restrict o) {
 	if (o->close_f) {
 		o->close_f(o);
 		o->close_f = NULL;
@@ -111,12 +111,12 @@ void SGS_File_close(SGS_File *o) {
 /**
  * Reset File object. Like SGS_File_close(), except it also zeroes the buffer.
  */
-void SGS_File_reset(SGS_File *o) {
+void SGS_File_reset(SGS_File *restrict o) {
 	SGS_File_close(o);
 	memset(o->buf, 0, SGS_FBUF_SIZ);
 }
 
-static void add_end_marker(SGS_File *o, SGS_FBufMode *m,
+static void add_end_marker(SGS_File *restrict o, SGS_FBufMode *restrict m,
 		size_t len) {
 	o->end_pos = m->pos + len;
 	o->buf[o->end_pos] = o->status;
@@ -137,7 +137,7 @@ static void add_end_marker(SGS_File *o, SGS_FBufMode *m,
  *
  * \return number of characters successfully read
  */
-static size_t file_mode_fread(SGS_File *o, SGS_FBufMode *m) {
+static size_t file_mode_fread(SGS_File *restrict o, SGS_FBufMode *restrict m) {
 	FILE *f = o->ref;
 	/*
 	 * Set position to the first character of the buffer area.
@@ -170,7 +170,7 @@ static size_t file_mode_fread(SGS_File *o, SGS_FBufMode *m) {
 /*
  * Close file without clearing state.
  */
-static void file_ref_close(SGS_File *o) {
+static void file_ref_close(SGS_File *restrict o) {
 	if (o->ref != NULL) {
 		fclose(o->ref);
 		o->ref = NULL;
@@ -191,9 +191,9 @@ static void file_ref_close(SGS_File *o) {
  *
  * \return true if the string fit into the buffer, false if truncated
  */
-bool SGS_File_gets(SGS_File *o,
-		void *buf, size_t buf_len,
-		size_t *str_len, SGS_File_CFilter_f c_filter) {
+bool SGS_File_gets(SGS_File *restrict o,
+		void *restrict buf, size_t buf_len,
+		size_t *restrict str_len, SGS_File_CFilter_f c_filter) {
 	uint8_t *dst = buf;
 	size_t i = 0;
 	size_t max_len = buf_len - 1;
@@ -238,9 +238,9 @@ bool SGS_File_gets(SGS_File *o,
  *
  * \return true unless number too large and result truncated
  */
-bool SGS_File_geti(SGS_File *o,
-		int32_t *var, bool allow_sign,
-		size_t *str_len) {
+bool SGS_File_geti(SGS_File *restrict o,
+		int32_t *restrict var, bool allow_sign,
+		size_t *restrict str_len) {
 	uint8_t c;
 	int32_t num = 0;
 	bool minus = false;
@@ -296,9 +296,9 @@ bool SGS_File_geti(SGS_File *o,
  *
  * \return true unless number too large and result truncated
  */
-bool SGS_File_getd(SGS_File *o,
-		double *var, bool allow_sign,
-		size_t *str_len) {
+bool SGS_File_getd(SGS_File *restrict o,
+		double *restrict var, bool allow_sign,
+		size_t *restrict str_len) {
 	uint8_t c;
 	long double num = 0.f, pos_mul = 1.f;
 	double res;
@@ -358,7 +358,7 @@ DONE:
  *
  * \return number of characters skipped
  */
-size_t SGS_File_skips(SGS_File *o, SGS_File_CFilter_f c_filter) {
+size_t SGS_File_skips(SGS_File *restrict o, SGS_File_CFilter_f c_filter) {
 	size_t i = 0;
 	for (;;) {
 		uint8_t c = c_filter(o, SGS_File_GETC(o));
@@ -374,7 +374,7 @@ size_t SGS_File_skips(SGS_File *o, SGS_File_CFilter_f c_filter) {
  *
  * \return number of characters skipped
  */
-size_t SGS_File_skipspace(SGS_File *o) {
+size_t SGS_File_skipspace(SGS_File *restrict o) {
 	size_t i = 0;
 	for (;;) {
 		uint8_t c = SGS_File_GETC(o);
@@ -390,7 +390,7 @@ size_t SGS_File_skipspace(SGS_File *o) {
  *
  * \return number of characters skipped
  */
-size_t SGS_File_skipline(SGS_File *o) {
+size_t SGS_File_skipline(SGS_File *restrict o) {
 	size_t i = 0;
 	for (;;) {
 		uint8_t c = SGS_File_GETC(o);

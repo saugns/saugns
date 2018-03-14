@@ -8,7 +8,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #pragma once
@@ -184,12 +184,12 @@ struct SGS_File {
 };
 
 SGS_File *SGS_create_File(void) SGS__malloclike;
-void SGS_destroy_File(SGS_File *o);
+void SGS_destroy_File(SGS_File *restrict o);
 
-bool SGS_File_fopenrb(SGS_File *o, const char *path);
+bool SGS_File_fopenrb(SGS_File *restrict o, const char *restrict path);
 
-void SGS_File_close(SGS_File *o);
-void SGS_File_reset(SGS_File *o);
+void SGS_File_close(SGS_File *restrict o);
+void SGS_File_reset(SGS_File *restrict o);
 
 /**
  * Check \p mode position and call its callback if at the call position.
@@ -349,7 +349,7 @@ void SGS_File_reset(SGS_File *o);
  *
  * \return true if newline got
  */
-static inline bool SGS_File_trynewline(SGS_File *o) {
+static inline bool SGS_File_trynewline(SGS_File *restrict o) {
 	uint8_t c = SGS_File_RETC(o);
 	if (c == '\n') {
 		SGS_FBufMode_INCP(&o->mr);
@@ -369,15 +369,15 @@ static inline bool SGS_File_trynewline(SGS_File *o) {
  */
 typedef uint8_t (*SGS_File_CFilter_f)(SGS_File *o, uint8_t c);
 
-bool SGS_File_gets(SGS_File *o,
-		void *buf, size_t buf_len,
-		size_t *str_len, SGS_File_CFilter_f c_filter);
-bool SGS_File_geti(SGS_File *o,
-		int32_t *var, bool allow_sign,
-		size_t *str_len);
-bool SGS_File_getd(SGS_File *o,
-		double *var, bool allow_sign,
-		size_t *str_len);
-size_t SGS_File_skips(SGS_File *o, SGS_File_CFilter_f c_filter);
-size_t SGS_File_skipspace(SGS_File *o);
-size_t SGS_File_skipline(SGS_File *o);
+bool SGS_File_gets(SGS_File *restrict o,
+		void *restrict buf, size_t buf_len,
+		size_t *restrict str_len, SGS_File_CFilter_f c_filter);
+bool SGS_File_geti(SGS_File *restrict o,
+		int32_t *restrict var, bool allow_sign,
+		size_t *restrict str_len);
+bool SGS_File_getd(SGS_File *restrict o,
+		double *restrict var, bool allow_sign,
+		size_t *restrict str_len);
+size_t SGS_File_skips(SGS_File *restrict o, SGS_File_CFilter_f c_filter);
+size_t SGS_File_skipspace(SGS_File *restrict o);
+size_t SGS_File_skipline(SGS_File *restrict o);

@@ -8,7 +8,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #pragma once
@@ -17,8 +17,10 @@
 struct SGS_AudioDev;
 typedef struct SGS_AudioDev SGS_AudioDev;
 
-SGS_AudioDev *SGS_open_AudioDev(uint16_t channels, uint32_t *srate);
-void SGS_close_AudioDev(SGS_AudioDev *ad);
+SGS_AudioDev *SGS_open_AudioDev(uint16_t channels, uint32_t *restrict srate)
+		SGS__malloclike;
+void SGS_close_AudioDev(SGS_AudioDev *restrict o);
 
-uint32_t SGS_AudioDev_get_srate(const SGS_AudioDev *ad);
-bool SGS_AudioDev_write(SGS_AudioDev *ad, const int16_t *buf, uint32_t samples);
+uint32_t SGS_AudioDev_get_srate(const SGS_AudioDev *restrict o);
+bool SGS_AudioDev_write(SGS_AudioDev *restrict o,
+		const int16_t *restrict buf, uint32_t samples);

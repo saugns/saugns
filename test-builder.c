@@ -1,5 +1,5 @@
-/* sgensys: Main module / Command-line interface.
- * Copyright (c) 2011-2013, 2017-2019 Joel K. Pettersson
+/* sgensys: Test program for experimental builder code.
+ * Copyright (c) 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -12,28 +12,22 @@
  */
 
 #include "sgensys.h"
+#if SGS_TEST_SCANNER
+# include "builder/scanner.h"
+#else
+# include "builder/lexer.h"
+#endif
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
-
-#define DEFAULT_SRATE 44100
 
 /*
  * Print command line usage instructions.
  */
 static void print_usage(bool by_arg) {
 	fputs(
-"Usage: sgensys [-a|-m] [-r srate] [-p] [-o wavfile] scriptfile\n"
-"       sgensys [-c] [-p] scriptfile\n"
+"Usage: test-builder [-c] [-p] scriptfile\n"
 "\n"
-"By default, audio device output is enabled.\n"
-"\n"
-"  -a \tAudible; always enable audio device output.\n"
-"  -m \tMuted; always disable audio device output.\n"
-"  -r \tSample rate in Hz (default 44100);\n"
-"     \tif unsupported for audio device, warns and prints rate used instead.\n"
-"  -o \tWrite a 16-bit PCM WAV file, always using the sample rate requested;\n"
-"     \tdisables audio device output by default.\n"
 "  -c \tCheck script only, reporting any errors or requested info.\n"
 "  -p \tPrint info for script after loading.\n"
 "  -h \tPrint this message.\n"
@@ -46,20 +40,6 @@ static void print_usage(bool by_arg) {
  */
 static void print_version(void) {
 	puts(SGS_VERSION_STR);
-}
-
-/*
- * Read a positive integer from the given string.
- *
- * \return positive value or -1 if invalid
- */
-static int32_t get_piarg(const char *str) {
-	char *endp;
-	int32_t i;
-	errno = 0;
-	i = strtol(str, &endp, 10);
-	if (errno || i <= 0 || endp == str || *endp) return -1;
-	return i;
 }
 
 /*
@@ -82,10 +62,7 @@ enum {
  */
 static bool parse_args(int argc, char **restrict argv,
 		uint32_t *restrict flags,
-		const char **restrict script_path,
-		const char **restrict wav_path,
-		uint32_t *restrict srate) {
-	int i;
+		const char **restrict script_path) {
 	for (;;) {
 		const char *arg;
 		--argc;
@@ -103,13 +80,6 @@ static bool parse_args(int argc, char **restrict argv,
 NEXT_C:
 		if (!*++arg) continue;
 		switch (*arg) {
-		case 'a':
-			if ((*flags & (ARG_DISABLE_AUDIO_DEV |
-					ARG_ONLY_COMPILE)) != 0)
-				goto INVALID;
-			*flags |= ARG_FULL_RUN |
-				ARG_ENABLE_AUDIO_DEV;
-			break;
 		case 'c':
 			if ((*flags & ARG_FULL_RUN) != 0)
 				goto INVALID;
@@ -119,40 +89,9 @@ NEXT_C:
 			if (*flags != 0) goto INVALID;
 			print_usage(true);
 			return false;
-		case 'm':
-			if ((*flags & (ARG_ENABLE_AUDIO_DEV |
-					ARG_ONLY_COMPILE)) != 0)
-				goto INVALID;
-			*flags |= ARG_FULL_RUN |
-				ARG_DISABLE_AUDIO_DEV;
-			break;
-		case 'o':
-			if (arg[1] != '\0') goto INVALID;
-			if ((*flags & ARG_ONLY_COMPILE) != 0)
-				goto INVALID;
-			*flags |= ARG_FULL_RUN;
-			--argc;
-			++argv;
-			if (argc < 1) goto INVALID;
-			arg = *argv;
-			*wav_path = arg;
-			continue;
 		case 'p':
 			*flags |= ARG_PRINT_INFO;
 			break;
-		case 'r':
-			if (arg[1] != '\0') goto INVALID;
-			if ((*flags & ARG_ONLY_COMPILE) != 0)
-				goto INVALID;
-			*flags |= ARG_FULL_RUN;
-			--argc;
-			++argv;
-			if (argc < 1) goto INVALID;
-			arg = *argv;
-			i = get_piarg(arg);
-			if (i < 0) goto INVALID;
-			*srate = i;
-			continue;
 		case 'v':
 			print_version();
 			return false;
@@ -166,6 +105,45 @@ NEXT_C:
 INVALID:
 	print_usage(false);
 	return false;
+}
+
+/**
+ * Run script through test code.
+ *
+ * \return SGS_Program or NULL on error
+ */
+SGS_Program* SGS_build(const char *restrict fname) {
+#if SGS_TEST_SCANNER
+	SGS_SymTab *symtab = SGS_create_SymTab();
+	SGS_Scanner *scanner = SGS_create_Scanner(symtab);
+	if (SGS_Scanner_fopenrb(scanner, fname)) for (;;) {
+		uint8_t c = SGS_Scanner_getc(scanner);
+		putchar(c);
+		if (!c) {
+			putchar('\n');
+			break;
+		}
+	}
+	SGS_destroy_Scanner(scanner);
+	SGS_destroy_SymTab(symtab);
+	// return dummy object
+	return (SGS_Program*) calloc(1, sizeof(SGS_Program));
+#else
+	SGS_SymTab *symtab = SGS_create_SymTab();
+	SGS_Lexer *lexer = SGS_create_Lexer(fname, symtab);
+	if (!lexer) {
+		SGS_destroy_SymTab(symtab);
+		return false;
+	}
+	for (;;) {
+		SGS_ScriptToken token;
+		if (!SGS_Lexer_get(lexer, &token)) break;
+	}
+	SGS_destroy_Lexer(lexer);
+	SGS_destroy_SymTab(symtab);
+	// return dummy object
+	return (SGS_Program*) calloc(1, sizeof(SGS_Program));
+#endif
 }
 
 /*
@@ -191,38 +169,20 @@ static bool build(const char *restrict fname,
 	return true;
 }
 
-/*
- * Produce results from the given program.
- *
- * \return true unless error occurred
- */
-static bool render(SGS_Program *restrict prg,
-		uint32_t srate, uint32_t options,
-		const char *restrict wav_path) {
-	bool use_audiodev = (wav_path != NULL) ?
-			((options & ARG_ENABLE_AUDIO_DEV) != 0) :
-			((options & ARG_DISABLE_AUDIO_DEV) == 0);
-	return SGS_render(prg, srate, use_audiodev, wav_path);
-}
-
 /**
  * Main function.
  */
 int main(int argc, char **argv) {
-	const char *script_path = NULL, *wav_path = NULL;
+	const char *script_path = NULL;
 	uint32_t options = 0;
 	SGS_Program *prg;
-	uint32_t srate = DEFAULT_SRATE;
-	if (!parse_args(argc, argv, &options, &script_path, &wav_path,
-			&srate))
+	if (!parse_args(argc, argv, &options, &script_path))
 		return 0;
 	if (!build(script_path, &prg, options))
 		return 1;
 	if (prg != NULL) {
-		bool error = !render(prg, srate, options, wav_path);
+		// no audio output
 		SGS_discard_Program(prg);
-		if (error)
-			return 1;
 	}
 
 	return 0;

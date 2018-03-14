@@ -8,14 +8,11 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #include "sgensys.h"
 #include "builder/script.h"
-#if SGS_TEST_LEXER
-# include "builder/lexer.h"
-#endif
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -25,19 +22,7 @@
  *
  * \return instance or NULL on error
  */
-SGS_Program* SGS_build(const char *fname) {
-#if SGS_TEST_LEXER
-	SGS_SymTab *symtab = SGS_create_SymTab();
-	SGS_Lexer *lexer = SGS_create_Lexer(fname, symtab);
-	if (!lexer) return NULL;
-	for (;;) {
-		SGS_ScriptToken *token = SGS_Lexer_get_token(lexer);
-		if (token->type <= 0) break;
-	}
-	SGS_destroy_Lexer(lexer);
-	SGS_destroy_SymTab(symtab);
-	return (SGS_Program*) calloc(1, sizeof(SGS_Program)); //0;
-#else // OLD PARSER
+SGS_Program* SGS_build(const char *restrict fname) {
 	SGS_Script *sd = SGS_load_Script(fname);
 	if (!sd) return NULL;
 
@@ -45,5 +30,4 @@ SGS_Program* SGS_build(const char *fname) {
 	SGS_discard_Script(sd);
 	if (!o) return NULL;
 	return o;
-#endif
 }

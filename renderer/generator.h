@@ -8,7 +8,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #pragma once
@@ -17,8 +17,10 @@
 struct SGS_Generator;
 typedef struct SGS_Generator SGS_Generator;
 
-SGS_Generator* SGS_create_Generator(SGS_Program *prg, uint32_t srate);
-void SGS_destroy_Generator(SGS_Generator *o);
+SGS_Generator* SGS_create_Generator(SGS_Program *restrict prg, uint32_t srate)
+		SGS__malloclike;
+void SGS_destroy_Generator(SGS_Generator *restrict o);
 
-bool SGS_Generator_run(SGS_Generator *o, int16_t *buf, size_t buf_len,
-                       size_t *out_len);
+bool SGS_Generator_run(SGS_Generator *restrict o,
+                       int16_t *restrict buf, size_t buf_len,
+                       size_t *restrict out_len);

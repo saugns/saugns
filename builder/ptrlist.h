@@ -8,7 +8,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #pragma once
@@ -45,7 +45,8 @@ typedef struct SGS_PtrList {
 #define SGS_PtrList_GET(o, i) \
 	((const void*) SGS_PtrList_ITEMS(o)[i])
 
-bool SGS_PtrList_add(SGS_PtrList *o, const void *item);
-void SGS_PtrList_clear(SGS_PtrList *o);
-bool SGS_PtrList_memdup(SGS_PtrList *o, const void ***dst);
-void SGS_PtrList_soft_copy(SGS_PtrList *dst, const SGS_PtrList *src);
+bool SGS_PtrList_add(SGS_PtrList *restrict o, const void *restrict item);
+void SGS_PtrList_clear(SGS_PtrList *restrict o);
+bool SGS_PtrList_memdup(SGS_PtrList *restrict o, const void ***restrict dst);
+void SGS_PtrList_soft_copy(SGS_PtrList *restrict dst,
+		const SGS_PtrList *restrict src);

@@ -167,7 +167,7 @@ Parameters:
 		explicitly set - with the exception of nested operators for
 		the last part, which will have infinite time (ti) by default.
 	f	Frequency in Hz. Can be negative to flip wave shape timewise.
-			Gradual value adjustment also supported; see section.
+			Value slope also supported; see section.
 	f!<>	A second frequency in Hz may follow the "!", for a range to
 		use with FM by wave or envelope.
 			A list of modulator operators may be specified
@@ -176,14 +176,12 @@ Parameters:
 		in a 0.0 to 1.0 range, i.e. a positive signal, multiplied by
 		its amplitude parameter (defaulting to 1.0).
 			The product of the modulator amplitudes is used to
-		frequency-modulate the carrier(s), be they the final
-		carrier(s) or in turn modulator(s) for one or more other
-		carrier(s).
+		frequency-modulate the carrier(s).
 	r	(For modulator operators only.) Frequency ratio of carrier
 		to modulator. Keeps frequency that of the carrier divided by
 		the given number. May be used in the form r(n/m) for an
 		n:m ratio.
-			Gradual value adjustment also supported; see section.
+			Value slope also supported; see section.
 	r!<>	(For modulator operators only.) A second frequency ratio,
 		for a range to use with FM by wave or envelope.
 			A list of modulator operators may be specified
@@ -192,16 +190,14 @@ Parameters:
 		in a 0.0 to 1.0 range, i.e. a positive signal, multiplied by
 		its amplitude parameter (defaulting to 1.0).
 			The product of the modulator amplitudes is used to
-		frequency-modulate the carrier(s), be they the final
-		carrier(s) or in turn modulator(s) for one or more other
-		carrier(s).
+		frequency-modulate the carrier(s).
 	a	Amplitude, where 1.0 corresponds to a level of 0dB and
 		0.0 is silence. (Note that the final output level is scaled
 		down by the number of voices; alternatively, the S "a" option
 		can be used to set a multiplier used when adding a top-level
 		carrier. Panning will further reduce output level unless
 		fully left or right.) Can be negative to flip sign of result.
-			Gradual value adjustment also supported; see section.
+			Value slope also supported; see section.
 	a!<>	A second amplitude may follow the "!", for a range to use
 		with AM by wave or envelope.
 			A list of modulator operators may be specified
@@ -210,9 +206,7 @@ Parameters:
 		in a 0.0 to 1.0 range, i.e. a positive signal, multiplied by
 		its amplitude parameter (defaulting to 1.0).
 			The product of the modulator amplitudes is used to
-		amplitude-modulate the carrier(s), be they the final
-		carrier(s) or in turn modulator(s) for one or more other
-		carrier(s).
+		amplitude-modulate the carrier(s).
 	p	Set the beginning phase of the wave. For example, p(3/4) will
 		make a sine or triangle wave begin at its "bottom". This is
 		mostly used where wanted for waves used by f!/r! or a!.
@@ -220,8 +214,7 @@ Parameters:
 		this list replaces any previous PM modulators set, and may be
 		empty.
 			The sum of the modulator amplitudes is used to
-		phase-modulate the carrier(s), be they the final carrier(s)
-		or in turn modulator(s) for one or more other carrier(s).
+		phase-modulate the carrier(s).
 	s	Silent time before playing, time in seconds.
 			Works like adding a delay, except it only affects this
 		operator.
@@ -234,7 +227,7 @@ Set the panning (left-right "balance") of the voice associated with
 the present operator(s), affecting the left and right output levels.
 Value range is 0 (all-left) to 1 (all-right). Default is 0.5 (center).
 Panning not at either extreme end will reduce level.
-		Gradual value adjustment also supported; see section.
+		Value slope also supported; see section.
 
 Quit: Q
 -------
@@ -256,15 +249,20 @@ Following a "#", the rest of a line is commented out.
 Numerical expressions are allowed within parentheses, allowing numbers
 to be specified using basic arithmetic and freely placed whitespace.
 
-Gradual value adjustment:
+Value slope:
 	Some parameters are noted to support this. Instead of typing the
 	value directly, the following sub-parameters are specified within []
 	(square brackets):
 	v	Target value.
 	t	Time to reach target value.
-	c	Change type; either lin, exp or log. (exp and log use
-		ear-tuned polynomial approximations designed to sound
-		natural, and which are symmetric to one another.)
+	c	Change type (default 'lin'):
+			hold	Hold old value until time.
+			lin	Linear trajectory over time.
+			exp	Exponential trajectory over time.
+			log	Logarithmic trajectory over time.
+		(The 'exp' and 'log' types use ear-tuned polynomial
+		approximations designed to sound natural, and
+		symmetric one to another.)
 
 Parameters and operator binding:
 	When specifying or referencing operators within {} brackets, any

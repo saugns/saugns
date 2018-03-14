@@ -8,7 +8,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #pragma once
@@ -42,19 +42,20 @@
  * Utility functions.
  */
 
-void SGS_warning(const char *label, const char *fmt, ...)
+void SGS_warning(const char *restrict label, const char *restrict fmt, ...)
 	SGS__printflike(2, 3);
-void SGS_error(const char *label, const char *fmt, ...)
+void SGS_error(const char *restrict label, const char *restrict fmt, ...)
 	SGS__printflike(2, 3);
 
-void *SGS_memdup(const void *src, size_t size) SGS__malloclike;
+void *SGS_memdup(const void *restrict src, size_t size) SGS__malloclike;
 
 /*
  * Debugging options.
  */
 
-/* Disable old parser, run lexer testing instead. */
-#define SGS_TEST_LEXER 0
-
+/* Run scanner instead of lexer in 'test-builder' program. */
+#define SGS_TEST_SCANNER 0
+/* Print hash collision info for symtab. */
 #define SGS_HASHTAB_STATS 0
-#define SGS_LEXER_QUIET 0
+/* Make test lexer quiet enough to time it. */
+#define SGS_LEXER_QUIET 1
