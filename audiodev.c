@@ -45,33 +45,33 @@ struct SGSAudioDev {
  * Open audio device for 16-bit sound output. Sound data may thereafter be
  * written any number of times using SGS_audiodev_write().
  *
- * Returns SGSAudioDev or NULL if opening the device fails.
+ * Returns instance or NULL if opening the device fails.
  */
 SGSAudioDev *SGS_open_audiodev(uint16_t channels, uint32_t *srate) {
 #ifdef linux
-	return open_linux_audiodev(ALSA_NAME_OUT, OSS_NAME_OUT, O_WRONLY,
+	return open_audiodev_linux(ALSA_NAME_OUT, OSS_NAME_OUT, O_WRONLY,
 			channels, srate);
 #else
-	return open_oss_audiodev(OSS_NAME_OUT, O_WRONLY, channels, srate);
+	return open_audiodev_oss(OSS_NAME_OUT, O_WRONLY, channels, srate);
 #endif
 }
 
 /**
- * Close the given audio device. The structure is freed.
+ * Close the given audio device. Destroys the instance.
  */
-void SGS_close_audiodev(SGSAudioDev *ad) {
+void SGS_close_audiodev(SGSAudioDev *o) {
 #ifdef linux
-	close_linux_audiodev(ad);
+	close_audiodev_linux(o);
 #else
-	close_oss_audiodev(ad);
+	close_audiodev_oss(o);
 #endif
 }
 
 /**
- * Return sample rate set for system audio output.
+ * Return sample rate set for this instance.
  */
-uint32_t SGS_audiodev_get_srate(const SGSAudioDev *ad) {
-	return ad->srate;
+uint32_t SGS_audiodev_get_srate(const SGSAudioDev *o) {
+	return o->srate;
 }
 
 /**
@@ -82,10 +82,11 @@ uint32_t SGS_audiodev_get_srate(const SGSAudioDev *ad) {
  *
  * Returns true upon suceessful write, otherwise false;
  */
-bool SGS_audiodev_write(SGSAudioDev *ad, const int16_t *buf, uint32_t samples) {
+bool SGS_audiodev_write(SGSAudioDev *o, const int16_t *buf,
+		uint32_t samples) {
 #ifdef linux
-	return linux_audiodev_write(ad, buf, samples);
+	return audiodev_linux_write(o, buf, samples);
 #else
-	return oss_audiodev_write(ad, buf, samples);
+	return audiodev_oss_write(o, buf, samples);
 #endif
 }

@@ -7,7 +7,7 @@ OBJ=audiodev.o \
     plist.o \
     symtab.o \
     parser.o \
-    program.o \
+    builder.o \
     osc.o \
     generator.o \
     sgensys.o
@@ -45,10 +45,10 @@ parser.o: parser.c parser.h program.h osc.h math.h plist.h symtab.h sgensys.h
 plist.o: plist.c plist.h sgensys.h
 	$(CC) -c $(CFLAGS) plist.c
 
-program.o: program.c program.h osc.h parser.h plist.h sgensys.h
-	$(CC) -c $(CFLAGS) program.c
+builder.o: builder.c builder.h program.h osc.h parser.h plist.h sgensys.h
+	$(CC) -c $(CFLAGS) builder.c
 
-sgensys.o: sgensys.c generator.h program.h audiodev.h wavfile.h sgensys.h
+sgensys.o: sgensys.c generator.h builder.h parser.h program.h osc.h plist.h audiodev.h wavfile.h sgensys.h
 	$(CC) -c $(CFLAGS) sgensys.c
 
 symtab.o: symtab.c symtab.h sgensys.h

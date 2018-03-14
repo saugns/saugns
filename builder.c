@@ -1,4 +1,4 @@
-/* sgensys: Parsing data to audio program translator module.
+/* sgensys: Program builder module.
  * Copyright (c) 2011-2012, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -11,21 +11,10 @@
  * <http://www.gnu.org/licenses/>.
  */
 
-#include "program.h"
-#include "parser.h"
+#include "builder.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
-
-static void print_linked(const char *header, const char *footer,
-		uint32_t count, const int32_t *nodes) {
-  uint32_t i;
-  if (!count) return;
-  printf("%s%d", header, nodes[0]);
-  for (i = 0; ++i < count; )
-    printf(", %d", nodes[i]);
-  printf("%s", footer);
-}
 
 static void build_graph(SGSProgramEvent *root,
 		const SGSParseEventData *voice_in) {
@@ -66,7 +55,8 @@ static void build_adjcs(SGSProgramEvent *root,
     *adjcs_out = 0;
     return;
   }
-  adjcs = malloc(sizeof(SGSProgramGraphAdjcs) + sizeof(int32_t) * (size - 1));
+  adjcs = malloc(sizeof(SGSProgramGraphAdjcs)
+		+ sizeof(int32_t) * (size - 1));
   adjcs->fmodc = operator_in->fmods.count;
   adjcs->pmodc = operator_in->pmods.count;
   adjcs->amodc = operator_in->amods.count;
@@ -313,7 +303,7 @@ static void program_convert_onode(ProgramAlloc *pa, SGSParseOperatorData *op,
  * sublists in turn, following and converting operator data and allocating
  * new output events as needed.
  */
-static void program_follow_onodes(struct ProgramAlloc *pa, SGSPList *op_list) {
+static void program_follow_onodes(ProgramAlloc *pa, SGSPList *op_list) {
   SGSParseOperatorData **ops;
   uint32_t i;
   ops = (SGSParseOperatorData**) SGS_PLIST_ITEMS(op_list);
@@ -364,12 +354,12 @@ static void program_convert_enode(ProgramAlloc *pa, SGSParseEventData *e) {
   }
 }
 
-/*
- * Create program for the given parser output.
+/**
+ * Create instance for the given parser output.
  *
- * Return program if successful, NULL on error.
+ * Returns instance if successful, NULL on error.
  */
-static SGSProgram* build_program(SGSParseResult *parse) {
+SGSProgram* SGS_build_program(SGSParseResult *parse) {
 	ProgramAlloc pa;
 	SGSProgram *o = calloc(1, sizeof(SGSProgram));
 	SGSParseEventData *e;
@@ -394,6 +384,35 @@ static SGSProgram* build_program(SGSParseResult *parse) {
 	SGS_program_print_info(o);
 #endif
 	return o;
+}
+
+/**
+ * Destroy instance.
+ */
+void SGS_destroy_program(SGSProgram *o) {
+	for (size_t i = 0; i < o->event_count; ++i) {
+		SGSProgramEvent *e = (SGSProgramEvent*) o->events[i];
+		if (e->voice) {
+			free((void*)e->voice->graph);
+			free((void*)e->voice);
+		}
+		if (e->operator) {
+			free((void*)e->operator->adjcs);
+			free((void*)e->operator);
+		}
+		free(e);
+	}
+	free((void*)o->events);
+}
+
+static void print_linked(const char *header, const char *footer,
+		uint32_t count, const int32_t *nodes) {
+	uint32_t i;
+	if (!count) return;
+	printf("%s%d", header, nodes[0]);
+	for (i = 0; ++i < count; )
+		printf(", %d", nodes[i]);
+	printf("%s", footer);
 }
 
 /**
@@ -437,40 +456,4 @@ void SGS_program_print_info(SGSProgram *o) {
 		}
 		putchar('\n');
 	}
-}
-
-/**
- * Create program for the given script file. Invokes the parser.
- *
- * Return SGSProgram if successful, NULL on error.
- */
-SGSProgram* SGS_open_program(const char *fname) {
-	SGSParser *parser = SGS_create_parser();
-	SGSParseResult *parse = SGS_parser_process(parser, fname);
-	if (!parse) {
-		SGS_destroy_parser(parser);
-		return NULL;
-	}
-	SGSProgram *o = build_program(parse);
-	SGS_destroy_parser(parser);
-	return o;
-}
-
-/**
- * Destroy instance.
- */
-void SGS_close_program(SGSProgram *o) {
-	for (size_t i = 0; i < o->event_count; ++i) {
-		SGSProgramEvent *e = (SGSProgramEvent*) o->events[i];
-		if (e->voice) {
-			free((void*)e->voice->graph);
-			free((void*)e->voice);
-		}
-		if (e->operator) {
-			free((void*)e->operator->adjcs);
-			free((void*)e->operator);
-		}
-		free(e);
-	}
-	free((void*)o->events);
 }

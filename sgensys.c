@@ -1,4 +1,4 @@
-/* sgensys: command-line interface & main module.
+/* sgensys: Main module. Command-line interface.
  * Copyright (c) 2011-2013, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -11,7 +11,9 @@
  * <http://www.gnu.org/licenses/>.
  */
 
-#include "program.h"
+#include "sgensys.h"
+#include "parser.h"
+#include "builder.h"
 #include "generator.h"
 #include "audiodev.h"
 #include "wavfile.h"
@@ -26,7 +28,7 @@
 static int16_t sound_buf[BUF_SAMPLES * NUM_CHANNELS];
 
 /*
- * Produce sound for the given SGSProgram, optionally sending it
+ * Produce sound for the given program, optionally sending it
  * to a given audio device and/or WAV file.
  *
  * Return true if no error occurred.
@@ -102,7 +104,7 @@ static bool run_program(struct SGSProgram *prg,
  */
 static void print_usage(void) {
 	puts(
-"Usage: sgensys [[-a|-m] [-r srate] [-o wavfile]|-c] scriptfile\n"
+"Usage: sgensys [[-a|-m] [-r srate] [-o wavfile]|-p] scriptfile\n"
 "\n"
 "By default, audio device output is enabled.\n"
 "\n"
@@ -113,7 +115,7 @@ static void print_usage(void) {
 "     \tthe rate used for the audio device instead.\n"
 "  -o \tWrite a 16-bit PCM WAV file; by default, this disables audio device\n"
 "     \toutput.\n"
-"  -c \tStop after parsing the script, upon success or failure; mutually\n"
+"  -p \tStop after parsing the script, upon success or failure; mutually\n"
 "     \texclusive with all other options.\n"
 "  -h \tPrint this message."
 	);
@@ -139,16 +141,16 @@ enum {
 	ARG_FULL_RUN = 1<<0, /* identifies any non-compile-only flags */
 	ARG_ENABLE_AUDIO_DEV = 1<<1,
 	ARG_DISABLE_AUDIO_DEV = 1<<2,
-	ARG_ONLY_COMPILE = 1<<3,
+	ARG_ONLY_PARSE = 1<<3,
 };
 
 /*
  * Parse command line arguments.
  *
- * Returns 0 if the arguments are valid and include a script to run,
- * otherwise print usage instructions and returns 1.
+ * Returns true if the arguments are valid and include a script to run,
+ * otherwise print usage instructions and returns false.
  */
-static int parse_args(int argc, char **argv, uint32_t *flags,
+static bool parse_args(int argc, char **argv, uint32_t *flags,
 		const char **script_path, const char **wav_path,
 		uint32_t *srate) {
 	for (;;) {
@@ -156,10 +158,7 @@ static int parse_args(int argc, char **argv, uint32_t *flags,
 		--argc;
 		++argv;
 		if (argc < 1) {
-			if (!*script_path) USAGE: {
-				print_usage();
-				return 1;
-			}
+			if (!*script_path) goto USAGE;
 			break;
 		}
 		arg = *argv;
@@ -171,19 +170,19 @@ static int parse_args(int argc, char **argv, uint32_t *flags,
 		while (*++arg) {
 			if (*arg == 'a') {
 				if (*flags & (ARG_DISABLE_AUDIO_DEV |
-						ARG_ONLY_COMPILE))
+						ARG_ONLY_PARSE))
 					goto USAGE;
 				*flags |= ARG_FULL_RUN |
 					ARG_ENABLE_AUDIO_DEV;
 			} else if (*arg == 'm') {
 				if (*flags & (ARG_ENABLE_AUDIO_DEV |
-						ARG_ONLY_COMPILE))
+						ARG_ONLY_PARSE))
 					goto USAGE;
 				*flags |= ARG_FULL_RUN |
 					 ARG_DISABLE_AUDIO_DEV;
 			} else if (!strcmp(arg, "r")) {
 				int i;
-				if (*flags & ARG_ONLY_COMPILE)
+				if (*flags & ARG_ONLY_PARSE)
 					goto USAGE;
 				*flags |= ARG_FULL_RUN;
 				--argc;
@@ -195,7 +194,7 @@ static int parse_args(int argc, char **argv, uint32_t *flags,
 				*srate = i;
 				break;
 			} else if (!strcmp(arg, "o")) {
-				if (*flags & ARG_ONLY_COMPILE)
+				if (*flags & ARG_ONLY_PARSE)
 					goto USAGE;
 				*flags |= ARG_FULL_RUN;
 				--argc;
@@ -204,15 +203,44 @@ static int parse_args(int argc, char **argv, uint32_t *flags,
 				arg = *argv;
 				*wav_path = arg;
 				break;
-			} else if (*arg == 'c') {
+			} else if (*arg == 'p') {
 				if (*flags & ARG_FULL_RUN)
 					goto USAGE;
-				*flags |= ARG_ONLY_COMPILE;
+				*flags |= ARG_ONLY_PARSE;
 			} else
 				goto USAGE;
 		}
 	}
-	return 0;
+	return true;
+USAGE:
+	print_usage();
+	return false;
+}
+
+/*
+ * Process the given script file. Invokes the parser and, if
+ * successful, proceeds to build program unless skipped.
+ *
+ * prg_out must point to a usable pointer unless building skipped.
+ *
+ * Return true if successful, false on error.
+ */
+static bool process_script(const char *fname, SGSProgram **prg_out,
+		uint32_t options) {
+	SGSParser *parser = SGS_create_parser();
+	SGSParseResult *parse = SGS_parser_process(parser, fname);
+	if (!parse) {
+		SGS_destroy_parser(parser);
+		return false;
+	}
+	if (options & ARG_ONLY_PARSE) {
+		SGS_destroy_parser(parser);
+		return true;
+	}
+	SGSProgram *prg = SGS_build_program(parse);
+	SGS_destroy_parser(parser);
+	*prg_out = prg;
+	return (prg != NULL);
 }
 
 /**
@@ -221,25 +249,25 @@ static int parse_args(int argc, char **argv, uint32_t *flags,
 int main(int argc, char **argv) {
 	const char *script_path = NULL, *wav_path = NULL;
 	uint32_t options = 0;
-	bool use_audiodev;
-	SGSProgram *prg;
 	uint32_t srate = DEFAULT_SRATE;
+	bool error = false;
 
-	if (parse_args(argc, argv, &options, &script_path, &wav_path,
-			&srate) != 0)
-		return 0;
-	if (!(prg = SGS_open_program(script_path))) {
-		fprintf(stderr, "error: couldn't open script file \"%s\" for reading\n",
-				script_path);
-		return 1;
+	if (!parse_args(argc, argv, &options, &script_path, &wav_path,
+			&srate))
+		goto DONE;
+
+	struct SGSProgram *prg = NULL;
+	if (!process_script(script_path, &prg, options)) {
+		error = true;
+		goto DONE;
 	}
-	if (options & ARG_ONLY_COMPILE)
-		return 0;
-	use_audiodev = (wav_path ?
+
+	bool use_audiodev = (wav_path ?
 			(options & ARG_ENABLE_AUDIO_DEV) :
 			!(options & ARG_DISABLE_AUDIO_DEV));
+	error = !run_program(prg, use_audiodev, wav_path, srate);
+	SGS_destroy_program(prg);
 
-	int run_status = !run_program(prg, use_audiodev, wav_path, srate);
-	SGS_close_program(prg);
-	return run_status;
+DONE:
+	return error;
 }

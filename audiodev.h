@@ -18,7 +18,7 @@ struct SGSAudioDev;
 typedef struct SGSAudioDev SGSAudioDev;
 
 SGSAudioDev *SGS_open_audiodev(uint16_t channels, uint32_t *srate);
-void SGS_close_audiodev(SGSAudioDev *ad);
+void SGS_close_audiodev(SGSAudioDev *o);
 
-uint32_t SGS_audiodev_get_srate(const SGSAudioDev *ad);
-bool SGS_audiodev_write(SGSAudioDev *ad, const int16_t *buf, uint32_t samples);
+uint32_t SGS_audiodev_get_srate(const SGSAudioDev *o);
+bool SGS_audiodev_write(SGSAudioDev *o, const int16_t *buf, uint32_t samples);

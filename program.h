@@ -1,4 +1,4 @@
-/* sgensys: Parsing data to audio program translator module.
+/* sgensys: Sound program definitions.
  * Copyright (c) 2011-2013, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -148,8 +148,5 @@ typedef struct SGSProgram {
 	uint16_t flags;
 	const char *name;
 } SGSProgram;
-
-SGSProgram* SGS_open_program(const char *fname);
-void SGS_close_program(SGSProgram *o);
 
 void SGS_program_print_info(SGSProgram *o);
