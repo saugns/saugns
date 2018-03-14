@@ -1,5 +1,5 @@
 /* sgensys: Generic array module.
- * Copyright (c) 2018 Joel K. Pettersson
+ * Copyright (c) 2018-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -43,8 +43,9 @@ typedef struct Name { \
  * to prefix their names.
  */
 #define SGS_DEF_ArrType_METHODS(Name, ElementType, MethodPrefix) \
-static inline bool sgsMaybeUnused \
-MethodPrefix##Name##_add(Name *restrict o, const ElementType *restrict item) { \
+static inline ElementType sgsMaybeUnused \
+*MethodPrefix##Name##_add(Name *restrict o, \
+		const ElementType *restrict item) { \
 	return SGS_ArrType_add(o, item, sizeof(ElementType)); \
 } \
 static inline bool sgsMaybeUnused \
@@ -74,7 +75,7 @@ MethodPrefix##Name##_memdup(Name *restrict o, \
 SGS_DEF_ArrType_TYPE(Name, ElementType) \
 SGS_DEF_ArrType_METHODS(Name, ElementType, MethodPrefix)
 
-bool SGS_ArrType_add(void *restrict o,
+void *SGS_ArrType_add(void *restrict o,
 		const void *restrict item, size_t item_size);
 bool SGS_ArrType_upsize(void *restrict o,
 		size_t count, size_t item_size);
@@ -82,5 +83,5 @@ void SGS_ArrType_clear(void *restrict o);
 bool SGS_ArrType_memdup(void *restrict o,
 		const void **restrict dst, size_t item_size);
 
-/** uint8_t array type. */
-SGS_DEF_ArrType(SGS_UInt8Arr, uint8_t, );
+/** Byte (uint8_t) array type. */
+SGS_DEF_ArrType(SGS_ByteArr, uint8_t, )

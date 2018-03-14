@@ -33,7 +33,7 @@ static SGS_ProgramOpGraph
 	uint32_t i;
 	ops = (const SGS_ScriptOpData**) SGS_PtrList_ITEMS(&vo_in->op_graph);
 	SGS_ProgramOpGraph *o;
-	o = malloc(sizeof(SGS_ProgramOpGraph) + sizeof(int32_t) * (size - 1));
+	o = malloc(sizeof(SGS_ProgramOpGraph) + sizeof(uint32_t) * (size - 1));
 	if (!o) return NULL;
 	o->opc = size;
 	for (i = 0; i < size; ++i) {
@@ -54,7 +54,7 @@ static SGS_ProgramOpAdjcs
 	uint32_t i;
 	uint32_t *data;
 	SGS_ProgramOpAdjcs *o;
-	o = malloc(sizeof(SGS_ProgramOpAdjcs) + sizeof(int32_t) * (size - 1));
+	o = malloc(sizeof(SGS_ProgramOpAdjcs) + sizeof(uint32_t) * (size - 1));
 	if (!o) return NULL;
 	o->fmodc = op_in->fmods.count;
 	o->pmodc = op_in->pmods.count;
@@ -276,7 +276,6 @@ static void ParseConv_convert_opdata(ParseConv *restrict o,
 	ood.adjcs = NULL;
 	ood.time = op->time;
 	ood.silence_ms = op->silence_ms;
-	ood.attr = op->attr;
 	ood.wave = op->wave;
 	ood.freq = op->freq;
 	ood.amp = op->amp;
@@ -324,7 +323,7 @@ static void ParseConv_traverse_ops(ParseConv *restrict o,
 	uint32_t i;
 	if ((oas->flags & OA_VISITED) != 0) {
 		SGS_warning("parseconv",
-"skipping operator %d; circular references unsupported",
+"skipping operator %u; circular references unsupported",
 			op_ref->id);
 		return;
 	}
@@ -343,21 +342,21 @@ static void ParseConv_traverse_ops(ParseConv *restrict o,
 		for (; i < modc; ++i) {
 			mod_op_ref.id = mods[i];
 			mod_op_ref.use = SGS_POP_FMOD;
-//			fprintf(stderr, "visit fmod node %d\n", mod_op_ref.id);
+//			fprintf(stderr, "visit fmod node %u\n", mod_op_ref.id);
 			ParseConv_traverse_ops(o, &mod_op_ref, level);
 		}
 		modc += adjcs->pmodc;
 		for (; i < modc; ++i) {
 			mod_op_ref.id = mods[i];
 			mod_op_ref.use = SGS_POP_PMOD;
-//			fprintf(stderr, "visit pmod node %d\n", mod_op_ref.id);
+//			fprintf(stderr, "visit pmod node %u\n", mod_op_ref.id);
 			ParseConv_traverse_ops(o, &mod_op_ref, level);
 		}
 		modc += adjcs->amodc;
 		for (; i < modc; ++i) {
 			mod_op_ref.id = mods[i];
 			mod_op_ref.use = SGS_POP_AMOD;
-//			fprintf(stderr, "visit amod node %d\n", mod_op_ref.id);
+//			fprintf(stderr, "visit amod node %u\n", mod_op_ref.id);
 			ParseConv_traverse_ops(o, &mod_op_ref, level);
 		}
 		oas->flags &= ~OA_VISITED;
@@ -380,7 +379,7 @@ static void ParseConv_traverse_voice(ParseConv *restrict o,
 	if (!graph) return;
 	for (i = 0; i < graph->opc; ++i) {
 		op_ref.id = graph->ops[i];
-//		fprintf(stderr, "visit node %d\n", op_ref.id);
+//		fprintf(stderr, "visit node %u\n", op_ref.id);
 		ParseConv_traverse_ops(o, &op_ref, 0);
 	}
 	OpRefArr_memdup(&o->ev_vo_oplist, &vd->op_list);
@@ -418,7 +417,6 @@ static void ParseConv_convert_event(ParseConv *restrict o,
 	if (vo_params != 0) {
 		SGS_ProgramVoData *ovd = calloc(1, sizeof(SGS_ProgramVoData));
 		ovd->params = vo_params;
-		ovd->attr = e->vo_attr;
 		ovd->pan = e->pan;
 		if ((e->ev_flags & SGS_SDEV_NEW_OPGRAPH) != 0) {
 			if (vas->op_graph != NULL) free(vas->op_graph);
@@ -463,21 +461,21 @@ static SGS_Program *_ParseConv_copy_out(ParseConv *restrict o,
 	}
 	if (o->va.count > SGS_PVO_MAX_ID) {
 		fprintf(stderr,
-"%s: error: number of voices used cannot exceed %d\n",
+"%s: error: number of voices used cannot exceed %u\n",
 			parse->name, SGS_PVO_MAX_ID);
 		goto ERROR;
 	}
 	prg->vo_count = o->va.count;
 	if (o->oa.count > SGS_POP_MAX_ID) {
 		fprintf(stderr,
-"%s: error: number of operators used cannot exceed %d\n",
+"%s: error: number of operators used cannot exceed %u\n",
 			parse->name, SGS_POP_MAX_ID);
 		goto ERROR;
 	}
 	prg->op_count = o->oa.count;
 	if (o->op_nest_depth > UINT8_MAX) {
 		fprintf(stderr,
-"%s: error: operators nested %d levels, maximum is %d levels\n",
+"%s: error: operators nested %u levels, maximum is %u levels\n",
 			parse->name, o->op_nest_depth, UINT8_MAX);
 		goto ERROR;
 	}
@@ -581,9 +579,9 @@ static void print_linked(const char *restrict header,
 		uint32_t count, const uint32_t *restrict nodes) {
 	uint32_t i;
 	if (!count) return;
-	fprintf(stdout, "%s%d", header, nodes[0]);
+	fprintf(stdout, "%s%u", header, nodes[0]);
 	for (i = 0; ++i < count; )
-		fprintf(stdout, ", %d", nodes[i]);
+		fprintf(stdout, ", %u", nodes[i]);
 	fprintf(stdout, "%s", footer);
 }
 
@@ -602,7 +600,7 @@ static void print_oplist(const SGS_ProgramOpRef *restrict list,
 	for (;;) {
 		const uint32_t indent = list[i].level * 2;
 		if (indent > max_indent) max_indent = indent;
-		fprintf(stdout, "%6d:  ", list[i].id);
+		fprintf(stdout, "%6u:  ", list[i].id);
 		for (uint32_t j = indent; j > 0; --j)
 			putc(' ', stdout);
 		fputs(uses[list[i].use], stdout);
@@ -614,6 +612,42 @@ static void print_oplist(const SGS_ProgramOpRef *restrict list,
 	putc(']', stdout);
 }
 
+static void print_opline(const SGS_ProgramOpData *restrict od) {
+	if (od->time.flags & SGS_TIMEP_LINKED) {
+		fprintf(stdout,
+			"\n\top %u \tt=INF   \t", od->id);
+	} else {
+		fprintf(stdout,
+			"\n\top %u \tt=%-6u\t", od->id, od->time.v_ms);
+	}
+	if ((od->freq.flags & SGS_RAMPP_STATE) != 0) {
+		if ((od->freq.flags & SGS_RAMPP_GOAL) != 0)
+			fprintf(stdout,
+				"f=%-6.1f->%-6.1f", od->freq.v0, od->freq.vt);
+		else
+			fprintf(stdout,
+				"f=%-6.1f\t", od->freq.v0);
+	} else {
+		if ((od->freq.flags & SGS_RAMPP_GOAL) != 0)
+			fprintf(stdout,
+				"f->%-6.1f\t", od->freq.vt);
+		else
+			fprintf(stdout,
+				"\t\t");
+	}
+	if ((od->amp.flags & SGS_RAMPP_STATE) != 0) {
+		if ((od->amp.flags & SGS_RAMPP_GOAL) != 0)
+			fprintf(stdout,
+				"\ta=%-6.1f->%-6.1f", od->amp.v0, od->amp.vt);
+		else
+			fprintf(stdout,
+				"\ta=%-6.1f", od->amp.v0);
+	} else if ((od->amp.flags & SGS_RAMPP_GOAL) != 0) {
+		fprintf(stdout,
+			"\ta->%-6.1f", od->amp.vt);
+	}
+}
+
 /**
  * Print information about program contents. Useful for debugging.
  */
@@ -621,10 +655,10 @@ void SGS_Program_print_info(const SGS_Program *restrict o) {
 	fprintf(stdout,
 		"Program: \"%s\"\n", o->name);
 	fprintf(stdout,
-		"\tDuration: \t%d ms\n"
-		"\tEvents:   \t%zd\n"
-		"\tVoices:   \t%hd\n"
-		"\tOperators:\t%d\n",
+		"\tDuration: \t%u ms\n"
+		"\tEvents:   \t%zu\n"
+		"\tVoices:   \t%hu\n"
+		"\tOperators:\t%u\n",
 		o->duration_ms,
 		o->ev_count,
 		o->vo_count,
@@ -633,26 +667,19 @@ void SGS_Program_print_info(const SGS_Program *restrict o) {
 		const SGS_ProgramEvent *ev = &o->events[ev_id];
 		const SGS_ProgramVoData *vd = ev->vo_data;
 		fprintf(stdout,
-			"\\%d \tEV %zd \t(VO %hd)",
+			"\\%u \tEV %zu \t(VO %hu)",
 			ev->wait_ms, ev_id, ev->vo_id);
 		if (vd != NULL) {
 			const SGS_ProgramOpRef *ol = vd->op_list;
 			fprintf(stdout,
-				"\n\tvo %d", ev->vo_id);
+				"\n\tvo %u", ev->vo_id);
 			if (ol != NULL)
 				print_oplist(ol, vd->op_count);
 		}
 		for (size_t i = 0; i < ev->op_data_count; ++i) {
 			const SGS_ProgramOpData *od = &ev->op_data[i];
 			const SGS_ProgramOpAdjcs *ga = od->adjcs;
-			if (od->time.flags & SGS_TIMEP_LINKED)
-				fprintf(stdout,
-					"\n\top %d \tt=INF \tf=%.f",
-					od->id, od->freq.v0);
-			else
-				fprintf(stdout,
-					"\n\top %d \tt=%d \tf=%.f",
-					od->id, od->time.v_ms, od->freq.v0);
+			print_opline(od);
 			if (ga != NULL) {
 				print_linked("\n\t    f![", "]", ga->fmodc,
 					ga->adjcs);
