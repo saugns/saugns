@@ -17,10 +17,7 @@
 #include <stdlib.h>
 
 #define BUF_LEN 256
-typedef union Buf {
-  int32_t i[BUF_LEN];
-  float f[BUF_LEN];
-} Buf;
+typedef float Buf[BUF_LEN];
 
 /*
  * Operator node flags.
@@ -89,8 +86,8 @@ typedef struct EventNode {
 struct SGS_Generator {
   double osc_coeff;
   uint32_t srate;
-  uint32_t buf_count;
-  Buf *bufs;
+  uint32_t gen_buf_count;
+  Buf *gen_bufs, *mix_bufs;
   size_t event, ev_count;
   EventNode *events;
   uint32_t event_pos;
@@ -140,7 +137,7 @@ static size_t count_ev_values(const SGS_ProgramEvent *restrict e) {
 }
 
 // maximum number of buffers needed for op nesting depth
-#define COUNT_BUFS(op_nest_depth) ((1 + (op_nest_depth)) * 4)
+#define COUNT_GEN_BUFS(op_nest_depth) ((1 + (op_nest_depth)) * 4)
 
 static bool alloc_for_program(SGS_Generator *restrict o,
                               SGS_Program *restrict prg) {
@@ -190,13 +187,17 @@ static bool alloc_for_program(SGS_Generator *restrict o,
     }
     o->op_count = i;
   }
-  i = COUNT_BUFS(prg->op_nest_depth);
+  i = COUNT_GEN_BUFS(prg->op_nest_depth);
   if (i > 0) {
-    o->bufs = calloc(i, sizeof(Buf));
-    if (!o->bufs) {
+    o->gen_bufs = calloc(i, sizeof(Buf));
+    if (!o->gen_bufs) {
       return false;
     }
-    o->buf_count = i;
+    o->gen_buf_count = i;
+  }
+  o->mix_bufs = calloc(2, sizeof(Buf));
+  if (!o->mix_bufs) {
+    return false;
   }
 
   return true;
@@ -320,7 +321,8 @@ SGS_Generator* SGS_create_Generator(SGS_Program *restrict prg,
  * Destroy instance.
  */
 void SGS_destroy_Generator(SGS_Generator *restrict o) {
-  if (o->bufs) free(o->bufs);
+  if (o->gen_bufs) free(o->gen_bufs);
+  if (o->mix_bufs) free(o->mix_bufs);
   if (o->events) free(o->events);
   if (o->voices) free(o->voices);
   if (o->operators) free(o->operators);
@@ -437,19 +439,19 @@ static void handle_event(SGS_Generator *restrict o, EventNode *restrict e) {
  *
  * If a parameter slope is supplied, it is used.
  *
- * If not NULL, \p modbuf will be used as a sequence of value
+ * If not NULL, \p mulbuf will be used for a sequence of value
  * multipliers. This is used to get actual values from ratios.
  */
 static bool run_param(SGS_Generator *restrict o,
                       float *restrict buf, uint32_t buf_len,
                       SGS_Slope *restrict slope, float *restrict state,
-                      const float *restrict modbuf) {
+                      const float *restrict mulbuf) {
   uint32_t i;
   if (!slope) {
     float s0 = *state;
-    if (modbuf) {
+    if (mulbuf) {
       for (i = 0; i < buf_len; ++i)
-        buf[i] = s0 * modbuf[i];
+        buf[i] = s0 * mulbuf[i];
     } else {
       for (i = 0; i < buf_len; ++i)
         buf[i] = s0;
@@ -460,9 +462,9 @@ static bool run_param(SGS_Generator *restrict o,
   if (done) {
     *state = slope->goal;
   }
-  if (modbuf) {
+  if (mulbuf) {
     for (i = 0; i < buf_len; ++i)
-      buf[i] *= modbuf[i];
+      buf[i] *= mulbuf[i];
   }
   return done;
 }
@@ -482,9 +484,8 @@ static uint32_t run_block(SGS_Generator *restrict o,
                           float *restrict parent_freq,
                           bool wave_env, uint32_t acc_ind) {
   uint32_t i, len;
-  int32_t *sbuf = bufs->i, *pm;
-  float *freq, *freqmod, *amp;
-  Buf *nextbuf = bufs + 1;
+  float *s_buf = *(bufs++), *pm_buf;
+  float *freq, *freqmul, *amp;
   SGS_Slope *slope;
   uint32_t fmodc = 0, pmodc = 0, amodc = 0;
   if (n->adjcs) {
@@ -502,19 +503,19 @@ static uint32_t run_block(SGS_Generator *restrict o,
     if (zero_len > len)
       zero_len = len;
     if (!acc_ind) for (i = 0; i < zero_len; ++i)
-      sbuf[i] = 0;
+      s_buf[i] = 0;
     len -= zero_len;
     if (n->time != SGS_TIME_INF) n->time -= zero_len;
     n->silence -= zero_len;
     if (!len) return zero_len;
-    sbuf += zero_len;
+    s_buf += zero_len;
   }
   /*
    * Guard against circular references.
    */
   if ((n->flags & ON_VISITED) != 0) {
       for (i = 0; i < len; ++i)
-        sbuf[i] = 0;
+        s_buf[i] = 0;
       return zero_len + len;
   }
   n->flags |= ON_VISITED;
@@ -530,17 +531,17 @@ static uint32_t run_block(SGS_Generator *restrict o,
    * Handle frequency (alternatively ratio) parameter, including frequency
    * modulation if modulators linked.
    */
-  freq = (nextbuf++)->f;
+  freq = *(bufs++);
   if (n->attr & SGS_POPA_FREQ_SLOPE) {
     slope = &n->freq_slope;
     if (n->attr & SGS_POPA_FREQRATIO_SLOPE) {
-      freqmod = parent_freq;
+      freqmul = parent_freq;
       if (!(n->attr & SGS_POPA_FREQRATIO)) {
         n->attr |= SGS_POPA_FREQRATIO;
         n->freq /= parent_freq[0];
       }
     } else {
-      freqmod = NULL;
+      freqmul = NULL;
       if (n->attr & SGS_POPA_FREQRATIO) {
         n->attr &= ~SGS_POPA_FREQRATIO;
         n->freq *= parent_freq[0];
@@ -548,33 +549,33 @@ static uint32_t run_block(SGS_Generator *restrict o,
     }
   } else {
     slope = NULL;
-    freqmod = (n->attr & SGS_POPA_FREQRATIO) ? parent_freq : 0;
+    freqmul = (n->attr & SGS_POPA_FREQRATIO) ? parent_freq : NULL;
   }
-  if (run_param(o, freq, len, slope, &n->freq, freqmod))
+  if (run_param(o, freq, len, slope, &n->freq, freqmul))
     n->attr &= ~(SGS_POPA_FREQ_SLOPE|SGS_POPA_FREQRATIO_SLOPE);
   if (fmodc) {
     const uint32_t *fmods = n->adjcs->adjcs;
-    float *fmbuf;
+    float *fm_buf;
     for (i = 0; i < fmodc; ++i)
-      run_block(o, nextbuf, len, &o->operators[fmods[i]], freq, true, i);
-    fmbuf = nextbuf->f;
+      run_block(o, bufs, len, &o->operators[fmods[i]], freq, true, i);
+    fm_buf = *bufs;
     if (n->attr & SGS_POPA_FREQRATIO) {
       for (i = 0; i < len; ++i)
-        freq[i] += (n->dynfreq * parent_freq[i] - freq[i]) * fmbuf[i];
+        freq[i] += (n->dynfreq * parent_freq[i] - freq[i]) * fm_buf[i];
     } else {
       for (i = 0; i < len; ++i)
-        freq[i] += (n->dynfreq - freq[i]) * fmbuf[i];
+        freq[i] += (n->dynfreq - freq[i]) * fm_buf[i];
     }
   }
   /*
    * If phase modulators linked, get phase offsets for modulation.
    */
-  pm = 0;
+  pm_buf = NULL;
   if (pmodc) {
     const uint32_t *pmods = &n->adjcs->adjcs[fmodc];
     for (i = 0; i < pmodc; ++i)
-      run_block(o, nextbuf, len, &o->operators[pmods[i]], freq, false, i);
-    pm = (nextbuf++)->i;
+      run_block(o, bufs, len, &o->operators[pmods[i]], freq, false, i);
+    pm_buf = *(bufs++);
   }
   /*
    * Handle amplitude parameter, including amplitude modulation if
@@ -584,49 +585,54 @@ static uint32_t run_block(SGS_Generator *restrict o,
     const uint32_t *amods = &n->adjcs->adjcs[fmodc+pmodc];
     float dynampdiff = n->dynamp - n->amp;
     for (i = 0; i < amodc; ++i)
-      run_block(o, nextbuf, len, &o->operators[amods[i]], freq, true, i);
-    amp = (nextbuf++)->f;
+      run_block(o, bufs, len, &o->operators[amods[i]], freq, true, i);
+    amp = *(bufs++);
     for (i = 0; i < len; ++i)
       amp[i] = n->amp + amp[i] * dynampdiff;
   } else {
-    amp = (nextbuf++)->f;
+    amp = *(bufs++);
     slope = (n->attr & SGS_POPA_AMP_SLOPE) ? &n->amp_slope : 0;
     if (run_param(o, amp, len, slope, &n->amp, 0))
       n->attr &= ~SGS_POPA_AMP_SLOPE;
   }
   if (!wave_env) {
     /*
-     * Generate integer output - either for voice output or phase modulation
-     * input.
-     */
-    const float *lut = SGS_Wave_luts[n->wave];
-    for (i = 0; i < len; ++i) {
-      int32_t s, spm = 0;
-      float sfreq = freq[i];
-      float samp = amp[i];
-      if (pm) spm = pm[i];
-      s = lrintf(SGS_Osc_run(&n->osc, lut, o->osc_coeff, sfreq, spm) * samp *
-                 (float) INT16_MAX);
-      if (acc_ind) s += sbuf[i];
-      sbuf[i] = s;
-    }
-  } else {
-    float *f_sbuf = (float*) sbuf;
-    /*
-     * Generate float output - used as waveform envelopes for modulating
-     * frequency or amplitude.
+     * Generate normal output,
+     * each output added,
+     * for carriers or PM input.
      */
     const float *lut = SGS_Wave_luts[n->wave];
     for (i = 0; i < len; ++i) {
       float s;
-      float sfreq = freq[i];
-      float samp = amp[i] * 0.5f;
-      int32_t spm = 0;
-      if (pm) spm = pm[i];
-      s = SGS_Osc_run(&n->osc, lut, o->osc_coeff, sfreq, spm);
-      s = (s * samp) + fabs(samp);
-      if (acc_ind) s *= f_sbuf[i];
-      f_sbuf[i] = s;
+      int32_t s_pm = 0;
+      float s_freq = freq[i];
+      float s_amp = amp[i];
+      if (pm_buf) {
+        s_pm = lrintf(pm_buf[i] * (float) INT32_MAX);
+      }
+      s = SGS_Osc_run(&n->osc, lut, o->osc_coeff, s_freq, s_pm) * s_amp;
+      if (acc_ind) s += s_buf[i];
+      s_buf[i] = s;
+    }
+  } else {
+    /*
+     * Generate output between 0.0 and 1.0 (multiplied by amp),
+     * each output multiplied,
+     * for FM or AM input.
+     */
+    const float *lut = SGS_Wave_luts[n->wave];
+    for (i = 0; i < len; ++i) {
+      float s;
+      int32_t s_pm = 0;
+      float s_freq = freq[i];
+      float s_amp = amp[i] * 0.5f;
+      if (pm_buf) {
+        s_pm = lrintf(pm_buf[i] * (float) INT32_MAX);
+      }
+      s = SGS_Osc_run(&n->osc, lut, o->osc_coeff, s_freq, s_pm);
+      s = (s * s_amp) + fabs(s_amp);
+      if (acc_ind) s *= s_buf[i];
+      s_buf[i] = s;
     }
   }
   /*
@@ -634,9 +640,9 @@ static uint32_t run_block(SGS_Generator *restrict o,
    */
   if (n->time != SGS_TIME_INF) {
     if (!acc_ind && skip_len > 0) {
-      sbuf += len;
+      s_buf += len;
       for (i = 0; i < skip_len; ++i)
-        sbuf[i] = 0;
+        s_buf[i] = 0;
     }
     n->time -= len;
   }
@@ -645,82 +651,146 @@ static uint32_t run_block(SGS_Generator *restrict o,
 }
 
 /*
- * Mix output for voice node \p vn into the 16-bit stereo (interleaved)
- * \p st_out buffer from the first generator buffer. Advances the st_out
- * pointer.
+ * Clear the mix buffers. To be called before adding voice outputs.
+ */
+static void mix_clear(SGS_Generator *restrict o) {
+  float *mix_l = o->mix_bufs[0];
+  float *mix_r = o->mix_bufs[1];
+  for (uint32_t i = 0; i < BUF_LEN; ++i) {
+    mix_l[i] = 0;
+    mix_r[i] = 0;
+  }
+}
+
+/*
+ * Add output for voice node \p vn into the mix buffers
+ * (0 = left, 1 = right) from the first generator buffer.
  *
  * The second generator buffer is used for panning if dynamic panning
  * is used.
  */
-static void mix_output(SGS_Generator *restrict o, VoiceNode *restrict vn,
-                       int16_t **restrict st_out, uint32_t len) {
-  int32_t *s_buf = o->bufs[0].i;
-  float scale = o->amp_scale;
+static void mix_add(SGS_Generator *restrict o,
+                    VoiceNode *restrict vn, uint32_t len) {
+  float *s_buf = o->gen_bufs[0];
+  float *mix_l = o->mix_bufs[0];
+  float *mix_r = o->mix_bufs[1];
   if (vn->attr & SGS_PVOA_PAN_SLOPE) {
-    float *pan_buf = o->bufs[1].f;
+    float *pan_buf = o->gen_bufs[1];
     if (run_param(o, pan_buf, len, &vn->pan_slope,
         &vn->pan, 0)) {
       vn->attr &= ~SGS_PVOA_PAN_SLOPE;
     }
     for (uint32_t i = 0; i < len; ++i) {
-      float s = s_buf[i] * scale;
-      float p = s * pan_buf[i];
-      *(*st_out)++ += lrintf(s - p);
-      *(*st_out)++ += lrintf(p);
+      float s = s_buf[i] * o->amp_scale;
+      float s_r = s * pan_buf[i];
+      float s_l = s - s_r;
+      mix_l[i] += s_l;
+      mix_r[i] += s_r;
     }
   } else {
     for (uint32_t i = 0; i < len; ++i) {
-      float s = s_buf[i] * scale;
-      float p = s * vn->pan;
-      *(*st_out)++ += lrintf(s - p);
-      *(*st_out)++ += lrintf(p);
+      float s = s_buf[i] * o->amp_scale;
+      float s_r = s * vn->pan;
+      float s_l = s - s_r;
+      mix_l[i] += s_l;
+      mix_r[i] += s_r;
     }
   }
 }
 
 /*
- * Generate up to buf_len samples for a voice, these mixed into the
- * interleaved output stereo buffer by simple addition.
- *
- * Returns number of samples generated for the voice.
+ * Write the final output from the mix buffers (0 = left, 1 = right)
+ * into the 16-bit stereo (interleaved) buffer pointed to by \p spp.
+ * Advances \p spp.
  */
-static uint32_t run_voice(SGS_Generator *restrict o, VoiceNode *restrict vn,
-                          int16_t *restrict out, uint32_t buf_len) {
+static void mix_write(SGS_Generator *restrict o,
+                      int16_t **restrict spp, uint32_t len) {
+  float *mix_l = o->mix_bufs[0];
+  float *mix_r = o->mix_bufs[1];
+  for (uint32_t i = 0; i < len; ++i) {
+    float s_l = mix_l[i];
+    float s_r = mix_r[i];
+    if (s_l > 1.f) s_l = 1.f;
+    else if (s_l < -1.f) s_l = -1.f;
+    if (s_r > 1.f) s_r = 1.f;
+    else if (s_r < -1.f) s_r = -1.f;
+    *(*spp)++ += lrintf(s_l * (float) INT16_MAX);
+    *(*spp)++ += lrintf(s_r * (float) INT16_MAX);
+  }
+}
+
+/*
+ * Generate up to BUF_LEN samples for a voice, mixed into the
+ * mix buffers.
+ *
+ * \return number of samples generated
+ */
+static uint32_t run_voice(SGS_Generator *restrict o,
+                          VoiceNode *restrict vn, uint32_t len) {
   uint32_t out_len = 0;
   const SGS_ProgramOpRef *ops = vn->op_list;
   uint32_t opc = vn->op_count;
-  if (!ops) goto RETURN;
+  if (!ops)
+    return 0;
+  uint32_t acc_ind = 0;
   uint32_t time;
   uint32_t i;
   time = vn->duration;
-  if (time > buf_len) time = buf_len;
-  /*
-   * Repeatedly generate up to BUF_LEN samples until done.
-   */
-  int16_t *sp = out;
-  while (time) {
-    uint32_t acc_ind = 0;
-    uint32_t gen_len = 0;
-    uint32_t len = (time < BUF_LEN) ? time : BUF_LEN;
-    time -= len;
-    for (i = 0; i < opc; ++i) {
-      uint32_t last_len;
-      if (ops[i].use != SGS_POP_CARR) continue; // TODO: finish redesign
-      OperatorNode *n = &o->operators[ops[i].id];
-      if (n->time == 0) continue;
-      last_len = run_block(o, o->bufs, len, n, 0, false, acc_ind++);
-      if (last_len > gen_len) gen_len = last_len;
-    }
-    if (!gen_len) goto RETURN;
-    mix_output(o, vn, &sp, gen_len);
-    out_len += gen_len;
-    vn->duration = (vn->duration > gen_len) ?
-      vn->duration - gen_len :
-      0;
+  if (len > BUF_LEN) len = BUF_LEN;
+  if (time > len) time = len;
+  for (i = 0; i < opc; ++i) {
+    uint32_t last_len;
+    if (ops[i].use != SGS_POP_CARR) continue; // TODO: finish redesign
+    OperatorNode *n = &o->operators[ops[i].id];
+    if (n->time == 0) continue;
+    last_len = run_block(o, o->gen_bufs, time, n, 0, false, acc_ind++);
+    if (last_len > out_len) out_len = last_len;
   }
-RETURN:
-  vn->pos += out_len;
+  if (out_len > 0) {
+    mix_add(o, vn, out_len);
+  }
+  vn->duration -= time;
+  vn->pos += time;
   return out_len;
+}
+
+/*
+ * Run voices for \p time, repeatedly generating up to BUF_LEN samples
+ * and writing them into the 16-bit stereo (interleaved) buffer
+ * pointed to by \p spp. Advances \p spp.
+ *
+ * \return number of samples generated
+ */
+static uint32_t run_for_time(SGS_Generator *restrict o,
+                             uint32_t time, int16_t **restrict spp) {
+  uint32_t gen_len = 0;
+  while (time > 0) {
+    uint32_t len = time;
+    if (len > BUF_LEN) len = BUF_LEN;
+    mix_clear(o);
+    uint32_t last_len = 0;
+    for (uint32_t i = o->voice; i < o->vo_count; ++i) {
+      VoiceNode *vn = &o->voices[i];
+      if (vn->pos < 0) {
+        uint32_t wait_time = (uint32_t) -vn->pos;
+        if (wait_time >= len) {
+          vn->pos += len;
+          break; /* end for now; wait times accumulate across nodes */
+        }
+        *spp += wait_time+wait_time; /* doubled given stereo interleaving */
+        len -= wait_time;
+        vn->pos = 0;
+      }
+      if (vn->duration != 0) {
+        uint32_t voice_len = run_voice(o, vn, len);
+        if (voice_len > last_len) last_len = voice_len;
+      }
+    }
+    time -= len;
+    mix_write(o, spp, last_len);
+    gen_len += last_len;
+  }
+  return gen_len;
 }
 
 /*
@@ -741,11 +811,10 @@ static void check_final_state(SGS_Generator *restrict o) {
  * buf_len new samples into the interleaved stereo buffer buf. Any values
  * after the end of the signal will be zero'd.
  *
- * If supplied, out_len will be set to the precise length generated.
- * for the call, which is buf_len unless the signal ended earlier.
+ * If supplied, out_len will be set to the precise length generated
+ * for this call, which is buf_len unless the signal ended earlier.
  *
- * Return true as long as there are more samples to generate, false
- * when the end of the signal has been reached.
+ * \return true unless the signal has ended
  */
 bool SGS_Generator_run(SGS_Generator *restrict o,
                        int16_t *restrict buf, size_t buf_len,
@@ -756,6 +825,7 @@ bool SGS_Generator_run(SGS_Generator *restrict o,
     sp[0] = 0;
     sp[1] = 0;
   }
+  sp = buf;
   uint32_t skip_len, gen_len = 0;
 PROCESS:
   skip_len = 0;
@@ -779,27 +849,8 @@ PROCESS:
     ++o->event;
     o->event_pos = 0;
   }
-  uint32_t last_len = 0;
-  for (i = o->voice; i < o->vo_count; ++i) {
-    VoiceNode *vn = &o->voices[i];
-    if (vn->pos < 0) {
-      uint32_t waittime = (uint32_t) -vn->pos;
-      if (waittime >= len) {
-        vn->pos += len;
-        break; /* end for now; waittimes accumulate across nodes */
-      }
-      buf += waittime+waittime; /* doubled given stereo interleaving */
-      len -= waittime;
-      vn->pos = 0;
-    }
-    if (vn->duration != 0) {
-      uint32_t voice_len = run_voice(o, vn, buf, len);
-      if (voice_len > last_len) last_len = voice_len; 
-    }
-  }
-  gen_len += last_len;
-  if (skip_len) {
-    buf += len+len; /* doubled given stereo interleaving */
+  gen_len += run_for_time(o, len, &sp);
+  if (skip_len > 0) {
     len = skip_len;
     goto PROCESS;
   }
