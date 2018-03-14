@@ -1,5 +1,5 @@
 /* sgensys: Main module / Command-line interface.
- * Copyright (c) 2011-2013, 2017-2018 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -8,7 +8,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #include "sgensys.h"
@@ -45,7 +45,7 @@ static void print_usage(bool by_arg) {
  * Print version.
  */
 static void print_version(void) {
-	puts("sgensys v0.5.0");
+	puts(SGS_VERSION_STR);
 }
 
 /*

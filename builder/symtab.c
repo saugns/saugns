@@ -8,7 +8,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #include "symtab.h"
@@ -152,7 +152,7 @@ static StrEntry *unique_entry(SGS_SymTab *o, const void *str, uint32_t len) {
 	++collision_count;
 #endif
 ADD_ENTRY:
-	entry = SGS_MemPool_alloc(o->malc, NULL, GET_STRING_ENTRY_SIZE(len + 1));
+	entry = SGS_MemPool_alloc(o->malc, GET_STRING_ENTRY_SIZE(len + 1));
 	if (entry == NULL) return NULL;
 	entry->prev = o->strtab[hash];
 	o->strtab[hash] = entry;

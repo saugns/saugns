@@ -1,5 +1,5 @@
-/* sgensys: Main functions and project definitions.
- * Copyright (c) 2011-2013, 2017-2019 Joel K. Pettersson
+/* sgensys: Script parameter module.
+ * Copyright (c) 2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -12,11 +12,21 @@
  */
 
 #pragma once
-#include "program.h"
+#include "../common.h"
 
-#define SGS_VERSION_STR "sgensys v0.6.0 beta"
+/**
+ * Timed parameter flags.
+ */
+enum {
+	SGS_TPAR_SLOPE = 1<<0,
+};
 
-SGS_Program* SGS_build(const char *fname);
-
-bool SGS_render(SGS_Program *prg, uint32_t srate,
-		bool use_audiodev, const char *wav_path);
+/**
+ * Timed parameter type.
+ */
+typedef struct SGS_TimedParam {
+	float v0, vt;
+	uint32_t time_ms;
+	uint8_t slope;
+	uint8_t flags;
+} SGS_TimedParam;

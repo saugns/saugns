@@ -8,12 +8,12 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #pragma once
-#include "program.h"
-#include "ptrlist.h"
+#include "script/ptrlist.h"
+#include "../program.h"
 
 /**
  * Script data operator flags.
@@ -31,19 +31,19 @@ enum {
  */
 typedef struct SGS_ScriptOpData {
 	struct SGS_ScriptEvData *event;
-	SGS_PtrList on_next; /* all immediate forward refs for op(s) */
 	struct SGS_ScriptOpData *on_prev; /* preceding for same op(s) */
+	SGS_PtrList on_next; /* all immediate forward refs for op(s) */
 	struct SGS_ScriptOpData *next_bound;
-	uint32_t op_flags;
 	const char *label;
+	uint32_t op_flags;
 	/* operator parameters */
 	uint32_t op_id; /* not used by parser; for program module */
 	uint32_t op_params;
+	uint32_t time_ms, silence_ms;
 	uint8_t attr;
 	uint8_t wave;
-	uint32_t time_ms, silence_ms;
-	float freq, dynfreq, phase, amp, dynamp;
-	SGS_ProgramValit valitfreq, valitamp;
+	SGS_TimedParam freq, amp;
+	float phase, dynfreq, dynamp;
 	/* node adjacents in operator linkage graph */
 	SGS_PtrList fmods, pmods, amods;
 } SGS_ScriptOpData;
@@ -73,8 +73,7 @@ typedef struct SGS_ScriptEvData {
 	uint32_t vo_params;
 	struct SGS_ScriptEvData *voice_prev; /* preceding event for voice */
 	uint8_t vo_attr;
-	float panning;
-	SGS_ProgramValit valitpanning;
+	SGS_TimedParam pan;
 	SGS_PtrList op_graph;
 } SGS_ScriptEvData;
 

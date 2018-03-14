@@ -8,21 +8,11 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #pragma once
-#include "../common.h"
-
-/*
- * Buffered reading implementation (uses circular buffer).
- *
- * Faster than handling characters one by one using stdio.
- */
-
-#define SGS_FILE_ALEN 4096
-#define SGS_FILE_ANUM 2
-#define SGS_FILE_BSIZ (SGS_FILE_ALEN * SGS_FILE_ANUM)
+#include "cbuf.h"
 
 /**
  * File reading status constants.
@@ -41,44 +31,38 @@ enum {
 	SGS_File_MARKER = 0x07,
 };
 
-typedef struct SGS_File {
-	size_t read_pos;
-	size_t fill_pos;
+struct SGS_File;
+typedef struct SGS_File SGS_File;
+
+/**
+ * Callback type for closing internal reference.
+ * Should close file and reset \a ref, otherwise
+ * leaving state unchanged.
+ */
+typedef void (*SGS_FileCloseRef_f)(SGS_File *o);
+
+/**
+ * File type using SGS_CBuf for buffered reading.
+ *
+ * Faster than handling characters one by one using stdio.
+ * Meant for scanning and parsing.
+ */
+struct SGS_File {
+	SGS_CBuf cb;
 	uint8_t status;
 	uint8_t *end_marker;
 	void *ref;
 	const char *path;
-	uint8_t buf[SGS_FILE_BSIZ];
-} SGS_File;
+	SGS_FileCloseRef_f close_f;
+};
 
-bool SGS_File_openrb(SGS_File *o, const char *path);
+bool SGS_init_File(SGS_File *o);
+void SGS_fini_File(SGS_File *o);
+
+bool SGS_File_fopenrb(SGS_File *o, const char *path);
+
 void SGS_File_close(SGS_File *o);
-
-/**
- * Flip to using the next buffer area.
- */
-#define SGS_File_SWAP_BUFAREA(o) \
-	((o)->read_pos = ((o)->read_pos + SGS_FILE_ALEN) \
-		& (SGS_FILE_BSIZ - 1))
-
-/**
- * Position relative to buffer area.
- */
-#define SGS_File_BUFAREA_POS(o) \
-	((o)->read_pos & (SGS_FILE_ALEN - 1))
-
-/**
- * True if end of buffer area last filled reached.
- */
-#define SGS_File_NEED_FILL(o) \
-	((o)->read_pos == (o)->fill_pos)
-
-/**
- * Check if reader needs fill and fill if needed. Done automatically
- * in the SGS_File_GETC(), SGS_File_TESTC(), etc., macros.
- */
-#define SGS_File_PREPARE(o) \
-	((void)(SGS_File_NEED_FILL(o) && SGS_File_fill(o)))
+void SGS_File_reset(SGS_File *o);
 
 /**
  * Non-zero if EOF reached or a read error has occurred.
@@ -101,7 +85,7 @@ void SGS_File_close(SGS_File *o);
  * before handling the situation.
  */
 #define SGS_File_AT_EOF(o) \
-	((o)->end_marker == ((o)->buf + (o)->read_pos))
+	((o)->end_marker == ((o)->cb.buf + (o)->cb.r.pos))
 
 /**
  * True if the current position is the one after which
@@ -113,105 +97,20 @@ void SGS_File_close(SGS_File *o);
  * before handling the situation.
  */
 #define SGS_File_AFTER_EOF(o) \
-	((o)->end_marker == ((o)->buf + (o)->read_pos - 1))
+	((o)->end_marker == ((o)->cb.buf + (o)->cb.r.pos - 1))
 
 /**
- * Increment position. No checking is done. Can be used
- * after SGS_File_RETC() as an alternative to SGS_File_GETC().
- *
- * \return new reading position
+ * Callback type for filtering characters.
+ * Should return the character to use, or 0 to indicate no match.
  */
-#define SGS_File_INCP(o) (++(o)->read_pos)
+typedef uint8_t (*SGS_File_CFilter_f)(SGS_File *o, uint8_t c);
 
-/**
- * Decrement position. No checking is done.
- *
- * \return new reading position
- */
-#define SGS_File_DECP(o) (--(o)->read_pos)
+uint32_t SGS_File_skipspace(SGS_File *o);
+uint32_t SGS_File_skipline(SGS_File *o);
 
-/**
- * Get next character, advancing reading position after retrieval.
- *
- * In case of EOF or read error, a marker value <= SGS_File_MARKER
- * will be returned. Use SGS_File_AT_EOF()/SGS_File_AFTER_EOF()
- * to distinguish between marker values and normal data.
- *
- * \return next character
- */
-#define SGS_File_GETC(o) \
-	(SGS_File_PREPARE(o), \
-	 (o)->buf[(o)->read_pos++])
-
-/**
- * Get next character without checking buffer area boundaries
- * nor handling further filling of the buffer, advancing reading
- * position after retrieval.
- *
- * In case of EOF or read error, a marker value <= SGS_File_MARKER
- * will be returned. Use SGS_File_AT_EOF()/SGS_File_AFTER_EOF()
- * to distinguish between marker values and normal data.
- *
- * \return next character
- */
-#define SGS_File_GETC_NOCHECK(o) \
-	((o)->buf[(o)->read_pos++])
-
-/**
- * Undo the getting of a character. This can safely be done a number of
- * times equal to (SGS_FILE_ALEN - 1) plus the number of characters gotten
- * within the current buffer area.
- *
- * Ungetting can be done regardless of SGS_File_STATUS().
- * The next read (unless using unchecked macro or function)
- * will handle the condition properly.
- */
-#define SGS_File_UNGETC(o) \
-	SGS_File_UNGETN(o, 1)
-
-/**
- * Get next character, without advancing reading position.
- *
- * In case of EOF or read error, a marker value <= SGS_File_MARKER
- * will be returned. Use SGS_File_AT_EOF()/SGS_File_AFTER_EOF()
- * to distinguish between marker values and normal data.
- *
- * \return next character
- */
-#define SGS_File_RETC(o) \
-	(SGS_File_PREPARE(o), \
-	 (o)->buf[(o)->read_pos])
-
-/**
- * Compare current character to value c, without advancing reading
- * position.
- *
- * \return true if equal
- */
-#define SGS_File_TESTC(o, c) \
-	(SGS_File_PREPARE(o), \
-	 ((o)->buf[(o)->read_pos] == (c)))
-
-/**
- * Compare current character to value c, advancing reading position
- * if equal.
- *
- * \return true if equal
- */
-#define SGS_File_TRYC(o, c) \
-	(SGS_File_PREPARE(o), \
-	 ((o)->buf[(o)->read_pos] == (c)) && (++(o)->read_pos, true))
-
-/**
- * Undo the getting of n number of characters. This can safely be done
- * for n <= (SGS_FILE_ALEN - 1) plus the number of characters gotten
- * within the current buffer area.
- *
- * Ungetting can be done regardless of SGS_File_STATUS().
- * The next read (unless using unchecked macro or function)
- * will handle the condition properly.
- */
-#define SGS_File_UNGETN(o, n) \
-	((o)->read_pos = ((o)->read_pos - (n)) & (SGS_FILE_BSIZ - 1))
-
-size_t SGS_File_fill(SGS_File *o);
+bool SGS_File_gets(SGS_File *o, void *buf, uint32_t buf_len,
+	uint32_t *str_len, SGS_File_CFilter_f cfilter);
+bool SGS_File_geti(SGS_File *o, int32_t *var, bool allow_sign,
+	uint32_t *str_len);
+bool SGS_File_getd(SGS_File *o, double *var, bool allow_sign,
+	uint32_t *str_len);
