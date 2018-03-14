@@ -70,6 +70,9 @@ typedef struct SetNode {
   Data data[1]; /* sized for number of parameters set */
 } SetNode;
 
+#define GET_SET_NODE_SIZE(param_count) \
+	(offsetof(SetNode, data) + (param_count) * sizeof(Data))
+
 static uint32_t count_flags(uint32_t flags) {
   uint32_t i, count = 0;
   for (i = 0; i < (8 * sizeof(uint32_t)); ++i) {
@@ -148,17 +151,17 @@ SGSGenerator* SGS_create_generator(SGSProgram *prg, uint32_t srate) {
   size_t setssize = 0;
   for (i = 0; i < prg->eventc; ++i) {
     step = &prg->events[i];
-    setssize += sizeof(SetNode) +
-                (sizeof(Data) *
-                 (count_flags(step->params) +
-                  count_flags(step->params & (SGS_VALITFREQ |
+    size_t setnode_size = GET_SET_NODE_SIZE(count_flags(step->params)
+                            + count_flags(step->params & (SGS_VALITFREQ |
                                               SGS_VALITAMP |
-                                              SGS_VALITPANNING))*2 - 1));
+                                              SGS_VALITPANNING))*2);
+    setssize += setnode_size;
   }
   /*
    * Allocate & initialize.
    */
   o = calloc(1, size + operatorssize + eventssize + voicessize + setssize);
+  if (!o) return NULL;
   o->srate = srate;
   o->osc_coeff = SGSOsc_SR_COEFF(srate);
   o->eventc = prg->eventc;
