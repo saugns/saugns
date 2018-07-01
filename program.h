@@ -147,6 +147,8 @@ typedef struct SGS_Program {
 	uint16_t voice_count;
 	uint16_t flags;
 	const char *name;
+	size_t odata_count,
+	       vdata_count;
 } SGS_Program;
 
 void SGS_Program_print_info(SGS_Program *o);

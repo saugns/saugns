@@ -55,9 +55,13 @@ typedef struct SGS_ResultEvent SGS_ResultEvent;
 
 struct SGS_Result {
 	SGS_ResultEvent *events;
-	uint32_t event_count,
-		block_count,
-		voice_count,
-		operator_count;
+	size_t event_count;
+	uint32_t block_count;
+	uint32_t operator_count;
+	uint16_t voice_count;
+	uint16_t flags;
+	const char *name;
+	SGS_ResultOperatorData *odata_nodes;
+	SGS_ResultVoiceData *vdata_nodes;
 };
 typedef struct SGS_Result SGS_Result;

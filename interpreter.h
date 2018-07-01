@@ -12,6 +12,7 @@
  */
 
 #pragma once
+#include "plist.h"
 #include "program.h"
 #include "result.h"
 
@@ -22,11 +23,9 @@
 struct SGS_Interpreter;
 typedef struct SGS_Interpreter SGS_Interpreter;
 
-SGS_Interpreter *SGS_create_interpreter(void);
-void SGS_destroy_interpreter(SGS_Interpreter *o);
+SGS_Interpreter *SGS_create_Interpreter(void);
+void SGS_destroy_Interpreter(SGS_Interpreter *o);
 
-SGS_Result *SGS_interpreter_run(SGS_Interpreter *o, SGS_Program *program);
-void SGS_interpreter_get_results(SGS_Interpreter *o, SGS_Result ***results,
-		size_t *count);
-
-void SGS_interpreter_clear(SGS_Interpreter *o);
+SGS_Result *SGS_Interpreter_run(SGS_Interpreter *o, SGS_Program *program);
+void SGS_Interpreter_get_results(SGS_Interpreter *o, SGS_PList *dst);
+void SGS_Interpreter_clear(SGS_Interpreter *o);

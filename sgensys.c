@@ -65,8 +65,8 @@ static bool produce_audio(SGS_Result *res,
 
 static bool run_program(SGS_Program *prg,
 		bool use_audiodev, const char *wav_path, uint32_t srate) {
-	SGS_Interpreter *intrp = SGS_create_interpreter();
-	SGS_Result *res = SGS_interpreter_run(intrp, prg);
+	SGS_Interpreter *intrp = SGS_create_Interpreter();
+	SGS_Result *res = SGS_Interpreter_run(intrp, prg);
 
 	SGS_AudioDev *ad = NULL;
 	uint32_t ad_srate = srate;

@@ -237,6 +237,8 @@ typedef struct ProgramAlloc {
   OperatorAlloc oa;
   SGS_PList ev_list;
   SGS_ProgramEvent *event;
+  size_t odata_count,
+         vdata_count;
 } ProgramAlloc;
 
 static void program_alloc_init(ProgramAlloc *pa) {
@@ -244,6 +246,8 @@ static void program_alloc_init(ProgramAlloc *pa) {
   operator_alloc_init(&(pa)->oa);
   pa->ev_list = (SGS_PList){0};
   pa->event = NULL;
+  pa->odata_count = 0;
+  pa->vdata_count = 0;
 }
 
 static void program_alloc_fini(ProgramAlloc *pa, SGS_Program *prg) {
@@ -257,6 +261,8 @@ static void program_alloc_fini(ProgramAlloc *pa, SGS_Program *prg) {
   prg->event_count = pa->ev_list.count;
   operator_alloc_fini(&pa->oa, prg);
   voice_alloc_fini(&pa->va, prg);
+  prg->odata_count = pa->odata_count;
+  prg->vdata_count = pa->vdata_count;
 }
 
 static SGS_ProgramEvent *program_add_event(ProgramAlloc *pa,
@@ -278,6 +284,7 @@ static void program_convert_onode(ProgramAlloc *pa, SGS_ParseOperatorData *op,
   SGS_ProgramOperatorData *ood = calloc(1, sizeof(SGS_ProgramOperatorData));
   out_ev->operator = ood;
   out_ev->params |= op->operator_params;
+  ++pa->odata_count;
   //printf("operator_id == %d | address == %x\n", op->operator_id, op);
   ood->operator_id = operator_id;
   ood->adjcs = 0;
@@ -344,6 +351,7 @@ static void program_convert_enode(ProgramAlloc *pa, SGS_ParseEventData *e) {
     ovd = calloc(1, sizeof(SGS_ProgramVoiceData));
     out_ev->voice = ovd;
     out_ev->params |= e->voice_params;
+    ++pa->vdata_count;
     ovd->attr = e->voice_attr;
     ovd->panning = e->panning;
     ovd->valitpanning = e->valitpanning;
