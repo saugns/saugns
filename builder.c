@@ -42,7 +42,7 @@ static void build_adjcs(SGS_ProgramEvent *root,
 		const SGS_ParseOperatorData *operator_in) {
   const SGS_ParseOperatorData **ops;
   SGS_ProgramGraphAdjcs *adjcs, **adjcs_out;
-  int32_t *data;
+  uint32_t *data;
   uint32_t i;
   uint32_t size;
   if (!operator_in || !(operator_in->operator_params & SGS_P_ADJCS))
@@ -115,7 +115,7 @@ static uint32_t voice_duration(SGS_ParseEventData *ve) {
   ops = (SGS_ParseOperatorData**) SGS_PList_ITEMS(&ve->operators);
   for (i = 0; i < ve->operators.count; ++i) {
     SGS_ParseOperatorData *op = ops[i];
-    if (op->time_ms > (int32_t)duration_ms)
+    if (op->time_ms > duration_ms)
       duration_ms = op->time_ms;
   }
   return duration_ms;
@@ -128,7 +128,7 @@ static uint32_t voice_duration(SGS_ParseEventData *ve) {
 static uint32_t voice_alloc_inc(VoiceAlloc *va, SGS_ParseEventData *e) {
   uint32_t voice;
   for (voice = 0; voice < va->count; ++voice) {
-    if ((int32_t)va->data[voice].duration_ms < e->wait_ms)
+    if (va->data[voice].duration_ms < e->wait_ms)
       va->data[voice].duration_ms = 0;
     else
       va->data[voice].duration_ms -= e->wait_ms;
@@ -197,7 +197,7 @@ static uint32_t operator_alloc_inc(OperatorAlloc *oa, SGS_ParseOperatorData *op)
   SGS_ParseEventData *e = op->event;
   uint32_t operator;
   for (operator = 0; operator < oa->count; ++operator) {
-    if ((int32_t)oa->data[operator].duration_ms < e->wait_ms)
+    if (oa->data[operator].duration_ms < e->wait_ms)
       oa->data[operator].duration_ms = 0;
     else
       oa->data[operator].duration_ms -= e->wait_ms;
@@ -413,7 +413,7 @@ void SGS_destroy_Program(SGS_Program *o) {
 }
 
 static void print_linked(const char *header, const char *footer,
-		uint32_t count, const int32_t *nodes) {
+		uint32_t count, const uint32_t *nodes) {
 	uint32_t i;
 	if (!count) return;
 	printf("%s%d", header, nodes[0]);

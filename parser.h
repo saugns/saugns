@@ -42,7 +42,7 @@ typedef struct SGS_ParseOperatorData {
 	uint32_t operator_params;
 	uint8_t attr;
 	SGS_wave_t wave;
-	int32_t time_ms, silence_ms;
+	uint32_t time_ms, silence_ms;
 	float freq, dynfreq, phase, amp, dynamp;
 	SGS_ProgramValit valitfreq, valitamp;
 	/* node adjacents in operator linkage graph */
@@ -65,7 +65,7 @@ typedef struct SGS_ParseEventData {
 	struct SGS_ParseEventData *next;
 	struct SGS_ParseEventData *groupfrom;
 	struct SGS_ParseEventData *composite;
-	int32_t wait_ms;
+	uint32_t wait_ms;
 	SGS_PList operators; /* operators included in event */
 	uint32_t ed_flags;
 	/* voice parameters */
@@ -99,7 +99,7 @@ typedef struct SGS_ParseScriptOptions {
 	float ampmult;    // amplitude multiplier for non-modulator operators
 	float A4_freq;    // A4 tuning for frequency as note
 	/* operator parameter default values (use depends on context) */
-	int32_t def_time_ms;
+	uint32_t def_time_ms;
 	float def_freq,
 	      def_ratio;
 } SGS_ParseScriptOptions;

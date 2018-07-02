@@ -18,6 +18,9 @@
  * Program types and definitions.
  */
 
+/**
+ * Parameter flags
+ */
 enum {
 	/* voice parameters */
 	SGS_P_GRAPH = 1<<0,
@@ -61,12 +64,25 @@ enum {
 		SGS_P_DYNAMP | \
 		SGS_P_OPATTR))
 
-/* special operator timing values */
+/**
+ * Dummy ID values
+ */
 enum {
-	SGS_TIME_INF = -1 /* used for nested operators */
+	SGS_OP_DUMMY_ID = UINT32_MAX, /* operator ID missing */
+	SGS_VO_DUMMY_ID = UINT32_MAX, /* voice ID missing */
 };
 
-/* operator atttributes */
+/**
+ * Timing special values
+ */
+enum {
+	SGS_TIME_INF = UINT32_MAX, /* special handling for nested operators */
+	SGS_TIME_DEFAULT = UINT32_MAX, /* internal default for valits */
+};
+
+/**
+ * Operator atttributes
+ */
 enum {
 	SGS_ATTR_WAVEENV = 1<<0, // should be moved, set by interpreter
 	SGS_ATTR_FREQRATIO = 1<<1,
@@ -77,7 +93,9 @@ enum {
 	SGS_ATTR_VALITPANNING = 1<<6
 };
 
-/* value iteration types */
+/**
+ * Value iteration types
+ */
 enum {
 	SGS_VALIT_NONE = 0, /* when none given */
 	SGS_VALIT_LIN,
@@ -87,7 +105,7 @@ enum {
 
 typedef struct SGS_ProgramGraph {
 	uint32_t opc;
-	int32_t ops[1]; /* sized to opc */
+	uint32_t ops[1]; /* sized to opc */
 } SGS_ProgramGraph;
 
 typedef struct SGS_ProgramGraphAdjcs {
@@ -96,11 +114,11 @@ typedef struct SGS_ProgramGraphAdjcs {
 	uint32_t amodc;
 	uint32_t level;  /* index for buffer used to store result to use if
 	                    node revisited when traversing the graph. */
-	int32_t adjcs[1]; /* sized to total number */
+	uint32_t adjcs[1]; /* sized to total number */
 } SGS_ProgramGraphAdjcs;
 
 typedef struct SGS_ProgramValit {
-	int32_t time_ms, pos_ms;
+	uint32_t time_ms, pos_ms;
 	float goal;
 	uint8_t type;
 } SGS_ProgramValit;
@@ -117,13 +135,13 @@ typedef struct SGS_ProgramOperatorData {
 	uint32_t operator_id;
 	uint8_t attr;
 	SGS_wave_t wave;
-	int32_t time_ms, silence_ms;
+	uint32_t time_ms, silence_ms;
 	float freq, dynfreq, phase, amp, dynamp;
 	SGS_ProgramValit valitfreq, valitamp;
 } SGS_ProgramOperatorData;
 
 typedef struct SGS_ProgramEvent {
-	int32_t wait_ms;
+	uint32_t wait_ms;
 	uint32_t params;
 	uint32_t voice_id; /* needed for both voice and operator data */
 	const SGS_ProgramVoiceData *voice;

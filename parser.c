@@ -143,8 +143,6 @@ struct SGS_Parser {
 	SGS_PList results;
 };
 
-#define VI_TIME_DEFAULT (-1) /* for valits only; masks SGS_TIME_INF */
-
 enum {
   /* parsing scopes */
   SCOPE_SAME = 0,
@@ -463,7 +461,7 @@ static bool read_valit(SGS_Parser *o, float (*read_symbol)(SGS_Parser *o),
   char c;
   bool goal = false;
   int32_t type;
-  vi->time_ms = VI_TIME_DEFAULT;
+  vi->time_ms = SGS_TIME_DEFAULT;
   vi->type = SGS_VALIT_LIN; /* default */
   while ((c = read_char(o)) != EOF) {
     switch (c) {
@@ -520,7 +518,7 @@ static bool parse_waittime(ParseScopeData *ps) {
     ps->last_event->ed_flags |= SGS_PSED_ADD_WAIT_DURATION;
   } else {
     float wait;
-    int32_t wait_ms;
+    uint32_t wait_ms;
     read_num(o, 0, &wait);
     if (wait < 0.f) {
       warning(o, "ignoring '\\' with sub-zero time");
@@ -736,7 +734,7 @@ static void begin_operator(ParseScopeData *ps, uint8_t linktype, bool composite)
     SGS_PList_copy(&op->amods, &pop->amods);
     if (ps->ps_flags & PSSD_BIND_MULTIPLE) {
       SGS_ParseOperatorData *mpop = pop;
-      int32_t max_time = 0;
+      uint32_t max_time = 0;
       do { 
         if (max_time < mpop->time_ms) max_time = mpop->time_ms;
         SGS_PList_add(&mpop->on_next, op);
@@ -1406,7 +1404,7 @@ void SGS_Parser_clear(SGS_Parser *o) {
 static void group_events(SGS_ParseEventData *to) {
   SGS_ParseEventData *e, *e_after = to->next;
   size_t i;
-  int32_t wait = 0, waitcount = 0;
+  uint32_t wait = 0, waitcount = 0;
   for (e = to->groupfrom; e != e_after; ) {
     SGS_ParseOperatorData **ops;
     ops = (SGS_ParseOperatorData**) SGS_PList_ITEMS(&e->operators);
@@ -1447,16 +1445,16 @@ static void group_events(SGS_ParseEventData *to) {
 
 static void time_operator(SGS_ParseOperatorData *op) {
   SGS_ParseEventData *e = op->event;
-  if (op->valitfreq.time_ms == VI_TIME_DEFAULT)
+  if (op->valitfreq.time_ms == SGS_TIME_DEFAULT)
     op->valitfreq.time_ms = op->time_ms;
-  if (op->valitamp.time_ms == VI_TIME_DEFAULT)
+  if (op->valitamp.time_ms == SGS_TIME_DEFAULT)
     op->valitamp.time_ms = op->time_ms;
   if ((op->od_flags & (SGS_PSOD_TIME_DEFAULT | SGS_PSOD_OPERATOR_NESTED)) ==
                       (SGS_PSOD_TIME_DEFAULT | SGS_PSOD_OPERATOR_NESTED)) {
     op->od_flags &= ~SGS_PSOD_TIME_DEFAULT;
     op->time_ms = SGS_TIME_INF;
   }
-  if (op->time_ms >= 0 && !(op->od_flags & SGS_PSOD_SILENCE_ADDED)) {
+  if (op->time_ms != SGS_TIME_INF && !(op->od_flags & SGS_PSOD_SILENCE_ADDED)) {
     op->time_ms += op->silence_ms;
     op->od_flags |= SGS_PSOD_SILENCE_ADDED;
   }
@@ -1486,7 +1484,7 @@ static void time_event(SGS_ParseEventData *e) {
    * Fill in blank valit durations, handle silence as well as the case of
    * adding present event duration to wait time of next event.
    */
-  if (e->valitpanning.time_ms == VI_TIME_DEFAULT)
+  if (e->valitpanning.time_ms == SGS_TIME_DEFAULT)
     e->valitpanning.time_ms = 1000; /* FIXME! */
   size_t i;
   SGS_ParseOperatorData **ops;

@@ -132,7 +132,6 @@ static SGS_Result *run_program(SGS_Interpreter *o, SGS_Program *program) {
 }
 
 static void end_program(SGS_Interpreter *o) {
-	o->program = NULL;
 	if (o->ops) {
 		free(o->ops);
 		o->ops = NULL;
@@ -142,6 +141,9 @@ static void end_program(SGS_Interpreter *o) {
 		o->vcs = NULL;
 	}
 }
+
+static void assign_blocks(SGS_Interpreter *o, uint32_t voice_id);
+static uint32_t traverse_opgraph(SGS_Interpreter *o, uint32_t op_id);
 
 static void handle_event(SGS_Interpreter *o, size_t i) {
 	const SGS_ProgramEvent *pe = o->program->events[i];
@@ -172,6 +174,57 @@ static void handle_event(SGS_Interpreter *o, size_t i) {
 		re->voice_data = rvd;
 		vstate->out_vdata = rvd;
 	}
+	assign_blocks(o, voice_id);
+}
+
+/*
+ */
+static void assign_blocks(SGS_Interpreter *o, uint32_t voice_id) {
+	VNState *vstate = &o->vcs[voice_id];
+	const SGS_ProgramVoiceData *pvd = vstate->in_vdata;
+	uint32_t count = 0, i, res;
+	if (!pvd->graph) return;
+	for (i = 0; i < pvd->graph->opc; ++i) {
+//		printf("visit node %d\n", vn->graph->ops[i]);
+		res = traverse_opgraph(o, pvd->graph->ops[i]);
+		if (res > count) count = res;
+	}
+//	printf("need %d blocks (old count %d)\n",
+//		count, o->result->block_count);
+	if (count > o->result->block_count) {
+//		printf("new alloc size 0x%lu\n", sizeof(Buf) * count);
+	//	o->bufs = realloc(o->bufs, sizeof(Buf) * count);
+		o->result->block_count = count;
+	}
+}
+
+/*
+ */
+static uint32_t traverse_opgraph(SGS_Interpreter *o, uint32_t op_id) {
+	ONState *ostate = &o->ops[op_id];
+	const SGS_ProgramOperatorData *pod = ostate->in_odata;
+	uint32_t count = 0, i, res;
+	if ((ostate->flags & ON_VISITED) != 0) {
+		fprintf(stderr,
+"skipping operator %d; does not support circular references\n",
+			op_id);
+		return 0;
+	}
+	if (pod->adjcs) {
+		const int32_t *mods = pod->adjcs->adjcs;
+		const uint32_t modc = pod->adjcs->fmodc +
+			pod->adjcs->pmodc +
+			pod->adjcs->amodc;
+		ostate->flags |= ON_VISITED;
+		for (i = 0; i < modc; ++i) {
+			int32_t next_id = mods[i];
+//			printf("visit node %d\n", next_id);
+			res = traverse_opgraph(o, next_id);
+			if (res > count) count = res;
+		}
+		ostate->flags &= ~ON_VISITED;
+	}
+	return count + 5;
 }
 
 SGS_Interpreter *SGS_create_Interpreter(void) {
