@@ -113,7 +113,7 @@ struct SGS_Generator {
  * Count buffers needed for operator, including linked operators.
  * TODO: Redesign, do graph traversal before generator.
  */
-static uint32_t calc_bufs(SGS_Generator *o, int32_t op_id) {
+static uint32_t calc_bufs(SGS_Generator *o, uint32_t op_id) {
 	uint32_t count = 0, i, res;
 	OperatorNode *n = &o->operators[op_id];
 	if ((n->flags & ON_VISITED) != 0) {
@@ -129,7 +129,7 @@ static uint32_t calc_bufs(SGS_Generator *o, int32_t op_id) {
 			n->adjcs->amodc;
 		n->flags |= ON_VISITED;
 		for (i = 0; i < modc; ++i) {
-			int32_t next_id = mods[i];
+			uint32_t next_id = mods[i];
 //			printf("visit node %d\n", next_id);
 			res = calc_bufs(o, next_id);
 			if (res > count) count = res;
@@ -224,8 +224,8 @@ SGS_Generator* SGS_create_Generator(SGS_Program *prg, uint32_t srate) {
 		e->data = val;
 		e->waittime = MS_TO_SRT(prg_e->wait_ms, srate);
 		indexwaittime += e->waittime;
-		e->voice_id = SGS_VO_DUMMY_ID;
-		e->operator_id = SGS_OP_DUMMY_ID;
+		e->voice_id = SGS_VO_NO_ID;
+		e->operator_id = SGS_OP_NO_ID;
 		e->params = prg_e->params;
 		if (prg_e->operator) {
 			const SGS_ProgramOperatorData *pod = prg_e->operator;
@@ -310,7 +310,7 @@ static void handle_event(SGS_Generator *o, EventNode *e) {
      * as operator updates may change node adjacents and buffer recalculation
      * is currently done during voice updates.
      */
-    if (e->operator_id != SGS_OP_DUMMY_ID) {
+    if (e->operator_id != SGS_OP_NO_ID) {
       OperatorNode *on = &o->operators[e->operator_id];
       if (e->params & SGS_P_ADJCS)
         on->adjcs = (*val++).v;
@@ -352,7 +352,7 @@ static void handle_event(SGS_Generator *o, EventNode *e) {
       if (e->params & SGS_P_DYNAMP)
         on->dynamp = (*val++).f;
     }
-    if (e->voice_id != SGS_VO_DUMMY_ID) {
+    if (e->voice_id != SGS_VO_NO_ID) {
       VoiceNode *vn = &o->voices[e->voice_id];
       if (e->params & SGS_P_GRAPH)
         vn->graph = (*val++).v;

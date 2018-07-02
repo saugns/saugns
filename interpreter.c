@@ -211,13 +211,13 @@ static uint32_t traverse_opgraph(SGS_Interpreter *o, uint32_t op_id) {
 		return 0;
 	}
 	if (pod->adjcs) {
-		const int32_t *mods = pod->adjcs->adjcs;
+		const uint32_t *mods = pod->adjcs->adjcs;
 		const uint32_t modc = pod->adjcs->fmodc +
 			pod->adjcs->pmodc +
 			pod->adjcs->amodc;
 		ostate->flags |= ON_VISITED;
 		for (i = 0; i < modc; ++i) {
-			int32_t next_id = mods[i];
+			uint32_t next_id = mods[i];
 //			printf("visit node %d\n", next_id);
 			res = traverse_opgraph(o, next_id);
 			if (res > count) count = res;

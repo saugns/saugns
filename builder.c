@@ -94,7 +94,7 @@ static void voice_alloc_init(VoiceAlloc *va) {
 }
 
 static void voice_alloc_fini(VoiceAlloc *va, SGS_Program *prg) {
-	if (va->count > INT16_MAX) {
+	if (va->count > SGS_VO_MAX_ID) {
 		/*
 		 * Error.
 		 */

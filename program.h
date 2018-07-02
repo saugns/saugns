@@ -65,11 +65,19 @@ enum {
 		SGS_P_OPATTR))
 
 /**
- * Dummy ID values
+ * Operator ID constants
  */
 enum {
-	SGS_OP_DUMMY_ID = UINT32_MAX, /* operator ID missing */
-	SGS_VO_DUMMY_ID = UINT32_MAX, /* voice ID missing */
+	SGS_OP_NO_ID = UINT32_MAX, /* operator ID missing */
+	SGS_OP_MAX_ID = UINT32_MAX - 1, /* error if exceeded */
+};
+
+/**
+ * Voice ID constants
+ */
+enum {
+	SGS_VO_NO_ID = UINT16_MAX, /* voice ID missing */
+	SGS_VO_MAX_ID = UINT16_MAX - 1, /* error if exceeded */
 };
 
 /**
