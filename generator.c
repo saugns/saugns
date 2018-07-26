@@ -196,7 +196,7 @@ SGS_Generator* SGS_create_Generator(SGS_Program *prg, uint32_t srate) {
 	}
 	size_t event_value_count = 0;
 	for (size_t i = 0; i < o->event_count; ++i) {
-		const SGS_ProgramEvent *ev = prg->events[i];
+		const SGS_ProgramEvent *ev = &prg->events[i];
 		event_value_count += count_flags(ev->params) +
 			count_flags(ev->params &
 				(SGS_P_VALITFREQ |
@@ -218,7 +218,7 @@ SGS_Generator* SGS_create_Generator(SGS_Program *prg, uint32_t srate) {
 	EventValue *event_values = o->event_values;
 	uint32_t indexwaittime = 0;
 	for (size_t i = 0; i < o->event_count; ++i) {
-		const SGS_ProgramEvent *prg_e = prg->events[i];
+		const SGS_ProgramEvent *prg_e = &prg->events[i];
 		EventNode *e = &o->events[i];
 		EventValue *val = event_values;
 		e->data = val;

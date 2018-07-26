@@ -1,4 +1,4 @@
-/* sgensys: Sound program definitions.
+/* sgensys: Audio generation program definition/creation module.
  * Copyright (c) 2011-2013, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -167,7 +167,7 @@ enum {
  * Main program type. Contains everything needed for interpretation.
  */
 typedef struct SGS_Program {
-	const SGS_ProgramEvent **events;
+	const SGS_ProgramEvent *events;
 	size_t event_count;
 	uint32_t operator_count;
 	uint16_t voice_count;
@@ -176,5 +176,9 @@ typedef struct SGS_Program {
 	size_t odata_count,
 	       vdata_count;
 } SGS_Program;
+
+struct SGS_ParseResult;
+SGS_Program *SGS_create_Program(struct SGS_ParseResult *parse);
+void SGS_destroy_Program(SGS_Program *o);
 
 void SGS_Program_print_info(SGS_Program *o);

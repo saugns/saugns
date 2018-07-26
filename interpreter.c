@@ -143,10 +143,11 @@ static void end_program(SGS_Interpreter *o) {
 }
 
 static void assign_blocks(SGS_Interpreter *o, uint32_t voice_id);
-static uint32_t traverse_opgraph(SGS_Interpreter *o, uint32_t op_id);
+static void traverse_opgraph(SGS_Interpreter *o, uint32_t op_id,
+		uint32_t block_count);
 
 static void handle_event(SGS_Interpreter *o, size_t i) {
-	const SGS_ProgramEvent *pe = o->program->events[i];
+	const SGS_ProgramEvent *pe = &o->program->events[i];
 	SGS_ResultEvent *re = &o->result->events[i];
 	o->time_ms += pe->wait_ms;
 	re->wait_ms = pe->wait_ms;
@@ -182,49 +183,65 @@ static void handle_event(SGS_Interpreter *o, size_t i) {
 static void assign_blocks(SGS_Interpreter *o, uint32_t voice_id) {
 	VNState *vstate = &o->vcs[voice_id];
 	const SGS_ProgramVoiceData *pvd = vstate->in_vdata;
-	uint32_t count = 0, i, res;
+	uint32_t i;
 	if (!pvd->graph) return;
+	uint32_t old_block_count = o->result->block_count;
 	for (i = 0; i < pvd->graph->opc; ++i) {
 //		printf("visit node %d\n", vn->graph->ops[i]);
-		res = traverse_opgraph(o, pvd->graph->ops[i]);
-		if (res > count) count = res;
+		traverse_opgraph(o, pvd->graph->ops[i], 0);
 	}
-//	printf("need %d blocks (old count %d)\n",
-//		count, o->result->block_count);
-	if (count > o->result->block_count) {
-//		printf("new alloc size 0x%lu\n", sizeof(Buf) * count);
-	//	o->bufs = realloc(o->bufs, sizeof(Buf) * count);
-		o->result->block_count = count;
-	}
+	printf("need %d blocks (old count %d)\n",
+		o->result->block_count, old_block_count);
 }
 
 /*
  */
-static uint32_t traverse_opgraph(SGS_Interpreter *o, uint32_t op_id) {
+static void traverse_opgraph(SGS_Interpreter *o, uint32_t op_id,
+		uint32_t block_count) {
 	ONState *ostate = &o->ops[op_id];
 	const SGS_ProgramOperatorData *pod = ostate->in_odata;
-	uint32_t count = 0, i, res;
+	uint32_t i;
 	if ((ostate->flags & ON_VISITED) != 0) {
 		fprintf(stderr,
 "skipping operator %d; does not support circular references\n",
 			op_id);
-		return 0;
+		return;
 	}
+	SGS_ResultOperatorData *rod = ostate->out_odata;
+	rod->output_block_id = block_count++;
+	rod->freq_block_id = block_count++;
+	rod->amp_block_id = block_count++;
+	rod->freq_mod_block_id = block_count++;
+	rod->phase_mod_block_id = block_count++;
+	rod->amp_mod_block_id = block_count++;
 	if (pod->adjcs) {
 		const uint32_t *mods = pod->adjcs->adjcs;
-		const uint32_t modc = pod->adjcs->fmodc +
-			pod->adjcs->pmodc +
-			pod->adjcs->amodc;
+		uint32_t modc = 0;
 		ostate->flags |= ON_VISITED;
-		for (i = 0; i < modc; ++i) {
+		i = 0;
+		modc += pod->adjcs->fmodc;
+		for (; i < modc; ++i) {
 			uint32_t next_id = mods[i];
-//			printf("visit node %d\n", next_id);
-			res = traverse_opgraph(o, next_id);
-			if (res > count) count = res;
+//			printf("visit fmod node %d\n", next_id);
+			traverse_opgraph(o, next_id, block_count - 3);
+		}
+		modc += pod->adjcs->pmodc;
+		for (; i < modc; ++i) {
+			uint32_t next_id = mods[i];
+//			printf("visit pmod node %d\n", next_id);
+			traverse_opgraph(o, next_id, block_count - 2);
+		}
+		modc += pod->adjcs->amodc;
+		for (; i < modc; ++i) {
+			uint32_t next_id = mods[i];
+//			printf("visit amod node %d\n", next_id);
+			traverse_opgraph(o, next_id, block_count - 1);
 		}
 		ostate->flags &= ~ON_VISITED;
 	}
-	return count + 5;
+	if (block_count > o->result->block_count) {
+		o->result->block_count = block_count;
+	}
 }
 
 SGS_Interpreter *SGS_create_Interpreter(void) {
@@ -430,7 +447,7 @@ SGS_Generator* SGS_create_Generator(SGS_Program *prg, uint32_t srate) {
 	}
 	size_t event_value_count = 0;
 	for (size_t i = 0; i < o->event_count; ++i) {
-		const SGS_ProgramEvent *ev = prg->events[i];
+		const SGS_ProgramEvent *ev = &prg->events[i];
 		event_value_count += count_flags(ev->params) +
 			count_flags(ev->params &
 				(SGS_P_VALITFREQ |
@@ -452,7 +469,7 @@ SGS_Generator* SGS_create_Generator(SGS_Program *prg, uint32_t srate) {
 	EventValue *event_values = o->event_values;
 	uint32_t indexwaittime = 0;
 	for (size_t i = 0; i < o->event_count; ++i) {
-		const SGS_ProgramEvent *prg_e = prg->events[i];
+		const SGS_ProgramEvent *prg_e = &prg->events[i];
 		EventNode *e = &o->events[i];
 		EventValue *val = event_values;
 		e->data = val;

@@ -14,7 +14,6 @@
 #include "sgensys.h"
 #include "program.h"
 #include "parser.h"
-#include "builder.h"
 #if TEST_INTERPRETER
 # include "interpreter.h"
 # include "renderer.h"

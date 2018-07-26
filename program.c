@@ -1,4 +1,4 @@
-/* sgensys: Program builder module.
+/* sgensys: Audio generation program definition/creation module.
  * Copyright (c) 2011-2012, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -11,12 +11,21 @@
  * <http://www.gnu.org/licenses/>.
  */
 
-#include "builder.h"
+#include "program.h"
+#include "parser.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
 
-static void build_graph(SGS_ProgramEvent *root,
+typedef struct PrgAllocEvent {
+	uint32_t wait_ms;
+	uint32_t params;
+	uint32_t voice_id; /* needed for both voice and operator data */
+	const SGS_ProgramVoiceData *voice;
+	const SGS_ProgramOperatorData *operator;
+} PrgAllocEvent;
+
+static void build_graph(PrgAllocEvent *root,
 		const SGS_ParseEventData *voice_in) {
   const SGS_ParseOperatorData **ops;
   SGS_ProgramGraph *graph, **graph_out;
@@ -38,7 +47,7 @@ static void build_graph(SGS_ProgramEvent *root,
   *graph_out = graph;
 }
 
-static void build_adjcs(SGS_ProgramEvent *root,
+static void build_adjcs(PrgAllocEvent *root,
 		const SGS_ParseOperatorData *operator_in) {
   const SGS_ParseOperatorData **ops;
   SGS_ProgramGraphAdjcs *adjcs, **adjcs_out;
@@ -166,7 +175,7 @@ static uint32_t voice_alloc_inc(VoiceAlloc *va, SGS_ParseEventData *e) {
 
 typedef struct OperatorAllocData {
   SGS_ParseOperatorData *last;
-  SGS_ProgramEvent *out;
+  PrgAllocEvent *out;
   uint32_t duration_ms;
 } OperatorAllocData;
 
@@ -236,7 +245,7 @@ typedef struct ProgramAlloc {
   VoiceAlloc va;
   OperatorAlloc oa;
   SGS_PList ev_list;
-  SGS_ProgramEvent *event;
+  PrgAllocEvent *event;
   size_t odata_count,
          vdata_count;
 } ProgramAlloc;
@@ -251,23 +260,35 @@ static void program_alloc_init(ProgramAlloc *pa) {
 }
 
 static void program_alloc_fini(ProgramAlloc *pa, SGS_Program *prg) {
-  if (pa->ev_list.alloc > 0) {
-    // assign list array to resulting program; no list clearing
-    prg->events = (const SGS_ProgramEvent**) pa->ev_list.items;
-  } else {
-    prg->events = malloc(sizeof(SGS_ProgramEvent*));
-    prg->events[0] = (const SGS_ProgramEvent*) pa->ev_list.items;
-  }
+  size_t i;
+  prg->events = NULL;
   prg->event_count = pa->ev_list.count;
+  /* copy program alloc. events to output program format */
+  if (pa->ev_list.count > 0) {
+    SGS_ProgramEvent *events;
+    PrgAllocEvent **paevents = (PrgAllocEvent**) SGS_PList_ITEMS(&pa->ev_list);
+    events = calloc(pa->ev_list.count, sizeof(SGS_ProgramEvent));
+    prg->events = events;
+    for (i = 0; i < pa->ev_list.count; ++i) {
+      PrgAllocEvent *paevent = paevents[i];
+      events[i].wait_ms = paevent->wait_ms;
+      events[i].params = paevent->params;
+      events[i].voice_id = paevent->voice_id;
+      events[i].voice = paevent->voice;
+      events[i].operator = paevent->operator;
+      free(paevent);
+    }
+  }
+  SGS_PList_clear(&pa->ev_list);
   operator_alloc_fini(&pa->oa, prg);
   voice_alloc_fini(&pa->va, prg);
   prg->odata_count = pa->odata_count;
   prg->vdata_count = pa->vdata_count;
 }
 
-static SGS_ProgramEvent *program_add_event(ProgramAlloc *pa,
+static PrgAllocEvent *program_add_event(ProgramAlloc *pa,
 		uint32_t voice_id) {
-  SGS_ProgramEvent *event = calloc(1, sizeof(SGS_ProgramEvent));
+  PrgAllocEvent *event = calloc(1, sizeof(PrgAllocEvent));
   event->voice_id = voice_id;
   SGS_PList_add(&pa->ev_list, event);
   pa->event = event;
@@ -280,7 +301,7 @@ static SGS_ProgramEvent *program_add_event(ProgramAlloc *pa,
  */
 static void program_convert_onode(ProgramAlloc *pa, SGS_ParseOperatorData *op,
                                   uint32_t operator_id) {
-  SGS_ProgramEvent *out_ev = pa->oa.data[operator_id].out;
+  PrgAllocEvent *out_ev = pa->oa.data[operator_id].out;
   SGS_ProgramOperatorData *ood = calloc(1, sizeof(SGS_ProgramOperatorData));
   out_ev->operator = ood;
   out_ev->params |= op->operator_params;
@@ -340,7 +361,7 @@ static void program_follow_onodes(ProgramAlloc *pa, SGS_PList *op_list) {
  * event.
  */
 static void program_convert_enode(ProgramAlloc *pa, SGS_ParseEventData *e) {
-  SGS_ProgramEvent *out_ev;
+  PrgAllocEvent *out_ev;
   SGS_ProgramVoiceData *ovd;
   /* Add to final output list */
   out_ev = program_add_event(pa, voice_alloc_inc(&pa->va, e));
@@ -398,7 +419,7 @@ SGS_Program* SGS_create_Program(SGS_ParseResult *parse) {
  */
 void SGS_destroy_Program(SGS_Program *o) {
 	for (size_t i = 0; i < o->event_count; ++i) {
-		SGS_ProgramEvent *e = (SGS_ProgramEvent*) o->events[i];
+		SGS_ProgramEvent *e = (SGS_ProgramEvent*) &o->events[i];
 		if (e->voice) {
 			free((void*)e->voice->graph);
 			free((void*)e->voice);
@@ -407,9 +428,8 @@ void SGS_destroy_Program(SGS_Program *o) {
 			free((void*)e->operator->adjcs);
 			free((void*)e->operator);
 		}
-		free(e);
 	}
-	free((void*)o->events);
+	if (o->events) free((SGS_Program*) o->events);
 }
 
 static void print_linked(const char *header, const char *footer,
@@ -433,7 +453,7 @@ void SGS_Program_print_info(SGS_Program *o) {
 		const SGS_ProgramEvent *oe;
 		const SGS_ProgramVoiceData *ovo;
 		const SGS_ProgramOperatorData *oop;
-		oe = o->events[event_id];
+		oe = &o->events[event_id];
 		ovo = oe->voice;
 		oop = oe->operator;
 		printf("\\%d \tEV %ld \t(VI %d)",
