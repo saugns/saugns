@@ -111,11 +111,13 @@ enum {
 	SGS_VALIT_LOG
 };
 
+// TODO: (re)move
 typedef struct SGS_ProgramGraph {
 	uint32_t opc;
 	uint32_t ops[1]; /* sized to opc */
 } SGS_ProgramGraph;
 
+// TODO: (re)move
 typedef struct SGS_ProgramGraphAdjcs {
 	uint32_t fmodc;
 	uint32_t pmodc;
@@ -132,15 +134,21 @@ typedef struct SGS_ProgramValit {
 } SGS_ProgramValit;
 
 typedef struct SGS_ProgramVoiceData {
-	const SGS_ProgramGraph *graph;
+	const SGS_ProgramGraph *graph; // TODO: (re)move
 	uint8_t attr;
 	float panning;
 	SGS_ProgramValit valitpanning;
 } SGS_ProgramVoiceData;
 
 typedef struct SGS_ProgramOperatorData {
-	const SGS_ProgramGraphAdjcs *adjcs;
+	const SGS_ProgramGraphAdjcs *adjcs; // TODO: (re)move
 	uint32_t operator_id;
+	uint32_t output_block_id;
+	int32_t freq_block_id, /* -1 if none */
+		freq_mod_block_id,
+		phase_mod_block_id,
+		amp_block_id,
+		amp_mod_block_id;
 	uint8_t attr;
 	SGS_wave_t wave;
 	uint32_t time_ms, silence_ms;
@@ -152,6 +160,8 @@ typedef struct SGS_ProgramEvent {
 	uint32_t wait_ms;
 	uint32_t params;
 	uint32_t voice_id; /* needed for both voice and operator data */
+	const int32_t *operator_list;
+	uint32_t operator_count;
 	const SGS_ProgramVoiceData *voice;
 	const SGS_ProgramOperatorData *operator;
 } SGS_ProgramEvent;
@@ -167,14 +177,17 @@ enum {
  * Main program type. Contains everything needed for interpretation.
  */
 typedef struct SGS_Program {
-	const SGS_ProgramEvent *events;
+	SGS_ProgramEvent *events;
 	size_t event_count;
+	uint32_t block_count;
 	uint32_t operator_count;
 	uint16_t voice_count;
 	uint16_t flags;
 	const char *name;
 	size_t odata_count,
 	       vdata_count;
+	SGS_ProgramOperatorData *odata_nodes;
+	SGS_ProgramVoiceData *vdata_nodes;
 } SGS_Program;
 
 struct SGS_ParseResult;
