@@ -111,6 +111,21 @@ enum {
 	SGS_VALIT_LOG
 };
 
+/**
+ * Operator use types.
+ */
+enum {
+	SGS_OP_CARR = 0,
+	SGS_OP_AMOD,
+	SGS_OP_FMOD,
+	SGS_OP_PMOD,
+};
+
+typedef struct SGS_ProgramOpRef {
+	uint32_t id;
+	uint32_t use;
+} SGS_ProgramOpRef;
+
 // TODO: (re)move
 typedef struct SGS_ProgramGraph {
 	uint32_t opc;
@@ -135,6 +150,8 @@ typedef struct SGS_ProgramValit {
 
 typedef struct SGS_ProgramVoiceData {
 	const SGS_ProgramGraph *graph; // TODO: (re)move
+	const SGS_ProgramOpRef *op_list;
+	uint32_t op_count;
 	uint8_t attr;
 	float panning;
 	SGS_ProgramValit valitpanning;
@@ -160,8 +177,6 @@ typedef struct SGS_ProgramEvent {
 	uint32_t wait_ms;
 	uint32_t params;
 	uint32_t voice_id; /* needed for both voice and operator data */
-	const int32_t *operator_list;
-	uint32_t operator_count;
 	const SGS_ProgramVoiceData *voice;
 	const SGS_ProgramOperatorData *operator;
 } SGS_ProgramEvent;

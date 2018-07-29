@@ -13,7 +13,7 @@
 
 #include "imp.h"
 #include "parser.h"
-#include <string.h>
+#include "garr.h"
 #include <stdlib.h>
 #include <stdio.h>
 
@@ -70,32 +70,13 @@ static SGS_IMPGraphAdjcs *create_IMPGraphAdjcs(const SGS_ParseOperatorData *op_i
 	return o;
 }
 
-typedef struct VoiceAllocData {
+typedef struct VoState {
   SGS_ParseEventData *last;
+  SGS_IMPGraph *graph;
   uint32_t duration_ms;
-} VoiceAllocData;
+} VoState;
 
-typedef struct VoiceAlloc {
-  VoiceAllocData *data;
-  uint32_t count;
-  uint32_t alloc;
-} VoiceAlloc;
-
-static void vo_alloc_init(VoiceAlloc *va) {
-  va->data = calloc(1, sizeof(VoiceAllocData));
-  va->count = 0;
-  va->alloc = 1;
-}
-
-static void vo_alloc_fini(VoiceAlloc *va, SGS_IMP *prg) {
-	if (va->count > SGS_VO_MAX_ID) {
-		/*
-		 * Error.
-		 */
-	}
-	prg->vo_count = va->count;
-	free(va->data);
-}
+SGS_GArr_DEF(VoStateList, VoState)
 
 /*
  * Returns the longest operator duration among top-level operators for
@@ -116,126 +97,93 @@ static uint32_t voice_duration(SGS_ParseEventData *ve) {
 }
 
 /*
- * Incremental voice allocation - allocate voice for event,
- * returning voice id.
+ * Get voice for event, returning ID. Use current voice if any;
+ * otherwise, either reuse an expired voice, or allocate a new
+ * voice if none is free.
  */
-static uint32_t vo_alloc_inc(VoiceAlloc *va, SGS_ParseEventData *e) {
-  uint32_t voice;
-  for (voice = 0; voice < va->count; ++voice) {
-    if (va->data[voice].duration_ms < e->wait_ms)
-      va->data[voice].duration_ms = 0;
+static uint32_t voice_alloc_inc(VoStateList *va, SGS_ParseEventData *e) {
+  VoState vo = {e, NULL, 0};
+  uint32_t vo_id;
+  for (vo_id = 0; vo_id < va->count; ++vo_id) {
+    if (va->a[vo_id].duration_ms < e->wait_ms)
+      va->a[vo_id].duration_ms = 0;
     else
-      va->data[voice].duration_ms -= e->wait_ms;
+      va->a[vo_id].duration_ms -= e->wait_ms;
   }
   if (e->voice_prev) {
     SGS_ParseEventData *prev = e->voice_prev;
-    voice = prev->voice_id;
+    vo_id = prev->voice_id;
+    va->a[vo_id] = vo;
   } else {
-    for (voice = 0; voice < va->count; ++voice)
-      if (!(va->data[voice].last->ed_flags & SGS_PSED_VOICE_LATER_USED) &&
-          va->data[voice].duration_ms == 0) break;
+    for (vo_id = 0; vo_id < va->count; ++vo_id)
+      if (!(va->a[vo_id].last->ed_flags & SGS_PSED_VOICE_LATER_USED) &&
+          va->a[vo_id].duration_ms == 0) break;
     /*
      * If no unused voice found, allocate new one.
      */
-    if (voice == va->count) {
-      ++va->count;
-      if (va->count > va->alloc) {
-        uint32_t i = va->alloc;
-        va->alloc <<= 1;
-        va->data = realloc(va->data, va->alloc * sizeof(VoiceAllocData));
-        while (i < va->alloc) {
-          va->data[i].last = 0;
-          va->data[i].duration_ms = 0;
-          ++i;
-        }
-      }
-    }
+    VoStateList_add(va, &vo);
   }
-  e->voice_id = voice;
-  va->data[voice].last = e;
+  e->voice_id = vo_id;
   if (e->voice_params & SGS_P_GRAPH)
-    va->data[voice].duration_ms = voice_duration(e);
-  return voice;
+    va->a[vo_id].duration_ms = voice_duration(e);
+  return vo_id;
 }
 
-typedef struct OperatorAllocData {
+typedef struct OpState {
   SGS_ParseOperatorData *last;
   SGS_IMPEvent *out;
-  uint32_t duration_ms;
-} OperatorAllocData;
+  SGS_IMPGraphAdjcs *adjcs;
+  //uint32_t duration_ms;
+} OpState;
 
-typedef struct OperatorAlloc {
-  OperatorAllocData *data;
-  uint32_t count;
-  uint32_t alloc;
-} OperatorAlloc;
-
-static void op_alloc_init(OperatorAlloc *oa) {
-  oa->data = calloc(1, sizeof(OperatorAllocData));
-  oa->count = 0;
-  oa->alloc = 1;
-}
-
-static void op_alloc_fini(OperatorAlloc *oa, SGS_IMP *prg) {
-  prg->op_count = oa->count;
-  free(oa->data);
-}
+SGS_GArr_DEF(OpStateList, OpState)
 
 /*
- * Incremental operator allocation - allocate operator for event,
- * returning operator id.
+ * Get operator for event, returning ID. Use current operator if any;
+ * otherwise, allocate a new. (Tracking of expired operators for reuse
+ * of their IDs is currently disabled.)
  *
  * Only valid to call for single-operator nodes.
  */
-static uint32_t op_alloc_inc(OperatorAlloc *oa, SGS_ParseOperatorData *op) {
-  SGS_ParseEventData *e = op->event;
-  uint32_t operator;
-  for (operator = 0; operator < oa->count; ++operator) {
-    if (oa->data[operator].duration_ms < e->wait_ms)
-      oa->data[operator].duration_ms = 0;
-    else
-      oa->data[operator].duration_ms -= e->wait_ms;
-  }
-  if (op->on_prev) {
-    SGS_ParseOperatorData *pop = op->on_prev;
-    operator = pop->operator_id;
+static uint32_t operator_alloc_inc(OpStateList *oa, SGS_ParseOperatorData *od) {
+  OpState op = {od, NULL, NULL};
+//  SGS_ParseEventData *e = od->event;
+  uint32_t op_id;
+//  for (op_id = 0; op_id < oa->count; ++op_id) {
+//    if (oa->a[op_id].duration_ms < e->wait_ms)
+//      oa->a[op_id].duration_ms = 0;
+//    else
+//      oa->a[op_id].duration_ms -= e->wait_ms;
+//  }
+  if (od->on_prev) {
+    SGS_ParseOperatorData *pod = od->on_prev;
+    op_id = pod->operator_id;
+    oa->a[op_id] = op;
   } else {
-//    for (operator = 0; operator < oa->count; ++operator)
-//      if (!(oa->data[operator].last->od_flags & SGS_PSOD_OPERATOR_LATER_USED) &&
-//          oa->data[operator].duration_ms == 0) break;
+    op_id = oa->count;
+//    for (op_id = 0; op_id < oa->count; ++op_id)
+//      if (!(oa->a[op_id].last->od_flags & SGS_PSOD_OPERATOR_LATER_USED) &&
+//          oa->a[op_id].duration_ms == 0) break;
     /*
      * If no unused operator found, allocate new one.
      */
-    if (operator == oa->count) {
-      ++oa->count;
-      if (oa->count > oa->alloc) {
-        uint32_t i = oa->alloc;
-        oa->alloc <<= 1;
-        oa->data = realloc(oa->data, oa->alloc * sizeof(OperatorAllocData));
-        while (i < oa->alloc) {
-          oa->data[i].last = 0;
-          oa->data[i].duration_ms = 0;
-          ++i;
-        }
-      }
-    }
+    OpStateList_add(oa, &op);
   }
-  op->operator_id = operator;
-  oa->data[operator].last = op;
-//  oa->data[operator].duration_ms = op->time_ms;
-  return operator;
+  od->operator_id = op_id;
+//  oa->a[op_id].duration_ms = od->time_ms;
+  return op_id;
 }
 
 typedef struct IMPAlloc {
-	VoiceAlloc va;
-	OperatorAlloc oa;
+	VoStateList va;
+	OpStateList oa;
 	SGS_IMP *program;
 	SGS_IMPEvent *event;
 } IMPAlloc;
 
 static bool init_IMPAlloc(IMPAlloc *o, SGS_ParseResult *parse) {
-	vo_alloc_init(&o->va);
-	op_alloc_init(&o->oa);
+	o->va = (VoStateList){0};
+	o->oa = (OpStateList){0};
 	o->program = calloc(1, sizeof(SGS_IMP));
 	if (!o->program) return false;
 	o->program->parse = parse;
@@ -244,8 +192,16 @@ static bool init_IMPAlloc(IMPAlloc *o, SGS_ParseResult *parse) {
 }
 
 static void fini_IMPAlloc(IMPAlloc *pa) {
-  op_alloc_fini(&pa->oa, pa->program);
-  vo_alloc_fini(&pa->va, pa->program);
+	SGS_IMP *prg = pa->program;
+	prg->op_count = pa->oa.count;
+	if (pa->va.count > SGS_VO_MAX_ID) {
+		/*
+		 * Error.
+		 */
+	}
+	prg->vo_count = pa->va.count;
+	OpStateList_clear(&pa->oa);
+	VoStateList_clear(&pa->va);
 }
 
 static SGS_IMPEvent *program_add_event(IMPAlloc *pa,
@@ -263,7 +219,8 @@ static SGS_IMPEvent *program_add_event(IMPAlloc *pa,
  */
 static void program_convert_onode(IMPAlloc *pa, SGS_ParseOperatorData *op,
                                   uint32_t op_id) {
-  SGS_IMPEvent *out_ev = pa->oa.data[op_id].out;
+  OpState *oa_data = &pa->oa.a[op_id];
+  SGS_IMPEvent *out_ev = oa_data->out;
   SGS_IMPOperatorData *ood = calloc(1, sizeof(SGS_IMPOperatorData));
   out_ev->op_data = ood;
   out_ev->params |= op->operator_params;
@@ -283,7 +240,8 @@ static void program_convert_onode(IMPAlloc *pa, SGS_ParseOperatorData *op,
   ood->valitfreq = op->valitfreq;
   ood->valitamp = op->valitamp;
   if (op->operator_params & SGS_P_ADJCS) {
-    out_ev->op_data->adjcs = create_IMPGraphAdjcs(op);
+    oa_data->adjcs = create_IMPGraphAdjcs(op);
+    out_ev->op_data->adjcs = oa_data->adjcs;
   }
 }
 
@@ -298,14 +256,14 @@ static void program_follow_onodes(IMPAlloc *pa, SGS_PList *op_list) {
   ops = (SGS_ParseOperatorData**) SGS_PList_ITEMS(op_list);
   for (i = op_list->copy_count; i < op_list->count; ++i) {
     SGS_ParseOperatorData *op = ops[i];
-    OperatorAllocData *ad;
+    OpState *ad;
     uint32_t op_id;
     if (op->od_flags & SGS_PSOD_MULTIPLE_OPERATORS) continue;
-    op_id = op_alloc_inc(&pa->oa, op);
+    op_id = operator_alloc_inc(&pa->oa, op);
     program_follow_onodes(pa, &op->fmods);
     program_follow_onodes(pa, &op->pmods);
     program_follow_onodes(pa, &op->amods);
-    ad = &pa->oa.data[op_id];
+    ad = &pa->oa.a[op_id];
     if (pa->event->op_data) {
       uint32_t vo_id = pa->event->vo_id;
       program_add_event(pa, vo_id);
@@ -323,10 +281,13 @@ static void program_follow_onodes(IMPAlloc *pa, SGS_PList *op_list) {
  * event.
  */
 static void program_convert_enode(IMPAlloc *pa, SGS_ParseEventData *e) {
+  VoState *va_data;
   SGS_IMPEvent *out_ev;
   SGS_IMPVoiceData *ovd;
   /* Add to final output list */
-  out_ev = program_add_event(pa, vo_alloc_inc(&pa->va, e));
+  uint32_t vo_id = voice_alloc_inc(&pa->va, e);
+  va_data = &pa->va.a[vo_id];
+  out_ev = program_add_event(pa, vo_id);
   out_ev->wait_ms = e->wait_ms;
   program_follow_onodes(pa, &e->operators);
   out_ev = pa->event; /* event field may have changed */
@@ -339,7 +300,8 @@ static void program_convert_enode(IMPAlloc *pa, SGS_ParseEventData *e) {
     ovd->panning = e->panning;
     ovd->valitpanning = e->valitpanning;
     if (e->voice_params & SGS_P_GRAPH) {
-      out_ev->vo_data->graph = create_IMPGraph(e);
+      va_data->graph = create_IMPGraph(e);
+      out_ev->vo_data->graph = va_data->graph;
     }
   }
 }

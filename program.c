@@ -14,7 +14,7 @@
 #include "program.h"
 #include "parser.h"
 #include "imp.h"
-#include <string.h>
+#include "garr.h"
 #include <stdlib.h>
 #include <stdio.h>
 
@@ -39,6 +39,8 @@ enum {
 	VN_EXEC = 1<<1
 };
 
+SGS_GArr_DEF(OpRefArr, SGS_ProgramOpRef)
+
 typedef struct VNState {
 	uint32_t flags;
 	const SGS_IMPVoiceData *in_vdata;
@@ -46,10 +48,11 @@ typedef struct VNState {
 } VNState;
 
 typedef struct IMPConv {
+	OpRefArr op_list;
 	SGS_IMP *imp;
 	SGS_Program *program;
-	ONState *ops;
-	VNState *vcs;
+	ONState *osa;
+	VNState *vsa;
 	uint32_t time_ms;
 	size_t odata_id;
 	size_t vdata_id;
@@ -66,16 +69,16 @@ static bool init_IMPConv(IMPConv *o, SGS_Program *prg, SGS_IMP *imp) {
 	o->program = prg;
 	i = imp->op_count;
 	if (i > 0) {
-		o->ops = calloc(i, sizeof(ONState));
-		if (!o->ops) {
+		o->osa = calloc(i, sizeof(ONState));
+		if (!o->osa) {
 			fini_IMPConv(o);
 			return false;
 		}
 	}
 	i = imp->vo_count;
 	if (i > 0) {
-		o->vcs = calloc(i, sizeof(VNState));
-		if (!o->vcs) {
+		o->vsa = calloc(i, sizeof(VNState));
+		if (!o->vsa) {
 			fini_IMPConv(o);
 			return false;
 		}
@@ -85,18 +88,20 @@ static bool init_IMPConv(IMPConv *o, SGS_Program *prg, SGS_IMP *imp) {
 }
 
 static void fini_IMPConv(IMPConv *o) {
-	if (o->ops) {
-		free(o->ops);
-		o->ops = NULL;
+	OpRefArr_clear(&o->op_list);
+	if (o->osa) {
+		free(o->osa);
+		o->osa = NULL;
 	}
-	if (o->vcs) {
-		free(o->vcs);
-		o->vcs = NULL;
+	if (o->vsa) {
+		free(o->vsa);
+		o->vsa = NULL;
 	}
 }
 
 static void assign_blocks(IMPConv *o, uint32_t vo_id);
-static void traverse_opgraph(IMPConv *o, uint32_t op_id, uint32_t block_count);
+static void traverse_opgraph(IMPConv *o, SGS_ProgramOpRef *op,
+		uint32_t block_count);
 
 static void traverse_event(IMPConv *o, size_t i) {
 	const SGS_IMPEvent **im_events, *im_e;
@@ -115,7 +120,7 @@ static void traverse_event(IMPConv *o, size_t i) {
 	if (im_od) {
 		uint32_t op_id = im_od->op_id;
 		SGS_ProgramOperatorData *od;
-		ONState *ostate = &o->ops[op_id];
+		ONState *ostate = &o->osa[op_id];
 		ostate->in_odata = im_od;
 		od = &o->program->odata_nodes[o->odata_id++];
 		od->operator_id = op_id;
@@ -124,42 +129,57 @@ static void traverse_event(IMPConv *o, size_t i) {
 	}
 	if (im_vd) {
 		SGS_ProgramVoiceData *vd;
-		VNState *vstate = &o->vcs[vo_id];
+		VNState *vstate = &o->vsa[vo_id];
 		vstate->in_vdata = im_vd;
 		vd = &o->program->vdata_nodes[o->vdata_id++];
 		//vd->voice_id = vo_id;
 		e->voice = vd;
 		vstate->out_vdata = vd;
 	}
+	printf("test\n");
 	assign_blocks(o, vo_id);
 }
 
 /*
  */
 static void assign_blocks(IMPConv *o, uint32_t vo_id) {
-	VNState *vstate = &o->vcs[vo_id];
-	const SGS_IMPVoiceData *im_vd = vstate->in_vdata;
+	SGS_ProgramOpRef op = {0, SGS_OP_CARR};
+	VNState *vs = &o->vsa[vo_id];
+	const SGS_IMPVoiceData *im_vd = vs->in_vdata;
 	uint32_t i;
-	if (!im_vd->graph) return;
+	if (!im_vd || !im_vd->graph) return;
+	printf("assign blocks\n");
 	uint32_t old_block_count = o->program->block_count;
+	o->op_list.count = 0;
 	for (i = 0; i < im_vd->graph->opc; ++i) {
-//		printf("visit node %d\n", vn->graph->ops[i]);
-		traverse_opgraph(o, im_vd->graph->ops[i], 0);
+		op.id = im_vd->graph->ops[i];
+		printf("visit node %d\n", op.id);
+		traverse_opgraph(o, &op, 0);
 	}
 	printf("need %d blocks (old count %d)\n",
 		o->program->block_count, old_block_count);
+	if (vs->out_vdata->op_list) {
+		free((SGS_ProgramOpRef*) vs->out_vdata->op_list);
+		printf("DOUBLE OP_LIST\n");
+	}
+	if (o->op_list.count) {
+		OpRefArr_dupa(&o->op_list,
+			(SGS_ProgramOpRef**) &vs->out_vdata->op_list);
+	}
+	vs->out_vdata->op_count = o->op_list.count;
 }
 
 /*
  */
-static void traverse_opgraph(IMPConv *o, uint32_t op_id, uint32_t block_count) {
-	ONState *ostate = &o->ops[op_id];
+static void traverse_opgraph(IMPConv *o, SGS_ProgramOpRef *op,
+		uint32_t block_count) {
+	ONState *ostate = &o->osa[op->id];
 	const SGS_IMPOperatorData *im_od = ostate->in_odata;
 	uint32_t i;
 	if ((ostate->flags & ON_VISITED) != 0) {
 		fprintf(stderr,
 "skipping operator %d; does not support circular references\n",
-			op_id);
+			op->id);
 		return;
 	}
 	SGS_ProgramOperatorData *od = ostate->out_odata;
@@ -170,33 +190,38 @@ static void traverse_opgraph(IMPConv *o, uint32_t op_id, uint32_t block_count) {
 	od->phase_mod_block_id = block_count++;
 	od->amp_mod_block_id = block_count++;
 	if (im_od->adjcs) {
+		SGS_ProgramOpRef mod_op;
 		const uint32_t *mods = im_od->adjcs->adjcs;
 		uint32_t modc = 0;
 		ostate->flags |= ON_VISITED;
 		i = 0;
 		modc += im_od->adjcs->fmodc;
 		for (; i < modc; ++i) {
-			uint32_t next_id = mods[i];
-//			printf("visit fmod node %d\n", next_id);
-			traverse_opgraph(o, next_id, block_count - 3);
+			mod_op.id = mods[i];
+			mod_op.use = SGS_OP_FMOD;
+//			printf("visit fmod node %d\n", mod_op.id);
+			traverse_opgraph(o, &mod_op, block_count - 3);
 		}
 		modc += im_od->adjcs->pmodc;
 		for (; i < modc; ++i) {
-			uint32_t next_id = mods[i];
-//			printf("visit pmod node %d\n", next_id);
-			traverse_opgraph(o, next_id, block_count - 2);
+			mod_op.id = mods[i];
+			mod_op.use = SGS_OP_PMOD;
+//			printf("visit pmod node %d\n", mod_op.id);
+			traverse_opgraph(o, &mod_op, block_count - 2);
 		}
 		modc += im_od->adjcs->amodc;
 		for (; i < modc; ++i) {
-			uint32_t next_id = mods[i];
-//			printf("visit amod node %d\n", next_id);
-			traverse_opgraph(o, next_id, block_count - 1);
+			mod_op.id = mods[i];
+			mod_op.use = SGS_OP_AMOD;
+//			printf("visit amod node %d\n", mod_op.id);
+			traverse_opgraph(o, &mod_op, block_count - 1);
 		}
 		ostate->flags &= ~ON_VISITED;
 	}
 	if (block_count > o->program->block_count) {
 		o->program->block_count = block_count;
 	}
+	OpRefArr_add(&o->op_list, op);
 }
 
 static SGS_Program *alloc_program(SGS_IMP *imp) {
@@ -268,7 +293,9 @@ SGS_Program* SGS_create_Program(SGS_ParseResult *parse) {
 		SGS_destroy_IMP(imp);
 		return NULL;
 	}
+	printf("begin traversal\n");
 	for (i = 0; i < o->event_count; ++i) {
+		printf("traverse event %ld\n", i);
 		traverse_event(&ic, i);
 	}
 	fini_IMPConv(&ic);

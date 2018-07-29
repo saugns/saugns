@@ -18,6 +18,8 @@
 /**
  * Add a pointer to the given list.
  *
+ * If allocation fails, the list will remain unaltered.
+ *
  * \return true if successful, false if allocation failed
  */
 bool SGS_PList_add(SGS_PList *o, const void *item) {

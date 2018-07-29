@@ -2,7 +2,8 @@ CFLAGS=-W -Wall -Werror=implicit-function-declaration -O2 -ffast-math
 LFLAGS=-s -lm
 LFLAGS_LINUX=$(LFLAGS) -lasound
 LFLAGS_OSSAUDIO=$(LFLAGS) -lossaudio
-OBJ=plist.o \
+OBJ=garr.o \
+    plist.o \
     symtab.o \
     parser.o \
     imp.o \
@@ -34,10 +35,13 @@ sgensys: $(OBJ)
 audiodev.o: audiodev.c audiodev_*.c audiodev.h sgensys.h
 	$(CC) -c $(CFLAGS) audiodev.c
 
-imp.o: imp.c imp.h program.h parser.h plist.h wave.h math.h sgensys.h
+garr.o: garr.c garr.h sgensys.h
+	$(CC) -c $(CFLAGS) garr.c
+
+imp.o: imp.c imp.h program.h parser.h garr.h plist.h wave.h math.h sgensys.h
 	$(CC) -c $(CFLAGS) imp.c
 
-program.o: program.c program.h parser.h imp.h plist.h wave.h math.h sgensys.h
+program.o: program.c program.h parser.h imp.h garr.h plist.h wave.h math.h sgensys.h
 	$(CC) -c $(CFLAGS) program.c
 
 generator.o: generator.c generator.h osc.h wave.h math.h program.h sgensys.h
