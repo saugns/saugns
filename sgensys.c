@@ -14,12 +14,7 @@
 #include "sgensys.h"
 #include "program.h"
 #include "parser.h"
-#if TEST_INTERPRETER
-# include "interpreter.h"
-# include "renderer.h"
-#else
-# include "generator.h"
-#endif
+#include "generator.h"
 #include "audiodev.h"
 #include "wavfile.h"
 #include <errno.h>
@@ -30,80 +25,6 @@
 #define NUM_CHANNELS 2
 #define DEFAULT_SRATE 44100
 
-#if TEST_INTERPRETER /* (SGSProgram -> SGSInterpreter;
-			 SGSResult -> SGSRenderer) */
-
-static int16_t audio_buf[BUF_SAMPLES * NUM_CHANNELS];
-
-/*
- * Render audio for the given program result, optionally sending it
- * to a given audio device and/or WAV file.
- *
- * Return true if no error occurred.
- */
-static bool produce_audio(SGS_Result *res,
-		SGS_AudioDev *ad, SGS_WavFile *wf, uint32_t srate) {
-	SGS_Renderer *ar = SGS_create_Renderer(res, srate);
-	size_t len;
-	bool error = false;
-	bool run;
-	do {
-		run = SGS_Renderer_run(ar, audio_buf, BUF_SAMPLES, &len);
-		if (ad && !SGS_AudioDev_write(ad, audio_buf, len)) {
-			error = true;
-			fputs("error: audio device write failed\n", stderr);
-		}
-		if (wf && !SGS_WavFile_write(wf, audio_buf, len)) {
-			error = true;
-			fputs("error: WAV file write failed\n", stderr);
-		}
-	} while (run);
-	SGS_destroy_Renderer(ar);
-	return !error;
-}
-
-static bool run_program(SGS_Program *prg,
-		bool use_audiodev, const char *wav_path, uint32_t srate) {
-	SGS_Interpreter *intrp = SGS_create_Interpreter();
-	SGS_Result *res = SGS_Interpreter_run(intrp, prg);
-
-	SGS_AudioDev *ad = NULL;
-	uint32_t ad_srate = srate;
-	SGS_WavFile *wf = NULL;
-	if (use_audiodev) {
-		ad = SGS_open_AudioDev(NUM_CHANNELS, &ad_srate);
-		if (!ad) {
-			return false;
-		}
-	}
-	if (wav_path) {
-		wf = SGS_create_WavFile(wav_path, NUM_CHANNELS, srate);
-		if (!wf) {
-			if (ad) SGS_close_AudioDev(ad);
-			return false;
-		}
-	}
-
-	bool status;
-	if (ad && wf && (ad_srate != srate)) {
-		fputs("warning: generating sound twice, using a different sample rate for each output\n", stderr);
-		status = produce_audio(res, ad, NULL, ad_srate);
-		status = status && produce_audio(res, NULL, wf, srate);
-	} else {
-		status = produce_audio(res, ad, wf, ad_srate);
-	}
-
-	if (ad) {
-		SGS_close_AudioDev(ad);
-	}
-	if (wf) {
-		status = status && (SGS_close_WavFile(wf) == 0);
-	}
-	return status;
-}
-
-#else /* OLD SOUNDGEN (SGSProgram -> SGSGenerator) */
-
 static int16_t sound_buf[BUF_SAMPLES * NUM_CHANNELS];
 
 /*
@@ -113,7 +34,7 @@ static int16_t sound_buf[BUF_SAMPLES * NUM_CHANNELS];
  * Return true if no error occurred.
  */
 static bool produce_sound(SGS_Program *prg,
-		SGS_AudioDev *ad, SGS_WavFile *wf, uint32_t srate) {
+		SGS_AudioDev *ad, SGS_WAVFile *wf, uint32_t srate) {
 	SGS_Generator *gen = SGS_create_Generator(prg, srate);
 	size_t len;
 	bool error = false;
@@ -124,7 +45,7 @@ static bool produce_sound(SGS_Program *prg,
 			error = true;
 			fputs("error: audio device write failed\n", stderr);
 		}
-		if (wf && !SGS_WavFile_write(wf, sound_buf, len)) {
+		if (wf && !SGS_WAVFile_write(wf, sound_buf, len)) {
 			error = true;
 			fputs("error: WAV file write failed\n", stderr);
 		}
@@ -145,7 +66,7 @@ static bool run_program(SGS_Program *prg,
 		bool use_audiodev, const char *wav_path, uint32_t srate) {
 	SGS_AudioDev *ad = NULL;
 	uint32_t ad_srate = srate;
-	SGS_WavFile *wf = NULL;
+	SGS_WAVFile *wf = NULL;
 	if (use_audiodev) {
 		ad = SGS_open_AudioDev(NUM_CHANNELS, &ad_srate);
 		if (!ad) {
@@ -153,7 +74,7 @@ static bool run_program(SGS_Program *prg,
 		}
 	}
 	if (wav_path) {
-		wf = SGS_create_WavFile(wav_path, NUM_CHANNELS, srate);
+		wf = SGS_create_WAVFile(wav_path, NUM_CHANNELS, srate);
 		if (!wf) {
 			if (ad) SGS_close_AudioDev(ad);
 			return false;
@@ -173,18 +94,16 @@ static bool run_program(SGS_Program *prg,
 		SGS_close_AudioDev(ad);
 	}
 	if (wf) {
-		status = status && (SGS_close_WavFile(wf) == 0);
+		status = status && (SGS_close_WAVFile(wf) == 0);
 	}
 	return status;
 }
 
-#endif
-
 /*
  * Print command line usage instructions.
  */
-static void print_usage(void) {
-	puts(
+static void print_usage(bool by_arg) {
+	fputs(
 "Usage: sgensys [[-a|-m] [-r srate] [-o wavfile]|-p] scriptfile\n"
 "\n"
 "By default, audio device output is enabled.\n"
@@ -198,8 +117,8 @@ static void print_usage(void) {
 "     \toutput.\n"
 "  -p \tStop after parsing the script, upon success or failure; mutually\n"
 "     \texclusive with all other options.\n"
-"  -h \tPrint this message."
-	);
+"  -h \tPrint this message.\n",
+		by_arg ? stdout : stderr);
 }
 
 /*
@@ -239,12 +158,12 @@ static bool parse_args(int argc, char **argv, uint32_t *flags,
 		--argc;
 		++argv;
 		if (argc < 1) {
-			if (!*script_path) goto USAGE;
+			if (!*script_path) goto INVALID;
 			break;
 		}
 		arg = *argv;
 		if (*arg != '-') {
-			if (*script_path) goto USAGE;
+			if (*script_path) goto INVALID;
 			*script_path = arg;
 			continue;
 		}
@@ -252,49 +171,55 @@ static bool parse_args(int argc, char **argv, uint32_t *flags,
 			if (*arg == 'a') {
 				if (*flags & (ARG_DISABLE_AUDIO_DEV |
 						ARG_ONLY_PARSE))
-					goto USAGE;
+					goto INVALID;
 				*flags |= ARG_FULL_RUN |
 					ARG_ENABLE_AUDIO_DEV;
 			} else if (*arg == 'm') {
 				if (*flags & (ARG_ENABLE_AUDIO_DEV |
 						ARG_ONLY_PARSE))
-					goto USAGE;
+					goto INVALID;
 				*flags |= ARG_FULL_RUN |
 					 ARG_DISABLE_AUDIO_DEV;
+			} else if (!strcmp(arg, "h")) {
+				if (*flags != 0)
+					goto INVALID;
+				print_usage(true);
+				return false;
 			} else if (!strcmp(arg, "r")) {
 				int i;
 				if (*flags & ARG_ONLY_PARSE)
-					goto USAGE;
+					goto INVALID;
 				*flags |= ARG_FULL_RUN;
 				--argc;
 				++argv;
-				if (argc < 1) goto USAGE;
+				if (argc < 1) goto INVALID;
 				arg = *argv;
 				i = get_piarg(arg);
-				if (i < 0) goto USAGE;
+				if (i < 0) goto INVALID;
 				*srate = i;
 				break;
 			} else if (!strcmp(arg, "o")) {
 				if (*flags & ARG_ONLY_PARSE)
-					goto USAGE;
+					goto INVALID;
 				*flags |= ARG_FULL_RUN;
 				--argc;
 				++argv;
-				if (argc < 1) goto USAGE;
+				if (argc < 1) goto INVALID;
 				arg = *argv;
 				*wav_path = arg;
 				break;
 			} else if (*arg == 'p') {
 				if (*flags & ARG_FULL_RUN)
-					goto USAGE;
+					goto INVALID;
 				*flags |= ARG_ONLY_PARSE;
 			} else
-				goto USAGE;
+				goto INVALID;
 		}
 	}
 	return true;
-USAGE:
-	print_usage();
+
+INVALID:
+	print_usage(false);
 	return false;
 }
 

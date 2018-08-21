@@ -16,33 +16,26 @@
 #define ALSA_NAME_OUT "default"
 
 /*
- * Returns true if the ALSA kernel module is loaded.
- */
-static bool alsa_enabled() {
-	int8_t buf[16];
-	FILE *alsa_check = popen("lsmod | grep soundcore", "r");
-	bool ret = (fread(buf, 1, sizeof(buf), alsa_check) > 0);
-	pclose(alsa_check);
-	return ret;
-}
-
-/*
  * Returns instance if successful, NULL on error.
  */
 static inline SGS_AudioDev *open_AudioDev_linux(const char *alsa_name,
 		const char *oss_name, int oss_mode, uint16_t channels,
 		uint32_t *srate) {
-	if (!alsa_enabled())
-		return open_AudioDev_oss(oss_name, oss_mode, channels, srate);
-
+	SGS_AudioDev *o;
 	uint32_t tmp;
 	int err;
 	snd_pcm_t *handle = NULL;
 	snd_pcm_hw_params_t *params = NULL;
 
 	if ((err = snd_pcm_open(&handle, alsa_name, SND_PCM_STREAM_PLAYBACK,
-			0)) < 0)
-		goto ERROR;
+			0)) < 0) {
+		o = open_AudioDev_oss(oss_name, oss_mode, channels, srate);
+		if (!o) {
+			fprintf(stderr, "error: could neither use ALSA nor OSS\n");
+			goto ERROR;
+		}
+		return o;
+	}
 
 	snd_pcm_hw_params_alloca(&params);
 	tmp = *srate;
@@ -59,12 +52,12 @@ static inline SGS_AudioDev *open_AudioDev_linux(const char *alsa_name,
 	    || (err = snd_pcm_hw_params(handle, params)) < 0)
 		goto ERROR;
 	if (tmp != *srate) {
-		fprintf(stderr, "warning: ALSA output didn't support sample rate %d, setting it to %d\n",
+		fprintf(stderr, "warning: ALSA: sample rate %d unsupported, using %d\n",
 			*srate, tmp);
 		*srate = tmp;
 	}
 
-	SGS_AudioDev *o = malloc(sizeof(SGS_AudioDev));
+	o = malloc(sizeof(SGS_AudioDev));
 	o->ref.handle = handle;
 	o->type = TYPE_ALSA;
 	o->channels = channels;
@@ -72,10 +65,10 @@ static inline SGS_AudioDev *open_AudioDev_linux(const char *alsa_name,
 	return o;
 
 ERROR:
+	fprintf(stderr, "error: ALSA: %s\n", snd_strerror(err));
 	if (handle) snd_pcm_close(handle);
 	if (params) snd_pcm_hw_params_free(params);
-	fprintf(stderr, "error: %s\n", snd_strerror(err));
-	fprintf(stderr, "error: ALSA configuration for audio device \"%s\" failed\n",
+	fprintf(stderr, "error: ALSA: configuration for device \"%s\" failed\n",
 		alsa_name);
 	return NULL;
 }

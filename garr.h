@@ -28,32 +28,47 @@
 typedef struct Name { \
 	ElementType *a; \
 	size_t count; \
-	size_t alloc; \
+	size_t asize; \
 } Name;
 
 /**
  * Declare array methods for \p Name, with \p ElementType.
  *
- * The methods are inline wrappers around generic methods.
+ * The Name_*() methods defined are inline wrappers around the
+ * generic methods. If not blank, \p MethodPrefix will be used
+ * to prefix their names.
  */
-#define SGS_GArr_DEF_METHODS(Name, ElementType) \
-static inline bool Name##_add(Name *o, ElementType *item) { \
-	return SGS_GArr_generic_add(o, item, sizeof(ElementType)); \
+#define SGS_GArr_DEF_METHODS(Name, ElementType, MethodPrefix) \
+static inline bool MethodPrefix##Name##_add(Name *o, \
+		const ElementType *item) { \
+	return SGS_GArr_gadd(o, item, sizeof(ElementType)); \
 } \
-static inline void Name##_clear(Name *o) { \
-	SGS_GArr_generic_clear(o); \
+static inline bool MethodPrefix##Name##_upsize(Name *o, size_t count) { \
+	return SGS_GArr_gupsize(o, count, sizeof(ElementType)); \
 } \
-static inline bool Name##_dupa(Name *o, ElementType **dst) { \
-	return SGS_GArr_generic_dupa(o, (void**) dst, sizeof(ElementType)); \
+static inline void MethodPrefix##Name##_clear(Name *o) { \
+	SGS_GArr_gclear(o); \
+} \
+static inline bool MethodPrefix##Name##_dupa(Name *o, \
+		const ElementType **dst) { \
+	return SGS_GArr_gdupa(o, (const void**) dst, sizeof(ElementType)); \
 }
 
-#define SGS_GArr_DEF(Name, ElementType) \
+/**
+ * Declare both type and methods for \p Name, with \p ElementType.
+ *
+ * The Name_*() methods defined are inline wrappers around the
+ * generic methods. If not blank, \p MethodPrefix will be used
+ * to prefix their names.
+ */
+#define SGS_GArr_DEF(Name, ElementType, MethodPrefix) \
 SGS_GArr_DEF_TYPE(Name, ElementType) \
-SGS_GArr_DEF_METHODS(Name, ElementType)
+SGS_GArr_DEF_METHODS(Name, ElementType, MethodPrefix)
 
-bool SGS_GArr_generic_add(void *o, const void *item, size_t item_size);
-void SGS_GArr_generic_clear(void *o);
-bool SGS_GArr_generic_dupa(void *o, void **dst, size_t item_size);
+bool SGS_GArr_gadd(void *o, const void *item, size_t item_size);
+bool SGS_GArr_gupsize(void *o, size_t count, size_t item_size);
+void SGS_GArr_gclear(void *o);
+bool SGS_GArr_gdupa(void *o, const void **dst, size_t item_size);
 
 /** uint8_t array type. */
-SGS_GArr_DEF(SGS_UInt8Arr, uint8_t);
+SGS_GArr_DEF(SGS_UInt8Arr, uint8_t, );

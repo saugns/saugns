@@ -27,5 +27,4 @@ typedef unsigned int uint;
  * Debugging options.
  */
 
-/** Disable old sound generator, use interpreter & renderer instead. */
-#define TEST_INTERPRETER 0
+#define SGS_DEBUG_PRINT_PROGRAM 1

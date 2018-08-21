@@ -317,7 +317,7 @@ static bool read_num(SGS_Parser *o, float (*read_symbol)(SGS_Parser *o),
  */
 static void warning(SGS_Parser *o, const char *str) {
   char buf[4] = {'\'', o->c, '\'', 0};
-  printf("warning: %s [line %d, at %s] - %s\n", o->fn, o->line,
+  fprintf(stderr, "warning: %s [line %d, at %s] - %s\n", o->fn, o->line,
          (o->c == EOF ? "EOF" : buf), str);
 }
 #define WARN_INVALID "invalid character"
@@ -441,11 +441,11 @@ static int32_t read_wavetype(SGS_Parser *o) {
   if (wave < 0) {
     warning(o, "invalid wave type; available types are:");
     SGS_wave_t i = 0;
-    printf("\t%s", SGS_Wave_names[i]);
+    fprintf(stderr, "\t%s", SGS_Wave_names[i]);
     while (++i < SGS_WAVE_TYPES) {
-      printf(", %s", SGS_Wave_names[i]);
+      fprintf(stderr, ", %s", SGS_Wave_names[i]);
     }
-    printf("\n");
+    putc('\n', stderr);
   }
   return wave;
 }
@@ -551,17 +551,17 @@ static void destroy_operator(SGS_ParseOperatorData *op) {
 	size_t i;
 	SGS_ParseOperatorData **ops;
 	ops = (SGS_ParseOperatorData**) SGS_PList_ITEMS(&op->fmods);
-	for (i = op->fmods.copy_count; i < op->fmods.count; ++i) {
+	for (i = op->fmods.old_count; i < op->fmods.count; ++i) {
 		destroy_operator(ops[i]);
 	}
 	SGS_PList_clear(&op->fmods);
 	ops = (SGS_ParseOperatorData**) SGS_PList_ITEMS(&op->pmods);
-	for (i = op->pmods.copy_count; i < op->pmods.count; ++i) {
+	for (i = op->pmods.old_count; i < op->pmods.count; ++i) {
 		destroy_operator(ops[i]);
 	}
 	SGS_PList_clear(&op->pmods);
 	ops = (SGS_ParseOperatorData**) SGS_PList_ITEMS(&op->amods);
-	for (i = op->amods.copy_count; i < op->amods.count; ++i) {
+	for (i = op->amods.old_count; i < op->amods.count; ++i) {
 		destroy_operator(ops[i]);
 	}
 	SGS_PList_clear(&op->amods);
@@ -578,7 +578,7 @@ static void destroy_event(SGS_ParseEventData *e) {
 	size_t i;
 	SGS_ParseOperatorData **ops;
 	ops = (SGS_ParseOperatorData**) SGS_PList_ITEMS(&e->operators);
-	for (i = e->operators.copy_count; i < e->operators.count; ++i) {
+	for (i = e->operators.old_count; i < e->operators.count; ++i) {
 		destroy_operator(ops[i]);
 	}
 	SGS_PList_clear(&e->operators);
@@ -592,39 +592,39 @@ static void end_operator(ParseScopeData *ps) {
   if (!op)
     return; /* nothing to do */
   if (!op->on_prev) { /* initial event should reset its parameters */
-    op->operator_params |= SGS_P_ADJCS |
-                           SGS_P_WAVE |
-                           SGS_P_TIME |
-                           SGS_P_SILENCE |
-                           SGS_P_FREQ |
-                           SGS_P_DYNFREQ |
-                           SGS_P_PHASE |
-                           SGS_P_AMP |
-                           SGS_P_DYNAMP |
-                           SGS_P_OPATTR;
+    op->operator_params |= SGS_OPP_ADJCS |
+                           SGS_OPP_WAVE |
+                           SGS_OPP_TIME |
+                           SGS_OPP_SILENCE |
+                           SGS_OPP_FREQ |
+                           SGS_OPP_DYNFREQ |
+                           SGS_OPP_PHASE |
+                           SGS_OPP_AMP |
+                           SGS_OPP_DYNAMP |
+                           SGS_OPP_ATTR;
   } else {
     SGS_ParseOperatorData *pop = op->on_prev;
     if (op->attr != pop->attr)
-      op->operator_params |= SGS_P_OPATTR;
+      op->operator_params |= SGS_OPP_ATTR;
     if (op->wave != pop->wave)
-      op->operator_params |= SGS_P_WAVE;
+      op->operator_params |= SGS_OPP_WAVE;
     /* SGS_TIME set when time set */
     if (op->silence_ms)
-      op->operator_params |= SGS_P_SILENCE;
+      op->operator_params |= SGS_OPP_SILENCE;
     /* SGS_FREQ set when freq set */
     if (op->dynfreq != pop->dynfreq)
-      op->operator_params |= SGS_P_DYNFREQ;
+      op->operator_params |= SGS_OPP_DYNFREQ;
     /* SGS_PHASE set when phase set */
     /* SGS_AMP set when amp set */
     if (op->dynamp != pop->dynamp)
-      op->operator_params |= SGS_P_DYNAMP;
+      op->operator_params |= SGS_OPP_DYNAMP;
   }
   if (op->valitfreq.type)
-    op->operator_params |= SGS_P_OPATTR |
-                           SGS_P_VALITFREQ;
+    op->operator_params |= SGS_OPP_ATTR |
+                           SGS_OPP_VALITFREQ;
   if (op->valitamp.type)
-    op->operator_params |= SGS_P_OPATTR |
-                           SGS_P_VALITAMP;
+    op->operator_params |= SGS_OPP_ATTR |
+                           SGS_OPP_VALITAMP;
   if (!(ps->ps_flags & PSSD_NESTED_SCOPE))
     op->amp *= o->sopt.ampmult;
   ps->operator = NULL;
@@ -639,16 +639,16 @@ static void end_event(ParseScopeData *ps) {
   end_operator(ps);
   pve = e->voice_prev;
   if (!pve) { /* initial event should reset its parameters */
-    e->voice_params |= SGS_P_VOATTR |
-                       SGS_P_GRAPH |
-                       SGS_P_PANNING;
+    e->voice_params |= SGS_VOP_ATTR |
+                       SGS_VOP_GRAPH |
+                       SGS_VOP_PANNING;
   } else {
     if (e->panning != pve->panning)
-      e->voice_params |= SGS_P_PANNING;
+      e->voice_params |= SGS_VOP_PANNING;
   }
   if (e->valitpanning.type)
-    e->voice_params |= SGS_P_VOATTR |
-                       SGS_P_VALITPANNING;
+    e->voice_params |= SGS_VOP_ATTR |
+                       SGS_VOP_VALITPANNING;
   ps->last_event = e;
   ps->event = NULL;
 }
@@ -757,7 +757,7 @@ static void begin_operator(ParseScopeData *ps, uint8_t linktype, bool composite)
     } else {
       op->od_flags |= SGS_PSOD_OPERATOR_NESTED;
       op->freq = o->sopt.def_ratio;
-      op->attr |= SGS_ATTR_FREQRATIO;
+      op->attr |= SGS_OPAT_FREQRATIO;
     }
   }
   op->event = e;
@@ -770,7 +770,7 @@ static void begin_operator(ParseScopeData *ps, uint8_t linktype, bool composite)
       linktype == NL_GRAPH) {
     SGS_PList_add(&e->operators, op);
     if (linktype == NL_GRAPH) {
-      e->voice_params |= SGS_P_GRAPH;
+      e->voice_params |= SGS_VOP_GRAPH;
       SGS_PList_add(&e->graph, op);
     }
   } else {
@@ -786,7 +786,7 @@ static void begin_operator(ParseScopeData *ps, uint8_t linktype, bool composite)
       list = &ps->parent_on->amods;
       break;
     }
-    ps->parent_on->operator_params |= SGS_P_ADJCS;
+    ps->parent_on->operator_params |= SGS_OPP_ADJCS;
     SGS_PList_add(list, op);
   }
   /*
@@ -975,10 +975,10 @@ static bool parse_step(ParseScopeData *ps) {
         goto UNKNOWN;
       if (tryc('[', o->f)) {
         if (read_valit(o, 0, &e->valitpanning))
-          e->voice_attr |= SGS_ATTR_VALITPANNING;
+          e->voice_attr |= SGS_VOAT_VALITPANNING;
       } else if (read_num(o, 0, &e->panning)) {
         if (!e->valitpanning.type)
-          e->voice_attr &= ~SGS_ATTR_VALITPANNING;
+          e->voice_attr &= ~SGS_VOAT_VALITPANNING;
       }
       break;
     case '\\':
@@ -996,53 +996,53 @@ static bool parse_step(ParseScopeData *ps) {
         }
         if (tryc('<', o->f)) {
           if (op->amods.count) {
-            op->operator_params |= SGS_P_ADJCS;
+            op->operator_params |= SGS_OPP_ADJCS;
             SGS_PList_clear(&op->amods);
           }
           parse_level(o, ps, NL_AMODS, SCOPE_NEST);
         }
       } else if (tryc('[', o->f)) {
         if (read_valit(o, 0, &op->valitamp))
-          op->attr |= SGS_ATTR_VALITAMP;
+          op->attr |= SGS_OPAT_VALITAMP;
       } else {
         read_num(o, 0, &op->amp);
-        op->operator_params |= SGS_P_AMP;
+        op->operator_params |= SGS_OPP_AMP;
         if (!op->valitamp.type)
-          op->attr &= ~SGS_ATTR_VALITAMP;
+          op->attr &= ~SGS_OPAT_VALITAMP;
       }
       break;
     case 'f':
       if (tryc('!', o->f)) {
         if (!testc('<', o->f)) {
           if (read_num(o, 0, &op->dynfreq)) {
-            op->attr &= ~SGS_ATTR_DYNFREQRATIO;
+            op->attr &= ~SGS_OPAT_DYNFREQRATIO;
           }
         }
         if (tryc('<', o->f)) {
           if (op->fmods.count) {
-            op->operator_params |= SGS_P_ADJCS;
+            op->operator_params |= SGS_OPP_ADJCS;
             SGS_PList_clear(&op->fmods);
           }
           parse_level(o, ps, NL_FMODS, SCOPE_NEST);
         }
       } else if (tryc('[', o->f)) {
         if (read_valit(o, read_note, &op->valitfreq)) {
-          op->attr |= SGS_ATTR_VALITFREQ;
-          op->attr &= ~SGS_ATTR_VALITFREQRATIO;
+          op->attr |= SGS_OPAT_VALITFREQ;
+          op->attr &= ~SGS_OPAT_VALITFREQRATIO;
         }
       } else if (read_num(o, read_note, &op->freq)) {
-        op->attr &= ~SGS_ATTR_FREQRATIO;
-        op->operator_params |= SGS_P_FREQ;
+        op->attr &= ~SGS_OPAT_FREQRATIO;
+        op->operator_params |= SGS_OPP_FREQ;
         if (!op->valitfreq.type)
-          op->attr &= ~(SGS_ATTR_VALITFREQ |
-                        SGS_ATTR_VALITFREQRATIO);
+          op->attr &= ~(SGS_OPAT_VALITFREQ |
+                        SGS_OPAT_VALITFREQRATIO);
       }
       break;
     case 'p':
       if (tryc('!', o->f)) {
         if (tryc('<', o->f)) {
           if (op->pmods.count) {
-            op->operator_params |= SGS_P_ADJCS;
+            op->operator_params |= SGS_OPP_ADJCS;
             SGS_PList_clear(&op->pmods);
           }
           parse_level(o, ps, NL_PMODS, SCOPE_NEST);
@@ -1052,7 +1052,7 @@ static bool parse_step(ParseScopeData *ps) {
         op->phase = fmod(op->phase, 1.f);
         if (op->phase < 0.f)
           op->phase += 1.f;
-        op->operator_params |= SGS_P_PHASE;
+        op->operator_params |= SGS_OPP_PHASE;
       }
       break;
     case 'r':
@@ -1062,12 +1062,12 @@ static bool parse_step(ParseScopeData *ps) {
         if (!testc('<', o->f)) {
           if (read_num(o, 0, &op->dynfreq)) {
             op->dynfreq = 1.f / op->dynfreq;
-            op->attr |= SGS_ATTR_DYNFREQRATIO;
+            op->attr |= SGS_OPAT_DYNFREQRATIO;
           }
         }
         if (tryc('<', o->f)) {
           if (op->fmods.count) {
-            op->operator_params |= SGS_P_ADJCS;
+            op->operator_params |= SGS_OPP_ADJCS;
             SGS_PList_clear(&op->fmods);
           }
           parse_level(o, ps, NL_FMODS, SCOPE_NEST);
@@ -1075,16 +1075,16 @@ static bool parse_step(ParseScopeData *ps) {
       } else if (tryc('[', o->f)) {
         if (read_valit(o, read_note, &op->valitfreq)) {
           op->valitfreq.goal = 1.f / op->valitfreq.goal;
-          op->attr |= SGS_ATTR_VALITFREQ |
-                      SGS_ATTR_VALITFREQRATIO;
+          op->attr |= SGS_OPAT_VALITFREQ |
+                      SGS_OPAT_VALITFREQRATIO;
         }
       } else if (read_num(o, 0, &op->freq)) {
         op->freq = 1.f / op->freq;
-        op->attr |= SGS_ATTR_FREQRATIO;
-        op->operator_params |= SGS_P_FREQ;
+        op->attr |= SGS_OPAT_FREQRATIO;
+        op->operator_params |= SGS_OPP_FREQ;
         if (!op->valitfreq.type)
-          op->attr &= ~(SGS_ATTR_VALITFREQ |
-                        SGS_ATTR_VALITFREQRATIO);
+          op->attr &= ~(SGS_OPAT_VALITFREQ |
+                        SGS_OPAT_VALITFREQRATIO);
       }
       break;
     case 's': {
@@ -1117,7 +1117,7 @@ static bool parse_step(ParseScopeData *ps) {
         op->od_flags &= ~SGS_PSOD_TIME_DEFAULT;
         op->time_ms = lrint(time * 1000.f);
       }
-      op->operator_params |= SGS_P_TIME;
+      op->operator_params |= SGS_OPP_TIME;
       break;
     case 'w': {
       int32_t wave = read_wavetype(o);
@@ -1340,7 +1340,11 @@ void SGS_destroy_Parser(SGS_Parser *o) {
  * SGS_parser_clear() is called.
  */
 SGS_ParseResult *SGS_Parser_process(SGS_Parser *o, const char *fname) {
-	if (!(o->f = fopen(fname, "r"))) return NULL;
+	if (!(o->f = fopen(fname, "r"))) {
+		fprintf(stderr, "error: couldn't open script file \"%s\" for reading\n",
+			fname);
+		return NULL;
+	}
 	o->fn = fname;
 	o->line = 1;
 	o->st = SGS_create_SymTab();
@@ -1466,15 +1470,15 @@ static void time_operator(SGS_ParseOperatorData *op) {
   size_t i;
   SGS_ParseOperatorData **ops;
   ops = (SGS_ParseOperatorData**) SGS_PList_ITEMS(&op->fmods);
-  for (i = op->fmods.copy_count; i < op->fmods.count; ++i) {
+  for (i = op->fmods.old_count; i < op->fmods.count; ++i) {
     time_operator(ops[i]);
   }
   ops = (SGS_ParseOperatorData**) SGS_PList_ITEMS(&op->pmods);
-  for (i = op->pmods.copy_count; i < op->pmods.count; ++i) {
+  for (i = op->pmods.old_count; i < op->pmods.count; ++i) {
     time_operator(ops[i]);
   }
   ops = (SGS_ParseOperatorData**) SGS_PList_ITEMS(&op->amods);
-  for (i = op->amods.copy_count; i < op->amods.count; ++i) {
+  for (i = op->amods.old_count; i < op->amods.count; ++i) {
     time_operator(ops[i]);
   }
 }
@@ -1489,7 +1493,7 @@ static void time_event(SGS_ParseEventData *e) {
   size_t i;
   SGS_ParseOperatorData **ops;
   ops = (SGS_ParseOperatorData**) SGS_PList_ITEMS(&e->operators);
-  for (i = e->operators.copy_count; i < e->operators.count; ++i) {
+  for (i = e->operators.old_count; i < e->operators.count; ++i) {
     time_operator(ops[i]);
   }
   /*
@@ -1517,7 +1521,7 @@ static void time_event(SGS_ParseEventData *e) {
       else if (e_op->time_ms != SGS_TIME_INF)
         e_op->time_ms += ce_op->time_ms +
                          (ce->wait_ms - ce_op_prev->time_ms);
-      ce_op->operator_params &= ~SGS_P_TIME;
+      ce_op->operator_params &= ~SGS_OPP_TIME;
       ce_op_prev = ce_op;
       ce = ce->next;
       if (!ce) break;

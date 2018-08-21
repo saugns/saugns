@@ -135,9 +135,9 @@ void SGS_Wave_print(SGS_wave_t id) {
 
 	const int16_t *lut = SGS_Wave_luts[id];
 	const char *lut_name = SGS_Wave_names[id];
-	printf("LUT: %s\n", lut_name);
+	fprintf(stderr, "LUT: %s\n", lut_name);
 	for (int i = 0; i < SGS_Wave_LEN; ++i) {
 		int v = (int) lut[i];
-		printf("[\t%d]: \t%d\n", i, v);
+		fprintf(stderr, "[\t%d]: \t%d\n", i, v);
 	}
 }

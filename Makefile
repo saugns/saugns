@@ -6,7 +6,6 @@ OBJ=garr.o \
     plist.o \
     symtab.o \
     parser.o \
-    imp.o \
     program.o \
     wave.o \
     generator.o \
@@ -38,10 +37,7 @@ audiodev.o: audiodev.c audiodev_*.c audiodev.h sgensys.h
 garr.o: garr.c garr.h sgensys.h
 	$(CC) -c $(CFLAGS) garr.c
 
-imp.o: imp.c imp.h program.h parser.h garr.h plist.h wave.h math.h sgensys.h
-	$(CC) -c $(CFLAGS) imp.c
-
-program.o: program.c program.h parser.h imp.h garr.h plist.h wave.h math.h sgensys.h
+program.o: program.c program.h parser.h garr.h plist.h wave.h math.h sgensys.h
 	$(CC) -c $(CFLAGS) program.c
 
 generator.o: generator.c generator.h osc.h wave.h math.h program.h sgensys.h

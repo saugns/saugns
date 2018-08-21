@@ -16,21 +16,21 @@
 
 /**
  * Pointer list type using an array with resizing. A copy
- * (SGS_plist_copy()) references the copied array instead
+ * (SGS_PList_copy()) references the copied array instead
  * of duplicating it, until added to.
  */
 typedef struct SGS_PList {
 	size_t count;
-	size_t copy_count;
+	size_t old_count;
 	const void **items;
-	size_t alloc;
+	size_t alen;
 } SGS_PList;
 
 /**
- * Get array holding list of items.
+ * Get the underlying array holding items.
  *
- * The array pointer is used in place of an array if no more
- * than 1 item has been added.
+ * The array pointer is used in place of an array if at most
+ * 1 item is held.
  */
 #define SGS_PList_ITEMS(o) \
 	((o)->count > 1 ? \
@@ -45,4 +45,5 @@ typedef struct SGS_PList {
 
 bool SGS_PList_add(SGS_PList *o, const void *item);
 void SGS_PList_clear(SGS_PList *o);
+bool SGS_PList_dupa(SGS_PList *o, const void **dst);
 void SGS_PList_copy(SGS_PList *dst, const SGS_PList *src);
