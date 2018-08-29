@@ -260,20 +260,18 @@ int main(int argc, char **argv) {
 
 	if (!parse_args(argc, argv, &options, &script_path, &wav_path,
 			&srate))
-		goto DONE;
+		return false;
 
 	struct SGS_Program *prg = NULL;
 	if (!process_script(script_path, &prg, options)) {
 		error = true;
-		goto DONE;
+	} else if (prg) {
+		bool use_audiodev = (wav_path ?
+				(options & ARG_ENABLE_AUDIO_DEV) :
+				!(options & ARG_DISABLE_AUDIO_DEV));
+		error = !run_program(prg, use_audiodev, wav_path, srate);
+		SGS_destroy_Program(prg);
 	}
 
-	bool use_audiodev = (wav_path ?
-			(options & ARG_ENABLE_AUDIO_DEV) :
-			!(options & ARG_DISABLE_AUDIO_DEV));
-	error = !run_program(prg, use_audiodev, wav_path, srate);
-	SGS_destroy_Program(prg);
-
-DONE:
 	return error;
 }
