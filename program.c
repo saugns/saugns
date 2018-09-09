@@ -295,7 +295,7 @@ static void ParseConv_convert_opdata(ParseConv *o,
  * sublists in turn, creating new output events as needed for the
  * operator data.
  */
-static void ParseConv_follow_ops(ParseConv *o, SGS_PList *op_list) {
+static void ParseConv_convert_ops(ParseConv *o, SGS_PList *op_list) {
 	SGS_ParseOperatorData **ops;
 	uint32_t i;
 	ops = (SGS_ParseOperatorData**) SGS_PList_ITEMS(op_list);
@@ -304,9 +304,9 @@ static void ParseConv_follow_ops(ParseConv *o, SGS_PList *op_list) {
 		// TODO: handle multiple operator nodes
 		if (op->od_flags & SGS_PSOD_MULTIPLE_OPERATORS) continue;
 		uint32_t op_id = OpAlloc_update(&o->oa, op);
-		ParseConv_follow_ops(o, &op->fmods);
-		ParseConv_follow_ops(o, &op->pmods);
-		ParseConv_follow_ops(o, &op->amods);
+		ParseConv_convert_ops(o, &op->fmods);
+		ParseConv_convert_ops(o, &op->pmods);
+		ParseConv_convert_ops(o, &op->amods);
 		ParseConv_convert_opdata(o, op, op_id);
 	}
 }
@@ -367,7 +367,7 @@ static void ParseConv_traverse_ops(ParseConv *o,
  * assigning an operator reference list to the voice and
  * block IDs to the operators.
  */
-static void ParseConv_build_oplist(ParseConv *o, SGS_ProgramEvent *ev) {
+static void ParseConv_traverse_voice(ParseConv *o, SGS_ProgramEvent *ev) {
 	SGS_ProgramOpRef op_ref = {0, SGS_OP_CARR, 0};
 	VAState *vas = &o->va.a[ev->vo_id];
 	SGS_ProgramVoData *vd = (SGS_ProgramVoData*) ev->vo_data;
@@ -399,7 +399,7 @@ static void ParseConv_convert_event(ParseConv *o, SGS_ParseEventData *e) {
 	out_ev->wait_ms = e->wait_ms;
 	out_ev->vo_id = vo_id;
 	o->ev = out_ev;
-	ParseConv_follow_ops(o, &e->operators);
+	ParseConv_convert_ops(o, &e->operators);
 	if (o->ev_op_data.count) {
 		OpDataArr_dupa(&o->ev_op_data, &out_ev->op_data);
 		out_ev->op_data_count = o->ev_op_data.count;
@@ -422,7 +422,7 @@ static void ParseConv_convert_event(ParseConv *o, SGS_ParseEventData *e) {
 		}
 		out_ev->vo_data = ovd;
 		if ((vas->flags & VA_OPLIST) != 0) {
-			ParseConv_build_oplist(o, out_ev);
+			ParseConv_traverse_voice(o, out_ev);
 		}
 	}
 }

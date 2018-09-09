@@ -762,7 +762,7 @@ static void check_final_state(SGS_Generator *o) {
 		VoiceNode *vn = &o->voices[i];
 		if (!(vn->flags & VN_INIT)) {
 			fprintf(stderr,
-"warning (generator): voice %hd left uninitialized\n", i);
+"warning [generator]: voice %hd left uninitialized\n", i);
 		}
 	}
 }
