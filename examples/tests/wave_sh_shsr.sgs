@@ -1,8 +1,0 @@
-# Three tones with wave type sh (softer), then shsr (harder)
-Osh fC4 t1
-; fE4 t1
-; fF4 t1
-|\1.0
-Oshsr fC4 t1
-; fE4 t1
-; fF4 t1

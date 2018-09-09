@@ -7,7 +7,7 @@ Osin f200 t2
 ; wsah t2
 ; wsh t2
 ; wssr t2
-; wshsr t2 |
+; wshhr t2 |
 
 \1
 # For comparison, sequence of sin and three symmetric (odd harmonics) types:
@@ -26,8 +26,8 @@ Osin f200 t2
 
 \1
 # For comparison, sequence of sin and three types which are related:
-# ssr, shsr, sh
+# ssr, shhr, sh
 Osin f200 t2
 ; wssr t2
-; wshsr t2
+; wshhr t2
 ; wsh t2 |
