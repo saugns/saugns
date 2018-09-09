@@ -11,12 +11,15 @@
  * <https://www.gnu.org/licenses/>.
  */
 
-#include "audiodev_oss.c" /* used in fallback mechanism */
+#include "oss.c" /* used in fallback mechanism */
 #include <alsa/asoundlib.h>
 #define ALSA_NAME_OUT "default"
 
 /*
- * Returns instance if successful, NULL on error.
+ * Create instance and return it if successful, otherwise NULL.
+ *
+ * If the first ALSA call fails, try to create and return instance
+ * for OSS instead.
  */
 static inline SGS_AudioDev *open_AudioDev_linux(const char *alsa_name,
 		const char *oss_name, int oss_mode, uint16_t channels,
@@ -30,11 +33,11 @@ static inline SGS_AudioDev *open_AudioDev_linux(const char *alsa_name,
 	if ((err = snd_pcm_open(&handle, alsa_name, SND_PCM_STREAM_PLAYBACK,
 			0)) < 0) {
 		o = open_AudioDev_oss(oss_name, oss_mode, channels, srate);
-		if (!o) {
-			fprintf(stderr, "error: could neither use ALSA nor OSS\n");
-			goto ERROR;
+		if (o) {
+			return o;
 		}
-		return o;
+		fprintf(stderr, "error: could neither use ALSA nor OSS\n");
+		goto ERROR;
 	}
 
 	if (snd_pcm_hw_params_malloc(&params) < 0)
@@ -53,7 +56,7 @@ static inline SGS_AudioDev *open_AudioDev_linux(const char *alsa_name,
 	    || (err = snd_pcm_hw_params(handle, params)) < 0)
 		goto ERROR;
 	if (tmp != *srate) {
-		fprintf(stderr, "warning: ALSA: sample rate %d unsupported, using %d\n",
+		fprintf(stderr, "warning [ALSA]: sample rate %d unsupported, using %d\n",
 			*srate, tmp);
 		*srate = tmp;
 	}
@@ -66,16 +69,18 @@ static inline SGS_AudioDev *open_AudioDev_linux(const char *alsa_name,
 	return o;
 
 ERROR:
-	fprintf(stderr, "error: ALSA: %s\n", snd_strerror(err));
+	fprintf(stderr, "error [ALSA]: %s\n", snd_strerror(err));
 	if (handle) snd_pcm_close(handle);
 	if (params) snd_pcm_hw_params_free(params);
-	fprintf(stderr, "error: ALSA: configuration for device \"%s\" failed\n",
+	fprintf(stderr,
+		"error [ALSA]: configuration for device \"%s\" failed\n",
 		alsa_name);
 	return NULL;
 }
 
 /*
- * Close the given audio device. Destroys the instance.
+ * Destroy instance. Close ALSA or OSS device,
+ * ending playback in the process.
  */
 static inline void close_AudioDev_linux(SGS_AudioDev *o) {
 	if (o->type == TYPE_OSS) {
@@ -89,12 +94,12 @@ static inline void close_AudioDev_linux(SGS_AudioDev *o) {
 }
 
 /*
- * Returns true upon suceessful write, otherwise false.
+ * Write audio, returning true on success, false on any error.
  */
-static inline bool audiodev_linux_write(SGS_AudioDev *o, const int16_t *buf,
+static inline bool AudioDev_linux_write(SGS_AudioDev *o, const int16_t *buf,
 		uint32_t samples) {
 	if (o->type == TYPE_OSS)
-		return audiodev_oss_write(o, buf, samples);
+		return AudioDev_oss_write(o, buf, samples);
 
 	snd_pcm_sframes_t written;
 

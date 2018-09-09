@@ -25,6 +25,7 @@ union DevRef {
 enum {
 	TYPE_OSS = 0,
 	TYPE_ALSA,
+	TYPE_SNDIO,
 };
 
 struct SGS_AudioDev {
@@ -38,9 +39,11 @@ struct SGS_AudioDev {
 #define SOUND_BYTES (SOUND_BITS / 8)
 
 #ifdef __linux
-# include "audiodev_linux.c"
+# include "audiodev/linux.c"
+#elif defined(__OpenBSD__)
+# include "audiodev/sndio.c"
 #else
-# include "audiodev_oss.c"
+# include "audiodev/oss.c"
 #endif
 
 /**
@@ -54,6 +57,8 @@ SGS_AudioDev *SGS_open_AudioDev(uint16_t channels, uint32_t *srate) {
 #ifdef __linux
 	o = open_AudioDev_linux(ALSA_NAME_OUT, OSS_NAME_OUT, O_WRONLY,
 			channels, srate);
+#elif defined(__OpenBSD__)
+	o = open_AudioDev_sndio(SNDIO_NAME_OUT, SIO_PLAY, channels, srate);
 #else
 	o = open_AudioDev_oss(OSS_NAME_OUT, O_WRONLY, channels, srate);
 #endif
@@ -70,6 +75,8 @@ SGS_AudioDev *SGS_open_AudioDev(uint16_t channels, uint32_t *srate) {
 void SGS_close_AudioDev(SGS_AudioDev *o) {
 #ifdef __linux
 	close_AudioDev_linux(o);
+#elif defined(__OpenBSD__)
+	close_AudioDev_sndio(o);
 #else
 	close_AudioDev_oss(o);
 #endif
@@ -86,15 +93,17 @@ uint32_t SGS_AudioDev_get_srate(const SGS_AudioDev *o) {
  * Write the given number of samples from buf to the audio device, the former
  * assumed to be in the format for which the audio device was opened. If
  * opened for multiple channels, buf is assumed to be interleaved and of
- * channels * samples length.
+ * (channels * samples) length.
  *
  * Returns true upon suceessful write, otherwise false;
  */
 bool SGS_AudioDev_write(SGS_AudioDev *o, const int16_t *buf,
 		uint32_t samples) {
 #ifdef __linux
-	return audiodev_linux_write(o, buf, samples);
+	return AudioDev_linux_write(o, buf, samples);
+#elif defined(__OpenBSD__)
+	return AudioDev_sndio_write(o, buf, samples);
 #else
-	return audiodev_oss_write(o, buf, samples);
+	return AudioDev_oss_write(o, buf, samples);
 #endif
 }

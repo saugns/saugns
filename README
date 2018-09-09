@@ -8,8 +8,16 @@ Various wave types are supported, as well as FM, PM (which is what
 is commonly called FM in audio synthesis), and AM. There is no
 support for the use of pre-recorded samples in synthesis.
 
-Audio output support includes ALSA (on Linux), OSS (on BSDs,
-and as a fallback on Linux), and writing 16-bit PCM WAV files.
+Output can use the system audio support, and/or write the result
+to a 16-bit PCM WAV file.
+
+Supported platforms include x86 and x86-64,
+running Linux, FreeBSD, DragonFly, OpenBSD, or NetBSD. Other
+systems are untested. System audio support is limited to the
+following options:
+ - ALSA on Linux, with OSS as fallback
+ - sndio on OpenBSD
+ - OSS on FreeBSD, DragonFly BSD, NetBSD
 
 Building and installing
 =======================
@@ -18,8 +26,11 @@ There are currently no install scripts provided. The program can be
 manually copied, along with example scripts, after building.
 
 Building can be done using make and a C compiler, on Linux or a BSD.
-There are no extra dependencies except, on Linux, the ALSA sound
-library headers.
+
+There are no extra dependencies except system audio libraries as
+needed for the platform. (On Linux, the ALSA sound library headers
+may need to be installed. The BSDs supported provide everything
+needed.)
 
 Licensing
 =========

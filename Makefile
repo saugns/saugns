@@ -1,6 +1,7 @@
 CFLAGS=-std=c99 -W -Wall -O2 -ffast-math
 LFLAGS=-s -lm
 LFLAGS_LINUX=$(LFLAGS) -lasound
+LFLAGS_SNDIO=$(LFLAGS) -lsndio
 LFLAGS_OSSAUDIO=$(LFLAGS) -lossaudio
 OBJ=cbuf.o \
     stream.o \
@@ -29,15 +30,18 @@ sgensys: $(OBJ)
 	if [ $$UNAME = 'Linux' ]; then \
 		echo "Linking for Linux (using ALSA and OSS)."; \
 		$(CC) $(OBJ) $(LFLAGS_LINUX) -o sgensys; \
-	elif [ $$UNAME = 'OpenBSD' ] || [ $$UNAME = 'NetBSD' ]; then \
-		echo "Linking for OpenBSD or NetBSD (using OSS)."; \
+	elif [ $$UNAME = 'OpenBSD' ]; then \
+		echo "Linking for OpenBSD (using sndio)."; \
+		$(CC) $(OBJ) $(LFLAGS_SNDIO) -o sgensys; \
+	elif [ $$UNAME = 'NetBSD' ]; then \
+		echo "Linking for NetBSD (using OSS)."; \
 		$(CC) $(OBJ) $(LFLAGS_OSSAUDIO) -o sgensys; \
 	else \
 		echo "Linking for generic UNIX (using OSS)."; \
 		$(CC) $(OBJ) $(LFLAGS) -o sgensys; \
 	fi
 
-audiodev.o: audiodev.c audiodev_*.c audiodev.h sgensys.h
+audiodev.o: audiodev.c audiodev/*.c audiodev.h sgensys.h
 	$(CC) -c $(CFLAGS) -D_POSIX_C_SOURCE=200809L audiodev.c
 
 cbuf.o: cbuf.c cbuf.h sgensys.h

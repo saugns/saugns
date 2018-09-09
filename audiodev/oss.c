@@ -23,7 +23,8 @@
 #endif
 
 /*
- * Returns instance if successful, NULL on error.
+ * Create instance for OSS device and return it if successful,
+ * otherwise NULL.
  */
 static inline SGS_AudioDev *open_AudioDev_oss(const char *name, int mode,
 		uint16_t channels, uint32_t *srate) {
@@ -41,7 +42,7 @@ static inline SGS_AudioDev *open_AudioDev_oss(const char *name, int mode,
 		goto ERROR;
 	}
 	if (tmp != AFMT_S16_NE) {
-		fputs("error: OSS: 16-bit signed integer native endian format unsupported\n",
+		fputs("error [OSS]: 16-bit signed integer native endian format unsupported\n",
 			stderr);
                 goto ERROR;
         }
@@ -52,7 +53,7 @@ static inline SGS_AudioDev *open_AudioDev_oss(const char *name, int mode,
 		goto ERROR;
 	}
 	if (tmp != channels) {
-		fprintf(stderr, "error: OSS: %d channels unsupported\n",
+		fprintf(stderr, "error [OSS]: %d channels unsupported\n",
 			channels);
                 goto ERROR;
         }
@@ -63,7 +64,7 @@ static inline SGS_AudioDev *open_AudioDev_oss(const char *name, int mode,
 		goto ERROR;
 	}
 	if ((uint32_t) tmp != *srate) {
-		fprintf(stderr, "warning: OSS: sample rate %d unsupported, using %d\n",
+		fprintf(stderr, "warning [OSS]: sample rate %d unsupported, using %d\n",
 			*srate, tmp);
 		*srate = tmp;
 	}
@@ -77,16 +78,17 @@ static inline SGS_AudioDev *open_AudioDev_oss(const char *name, int mode,
 
 ERROR:
 	if (errp)
-		fprintf(stderr, "error: OSS: %s: %s\n", errp, strerror(errno));
+		fprintf(stderr, "error [OSS]: %s: %s\n", errp, strerror(errno));
 	if (fd != -1)
 		close(fd);
-	fprintf(stderr, "error: OSS: configuration for device \"%s\" failed\n",
+	fprintf(stderr, "error [OSS]: configuration for device \"%s\" failed\n",
 		name);
 	return NULL;
 }
 
 /*
- * Close the given audio device. Destroys the instance.
+ * Destroy instance. Close OSS device,
+ * ending playback in the process.
  */
 static inline void close_AudioDev_oss(SGS_AudioDev *o) {
 	close(o->ref.fd);
@@ -94,9 +96,9 @@ static inline void close_AudioDev_oss(SGS_AudioDev *o) {
 }
 
 /*
- * Returns true upon suceessful write, otherwise false;
+ * Write audio, returning true on success, false on any error.
  */
-static inline bool audiodev_oss_write(SGS_AudioDev *o, const int16_t *buf,
+static inline bool AudioDev_oss_write(SGS_AudioDev *o, const int16_t *buf,
 		uint32_t samples) {
 	size_t length = samples * o->channels * SOUND_BYTES, written;
 
