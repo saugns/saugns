@@ -39,17 +39,17 @@ typedef struct Name { \
  * to prefix their names.
  */
 #define SGS_GArr_DEF_METHODS(Name, ElementType, MethodPrefix) \
-static inline bool MethodPrefix##Name##_add(Name *o, \
+SGS__api_inline bool MethodPrefix##Name##_add(Name *o, \
 		const ElementType *item) { \
 	return SGS_GArr_gadd(o, item, sizeof(ElementType)); \
 } \
-static inline bool MethodPrefix##Name##_upsize(Name *o, size_t count) { \
+SGS__api_inline bool MethodPrefix##Name##_upsize(Name *o, size_t count) { \
 	return SGS_GArr_gupsize(o, count, sizeof(ElementType)); \
 } \
-static inline void MethodPrefix##Name##_clear(Name *o) { \
+SGS__api_inline void MethodPrefix##Name##_clear(Name *o) { \
 	SGS_GArr_gclear(o); \
 } \
-static inline bool MethodPrefix##Name##_dupa(Name *o, \
+SGS__api_inline bool MethodPrefix##Name##_dupa(Name *o, \
 		const ElementType **dst) { \
 	return SGS_GArr_gdupa(o, (const void**) dst, sizeof(ElementType)); \
 }
