@@ -11,12 +11,12 @@
  * <https://www.gnu.org/licenses/>.
  */
 
-#ifdef __DragonFly__
+#ifdef __linux
+// Needed to avoid type conflicts on Linux.
+// For now, simply define it on Linux only.
 // DragonFly's sys/soundcard.h uses BSD type names,
 // which are missing if _POSIX_C_SOURCE is defined.
-# ifdef _POSIX_C_SOURCE
-#  undef _POSIX_C_SOURCE
-# endif
+# define _POSIX_C_SOURCE 200809L
 #endif
 #include "audiodev.h"
 #include <stdio.h>

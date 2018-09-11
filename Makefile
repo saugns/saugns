@@ -42,7 +42,7 @@ sgensys: $(OBJ)
 	fi
 
 audiodev.o: audiodev.c audiodev/*.c audiodev.h sgensys.h
-	$(CC) -c $(CFLAGS) -D_POSIX_C_SOURCE=200809L audiodev.c
+	$(CC) -c $(CFLAGS) audiodev.c
 
 cbuf.o: cbuf.c cbuf.h sgensys.h
 	$(CC) -c $(CFLAGS) cbuf.c
