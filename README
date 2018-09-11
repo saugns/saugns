@@ -122,12 +122,12 @@ Wave types:
 	tri	Triangle (naive).
 	sqr	Square (naive).
 	saw	Saw (naive, decreasing).
-	sah	Half-freq absolute value of sine.
+	sah	Halved absolute sine (adjusted).
 			Frequency halved to restore base frequency,
 			peak amplitude centered and doubled, phase
 			shift to begin and end at zero amplitude).
 			A softer alternative to "saw" (saw wave).
-	sh	Half-wave sine.
+	szh	Half-zero'd sine (adjusted).
 			Positive half kept, negative half zero'd,
 			peak amplitude centered and doubled, phase
 			shifted to begin and end at zero amplitude.
@@ -135,9 +135,9 @@ Wave types:
 	ssr	Square root of sine.
 			Mirrored for the negative half.
 			A softer alternative to "sqr" (square wave).
-	shhr	Half-square-rooted half-wave sine.
-			Based on "sh", the negative part left unchanged.
-			A slightly metallic cross between "sh" and "ssr".
+	szhhr	Half-square-rooted half-zero'd sine.
+			Based on "szh", the negative part left unchanged.
+			A slightly metallic cross between "szh" and "ssr".
 
 Parameters:
 	t	Time duration in seconds. If no t setting is given, the
