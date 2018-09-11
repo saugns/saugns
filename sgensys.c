@@ -11,7 +11,7 @@
  * <https://www.gnu.org/licenses/>.
  */
 
-#include "sgensys.h"
+#include "common.h"
 #if SGS_TEST_SCANNER
 # include "streamf.h"
 # include "scanner.h"
@@ -49,11 +49,11 @@ static bool produce_audio(SGS_Program *prg,
 		run = SGS_Generator_run(gen, audio_buf, BUF_SAMPLES, &len);
 		if (ad && !SGS_AudioDev_write(ad, audio_buf, len)) {
 			error = true;
-			fputs("error: audio device write failed\n", stderr);
+			SGS_error(NULL, "audio device write failed");
 		}
 		if (wf && !SGS_WAVFile_write(wf, audio_buf, len)) {
 			error = true;
-			fputs("error: WAV file write failed\n", stderr);
+			SGS_error(NULL, "WAV file write failed");
 		}
 	} while (run);
 	SGS_destroy_Generator(gen);
@@ -89,7 +89,7 @@ static bool run_program(SGS_Program *prg,
 
 	bool status;
 	if (ad && wf && (ad_srate != srate)) {
-		fputs("warning: generating audio twice, using a different sample rate for each output\n", stderr);
+		SGS_warning(NULL, "generating audio twice, using different sample rates");
 		status = produce_audio(prg, ad, NULL, ad_srate);
 		status = status && produce_audio(prg, NULL, wf, srate);
 	} else {
@@ -144,7 +144,7 @@ static int get_piarg(const char *str) {
  * Command line argument flags.
  */
 enum {
-	ARG_FULL_RUN = 1<<0, /* identifies any non-compile-only flags */
+	ARG_FULL_RUN = 1<<0, /* identifies any non-parse-only flags */
 	ARG_ENABLE_AUDIO_DEV = 1<<1,
 	ARG_DISABLE_AUDIO_DEV = 1<<2,
 	ARG_ONLY_PARSE = 1<<3,
@@ -296,13 +296,13 @@ int main(int argc, char **argv) {
 	const char *script_path = NULL, *wav_path = NULL;
 	uint32_t options = 0;
 	uint32_t srate = DEFAULT_SRATE;
-	bool error = false;
 
 	if (!parse_args(argc, argv, &options, &script_path, &wav_path,
 			&srate))
 		return false;
 
 	struct SGS_Program *prg = NULL;
+	bool error = false;
 	if (!process_script(script_path, &prg, options)) {
 		error = true;
 	} else if (prg) {

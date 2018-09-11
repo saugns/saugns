@@ -12,7 +12,7 @@
  */
 
 #pragma once
-#include "sgensys.h"
+#include "common.h"
 
 struct SGS_AudioDev;
 typedef struct SGS_AudioDev SGS_AudioDev;

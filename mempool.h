@@ -12,7 +12,7 @@
  */
 
 #pragma once
-#include "sgensys.h"
+#include "common.h"
 
 struct SGS_MemPool;
 typedef struct SGS_MemPool SGS_MemPool;

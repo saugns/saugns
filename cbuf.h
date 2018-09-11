@@ -12,7 +12,7 @@
  */
 
 #pragma once
-#include "sgensys.h"
+#include "common.h"
 
 /*
  * Circular buffer type, maintaining states for reading and writing and

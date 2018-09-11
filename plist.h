@@ -12,7 +12,7 @@
  */
 
 #pragma once
-#include "sgensys.h"
+#include "common.h"
 
 /**
  * Pointer list type using an array with resizing. A copy
@@ -23,7 +23,7 @@ typedef struct SGS_PList {
 	size_t count;
 	size_t old_count;
 	const void **items;
-	size_t alen;
+	size_t asize;
 } SGS_PList;
 
 /**
@@ -45,5 +45,5 @@ typedef struct SGS_PList {
 
 bool SGS_PList_add(SGS_PList *o, const void *item);
 void SGS_PList_clear(SGS_PList *o);
-bool SGS_PList_dupa(SGS_PList *o, const void **dst);
+bool SGS_PList_memdup(SGS_PList *o, const void ***dst);
 void SGS_PList_copy(SGS_PList *dst, const SGS_PList *src);

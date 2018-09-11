@@ -70,7 +70,7 @@ SGS_AudioDev *SGS_open_AudioDev(uint16_t channels, uint32_t *srate) {
 	o = open_AudioDev_oss(OSS_NAME_OUT, O_WRONLY, channels, srate);
 #endif
 	if (!o) {
-		fprintf(stderr, "error: couldn't open audio device for output\n");
+		SGS_error(NULL, "couldn't open audio device for output");
 		return NULL;
 	}
 	return o;

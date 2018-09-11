@@ -55,7 +55,7 @@ SGS_WAVFile *SGS_create_WAVFile(const char *fpath, uint16_t channels,
 	SGS_WAVFile *o;
 	FILE *f = fopen(fpath, "wb");
 	if (!f) {
-		fprintf(stderr, "error: couldn't open WAV file \"%s\" for writing\n",
+		SGS_error(NULL, "couldn't open WAV file \"%s\" for writing",
 			fpath);
 		return NULL;
 	}

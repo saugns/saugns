@@ -21,11 +21,13 @@
  *
  * If allocation fails, the array will remain unaltered.
  *
+ * (Generic version of the function, to be used through wrapper.)
+ *
  * \return true if successful, false if allocation failed
  */
-bool SGS_GArr_gadd(void *_o, const void *item, size_t item_size) {
+bool SGS_GArr_add(void *_o, const void *item, size_t item_size) {
 	SGS_UInt8Arr *o = _o;
-	if (!SGS_GArr_gupsize(o, o->count + 1, item_size)) {
+	if (!SGS_GArr_upsize(o, o->count + 1, item_size)) {
 		return false;
 	}
 	if (item) {
@@ -40,9 +42,11 @@ bool SGS_GArr_gadd(void *_o, const void *item, size_t item_size) {
  * Resize the given array if \p count is greater than the current
  * allocation.
  *
+ * (Generic version of the function, to be used through wrapper.)
+ *
  * \return true unless allocation failed
  */
-bool SGS_GArr_gupsize(void *_o, size_t count, size_t item_size) {
+bool SGS_GArr_upsize(void *_o, size_t count, size_t item_size) {
 	SGS_UInt8Arr *o = _o;
 	size_t asize = o->asize;
 	if (!o->a) asize = 0;
@@ -64,8 +68,10 @@ bool SGS_GArr_gupsize(void *_o, size_t count, size_t item_size) {
 
 /**
  * Clear the given array.
+ *
+ * (Generic version of the function, to be used through wrapper.)
  */
-void SGS_GArr_gclear(void *_o) {
+void SGS_GArr_clear(void *_o) {
 	SGS_UInt8Arr *o = _o;
 	if (o->a) {
 		free(o->a);
@@ -83,20 +89,21 @@ void SGS_GArr_gclear(void *_o) {
  * non-empty and allocation failed, \p will remain
  * unaltered.
  *
+ * (Generic version of the function, to be used through wrapper.)
+ *
  * \return true unless allocation failed
  */
-bool SGS_GArr_gdupa(void *_o, const void **dst, size_t item_size) {
+bool SGS_GArr_memdup(void *_o, const void **dst, size_t item_size) {
 	SGS_UInt8Arr *o = _o;
 	if (!o->count) {
 		*dst = NULL;
 		return true;
 	}
 	size_t size = o->count * item_size;
-	void *a = malloc(size);
+	void *a = SGS_memdup(o->a, size);
 	if (!a) {
 		return false;
 	}
-	memcpy(a, o->a, size);
 	*dst = a;
 	return true;
 }

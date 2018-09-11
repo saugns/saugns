@@ -12,7 +12,7 @@
  */
 
 #pragma once
-#include "sgensys.h"
+#include "common.h"
 
 #define SGS_Wave_LENBITS 12
 #define SGS_Wave_LEN     (1<<SGS_Wave_LENBITS) /* 4096 */

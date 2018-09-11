@@ -36,7 +36,7 @@ static inline SGS_AudioDev *open_AudioDev_linux(const char *alsa_name,
 		if (o) {
 			return o;
 		}
-		fprintf(stderr, "error: could neither use ALSA nor OSS\n");
+		SGS_error(NULL, "could neither use ALSA nor OSS");
 		goto ERROR;
 	}
 
@@ -56,7 +56,7 @@ static inline SGS_AudioDev *open_AudioDev_linux(const char *alsa_name,
 	    || (err = snd_pcm_hw_params(handle, params)) < 0)
 		goto ERROR;
 	if (tmp != *srate) {
-		fprintf(stderr, "warning [ALSA]: sample rate %d unsupported, using %d\n",
+		SGS_warning("ALSA", "sample rate %d unsupported, using %d",
 			*srate, tmp);
 		*srate = tmp;
 	}
@@ -69,11 +69,10 @@ static inline SGS_AudioDev *open_AudioDev_linux(const char *alsa_name,
 	return o;
 
 ERROR:
-	fprintf(stderr, "error [ALSA]: %s\n", snd_strerror(err));
+	SGS_error("ALSA", "%s", snd_strerror(err));
 	if (handle) snd_pcm_close(handle);
 	if (params) snd_pcm_hw_params_free(params);
-	fprintf(stderr,
-		"error [ALSA]: configuration for device \"%s\" failed\n",
+	SGS_error("ALSA", "configuration for device \"%s\" failed",
 		alsa_name);
 	return NULL;
 }
@@ -105,12 +104,10 @@ static inline bool AudioDev_linux_write(SGS_AudioDev *o, const int16_t *buf,
 
 	while ((written = snd_pcm_writei(o->ref.handle, buf, samples)) < 0) {
 		if (written == -EPIPE) {
-			fputs("warning: ALSA audio device buffer underrun\n",
-				stderr);
+			SGS_warning("ALSA", "audio device buffer underrun");
 			snd_pcm_prepare(o->ref.handle);
 		} else {
-			fprintf(stderr,
-				"warning: %s\n", snd_strerror(written));
+			SGS_warning("ALSA", "%s", snd_strerror(written));
 			break;
 		}
 	}

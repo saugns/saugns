@@ -1319,7 +1319,7 @@ void SGS_destroy_Parser(SGS_Parser *o) {
  */
 SGS_ParseResult *SGS_Parser_process(SGS_Parser *o, const char *fname) {
 	if (!SGS_Stream_fopenrb(&o->fstream, fname)) {
-		fprintf(stderr, "error: couldn't open script file \"%s\" for reading\n",
+		SGS_error(NULL, "couldn't open script file \"%s\" for reading",
 			fname);
 		return NULL;
 	}

@@ -12,7 +12,7 @@
  */
 
 #pragma once
-#include "sgensys.h"
+#include "common.h"
 
 /*
  * Generic array meta-type. A given type is used for the elements,
@@ -39,19 +39,21 @@ typedef struct Name { \
  * to prefix their names.
  */
 #define SGS_GArr_DEF_METHODS(Name, ElementType, MethodPrefix) \
-SGS__api_inline bool MethodPrefix##Name##_add(Name *o, \
-		const ElementType *item) { \
-	return SGS_GArr_gadd(o, item, sizeof(ElementType)); \
+static inline bool SGS__maybe_unused \
+MethodPrefix##Name##_add(Name *o, const ElementType *item) { \
+	return SGS_GArr_add(o, item, sizeof(ElementType)); \
 } \
-SGS__api_inline bool MethodPrefix##Name##_upsize(Name *o, size_t count) { \
-	return SGS_GArr_gupsize(o, count, sizeof(ElementType)); \
+static inline bool SGS__maybe_unused \
+MethodPrefix##Name##_upsize(Name *o, size_t count) { \
+	return SGS_GArr_upsize(o, count, sizeof(ElementType)); \
 } \
-SGS__api_inline void MethodPrefix##Name##_clear(Name *o) { \
-	SGS_GArr_gclear(o); \
+static inline void SGS__maybe_unused \
+MethodPrefix##Name##_clear(Name *o) { \
+	SGS_GArr_clear(o); \
 } \
-SGS__api_inline bool MethodPrefix##Name##_dupa(Name *o, \
-		const ElementType **dst) { \
-	return SGS_GArr_gdupa(o, (const void**) dst, sizeof(ElementType)); \
+static inline bool SGS__maybe_unused \
+MethodPrefix##Name##_memdup(Name *o, const ElementType **dst) { \
+	return SGS_GArr_memdup(o, (const void**) dst, sizeof(ElementType)); \
 }
 
 /**
@@ -65,10 +67,10 @@ SGS__api_inline bool MethodPrefix##Name##_dupa(Name *o, \
 SGS_GArr_DEF_TYPE(Name, ElementType) \
 SGS_GArr_DEF_METHODS(Name, ElementType, MethodPrefix)
 
-bool SGS_GArr_gadd(void *o, const void *item, size_t item_size);
-bool SGS_GArr_gupsize(void *o, size_t count, size_t item_size);
-void SGS_GArr_gclear(void *o);
-bool SGS_GArr_gdupa(void *o, const void **dst, size_t item_size);
+bool SGS_GArr_add(void *o, const void *item, size_t item_size);
+bool SGS_GArr_upsize(void *o, size_t count, size_t item_size);
+void SGS_GArr_clear(void *o);
+bool SGS_GArr_memdup(void *o, const void **dst, size_t item_size);
 
 /** uint8_t array type. */
 SGS_GArr_DEF(SGS_UInt8Arr, uint8_t, );

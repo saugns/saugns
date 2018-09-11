@@ -320,8 +320,8 @@ static void ParseConv_traverse_ops(ParseConv *o,
 	OAState *oas = &o->oa.a[op_ref->id];
 	uint32_t i;
 	if ((oas->flags & OA_VISITED) != 0) {
-		fprintf(stderr,
-"skipping operator %d; does not support circular references\n",
+		SGS_warning("program",
+"skipping operator %d; does not support circular references",
 			op_ref->id);
 		return;
 	}
@@ -379,7 +379,7 @@ static void ParseConv_traverse_voice(ParseConv *o, SGS_ProgramEvent *ev) {
 //		fprintf(stderr, "visit node %d\n", op_ref.id);
 		ParseConv_traverse_ops(o, &op_ref, 0);
 	}
-	OpRefArr_dupa(&o->ev_vo_oplist, &vd->op_list);
+	OpRefArr_memdup(&o->ev_vo_oplist, &vd->op_list);
 	vd->op_count = o->ev_vo_oplist.count;
 	o->ev_vo_oplist.count = 0; // reuse allocation
 }
@@ -401,7 +401,7 @@ static void ParseConv_convert_event(ParseConv *o, SGS_ParseEventData *e) {
 	o->ev = out_ev;
 	ParseConv_convert_ops(o, &e->operators);
 	if (o->ev_op_data.count) {
-		OpDataArr_dupa(&o->ev_op_data, &out_ev->op_data);
+		OpDataArr_memdup(&o->ev_op_data, &out_ev->op_data);
 		out_ev->op_data_count = o->ev_op_data.count;
 		o->ev_op_data.count = 0; // reuse allocation
 	}

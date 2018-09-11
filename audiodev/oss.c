@@ -42,8 +42,7 @@ static inline SGS_AudioDev *open_AudioDev_oss(const char *name, int mode,
 		goto ERROR;
 	}
 	if (tmp != AFMT_S16_NE) {
-		fputs("error [OSS]: 16-bit signed integer native endian format unsupported\n",
-			stderr);
+		SGS_error("OSS", "16-bit signed integer native endian format unsupported");
                 goto ERROR;
         }
 
@@ -53,7 +52,7 @@ static inline SGS_AudioDev *open_AudioDev_oss(const char *name, int mode,
 		goto ERROR;
 	}
 	if (tmp != channels) {
-		fprintf(stderr, "error [OSS]: %d channels unsupported\n",
+		SGS_error("OSS", "%d channels unsupported",
 			channels);
                 goto ERROR;
         }
@@ -64,7 +63,7 @@ static inline SGS_AudioDev *open_AudioDev_oss(const char *name, int mode,
 		goto ERROR;
 	}
 	if ((uint32_t) tmp != *srate) {
-		fprintf(stderr, "warning [OSS]: sample rate %d unsupported, using %d\n",
+		SGS_warning("OSS", "sample rate %d unsupported, using %d",
 			*srate, tmp);
 		*srate = tmp;
 	}
@@ -78,10 +77,10 @@ static inline SGS_AudioDev *open_AudioDev_oss(const char *name, int mode,
 
 ERROR:
 	if (errp)
-		fprintf(stderr, "error [OSS]: %s: %s\n", errp, strerror(errno));
+		SGS_error("OSS", "%s: %s", errp, strerror(errno));
 	if (fd != -1)
 		close(fd);
-	fprintf(stderr, "error [OSS]: configuration for device \"%s\" failed\n",
+	SGS_error("OSS", "configuration for device \"%s\" failed",
 		name);
 	return NULL;
 }

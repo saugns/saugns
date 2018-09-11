@@ -23,12 +23,13 @@
  * \return true unless allocation failed
  */
 bool SGS_PList_add(SGS_PList *o, const void *item) {
-	if (!o->alen) {
+	if (!o->asize) {
 		if (o->count == 0) {
 			o->items = (const void**) item;
 			o->count = 1;
 		} else {
-			const void **a = malloc(sizeof(const void*) * 2);
+			const size_t asize = 2 * sizeof(const void*);
+			const void **a = malloc(asize);
 			if (!a) {
 				return false;
 			}
@@ -36,29 +37,30 @@ bool SGS_PList_add(SGS_PList *o, const void *item) {
 			a[1] = item;
 			o->items = a;
 			o->count = 2;
-			o->alen = 2;
+			o->asize = asize;
 		}
 		return true;
 	}
 
+	size_t isize = o->count * sizeof(const void*);
+	size_t asize = o->asize;
 	if (o->count == o->old_count) {
-		size_t alen = o->alen;
-		if (o->count == alen) alen <<= 1;
-		const void **a = malloc(sizeof(const void*) * alen);
+		if (asize == isize) asize <<= 1;
+		const void **a = malloc(asize);
 		if (!a) {
 			return false;
 		}
-		memcpy(a, o->items, sizeof(const void*) * o->count);
+		memcpy(a, o->items, isize);
 		o->items = a;
-		o->alen = alen;
-	} else if (o->count == o->alen) {
-		size_t alen = o->alen << 1;
-		const void **a = realloc(o->items, sizeof(const void*) * alen);
+		o->asize = asize;
+	} else if (asize == isize) {
+		asize <<= 1;
+		const void **a = realloc(o->items, asize);
 		if (!a) {
 			return false;
 		}
 		o->items = a;
-		o->alen = alen;
+		o->asize = asize;
 	}
 	o->items[o->count] = item;
 	++o->count;
@@ -69,13 +71,13 @@ bool SGS_PList_add(SGS_PList *o, const void *item) {
  * Clear the given list.
  */
 void SGS_PList_clear(SGS_PList *o) {
-	if (o->count > o->old_count && o->alen > 0) {
+	if (o->count > o->old_count && o->asize > 0) {
 		free(o->items);
 	}
 	o->items = 0;
 	o->count = 0;
 	o->old_count = 0;
-	o->alen = 0;
+	o->asize = 0;
 }
 
 /**
@@ -88,17 +90,17 @@ void SGS_PList_clear(SGS_PList *o) {
  *
  * \return true unless allocation failed
  */
-bool SGS_PList_dupa(SGS_PList *o, const void **dst) {
+bool SGS_PList_memdup(SGS_PList *o, const void ***dst) {
 	if (!o->count) {
 		*dst = NULL;
 		return true;
 	}
 	size_t size = o->count * sizeof(const void*);
-	const void **a = malloc(size);
+	const void **src = SGS_PList_ITEMS(o);
+	const void **a = SGS_memdup(src, size);
 	if (!a) {
 		return false;
 	}
-	memcpy(a, SGS_PList_ITEMS(o), size);
 	*dst = a;
 	return true;
 }
@@ -116,5 +118,5 @@ void SGS_PList_copy(SGS_PList *dst, const SGS_PList *src) {
 	dst->items = src->items;
 	dst->count = src->count;
 	dst->old_count = src->count;
-	dst->alen = src->alen;
+	dst->asize = src->asize;
 }
