@@ -1,4 +1,4 @@
-/* sgensys memory pool module.
+/* sgensys: Memory pool module.
  * Copyright (c) 2014 Joel K. Pettersson <joelkpettersson@gmail.com>
  *
  * This file and the software of which it is part is distributed under the
@@ -7,7 +7,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #include "mempool.h"
@@ -229,5 +229,3 @@ void *SGS_mempool_alloc(SGSMemPool *o, size_t size) {
 	}
 	return ret;
 }
-
-/* EOF */

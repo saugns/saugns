@@ -1,4 +1,4 @@
-/* sgensys: script lexer module.
+/* sgensys: Script lexer module.
  * Copyright (c) 2014, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -7,7 +7,7 @@
  * your option) any later version, WITHOUT ANY WARRANTY, not even of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
- * View the license files for details, or if missing, see
+ * View the file COPYING for details, or if missing, see
  * <https://www.gnu.org/licenses/>.
  */
 

@@ -8,7 +8,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #include "symtab.h"
@@ -209,5 +209,3 @@ void* SGS_symtab_set(SGSSymtab *o, const char *key, void *value) {
   n->next = SGS_symnode_alloc(key, value);
   return 0;
 }
-
-/* EOF */
