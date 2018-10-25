@@ -1,4 +1,4 @@
-/* sgensys: Memory pool module.
+/* ssndgen: Memory pool module.
  * Copyright (c) 2014, 2018-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -16,13 +16,13 @@
  */
 
 #include "mempool.h"
-#ifndef SGS_MEM_DEBUG
+#ifndef SSG_MEM_DEBUG
 /*
  * Debug-friendly memory handling? (Slower.)
  *
  * Enable to simply calloc every allocation.
  */
-# define SGS_MEM_DEBUG 0
+# define SSG_MEM_DEBUG 0
 #endif
 #include <stdlib.h>
 #include <string.h>
@@ -79,7 +79,7 @@ static void *BlockArr_add(BlockArr *restrict o,
 	BlockEntry *b = &o->a[o->count++];
 	b->free = size_alloc - size_used;
 	b->mem = mem;
-#if !SGS_MEM_DEBUG
+#if !SSG_MEM_DEBUG
 	/*
 	 * Skip fully used blocks in binary searches.
 	 */
@@ -101,7 +101,7 @@ static void BlockArr_clear(BlockArr *restrict o) {
 	free(o->a);
 }
 
-#if !SGS_MEM_DEBUG
+#if !SSG_MEM_DEBUG
 /*
  * Locate the first block with the smallest size into which \p size fits,
  * using binary search. If found, \p id will be set to the id.
@@ -174,7 +174,7 @@ static void BlockArr_copy_up_one(BlockArr *restrict o,
 }
 #endif
 
-struct SGS_MemPool {
+struct SSG_MemPool {
 	BlockArr blocks;
 	size_t block_size;
 };
@@ -192,8 +192,8 @@ struct SGS_MemPool {
  *
  * \return instance, or NULL on allocation failure
  */
-SGS_MemPool *SGS_create_MemPool(size_t block_size) {
-	SGS_MemPool *o = calloc(1, sizeof(SGS_MemPool));
+SSG_MemPool *SSG_create_MemPool(size_t block_size) {
+	SSG_MemPool *o = calloc(1, sizeof(SSG_MemPool));
 	if (!o)
 		return NULL;
 	o->block_size = (block_size > 0) ?
@@ -205,7 +205,7 @@ SGS_MemPool *SGS_create_MemPool(size_t block_size) {
 /**
  * Destroy instance.
  */
-void SGS_destroy_MemPool(SGS_MemPool *restrict o) {
+void SSG_destroy_MemPool(SSG_MemPool *restrict o) {
 	if (!o)
 		return;
 	BlockArr_clear(&o->blocks);
@@ -218,8 +218,8 @@ void SGS_destroy_MemPool(SGS_MemPool *restrict o) {
  *
  * \return allocated memory, or NULL on allocation failure
  */
-void *SGS_MemPool_alloc(SGS_MemPool *restrict o, size_t size) {
-#if !SGS_MEM_DEBUG
+void *SSG_MemPool_alloc(SSG_MemPool *restrict o, size_t size) {
+#if !SSG_MEM_DEBUG
 	size_t i = o->blocks.count;
 	void *mem;
 	size = ALIGN_SIZE(size);
@@ -267,7 +267,7 @@ void *SGS_MemPool_alloc(SGS_MemPool *restrict o, size_t size) {
 		}
 	}
 	return mem;
-#else /* SGS_MEM_DEBUG */
+#else /* SSG_MEM_DEBUG */
 	return BlockArr_add(&o->blocks, size, size);
 #endif
 }
@@ -279,9 +279,9 @@ void *SGS_MemPool_alloc(SGS_MemPool *restrict o, size_t size) {
  *
  * \return allocated memory, or NULL on allocation failure
  */
-void *SGS_MemPool_memdup(SGS_MemPool *restrict o,
+void *SSG_MemPool_memdup(SSG_MemPool *restrict o,
 		const void *restrict src, size_t size) {
-	void *mem = SGS_MemPool_alloc(o, size);
+	void *mem = SSG_MemPool_alloc(o, size);
 	if (!mem)
 		return NULL;
 	if (src != NULL)

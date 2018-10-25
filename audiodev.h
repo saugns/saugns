@@ -1,4 +1,4 @@
-/* sgensys: System audio output support module.
+/* ssndgen: System audio output support module.
  * Copyright (c) 2011-2014, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -18,13 +18,13 @@
 #pragma once
 #include "common.h"
 
-struct SGS_AudioDev;
-typedef struct SGS_AudioDev SGS_AudioDev;
+struct SSG_AudioDev;
+typedef struct SSG_AudioDev SSG_AudioDev;
 
-SGS_AudioDev *SGS_open_AudioDev(uint16_t channels, uint32_t *restrict srate)
-		SGS__malloclike;
-void SGS_close_AudioDev(SGS_AudioDev *restrict o);
+SSG_AudioDev *SSG_open_AudioDev(uint16_t channels, uint32_t *restrict srate)
+		SSG__malloclike;
+void SSG_close_AudioDev(SSG_AudioDev *restrict o);
 
-uint32_t SGS_AudioDev_get_srate(const SGS_AudioDev *restrict o);
-bool SGS_AudioDev_write(SGS_AudioDev *restrict o,
+uint32_t SSG_AudioDev_get_srate(const SSG_AudioDev *restrict o);
+bool SSG_AudioDev_write(SSG_AudioDev *restrict o,
 		const int16_t *restrict buf, uint32_t samples);

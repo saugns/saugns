@@ -1,4 +1,4 @@
-/* sgensys: Pointer list module.
+/* ssndgen: Pointer list module.
  * Copyright (c) 2011-2012, 2018-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -22,7 +22,7 @@
  *
  * \return true unless allocation failed
  */
-bool SGS_PtrList_add(SGS_PtrList *restrict o, void *restrict item) {
+bool SSG_PtrList_add(SSG_PtrList *restrict o, void *restrict item) {
 	if (!o->asize) {
 		if (o->count == 0) {
 			o->items = (void**) item;
@@ -67,7 +67,7 @@ bool SGS_PtrList_add(SGS_PtrList *restrict o, void *restrict item) {
 /**
  * Clear the given list.
  */
-void SGS_PtrList_clear(SGS_PtrList *restrict o) {
+void SSG_PtrList_clear(SSG_PtrList *restrict o) {
 	if (o->count > o->old_count && o->asize > 0) {
 		free(o->items);
 	}
@@ -87,14 +87,14 @@ void SGS_PtrList_clear(SGS_PtrList *restrict o) {
  *
  * \return true unless allocation failed
  */
-bool SGS_PtrList_memdup(SGS_PtrList *restrict o, void ***restrict dst) {
+bool SSG_PtrList_memdup(SSG_PtrList *restrict o, void ***restrict dst) {
 	if (!o->count) {
 		*dst = NULL;
 		return true;
 	}
 	size_t size = o->count * sizeof(void*);
-	void **src = SGS_PtrList_ITEMS(o);
-	void **a = SGS_memdup(src, size);
+	void **src = SSG_PtrList_ITEMS(o);
+	void **a = SSG_memdup(src, size);
 	if (!a)
 		return false;
 	*dst = a;
@@ -116,9 +116,9 @@ bool SGS_PtrList_memdup(SGS_PtrList *restrict o, void ***restrict dst) {
  * through iteration between \a old_count and \a count, all
  * accessing of freed memory is avoided.
  */
-void SGS_PtrList_soft_copy(SGS_PtrList *restrict dst,
-		const SGS_PtrList *restrict src) {
-	SGS_PtrList_clear(dst);
+void SSG_PtrList_soft_copy(SSG_PtrList *restrict dst,
+		const SSG_PtrList *restrict src) {
+	SSG_PtrList_clear(dst);
 	dst->items = src->items;
 	dst->count = src->count;
 	dst->old_count = src->count;

@@ -1,4 +1,4 @@
-/* sgensys: Common definitions.
+/* ssndgen: Common definitions.
  * Copyright (c) 2011-2012, 2019-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -30,16 +30,16 @@
  */
 
 #if defined(__GNUC__) || defined(__clang__)
-# define SGS__malloclike __attribute__((malloc))
-# define SGS__maybe_unused __attribute__((unused))
-# define SGS__noinline __attribute__((noinline))
-# define SGS__printflike(string_index, first_to_check) \
+# define SSG__malloclike __attribute__((malloc))
+# define SSG__maybe_unused __attribute__((unused))
+# define SSG__noinline __attribute__((noinline))
+# define SSG__printflike(string_index, first_to_check) \
 	__attribute__((format(printf, string_index, first_to_check)))
 #else
-# define SGS__malloclike
-# define SGS__maybe_unused
-# define SGS__noinline
-# define SGS__printflike(string_index, first_to_check)
+# define SSG__malloclike
+# define SSG__maybe_unused
+# define SSG__noinline
+# define SSG__printflike(string_index, first_to_check)
 #endif
 
 /*
@@ -47,33 +47,33 @@
  */
 
 /** Turn \p arg into string literal before macro-expanding it. */
-#define SGS_STRLIT(arg) #arg
+#define SSG_STRLIT(arg) #arg
 
 /** Turn \p arg into string literal after macro-expanding it. */
-#define SGS_STREXP(arg) SGS_STRLIT(arg)
+#define SSG_STREXP(arg) SSG_STRLIT(arg)
 
 /*
  * Utility functions.
  */
 
-void SGS_warning(const char *restrict label, const char *restrict fmt, ...)
-	SGS__printflike(2, 3);
-void SGS_error(const char *restrict label, const char *restrict fmt, ...)
-	SGS__printflike(2, 3);
+void SSG_warning(const char *restrict label, const char *restrict fmt, ...)
+	SSG__printflike(2, 3);
+void SSG_error(const char *restrict label, const char *restrict fmt, ...)
+	SSG__printflike(2, 3);
 
-void *SGS_memdup(const void *restrict src, size_t size) SGS__malloclike;
+void *SSG_memdup(const void *restrict src, size_t size) SSG__malloclike;
 
 /*
  * Debugging options.
  */
 
 /* Debug-friendly memory handling? (Slower.) */
-//#define SGS_MEM_DEBUG 1
+//#define SSG_MEM_DEBUG 1
 
 /* Print hash collision info for symtab. */
-#define SGS_HASHTAB_STATS 0
+#define SSG_HASHTAB_STATS 0
 /* Make test lexer quiet enough to time it. */
-#define SGS_LEXER_QUIET 1
+#define SSG_LEXER_QUIET 1
 
 /* Run scanner instead of lexer in 'test-builder' program. */
-#define SGS_TEST_SCANNER 0
+#define SSG_TEST_SCANNER 0

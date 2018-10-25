@@ -1,4 +1,4 @@
-/* sgensys: Main functions and project definitions.
+/* ssndgen: Main functions and project definitions.
  * Copyright (c) 2011-2013, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -15,12 +15,12 @@
 #include "program.h"
 #include "ptrlist.h"
 
-#define SGS_VERSION_STR "sgensys v0.2-beta"
+#define SSG_VERSION_STR "ssndgen v0.2-beta"
 
-#define SGS_DEFAULT_SRATE 96000
+#define SSG_DEFAULT_SRATE 96000
 
-size_t SGS_build(const SGS_PtrList *restrict script_args, bool are_paths,
-		SGS_PtrList *restrict prg_objs);
+size_t SSG_build(const SSG_PtrList *restrict script_args, bool are_paths,
+		SSG_PtrList *restrict prg_objs);
 
-bool SGS_render(const SGS_PtrList *restrict prg_objs, uint32_t srate,
+bool SSG_render(const SSG_PtrList *restrict prg_objs, uint32_t srate,
 		bool use_audiodev, const char *restrict wav_path);

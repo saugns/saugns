@@ -1,4 +1,4 @@
-/* sgensys: Audio program builder module.
+/* ssndgen: Audio program builder module.
  * Copyright (c) 2011-2013, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -11,7 +11,7 @@
  * <https://www.gnu.org/licenses/>.
  */
 
-#include "sgensys.h"
+#include "ssndgen.h"
 #include "script.h"
 #include "builder/file.h"
 #include <string.h>
@@ -23,17 +23,17 @@
  *
  * \return instance or NULL on error
  */
-static SGS_File *open_file(const char *restrict script_arg, bool is_path) {
-	SGS_File *f = SGS_create_File();
+static SSG_File *open_file(const char *restrict script_arg, bool is_path) {
+	SSG_File *f = SSG_create_File();
 	if (!f) return NULL;
 	if (!is_path) {
-		SGS_File_stropenrb(f, "<string>", script_arg);
+		SSG_File_stropenrb(f, "<string>", script_arg);
 		return f;
 	}
-	if (!SGS_File_fopenrb(f, script_arg)) {
-		SGS_error(NULL,
+	if (!SSG_File_fopenrb(f, script_arg)) {
+		SSG_error(NULL,
 "couldn't open script file \"%s\" for reading", script_arg);
-		SGS_destroy_File(f);
+		SSG_destroy_File(f);
 		return NULL;
 	}
 	return f;
@@ -44,18 +44,18 @@ static SGS_File *open_file(const char *restrict script_arg, bool is_path) {
  *
  * \return instance or NULL on error
  */
-static SGS_Program *build_program(const char *restrict script_arg,
+static SSG_Program *build_program(const char *restrict script_arg,
 		bool is_path) {
-	SGS_File *f = open_file(script_arg, is_path);
+	SSG_File *f = open_file(script_arg, is_path);
 	if (!f) return NULL;
 
-	SGS_Program *o = NULL;
-	SGS_Script *sd = SGS_load_Script(f);
+	SSG_Program *o = NULL;
+	SSG_Script *sd = SSG_load_Script(f);
 	if (!sd) goto CLOSE;
-	o = SGS_build_Program(sd);
-	SGS_discard_Script(sd);
+	o = SSG_build_Program(sd);
+	SSG_discard_Script(sd);
 CLOSE:
-	SGS_destroy_File(f);
+	SSG_destroy_File(f);
 	return o;
 }
 
@@ -65,14 +65,14 @@ CLOSE:
  *
  * \return number of programs successfully built
  */
-size_t SGS_build(const SGS_PtrList *restrict script_args, bool are_paths,
-		SGS_PtrList *restrict prg_objs) {
+size_t SSG_build(const SSG_PtrList *restrict script_args, bool are_paths,
+		SSG_PtrList *restrict prg_objs) {
 	size_t built = 0;
-	const char **args = (const char**) SGS_PtrList_ITEMS(script_args);
+	const char **args = (const char**) SSG_PtrList_ITEMS(script_args);
 	for (size_t i = 0; i < script_args->count; ++i) {
-		SGS_Program *prg = build_program(args[i], are_paths);
+		SSG_Program *prg = build_program(args[i], are_paths);
 		if (prg != NULL) ++built;
-		SGS_PtrList_add(prg_objs, prg);
+		SSG_PtrList_add(prg_objs, prg);
 	}
 	return built;
 }
