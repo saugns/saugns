@@ -2,9 +2,12 @@
 .*.swp
 
 *.o
+**/*.o
 mgensys
 sgensys
+ssndgen
 test-builder
 
 *.[ch][-.]*
+**/*.[ch][-.]*
 backup/

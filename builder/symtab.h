@@ -1,4 +1,4 @@
-/* sgensys: Symbol table module.
+/* ssndgen: Symbol table module.
  * Copyright (c) 2011-2012, 2014, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -14,19 +14,19 @@
 #pragma once
 #include "../common.h"
 
-struct SGS_SymTab;
-typedef struct SGS_SymTab SGS_SymTab;
+struct SSG_SymTab;
+typedef struct SSG_SymTab SSG_SymTab;
 
-SGS_SymTab *SGS_create_SymTab(void) SGS__malloclike;
-void SGS_destroy_SymTab(SGS_SymTab *restrict o);
+SSG_SymTab *SSG_create_SymTab(void) SSG__malloclike;
+void SSG_destroy_SymTab(SSG_SymTab *restrict o);
 
-const void *SGS_SymTab_pool_str(SGS_SymTab *restrict o,
+const void *SSG_SymTab_pool_str(SSG_SymTab *restrict o,
 		const void *restrict str, size_t len);
-const char **SGS_SymTab_pool_stra(SGS_SymTab *restrict o,
+const char **SSG_SymTab_pool_stra(SSG_SymTab *restrict o,
 		const char *const* restrict stra,
 		size_t n);
 
-void *SGS_SymTab_get(SGS_SymTab *restrict o,
+void *SSG_SymTab_get(SSG_SymTab *restrict o,
 		const void *restrict key, size_t len);
-void *SGS_SymTab_set(SGS_SymTab *restrict o,
+void *SSG_SymTab_set(SSG_SymTab *restrict o,
 		const void *restrict key, size_t len, void *restrict value);

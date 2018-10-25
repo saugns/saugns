@@ -1,4 +1,4 @@
-/* sgensys: Script scanner module.
+/* ssndgen: Script scanner module.
  * Copyright (c) 2014, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -23,36 +23,36 @@
 /**
  * Create instance.
  *
- * Assigns a modifiable copy of the SGS_Scanner_def_c_filters array,
+ * Assigns a modifiable copy of the SSG_Scanner_def_c_filters array,
  * freed when the instance is destroyed.
  *
  * \return instance, or NULL on failure
  */
-SGS_Scanner *SGS_create_Scanner(SGS_SymTab *restrict symtab) {
+SSG_Scanner *SSG_create_Scanner(SSG_SymTab *restrict symtab) {
 	if (!symtab) return NULL;
 
-	SGS_Scanner *o = calloc(1, sizeof(SGS_Scanner));
+	SSG_Scanner *o = calloc(1, sizeof(SSG_Scanner));
 	if (!o) return NULL;
-	o->f = SGS_create_File();
+	o->f = SSG_create_File();
 	if (!o->f) goto ERROR;
 	o->symtab = symtab;
-	size_t filters_size = sizeof(SGS_ScanCFilter_f) * SGS_SCAN_CFILTERS;
-	o->c_filters = SGS_memdup(SGS_Scanner_def_c_filters, filters_size);
+	size_t filters_size = sizeof(SSG_ScanCFilter_f) * SSG_SCAN_CFILTERS;
+	o->c_filters = SSG_memdup(SSG_Scanner_def_c_filters, filters_size);
 	if (!o->c_filters) goto ERROR;
 	o->strbuf = calloc(1, STRBUF_LEN);
 	if (!o->strbuf) goto ERROR;
 	return o;
 
 ERROR:
-	SGS_destroy_Scanner(o);
+	SSG_destroy_Scanner(o);
 	return NULL;
 }
 
 /**
  * Destroy instance.
  */
-void SGS_destroy_Scanner(SGS_Scanner *restrict o) {
-	SGS_destroy_File(o->f);
+void SSG_destroy_Scanner(SSG_Scanner *restrict o) {
+	SSG_destroy_File(o->f);
 	free(o->strbuf);
 	free(o->c_filters);
 	free(o);
@@ -61,17 +61,17 @@ void SGS_destroy_Scanner(SGS_Scanner *restrict o) {
 /**
  * Open file for reading.
  *
- * Wrapper around SGS_File functions. \p script may be
+ * Wrapper around SSG_File functions. \p script may be
  * either a file path or a string, depending on \p is_path.
  *
  * \return true on success
  */
-bool SGS_Scanner_open(SGS_Scanner *restrict o,
+bool SSG_Scanner_open(SSG_Scanner *restrict o,
 		const char *restrict script, bool is_path) {
 	if (!is_path) {
-		SGS_File_stropenrb(o->f, "<string>", script);
-	} else if (!SGS_File_fopenrb(o->f, script)) {
-		SGS_error(NULL,
+		SSG_File_stropenrb(o->f, "<string>", script);
+	} else if (!SSG_File_fopenrb(o->f, script)) {
+		SSG_error(NULL,
 "couldn't open script file \"%s\" for reading", script);
 		return false;
 	}
@@ -84,18 +84,18 @@ bool SGS_Scanner_open(SGS_Scanner *restrict o,
 /**
  * Close file (if open).
  */
-void SGS_Scanner_close(SGS_Scanner *restrict o) {
-	SGS_File_close(o->f);
+void SSG_Scanner_close(SSG_Scanner *restrict o) {
+	SSG_File_close(o->f);
 }
 
 enum {
 	PRINT_FILE_INFO = 1<<0
 };
 
-static void print_stderr(SGS_Scanner *restrict o,
+static void print_stderr(SSG_Scanner *restrict o,
 		uint32_t options, const char *restrict prefix,
 		const char *restrict fmt, va_list ap) {
-	SGS_File *f = o->f;
+	SSG_File *f = o->f;
 	if (options & PRINT_FILE_INFO) {
 		fprintf(stderr, "%s:%d:%d: ",
 			f->path, o->cf.line_num, o->cf.char_num);
@@ -110,7 +110,7 @@ static void print_stderr(SGS_Scanner *restrict o,
 /**
  * Print warning message including file path and current position.
  */
-void SGS_Scanner_warning(SGS_Scanner *restrict o,
+void SSG_Scanner_warning(SSG_Scanner *restrict o,
 		const char *restrict fmt, ...) {
 	va_list ap;
 	va_start(ap, fmt);
@@ -123,12 +123,12 @@ void SGS_Scanner_warning(SGS_Scanner *restrict o,
  *
  * Sets the scanner state error flag.
  */
-void SGS_Scanner_error(SGS_Scanner *restrict o,
+void SSG_Scanner_error(SSG_Scanner *restrict o,
 		const char *restrict fmt, ...) {
 	va_list ap;
 	va_start(ap, fmt);
 	print_stderr(o, PRINT_FILE_INFO, "error", fmt, ap);
-	o->s_flags |= SGS_SCAN_S_ERROR;
+	o->s_flags |= SSG_SCAN_S_ERROR;
 	va_end(ap);
 }
 
@@ -144,7 +144,7 @@ void SGS_Scanner_error(SGS_Scanner *restrict o,
 /* Valid characters in identifiers. */
 #define IS_SYMCHAR(c) (IS_ALNUM(c) || (c) == '_')
 
-static uint8_t filter_symchar(SGS_File *restrict o SGS__maybe_unused,
+static uint8_t filter_symchar(SSG_File *restrict o SSG__maybe_unused,
 		uint8_t c) {
 	return IS_SYMCHAR(c) ? c : 0;
 }
@@ -157,7 +157,7 @@ static uint8_t filter_symchar(SGS_File *restrict o SGS__maybe_unused,
  *
  * \return true if the string fit into the buffer, false if truncated
  */
-static bool read_symstr(SGS_File *restrict f,
+static bool read_symstr(SSG_File *restrict f,
 		uint8_t *restrict buf, size_t buf_len,
 		size_t *restrict lenp) {
 	size_t i = 0;
@@ -168,9 +168,9 @@ static bool read_symstr(SGS_File *restrict f,
 			truncate = true;
 			break;
 		}
-		uint8_t c = SGS_File_GETC(f);
+		uint8_t c = SSG_File_GETC(f);
 		if (!IS_SYMCHAR(c)) {
-			SGS_File_DECP(f);
+			SSG_File_DECP(f);
 			break;
 		}
 		buf[i++] = c;
@@ -184,50 +184,50 @@ static bool read_symstr(SGS_File *restrict f,
  * Handle invalid character, or the end of the file. Prints
  * an invalid character warning unless the file has ended.
  *
- * Checks file status, returning SGS_SCAN_EOF if the file has ended,
+ * Checks file status, returning SSG_SCAN_EOF if the file has ended,
  * and printing a warning upon error.
  *
- * \return 0 or SGS_SCAN_EOF
+ * \return 0 or SSG_SCAN_EOF
  */
-uint8_t SGS_Scanner_filter_invalid(SGS_Scanner *restrict o, uint8_t c) {
-	SGS_File *f = o->f;
-	if (!SGS_File_AFTER_EOF(f)) {
-		SGS_Scanner_warning(o, "invalid character (value 0x%02hhX)", c);
+uint8_t SSG_Scanner_filter_invalid(SSG_Scanner *restrict o, uint8_t c) {
+	SSG_File *f = o->f;
+	if (!SSG_File_AFTER_EOF(f)) {
+		SSG_Scanner_warning(o, "invalid character (value 0x%02hhX)", c);
 		return 0;
 	}
-	uint8_t status = SGS_File_STATUS(f);
-	if ((status & SGS_FILE_ERROR) != 0) {
-		SGS_Scanner_error(o, "file reading failed");
+	uint8_t status = SSG_File_STATUS(f);
+	if ((status & SSG_FILE_ERROR) != 0) {
+		SSG_Scanner_error(o, "file reading failed");
 	}
-	return SGS_SCAN_EOF;
+	return SSG_SCAN_EOF;
 }
 
 /**
  * Get characters until the next is neither a space nor a tab.
  *
- * \return SGS_SCAN_SPACE
+ * \return SSG_SCAN_SPACE
  */
-uint8_t SGS_Scanner_filter_space(SGS_Scanner *restrict o,
-		uint8_t c SGS__maybe_unused) {
-	SGS_File *f = o->f;
-	o->cf.char_num += SGS_File_skipspace(f);
-	return SGS_SCAN_SPACE;
+uint8_t SSG_Scanner_filter_space(SSG_Scanner *restrict o,
+		uint8_t c SSG__maybe_unused) {
+	SSG_File *f = o->f;
+	o->cf.char_num += SSG_File_skipspace(f);
+	return SSG_SCAN_SPACE;
 }
 
 /**
  * Get characters until the next is not a linebreak.
  *
- * \return SGS_SCAN_LNBRK
+ * \return SSG_SCAN_LNBRK
  */
-uint8_t SGS_Scanner_filter_linebreaks(SGS_Scanner *restrict o, uint8_t c) {
-	SGS_File *f = o->f;
+uint8_t SSG_Scanner_filter_linebreaks(SSG_Scanner *restrict o, uint8_t c) {
+	SSG_File *f = o->f;
 	++o->cf.line_num;
-	if (c == '\n') SGS_File_TRYC(f, '\r');
-	while (SGS_File_trynewline(f)) {
+	if (c == '\n') SSG_File_TRYC(f, '\r');
+	while (SSG_File_trynewline(f)) {
 		++o->cf.line_num;
 	}
 	o->cf.char_num = 0;
-	return SGS_SCAN_LNBRK;
+	return SSG_SCAN_LNBRK;
 }
 
 /**
@@ -235,62 +235,62 @@ uint8_t SGS_Scanner_filter_linebreaks(SGS_Scanner *restrict o, uint8_t c) {
  *
  * Call for a character to use it as a line comment opener.
  *
- * \return SGS_SCAN_SPACE
+ * \return SSG_SCAN_SPACE
  */
-uint8_t SGS_Scanner_filter_linecomment(SGS_Scanner *restrict o,
-		uint8_t c SGS__maybe_unused) {
-	SGS_File *f = o->f;
-	o->cf.char_num += SGS_File_skipline(f);
-	return SGS_SCAN_SPACE;
+uint8_t SSG_Scanner_filter_linecomment(SSG_Scanner *restrict o,
+		uint8_t c SSG__maybe_unused) {
+	SSG_File *f = o->f;
+	o->cf.char_num += SSG_File_skipline(f);
+	return SSG_SCAN_SPACE;
 }
 
 /**
  * Get characters until encountering \p check_c followed by match_c.
  * Requires setting the match_c field before calling for a character.
- * (See e.g. SGS_Scanner_filter_slashcomments(), which uses this for
+ * (See e.g. SSG_Scanner_filter_slashcomments(), which uses this for
  * C-style comments.)
  *
  * Does not set the newline field, even if the comment contains newlines;
  * any newlines within a block comment are ignored (commented out), apart
  * from in line numbering.
  *
- * \return SGS_SCAN_SPACE or SGS_SCAN_EOF (on unterminated comment)
+ * \return SSG_SCAN_SPACE or SSG_SCAN_EOF (on unterminated comment)
  */
-uint8_t SGS_Scanner_filter_blockcomment(SGS_Scanner *restrict o,
+uint8_t SSG_Scanner_filter_blockcomment(SSG_Scanner *restrict o,
 		uint8_t check_c) {
-	SGS_File *f = o->f;
+	SSG_File *f = o->f;
 	int32_t line_num = o->cf.line_num;
 	int32_t char_num = o->cf.char_num;
 	for (;;) {
-		uint8_t c = SGS_File_GETC(f);
+		uint8_t c = SSG_File_GETC(f);
 		++char_num;
 		if (c == '\n') {
 			++line_num;
-			SGS_File_TRYC(f, '\r');
+			SSG_File_TRYC(f, '\r');
 			char_num = 0;
 		} else if (c == '\r') {
 			++line_num;
 			char_num = 0;
 		} else if (c == check_c) {
-			c = SGS_File_GETC(f);
+			c = SSG_File_GETC(f);
 			if (c == o->cf.match_c) {
 				++char_num;
 				break; /* end of block comment */
 			} else {
-				SGS_File_DECP(f);
+				SSG_File_DECP(f);
 			}
-		} else if (c <= SGS_FILE_MARKER && SGS_File_AFTER_EOF(f)) {
-			c = SGS_Scanner_filter_invalid(o, c);
-			o->cf.flags |= SGS_SCAN_C_ERROR;
+		} else if (c <= SSG_FILE_MARKER && SSG_File_AFTER_EOF(f)) {
+			c = SSG_Scanner_filter_invalid(o, c);
+			o->cf.flags |= SSG_SCAN_C_ERROR;
 			--o->cf.char_num; // print for beginning of comment
-			SGS_Scanner_error(o, "unterminated comment");
+			SSG_Scanner_error(o, "unterminated comment");
 			++o->cf.char_num;
-			return SGS_SCAN_EOF;
+			return SSG_SCAN_EOF;
 		}
 	}
 	o->cf.line_num = line_num;
 	o->cf.char_num = char_num;
-	return SGS_SCAN_SPACE;
+	return SSG_SCAN_SPACE;
 }
 
 /**
@@ -300,21 +300,21 @@ uint8_t SGS_Scanner_filter_blockcomment(SGS_Scanner *restrict o,
  * handling comment if present, otherwise simply returning the first
  * character.
  *
- * \return \p c, SGS_SCAN_SPACE, or SGS_SCAN_EOF (on unterminated comment)
+ * \return \p c, SSG_SCAN_SPACE, or SSG_SCAN_EOF (on unterminated comment)
  */
-uint8_t SGS_Scanner_filter_slashcomments(SGS_Scanner *restrict o, uint8_t c) {
-	SGS_File *f = o->f;
-	uint8_t next_c = SGS_File_GETC(f);
+uint8_t SSG_Scanner_filter_slashcomments(SSG_Scanner *restrict o, uint8_t c) {
+	SSG_File *f = o->f;
+	uint8_t next_c = SSG_File_GETC(f);
 	if (next_c == '*') {
 		++o->cf.char_num;
 		o->cf.match_c = '/';
-		return SGS_Scanner_filter_blockcomment(o, next_c);
+		return SSG_Scanner_filter_blockcomment(o, next_c);
 	}
 	if (next_c == '/') {
 		++o->cf.char_num;
-		return SGS_Scanner_filter_linecomment(o, next_c);
+		return SSG_Scanner_filter_linecomment(o, next_c);
 	}
-	SGS_File_DECP(f);
+	SSG_File_DECP(f);
 	return c;
 }
 
@@ -326,56 +326,56 @@ uint8_t SGS_Scanner_filter_slashcomments(SGS_Scanner *restrict o, uint8_t c) {
  * for the first character position only. (For example,
  * git-style comments, or old Fortran comments.)
  *
- * \return \p c or SGS_SCAN_SPACE
+ * \return \p c or SSG_SCAN_SPACE
  */
-uint8_t SGS_Scanner_filter_char1comments(SGS_Scanner *restrict o, uint8_t c) {
-	if (o->cf.char_num == 1) return SGS_Scanner_filter_linecomment(o, c);
+uint8_t SSG_Scanner_filter_char1comments(SSG_Scanner *restrict o, uint8_t c) {
+	if (o->cf.char_num == 1) return SSG_Scanner_filter_linecomment(o, c);
 	return c;
 }
 
 /**
- * Default array of character filter functions for SGS_Scanner_getc().
+ * Default array of character filter functions for SSG_Scanner_getc().
  * Each Scanner instance is assigned a copy for which entries may be changed.
  *
  * NULL when the character is simply accepted.
  */
-const SGS_ScanCFilter_f SGS_Scanner_def_c_filters[SGS_SCAN_CFILTERS] = {
-	/* NUL 0x00 */ SGS_Scanner_filter_invalid, // also for values above 127
-	/* SOH 0x01 */ SGS_Scanner_filter_invalid,
-	/* STX 0x02 */ SGS_Scanner_filter_invalid,
-	/* ETX 0x03 */ SGS_Scanner_filter_invalid,
-	/* EOT 0x04 */ SGS_Scanner_filter_invalid,
-	/* ENQ 0x05 */ SGS_Scanner_filter_invalid,
-	/* ACK 0x06 */ SGS_Scanner_filter_invalid,
-	/* BEL '\a' */ SGS_Scanner_filter_invalid, // SGS_FILE_MARKER
-	/* BS  '\b' */ SGS_Scanner_filter_invalid,
-	/* HT  '\t' */ SGS_Scanner_filter_space,
-	/* LF  '\n' */ SGS_Scanner_filter_linebreaks,
-	/* VT  '\v' */ SGS_Scanner_filter_invalid,
-	/* FF  '\f' */ SGS_Scanner_filter_invalid,
-	/* CR  '\r' */ SGS_Scanner_filter_linebreaks,
-	/* SO  0x0E */ SGS_Scanner_filter_invalid,
-	/* SI  0x0F */ SGS_Scanner_filter_invalid,
-	/* DLE 0x10 */ SGS_Scanner_filter_invalid,
-	/* DC1 0x11 */ SGS_Scanner_filter_invalid,
-	/* DC2 0x12 */ SGS_Scanner_filter_invalid,
-	/* DC3 0x13 */ SGS_Scanner_filter_invalid,
-	/* DC4 0x14 */ SGS_Scanner_filter_invalid,
-	/* NAK 0x15 */ SGS_Scanner_filter_invalid,
-	/* SYN 0x16 */ SGS_Scanner_filter_invalid,
-	/* ETB 0x17 */ SGS_Scanner_filter_invalid,
-	/* CAN 0x18 */ SGS_Scanner_filter_invalid,
-	/* EM  0x19 */ SGS_Scanner_filter_invalid,
-	/* SUB 0x1A */ SGS_Scanner_filter_invalid,
-	/* ESC 0x1B */ SGS_Scanner_filter_invalid,
-	/* FS  0x1C */ SGS_Scanner_filter_invalid,
-	/* GS  0x1D */ SGS_Scanner_filter_invalid,
-	/* RS  0x1E */ SGS_Scanner_filter_invalid,
-	/* US  0x1F */ SGS_Scanner_filter_invalid,
-	/*     ' '  */ SGS_Scanner_filter_space,
+const SSG_ScanCFilter_f SSG_Scanner_def_c_filters[SSG_SCAN_CFILTERS] = {
+	/* NUL 0x00 */ SSG_Scanner_filter_invalid, // also for values above 127
+	/* SOH 0x01 */ SSG_Scanner_filter_invalid,
+	/* STX 0x02 */ SSG_Scanner_filter_invalid,
+	/* ETX 0x03 */ SSG_Scanner_filter_invalid,
+	/* EOT 0x04 */ SSG_Scanner_filter_invalid,
+	/* ENQ 0x05 */ SSG_Scanner_filter_invalid,
+	/* ACK 0x06 */ SSG_Scanner_filter_invalid,
+	/* BEL '\a' */ SSG_Scanner_filter_invalid, // SSG_FILE_MARKER
+	/* BS  '\b' */ SSG_Scanner_filter_invalid,
+	/* HT  '\t' */ SSG_Scanner_filter_space,
+	/* LF  '\n' */ SSG_Scanner_filter_linebreaks,
+	/* VT  '\v' */ SSG_Scanner_filter_invalid,
+	/* FF  '\f' */ SSG_Scanner_filter_invalid,
+	/* CR  '\r' */ SSG_Scanner_filter_linebreaks,
+	/* SO  0x0E */ SSG_Scanner_filter_invalid,
+	/* SI  0x0F */ SSG_Scanner_filter_invalid,
+	/* DLE 0x10 */ SSG_Scanner_filter_invalid,
+	/* DC1 0x11 */ SSG_Scanner_filter_invalid,
+	/* DC2 0x12 */ SSG_Scanner_filter_invalid,
+	/* DC3 0x13 */ SSG_Scanner_filter_invalid,
+	/* DC4 0x14 */ SSG_Scanner_filter_invalid,
+	/* NAK 0x15 */ SSG_Scanner_filter_invalid,
+	/* SYN 0x16 */ SSG_Scanner_filter_invalid,
+	/* ETB 0x17 */ SSG_Scanner_filter_invalid,
+	/* CAN 0x18 */ SSG_Scanner_filter_invalid,
+	/* EM  0x19 */ SSG_Scanner_filter_invalid,
+	/* SUB 0x1A */ SSG_Scanner_filter_invalid,
+	/* ESC 0x1B */ SSG_Scanner_filter_invalid,
+	/* FS  0x1C */ SSG_Scanner_filter_invalid,
+	/* GS  0x1D */ SSG_Scanner_filter_invalid,
+	/* RS  0x1E */ SSG_Scanner_filter_invalid,
+	/* US  0x1F */ SSG_Scanner_filter_invalid,
+	/*     ' '  */ SSG_Scanner_filter_space,
 	/*     '!'  */ NULL,
 	/*     '"'  */ NULL,
-	/*     '#'  */ SGS_Scanner_filter_linecomment,
+	/*     '#'  */ SSG_Scanner_filter_linecomment,
 	/*     '$'  */ NULL,
 	/*     '%'  */ NULL,
 	/*     '&'  */ NULL,
@@ -387,7 +387,7 @@ const SGS_ScanCFilter_f SGS_Scanner_def_c_filters[SGS_SCAN_CFILTERS] = {
 	/*     ','  */ NULL,
 	/*     '-'  */ NULL,
 	/*     '.'  */ NULL,
-	/*     '/'  */ SGS_Scanner_filter_slashcomments,
+	/*     '/'  */ SSG_Scanner_filter_slashcomments,
 	/* num '0'  */ NULL,
 	/* num '1'  */ NULL,
 	/* num '2'  */ NULL,
@@ -467,19 +467,19 @@ const SGS_ScanCFilter_f SGS_Scanner_def_c_filters[SGS_SCAN_CFILTERS] = {
 	/*     '|'  */ NULL,
 	/*     '}'  */ NULL,
 	/*     '~'  */ NULL,
-	/* DEL 0x7F */ SGS_Scanner_filter_invalid,
+	/* DEL 0x7F */ SSG_Scanner_filter_invalid,
 };
 
 /*
  * Perform pending updates before a get call.
  */
-static void update_cframe(SGS_Scanner *restrict o) {
-	if ((o->cf.flags & SGS_SCAN_C_LNBRK) != 0) {
+static void update_cframe(SSG_Scanner *restrict o) {
+	if ((o->cf.flags & SSG_SCAN_C_LNBRK) != 0) {
 		++o->cf.line_num;
 		o->cf.char_num = 0;
-		o->cf.flags &= ~SGS_SCAN_C_LNBRK;
+		o->cf.flags &= ~SSG_SCAN_C_LNBRK;
 	}
-	o->s_flags &= ~SGS_SCAN_S_UNGETC;
+	o->s_flags &= ~SSG_SCAN_S_UNGETC;
 }
 
 /*
@@ -487,12 +487,12 @@ static void update_cframe(SGS_Scanner *restrict o) {
  *
  * Used to make getting after an undo use the character.
  */
-static void set_prevc(SGS_Scanner *restrict o, uint8_t c) {
-	SGS_File *f = o->f;
+static void set_prevc(SSG_Scanner *restrict o, uint8_t c) {
+	SSG_File *f = o->f;
 	size_t r_pos = f->pos;
-	SGS_File_DECP(f);
-	SGS_File_FIXP(f);
-	SGS_File_SETC_NC(f, c);
+	SSG_File_DECP(f);
+	SSG_File_FIXP(f);
+	SSG_File_SETC_NC(f, c);
 	f->pos = r_pos;
 }
 
@@ -506,37 +506,37 @@ static void set_prevc(SGS_Scanner *restrict o, uint8_t c) {
  *
  * \return character or 0 upon end of file
  */
-uint8_t SGS_Scanner_getc(SGS_Scanner *restrict o) {
-	SGS_File *f = o->f;
+uint8_t SSG_Scanner_getc(SSG_Scanner *restrict o) {
+	SSG_File *f = o->f;
 	uint8_t c;
 	bool skipped_space = false;
 	update_cframe(o);
 	for (;;) {
 		++o->cf.char_num;
-		c = SGS_File_GETC(f);
-		SGS_ScanCFilter_f filter = SGS_Scanner_getfilter(o, c);
+		c = SSG_File_GETC(f);
+		SSG_ScanCFilter_f filter = SSG_Scanner_getfilter(o, c);
 		if (!filter) break;
 		c = filter(o, c);
-		if (c == SGS_SCAN_SPACE) {
+		if (c == SSG_SCAN_SPACE) {
 			skipped_space = true;
 			continue;
 		}
 		if (c != 0) break;
 	}
-	if (c == SGS_SCAN_EOF) return 0;
+	if (c == SSG_SCAN_EOF) return 0;
 	set_prevc(o, c);
 	if (skipped_space) {
 		/*
 		 * Unget a character and store skipped space
 		 * before returning it.
 		 */
-		SGS_File_UNGETC(f);
+		SSG_File_UNGETC(f);
 		--o->cf.char_num;
-		set_prevc(o, SGS_SCAN_SPACE);
-		return SGS_SCAN_SPACE;
+		set_prevc(o, SSG_SCAN_SPACE);
+		return SSG_SCAN_SPACE;
 	}
-	if (c == SGS_SCAN_LNBRK) {
-		o->cf.flags |= SGS_SCAN_C_LNBRK;
+	if (c == SSG_SCAN_LNBRK) {
+		o->cf.flags |= SSG_SCAN_C_LNBRK;
 	}
 	return c;
 }
@@ -550,21 +550,21 @@ uint8_t SGS_Scanner_getc(SGS_Scanner *restrict o) {
  *
  * \return character or 0 upon end of file
  */
-uint8_t SGS_Scanner_getc_nospace(SGS_Scanner *restrict o) {
-	SGS_File *f = o->f;
+uint8_t SSG_Scanner_getc_nospace(SSG_Scanner *restrict o) {
+	SSG_File *f = o->f;
 	uint8_t c;
-	SGS_ScanCFilter_f filter;
+	SSG_ScanCFilter_f filter;
 	int32_t old_char_num;
 	bool skipped_lnbrk = false;
 	update_cframe(o);
 	for (;;) {
 		++o->cf.char_num;
-		c = SGS_File_GETC(f);
-		filter = SGS_Scanner_getfilter(o, c);
+		c = SSG_File_GETC(f);
+		filter = SSG_Scanner_getfilter(o, c);
 		if (!filter) break;
 		c = filter(o, c);
-		if (c == SGS_SCAN_SPACE) continue;
-		if (c == SGS_SCAN_LNBRK) {
+		if (c == SSG_SCAN_SPACE) continue;
+		if (c == SSG_SCAN_LNBRK) {
 			skipped_lnbrk = true;
 			old_char_num = o->cf.char_num;
 			++o->cf.line_num;
@@ -573,18 +573,18 @@ uint8_t SGS_Scanner_getc_nospace(SGS_Scanner *restrict o) {
 		}
 		if (c != 0) break;
 	}
-	if (c == SGS_SCAN_EOF) return 0;
+	if (c == SSG_SCAN_EOF) return 0;
 	set_prevc(o, c);
 	if (skipped_lnbrk) {
 		/*
 		 * Unget a character and store skipped linebreak
 		 * before returning it.
 		 */
-		SGS_File_UNGETC(f);
+		SSG_File_UNGETC(f);
 		--o->cf.line_num;
 		o->cf.char_num = old_char_num;
-		set_prevc(o, SGS_SCAN_LNBRK);
-		return SGS_SCAN_LNBRK;
+		set_prevc(o, SSG_SCAN_LNBRK);
+		return SSG_SCAN_LNBRK;
 	}
 	return c;
 }
@@ -602,32 +602,32 @@ uint8_t SGS_Scanner_getc_nospace(SGS_Scanner *restrict o) {
  * several character ungets would risk parsing errors when moving back
  * past syntactic end markers.)
  */
-void SGS_Scanner_ungetc(SGS_Scanner *restrict o) {
-	if ((o->s_flags & SGS_SCAN_S_UNGETC) != 0) {
-		SGS_Scanner_error(o, "scanner ungetc repeated; return without action");
+void SSG_Scanner_ungetc(SSG_Scanner *restrict o) {
+	if ((o->s_flags & SSG_SCAN_S_UNGETC) != 0) {
+		SSG_Scanner_error(o, "scanner ungetc repeated; return without action");
 		return;
 	}
-	SGS_File *f = o->f;
-	SGS_File_UNGETC(f);
+	SSG_File *f = o->f;
+	SSG_File_UNGETC(f);
 	--o->cf.char_num;
-	o->s_flags |= SGS_SCAN_S_UNGETC;
+	o->s_flags |= SSG_SCAN_S_UNGETC;
 }
 
 /**
  * Get next character (filtering whitespace, etc.) if it matches \p testc.
  *
- * Calls SGS_Scanner_ungetc() and returns false if the characters do not
+ * Calls SSG_Scanner_ungetc() and returns false if the characters do not
  * match, meaning a new get or try will immediately arrive at the same
- * character. Note that SGS_Scanner_ungetc() cannot be called multiple
+ * character. Note that SSG_Scanner_ungetc() cannot be called multiple
  * times in a row, so if false is returned, do not make a direct call to
  * it before further scanning is done.
  *
  * \return true if character matched \p testc
  */
-bool SGS_Scanner_tryc(SGS_Scanner *restrict o, uint8_t testc) {
-	uint8_t c = SGS_Scanner_getc(o);
+bool SSG_Scanner_tryc(SSG_Scanner *restrict o, uint8_t testc) {
+	uint8_t c = SSG_Scanner_getc(o);
 	if (c != testc) {
-		SGS_Scanner_ungetc(o);
+		SSG_Scanner_ungetc(o);
 		return false;
 	}
 	return true;
@@ -643,13 +643,13 @@ bool SGS_Scanner_tryc(SGS_Scanner *restrict o, uint8_t testc) {
  *
  * \return true if string was short enough to be read in full
  */
-bool SGS_Scanner_getsymstr(SGS_Scanner *restrict o,
+bool SSG_Scanner_getsymstr(SSG_Scanner *restrict o,
 		const void **restrict strp, size_t *restrict lenp) {
-	SGS_File *f = o->f;
+	SSG_File *f = o->f;
 	size_t len;
 	bool truncated;
 	update_cframe(o);
-	SGS_File_DECP(f);
+	SSG_File_DECP(f);
 	truncated = !read_symstr(f, o->strbuf, STRBUF_LEN, &len);
 	if (len == 0) {
 		*strp = NULL;
@@ -658,14 +658,14 @@ bool SGS_Scanner_getsymstr(SGS_Scanner *restrict o,
 	}
 	o->cf.char_num += len - 1;
 	if (truncated) {
-		SGS_Scanner_warning(o,
+		SSG_Scanner_warning(o,
 "limiting identifier to %d characters", (STRBUF_LEN - 1));
-		o->cf.char_num += SGS_File_skipstr(f, filter_symchar);
+		o->cf.char_num += SSG_File_skipstr(f, filter_symchar);
 	}
 	const char *pool_str;
-	pool_str = SGS_SymTab_pool_str(o->symtab, o->strbuf, len);
+	pool_str = SSG_SymTab_pool_str(o->symtab, o->strbuf, len);
 	if (pool_str == NULL) {
-		SGS_Scanner_error(o, "failed to register string '%s'",
+		SSG_Scanner_error(o, "failed to register string '%s'",
 				o->strbuf);
 	}
 	*strp = pool_str;

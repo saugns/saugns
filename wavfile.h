@@ -1,4 +1,4 @@
-/* sgensys: WAV file writer module.
+/* ssndgen: WAV file writer module.
  * Copyright (c) 2011-2012, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -18,12 +18,12 @@
 #pragma once
 #include "common.h"
 
-struct SGS_WAVFile;
-typedef struct SGS_WAVFile SGS_WAVFile;
+struct SSG_WAVFile;
+typedef struct SSG_WAVFile SSG_WAVFile;
 
-SGS_WAVFile *SGS_create_WAVFile(const char *restrict fpath,
-		uint16_t channels, uint32_t srate) SGS__malloclike;
-int SGS_close_WAVFile(SGS_WAVFile *restrict o);
+SSG_WAVFile *SSG_create_WAVFile(const char *restrict fpath,
+		uint16_t channels, uint32_t srate) SSG__malloclike;
+int SSG_close_WAVFile(SSG_WAVFile *restrict o);
 
-bool SGS_WAVFile_write(SGS_WAVFile *restrict o,
+bool SSG_WAVFile_write(SSG_WAVFile *restrict o,
 		const int16_t *restrict buf, uint32_t samples);

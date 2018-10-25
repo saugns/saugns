@@ -1,4 +1,4 @@
-/* sgensys: Audio program data and functions.
+/* ssndgen: Audio program data and functions.
  * Copyright (c) 2011-2013, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -23,109 +23,109 @@
  * Voice parameter flags.
  */
 enum {
-	SGS_PVOP_OPLIST = 1<<0,
-	SGS_PVOP_PAN = 1<<1,
+	SSG_PVOP_OPLIST = 1<<0,
+	SSG_PVOP_PAN = 1<<1,
 };
 
 /**
  * Operator parameter flags.
  */
 enum {
-	SGS_POPP_ADJCS = 1<<0,
-	SGS_POPP_WAVE = 1<<1,
-	SGS_POPP_TIME = 1<<2,
-	SGS_POPP_SILENCE = 1<<3,
-	SGS_POPP_FREQ = 1<<4,
-	SGS_POPP_FREQ2 = 1<<5,
-	SGS_POPP_PHASE = 1<<6,
-	SGS_POPP_AMP = 1<<7,
-	SGS_POPP_AMP2 = 1<<8,
+	SSG_POPP_ADJCS = 1<<0,
+	SSG_POPP_WAVE = 1<<1,
+	SSG_POPP_TIME = 1<<2,
+	SSG_POPP_SILENCE = 1<<3,
+	SSG_POPP_FREQ = 1<<4,
+	SSG_POPP_FREQ2 = 1<<5,
+	SSG_POPP_PHASE = 1<<6,
+	SSG_POPP_AMP = 1<<7,
+	SSG_POPP_AMP2 = 1<<8,
 };
 
 /*
  * Voice ID constants.
  */
-#define SGS_PVO_NO_ID  UINT16_MAX       /* voice ID missing */
-#define SGS_PVO_MAX_ID (UINT16_MAX - 1) /* error if exceeded */
+#define SSG_PVO_NO_ID  UINT16_MAX       /* voice ID missing */
+#define SSG_PVO_MAX_ID (UINT16_MAX - 1) /* error if exceeded */
 
 /*
  * Operator ID constants.
  */
-#define SGS_POP_NO_ID  UINT32_MAX       /* operator ID missing */
-#define SGS_POP_MAX_ID (UINT32_MAX - 1) /* error if exceeded */
+#define SSG_POP_NO_ID  UINT32_MAX       /* operator ID missing */
+#define SSG_POP_MAX_ID (UINT32_MAX - 1) /* error if exceeded */
 
 /*
  * Timing special values.
  */
-#define SGS_TIME_INF   UINT32_MAX /* set and checked for nested operator use */
+#define SSG_TIME_INF   UINT32_MAX /* set and checked for nested operator use */
 
 /**
  * Operator use types.
  */
 enum {
-	SGS_POP_CARR = 0,
-	SGS_POP_FMOD,
-	SGS_POP_PMOD,
-	SGS_POP_AMOD,
-	SGS_POP_USES,
+	SSG_POP_CARR = 0,
+	SSG_POP_FMOD,
+	SSG_POP_PMOD,
+	SSG_POP_AMOD,
+	SSG_POP_USES,
 };
 
-typedef struct SGS_ProgramOpRef {
+typedef struct SSG_ProgramOpRef {
 	uint32_t id;
 	uint8_t use;
 	uint8_t level; /* > 0 if used as a modulator */
-} SGS_ProgramOpRef;
+} SSG_ProgramOpRef;
 
-typedef struct SGS_ProgramOpGraph {
+typedef struct SSG_ProgramOpGraph {
 	uint32_t opc;
 	uint32_t ops[1]; /* sized to opc */
-} SGS_ProgramOpGraph;
+} SSG_ProgramOpGraph;
 
-typedef struct SGS_ProgramOpAdjcs {
+typedef struct SSG_ProgramOpAdjcs {
 	uint32_t fmodc;
 	uint32_t pmodc;
 	uint32_t amodc;
 	uint32_t adjcs[1]; /* sized to total number */
-} SGS_ProgramOpAdjcs;
+} SSG_ProgramOpAdjcs;
 
-typedef struct SGS_ProgramVoData {
-	const SGS_ProgramOpRef *op_list;
+typedef struct SSG_ProgramVoData {
+	const SSG_ProgramOpRef *op_list;
 	uint32_t op_count;
 	uint32_t params;
-	SGS_Ramp pan;
-} SGS_ProgramVoData;
+	SSG_Ramp pan;
+} SSG_ProgramVoData;
 
-typedef struct SGS_ProgramOpData {
-	const SGS_ProgramOpAdjcs *adjcs;
+typedef struct SSG_ProgramOpData {
+	const SSG_ProgramOpAdjcs *adjcs;
 	uint32_t id;
 	uint32_t params;
 	uint32_t time_ms, silence_ms;
 	uint8_t wave;
-	SGS_Ramp freq, freq2;
-	SGS_Ramp amp, amp2;
+	SSG_Ramp freq, freq2;
+	SSG_Ramp amp, amp2;
 	float phase;
-} SGS_ProgramOpData;
+} SSG_ProgramOpData;
 
-typedef struct SGS_ProgramEvent {
+typedef struct SSG_ProgramEvent {
 	uint32_t wait_ms;
 	uint16_t vo_id;
 	uint32_t op_data_count;
-	const SGS_ProgramVoData *vo_data;
-	const SGS_ProgramOpData *op_data;
-} SGS_ProgramEvent;
+	const SSG_ProgramVoData *vo_data;
+	const SSG_ProgramOpData *op_data;
+} SSG_ProgramEvent;
 
 /**
  * Program flags affecting interpretation.
  */
 enum {
-	SGS_PMODE_AMP_DIV_VOICES = 1<<0,
+	SSG_PMODE_AMP_DIV_VOICES = 1<<0,
 };
 
 /**
  * Main program type. Contains everything needed for interpretation.
  */
-typedef struct SGS_Program {
-	SGS_ProgramEvent *events;
+typedef struct SSG_Program {
+	SSG_ProgramEvent *events;
 	size_t ev_count;
 	uint16_t mode;
 	uint16_t vo_count;
@@ -133,10 +133,10 @@ typedef struct SGS_Program {
 	uint8_t op_nest_depth;
 	uint32_t duration_ms;
 	const char *name;
-} SGS_Program;
+} SSG_Program;
 
-struct SGS_Script;
-SGS_Program* SGS_build_Program(struct SGS_Script *restrict sd);
-void SGS_discard_Program(SGS_Program *restrict o);
+struct SSG_Script;
+SSG_Program* SSG_build_Program(struct SSG_Script *restrict sd);
+void SSG_discard_Program(SSG_Program *restrict o);
 
-void SGS_Program_print_info(const SGS_Program *restrict o);
+void SSG_Program_print_info(const SSG_Program *restrict o);

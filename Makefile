@@ -7,8 +7,8 @@ LFLAGS_LINUX=$(LFLAGS) -lasound
 LFLAGS_SNDIO=$(LFLAGS) -lsndio
 LFLAGS_OSSAUDIO=$(LFLAGS) -lossaudio
 PREFIX=/usr/local
-BIN=sgensys
-SHARE=sgensys
+BIN=ssndgen
+SHARE=ssndgen
 OBJ=\
 	common.o \
 	arrtype.o \
@@ -28,7 +28,7 @@ OBJ=\
 	renderer/generator.o \
 	audiodev.o \
 	wavfile.o \
-	sgensys.o
+	ssndgen.o
 TEST_OBJ=\
 	common.o \
 	arrtype.o \
@@ -84,7 +84,7 @@ audiodev.o: audiodev.c audiodev/*.c audiodev.h common.h
 common.o: common.c common.h
 	$(CC) -c $(CFLAGS) common.c
 
-builder.o: builder.c sgensys.h script.h ptrlist.h program.h ramp.h wave.h math.h builder/file.h common.h
+builder.o: builder.c ssndgen.h script.h ptrlist.h program.h ramp.h wave.h math.h builder/file.h common.h
 	$(CC) -c $(CFLAGS) builder.c
 
 builder/file.o: builder/file.c builder/file.h common.h
@@ -117,7 +117,7 @@ ptrlist.o: ptrlist.c ptrlist.h common.h
 ramp.o: ramp.c ramp.h math.h common.h
 	$(CC) -c $(CFLAGS_FAST) ramp.c
 
-renderer.o: renderer.c sgensys.h renderer/generator.h ptrlist.h program.h ramp.h wave.h math.h audiodev.h wavfile.h common.h
+renderer.o: renderer.c ssndgen.h renderer/generator.h ptrlist.h program.h ramp.h wave.h math.h audiodev.h wavfile.h common.h
 	$(CC) -c $(CFLAGS_FAST) renderer.c
 
 renderer/generator.o: renderer/generator.c renderer/generator.h renderer/mixer.h renderer/osc.h program.h ramp.h wave.h math.h common.h
@@ -129,10 +129,10 @@ renderer/mixer.o: renderer/mixer.c renderer/mixer.h ramp.h math.h common.h
 renderer/osc.o: renderer/osc.c renderer/osc.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS_FAST) renderer/osc.c -o renderer/osc.o
 
-sgensys.o: sgensys.c sgensys.h ptrlist.h program.h ramp.h wave.h math.h common.h
-	$(CC) -c $(CFLAGS) sgensys.c
+ssndgen.o: ssndgen.c ssndgen.h ptrlist.h program.h ramp.h wave.h math.h common.h
+	$(CC) -c $(CFLAGS) ssndgen.c
 
-test-builder.o: test-builder.c sgensys.h builder/lexer.h builder/scanner.h builder/file.h builder/symtab.h ptrlist.h program.h ramp.h wave.h math.h common.h
+test-builder.o: test-builder.c ssndgen.h builder/lexer.h builder/scanner.h builder/file.h builder/symtab.h ptrlist.h program.h ramp.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) test-builder.c
 
 wave.o: wave.c wave.h math.h common.h
