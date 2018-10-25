@@ -1,4 +1,4 @@
-/* sgensys: Main module / Command-line interface.
+/* saugns: Main module / Command-line interface.
  * Copyright (c) 2011-2013, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -11,7 +11,7 @@
  * <https://www.gnu.org/licenses/>.
  */
 
-#include "sgensys.h"
+#include "saugns.h"
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,8 +23,8 @@
  */
 static void print_usage(bool by_arg) {
 	fputs(
-"Usage: sgensys [-a|-m] [-r srate] [-p] [-o wavfile] scriptfile\n"
-"       sgensys [-c] [-p] scriptfile\n"
+"Usage: saugns [-a|-m] [-r srate] [-p] [-o wavfile] scriptfile\n"
+"       saugns [-c] [-p] scriptfile\n"
 "\n"
 "By default, audio device output is enabled.\n"
 "\n"
@@ -35,7 +35,7 @@ static void print_usage(bool by_arg) {
 "  -o \tWrite a 16-bit PCM WAV file, always using the sample rate requested;\n"
 "     \tdisables audio device output by default.\n"
 "  -c \tCheck script only, reporting any errors or requested info.\n"
-"  -p \tPrint info for script after loading.\n"
+"  -p \tPrint script info after loading.\n"
 "  -h \tPrint this message.\n"
 "  -v \tPrint version.\n",
 	(by_arg) ? stdout : stderr);
@@ -45,7 +45,7 @@ static void print_usage(bool by_arg) {
  * Print version.
  */
 static void print_version(void) {
-	puts(SGS_VERSION_STR);
+	puts(SAU_VERSION_STR);
 }
 
 /*
@@ -174,19 +174,18 @@ INVALID:
  * \return true unless error occurred
  */
 static bool build(const char *restrict fname,
-		SGS_Program **restrict prg_out,
+		SAU_Program **restrict prg_out,
 		uint32_t options) {
-	SGS_Program *prg;
-	if (!(prg = SGS_build(fname)))
+	SAU_Program *prg;
+	if (!(prg = SAU_build(fname)))
 		return false;
 	if ((options & ARG_PRINT_INFO) != 0)
-		SGS_Program_print_info(prg);
+		SAU_Program_print_info(prg);
 	if ((options & ARG_ONLY_COMPILE) != 0) {
-		SGS_discard_Program(prg);
+		SAU_discard_Program(prg);
 		*prg_out = NULL;
 		return true;
 	}
-
 	*prg_out = prg;
 	return true;
 }
@@ -196,13 +195,13 @@ static bool build(const char *restrict fname,
  *
  * \return true unless error occurred
  */
-static bool render(SGS_Program *restrict prg,
+static bool render(SAU_Program *restrict prg,
 		uint32_t srate, uint32_t options,
 		const char *restrict wav_path) {
 	bool use_audiodev = (wav_path != NULL) ?
-			((options & ARG_ENABLE_AUDIO_DEV) != 0) :
-			((options & ARG_DISABLE_AUDIO_DEV) == 0);
-	return SGS_render(prg, srate, use_audiodev, wav_path);
+		((options & ARG_ENABLE_AUDIO_DEV) != 0) :
+		((options & ARG_DISABLE_AUDIO_DEV) == 0);
+	return SAU_render(prg, srate, use_audiodev, wav_path);
 }
 
 /**
@@ -211,8 +210,9 @@ static bool render(SGS_Program *restrict prg,
 int main(int argc, char **argv) {
 	const char *script_path = NULL, *wav_path = NULL;
 	uint32_t options = 0;
-	SGS_Program *prg;
+	SAU_Program *prg;
 	uint32_t srate = DEFAULT_SRATE;
+
 	if (!parse_args(argc, argv, &options, &script_path, &wav_path,
 			&srate))
 		return 0;
@@ -220,10 +220,9 @@ int main(int argc, char **argv) {
 		return 1;
 	if (prg != NULL) {
 		bool error = !render(prg, srate, options, wav_path);
-		SGS_discard_Program(prg);
+		SAU_discard_Program(prg);
 		if (error)
 			return 1;
 	}
-
 	return 0;
 }

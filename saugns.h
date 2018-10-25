@@ -1,4 +1,4 @@
-/* sgensys: Main functions and project definitions.
+/* saugns: Main functions and project definitions.
  * Copyright (c) 2011-2013, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -14,9 +14,9 @@
 #pragma once
 #include "program.h"
 
-#define SGS_VERSION_STR "sgensys v0.6.0"
+#define SAU_VERSION_STR "saugns v0.6.0"
 
-SGS_Program* SGS_build(const char *restrict fname);
+SAU_Program* SAU_build(const char *restrict fname);
 
-bool SGS_render(SGS_Program *restrict prg, uint32_t srate,
+bool SAU_render(SAU_Program *restrict prg, uint32_t srate,
 		bool use_audiodev, const char *restrict wav_path);

@@ -1,5 +1,5 @@
-/* sgensys: Pointer list module.
- * Copyright (c) 2011-2012, 2018 Joel K. Pettersson
+/* saugns: Pointer list module.
+ * Copyright (c) 2011-2012, 2018-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -17,16 +17,16 @@
 /**
  * Pointer list type using an array with resizing.
  *
- * A soft copy (SGS_PtrList_soft_copy()) references
+ * A soft copy (SAU_PtrList_soft_copy()) references
  * the original underlying array instead of duplicating
  * it, unless/until added to.
  */
-typedef struct SGS_PtrList {
+typedef struct SAU_PtrList {
 	const void **items;
 	size_t count;
 	size_t old_count;
 	size_t asize;
-} SGS_PtrList;
+} SAU_PtrList;
 
 /**
  * Get the underlying array holding items.
@@ -34,7 +34,7 @@ typedef struct SGS_PtrList {
  * The array pointer is used in place of an array if at most
  * 1 item is held.
  */
-#define SGS_PtrList_ITEMS(o) \
+#define SAU_PtrList_ITEMS(o) \
 	((o)->count > 1 ? \
 		(o)->items : \
 		((const void**) &(o)->items))
@@ -42,11 +42,11 @@ typedef struct SGS_PtrList {
 /**
  * Get the item \p i.
  */
-#define SGS_PtrList_GET(o, i) \
-	((const void*) SGS_PtrList_ITEMS(o)[i])
+#define SAU_PtrList_GET(o, i) \
+	((const void*) SAU_PtrList_ITEMS(o)[i])
 
-bool SGS_PtrList_add(SGS_PtrList *restrict o, const void *restrict item);
-void SGS_PtrList_clear(SGS_PtrList *restrict o);
-bool SGS_PtrList_memdup(SGS_PtrList *restrict o, const void ***restrict dst);
-void SGS_PtrList_soft_copy(SGS_PtrList *restrict dst,
-		const SGS_PtrList *restrict src);
+bool SAU_PtrList_add(SAU_PtrList *restrict o, const void *restrict item);
+void SAU_PtrList_clear(SAU_PtrList *restrict o);
+bool SAU_PtrList_memdup(SAU_PtrList *restrict o, const void ***restrict dst);
+void SAU_PtrList_soft_copy(SAU_PtrList *restrict dst,
+		const SAU_PtrList *restrict src);

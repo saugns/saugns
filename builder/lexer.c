@@ -1,4 +1,4 @@
-/* sgensys: Script lexer module.
+/* saugns: Script lexer module.
  * Copyright (c) 2014, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -43,10 +43,10 @@
 
 #define STRBUF_LEN 1024
 
-struct SGS_Lexer {
-	SGS_Scanner *sc;
-	SGS_SymTab *symtab;
-	SGS_ScriptToken token;
+struct SAU_Lexer {
+	SAU_Scanner *sc;
+	SAU_SymTab *symtab;
+	SAU_ScriptToken token;
 	uint8_t *strbuf;
 };
 
@@ -56,87 +56,87 @@ struct SGS_Lexer {
  *
  * \return instance, or NULL on failure.
  */
-SGS_Lexer *SGS_create_Lexer(const char *restrict fname,
-		SGS_SymTab *restrict symtab) {
-	SGS_Lexer *o;
+SAU_Lexer *SAU_create_Lexer(const char *restrict fname,
+		SAU_SymTab *restrict symtab) {
+	SAU_Lexer *o;
 	if (symtab == NULL) return NULL;
 	uint8_t *strbuf = calloc(1, STRBUF_LEN);
 	if (strbuf == NULL) return NULL;
 
-	o = calloc(1, sizeof(SGS_Lexer));
+	o = calloc(1, sizeof(SAU_Lexer));
 	if (o == NULL) return NULL;
-	o->sc = SGS_create_Scanner();
+	o->sc = SAU_create_Scanner();
 	if (!o->sc) goto ERROR;
 	o->symtab = symtab;
 	o->strbuf = strbuf;
-	if (!SGS_Scanner_fopenrb(o->sc, fname)) goto ERROR;
-#if SGS_LEXER_QUIET
-	o->sc->s_flags |= SGS_SCAN_S_QUIET;
+	if (!SAU_Scanner_fopenrb(o->sc, fname)) goto ERROR;
+#if SAU_LEXER_QUIET
+	o->sc->s_flags |= SAU_SCAN_S_QUIET;
 #endif
 	return o;
 
 ERROR:
-	SGS_destroy_Lexer(o);
+	SAU_destroy_Lexer(o);
 	return NULL;
 }
 
 /**
  * Destroy instance, also closing the file for which it was made.
  */
-void SGS_destroy_Lexer(SGS_Lexer *restrict o) {
-	SGS_destroy_Scanner(o->sc);
+void SAU_destroy_Lexer(SAU_Lexer *restrict o) {
+	SAU_destroy_Scanner(o->sc);
 	if (o->strbuf) free(o->strbuf);
 	free(o);
 }
 
-static void handle_invalid(SGS_Lexer *o, uint8_t c SGS__maybe_unused) {
-	SGS_ScriptToken *t = &o->token;
-	t->type = SGS_T_INVALID;
+static void handle_invalid(SAU_Lexer *o, uint8_t c SAU__maybe_unused) {
+	SAU_ScriptToken *t = &o->token;
+	t->type = SAU_T_INVALID;
 	t->data.b = 0;
 }
 
-static void handle_eof(SGS_Lexer *restrict o,
-		uint8_t c SGS__maybe_unused) {
-	SGS_Scanner *sc = o->sc;
-	SGS_ScriptToken *t = &o->token;
-	t->type = SGS_T_INVALID;
-	t->data.b = SGS_File_STATUS(sc->f);
+static void handle_eof(SAU_Lexer *restrict o,
+		uint8_t c SAU__maybe_unused) {
+	SAU_Scanner *sc = o->sc;
+	SAU_ScriptToken *t = &o->token;
+	t->type = SAU_T_INVALID;
+	t->data.b = SAU_File_STATUS(sc->f);
 	//puts("EOF");
 }
 
-static void handle_special(SGS_Lexer *restrict o, uint8_t c) {
-	SGS_ScriptToken *t = &o->token;
-	t->type = SGS_T_SPECIAL;
+static void handle_special(SAU_Lexer *restrict o, uint8_t c) {
+	SAU_ScriptToken *t = &o->token;
+	t->type = SAU_T_SPECIAL;
 	t->data.c = c;
 	//putchar(c);
 }
 
-static void handle_numeric_value(SGS_Lexer *restrict o,
-		uint8_t c SGS__maybe_unused) {
-	SGS_Scanner *sc = o->sc;
-	SGS_ScriptToken *t = &o->token;
+static void handle_numeric_value(SAU_Lexer *restrict o,
+		uint8_t c SAU__maybe_unused) {
+	SAU_Scanner *sc = o->sc;
+	SAU_ScriptToken *t = &o->token;
 	double d;
-	SGS_Scanner_ungetc(sc);
-	SGS_Scanner_getd(sc, &d, false, NULL);
-	t->type = SGS_T_VAL_REAL;
+	SAU_Scanner_ungetc(sc);
+	SAU_Scanner_getd(sc, &d, false, NULL);
+	t->type = SAU_T_VAL_REAL;
 	t->data.f = d;
 	//printf("num == %f\n", d);
 }
 
-static void handle_identifier(SGS_Lexer *restrict o,
-		uint8_t c SGS__maybe_unused) {
-	SGS_Scanner *sc = o->sc;
-	SGS_ScriptToken *t = &o->token;
+static void handle_identifier(SAU_Lexer *restrict o,
+		uint8_t c SAU__maybe_unused) {
+	SAU_Scanner *sc = o->sc;
+	SAU_ScriptToken *t = &o->token;
 	size_t len;
-	SGS_Scanner_ungetc(sc);
-	SGS_Scanner_getsyms(sc, o->strbuf, STRBUF_LEN, &len);
+	SAU_Scanner_ungetc(sc);
+	SAU_Scanner_getsyms(sc, o->strbuf, STRBUF_LEN, &len);
 	const char *pool_str;
-	pool_str = SGS_SymTab_pool_str(o->symtab, o->strbuf, len);
+	pool_str = SAU_SymTab_pool_str(o->symtab, o->strbuf, len);
 	if (pool_str == NULL) {
-		SGS_Scanner_error(sc, NULL,
+		SAU_Scanner_error(sc, NULL,
 			"failed to register string '%s'", o->strbuf);
 	}
-	t->type = SGS_T_ID_STR;
+	t->type = SAU_T_ID_STR;
 	t->data.id = pool_str;
 	//printf("str == %s\n", pool_str);
 }
@@ -144,24 +144,24 @@ static void handle_identifier(SGS_Lexer *restrict o,
 /**
  * Get the next token from the current file.
  *
- * Upon end of file, an SGS_T_INVALID token is set and false is
+ * Upon end of file, an SAU_T_INVALID token is set and false is
  * returned. The field data.b is assigned the file reading status.
- * (If true is returned, an SGS_T_INVALID token simply means that
+ * (If true is returned, an SAU_T_INVALID token simply means that
  * invalid input was successfully registered in the current file.)
  *
  * \return true if a token was successfully read from the file
  */
-bool SGS_Lexer_get(SGS_Lexer *restrict o, SGS_ScriptToken *restrict t) {
-	SGS_Scanner *sc = o->sc;
+bool SAU_Lexer_get(SAU_Lexer *restrict o, SAU_ScriptToken *restrict t) {
+	SAU_Scanner *sc = o->sc;
 	uint8_t c;
 REGET:
-	c = SGS_Scanner_getc_nospace(sc);
+	c = SAU_Scanner_getc_nospace(sc);
 	switch (c) {
 	case 0x00:
 		handle_eof(o, c);
 		break;
-	case SGS_SCAN_LNBRK:
-	case SGS_SCAN_SPACE:
+	case SAU_SCAN_LNBRK:
+	case SAU_SCAN_SPACE:
 		goto REGET;
 	case '!':
 	case '"':
@@ -285,19 +285,19 @@ REGET:
  * Get the next token from the current file. Interprets any visible ASCII
  * character as a special token character.
  *
- * Upon end of file, an SGS_T_INVALID token is set and false is
+ * Upon end of file, an SAU_T_INVALID token is set and false is
  * returned. The field data.b is assigned the file reading status.
- * (If true is returned, an SGS_T_INVALID token simply means that
+ * (If true is returned, an SAU_T_INVALID token simply means that
  * invalid input was successfully registered in the current file.)
  *
  * \return true if a token was successfully read from the file
  */
-bool SGS_Lexer_get_special(SGS_Lexer *restrict o,
-		SGS_ScriptToken *restrict t) {
-	SGS_Scanner *sc = o->sc;
+bool SAU_Lexer_get_special(SAU_Lexer *restrict o,
+		SAU_ScriptToken *restrict t) {
+	SAU_Scanner *sc = o->sc;
 	uint8_t c;
 	for (;;) {
-		c = SGS_Scanner_getc_nospace(sc);
+		c = SAU_Scanner_getc_nospace(sc);
 		if (c == 0) {
 			handle_eof(o, c);
 			break;

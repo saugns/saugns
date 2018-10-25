@@ -1,5 +1,5 @@
-/* sgensys: Generic array module.
- * Copyright (c) 2018 Joel K. Pettersson
+/* saugns: Generic array module.
+ * Copyright (c) 2018-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -25,10 +25,10 @@
  *
  * \return true if successful, false if allocation failed
  */
-bool SGS_ArrType_add(void *restrict _o,
+bool SAU_ArrType_add(void *restrict _o,
 		const void *restrict item, size_t item_size) {
-	SGS_UInt8Arr *restrict o = _o;
-	if (!SGS_ArrType_upsize(o, o->count + 1, item_size)) {
+	SAU_UInt8Arr *restrict o = _o;
+	if (!SAU_ArrType_upsize(o, o->count + 1, item_size)) {
 		return false;
 	}
 	if (item) {
@@ -47,9 +47,9 @@ bool SGS_ArrType_add(void *restrict _o,
  *
  * \return true unless allocation failed
  */
-bool SGS_ArrType_upsize(void *restrict _o,
+bool SAU_ArrType_upsize(void *restrict _o,
 		size_t count, size_t item_size) {
-	SGS_UInt8Arr *restrict o = _o;
+	SAU_UInt8Arr *restrict o = _o;
 	size_t asize = o->asize;
 	if (!o->a) asize = 0;
 	size_t min_asize = count * item_size;
@@ -73,8 +73,8 @@ bool SGS_ArrType_upsize(void *restrict _o,
  *
  * (Generic version of the function, to be used through wrapper.)
  */
-void SGS_ArrType_clear(void *restrict _o) {
-	SGS_UInt8Arr *restrict o = _o;
+void SAU_ArrType_clear(void *restrict _o) {
+	SAU_UInt8Arr *restrict o = _o;
 	if (o->a) {
 		free(o->a);
 		o->a = NULL;
@@ -95,15 +95,15 @@ void SGS_ArrType_clear(void *restrict _o) {
  *
  * \return true unless allocation failed
  */
-bool SGS_ArrType_memdup(void *restrict _o,
+bool SAU_ArrType_memdup(void *restrict _o,
 		const void **restrict dst, size_t item_size) {
-	SGS_UInt8Arr *restrict o = _o;
+	SAU_UInt8Arr *restrict o = _o;
 	if (!o->count) {
 		*dst = NULL;
 		return true;
 	}
 	size_t size = o->count * item_size;
-	void *a = SGS_memdup(o->a, size);
+	void *a = SAU_memdup(o->a, size);
 	if (!a) {
 		return false;
 	}

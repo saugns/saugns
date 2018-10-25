@@ -1,5 +1,5 @@
-/* sgensys: Script parameter module.
- * Copyright (c) 2018 Joel K. Pettersson
+/* saugns: Script parameter module.
+ * Copyright (c) 2018-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -19,27 +19,27 @@
  *
  * (This does not include values specific to a particular parameter.)
  */
-void SGS_TimedParam_reset(SGS_TimedParam *restrict o) {
-	*o = (SGS_TimedParam){0};
-	o->slope = SGS_SLOPE_LIN; // default if slope enabled
+void SAU_TimedParam_reset(SAU_TimedParam *restrict o) {
+	*o = (SAU_TimedParam){0};
+	o->slope = SAU_SLOPE_LIN; // default if slope enabled
 }
 
 /**
  * Copy changes from \p src to the instance,
  * preserving non-overridden parts of state.
  */
-void SGS_TimedParam_copy(SGS_TimedParam *restrict o,
-		const SGS_TimedParam *restrict src) {
+void SAU_TimedParam_copy(SAU_TimedParam *restrict o,
+		const SAU_TimedParam *restrict src) {
 	uint8_t mask = 0;
-	if ((src->flags & SGS_TPAR_STATE) != 0) {
+	if ((src->flags & SAU_TPAR_STATE) != 0) {
 		o->v0 = src->v0;
-		mask |= SGS_TPAR_STATE | SGS_TPAR_STATE_RATIO;
+		mask |= SAU_TPAR_STATE | SAU_TPAR_STATE_RATIO;
 	}
-	if ((src->flags & SGS_TPAR_SLOPE) != 0) {
+	if ((src->flags & SAU_TPAR_SLOPE) != 0) {
 		o->vt = src->vt;
 		o->time_ms = src->time_ms;
 		o->slope = src->slope;
-		mask |= SGS_TPAR_SLOPE | SGS_TPAR_SLOPE_RATIO;
+		mask |= SAU_TPAR_SLOPE | SAU_TPAR_SLOPE_RATIO;
 	}
 	o->flags &= ~mask;
 	o->flags |= (src->flags & mask);
@@ -48,13 +48,13 @@ void SGS_TimedParam_copy(SGS_TimedParam *restrict o,
 /*
  * Fill \p buf from \p from to \p to - 1 with copies of \a v0.
  *
- * If the SGS_TPAR_STATE_RATIO flag is set, multiply using \p mulbuf
+ * If the SAU_TPAR_STATE_RATIO flag is set, multiply using \p mulbuf
  * for each value.
  */
-static void fill_state(SGS_TimedParam *restrict o, float *restrict buf,
+static void fill_state(SAU_TimedParam *restrict o, float *restrict buf,
 		uint32_t from, uint32_t to,
 		const float *restrict mulbuf) {
-	if ((o->flags & SGS_TPAR_STATE_RATIO) != 0) {
+	if ((o->flags & SAU_TPAR_STATE_RATIO) != 0) {
 		for (uint32_t i = from; i < to; ++i)
 			buf[i] = o->v0 * mulbuf[i];
 	} else {
@@ -72,32 +72,32 @@ static void fill_state(SGS_TimedParam *restrict o, float *restrict buf,
  *
  * \return true if slope target not yet reached
  */
-bool SGS_TimedParam_run(SGS_TimedParam *restrict o, float *restrict buf,
+bool SAU_TimedParam_run(SAU_TimedParam *restrict o, float *restrict buf,
 		uint32_t buf_len, uint32_t srate,
 		uint32_t *restrict pos, const float *restrict mulbuf) {
-	if (!(o->flags & SGS_TPAR_SLOPE)) {
+	if (!(o->flags & SAU_TPAR_SLOPE)) {
 		fill_state(o, buf, 0, buf_len, mulbuf);
 		return false;
 	}
-	uint32_t time = SGS_MS_TO_SRT(o->time_ms, srate);
-	if ((o->flags & SGS_TPAR_SLOPE_RATIO) != 0) {
-		if (!(o->flags & SGS_TPAR_STATE_RATIO)) {
+	uint32_t time = SAU_MS_TO_SRT(o->time_ms, srate);
+	if ((o->flags & SAU_TPAR_SLOPE_RATIO) != 0) {
+		if (!(o->flags & SAU_TPAR_STATE_RATIO)) {
 			// divide v0 and enable ratio to match slope and vt
 			o->v0 /= mulbuf[0];
-			o->flags |= SGS_TPAR_STATE_RATIO;
+			o->flags |= SAU_TPAR_STATE_RATIO;
 		}
 	} else {
-		if ((o->flags & SGS_TPAR_STATE_RATIO) != 0) {
+		if ((o->flags & SAU_TPAR_STATE_RATIO) != 0) {
 			// multiply v0 and disable ratio to match slope and vt
 			o->v0 *= mulbuf[0];
-			o->flags &= ~SGS_TPAR_STATE_RATIO;
+			o->flags &= ~SAU_TPAR_STATE_RATIO;
 		}
 	}
 	uint32_t len;
 	len = time - *pos;
 	if (len > buf_len) len = buf_len;
-	SGS_Slope_funcs[o->slope](buf, len, o->v0, o->vt, *pos, time);
-	if ((o->flags & SGS_TPAR_SLOPE_RATIO) != 0) {
+	SAU_Slope_funcs[o->slope](buf, len, o->v0, o->vt, *pos, time);
+	if ((o->flags & SAU_TPAR_SLOPE_RATIO) != 0) {
 		for (uint32_t i = 0; i < len; ++i)
 			buf[i] *= mulbuf[i];
 	}
@@ -108,7 +108,7 @@ bool SGS_TimedParam_run(SGS_TimedParam *restrict o, float *restrict buf,
 		 * Fill any remaining buffer values using it.
 		 */
 		o->v0 = o->vt;
-		o->flags &= ~(SGS_TPAR_SLOPE | SGS_TPAR_SLOPE_RATIO);
+		o->flags &= ~(SAU_TPAR_SLOPE | SAU_TPAR_SLOPE_RATIO);
 		fill_state(o, buf, len, buf_len, mulbuf);
 		return false;
 	}

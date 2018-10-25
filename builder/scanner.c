@@ -1,4 +1,4 @@
-/* sgensys: Script scanner module.
+/* saugns: Script scanner module.
  * Copyright (c) 2014, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -18,7 +18,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#if SGS_SCANNER_STATS
+#if SAU_SCANNER_STATS
 static size_t hits = 0;
 static size_t misses = 0;
 #endif
@@ -26,33 +26,33 @@ static size_t misses = 0;
 /**
  * Create instance.
  *
- * Assigns a modifiable copy of the SGS_Scanner_def_c_filters array,
+ * Assigns a modifiable copy of the SAU_Scanner_def_c_filters array,
  * freed when the instance is destroyed.
  *
  * \return instance, or NULL on failure
  */
-SGS_Scanner *SGS_create_Scanner(void) {
-	SGS_Scanner *o = calloc(1, sizeof(SGS_Scanner));
-	o->f = SGS_create_File();
+SAU_Scanner *SAU_create_Scanner(void) {
+	SAU_Scanner *o = calloc(1, sizeof(SAU_Scanner));
+	o->f = SAU_create_File();
 	if (!o->f) goto ERROR;
-	size_t filters_size = sizeof(SGS_ScanCFilter_f) * SGS_SCAN_CFILTERS;
-	o->c_filters = SGS_memdup(SGS_Scanner_def_c_filters, filters_size);
+	size_t filters_size = sizeof(SAU_ScanCFilter_f) * SAU_SCAN_CFILTERS;
+	o->c_filters = SAU_memdup(SAU_Scanner_def_c_filters, filters_size);
 	if (!o->c_filters) goto ERROR;
 	return o;
 
 ERROR:
-	SGS_destroy_Scanner(o);
+	SAU_destroy_Scanner(o);
 	return NULL;
 }
 
 /**
  * Destroy instance.
  */
-void SGS_destroy_Scanner(SGS_Scanner *restrict o) {
-#if SGS_SCANNER_STATS
+void SAU_destroy_Scanner(SAU_Scanner *restrict o) {
+#if SAU_SCANNER_STATS
 	printf("hits: %zd\nmisses: %zd\n", hits, misses);
 #endif
-	SGS_destroy_File(o->f);
+	SAU_destroy_File(o->f);
 	if (o->c_filters) free(o->c_filters);
 	free(o);
 }
@@ -60,31 +60,31 @@ void SGS_destroy_Scanner(SGS_Scanner *restrict o) {
 /**
  * Open file for reading.
  *
- * Wrapper around SGS_File_fopenrb() which handles scanner state.
+ * Wrapper around SAU_File_fopenrb() which handles scanner state.
  * Prints error message if file opening fails.
  *
  * \return true on success
  */
-bool SGS_Scanner_fopenrb(SGS_Scanner *restrict o, const char *restrict path) {
-	SGS_File *f = o->f;
-	if (!SGS_File_fopenrb(f, path)) {
-		SGS_error(NULL,
+bool SAU_Scanner_fopenrb(SAU_Scanner *restrict o, const char *restrict path) {
+	SAU_File *f = o->f;
+	if (!SAU_File_fopenrb(f, path)) {
+		SAU_error(NULL,
 			"couldn't open script file \"%s\" for reading", path);
 		return false;
 	}
 
 	o->sf.line_num = 1; // not increased upon first read
 	o->sf.char_num = 0;
-	o->s_flags |= SGS_SCAN_S_DISCARD;
+	o->s_flags |= SAU_SCAN_S_DISCARD;
 	return true;
 }
 
 /**
  * Close file (if open).
  */
-void SGS_Scanner_close(SGS_Scanner *restrict o) {
-	SGS_File *f = o->f;
-	SGS_File_close(f);
+void SAU_Scanner_close(SAU_Scanner *restrict o) {
+	SAU_File *f = o->f;
+	SAU_File_close(f);
 }
 
 /* Basic character types. */
@@ -99,7 +99,7 @@ void SGS_Scanner_close(SGS_Scanner *restrict o) {
 /* Valid characters in identifiers. */
 #define IS_SYMCHAR(c) (IS_ALNUM(c) || (c) == '_')
 
-static uint8_t filter_symchar(SGS_File *restrict o SGS__maybe_unused,
+static uint8_t filter_symchar(SAU_File *restrict o SAU__maybe_unused,
 		uint8_t c) {
 	return IS_SYMCHAR(c) ? c : 0;
 }
@@ -112,7 +112,7 @@ static uint8_t filter_symchar(SGS_File *restrict o SGS__maybe_unused,
  *
  * \return true if the string fit into the buffer, false if truncated
  */
-static bool read_syms(SGS_File *restrict f,
+static bool read_syms(SAU_File *restrict f,
 		void *restrict buf, size_t buf_len,
 		size_t *restrict str_len) {
 	uint8_t *dst = buf;
@@ -124,9 +124,9 @@ static bool read_syms(SGS_File *restrict f,
 			truncate = true;
 			break;
 		}
-		uint8_t c = SGS_File_GETC(f);
+		uint8_t c = SAU_File_GETC(f);
 		if (!IS_SYMCHAR(c)) {
-			SGS_FBufMode_DECP(&f->mr);
+			SAU_FBufMode_DECP(&f->mr);
 			break;
 		}
 		dst[i++] = c;
@@ -140,51 +140,51 @@ static bool read_syms(SGS_File *restrict f,
  * Handle invalid character, or the end of the file. Prints
  * an invalid character warning unless the file has ended.
  *
- * Checks file status, returning SGS_SCAN_EOF if the file has ended,
+ * Checks file status, returning SAU_SCAN_EOF if the file has ended,
  * and printing a warning upon error.
  *
- * \return 0 or SGS_SCAN_EOF
+ * \return 0 or SAU_SCAN_EOF
  */
-uint8_t SGS_Scanner_filter_invalid(SGS_Scanner *restrict o, uint8_t c) {
-	SGS_File *f = o->f;
-	if (!SGS_File_AFTER_EOF(f)) {
-		SGS_Scanner_warning(o, NULL,
+uint8_t SAU_Scanner_filter_invalid(SAU_Scanner *restrict o, uint8_t c) {
+	SAU_File *f = o->f;
+	if (!SAU_File_AFTER_EOF(f)) {
+		SAU_Scanner_warning(o, NULL,
 			"invalid character (value 0x%02hhX)", c);
 		return 0;
 	}
-	uint8_t status = SGS_File_STATUS(f);
-	if ((status & SGS_FILE_ERROR) != 0) {
-		SGS_Scanner_error(o, NULL,
+	uint8_t status = SAU_File_STATUS(f);
+	if ((status & SAU_FILE_ERROR) != 0) {
+		SAU_Scanner_error(o, NULL,
 			"file reading failed");
 	}
-	return SGS_SCAN_EOF;
+	return SAU_SCAN_EOF;
 }
 
 /**
  * Get characters until the next is neither a space nor a tab.
  *
- * \return SGS_SCAN_SPACE
+ * \return SAU_SCAN_SPACE
  */
-uint8_t SGS_Scanner_filter_space(SGS_Scanner *restrict o,
-		uint8_t c SGS__maybe_unused) {
-	SGS_File *f = o->f;
-	o->sf.char_num += SGS_File_skipspace(f);
-	return SGS_SCAN_SPACE;
+uint8_t SAU_Scanner_filter_space(SAU_Scanner *restrict o,
+		uint8_t c SAU__maybe_unused) {
+	SAU_File *f = o->f;
+	o->sf.char_num += SAU_File_skipspace(f);
+	return SAU_SCAN_SPACE;
 }
 
 /**
  * Get characters until the next is not a linebreak.
  *
- * \return SGS_SCAN_LNBRK
+ * \return SAU_SCAN_LNBRK
  */
-uint8_t SGS_Scanner_filter_linebreaks(SGS_Scanner *restrict o, uint8_t c) {
-	SGS_File *f = o->f;
-	if (c == '\n') SGS_File_TRYC(f, '\r');
-	while (SGS_File_trynewline(f)) {
+uint8_t SAU_Scanner_filter_linebreaks(SAU_Scanner *restrict o, uint8_t c) {
+	SAU_File *f = o->f;
+	if (c == '\n') SAU_File_TRYC(f, '\r');
+	while (SAU_File_trynewline(f)) {
 		++o->sf.line_num;
 		o->sf.char_num = 0;
 	}
-	return SGS_SCAN_LNBRK;
+	return SAU_SCAN_LNBRK;
 }
 
 /**
@@ -192,58 +192,58 @@ uint8_t SGS_Scanner_filter_linebreaks(SGS_Scanner *restrict o, uint8_t c) {
  *
  * Call for a character to use it as a line comment opener.
  *
- * \return SGS_SCAN_SPACE
+ * \return SAU_SCAN_SPACE
  */
-uint8_t SGS_Scanner_filter_linecomment(SGS_Scanner *restrict o,
-		uint8_t c SGS__maybe_unused) {
-	SGS_File *f = o->f;
-	o->sf.char_num += SGS_File_skipline(f);
-	return SGS_SCAN_SPACE;
+uint8_t SAU_Scanner_filter_linecomment(SAU_Scanner *restrict o,
+		uint8_t c SAU__maybe_unused) {
+	SAU_File *f = o->f;
+	o->sf.char_num += SAU_File_skipline(f);
+	return SAU_SCAN_SPACE;
 }
 
 /**
  * Get characters until encountering \p check_c followed by match_c.
  * Requires setting the match_c field before calling for a character.
- * (See e.g. SGS_Scanner_filter_slashcomments(), which uses this for
+ * (See e.g. SAU_Scanner_filter_slashcomments(), which uses this for
  * C-style comments.)
  *
  * Does not set the linebreak flag. Linebreaks within a block comment
  * are ignored (commented out), apart from in line numbering.
  *
- * \return SGS_SCAN_SPACE or SGS_SCAN_EOF (on unterminated comment)
+ * \return SAU_SCAN_SPACE or SAU_SCAN_EOF (on unterminated comment)
  */
-uint8_t SGS_Scanner_filter_blockcomment(SGS_Scanner *restrict o,
+uint8_t SAU_Scanner_filter_blockcomment(SAU_Scanner *restrict o,
 		uint8_t check_c) {
-	SGS_File *f = o->f;
+	SAU_File *f = o->f;
 	int32_t line_num = o->sf.line_num;
 	int32_t char_num = o->sf.char_num;
 	for (;;) {
-		uint8_t c = SGS_File_GETC(f);
+		uint8_t c = SAU_File_GETC(f);
 		++char_num;
 		if (c == '\n') {
 			++line_num;
 			char_num = 0;
-			SGS_File_TRYC(f, '\r');
+			SAU_File_TRYC(f, '\r');
 		} else if (c == '\r') {
 			++line_num;
 			char_num = 0;
 		} else if (c == check_c) {
-			if (SGS_File_TRYC(f, o->match_c)) {
+			if (SAU_File_TRYC(f, o->match_c)) {
 				++char_num;
 				break; /* end of block comment */
 			}
-		} else if (c <= SGS_FILE_MARKER && SGS_File_AFTER_EOF(f)) {
-			c = SGS_Scanner_filter_invalid(o, c);
-			o->sf.c_flags |= SGS_SCAN_C_ERROR;
+		} else if (c <= SAU_FILE_MARKER && SAU_File_AFTER_EOF(f)) {
+			c = SAU_Scanner_filter_invalid(o, c);
+			o->sf.c_flags |= SAU_SCAN_C_ERROR;
 			--o->sf.char_num; // print for beginning of comment
-			SGS_Scanner_error(o, NULL, "unterminated comment");
+			SAU_Scanner_error(o, NULL, "unterminated comment");
 			++o->sf.char_num;
-			return SGS_SCAN_EOF;
+			return SAU_SCAN_EOF;
 		}
 	}
 	o->sf.line_num = line_num;
 	o->sf.char_num = char_num;
-	return SGS_SCAN_SPACE;
+	return SAU_SCAN_SPACE;
 }
 
 /**
@@ -253,21 +253,21 @@ uint8_t SGS_Scanner_filter_blockcomment(SGS_Scanner *restrict o,
  * handling comment if present, otherwise simply returning the first
  * character.
  *
- * \return \p c, SGS_SCAN_SPACE, or SGS_SCAN_EOF (on unterminated comment)
+ * \return \p c, SAU_SCAN_SPACE, or SAU_SCAN_EOF (on unterminated comment)
  */
-uint8_t SGS_Scanner_filter_slashcomments(SGS_Scanner *restrict o, uint8_t c) {
-	SGS_File *f = o->f;
-	uint8_t next_c = SGS_File_GETC(f);
+uint8_t SAU_Scanner_filter_slashcomments(SAU_Scanner *restrict o, uint8_t c) {
+	SAU_File *f = o->f;
+	uint8_t next_c = SAU_File_GETC(f);
 	if (next_c == '*') {
 		++o->sf.char_num;
 		o->match_c = '/';
-		return SGS_Scanner_filter_blockcomment(o, next_c);
+		return SAU_Scanner_filter_blockcomment(o, next_c);
 	}
 	if (next_c == '/') {
 		++o->sf.char_num;
-		return SGS_Scanner_filter_linecomment(o, next_c);
+		return SAU_Scanner_filter_linecomment(o, next_c);
 	}
-	SGS_FBufMode_DECP(&f->mr);
+	SAU_FBufMode_DECP(&f->mr);
 	return c;
 }
 
@@ -279,56 +279,56 @@ uint8_t SGS_Scanner_filter_slashcomments(SGS_Scanner *restrict o, uint8_t c) {
  * for the first character position only. (For example,
  * git-style comments, or old Fortran comments.)
  *
- * \return \p c or SGS_SCAN_SPACE
+ * \return \p c or SAU_SCAN_SPACE
  */
-uint8_t SGS_Scanner_filter_char1comments(SGS_Scanner *restrict o, uint8_t c) {
-	if (o->sf.char_num == 1) return SGS_Scanner_filter_linecomment(o, c);
+uint8_t SAU_Scanner_filter_char1comments(SAU_Scanner *restrict o, uint8_t c) {
+	if (o->sf.char_num == 1) return SAU_Scanner_filter_linecomment(o, c);
 	return c;
 }
 
 /**
- * Default array of character filter functions for SGS_Scanner_getc().
+ * Default array of character filter functions for SAU_Scanner_getc().
  * Each Scanner instance is assigned a copy for which entries may be changed.
  *
  * NULL when the character is simply accepted.
  */
-const SGS_ScanCFilter_f SGS_Scanner_def_c_filters[SGS_SCAN_CFILTERS] = {
-	/* NUL 0x00 */ SGS_Scanner_filter_invalid, // also for values above 127
-	/* SOH 0x01 */ SGS_Scanner_filter_invalid,
-	/* STX 0x02 */ SGS_Scanner_filter_invalid,
-	/* ETX 0x03 */ SGS_Scanner_filter_invalid,
-	/* EOT 0x04 */ SGS_Scanner_filter_invalid,
-	/* ENQ 0x05 */ SGS_Scanner_filter_invalid,
-	/* ACK 0x06 */ SGS_Scanner_filter_invalid,
-	/* BEL '\a' */ SGS_Scanner_filter_invalid, // SGS_FILE_MARKER
-	/* BS  '\b' */ SGS_Scanner_filter_invalid,
-	/* HT  '\t' */ SGS_Scanner_filter_space,
-	/* LF  '\n' */ SGS_Scanner_filter_linebreaks,
-	/* VT  '\v' */ SGS_Scanner_filter_invalid,
-	/* FF  '\f' */ SGS_Scanner_filter_invalid,
-	/* CR  '\r' */ SGS_Scanner_filter_linebreaks,
-	/* SO  0x0E */ SGS_Scanner_filter_invalid,
-	/* SI  0x0F */ SGS_Scanner_filter_invalid,
-	/* DLE 0x10 */ SGS_Scanner_filter_invalid,
-	/* DC1 0x11 */ SGS_Scanner_filter_invalid,
-	/* DC2 0x12 */ SGS_Scanner_filter_invalid,
-	/* DC3 0x13 */ SGS_Scanner_filter_invalid,
-	/* DC4 0x14 */ SGS_Scanner_filter_invalid,
-	/* NAK 0x15 */ SGS_Scanner_filter_invalid,
-	/* SYN 0x16 */ SGS_Scanner_filter_invalid,
-	/* ETB 0x17 */ SGS_Scanner_filter_invalid,
-	/* CAN 0x18 */ SGS_Scanner_filter_invalid,
-	/* EM  0x19 */ SGS_Scanner_filter_invalid,
-	/* SUB 0x1A */ SGS_Scanner_filter_invalid,
-	/* ESC 0x1B */ SGS_Scanner_filter_invalid,
-	/* FS  0x1C */ SGS_Scanner_filter_invalid,
-	/* GS  0x1D */ SGS_Scanner_filter_invalid,
-	/* RS  0x1E */ SGS_Scanner_filter_invalid,
-	/* US  0x1F */ SGS_Scanner_filter_invalid,
-	/*     ' '  */ SGS_Scanner_filter_space,
+const SAU_ScanCFilter_f SAU_Scanner_def_c_filters[SAU_SCAN_CFILTERS] = {
+	/* NUL 0x00 */ SAU_Scanner_filter_invalid, // also for values above 127
+	/* SOH 0x01 */ SAU_Scanner_filter_invalid,
+	/* STX 0x02 */ SAU_Scanner_filter_invalid,
+	/* ETX 0x03 */ SAU_Scanner_filter_invalid,
+	/* EOT 0x04 */ SAU_Scanner_filter_invalid,
+	/* ENQ 0x05 */ SAU_Scanner_filter_invalid,
+	/* ACK 0x06 */ SAU_Scanner_filter_invalid,
+	/* BEL '\a' */ SAU_Scanner_filter_invalid, // SAU_FILE_MARKER
+	/* BS  '\b' */ SAU_Scanner_filter_invalid,
+	/* HT  '\t' */ SAU_Scanner_filter_space,
+	/* LF  '\n' */ SAU_Scanner_filter_linebreaks,
+	/* VT  '\v' */ SAU_Scanner_filter_invalid,
+	/* FF  '\f' */ SAU_Scanner_filter_invalid,
+	/* CR  '\r' */ SAU_Scanner_filter_linebreaks,
+	/* SO  0x0E */ SAU_Scanner_filter_invalid,
+	/* SI  0x0F */ SAU_Scanner_filter_invalid,
+	/* DLE 0x10 */ SAU_Scanner_filter_invalid,
+	/* DC1 0x11 */ SAU_Scanner_filter_invalid,
+	/* DC2 0x12 */ SAU_Scanner_filter_invalid,
+	/* DC3 0x13 */ SAU_Scanner_filter_invalid,
+	/* DC4 0x14 */ SAU_Scanner_filter_invalid,
+	/* NAK 0x15 */ SAU_Scanner_filter_invalid,
+	/* SYN 0x16 */ SAU_Scanner_filter_invalid,
+	/* ETB 0x17 */ SAU_Scanner_filter_invalid,
+	/* CAN 0x18 */ SAU_Scanner_filter_invalid,
+	/* EM  0x19 */ SAU_Scanner_filter_invalid,
+	/* SUB 0x1A */ SAU_Scanner_filter_invalid,
+	/* ESC 0x1B */ SAU_Scanner_filter_invalid,
+	/* FS  0x1C */ SAU_Scanner_filter_invalid,
+	/* GS  0x1D */ SAU_Scanner_filter_invalid,
+	/* RS  0x1E */ SAU_Scanner_filter_invalid,
+	/* US  0x1F */ SAU_Scanner_filter_invalid,
+	/*     ' '  */ SAU_Scanner_filter_space,
 	/*     '!'  */ NULL,
 	/*     '"'  */ NULL,
-	/*     '#'  */ SGS_Scanner_filter_linecomment,
+	/*     '#'  */ SAU_Scanner_filter_linecomment,
 	/*     '$'  */ NULL,
 	/*     '%'  */ NULL,
 	/*     '&'  */ NULL,
@@ -340,7 +340,7 @@ const SGS_ScanCFilter_f SGS_Scanner_def_c_filters[SGS_SCAN_CFILTERS] = {
 	/*     ','  */ NULL,
 	/*     '-'  */ NULL,
 	/*     '.'  */ NULL,
-	/*     '/'  */ SGS_Scanner_filter_slashcomments,
+	/*     '/'  */ SAU_Scanner_filter_slashcomments,
 	/* num '0'  */ NULL,
 	/* num '1'  */ NULL,
 	/* num '2'  */ NULL,
@@ -420,21 +420,21 @@ const SGS_ScanCFilter_f SGS_Scanner_def_c_filters[SGS_SCAN_CFILTERS] = {
 	/*     '|'  */ NULL,
 	/*     '}'  */ NULL,
 	/*     '~'  */ NULL,
-	/* DEL 0x7F */ SGS_Scanner_filter_invalid,
+	/* DEL 0x7F */ SAU_Scanner_filter_invalid,
 };
 
 /*
  * Assign scan frame from undo buffer.
  */
-static void restore_frame(SGS_Scanner *restrict o, uint32_t offset) {
-	uint32_t i = (o->undo_pos - offset) & SGS_SCAN_UNGET_MAX;
+static void restore_frame(SAU_Scanner *restrict o, uint32_t offset) {
+	uint32_t i = (o->undo_pos - offset) & SAU_SCAN_UNGET_MAX;
 	o->sf = o->undo[i];
 }
 
 /*
  * Perform pending updates before a get call.
  */
-static void prepare_frame(SGS_Scanner *restrict o) {
+static void prepare_frame(SAU_Scanner *restrict o) {
 	if (o->unget_num > 0) {
 		/*
 		 * Start from frame after the one ungotten to.
@@ -442,14 +442,14 @@ static void prepare_frame(SGS_Scanner *restrict o) {
 		restore_frame(o, --o->unget_num);
 		return;
 	}
-	if ((o->s_flags & SGS_SCAN_S_DISCARD) != 0) {
-		o->s_flags &= ~SGS_SCAN_S_DISCARD;
+	if ((o->s_flags & SAU_SCAN_S_DISCARD) != 0) {
+		o->s_flags &= ~SAU_SCAN_S_DISCARD;
 	} else {
-		o->undo_pos = (o->undo_pos + 1) & SGS_SCAN_UNGET_MAX;
+		o->undo_pos = (o->undo_pos + 1) & SAU_SCAN_UNGET_MAX;
 	}
 	o->undo[o->undo_pos] = o->sf;
-	if ((o->sf.c_flags & SGS_SCAN_C_LNBRK) != 0) {
-		o->sf.c_flags &= ~SGS_SCAN_C_LNBRK;
+	if ((o->sf.c_flags & SAU_SCAN_C_LNBRK) != 0) {
+		o->sf.c_flags &= ~SAU_SCAN_C_LNBRK;
 		++o->sf.line_num;
 		o->sf.char_num = 0;
 	}
@@ -461,19 +461,19 @@ static void prepare_frame(SGS_Scanner *restrict o) {
  * Sets the file buffer character before the current to \p c,
  * so that a new get after an undo arrives at \p c.
  */
-static void set_usedc(SGS_Scanner *restrict o, uint8_t c) {
+static void set_usedc(SAU_Scanner *restrict o, uint8_t c) {
 	o->sf.c = c;
-	SGS_File *f = o->f;
+	SAU_File *f = o->f;
 	f->mw.pos = f->mr.pos - 1;
-	SGS_FBufMode_FIXP(&f->mw);
-	SGS_File_SETC_NC(f, c);
+	SAU_FBufMode_FIXP(&f->mw);
+	SAU_File_SETC_NC(f, c);
 }
 
 /*
  * Perform updates after reading a sequence of characters,
  * e.g. a string or number. Prepares a temporary post-get scan frame.
  */
-static void advance_frame(SGS_Scanner *o, size_t strlen, uint8_t c) {
+static void advance_frame(SAU_Scanner *o, size_t strlen, uint8_t c) {
 	if (strlen == 0)
 		return;
 	uint32_t reget_count = (strlen > o->unget_num) ?
@@ -489,7 +489,7 @@ static void advance_frame(SGS_Scanner *o, size_t strlen, uint8_t c) {
 	prepare_frame(o);
 	o->sf.char_num += char_inc;
 	o->sf.c = c;
-	o->s_flags |= SGS_SCAN_S_DISCARD;
+	o->s_flags |= SAU_SCAN_S_DISCARD;
 }
 
 /**
@@ -502,37 +502,37 @@ static void advance_frame(SGS_Scanner *o, size_t strlen, uint8_t c) {
  *
  * \return character or 0 upon end of file
  */
-uint8_t SGS_Scanner_getc(SGS_Scanner *restrict o) {
-	SGS_File *f = o->f;
+uint8_t SAU_Scanner_getc(SAU_Scanner *restrict o) {
+	SAU_File *f = o->f;
 	uint8_t c;
 	bool skipped_space = false;
 	prepare_frame(o);
 	for (;;) {
 		++o->sf.char_num;
-		c = SGS_File_GETC(f);
-		SGS_ScanCFilter_f filter = SGS_Scanner_getfilter(o, c);
+		c = SAU_File_GETC(f);
+		SAU_ScanCFilter_f filter = SAU_Scanner_getfilter(o, c);
 		if (!filter) break;
 		c = filter(o, c);
-		if (c == SGS_SCAN_SPACE) {
+		if (c == SAU_SCAN_SPACE) {
 			skipped_space = true;
 			continue;
 		}
 		if (c != 0) break;
 	}
-	if (c == SGS_SCAN_EOF) return 0;
+	if (c == SAU_SCAN_EOF) return 0;
 	set_usedc(o, c);
 	if (skipped_space) {
 		/*
 		 * Unget a character and store skipped space
 		 * before returning it.
 		 */
-		SGS_File_UNGETC(f);
+		SAU_File_UNGETC(f);
 		--o->sf.char_num;
-		set_usedc(o, SGS_SCAN_SPACE);
-		return SGS_SCAN_SPACE;
+		set_usedc(o, SAU_SCAN_SPACE);
+		return SAU_SCAN_SPACE;
 	}
-	if (c == SGS_SCAN_LNBRK) {
-		o->sf.c_flags |= SGS_SCAN_C_LNBRK;
+	if (c == SAU_SCAN_LNBRK) {
+		o->sf.c_flags |= SAU_SCAN_C_LNBRK;
 	}
 	return c;
 }
@@ -546,21 +546,21 @@ uint8_t SGS_Scanner_getc(SGS_Scanner *restrict o) {
  *
  * \return character or 0 upon end of file
  */
-uint8_t SGS_Scanner_getc_nospace(SGS_Scanner *restrict o) {
-	SGS_File *f = o->f;
+uint8_t SAU_Scanner_getc_nospace(SAU_Scanner *restrict o) {
+	SAU_File *f = o->f;
 	uint8_t c;
-	SGS_ScanCFilter_f filter;
+	SAU_ScanCFilter_f filter;
 	bool skipped_lnbrk = false;
 	int32_t old_char_num;
 	prepare_frame(o);
 	for (;;) {
 		++o->sf.char_num;
-		c = SGS_File_GETC(f);
-		filter = SGS_Scanner_getfilter(o, c);
+		c = SAU_File_GETC(f);
+		filter = SAU_Scanner_getfilter(o, c);
 		if (!filter) break;
 		c = filter(o, c);
-		if (c == SGS_SCAN_SPACE) continue;
-		if (c == SGS_SCAN_LNBRK) {
+		if (c == SAU_SCAN_SPACE) continue;
+		if (c == SAU_SCAN_LNBRK) {
 			skipped_lnbrk = true;
 			old_char_num = o->sf.char_num;
 			++o->sf.line_num;
@@ -569,50 +569,50 @@ uint8_t SGS_Scanner_getc_nospace(SGS_Scanner *restrict o) {
 		}
 		if (c != 0) break;
 	}
-	if (c == SGS_SCAN_EOF) return 0;
+	if (c == SAU_SCAN_EOF) return 0;
 	set_usedc(o, c);
 	if (skipped_lnbrk) {
 		/*
 		 * Unget a character and store skipped linebreak
 		 * before returning it.
 		 */
-		SGS_File_UNGETC(f);
+		SAU_File_UNGETC(f);
 		--o->sf.line_num;
 		o->sf.char_num = old_char_num;
-		o->sf.c_flags |= SGS_SCAN_C_LNBRK;
-		set_usedc(o, SGS_SCAN_LNBRK);
-		return SGS_SCAN_LNBRK;
+		o->sf.c_flags |= SAU_SCAN_C_LNBRK;
+		set_usedc(o, SAU_SCAN_LNBRK);
+		return SAU_SCAN_LNBRK;
 	}
 	return c;
 }
 
 /**
  * Get next character if it matches \p testc,
- * filtering whitespace like SGS_Scanner_getc().
+ * filtering whitespace like SAU_Scanner_getc().
  *
- * For filtered characters, does a get followed by SGS_Scanner_ungetc()
+ * For filtered characters, does a get followed by SAU_Scanner_ungetc()
  * if the characters do not match; characters skipped or changed by the
  * filtering remain skipped or changed for future gets.
  *
  * \return true if character matched \p testc
  */
-bool SGS_Scanner_tryc(SGS_Scanner *restrict o, uint8_t testc) {
-	uint8_t c = SGS_File_RETC(o->f);
+bool SAU_Scanner_tryc(SAU_Scanner *restrict o, uint8_t testc) {
+	uint8_t c = SAU_File_RETC(o->f);
 	/*
 	 * Use quick handling for unfiltered characters.
 	 */
-	if (!SGS_Scanner_getfilter(o, c)) {
+	if (!SAU_Scanner_getfilter(o, c)) {
 		if (c != testc) return false;
 		prepare_frame(o);
 		++o->sf.char_num;
-		SGS_FBufMode_INCP(&o->f->mr);
+		SAU_FBufMode_INCP(&o->f->mr);
 		o->sf.c = c;
 		return true;
 	}
-	c = SGS_Scanner_getc(o);
+	c = SAU_Scanner_getc(o);
 	if (c != testc) {
-		o->s_flags |= SGS_SCAN_S_DISCARD;
-		SGS_Scanner_ungetc(o);
+		o->s_flags |= SAU_SCAN_S_DISCARD;
+		SAU_Scanner_ungetc(o);
 		return false;
 	}
 	return true;
@@ -620,31 +620,31 @@ bool SGS_Scanner_tryc(SGS_Scanner *restrict o, uint8_t testc) {
 
 /**
  * Get next character if it matches \p testc,
- * filtering whitespace like SGS_Scanner_getc_nospace().
+ * filtering whitespace like SAU_Scanner_getc_nospace().
  *
- * For filtered characters, does a get followed by SGS_Scanner_ungetc()
+ * For filtered characters, does a get followed by SAU_Scanner_ungetc()
  * if the characters do not match; characters skipped or changed by the
  * filtering remain skipped or changed for future gets.
  *
  * \return true if character matched \p testc
  */
-bool SGS_Scanner_tryc_nospace(SGS_Scanner *restrict o, uint8_t testc) {
-	uint8_t c = SGS_File_RETC(o->f);
+bool SAU_Scanner_tryc_nospace(SAU_Scanner *restrict o, uint8_t testc) {
+	uint8_t c = SAU_File_RETC(o->f);
 	/*
 	 * Use quick handling for unfiltered characters.
 	 */
-	if (!SGS_Scanner_getfilter(o, c)) {
+	if (!SAU_Scanner_getfilter(o, c)) {
 		if (c != testc) return false;
 		prepare_frame(o);
 		++o->sf.char_num;
-		SGS_FBufMode_INCP(&o->f->mr);
+		SAU_FBufMode_INCP(&o->f->mr);
 		o->sf.c = c;
 		return true;
 	}
-	c = SGS_Scanner_getc_nospace(o);
+	c = SAU_Scanner_getc_nospace(o);
 	if (c != testc) {
-		o->s_flags |= SGS_SCAN_S_DISCARD;
-		SGS_Scanner_ungetc(o);
+		o->s_flags |= SAU_SCAN_S_DISCARD;
+		SAU_Scanner_ungetc(o);
 		return false;
 	}
 	return true;
@@ -655,22 +655,22 @@ bool SGS_Scanner_tryc_nospace(SGS_Scanner *restrict o, uint8_t testc) {
  * The next get will jump back and begin with the last character got.
  *
  * The scan position is assigned from the undo buffer, with up to
- * SGS_SCAN_UNGET_MAX ungets allowed in a row.
+ * SAU_SCAN_UNGET_MAX ungets allowed in a row.
  *
  * Allows revisiting a character using a different scanning method.
  *
  * \return number of unget
  */
-uint32_t SGS_Scanner_ungetc(SGS_Scanner *restrict o) {
-	if (o->unget_num >= SGS_SCAN_UNGET_MAX) {
-		SGS_error("scanner",
+uint32_t SAU_Scanner_ungetc(SAU_Scanner *restrict o) {
+	if (o->unget_num >= SAU_SCAN_UNGET_MAX) {
+		SAU_error("scanner",
 "Unget function called >%d times in a row; return without action",
-			SGS_SCAN_UNGET_MAX);
+			SAU_SCAN_UNGET_MAX);
 		return o->unget_num;
 	}
 	restore_frame(o, ++o->unget_num);
-	SGS_File *f = o->f;
-	SGS_File_UNGETC(f);
+	SAU_File *f = o->f;
+	SAU_File_UNGETC(f);
 	set_usedc(o, o->sf.c);
 	return o->unget_num;
 }
@@ -683,25 +683,25 @@ uint32_t SGS_Scanner_ungetc(SGS_Scanner *restrict o) {
  *
  * \return true unless number too large and result truncated
  */
-bool SGS_Scanner_geti(SGS_Scanner *restrict o,
+bool SAU_Scanner_geti(SAU_Scanner *restrict o,
 		int32_t *restrict var, bool allow_sign,
 		size_t *restrict str_len) {
-	SGS_File *f = o->f;
+	SAU_File *f = o->f;
 	size_t read_len;
 	prepare_frame(o);
-	o->sf.c = SGS_File_RETC(f);
+	o->sf.c = SAU_File_RETC(f);
 	++o->sf.char_num;
-	bool truncated = !SGS_File_geti(f, var, allow_sign, &read_len);
+	bool truncated = !SAU_File_geti(f, var, allow_sign, &read_len);
 	if (read_len == 0) {
-		o->s_flags |= SGS_SCAN_S_DISCARD;
+		o->s_flags |= SAU_SCAN_S_DISCARD;
 		if (str_len) *str_len = 0;
 		return true;
 	}
 	if (truncated) {
-		SGS_Scanner_warning(o, NULL,
+		SAU_Scanner_warning(o, NULL,
 			"value truncated, too large for signed 32-bit int");
 	}
-	advance_frame(o, read_len - 1, SGS_File_RETC_NC(f));
+	advance_frame(o, read_len - 1, SAU_File_RETC_NC(f));
 	if (str_len) *str_len = read_len;
 	return !truncated;
 }
@@ -714,25 +714,25 @@ bool SGS_Scanner_geti(SGS_Scanner *restrict o,
  *
  * \return true unless number too large and result truncated
  */
-bool SGS_Scanner_getd(SGS_Scanner *restrict o,
+bool SAU_Scanner_getd(SAU_Scanner *restrict o,
 		double *restrict var, bool allow_sign,
 		size_t *restrict str_len) {
-	SGS_File *f = o->f;
+	SAU_File *f = o->f;
 	size_t read_len;
 	prepare_frame(o);
-	o->sf.c = SGS_File_RETC(f);
+	o->sf.c = SAU_File_RETC(f);
 	++o->sf.char_num;
-	bool truncated = !SGS_File_getd(f, var, allow_sign, &read_len);
+	bool truncated = !SAU_File_getd(f, var, allow_sign, &read_len);
 	if (read_len == 0) {
-		o->s_flags |= SGS_SCAN_S_DISCARD;
+		o->s_flags |= SAU_SCAN_S_DISCARD;
 		if (str_len) *str_len = 0;
 		return true;
 	}
 	if (truncated) {
-		SGS_Scanner_warning(o, NULL,
+		SAU_Scanner_warning(o, NULL,
 			"value truncated, too large for 64-bit float");
 	}
-	advance_frame(o, read_len - 1, SGS_File_RETC_NC(f));
+	advance_frame(o, read_len - 1, SAU_File_RETC_NC(f));
 	if (str_len) *str_len = read_len;
 	return !truncated;
 }
@@ -745,37 +745,37 @@ bool SGS_Scanner_getd(SGS_Scanner *restrict o,
  *
  * \return true if the string fit into the buffer, false if truncated
  */
-bool SGS_Scanner_getsyms(SGS_Scanner *restrict o,
+bool SAU_Scanner_getsyms(SAU_Scanner *restrict o,
 		void *restrict buf, size_t buf_len,
 		size_t *restrict str_len) {
-	SGS_File *f = o->f;
+	SAU_File *f = o->f;
 	size_t len;
 	prepare_frame(o);
-	o->sf.c = SGS_File_RETC(f);
+	o->sf.c = SAU_File_RETC(f);
 	++o->sf.char_num;
 	bool truncated = !read_syms(f, buf, buf_len, &len);
 	if (len == 0) {
-		o->s_flags |= SGS_SCAN_S_DISCARD;
+		o->s_flags |= SAU_SCAN_S_DISCARD;
 		if (str_len) *str_len = 0;
 		return true;
 	}
 	size_t read_len = len;
 	if (truncated) {
-		SGS_Scanner_warning(o, NULL,
+		SAU_Scanner_warning(o, NULL,
 			"limiting identifier to %zd characters",
 			buf_len);
-		read_len += SGS_File_skips(f, filter_symchar);
+		read_len += SAU_File_skips(f, filter_symchar);
 	}
-	advance_frame(o, read_len - 1, SGS_File_RETC_NC(f));
+	advance_frame(o, read_len - 1, SAU_File_RETC_NC(f));
 	if (str_len) *str_len = len;
 	return !truncated;
 }
 
-static void print_stderr(const SGS_Scanner *restrict o,
-		const SGS_ScanFrame *restrict sf,
+static void print_stderr(const SAU_Scanner *restrict o,
+		const SAU_ScanFrame *restrict sf,
 		const char *restrict prefix, const char *restrict fmt,
 		va_list ap) {
-	SGS_File *f = o->f;
+	SAU_File *f = o->f;
 	if (sf != NULL) {
 		fprintf(stderr, "%s:%d:%d: ",
 			f->path, sf->line_num, sf->char_num);
@@ -792,10 +792,10 @@ static void print_stderr(const SGS_Scanner *restrict o,
  * If \p sf is not NULL, it will be used for position;
  * otherwise, the current position is used.
  */
-void SGS_Scanner_warning(const SGS_Scanner *restrict o,
-		const SGS_ScanFrame *restrict sf,
+void SAU_Scanner_warning(const SAU_Scanner *restrict o,
+		const SAU_ScanFrame *restrict sf,
 		const char *restrict fmt, ...) {
-	if ((o->s_flags & SGS_SCAN_S_QUIET) != 0) return;
+	if ((o->s_flags & SAU_SCAN_S_QUIET) != 0) return;
 	va_list ap;
 	va_start(ap, fmt);
 	print_stderr(o, (sf != NULL ? sf : &o->sf),
@@ -810,13 +810,13 @@ void SGS_Scanner_warning(const SGS_Scanner *restrict o,
  *
  * Sets the scanner state error flag.
  */
-void SGS_Scanner_error(SGS_Scanner *restrict o,
-		const SGS_ScanFrame *restrict sf,
+void SAU_Scanner_error(SAU_Scanner *restrict o,
+		const SAU_ScanFrame *restrict sf,
 		const char *restrict fmt, ...) {
 	va_list ap;
 	va_start(ap, fmt);
 	print_stderr(o, (sf != NULL ? sf : &o->sf),
 		"error", fmt, ap);
-	o->s_flags |= SGS_SCAN_S_ERROR;
+	o->s_flags |= SAU_SCAN_S_ERROR;
 	va_end(ap);
 }

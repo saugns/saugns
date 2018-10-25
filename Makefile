@@ -21,7 +21,7 @@ OBJ=\
 	renderer/generator.o \
 	audiodev.o \
 	wavfile.o \
-	sgensys.o
+	saugns.o
 TEST_OBJ=\
 	common.o \
 	arrtype.o \
@@ -34,26 +34,26 @@ TEST_OBJ=\
 	mempool.o \
 	test-builder.o
 
-all: sgensys
+all: saugns
 test: test-builder
 clean:
-	rm -f $(OBJ) sgensys
+	rm -f $(OBJ) saugns
 	rm -f $(TEST_OBJ) test-builder
 
-sgensys: $(OBJ)
+saugns: $(OBJ)
 	@UNAME="`uname -s`"; \
 	if [ $$UNAME = 'Linux' ]; then \
 		echo "Linking for Linux (using ALSA and OSS)."; \
-		$(CC) $(OBJ) $(LFLAGS_LINUX) -o sgensys; \
+		$(CC) $(OBJ) $(LFLAGS_LINUX) -o saugns; \
 	elif [ $$UNAME = 'OpenBSD' ]; then \
 		echo "Linking for OpenBSD (using sndio)."; \
-		$(CC) $(OBJ) $(LFLAGS_SNDIO) -o sgensys; \
+		$(CC) $(OBJ) $(LFLAGS_SNDIO) -o saugns; \
 	elif [ $$UNAME = 'NetBSD' ]; then \
 		echo "Linking for NetBSD (using OSS)."; \
-		$(CC) $(OBJ) $(LFLAGS_OSSAUDIO) -o sgensys; \
+		$(CC) $(OBJ) $(LFLAGS_OSSAUDIO) -o saugns; \
 	else \
 		echo "Linking for generic UNIX (using OSS)."; \
-		$(CC) $(OBJ) $(LFLAGS) -o sgensys; \
+		$(CC) $(OBJ) $(LFLAGS) -o saugns; \
 	fi
 
 test-builder: $(TEST_OBJ)
@@ -68,7 +68,7 @@ audiodev.o: audiodev.c audiodev/*.c audiodev.h common.h
 common.o: common.c common.h
 	$(CC) -c $(CFLAGS) common.c
 
-builder.o: builder.c sgensys.h builder/script.h builder/ptrlist.h program.h program/param.h program/slope.h program/wave.h common.h
+builder.o: builder.c saugns.h builder/script.h builder/ptrlist.h program.h program/param.h program/slope.h program/wave.h common.h
 	$(CC) -c $(CFLAGS) builder.c
 
 builder/file.o: builder/file.c builder/file.h common.h
@@ -104,16 +104,16 @@ program/param.o: program/param.c program/param.h program/slope.h math.h common.h
 program/wave.o: program/wave.c program/wave.h math.h common.h
 	$(CC) -c $(CFLAGS) program/wave.c -o program/wave.o
 
-renderer.o: renderer.c sgensys.h renderer/generator.h program.h program/param.h program/slope.h program/wave.h audiodev.h wavfile.h common.h
+renderer.o: renderer.c saugns.h renderer/generator.h program.h program/param.h program/slope.h program/wave.h audiodev.h wavfile.h common.h
 	$(CC) -c $(CFLAGS) renderer.c
 
 renderer/generator.o: renderer/generator.c renderer/generator.h renderer/osc.h program.h program/param.h program/slope.h program/wave.h math.h common.h
 	$(CC) -c $(CFLAGS) renderer/generator.c -o renderer/generator.o
 
-sgensys.o: sgensys.c sgensys.h program.h program/param.h program/slope.h program/wave.h common.h
-	$(CC) -c $(CFLAGS) sgensys.c
+saugns.o: saugns.c saugns.h program.h program/param.h program/slope.h program/wave.h common.h
+	$(CC) -c $(CFLAGS) saugns.c
 
-test-builder.o: test-builder.c sgensys.h program.h program/param.h program/slope.h program/wave.h builder/scanner.h builder/file.h builder/lexer.h builder/symtab.h common.h
+test-builder.o: test-builder.c saugns.h program.h program/param.h program/slope.h program/wave.h builder/scanner.h builder/file.h builder/lexer.h builder/symtab.h common.h
 	$(CC) -c $(CFLAGS) test-builder.c
 
 wavfile.o: wavfile.c wavfile.h common.h

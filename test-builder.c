@@ -1,4 +1,4 @@
-/* sgensys: Test program for experimental builder code.
+/* saugns: Test program for experimental builder code.
  * Copyright (c) 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -11,8 +11,8 @@
  * <https://www.gnu.org/licenses/>.
  */
 
-#include "sgensys.h"
-#if SGS_TEST_SCANNER
+#include "saugns.h"
+#if SAU_TEST_SCANNER
 # include "builder/scanner.h"
 #else
 # include "builder/lexer.h"
@@ -29,7 +29,7 @@ static void print_usage(bool by_arg) {
 "Usage: test-builder [-c] [-p] scriptfile\n"
 "\n"
 "  -c \tCheck script only, reporting any errors or requested info.\n"
-"  -p \tPrint info for script after loading.\n"
+"  -p \tPrint script info after loading.\n"
 "  -h \tPrint this message.\n"
 "  -v \tPrint version.\n",
 	(by_arg) ? stdout : stderr);
@@ -39,7 +39,7 @@ static void print_usage(bool by_arg) {
  * Print version.
  */
 static void print_version(void) {
-	puts(SGS_VERSION_STR);
+	puts(SAU_VERSION_STR);
 }
 
 /*
@@ -110,37 +110,37 @@ INVALID:
 /**
  * Run script through test code.
  *
- * \return SGS_Program or NULL on error
+ * \return SAU_Program or NULL on error
  */
-SGS_Program* SGS_build(const char *restrict fname) {
-#if SGS_TEST_SCANNER
-	SGS_Scanner *scanner = SGS_create_Scanner();
-	if (SGS_Scanner_fopenrb(scanner, fname)) for (;;) {
-		uint8_t c = SGS_Scanner_getc(scanner);
+SAU_Program* SAU_build(const char *restrict fname) {
+#if SAU_TEST_SCANNER
+	SAU_Scanner *scanner = SAU_create_Scanner();
+	if (SAU_Scanner_fopenrb(scanner, fname)) for (;;) {
+		uint8_t c = SAU_Scanner_getc(scanner);
 		if (!c) {
 			putchar('\n');
 			break;
 		}
 		putchar(c);
 	}
-	SGS_destroy_Scanner(scanner);
+	SAU_destroy_Scanner(scanner);
 	// return dummy object
-	return (SGS_Program*) calloc(1, sizeof(SGS_Program));
+	return (SAU_Program*) calloc(1, sizeof(SAU_Program));
 #else
-	SGS_SymTab *symtab = SGS_create_SymTab();
-	SGS_Lexer *lexer = SGS_create_Lexer(fname, symtab);
+	SAU_SymTab *symtab = SAU_create_SymTab();
+	SAU_Lexer *lexer = SAU_create_Lexer(fname, symtab);
 	if (!lexer) {
-		SGS_destroy_SymTab(symtab);
+		SAU_destroy_SymTab(symtab);
 		return false;
 	}
 	for (;;) {
-		SGS_ScriptToken token;
-		if (!SGS_Lexer_get(lexer, &token)) break;
+		SAU_ScriptToken token;
+		if (!SAU_Lexer_get(lexer, &token)) break;
 	}
-	SGS_destroy_Lexer(lexer);
-	SGS_destroy_SymTab(symtab);
+	SAU_destroy_Lexer(lexer);
+	SAU_destroy_SymTab(symtab);
 	// return dummy object
-	return (SGS_Program*) calloc(1, sizeof(SGS_Program));
+	return (SAU_Program*) calloc(1, sizeof(SAU_Program));
 #endif
 }
 
@@ -150,19 +150,18 @@ SGS_Program* SGS_build(const char *restrict fname) {
  * \return true unless error occurred
  */
 static bool build(const char *restrict fname,
-		SGS_Program **restrict prg_out,
+		SAU_Program **restrict prg_out,
 		uint32_t options) {
-	SGS_Program *prg;
-	if (!(prg = SGS_build(fname)))
+	SAU_Program *prg;
+	if (!(prg = SAU_build(fname)))
 		return false;
 	if ((options & ARG_PRINT_INFO) != 0)
-		SGS_Program_print_info(prg);
+		SAU_Program_print_info(prg);
 	if ((options & ARG_ONLY_COMPILE) != 0) {
-		SGS_discard_Program(prg);
+		SAU_discard_Program(prg);
 		*prg_out = NULL;
 		return true;
 	}
-
 	*prg_out = prg;
 	return true;
 }
@@ -173,15 +172,15 @@ static bool build(const char *restrict fname,
 int main(int argc, char **argv) {
 	const char *script_path = NULL;
 	uint32_t options = 0;
-	SGS_Program *prg;
+	SAU_Program *prg;
+
 	if (!parse_args(argc, argv, &options, &script_path))
 		return 0;
 	if (!build(script_path, &prg, options))
 		return 1;
 	if (prg != NULL) {
 		// no audio output
-		SGS_discard_Program(prg);
+		SAU_discard_Program(prg);
 	}
-
 	return 0;
 }

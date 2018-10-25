@@ -1,4 +1,4 @@
-/* sgensys: Symbol table module.
+/* saugns: Symbol table module.
  * Copyright (c) 2011-2012, 2014, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -18,7 +18,7 @@
 
 #define STRTAB_ALLOC_INITIAL 1024
 
-#if SGS_HASHTAB_STATS
+#if SAU_HASHTAB_STATS
 static size_t collision_count = 0;
 #include <stdio.h>
 #endif
@@ -33,8 +33,8 @@ typedef struct StrEntry {
 #define GET_STRING_ENTRY_SIZE(str_len) \
 	(offsetof(StrEntry, str) + (str_len))
 
-struct SGS_SymTab {
-	SGS_MemPool *malc;
+struct SAU_SymTab {
+	SAU_MemPool *malc;
 	StrEntry **strtab;
 	size_t strtab_count;
 	size_t strtab_alloc;
@@ -45,10 +45,10 @@ struct SGS_SymTab {
  *
  * \return instance, or NULL on allocation failure
  */
-SGS_SymTab *SGS_create_SymTab(void) {
-	SGS_SymTab *o = calloc(1, sizeof(SGS_SymTab));
+SAU_SymTab *SAU_create_SymTab(void) {
+	SAU_SymTab *o = calloc(1, sizeof(SAU_SymTab));
 	if (o == NULL) return NULL;
-	o->malc = SGS_create_MemPool(0);
+	o->malc = SAU_create_MemPool(0);
 	if (o->malc == NULL) {
 		free(o);
 		return NULL;
@@ -59,11 +59,11 @@ SGS_SymTab *SGS_create_SymTab(void) {
 /**
  * Destroy instance.
  */
-void SGS_destroy_SymTab(SGS_SymTab *restrict o) {
-#if SGS_HASHTAB_STATS
+void SAU_destroy_SymTab(SAU_SymTab *restrict o) {
+#if SAU_HASHTAB_STATS
 	printf("collision count: %zd\n", collision_count);
 #endif
-	SGS_destroy_MemPool(o->malc);
+	SAU_destroy_MemPool(o->malc);
 	free(o->strtab);
 }
 
@@ -72,7 +72,7 @@ void SGS_destroy_SymTab(SGS_SymTab *restrict o) {
  *
  * \return hash
  */
-static size_t hash_string(SGS_SymTab *restrict o,
+static size_t hash_string(SAU_SymTab *restrict o,
 		const char *restrict str, size_t len) {
 	size_t i;
 	size_t hash;
@@ -93,7 +93,7 @@ static size_t hash_string(SGS_SymTab *restrict o,
  *
  * \return true, or false on allocation failure
  */
-static bool extend_strtab(SGS_SymTab *restrict o) {
+static bool extend_strtab(SAU_SymTab *restrict o) {
 	StrEntry **old_strtab = o->strtab;
 	size_t old_strtab_alloc = o->strtab_alloc;
 	size_t i;
@@ -136,7 +136,7 @@ static bool extend_strtab(SGS_SymTab *restrict o) {
  *
  * \return StrEntry, or NULL if none
  */
-static StrEntry *unique_entry(SGS_SymTab *restrict o,
+static StrEntry *unique_entry(SAU_SymTab *restrict o,
 		const void *restrict str, size_t len) {
 	size_t hash;
 	StrEntry *entry;
@@ -153,11 +153,11 @@ static StrEntry *unique_entry(SGS_SymTab *restrict o,
 		entry = entry->prev;
 		if (entry == NULL) break; /* missing */
 	}
-#if SGS_HASHTAB_STATS
+#if SAU_HASHTAB_STATS
 	++collision_count;
 #endif
 ADD_ENTRY:
-	entry = SGS_MemPool_alloc(o->malc, GET_STRING_ENTRY_SIZE(len + 1));
+	entry = SAU_MemPool_alloc(o->malc, GET_STRING_ENTRY_SIZE(len + 1));
 	if (entry == NULL) return NULL;
 	entry->prev = o->strtab[hash];
 	o->strtab[hash] = entry;
@@ -175,7 +175,7 @@ ADD_ENTRY:
  *
  * \return unique copy of \p str for instance, or NULL on allocation failure
  */
-const void *SGS_SymTab_pool_str(SGS_SymTab *restrict o,
+const void *SAU_SymTab_pool_str(SAU_SymTab *restrict o,
 		const void *restrict str, size_t len) {
 	StrEntry *entry = unique_entry(o, str, len);
 	return (entry) ? entry->str : NULL;
@@ -191,13 +191,13 @@ const void *SGS_SymTab_pool_str(SGS_SymTab *restrict o,
  *
  * \return array of pointers to unique strings, or NULL on allocation failure
  */
-const char **SGS_SymTab_pool_stra(SGS_SymTab *restrict o,
+const char **SAU_SymTab_pool_stra(SAU_SymTab *restrict o,
 		const char *const*restrict stra, size_t n) {
 	const char **res_stra;
-	res_stra = SGS_MemPool_alloc(o->malc, sizeof(const char*) * n);
+	res_stra = SAU_MemPool_alloc(o->malc, sizeof(const char*) * n);
 	if (!res_stra) return NULL;
 	for (size_t i = 0; i < n; ++i) {
-		const char *str = SGS_SymTab_pool_str(o,
+		const char *str = SAU_SymTab_pool_str(o,
 				stra[i], strlen(stra[i]));
 		if (!str) return NULL;
 		res_stra[i] = str;
@@ -210,7 +210,7 @@ const char **SGS_SymTab_pool_stra(SGS_SymTab *restrict o,
  *
  * \return value, or NULL if none
  */
-void *SGS_SymTab_get(SGS_SymTab *restrict o,
+void *SAU_SymTab_get(SAU_SymTab *restrict o,
 		const void *restrict key, size_t len) {
 	StrEntry *entry;
 	entry = unique_entry(o, key, len);
@@ -223,7 +223,7 @@ void *SGS_SymTab_get(SGS_SymTab *restrict o,
  *
  * \return previous value, or NULL if none
  */
-void *SGS_SymTab_set(SGS_SymTab *restrict o,
+void *SAU_SymTab_set(SAU_SymTab *restrict o,
 		const void *restrict key, size_t len, void *restrict value) {
 	StrEntry *entry;
 	entry = unique_entry(o, key, len);

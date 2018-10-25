@@ -1,5 +1,5 @@
-/* sgensys: Audio program builder module.
- * Copyright (c) 2011-2013, 2017-2018 Joel K. Pettersson
+/* saugns: Audio program builder module.
+ * Copyright (c) 2011-2013, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -11,7 +11,7 @@
  * <https://www.gnu.org/licenses/>.
  */
 
-#include "sgensys.h"
+#include "saugns.h"
 #include "builder/script.h"
 #include <string.h>
 #include <stdlib.h>
@@ -22,12 +22,12 @@
  *
  * \return instance or NULL on error
  */
-SGS_Program* SGS_build(const char *restrict fname) {
-	SGS_Script *sd = SGS_load_Script(fname);
+SAU_Program* SAU_build(const char *restrict fname) {
+	SAU_Script *sd = SAU_load_Script(fname);
 	if (!sd) return NULL;
 
-	SGS_Program *o = SGS_build_Program(sd);
-	SGS_discard_Script(sd);
+	SAU_Program *o = SAU_build_Program(sd);
+	SAU_discard_Script(sd);
 	if (!o) return NULL;
 	return o;
 }

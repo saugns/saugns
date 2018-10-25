@@ -1,5 +1,5 @@
-/* sgensys: Memory pool module.
- * Copyright (c) 2014, 2018 Joel K. Pettersson
+/* saugns: Memory pool module.
+ * Copyright (c) 2014, 2018-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -14,12 +14,12 @@
 #pragma once
 #include "common.h"
 
-struct SGS_MemPool;
-typedef struct SGS_MemPool SGS_MemPool;
+struct SAU_MemPool;
+typedef struct SAU_MemPool SAU_MemPool;
 
-SGS_MemPool *SGS_create_MemPool(size_t block_size) SGS__malloclike;
-void SGS_destroy_MemPool(SGS_MemPool *restrict o);
+SAU_MemPool *SAU_create_MemPool(size_t block_size) SAU__malloclike;
+void SAU_destroy_MemPool(SAU_MemPool *restrict o);
 
-void *SGS_MemPool_alloc(SGS_MemPool *restrict o, size_t size) SGS__malloclike;
-void *SGS_MemPool_memdup(SGS_MemPool *restrict o,
-		const void *restrict src, size_t size) SGS__malloclike;
+void *SAU_MemPool_alloc(SAU_MemPool *restrict o, size_t size) SAU__malloclike;
+void *SAU_MemPool_memdup(SAU_MemPool *restrict o,
+		const void *restrict src, size_t size) SAU__malloclike;
