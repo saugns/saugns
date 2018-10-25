@@ -1,4 +1,4 @@
-/* sgensys: Value slope module.
+/* saugns: Value slope module.
  * Copyright (c) 2011-2013, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -14,7 +14,7 @@
 #include "slope.h"
 #include "math.h"
 
-const char *const SGS_Slope_names[SGS_SLOPE_TYPES + 1] = {
+const char *const SAU_Slope_names[SAU_SLOPE_TYPES + 1] = {
 	"hold",
 	"lin",
 	"exp",
@@ -22,20 +22,20 @@ const char *const SGS_Slope_names[SGS_SLOPE_TYPES + 1] = {
 	NULL
 };
 
-const SGS_SlopeFill_f SGS_Slope_fills[SGS_SLOPE_TYPES] = {
-	SGS_Slope_fill_hold,
-	SGS_Slope_fill_lin,
-	SGS_Slope_fill_exp,
-	SGS_Slope_fill_log,
+const SAU_SlopeFill_f SAU_Slope_fills[SAU_SLOPE_TYPES] = {
+	SAU_Slope_fill_hold,
+	SAU_Slope_fill_lin,
+	SAU_Slope_fill_exp,
+	SAU_Slope_fill_log,
 };
 
 /**
  * Fill \p buf with \p len values along a straight horizontal line,
  * i.e. \p len copies of \p v0.
  */
-void SGS_Slope_fill_hold(float *restrict buf, uint32_t len,
-		float v0, float vt SGS__maybe_unused,
-		uint32_t pos SGS__maybe_unused, uint32_t time SGS__maybe_unused) {
+void SAU_Slope_fill_hold(float *restrict buf, uint32_t len,
+		float v0, float vt SAU__maybe_unused,
+		uint32_t pos SAU__maybe_unused, uint32_t time SAU__maybe_unused) {
 	uint32_t i;
 	for (i = 0; i < len; ++i)
 		buf[i] = v0;
@@ -46,7 +46,7 @@ void SGS_Slope_fill_hold(float *restrict buf, uint32_t len,
  * from \p v0 (at position 0) to \p vt (at position \p time),
  * beginning at position \p pos.
  */
-void SGS_Slope_fill_lin(float *restrict buf, uint32_t len,
+void SAU_Slope_fill_lin(float *restrict buf, uint32_t len,
 		float v0, float vt,
 		uint32_t pos, uint32_t time) {
 	const double inv_time = 1.f / time;
@@ -65,7 +65,7 @@ void SGS_Slope_fill_lin(float *restrict buf, uint32_t len,
  * (Unlike a real exponential curve, it has a definite beginning
  * and end. It is symmetric to the corresponding logarithmic curve.)
  */
-void SGS_Slope_fill_exp(float *restrict buf, uint32_t len,
+void SAU_Slope_fill_exp(float *restrict buf, uint32_t len,
 		float v0, float vt,
 		uint32_t pos, uint32_t time) {
 	const double inv_time = 1.f / time;
@@ -75,7 +75,7 @@ void SGS_Slope_fill_exp(float *restrict buf, uint32_t len,
 			modp2 = mod * mod,
 			modp3 = modp2 * mod;
 		mod = modp3 + (modp2 * modp3 - modp2) *
-		      (mod * (629.f/1792.f) + modp2 * (1163.f/1792.f));
+			(mod * (629.f/1792.f) + modp2 * (1163.f/1792.f));
 		(*buf++) = vt + (v0 - vt) * mod;
 	}
 }
@@ -89,7 +89,7 @@ void SGS_Slope_fill_exp(float *restrict buf, uint32_t len,
  * (Unlike a real logarithmic curve, it has a definite beginning
  * and end. It is symmetric to the corresponding exponential curve.)
  */
-void SGS_Slope_fill_log(float *restrict buf, uint32_t len,
+void SAU_Slope_fill_log(float *restrict buf, uint32_t len,
 		float v0, float vt,
 		uint32_t pos, uint32_t time) {
 	const double inv_time = 1.f / time;
@@ -99,7 +99,7 @@ void SGS_Slope_fill_log(float *restrict buf, uint32_t len,
 			modp2 = mod * mod,
 			modp3 = modp2 * mod;
 		mod = modp3 + (modp2 * modp3 - modp2) *
-		      (mod * (629.f/1792.f) + modp2 * (1163.f/1792.f));
+			(mod * (629.f/1792.f) + modp2 * (1163.f/1792.f));
 		(*buf++) = v0 + (vt - v0) * mod;
 	}
 }
@@ -109,27 +109,27 @@ void SGS_Slope_fill_log(float *restrict buf, uint32_t len,
  *
  * (This does not include values specific to a particular parameter.)
  */
-void SGS_Slope_reset(SGS_Slope *restrict o) {
-	*o = (SGS_Slope){0};
-	o->slope = SGS_SLOPE_LIN; // default if slope enabled
+void SAU_Slope_reset(SAU_Slope *restrict o) {
+	*o = (SAU_Slope){0};
+	o->slope = SAU_SLOPE_LIN; // default if slope enabled
 }
 
 /**
  * Copy changes from \p src to the instance,
  * preserving non-overridden parts of state.
  */
-void SGS_Slope_copy(SGS_Slope *restrict o,
-		const SGS_Slope *restrict src) {
+void SAU_Slope_copy(SAU_Slope *restrict o,
+		const SAU_Slope *restrict src) {
 	uint8_t mask = 0;
-	if ((src->flags & SGS_SLP_STATE) != 0) {
+	if ((src->flags & SAU_SLP_STATE) != 0) {
 		o->v0 = src->v0;
-		mask |= SGS_SLP_STATE | SGS_SLP_STATE_RATIO;
+		mask |= SAU_SLP_STATE | SAU_SLP_STATE_RATIO;
 	}
-	if ((src->flags & SGS_SLP_SLOPE) != 0) {
+	if ((src->flags & SAU_SLP_SLOPE) != 0) {
 		o->vt = src->vt;
 		o->time_ms = src->time_ms;
 		o->slope = src->slope;
-		mask |= SGS_SLP_SLOPE | SGS_SLP_SLOPE_RATIO;
+		mask |= SAU_SLP_SLOPE | SAU_SLP_SLOPE_RATIO;
 	}
 	o->flags &= ~mask;
 	o->flags |= (src->flags & mask);
@@ -138,13 +138,13 @@ void SGS_Slope_copy(SGS_Slope *restrict o,
 /*
  * Fill \p buf from \p from to \p to - 1 with copies of \a v0.
  *
- * If the SGS_SLP_STATE_RATIO flag is set, multiply using \p mulbuf
+ * If the SAU_SLP_STATE_RATIO flag is set, multiply using \p mulbuf
  * for each value.
  */
-static void fill_state(SGS_Slope *restrict o, float *restrict buf,
+static void fill_state(SAU_Slope *restrict o, float *restrict buf,
 		uint32_t from, uint32_t to,
 		const float *restrict mulbuf) {
-	if ((o->flags & SGS_SLP_STATE_RATIO) != 0) {
+	if ((o->flags & SAU_SLP_STATE_RATIO) != 0) {
 		for (uint32_t i = from; i < to; ++i)
 			buf[i] = o->v0 * mulbuf[i];
 	} else {
@@ -162,32 +162,32 @@ static void fill_state(SGS_Slope *restrict o, float *restrict buf,
  *
  * \return true if slope target not yet reached
  */
-bool SGS_Slope_run(SGS_Slope *restrict o, float *restrict buf,
+bool SAU_Slope_run(SAU_Slope *restrict o, float *restrict buf,
 		uint32_t buf_len, uint32_t srate,
 		uint32_t *restrict pos, const float *restrict mulbuf) {
-	if (!(o->flags & SGS_SLP_SLOPE)) {
+	if (!(o->flags & SAU_SLP_SLOPE)) {
 		fill_state(o, buf, 0, buf_len, mulbuf);
 		return false;
 	}
-	uint32_t time = SGS_MS_IN_SAMPLES(o->time_ms, srate);
-	if ((o->flags & SGS_SLP_SLOPE_RATIO) != 0) {
-		if (!(o->flags & SGS_SLP_STATE_RATIO)) {
+	uint32_t time = SAU_MS_IN_SAMPLES(o->time_ms, srate);
+	if ((o->flags & SAU_SLP_SLOPE_RATIO) != 0) {
+		if (!(o->flags & SAU_SLP_STATE_RATIO)) {
 			// divide v0 and enable ratio to match slope and vt
 			o->v0 /= mulbuf[0];
-			o->flags |= SGS_SLP_STATE_RATIO;
+			o->flags |= SAU_SLP_STATE_RATIO;
 		}
 	} else {
-		if ((o->flags & SGS_SLP_STATE_RATIO) != 0) {
+		if ((o->flags & SAU_SLP_STATE_RATIO) != 0) {
 			// multiply v0 and disable ratio to match slope and vt
 			o->v0 *= mulbuf[0];
-			o->flags &= ~SGS_SLP_STATE_RATIO;
+			o->flags &= ~SAU_SLP_STATE_RATIO;
 		}
 	}
 	uint32_t len;
 	len = time - *pos;
 	if (len > buf_len) len = buf_len;
-	SGS_Slope_fills[o->slope](buf, len, o->v0, o->vt, *pos, time);
-	if ((o->flags & SGS_SLP_SLOPE_RATIO) != 0) {
+	SAU_Slope_fills[o->slope](buf, len, o->v0, o->vt, *pos, time);
+	if ((o->flags & SAU_SLP_SLOPE_RATIO) != 0) {
 		for (uint32_t i = 0; i < len; ++i)
 			buf[i] *= mulbuf[i];
 	}
@@ -198,7 +198,7 @@ bool SGS_Slope_run(SGS_Slope *restrict o, float *restrict buf,
 		 * Fill any remaining buffer values using it.
 		 */
 		o->v0 = o->vt;
-		o->flags &= ~(SGS_SLP_SLOPE | SGS_SLP_SLOPE_RATIO);
+		o->flags &= ~(SAU_SLP_SLOPE | SAU_SLP_SLOPE_RATIO);
 		fill_state(o, buf, len, buf_len, mulbuf);
 		return false;
 	}

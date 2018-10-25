@@ -1,4 +1,4 @@
-/* sgensys: Audio program renderer module.
+/* saugns: Audio program renderer module.
  * Copyright (c) 2011-2013, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -11,7 +11,7 @@
  * <https://www.gnu.org/licenses/>.
  */
 
-#include "sgensys.h"
+#include "saugns.h"
 #include "renderer/generator.h"
 #include "audiodev.h"
 #include "wavfile.h"
@@ -27,24 +27,24 @@ static int16_t audio_buf[BUF_SAMPLES * NUM_CHANNELS];
  *
  * \return true unless error occurred
  */
-static bool produce_audio(const SGS_Program *restrict prg, uint32_t srate,
-		SGS_AudioDev *restrict ad, SGS_WAVFile *restrict wf) {
-	SGS_Generator *gen = SGS_create_Generator(prg, srate);
+static bool produce_audio(const SAU_Program *restrict prg, uint32_t srate,
+		SAU_AudioDev *restrict ad, SAU_WAVFile *restrict wf) {
+	SAU_Generator *gen = SAU_create_Generator(prg, srate);
 	size_t len;
 	bool error = false;
 	bool run;
 	do {
-		run = SGS_Generator_run(gen, audio_buf, BUF_SAMPLES, &len);
-		if (ad && !SGS_AudioDev_write(ad, audio_buf, len)) {
+		run = SAU_Generator_run(gen, audio_buf, BUF_SAMPLES, &len);
+		if (ad && !SAU_AudioDev_write(ad, audio_buf, len)) {
 			error = true;
-			SGS_error(NULL, "audio device write failed");
+			SAU_error(NULL, "audio device write failed");
 		}
-		if (wf && !SGS_WAVFile_write(wf, audio_buf, len)) {
+		if (wf && !SAU_WAVFile_write(wf, audio_buf, len)) {
 			error = true;
-			SGS_error(NULL, "WAV file write failed");
+			SAU_error(NULL, "WAV file write failed");
 		}
 	} while (run);
-	SGS_destroy_Generator(gen);
+	SAU_destroy_Generator(gen);
 	return !error;
 }
 
@@ -57,33 +57,33 @@ static bool produce_audio(const SGS_Program *restrict prg, uint32_t srate,
  *
  * \return true unless error occurred
  */
-bool SGS_render(const SGS_PtrList *restrict prg_objs, uint32_t srate,
+bool SAU_render(const SAU_PtrList *restrict prg_objs, uint32_t srate,
 		bool use_audiodev, const char *restrict wav_path) {
 	if (!prg_objs->count) return true;
 
-	SGS_AudioDev *ad = NULL;
+	SAU_AudioDev *ad = NULL;
 	uint32_t ad_srate = srate;
-	SGS_WAVFile *wf = NULL;
+	SAU_WAVFile *wf = NULL;
 	bool status = true;
 	if (use_audiodev) {
-		ad = SGS_open_AudioDev(NUM_CHANNELS, &ad_srate);
+		ad = SAU_open_AudioDev(NUM_CHANNELS, &ad_srate);
 		if (!ad) {
 			status = false;
 			goto CLEANUP;
 		}
 	}
 	if (wav_path != NULL) {
-		wf = SGS_create_WAVFile(wav_path, NUM_CHANNELS, srate);
+		wf = SAU_create_WAVFile(wav_path, NUM_CHANNELS, srate);
 		if (!wf) {
 			status = false;
 			goto CLEANUP;
 		}
 	}
 	if (ad != NULL && wf != NULL && (ad_srate != srate)) {
-		SGS_warning(NULL,
+		SAU_warning(NULL,
 			"generating audio twice, using different sample rates");
-		const SGS_Program **prgs =
-			(const SGS_Program**) SGS_PtrList_ITEMS(prg_objs);
+		const SAU_Program **prgs =
+			(const SAU_Program**) SAU_PtrList_ITEMS(prg_objs);
 		for (size_t i = 0; i < prg_objs->count; ++i) {
 			if (!produce_audio(prgs[i], ad_srate, ad, NULL))
 				status = false;
@@ -91,8 +91,8 @@ bool SGS_render(const SGS_PtrList *restrict prg_objs, uint32_t srate,
 				status = false;
 		}
 	} else {
-		const SGS_Program **prgs =
-			(const SGS_Program**) SGS_PtrList_ITEMS(prg_objs);
+		const SAU_Program **prgs =
+			(const SAU_Program**) SAU_PtrList_ITEMS(prg_objs);
 		for (size_t i = 0; i < prg_objs->count; ++i) {
 			if (!produce_audio(prgs[i], ad_srate, ad, wf))
 				status = false;
@@ -100,9 +100,9 @@ bool SGS_render(const SGS_PtrList *restrict prg_objs, uint32_t srate,
 	}
 
 CLEANUP:
-	if (ad != NULL) SGS_close_AudioDev(ad);
+	if (ad != NULL) SAU_close_AudioDev(ad);
 	if (wf != NULL) {
-		if (SGS_close_WAVFile(wf) != 0)
+		if (SAU_close_WAVFile(wf) != 0)
 			status = false;
 	}
 	return status;
