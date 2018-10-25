@@ -1,4 +1,4 @@
-/* sgensys: Audio generator module.
+/* saugns: Audio generator module.
  * Copyright (c) 2011-2012, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -14,13 +14,13 @@
 #pragma once
 #include "../program.h"
 
-struct SGS_Generator;
-typedef struct SGS_Generator SGS_Generator;
+struct SAU_Generator;
+typedef struct SAU_Generator SAU_Generator;
 
-SGS_Generator* SGS_create_Generator(const SGS_Program *restrict prg,
-		uint32_t srate) SGS__malloclike;
-void SGS_destroy_Generator(SGS_Generator *restrict o);
+SAU_Generator* SAU_create_Generator(const SAU_Program *restrict prg,
+		uint32_t srate) SAU__malloclike;
+void SAU_destroy_Generator(SAU_Generator *restrict o);
 
-bool SGS_Generator_run(SGS_Generator *restrict o,
+bool SAU_Generator_run(SAU_Generator *restrict o,
 		int16_t *restrict buf, size_t buf_len,
 		size_t *restrict out_len);
