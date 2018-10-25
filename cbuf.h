@@ -1,4 +1,4 @@
-/* sgensys: Circular buffer module.
+/* ssndgen: Circular buffer module.
  * Copyright (c) 2014, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -24,79 +24,79 @@
  * callback sets the position of the next call.
  */
 
-#define SGS_CBUF_ALEN 4096
-#define SGS_CBUF_ANUM 2
-#define SGS_CBUF_SIZ  (SGS_CBUF_ALEN * SGS_CBUF_ANUM)
+#define SSG_CBUF_ALEN 4096
+#define SSG_CBUF_ANUM 2
+#define SSG_CBUF_SIZ  (SSG_CBUF_ALEN * SSG_CBUF_ANUM)
 
 /*
  * Mode subtype...
  */
 
-struct SGS_CBufMode;
-typedef struct SGS_CBufMode SGS_CBufMode;
+struct SSG_CBufMode;
+typedef struct SSG_CBufMode SSG_CBufMode;
 
 /**
  * Mode action callback type. Must wrap position, update call position,
  * and may e.g. handle file reading or writing to/from the buffer in
  * addition. Should return the number of characters successfully handled.
  */
-typedef size_t (*SGS_CBufMode_f)(SGS_CBufMode *o);
+typedef size_t (*SSG_CBufMode_f)(SSG_CBufMode *o);
 
 /**
  * Data for reading or writing, with callback for performing action
  * when pos == call_pos.
  */
-struct SGS_CBufMode {
+struct SSG_CBufMode {
 	size_t pos;
 	size_t call_pos;
-	SGS_CBufMode_f f;
-	void *ref; // set to SGS_CBuf instance by SGS_CBuf, but may be changed
+	SSG_CBufMode_f f;
+	void *ref; // set to SSG_CBuf instance by SSG_CBuf, but may be changed
 };
 
-size_t SGS_CBufMode_wrap(SGS_CBufMode *o); // default callback
+size_t SSG_CBufMode_wrap(SSG_CBufMode *o); // default callback
 
-void SGS_CBufMode_reset(SGS_CBufMode *o);
+void SSG_CBufMode_reset(SSG_CBufMode *o);
 
 /**
  * Flip to the beginning of the next buffer area.
  */
-#define SGS_CBufMode_ANEXT(o) \
-	((o)->pos = ((o)->pos + SGS_CBUF_ALEN) \
-		& ((SGS_CBUF_SIZ - 1) & ~(SGS_CBUF_ALEN - 1)))
+#define SSG_CBufMode_ANEXT(o) \
+	((o)->pos = ((o)->pos + SSG_CBUF_ALEN) \
+		& ((SSG_CBUF_SIZ - 1) & ~(SSG_CBUF_ALEN - 1)))
 
 /**
  * Flip to the next buffer area, maintaining relative position within
  * the area.
  */
-#define SGS_CBufMode_AINC(o) \
-	((o)->pos = ((o)->pos + SGS_CBUF_ALEN) \
-		& (SGS_CBUF_SIZ - 1))
+#define SSG_CBufMode_AINC(o) \
+	((o)->pos = ((o)->pos + SSG_CBUF_ALEN) \
+		& (SSG_CBUF_SIZ - 1))
 
 /**
  * Get position relative to buffer area.
  */
-#define SGS_CBufMode_APOS(o) \
-	((o)->pos & (SGS_CBUF_ALEN - 1))
+#define SSG_CBufMode_APOS(o) \
+	((o)->pos & (SSG_CBUF_ALEN - 1))
 
 /**
  * Get remaining length (characters after current position) within current
  * buffer area.
  */
-#define SGS_CBufMode_AREM(o) \
-	((SGS_CBUF_ALEN - 1) - ((o)->pos & (SGS_CBUF_ALEN - 1)))
+#define SSG_CBufMode_AREM(o) \
+	((SSG_CBUF_ALEN - 1) - ((o)->pos & (SSG_CBUF_ALEN - 1)))
 
 /**
  * True if at call position, prior to calling callback.
  * (The callback is expected to change the call position.)
  */
-#define SGS_CBufMode_NEED_CALL(o) \
+#define SSG_CBufMode_NEED_CALL(o) \
 	((o)->pos == (o)->call_pos)
 
 /**
  * Call callback if needed.
  */
-#define SGS_CBufMode_HANDLE_CALL(o) ((void) \
-	(SGS_CBufMode_NEED_CALL(o) && (o)->f(o)))
+#define SSG_CBufMode_HANDLE_CALL(o) ((void) \
+	(SSG_CBufMode_NEED_CALL(o) && (o)->f(o)))
 
 /**
  * Get remaining length (characters after position) before
@@ -108,9 +108,9 @@ void SGS_CBufMode_reset(SGS_CBufMode *o);
  * size (e.g. the buffer area length), a length longer than that
  * between calls may then be returned.
  */
-#define SGS_CBufMode_CBREM(o) ((size_t) \
+#define SSG_CBufMode_CBREM(o) ((size_t) \
 	((o)->call_pos < (o)->pos) ? \
-	((SGS_CBUF_SIZ + (o)->call_pos - (o)->pos) & (SGS_CBUF_SIZ - 1)) : \
+	((SSG_CBUF_SIZ + (o)->call_pos - (o)->pos) & (SSG_CBUF_SIZ - 1)) : \
 	((o)->call_pos - (o)->pos))
 
 /**
@@ -118,31 +118,31 @@ void SGS_CBufMode_reset(SGS_CBufMode *o);
  *
  * Mainly useful for advancing position after using a read or write macro
  * which handles callback but does not advance position. In other cases,
- * may require SGS_CBufMode_FIXP() after.
+ * may require SSG_CBufMode_FIXP() after.
  *
  * \return new position
  */
-#define SGS_CBufMode_INCP(o) (++(o)->pos)
+#define SSG_CBufMode_INCP(o) (++(o)->pos)
 
 /**
  * Decrement position. No checking is done.
  *
  * Mainly useful for un-advancing position after using a read or write
  * macro which handles callback and did advance position. In other cases,
- * may require SGS_CBufMode_FIXP() after.
+ * may require SSG_CBufMode_FIXP() after.
  *
- * The more flexible alternatives are SGS_CBuf_UNGETC() and
- * SGS_CBuf_UNGETN().
+ * The more flexible alternatives are SSG_CBuf_UNGETC() and
+ * SSG_CBuf_UNGETN().
  *
  * \return new position
  */
-#define SGS_CBufMode_DECP(o) (--(o)->pos)
+#define SSG_CBufMode_DECP(o) (--(o)->pos)
 
 /**
  * Ensure position is correct after unsafe alteration.
  */
-#define SGS_CBufMode_FIXP(o) ((void) \
-	(SGS_CBufMode_NEED_CALL(o) || ((o)->pos &= SGS_CBUF_SIZ - 1)))
+#define SSG_CBufMode_FIXP(o) ((void) \
+	(SSG_CBufMode_NEED_CALL(o) || ((o)->pos &= SSG_CBUF_SIZ - 1)))
 
 /*
  * Main type...
@@ -151,25 +151,25 @@ void SGS_CBufMode_reset(SGS_CBufMode *o);
 /**
  * Circular buffer type. Contains buffer, and reading and writing modes.
  */
-typedef struct SGS_CBuf {
+typedef struct SSG_CBuf {
 	uint8_t *buf;
-	SGS_CBufMode r;
-	SGS_CBufMode w;
-} SGS_CBuf;
+	SSG_CBufMode r;
+	SSG_CBufMode w;
+} SSG_CBuf;
 
-bool SGS_init_CBuf(SGS_CBuf *o);
-void SGS_fini_CBuf(SGS_CBuf *o);
+bool SSG_init_CBuf(SSG_CBuf *o);
+void SSG_fini_CBuf(SSG_CBuf *o);
 
-void SGS_CBuf_zero(SGS_CBuf *o);
-void SGS_CBuf_reset(SGS_CBuf *o);
+void SSG_CBuf_zero(SSG_CBuf *o);
+void SSG_CBuf_reset(SSG_CBuf *o);
 
 /**
  * Get current character, without advancing position.
  *
  * \return current character
  */
-#define SGS_CBuf_RETC(o) \
-	(SGS_CBufMode_HANDLE_CALL(&(o)->r), \
+#define SSG_CBuf_RETC(o) \
+	(SSG_CBufMode_HANDLE_CALL(&(o)->r), \
 	 (o)->buf[(o)->r.pos])
 
 /**
@@ -178,18 +178,18 @@ void SGS_CBuf_reset(SGS_CBuf *o);
  *
  * \return current character
  */
-#define SGS_CBuf_RETC_NC(o) \
+#define SSG_CBuf_RETC_NC(o) \
 	((o)->buf[(o)->r.pos])
 
 /**
  * Get current character, advancing position after retrieval.
  *
- * Equivalent to SGS_CBuf_RETC() followed by SGS_CBuf_INCP().
+ * Equivalent to SSG_CBuf_RETC() followed by SSG_CBuf_INCP().
  *
  * \return current character
  */
-#define SGS_CBuf_GETC(o) \
-	(SGS_CBufMode_HANDLE_CALL(&(o)->r), \
+#define SSG_CBuf_GETC(o) \
+	(SSG_CBufMode_HANDLE_CALL(&(o)->r), \
 	 (o)->buf[(o)->r.pos++])
 
 /**
@@ -198,78 +198,78 @@ void SGS_CBuf_reset(SGS_CBuf *o);
  *
  * \return current character
  */
-#define SGS_CBuf_GETC_NC(o) \
+#define SSG_CBuf_GETC_NC(o) \
 	((o)->buf[(o)->r.pos++])
 
 /**
  * Undo the getting of a character. This can safely be done a number of
  *
  * Assuming the read callback is called at multiples of the buffer area
- * length, this can safely be done up to (SGS_CBUF_ALEN - 1) times, plus
+ * length, this can safely be done up to (SSG_CBUF_ALEN - 1) times, plus
  * the number of characters gotten within the current buffer area.
  */
-#define SGS_CBuf_UNGETC(o) ((void) \
-	((o)->r.pos = ((o)->r.pos - 1) & (SGS_CBUF_SIZ - 1)))
+#define SSG_CBuf_UNGETC(o) ((void) \
+	((o)->r.pos = ((o)->r.pos - 1) & (SSG_CBUF_SIZ - 1)))
 
 /**
  * Compare current character to value \p c, without advancing position.
  *
  * \return true if equal
  */
-#define SGS_CBuf_TESTC(o, c) \
-	(SGS_CBufMode_HANDLE_CALL(&(o)->r), \
+#define SSG_CBuf_TESTC(o, c) \
+	(SSG_CBufMode_HANDLE_CALL(&(o)->r), \
 	 ((o)->buf[(o)->r.pos] == (c)))
 
 /**
  * Compare current character to value \p c, advancing position if equal.
  *
- * Equivalent to SGS_CBuf_TESTC() followed by SGS_CBuf_INCP()
+ * Equivalent to SSG_CBuf_TESTC() followed by SSG_CBuf_INCP()
  * when true.
  *
  * \return true if character got
  */
-#define SGS_CBuf_TRYC(o, c) \
-	(SGS_CBuf_TESTC(o, c) && (++(o)->r.pos, true))
+#define SSG_CBuf_TRYC(o, c) \
+	(SSG_CBuf_TESTC(o, c) && (++(o)->r.pos, true))
 
-//bool SGS_CBuf_getn(SGS_CBuf *o, char *buf, size_t *n);
+//bool SSG_CBuf_getn(SSG_CBuf *o, char *buf, size_t *n);
 
 /**
  * Undo the getting of \p n number of characters.
  *
  * Assuming the read callback is called at multiples of the buffer area
- * length, this can safely be done for n <= (SGS_CBUF_ALEN - 1) plus the
+ * length, this can safely be done for n <= (SSG_CBUF_ALEN - 1) plus the
  * number of characters gotten within the current buffer area.
  */
-#define SGS_CBuf_UNGETN(o, n) ((void) \
+#define SSG_CBuf_UNGETN(o, n) ((void) \
 	(((n) > 0) && \
-	 ((o)->r.pos = ((o)->r.pos - (n)) & (SGS_CBUF_SIZ - 1))))
+	 ((o)->r.pos = ((o)->r.pos - (n)) & (SSG_CBUF_SIZ - 1))))
 
 /**
  * Set current character, without advancing position.
  */
-#define SGS_CBuf_SETC(o, c) ((void) \
-	(SGS_CBufMode_HANDLE_CALL(&(o)->w), \
+#define SSG_CBuf_SETC(o, c) ((void) \
+	(SSG_CBufMode_HANDLE_CALL(&(o)->w), \
 	 ((o)->buf[(o)->w.pos] = (c))))
 
 /**
  * Set current character without checking buffer area boundaries nor
  * handling callback, without advancing position.
  */
-#define SGS_CBuf_SETC_NC(o, c) ((void) \
+#define SSG_CBuf_SETC_NC(o, c) ((void) \
 	((o)->buf[(o)->w.pos] = (c)))
 
 /**
  * Set current character, advancing position after write.
  */
-#define SGS_CBuf_PUTC(o, c) ((void) \
-	(SGS_CBufMode_HANDLE_CALL(&(o)->w), \
+#define SSG_CBuf_PUTC(o, c) ((void) \
+	(SSG_CBufMode_HANDLE_CALL(&(o)->w), \
 	 ((o)->buf[(o)->w.pos++] = (c))))
 
 /**
  * Set current character without checking buffer area boundaries nor
  * handling callback, advancing position after write.
  */
-#define SGS_CBuf_PUTC_NC(o, c) ((void) \
+#define SSG_CBuf_PUTC_NC(o, c) ((void) \
 	((o)->buf[(o)->w.pos++] = (c)))
 
-//bool SGS_CBuf_putn(SGS_CBuf *o, const char *buf, size_t *n);
+//bool SSG_CBuf_putn(SSG_CBuf *o, const char *buf, size_t *n);

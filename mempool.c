@@ -1,4 +1,4 @@
-/* sgensys: Memory pool module.
+/* ssndgen: Memory pool module.
  * Copyright (c) 2014, 2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -29,7 +29,7 @@ typedef struct BlockEntry {
 	size_t free;
 } BlockEntry;
 
-struct SGS_MemPool {
+struct SSG_MemPool {
 	BlockEntry *blocks;
 	size_t block_size;
 	size_t block_count;
@@ -49,8 +49,8 @@ struct SGS_MemPool {
  *
  * \return instance, or NULL if allocation fails
  */
-SGS_MemPool *SGS_create_MemPool(size_t block_size) {
-	SGS_MemPool *o = calloc(1, sizeof(SGS_MemPool));
+SSG_MemPool *SSG_create_MemPool(size_t block_size) {
+	SSG_MemPool *o = calloc(1, sizeof(SSG_MemPool));
 	if (o == NULL) return NULL;
 	o->block_size = (block_size > 0) ?
 		ALIGN_SIZE(block_size) :
@@ -58,7 +58,7 @@ SGS_MemPool *SGS_create_MemPool(size_t block_size) {
 	return o;
 }
 
-void SGS_destroy_MemPool(SGS_MemPool *o) {
+void SSG_destroy_MemPool(SSG_MemPool *o) {
 	size_t i;
 	for (i = 0; i < o->block_count; ++i) {
 		free(o->blocks[i].mem);
@@ -73,7 +73,7 @@ void SGS_destroy_MemPool(SGS_MemPool *o) {
  *
  * \return true if found, false if not
  */
-static bool first_smallest_block(const SGS_MemPool *o,
+static bool first_smallest_block(const SSG_MemPool *o,
 		size_t size, size_t *id) {
 	size_t i = 0;
 	ptrdiff_t min = 0;
@@ -116,7 +116,7 @@ static bool first_smallest_block(const SGS_MemPool *o,
  * by the previous such block, until finally the last such block overwrites
  * the block at \p to.
  */
-static void copy_blocks_up_one(SGS_MemPool *o, size_t to, size_t from) {
+static void copy_blocks_up_one(SSG_MemPool *o, size_t to, size_t from) {
 	if (from + 1 == to ||
 		o->blocks[from].free == o->blocks[to - 1].free) {
 		/*
@@ -143,7 +143,7 @@ static void copy_blocks_up_one(SGS_MemPool *o, size_t to, size_t from) {
  *
  * \return true, or false if allocation fails
  */
-static bool extend_mempool(SGS_MemPool *o) {
+static bool extend_mempool(SSG_MemPool *o) {
 	size_t new_block_alloc = (o->block_alloc > 0) ?
 		(o->block_alloc << 1) :
 		1;
@@ -160,7 +160,7 @@ static bool extend_mempool(SGS_MemPool *o) {
  *
  * \return the allocated block, or NULL if allocation fails
  */
-void *SGS_MemPool_alloc(SGS_MemPool *o, const void *src, size_t size) {
+void *SSG_MemPool_alloc(SSG_MemPool *o, const void *src, size_t size) {
 	size_t i;
 	void *ret;
 	size = ALIGN_SIZE(size);

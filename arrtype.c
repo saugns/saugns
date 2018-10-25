@@ -1,4 +1,4 @@
-/* sgensys: Generic array module.
+/* ssndgen: Generic array module.
  * Copyright (c) 2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -25,9 +25,9 @@
  *
  * \return true if successful, false if allocation failed
  */
-bool SGS_ArrType_add(void *_o, const void *item, size_t item_size) {
-	SGS_UInt8Arr *o = _o;
-	if (!SGS_ArrType_upsize(o, o->count + 1, item_size)) {
+bool SSG_ArrType_add(void *_o, const void *item, size_t item_size) {
+	SSG_UInt8Arr *o = _o;
+	if (!SSG_ArrType_upsize(o, o->count + 1, item_size)) {
 		return false;
 	}
 	if (item) {
@@ -46,8 +46,8 @@ bool SGS_ArrType_add(void *_o, const void *item, size_t item_size) {
  *
  * \return true unless allocation failed
  */
-bool SGS_ArrType_upsize(void *_o, size_t count, size_t item_size) {
-	SGS_UInt8Arr *o = _o;
+bool SSG_ArrType_upsize(void *_o, size_t count, size_t item_size) {
+	SSG_UInt8Arr *o = _o;
 	size_t asize = o->asize;
 	if (!o->a) asize = 0;
 	size_t min_asize = count * item_size;
@@ -71,8 +71,8 @@ bool SGS_ArrType_upsize(void *_o, size_t count, size_t item_size) {
  *
  * (Generic version of the function, to be used through wrapper.)
  */
-void SGS_ArrType_clear(void *_o) {
-	SGS_UInt8Arr *o = _o;
+void SSG_ArrType_clear(void *_o) {
+	SSG_UInt8Arr *o = _o;
 	if (o->a) {
 		free(o->a);
 		o->a = NULL;
@@ -93,14 +93,14 @@ void SGS_ArrType_clear(void *_o) {
  *
  * \return true unless allocation failed
  */
-bool SGS_ArrType_memdup(void *_o, const void **dst, size_t item_size) {
-	SGS_UInt8Arr *o = _o;
+bool SSG_ArrType_memdup(void *_o, const void **dst, size_t item_size) {
+	SSG_UInt8Arr *o = _o;
 	if (!o->count) {
 		*dst = NULL;
 		return true;
 	}
 	size_t size = o->count * item_size;
-	void *a = SGS_memdup(o->a, size);
+	void *a = SSG_memdup(o->a, size);
 	if (!a) {
 		return false;
 	}

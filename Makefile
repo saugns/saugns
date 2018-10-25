@@ -20,27 +20,27 @@ OBJ=common.o \
     renderer/generator.o \
     audiodev.o \
     wavfile.o \
-    sgensys.o
+    ssndgen.o
 
-all: sgensys
+all: ssndgen
 
 clean:
-	rm -f $(OBJ) sgensys
+	rm -f $(OBJ) ssndgen
 
-sgensys: $(OBJ)
+ssndgen: $(OBJ)
 	@UNAME="`uname -s`"; \
 	if [ $$UNAME = 'Linux' ]; then \
 		echo "Linking for Linux (using ALSA and OSS)."; \
-		$(CC) $(OBJ) $(LFLAGS_LINUX) -o sgensys; \
+		$(CC) $(OBJ) $(LFLAGS_LINUX) -o ssndgen; \
 	elif [ $$UNAME = 'OpenBSD' ]; then \
 		echo "Linking for OpenBSD (using sndio)."; \
-		$(CC) $(OBJ) $(LFLAGS_SNDIO) -o sgensys; \
+		$(CC) $(OBJ) $(LFLAGS_SNDIO) -o ssndgen; \
 	elif [ $$UNAME = 'NetBSD' ]; then \
 		echo "Linking for NetBSD (using OSS)."; \
-		$(CC) $(OBJ) $(LFLAGS_OSSAUDIO) -o sgensys; \
+		$(CC) $(OBJ) $(LFLAGS_OSSAUDIO) -o ssndgen; \
 	else \
 		echo "Linking for generic UNIX (using OSS)."; \
-		$(CC) $(OBJ) $(LFLAGS) -o sgensys; \
+		$(CC) $(OBJ) $(LFLAGS) -o ssndgen; \
 	fi
 
 # Headers
@@ -68,7 +68,7 @@ cbuf.o: cbuf.c cbuf.h common.h
 common.o: common.c common.h
 	$(CC) -c $(CFLAGS) common.c
 
-builder.o: builder.c sgensys.h builder/lexer.h script.h
+builder.o: builder.c ssndgen.h builder/lexer.h script.h
 	$(CC) -c $(CFLAGS) builder.c
 
 builder/file.o: builder/file.c builder/file.h cbuf.h common.h
@@ -89,14 +89,14 @@ mempool.o: mempool.c mempool.h common.h
 ptrlist.o: ptrlist.c ptrlist.h common.h
 	$(CC) -c $(CFLAGS) ptrlist.c
 
-renderer.o: renderer.c sgensys.h renderer/generator.h program.h audiodev.h wavfile.h
+renderer.o: renderer.c ssndgen.h renderer/generator.h program.h audiodev.h wavfile.h
 	$(CC) -c $(CFLAGS) renderer.c
 
 renderer/generator.o: renderer/generator.c renderer/generator.h renderer/osc.h program.h
 	$(CC) -c $(CFLAGS) renderer/generator.c -o renderer/generator.o
 
-sgensys.o: sgensys.c sgensys.h program.h
-	$(CC) -c $(CFLAGS) sgensys.c
+ssndgen.o: ssndgen.c ssndgen.h program.h
+	$(CC) -c $(CFLAGS) ssndgen.c
 
 program/parseconv.o: program/parseconv.c script.h
 	$(CC) -c $(CFLAGS) program/parseconv.c -o program/parseconv.o

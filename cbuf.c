@@ -1,4 +1,4 @@
-/* sgensys: Circular buffer module.
+/* ssndgen: Circular buffer module.
  * Copyright (c) 2014, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -24,10 +24,10 @@
  *
  * \return true unless allocation fails
  */
-bool SGS_init_CBuf(SGS_CBuf *o) {
-	o->buf = calloc(1, SGS_CBUF_SIZ);
+bool SSG_init_CBuf(SSG_CBuf *o) {
+	o->buf = calloc(1, SSG_CBUF_SIZ);
 	if (!o->buf) return false;
-	SGS_CBufMode_reset(&o->r);
+	SSG_CBufMode_reset(&o->r);
 	o->r.ref = o;
 	o->w = o->r;
 	return true;
@@ -37,7 +37,7 @@ bool SGS_init_CBuf(SGS_CBuf *o) {
  * Finalize instance. Must only be called once after each
  * initialization.
  */
-void SGS_fini_CBuf(SGS_CBuf *o) {
+void SSG_fini_CBuf(SSG_CBuf *o) {
 	free(o->buf);
 	o->buf = NULL;
 }
@@ -45,8 +45,8 @@ void SGS_fini_CBuf(SGS_CBuf *o) {
 /**
  * Zero the contents of the buffer.
  */
-void SGS_CBuf_zero(SGS_CBuf *o) {
-	memset(o->buf, 0, SGS_CBUF_SIZ);
+void SSG_CBuf_zero(SSG_CBuf *o) {
+	memset(o->buf, 0, SSG_CBUF_SIZ);
 }
 
 /**
@@ -55,10 +55,10 @@ void SGS_CBuf_zero(SGS_CBuf *o) {
  *
  * The ref field of the read and write modes are left untouched.
  */
-void SGS_CBuf_reset(SGS_CBuf *o) {
-	memset(o->buf, 0, SGS_CBUF_SIZ);
-	SGS_CBufMode_reset(&o->r);
-	SGS_CBufMode_reset(&o->w);
+void SSG_CBuf_reset(SSG_CBuf *o) {
+	memset(o->buf, 0, SSG_CBUF_SIZ);
+	SSG_CBufMode_reset(&o->r);
+	SSG_CBufMode_reset(&o->w);
 }
 
 /**
@@ -68,10 +68,10 @@ void SGS_CBuf_reset(SGS_CBuf *o) {
  *
  * \return length of entire buffer
  */
-size_t SGS_CBufMode_wrap(SGS_CBufMode *o) {
+size_t SSG_CBufMode_wrap(SSG_CBufMode *o) {
 	o->pos = 0;
-	o->call_pos = SGS_CBUF_SIZ; /* pre-mask pos */
-	return SGS_CBUF_SIZ;
+	o->call_pos = SSG_CBUF_SIZ; /* pre-mask pos */
+	return SSG_CBUF_SIZ;
 }
 
 /**
@@ -80,8 +80,8 @@ size_t SGS_CBufMode_wrap(SGS_CBufMode *o) {
  *
  * The ref field is left untouched.
  */
-void SGS_CBufMode_reset(SGS_CBufMode *o) {
+void SSG_CBufMode_reset(SSG_CBufMode *o) {
 	o->pos = 0;
-	o->call_pos = SGS_CBUF_SIZ;
-	o->f = SGS_CBufMode_wrap;
+	o->call_pos = SSG_CBUF_SIZ;
+	o->f = SSG_CBufMode_wrap;
 }

@@ -1,4 +1,4 @@
-/* sgensys: Symbol table module.
+/* ssndgen: Symbol table module.
  * Copyright (c) 2011-2012, 2014, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -18,7 +18,7 @@
 
 #define STRTAB_ALLOC_INITIAL 1024
 
-#if SGS_HASHTAB_STATS
+#if SSG_HASHTAB_STATS
 static uint32_t collision_count = 0;
 #include <stdio.h>
 #endif
@@ -33,8 +33,8 @@ typedef struct StrEntry {
 #define GET_STRING_ENTRY_SIZE(str_len) \
 	(offsetof(StrEntry, str) + (str_len))
 
-struct SGS_SymTab {
-	SGS_MemPool *malc;
+struct SSG_SymTab {
+	SSG_MemPool *malc;
 	StrEntry **strtab;
 	uint32_t strtab_count;
 	uint32_t strtab_alloc;
@@ -44,10 +44,10 @@ struct SGS_SymTab {
  * Create instance.
  * \return instance or NULL on allocation failure
  */
-SGS_SymTab *SGS_create_SymTab(void) {
-	SGS_SymTab *o = calloc(1, sizeof(SGS_SymTab));
+SSG_SymTab *SSG_create_SymTab(void) {
+	SSG_SymTab *o = calloc(1, sizeof(SSG_SymTab));
 	if (o == NULL) return NULL;
-	o->malc = SGS_create_MemPool(0);
+	o->malc = SSG_create_MemPool(0);
 	if (o->malc == NULL) {
 		free(o);
 		return NULL;
@@ -58,11 +58,11 @@ SGS_SymTab *SGS_create_SymTab(void) {
 /**
  * Destroy instance.
  */
-void SGS_destroy_SymTab(SGS_SymTab *o) {
-#if SGS_HASHTAB_STATS
+void SSG_destroy_SymTab(SSG_SymTab *o) {
+#if SSG_HASHTAB_STATS
 	printf("collision count: %d\n", collision_count);
 #endif
-	SGS_destroy_MemPool(o->malc);
+	SSG_destroy_MemPool(o->malc);
 	free(o->strtab);
 }
 
@@ -70,7 +70,7 @@ void SGS_destroy_SymTab(SGS_SymTab *o) {
  * Return the hash of the given string \p str of lenght \p len.
  * \return the hash of \p str
  */
-static uint32_t hash_string(SGS_SymTab *o, const char *str, uint32_t len) {
+static uint32_t hash_string(SSG_SymTab *o, const char *str, uint32_t len) {
 	uint32_t i;
 	uint32_t hash;
 	/*
@@ -89,7 +89,7 @@ static uint32_t hash_string(SGS_SymTab *o, const char *str, uint32_t len) {
  * Increase the size of the hash table for the string pool.
  * \return the new allocation size, or -1 upon failure
  */
-static int32_t extend_strtab(SGS_SymTab *o) {
+static int32_t extend_strtab(SSG_SymTab *o) {
 	StrEntry **old_strtab = o->strtab;
 	uint32_t old_strtab_alloc = o->strtab_alloc;
 	uint32_t i;
@@ -132,7 +132,7 @@ static int32_t extend_strtab(SGS_SymTab *o) {
  *
  * \return StrEntry* or NULL
  */
-static StrEntry *unique_entry(SGS_SymTab *o, const void *str, uint32_t len) {
+static StrEntry *unique_entry(SSG_SymTab *o, const void *str, uint32_t len) {
 	uint32_t hash;
 	StrEntry *entry;
 	if (o->strtab_count == (o->strtab_alloc / 2)) {
@@ -148,11 +148,11 @@ static StrEntry *unique_entry(SGS_SymTab *o, const void *str, uint32_t len) {
 		entry = entry->prev;
 		if (entry == NULL) break; /* missing */
 	}
-#if SGS_HASHTAB_STATS
+#if SSG_HASHTAB_STATS
 	++collision_count;
 #endif
 ADD_ENTRY:
-	entry = SGS_MemPool_alloc(o->malc, NULL, GET_STRING_ENTRY_SIZE(len + 1));
+	entry = SSG_MemPool_alloc(o->malc, NULL, GET_STRING_ENTRY_SIZE(len + 1));
 	if (entry == NULL) return NULL;
 	entry->prev = o->strtab[hash];
 	o->strtab[hash] = entry;
@@ -171,7 +171,7 @@ ADD_ENTRY:
  *
  * \return unique copy of \p str for symtab instance, or NULL on failure
  */
-const void *SGS_SymTab_pool_str(SGS_SymTab *o, const void *str, uint32_t len) {
+const void *SSG_SymTab_pool_str(SSG_SymTab *o, const void *str, uint32_t len) {
 	StrEntry *entry = unique_entry(o, str, len);
 	return (entry) ? entry->str : NULL;
 }
@@ -180,7 +180,7 @@ const void *SGS_SymTab_pool_str(SGS_SymTab *o, const void *str, uint32_t len) {
  * Return value associated with string.
  * \return value or NULL if none
  */
-void *SGS_SymTab_get(SGS_SymTab *o, const void *key, uint32_t len) {
+void *SSG_SymTab_get(SSG_SymTab *o, const void *key, uint32_t len) {
 	StrEntry *entry;
 	entry = unique_entry(o, key, len);
 	if (!entry) return NULL;
@@ -191,7 +191,7 @@ void *SGS_SymTab_get(SGS_SymTab *o, const void *key, uint32_t len) {
  * Set value associated with string.
  * \return previous value or NULL if none
  */
-void *SGS_SymTab_set(SGS_SymTab *o, const void *key, uint32_t len,
+void *SSG_SymTab_set(SSG_SymTab *o, const void *key, uint32_t len,
 		void *value) {
 	StrEntry *entry;
 	entry = unique_entry(o, key, len);

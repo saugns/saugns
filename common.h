@@ -1,4 +1,4 @@
-/* sgensys: Common definitions.
+/* ssndgen: Common definitions.
  * Copyright (c) 2011-2012, 2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -28,33 +28,33 @@ typedef unsigned int uint;
  */
 
 #if defined(__GNUC__) || defined(__clang__)
-# define SGS__malloclike __attribute__((malloc))
-# define SGS__maybe_unused __attribute__((unused))
-# define SGS__printflike(string_index, first_to_check) \
+# define SSG__malloclike __attribute__((malloc))
+# define SSG__maybe_unused __attribute__((unused))
+# define SSG__printflike(string_index, first_to_check) \
 	__attribute__((format(printf, string_index, first_to_check)))
 #else
-# define SGS__malloclike
-# define SGS__maybe_unused
-# define SGS__printflike(string_index, first_to_check)
+# define SSG__malloclike
+# define SSG__maybe_unused
+# define SSG__printflike(string_index, first_to_check)
 #endif
 
 /*
  * Utility functions.
  */
 
-void SGS_warning(const char *label, const char *fmt, ...)
-	SGS__printflike(2, 3);
-void SGS_error(const char *label, const char *fmt, ...)
-	SGS__printflike(2, 3);
+void SSG_warning(const char *label, const char *fmt, ...)
+	SSG__printflike(2, 3);
+void SSG_error(const char *label, const char *fmt, ...)
+	SSG__printflike(2, 3);
 
-void *SGS_memdup(const void *src, size_t size) SGS__malloclike;
+void *SSG_memdup(const void *src, size_t size) SSG__malloclike;
 
 /*
  * Debugging options.
  */
 
 /* Disable old parser, run lexer testing instead. */
-#define SGS_TEST_LEXER 0
+#define SSG_TEST_LEXER 0
 
-#define SGS_HASHTAB_STATS 0
-#define SGS_LEXER_QUIET 0
+#define SSG_HASHTAB_STATS 0
+#define SSG_LEXER_QUIET 0

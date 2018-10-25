@@ -1,4 +1,4 @@
-/* sgensys: Main functions and project definitions.
+/* ssndgen: Main functions and project definitions.
  * Copyright (c) 2011-2013, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -14,7 +14,7 @@
 #pragma once
 #include "program.h"
 
-SGS_Program* SGS_build(const char *fname);
+SSG_Program* SSG_build(const char *fname);
 
-bool SGS_render(SGS_Program *prg, uint32_t srate,
+bool SSG_render(SSG_Program *prg, uint32_t srate,
 		bool use_audiodev, const char *wav_path);

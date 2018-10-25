@@ -1,4 +1,4 @@
-/* sgensys: Text file reader module.
+/* ssndgen: Text file reader module.
  * Copyright (c) 2014, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -15,16 +15,16 @@
 #include <string.h>
 #include <stdio.h>
 
-static size_t file_mode_fread(SGS_CBufMode *o); // read callback
+static size_t file_mode_fread(SSG_CBufMode *o); // read callback
 
-static void file_ref_close(SGS_File *o);
+static void file_ref_close(SSG_File *o);
 
 /**
  * Initialize instance. Must only be called once before a
  * finalization.
  */
-bool SGS_init_File(SGS_File *o) {
-	if (!SGS_init_CBuf(&o->cb)) {
+bool SSG_init_File(SSG_File *o) {
+	if (!SSG_init_CBuf(&o->cb)) {
 		return false;
 	}
 	o->ref = NULL;
@@ -37,25 +37,25 @@ bool SGS_init_File(SGS_File *o) {
  * Finalize instance. Must only be called once after each
  * initialization.
  */
-void SGS_fini_File(SGS_File *o) {
+void SSG_fini_File(SSG_File *o) {
 	if (o->close_f) {
 		o->close_f(o);
 		o->close_f = NULL;
 	}
-	SGS_fini_CBuf(&o->cb);
+	SSG_fini_CBuf(&o->cb);
 }
 
 /**
  * Open file for reading.
  *
  * The file is automatically closed when EOF or a read error occurs,
- * but \a path is only cleared with an explicit call to SGS_File_close()
- * or SGS_File_reset(), so as to remain available for printing.
+ * but \a path is only cleared with an explicit call to SSG_File_close()
+ * or SSG_File_reset(), so as to remain available for printing.
  *
  * \return true on success
  */
-bool SGS_File_fopenrb(SGS_File *o, const char *path) {
-	SGS_File_close(o);
+bool SSG_File_fopenrb(SSG_File *o, const char *path) {
+	SSG_File_close(o);
 
 	if (!path) return false;
 	FILE *f = fopen(path, "rb");
@@ -63,7 +63,7 @@ bool SGS_File_fopenrb(SGS_File *o, const char *path) {
 
 	o->cb.r.call_pos = 0;
 	o->cb.r.f = file_mode_fread;
-	o->status = SGS_File_OK;
+	o->status = SSG_File_OK;
 	o->end_marker = NULL;
 	o->ref = f;
 	o->path = path;
@@ -75,46 +75,46 @@ bool SGS_File_fopenrb(SGS_File *o, const char *path) {
  * Close File if open. Reset buffer read and write modes, but not
  * buffer contents.
  */
-void SGS_File_close(SGS_File *o) {
+void SSG_File_close(SSG_File *o) {
 	if (o->close_f) {
 		o->close_f(o);
 		o->close_f = NULL;
 	}
-	SGS_CBufMode_reset(&o->cb.r);
-	SGS_CBufMode_reset(&o->cb.w);
-	o->status = SGS_File_OK;
+	SSG_CBufMode_reset(&o->cb.r);
+	SSG_CBufMode_reset(&o->cb.w);
+	o->status = SSG_File_OK;
 }
 
 /**
  * Reset File object, including the buffer, its contents and
  * read and write modes. If open, will be closed.
  */
-void SGS_File_reset(SGS_File *o) {
+void SSG_File_reset(SSG_File *o) {
 	if (o->close_f) {
 		o->close_f(o);
 		o->close_f = NULL;
 	}
-	SGS_CBuf_reset(&o->cb);
-	o->status = SGS_File_OK;
+	SSG_CBuf_reset(&o->cb);
+	o->status = SSG_File_OK;
 	o->path = NULL;
 }
 
 /*
  * Fill the area of the buffer currently arrived at. This should be
- * called when indicated by SGS_File_NEED_FILL().
+ * called when indicated by SSG_File_NEED_FILL().
  *
  * When EOF or a read error occurs, the file will be closed and
  * the first character after the last one successfully read will
  * be assigned an end marker value. Further calls will reset the
  * reading position and write the end marker again.
  *
- * SGS_File_STATUS() will return the same value as the end marker,
- * which is always <= SGS_File_MARKER.
+ * SSG_File_STATUS() will return the same value as the end marker,
+ * which is always <= SSG_File_MARKER.
  *
  * \return number of characters successfully read
  */
-static size_t file_mode_fread(SGS_CBufMode *o) {
-	SGS_File *fo = o->ref;
+static size_t file_mode_fread(SSG_CBufMode *o) {
+	SSG_File *fo = o->ref;
 	FILE *f = fo->ref;
 	size_t len = 0;
 	/*
@@ -124,24 +124,24 @@ static size_t file_mode_fread(SGS_CBufMode *o) {
 	 * area.
 	 *
 	 * Read a buffer area's worth of data from the file, if
-	 * open. Upon short read, insert SGS_File_STATUS() value
+	 * open. Upon short read, insert SSG_File_STATUS() value
 	 * not counted in return length. Close file upon end or error.
 	 */
-	o->pos &= (SGS_CBUF_SIZ - 1) & ~(SGS_CBUF_ALEN - 1);
+	o->pos &= (SSG_CBUF_SIZ - 1) & ~(SSG_CBUF_ALEN - 1);
 	if (!f) {
 		o->call_pos = o->pos;
 		goto ADD_MARKER;
 	}
-	len = fread(&fo->cb.buf[o->pos], 1, SGS_CBUF_ALEN, f);
+	len = fread(&fo->cb.buf[o->pos], 1, SSG_CBUF_ALEN, f);
 	o->call_pos = o->pos + len; /* pre-mask pos */
 	if (ferror(f)) {
-		fo->status |= SGS_File_ERROR;
+		fo->status |= SSG_File_ERROR;
 	}
 	if (feof(f)) {
-		fo->status |= SGS_File_END;
+		fo->status |= SSG_File_END;
 		file_ref_close(fo);
 	}
-	if (len < SGS_CBUF_ALEN) {
+	if (len < SSG_CBUF_ALEN) {
 		goto ADD_MARKER;
 	}
 	return len;
@@ -156,7 +156,7 @@ ADD_MARKER:
 /*
  * Close file without clearing state.
  */
-void file_ref_close(SGS_File *o) {
+void file_ref_close(SSG_File *o) {
 	if (o->ref != NULL) {
 		fclose(o->ref);
 		o->ref = NULL;

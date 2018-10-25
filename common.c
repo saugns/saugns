@@ -1,4 +1,4 @@
-/* sgensys: Common definitions.
+/* ssndgen: Common definitions.
  * Copyright (c) 2011-2012, 2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -37,7 +37,7 @@ static void print_stderr(const char *msg_type, const char *msg_label,
  * Print warning message. If \p label is not NULL, it will be
  * added after "warning" within square brackets.
  */
-void SGS_warning(const char *label, const char *fmt, ...) {
+void SSG_warning(const char *label, const char *fmt, ...) {
 	va_list ap;
 	va_start(ap, fmt);
 	print_stderr("warning", label, fmt, ap);
@@ -48,7 +48,7 @@ void SGS_warning(const char *label, const char *fmt, ...) {
  * Print error message. If \p label is not NULL, it will be
  * added after "error" within square brackets.
  */
-void SGS_error(const char *label, const char *fmt, ...) {
+void SSG_error(const char *label, const char *fmt, ...) {
 	va_list ap;
 	va_start(ap, fmt);
 	print_stderr("error", label, fmt, ap);
@@ -62,7 +62,7 @@ void SGS_error(const char *label, const char *fmt, ...) {
  *
  * \return new allocation or NULL on failure
  */
-void *SGS_memdup(const void *src, size_t size) {
+void *SSG_memdup(const void *src, size_t size) {
 	if (!size) {
 		return NULL;
 	}

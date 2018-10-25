@@ -1,4 +1,4 @@
-/* sgensys: Audio program builder module.
+/* ssndgen: Audio program builder module.
  * Copyright (c) 2011-2013, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -11,9 +11,9 @@
  * <https://www.gnu.org/licenses/>.
  */
 
-#include "sgensys.h"
+#include "ssndgen.h"
 #include "script.h"
-#if SGS_TEST_LEXER
+#if SSG_TEST_LEXER
 # include "builder/lexer.h"
 #endif
 #include <string.h>
@@ -25,27 +25,27 @@
  *
  * \return instance or NULL on error
  */
-SGS_Program* SGS_build(const char *fname) {
-#if SGS_TEST_LEXER
-	SGS_SymTab *symtab = SGS_create_SymTab();
-	SGS_Lexer *lexer = SGS_create_Lexer(fname, symtab);
+SSG_Program* SSG_build(const char *fname) {
+#if SSG_TEST_LEXER
+	SSG_SymTab *symtab = SSG_create_SymTab();
+	SSG_Lexer *lexer = SSG_create_Lexer(fname, symtab);
 	if (!lexer) {
-		SGS_destroy_SymTab(symtab);
+		SSG_destroy_SymTab(symtab);
 		return false;
 	}
 	for (;;) {
-		SGS_ScriptToken token;
-		if (!SGS_Lexer_get(lexer, &token)) break;
+		SSG_ScriptToken token;
+		if (!SSG_Lexer_get(lexer, &token)) break;
 	}
-	SGS_destroy_Lexer(lexer);
-	SGS_destroy_SymTab(symtab);
-	return (SGS_Program*) calloc(1, sizeof(SGS_Program)); //0;
+	SSG_destroy_Lexer(lexer);
+	SSG_destroy_SymTab(symtab);
+	return (SSG_Program*) calloc(1, sizeof(SSG_Program)); //0;
 #else // OLD PARSER
-	SGS_Script *sd = SGS_load_Script(fname);
+	SSG_Script *sd = SSG_load_Script(fname);
 	if (!sd) return NULL;
 
-	SGS_Program *o = SGS_build_Program(sd);
-	SGS_discard_Script(sd);
+	SSG_Program *o = SSG_build_Program(sd);
+	SSG_discard_Script(sd);
 	if (!o) return NULL;
 	return o;
 #endif

@@ -1,4 +1,4 @@
-/* sgensys: Value slope module.
+/* ssndgen: Value slope module.
  * Copyright (c) 2011-2013, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -17,15 +17,15 @@
  * Slope types.
  */
 enum {
-	SGS_SLOPE_STATE = 0,
-	SGS_SLOPE_LIN,
-	SGS_SLOPE_EXP,
-	SGS_SLOPE_LOG,
-	SGS_SLOPE_TYPES
+	SSG_SLOPE_STATE = 0,
+	SSG_SLOPE_LIN,
+	SSG_SLOPE_EXP,
+	SSG_SLOPE_LOG,
+	SSG_SLOPE_TYPES
 };
 
 /** Names of slope types, with an extra NULL pointer at the end. */
-extern const char *const SGS_Slope_names[SGS_SLOPE_TYPES + 1];
+extern const char *const SSG_Slope_names[SSG_SLOPE_TYPES + 1];
 
 /**
  * Slope, used for gradual value change.
@@ -33,12 +33,12 @@ extern const char *const SGS_Slope_names[SGS_SLOPE_TYPES + 1];
  * The \a pos field keeps track of position in samples;
  * reset to 0 when running for a new duration.
  */
-typedef struct SGS_Slope {
+typedef struct SSG_Slope {
 	uint32_t time_ms;
 	uint32_t pos;
 	float goal;
 	uint8_t type;
-} SGS_Slope;
+} SSG_Slope;
 
-bool SGS_Slope_run(SGS_Slope *o, uint32_t srate,
+bool SSG_Slope_run(SSG_Slope *o, uint32_t srate,
 		float *buf, uint32_t buf_len, float s0);

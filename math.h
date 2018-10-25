@@ -1,4 +1,4 @@
-/* sgensys: Math definitions.
+/* ssndgen: Math definitions.
  * Copyright (c) 2011-2012, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -15,12 +15,12 @@
 #include "common.h"
 #include <math.h>
 
-#define SGS_PI       3.14159265358979323846
-#define SGS_ASIN_1_2 0.52359877559829887308 // asin(0.5)
-#define SGS_SQRT_1_2 0.70710678118654752440 // sqrt(0.5), 1/sqrt(2)
+#define SSG_PI       3.14159265358979323846
+#define SSG_ASIN_1_2 0.52359877559829887308 // asin(0.5)
+#define SSG_SQRT_1_2 0.70710678118654752440 // sqrt(0.5), 1/sqrt(2)
 
 /**
  * Convert time in ms to time in samples for a sample-rate.
  */
-#define SGS_MS_TO_SRT(ms, srate) \
+#define SSG_MS_TO_SRT(ms, srate) \
 	lrintf(((ms) * .001f) * (srate))

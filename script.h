@@ -1,4 +1,4 @@
-/* sgensys: Script file data and functions.
+/* ssndgen: Script file data and functions.
  * Copyright (c) 2011-2012, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -19,21 +19,21 @@
  * Script data operator flags.
  */
 enum {
-	SGS_SDOP_LATER_USED = 1<<0,
-	SGS_SDOP_MULTIPLE = 1<<1,
-	SGS_SDOP_NESTED = 1<<2,
-	SGS_SDOP_TIME_DEFAULT = 1<<3,
-	SGS_SDOP_SILENCE_ADDED = 1<<4,
+	SSG_SDOP_LATER_USED = 1<<0,
+	SSG_SDOP_MULTIPLE = 1<<1,
+	SSG_SDOP_NESTED = 1<<2,
+	SSG_SDOP_TIME_DEFAULT = 1<<3,
+	SSG_SDOP_SILENCE_ADDED = 1<<4,
 };
 
 /**
  * Node type for operator data.
  */
-typedef struct SGS_ScriptOpData {
-	struct SGS_ScriptEvData *event;
-	SGS_PtrList on_next; /* all immediate forward refs for op(s) */
-	struct SGS_ScriptOpData *on_prev; /* preceding for same op(s) */
-	struct SGS_ScriptOpData *next_bound;
+typedef struct SSG_ScriptOpData {
+	struct SSG_ScriptEvData *event;
+	SSG_PtrList on_next; /* all immediate forward refs for op(s) */
+	struct SSG_ScriptOpData *on_prev; /* preceding for same op(s) */
+	struct SSG_ScriptOpData *next_bound;
 	uint32_t op_flags;
 	const char *label;
 	/* operator parameters */
@@ -43,40 +43,40 @@ typedef struct SGS_ScriptOpData {
 	uint8_t wave;
 	uint32_t time_ms, silence_ms;
 	float freq, dynfreq, phase, amp, dynamp;
-	SGS_Slope slope_freq, slope_amp;
+	SSG_Slope slope_freq, slope_amp;
 	/* node adjacents in operator linkage graph */
-	SGS_PtrList fmods, pmods, amods;
-} SGS_ScriptOpData;
+	SSG_PtrList fmods, pmods, amods;
+} SSG_ScriptOpData;
 
 /**
  * Script data event flags.
  */
 enum {
-	SGS_SDEV_VOICE_LATER_USED = 1<<0,
-	SGS_SDEV_ADD_WAIT_DURATION = 1<<1,
-	SGS_SDEV_NEW_OPGRAPH = 1<<2,
+	SSG_SDEV_VOICE_LATER_USED = 1<<0,
+	SSG_SDEV_ADD_WAIT_DURATION = 1<<1,
+	SSG_SDEV_NEW_OPGRAPH = 1<<2,
 };
 
 /**
  * Node type for event data. Includes any voice and operator data part
  * of the event.
  */
-typedef struct SGS_ScriptEvData {
-	struct SGS_ScriptEvData *next;
-	struct SGS_ScriptEvData *groupfrom;
-	struct SGS_ScriptEvData *composite;
+typedef struct SSG_ScriptEvData {
+	struct SSG_ScriptEvData *next;
+	struct SSG_ScriptEvData *groupfrom;
+	struct SSG_ScriptEvData *composite;
 	uint32_t wait_ms;
-	SGS_PtrList operators; /* operators included in event */
+	SSG_PtrList operators; /* operators included in event */
 	uint32_t ev_flags;
 	/* voice parameters */
 	uint32_t vo_id; /* not used by parser; for program module */
 	uint32_t vo_params;
-	struct SGS_ScriptEvData *voice_prev; /* preceding event for voice */
+	struct SSG_ScriptEvData *voice_prev; /* preceding event for voice */
 	uint8_t vo_attr;
 	float pan;
-	SGS_Slope slope_pan;
-	SGS_PtrList op_graph;
-} SGS_ScriptEvData;
+	SSG_Slope slope_pan;
+	SSG_PtrList op_graph;
+} SSG_ScriptEvData;
 
 /**
  * Script data option flags.
@@ -84,11 +84,11 @@ typedef struct SGS_ScriptEvData {
  * Set after parsing the setting of script options in a script.
  */
 enum {
-	SGS_SOPT_AMPMULT = 1<<0,
-	SGS_SOPT_A4_FREQ = 1<<1,
-	SGS_SOPT_DEF_TIME = 1<<2,
-	SGS_SOPT_DEF_FREQ = 1<<3,
-	SGS_SOPT_DEF_RATIO = 1<<4,
+	SSG_SOPT_AMPMULT = 1<<0,
+	SSG_SOPT_A4_FREQ = 1<<1,
+	SSG_SOPT_DEF_TIME = 1<<2,
+	SSG_SOPT_DEF_FREQ = 1<<3,
+	SSG_SOPT_DEF_RATIO = 1<<4,
 };
 
 /**
@@ -96,24 +96,24 @@ enum {
  *
  * The final state is included in the parse result.
  */
-typedef struct SGS_ScriptOptions {
-	uint32_t changed; // flags (SGS_SOPT_*) set upon change by script
+typedef struct SSG_ScriptOptions {
+	uint32_t changed; // flags (SSG_SOPT_*) set upon change by script
 	float ampmult;    // amplitude multiplier for non-modulator operators
 	float A4_freq;    // A4 tuning for frequency as note
 	/* operator parameter default values (use depends on context) */
 	uint32_t def_time_ms;
 	float def_freq,
 	      def_ratio;
-} SGS_ScriptOptions;
+} SSG_ScriptOptions;
 
 /**
  * Type returned after processing a file.
  */
-typedef struct SGS_Script {
-	SGS_ScriptEvData *events;
+typedef struct SSG_Script {
+	SSG_ScriptEvData *events;
 	const char *name; // currently simply set to the filename
-	SGS_ScriptOptions sopt;
-} SGS_Script;
+	SSG_ScriptOptions sopt;
+} SSG_Script;
 
-SGS_Script *SGS_load_Script(const char *fname);
-void SGS_discard_Script(SGS_Script *o);
+SSG_Script *SSG_load_Script(const char *fname);
+void SSG_discard_Script(SSG_Script *o);

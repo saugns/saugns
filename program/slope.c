@@ -1,4 +1,4 @@
-/* sgensys: Value slope module.
+/* ssndgen: Value slope module.
  * Copyright (c) 2011-2013, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -14,7 +14,7 @@
 #include "slope.h"
 #include "../math.h"
 
-const char *const SGS_Slope_names[SGS_SLOPE_TYPES + 1] = {
+const char *const SSG_Slope_names[SSG_SLOPE_TYPES + 1] = {
 	"state",
 	"lin",
 	"exp",
@@ -75,9 +75,9 @@ static void fill_log(float *buf, uint32_t len,
  *
  * \return true until goal reached
  */
-bool SGS_Slope_run(SGS_Slope *o, uint32_t srate,
+bool SSG_Slope_run(SSG_Slope *o, uint32_t srate,
 		float *buf, uint32_t buf_len, float s0) {
-	uint32_t time = SGS_MS_TO_SRT(o->time_ms, srate);
+	uint32_t time = SSG_MS_TO_SRT(o->time_ms, srate);
 	uint32_t len, fill_len;
 	double inv_time;
 	inv_time = 1.f / time;
@@ -89,16 +89,16 @@ bool SGS_Slope_run(SGS_Slope *o, uint32_t srate,
 		fill_len = buf_len - len;
 	}
 	switch (o->type) {
-	case SGS_SLOPE_STATE:
+	case SSG_SLOPE_STATE:
 		fill_state(buf, len, s0);
 		break;
-	case SGS_SLOPE_LIN:
+	case SSG_SLOPE_LIN:
 		fill_lin(buf, len, s0, o->goal, o->pos, inv_time);
 		break;
-	case SGS_SLOPE_EXP:
+	case SSG_SLOPE_EXP:
 		fill_exp(buf, len, s0, o->goal, o->pos, inv_time);
 		break;
-	case SGS_SLOPE_LOG:
+	case SSG_SLOPE_LOG:
 		fill_log(buf, len, s0, o->goal, o->pos, inv_time);
 		break;
 	}

@@ -1,4 +1,4 @@
-/* sgensys: sndio audio output support.
+/* ssndgen: sndio audio output support.
  * Copyright (c) 2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -17,7 +17,7 @@
 /*
  * \return instance or NULL on failure
  */
-static inline SGS_AudioDev *open_sndio(const char *name,
+static inline SSG_AudioDev *open_sndio(const char *name,
 		unsigned int mode, uint16_t channels, uint32_t *srate) {
 	struct sio_hdl *hdl = sio_open(name, mode, 0);
 	if (!hdl) goto ERROR;
@@ -35,14 +35,14 @@ static inline SGS_AudioDev *open_sndio(const char *name,
 	if ((!sio_setpar(hdl, &par)) ||
 	    (!sio_getpar(hdl, &par))) goto ERROR;
 	if (par.rate != *srate) {
-		SGS_warning("sndio", "sample rate %d unsupported, using %d",
+		SSG_warning("sndio", "sample rate %d unsupported, using %d",
 			*srate, par.rate);
 		*srate = par.rate;
 	}
 
 	if (!sio_start(hdl)) goto ERROR;
 
-	SGS_AudioDev *o = malloc(sizeof(SGS_AudioDev));
+	SSG_AudioDev *o = malloc(sizeof(SSG_AudioDev));
 	o->ref.handle = hdl;
 	o->type = TYPE_SNDIO;
 	o->channels = channels;
@@ -50,7 +50,7 @@ static inline SGS_AudioDev *open_sndio(const char *name,
 	return o;
 
 ERROR:
-	SGS_error("sndio", "configuration for device \"%s\" failed",
+	SSG_error("sndio", "configuration for device \"%s\" failed",
 		name);
 	return NULL;
 }
@@ -59,7 +59,7 @@ ERROR:
  * Destroy instance. Close sndio device,
  * ending playback in the process.
  */
-static inline void close_sndio(SGS_AudioDev *o) {
+static inline void close_sndio(SSG_AudioDev *o) {
 	sio_close(o->ref.handle);
 	free(o);
 }
@@ -69,7 +69,7 @@ static inline void close_sndio(SGS_AudioDev *o) {
  *
  * \return true if write sucessful, otherwise false
  */
-static inline bool sndio_write(SGS_AudioDev *o, const int16_t *buf,
+static inline bool sndio_write(SSG_AudioDev *o, const int16_t *buf,
 		uint32_t samples) {
 	size_t bytes = samples * o->channels * SOUND_BYTES;
 	size_t wlen;

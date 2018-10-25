@@ -1,4 +1,4 @@
-/* sgensys: Memory pool module.
+/* ssndgen: Memory pool module.
  * Copyright (c) 2014, 2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -14,10 +14,10 @@
 #pragma once
 #include "common.h"
 
-struct SGS_MemPool;
-typedef struct SGS_MemPool SGS_MemPool;
+struct SSG_MemPool;
+typedef struct SSG_MemPool SSG_MemPool;
 
-SGS_MemPool *SGS_create_MemPool(size_t block_size);
-void SGS_destroy_MemPool(SGS_MemPool *o);
+SSG_MemPool *SSG_create_MemPool(size_t block_size);
+void SSG_destroy_MemPool(SSG_MemPool *o);
 
-void *SGS_MemPool_alloc(SGS_MemPool *o, const void *src, size_t size);
+void *SSG_MemPool_alloc(SSG_MemPool *o, const void *src, size_t size);

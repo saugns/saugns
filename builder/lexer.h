@@ -1,4 +1,4 @@
-/* sgensys: Script lexer module.
+/* ssndgen: Script lexer module.
  * Copyright (c) 2014, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -18,14 +18,14 @@
  * Token enumerations.
  */
 enum {
-	SGS_T_INVALID = 0,
-	SGS_T_ID_STR,
-	SGS_T_VAL_INT,
-	SGS_T_VAL_REAL,
-	SGS_T_SPECIAL,
+	SSG_T_INVALID = 0,
+	SSG_T_ID_STR,
+	SSG_T_VAL_INT,
+	SSG_T_VAL_REAL,
+	SSG_T_SPECIAL,
 };
 
-typedef struct SGS_ScriptToken {
+typedef struct SSG_ScriptToken {
 	uint32_t type;
 	union {
 		const char *id;
@@ -34,16 +34,16 @@ typedef struct SGS_ScriptToken {
 		uint8_t b;
 		char c;
 	} data;
-} SGS_ScriptToken;
+} SSG_ScriptToken;
 
-struct SGS_Lexer;
-typedef struct SGS_Lexer SGS_Lexer;
+struct SSG_Lexer;
+typedef struct SSG_Lexer SSG_Lexer;
 
-SGS_Lexer *SGS_create_Lexer(const char *fname, SGS_SymTab *symtab);
-void SGS_destroy_Lexer(SGS_Lexer *o);
+SSG_Lexer *SSG_create_Lexer(const char *fname, SSG_SymTab *symtab);
+void SSG_destroy_Lexer(SSG_Lexer *o);
 
-bool SGS_Lexer_get(SGS_Lexer *o, SGS_ScriptToken *t);
-bool SGS_Lexer_get_special(SGS_Lexer *o, SGS_ScriptToken *t);
+bool SSG_Lexer_get(SSG_Lexer *o, SSG_ScriptToken *t);
+bool SSG_Lexer_get_special(SSG_Lexer *o, SSG_ScriptToken *t);
 
-void SGS_Lexer_warning(SGS_Lexer *o, const char *fmt, ...);
-void SGS_Lexer_error(SGS_Lexer *o, const char *fmt, ...);
+void SSG_Lexer_warning(SSG_Lexer *o, const char *fmt, ...);
+void SSG_Lexer_error(SSG_Lexer *o, const char *fmt, ...);

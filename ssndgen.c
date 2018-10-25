@@ -1,4 +1,4 @@
-/* sgensys: Main module / Command-line interface.
+/* ssndgen: Main module / Command-line interface.
  * Copyright (c) 2011-2013, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -11,7 +11,7 @@
  * <https://www.gnu.org/licenses/>.
  */
 
-#include "sgensys.h"
+#include "ssndgen.h"
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,8 +23,8 @@
  */
 static void print_usage(bool by_arg) {
 	fputs(
-"Usage: sgensys [-a|-m] [-r srate] [-p] [-o wavfile] scriptfile\n"
-"       sgensys [-c] [-p] scriptfile\n"
+"Usage: ssndgen [-a|-m] [-r srate] [-p] [-o wavfile] scriptfile\n"
+"       ssndgen [-c] [-p] scriptfile\n"
 "\n"
 "By default, audio device output is enabled.\n"
 "\n"
@@ -45,7 +45,7 @@ static void print_usage(bool by_arg) {
  * Print version.
  */
 static void print_version(void) {
-	puts("sgensys v0.6.0");
+	puts("ssndgen v0.6.0");
 }
 
 /*
@@ -171,15 +171,15 @@ INVALID:
  *
  * \return true unless error occurred
  */
-static bool build(const char *fname, SGS_Program **prg_out,
+static bool build(const char *fname, SSG_Program **prg_out,
 		uint32_t options) {
-	SGS_Program *prg;
-	if (!(prg = SGS_build(fname)))
+	SSG_Program *prg;
+	if (!(prg = SSG_build(fname)))
 		return false;
 	if ((options & ARG_PRINT_INFO) != 0)
-		SGS_Program_print_info(prg);
+		SSG_Program_print_info(prg);
 	if ((options & ARG_ONLY_COMPILE) != 0) {
-		SGS_discard_Program(prg);
+		SSG_discard_Program(prg);
 		*prg_out = NULL;
 		return true;
 	}
@@ -193,12 +193,12 @@ static bool build(const char *fname, SGS_Program **prg_out,
  *
  * \return true unless error occurred
  */
-static bool render(SGS_Program *prg, uint32_t srate,
+static bool render(SSG_Program *prg, uint32_t srate,
 		uint32_t options, const char *wav_path) {
 	bool use_audiodev = (wav_path != NULL) ?
 			((options & ARG_ENABLE_AUDIO_DEV) != 0) :
 			((options & ARG_DISABLE_AUDIO_DEV) == 0);
-	return SGS_render(prg, srate, use_audiodev, wav_path);
+	return SSG_render(prg, srate, use_audiodev, wav_path);
 }
 
 /**
@@ -207,7 +207,7 @@ static bool render(SGS_Program *prg, uint32_t srate,
 int main(int argc, char **argv) {
 	const char *script_path = NULL, *wav_path = NULL;
 	uint32_t options = 0;
-	SGS_Program *prg;
+	SSG_Program *prg;
 	uint32_t srate = DEFAULT_SRATE;
 
 	if (!parse_args(argc, argv, &options, &script_path, &wav_path,
@@ -217,7 +217,7 @@ int main(int argc, char **argv) {
 		return 1;
 	if (prg != NULL) {
 		bool error = !render(prg, srate, options, wav_path);
-		SGS_discard_Program(prg);
+		SSG_discard_Program(prg);
 		if (error)
 			return 1;
 	}

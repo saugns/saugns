@@ -1,4 +1,4 @@
-/* sgensys: Linux audio output support.
+/* ssndgen: Linux audio output support.
  * Copyright (c) 2013, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -21,10 +21,10 @@
  *
  * \return instance or NULL on failure
  */
-static inline SGS_AudioDev *open_linux(const char *alsa_name,
+static inline SSG_AudioDev *open_linux(const char *alsa_name,
 		const char *oss_name, int oss_mode, uint16_t channels,
 		uint32_t *srate) {
-	SGS_AudioDev *o;
+	SSG_AudioDev *o;
 	uint32_t tmp;
 	int err;
 	snd_pcm_t *handle = NULL;
@@ -36,7 +36,7 @@ static inline SGS_AudioDev *open_linux(const char *alsa_name,
 		if (o) {
 			return o;
 		}
-		SGS_error(NULL, "could neither use ALSA nor OSS");
+		SSG_error(NULL, "could neither use ALSA nor OSS");
 		goto ERROR;
 	}
 
@@ -56,12 +56,12 @@ static inline SGS_AudioDev *open_linux(const char *alsa_name,
 	    || (err = snd_pcm_hw_params(handle, params)) < 0)
 		goto ERROR;
 	if (tmp != *srate) {
-		SGS_warning("ALSA", "sample rate %d unsupported, using %d",
+		SSG_warning("ALSA", "sample rate %d unsupported, using %d",
 			*srate, tmp);
 		*srate = tmp;
 	}
 
-	o = malloc(sizeof(SGS_AudioDev));
+	o = malloc(sizeof(SSG_AudioDev));
 	o->ref.handle = handle;
 	o->type = TYPE_ALSA;
 	o->channels = channels;
@@ -69,10 +69,10 @@ static inline SGS_AudioDev *open_linux(const char *alsa_name,
 	return o;
 
 ERROR:
-	SGS_error("ALSA", "%s", snd_strerror(err));
+	SSG_error("ALSA", "%s", snd_strerror(err));
 	if (handle) snd_pcm_close(handle);
 	if (params) snd_pcm_hw_params_free(params);
-	SGS_error("ALSA", "configuration for device \"%s\" failed",
+	SSG_error("ALSA", "configuration for device \"%s\" failed",
 		alsa_name);
 	return NULL;
 }
@@ -81,7 +81,7 @@ ERROR:
  * Destroy instance. Close ALSA or OSS device,
  * ending playback in the process.
  */
-static inline void close_linux(SGS_AudioDev *o) {
+static inline void close_linux(SSG_AudioDev *o) {
 	if (o->type == TYPE_OSS) {
 		close_oss(o);
 		return;
@@ -97,7 +97,7 @@ static inline void close_linux(SGS_AudioDev *o) {
  *
  * \return true if write sucessful, otherwise false
  */
-static inline bool linux_write(SGS_AudioDev *o, const int16_t *buf,
+static inline bool linux_write(SSG_AudioDev *o, const int16_t *buf,
 		uint32_t samples) {
 	if (o->type == TYPE_OSS) {
 		return oss_write(o, buf, samples);
@@ -106,10 +106,10 @@ static inline bool linux_write(SGS_AudioDev *o, const int16_t *buf,
 	snd_pcm_sframes_t written;
 	while ((written = snd_pcm_writei(o->ref.handle, buf, samples)) < 0) {
 		if (written == -EPIPE) {
-			SGS_warning("ALSA", "audio device buffer underrun");
+			SSG_warning("ALSA", "audio device buffer underrun");
 			snd_pcm_prepare(o->ref.handle);
 		} else {
-			SGS_warning("ALSA", "%s", snd_strerror(written));
+			SSG_warning("ALSA", "%s", snd_strerror(written));
 			break;
 		}
 	}
