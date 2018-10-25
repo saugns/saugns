@@ -1,4 +1,4 @@
-/* sgensys: Script lexer module.
+/* ssndgen: Script lexer module.
  * Copyright (c) 2014, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -37,7 +37,7 @@
 /* Visible ASCII character. */
 #define IS_VISIBLE(c) ((c) >= '!' && (c) <= '~')
 
-static uint8_t filter_symchar(SGS_File *restrict o SGS__maybe_unused,
+static uint8_t filter_symchar(SSG_File *restrict o SSG__maybe_unused,
                uint8_t c) {
 	return IS_SYMCHAR(c) ? c : 0;
 }
@@ -50,7 +50,7 @@ static uint8_t filter_symchar(SGS_File *restrict o SGS__maybe_unused,
  *
  * \return true if the string fit into the buffer, false if truncated
  */
-static bool read_symstr(SGS_File *restrict f,
+static bool read_symstr(SSG_File *restrict f,
 		uint8_t *restrict buf, size_t buf_len,
 		size_t *restrict lenp) {
 	size_t i = 0;
@@ -61,9 +61,9 @@ static bool read_symstr(SGS_File *restrict f,
 			truncate = true;
 			break;
 		}
-		uint8_t c = SGS_File_GETC(f);
+		uint8_t c = SSG_File_GETC(f);
 		if (!IS_SYMCHAR(c)) {
-			SGS_File_DECP(f);
+			SSG_File_DECP(f);
 			break;
 		}
 		buf[i++] = c;
@@ -79,11 +79,11 @@ static bool read_symstr(SGS_File *restrict f,
 
 #define STRBUF_LEN 1024
 
-struct SGS_Lexer {
-	SGS_File *f;
-	SGS_SymTab *symtab;
+struct SSG_Lexer {
+	SSG_File *f;
+	SSG_SymTab *symtab;
 	uint32_t line_num, char_num;
-	SGS_ScriptToken token;
+	SSG_ScriptToken token;
 	uint8_t *strbuf;
 };
 
@@ -92,12 +92,12 @@ struct SGS_Lexer {
  *
  * \return instance, or NULL on failure.
  */
-SGS_Lexer *SGS_create_Lexer(SGS_SymTab *restrict symtab) {
+SSG_Lexer *SSG_create_Lexer(SSG_SymTab *restrict symtab) {
 	if (!symtab) return NULL;
 
-	SGS_Lexer *o = calloc(1, sizeof(SGS_Lexer));
+	SSG_Lexer *o = calloc(1, sizeof(SSG_Lexer));
 	if (!o) return NULL;
-	o->f = SGS_create_File();
+	o->f = SSG_create_File();
 	if (!o->f) goto ERROR;
 	o->symtab = symtab;
 	o->strbuf = calloc(1, STRBUF_LEN);
@@ -105,15 +105,15 @@ SGS_Lexer *SGS_create_Lexer(SGS_SymTab *restrict symtab) {
 	return o;
 
 ERROR:
-	SGS_destroy_Lexer(o);
+	SSG_destroy_Lexer(o);
 	return NULL;
 }
 
 /**
  * Destroy instance.
  */
-void SGS_destroy_Lexer(SGS_Lexer *restrict o) {
-	SGS_destroy_File(o->f);
+void SSG_destroy_Lexer(SSG_Lexer *restrict o) {
+	SSG_destroy_File(o->f);
 	free(o->strbuf);
 	free(o);
 }
@@ -121,17 +121,17 @@ void SGS_destroy_Lexer(SGS_Lexer *restrict o) {
 /**
  * Open file for reading.
  *
- * Wrapper around SGS_File functions. \p script may be
+ * Wrapper around SSG_File functions. \p script may be
  * either a file path or a string, depending on \p is_path.
  *
  * \return true on success
  */
-bool SGS_Lexer_open(SGS_Lexer *restrict o,
+bool SSG_Lexer_open(SSG_Lexer *restrict o,
 		const char *restrict script, bool is_path) {
 	if (!is_path) {
-		SGS_File_stropenrb(o->f, "<string>", script);
-	} else if (!SGS_File_fopenrb(o->f, script)) {
-		SGS_error(NULL,
+		SSG_File_stropenrb(o->f, "<string>", script);
+	} else if (!SSG_File_fopenrb(o->f, script)) {
+		SSG_error(NULL,
 "couldn't open script file \"%s\" for reading", script);
 		return false;
 	}
@@ -144,18 +144,18 @@ bool SGS_Lexer_open(SGS_Lexer *restrict o,
 /**
  * Close file (if open).
  */
-void SGS_Lexer_close(SGS_Lexer *restrict o) {
-	SGS_File_close(o->f);
+void SSG_Lexer_close(SSG_Lexer *restrict o) {
+	SSG_File_close(o->f);
 }
 
 enum {
 	PRINT_FILE_INFO = 1<<0
 };
 
-static void print_stderr(SGS_Lexer *restrict o,
+static void print_stderr(SSG_Lexer *restrict o,
 		uint32_t options, const char *restrict prefix,
 		const char *restrict fmt, va_list ap) {
-	SGS_File *f = o->f;
+	SSG_File *f = o->f;
 	if (options & PRINT_FILE_INFO) {
 		fprintf(stderr, "%s:%d:%d: ",
 			f->path, o->line_num, o->char_num);
@@ -170,7 +170,7 @@ static void print_stderr(SGS_Lexer *restrict o,
 /**
  * Print warning message including file name and current position.
  */
-void SGS_Lexer_warning(SGS_Lexer *restrict o,
+void SSG_Lexer_warning(SSG_Lexer *restrict o,
 		const char *restrict fmt, ...) {
 	va_list ap;
 	va_start(ap, fmt);
@@ -181,7 +181,7 @@ void SGS_Lexer_warning(SGS_Lexer *restrict o,
 /**
  * Print error message including file name and current position.
  */
-void SGS_Lexer_error(SGS_Lexer *restrict o,
+void SSG_Lexer_error(SSG_Lexer *restrict o,
 		const char *restrict fmt, ...) {
 	va_list ap;
 	va_start(ap, fmt);
@@ -192,102 +192,102 @@ void SGS_Lexer_error(SGS_Lexer *restrict o,
 /*
  * Print warning message for an invalid character.
  */
-static void warning_character(SGS_Lexer *restrict o, uint8_t c) {
+static void warning_character(SSG_Lexer *restrict o, uint8_t c) {
 	if (IS_VISIBLE(c)) {
-		SGS_Lexer_warning(o, "invalid character: '%c'", (char) c);
+		SSG_Lexer_warning(o, "invalid character: '%c'", (char) c);
 	} else {
-		SGS_Lexer_warning(o, "invalid character (value 0x%02hhX)", c);
+		SSG_Lexer_warning(o, "invalid character (value 0x%02hhX)", c);
 	}
 }
 
-typedef uint8_t (*HandleValue_f)(SGS_Lexer *restrict o, uint8_t c);
+typedef uint8_t (*HandleValue_f)(SSG_Lexer *restrict o, uint8_t c);
 
-static uint8_t handle_invalid(SGS_Lexer *restrict o,
-		uint8_t c SGS__maybe_unused) {
-	SGS_ScriptToken *t = &o->token;
-	t->type = SGS_T_INVALID;
-	if (!SGS_File_AFTER_EOF(o->f)) {
+static uint8_t handle_invalid(SSG_Lexer *restrict o,
+		uint8_t c SSG__maybe_unused) {
+	SSG_ScriptToken *t = &o->token;
+	t->type = SSG_T_INVALID;
+	if (!SSG_File_AFTER_EOF(o->f)) {
 		t->data.b = 0;
-#if !SGS_LEXER_QUIET
+#if !SSG_LEXER_QUIET
 		warning_character(o, c);
 #endif
 		return 0;
 	}
-	uint8_t status = SGS_File_STATUS(o->f);
+	uint8_t status = SSG_File_STATUS(o->f);
 	t->data.b = status;
-	if ((status & SGS_FILE_ERROR) != 0) {
-		SGS_Lexer_error(o, "file reading failed");
+	if ((status & SSG_FILE_ERROR) != 0) {
+		SSG_Lexer_error(o, "file reading failed");
 	}
 	return 0;
 }
 
-static uint8_t handle_blanks(SGS_Lexer *restrict o, uint8_t c) {
+static uint8_t handle_blanks(SSG_Lexer *restrict o, uint8_t c) {
 	do {
 		++o->char_num;
-		c = SGS_File_GETC(o->f);
+		c = SSG_File_GETC(o->f);
 	} while (IS_SPACE(c));
 	return c;
 }
 
-static uint8_t handle_linebreaks(SGS_Lexer *restrict o, uint8_t c) {
-	SGS_File *f = o->f;
+static uint8_t handle_linebreaks(SSG_Lexer *restrict o, uint8_t c) {
+	SSG_File *f = o->f;
 	++o->line_num;
-	if (c == '\n') SGS_File_TRYC(f, '\r');
-	while (SGS_File_trynewline(f)) {
+	if (c == '\n') SSG_File_TRYC(f, '\r');
+	while (SSG_File_trynewline(f)) {
 		++o->line_num;
 	}
 	o->char_num = 1;
-	return SGS_File_GETC_NC(f);
+	return SSG_File_GETC_NC(f);
 }
 
-static uint8_t handle_linecomment(SGS_Lexer *restrict o,
-		uint8_t SGS__maybe_unused c) {
-	o->char_num += SGS_File_skipline(o->f);
-	return SGS_File_GETC_NC(o->f);
+static uint8_t handle_linecomment(SSG_Lexer *restrict o,
+		uint8_t SSG__maybe_unused c) {
+	o->char_num += SSG_File_skipline(o->f);
+	return SSG_File_GETC_NC(o->f);
 }
 
-//static uint8_t handle_block_comment(SGS_Lexer *restrict o, uint8_t c) {
-//	SGS_Lexer_warning(o, "cannot yet handle comment marked by '%c'", c);
+//static uint8_t handle_block_comment(SSG_Lexer *restrict o, uint8_t c) {
+//	SSG_Lexer_warning(o, "cannot yet handle comment marked by '%c'", c);
 //	return 0;
 //}
 
-static uint8_t handle_special(SGS_Lexer *restrict o, uint8_t c) {
-	SGS_ScriptToken *t = &o->token;
-	t->type = SGS_T_SPECIAL;
+static uint8_t handle_special(SSG_Lexer *restrict o, uint8_t c) {
+	SSG_ScriptToken *t = &o->token;
+	t->type = SSG_T_SPECIAL;
 	t->data.c = c;
 	return 0;
 }
 
-static uint8_t handle_numeric_value(SGS_Lexer *restrict o,
-		uint8_t SGS__maybe_unused c) {
-	SGS_ScriptToken *t = &o->token;
+static uint8_t handle_numeric_value(SSG_Lexer *restrict o,
+		uint8_t SSG__maybe_unused c) {
+	SSG_ScriptToken *t = &o->token;
 	double num;
 	size_t read_len;
-	SGS_File_DECP(o->f);
-	SGS_File_getd(o->f, &num, false, &read_len);
-	t->type = SGS_T_VAL_REAL;
+	SSG_File_DECP(o->f);
+	SSG_File_getd(o->f, &num, false, &read_len);
+	t->type = SSG_T_VAL_REAL;
 	t->data.f = num;
 	return 0;
 }
 
-static uint8_t handle_identifier(SGS_Lexer *restrict o,
-		uint8_t SGS__maybe_unused c) {
-	SGS_File *f = o->f;
-	SGS_ScriptToken *t = &o->token;
+static uint8_t handle_identifier(SSG_Lexer *restrict o,
+		uint8_t SSG__maybe_unused c) {
+	SSG_File *f = o->f;
+	SSG_ScriptToken *t = &o->token;
 	size_t len;
-	SGS_File_DECP(f);
+	SSG_File_DECP(f);
 	if (!read_symstr(f, o->strbuf, STRBUF_LEN, &len)) {
-		SGS_Lexer_warning(o,
+		SSG_Lexer_warning(o,
 "identifier length limited to %d characters", (STRBUF_LEN - 1));
-		o->char_num += SGS_File_skipstr(f, filter_symchar);
+		o->char_num += SSG_File_skipstr(f, filter_symchar);
 	}
 	const char *pool_str;
-	pool_str = SGS_SymTab_pool_str(o->symtab, o->strbuf, len);
+	pool_str = SSG_SymTab_pool_str(o->symtab, o->strbuf, len);
 	if (pool_str == NULL) {
-		SGS_Lexer_error(o, "failed to register string '%s'", o->strbuf);
+		SSG_Lexer_error(o, "failed to register string '%s'", o->strbuf);
 	}
 	o->char_num += len - 1;
-	t->type = SGS_T_ID_STR;
+	t->type = SSG_T_ID_STR;
 	t->data.id = pool_str;
 	return 0;
 }
@@ -295,17 +295,17 @@ static uint8_t handle_identifier(SGS_Lexer *restrict o,
 /**
  * Get the next token from the current file.
  *
- * Upon end of file, an SGS_T_INVALID token is set and false is
+ * Upon end of file, an SSG_T_INVALID token is set and false is
  * returned. The field data.b is assigned the file reading status.
- * (If true is returned, an SGS_T_INVALID token simply means that
+ * (If true is returned, an SSG_T_INVALID token simply means that
  * invalid input was successfully registered in the current file.)
  *
  * \return true if a token was successfully read from the file
  */
-bool SGS_Lexer_get(SGS_Lexer *restrict o, SGS_ScriptToken *restrict t) {
+bool SSG_Lexer_get(SSG_Lexer *restrict o, SSG_ScriptToken *restrict t) {
 	uint8_t c;
 	++o->char_num;
-	c = SGS_File_GETC(o->f);
+	c = SSG_File_GETC(o->f);
 	do {
 		switch (c) {
 		case /* NUL */ 0x00:
@@ -315,7 +315,7 @@ bool SGS_Lexer_get(SGS_Lexer *restrict o, SGS_ScriptToken *restrict t) {
 		case /* EOT */ 0x04:
 		case /* ENQ */ 0x05:
 		case /* ACK */ 0x06:
-		case /* BEL */ '\a': // SGS_FILE_MARKER
+		case /* BEL */ '\a': // SSG_FILE_MARKER
 		case /* BS  */ '\b':
 			c = handle_invalid(o, c);
 			break;
@@ -476,7 +476,7 @@ bool SGS_Lexer_get(SGS_Lexer *restrict o, SGS_ScriptToken *restrict t) {
 	if (t != NULL) {
 		*t = o->token;
 	}
-	return (o->token.type == SGS_T_INVALID) ?
+	return (o->token.type == SSG_T_INVALID) ?
 		(o->token.data.b == 0) :
 		true;
 }
@@ -485,18 +485,18 @@ bool SGS_Lexer_get(SGS_Lexer *restrict o, SGS_ScriptToken *restrict t) {
  * Get the next token from the current file. Interprets any visible ASCII
  * character as a special token character.
  *
- * Upon end of file, an SGS_T_INVALID token is set and false is
+ * Upon end of file, an SSG_T_INVALID token is set and false is
  * returned. The field data.b is assigned the file reading status.
- * (If true is returned, an SGS_T_INVALID token simply means that
+ * (If true is returned, an SSG_T_INVALID token simply means that
  * invalid input was successfully registered in the current file.)
  *
  * \return true if a token was successfully read from the file
  */
-bool SGS_Lexer_get_special(SGS_Lexer *restrict o,
-		SGS_ScriptToken *restrict t) {
+bool SSG_Lexer_get_special(SSG_Lexer *restrict o,
+		SSG_ScriptToken *restrict t) {
 	uint8_t c;
 	++o->char_num;
-	c = SGS_File_GETC(o->f);
+	c = SSG_File_GETC(o->f);
 	do {
 		if (IS_VISIBLE(c)) c = handle_special(o, c);
 		else c = handle_invalid(o, c);
@@ -504,7 +504,7 @@ bool SGS_Lexer_get_special(SGS_Lexer *restrict o,
 	if (t != NULL) {
 		*t = o->token;
 	}
-	return (o->token.type == SGS_T_INVALID) ?
+	return (o->token.type == SSG_T_INVALID) ?
 		(o->token.data.b == 0) :
 		true;
 }
