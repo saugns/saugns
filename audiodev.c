@@ -1,4 +1,4 @@
-/* sgensys: System audio output support module.
+/* ssndgen: System audio output support module.
  * Copyright (c) 2011-2014, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -39,7 +39,7 @@ enum {
 	TYPE_SNDIO,
 };
 
-struct SGS_AudioDev {
+struct SSG_AudioDev {
 	union DevRef ref;
 	uint8_t type;
 	uint16_t channels;
@@ -59,12 +59,12 @@ struct SGS_AudioDev {
 
 /**
  * Open audio device for 16-bit sound output. Sound data may thereafter be
- * written any number of times using SGS_AudioDev_write().
+ * written any number of times using SSG_AudioDev_write().
  *
  * \return instance or NULL on failure
  */
-SGS_AudioDev *SGS_open_AudioDev(uint16_t channels, uint32_t *restrict srate) {
-	SGS_AudioDev *o;
+SSG_AudioDev *SSG_open_AudioDev(uint16_t channels, uint32_t *restrict srate) {
+	SSG_AudioDev *o;
 #ifdef __linux
 	o = open_linux(ALSA_NAME_OUT, OSS_NAME_OUT, O_WRONLY,
 			channels, srate);
@@ -74,7 +74,7 @@ SGS_AudioDev *SGS_open_AudioDev(uint16_t channels, uint32_t *restrict srate) {
 	o = open_oss(OSS_NAME_OUT, O_WRONLY, channels, srate);
 #endif
 	if (!o) {
-		SGS_error(NULL, "couldn't open audio device for output");
+		SSG_error(NULL, "couldn't open audio device for output");
 		return NULL;
 	}
 	return o;
@@ -83,7 +83,7 @@ SGS_AudioDev *SGS_open_AudioDev(uint16_t channels, uint32_t *restrict srate) {
 /**
  * Close the given audio device. Destroys the instance.
  */
-void SGS_close_AudioDev(SGS_AudioDev *restrict o) {
+void SSG_close_AudioDev(SSG_AudioDev *restrict o) {
 #ifdef __linux
 	close_linux(o);
 #elif defined(__OpenBSD__)
@@ -96,7 +96,7 @@ void SGS_close_AudioDev(SGS_AudioDev *restrict o) {
 /**
  * Return sample rate set for system audio output.
  */
-uint32_t SGS_AudioDev_get_srate(const SGS_AudioDev *restrict o) {
+uint32_t SSG_AudioDev_get_srate(const SSG_AudioDev *restrict o) {
 	return o->srate;
 }
 
@@ -108,7 +108,7 @@ uint32_t SGS_AudioDev_get_srate(const SGS_AudioDev *restrict o) {
  *
  * \return true upon suceessful write, otherwise false
  */
-bool SGS_AudioDev_write(SGS_AudioDev *restrict o,
+bool SSG_AudioDev_write(SSG_AudioDev *restrict o,
 		const int16_t *restrict buf, uint32_t samples) {
 #ifdef __linux
 	return linux_write(o, buf, samples);

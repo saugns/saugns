@@ -1,4 +1,4 @@
-/* sgensys: Audio mixer module.
+/* ssndgen: Audio mixer module.
  * Copyright (c) 2019-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -19,28 +19,28 @@
 /**
  * Create instance.
  */
-SGS_Mixer *SGS_create_Mixer(void) {
-	SGS_Mixer *o = calloc(1, sizeof(SGS_Mixer));
+SSG_Mixer *SSG_create_Mixer(void) {
+	SSG_Mixer *o = calloc(1, sizeof(SSG_Mixer));
 	if (!o)
 		return NULL;
-	o->mix_l = calloc(SGS_MIX_BUFLEN, sizeof(float));
+	o->mix_l = calloc(SSG_MIX_BUFLEN, sizeof(float));
 	if (!o->mix_l) goto ERROR;
-	o->mix_r = calloc(SGS_MIX_BUFLEN, sizeof(float));
+	o->mix_r = calloc(SSG_MIX_BUFLEN, sizeof(float));
 	if (!o->mix_r) goto ERROR;
-	o->pan_buf = calloc(SGS_MIX_BUFLEN, sizeof(float));
+	o->pan_buf = calloc(SSG_MIX_BUFLEN, sizeof(float));
 	if (!o->pan_buf) goto ERROR;
 	o->scale = 1.f;
 	return o;
 
 ERROR:
-	SGS_destroy_Mixer(o);
+	SSG_destroy_Mixer(o);
 	return NULL;
 }
 
 /**
  * Destroy instance.
  */
-void SGS_destroy_Mixer(SGS_Mixer *restrict o) {
+void SSG_destroy_Mixer(SSG_Mixer *restrict o) {
 	if (!o)
 		return;
 	free(o->mix_l);
@@ -52,9 +52,9 @@ void SGS_destroy_Mixer(SGS_Mixer *restrict o) {
 /**
  * Clear the mix buffers.
  */
-void SGS_Mixer_clear(SGS_Mixer *restrict o) {
-	memset(o->mix_l, 0, sizeof(float) * SGS_MIX_BUFLEN);
-	memset(o->mix_r, 0, sizeof(float) * SGS_MIX_BUFLEN);
+void SSG_Mixer_clear(SSG_Mixer *restrict o) {
+	memset(o->mix_l, 0, sizeof(float) * SSG_MIX_BUFLEN);
+	memset(o->mix_r, 0, sizeof(float) * SSG_MIX_BUFLEN);
 }
 
 /**
@@ -63,11 +63,11 @@ void SGS_Mixer_clear(SGS_Mixer *restrict o) {
  *
  * Sample rate needs to be set if \p pan has curve enabled.
  */
-void SGS_Mixer_add(SGS_Mixer *restrict o,
+void SSG_Mixer_add(SSG_Mixer *restrict o,
 		float *restrict buf, size_t len,
-		SGS_Ramp *restrict pan, uint32_t *restrict pan_pos) {
-	if (pan->flags & SGS_RAMPP_GOAL) {
-		SGS_Ramp_run(pan, pan_pos, o->pan_buf, len, o->srate, NULL);
+		SSG_Ramp *restrict pan, uint32_t *restrict pan_pos) {
+	if (pan->flags & SSG_RAMPP_GOAL) {
+		SSG_Ramp_run(pan, pan_pos, o->pan_buf, len, o->srate, NULL);
 		for (size_t i = 0; i < len; ++i) {
 			float s = buf[i] * o->scale;
 			float s_r = s * o->pan_buf[i];
@@ -91,7 +91,7 @@ void SGS_Mixer_add(SGS_Mixer *restrict o,
  * into a 16-bit stereo (interleaved) buffer
  * pointed to by \p spp. Advances \p spp.
  */
-void SGS_Mixer_write(SGS_Mixer *restrict o,
+void SSG_Mixer_write(SSG_Mixer *restrict o,
 		int16_t **restrict spp, size_t len) {
 	for (size_t i = 0; i < len; ++i) {
 		float s_l = o->mix_l[i];

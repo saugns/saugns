@@ -1,4 +1,4 @@
-/* sgensys: Audio generator module.
+/* ssndgen: Audio generator module.
  * Copyright (c) 2011-2012, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -14,13 +14,13 @@
 #pragma once
 #include "../program.h"
 
-struct SGS_Generator;
-typedef struct SGS_Generator SGS_Generator;
+struct SSG_Generator;
+typedef struct SSG_Generator SSG_Generator;
 
-SGS_Generator* SGS_create_Generator(const SGS_Program *restrict prg,
-		uint32_t srate) SGS__malloclike;
-void SGS_destroy_Generator(SGS_Generator *restrict o);
+SSG_Generator* SSG_create_Generator(const SSG_Program *restrict prg,
+		uint32_t srate) SSG__malloclike;
+void SSG_destroy_Generator(SSG_Generator *restrict o);
 
-bool SGS_Generator_run(SGS_Generator *restrict o,
+bool SSG_Generator_run(SSG_Generator *restrict o,
 		int16_t *restrict buf, size_t buf_len,
 		size_t *restrict out_len);
