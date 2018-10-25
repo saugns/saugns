@@ -1,6 +1,6 @@
-sgensys is the Sound GENeration SYStem, a sound synthesis program
-and scripting language. A very lightweight system for mathematical
-sound synthesis, it doesn't support using pre-recorded samples.
+ssndgen is a Scriptable SouND GENerator. A very lightweight
+system for mathematical sound synthesis, it
+doesn't support using pre-recorded samples.
 
 While developed with the aim of becoming useful for writing
 electronic music, the language is still very simple and the audio
@@ -31,16 +31,16 @@ In the cases of the 4 major BSDs, the base systems have it all.
 
 A simple test after building is the following, which should
 play a sine wave at 444Hz for 1 second:
-	./sgensys -e "Osin"
+	./ssndgen -e "Osin"
 
-`make install` will by default copy 'sgensys' to '/usr/local/bin/',
-and the contents of 'examples/' to '/usr/local/share/sgensys/'.
-(`make uninstall` removes the sgensys binary and directory.)
+`make install` will by default copy 'ssndgen' to '/usr/local/bin/',
+and the contents of 'examples/' to '/usr/local/share/ssndgen/'.
+(`make uninstall` removes the ssndgen binary and directory.)
 
 Licensing
 =========
 
-sgensys is distributed under the terms of the GNU Lesser General
+ssndgen is distributed under the terms of the GNU Lesser General
 Public License (LGPL), version 3 or later. See the file COPYING
 for details, or <https://www.gnu.org/licenses/>.
 
