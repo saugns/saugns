@@ -14,6 +14,7 @@
 #pragma once
 #include "sgensys.h"
 #include <math.h>
+#include <limits.h>
 
 #define SGS_PI       3.14159265358979323846
 #define SGS_ASIN_1_2 0.52359877559829887308 // asin(0.5)
@@ -28,15 +29,19 @@ static inline uint64_t SGS_ms_in_samples(uint64_t time_ms, uint64_t srate) {
 	return time;
 }
 
+/** Apply lrint() if long can hold UINT32_MAX, otherwise llrint(). */
+#define SGS_ui32rint(x) ((uint32_t) \
+	(LONG_MAX >= UINT32_MAX ? lrint(x) : llrint(x)))
+
+/** Apply lrintf() if long can hold UINT32_MAX, otherwise llrintf(). */
+#define SGS_ui32rintf(x) ((uint32_t) \
+	(LONG_MAX >= UINT32_MAX ? lrintf(x) : llrintf(x)))
+
 /**
  * Convert cyclical value (0.0 = 0% and 1.0 = 100%, with ends
  * wrapping around) to 32-bit integer with 0 as the 0% value.
- *
- * Note that if \p x is exactly 0.5 or some integer multiples
- * of it, and long is 32-bit, the result is undefined; but in
- * practice it'll be either INT32_MIN or INT32_MAX, depending
- * on if lrint() overflow wraps or saturates on the platform.
  */
-static inline int32_t SGS_cyclepos_dtoi32(double x) {
-	return lrint(remainder(x, 1.f) * 2.f * (float)INT32_MAX);
+static inline uint32_t SGS_cyclepos_dtoui32(double x) {
+	// needs long(er) range because 0.5 from remainder becomes INT32_MAX+1
+	return SGS_ui32rint(remainder(x, 1.f) * (float)UINT32_MAX);
 }
