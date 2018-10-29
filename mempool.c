@@ -1,5 +1,6 @@
 /* sgensys: Memory pool module.
- * Copyright (c) 2014 Joel K. Pettersson <joelkpettersson@gmail.com>
+ * Copyright (c) 2014, 2018 Joel K. Pettersson
+ * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
  * terms of the GNU Lesser General Public License, either version 3 or (at
@@ -12,16 +13,10 @@
 
 #include "mempool.h"
 #include <stdlib.h>
-#if defined(__WIN32) || defined(__WIN64)
-# define ssize_t ptrdiff_t
-# define GET_PAGESIZE() 4096
-#else
-# include <unistd.h>
-# define GET_PAGESIZE() sysconf(_SC_PAGESIZE)
-#endif
+#include <string.h>
 
-#define DEFAULT_BLOCK_SIZE() \
-	((size_t)(GET_PAGESIZE() * 2))
+/* Not important enough to query page size for; use large-enough default. */
+#define DEFAULT_BLOCK_SIZE (4096 * 2)
 
 #define ALIGN_BYTES \
 	(sizeof(void*) * 2)
@@ -42,24 +37,24 @@ struct SGS_MemPool {
 };
 
 /**
- * Create and return pointer to SGS_MemPool instance.
+ * Create instance.
  *
  * \p block_size specifies the requested size of each memory block managed by
- * the memory pool. If 0 is passed, the default is used: twice the size of a
- * memory page on the system. Performance measurement is advised if a custom
- * size is used.
+ * the memory pool. If 0 is passed, the default is used: 8KB, meant to take
+ * up at least one memory page on the system. Performance measurement is
+ * advised if a custom size is used.
  *
  * Allocations larger than the requested block size can still be made; these
  * are given individual blocks sized according to need.
  *
- * \return SGS_MemPool instance, or NULL if allocation fails
+ * \return instance, or NULL if allocation fails
  */
 SGS_MemPool *SGS_create_MemPool(size_t block_size) {
 	SGS_MemPool *o = calloc(1, sizeof(SGS_MemPool));
 	if (o == NULL) return NULL;
 	o->block_size = (block_size > 0) ?
 		ALIGN_SIZE(block_size) :
-		DEFAULT_BLOCK_SIZE();
+		DEFAULT_BLOCK_SIZE;
 	return o;
 }
 
@@ -74,13 +69,15 @@ void SGS_destroy_MemPool(SGS_MemPool *o) {
 
 /**
  * Locate the first block with the smallest size into which \p size fits,
- * using binary search.
- * \return id if found, -1 if not found
+ * using binary search. If found, \p id will be set to the id.
+ *
+ * \return true if found, false if not
  */
-static ssize_t first_smallest_block(SGS_MemPool *o, size_t size) {
+static bool first_smallest_block(const SGS_MemPool *o,
+		size_t size, size_t *id) {
 	size_t i = 0;
-	ssize_t min = 0;
-	ssize_t max = o->block_count - 1;
+	ptrdiff_t min = 0;
+	ptrdiff_t max = o->block_count - 1;
 	for (;;) {
 		i = ((size_t)(min + max) >> 1);
 		if (o->blocks[i].free < size) {
@@ -96,19 +93,21 @@ static ssize_t first_smallest_block(SGS_MemPool *o, size_t size) {
 			}
 		}
 	}
-	return (i < o->block_count &&
-		o->blocks[i].free >= size) ?
-		(ssize_t)i :
-		-1;
+	if (i < o->block_count && o->blocks[i].free >= size) {
+		*id = i;
+		return true;
+	}
+	return false;
 }
 
 /**
  * Locate the first block with the smallest size greater than \p size, using
- * binary search.
- * \return id if found, -1 if not found
+ * binary search. If found, \p id will be set to the id.
+ *
+ * \return true if found, false if not
  */
-#define first_block_greater_than(o, size) \
-	first_smallest_block((o), (size) + 1)
+#define first_greater_block(o, size, id) \
+	first_smallest_block((o), (size) + 1, (id))
 
 /**
  * Copy the blocks from \p from to \p to upwards one step.
@@ -133,7 +132,7 @@ static void copy_blocks_up_one(SGS_MemPool *o, size_t to, size_t from) {
 		 * first block of this call.
 		 */
 		size_t higher_from;
-		higher_from = first_block_greater_than(o, o->blocks[from].free);
+		first_greater_block(o, o->blocks[from].free, &higher_from);
 		copy_blocks_up_one(o, to, higher_from);
 		o->blocks[higher_from] = o->blocks[from];
 	}
@@ -141,27 +140,28 @@ static void copy_blocks_up_one(SGS_MemPool *o, size_t to, size_t from) {
 
 /**
  * Add blocks to the memory pool. One if none, otherwise double the number.
- * \return the new number of blocks, or -1 upon failure
+ *
+ * \return true, or false if allocation fails
  */
-static ssize_t MemPool_extend(SGS_MemPool *o) {
+static bool extend_mempool(SGS_MemPool *o) {
 	size_t new_block_alloc = (o->block_alloc > 0) ?
 		(o->block_alloc << 1) :
 		1;
 	o->blocks = realloc(o->blocks, sizeof(BlockEntry) * new_block_alloc);
 	if (o->blocks == NULL)
-		return -1;
+		return false;
 	o->block_alloc = new_block_alloc;
-	return o->block_alloc;
+	return true;
 }
 
 /**
- * Allocate object of \p size within the memory pool. If \p data is not NULL,
- * \p size bytes will be copied from it into the new object.
+ * Allocate block of \p size within the memory pool. If \p src is not
+ * NULL, it will be copied to the new allocation.
  *
- * \return the allocated object, or NULL if allocation fails
+ * \return the allocated block, or NULL if allocation fails
  */
-void *SGS_MemPool_alloc(SGS_MemPool *o, size_t size) {
-	ssize_t i;
+void *SGS_MemPool_alloc(SGS_MemPool *o, const void *src, size_t size) {
+	size_t i;
 	void *ret;
 	size = ALIGN_SIZE(size);
 	/*
@@ -170,7 +170,7 @@ void *SGS_MemPool_alloc(SGS_MemPool *o, size_t size) {
 	 */
 	if (o->block_count > 0 &&
 		size <= o->blocks[o->block_count - 1].free &&
-		(i = first_smallest_block(o, size)) >= 0) {
+		first_smallest_block(o, size, &i)) {
 		/*
 		 * Re-use old block for new allocation.
 		 */
@@ -183,7 +183,8 @@ void *SGS_MemPool_alloc(SGS_MemPool *o, size_t size) {
 		 * Expand block entry array if needed.
 		 */
 		if (o->block_count == o->block_alloc) {
-			if (MemPool_extend(o) < 0) return NULL;
+			if (!extend_mempool(o))
+				return NULL;
 		}
 		/*
 		 * Allocate new block.
@@ -210,21 +211,23 @@ void *SGS_MemPool_alloc(SGS_MemPool *o, size_t size) {
 		size_t j;
 		size_t i_free = o->blocks[i].free;
 		o->blocks[i].free = o->blocks[i - 1].free;
-		j = first_block_greater_than(o, i_free);
-		o->blocks[i].free = i_free;
-		if (j < (size_t)i) {
+		if (first_greater_block(o, i_free, &j) && (j < i)) {
 			/*
 			 * Copy blocks upwards, then set the one at j to the
 			 * one originally at i.
 			 *
-			 * Here, too, the free space at i needs to be fudged,
-			 * since copy_blocks_up_one() relies on binary search.
+			 * The free space at i/j needs to remain fudged until
+			 * after copy_blocks_up_one(), since it relies on
+			 * binary search.
 			 */
 			BlockEntry tmp = o->blocks[i];
-			o->blocks[i].free = o->blocks[i - 1].free;
+			tmp.free = i_free;
 			copy_blocks_up_one(o, i, j);
 			o->blocks[j] = tmp;
+		} else {
+			o->blocks[i].free = i_free;
 		}
 	}
+	if (src != NULL) memcpy(ret, src, size);
 	return ret;
 }
