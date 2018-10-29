@@ -41,14 +41,13 @@ typedef struct SGS_ScriptOpData {
 	struct SGS_ScriptOpData *next; /* next in list, scope, grouping... */
 	struct SGS_ScriptOpData *on_prev; /* preceding for same op(s) */
 	uint32_t op_flags;
-	/* operator parameters */
-	uint32_t operator_id; /* not set by parser; for later use (program.c) */
-	uint32_t operator_params;
+	uint32_t op_id; /* not set by parser; for later use (parseconv.c) */
+	uint32_t op_params;
 	uint8_t attr;
 	uint8_t wave;
-	int32_t time_ms, silence_ms;
+	uint32_t time_ms, silence_ms;
 	float freq, dynfreq, amp, dynamp;
-	int32_t phase;
+	uint32_t phase;
 	SGS_ProgramValit valitfreq, valitamp;
 	/* node adjacents in operator linkage graph */
 	SGS_ScriptListData *amods, *fmods, *pmods;
@@ -60,6 +59,7 @@ typedef struct SGS_ScriptOpData {
 enum {
 	SGS_SDEV_VOICE_LATER_USED = 1<<0,
 	SGS_SDEV_ADD_WAIT_DURATION = 1<<1,
+	SGS_SDEV_NEW_OPGRAPH = 1<<2,
 };
 
 struct SGS_ScriptEvBranch;
@@ -72,17 +72,17 @@ typedef struct SGS_ScriptEvData {
 	struct SGS_ScriptEvData *next;
 	struct SGS_ScriptEvData *group_backref;
 	struct SGS_ScriptEvBranch *forks;
-	int32_t wait_ms;
+	uint32_t wait_ms;
 	SGS_ScriptListData operators; /* operators included in event */
 	uint32_t ev_flags;
 	/* voice parameters */
-	uint32_t voice_id; /* not set by parser; for later use (program.c) */
-	uint32_t voice_params;
+	uint32_t vo_id; /* not set by parser; for later use (parseconv.c) */
+	uint32_t vo_params;
 	struct SGS_ScriptEvData *voice_prev; /* preceding event for voice */
-	uint8_t voice_attr;
+	uint8_t vo_attr;
 	float panning;
 	SGS_ProgramValit valitpanning;
-	SGS_ScriptListData graph;
+	SGS_ScriptListData op_graph;
 } SGS_ScriptEvData;
 
 /**
@@ -108,7 +108,7 @@ typedef struct SGS_ScriptOptions {
 	float ampmult; // amplitude multiplier for non-modulator operators
 	float A4_freq; // A4 tuning for frequency as note
 	/* operator parameter default values (use depends on context) */
-	int32_t def_time_ms;
+	uint32_t def_time_ms;
 	float def_freq,
 	      def_ratio;
 } SGS_ScriptOptions;

@@ -23,8 +23,25 @@
  * General-purpose functions
  */
 
+/* Basic character types. */
+#define IS_LOWER(c) ((c) >= 'a' && (c) <= 'z')
+#define IS_UPPER(c) ((c) >= 'A' && (c) <= 'Z')
+#define IS_DIGIT(c) ((c) >= '0' && (c) <= '9')
+#define IS_ALPHA(c) (IS_LOWER(c) || IS_UPPER(c))
+#define IS_ALNUM(c) (IS_ALPHA(c) || IS_DIGIT(c))
+#define IS_SPACE(c) ((c) == ' ' || (c) == '\t')
+
+/* Valid characters in identifiers. */
+#define IS_SYMCHAR(c) (IS_ALNUM(c) || (c) == '_')
+
 #define IS_WHITESPACE(c) \
-  ((c) == ' ' || (c) == '\t' || (c) == '\n' || (c) == '\r')
+  (IS_SPACE(c) || (c) == '\n' || (c) == '\r')
+
+static bool retc(FILE *f) {
+  char gc = getc(f);
+  ungetc(gc, f);
+  return gc;
+}
 
 static bool testc(char c, FILE *f) {
   char gc = getc(f);
@@ -39,15 +56,37 @@ static bool tryc(char c, FILE *f) {
   return false;
 }
 
+static bool readsym(FILE *f, char *buf, uint32_t buf_len,
+                    uint32_t *sym_len) {
+  uint32_t i = 0;
+  uint32_t max_len = buf_len - 1;
+  bool truncate = false;
+  for (;;) {
+    if (i == max_len) {
+      truncate = true;
+      break;
+    }
+    uint8_t c = getc(f);
+    if (!IS_SYMCHAR(c)) {
+      ungetc(c, f);
+      break;
+    }
+    buf[i++] = c;
+  }
+  buf[i] = '\0';
+  *sym_len = i;
+  return !truncate;
+}
+
 static int32_t getinum(FILE *f) {
   char c;
   int32_t num = -1;
   c = getc(f);
-  if (c >= '0' && c <= '9') {
+  if (IS_DIGIT(c)) {
     num = c - '0';
     for (;;) {
       c = getc(f);
-      if (c >= '0' && c <= '9')
+      if (IS_DIGIT(c))
         num = num * 10 + (c - '0');
       else
         break;
@@ -92,7 +131,9 @@ static int32_t strfind(FILE *f, const char *const*str) {
 
 static void eatws(FILE *f) {
   char c;
-  while ((c = getc(f)) == ' ' || c == '\t') ;
+  do {
+    c = getc(f);
+  } while (IS_SPACE(c));
   ungetc(c, f);
 }
 
@@ -148,8 +189,6 @@ static void fini_parser(SGS_Parser *o) {
   SGS_destroy_Symtab(o->st);
 }
 
-#define VI_TIME_DEFAULT (-1) /* for valits only; masks SGS_TIME_INF */
-
 /*
  * Scope values.
  */
@@ -190,13 +229,12 @@ typedef struct ParseLevel {
   struct ParseLevel *parent;
   uint32_t pl_flags;
   uint8_t location;
-  char scope;
+  uint8_t scope;
+  uint8_t linktype;
   SGS_ScriptEvData *event, *last_event;
   SGS_ScriptListData *nest_list;
   SGS_ScriptOpData *operator, *scope_first, *ev_last, *nest_last;
   SGS_ScriptOpData *parent_on, *on_prev;
-  uint8_t linktype;
-  uint8_t last_linktype; /* FIXME: kludge */
   const char *set_label;
   /* timing/delay */
   SGS_ScriptEvData *main_ev; /* grouping of events for a voice and/or operator */
@@ -237,7 +275,7 @@ static void read_ws(SGS_Parser *o) {
   char c;
   do {
     c = getc(o->f);
-    if (c == ' ' || c == '\t')
+    if (IS_SPACE(c))
       continue;
     if (c == '\n') {
       ++o->line;
@@ -293,15 +331,14 @@ static double read_num_r(NumParser *o, uint8_t pri, uint32_t level) {
     num = read_num_r(o, NUMEXP_ADT, level);
     if (isnan(num)) goto DEFER;
     if (c == '-') num = -num;
-  } else if (o->numsym_f &&
-      ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))) {
+  } else if (o->numsym_f && IS_ALPHA(c)) {
     ungetc(c, pr->f);
     num = o->numsym_f(pr);
     if (isnan(num)) goto REJECT;
   } else {
     char *p = o->buf;
     const size_t len = 64;
-    while ((c >= '0' && c <= '9') || (!dot && (dot = (c == '.')))) {
+    while (IS_DIGIT(c) || (!dot && (dot = (c == '.')))) {
       if ((p+1) == (o->buf+len)) {
         break;
       }
@@ -484,28 +521,20 @@ static float read_note(SGS_Parser *o) {
 #define LABEL_LEN 80
 #define LABEL_LEN_A "80"
 typedef char LabelBuf[LABEL_LEN];
-static bool read_label(SGS_Parser *o, LabelBuf label, char op) {
-  uint32_t i = 0;
+static uint32_t read_label(SGS_Parser *o, LabelBuf label, char op) {
   char nolabel_msg[] = "ignoring ? without label name";
+  uint32_t len = 0;
+  bool error;
   nolabel_msg[9] = op; /* replace ? */
-  for (;;) {
-    o->c = getc(o->f);
-    if (IS_WHITESPACE(o->c) || o->c == EOF) {
-      ungetc(o->c, o->f);
-      if (i == 0)
-        warning(o, nolabel_msg);
-      else END_OF_LABEL: {
-        label[i] = '\0';
-        return true;
-      }
-      break;
-    } else if (i == LABEL_LEN) {
-      warning(o, "ignoring label name from "LABEL_LEN_A"th digit");
-      goto END_OF_LABEL;
-    }
-    label[i++] = o->c;
+  error = !readsym(o->f, label, LABEL_LEN, &len);
+  o->c = retc(o->f);
+  if (len == 0) {
+    warning(o, nolabel_msg);
   }
-  return false;
+  if (error) {
+    warning(o, "ignoring label name from "LABEL_LEN_A"th character");
+  }
+  return len;
 }
 
 static int32_t read_wavetype(SGS_Parser *o) {
@@ -533,7 +562,7 @@ static bool read_valit(SGS_Parser *o, NumSym_f read_symbol,
   char c;
   bool goal = false;
   int32_t type;
-  vi->time_ms = VI_TIME_DEFAULT;
+  vi->time_ms = SGS_TIME_DEFAULT;
   vi->type = SGS_VALIT_LIN; /* default */
   while ((c = read_char(o)) != EOF) {
     switch (c) {
@@ -554,7 +583,7 @@ static bool read_valit(SGS_Parser *o, NumSym_f read_symbol,
           warning(o, "ignoring 't' with sub-zero time");
           break;
         }
-        vi->time_ms = lrint(time * 1000.f);
+        vi->time_ms = SGS_ui32rint(time * 1000.f);
       }
       break; }
     case 'v':
@@ -590,13 +619,13 @@ static bool parse_waittime(ParseLevel *pl) {
     pl->last_event->ev_flags |= SGS_SDEV_ADD_WAIT_DURATION;
   } else {
     float wait;
-    int32_t wait_ms;
+    uint32_t wait_ms;
     read_num(o, 0, &wait);
     if (wait < 0.f) {
       warning(o, "ignoring '\\' with sub-zero time");
       return false;
     }
-    wait_ms = lrint(wait * 1000.f);
+    wait_ms = SGS_ui32rint(wait * 1000.f);
     pl->next_wait_ms += wait_ms;
   }
   return true;
@@ -606,53 +635,44 @@ static bool parse_waittime(ParseLevel *pl) {
  * Node- and scope-handling functions
  */
 
-enum {
-  /* node list/node link types */
-  NL_REFER = 0,
-  NL_GRAPH,
-  NL_FMODS,
-  NL_PMODS,
-  NL_AMODS,
-};
-
 static void end_operator(ParseLevel *pl) {
   if (!(pl->pl_flags & SDPL_OWN_OP))
     return;
   pl->pl_flags &= ~SDPL_OWN_OP;
   SGS_ScriptOpData *op = pl->operator;
   if (!op->on_prev) { /* initial event should reset its parameters */
-    op->operator_params |= SGS_P_WAVE |
-                           SGS_P_TIME |
-                           SGS_P_SILENCE |
-                           SGS_P_FREQ |
-                           SGS_P_DYNFREQ |
-                           SGS_P_PHASE |
-                           SGS_P_AMP |
-                           SGS_P_DYNAMP |
-                           SGS_P_OPATTR;
+    op->op_params |= SGS_POPP_WAVE |
+                     SGS_POPP_TIME |
+                     SGS_POPP_SILENCE |
+                     SGS_POPP_FREQ |
+                     SGS_POPP_DYNFREQ |
+                     SGS_POPP_PHASE |
+                     SGS_POPP_AMP |
+                     SGS_POPP_DYNAMP |
+                     SGS_POPP_ATTR;
   } else {
     SGS_ScriptOpData *pop = op->on_prev;
     if (op->attr != pop->attr)
-      op->operator_params |= SGS_P_OPATTR;
+      op->op_params |= SGS_POPP_ATTR;
     if (op->wave != pop->wave)
-      op->operator_params |= SGS_P_WAVE;
+      op->op_params |= SGS_POPP_WAVE;
     /* SGS_TIME set when time set */
     if (op->silence_ms != 0)
-      op->operator_params |= SGS_P_SILENCE;
+      op->op_params |= SGS_POPP_SILENCE;
     /* SGS_FREQ set when freq set */
     if (op->dynfreq != pop->dynfreq)
-      op->operator_params |= SGS_P_DYNFREQ;
+      op->op_params |= SGS_POPP_DYNFREQ;
     /* SGS_PHASE set when phase set */
     /* SGS_AMP set when amp set */
     if (op->dynamp != pop->dynamp)
-      op->operator_params |= SGS_P_DYNAMP;
+      op->op_params |= SGS_POPP_DYNAMP;
   }
   if (op->valitfreq.type != SGS_VALIT_NONE)
-    op->operator_params |= SGS_P_OPATTR |
-                           SGS_P_VALITFREQ;
+    op->op_params |= SGS_POPP_ATTR |
+                     SGS_POPP_VALITFREQ;
   if (op->valitamp.type != SGS_VALIT_NONE)
-    op->operator_params |= SGS_P_OPATTR |
-                           SGS_P_VALITAMP;
+    op->op_params |= SGS_POPP_ATTR |
+                     SGS_POPP_VALITAMP;
   if (!(pl->pl_flags & SDPL_NESTED_SCOPE)) {
     op->amp *= pl->used_ampmult;
     op->valitamp.goal *= pl->used_ampmult;
@@ -671,16 +691,16 @@ static void end_event(ParseLevel *pl) {
   pl->scope_first = pl->ev_last = NULL;
   pve = e->voice_prev;
   if (!pve) { /* initial event should reset its parameters */
-    e->voice_params |= SGS_P_VOATTR |
-                       SGS_P_GRAPH |
-                       SGS_P_PANNING;
+    e->ev_flags |= SGS_SDEV_NEW_OPGRAPH;
+    e->vo_params |= SGS_PVOP_ATTR |
+                    SGS_PVOP_PANNING;
   } else {
     if (e->panning != pve->panning)
-      e->voice_params |= SGS_P_PANNING;
+      e->vo_params |= SGS_PVOP_PANNING;
   }
   if (e->valitpanning.type != SGS_VALIT_NONE)
-    e->voice_params |= SGS_P_VOATTR |
-                       SGS_P_VALITPANNING;
+    e->vo_params |= SGS_PVOP_ATTR |
+                    SGS_PVOP_VALITPANNING;
   pl->last_event = e;
   pl->event = NULL;
   SGS_ScriptEvData *group_e = (pl->main_ev != NULL) ? pl->main_ev : e;
@@ -689,8 +709,7 @@ static void end_event(ParseLevel *pl) {
   o->group_end = group_e;
 }
 
-static void begin_event(ParseLevel *pl, uint8_t linktype,
-                        bool is_compstep) {
+static void begin_event(ParseLevel *pl, bool is_compstep) {
   SGS_Parser *o = pl->o;
   SGS_ScriptEvData *e, *pve;
   end_event(pl);
@@ -723,7 +742,7 @@ static void begin_event(ParseLevel *pl, uint8_t linktype,
       fork = fork->prev;
     }
     e->voice_prev = pve;
-    e->voice_attr = pve->voice_attr;
+    e->vo_attr = pve->vo_attr;
     e->panning = pve->panning;
     e->valitpanning = pve->valitpanning;
   } else { /* set defaults */
@@ -740,8 +759,7 @@ static void begin_event(ParseLevel *pl, uint8_t linktype,
   pl->pl_flags |= SDPL_OWN_EV;
 }
 
-static void begin_operator(ParseLevel *pl, uint8_t linktype,
-                           bool is_compstep) {
+static void begin_operator(ParseLevel *pl, bool is_compstep) {
   SGS_Parser *o = pl->o;
   SGS_ScriptEvData *e = pl->event;
   SGS_ScriptOpData *op, *pop = pl->on_prev;
@@ -778,7 +796,7 @@ static void begin_operator(ParseLevel *pl, uint8_t linktype,
     op->valitamp = pop->valitamp;
     if ((pl->pl_flags & SDPL_BIND_MULTIPLE) != 0) {
       SGS_ScriptOpData *mpop = pop;
-      int32_t max_time = 0;
+      uint32_t max_time = 0;
       do {
         if (max_time < mpop->time_ms) max_time = mpop->time_ms;
       } while ((mpop = mpop->next) != NULL);
@@ -798,7 +816,7 @@ static void begin_operator(ParseLevel *pl, uint8_t linktype,
     } else {
       op->op_flags |= SGS_SDOP_NESTED;
       op->freq = o->sopt.def_ratio;
-      op->attr |= SGS_ATTR_FREQRATIO;
+      op->attr |= SGS_POPA_FREQRATIO;
     }
   }
   op->event = e;
@@ -813,10 +831,10 @@ static void begin_operator(ParseLevel *pl, uint8_t linktype,
     else
       pl->ev_last->next = op;
     pl->ev_last = op;
-    if (linktype == NL_GRAPH) {
-      e->voice_params |= SGS_P_GRAPH;
-      if (!e->graph.first_on)
-        e->graph.first_on = op;
+    if (!pop) {
+      e->ev_flags |= SGS_SDEV_NEW_OPGRAPH;
+      if (!e->op_graph.first_on)
+        e->op_graph.first_on = op;
     }
   } else {
     if (!pl->nest_list->first_on)
@@ -838,30 +856,20 @@ static void begin_operator(ParseLevel *pl, uint8_t linktype,
 }
 
 /*
- * Assign label to next node (specifically, the next operator).
- */
-static void label_next_node(ParseLevel *pl, const char *label) {
-  pl->set_label = label ?
-	  SGS_Symtab_pool_str(pl->o->st, label, strlen(label)) :
-	  NULL;
-}
-
-/*
  * Begin a new operator - depending on the context, either for the present
  * event or for a new event begun.
  *
  * Used instead of directly calling begin_operator() and/or begin_event().
  */
 static void begin_node(ParseLevel *pl, SGS_ScriptOpData *previous,
-                       uint8_t linktype, bool is_compstep) {
+                       bool is_compstep) {
   pl->on_prev = previous;
   if (!pl->event ||
       pl->location != SDPL_IN_EVENT /* previous event implicitly ended */ ||
       pl->next_wait_ms ||
       is_compstep)
-    begin_event(pl, linktype, is_compstep);
-  begin_operator(pl, linktype, is_compstep);
-  pl->last_linktype = linktype; /* FIXME: kludge */
+    begin_event(pl, is_compstep);
+  begin_operator(pl, is_compstep);
 }
 
 static void flush_durgroup(SGS_Parser *o) {
@@ -873,7 +881,7 @@ static void flush_durgroup(SGS_Parser *o) {
 
 static void begin_scope(SGS_Parser *o, ParseLevel *pl,
                         ParseLevel *parent_pl,
-                        uint8_t linktype, char newscope) {
+                        uint8_t linktype, uint8_t newscope) {
   memset(pl, 0, sizeof(ParseLevel));
   pl->o = o;
   pl->scope = newscope;
@@ -892,13 +900,13 @@ static void begin_scope(SGS_Parser *o, ParseLevel *pl,
       pl->parent_on = parent_pl->operator;
       pl->nest_list = SGS_Mempool_alloc(o->mp, sizeof(SGS_ScriptListData));
       switch (linktype) {
-      case NL_AMODS:
+      case SGS_POP_AMOD:
         pl->parent_on->amods = pl->nest_list;
         break;
-      case NL_FMODS:
+      case SGS_POP_FMOD:
         pl->parent_on->fmods = pl->nest_list;
         break;
-      case NL_PMODS:
+      case SGS_POP_PMOD:
         pl->parent_on->pmods = pl->nest_list;
         break;
       }
@@ -917,7 +925,7 @@ static void end_scope(ParseLevel *pl) {
      */
     if (pl->scope_first != NULL) {
       pl->parent->pl_flags |= SDPL_BIND_MULTIPLE;
-      begin_node(pl->parent, pl->scope_first, pl->parent->last_linktype, false);
+      begin_node(pl->parent, pl->scope_first, false);
     }
   } else if (!pl->parent) {
     /*
@@ -975,7 +983,7 @@ static bool parse_settings(ParseLevel *pl) {
           warning(o, "ignoring 't' with sub-zero time");
           break;
         }
-        o->sopt.def_time_ms = lrint(time * 1000.f);
+        o->sopt.def_time_ms = SGS_ui32rint(time * 1000.f);
         o->sopt.set |= SGS_SOPT_DEF_TIME;
       }
       break; }
@@ -1004,97 +1012,97 @@ static bool parse_step(ParseLevel *pl) {
         goto UNKNOWN;
       if (read_num(o, 0, &e->panning)) {
         if (e->valitpanning.type == SGS_VALIT_NONE)
-          e->voice_attr &= ~SGS_ATTR_VALITPANNING;
+          e->vo_attr &= ~SGS_PVOA_VALITPANNING;
       }
       if (tryc('{', o->f)) {
         if (read_valit(o, 0, &e->valitpanning))
-          e->voice_attr |= SGS_ATTR_VALITPANNING;
+          e->vo_attr |= SGS_PVOA_VALITPANNING;
       }
       break;
     case '\\':
       if (parse_waittime(pl)) {
         // FIXME: Buggy update node handling for carriers etc. if enabled.
-        //begin_node(pl, pl->operator, NL_REFER, false);
+        //begin_node(pl, pl->operator, false);
       }
       break;
     case 'a':
       if (read_num(o, 0, &op->amp)) {
-        op->operator_params |= SGS_P_AMP;
+        op->op_params |= SGS_POPP_AMP;
         if (op->valitamp.type == SGS_VALIT_NONE)
-          op->attr &= ~SGS_ATTR_VALITAMP;
+          op->attr &= ~SGS_POPA_VALITAMP;
       }
       if (tryc('{', o->f)) {
         if (read_valit(o, 0, &op->valitamp))
-          op->attr |= SGS_ATTR_VALITAMP;
+          op->attr |= SGS_POPA_VALITAMP;
       }
       if (tryc(',', o->f) && tryc('w', o->f)) {
         if (!testc('[', o->f)) {
           read_num(o, 0, &op->dynamp);
         }
         if (tryc('[', o->f)) {
-          parse_level(o, pl, NL_AMODS, SCOPE_NEST);
+          parse_level(o, pl, SGS_POP_AMOD, SCOPE_NEST);
         }
       }
       break;
     case 'f':
       if (read_num(o, read_note, &op->freq)) {
-        op->attr &= ~SGS_ATTR_FREQRATIO;
-        op->operator_params |= SGS_P_FREQ;
+        op->attr &= ~SGS_POPA_FREQRATIO;
+        op->op_params |= SGS_POPP_FREQ;
         if (op->valitfreq.type == SGS_VALIT_NONE)
-          op->attr &= ~(SGS_ATTR_VALITFREQ |
-                        SGS_ATTR_VALITFREQRATIO);
+          op->attr &= ~(SGS_POPA_VALITFREQ |
+                        SGS_POPA_VALITFREQRATIO);
       }
       if (tryc('{', o->f)) {
         if (read_valit(o, read_note, &op->valitfreq)) {
-          op->attr |= SGS_ATTR_VALITFREQ;
-          op->attr &= ~SGS_ATTR_VALITFREQRATIO;
+          op->attr |= SGS_POPA_VALITFREQ;
+          op->attr &= ~SGS_POPA_VALITFREQRATIO;
         }
       }
       if (tryc(',', o->f) && tryc('w', o->f)) {
         if (!testc('[', o->f)) {
           if (read_num(o, 0, &op->dynfreq)) {
-            op->attr &= ~SGS_ATTR_DYNFREQRATIO;
+            op->attr &= ~SGS_POPA_DYNFREQRATIO;
           }
         }
         if (tryc('[', o->f)) {
-          parse_level(o, pl, NL_FMODS, SCOPE_NEST);
+          parse_level(o, pl, SGS_POP_FMOD, SCOPE_NEST);
         }
       }
       break;
     case 'p': {
       float phase;
       if (read_num(o, 0, &phase)) {
-        op->phase = SGS_cyclepos_dtoi32(phase);
-        op->operator_params |= SGS_P_PHASE;
+        op->phase = SGS_cyclepos_dtoui32(phase);
+        op->op_params |= SGS_POPP_PHASE;
       }
       if (tryc('[', o->f)) {
-        parse_level(o, pl, NL_PMODS, SCOPE_NEST);
+        parse_level(o, pl, SGS_POP_PMOD, SCOPE_NEST);
       }
       break; }
     case 'r':
       if (!(op->op_flags & SGS_SDOP_NESTED))
         goto UNKNOWN;
       if (read_num(o, 0, &op->freq)) {
-        op->attr |= SGS_ATTR_FREQRATIO;
-        op->operator_params |= SGS_P_FREQ;
+        op->attr |= SGS_POPA_FREQRATIO;
+        op->op_params |= SGS_POPP_FREQ;
         if (op->valitfreq.type == SGS_VALIT_NONE)
-          op->attr &= ~(SGS_ATTR_VALITFREQ |
-                        SGS_ATTR_VALITFREQRATIO);
+          op->attr &= ~(SGS_POPA_VALITFREQ |
+                        SGS_POPA_VALITFREQRATIO);
       }
       if (tryc('{', o->f)) {
         if (read_valit(o, read_note, &op->valitfreq)) {
-          op->attr |= SGS_ATTR_VALITFREQ |
-                      SGS_ATTR_VALITFREQRATIO;
+          op->attr |= SGS_POPA_VALITFREQ |
+                      SGS_POPA_VALITFREQRATIO;
         }
       }
       if (tryc(',', o->f) && tryc('w', o->f)) {
         if (!testc('[', o->f)) {
           if (read_num(o, 0, &op->dynfreq)) {
-            op->attr |= SGS_ATTR_DYNFREQRATIO;
+            op->attr |= SGS_POPA_DYNFREQRATIO;
           }
         }
         if (tryc('[', o->f)) {
-          parse_level(o, pl, NL_FMODS, SCOPE_NEST);
+          parse_level(o, pl, SGS_POP_FMOD, SCOPE_NEST);
         }
       }
       break;
@@ -1105,7 +1113,7 @@ static bool parse_step(ParseLevel *pl) {
         warning(o, "ignoring 's' with sub-zero time");
         break;
       }
-      op->silence_ms = lrint(silence * 1000.f);
+      op->silence_ms = SGS_ui32rint(silence * 1000.f);
       break; }
     case 't':
       if (tryc('d', o->f)) {
@@ -1126,9 +1134,9 @@ static bool parse_step(ParseLevel *pl) {
           break;
         }
         op->op_flags &= ~SGS_SDOP_TIME_DEFAULT;
-        op->time_ms = lrint(time * 1000.f);
+        op->time_ms = SGS_ui32rint(time * 1000.f);
       }
-      op->operator_params |= SGS_P_TIME;
+      op->op_params |= SGS_POPP_TIME;
       break;
     case 'w': {
       int32_t wave = read_wavetype(o);
@@ -1155,6 +1163,7 @@ static bool parse_level(SGS_Parser *o, ParseLevel *parent_pl,
   LabelBuf label;
   ParseLevel pl;
   char c;
+  uint32_t label_len;
   uint8_t flags = 0;
   bool endscope = false;
   begin_scope(o, &pl, parent_pl, linktype, newscope);
@@ -1182,8 +1191,8 @@ static bool parse_level(SGS_Parser *o, ParseLevel *parent_pl,
         warning(o, "ignoring label assignment to label assignment");
         break;
       }
-      read_label(o, label, c);
-      label_next_node(&pl, label);
+      label_len = read_label(o, label, c);
+      pl.set_label = SGS_Symtab_pool_str(o->st, label, label_len);
       break;
     case ';':
       if (newscope == SCOPE_SAME) {
@@ -1192,7 +1201,7 @@ static bool parse_level(SGS_Parser *o, ParseLevel *parent_pl,
       }
       if (pl.location == SDPL_IN_DEFAULTS || !pl.event)
         goto INVALID;
-      begin_node(&pl, pl.operator, NL_REFER, true);
+      begin_node(&pl, pl.operator, true);
       flags = parse_step(&pl) ? (HANDLE_DEFER | DEFERRED_STEP) : 0;
       break;
     case '@':
@@ -1211,16 +1220,17 @@ static bool parse_level(SGS_Parser *o, ParseLevel *parent_pl,
        */
       if (pl.set_label != NULL) {
         warning(o, "ignoring label assignment to label reference");
-        label_next_node(&pl, NULL);
+        pl.set_label = NULL;
       }
       pl.location = SDPL_IN_NONE;
-      if (read_label(o, label, c)) {
-        SGS_ScriptOpData *ref = SGS_Symtab_get(o->st, label, strlen(label));
+      label_len = read_label(o, label, c);
+      if (label_len > 0) {
+        SGS_ScriptOpData *ref = SGS_Symtab_get(o->st, label, label_len);
         if (!ref)
           warning(o, "ignoring reference to undefined label");
         else {
-          begin_node(&pl, ref, NL_REFER, false);
-          SGS_Symtab_set(o->st, label, strlen(label), pl.operator); /* update */
+          begin_node(&pl, ref, false);
+          SGS_Symtab_set(o->st, label, label_len, pl.operator); /* update */
           flags = parse_step(&pl) ? (HANDLE_DEFER | DEFERRED_STEP) : 0;
         }
       }
@@ -1229,7 +1239,7 @@ static bool parse_level(SGS_Parser *o, ParseLevel *parent_pl,
       int32_t wave = read_wavetype(o);
       if (wave < 0)
         break;
-      begin_node(&pl, 0, pl.linktype, false);
+      begin_node(&pl, 0, false);
       pl.operator->wave = wave;
       flags = parse_step(&pl) ? (HANDLE_DEFER | DEFERRED_STEP) : 0;
       break; }
@@ -1320,7 +1330,7 @@ static bool parse_file(SGS_Parser *o, const char *fname) {
   }
   o->fn = fname;
   o->line = 1;
-  parse_level(o, 0, NL_GRAPH, SCOPE_TOP);
+  parse_level(o, 0, SGS_POP_CARR, SCOPE_TOP);
   fclose(o->f);
   o->f = NULL;
   return true;
@@ -1369,9 +1379,9 @@ static void time_durgroup(SGS_ScriptEvData *e_last) {
 
 static void time_operator(SGS_ScriptOpData *op) {
   SGS_ScriptEvData *e = op->event;
-  if (op->valitfreq.time_ms == VI_TIME_DEFAULT)
+  if (op->valitfreq.time_ms == SGS_TIME_DEFAULT)
     op->valitfreq.time_ms = op->time_ms;
-  if (op->valitamp.time_ms == VI_TIME_DEFAULT)
+  if (op->valitamp.time_ms == SGS_TIME_DEFAULT)
     op->valitamp.time_ms = op->time_ms;
   if ((op->op_flags & (SGS_SDOP_TIME_DEFAULT | SGS_SDOP_NESTED)) ==
                       (SGS_SDOP_TIME_DEFAULT | SGS_SDOP_NESTED)) {
@@ -1379,7 +1389,7 @@ static void time_operator(SGS_ScriptOpData *op) {
     if (!(op->op_flags & SGS_SDOP_HAS_COMPSTEP))
       op->time_ms = SGS_TIME_INF;
   }
-  if (op->time_ms >= 0 && !(op->op_flags & SGS_SDOP_SILENCE_ADDED)) {
+  if (op->time_ms != SGS_TIME_INF && !(op->op_flags & SGS_SDOP_SILENCE_ADDED)) {
     op->time_ms += op->silence_ms;
     op->op_flags |= SGS_SDOP_SILENCE_ADDED;
   }
@@ -1407,7 +1417,7 @@ static void time_event(SGS_ScriptEvData *e) {
    * Fill in blank valit durations, handle silence as well as the case of
    * adding present event duration to wait time of next event.
    */
-  if (e->valitpanning.time_ms == VI_TIME_DEFAULT)
+  if (e->valitpanning.time_ms == SGS_TIME_DEFAULT)
     e->valitpanning.time_ms = 1000; /* FIXME! */
   for (SGS_ScriptOpData *op = e->operators.first_on; op; op = op->next) {
     time_operator(op);
@@ -1438,7 +1448,7 @@ static void time_event(SGS_ScriptEvData *e) {
       else if (e_op->time_ms != SGS_TIME_INF)
         e_op->time_ms += ce_op->time_ms +
                          (ce->wait_ms - ce_op_prev->time_ms);
-      ce_op->operator_params &= ~SGS_P_TIME;
+      ce_op->op_params &= ~SGS_POPP_TIME;
       ce_op_prev = ce_op;
       ce = ce->next;
       if (!ce) break;
