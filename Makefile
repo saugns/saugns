@@ -5,6 +5,7 @@ LFLAGS_LINUX=$(LFLAGS) -lasound
 LFLAGS_SNDIO=$(LFLAGS) -lsndio
 LFLAGS_OSSAUDIO=$(LFLAGS) -lossaudio
 OBJ=common.o \
+    arrtype.o \
     ptrlist.o \
     builder/symtab.o \
     builder/lexer.o \
@@ -40,6 +41,9 @@ sgensys: $(OBJ)
 		$(CC) $(OBJ) $(LFLAGS) -o sgensys; \
 	fi
 
+arrtype.o: arrtype.c arrtype.h common.h
+	$(CC) -c $(CFLAGS) arrtype.c
+
 audiodev.o: audiodev.c audiodev/*.c audiodev.h common.h
 	$(CC) -c $(CFLAGS) audiodev.c
 
@@ -52,7 +56,7 @@ builder.o: builder.c sgensys.h builder/lexer.h script.h program.h ptrlist.h wave
 builder/lexer.o: builder/lexer.c builder/lexer.h builder/symtab.h math.h common.h
 	$(CC) -c $(CFLAGS) builder/lexer.c -o builder/lexer.o
 
-builder/parseconv.o: builder/parseconv.c program.h wave.h math.h script.h ptrlist.h common.h
+builder/parseconv.o: builder/parseconv.c program.h wave.h math.h script.h ptrlist.h arrtype.h common.h
 	$(CC) -c $(CFLAGS) builder/parseconv.c -o builder/parseconv.o
 
 builder/parser.o: builder/parser.c script.h ptrlist.h builder/symtab.h program.h wave.h math.h common.h
