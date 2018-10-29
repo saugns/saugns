@@ -76,17 +76,3 @@ void *SGS_memdup(const void *src, size_t size) {
 	memcpy(dst, src, size);
 	return dst;
 }
-
-/**
- * Allocates copy of \p src.
- *
- * \return new allocation or NULL on failure
- */
-char *SGS_strdup(const char *src) {
-	if (!src) return NULL;
-	size_t len = strlen(src);
-	char *dst = SGS_memdup(src, len + 1);
-	if (!dst) return NULL;
-	dst[len] = '\0';
-	return dst;
-}
