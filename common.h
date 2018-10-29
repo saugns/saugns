@@ -46,7 +46,6 @@ void SGS_error(const char *label, const char *fmt, ...)
 	SGS__printflike(2, 3);
 
 void *SGS_memdup(const void *src, size_t size) SGS__malloclike;
-char *SGS_strdup(const char *src) SGS__malloclike;
 
 /*
  * Debugging options.

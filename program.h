@@ -18,43 +18,79 @@
  * Program types and definitions.
  */
 
+/**
+ * Voice parameter flags
+ */
 enum {
-	/* voice parameters */
-	SGS_P_GRAPH = 1<<0,
-	SGS_P_PANNING = 1<<1,
-	SGS_P_VALITPANNING = 1<<2,
-	SGS_P_VOATTR = 1<<3,
-	/* operator parameters */
-	SGS_P_ADJCS = 1<<4,
-	SGS_P_WAVE = 1<<5,
-	SGS_P_TIME = 1<<6,
-	SGS_P_SILENCE = 1<<7,
-	SGS_P_FREQ = 1<<8,
-	SGS_P_VALITFREQ = 1<<9,
-	SGS_P_DYNFREQ = 1<<10,
-	SGS_P_PHASE = 1<<11,
-	SGS_P_AMP = 1<<12,
-	SGS_P_VALITAMP = 1<<13,
-	SGS_P_DYNAMP = 1<<14,
-	SGS_P_OPATTR = 1<<15
+	SGS_PVOP_OPLIST = 1<<0,
+	SGS_PVOP_PANNING = 1<<1,
+	SGS_PVOP_VALITPANNING = 1<<2,
+	SGS_PVOP_ATTR = 1<<3,
 };
 
-/* special operator timing values */
+/**
+ * Operator parameter flags
+ */
 enum {
-	SGS_TIME_INF = -1 /* used for nested operators */
+	SGS_POPP_ADJCS = 1<<0,
+	SGS_POPP_WAVE = 1<<1,
+	SGS_POPP_TIME = 1<<2,
+	SGS_POPP_SILENCE = 1<<3,
+	SGS_POPP_FREQ = 1<<4,
+	SGS_POPP_VALITFREQ = 1<<5,
+	SGS_POPP_DYNFREQ = 1<<6,
+	SGS_POPP_PHASE = 1<<7,
+	SGS_POPP_AMP = 1<<8,
+	SGS_POPP_VALITAMP = 1<<9,
+	SGS_POPP_DYNAMP = 1<<10,
+	SGS_POPP_ATTR = 1<<11,
 };
 
-/* operator atttributes */
+/**
+ * Voice ID constants
+ */
 enum {
-	SGS_ATTR_FREQRATIO = 1<<0,
-	SGS_ATTR_DYNFREQRATIO = 1<<1,
-	SGS_ATTR_VALITFREQ = 1<<2,
-	SGS_ATTR_VALITFREQRATIO = 1<<3,
-	SGS_ATTR_VALITAMP = 1<<4,
-	SGS_ATTR_VALITPANNING = 1<<5
+	SGS_PVO_NO_ID = UINT16_MAX, /* voice ID missing */
+	SGS_PVO_MAX_ID = UINT16_MAX - 1, /* error if exceeded */
 };
 
-/* value iteration types */
+/**
+ * Operator ID constants
+ */
+enum {
+	SGS_POP_NO_ID = UINT32_MAX, /* operator ID missing */
+	SGS_POP_MAX_ID = UINT32_MAX - 1, /* error if exceeded */
+};
+
+/**
+ * Timing special values
+ */
+enum {
+	SGS_TIME_INF = UINT32_MAX, /* special handling for nested operators */
+	SGS_TIME_DEFAULT = UINT32_MAX, /* internal default for valits */
+};
+
+/**
+ * Voice atttributes
+ */
+enum {
+	SGS_PVOA_VALITPANNING = 1<<0,
+};
+
+/**
+ * Operator atttributes
+ */
+enum {
+	SGS_POPA_FREQRATIO = 1<<0,
+	SGS_POPA_DYNFREQRATIO = 1<<1,
+	SGS_POPA_VALITFREQ = 1<<2,
+	SGS_POPA_VALITFREQRATIO = 1<<3,
+	SGS_POPA_VALITAMP = 1<<4,
+};
+
+/**
+ * Value iteration types
+ */
 enum {
 	SGS_VALIT_NONE = 0, /* when none given */
 	SGS_VALIT_LIN,
@@ -62,67 +98,87 @@ enum {
 	SGS_VALIT_LOG
 };
 
-typedef struct SGS_ProgramGraph {
-	uint32_t opc;
-	int32_t ops[1]; /* sized to opc */
-} SGS_ProgramGraph;
+/**
+ * Operator use types.
+ */
+enum {
+	SGS_POP_CARR = 0,
+	SGS_POP_FMOD,
+	SGS_POP_PMOD,
+	SGS_POP_AMOD,
+	SGS_POP_USES,
+};
 
-typedef struct SGS_ProgramGraphAdjcs {
+typedef struct SGS_ProgramOpRef {
+	uint32_t id;
+	uint8_t use;
+	uint8_t level; /* > 0 if used as a modulator */
+} SGS_ProgramOpRef;
+
+typedef struct SGS_ProgramOpGraph {
+	uint32_t opc;
+	uint32_t ops[1]; /* sized to opc */
+} SGS_ProgramOpGraph;
+
+typedef struct SGS_ProgramOpAdjcs {
 	uint32_t fmodc;
 	uint32_t pmodc;
 	uint32_t amodc;
-	uint32_t level;  /* index for buffer used to store result to use if
-	                    node revisited when traversing the graph. */
-	int32_t adjcs[1]; /* sized to total number */
-} SGS_ProgramGraphAdjcs;
+	uint32_t adjcs[1]; /* sized to total number */
+} SGS_ProgramOpAdjcs;
 
 typedef struct SGS_ProgramValit {
-	int32_t time_ms, pos_ms;
+	uint32_t time_ms, pos_ms;
 	float goal;
 	uint8_t type;
 } SGS_ProgramValit;
 
 typedef struct SGS_ProgramVoData {
-	const SGS_ProgramGraph *graph;
+	const SGS_ProgramOpRef *op_list;
+	uint32_t op_count;
+	uint32_t params;
 	uint8_t attr;
 	float panning;
 	SGS_ProgramValit valitpanning;
 } SGS_ProgramVoData;
 
 typedef struct SGS_ProgramOpData {
-	const SGS_ProgramGraphAdjcs *adjcs;
-	uint32_t operator_id;
+	const SGS_ProgramOpAdjcs *adjcs;
+	uint32_t id;
+	uint32_t params;
 	uint8_t attr;
 	uint8_t wave;
-	int32_t time_ms, silence_ms;
+	uint32_t time_ms, silence_ms;
 	float freq, dynfreq, phase, amp, dynamp;
 	SGS_ProgramValit valitfreq, valitamp;
 } SGS_ProgramOpData;
 
 typedef struct SGS_ProgramEvent {
-	int32_t wait_ms;
-	uint32_t params;
-	uint32_t voice_id; /* needed for both voice and operator data */
-	const SGS_ProgramVoData *voice;
-	const SGS_ProgramOpData *operator;
+	uint32_t wait_ms;
+	uint16_t vo_id;
+	uint32_t op_data_count;
+	const SGS_ProgramVoData *vo_data;
+	const SGS_ProgramOpData *op_data;
 } SGS_ProgramEvent;
 
 /**
  * Program flags affecting interpretation.
  */
 enum {
-	SGS_PROG_AMP_DIV_VOICES = 1<<0,
+	SGS_PMODE_AMP_DIV_VOICES = 1<<0,
 };
 
 /**
  * Main program type. Contains everything needed for interpretation.
  */
 typedef struct SGS_Program {
-	const SGS_ProgramEvent **events;
-	size_t event_count;
-	uint32_t operator_count;
-	uint16_t voice_count;
-	uint16_t flags;
+	SGS_ProgramEvent *events;
+	size_t ev_count;
+	uint16_t mode;
+	uint16_t vo_count;
+	uint32_t op_count;
+	uint8_t op_nest_depth;
+	uint32_t duration_ms;
 	const char *name;
 } SGS_Program;
 
