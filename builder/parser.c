@@ -8,7 +8,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #include "symtab.h"
@@ -38,7 +38,7 @@
 /* Sensible to print, for ASCII only. */
 #define IS_VISIBLE(c) ((c) >= '!' && (c) <= '~')
 
-static bool read_sym(SGS_File *f, char *buf, uint32_t maxlen,
+static bool read_sym(SGS_CBuf *cb, char *buf, uint32_t maxlen,
                      uint32_t *sym_len) {
   uint32_t i = 0;
   bool truncate = false;
@@ -47,9 +47,9 @@ static bool read_sym(SGS_File *f, char *buf, uint32_t maxlen,
       truncate = true;
       break;
     }
-    uint8_t c = SGS_File_GETC(f);
+    uint8_t c = SGS_CBuf_GETC(cb);
     if (!IS_SYMCHAR(c)) {
-      SGS_File_UNGETC(f);
+      SGS_CBuf_UNGETC(cb);
       break;
     }
     buf[i++] = c;
@@ -59,25 +59,25 @@ static bool read_sym(SGS_File *f, char *buf, uint32_t maxlen,
   return !truncate;
 }
 
-static int32_t read_inum(SGS_File *f) {
+static int32_t read_inum(SGS_CBuf *cb) {
   uint8_t c;
   int32_t num = -1;
-  c = SGS_File_GETC(f);
+  c = SGS_CBuf_GETC(cb);
   if (IS_DIGIT(c)) {
     num = c - '0';
     for (;;) {
-      c = SGS_File_GETC(f);
+      c = SGS_CBuf_GETC(cb);
       if (IS_DIGIT(c))
         num = num * 10 + (c - '0');
       else
         break;
     }
   }
-  SGS_File_UNGETC(f);
+  SGS_CBuf_UNGETC(cb);
   return num;
 }
 
-static int32_t read_strfind(SGS_File *f, const char *const*str) {
+static int32_t read_strfind(SGS_CBuf *cb, const char *const*str) {
   int32_t ret;
   uint32_t i, len, pos, matchpos;
   uint32_t strc;
@@ -90,7 +90,7 @@ static int32_t read_strfind(SGS_File *f, const char *const*str) {
   ret = -1;
   pos = matchpos = 0;
   for (;;) {
-    uint8_t c = SGS_File_GETC(f);
+    uint8_t c = SGS_CBuf_GETC(cb);
     if (c <= SGS_File_MARKER) break;
     for (i = 0; i < strc; ++i) {
       if (!s[i]) continue;
@@ -106,24 +106,24 @@ static int32_t read_strfind(SGS_File *f, const char *const*str) {
     ++pos;
   }
   free(s);
-  SGS_File_UNGETN(f, (pos-matchpos));
+  SGS_CBuf_UNGETN(cb, (pos-matchpos));
   return ret;
 }
 
-static void read_skip_blanks(SGS_File *f) {
+static void read_skip_blanks(SGS_CBuf *cb) {
   for (;;) {
-    uint8_t c = SGS_File_GETC(f);
+    uint8_t c = SGS_CBuf_GETC(cb);
     if (!IS_BLANK(c)) break;
   }
-  SGS_File_UNGETC(f);
+  SGS_CBuf_UNGETC(cb);
 }
 
-static void read_skip_line(SGS_File *f) {
+static void read_skip_line(SGS_CBuf *cb) {
   for (;;) {
-    uint8_t c = SGS_File_GETC(f);
+    uint8_t c = SGS_CBuf_GETC(cb);
     if (IS_LNBRK(c) || c <= SGS_File_MARKER) break;
   }
-  SGS_File_UNGETC(f);
+  SGS_CBuf_UNGETC(cb);
 }
 
 /*
@@ -131,7 +131,7 @@ static void read_skip_line(SGS_File *f) {
  */
 
 typedef struct SGS_Parser {
-  SGS_File *f;
+  SGS_File f;
   SGS_SymTab *st;
   uint32_t line;
   uint32_t call_level;
@@ -163,7 +163,7 @@ static const SGS_ScriptOptions def_sopt = {
  */
 static void init_parser(SGS_Parser *o) {
   *o = (SGS_Parser){0};
-  o->f = calloc(1, sizeof(SGS_File));
+  SGS_init_File(&o->f);
   o->st = SGS_create_SymTab();
   o->sopt = def_sopt;
 }
@@ -172,7 +172,7 @@ static void init_parser(SGS_Parser *o) {
  * Finalize parser instance.
  */
 static void fini_parser(SGS_Parser *o) {
-  free(o->f);
+  SGS_fini_File(&o->f);
   SGS_destroy_SymTab(o->st);
 }
 
@@ -218,7 +218,7 @@ typedef struct ParseLevel {
  * is set to the character where the error was detected.
  */
 static void scan_warning(SGS_Parser *o, const char *str) {
-  SGS_File *f = o->f;
+  SGS_File *f = &o->f;
   uint8_t c = o->c;
   if (IS_VISIBLE(c)) {
     fprintf(stderr, "warning: %s [line %d, at '%c'] - %s\n",
@@ -234,45 +234,47 @@ static void scan_warning(SGS_Parser *o, const char *str) {
 
 #define SCAN_NEWLINE '\n'
 static uint8_t scan_char(SGS_Parser *o) {
+  SGS_CBuf *cb = &o->f.cb;
   uint8_t c;
-  read_skip_blanks(o->f);
+  read_skip_blanks(cb);
   if (o->next_c != 0) {
     c = o->next_c;
     o->next_c = 0;
   } else {
-    c = SGS_File_GETC(o->f);
+    c = SGS_CBuf_GETC(cb);
   }
   if (c == '#') {
-    read_skip_line(o->f);
-    c = SGS_File_GETC(o->f);
+    read_skip_line(cb);
+    c = SGS_CBuf_GETC(cb);
   }
   if (c == '\n') {
-    SGS_File_TRYC(o->f, '\r');
+    SGS_CBuf_TRYC(cb, '\r');
     c = SCAN_NEWLINE;
   } else if (c == '\r') {
     c = SCAN_NEWLINE;
   } else {
-    read_skip_blanks(o->f);
+    read_skip_blanks(cb);
   }
   o->c = c;
   return c;
 }
 
 static void scan_ws(SGS_Parser *o) {
+  SGS_CBuf *cb = &o->f.cb;
   for (;;) {
-    uint8_t c = SGS_File_GETC(o->f);
+    uint8_t c = SGS_CBuf_GETC(cb);
     if (IS_BLANK(c))
       continue;
     if (c == '\n') {
       ++o->line;
-      SGS_File_TRYC(o->f, '\r');
+      SGS_CBuf_TRYC(cb, '\r');
     } else if (c == '\r') {
       ++o->line;
     } else if (c == '#') {
-      read_skip_line(o->f);
-      c = SGS_File_GETC(o->f);
+      read_skip_line(cb);
+      c = SGS_CBuf_GETC(cb);
     } else {
-      SGS_File_UNGETC(o->f);
+      SGS_CBuf_UNGETC(cb);
       break;
     }
   }
@@ -284,8 +286,9 @@ static void scan_ws(SGS_Parser *o) {
  * \return false if EOF reached
  */
 static bool scan_unknown_or_end(SGS_Parser *o) {
-  if (SGS_File_AT_EOF(o->f) ||
-      SGS_File_AFTER_EOF(o->f)) {
+  SGS_File *f = &o->f;
+  if (SGS_File_AT_EOF(f) ||
+      SGS_File_AFTER_EOF(f)) {
     return false;
   }
   scan_warning(o, "invalid character");
@@ -294,24 +297,25 @@ static bool scan_unknown_or_end(SGS_Parser *o) {
 
 static float scan_num_r(SGS_Parser *o, float (*scan_symbol)(SGS_Parser *o),
                         char *buf, uint32_t len, uint8_t pri, uint32_t level) {
+  SGS_CBuf *cb = &o->f.cb;
   char *p = buf;
   bool dot = false;
   float num;
   char c;
-  c = SGS_File_GETC(o->f);
+  c = SGS_CBuf_GETC(cb);
   if (level > 0) scan_ws(o);
   if (c == '(') {
     return scan_num_r(o, scan_symbol, buf, len, 255, level+1);
   }
   if (scan_symbol && IS_ALPHA(c)) {
-    SGS_File_UNGETC(o->f);
+    SGS_CBuf_UNGETC(cb);
     num = scan_symbol(o);
     if (num == num) /* not NAN; was recognized */
       goto LOOP;
   }
   if (c == '-') {
     *p++ = c;
-    c = SGS_File_GETC(o->f);
+    c = SGS_CBuf_GETC(cb);
     if (level > 0) scan_ws(o);
   }
   while (IS_DIGIT(c) || (!dot && (dot = (c == '.')))) {
@@ -319,16 +323,16 @@ static float scan_num_r(SGS_Parser *o, float (*scan_symbol)(SGS_Parser *o),
       break;
     }
     *p++ = c;
-    c = SGS_File_GETC(o->f);
+    c = SGS_CBuf_GETC(cb);
   }
-  SGS_File_UNGETC(o->f);
+  SGS_CBuf_UNGETC(cb);
   if (p == buf) return NAN;
   *p = '\0';
   num = strtod(buf, 0);
 LOOP:
   if (level > 0) scan_ws(o);
   for (;;) {
-    c = SGS_File_GETC(o->f);
+    c = SGS_CBuf_GETC(cb);
     if (level > 0) scan_ws(o);
     switch (c) {
     case '(':
@@ -336,7 +340,7 @@ LOOP:
       break;
     case ')':
       if (pri < 255)
-        SGS_File_UNGETC(o->f);
+        SGS_CBuf_UNGETC(cb);
       return num;
       break;
     case '^':
@@ -359,11 +363,11 @@ LOOP:
       num -= scan_num_r(o, scan_symbol, buf, len, 2, level);
       break;
     default:
-      SGS_File_UNGETC(o->f);
+      SGS_CBuf_UNGETC(cb);
       return num;
     }
     if (num != num) {
-      SGS_File_UNGETC(o->f);
+      SGS_CBuf_UNGETC(cb);
       return num;
     }
   }
@@ -425,8 +429,9 @@ static float scan_note(SGS_Parser *o) {
       25.f/12.f
     }
   };
+  SGS_CBuf *cb = &o->f.cb;
   float freq;
-  o->c = SGS_File_GETC(o->f);
+  o->c = SGS_CBuf_GETC(cb);
   int32_t octave;
   int32_t semitone = 1, note;
   int32_t subnote = -1;
@@ -434,7 +439,7 @@ static float scan_note(SGS_Parser *o) {
     subnote = o->c - 'c';
     if (subnote < 0) /* a, b */
       subnote += 7;
-    o->c = SGS_File_GETC(o->f);
+    o->c = SGS_CBuf_GETC(cb);
   }
   if (o->c < 'A' || o->c > 'G') {
     scan_warning(o, "invalid note specified - should be C, D, E, F, G, A or B");
@@ -443,14 +448,14 @@ static float scan_note(SGS_Parser *o) {
   note = o->c - 'C';
   if (note < 0) /* A, B */
     note += 7;
-  o->c = SGS_File_GETC(o->f);
+  o->c = SGS_CBuf_GETC(cb);
   if (o->c == 's')
     semitone = 2;
   else if (o->c == 'f')
     semitone = 0;
   else
-    SGS_File_UNGETC(o->f);
-  octave = read_inum(o->f);
+    SGS_CBuf_UNGETC(cb);
+  octave = read_inum(cb);
   if (octave < 0) /* none given, default to 4 */
     octave = 4;
   else if (octave >= OCTAVES) {
@@ -470,11 +475,12 @@ static float scan_note(SGS_Parser *o) {
 typedef char LabelBuf[LABEL_LEN];
 static uint32_t scan_label(SGS_Parser *o, LabelBuf label, char op) {
   char nolabel_msg[] = "ignoring ? without label name";
+  SGS_CBuf *cb = &o->f.cb;
   uint32_t len = 0;
   bool error;
   nolabel_msg[9] = op; /* replace ? */
-  error = !read_sym(o->f, label, LABEL_LEN, &len);
-  o->c = SGS_File_RETC(o->f);
+  error = !read_sym(cb, label, LABEL_LEN, &len);
+  o->c = SGS_CBuf_RETC(cb);
   if (len == 0) {
     scan_warning(o, nolabel_msg);
   }
@@ -485,7 +491,8 @@ static uint32_t scan_label(SGS_Parser *o, LabelBuf label, char op) {
 }
 
 static int32_t scan_wavetype(SGS_Parser *o) {
-  int32_t wave = read_strfind(o->f, SGS_Wave_names);
+  SGS_CBuf *cb = &o->f.cb;
+  int32_t wave = read_strfind(cb, SGS_Wave_names);
   if (wave < 0) {
     scan_warning(o, "invalid wave type; available types are:");
     uint8_t i = 0;
@@ -498,18 +505,13 @@ static int32_t scan_wavetype(SGS_Parser *o) {
   return wave;
 }
 
-static bool scan_valit(SGS_Parser *o, float (*scan_symbol)(SGS_Parser *o),
-                       SGS_ProgramValit *vi) {
-  static const char *const valittypes[] = {
-    "lin",
-    "exp",
-    "log",
-    0
-  };
+static bool scan_slope(SGS_Parser *o, float (*scan_symbol)(SGS_Parser *o),
+                       SGS_Slope *slope) {
+  SGS_CBuf *cb = &o->f.cb;
   bool goal = false;
   int32_t type;
-  vi->time_ms = SGS_TIME_DEFAULT;
-  vi->type = SGS_VALIT_LIN; /* default */
+  slope->time_ms = SGS_TIME_DEFAULT;
+  slope->type = SGS_SLOPE_LIN; /* default */
   for (;;) {
     uint8_t c = scan_char(o);
     switch (c) {
@@ -517,12 +519,20 @@ static bool scan_valit(SGS_Parser *o, float (*scan_symbol)(SGS_Parser *o),
       ++o->line;
       break;
     case 'c':
-      type = read_strfind(o->f, valittypes);
-      if (type >= 0) {
-        vi->type = type + SGS_VALIT_LIN;
+      // "state" (type 0) disallowed
+      type = read_strfind(cb, SGS_Slope_names + 1) + 1;
+      if (type <= 0) {
+        scan_warning(o, "invalid slope change type; available types are:");
+        uint8_t i = 1;
+        fprintf(stderr, "\t%s", SGS_Slope_names[i]);
+        while (++i < SGS_SLOPE_TYPES) {
+          fprintf(stderr, ", %s", SGS_Slope_names[i]);
+        }
+        putc('\n', stderr);
         break;
       }
-      goto INVALID;
+      slope->type = type;
+      break;
     case 't': {
       float time;
       if (scan_num(o, 0, &time)) {
@@ -530,17 +540,16 @@ static bool scan_valit(SGS_Parser *o, float (*scan_symbol)(SGS_Parser *o),
           scan_warning(o, "ignoring 't' with sub-zero time");
           break;
         }
-        vi->time_ms = lrint(time * 1000.f);
+        slope->time_ms = lrint(time * 1000.f);
       }
       break; }
     case 'v':
-      if (scan_num(o, scan_symbol, &vi->goal))
+      if (scan_num(o, scan_symbol, &slope->goal))
         goal = true;
       break;
     case ']':
       goto RETURN;
     default:
-    INVALID:
       if (!scan_unknown_or_end(o)) goto FINISH;
       break;
     }
@@ -549,8 +558,8 @@ FINISH:
   scan_warning(o, "end of file without closing ']'");
 RETURN:
   if (!goal) {
-    scan_warning(o, "ignoring gradual parameter change with no target value");
-    vi->type = SGS_VALIT_NONE;
+    scan_warning(o, "ignoring value slope with no target value");
+    slope->type = SGS_SLOPE_STATE;
     return false;
   }
   return true;
@@ -558,8 +567,9 @@ RETURN:
 
 static bool parse_waittime(ParseLevel *pl) {
   SGS_Parser *o = pl->o;
+  SGS_CBuf *cb = &o->f.cb;
   /* FIXME: ADD_WAIT_DURATION */
-  if (SGS_File_TRYC(o->f, 't')) {
+  if (SGS_CBuf_TRYC(cb, 't')) {
     if (!pl->last_operator) {
       scan_warning(o, "add wait for last duration before any parts given");
       return false;
@@ -665,12 +675,12 @@ static void end_operator(ParseLevel *pl) {
     if (op->dynamp != pop->dynamp)
       op->op_params |= SGS_POPP_DYNAMP;
   }
-  if (op->valitfreq.type != SGS_VALIT_NONE)
+  if (op->slope_freq.type != SGS_SLOPE_STATE)
     op->op_params |= SGS_POPP_ATTR |
-                     SGS_POPP_VALITFREQ;
-  if (op->valitamp.type != SGS_VALIT_NONE)
+                     SGS_POPP_SLOPE_FREQ;
+  if (op->slope_amp.type != SGS_SLOPE_STATE)
     op->op_params |= SGS_POPP_ATTR |
-                     SGS_POPP_VALITAMP;
+                     SGS_POPP_SLOPE_AMP;
   if (!(pl->pl_flags & SDPL_NESTED_SCOPE))
     op->amp *= o->sopt.ampmult;
   pl->operator = NULL;
@@ -687,14 +697,14 @@ static void end_event(ParseLevel *pl) {
   if (!pve) { /* initial event should reset its parameters */
     e->ev_flags |= SGS_SDEV_NEW_OPGRAPH;
     e->vo_params |= SGS_PVOP_ATTR |
-                    SGS_PVOP_PANNING;
+                    SGS_PVOP_PAN;
   } else {
-    if (e->panning != pve->panning)
-      e->vo_params |= SGS_PVOP_PANNING;
+    if (e->pan != pve->pan)
+      e->vo_params |= SGS_PVOP_PAN;
   }
-  if (e->valitpanning.type != SGS_VALIT_NONE)
+  if (e->slope_pan.type != SGS_SLOPE_STATE)
     e->vo_params |= SGS_PVOP_ATTR |
-                    SGS_PVOP_VALITPANNING;
+                    SGS_PVOP_SLOPE_PAN;
   pl->last_event = e;
   pl->event = NULL;
 }
@@ -718,10 +728,10 @@ static void begin_event(ParseLevel *pl, uint8_t linktype,
     }
     e->voice_prev = pve;
     e->vo_attr = pve->vo_attr;
-    e->panning = pve->panning;
-    e->valitpanning = pve->valitpanning;
+    e->pan = pve->pan;
+    e->slope_pan = pve->slope_pan;
   } else { /* set defaults */
-    e->panning = 0.5f; /* center */
+    e->pan = 0.5f; /* center */
   }
   if (!pl->group_from)
     pl->group_from = e;
@@ -775,8 +785,8 @@ static void begin_operator(ParseLevel *pl, uint8_t linktype,
     op->phase = pop->phase;
     op->amp = pop->amp;
     op->dynamp = pop->dynamp;
-    op->valitfreq = pop->valitfreq;
-    op->valitamp = pop->valitamp;
+    op->slope_freq = pop->slope_freq;
+    op->slope_amp = pop->slope_amp;
     SGS_PtrList_soft_copy(&op->fmods, &pop->fmods);
     SGS_PtrList_soft_copy(&op->pmods, &pop->pmods);
     SGS_PtrList_soft_copy(&op->amods, &pop->amods);
@@ -1001,6 +1011,7 @@ static bool parse_level(SGS_Parser *o, ParseLevel *parent_pl,
 
 static bool parse_step(ParseLevel *pl) {
   SGS_Parser *o = pl->o;
+  SGS_CBuf *cb = &o->f.cb;
   SGS_ScriptEvData *e = pl->event;
   SGS_ScriptOpData *op = pl->operator;
   leave_defaults(pl);
@@ -1011,12 +1022,12 @@ static bool parse_step(ParseLevel *pl) {
     case 'P':
       if ((pl->pl_flags & SDPL_NESTED_SCOPE) != 0)
         goto UNKNOWN;
-      if (SGS_File_TRYC(o->f, '[')) {
-        if (scan_valit(o, 0, &e->valitpanning))
-          e->vo_attr |= SGS_PVOA_VALITPANNING;
-      } else if (scan_num(o, 0, &e->panning)) {
-        if (e->valitpanning.type == SGS_VALIT_NONE)
-          e->vo_attr &= ~SGS_PVOA_VALITPANNING;
+      if (SGS_CBuf_TRYC(cb, '[')) {
+        if (scan_slope(o, 0, &e->slope_pan))
+          e->vo_attr |= SGS_PVOA_SLOPE_PAN;
+      } else if (scan_num(o, 0, &e->pan)) {
+        if (e->slope_pan.type == SGS_SLOPE_STATE)
+          e->vo_attr &= ~SGS_PVOA_SLOPE_PAN;
       }
       break;
     case '\\':
@@ -1025,57 +1036,57 @@ static bool parse_step(ParseLevel *pl) {
       }
       break;
     case 'a':
-      if (SGS_File_TRYC(o->f, '!')) {
-        if (!SGS_File_TESTC(o->f, '<')) {
+      if (SGS_CBuf_TRYC(cb, '!')) {
+        if (!SGS_CBuf_TESTC(cb, '<')) {
           scan_num(o, 0, &op->dynamp);
         }
-        if (SGS_File_TRYC(o->f, '<')) {
+        if (SGS_CBuf_TRYC(cb, '<')) {
           if (op->amods.count > 0) {
             op->op_params |= SGS_POPP_ADJCS;
             SGS_PtrList_clear(&op->amods);
           }
           parse_level(o, pl, NL_AMODS, SCOPE_NEST);
         }
-      } else if (SGS_File_TRYC(o->f, '[')) {
-        if (scan_valit(o, 0, &op->valitamp))
-          op->attr |= SGS_POPA_VALITAMP;
+      } else if (SGS_CBuf_TRYC(cb, '[')) {
+        if (scan_slope(o, 0, &op->slope_amp))
+          op->attr |= SGS_POPA_SLOPE_AMP;
       } else {
         scan_num(o, 0, &op->amp);
         op->op_params |= SGS_POPP_AMP;
-        if (op->valitamp.type == SGS_VALIT_NONE)
-          op->attr &= ~SGS_POPA_VALITAMP;
+        if (op->slope_amp.type == SGS_SLOPE_STATE)
+          op->attr &= ~SGS_POPA_SLOPE_AMP;
       }
       break;
     case 'f':
-      if (SGS_File_TRYC(o->f, '!')) {
-        if (!SGS_File_TESTC(o->f, '<')) {
+      if (SGS_CBuf_TRYC(cb, '!')) {
+        if (!SGS_CBuf_TESTC(cb, '<')) {
           if (scan_num(o, 0, &op->dynfreq)) {
             op->attr &= ~SGS_POPA_DYNFREQRATIO;
           }
         }
-        if (SGS_File_TRYC(o->f, '<')) {
+        if (SGS_CBuf_TRYC(cb, '<')) {
           if (op->fmods.count > 0) {
             op->op_params |= SGS_POPP_ADJCS;
             SGS_PtrList_clear(&op->fmods);
           }
           parse_level(o, pl, NL_FMODS, SCOPE_NEST);
         }
-      } else if (SGS_File_TRYC(o->f, '[')) {
-        if (scan_valit(o, scan_note, &op->valitfreq)) {
-          op->attr |= SGS_POPA_VALITFREQ;
-          op->attr &= ~SGS_POPA_VALITFREQRATIO;
+      } else if (SGS_CBuf_TRYC(cb, '[')) {
+        if (scan_slope(o, scan_note, &op->slope_freq)) {
+          op->attr |= SGS_POPA_SLOPE_FREQ;
+          op->attr &= ~SGS_POPA_SLOPE_FREQRATIO;
         }
       } else if (scan_num(o, scan_note, &op->freq)) {
         op->attr &= ~SGS_POPA_FREQRATIO;
         op->op_params |= SGS_POPP_FREQ;
-        if (op->valitfreq.type == SGS_VALIT_NONE)
-          op->attr &= ~(SGS_POPA_VALITFREQ |
-                        SGS_POPA_VALITFREQRATIO);
+        if (op->slope_freq.type == SGS_SLOPE_STATE)
+          op->attr &= ~(SGS_POPA_SLOPE_FREQ |
+                        SGS_POPA_SLOPE_FREQRATIO);
       }
       break;
     case 'p':
-      if (SGS_File_TRYC(o->f, '+')) {
-        if (SGS_File_TRYC(o->f, '<')) {
+      if (SGS_CBuf_TRYC(cb, '+')) {
+        if (SGS_CBuf_TRYC(cb, '<')) {
           if (op->pmods.count > 0) {
             op->op_params |= SGS_POPP_ADJCS;
             SGS_PtrList_clear(&op->pmods);
@@ -1093,33 +1104,33 @@ static bool parse_step(ParseLevel *pl) {
     case 'r':
       if (!(pl->pl_flags & SDPL_NESTED_SCOPE))
         goto UNKNOWN;
-      if (SGS_File_TRYC(o->f, '!')) {
-        if (!SGS_File_TESTC(o->f, '<')) {
+      if (SGS_CBuf_TRYC(cb, '!')) {
+        if (!SGS_CBuf_TESTC(cb, '<')) {
           if (scan_num(o, 0, &op->dynfreq)) {
             op->dynfreq = 1.f / op->dynfreq;
             op->attr |= SGS_POPA_DYNFREQRATIO;
           }
         }
-        if (SGS_File_TRYC(o->f, '<')) {
+        if (SGS_CBuf_TRYC(cb, '<')) {
           if (op->fmods.count > 0) {
             op->op_params |= SGS_POPP_ADJCS;
             SGS_PtrList_clear(&op->fmods);
           }
           parse_level(o, pl, NL_FMODS, SCOPE_NEST);
         }
-      } else if (SGS_File_TRYC(o->f, '[')) {
-        if (scan_valit(o, scan_note, &op->valitfreq)) {
-          op->valitfreq.goal = 1.f / op->valitfreq.goal;
-          op->attr |= SGS_POPA_VALITFREQ |
-                      SGS_POPA_VALITFREQRATIO;
+      } else if (SGS_CBuf_TRYC(cb, '[')) {
+        if (scan_slope(o, scan_note, &op->slope_freq)) {
+          op->slope_freq.goal = 1.f / op->slope_freq.goal;
+          op->attr |= SGS_POPA_SLOPE_FREQ |
+                      SGS_POPA_SLOPE_FREQRATIO;
         }
       } else if (scan_num(o, 0, &op->freq)) {
         op->freq = 1.f / op->freq;
         op->attr |= SGS_POPA_FREQRATIO;
         op->op_params |= SGS_POPP_FREQ;
-        if (op->valitfreq.type == SGS_VALIT_NONE)
-          op->attr &= ~(SGS_POPA_VALITFREQ |
-                        SGS_POPA_VALITFREQRATIO);
+        if (op->slope_freq.type == SGS_SLOPE_STATE)
+          op->attr &= ~(SGS_POPA_SLOPE_FREQ |
+                        SGS_POPA_SLOPE_FREQRATIO);
       }
       break;
     case 's': {
@@ -1132,10 +1143,10 @@ static bool parse_step(ParseLevel *pl) {
       op->silence_ms = lrint(silence * 1000.f);
       break; }
     case 't':
-      if (SGS_File_TRYC(o->f, '*')) {
+      if (SGS_CBuf_TRYC(cb, '*')) {
         op->op_flags |= SGS_SDOP_TIME_DEFAULT; /* later fitted or kept to default */
         op->time_ms = o->sopt.def_time_ms;
-      } else if (SGS_File_TRYC(o->f, 'i')) {
+      } else if (SGS_CBuf_TRYC(cb, 'i')) {
         if (!(pl->pl_flags & SDPL_NESTED_SCOPE)) {
           scan_warning(o, "ignoring 'ti' (infinite time) for non-nested operator");
           break;
@@ -1343,13 +1354,13 @@ RETURN:
  * \return true if completed, false on error preventing parse
  */
 static bool parse_file(SGS_Parser *o, const char *fname) {
-  if (!SGS_File_openrb(o->f, fname)) {
+  if (!SGS_File_fopenrb(&o->f, fname)) {
     SGS_error(NULL, "couldn't open script file \"%s\" for reading\n", fname);
     return false;
   }
   o->line = 1;
   parse_level(o, 0, NL_GRAPH, SCOPE_TOP);
-  SGS_File_close(o->f);
+  SGS_File_close(&o->f);
   return true;
 }
 
@@ -1402,10 +1413,10 @@ static void group_events(SGS_ScriptEvData *to) {
 
 static void time_operator(SGS_ScriptOpData *op) {
   SGS_ScriptEvData *e = op->event;
-  if (op->valitfreq.time_ms == SGS_TIME_DEFAULT)
-    op->valitfreq.time_ms = op->time_ms;
-  if (op->valitamp.time_ms == SGS_TIME_DEFAULT)
-    op->valitamp.time_ms = op->time_ms;
+  if (op->slope_freq.time_ms == SGS_TIME_DEFAULT)
+    op->slope_freq.time_ms = op->time_ms;
+  if (op->slope_amp.time_ms == SGS_TIME_DEFAULT)
+    op->slope_amp.time_ms = op->time_ms;
   if ((op->op_flags & (SGS_SDOP_TIME_DEFAULT | SGS_SDOP_NESTED)) ==
                       (SGS_SDOP_TIME_DEFAULT | SGS_SDOP_NESTED)) {
     op->op_flags &= ~SGS_SDOP_TIME_DEFAULT;
@@ -1438,11 +1449,11 @@ static void time_operator(SGS_ScriptOpData *op) {
 
 static void time_event(SGS_ScriptEvData *e) {
   /*
-   * Fill in blank valit durations, handle silence as well as the case of
+   * Fill in blank slope durations, handle silence as well as the case of
    * adding present event duration to wait time of next event.
    */
-  if (e->valitpanning.time_ms == SGS_TIME_DEFAULT)
-    e->valitpanning.time_ms = 1000; /* FIXME! */
+  if (e->slope_pan.time_ms == SGS_TIME_DEFAULT)
+    e->slope_pan.time_ms = 1000; /* FIXME! */
   size_t i;
   SGS_ScriptOpData **ops;
   ops = (SGS_ScriptOpData**) SGS_PtrList_ITEMS(&e->operators);

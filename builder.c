@@ -8,7 +8,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #include "sgensys.h"
@@ -29,10 +29,13 @@ SGS_Program* SGS_build(const char *fname) {
 #if SGS_TEST_LEXER
 	SGS_SymTab *symtab = SGS_create_SymTab();
 	SGS_Lexer *lexer = SGS_create_Lexer(fname, symtab);
-	if (!lexer) return NULL;
+	if (!lexer) {
+		SGS_destroy_SymTab(symtab);
+		return false;
+	}
 	for (;;) {
-		SGS_ScriptToken *token = SGS_Lexer_get_token(lexer);
-		if (token->type <= 0) break;
+		SGS_ScriptToken token;
+		if (!SGS_Lexer_get(lexer, &token)) break;
 	}
 	SGS_destroy_Lexer(lexer);
 	SGS_destroy_SymTab(symtab);

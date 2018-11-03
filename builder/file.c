@@ -8,43 +8,98 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #include "file.h"
 #include <string.h>
 #include <stdio.h>
 
+static size_t file_mode_fread(SGS_CBufMode *o); // read callback
+
 static void file_ref_close(SGS_File *o);
 
 /**
- * Open file.
- *
- * The file is automatically closed when EOF or a read error occurs,
- * but \a path is only cleared with an explicit SGS_File_close()
- * call (so as to be available for printing).
- *
- * \return true on success
+ * Initialize instance. Must only be called once before a
+ * finalization.
  */
-bool SGS_File_openrb(SGS_File *o, const char *path) {
-	if (!path) return false;
-	o->ref = fopen(path, "rb");
-	if (!o->ref) return false;
-	o->status = SGS_File_OK;
-	o->end_marker = NULL;
-	o->path = path;
+bool SGS_init_File(SGS_File *o) {
+	if (!SGS_init_CBuf(&o->cb)) {
+		return false;
+	}
+	o->ref = NULL;
+	o->path = NULL;
+	o->close_f = NULL;
 	return true;
 }
 
 /**
- * Close file.
+ * Finalize instance. Must only be called once after each
+ * initialization.
  */
-void SGS_File_close(SGS_File *o) {
-	file_ref_close(o);
-	o->path = NULL;
+void SGS_fini_File(SGS_File *o) {
+	if (o->close_f) {
+		o->close_f(o);
+		o->close_f = NULL;
+	}
+	SGS_fini_CBuf(&o->cb);
 }
 
 /**
+ * Open file for reading.
+ *
+ * The file is automatically closed when EOF or a read error occurs,
+ * but \a path is only cleared with an explicit call to SGS_File_close()
+ * or SGS_File_reset(), so as to remain available for printing.
+ *
+ * \return true on success
+ */
+bool SGS_File_fopenrb(SGS_File *o, const char *path) {
+	SGS_File_close(o);
+
+	if (!path) return false;
+	FILE *f = fopen(path, "rb");
+	if (!f) return false;
+
+	o->cb.r.call_pos = 0;
+	o->cb.r.f = file_mode_fread;
+	o->status = SGS_File_OK;
+	o->end_marker = NULL;
+	o->ref = f;
+	o->path = path;
+	o->close_f = file_ref_close;
+	return true;
+}
+
+/**
+ * Close File if open. Reset buffer read and write modes, but not
+ * buffer contents.
+ */
+void SGS_File_close(SGS_File *o) {
+	if (o->close_f) {
+		o->close_f(o);
+		o->close_f = NULL;
+	}
+	SGS_CBufMode_reset(&o->cb.r);
+	SGS_CBufMode_reset(&o->cb.w);
+	o->status = SGS_File_OK;
+}
+
+/**
+ * Reset File object, including the buffer, its contents and
+ * read and write modes. If open, will be closed.
+ */
+void SGS_File_reset(SGS_File *o) {
+	if (o->close_f) {
+		o->close_f(o);
+		o->close_f = NULL;
+	}
+	SGS_CBuf_reset(&o->cb);
+	o->status = SGS_File_OK;
+	o->path = NULL;
+}
+
+/*
  * Fill the area of the buffer currently arrived at. This should be
  * called when indicated by SGS_File_NEED_FILL().
  *
@@ -58,8 +113,9 @@ void SGS_File_close(SGS_File *o) {
  *
  * \return number of characters successfully read
  */
-size_t SGS_File_fill(SGS_File *o) {
-	FILE *f = o->ref;
+static size_t file_mode_fread(SGS_CBufMode *o) {
+	SGS_File *fo = o->ref;
+	FILE *f = fo->ref;
 	size_t len = 0;
 	/*
 	 * Set read pos to the first character of the buffer area.
@@ -71,29 +127,29 @@ size_t SGS_File_fill(SGS_File *o) {
 	 * open. Upon short read, insert SGS_File_STATUS() value
 	 * not counted in return length. Close file upon end or error.
 	 */
-	o->read_pos &= (SGS_FILE_BSIZ - 1) & ~(SGS_FILE_ALEN - 1);
+	o->pos &= (SGS_CBUF_SIZ - 1) & ~(SGS_CBUF_ALEN - 1);
 	if (!f) {
-		o->fill_pos = o->read_pos;
+		o->call_pos = o->pos;
 		goto ADD_MARKER;
 	}
-	len = fread(&o->buf[o->read_pos], 1, SGS_FILE_ALEN, f);
-	o->fill_pos = o->read_pos + len; /* pre-mask pos */
+	len = fread(&fo->cb.buf[o->pos], 1, SGS_CBUF_ALEN, f);
+	o->call_pos = o->pos + len; /* pre-mask pos */
 	if (ferror(f)) {
-		o->status |= SGS_File_ERROR;
+		fo->status |= SGS_File_ERROR;
 	}
 	if (feof(f)) {
-		o->status |= SGS_File_END;
-		file_ref_close(o);
+		fo->status |= SGS_File_END;
+		file_ref_close(fo);
 	}
-	if (len < SGS_FILE_ALEN) {
+	if (len < SGS_CBUF_ALEN) {
 		goto ADD_MARKER;
 	}
 	return len;
 
 ADD_MARKER:
-	o->end_marker = &o->buf[o->read_pos + len];
-	*o->end_marker = o->status;
-	++o->fill_pos;
+	fo->end_marker = &fo->cb.buf[o->pos + len];
+	*fo->end_marker = fo->status;
+	++o->call_pos;
 	return len;
 }
 

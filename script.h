@@ -8,7 +8,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #pragma once
@@ -43,7 +43,7 @@ typedef struct SGS_ScriptOpData {
 	uint8_t wave;
 	uint32_t time_ms, silence_ms;
 	float freq, dynfreq, phase, amp, dynamp;
-	SGS_ProgramValit valitfreq, valitamp;
+	SGS_Slope slope_freq, slope_amp;
 	/* node adjacents in operator linkage graph */
 	SGS_PtrList fmods, pmods, amods;
 } SGS_ScriptOpData;
@@ -73,8 +73,8 @@ typedef struct SGS_ScriptEvData {
 	uint32_t vo_params;
 	struct SGS_ScriptEvData *voice_prev; /* preceding event for voice */
 	uint8_t vo_attr;
-	float panning;
-	SGS_ProgramValit valitpanning;
+	float pan;
+	SGS_Slope slope_pan;
 	SGS_PtrList op_graph;
 } SGS_ScriptEvData;
 

@@ -5,15 +5,17 @@ LFLAGS_SNDIO=$(LFLAGS) -lsndio
 LFLAGS_OSSAUDIO=$(LFLAGS) -lossaudio
 OBJ=common.o \
     arrtype.o \
+    cbuf.o \
     ptrlist.o \
     builder/symtab.o \
     builder/file.o \
     builder/lexer.o \
     builder/parser.o \
-    builder/parseconv.o \
     builder.o \
     mempool.o \
-    wave.o \
+    program/parseconv.o \
+    program/slope.o \
+    program/wave.o \
     renderer.o \
     renderer/generator.o \
     audiodev.o \
@@ -41,28 +43,41 @@ sgensys: $(OBJ)
 		$(CC) $(OBJ) $(LFLAGS) -o sgensys; \
 	fi
 
+# Headers
+
+audiodev.h: common.h
+script.h: program.h ptrlist.h
+math.h: common.h
+program.h: program/slope.h program/wave.h
+program/slope.h: common.h
+program/wave.h: common.h
+renderer/osc.h: math.h program/wave.h
+wavfile.h: common.h
+
+# Objects
+
 arrtype.o: arrtype.c arrtype.h common.h
 	$(CC) -c $(CFLAGS) arrtype.c
 
-audiodev.o: audiodev.c audiodev/*.c audiodev.h common.h
+audiodev.o: audiodev.c audiodev/*.c audiodev.h
 	$(CC) -c $(CFLAGS) audiodev.c
+
+cbuf.o: cbuf.c cbuf.h common.h
+	$(CC) -c $(CFLAGS) cbuf.c
 
 common.o: common.c common.h
 	$(CC) -c $(CFLAGS) common.c
 
-builder.o: builder.c sgensys.h builder/lexer.h script.h program.h ptrlist.h wave.h math.h common.h
+builder.o: builder.c sgensys.h builder/lexer.h script.h
 	$(CC) -c $(CFLAGS) builder.c
 
-builder/file.o: builder/file.c builder/file.h common.h
+builder/file.o: builder/file.c builder/file.h cbuf.h common.h
 	$(CC) -c $(CFLAGS) builder/file.c -o builder/file.o
 
-builder/lexer.o: builder/lexer.c builder/lexer.h builder/symtab.h builder/file.h math.h common.h
+builder/lexer.o: builder/lexer.c builder/lexer.h builder/symtab.h builder/file.h cbuf.h math.h common.h
 	$(CC) -c $(CFLAGS) builder/lexer.c -o builder/lexer.o
 
-builder/parseconv.o: builder/parseconv.c program.h wave.h math.h script.h ptrlist.h common.h
-	$(CC) -c $(CFLAGS) builder/parseconv.c -o builder/parseconv.o
-
-builder/parser.o: builder/parser.c script.h ptrlist.h builder/symtab.h builder/file.h program.h wave.h math.h common.h
+builder/parser.o: builder/parser.c script.h builder/symtab.h builder/file.h cbuf.h math.h
 	$(CC) -c $(CFLAGS) builder/parser.c -o builder/parser.o
 
 builder/symtab.o: builder/symtab.c builder/symtab.h mempool.h common.h
@@ -74,17 +89,23 @@ mempool.o: mempool.c mempool.h common.h
 ptrlist.o: ptrlist.c ptrlist.h common.h
 	$(CC) -c $(CFLAGS) ptrlist.c
 
-renderer.o: renderer.c sgensys.h renderer/generator.h program.h wave.h math.h audiodev.h wavfile.h common.h
+renderer.o: renderer.c sgensys.h renderer/generator.h program.h audiodev.h wavfile.h
 	$(CC) -c $(CFLAGS) renderer.c
 
-renderer/generator.o: renderer/generator.c renderer/generator.h renderer/osc.h program.h wave.h math.h common.h
+renderer/generator.o: renderer/generator.c renderer/generator.h renderer/osc.h program.h
 	$(CC) -c $(CFLAGS) renderer/generator.c -o renderer/generator.o
 
-sgensys.o: sgensys.c sgensys.h program.h wave.h math.h common.h
+sgensys.o: sgensys.c sgensys.h program.h
 	$(CC) -c $(CFLAGS) sgensys.c
 
-wave.o: wave.c wave.h math.h common.h
-	$(CC) -c $(CFLAGS) wave.c
+program/parseconv.o: program/parseconv.c script.h
+	$(CC) -c $(CFLAGS) program/parseconv.c -o program/parseconv.o
 
-wavfile.o: wavfile.c wavfile.h common.h
+program/slope.o: program/slope.c program/slope.h math.h
+	$(CC) -c $(CFLAGS) program/slope.c -o program/slope.o
+
+program/wave.o: program/wave.c program/wave.h math.h
+	$(CC) -c $(CFLAGS) program/wave.c -o program/wave.o
+
+wavfile.o: wavfile.c wavfile.h
 	$(CC) -c $(CFLAGS) wavfile.c
