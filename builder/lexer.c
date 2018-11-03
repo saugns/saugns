@@ -37,6 +37,10 @@
 /* Visible ASCII character. */
 #define IS_VISIBLE(c) ((c) >= '!' && (c) <= '~')
 
+static uint8_t test_symchar(SGS_File *restrict o SGS__maybe_unused, uint8_t c) {
+	return (IS_SYMCHAR(c)) ? c : 0;
+}
+
 /*
  * Read identifier string into \p buf. At most \p buf_len - 1 characters
  * are read, and the string is always zero-terminated.
@@ -45,9 +49,9 @@
  *
  * \return true if the string fit into the buffer, false if truncated
  */
-static bool read_symstr(SGS_File *o, void *buf, uint32_t buf_len,
-		uint32_t *str_len) {
-	SGS_CBuf *cb = &o->cb;
+static bool read_syms(SGS_File *restrict f,
+		void *restrict buf, uint32_t buf_len,
+		uint32_t *restrict str_len) {
 	uint8_t *dst = buf;
 	uint32_t i = 0;
 	uint32_t max_len = buf_len - 1;
@@ -57,9 +61,9 @@ static bool read_symstr(SGS_File *o, void *buf, uint32_t buf_len,
 			truncate = true;
 			break;
 		}
-		uint8_t c = SGS_CBuf_GETC(cb);
+		uint8_t c = SGS_File_GETC(f);
 		if (!IS_SYMCHAR(c)) {
-			SGS_CBufMode_DECP(&cb->r);
+			SGS_FBufMode_DECP(&f->mr);
 			break;
 		}
 		dst[i++] = c;
@@ -76,7 +80,7 @@ static bool read_symstr(SGS_File *o, void *buf, uint32_t buf_len,
 #define STRBUF_LEN 1024
 
 struct SGS_Lexer {
-	SGS_File f;
+	SGS_File *f;
 	SGS_SymTab *symtab;
 	uint32_t line_num, char_num;
 	SGS_ScriptToken token;
@@ -89,7 +93,8 @@ struct SGS_Lexer {
  *
  * \return instance, or NULL on failure.
  */
-SGS_Lexer *SGS_create_Lexer(const char *fname, SGS_SymTab *symtab) {
+SGS_Lexer *SGS_create_Lexer(const char *restrict fname,
+		SGS_SymTab *restrict symtab) {
 	SGS_Lexer *o;
 	if (symtab == NULL) return NULL;
 	uint8_t *strbuf = calloc(1, STRBUF_LEN);
@@ -97,25 +102,24 @@ SGS_Lexer *SGS_create_Lexer(const char *fname, SGS_SymTab *symtab) {
 
 	o = calloc(1, sizeof(SGS_Lexer));
 	if (o == NULL) return NULL;
-	SGS_init_File(&o->f);
-	if (!SGS_File_fopenrb(&o->f, fname)) {
-		SGS_fini_File(&o->f);
-		free(o);
-		return NULL;
-	}
+	o->f = SGS_create_File();
+	if (!o->f) goto ERROR;
 	o->symtab = symtab;
 	o->strbuf = strbuf;
+	if (!SGS_File_fopenrb(o->f, fname)) goto ERROR;
 	return o;
+
+ERROR:
+	SGS_destroy_Lexer(o);
+	return NULL;
 }
 
 /**
  * Destroy instance, also closing the file for which it was made.
  */
-void SGS_destroy_Lexer(SGS_Lexer *o) {
-	if (o == NULL) return;
-	SGS_File_close(&o->f);
-	SGS_fini_File(&o->f);
-	free(o->strbuf);
+void SGS_destroy_Lexer(SGS_Lexer *restrict o) {
+	SGS_destroy_File(o->f);
+	if (o->strbuf) free(o->strbuf);
 	free(o);
 }
 
@@ -123,11 +127,13 @@ enum {
 	PRINT_FILE_INFO = 1<<0
 };
 
-static void print_stderr(SGS_Lexer *o, uint32_t options, const char *prefix,
-	const char *fmt, va_list ap) {
+static void print_stderr(SGS_Lexer *restrict o,
+		uint32_t options, const char *restrict prefix,
+		const char *restrict fmt, va_list ap) {
+	SGS_File *f = o->f;
 	if (options & PRINT_FILE_INFO) {
 		fprintf(stderr, "%s:%d:%d: ",
-			o->f.path, o->line_num, o->char_num);
+			f->path, o->line_num, o->char_num);
 	}
 	if (prefix != NULL) {
 		fprintf(stderr, "%s: ", prefix);
@@ -139,7 +145,8 @@ static void print_stderr(SGS_Lexer *o, uint32_t options, const char *prefix,
 /**
  * Print warning message including file name and current position.
  */
-void SGS_Lexer_warning(SGS_Lexer *o, const char *fmt, ...) {
+void SGS_Lexer_warning(SGS_Lexer *restrict o,
+		const char *restrict fmt, ...) {
 	va_list ap;
 	va_start(ap, fmt);
 	print_stderr(o, PRINT_FILE_INFO, "warning", fmt, ap);
@@ -150,8 +157,9 @@ void SGS_Lexer_warning(SGS_Lexer *o, const char *fmt, ...) {
  * Print warning message indicating that the last character retrieved
  * is invalid.
  */
-//static void warning_character(SGS_Lexer *o) {
-//	uint8_t b = SGS_CBuf_RETC(&o->f.cb);
+//static void warning_character(SGS_Lexer *restrict o) {
+//	SGS_File *f = o->f;
+//	uint8_t b = SGS_File_RETC(f);
 //	if (IS_VISIBLE(b)) {
 //		SGS_Lexer_warning(o, "invalid character: %c", (char) b);
 //	} else {
@@ -162,7 +170,8 @@ void SGS_Lexer_warning(SGS_Lexer *o, const char *fmt, ...) {
 /**
  * Print error message including file name and current position.
  */
-void SGS_Lexer_error(SGS_Lexer *o, const char *fmt, ...) {
+void SGS_Lexer_error(SGS_Lexer *restrict o,
+		const char *restrict fmt, ...) {
 	va_list ap;
 	va_start(ap, fmt);
 	print_stderr(o, PRINT_FILE_INFO, "error", fmt, ap);
@@ -171,77 +180,74 @@ void SGS_Lexer_error(SGS_Lexer *o, const char *fmt, ...) {
 
 typedef uint8_t (*HandleValue_f)(SGS_Lexer *o, uint8_t c);
 
-static uint8_t handle_invalid(SGS_Lexer *o, uint8_t c SGS__maybe_unused) {
+static uint8_t handle_invalid(SGS_Lexer *restrict o,
+		uint8_t c SGS__maybe_unused) {
+	SGS_File *f = o->f;
 	SGS_ScriptToken *t = &o->token;
 	t->type = SGS_T_INVALID;
-	if (!SGS_File_AFTER_EOF(&o->f)) {
+	if (!SGS_File_AFTER_EOF(f)) {
 		t->data.b = 0;
 #if !SGS_LEXER_QUIET
 		SGS_Lexer_warning(o, "invalid character (value 0x%02hhX)", c);
 #endif
 		return 0;
 	}
-	uint8_t status = SGS_File_STATUS(&o->f);
+	uint8_t status = SGS_File_STATUS(f);
 	t->data.b = status;
-	switch (status) {
-		case SGS_File_END:
-			break;
-		case SGS_File_ERROR:
-			SGS_Lexer_error(o, "file reading failed");
-			break;
-		default: /* shouldn't happen */
-			SGS_Lexer_error(o, "file read status 0x%02hhX", status);
-			break;
+	if ((status & SGS_FILE_ERROR) != 0) {
+		SGS_Lexer_error(o, "file reading failed");
 	}
 	return 0;
 }
 
-static uint8_t handle_blanks(SGS_Lexer *o, uint8_t c) {
-	SGS_CBuf *cb = &o->f.cb;
+static uint8_t handle_blanks(SGS_Lexer *restrict o, uint8_t c) {
+	SGS_File *f = o->f;
 	do {
 		++o->char_num;
-		c = SGS_CBuf_GETC(cb);
+		c = SGS_File_GETC(f);
 	} while (IS_SPACE(c));
 	return c;
 }
 
-static uint8_t handle_linebreaks(SGS_Lexer *o, uint8_t c) {
-	SGS_CBuf *cb = &o->f.cb;
+static uint8_t handle_linebreaks(SGS_Lexer *restrict o, uint8_t c) {
+	SGS_File *f = o->f;
 	do {
 		++o->line_num;
-		if (c == '\n') SGS_CBuf_TRYC(cb, '\r');
-		c = SGS_CBuf_GETC(cb);
+		if (c == '\n') SGS_File_TRYC(f, '\r');
+		c = SGS_File_GETC(f);
 	} while (IS_LNBRK(c));
 	o->char_num = 1;
 	return c;
 }
 
-static uint8_t handle_linecomment(SGS_Lexer *o,
+static uint8_t handle_linecomment(SGS_Lexer *restrict o,
 		uint8_t c SGS__maybe_unused) {
-	o->char_num += SGS_File_skipline(&o->f);
-	return SGS_CBuf_GETC_NC(&o->f.cb);
+	SGS_File *f = o->f;
+	o->char_num += SGS_File_skipline(f);
+	return SGS_File_GETC_NC(f);
 }
 
-//static uint8_t handle_block_comment(SGS_Lexer *o, uint8_t c) {
+//static uint8_t handle_block_comment(SGS_Lexer *restrict o, uint8_t c) {
 //	SGS_Lexer_warning(o, "cannot yet handle comment marked by '%c'", c);
 //	return 0;
 //}
 
-static uint8_t handle_special(SGS_Lexer *o, uint8_t c) {
+static uint8_t handle_special(SGS_Lexer *restrict o, uint8_t c) {
 	SGS_ScriptToken *t = &o->token;
 	t->type = SGS_T_SPECIAL;
 	t->data.c = c;
 	return 0;
 }
 
-static uint8_t handle_numeric_value(SGS_Lexer *o, uint8_t first_digit) {
-	SGS_CBuf *cb = &o->f.cb;
+static uint8_t handle_numeric_value(SGS_Lexer *restrict o,
+		uint8_t first_digit) {
+	SGS_File *f = o->f;
 	SGS_ScriptToken *t = &o->token;
 	uint32_t c = first_digit;
 	uint32_t i = 0;
 	do {
 		o->strbuf[i] = c;
-		c = SGS_CBuf_GETC(cb);
+		c = SGS_File_GETC(f);
 	} while (IS_DIGIT(c) && ++i < (STRBUF_LEN - 1));
 	if (i == (STRBUF_LEN - 1)) {
 		o->strbuf[i] = '\0';
@@ -251,21 +257,24 @@ static uint8_t handle_numeric_value(SGS_Lexer *o, uint8_t first_digit) {
 		o->strbuf[i] = '\0';
 	}
 	t->type = SGS_T_VAL_INT; /* XXX: dummy code */
-	SGS_CBufMode_DECP(&cb->r);
+	SGS_FBufMode_DECP(&f->mr);
 	return 0;
 }
 
-static uint8_t handle_identifier(SGS_Lexer *o, uint8_t c SGS__maybe_unused) {
-	SGS_CBuf *cb = &o->f.cb;
+static uint8_t handle_identifier(SGS_Lexer *restrict o,
+		uint8_t c SGS__maybe_unused) {
+	SGS_File *f = o->f;
 	SGS_ScriptToken *t = &o->token;
 	uint32_t len;
-	SGS_CBufMode_DECP(&cb->r);
-	if (!read_symstr(&o->f, o->strbuf, STRBUF_LEN, &len)) {
-		SGS_Lexer_error(o,
-"identifier length limited to %d characters", (STRBUF_LEN - 1));
+	SGS_FBufMode_DECP(&f->mr);
+	bool truncated = !read_syms(f, o->strbuf, STRBUF_LEN, &len);
+	if (truncated) {
+		SGS_Lexer_warning(o,
+"limiting identifier to %d characters", (STRBUF_LEN - 1));
+		o->char_num += SGS_File_skips(f, test_symchar);
 	}
 	const char *pool_str;
-	pool_str = SGS_SymTab_pool_str(o->symtab, (const char*)o->strbuf, len);
+	pool_str = SGS_SymTab_pool_str(o->symtab, o->strbuf, len);
 	if (pool_str == NULL) {
 		SGS_Lexer_error(o, "failed to register string '%s'", o->strbuf);
 	}
@@ -285,10 +294,11 @@ static uint8_t handle_identifier(SGS_Lexer *o, uint8_t c SGS__maybe_unused) {
  *
  * \return true if a token was successfully read from the file
  */
-bool SGS_Lexer_get(SGS_Lexer *o, SGS_ScriptToken *t) {
+bool SGS_Lexer_get(SGS_Lexer *restrict o, SGS_ScriptToken *restrict t) {
+	SGS_File *f = o->f;
 	uint8_t c;
 	++o->char_num;
-	c = SGS_CBuf_GETC(&o->f.cb);
+	c = SGS_File_GETC(f);
 	do {
 		switch (c) {
 		case /* NUL */ 0x00:
@@ -298,7 +308,7 @@ bool SGS_Lexer_get(SGS_Lexer *o, SGS_ScriptToken *t) {
 		case /* EOT */ 0x04:
 		case /* ENQ */ 0x05:
 		case /* ACK */ 0x06:
-		case /* BEL */ '\a': // SGS_File_MARKER
+		case /* BEL */ '\a': // SGS_FILE_MARKER
 		case /* BS  */ '\b':
 			c = handle_invalid(o, c);
 			break;
@@ -451,134 +461,7 @@ bool SGS_Lexer_get(SGS_Lexer *o, SGS_ScriptToken *t) {
 			c = handle_special(o, c);
 			break;
 		case /* DEL */ 0x7F:
-		case 0x80:
-		case 0x81:
-		case 0x82:
-		case 0x83:
-		case 0x84:
-		case 0x85:
-		case 0x86:
-		case 0x87:
-		case 0x88:
-		case 0x89:
-		case 0x8A:
-		case 0x8B:
-		case 0x8C:
-		case 0x8D:
-		case 0x8E:
-		case 0x8F:
-		case 0x90:
-		case 0x91:
-		case 0x92:
-		case 0x93:
-		case 0x94:
-		case 0x95:
-		case 0x96:
-		case 0x97:
-		case 0x98:
-		case 0x99:
-		case 0x9A:
-		case 0x9B:
-		case 0x9C:
-		case 0x9D:
-		case 0x9E:
-		case 0x9F:
-		case 0xA0:
-		case 0xA1:
-		case 0xA2:
-		case 0xA3:
-		case 0xA4:
-		case 0xA5:
-		case 0xA6:
-		case 0xA7:
-		case 0xA8:
-		case 0xA9:
-		case 0xAA:
-		case 0xAB:
-		case 0xAC:
-		case 0xAD:
-		case 0xAE:
-		case 0xAF:
-		case 0xB0:
-		case 0xB1:
-		case 0xB2:
-		case 0xB3:
-		case 0xB4:
-		case 0xB5:
-		case 0xB6:
-		case 0xB7:
-		case 0xB8:
-		case 0xB9:
-		case 0xBA:
-		case 0xBB:
-		case 0xBC:
-		case 0xBD:
-		case 0xBE:
-		case 0xBF:
-		case 0xC0:
-		case 0xC1:
-		case 0xC2:
-		case 0xC3:
-		case 0xC4:
-		case 0xC5:
-		case 0xC6:
-		case 0xC7:
-		case 0xC8:
-		case 0xC9:
-		case 0xCA:
-		case 0xCB:
-		case 0xCC:
-		case 0xCD:
-		case 0xCE:
-		case 0xCF:
-		case 0xD0:
-		case 0xD1:
-		case 0xD2:
-		case 0xD3:
-		case 0xD4:
-		case 0xD5:
-		case 0xD6:
-		case 0xD7:
-		case 0xD8:
-		case 0xD9:
-		case 0xDA:
-		case 0xDB:
-		case 0xDC:
-		case 0xDD:
-		case 0xDE:
-		case 0xDF:
-		case 0xE0:
-		case 0xE1:
-		case 0xE2:
-		case 0xE3:
-		case 0xE4:
-		case 0xE5:
-		case 0xE6:
-		case 0xE7:
-		case 0xE8:
-		case 0xE9:
-		case 0xEA:
-		case 0xEB:
-		case 0xEC:
-		case 0xED:
-		case 0xEE:
-		case 0xEF:
-		case 0xF0:
-		case 0xF1:
-		case 0xF2:
-		case 0xF3:
-		case 0xF4:
-		case 0xF5:
-		case 0xF6:
-		case 0xF7:
-		case 0xF8:
-		case 0xF9:
-		case 0xFA:
-		case 0xFB:
-		case 0xFC:
-		case 0xFD:
-		case 0xFE:
-		case 0xFF:
+		default:
 			c = handle_invalid(o, c);
 			break;
 		}
@@ -602,11 +485,13 @@ bool SGS_Lexer_get(SGS_Lexer *o, SGS_ScriptToken *t) {
  *
  * \return true if a token was successfully read from the file
  */
-bool SGS_Lexer_get_special(SGS_Lexer *o, SGS_ScriptToken *t) {
+bool SGS_Lexer_get_special(SGS_Lexer *restrict o,
+		SGS_ScriptToken *restrict t) {
+	SGS_File *f = o->f;
 	uint8_t c;
 	do {
 		++o->char_num;
-		c = SGS_CBuf_GETC(&o->f.cb);
+		c = SGS_File_GETC(f);
 		if (IS_VISIBLE(c)) c = handle_special(o, c);
 		else c = handle_invalid(o, c);
 	} while (c != 0);

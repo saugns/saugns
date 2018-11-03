@@ -21,8 +21,6 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-typedef unsigned int uint;
-
 /*
  * Keyword-like macros.
  */
@@ -42,22 +40,18 @@ typedef unsigned int uint;
  * Utility functions.
  */
 
-void SGS_warning(const char *label, const char *fmt, ...)
+void SGS_warning(const char *restrict label, const char *restrict fmt, ...)
 	SGS__printflike(2, 3);
-void SGS_error(const char *label, const char *fmt, ...)
+void SGS_error(const char *restrict label, const char *restrict fmt, ...)
 	SGS__printflike(2, 3);
 
-void *SGS_memdup(const void *src, size_t size) SGS__malloclike;
+void *SGS_memdup(const void *restrict src, size_t size) SGS__malloclike;
 
 /*
  * Debugging options.
  */
 
-/* Disable old parser, run lexer testing instead. */
-#define SGS_TEST_LEXER 0
-
+/* Print hash collision info for symtab. */
 #define SGS_HASHTAB_STATS 0
-#define SGS_LEXER_QUIET 0
-
-/* Disable old parser, run scanner testing instead. Takes precedence. */
-#define SGS_TEST_SCANNER 0
+/* Make test lexer quiet enough to time it. */
+#define SGS_LEXER_QUIET 1

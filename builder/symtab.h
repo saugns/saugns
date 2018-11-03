@@ -17,10 +17,13 @@
 struct SGS_SymTab;
 typedef struct SGS_SymTab SGS_SymTab;
 
-SGS_SymTab *SGS_create_SymTab(void);
-void SGS_destroy_SymTab(SGS_SymTab *o);
+SGS_SymTab *SGS_create_SymTab(void) SGS__malloclike;
+void SGS_destroy_SymTab(SGS_SymTab *restrict o);
 
-const void *SGS_SymTab_pool_str(SGS_SymTab *o, const void *str, uint32_t len);
+const void *SGS_SymTab_pool_str(SGS_SymTab *restrict o,
+		const void *restrict str, uint32_t len);
 
-void *SGS_SymTab_get(SGS_SymTab *o, const void *key, uint32_t len);
-void *SGS_SymTab_set(SGS_SymTab *o, const void *key, uint32_t len, void *value);
+void *SGS_SymTab_get(SGS_SymTab *restrict o,
+		const void *restrict key, uint32_t len);
+void *SGS_SymTab_set(SGS_SymTab *restrict o,
+		const void *restrict key, uint32_t len, void *restrict value);

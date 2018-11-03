@@ -14,37 +14,58 @@
 #include "file.h"
 #include "../math.h"
 #include <string.h>
+#include <stdlib.h>
 #include <stdio.h>
 
-static size_t file_mode_fread(SGS_CBufMode *o); // read callback
-
-static void file_ref_close(SGS_File *o);
-
 /**
- * Initialize instance. Must only be called once before a
- * finalization.
+ * Wrap to the beginning of the buffer.
+ *
+ * Default callback for reading and writing modes.
+ *
+ * \return length of entire buffer
  */
-bool SGS_init_File(SGS_File *o) {
-	if (!SGS_init_CBuf(&o->cb)) {
-		return false;
-	}
-	o->ref = NULL;
-	o->path = NULL;
-	o->close_f = NULL;
-	return true;
+size_t SGS_File_wrap(SGS_File *o SGS__maybe_unused, SGS_FBufMode *m) {
+	m->pos = 0;
+	m->call_pos = SGS_FBUF_SIZ; /* pre-mask pos */
+	return SGS_FBUF_SIZ;
 }
 
 /**
- * Finalize instance. Must only be called once after each
- * initialization.
+ * Reset mode struct instance to default values, including
+ * the default callback.
  */
-void SGS_fini_File(SGS_File *o) {
+void SGS_FBufMode_reset(SGS_FBufMode *restrict m) {
+	m->pos = 0;
+	m->call_pos = SGS_FBUF_SIZ;
+	m->f = SGS_File_wrap;
+}
+
+/**
+ * Create instance.
+ *
+ * Sets the default callback, which simply wraps the buffer position.
+ */
+SGS_File *SGS_create_File(void) {
+	SGS_File *o = calloc(1, sizeof(SGS_File));
+	if (!o) return NULL;
+	SGS_FBufMode_reset(&o->mr);
+	o->mw = o->mr;
+	return o;
+}
+
+/**
+ * Destroy instance. Closes file if open.
+ */
+void SGS_destroy_File(SGS_File *restrict o) {
 	if (o->close_f) {
 		o->close_f(o);
-		o->close_f = NULL;
 	}
-	SGS_fini_CBuf(&o->cb);
+	free(o);
 }
+
+static size_t file_mode_fread(SGS_File *restrict o, SGS_FBufMode *restrict m);
+
+static void file_ref_close(SGS_File *restrict o);
 
 /**
  * Open file for reading.
@@ -55,17 +76,17 @@ void SGS_fini_File(SGS_File *o) {
  *
  * \return true on success
  */
-bool SGS_File_fopenrb(SGS_File *o, const char *path) {
+bool SGS_File_fopenrb(SGS_File *restrict o, const char *restrict path) {
 	SGS_File_close(o);
 
 	if (!path) return false;
 	FILE *f = fopen(path, "rb");
 	if (!f) return false;
 
-	o->cb.r.call_pos = 0;
-	o->cb.r.f = file_mode_fread;
-	o->status = SGS_File_OK;
-	o->end_marker = NULL;
+	o->mr.call_pos = 0;
+	o->mr.f = file_mode_fread;
+	o->status = SGS_FILE_OK;
+	o->end_pos = 0;
 	o->ref = f;
 	o->path = path;
 	o->close_f = file_ref_close;
@@ -76,28 +97,30 @@ bool SGS_File_fopenrb(SGS_File *o, const char *path) {
  * Close File if open. Reset buffer read and write modes, but not
  * buffer contents.
  */
-void SGS_File_close(SGS_File *o) {
+void SGS_File_close(SGS_File *restrict o) {
 	if (o->close_f) {
 		o->close_f(o);
 		o->close_f = NULL;
 	}
-	SGS_CBufMode_reset(&o->cb.r);
-	SGS_CBufMode_reset(&o->cb.w);
-	o->status = SGS_File_OK;
+	SGS_FBufMode_reset(&o->mr);
+	SGS_FBufMode_reset(&o->mw);
+	o->status = SGS_FILE_OK;
+	o->path = NULL;
 }
 
 /**
- * Reset File object, including the buffer, its contents and
- * read and write modes. If open, will be closed.
+ * Reset File object. Like SGS_File_close(), except it also zeroes the buffer.
  */
-void SGS_File_reset(SGS_File *o) {
-	if (o->close_f) {
-		o->close_f(o);
-		o->close_f = NULL;
-	}
-	SGS_CBuf_reset(&o->cb);
-	o->status = SGS_File_OK;
-	o->path = NULL;
+void SGS_File_reset(SGS_File *restrict o) {
+	SGS_File_close(o);
+	memset(o->buf, 0, SGS_FBUF_SIZ);
+}
+
+static void add_end_marker(SGS_File *restrict o, SGS_FBufMode *restrict m,
+		size_t len) {
+	o->end_pos = m->pos + len;
+	o->buf[o->end_pos] = o->status;
+	++m->call_pos;
 }
 
 /*
@@ -110,14 +133,12 @@ void SGS_File_reset(SGS_File *o) {
  * reading position and write the end marker again.
  *
  * SGS_File_STATUS() will return the same value as the end marker,
- * which is always <= SGS_File_MARKER.
+ * which is always <= SGS_FILE_MARKER.
  *
  * \return number of characters successfully read
  */
-static size_t file_mode_fread(SGS_CBufMode *o) {
-	SGS_File *fo = o->ref;
-	FILE *f = fo->ref;
-	size_t len = 0;
+static size_t file_mode_fread(SGS_File *restrict o, SGS_FBufMode *restrict m) {
+	FILE *f = o->ref;
 	/*
 	 * Set read pos to the first character of the buffer area.
 	 * If it has ended up outside of the buffer (fill after last
@@ -128,36 +149,31 @@ static size_t file_mode_fread(SGS_CBufMode *o) {
 	 * open. Upon short read, insert SGS_File_STATUS() value
 	 * not counted in return length. Close file upon end or error.
 	 */
-	o->pos &= (SGS_CBUF_SIZ - 1) & ~(SGS_CBUF_ALEN - 1);
+	m->pos &= (SGS_FBUF_SIZ - 1) & ~(SGS_FBUF_ALEN - 1);
 	if (!f) {
-		o->call_pos = o->pos;
-		goto ADD_MARKER;
+		m->call_pos = m->pos;
+		add_end_marker(o, m, 0);
+		return 0;
 	}
-	len = fread(&fo->cb.buf[o->pos], 1, SGS_CBUF_ALEN, f);
-	o->call_pos = o->pos + len; /* pre-mask pos */
+	size_t len = fread(&o->buf[m->pos], 1, SGS_FBUF_ALEN, f);
+	m->call_pos = m->pos + len; /* pre-mask pos */
 	if (ferror(f)) {
-		fo->status |= SGS_File_ERROR;
+		o->status |= SGS_FILE_ERROR;
 	}
 	if (feof(f)) {
-		fo->status |= SGS_File_END;
-		file_ref_close(fo);
+		o->status |= SGS_FILE_END;
+		file_ref_close(o);
 	}
-	if (len < SGS_CBUF_ALEN) {
-		goto ADD_MARKER;
+	if (len < SGS_FBUF_ALEN) {
+		add_end_marker(o, m, len);
 	}
-	return len;
-
-ADD_MARKER:
-	fo->end_marker = &fo->cb.buf[o->pos + len];
-	*fo->end_marker = fo->status;
-	++o->call_pos;
 	return len;
 }
 
 /*
  * Close file without clearing state.
  */
-void file_ref_close(SGS_File *o) {
+static void file_ref_close(SGS_File *restrict o) {
 	if (o->ref != NULL) {
 		fclose(o->ref);
 		o->ref = NULL;
@@ -169,65 +185,30 @@ void file_ref_close(SGS_File *o) {
 #define IS_DIGIT(c) ((c) >= '0' && (c) <= '9')
 
 /**
- * Advance past characters until the next is neither a space nor a tab.
- *
- * \return number of characters skipped
- */
-uint32_t SGS_File_skipspace(SGS_File *o) {
-	SGS_CBuf *cb = &o->cb;
-	uint32_t i = 0;
-	for (;;) {
-		uint8_t c = SGS_CBuf_GETC(cb);
-		if (!IS_SPACE(c)) break;
-		++i;
-	}
-	SGS_CBufMode_DECP(&cb->r);
-	return i;
-}
-
-/**
- * Advance past characters until the next marks the end of the line (or file).
- *
- * \return number of characters skipped
- */
-uint32_t SGS_File_skipline(SGS_File *o) {
-	SGS_CBuf *cb = &o->cb;
-	uint32_t i = 0;
-	for (;;) {
-		uint8_t c = SGS_CBuf_GETC(cb);
-		if (IS_LNBRK(c) ||
-			(c <= SGS_File_MARKER && SGS_File_AFTER_EOF(o))) break;
-		++i;
-	}
-	SGS_CBufMode_DECP(&cb->r);
-	return i;
-}
-
-/**
  * Read characters into \p buf. At most \p buf_len - 1 characters
  * are read, and the string is always zero-terminated.
  *
  * If \p str_len is not NULL, it will be set to the string length.
- * If \p cfilter is not NULL, it will be used to filter characters
+ * If \p c_filter is not NULL, it will be used to filter characters
  * and end the string when 0 is returned.
  *
  * \return true if the string fit into the buffer, false if truncated
  */
-bool SGS_File_gets(SGS_File *o, void *buf, uint32_t buf_len,
-		uint32_t *str_len, SGS_File_CFilter_f cfilter) {
-	SGS_CBuf *cb = &o->cb;
+bool SGS_File_gets(SGS_File *restrict o,
+		void *restrict buf, uint32_t buf_len,
+		uint32_t *restrict str_len, SGS_File_CFilter_f c_filter) {
 	uint8_t *dst = buf;
 	uint32_t i = 0;
 	uint32_t max_len = buf_len - 1;
 	bool truncate = false;
-	if (cfilter) for (;;) {
+	if (c_filter) for (;;) {
 		if (i == max_len) {
 			truncate = true;
 			break;
 		}
-		uint8_t c = cfilter(o, SGS_CBuf_GETC(cb));
+		uint8_t c = c_filter(o, SGS_File_GETC(o));
 		if (c == '\0') {
-			SGS_CBufMode_DECP(&cb->r);
+			SGS_FBufMode_DECP(&o->mr);
 			break;
 		}
 		dst[i++] = c;
@@ -236,9 +217,9 @@ bool SGS_File_gets(SGS_File *o, void *buf, uint32_t buf_len,
 			truncate = true;
 			break;
 		}
-		uint8_t c = SGS_CBuf_GETC(cb);
-		if (c <= SGS_File_MARKER && SGS_File_AFTER_EOF(o)) {
-			SGS_CBufMode_DECP(&cb->r);
+		uint8_t c = SGS_File_GETC(o);
+		if (c <= SGS_FILE_MARKER && SGS_File_AFTER_EOF(o)) {
+			SGS_FBufMode_DECP(&o->mr);
 			break;
 		}
 		dst[i++] = c;
@@ -260,23 +241,23 @@ bool SGS_File_gets(SGS_File *o, void *buf, uint32_t buf_len,
  *
  * \return true unless number too large and result truncated
  */
-bool SGS_File_geti(SGS_File *o, int32_t *var, bool allow_sign,
-		uint32_t *str_len) {
-	SGS_CBuf *cb = &o->cb;
+bool SGS_File_geti(SGS_File *restrict o,
+		int32_t *restrict var, bool allow_sign,
+		uint32_t *restrict str_len) {
 	uint8_t c;
 	int32_t num = 0;
 	bool minus = false;
 	bool truncate = false;
 	uint32_t len = 0;
-	c = SGS_CBuf_GETC(cb);
+	c = SGS_File_GETC(o);
 	++len;
 	if (allow_sign && (c == '+' || c == '-')) {
 		if (c == '-') minus = true;
-		c = SGS_CBuf_GETC(cb);
+		c = SGS_File_GETC(o);
 		++len;
 	}
 	if (!IS_DIGIT(c)) {
-		SGS_CBuf_UNGETN(cb, len);
+		SGS_File_UNGETN(o, len);
 		if (str_len) *str_len = 0;
 		return true;
 	}
@@ -285,7 +266,7 @@ bool SGS_File_geti(SGS_File *o, int32_t *var, bool allow_sign,
 			int32_t new_num = num * 10 - (c - '0');
 			if (new_num > num) truncate = true;
 			else num = new_num;
-			c = SGS_CBuf_GETC(cb);
+			c = SGS_File_GETC(o);
 			++len;
 		} while (IS_DIGIT(c));
 		if (truncate) num = INT32_MIN;
@@ -294,13 +275,13 @@ bool SGS_File_geti(SGS_File *o, int32_t *var, bool allow_sign,
 			int32_t new_num = num * 10 + (c - '0');
 			if (new_num < num) truncate = true;
 			else num = new_num;
-			c = SGS_CBuf_GETC(cb);
+			c = SGS_File_GETC(o);
 			++len;
 		} while (IS_DIGIT(c));
 		if (truncate) num = INT32_MAX;
 	}
 	*var = num;
-	SGS_CBufMode_DECP(&cb->r);
+	SGS_FBufMode_DECP(&o->mr);
 	--len;
 	if (str_len) *str_len = len;
 	return !truncate;
@@ -318,41 +299,41 @@ bool SGS_File_geti(SGS_File *o, int32_t *var, bool allow_sign,
  *
  * \return true unless number too large and result truncated
  */
-bool SGS_File_getd(SGS_File *o, double *var, bool allow_sign,
-		uint32_t *str_len) {
-	SGS_CBuf *cb = &o->cb;
+bool SGS_File_getd(SGS_File *restrict o,
+		double *restrict var, bool allow_sign,
+		uint32_t *restrict str_len) {
 	uint8_t c;
 	long double num = 0.f, pos_mul = 1.f;
 	double res;
 	bool minus = false;
 	bool truncate = false;
 	uint32_t len = 0;
-	c = SGS_CBuf_GETC(cb);
+	c = SGS_File_GETC(o);
 	++len;
 	if (allow_sign && (c == '+' || c == '-')) {
 		if (c == '-') minus = true;
-		c = SGS_CBuf_GETC(cb);
+		c = SGS_File_GETC(o);
 		++len;
 	}
 	if (c != '.') {
 		if (!IS_DIGIT(c)) {
-			SGS_CBuf_UNGETN(cb, len);
+			SGS_File_UNGETN(o, len);
 			if (str_len) *str_len = 0;
 			return true;
 		}
 		do {
 			num = num * 10.f + (c - '0');
-			c = SGS_CBuf_GETC(cb);
+			c = SGS_File_GETC(o);
 			++len;
 		} while (IS_DIGIT(c));
 		if (c != '.') goto DONE;
-		c = SGS_CBuf_GETC(cb);
+		c = SGS_File_GETC(o);
 		++len;
 	} else {
-		c = SGS_CBuf_GETC(cb);
+		c = SGS_File_GETC(o);
 		++len;
 		if (!IS_DIGIT(c)) {
-			SGS_CBuf_UNGETN(cb, len);
+			SGS_File_UNGETN(o, len);
 			if (str_len) *str_len = 0;
 			return true;
 		}
@@ -360,7 +341,7 @@ bool SGS_File_getd(SGS_File *o, double *var, bool allow_sign,
 	while (IS_DIGIT(c)) {
 		pos_mul *= 0.1f;
 		num += (c - '0') * pos_mul;
-		c = SGS_CBuf_GETC(cb);
+		c = SGS_File_GETC(o);
 		++len;
 	}
 
@@ -369,8 +350,57 @@ DONE:
 	if (res == INFINITY) truncate = true;
 	if (minus) res = -res;
 	*var = res;
-	SGS_CBufMode_DECP(&cb->r);
+	SGS_FBufMode_DECP(&o->mr);
 	--len;
 	if (str_len) *str_len = len;
 	return !truncate;
+}
+
+/**
+ * Advance past characters until \p c_filter returns zero.
+ *
+ * \return number of characters skipped
+ */
+uint32_t SGS_File_skips(SGS_File *restrict o, SGS_File_CFilter_f c_filter) {
+	uint32_t i = 0;
+	for (;;) {
+		uint8_t c = c_filter(o, SGS_File_GETC(o));
+		if (c == '\0') break;
+		++i;
+	}
+	SGS_FBufMode_DECP(&o->mr);
+	return i;
+}
+
+/**
+ * Advance past characters until the next is neither a space nor a tab.
+ *
+ * \return number of characters skipped
+ */
+uint32_t SGS_File_skipspace(SGS_File *restrict o) {
+	uint32_t i = 0;
+	for (;;) {
+		uint8_t c = SGS_File_GETC(o);
+		if (!IS_SPACE(c)) break;
+		++i;
+	}
+	SGS_FBufMode_DECP(&o->mr);
+	return i;
+}
+
+/**
+ * Advance past characters until the next marks the end of the line (or file).
+ *
+ * \return number of characters skipped
+ */
+uint32_t SGS_File_skipline(SGS_File *restrict o) {
+	uint32_t i = 0;
+	for (;;) {
+		uint8_t c = SGS_File_GETC(o);
+		if (IS_LNBRK(c) ||
+			(c <= SGS_FILE_MARKER && SGS_File_AFTER_EOF(o))) break;
+		++i;
+	}
+	SGS_FBufMode_DECP(&o->mr);
+	return i;
 }

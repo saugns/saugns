@@ -12,7 +12,7 @@
  */
 
 #pragma once
-#include "script/ptrlist.h"
+#include "ptrlist.h"
 #include "../program.h"
 
 /**
@@ -114,5 +114,5 @@ typedef struct SGS_Script {
 	SGS_ScriptOptions sopt;
 } SGS_Script;
 
-SGS_Script *SGS_load_Script(const char *fname);
-void SGS_discard_Script(SGS_Script *o);
+SGS_Script *SGS_load_Script(const char *restrict fname);
+void SGS_discard_Script(SGS_Script *restrict o);

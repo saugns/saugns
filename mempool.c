@@ -17,10 +17,11 @@
 #include <string.h>
 
 /* Not important enough to query page size for; use large-enough default. */
-#define DEFAULT_BLOCK_SIZE (4096 * 2)
+#define DEFAULT_BLOCK_SIZE \
+	(4096 * 2)
 
 #define ALIGN_BYTES \
-	(sizeof(void*) * 2)
+	sizeof(void*)
 
 #define ALIGN_SIZE(size) \
 	(((size) + (ALIGN_BYTES - 1)) & ~(ALIGN_BYTES - 1))
@@ -37,7 +38,8 @@ SGS_DEF_ArrType(BlockArr, BlockEntry, _)
  *
  * \return allocated memory, or NULL on allocation failure
  */
-static void *BlockArr_add(BlockArr *o, size_t size_alloc, size_t size_used) {
+static void *BlockArr_add(BlockArr *restrict o,
+		size_t size_alloc, size_t size_used) {
 	size_t i = o->count;
 	if (!_BlockArr_add(o, NULL))
 		return NULL;
@@ -52,21 +54,21 @@ static void *BlockArr_add(BlockArr *o, size_t size_alloc, size_t size_used) {
 /*
  * Free all memory blocks.
  */
-static void BlockArr_clear(BlockArr *o) {
+static void BlockArr_clear(BlockArr *restrict o) {
 	for (size_t i = 0; i < o->count; ++i) {
 		free(o->a[i].mem);
 	}
 	_BlockArr_clear(o);
 }
 
-/**
+/*
  * Locate the first block with the smallest size into which \p size fits,
  * using binary search. If found, \p id will be set to the id.
  *
  * \return true if found, false if not
  */
-static bool BlockArr_first_smallest(const BlockArr *o,
-		size_t size, size_t *id) {
+static bool BlockArr_first_smallest(const BlockArr *restrict o,
+		size_t size, size_t *restrict id) {
 	size_t i = 0;
 	ptrdiff_t min = 0;
 	ptrdiff_t max = o->count - 1;
@@ -92,7 +94,7 @@ static bool BlockArr_first_smallest(const BlockArr *o,
 	return false;
 }
 
-/**
+/*
  * Locate the first block with the smallest size greater than \p size, using
  * binary search. If found, \p id will be set to the id.
  *
@@ -101,14 +103,15 @@ static bool BlockArr_first_smallest(const BlockArr *o,
 #define BlockArr_first_greater(o, size, id) \
 	BlockArr_first_smallest((o), (size) + 1, (id))
 
-/**
+/*
  * Copy the blocks from \p from to \p to upwards one step.
  *
  * Technically, only the first block of each successive size is overwritten,
  * by the previous such block, until finally the last such block overwrites
  * the block at \p to.
  */
-static void BlockArr_copy_up_one(BlockArr *o, size_t to, size_t from) {
+static void BlockArr_copy_up_one(BlockArr *restrict o,
+		size_t to, size_t from) {
 	if (from + 1 == to ||
 		o->a[from].free == o->a[to - 1].free) {
 		/*
@@ -160,7 +163,7 @@ SGS_MemPool *SGS_create_MemPool(size_t block_size) {
 /**
  * Destroy instance.
  */
-void SGS_destroy_MemPool(SGS_MemPool *o) {
+void SGS_destroy_MemPool(SGS_MemPool *restrict o) {
 	BlockArr_clear(&o->blocks);
 	free(o);
 }
@@ -170,7 +173,7 @@ void SGS_destroy_MemPool(SGS_MemPool *o) {
  *
  * \return allocated memory, or NULL on allocation failure
  */
-void *SGS_MemPool_alloc(SGS_MemPool *o, size_t size) {
+void *SGS_MemPool_alloc(SGS_MemPool *restrict o, size_t size) {
 	size_t i = o->blocks.count;
 	void *ret;
 	size = ALIGN_SIZE(size);
@@ -233,7 +236,8 @@ void *SGS_MemPool_alloc(SGS_MemPool *o, size_t size) {
  *
  * \return allocated memory, or NULL on allocation failure
  */
-void *SGS_MemPool_memdup(SGS_MemPool *o, const void *src, size_t size) {
+void *SGS_MemPool_memdup(SGS_MemPool *restrict o,
+		const void *restrict src, size_t size) {
 	void *ret = SGS_MemPool_alloc(o, size);
 	if (ret == NULL)
 		return NULL;

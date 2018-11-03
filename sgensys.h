@@ -14,9 +14,9 @@
 #pragma once
 #include "program.h"
 
-#define SGS_VERSION_STR "sgensys v0.6.0 beta"
+#define SGS_VERSION_STR "sgensys v0.6.0"
 
-SGS_Program* SGS_build(const char *fname);
+SGS_Program* SGS_build(const char *restrict fname);
 
-bool SGS_render(SGS_Program *prg, uint32_t srate,
-		bool use_audiodev, const char *wav_path);
+bool SGS_render(SGS_Program *restrict prg, uint32_t srate,
+		bool use_audiodev, const char *restrict wav_path);
