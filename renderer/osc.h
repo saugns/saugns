@@ -8,11 +8,11 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #pragma once
-#include "../wave.h"
+#include "../program/wave.h"
 #include "../math.h"
 
 /**
@@ -66,41 +66,14 @@ typedef struct SGS_Osc {
 }while(0)
 
 /**
- * Produce 16-bit integer output.
- */
-#define SGS_Osc_RUN_S16(o, lut, coeff, freq, pm_s16, amp, s16_out) do{ \
-	uint32_t SGS_Osc__phs = (o)->phase + ((pm_s16) << 16); \
-	uint32_t SGS_Osc__ind = SGS_Wave_INDEX(SGS_Osc__phs); \
-	int_fast16_t SGS_Osc__s16 = (lut)[SGS_Osc__ind]; \
-	/* write lerp'd & scaled result */ \
-	SGS_Osc__s16 = lrintf( \
-		(((float)SGS_Osc__s16) + \
-		 ((float)((lut)[(SGS_Osc__ind + 1) & SGS_Wave_LENMASK] - \
-		          SGS_Osc__s16)) * \
-		 (((float)(SGS_Osc__phs & SGS_Wave_SCALEMASK)) * \
-		  (1.f / SGS_Wave_SCALE))) * \
-		(amp)); \
-	(s16_out) = SGS_Osc__s16; \
-	/* update phase */ \
-	uint32_t SGS_Osc__inc = lrint((coeff)*(freq)); \
-	(o)->phase += SGS_Osc__inc; \
-}while(0)
-
-/**
  * Produce floating point output in the -1.0 to 1.0 range.
  */
-#define SGS_Osc_RUN_SF(o, lut, coeff, freq, pm_s16, sf_out) do{ \
-	uint32_t SGS_Osc__phs = (o)->phase + ((pm_s16) << 16); \
-	uint32_t SGS_Osc__ind = SGS_Wave_INDEX(SGS_Osc__phs); \
-	int_fast16_t SGS_Osc__s16 = (lut)[SGS_Osc__ind]; \
-	/* write lerp'd & scaled result */ \
-	(sf_out) = ((float)(SGS_Osc__s16) + \
-		    ((float)((lut)[(SGS_Osc__ind + 1) & SGS_Wave_LENMASK] - \
-		             SGS_Osc__s16)) * \
-		    (((float)(SGS_Osc__phs & SGS_Wave_SCALEMASK)) * \
-		     (1.f / SGS_Wave_SCALE))) * \
-	           (1.f / ((float) SGS_Wave_MAXVAL)); \
-	/* update phase */ \
-	uint32_t SGS_Osc__inc = lrint((coeff)*(freq)); \
-	(o)->phase += SGS_Osc__inc; \
-}while(0)
+static inline float SGS_Osc_run(SGS_Osc *restrict o,
+		const float *restrict lut, double coeff,
+		float freq, int32_t pm_s32) {
+	uint32_t phase = o->phase + pm_s32;
+	float s = SGS_Wave_get_lerp(lut, phase);
+	uint32_t phase_inc = lrint(coeff * freq);
+	o->phase += phase_inc;
+	return s;
+}

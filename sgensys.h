@@ -8,13 +8,13 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #pragma once
 #include "program.h"
 
-SGS_Program* SGS_build(const char *fname);
+SGS_Program* SGS_build(const char *restrict fname);
 
-bool SGS_render(SGS_Program *prg, uint32_t srate,
-		bool use_audiodev, const char *wav_path);
+bool SGS_render(SGS_Program *restrict prg, uint32_t srate,
+		bool use_audiodev, const char *restrict wav_path);

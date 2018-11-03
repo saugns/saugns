@@ -8,17 +8,17 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #pragma once
-#include "common.h"
+#include "../common.h"
 
 #define SGS_Wave_LENBITS 11
 #define SGS_Wave_LEN     (1<<SGS_Wave_LENBITS) /* 2048 */
 #define SGS_Wave_LENMASK (SGS_Wave_LEN - 1)
 
-#define SGS_Wave_MAXVAL ((1<<15) - 1)
+#define SGS_Wave_MAXVAL 1.f
 #define SGS_Wave_MINVAL (-SGS_Wave_MAXVAL)
 
 #define SGS_Wave_SCALEBITS (32-SGS_Wave_LENBITS)
@@ -42,7 +42,7 @@ enum {
 };
 
 /** LUTs for wave types. */
-extern int16_t SGS_Wave_luts[SGS_WAVE_TYPES][SGS_Wave_LEN];
+extern float SGS_Wave_luts[SGS_WAVE_TYPES][SGS_Wave_LEN];
 
 /** Names of wave types, with an extra NULL pointer at the end. */
 extern const char *const SGS_Wave_names[SGS_WAVE_TYPES + 1];
@@ -52,6 +52,20 @@ extern const char *const SGS_Wave_names[SGS_WAVE_TYPES + 1];
  */
 #define SGS_Wave_INDEX(phase) \
 	(((uint32_t)(phase)) >> SGS_Wave_SCALEBITS)
+
+/**
+ * Get LUT value for 32-bit unsigned phase using linear interpolation.
+ *
+ * \return sample
+ */
+static inline float SGS_Wave_get_lerp(const float *restrict lut,
+		uint32_t phase) {
+	uint32_t ind = SGS_Wave_INDEX(phase);
+	float s = lut[ind];
+	s += (lut[(ind + 1) & SGS_Wave_LENMASK] - s) *
+	     ((phase & SGS_Wave_SCALEMASK) * (1.f / SGS_Wave_SCALE));
+	return s;
+}
 
 extern void SGS_global_init_Wave(void);
 

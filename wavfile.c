@@ -8,14 +8,14 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #include "wavfile.h"
 #include <stdio.h>
 #include <stdlib.h>
 
-static void fputw(uint16_t i16, FILE *stream) {
+static void fputw(uint16_t i16, FILE *restrict stream) {
 	uint8_t b;
 	b = i16 & 0xff;
 	putc(b, stream);
@@ -23,7 +23,7 @@ static void fputw(uint16_t i16, FILE *stream) {
 	putc(b, stream);
 }
 
-static void fputl(uint32_t i32, FILE *stream) {
+static void fputl(uint32_t i32, FILE *restrict stream) {
 	uint8_t b;
 	b = i32 & 0xff;
 	putc(b, stream);
@@ -50,8 +50,8 @@ struct SGS_WAVFile {
  *
  * \return instance or NULL if fopen fails
  */
-SGS_WAVFile *SGS_create_WAVFile(const char *fpath, uint16_t channels,
-		uint32_t srate) {
+SGS_WAVFile *SGS_create_WAVFile(const char *restrict fpath,
+		uint16_t channels, uint32_t srate) {
 	FILE *f = fopen(fpath, "wb");
 	if (!f) {
 		SGS_error(NULL, "couldn't open WAV file \"%s\" for writing",
@@ -89,7 +89,8 @@ SGS_WAVFile *SGS_create_WAVFile(const char *fpath, uint16_t channels,
  *
  * \return true if write successful
  */
-bool SGS_WAVFile_write(SGS_WAVFile *o, const int16_t *buf, uint32_t samples) {
+bool SGS_WAVFile_write(SGS_WAVFile *restrict o,
+		const int16_t *restrict buf, uint32_t samples) {
 	size_t length = o->channels * samples, written;
 	written = fwrite(buf, SOUND_BYTES, length, o->f);
 	o->samples += written;
@@ -104,7 +105,7 @@ bool SGS_WAVFile_write(SGS_WAVFile *o, const int16_t *buf, uint32_t samples) {
  *
  * \return value of ferror, checked before closing file
  */
-int SGS_close_WAVFile(SGS_WAVFile *o) {
+int SGS_close_WAVFile(SGS_WAVFile *restrict o) {
 	int err;
 	FILE *f = o->f;
 	uint32_t bytes = o->channels * o->samples * SOUND_BYTES;

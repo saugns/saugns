@@ -1,5 +1,5 @@
-/* sgensys: Math definitions.
- * Copyright (c) 2011-2012, 2017-2018 Joel K. Pettersson
+/* sgensys: Script parameter module.
+ * Copyright (c) 2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -12,15 +12,21 @@
  */
 
 #pragma once
-#include "common.h"
-#include <math.h>
-
-#define SGS_PI       3.14159265358979323846
-#define SGS_ASIN_1_2 0.52359877559829887308 // asin(0.5)
-#define SGS_SQRT_1_2 0.70710678118654752440 // sqrt(0.5), 1/sqrt(2)
+#include "../common.h"
 
 /**
- * Convert time in ms to time in samples for a sample-rate.
+ * Timed parameter flags.
  */
-#define SGS_MS_TO_SRT(ms, srate) \
-	lrintf(((ms) * .001f) * (srate))
+enum {
+	SGS_TPAR_SLOPE = 1<<0,
+};
+
+/**
+ * Timed parameter type.
+ */
+typedef struct SGS_TimedParam {
+	float v0, vt;
+	uint32_t time_ms;
+	uint8_t slope;
+	uint8_t flags;
+} SGS_TimedParam;

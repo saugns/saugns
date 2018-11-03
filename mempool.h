@@ -8,7 +8,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #pragma once
@@ -17,7 +17,9 @@
 struct SGS_MemPool;
 typedef struct SGS_MemPool SGS_MemPool;
 
-SGS_MemPool *SGS_create_MemPool(size_t block_size);
-void SGS_destroy_MemPool(SGS_MemPool *o);
+SGS_MemPool *SGS_create_MemPool(size_t block_size) SGS__malloclike;
+void SGS_destroy_MemPool(SGS_MemPool *restrict o);
 
-void *SGS_MemPool_alloc(SGS_MemPool *o, const void *src, size_t size);
+void *SGS_MemPool_alloc(SGS_MemPool *restrict o, size_t size) SGS__malloclike;
+void *SGS_MemPool_memdup(SGS_MemPool *restrict o,
+		const void *restrict src, size_t size) SGS__malloclike;

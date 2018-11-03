@@ -8,7 +8,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #include "ptrlist.h"
@@ -22,7 +22,7 @@
  *
  * \return true unless allocation failed
  */
-bool SGS_PtrList_add(SGS_PtrList *o, const void *item) {
+bool SGS_PtrList_add(SGS_PtrList *restrict o, const void *restrict item) {
 	if (!o->asize) {
 		if (o->count == 0) {
 			o->items = (const void**) item;
@@ -70,7 +70,7 @@ bool SGS_PtrList_add(SGS_PtrList *o, const void *item) {
 /**
  * Clear the given list.
  */
-void SGS_PtrList_clear(SGS_PtrList *o) {
+void SGS_PtrList_clear(SGS_PtrList *restrict o) {
 	if (o->count > o->old_count && o->asize > 0) {
 		free(o->items);
 	}
@@ -90,7 +90,7 @@ void SGS_PtrList_clear(SGS_PtrList *o) {
  *
  * \return true unless allocation failed
  */
-bool SGS_PtrList_memdup(SGS_PtrList *o, const void ***dst) {
+bool SGS_PtrList_memdup(SGS_PtrList *restrict o, const void ***restrict dst) {
 	if (!o->count) {
 		*dst = NULL;
 		return true;
@@ -120,7 +120,8 @@ bool SGS_PtrList_memdup(SGS_PtrList *o, const void ***dst) {
  * through iteration between \a old_count and \a count, all
  * accessing of freed memory is avoided.
  */
-void SGS_PtrList_soft_copy(SGS_PtrList *dst, const SGS_PtrList *src) {
+void SGS_PtrList_soft_copy(SGS_PtrList *restrict dst,
+		const SGS_PtrList *restrict src) {
 	SGS_PtrList_clear(dst);
 	dst->items = src->items;
 	dst->count = src->count;

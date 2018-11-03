@@ -8,7 +8,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #include "sgensys.h"
@@ -27,8 +27,8 @@ static int16_t audio_buf[BUF_SAMPLES * NUM_CHANNELS];
  *
  * \return true unless error occurred
  */
-static bool produce_audio(SGS_Program *prg, uint32_t srate,
-		SGS_AudioDev *ad, SGS_WAVFile *wf) {
+static bool produce_audio(SGS_Program *restrict prg, uint32_t srate,
+		SGS_AudioDev *restrict ad, SGS_WAVFile *restrict wf) {
 	SGS_Generator *gen = SGS_create_Generator(prg, srate);
 	size_t len;
 	bool error = false;
@@ -55,8 +55,8 @@ static bool produce_audio(SGS_Program *prg, uint32_t srate,
  *
  * \return true unless error occurred
  */
-bool SGS_render(SGS_Program *prg, uint32_t srate,
-		bool use_audiodev, const char *wav_path) {
+bool SGS_render(SGS_Program *restrict prg, uint32_t srate,
+		bool use_audiodev, const char *restrict wav_path) {
 	SGS_AudioDev *ad = NULL;
 	uint32_t ad_srate = srate;
 	SGS_WAVFile *wf = NULL;

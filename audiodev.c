@@ -8,7 +8,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #ifdef __linux
@@ -59,7 +59,7 @@ struct SGS_AudioDev {
  *
  * \return instance or NULL on failure
  */
-SGS_AudioDev *SGS_open_AudioDev(uint16_t channels, uint32_t *srate) {
+SGS_AudioDev *SGS_open_AudioDev(uint16_t channels, uint32_t *restrict srate) {
 	SGS_AudioDev *o;
 #ifdef __linux
 	o = open_linux(ALSA_NAME_OUT, OSS_NAME_OUT, O_WRONLY,
@@ -79,7 +79,7 @@ SGS_AudioDev *SGS_open_AudioDev(uint16_t channels, uint32_t *srate) {
 /**
  * Close the given audio device. Destroys the instance.
  */
-void SGS_close_AudioDev(SGS_AudioDev *o) {
+void SGS_close_AudioDev(SGS_AudioDev *restrict o) {
 #ifdef __linux
 	close_linux(o);
 #elif defined(__OpenBSD__)
@@ -92,7 +92,7 @@ void SGS_close_AudioDev(SGS_AudioDev *o) {
 /**
  * Return sample rate set for system audio output.
  */
-uint32_t SGS_AudioDev_get_srate(const SGS_AudioDev *o) {
+uint32_t SGS_AudioDev_get_srate(const SGS_AudioDev *restrict o) {
 	return o->srate;
 }
 
@@ -104,7 +104,8 @@ uint32_t SGS_AudioDev_get_srate(const SGS_AudioDev *o) {
  *
  * \return true upon suceessful write, otherwise false
  */
-bool SGS_AudioDev_write(SGS_AudioDev *o, const int16_t *buf, uint32_t samples) {
+bool SGS_AudioDev_write(SGS_AudioDev *restrict o,
+		const int16_t *restrict buf, uint32_t samples) {
 #ifdef __linux
 	return linux_write(o, buf, samples);
 #elif defined(__OpenBSD__)

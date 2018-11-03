@@ -8,7 +8,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #include "arrtype.h"
@@ -25,8 +25,9 @@
  *
  * \return true if successful, false if allocation failed
  */
-bool SGS_ArrType_add(void *_o, const void *item, size_t item_size) {
-	SGS_UInt8Arr *o = _o;
+bool SGS_ArrType_add(void *restrict _o,
+		const void *restrict item, size_t item_size) {
+	SGS_UInt8Arr *restrict o = _o;
 	if (!SGS_ArrType_upsize(o, o->count + 1, item_size)) {
 		return false;
 	}
@@ -46,8 +47,9 @@ bool SGS_ArrType_add(void *_o, const void *item, size_t item_size) {
  *
  * \return true unless allocation failed
  */
-bool SGS_ArrType_upsize(void *_o, size_t count, size_t item_size) {
-	SGS_UInt8Arr *o = _o;
+bool SGS_ArrType_upsize(void *restrict _o,
+		size_t count, size_t item_size) {
+	SGS_UInt8Arr *restrict o = _o;
 	size_t asize = o->asize;
 	if (!o->a) asize = 0;
 	size_t min_asize = count * item_size;
@@ -71,8 +73,8 @@ bool SGS_ArrType_upsize(void *_o, size_t count, size_t item_size) {
  *
  * (Generic version of the function, to be used through wrapper.)
  */
-void SGS_ArrType_clear(void *_o) {
-	SGS_UInt8Arr *o = _o;
+void SGS_ArrType_clear(void *restrict _o) {
+	SGS_UInt8Arr *restrict o = _o;
 	if (o->a) {
 		free(o->a);
 		o->a = NULL;
@@ -93,8 +95,9 @@ void SGS_ArrType_clear(void *_o) {
  *
  * \return true unless allocation failed
  */
-bool SGS_ArrType_memdup(void *_o, const void **dst, size_t item_size) {
-	SGS_UInt8Arr *o = _o;
+bool SGS_ArrType_memdup(void *restrict _o,
+		const void **restrict dst, size_t item_size) {
+	SGS_UInt8Arr *restrict o = _o;
 	if (!o->count) {
 		*dst = NULL;
 		return true;

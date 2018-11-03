@@ -8,7 +8,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #include "oss.c" /* used in fallback mechanism */
@@ -21,9 +21,9 @@
  *
  * \return instance or NULL on failure
  */
-static inline SGS_AudioDev *open_linux(const char *alsa_name,
-		const char *oss_name, int oss_mode, uint16_t channels,
-		uint32_t *srate) {
+static inline SGS_AudioDev *open_linux(const char *restrict alsa_name,
+		const char *restrict oss_name, int oss_mode, uint16_t channels,
+		uint32_t *restrict srate) {
 	SGS_AudioDev *o;
 	uint32_t tmp;
 	int err;
@@ -81,7 +81,7 @@ ERROR:
  * Destroy instance. Close ALSA or OSS device,
  * ending playback in the process.
  */
-static inline void close_linux(SGS_AudioDev *o) {
+static inline void close_linux(SGS_AudioDev *restrict o) {
 	if (o->type == TYPE_OSS) {
 		close_oss(o);
 		return;
@@ -97,8 +97,8 @@ static inline void close_linux(SGS_AudioDev *o) {
  *
  * \return true if write sucessful, otherwise false
  */
-static inline bool linux_write(SGS_AudioDev *o, const int16_t *buf,
-		uint32_t samples) {
+static inline bool linux_write(SGS_AudioDev *restrict o,
+		const int16_t *restrict buf, uint32_t samples) {
 	if (o->type == TYPE_OSS) {
 		return oss_write(o, buf, samples);
 	}

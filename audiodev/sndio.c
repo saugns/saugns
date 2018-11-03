@@ -8,7 +8,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #include <sndio.h>
@@ -17,8 +17,8 @@
 /*
  * \return instance or NULL on failure
  */
-static inline SGS_AudioDev *open_sndio(const char *name,
-		unsigned int mode, uint16_t channels, uint32_t *srate) {
+static inline SGS_AudioDev *open_sndio(const char *restrict name, unsigned mode,
+		uint16_t channels, uint32_t *restrict srate) {
 	struct sio_hdl *hdl = sio_open(name, mode, 0);
 	if (!hdl) goto ERROR;
 
@@ -69,8 +69,8 @@ static inline void close_sndio(SGS_AudioDev *o) {
  *
  * \return true if write sucessful, otherwise false
  */
-static inline bool sndio_write(SGS_AudioDev *o, const int16_t *buf,
-		uint32_t samples) {
+static inline bool sndio_write(SGS_AudioDev *restrict o,
+		const int16_t *restrict buf, uint32_t samples) {
 	size_t bytes = samples * o->channels * SOUND_BYTES;
 	size_t wlen;
 

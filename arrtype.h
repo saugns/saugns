@@ -8,7 +8,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #pragma once
@@ -44,19 +44,20 @@ typedef struct Name { \
  */
 #define SGS_DEF_ArrType_METHODS(Name, ElementType, MethodPrefix) \
 static inline bool SGS__maybe_unused \
-MethodPrefix##Name##_add(Name *o, const ElementType *item) { \
+MethodPrefix##Name##_add(Name *restrict o, const ElementType *restrict item) { \
 	return SGS_ArrType_add(o, item, sizeof(ElementType)); \
 } \
 static inline bool SGS__maybe_unused \
-MethodPrefix##Name##_upsize(Name *o, size_t count) { \
+MethodPrefix##Name##_upsize(Name *restrict o, size_t count) { \
 	return SGS_ArrType_upsize(o, count, sizeof(ElementType)); \
 } \
 static inline void SGS__maybe_unused \
-MethodPrefix##Name##_clear(Name *o) { \
+MethodPrefix##Name##_clear(Name *restrict o) { \
 	SGS_ArrType_clear(o); \
 } \
 static inline bool SGS__maybe_unused \
-MethodPrefix##Name##_memdup(Name *o, const ElementType **dst) { \
+MethodPrefix##Name##_memdup(Name *restrict o, \
+		const ElementType **restrict dst) { \
 	return SGS_ArrType_memdup(o, (const void**) dst, sizeof(ElementType)); \
 }
 
@@ -73,10 +74,13 @@ MethodPrefix##Name##_memdup(Name *o, const ElementType **dst) { \
 SGS_DEF_ArrType_TYPE(Name, ElementType) \
 SGS_DEF_ArrType_METHODS(Name, ElementType, MethodPrefix)
 
-bool SGS_ArrType_add(void *o, const void *item, size_t item_size);
-bool SGS_ArrType_upsize(void *o, size_t count, size_t item_size);
-void SGS_ArrType_clear(void *o);
-bool SGS_ArrType_memdup(void *o, const void **dst, size_t item_size);
+bool SGS_ArrType_add(void *restrict o,
+		const void *restrict item, size_t item_size);
+bool SGS_ArrType_upsize(void *restrict o,
+		size_t count, size_t item_size);
+void SGS_ArrType_clear(void *restrict o);
+bool SGS_ArrType_memdup(void *restrict o,
+		const void **restrict dst, size_t item_size);
 
 /** uint8_t array type. */
 SGS_DEF_ArrType(SGS_UInt8Arr, uint8_t, );
