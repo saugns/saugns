@@ -22,26 +22,53 @@ const char *const SGS_Slope_names[SGS_SLOPE_TYPES + 1] = {
 	NULL
 };
 
-static void fill_hold(float *restrict buf, uint32_t len,
-		float s0) {
+const SGS_Slope_fill_f SGS_Slope_funcs[SGS_SLOPE_TYPES] = {
+	SGS_Slope_fill_hold,
+	SGS_Slope_fill_lin,
+	SGS_Slope_fill_exp,
+	SGS_Slope_fill_log,
+};
+
+/**
+ * Fill \p buf with \p len values along a straight horizontal line,
+ * i.e. \p len copies of \p v0.
+ */
+void SGS_Slope_fill_hold(float *restrict buf, uint32_t len,
+		float v0, float vt SGS__maybe_unused,
+		uint32_t pos SGS__maybe_unused, uint32_t time SGS__maybe_unused) {
 	uint32_t i;
 	for (i = 0; i < len; ++i)
-		buf[i] = s0;
+		buf[i] = v0;
 }
 
-static void fill_lin(float *restrict buf, uint32_t len,
-		float s0, float goal, uint32_t pos, double inv_time) {
+/**
+ * Fill \p buf with \p len values along a linear trajectory
+ * from \p v0 (at position 0) to \p vt (at position \p time),
+ * beginning at position \p pos.
+ */
+void SGS_Slope_fill_lin(float *restrict buf, uint32_t len,
+		float v0, float vt,
+		uint32_t pos, uint32_t time) {
+	const double inv_time = 1.f / time;
 	uint32_t i, end;
 	for (i = pos, end = i + len; i < end; ++i) {
-		(*buf++) = s0 + (goal - s0) * (i * inv_time);
+		(*buf++) = v0 + (vt - v0) * (i * inv_time);
 	}
 }
 
-/*
- * Ear-tuned polynomial, designed to sound natural.
+/**
+ * Fill \p buf with \p len values along an exponential trajectory
+ * from \p v0 (at position 0) to \p vt (at position \p time),
+ * beginning at position \p pos.
+ *
+ * Uses an ear-tuned polynomial, designed to sound natural.
+ * (Unlike a real exponential curve, it has a definite beginning
+ * and end. It is symmetric to the corresponding logarithmic curve.)
  */
-static void fill_exp(float *restrict buf, uint32_t len,
-		float s0, float goal, uint32_t pos, double inv_time) {
+void SGS_Slope_fill_exp(float *restrict buf, uint32_t len,
+		float v0, float vt,
+		uint32_t pos, uint32_t time) {
+	const double inv_time = 1.f / time;
 	uint32_t i, end;
 	for (i = pos, end = i + len; i < end; ++i) {
 		double mod = 1.f - i * inv_time,
@@ -49,15 +76,23 @@ static void fill_exp(float *restrict buf, uint32_t len,
 			modp3 = modp2 * mod;
 		mod = modp3 + (modp2 * modp3 - modp2) *
 		      (mod * (629.f/1792.f) + modp2 * (1163.f/1792.f));
-		(*buf++) = goal + (s0 - goal) * mod;
+		(*buf++) = vt + (v0 - vt) * mod;
 	}
 }
 
-/*
- * Ear-tuned polynomial, designed to sound natural.
+/**
+ * Fill \p buf with \p len values along a logarithmic trajectory
+ * from \p v0 (at position 0) to \p vt (at position \p time),
+ * beginning at position \p pos.
+ *
+ * Uses an ear-tuned polynomial, designed to sound natural.
+ * (Unlike a real logarithmic curve, it has a definite beginning
+ * and end. It is symmetric to the corresponding exponential curve.)
  */
-static void fill_log(float *restrict buf, uint32_t len,
-		float s0, float goal, uint32_t pos, double inv_time) {
+void SGS_Slope_fill_log(float *restrict buf, uint32_t len,
+		float v0, float vt,
+		uint32_t pos, uint32_t time) {
+	const double inv_time = 1.f / time;
 	uint32_t i, end;
 	for (i = pos, end = i + len; i < end; ++i) {
 		double mod = i * inv_time,
@@ -65,50 +100,6 @@ static void fill_log(float *restrict buf, uint32_t len,
 			modp3 = modp2 * mod;
 		mod = modp3 + (modp2 * modp3 - modp2) *
 		      (mod * (629.f/1792.f) + modp2 * (1163.f/1792.f));
-		(*buf++) = s0 + (goal - s0) * mod;
+		(*buf++) = v0 + (vt - v0) * mod;
 	}
-}
-
-/**
- * Fill \p buf with \p buf_len values, shaped according to the
- * slope and its attributes.
- *
- * \return true until goal reached
- */
-bool SGS_Slope_run(SGS_Slope *restrict o, uint32_t srate,
-		float *restrict buf, uint32_t buf_len, float s0) {
-	uint32_t time = SGS_MS_TO_SRT(o->time_ms, srate);
-	uint32_t len, fill_len;
-	double inv_time;
-	inv_time = 1.f / time;
-	len = time - o->pos;
-	if (len > buf_len) {
-		len = buf_len;
-		fill_len = 0;
-	} else {
-		fill_len = buf_len - len;
-	}
-	switch (o->type) {
-	case SGS_SLOPE_HOLD:
-		fill_hold(buf, len, s0);
-		break;
-	case SGS_SLOPE_LIN:
-		fill_lin(buf, len, s0, o->goal, o->pos, inv_time);
-		break;
-	case SGS_SLOPE_EXP:
-		fill_exp(buf, len, s0, o->goal, o->pos, inv_time);
-		break;
-	case SGS_SLOPE_LOG:
-		fill_log(buf, len, s0, o->goal, o->pos, inv_time);
-		break;
-	}
-	o->pos += len;
-	if (o->pos == time) {
-		/*
-		 * Set the remaining values, if any, using the goal.
-		 */
-		fill_hold(buf + len, fill_len, o->goal);
-		return false;
-	}
-	return true;
 }

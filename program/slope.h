@@ -11,6 +11,7 @@
  * <https://www.gnu.org/licenses/>.
  */
 
+#pragma once
 #include "../common.h"
 
 /**
@@ -27,18 +28,21 @@ enum {
 /** Names of slope types, with an extra NULL pointer at the end. */
 extern const char *const SGS_Slope_names[SGS_SLOPE_TYPES + 1];
 
-/**
- * Slope, used for gradual value change.
- *
- * The \a pos field keeps track of position in samples;
- * reset to 0 when running for a new duration.
- */
-typedef struct SGS_Slope {
-	uint32_t time_ms;
-	uint32_t pos;
-	float goal;
-	uint8_t type;
-} SGS_Slope;
+typedef void (*SGS_Slope_fill_f)(float *buf, uint32_t len,
+		float v0, float vt, uint32_t pos, uint32_t time);
 
-bool SGS_Slope_run(SGS_Slope *restrict o, uint32_t srate,
-		float *restrict buf, uint32_t buf_len, float s0);
+/** Functions for slope types. */
+extern const SGS_Slope_fill_f SGS_Slope_funcs[SGS_SLOPE_TYPES];
+
+void SGS_Slope_fill_hold(float *restrict buf, uint32_t len,
+		float v0, float vt,
+		uint32_t pos, uint32_t time);
+void SGS_Slope_fill_lin(float *restrict buf, uint32_t len,
+		float v0, float vt,
+		uint32_t pos, uint32_t time);
+void SGS_Slope_fill_exp(float *restrict buf, uint32_t len,
+		float v0, float vt,
+		uint32_t pos, uint32_t time);
+void SGS_Slope_fill_log(float *restrict buf, uint32_t len,
+		float v0, float vt,
+		uint32_t pos, uint32_t time);
