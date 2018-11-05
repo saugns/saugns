@@ -276,7 +276,6 @@ static void ParseConv_convert_opdata(ParseConv *restrict o,
 	ood.adjcs = NULL;
 	ood.time_ms = op->time_ms;
 	ood.silence_ms = op->silence_ms;
-	ood.attr = op->attr;
 	ood.wave = op->wave;
 	ood.freq = op->freq;
 	ood.amp = op->amp;
@@ -418,7 +417,6 @@ static void ParseConv_convert_event(ParseConv *restrict o,
 	if (vo_params != 0) {
 		SGS_ProgramVoData *ovd = calloc(1, sizeof(SGS_ProgramVoData));
 		ovd->params = vo_params;
-		ovd->attr = e->vo_attr;
 		ovd->pan = e->pan;
 		if ((e->ev_flags & SGS_SDEV_NEW_OPGRAPH) != 0) {
 			if (vas->op_graph != NULL) free(vas->op_graph);
@@ -614,6 +612,42 @@ static void print_oplist(const SGS_ProgramOpRef *restrict list,
 	putc(']', stdout);
 }
 
+static void print_opline(const SGS_ProgramOpData *restrict od) {
+	if (od->time_ms == SGS_TIME_INF) {
+		fprintf(stdout,
+			"\n\top %d \tt=INF   \t", od->id);
+	} else {
+		fprintf(stdout,
+			"\n\top %d \tt=%-6d\t", od->id, od->time_ms);
+	}
+	if ((od->freq.flags & SGS_TPAR_STATE) != 0) {
+		if ((od->freq.flags & SGS_TPAR_SLOPE) != 0)
+			fprintf(stdout,
+				"f=%-6.1f->%-6.1f", od->freq.v0, od->freq.vt);
+		else
+			fprintf(stdout,
+				"f=%-6.1f\t", od->freq.v0);
+	} else {
+		if ((od->freq.flags & SGS_TPAR_SLOPE) != 0)
+			fprintf(stdout,
+				"f->%-6.1f\t", od->freq.vt);
+		else
+			fprintf(stdout,
+				"\t\t");
+	}
+	if ((od->amp.flags & SGS_TPAR_STATE) != 0) {
+		if ((od->amp.flags & SGS_TPAR_SLOPE) != 0)
+			fprintf(stdout,
+				"\ta=%-6.1f->%-6.1f", od->amp.v0, od->amp.vt);
+		else
+			fprintf(stdout,
+				"\ta=%-6.1f", od->amp.v0);
+	} else if ((od->amp.flags & SGS_TPAR_SLOPE) != 0) {
+		fprintf(stdout,
+			"\ta->%-6.1f", od->amp.vt);
+	}
+}
+
 /**
  * Print information about program contents. Useful for debugging.
  */
@@ -645,14 +679,7 @@ void SGS_Program_print_info(SGS_Program *restrict o) {
 		for (size_t i = 0; i < ev->op_data_count; ++i) {
 			const SGS_ProgramOpData *od = &ev->op_data[i];
 			const SGS_ProgramOpAdjcs *ga = od->adjcs;
-			if (od->time_ms == SGS_TIME_INF)
-				fprintf(stdout,
-					"\n\top %d \tt=INF \tf=%.f",
-					od->id, od->freq.v0);
-			else
-				fprintf(stdout,
-					"\n\top %d \tt=%d \tf=%.f",
-					od->id, od->time_ms, od->freq.v0);
+			print_opline(od);
 			if (ga != NULL) {
 				print_linked("\n\t    f!<", ">", ga->fmodc,
 					ga->adjcs);

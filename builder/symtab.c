@@ -42,7 +42,8 @@ struct SGS_SymTab {
 
 /**
  * Create instance.
- * \return instance or NULL on allocation failure
+ *
+ * \return instance, or NULL on allocation failure
  */
 SGS_SymTab *SGS_create_SymTab(void) {
 	SGS_SymTab *o = calloc(1, sizeof(SGS_SymTab));
@@ -68,7 +69,8 @@ void SGS_destroy_SymTab(SGS_SymTab *restrict o) {
 
 /*
  * Return the hash of the given string \p str of lenght \p len.
- * \return the hash of \p str
+ *
+ * \return hash
  */
 static uint32_t hash_string(SGS_SymTab *restrict o,
 		const char *restrict str, uint32_t len) {
@@ -88,7 +90,8 @@ static uint32_t hash_string(SGS_SymTab *restrict o,
 
 /*
  * Increase the size of the hash table for the string pool.
- * \return the new allocation size, or -1 upon failure
+ *
+ * \return new allocation size, or -1 on failure
  */
 static int32_t extend_strtab(SGS_SymTab *restrict o) {
 	StrEntry **old_strtab = o->strtab;
@@ -131,7 +134,7 @@ static int32_t extend_strtab(SGS_SymTab *restrict o) {
  *
  * Initializes the string table if empty.
  *
- * \return StrEntry* or NULL
+ * \return StrEntry, or NULL if none
  */
 static StrEntry *unique_entry(SGS_SymTab *restrict o,
 		const void *restrict str, uint32_t len) {
@@ -167,11 +170,10 @@ ADD_ENTRY:
 }
 
 /**
- * Place a string in the string pool of the symbol table, unless already
- * present. A copy of \p str unique for the symbol table is pointed to
- * by the return value.
+ * Add \p str to the string pool of the symbol table, unless already
+ * present. Return the copy of \p str unique to the symbol table.
  *
- * \return unique copy of \p str for symtab instance, or NULL on failure
+ * \return unique copy of \p str for instance, or NULL on allocation failure
  */
 const void *SGS_SymTab_pool_str(SGS_SymTab *restrict o,
 		const void *restrict str, uint32_t len) {
@@ -180,8 +182,33 @@ const void *SGS_SymTab_pool_str(SGS_SymTab *restrict o,
 }
 
 /**
+ * Add the first \p n strings from \p stra to the string pool of the
+ * symbol table, except any already present. An array of pointers to
+ * the unique string pool copies of all \p stra strings is allocated
+ * and returned; it will be freed when the symbol table is destroyed.
+ *
+ * All strings in \p stra need to be null-terminated.
+ *
+ * \return array of pointers to unique strings, or NULL on allocation failure
+ */
+const char **SGS_SymTab_pool_stra(SGS_SymTab *restrict o,
+		const char *const*restrict stra, size_t n) {
+	const char **res_stra;
+	res_stra = SGS_MemPool_alloc(o->malc, sizeof(const char*) * n);
+	if (!res_stra) return NULL;
+	for (size_t i = 0; i < n; ++i) {
+		const char *str = SGS_SymTab_pool_str(o,
+				stra[i], strlen(stra[i]));
+		if (!str) return NULL;
+		res_stra[i] = str;
+	}
+	return res_stra;
+}
+
+/**
  * Return value associated with string.
- * \return value or NULL if none
+ *
+ * \return value, or NULL if none
  */
 void *SGS_SymTab_get(SGS_SymTab *restrict o,
 		const void *restrict key, uint32_t len) {
@@ -193,7 +220,8 @@ void *SGS_SymTab_get(SGS_SymTab *restrict o,
 
 /**
  * Set value associated with string.
- * \return previous value or NULL if none
+ *
+ * \return previous value, or NULL if none
  */
 void *SGS_SymTab_set(SGS_SymTab *restrict o,
 		const void *restrict key, uint32_t len, void *restrict value) {

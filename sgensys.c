@@ -45,7 +45,7 @@ static void print_usage(bool by_arg) {
  * Print version.
  */
 static void print_version(void) {
-	puts("sgensys v0.6.0");
+	puts("sgensys v0.6.1");
 }
 
 /*
@@ -186,7 +186,6 @@ static bool build(const char *restrict fname,
 		*prg_out = NULL;
 		return true;
 	}
-
 	*prg_out = prg;
 	return true;
 }

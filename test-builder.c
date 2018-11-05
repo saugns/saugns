@@ -12,7 +12,11 @@
  */
 
 #include "sgensys.h"
-#include "builder/lexer.h"
+#if SGS_TEST_SCANNER
+# include "builder/scanner.h"
+#else
+# include "builder/lexer.h"
+#endif
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -35,7 +39,7 @@ static void print_usage(bool by_arg) {
  * Print version.
  */
 static void print_version(void) {
-	puts("sgensys v0.6.0");
+	puts("sgensys v0.6.1");
 }
 
 /*
@@ -104,11 +108,25 @@ INVALID:
 }
 
 /**
- * Run script through the lexer.
+ * Run script through test code.
  *
  * \return SGS_Program or NULL on error
  */
 SGS_Program* SGS_build(const char *restrict fname) {
+#if SGS_TEST_SCANNER
+	SGS_Scanner *scanner = SGS_create_Scanner();
+	if (SGS_Scanner_fopenrb(scanner, fname)) for (;;) {
+		uint8_t c = SGS_Scanner_getc(scanner);
+		if (!c) {
+			putchar('\n');
+			break;
+		}
+		putchar(c);
+	}
+	SGS_destroy_Scanner(scanner);
+	// return dummy object
+	return (SGS_Program*) calloc(1, sizeof(SGS_Program));
+#else
 	SGS_SymTab *symtab = SGS_create_SymTab();
 	SGS_Lexer *lexer = SGS_create_Lexer(fname, symtab);
 	if (!lexer) {
@@ -123,6 +141,7 @@ SGS_Program* SGS_build(const char *restrict fname) {
 	SGS_destroy_SymTab(symtab);
 	// return dummy object
 	return (SGS_Program*) calloc(1, sizeof(SGS_Program));
+#endif
 }
 
 /*
@@ -143,7 +162,6 @@ static bool build(const char *restrict fname,
 		*prg_out = NULL;
 		return true;
 	}
-
 	*prg_out = prg;
 	return true;
 }
