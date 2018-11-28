@@ -41,5 +41,5 @@ typedef struct SGS_Slope {
 	uint8_t type;
 } SGS_Slope;
 
-bool SGS_Slope_run(SGS_Slope *o, uint32_t srate,
-		float *buf, uint32_t buf_len, float s0);
+bool SGS_Slope_run(SGS_Slope *restrict o, uint32_t srate,
+		float *restrict buf, uint32_t buf_len, float s0);
