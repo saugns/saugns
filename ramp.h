@@ -41,5 +41,5 @@ typedef struct SGS_Ramp {
 	uint8_t type;
 } SGS_Ramp;
 
-bool SGS_Ramp_run(SGS_Ramp *o, uint32_t srate,
-		float *buf, uint32_t buf_len, float s0);
+bool SGS_Ramp_run(SGS_Ramp *restrict o, uint32_t srate,
+		float *restrict buf, uint32_t buf_len, float s0);
