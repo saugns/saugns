@@ -1,47 +1,74 @@
+.POSIX:
+CC=cc
 CFLAGS=-std=c99 -W -Wall -O2 -ffast-math
 LFLAGS=-s -lm
 LFLAGS_LINUX=$(LFLAGS) -lasound
 LFLAGS_SNDIO=$(LFLAGS) -lsndio
 LFLAGS_OSSAUDIO=$(LFLAGS) -lossaudio
-OBJ=common.o \
-    arrtype.o \
-    ptrlist.o \
-    builder/symtab.o \
-    builder/file.o \
-    builder/scanner.o \
-    builder/lexer.o \
-    builder/parser.o \
-    builder/parseconv.o \
-    builder.o \
-    mempool.o \
-    slope.o \
-    wave.o \
-    renderer.o \
-    renderer/generator.o \
-    audiodev.o \
-    wavfile.o \
-    sgensys.o
+PREFIX=/usr/local
+BIN=sgensys
+SHARE=sgensys
+OBJ=\
+	common.o \
+	arrtype.o \
+	ptrlist.o \
+	builder/file.o \
+	builder/symtab.o \
+	builder/parser.o \
+	builder/parseconv.o \
+	builder.o \
+	mempool.o \
+	slope.o \
+	wave.o \
+	renderer.o \
+	renderer/generator.o \
+	audiodev.o \
+	wavfile.o \
+	sgensys.o
+TEST_OBJ=\
+	common.o \
+	arrtype.o \
+	ptrlist.o \
+	builder/file.o \
+	builder/symtab.o \
+	builder/scanner.o \
+	builder/lexer.o \
+	builder/parseconv.o \
+	mempool.o \
+	test-builder.o
 
-all: sgensys
-
+all: $(BIN)
+test: test-builder
 clean:
-	rm -f $(OBJ) sgensys
+	rm -f $(OBJ) $(BIN)
+	rm -f $(TEST_OBJ) test-builder
+install: $(BIN)
+	mkdir -p $(DESTDIR)$(PREFIX)/bin
+	mkdir -p $(DESTDIR)$(PREFIX)/share/$(SHARE)
+	cp -f $(BIN) $(DESTDIR)$(PREFIX)/bin
+	cp -RP examples/* $(DESTDIR)$(PREFIX)/share/$(SHARE)
+uninstall:
+	rm -f $(DESTDIR)$(PREFIX)/bin/$(BIN)
+	rm -Rf $(DESTDIR)$(PREFIX)/share/$(SHARE)
 
-sgensys: $(OBJ)
+$(BIN): $(OBJ)
 	@UNAME="`uname -s`"; \
 	if [ $$UNAME = 'Linux' ]; then \
 		echo "Linking for Linux (using ALSA and OSS)."; \
-		$(CC) $(OBJ) $(LFLAGS_LINUX) -o sgensys; \
+		$(CC) $(OBJ) $(LFLAGS_LINUX) -o $(BIN); \
 	elif [ $$UNAME = 'OpenBSD' ]; then \
 		echo "Linking for OpenBSD (using sndio)."; \
-		$(CC) $(OBJ) $(LFLAGS_SNDIO) -o sgensys; \
+		$(CC) $(OBJ) $(LFLAGS_SNDIO) -o $(BIN); \
 	elif [ $$UNAME = 'NetBSD' ]; then \
 		echo "Linking for NetBSD (using OSS)."; \
-		$(CC) $(OBJ) $(LFLAGS_OSSAUDIO) -o sgensys; \
+		$(CC) $(OBJ) $(LFLAGS_OSSAUDIO) -o $(BIN); \
 	else \
 		echo "Linking for UNIX with OSS."; \
-		$(CC) $(OBJ) $(LFLAGS) -o sgensys; \
+		$(CC) $(OBJ) $(LFLAGS) -o $(BIN); \
 	fi
+
+test-builder: $(TEST_OBJ)
+	$(CC) $(TEST_OBJ) $(LFLAGS) -o test-builder
 
 arrtype.o: arrtype.c arrtype.h common.h
 	$(CC) -c $(CFLAGS) arrtype.c
@@ -52,22 +79,22 @@ audiodev.o: audiodev.c audiodev/*.c audiodev.h common.h
 common.o: common.c common.h
 	$(CC) -c $(CFLAGS) common.c
 
-builder.o: builder.c sgensys.h builder/file.h builder/scanner.h builder/lexer.h script.h program.h ptrlist.h slope.h wave.h math.h common.h
+builder.o: builder.c sgensys.h script.h program.h ptrlist.h slope.h wave.h math.h builder/file.h common.h
 	$(CC) -c $(CFLAGS) builder.c
 
 builder/file.o: builder/file.c builder/file.h common.h
 	$(CC) -c $(CFLAGS) builder/file.c -o builder/file.o
 
-builder/lexer.o: builder/lexer.c builder/lexer.h builder/symtab.h builder/file.h math.h common.h
+builder/lexer.o: builder/lexer.c builder/lexer.h builder/file.h builder/symtab.h math.h common.h
 	$(CC) -c $(CFLAGS) builder/lexer.c -o builder/lexer.o
 
 builder/parseconv.o: builder/parseconv.c program.h slope.h wave.h math.h script.h ptrlist.h arrtype.h common.h
 	$(CC) -c $(CFLAGS) builder/parseconv.c -o builder/parseconv.o
 
-builder/parser.o: builder/parser.c script.h ptrlist.h builder/symtab.h builder/file.h program.h slope.h wave.h math.h common.h
+builder/parser.o: builder/parser.c builder/file.h builder/symtab.h script.h ptrlist.h program.h slope.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) builder/parser.c -o builder/parser.o
 
-builder/scanner.o: builder/scanner.c builder/scanner.h builder/file.h math.h common.h
+builder/scanner.o: builder/scanner.c builder/scanner.h builder/file.h builder/symtab.h math.h common.h
 	$(CC) -c $(CFLAGS) builder/scanner.c -o builder/scanner.o
 
 builder/symtab.o: builder/symtab.c builder/symtab.h mempool.h common.h
@@ -90,6 +117,9 @@ sgensys.o: sgensys.c sgensys.h program.h slope.h wave.h math.h common.h
 
 slope.o: slope.c slope.h math.h common.h
 	$(CC) -c $(CFLAGS) slope.c
+
+test-builder.o: test-builder.c sgensys.h builder/lexer.h builder/scanner.h builder/file.h builder/symtab.h program.h slope.h wave.h math.h common.h
+	$(CC) -c $(CFLAGS) test-builder.c
 
 wave.o: wave.c wave.h math.h common.h
 	$(CC) -c $(CFLAGS) wave.c

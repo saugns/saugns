@@ -33,9 +33,9 @@ A simple test after building is the following, which should
 play a sine wave at 444Hz for 1 second:
 	./sgensys -e "Osin"
 
-There is currently no install script or target provided. After
-building, the 'sgensys' binary and the 'examples/' directory
-can be copied.
+`make install` will by default copy 'sgensys' to '/usr/local/bin/',
+and the contents of 'examples/' to '/usr/local/share/sgensys/'.
+(`make uninstall` removes the sgensys binary and directory.)
 
 Licensing
 =========
