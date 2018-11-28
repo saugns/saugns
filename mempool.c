@@ -58,7 +58,7 @@ SGS_MemPool *SGS_create_MemPool(size_t block_size) {
 	return o;
 }
 
-void SGS_destroy_MemPool(SGS_MemPool *o) {
+void SGS_destroy_MemPool(SGS_MemPool *restrict o) {
 	size_t i;
 	for (i = 0; i < o->block_count; ++i) {
 		free(o->blocks[i].mem);
@@ -73,8 +73,8 @@ void SGS_destroy_MemPool(SGS_MemPool *o) {
  *
  * \return true if found, false if not
  */
-static bool first_smallest_block(const SGS_MemPool *o,
-		size_t size, size_t *id) {
+static bool first_smallest_block(const SGS_MemPool *restrict o,
+		size_t size, size_t *restrict id) {
 	size_t i = 0;
 	ptrdiff_t min = 0;
 	ptrdiff_t max = o->block_count - 1;
@@ -116,7 +116,8 @@ static bool first_smallest_block(const SGS_MemPool *o,
  * by the previous such block, until finally the last such block overwrites
  * the block at \p to.
  */
-static void copy_blocks_up_one(SGS_MemPool *o, size_t to, size_t from) {
+static void copy_blocks_up_one(SGS_MemPool *restrict o,
+		size_t to, size_t from) {
 	if (from + 1 == to ||
 		o->blocks[from].free == o->blocks[to - 1].free) {
 		/*
@@ -143,7 +144,7 @@ static void copy_blocks_up_one(SGS_MemPool *o, size_t to, size_t from) {
  *
  * \return true, or false if allocation fails
  */
-static bool extend_mempool(SGS_MemPool *o) {
+static bool extend_mempool(SGS_MemPool *restrict o) {
 	size_t new_block_alloc = (o->block_alloc > 0) ?
 		(o->block_alloc << 1) :
 		1;
@@ -160,7 +161,8 @@ static bool extend_mempool(SGS_MemPool *o) {
  *
  * \return the allocated block, or NULL if allocation fails
  */
-void *SGS_MemPool_alloc(SGS_MemPool *o, const void *src, size_t size) {
+void *SGS_MemPool_alloc(SGS_MemPool *restrict o,
+		const void *restrict src, size_t size) {
 	size_t i;
 	void *ret;
 	size = ALIGN_SIZE(size);
