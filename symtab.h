@@ -8,7 +8,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #pragma once
@@ -18,12 +18,12 @@ struct SGS_Symtab;
 typedef struct SGS_Symtab SGS_Symtab;
 
 SGS_Symtab *SGS_create_Symtab(void) SGS__malloclike;
-void SGS_destroy_Symtab(SGS_Symtab *o);
+void SGS_destroy_Symtab(SGS_Symtab *restrict o);
 
-const void *SGS_Symtab_pool_str(SGS_Symtab *o,
-		const void *str, size_t len);
+const void *SGS_Symtab_pool_str(SGS_Symtab *restrict o,
+		const void *restrict str, size_t len);
 
-void *SGS_Symtab_get(SGS_Symtab *o,
-		const void *key, size_t len);
-void *SGS_Symtab_set(SGS_Symtab *o,
-		const void *key, size_t len, void *value);
+void *SGS_Symtab_get(SGS_Symtab *restrict o,
+		const void *restrict key, size_t len);
+void *SGS_Symtab_set(SGS_Symtab *restrict o,
+		const void *restrict key, size_t len, void *restrict value);

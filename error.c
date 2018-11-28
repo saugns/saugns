@@ -20,8 +20,9 @@
  *  - \p msg_type may be e.g. "warning", "error"
  *  - \p msg_label may be NULL or a label to add within square brackets
  */
-static void print_stderr(const char *msg_type, const char *msg_label,
-		const char *fmt, va_list ap) {
+static void print_stderr(const char *restrict msg_type,
+		const char *restrict msg_label,
+		const char *restrict fmt, va_list ap) {
 	if (msg_label) {
 		fprintf(stderr, "%s [%s]: ", msg_type, msg_label);
 	} else {
@@ -35,7 +36,7 @@ static void print_stderr(const char *msg_type, const char *msg_label,
  * Print warning message. If \p label is not NULL, it will be
  * added after "warning" within square brackets.
  */
-void SGS_warning(const char *label, const char *fmt, ...) {
+void SGS_warning(const char *restrict label, const char *restrict fmt, ...) {
 	va_list ap;
 	va_start(ap, fmt);
 	print_stderr("warning", label, fmt, ap);
@@ -46,7 +47,7 @@ void SGS_warning(const char *label, const char *fmt, ...) {
  * Print error message. If \p label is not NULL, it will be
  * added after "error" within square brackets.
  */
-void SGS_error(const char *label, const char *fmt, ...) {
+void SGS_error(const char *restrict label, const char *restrict fmt, ...) {
 	va_list ap;
 	va_start(ap, fmt);
 	print_stderr("error", label, fmt, ap);

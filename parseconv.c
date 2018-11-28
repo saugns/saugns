@@ -26,7 +26,8 @@
 static const SGS_ProgramIDArr blank_idarr = {0};
 
 static const SGS_ProgramIDArr *
-SGS_create_ProgramIDArr(SGS_Mempool *mp, const SGS_ScriptListData *list_in) {
+SGS_create_ProgramIDArr(SGS_Mempool *restrict mp,
+		const SGS_ScriptListData *restrict list_in) {
 	uint32_t count = 0;
 	for (SGS_ScriptOpData *op = list_in->first_on; op; op = op->next)
 		++count;
@@ -66,7 +67,7 @@ sgsArrType(VoAlloc, VAState, _)
  * Returns the longest operator duration among top-level operators for
  * the graph of the voice event.
  */
-static uint32_t voice_duration(SGS_ScriptEvData *ve) {
+static uint32_t voice_duration(const SGS_ScriptEvData *restrict ve) {
 	uint32_t duration_ms = 0;
 	for (SGS_ScriptOpData *op = ve->operators.first_on; op; op = op->next) {
 		if (op->time.v_ms > duration_ms)
@@ -80,8 +81,8 @@ static uint32_t voice_duration(SGS_ScriptEvData *ve) {
  *
  * \return true if voice found, false if voice added or recycled
  */
-static bool VoAlloc_get_id(VoAlloc *va, const SGS_ScriptEvData *e,
-		uint32_t *vo_id) {
+static bool VoAlloc_get_id(VoAlloc *restrict va,
+		const SGS_ScriptEvData *restrict e, uint32_t *restrict vo_id) {
 	if (e->voice_prev != NULL) {
 		*vo_id = e->voice_prev->vo_id;
 		return true;
@@ -106,7 +107,8 @@ static bool VoAlloc_get_id(VoAlloc *va, const SGS_ScriptEvData *e,
  * Use the current voice if any, otherwise reusing an expired voice
  * if possible, or allocating a new if not.
  */
-static uint32_t VoAlloc_update(VoAlloc *va, SGS_ScriptEvData *e) {
+static uint32_t VoAlloc_update(VoAlloc *restrict va,
+		SGS_ScriptEvData *restrict e) {
 	uint32_t vo_id;
 	for (vo_id = 0; vo_id < va->count; ++vo_id) {
 		if (va->a[vo_id].duration_ms < e->wait_ms)
@@ -127,7 +129,7 @@ static uint32_t VoAlloc_update(VoAlloc *va, SGS_ScriptEvData *e) {
 /*
  * Clear voice allocator.
  */
-static inline void VoAlloc_clear(VoAlloc *o) {
+static inline void VoAlloc_clear(VoAlloc *restrict o) {
 	_VoAlloc_clear(o);
 }
 
@@ -157,8 +159,8 @@ sgsArrType(OpAlloc, OAState, _)
  *
  * \return true if operator found, false if operator added or recycled
  */
-static bool OpAlloc_get_id(OpAlloc *oa, const SGS_ScriptOpData *od,
-		uint32_t *op_id) {
+static bool OpAlloc_get_id(OpAlloc *restrict oa,
+		const SGS_ScriptOpData *restrict od, uint32_t *restrict op_id) {
 	if (od->on_prev != NULL) {
 		*op_id = od->on_prev->op_id;
 		return true;
@@ -185,7 +187,8 @@ static bool OpAlloc_get_id(OpAlloc *oa, const SGS_ScriptOpData *od,
  *
  * Only valid to call for single-operator nodes.
  */
-static uint32_t OpAlloc_update(OpAlloc *oa, SGS_ScriptOpData *od) {
+static uint32_t OpAlloc_update(OpAlloc *restrict oa,
+		SGS_ScriptOpData *restrict od) {
 //	SGS_ScriptEvData *e = od->event;
 	uint32_t op_id;
 //	for (op_id = 0; op_id < oa->count; ++op_id) {
@@ -205,7 +208,7 @@ static uint32_t OpAlloc_update(OpAlloc *oa, SGS_ScriptOpData *od) {
 /*
  * Clear operator allocator.
  */
-static inline void OpAlloc_clear(OpAlloc *o) {
+static inline void OpAlloc_clear(OpAlloc *restrict o) {
 	_OpAlloc_clear(o);
 }
 
@@ -230,8 +233,8 @@ typedef struct ParseConv {
  * Convert data for an operator node to program operator data,
  * adding it to the list to be used for the current program event.
  */
-static void ParseConv_convert_opdata(ParseConv *o,
-		SGS_ScriptOpData *op, uint32_t op_id) {
+static void ParseConv_convert_opdata(ParseConv *restrict o,
+		const SGS_ScriptOpData *restrict op, uint32_t op_id) {
 	OAState *oas = &o->oa.a[op_id];
 	SGS_ProgramOpData *ood = OpDataArr_add(&o->ev_op_data, NULL);
 	ood->id = op_id;
@@ -270,7 +273,8 @@ static void ParseConv_convert_opdata(ParseConv *o,
  * sublists in turn, creating new output events as needed for the
  * operator data.
  */
-static void ParseConv_convert_ops(ParseConv *o, SGS_ScriptListData *op_list) {
+static void ParseConv_convert_ops(ParseConv *restrict o,
+		SGS_ScriptListData *restrict op_list) {
 	if (!op_list)
 		return;
 	for (SGS_ScriptOpData *op = op_list->first_on; op; op = op->next) {
@@ -288,8 +292,8 @@ static void ParseConv_convert_ops(ParseConv *o, SGS_ScriptListData *op_list) {
  * Traverse voice operator graph built during allocation,
  * assigning block IDs.
  */
-static void ParseConv_traverse_ops(ParseConv *o,
-		SGS_ProgramOpRef *op_ref, uint32_t level) {
+static void ParseConv_traverse_ops(ParseConv *restrict o,
+		SGS_ProgramOpRef *restrict op_ref, uint32_t level) {
 	OAState *oas = &o->oa.a[op_ref->id];
 	uint32_t i;
 	if ((oas->flags & OA_VISITED) != 0) {
@@ -331,7 +335,8 @@ static void ParseConv_traverse_ops(ParseConv *o,
  * assigning an operator reference list to the voice and
  * block IDs to the operators.
  */
-static void ParseConv_traverse_voice(ParseConv *o, SGS_ProgramEvent *ev) {
+static void ParseConv_traverse_voice(ParseConv *restrict o,
+		const SGS_ProgramEvent *restrict ev) {
 	SGS_ProgramOpRef op_ref = {0, SGS_POP_CARR, 0};
 	VAState *vas = &o->va.a[ev->vo_id];
 	SGS_ProgramVoData *vd = (SGS_ProgramVoData*) ev->vo_data;
@@ -355,7 +360,8 @@ static void ParseConv_traverse_voice(ParseConv *o, SGS_ProgramEvent *ev) {
  *
  * This is the "main" per-event conversion function.
  */
-static void ParseConv_convert_event(ParseConv *o, SGS_ScriptEvData *e) {
+static void ParseConv_convert_event(ParseConv *restrict o,
+		SGS_ScriptEvData *restrict e) {
 	uint32_t vo_id = VoAlloc_update(&o->va, e);
 	uint32_t vo_params;
 	VAState *vas = &o->va.a[vo_id];
@@ -393,7 +399,8 @@ static void ParseConv_convert_event(ParseConv *o, SGS_ScriptEvData *e) {
 	}
 }
 
-static SGS_Program *_ParseConv_copy_out(ParseConv *o, SGS_Script *parse) {
+static SGS_Program *_ParseConv_copy_out(ParseConv *restrict o,
+		SGS_Script *restrict parse) {
 	SGS_Program *prg = SGS_Mempool_alloc(o->mp, sizeof(SGS_Program));
 	if (!prg) goto ERROR;
 	if (!SGS_PEvArr_mpmemdup(&o->ev_arr,
@@ -438,7 +445,7 @@ ERROR:
 	return NULL;
 }
 
-static void _ParseConv_cleanup(ParseConv *o) {
+static void _ParseConv_cleanup(ParseConv *restrict o) {
 	OpAlloc_clear(&o->oa);
 	VoAlloc_clear(&o->va);
 	OpRefArr_clear(&o->ev_vo_oplist);
@@ -450,7 +457,8 @@ static void _ParseConv_cleanup(ParseConv *o) {
 /*
  * Build program, allocating events, voices, and operators.
  */
-static SGS_Program *ParseConv_convert(ParseConv *o, SGS_Script *parse) {
+static SGS_Program *ParseConv_convert(ParseConv *restrict o,
+		SGS_Script *restrict parse) {
 	SGS_Program *prg;
 	SGS_ScriptEvData *e;
 	size_t i;
@@ -478,7 +486,7 @@ static SGS_Program *ParseConv_convert(ParseConv *o, SGS_Script *parse) {
  *
  * \return instance or NULL on error
  */
-SGS_Program* SGS_build_Program(SGS_Script *sd) {
+SGS_Program* SGS_build_Program(SGS_Script *restrict sd) {
 	ParseConv pc = (ParseConv){0};
 	SGS_Program *o = ParseConv_convert(&pc, sd);
 	return o;
@@ -487,14 +495,15 @@ SGS_Program* SGS_build_Program(SGS_Script *sd) {
 /**
  * Destroy instance.
  */
-void SGS_discard_Program(SGS_Program *o) {
+void SGS_discard_Program(SGS_Program *restrict o) {
 	if (!o)
 		return;
 	SGS_destroy_Mempool(o->mp);
 }
 
-static void print_linked(const char *header, const char *footer,
-		const SGS_ProgramIDArr *idarr) {
+static void print_linked(const char *restrict header,
+		const char *restrict footer,
+		const SGS_ProgramIDArr *restrict idarr) {
 	if (!idarr || !idarr->count)
 		return;
 	fprintf(stdout, "%s%d", header, idarr->ids[0]);
@@ -503,7 +512,8 @@ static void print_linked(const char *header, const char *footer,
 	fprintf(stdout, "%s", footer);
 }
 
-static void print_oplist(const SGS_ProgramOpRef *list, uint32_t count) {
+static void print_oplist(const SGS_ProgramOpRef *restrict list,
+		uint32_t count) {
 	if (!list)
 		return;
 	static const char *const uses[SGS_POP_USES] = {
@@ -534,7 +544,7 @@ static void print_oplist(const SGS_ProgramOpRef *list, uint32_t count) {
 /**
  * Print information about program contents. Useful for debugging.
  */
-void SGS_Program_print_info(SGS_Program *o) {
+void SGS_Program_print_info(SGS_Program *restrict o) {
 	fprintf(stdout,
 		"Program: \"%s\"\n", o->name);
 	fprintf(stdout,

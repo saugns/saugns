@@ -50,23 +50,23 @@ typedef struct Name { \
  */
 #define sgsArrTypeMethods(Name, ElementType, MethodPrefix) \
 static inline ElementType SGS__maybe_unused \
-*MethodPrefix##Name##_add(Name *o, \
-		const ElementType *item) { \
+*MethodPrefix##Name##_add(Name *restrict o, \
+		const ElementType *restrict item) { \
 	return SGS_ArrType_add(o, item, sizeof(ElementType)); \
 } \
 static inline void SGS__maybe_unused \
-MethodPrefix##Name##_clear(Name *o) { \
+MethodPrefix##Name##_clear(Name *restrict o) { \
 	SGS_ArrType_clear(o); \
 } \
 static inline bool SGS__maybe_unused \
-MethodPrefix##Name##_memdup(Name *o, \
-		ElementType **dst) { \
+MethodPrefix##Name##_memdup(Name *restrict o, \
+		ElementType **restrict dst) { \
 	return SGS_ArrType_memdup(o, (void**) dst, sizeof(ElementType)); \
 } \
 static inline bool SGS__maybe_unused \
-MethodPrefix##Name##_mpmemdup(Name *o, \
-		ElementType **dst, \
-		struct SGS_Mempool *mempool) { \
+MethodPrefix##Name##_mpmemdup(Name *restrict o, \
+		ElementType **restrict dst, \
+		struct SGS_Mempool *restrict mempool) { \
 	return SGS_ArrType_mpmemdup(o, (void**) dst, \
 		sizeof(ElementType), mempool); \
 }
@@ -84,13 +84,13 @@ MethodPrefix##Name##_mpmemdup(Name *o, \
 sgsArrTypeStruct(Name, ElementType) \
 sgsArrTypeMethods(Name, ElementType, MethodPrefix)
 
-void *SGS_ArrType_add(void *o,
-		const void *item, size_t item_size);
-void SGS_ArrType_clear(void *o);
-bool SGS_ArrType_memdup(void *o,
-		void **dst, size_t item_size);
-bool SGS_ArrType_mpmemdup(void *o,
-		void **dst, size_t item_size,
+void *SGS_ArrType_add(void *restrict o,
+		const void *restrict item, size_t item_size);
+void SGS_ArrType_clear(void *restrict o);
+bool SGS_ArrType_memdup(void *restrict o,
+		void **restrict dst, size_t item_size);
+bool SGS_ArrType_mpmemdup(void *restrict o,
+		void **restrict dst, size_t item_size,
 		struct SGS_Mempool *mempool);
 
 /** Byte (uint8_t) array type. */
