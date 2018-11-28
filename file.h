@@ -29,9 +29,11 @@ typedef struct SGS_FileMode SGS_FileMode;
  * and may e.g. handle file reading or writing to/from the buffer in
  * addition. Should return the number of characters successfully handled.
  */
-typedef size_t (*SGS_FileUpdate_f)(SGS_File *o, SGS_FileMode *m);
+typedef size_t (*SGS_FileUpdate_f)(SGS_File *restrict o,
+		SGS_FileMode *restrict m);
 
-size_t SGS_File_wrap(SGS_File *o, SGS_FileMode *m); // default mode callback
+size_t SGS_File_wrap(SGS_File *restrict o,
+		SGS_FileMode *restrict m); // default mode callback
 
 /**
  * Mode subtype for SGS_File.
@@ -45,7 +47,7 @@ struct SGS_FileMode {
 	SGS_FileUpdate_f f;
 };
 
-void SGS_FileMode_reset(SGS_FileMode *m);
+void SGS_FileMode_reset(SGS_FileMode *restrict m);
 
 /**
  * Flip to the beginning of the next buffer area.
@@ -161,7 +163,7 @@ enum {
  * Should close file and set \a ref to NULL, otherwise
  * leaving state unchanged.
  */
-typedef void (*SGS_FileClose_f)(SGS_File *o);
+typedef void (*SGS_FileClose_f)(SGS_File *restrict o);
 
 /**
  * File type using circular buffer, meant for scanning and parsing.
@@ -188,15 +190,15 @@ struct SGS_File {
 };
 
 SGS_File *SGS_create_File(void) SGS__malloclike;
-SGS_File *SGS_create_sub_File(SGS_File *parent) SGS__malloclike;
-SGS_File *SGS_destroy_File(SGS_File *o);
+SGS_File *SGS_create_sub_File(SGS_File *restrict parent) SGS__malloclike;
+SGS_File *SGS_destroy_File(SGS_File *restrict o);
 
-bool SGS_File_fopenrb(SGS_File *o, const char *path);
-bool SGS_File_stropenrb(SGS_File *o,
-		const char *path, const char *str);
+bool SGS_File_fopenrb(SGS_File *restrict o, const char *restrict path);
+bool SGS_File_stropenrb(SGS_File *restrict o,
+		const char *restrict path, const char *restrict str);
 
-void SGS_File_close(SGS_File *o);
-void SGS_File_reset(SGS_File *o);
+void SGS_File_close(SGS_File *restrict o);
+void SGS_File_reset(SGS_File *restrict o);
 
 /**
  * Check \p mode position and call its callback if at the call position.
@@ -360,7 +362,7 @@ void SGS_File_reset(SGS_File *o);
  *
  * \return true if newline got
  */
-static inline bool SGS_File_trynewline(SGS_File *o) {
+static inline bool SGS_File_trynewline(SGS_File *restrict o) {
 	uint8_t c = SGS_File_RETC(o);
 	if (c == '\n') {
 		SGS_FileMode_INCP(&o->mr);
@@ -378,17 +380,17 @@ static inline bool SGS_File_trynewline(SGS_File *o) {
  * Callback type for filtering characters.
  * Should return the character to use, or 0 to indicate no match.
  */
-typedef uint8_t (*SGS_FileFilter_f)(SGS_File *o, uint8_t c);
+typedef uint8_t (*SGS_FileFilter_f)(SGS_File *restrict o, uint8_t c);
 
-bool SGS_File_getstr(SGS_File *o,
-		void *buf, size_t buf_len,
-		size_t *str_len, SGS_FileFilter_f c_filter);
-bool SGS_File_geti(SGS_File *o,
-		int32_t *var, bool allow_sign,
-		size_t *str_len);
-bool SGS_File_getd(SGS_File *o,
-		double *var, bool allow_sign,
-		size_t *str_len);
-size_t SGS_File_skipstr(SGS_File *o, SGS_FileFilter_f c_filter);
-size_t SGS_File_skipspace(SGS_File *o);
-size_t SGS_File_skipline(SGS_File *o);
+bool SGS_File_getstr(SGS_File *restrict o,
+		void *restrict buf, size_t buf_len,
+		size_t *restrict str_len, SGS_FileFilter_f c_filter);
+bool SGS_File_geti(SGS_File *restrict o,
+		int32_t *restrict var, bool allow_sign,
+		size_t *restrict str_len);
+bool SGS_File_getd(SGS_File *restrict o,
+		double *restrict var, bool allow_sign,
+		size_t *restrict str_len);
+size_t SGS_File_skipstr(SGS_File *restrict o, SGS_FileFilter_f c_filter);
+size_t SGS_File_skipspace(SGS_File *restrict o);
+size_t SGS_File_skipline(SGS_File *restrict o);
