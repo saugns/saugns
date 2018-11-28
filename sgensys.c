@@ -13,11 +13,6 @@
 
 #include "sgensys.h"
 #include "script.h"
-#if SGS_TEST_SCANNER
-# include "scanner.h"
-#elif SGS_TEST_LEXER
-# include "lexer.h"
-#endif
 #include "file.h"
 #include "generator.h"
 #include "audiodev.h"
@@ -56,7 +51,7 @@ static void print_usage(bool by_arg) {
  * Print version.
  */
 static void print_version(void) {
-	puts("sgensys v0.2-beta");
+	puts(SGS_VERSION_STR);
 }
 
 /*
@@ -64,7 +59,7 @@ static void print_version(void) {
  *
  * \return positive value or -1 if invalid
  */
-static int32_t get_piarg(const char *str) {
+static int32_t get_piarg(const char *restrict str) {
 	char *endp;
 	int32_t i;
 	errno = 0;
@@ -92,9 +87,9 @@ enum {
  *
  * \return true if args valid and script path set
  */
-static bool parse_args(int argc, char **argv, uint32_t *flags,
-		const char **script_arg, const char **wav_path,
-		uint32_t *srate) {
+static bool parse_args(int argc, char **restrict argv,
+		uint32_t *restrict flags, const char **restrict script_arg,
+		uint32_t *restrict srate, const char **restrict wav_path) {
 	int i;
 	for (;;) {
 		const char *arg;
@@ -186,11 +181,11 @@ INVALID:
  *
  * \return instance or NULL on error
  */
-static SGS_File *open_file(const char *script_arg, bool is_path) {
+static SGS_File *open_file(const char *restrict script_arg, bool is_path) {
 	SGS_File *f = SGS_create_File();
 	if (!f) return NULL;
 	if (!is_path) {
-		SGS_File_stropenrb(f, "-e ...", script_arg);
+		SGS_File_stropenrb(f, "<string>", script_arg);
 		return f;
 	}
 	if (!SGS_File_fopenrb(f, script_arg)) {
@@ -202,55 +197,20 @@ static SGS_File *open_file(const char *script_arg, bool is_path) {
 	return f;
 }
 
-/*
+/**
  * Create program for the given script file. Invokes the parser.
  *
  * \return instance or NULL on error
  */
-SGS_Program* SGS_build(const char *script_arg, bool is_path) {
+SGS_Program* SGS_build(const char *restrict script_arg, bool is_path) {
 	SGS_File *f = open_file(script_arg, is_path);
 	if (!f) return NULL;
 
 	SGS_Program *o = NULL;
-#if SGS_TEST_SCANNER
-	SGS_Symtab *symtab = SGS_create_Symtab();
-	SGS_Scanner *scanner = SGS_create_Scanner(f, symtab);
-	if (!scanner) {
-		SGS_destroy_Symtab(symtab);
-		goto CLOSE;
-	}
-	for (;;) {
-		char c = SGS_Scanner_getc(scanner);
-		if (!c) {
-			putchar('\n');
-			break;
-		}
-		putchar(c);
-	}
-	SGS_destroy_Scanner(scanner);
-	SGS_destroy_Symtab(symtab);
-	o = (SGS_Program*) calloc(1, sizeof(SGS_Program)); // placeholder
-#elif SGS_TEST_LEXER
-	SGS_Symtab *symtab = SGS_create_Symtab();
-	SGS_Lexer *lexer = SGS_create_Lexer(f, symtab);
-	if (!lexer) {
-		SGS_destroy_Symtab(symtab);
-		goto CLOSE;
-	}
-	for (;;) {
-		SGS_ScriptToken token;
-		if (!SGS_Lexer_get(lexer, &token)) break;
-	}
-	SGS_destroy_Lexer(lexer);
-	SGS_destroy_Symtab(symtab);
-	o = (SGS_Program*) calloc(1, sizeof(SGS_Program)); // placeholder
-#else // OLD PARSER
 	SGS_Script *sd = SGS_load_Script(f);
 	if (!sd) goto CLOSE;
-
 	o = SGS_build_Program(sd);
 	SGS_discard_Script(sd);
-#endif
 CLOSE:
 	SGS_destroy_File(f);
 	return o;
@@ -261,7 +221,8 @@ CLOSE:
  *
  * \return true unless error occurred
  */
-static bool build(const char *script_arg, SGS_Program **prg_out,
+static bool build(const char *restrict script_arg,
+		SGS_Program **restrict prg_out,
 		uint32_t options) {
 	SGS_Program *prg;
 	bool is_path = !(options & ARG_EVAL_STRING);
@@ -290,8 +251,8 @@ static int16_t audio_buf[BUF_SAMPLES * NUM_CHANNELS];
  *
  * \return true unless error occurred
  */
-static bool produce_audio(SGS_Program *prg, uint32_t srate,
-		SGS_AudioDev *ad, SGS_WAVFile *wf) {
+static bool produce_audio(SGS_Program *restrict prg, uint32_t srate,
+		SGS_AudioDev *restrict ad, SGS_WAVFile *restrict wf) {
 	SGS_Generator *gen = SGS_create_Generator(prg, srate);
 	size_t len;
 	bool error = false;
@@ -318,8 +279,8 @@ static bool produce_audio(SGS_Program *prg, uint32_t srate,
  *
  * \return true unless error occurred
  */
-bool SGS_render(SGS_Program *prg, uint32_t srate,
-		bool use_audiodev, const char *wav_path) {
+bool SGS_render(SGS_Program *restrict prg, uint32_t srate,
+		bool use_audiodev, const char *restrict wav_path) {
 	SGS_AudioDev *ad = NULL;
 	uint32_t ad_srate = srate;
 	SGS_WAVFile *wf = NULL;
@@ -357,8 +318,8 @@ CLEANUP:
  *
  * \return true unless error occurred
  */
-static bool render(SGS_Program *prg, uint32_t srate,
-		uint32_t options, const char *wav_path) {
+static bool render(SGS_Program *restrict prg, uint32_t srate,
+		uint32_t options, const char *restrict wav_path) {
 	bool use_audiodev = (wav_path != NULL) ?
 			((options & ARG_ENABLE_AUDIO_DEV) != 0) :
 			((options & ARG_DISABLE_AUDIO_DEV) == 0);
@@ -368,14 +329,13 @@ static bool render(SGS_Program *prg, uint32_t srate,
 /**
  * Main function.
  */
-int main(int argc, char **argv) {
+int main(int argc, char **restrict argv) {
 	const char *script_arg = NULL, *wav_path = NULL;
 	uint32_t options = 0;
 	SGS_Program *prg;
 	uint32_t srate = DEFAULT_SRATE;
 
-	if (!parse_args(argc, argv, &options, &script_arg, &wav_path,
-			&srate))
+	if (!parse_args(argc, argv, &options, &script_arg, &srate, &wav_path))
 		return 0;
 	if (!build(script_arg, &prg, options))
 		return 1;

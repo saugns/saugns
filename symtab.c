@@ -8,7 +8,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #include "symtab.h"
@@ -59,7 +59,7 @@ SGS_Symtab *SGS_create_Symtab(void) {
 /**
  * Destroy instance.
  */
-void SGS_destroy_Symtab(SGS_Symtab *o) {
+void SGS_destroy_Symtab(SGS_Symtab *restrict o) {
 #if SGS_HASHTAB_STATS
 	printf("collision count: %zd\n", collision_count);
 #endif
@@ -73,8 +73,8 @@ void SGS_destroy_Symtab(SGS_Symtab *o) {
  *
  * \return hash
  */
-static size_t hash_string(SGS_Symtab *o,
-		const char *str, size_t len) {
+static size_t hash_string(SGS_Symtab *restrict o,
+		const char *restrict str, size_t len) {
 	size_t i;
 	size_t hash;
 	/*
@@ -94,7 +94,7 @@ static size_t hash_string(SGS_Symtab *o,
  *
  * \return true, or false on allocation failure
  */
-static bool extend_strtab(SGS_Symtab *o) {
+static bool extend_strtab(SGS_Symtab *restrict o) {
 	StrEntry **old_strtab = o->strtab;
 	size_t old_strtab_alloc = o->strtab_alloc;
 	size_t i;
@@ -137,8 +137,8 @@ static bool extend_strtab(SGS_Symtab *o) {
  *
  * \return StrEntry, or NULL if none
  */
-static StrEntry *unique_entry(SGS_Symtab *o,
-		const void *str, size_t len) {
+static StrEntry *unique_entry(SGS_Symtab *restrict o,
+		const void *restrict str, size_t len) {
 	size_t hash;
 	StrEntry *entry;
 	if (o->strtab_count == (o->strtab_alloc / 2)) {
@@ -176,8 +176,8 @@ ADD_ENTRY:
  *
  * \return unique copy of \p str for instance, or NULL on allocation failure
  */
-const void *SGS_Symtab_pool_str(SGS_Symtab *o,
-		const void *str, size_t len) {
+const void *SGS_Symtab_pool_str(SGS_Symtab *restrict o,
+		const void *restrict str, size_t len) {
 	StrEntry *entry = unique_entry(o, str, len);
 	return (entry) ? entry->str : NULL;
 }
@@ -187,8 +187,8 @@ const void *SGS_Symtab_pool_str(SGS_Symtab *o,
  *
  * \return value, or NULL if none
  */
-void *SGS_Symtab_get(SGS_Symtab *o,
-		const void *key, size_t len) {
+void *SGS_Symtab_get(SGS_Symtab *restrict o,
+		const void *restrict key, size_t len) {
 	StrEntry *entry;
 	entry = unique_entry(o, key, len);
 	if (!entry) return NULL;
@@ -200,8 +200,8 @@ void *SGS_Symtab_get(SGS_Symtab *o,
  *
  * \return previous value, or NULL if none
  */
-void *SGS_Symtab_set(SGS_Symtab *o,
-		const void *key, size_t len, void *value) {
+void *SGS_Symtab_set(SGS_Symtab *restrict o,
+		const void *restrict key, size_t len, void *restrict value) {
 	StrEntry *entry;
 	entry = unique_entry(o, key, len);
 	if (!entry) return NULL;

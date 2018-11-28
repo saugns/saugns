@@ -17,7 +17,9 @@
 struct SGS_WAVFile;
 typedef struct SGS_WAVFile SGS_WAVFile;
 
-SGS_WAVFile *SGS_create_WAVFile(const char *fpath, uint16_t channels, uint32_t srate);
-int SGS_close_WAVFile(SGS_WAVFile *o);
+SGS_WAVFile *SGS_create_WAVFile(const char *restrict fpath,
+		uint16_t channels, uint32_t srate) SGS__malloclike;
+int SGS_close_WAVFile(SGS_WAVFile *restrict o);
 
-bool SGS_WAVFile_write(SGS_WAVFile *o, const int16_t *buf, uint32_t samples);
+bool SGS_WAVFile_write(SGS_WAVFile *restrict o,
+		const int16_t *restrict buf, uint32_t samples);

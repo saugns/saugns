@@ -58,7 +58,8 @@ extern const char *const SGS_Wave_names[SGS_WAVE_TYPES + 1];
  *
  * \return sample
  */
-static inline float SGS_Wave_get_lerp(const float *lut, uint32_t phase) {
+static inline float SGS_Wave_get_lerp(const float *restrict lut,
+		uint32_t phase) {
 	uint32_t ind = SGS_Wave_INDEX(phase);
 	float s = lut[ind];
 	s += (lut[(ind + 1) & SGS_Wave_LENMASK] - s) *

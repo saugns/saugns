@@ -4,6 +4,7 @@
 *.o
 mgensys
 sgensys
+test-builder
 
 *.[ch][-.]*
 backup/

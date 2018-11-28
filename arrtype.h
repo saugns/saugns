@@ -50,36 +50,37 @@ typedef struct Name { \
  */
 #define sgsArrTypeMethods(Name, ElementType, MethodPrefix) \
 static inline ElementType SGS__maybe_unused \
-*MethodPrefix##Name##_add(Name *o, const ElementType *item) { \
+*MethodPrefix##Name##_add(Name *restrict o, \
+		const ElementType *restrict item) { \
 	return SGS_ArrType_add(o, item, sizeof(ElementType)); \
 } \
 static inline ElementType SGS__maybe_unused \
-*MethodPrefix##Name##_drop(Name *o) { \
+*MethodPrefix##Name##_drop(Name *restrict o) { \
 	return (o->count > 0) ? &o->a[--o->count] : NULL; \
 } \
 static inline bool SGS__maybe_unused \
-MethodPrefix##Name##_upsize(Name *o, size_t count) { \
+MethodPrefix##Name##_upsize(Name *restrict o, size_t count) { \
 	return SGS_ArrType_upsize(o, count, sizeof(ElementType)); \
 } \
 static inline ElementType SGS__maybe_unused \
-*MethodPrefix##Name##_get(Name *o, size_t i) { \
+*MethodPrefix##Name##_get(Name *restrict o, size_t i) { \
 	return (o->count > i) ? &o->a[i] : NULL; \
 } \
 static inline ElementType SGS__maybe_unused \
-*MethodPrefix##Name##_tip(Name *o) { \
+*MethodPrefix##Name##_tip(Name *restrict o) { \
 	return (o->count > 0) ? &o->a[o->count - 1] : NULL; \
 } \
 static inline void SGS__maybe_unused \
-MethodPrefix##Name##_clear(Name *o) { \
+MethodPrefix##Name##_clear(Name *restrict o) { \
 	SGS_ArrType_clear(o); \
 } \
 static inline bool SGS__maybe_unused \
-MethodPrefix##Name##_memdup(Name *o, ElementType **dst) { \
+MethodPrefix##Name##_memdup(Name *restrict o, ElementType **restrict dst) { \
 	return SGS_ArrType_memdup(o, (void**) dst, sizeof(ElementType)); \
 } \
 static inline bool SGS__maybe_unused \
-MethodPrefix##Name##_mpmemdup(Name *o, ElementType **dst, \
-		struct SGS_Mempool *mempool) { \
+MethodPrefix##Name##_mpmemdup(Name *restrict o, ElementType **restrict dst, \
+		struct SGS_Mempool *restrict mempool) { \
 	return SGS_ArrType_mpmemdup(o, (void**) dst, sizeof(ElementType), \
 			mempool); \
 }
@@ -97,16 +98,16 @@ MethodPrefix##Name##_mpmemdup(Name *o, ElementType **dst, \
 sgsArrTypeStruct(Name, ElementType) \
 sgsArrTypeMethods(Name, ElementType, MethodPrefix)
 
-void *SGS_ArrType_add(void *o,
-		const void *item, size_t item_size);
-bool SGS_ArrType_upsize(void *o,
+void *SGS_ArrType_add(void *restrict o,
+		const void *restrict item, size_t item_size);
+bool SGS_ArrType_upsize(void *restrict o,
 		size_t count, size_t item_size);
-void SGS_ArrType_clear(void *o);
-bool SGS_ArrType_memdup(void *o,
-		void **dst, size_t item_size);
-bool SGS_ArrType_mpmemdup(void *o,
-		void **dst, size_t item_size,
-		struct SGS_Mempool *mempool);
+void SGS_ArrType_clear(void *restrict o);
+bool SGS_ArrType_memdup(void *restrict o,
+		void **restrict dst, size_t item_size);
+bool SGS_ArrType_mpmemdup(void *restrict o,
+		void **restrict dst, size_t item_size,
+		struct SGS_Mempool *restrict mempool);
 
 /** Byte (uint8_t) array type. */
 sgsArrType(SGS_ByteArr, uint8_t, )
