@@ -14,7 +14,9 @@
 #pragma once
 #include "program.h"
 
-SGS_Program* SGS_build(const char *script_arg, bool is_path);
+#define SGS_VERSION_STR "sgensys v0.2-beta"
 
-bool SGS_render(SGS_Program *prg, uint32_t srate,
-		bool use_audiodev, const char *wav_path);
+SGS_Program* SGS_build(const char *restrict script_arg, bool is_path);
+
+bool SGS_render(SGS_Program *restrict prg, uint32_t srate,
+		bool use_audiodev, const char *restrict wav_path);
