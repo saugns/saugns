@@ -33,9 +33,9 @@
  *
  * \return item in array, or NULL if allocation failed
  */
-void *SGS_ArrType_add(void *_o,
-		const void *item, size_t item_size) {
-	SGS_ByteArr *o = _o;
+void *SGS_ArrType_add(void *restrict _o,
+		const void *restrict item, size_t item_size) {
+	SGS_ByteArr *restrict o = _o;
 	if (!SGS_ArrType_upsize(o, o->count + 1, item_size))
 		return NULL;
 	size_t offs = o->count * item_size;
@@ -56,9 +56,9 @@ void *SGS_ArrType_add(void *_o,
  *
  * \return true unless allocation failed
  */
-bool SGS_ArrType_upsize(void *_o,
+bool SGS_ArrType_upsize(void *restrict _o,
 		size_t count, size_t item_size) {
-	SGS_ByteArr *o = _o;
+	SGS_ByteArr *restrict o = _o;
 	size_t asize = o->asize;
 	size_t min_asize = count * item_size;
 	if (!o->a || asize < min_asize) {
@@ -78,8 +78,8 @@ bool SGS_ArrType_upsize(void *_o,
  *
  * (Generic version of the function, to be used through wrapper.)
  */
-void SGS_ArrType_clear(void *_o) {
-	SGS_ByteArr *o = _o;
+void SGS_ArrType_clear(void *restrict _o) {
+	SGS_ByteArr *restrict o = _o;
 	free(o->a);
 	o->a = NULL;
 	o->count = 0;
@@ -98,9 +98,9 @@ void SGS_ArrType_clear(void *_o) {
  *
  * \return true unless allocation failed
  */
-bool SGS_ArrType_memdup(void *_o,
-		void **dst, size_t item_size) {
-	SGS_ByteArr *o = _o;
+bool SGS_ArrType_memdup(void *restrict _o,
+		void **restrict dst, size_t item_size) {
+	SGS_ByteArr *restrict o = _o;
 	if (!o->count) {
 		*dst = NULL;
 		return true;
@@ -127,10 +127,10 @@ bool SGS_ArrType_memdup(void *_o,
  *
  * \return true unless allocation failed
  */
-bool SGS_ArrType_mpmemdup(void *_o,
-		void **dst, size_t item_size,
-		SGS_Mempool *mempool) {
-	SGS_ByteArr *o = _o;
+bool SGS_ArrType_mpmemdup(void *restrict _o,
+		void **restrict dst, size_t item_size,
+		SGS_Mempool *restrict mempool) {
+	SGS_ByteArr *restrict o = _o;
 	if (!o->count) {
 		*dst = NULL;
 		return true;

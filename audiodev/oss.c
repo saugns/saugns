@@ -25,8 +25,8 @@
 /*
  * \return instance or NULL on failure
  */
-static inline SGS_AudioDev *open_oss(const char *name, int mode,
-		uint16_t channels, uint32_t *srate) {
+static inline SGS_AudioDev *open_oss(const char *restrict name, int mode,
+		uint16_t channels, uint32_t *restrict srate) {
 	const char *err_name = NULL;
 	int tmp, fd;
 
@@ -88,7 +88,7 @@ ERROR:
  * Destroy instance. Close OSS device,
  * ending playback in the process.
  */
-static inline void close_oss(SGS_AudioDev *o) {
+static inline void close_oss(SGS_AudioDev *restrict o) {
 	close(o->ref.fd);
 	free(o);
 }
@@ -98,8 +98,8 @@ static inline void close_oss(SGS_AudioDev *o) {
  *
  * \return true if write sucessful, otherwise false
  */
-static inline bool oss_write(SGS_AudioDev *o, const int16_t *buf,
-		uint32_t samples) {
+static inline bool oss_write(SGS_AudioDev *restrict o,
+		const int16_t *restrict buf, uint32_t samples) {
 	size_t length = samples * o->channels * SOUND_BYTES;
 	size_t written = write(o->ref.fd, buf, length);
 
