@@ -114,7 +114,7 @@ static uint32_t count_flags(uint32_t flags) {
   return count;
 }
 
-static size_t count_ev_values(const SGS_ProgramEvent *e) {
+static size_t count_ev_values(const SGS_ProgramEvent *restrict e) {
   size_t count = 0;
   uint32_t params;
   if (e->vo_data) {
@@ -136,7 +136,8 @@ static size_t count_ev_values(const SGS_ProgramEvent *e) {
 // maximum number of buffers needed for op nesting depth
 #define COUNT_BUFS(op_nest_depth) ((1 + (op_nest_depth)) * 4)
 
-static bool alloc_for_program(SGS_Generator *o, SGS_Program *prg) {
+static bool alloc_for_program(SGS_Generator *restrict o,
+                              SGS_Program *restrict prg) {
   size_t i;
 
   i = prg->ev_count;
@@ -195,8 +196,8 @@ static bool alloc_for_program(SGS_Generator *o, SGS_Program *prg) {
   return true;
 }
 
-static bool convert_program(SGS_Generator *o, SGS_Program *prg,
-                            uint32_t srate) {
+static bool convert_program(SGS_Generator *restrict o,
+                            SGS_Program *restrict prg, uint32_t srate) {
   if (!alloc_for_program(o, prg))
     return false;
 
@@ -291,7 +292,8 @@ static bool convert_program(SGS_Generator *o, SGS_Program *prg,
 /**
  * Create instance for program \p prg and sample rate \p srate.
  */
-SGS_Generator* SGS_create_Generator(SGS_Program *prg, uint32_t srate) {
+SGS_Generator* SGS_create_Generator(SGS_Program *restrict prg,
+                                    uint32_t srate) {
   SGS_Generator *o = calloc(1, sizeof(SGS_Generator));
   if (!o) return NULL;
   if (!convert_program(o, prg, srate)) {
@@ -305,7 +307,7 @@ SGS_Generator* SGS_create_Generator(SGS_Program *prg, uint32_t srate) {
 /**
  * Destroy instance.
  */
-void SGS_destroy_Generator(SGS_Generator *o) {
+void SGS_destroy_Generator(SGS_Generator *restrict o) {
   if (o->bufs) free(o->bufs);
   if (o->events) free(o->events);
   if (o->voices) free(o->voices);
@@ -318,7 +320,8 @@ void SGS_destroy_Generator(SGS_Generator *o) {
 /*
  * Set voice duration according to the current list of operators.
  */
-static void set_voice_duration(SGS_Generator *o, VoiceNode *vn) {
+static void set_voice_duration(SGS_Generator *restrict o,
+                               VoiceNode *restrict vn) {
   uint32_t time = 0;
   for (uint32_t i = 0; i < vn->op_count; ++i) {
     const SGS_ProgramOpRef *or = &vn->op_list[i];
@@ -334,7 +337,7 @@ static void set_voice_duration(SGS_Generator *o, VoiceNode *vn) {
 /*
  * Process one event; to be called for the event when its time comes.
  */
-static void handle_event(SGS_Generator *o, EventNode *e) {
+static void handle_event(SGS_Generator *restrict o, EventNode *restrict e) {
   if (1) /* more types to be added in the future */ {
     const EventValue *val = e->vals;
     uint32_t params;
@@ -423,9 +426,10 @@ static void handle_event(SGS_Generator *o, EventNode *e) {
  * If not NULL, \p modbuf will be used as a sequence of value
  * multipliers. This is used to get actual values from ratios.
  */
-static bool run_param(SGS_Generator *o,
-                      float *buf, uint32_t buf_len, SGS_Slope *slope,
-                      float *state, const float *modbuf) {
+static bool run_param(SGS_Generator *restrict o,
+                      float *restrict buf, uint32_t buf_len,
+                      SGS_Slope *restrict slope, float *restrict state,
+                      const float *restrict modbuf) {
   uint32_t i;
   if (!slope) {
     float s0 = *state;
@@ -458,8 +462,10 @@ static bool run_param(SGS_Generator *o,
  *
  * Returns number of samples generated for the node.
  */
-static uint32_t run_block(SGS_Generator *o, Buf *bufs, uint32_t buf_len,
-                          OperatorNode *n, float *parent_freq,
+static uint32_t run_block(SGS_Generator *restrict o,
+                          Buf *restrict bufs, uint32_t buf_len,
+                          OperatorNode *restrict n,
+                          float *restrict parent_freq,
                           bool wave_env, uint32_t acc_ind) {
   uint32_t i, len;
   int32_t *sbuf = bufs->i, *pm;
@@ -632,8 +638,8 @@ static uint32_t run_block(SGS_Generator *o, Buf *bufs, uint32_t buf_len,
  * The second generator buffer is used for panning if dynamic panning
  * is used.
  */
-static void mix_output(SGS_Generator *o, VoiceNode *vn,
-                       int16_t **st_out, uint32_t len) {
+static void mix_output(SGS_Generator *restrict o, VoiceNode *restrict vn,
+                       int16_t **restrict st_out, uint32_t len) {
   int32_t *s_buf = o->bufs[0].i;
   float scale = o->amp_scale;
   if (vn->attr & SGS_PVOA_SLOPE_PAN) {
@@ -664,8 +670,8 @@ static void mix_output(SGS_Generator *o, VoiceNode *vn,
  *
  * Returns number of samples generated for the voice.
  */
-static uint32_t run_voice(SGS_Generator *o, VoiceNode *vn,
-                          int16_t *out, uint32_t buf_len) {
+static uint32_t run_voice(SGS_Generator *restrict o, VoiceNode *restrict vn,
+                          int16_t *restrict out, uint32_t buf_len) {
   uint32_t out_len = 0;
   const SGS_ProgramOpRef *ops = vn->op_list;
   uint32_t opc = vn->op_count;
@@ -706,7 +712,7 @@ RETURN:
 /*
  * Any error checking following audio generation goes here.
  */
-static void check_final_state(SGS_Generator *o) {
+static void check_final_state(SGS_Generator *restrict o) {
   for (uint16_t i = 0; i < o->vo_count; ++i) {
     VoiceNode *vn = &o->voices[i];
     if (!(vn->flags & VN_INIT)) {
@@ -727,8 +733,9 @@ static void check_final_state(SGS_Generator *o) {
  * Return true as long as there are more samples to generate, false
  * when the end of the signal has been reached.
  */
-bool SGS_Generator_run(SGS_Generator *o, int16_t *buf, size_t buf_len,
-                       size_t *out_len) {
+bool SGS_Generator_run(SGS_Generator *restrict o,
+                       int16_t *restrict buf, size_t buf_len,
+                       size_t *restrict out_len) {
   int16_t *sp = buf;
   uint32_t i, len = buf_len;
   for (i = len; i--; sp += 2) {
