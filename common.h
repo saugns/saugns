@@ -1,5 +1,5 @@
 /* sgensys: Common definitions.
- * Copyright (c) 2011-2012, 2018 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -42,12 +42,12 @@
  * Utility functions.
  */
 
-void SGS_warning(const char *label, const char *fmt, ...)
+void SGS_warning(const char *restrict label, const char *restrict fmt, ...)
 	SGS__printflike(2, 3);
-void SGS_error(const char *label, const char *fmt, ...)
+void SGS_error(const char *restrict label, const char *restrict fmt, ...)
 	SGS__printflike(2, 3);
 
-void *SGS_memdup(const void *src, size_t size) SGS__malloclike;
+void *SGS_memdup(const void *restrict src, size_t size) SGS__malloclike;
 
 /*
  * Debugging options.
@@ -56,11 +56,10 @@ void *SGS_memdup(const void *src, size_t size) SGS__malloclike;
 /* Debug-friendly memory handling? (Slower.) */
 //#define SGS_MEM_DEBUG 1
 
-/* Disable old parser, run lexer testing instead. */
-#define SGS_TEST_LEXER 0
-
+/* Print hash collision info for symtab. */
 #define SGS_HASHTAB_STATS 0
-#define SGS_LEXER_QUIET 0
+/* Make test lexer quiet enough to time it. */
+#define SGS_LEXER_QUIET 1
 
-/* Disable old parser, run scanner testing instead. Takes precedence. */
+/* Run scanner instead of lexer in 'test-builder' program. */
 #define SGS_TEST_SCANNER 0

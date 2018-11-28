@@ -22,14 +22,14 @@ const char *const SGS_Ramp_names[SGS_RAMP_TYPES + 1] = {
 	NULL
 };
 
-static void fill_state(float *buf, uint32_t len,
+static void fill_state(float *restrict buf, uint32_t len,
 		float s0) {
 	uint32_t i;
 	for (i = 0; i < len; ++i)
 		buf[i] = s0;
 }
 
-static void fill_lin(float *buf, uint32_t len,
+static void fill_lin(float *restrict buf, uint32_t len,
 		float s0, float goal, uint32_t pos, double inv_time) {
 	uint32_t i, end;
 	for (i = pos, end = i + len; i < end; ++i) {
@@ -40,7 +40,7 @@ static void fill_lin(float *buf, uint32_t len,
 /*
  * Ear-tuned polynomial, designed to sound natural.
  */
-static void fill_exp(float *buf, uint32_t len,
+static void fill_exp(float *restrict buf, uint32_t len,
 		float s0, float goal, uint32_t pos, double inv_time) {
 	uint32_t i, end;
 	for (i = pos, end = i + len; i < end; ++i) {
@@ -56,7 +56,7 @@ static void fill_exp(float *buf, uint32_t len,
 /*
  * Ear-tuned polynomial, designed to sound natural.
  */
-static void fill_log(float *buf, uint32_t len,
+static void fill_log(float *restrict buf, uint32_t len,
 		float s0, float goal, uint32_t pos, double inv_time) {
 	uint32_t i, end;
 	for (i = pos, end = i + len; i < end; ++i) {
@@ -75,8 +75,8 @@ static void fill_log(float *buf, uint32_t len,
  *
  * \return true until goal reached
  */
-bool SGS_Ramp_run(SGS_Ramp *o, uint32_t srate,
-		float *buf, uint32_t buf_len, float s0) {
+bool SGS_Ramp_run(SGS_Ramp *restrict o, uint32_t srate,
+		float *restrict buf, uint32_t buf_len, float s0) {
 	uint32_t time = SGS_ms_in_samples(o->time_ms, srate);
 	uint32_t len, fill_len;
 	double inv_time;
