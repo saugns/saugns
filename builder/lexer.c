@@ -37,7 +37,7 @@
 /* Visible ASCII character. */
 #define IS_VISIBLE(c) ((c) >= '!' && (c) <= '~')
 
-static uint8_t filter_symchar(SGS_File *o SGS__maybe_unused,
+static uint8_t filter_symchar(SGS_File *restrict o SGS__maybe_unused,
                uint8_t c) {
 	return IS_SYMCHAR(c) ? c : 0;
 }
@@ -50,8 +50,9 @@ static uint8_t filter_symchar(SGS_File *o SGS__maybe_unused,
  *
  * \return true if the string fit into the buffer, false if truncated
  */
-static bool read_symstr(SGS_File *f, char *buf, size_t buf_len,
-		size_t *lenp) {
+static bool read_symstr(SGS_File *restrict f,
+		uint8_t *restrict buf, size_t buf_len,
+		size_t *restrict lenp) {
 	size_t i = 0;
 	size_t max_len = buf_len - 1;
 	bool truncate = false;
@@ -83,7 +84,7 @@ struct SGS_Lexer {
 	SGS_SymTab *symtab;
 	uint32_t line_num, char_num;
 	SGS_ScriptToken token;
-	char *strbuf;
+	uint8_t *strbuf;
 };
 
 /**
@@ -91,14 +92,13 @@ struct SGS_Lexer {
  *
  * \return instance, or NULL on failure.
  */
-SGS_Lexer *SGS_create_Lexer(SGS_File *f, SGS_SymTab *symtab) {
-	SGS_Lexer *o;
-	if (!f) return NULL;
+SGS_Lexer *SGS_create_Lexer(SGS_SymTab *restrict symtab) {
 	if (!symtab) return NULL;
 
-	o = calloc(1, sizeof(SGS_Lexer));
-	if (o == NULL) return NULL;
-	o->f = f;
+	SGS_Lexer *o = calloc(1, sizeof(SGS_Lexer));
+	if (!o) return NULL;
+	o->f = SGS_create_File();
+	if (!o->f) goto ERROR;
 	o->symtab = symtab;
 	o->strbuf = calloc(1, STRBUF_LEN);
 	if (!o->strbuf) goto ERROR;
@@ -112,17 +112,49 @@ ERROR:
 /**
  * Destroy instance.
  */
-void SGS_destroy_Lexer(SGS_Lexer *o) {
-	free(o->strbuf);
+void SGS_destroy_Lexer(SGS_Lexer *restrict o) {
+	if (o->f) SGS_destroy_File(o->f);
+	if (o->strbuf) free(o->strbuf);
 	free(o);
+}
+
+/**
+ * Open file for reading.
+ *
+ * Wrapper around SGS_File functions. \p script may be
+ * either a file path or a string, depending on \p is_path.
+ *
+ * \return true on success
+ */
+bool SGS_Lexer_open(SGS_Lexer *restrict o,
+		const char *restrict script, bool is_path) {
+	if (!is_path) {
+		SGS_File_stropenrb(o->f, "<string>", script);
+	} else if (!SGS_File_fopenrb(o->f, script)) {
+		SGS_error(NULL,
+"couldn't open script file \"%s\" for reading", script);
+		return false;
+	}
+
+	o->line_num = 1; // not increased upon first read
+	o->char_num = 0;
+	return true;
+}
+
+/**
+ * Close file (if open).
+ */
+void SGS_Lexer_close(SGS_Lexer *restrict o) {
+	SGS_File_close(o->f);
 }
 
 enum {
 	PRINT_FILE_INFO = 1<<0
 };
 
-static void print_stderr(SGS_Lexer *o, uint32_t options,
-		const char *prefix, const char *fmt, va_list ap) {
+static void print_stderr(SGS_Lexer *restrict o,
+		uint32_t options, const char *restrict prefix,
+		const char *restrict fmt, va_list ap) {
 	SGS_File *f = o->f;
 	if (options & PRINT_FILE_INFO) {
 		fprintf(stderr, "%s:%d:%d: ",
@@ -138,7 +170,8 @@ static void print_stderr(SGS_Lexer *o, uint32_t options,
 /**
  * Print warning message including file name and current position.
  */
-void SGS_Lexer_warning(SGS_Lexer *o, const char *fmt, ...) {
+void SGS_Lexer_warning(SGS_Lexer *restrict o,
+		const char *restrict fmt, ...) {
 	va_list ap;
 	va_start(ap, fmt);
 	print_stderr(o, PRINT_FILE_INFO, "warning", fmt, ap);
@@ -148,7 +181,8 @@ void SGS_Lexer_warning(SGS_Lexer *o, const char *fmt, ...) {
 /**
  * Print error message including file name and current position.
  */
-void SGS_Lexer_error(SGS_Lexer *o, const char *fmt, ...) {
+void SGS_Lexer_error(SGS_Lexer *restrict o,
+		const char *restrict fmt, ...) {
 	va_list ap;
 	va_start(ap, fmt);
 	print_stderr(o, PRINT_FILE_INFO, "error", fmt, ap);
@@ -158,7 +192,7 @@ void SGS_Lexer_error(SGS_Lexer *o, const char *fmt, ...) {
 /*
  * Print warning message for an invalid character.
  */
-static void warning_character(SGS_Lexer *o, uint8_t c) {
+static void warning_character(SGS_Lexer *restrict o, uint8_t c) {
 	if (IS_VISIBLE(c)) {
 		SGS_Lexer_warning(o, "invalid character: '%c'", (char) c);
 	} else {
@@ -166,9 +200,10 @@ static void warning_character(SGS_Lexer *o, uint8_t c) {
 	}
 }
 
-typedef uint8_t (*HandleValue_f)(SGS_Lexer *o, uint8_t c);
+typedef uint8_t (*HandleValue_f)(SGS_Lexer *restrict o, uint8_t c);
 
-static uint8_t handle_invalid(SGS_Lexer *o, uint8_t c) {
+static uint8_t handle_invalid(SGS_Lexer *restrict o,
+		uint8_t c SGS__maybe_unused) {
 	SGS_ScriptToken *t = &o->token;
 	t->type = SGS_T_INVALID;
 	if (!SGS_File_AFTER_EOF(o->f)) {
@@ -186,7 +221,7 @@ static uint8_t handle_invalid(SGS_Lexer *o, uint8_t c) {
 	return 0;
 }
 
-static uint8_t handle_blanks(SGS_Lexer *o, uint8_t c) {
+static uint8_t handle_blanks(SGS_Lexer *restrict o, uint8_t c) {
 	do {
 		++o->char_num;
 		c = SGS_File_GETC(o->f);
@@ -194,7 +229,7 @@ static uint8_t handle_blanks(SGS_Lexer *o, uint8_t c) {
 	return c;
 }
 
-static uint8_t handle_linebreaks(SGS_Lexer *o, uint8_t c) {
+static uint8_t handle_linebreaks(SGS_Lexer *restrict o, uint8_t c) {
 	SGS_File *f = o->f;
 	++o->line_num;
 	if (c == '\n') SGS_File_TRYC(f, '\r');
@@ -205,25 +240,25 @@ static uint8_t handle_linebreaks(SGS_Lexer *o, uint8_t c) {
 	return SGS_File_GETC_NC(f);
 }
 
-static uint8_t handle_linecomment(SGS_Lexer *o,
+static uint8_t handle_linecomment(SGS_Lexer *restrict o,
 		uint8_t SGS__maybe_unused c) {
 	o->char_num += SGS_File_skipline(o->f);
 	return SGS_File_GETC_NC(o->f);
 }
 
-//static uint8_t handle_block_comment(SGS_Lexer *o, uint8_t c) {
+//static uint8_t handle_block_comment(SGS_Lexer *restrict o, uint8_t c) {
 //	SGS_Lexer_warning(o, "cannot yet handle comment marked by '%c'", c);
 //	return 0;
 //}
 
-static uint8_t handle_special(SGS_Lexer *o, uint8_t c) {
+static uint8_t handle_special(SGS_Lexer *restrict o, uint8_t c) {
 	SGS_ScriptToken *t = &o->token;
 	t->type = SGS_T_SPECIAL;
 	t->data.c = c;
 	return 0;
 }
 
-static uint8_t handle_numeric_value(SGS_Lexer *o,
+static uint8_t handle_numeric_value(SGS_Lexer *restrict o,
 		uint8_t SGS__maybe_unused c) {
 	SGS_ScriptToken *t = &o->token;
 	double num;
@@ -235,7 +270,7 @@ static uint8_t handle_numeric_value(SGS_Lexer *o,
 	return 0;
 }
 
-static uint8_t handle_identifier(SGS_Lexer *o,
+static uint8_t handle_identifier(SGS_Lexer *restrict o,
 		uint8_t SGS__maybe_unused c) {
 	SGS_File *f = o->f;
 	SGS_ScriptToken *t = &o->token;
@@ -267,7 +302,7 @@ static uint8_t handle_identifier(SGS_Lexer *o,
  *
  * \return true if a token was successfully read from the file
  */
-bool SGS_Lexer_get(SGS_Lexer *o, SGS_ScriptToken *t) {
+bool SGS_Lexer_get(SGS_Lexer *restrict o, SGS_ScriptToken *restrict t) {
 	uint8_t c;
 	++o->char_num;
 	c = SGS_File_GETC(o->f);
@@ -433,134 +468,7 @@ bool SGS_Lexer_get(SGS_Lexer *o, SGS_ScriptToken *t) {
 			c = handle_special(o, c);
 			break;
 		case /* DEL */ 0x7F:
-		case 0x80:
-		case 0x81:
-		case 0x82:
-		case 0x83:
-		case 0x84:
-		case 0x85:
-		case 0x86:
-		case 0x87:
-		case 0x88:
-		case 0x89:
-		case 0x8A:
-		case 0x8B:
-		case 0x8C:
-		case 0x8D:
-		case 0x8E:
-		case 0x8F:
-		case 0x90:
-		case 0x91:
-		case 0x92:
-		case 0x93:
-		case 0x94:
-		case 0x95:
-		case 0x96:
-		case 0x97:
-		case 0x98:
-		case 0x99:
-		case 0x9A:
-		case 0x9B:
-		case 0x9C:
-		case 0x9D:
-		case 0x9E:
-		case 0x9F:
-		case 0xA0:
-		case 0xA1:
-		case 0xA2:
-		case 0xA3:
-		case 0xA4:
-		case 0xA5:
-		case 0xA6:
-		case 0xA7:
-		case 0xA8:
-		case 0xA9:
-		case 0xAA:
-		case 0xAB:
-		case 0xAC:
-		case 0xAD:
-		case 0xAE:
-		case 0xAF:
-		case 0xB0:
-		case 0xB1:
-		case 0xB2:
-		case 0xB3:
-		case 0xB4:
-		case 0xB5:
-		case 0xB6:
-		case 0xB7:
-		case 0xB8:
-		case 0xB9:
-		case 0xBA:
-		case 0xBB:
-		case 0xBC:
-		case 0xBD:
-		case 0xBE:
-		case 0xBF:
-		case 0xC0:
-		case 0xC1:
-		case 0xC2:
-		case 0xC3:
-		case 0xC4:
-		case 0xC5:
-		case 0xC6:
-		case 0xC7:
-		case 0xC8:
-		case 0xC9:
-		case 0xCA:
-		case 0xCB:
-		case 0xCC:
-		case 0xCD:
-		case 0xCE:
-		case 0xCF:
-		case 0xD0:
-		case 0xD1:
-		case 0xD2:
-		case 0xD3:
-		case 0xD4:
-		case 0xD5:
-		case 0xD6:
-		case 0xD7:
-		case 0xD8:
-		case 0xD9:
-		case 0xDA:
-		case 0xDB:
-		case 0xDC:
-		case 0xDD:
-		case 0xDE:
-		case 0xDF:
-		case 0xE0:
-		case 0xE1:
-		case 0xE2:
-		case 0xE3:
-		case 0xE4:
-		case 0xE5:
-		case 0xE6:
-		case 0xE7:
-		case 0xE8:
-		case 0xE9:
-		case 0xEA:
-		case 0xEB:
-		case 0xEC:
-		case 0xED:
-		case 0xEE:
-		case 0xEF:
-		case 0xF0:
-		case 0xF1:
-		case 0xF2:
-		case 0xF3:
-		case 0xF4:
-		case 0xF5:
-		case 0xF6:
-		case 0xF7:
-		case 0xF8:
-		case 0xF9:
-		case 0xFA:
-		case 0xFB:
-		case 0xFC:
-		case 0xFD:
-		case 0xFE:
-		case 0xFF:
+		default:
 			c = handle_invalid(o, c);
 			break;
 		}
@@ -584,7 +492,8 @@ bool SGS_Lexer_get(SGS_Lexer *o, SGS_ScriptToken *t) {
  *
  * \return true if a token was successfully read from the file
  */
-bool SGS_Lexer_get_special(SGS_Lexer *o, SGS_ScriptToken *t) {
+bool SGS_Lexer_get_special(SGS_Lexer *restrict o,
+		SGS_ScriptToken *restrict t) {
 	uint8_t c;
 	++o->char_num;
 	c = SGS_File_GETC(o->f);
