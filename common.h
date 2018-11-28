@@ -55,6 +55,8 @@ void *SGS_memdup(const void *restrict src, size_t size) SGS__malloclike;
 
 /* Run scanner instead of lexer in 'test-builder' program. */
 #define SGS_TEST_SCANNER 0
+/* Print test statistics for scanner. */
+#define SGS_SCANNER_STATS 0
 /* Print hash collision info for symtab. */
 #define SGS_HASHTAB_STATS 0
 /* Make test lexer quiet enough to time it. */

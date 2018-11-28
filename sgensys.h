@@ -14,7 +14,7 @@
 #pragma once
 #include "program.h"
 
-#define SGS_VERSION_STR "sgensys v0.5.0"
+#define SGS_VERSION_STR "sgensys v0.6.0"
 
 SGS_Program* SGS_build(const char *restrict fname);
 

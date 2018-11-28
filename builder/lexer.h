@@ -1,5 +1,5 @@
 /* sgensys: Script lexer module.
- * Copyright (c) 2014, 2017-2018 Joel K. Pettersson
+ * Copyright (c) 2014, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -45,8 +45,3 @@ void SGS_destroy_Lexer(SGS_Lexer *restrict o);
 
 bool SGS_Lexer_get(SGS_Lexer *restrict o, SGS_ScriptToken *restrict t);
 bool SGS_Lexer_get_special(SGS_Lexer *restrict o, SGS_ScriptToken *restrict t);
-
-void SGS_Lexer_warning(SGS_Lexer *restrict o, const char *restrict fmt, ...)
-		SGS__printflike(2, 3);
-void SGS_Lexer_error(SGS_Lexer *restrict o, const char *restrict fmt, ...)
-		SGS__printflike(2, 3);

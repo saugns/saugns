@@ -114,18 +114,16 @@ INVALID:
  */
 SGS_Program* SGS_build(const char *restrict fname) {
 #if SGS_TEST_SCANNER
-	SGS_SymTab *symtab = SGS_create_SymTab();
-	SGS_Scanner *scanner = SGS_create_Scanner(symtab);
+	SGS_Scanner *scanner = SGS_create_Scanner();
 	if (SGS_Scanner_fopenrb(scanner, fname)) for (;;) {
 		uint8_t c = SGS_Scanner_getc(scanner);
-		putchar(c);
 		if (!c) {
 			putchar('\n');
 			break;
 		}
+		putchar(c);
 	}
 	SGS_destroy_Scanner(scanner);
-	SGS_destroy_SymTab(symtab);
 	// return dummy object
 	return (SGS_Program*) calloc(1, sizeof(SGS_Program));
 #else
