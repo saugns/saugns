@@ -62,7 +62,8 @@ typedef struct SGS_Osc {
 /**
  * Produce floating point output in the -1.0 to 1.0 range.
  */
-static inline float SGS_Osc_run(SGS_Osc *o, const float *lut, double coeff,
+static inline float SGS_Osc_run(SGS_Osc *restrict o,
+		const float *restrict lut, double coeff,
 		float freq, int16_t pm_s16) {
 	uint32_t phase = o->phase + (pm_s16 << 16);
 	float s = SGS_Wave_get_lerp(lut, phase);

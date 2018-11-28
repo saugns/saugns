@@ -171,7 +171,7 @@ typedef struct SGS_Program {
 } SGS_Program;
 
 struct SGS_Script;
-SGS_Program* SGS_build_Program(struct SGS_Script *sd) SGS__malloclike;
-void SGS_discard_Program(SGS_Program *o);
+SGS_Program* SGS_build_Program(struct SGS_Script *restrict sd) SGS__malloclike;
+void SGS_discard_Program(SGS_Program *restrict o);
 
-void SGS_Program_print_info(SGS_Program *o);
+void SGS_Program_print_info(SGS_Program *restrict o);

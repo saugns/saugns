@@ -39,12 +39,13 @@
 /* Sensible to print, for ASCII only. */
 #define IS_VISIBLE(c) ((c) >= '!' && (c) <= '~')
 
-static uint8_t test_symchar(SGS_File *f SGS__maybe_unused, uint8_t c) {
+static uint8_t test_symchar(SGS_File *restrict f SGS__maybe_unused,
+                            uint8_t c) {
   return IS_SYMCHAR(c);
 }
 
-static bool read_sym(SGS_File *f, char *buf, size_t buf_len,
-                     size_t *sym_len) {
+static bool read_sym(SGS_File *restrict f, char *restrict buf, size_t buf_len,
+                     size_t *restrict sym_len) {
   size_t i = 0;
   size_t max_len = buf_len - 1;
   bool truncate = false;
@@ -65,7 +66,8 @@ static bool read_sym(SGS_File *f, char *buf, size_t buf_len,
   return !truncate;
 }
 
-static int32_t read_strfind(SGS_File *f, const char *const*str) {
+static int32_t read_strfind(SGS_File *restrict f,
+                            const char *const*restrict str) {
   int32_t ret;
   size_t i, len, pos, matchpos;
   size_t strc;
@@ -129,7 +131,7 @@ static const SGS_ScriptOptions def_sopt = {
   .def_ratio = 1.f,
 };
 
-typedef float (*NumSym_f)(SGS_Parser *o);
+typedef float (*NumSym_f)(SGS_Parser *restrict o);
 
 /*
  * Initialize parser instance.
@@ -137,7 +139,7 @@ typedef float (*NumSym_f)(SGS_Parser *o);
  * The same symbol table and script-set data will be used
  * until the instance is finalized.
  */
-static void init_parser(SGS_Parser *o) {
+static void init_parser(SGS_Parser *restrict o) {
   *o = (SGS_Parser){0};
   o->mp = SGS_create_Mempool(0);
   o->st = SGS_create_Symtab();
@@ -147,7 +149,7 @@ static void init_parser(SGS_Parser *o) {
 /*
  * Finalize parser instance.
  */
-static void fini_parser(SGS_Parser *o) {
+static void fini_parser(SGS_Parser *restrict o) {
   SGS_destroy_Symtab(o->st);
 }
 
@@ -214,7 +216,8 @@ typedef struct SGS_ScriptEvBranch {
  * Common warning printing function for script errors; requires that o->c
  * is set to the character where the error was detected.
  */
-static void SGS__noinline scan_warning(SGS_Parser *o, const char *str) {
+static void SGS__noinline scan_warning(SGS_Parser *restrict o,
+                                       const char *restrict str) {
   SGS_File *f = o->f;
   uint8_t c = o->c;
   if (IS_VISIBLE(c)) {
@@ -230,7 +233,7 @@ static void SGS__noinline scan_warning(SGS_Parser *o, const char *str) {
 }
 
 #define SCAN_NEWLINE '\n'
-static uint8_t scan_char(SGS_Parser *o) {
+static uint8_t scan_char(SGS_Parser *restrict o) {
   uint8_t c;
   SGS_File_skipspace(o->f);
   if (o->next_c != 0) {
@@ -255,7 +258,7 @@ static uint8_t scan_char(SGS_Parser *o) {
   return c;
 }
 
-static void scan_ws(SGS_Parser *o) {
+static void scan_ws(SGS_Parser *restrict o) {
   for (;;) {
     uint8_t c = SGS_File_GETC(o->f);
     if (IS_SPACE(c))
@@ -281,7 +284,7 @@ static void scan_ws(SGS_Parser *o) {
  *
  * \return false if EOF reached
  */
-static bool handle_unknown_or_end(SGS_Parser *o) {
+static bool handle_unknown_or_end(SGS_Parser *restrict o) {
   if (SGS_File_AT_EOF(o->f) ||
       SGS_File_AFTER_EOF(o->f)) {
     return false;
@@ -303,7 +306,7 @@ enum {
   NUMEXP_POW,
   NUMEXP_NUM,
 };
-static double scan_num_r(NumParser *o, uint8_t pri, uint32_t level) {
+static double scan_num_r(NumParser *restrict o, uint8_t pri, uint32_t level) {
   SGS_Parser *pr = o->pr;
   double num;
   uint8_t c;
@@ -392,7 +395,8 @@ REJECT: {
   }
   return num;
 }
-static bool scan_num(SGS_Parser *o, NumSym_f scan_numsym, float *var) {
+static bool scan_num(SGS_Parser *restrict o, NumSym_f scan_numsym,
+                     float *restrict var) {
   NumParser np = {o, scan_numsym, false, false};
   float num = scan_num_r(&np, NUMEXP_SUB, 0);
   if (isnan(num))
@@ -407,7 +411,7 @@ static bool scan_num(SGS_Parser *o, NumSym_f scan_numsym, float *var) {
 }
 
 #define OCTAVES 11
-static float scan_note(SGS_Parser *o) {
+static float scan_note(SGS_Parser *restrict o) {
   static const float octaves[OCTAVES] = {
     (1.f/16.f),
     (1.f/8.f),
@@ -497,7 +501,7 @@ static float scan_note(SGS_Parser *o) {
 #define LABEL_LEN 80
 #define LABEL_LEN_A "80"
 typedef char LabelBuf[LABEL_LEN];
-static size_t scan_label(SGS_Parser *o, LabelBuf label, char op) {
+static size_t scan_label(SGS_Parser *restrict o, LabelBuf label, char op) {
   char nolabel_msg[] = "ignoring ? without label name";
   size_t len = 0;
   nolabel_msg[9] = op; /* replace ? */
@@ -513,7 +517,7 @@ static size_t scan_label(SGS_Parser *o, LabelBuf label, char op) {
   return len;
 }
 
-static int32_t scan_wavetype(SGS_Parser *o) {
+static int32_t scan_wavetype(SGS_Parser *restrict o) {
   int32_t wave = read_strfind(o->f, SGS_Wave_names);
   if (wave < 0) {
     scan_warning(o, "invalid wave type; available types are:");
@@ -527,7 +531,7 @@ static int32_t scan_wavetype(SGS_Parser *o) {
   return wave;
 }
 
-static bool parse_waittime(ParseLevel *pl) {
+static bool parse_waittime(ParseLevel *restrict pl) {
   SGS_Parser *o = pl->o;
   /* FIXME: ADD_WAIT_DURATION */
   if (SGS_File_TRYC(o->f, 't')) {
@@ -554,7 +558,7 @@ static bool parse_waittime(ParseLevel *pl) {
  * Node- and scope-handling functions
  */
 
-static void end_operator(ParseLevel *pl) {
+static void end_operator(ParseLevel *restrict pl) {
   if (!(pl->pl_flags & SDPL_OWN_OP))
     return;
   pl->pl_flags &= ~SDPL_OWN_OP;
@@ -599,7 +603,7 @@ static void end_operator(ParseLevel *pl) {
   pl->operator = NULL;
 }
 
-static void end_event(ParseLevel *pl) {
+static void end_event(ParseLevel *restrict pl) {
   if (!(pl->pl_flags & SDPL_OWN_EV))
     return;
   pl->pl_flags &= ~SDPL_OWN_EV;
@@ -628,7 +632,7 @@ static void end_event(ParseLevel *pl) {
   o->group_end = group_e;
 }
 
-static void begin_event(ParseLevel *pl, bool is_compstep) {
+static void begin_event(ParseLevel *restrict pl, bool is_compstep) {
   SGS_Parser *o = pl->o;
   SGS_ScriptEvData *e, *pve;
   end_event(pl);
@@ -680,7 +684,7 @@ static void begin_event(ParseLevel *pl, bool is_compstep) {
   pl->pl_flags |= SDPL_OWN_EV;
 }
 
-static void begin_operator(ParseLevel *pl, bool is_compstep) {
+static void begin_operator(ParseLevel *restrict pl, bool is_compstep) {
   SGS_Parser *o = pl->o;
   SGS_ScriptEvData *e = pl->event;
   SGS_ScriptOpData *op, *pop = pl->on_prev;
@@ -781,7 +785,8 @@ static void begin_operator(ParseLevel *pl, bool is_compstep) {
  *
  * Used instead of directly calling begin_operator() and/or begin_event().
  */
-static void begin_node(ParseLevel *pl, SGS_ScriptOpData *previous,
+static void begin_node(ParseLevel *restrict pl,
+                       SGS_ScriptOpData *restrict previous,
                        bool is_compstep) {
   pl->on_prev = previous;
   if (!pl->event || pl->next_wait_ms > 0 ||
@@ -792,15 +797,15 @@ static void begin_node(ParseLevel *pl, SGS_ScriptOpData *previous,
   begin_operator(pl, is_compstep);
 }
 
-static void flush_durgroup(SGS_Parser *o) {
+static void flush_durgroup(SGS_Parser *restrict o) {
   if (o->group_start != NULL) {
     o->group_end->group_backref = o->group_start;
     o->group_start = o->group_end = NULL;
   }
 }
 
-static void begin_scope(SGS_Parser *o, ParseLevel *pl,
-                        ParseLevel *parent_pl,
+static void begin_scope(SGS_Parser *restrict o, ParseLevel *restrict pl,
+                        ParseLevel *restrict parent_pl,
                         uint8_t linktype, uint8_t newscope, uint8_t close_c) {
   *pl = (ParseLevel){
     .o = o,
@@ -838,7 +843,7 @@ static void begin_scope(SGS_Parser *o, ParseLevel *pl,
   pl->linktype = linktype;
 }
 
-static void end_scope(ParseLevel *pl) {
+static void end_scope(ParseLevel *restrict pl) {
   SGS_Parser *o = pl->o;
   end_operator(pl);
   if (pl->scope == SCOPE_BIND) {
@@ -886,7 +891,7 @@ static void end_scope(ParseLevel *pl) {
 DEFER: \
   o->next_c = c; /* let parse_level() take care of it */
 
-static void parse_in_settings(ParseLevel *pl) {
+static void parse_in_settings(ParseLevel *restrict pl) {
   PARSE_IN__HEAD(parse_in_settings, true)
     switch (c) {
     case 'a':
@@ -932,10 +937,11 @@ static void parse_in_settings(ParseLevel *pl) {
   PARSE_IN__TAIL()
 }
 
-static bool parse_level(SGS_Parser *o, ParseLevel *parent_pl,
+static bool parse_level(SGS_Parser *restrict o,
+                        ParseLevel *restrict parent_pl,
                         uint8_t linktype, uint8_t newscope, uint8_t close_c);
 
-static void parse_in_par_sweep(ParseLevel *pl) {
+static void parse_in_par_sweep(ParseLevel *restrict pl) {
   int32_t type;
   SGS_Ramp *ramp = pl->op_sweep;
   if (!(pl->pl_flags & SDPL_SET_SWEEP)) {
@@ -983,9 +989,9 @@ static void parse_in_par_sweep(ParseLevel *pl) {
   PARSE_IN__TAIL()
 }
 
-static bool parse_par_list(ParseLevel *pl,
+static bool parse_par_list(ParseLevel *restrict pl,
                           NumSym_f numsym_f,
-                          SGS_Ramp *op_sweep, bool ratio,
+                          SGS_Ramp *restrict op_sweep, bool ratio,
                           uint8_t linktype) {
   SGS_Parser *o = pl->o;
   bool clear = SGS_File_TRYC(o->f, '-');
@@ -1006,7 +1012,7 @@ static bool parse_par_list(ParseLevel *pl,
   return empty;
 }
 
-static void parse_in_op_step(ParseLevel *pl) {
+static void parse_in_op_step(ParseLevel *restrict pl) {
   PARSE_IN__HEAD(parse_in_op_step, pl->operator)
     SGS_ScriptEvData *e = pl->event;
     SGS_ScriptOpData *op = pl->operator;
@@ -1143,7 +1149,8 @@ static void parse_in_op_step(ParseLevel *pl) {
   PARSE_IN__TAIL()
 }
 
-static bool parse_level(SGS_Parser *o, ParseLevel *parent_pl,
+static bool parse_level(SGS_Parser *restrict o,
+                        ParseLevel *restrict parent_pl,
                         uint8_t linktype, uint8_t newscope, uint8_t close_c) {
   LabelBuf label;
   ParseLevel pl;
@@ -1303,7 +1310,7 @@ RETURN:
  *
  * \return true if completed, false on error preventing parse
  */
-static bool parse_file(SGS_Parser *o, SGS_File *f) {
+static bool parse_file(SGS_Parser *restrict o, SGS_File *restrict f) {
   o->f = f;
   o->line = 1;
   parse_level(o, 0, SGS_POP_CARR, SCOPE_TOP, 0);
@@ -1317,7 +1324,7 @@ static bool parse_file(SGS_Parser *o, SGS_File *f) {
  * only allowed on the "top" operator level, so the algorithm only deals with
  * this for the events involved.
  */
-static void time_durgroup(SGS_ScriptEvData *e_last) {
+static void time_durgroup(SGS_ScriptEvData *restrict e_last) {
   SGS_ScriptEvData *e, *e_after = e_last->next;
   uint32_t cur_longest = 0, wait_sum = 0, wait_after = 0;
   for (e = e_last->group_backref; e != e_after; ) {
@@ -1353,7 +1360,7 @@ static void time_durgroup(SGS_ScriptEvData *e_last) {
     e_after->wait_ms += wait_after;
 }
 
-static void time_operator(SGS_ScriptOpData *op) {
+static void time_operator(SGS_ScriptOpData *restrict op) {
   SGS_ScriptEvData *e = op->event;
   if (!(op->op_params & SGS_POPP_TIME))
     e->ev_flags &= ~SGS_SDEV_VOICE_SET_DUR;
@@ -1391,7 +1398,7 @@ static void time_operator(SGS_ScriptOpData *op) {
   }
 }
 
-static void time_event(SGS_ScriptEvData *e) {
+static void time_event(SGS_ScriptEvData *restrict e) {
   /*
    * Adjust default ramp durations, handle silence as well as the case of
    * adding present event duration to wait time of next event.
@@ -1443,7 +1450,7 @@ static void time_event(SGS_ScriptEvData *e) {
  * Such events, if attached to the passed event, will be given their place in
  * the ordinary event list.
  */
-static void flatten_events(SGS_ScriptEvData *e) {
+static void flatten_events(SGS_ScriptEvData *restrict e) {
   SGS_ScriptEvBranch *fork = e->forks;
   SGS_ScriptEvData *ne = fork->events;
   SGS_ScriptEvData *fe = e->next, *fe_prev = e;
@@ -1496,7 +1503,7 @@ static void flatten_events(SGS_ScriptEvData *e) {
  * Ideally, this function wouldn't exist, all post-parse processing
  * instead being done when creating the sound generation program.
  */
-static void postparse_passes(SGS_Parser *o) {
+static void postparse_passes(SGS_Parser *restrict o) {
   SGS_ScriptEvData *e;
   for (e = o->events; e; e = e->next) {
     if (!(e->ev_flags & SGS_SDEV_IMPLICIT_TIME))
@@ -1519,7 +1526,7 @@ static void postparse_passes(SGS_Parser *o) {
  *
  * \return instance or NULL on error preventing parse
  */
-SGS_Script* SGS_load_Script(SGS_File *f) {
+SGS_Script* SGS_load_Script(SGS_File *restrict f) {
   if (!f) return NULL;
 
   SGS_Parser pr;
@@ -1544,7 +1551,7 @@ DONE:
 /**
  * Destroy instance.
  */
-void SGS_discard_Script(SGS_Script *o) {
+void SGS_discard_Script(SGS_Script *restrict o) {
   if (!o)
     return;
   SGS_destroy_Mempool(o->mp);
