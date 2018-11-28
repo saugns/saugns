@@ -119,5 +119,5 @@ typedef struct SGS_Script {
 } SGS_Script;
 
 struct SGS_File;
-SGS_Script *SGS_load_Script(struct SGS_File *f);
-void SGS_discard_Script(SGS_Script *o);
+SGS_Script *SGS_load_Script(struct SGS_File *restrict f);
+void SGS_discard_Script(SGS_Script *restrict o);
