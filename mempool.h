@@ -22,8 +22,8 @@ struct SGS_MemPool;
 typedef struct SGS_MemPool SGS_MemPool;
 
 SGS_MemPool *SGS_create_MemPool(size_t block_size) SGS__malloclike;
-void SGS_destroy_MemPool(SGS_MemPool *o);
+void SGS_destroy_MemPool(SGS_MemPool *restrict o);
 
-void *SGS_MemPool_alloc(SGS_MemPool *o, size_t size) SGS__malloclike;
-void *SGS_MemPool_memdup(SGS_MemPool *o,
-		const void *src, size_t size) SGS__malloclike;
+void *SGS_MemPool_alloc(SGS_MemPool *restrict o, size_t size) SGS__malloclike;
+void *SGS_MemPool_memdup(SGS_MemPool *restrict o,
+		const void *restrict src, size_t size) SGS__malloclike;
