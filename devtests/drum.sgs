@@ -4,5 +4,5 @@ Osin fFs3 t0.5 p+<
 	>
 >
 \0.025
-:a      a[v0 t0.5 cexp]
-:b      a[v0 t0.5 cexp]
+:a	a[v0 t0.5 cexp]
+:b	a[v0 t0.5 cexp]

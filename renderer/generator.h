@@ -1,5 +1,5 @@
 /* sgensys: Audio generator module.
- * Copyright (c) 2011-2012, 2017-2018 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -17,8 +17,8 @@
 struct SGS_Generator;
 typedef struct SGS_Generator SGS_Generator;
 
-SGS_Generator* SGS_create_Generator(SGS_Program *restrict prg, uint32_t srate)
-	SGS__malloclike;
+SGS_Generator* SGS_create_Generator(const SGS_Program *restrict prg,
+		uint32_t srate) SGS__malloclike;
 void SGS_destroy_Generator(SGS_Generator *restrict o);
 
 bool SGS_Generator_run(SGS_Generator *restrict o,

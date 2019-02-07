@@ -1,5 +1,5 @@
 /* sgensys: Audio program renderer module.
- * Copyright (c) 2011-2013, 2017-2018 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -22,12 +22,12 @@
 static int16_t audio_buf[BUF_SAMPLES * NUM_CHANNELS];
 
 /*
- * Produce audio for the given SGS_Program, optionally sending it
+ * Produce audio for the given program, optionally sending it
  * to a given audio device and/or WAV file.
  *
  * \return true unless error occurred
  */
-static bool produce_audio(SGS_Program *restrict prg, uint32_t srate,
+static bool produce_audio(const SGS_Program *restrict prg, uint32_t srate,
 		SGS_AudioDev *restrict ad, SGS_WAVFile *restrict wf) {
 	SGS_Generator *gen = SGS_create_Generator(prg, srate);
 	size_t len;
@@ -49,42 +49,61 @@ static bool produce_audio(SGS_Program *restrict prg, uint32_t srate,
 }
 
 /*
- * Run the given program through the audio generator until completion.
+ * Run the listed programs through the audio generator until completion,
+ * ignoring NULL entries.
+ *
  * The output is sent to either none, one, or both of the audio device
  * or a WAV file.
  *
  * \return true unless error occurred
  */
-bool SGS_render(SGS_Program *restrict prg, uint32_t srate,
+bool SGS_render(const SGS_PtrList *restrict prg_objs, uint32_t srate,
 		bool use_audiodev, const char *restrict wav_path) {
+	if (!prg_objs->count) return true;
+
 	SGS_AudioDev *ad = NULL;
 	uint32_t ad_srate = srate;
 	SGS_WAVFile *wf = NULL;
 	bool status = true;
 	if (use_audiodev) {
 		ad = SGS_open_AudioDev(NUM_CHANNELS, &ad_srate);
-		if (!ad) goto CLEANUP;
+		if (!ad) {
+			status = false;
+			goto CLEANUP;
+		}
 	}
-	if (wav_path) {
+	if (wav_path != NULL) {
 		wf = SGS_create_WAVFile(wav_path, NUM_CHANNELS, srate);
-		if (!wf) goto CLEANUP;
+		if (!wf) {
+			status = false;
+			goto CLEANUP;
+		}
 	}
-
-	if (ad && wf && (ad_srate != srate)) {
+	if (ad != NULL && wf != NULL && (ad_srate != srate)) {
 		SGS_warning(NULL,
 			"generating audio twice, using different sample rates");
-		status = produce_audio(prg, ad_srate, ad, NULL);
-		status = status && produce_audio(prg, srate, NULL, wf);
+		const SGS_Program **prgs =
+			(const SGS_Program**) SGS_PtrList_ITEMS(prg_objs);
+		for (size_t i = 0; i < prg_objs->count; ++i) {
+			if (!produce_audio(prgs[i], ad_srate, ad, NULL))
+				status = false;
+			if (!produce_audio(prgs[i], srate, NULL, wf))
+				status = false;
+		}
 	} else {
-		status = produce_audio(prg, ad_srate, ad, wf);
+		const SGS_Program **prgs =
+			(const SGS_Program**) SGS_PtrList_ITEMS(prg_objs);
+		for (size_t i = 0; i < prg_objs->count; ++i) {
+			if (!produce_audio(prgs[i], ad_srate, ad, wf))
+				status = false;
+		}
 	}
 
 CLEANUP:
-	if (ad) {
-		SGS_close_AudioDev(ad);
-	}
-	if (wf) {
-		status = status && (SGS_close_WAVFile(wf) == 0);
+	if (ad != NULL) SGS_close_AudioDev(ad);
+	if (wf != NULL) {
+		if (SGS_close_WAVFile(wf) != 0)
+			status = false;
 	}
 	return status;
 }

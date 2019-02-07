@@ -77,3 +77,19 @@ static inline float SGS_Osc_run(SGS_Osc *restrict o,
 	o->phase += phase_inc;
 	return s;
 }
+
+void SGS_Osc_block_add(SGS_Osc *restrict o,
+		const float *restrict lut, double coeff,
+		float *restrict buf, size_t buf_len,
+		size_t op_num,
+		const float *restrict freq,
+		const float *restrict amp,
+		const float *restrict pm_f);
+
+void SGS_Osc_block_mul(SGS_Osc *restrict o,
+		const float *restrict lut, double coeff,
+		float *restrict buf, size_t buf_len,
+		size_t op_num,
+		const float *restrict freq,
+		const float *restrict amp,
+		const float *restrict pm_f);

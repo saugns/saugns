@@ -27,12 +27,12 @@
  */
 static void print_usage(bool by_arg) {
 	fputs(
-"Usage: test-builder [-c] [-p] script\n"
-"       test-builder [-c] [-p] -e string\n"
+"Usage: test-builder [-c] [-p] <scripts>\n"
+"       test-builder [-c] [-p] -e <strings>\n"
 "\n"
-"  -e \tEvaluate string instead of file.\n"
-"  -c \tCheck script only, reporting any errors or requested info.\n"
-"  -p \tPrint info for script after loading.\n"
+"  -e \tEvaluate strings instead of files.\n"
+"  -c \tCheck scripts only, reporting any errors or requested info.\n"
+"  -p \tPrint info for scripts after loading.\n"
 "  -h \tPrint this message.\n"
 "  -v \tPrint version.\n",
 	(by_arg) ? stdout : stderr);
@@ -66,19 +66,18 @@ enum {
  */
 static bool parse_args(int argc, char **restrict argv,
 		uint32_t *restrict flags,
-		const char **restrict script_arg) {
+		SGS_PtrList *restrict script_args) {
 	for (;;) {
 		const char *arg;
 		--argc;
 		++argv;
 		if (argc < 1) {
-			if (!*script_arg) goto INVALID;
+			if (!script_args->count) goto INVALID;
 			break;
 		}
 		arg = *argv;
 		if (*arg != '-') {
-			if (*script_arg) goto INVALID;
-			*script_arg = arg;
+			SGS_PtrList_add(script_args, arg);
 			continue;
 		}
 NEXT_C:
@@ -95,30 +94,45 @@ NEXT_C:
 		case 'h':
 			if (*flags != 0) goto INVALID;
 			print_usage(true);
-			return false;
+			goto CLEAR;
 		case 'p':
 			*flags |= ARG_PRINT_INFO;
 			break;
 		case 'v':
 			print_version();
-			return false;
+			goto CLEAR;
 		default:
 			goto INVALID;
 		}
 		goto NEXT_C;
 	}
-	return (*script_arg != NULL);
+	return (script_args->count != 0);
 INVALID:
 	print_usage(false);
+CLEAR:
+	SGS_PtrList_clear(script_args);
 	return false;
 }
 
-/**
+/*
+ * Discard the programs in the list, ignoring NULL entries,
+ * and clearing the list.
+ */
+static void discard_programs(SGS_PtrList *restrict prg_objs) {
+	SGS_Program **prgs = (SGS_Program**) SGS_PtrList_ITEMS(prg_objs);
+	for (size_t i = 0; i < prg_objs->count; ++i) {
+		SGS_discard_Program(prgs[i]);
+	}
+	SGS_PtrList_clear(prg_objs);
+}
+
+/*
  * Run script through test code.
  *
  * \return SGS_Program or NULL on error
  */
-SGS_Program* SGS_build(const char *restrict script_arg, bool is_path) {
+static SGS_Program *build_program(const char *restrict script_arg,
+		bool is_path) {
 	SGS_Program *o = NULL;
 	SGS_SymTab *symtab = SGS_create_SymTab();
 	if (!symtab)
@@ -154,26 +168,46 @@ CLOSE:
 	return o;
 }
 
-/*
- * Process the given script file.
+/**
+ * Build the listed scripts, adding each result (even if NULL)
+ * to the program list.
  *
- * \return true unless error occurred
+ * \return number of programs successfully built
  */
-static bool build(const char *restrict script_arg,
-		SGS_Program **restrict prg_out,
-		uint32_t options) {
-	SGS_Program *prg;
-	bool is_path = !(options & ARG_EVAL_STRING);
-	if (!(prg = SGS_build(script_arg, is_path)))
-		return false;
-	if ((options & ARG_PRINT_INFO) != 0)
-		SGS_Program_print_info(prg);
-	if ((options & ARG_ONLY_COMPILE) != 0) {
-		SGS_discard_Program(prg);
-		*prg_out = NULL;
-		return true;
+size_t SGS_build(const SGS_PtrList *restrict script_args, bool are_paths,
+		SGS_PtrList *restrict prg_objs) {
+	size_t built = 0;
+	const char **args = (const char**) SGS_PtrList_ITEMS(script_args);
+	for (size_t i = 0; i < script_args->count; ++i) {
+		SGS_Program *prg = build_program(args[i], are_paths);
+		if (prg != NULL) ++built;
+		SGS_PtrList_add(prg_objs, prg);
 	}
-	*prg_out = prg;
+	return built;
+}
+
+/*
+ * Process the listed scripts.
+ *
+ * \return true if at least one script succesfully built
+ */
+static bool build(const SGS_PtrList *restrict script_args,
+		SGS_PtrList *restrict prg_objs,
+		uint32_t options) {
+	bool are_paths = !(options & ARG_EVAL_STRING);
+	if (!SGS_build(script_args, are_paths, prg_objs))
+		return false;
+	if ((options & ARG_PRINT_INFO) != 0) {
+		const SGS_Program **prgs =
+			(const SGS_Program**) SGS_PtrList_ITEMS(prg_objs);
+		for (size_t i = 0; i < prg_objs->count; ++i) {
+			const SGS_Program *prg = prgs[i];
+			if (prg != NULL) SGS_Program_print_info(prg);
+		}
+	}
+	if ((options & ARG_ONLY_COMPILE) != 0) {
+		discard_programs(prg_objs);
+	}
 	return true;
 }
 
@@ -181,16 +215,18 @@ static bool build(const char *restrict script_arg,
  * Main function.
  */
 int main(int argc, char **restrict argv) {
-	const char *script_arg = NULL;
+	SGS_PtrList script_args = (SGS_PtrList){0};
+	SGS_PtrList prg_objs = (SGS_PtrList){0};
 	uint32_t options = 0;
-	SGS_Program *prg;
-	if (!parse_args(argc, argv, &options, &script_arg))
+	if (!parse_args(argc, argv, &options, &script_args))
 		return 0;
-	if (!build(script_arg, &prg, options))
+	bool error = !build(&script_args, &prg_objs, options);
+	SGS_PtrList_clear(&script_args);
+	if (error)
 		return 1;
-	if (prg != NULL) {
+	if (prg_objs.count > 0) {
 		// no audio output
-		SGS_discard_Program(prg);
+		discard_programs(&prg_objs);
 	}
 	return 0;
 }
