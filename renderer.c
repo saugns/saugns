@@ -27,7 +27,7 @@ static int16_t audio_buf[BUF_SAMPLES * NUM_CHANNELS];
  *
  * \return true unless error occurred
  */
-static bool produce_audio(SAU_Program *restrict prg, uint32_t srate,
+static bool produce_audio(const SAU_Program *restrict prg, uint32_t srate,
 		SAU_AudioDev *restrict ad, SAU_WAVFile *restrict wf) {
 	SAU_Generator *gen = SAU_create_Generator(prg, srate);
 	size_t len;
@@ -49,14 +49,18 @@ static bool produce_audio(SAU_Program *restrict prg, uint32_t srate,
 }
 
 /*
- * Run the given program through the audio generator until completion.
+ * Run the list of programs through the audio generator until completion,
+ * ignoring NULL entries.
+ *
  * The output is sent to either none, one, or both of the audio device
  * or a WAV file.
  *
  * \return true unless error occurred
  */
-bool SAU_render(SAU_Program *restrict prg, uint32_t srate,
+bool SAU_render(const SAU_PtrList *restrict prg_list, uint32_t srate,
 		bool use_audiodev, const char *restrict wav_path) {
+	if (!prg_list->count) return true;
+
 	SAU_AudioDev *ad = NULL;
 	uint32_t ad_srate = srate;
 	SAU_WAVFile *wf = NULL;
@@ -73,10 +77,21 @@ bool SAU_render(SAU_Program *restrict prg, uint32_t srate,
 	if (ad && wf && (ad_srate != srate)) {
 		SAU_warning(NULL,
 			"generating audio twice, using different sample rates");
-		status = produce_audio(prg, ad_srate, ad, NULL);
-		status = status && produce_audio(prg, srate, NULL, wf);
+		const SAU_Program **prgs =
+			(const SAU_Program**) SAU_PtrList_ITEMS(prg_list);
+		for (size_t i = 0; i < prg_list->count; ++i) {
+			if (!produce_audio(prgs[i], ad_srate, ad, NULL))
+				status = false;
+			if (!produce_audio(prgs[i], srate, NULL, wf))
+				status = false;
+		}
 	} else {
-		status = produce_audio(prg, ad_srate, ad, wf);
+		const SAU_Program **prgs =
+			(const SAU_Program**) SAU_PtrList_ITEMS(prg_list);
+		for (size_t i = 0; i < prg_list->count; ++i) {
+			if (!produce_audio(prgs[i], ad_srate, ad, wf))
+				status = false;
+		}
 	}
 
 CLEANUP:
@@ -84,7 +99,8 @@ CLEANUP:
 		SAU_close_AudioDev(ad);
 	}
 	if (wf) {
-		status = status && (SAU_close_WAVFile(wf) == 0);
+		if (SAU_close_WAVFile(wf) != 0)
+			status = false;
 	}
 	return status;
 }

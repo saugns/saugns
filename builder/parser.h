@@ -1,4 +1,4 @@
-/* saugns: Audio generator module.
+/* saugns: Script file parser.
  * Copyright (c) 2011-2012, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -12,15 +12,22 @@
  */
 
 #pragma once
-#include "../program.h"
+#include "script.h"
+#include "scanner.h"
+#include "symtab.h"
 
-struct SAU_Generator;
-typedef struct SAU_Generator SAU_Generator;
+#define SAU_PD_STRBUF_LEN 256
 
-SAU_Generator* SAU_create_Generator(const SAU_Program *restrict prg,
-		uint32_t srate) SAU__malloclike;
-void SAU_destroy_Generator(SAU_Generator *restrict o);
+/**
+ * Data used for the duration of a parse.
+ */
+typedef struct SAU_ParseData {
+	SAU_ScriptOptions sopt;
+	SAU_SymTab *st;
+	const char *const*wave_names;
+	const char *const*slope_names;
+	uint8_t strbuf[SAU_PD_STRBUF_LEN];
+} SAU_ParseData;
 
-bool SAU_Generator_run(SAU_Generator *restrict o,
-		int16_t *restrict buf, size_t buf_len,
-		size_t *restrict out_len);
+SAU_ParseData *SAU_create_ParseData(void) SAU__malloclike;
+void SAU_destroy_ParseData(SAU_ParseData *o);

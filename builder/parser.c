@@ -11,9 +11,7 @@
  * <https://www.gnu.org/licenses/>.
  */
 
-#include "scanner.h"
-#include "symtab.h"
-#include "script.h"
+#include "parser.h"
 #include "../math.h"
 #include <string.h>
 #include <stdlib.h>
@@ -33,16 +31,6 @@
 /* Sensible to print, for ASCII only. */
 #define IS_VISIBLE(c) ((c) >= '!' && (c) <= '~')
 
-#define STRBUF_LEN 256
-
-typedef struct LookupData {
-	SAU_ScriptOptions sopt;
-	SAU_SymTab *st;
-	const char *const*wave_names;
-	const char *const*slope_names;
-	uint8_t strbuf[STRBUF_LEN];
-} LookupData;
-
 /*
  * Default script options, used until changed in a script.
  */
@@ -55,13 +43,19 @@ static const SAU_ScriptOptions def_sopt = {
 	.def_ratio = 1.f,
 };
 
-static void destroy_LookupData(LookupData *o) {
+/**
+ * Destroy instance.
+ */
+void SAU_destroy_ParseData(SAU_ParseData *o) {
 	if (o->st) SAU_destroy_SymTab(o->st);
 	free(o);
 }
 
-static LookupData *create_LookupData(void) {
-	LookupData *o = calloc(1, sizeof(LookupData));
+/**
+ * Create instance.
+ */
+SAU_ParseData *SAU_create_ParseData(void) {
+	SAU_ParseData *o = calloc(1, sizeof(SAU_ParseData));
 	if (!o) return NULL;
 	o->sopt = def_sopt;
 	SAU_SymTab *st = SAU_create_SymTab();
@@ -74,7 +68,7 @@ static LookupData *create_LookupData(void) {
 	return o;
 
 ERROR:
-	destroy_LookupData(o);
+	SAU_destroy_ParseData(o);
 	return NULL;
 }
 
@@ -89,18 +83,18 @@ ERROR:
  */
 bool scan_syms(SAU_Scanner *restrict o,
 		const void **restrict strp, size_t *restrict lenp) {
-	LookupData *ld = o->data;
-	bool truncated = !SAU_Scanner_getsyms(o, ld->strbuf,
-				(STRBUF_LEN - 1), lenp);
+	SAU_ParseData *pd = o->data;
+	bool truncated = !SAU_Scanner_getsyms(o, pd->strbuf,
+				(SAU_PD_STRBUF_LEN - 1), lenp);
 	if (*lenp == 0) {
 		*strp = NULL;
 		return true;
 	}
-	const char *pool_str = SAU_SymTab_pool_str(ld->st, ld->strbuf, *lenp);
+	const char *pool_str = SAU_SymTab_pool_str(pd->st, pd->strbuf, *lenp);
 	if (pool_str == NULL) {
 		SAU_Scanner_error(o, NULL,
 			"failed to register string '%s'",
-			ld->strbuf);
+			pd->strbuf);
 	}
 	*strp = pool_str;
 	return !truncated;
@@ -138,7 +132,7 @@ static int32_t scan_symafind(SAU_Scanner *restrict o,
  *
  * \return false if EOF reached
  */
-static bool handle_unknown_or_end(SAU_Scanner *restrict o, uint8_t c) {
+static bool handle_unknown_or_eof(SAU_Scanner *restrict o, uint8_t c) {
 	if (c == 0)
 		return false;
 	if (IS_VISIBLE(c)) {
@@ -147,6 +141,22 @@ static bool handle_unknown_or_end(SAU_Scanner *restrict o, uint8_t c) {
 		SAU_Scanner_warning(o, NULL, "invalid character (value 0x%02hhX)", c);
 	}
 	return true;
+}
+
+/*
+ * Print warning for EOF without closing \p c scope-closing character.
+ */
+static void warn_eof_without_closing(SAU_Scanner *restrict o, uint8_t c) {
+	SAU_Scanner_warning(o, NULL, "end of file without closing '%c'", c);
+}
+
+/*
+ * Print warning for scope-closing character without scope-opening character.
+ */
+static void warn_closing_without_opening(SAU_Scanner *restrict o,
+		uint8_t close_c, uint8_t open_c) {
+	SAU_Scanner_warning(o, NULL, "closing '%c' without opening '%c'",
+		close_c, open_c);
 }
 
 typedef float (*NumSym_f)(SAU_Scanner *o);
@@ -243,7 +253,8 @@ static bool scan_num(SAU_Scanner *restrict o, NumSym_f scan_numsym,
 		return false;
 	if (mul_inv) num = 1.f / num;
 	if (fabs(num) == INFINITY) {
-		SAU_Scanner_warning(o, &np.sf_start, "discarding infinite number");
+		SAU_Scanner_warning(o, &np.sf_start,
+			"discarding infinite number");
 		return false;
 	}
 	*var = num;
@@ -297,7 +308,7 @@ static float scan_note(SAU_Scanner *restrict o) {
 			25.f/12.f
 		}
 	};
-	LookupData *ld = o->data;
+	SAU_ParseData *pd = o->data;
 	float freq;
 	uint8_t c = SAU_Scanner_getc(o);
 	int32_t octave;
@@ -312,7 +323,7 @@ static float scan_note(SAU_Scanner *restrict o) {
 	}
 	if (c < 'A' || c > 'G') {
 		SAU_Scanner_warning(o, NULL,
-			"invalid note specified - should be C, D, E, F, G, A or B");
+"invalid note specified - should be C, D, E, F, G, A or B");
 		return NAN;
 	}
 	note = c - 'C';
@@ -333,10 +344,12 @@ static float scan_note(SAU_Scanner *restrict o) {
 			"invalid octave specified for note - valid range 0-10");
 		octave = 4;
 	}
-	freq = ld->sopt.A4_freq * (3.f/5.f); /* get C4 */
+	freq = pd->sopt.A4_freq * (3.f/5.f); /* get C4 */
 	freq *= octaves[octave] * notes[semitone][note];
 	if (subnote >= 0)
-		freq *= 1.f + (notes[semitone][note+1] / notes[semitone][note] - 1.f) *
+		freq *= 1.f +
+			(notes[semitone][note+1] / notes[semitone][note] -
+				1.f) *
 			(notes[1][subnote] - 1.f);
 	return freq;
 }
@@ -359,14 +372,15 @@ static const char *scan_label(SAU_Scanner *restrict o,
 	const void *s = NULL;
 	scan_syms(o, &s, len);
 	if (*len == 0) {
-		SAU_Scanner_warning(o, NULL, "ignoring %c without label name", op);
+		SAU_Scanner_warning(o, NULL,
+			"ignoring %c without label name", op);
 	}
 	return s;
 }
 
 static int32_t scan_wavetype(SAU_Scanner *restrict o) {
-	LookupData *ld = o->data;
-	int32_t wave = scan_symafind(o, ld->wave_names, SAU_WAVE_TYPES,
+	SAU_ParseData *pd = o->data;
+	int32_t wave = scan_symafind(o, pd->wave_names, SAU_WAVE_TYPES,
 		"wave type");
 	return wave;
 }
@@ -388,7 +402,7 @@ static bool scan_tpar_state(SAU_Scanner *restrict o,
 static bool scan_tpar_slope(SAU_Scanner *restrict o,
 		NumSym_f scan_numsym,
 		SAU_TimedParam *restrict tpar, bool ratio) {
-	LookupData *ld = o->data;
+	SAU_ParseData *pd = o->data;
 	bool goal = false;
 	float vt;
 	uint32_t time_ms = SAU_TIME_DEFAULT;
@@ -407,7 +421,7 @@ static bool scan_tpar_slope(SAU_Scanner *restrict o,
 		case SAU_SCAN_LNBRK:
 			break;
 		case 'c': {
-			int32_t type = scan_symafind(o, ld->slope_names,
+			int32_t type = scan_symafind(o, pd->slope_names,
 				SAU_SLOPE_TYPES, "slope change type");
 			if (type >= 0) {
 				slope = type;
@@ -426,15 +440,17 @@ static bool scan_tpar_slope(SAU_Scanner *restrict o,
 		case ']':
 			goto RETURN;
 		default:
-			if (!handle_unknown_or_end(o, c)) goto FINISH;
+			if (!handle_unknown_or_eof(o, c)) {
+				warn_eof_without_closing(o, ']');
+				goto RETURN;
+			}
 			break;
 		}
 	}
-FINISH:
-	SAU_Scanner_warning(o, NULL, "end of file without closing ']'");
 RETURN:
 	if (!goal) {
-		SAU_Scanner_warning(o, NULL, "ignoring value slope with no target value");
+		SAU_Scanner_warning(o, NULL,
+			"ignoring value slope with no target value");
 		return false;
 	}
 	tpar->vt = vt;
@@ -454,11 +470,9 @@ RETURN:
  */
 
 typedef struct SAU_Parser {
-	LookupData *ld;
+	SAU_ParseData *pd;
 	SAU_Scanner *sc;
-	SAU_SymTab *st;
 	uint32_t call_level;
-	uint32_t scope_id;
 	/* node state */
 	SAU_ScriptEvData *events;
 	SAU_ScriptEvData *last_event;
@@ -472,16 +486,16 @@ typedef struct SAU_Parser {
  */
 static void init_Parser(SAU_Parser *restrict o) {
 	*o = (SAU_Parser){0};
-	o->ld = create_LookupData();
+	o->pd = SAU_create_ParseData();
 	o->sc = SAU_create_Scanner();
-	o->sc->data = o->ld;
+	o->sc->data = o->pd;
 }
 
 /*
  * Finalize parser instance.
  */
 static void fini_Parser(SAU_Parser *restrict o) {
-	destroy_LookupData(o->ld);
+	SAU_destroy_ParseData(o->pd);
 	SAU_destroy_Scanner(o->sc);
 }
 
@@ -542,7 +556,7 @@ static bool parse_waittime(ParseLevel *restrict pl) {
 	if (SAU_Scanner_tryc(sc, 't')) {
 		if (!pl->last_operator) {
 			SAU_Scanner_warning(sc, NULL,
-				"add wait for last duration before any parts given");
+"add wait for last duration before any parts given");
 			return false;
 		}
 		pl->last_event->ev_flags |= SAU_SDEV_ADD_WAIT_DURATION;
@@ -612,7 +626,7 @@ static void destroy_event_node(SAU_ScriptEvData *restrict e) {
 
 static void end_operator(ParseLevel *restrict pl) {
 	SAU_Parser *o = pl->o;
-	LookupData *ld = o->ld;
+	SAU_ParseData *pd = o->pd;
 	SAU_ScriptOpData *op = pl->operator;
 	if (!op)
 		return; /* nothing to do */
@@ -621,7 +635,7 @@ static void end_operator(ParseLevel *restrict pl) {
 	if (SAU_TimedParam_ENABLED(&op->amp)) {
 		op->op_params |= SAU_POPP_AMP;
 		if (!(pl->pl_flags & SDPL_NESTED_SCOPE))
-			op->amp.v0 *= ld->sopt.ampmult;
+			op->amp.v0 *= pd->sopt.ampmult;
 	}
 	SAU_ScriptOpData *pop = op->on_prev;
 	if (!pop) {
@@ -717,7 +731,7 @@ static void begin_event(ParseLevel *restrict pl, uint8_t linktype,
 static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
 		bool is_composite) {
 	SAU_Parser *o = pl->o;
-	LookupData *ld = o->ld;
+	SAU_ParseData *pd = o->pd;
 	SAU_ScriptEvData *e = pl->event;
 	SAU_ScriptOpData *op, *pop = pl->on_prev;
 	/*
@@ -768,12 +782,12 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
 		 * New operator with initial parameter values.
 		 */
 		op->op_flags = SAU_SDOP_TIME_DEFAULT; /* default: depends on context */
-		op->time_ms = ld->sopt.def_time_ms;
+		op->time_ms = pd->sopt.def_time_ms;
 		if (!(pl->pl_flags & SDPL_NESTED_SCOPE)) {
-			op->freq.v0 = ld->sopt.def_freq;
+			op->freq.v0 = pd->sopt.def_freq;
 		} else {
 			op->op_flags |= SAU_SDOP_NESTED;
-			op->freq.v0 = ld->sopt.def_ratio;
+			op->freq.v0 = pd->sopt.def_ratio;
 			op->freq.flags |= SAU_TPAR_STATE_RATIO;
 		}
 		op->freq.flags |= SAU_TPAR_STATE;
@@ -815,11 +829,11 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
 	 * previous node.
 	 */
 	if (pl->set_label != NULL) {
-		SAU_SymTab_set(ld->st, pl->set_label, strlen(pl->set_label), op);
+		SAU_SymTab_set(pd->st, pl->set_label, strlen(pl->set_label), op);
 		op->label = pl->set_label;
 		pl->set_label = NULL;
 	} else if (!is_composite && pop != NULL && pop->label != NULL) {
-		SAU_SymTab_set(ld->st, pop->label, strlen(pop->label), op);
+		SAU_SymTab_set(pd->st, pop->label, strlen(pop->label), op);
 		op->label = pop->label;
 	}
 }
@@ -905,20 +919,20 @@ static void end_scope(ParseLevel *restrict pl) {
 
 static bool parse_settings(ParseLevel *restrict pl) {
 	SAU_Parser *o = pl->o;
-	LookupData *ld = o->ld;
+	SAU_ParseData *pd = o->pd;
 	SAU_Scanner *sc = o->sc;
 	pl->location = SDPL_IN_DEFAULTS;
 	for (;;) {
 		uint8_t c = SAU_Scanner_getc_nospace(sc);
 		switch (c) {
 		case 'a':
-			if (scan_num(sc, NULL, &ld->sopt.ampmult, false)) {
-				ld->sopt.changed |= SAU_SOPT_AMPMULT;
+			if (scan_num(sc, NULL, &pd->sopt.ampmult, false)) {
+				pd->sopt.changed |= SAU_SOPT_AMPMULT;
 			}
 			break;
 		case 'f':
-			if (scan_num(sc, scan_note, &ld->sopt.def_freq, false)) {
-				ld->sopt.changed |= SAU_SOPT_DEF_FREQ;
+			if (scan_num(sc, scan_note, &pd->sopt.def_freq, false)) {
+				pd->sopt.changed |= SAU_SOPT_DEF_FREQ;
 			}
 			break;
 		case 'n': {
@@ -929,20 +943,20 @@ static bool parse_settings(ParseLevel *restrict pl) {
 "ignoring tuning frequency (Hz) below 1.0");
 					break;
 				}
-				ld->sopt.A4_freq = freq;
-				ld->sopt.changed |= SAU_SOPT_A4_FREQ;
+				pd->sopt.A4_freq = freq;
+				pd->sopt.changed |= SAU_SOPT_A4_FREQ;
 			}
 			break; }
 		case 'r':
-			if (scan_num(sc, NULL, &ld->sopt.def_ratio, true)) {
-				ld->sopt.changed |= SAU_SOPT_DEF_RATIO;
+			if (scan_num(sc, NULL, &pd->sopt.def_ratio, true)) {
+				pd->sopt.changed |= SAU_SOPT_DEF_RATIO;
 			}
 			break;
 		case 't': {
 			float time;
 			if (scan_time(sc, &time)) {
-				ld->sopt.def_time_ms = lrint(time * 1000.f);
-				ld->sopt.changed |= SAU_SOPT_DEF_TIME;
+				pd->sopt.def_time_ms = lrint(time * 1000.f);
+				pd->sopt.changed |= SAU_SOPT_DEF_TIME;
 			}
 			break; }
 		default:
@@ -959,7 +973,7 @@ static bool parse_level(SAU_Parser *restrict o,
 
 static bool parse_step(ParseLevel *restrict pl) {
 	SAU_Parser *o = pl->o;
-	LookupData *ld = o->ld;
+	SAU_ParseData *pd = o->pd;
 	SAU_Scanner *sc = o->sc;
 	SAU_ScriptEvData *e = pl->event;
 	SAU_ScriptOpData *op = pl->operator;
@@ -1065,7 +1079,7 @@ static bool parse_step(ParseLevel *restrict pl) {
 		case 't':
 			if (SAU_Scanner_tryc(sc, '*')) {
 				op->op_flags |= SAU_SDOP_TIME_DEFAULT; /* later fitted or kept to default */
-				op->time_ms = ld->sopt.def_time_ms;
+				op->time_ms = pd->sopt.def_time_ms;
 			} else if (SAU_Scanner_tryc(sc, 'i')) {
 				if (!(pl->pl_flags & SDPL_NESTED_SCOPE)) {
 					SAU_Scanner_warning(sc, NULL,
@@ -1107,7 +1121,7 @@ static bool parse_level(SAU_Parser *restrict o,
 		ParseLevel *restrict parent_pl,
 		uint8_t linktype, uint8_t newscope) {
 	ParseLevel pl;
-	LookupData *ld = o->ld;
+	SAU_ParseData *pd = o->pd;
 	const char *label;
 	size_t label_len;
 	uint8_t flags = 0;
@@ -1140,7 +1154,7 @@ static bool parse_level(SAU_Parser *restrict o,
 			pl.location = SDPL_IN_NONE;
 			label = scan_label(sc, &label_len, ':');
 			if (label_len > 0) {
-				SAU_ScriptOpData *ref = SAU_SymTab_get(ld->st, label, label_len);
+				SAU_ScriptOpData *ref = SAU_SymTab_get(pd->st, label, label_len);
 				if (!ref)
 					SAU_Scanner_warning(sc, NULL,
 "ignoring reference to undefined label");
@@ -1168,7 +1182,7 @@ static bool parse_level(SAU_Parser *restrict o,
 			break;
 		case '>':
 			if (pl.scope != SCOPE_NEST) {
-				SAU_Scanner_warning(sc, NULL, "closing '>' without opening '<'");
+				warn_closing_without_opening(sc, '>', '<');
 				break;
 			}
 			end_operator(&pl);
@@ -1235,14 +1249,14 @@ static bool parse_level(SAU_Parser *restrict o,
 			break;
 		case '}':
 			if (pl.scope != SCOPE_BIND) {
-				SAU_Scanner_warning(sc, NULL, "closing '}' without opening '{'");
+				warn_closing_without_opening(sc, '}', '{');
 				break;
 			}
 			endscope = true;
 			goto RETURN;
 		default:
 		INVALID:
-			if (!handle_unknown_or_end(sc, c)) goto FINISH;
+			if (!handle_unknown_or_eof(sc, c)) goto FINISH;
 			break;
 		}
 		/* Return to sub-parsing routines. */
@@ -1260,9 +1274,9 @@ static bool parse_level(SAU_Parser *restrict o,
 	}
 FINISH:
 	if (newscope == SCOPE_NEST)
-		SAU_Scanner_warning(sc, NULL, "end of file without closing '>'s");
-	if (newscope == SCOPE_BIND)
-		SAU_Scanner_warning(sc, NULL, "end of file without closing '}'s");
+		warn_eof_without_closing(sc, '>');
+	else if (newscope == SCOPE_BIND)
+		warn_eof_without_closing(sc, '}');
 RETURN:
 	end_scope(&pl);
 	--o->call_level;
@@ -1280,7 +1294,7 @@ static bool parse_file(SAU_Parser *restrict o, const char *restrict fname) {
 	if (!SAU_Scanner_fopenrb(sc, fname)) {
 		return false;
 	}
-	parse_level(o, 0, NL_GRAPH, SCOPE_TOP);
+	parse_level(o, NULL, NL_GRAPH, SCOPE_TOP);
 	SAU_Scanner_close(sc);
 	return true;
 }
@@ -1517,7 +1531,7 @@ SAU_Script* SAU_load_Script(const char *restrict fname) {
 	o = calloc(1, sizeof(SAU_Script));
 	o->events = pr.events;
 	o->name = fname;
-	o->sopt = pr.ld->sopt;
+	o->sopt = pr.pd->sopt;
 
 DONE:
 	fini_Parser(&pr);

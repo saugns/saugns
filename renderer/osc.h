@@ -77,3 +77,19 @@ static inline float SAU_Osc_run(SAU_Osc *restrict o,
 	o->phase += phase_inc;
 	return s;
 }
+
+void SAU_Osc_block_add(SAU_Osc *restrict o,
+		const float *restrict lut, double coeff,
+		float *restrict buf, size_t buf_len,
+		size_t op_num,
+		const float *restrict freq,
+		const float *restrict amp,
+		const float *restrict pm_f);
+
+void SAU_Osc_block_mul(SAU_Osc *restrict o,
+		const float *restrict lut, double coeff,
+		float *restrict buf, size_t buf_len,
+		size_t op_num,
+		const float *restrict freq,
+		const float *restrict amp,
+		const float *restrict pm_f);

@@ -6,7 +6,6 @@ LFLAGS_OSSAUDIO=$(LFLAGS) -lossaudio
 OBJ=\
 	common.o \
 	arrtype.o \
-	builder/ptrlist.o \
 	builder/symtab.o \
 	builder/file.o \
 	builder/scanner.o \
@@ -17,7 +16,9 @@ OBJ=\
 	program/slope.o \
 	program/param.o \
 	program/wave.o \
+	ptrlist.o \
 	renderer.o \
+	renderer/osc.o \
 	renderer/generator.o \
 	audiodev.o \
 	wavfile.o \
@@ -25,13 +26,13 @@ OBJ=\
 TEST_OBJ=\
 	common.o \
 	arrtype.o \
-	builder/ptrlist.o \
 	builder/symtab.o \
 	builder/file.o \
 	builder/scanner.o \
 	builder/lexer.o \
 	builder/parseconv.o \
 	mempool.o \
+	ptrlist.o \
 	test-builder.o
 
 all: saugns
@@ -68,7 +69,7 @@ audiodev.o: audiodev.c audiodev/*.c audiodev.h common.h
 common.o: common.c common.h
 	$(CC) -c $(CFLAGS) common.c
 
-builder.o: builder.c saugns.h builder/script.h builder/ptrlist.h program.h program/param.h program/slope.h program/wave.h common.h
+builder.o: builder.c saugns.h builder/script.h program.h program/param.h program/slope.h program/wave.h ptrlist.h common.h
 	$(CC) -c $(CFLAGS) builder.c
 
 builder/file.o: builder/file.c builder/file.h common.h
@@ -77,14 +78,11 @@ builder/file.o: builder/file.c builder/file.h common.h
 builder/lexer.o: builder/lexer.c builder/lexer.h builder/symtab.h builder/scanner.h builder/file.h math.h common.h
 	$(CC) -c $(CFLAGS) builder/lexer.c -o builder/lexer.o
 
-builder/parseconv.o: builder/parseconv.c builder/script.h builder/ptrlist.h program.h program/param.h program/slope.h program/wave.h arrtype.h common.h
+builder/parseconv.o: builder/parseconv.c builder/script.h program.h program/param.h program/slope.h program/wave.h arrtype.h ptrlist.h common.h
 	$(CC) -c $(CFLAGS) builder/parseconv.c -o builder/parseconv.o
 
-builder/parser.o: builder/parser.c builder/scanner.h builder/file.h builder/symtab.h builder/script.h builder/ptrlist.h program.h program/param.h program/slope.h program/wave.h math.h common.h
+builder/parser.o: builder/parser.c builder/parser.h builder/scanner.h builder/file.h builder/symtab.h builder/script.h program.h program/param.h program/slope.h program/wave.h ptrlist.h math.h common.h
 	$(CC) -c $(CFLAGS) builder/parser.c -o builder/parser.o
-
-builder/ptrlist.o: builder/ptrlist.c builder/ptrlist.h common.h
-	$(CC) -c $(CFLAGS) builder/ptrlist.c -o builder/ptrlist.o
 
 builder/scanner.o: builder/scanner.c builder/scanner.h builder/file.h math.h common.h
 	$(CC) -c $(CFLAGS) builder/scanner.c -o builder/scanner.o
@@ -104,16 +102,22 @@ program/param.o: program/param.c program/param.h program/slope.h math.h common.h
 program/wave.o: program/wave.c program/wave.h math.h common.h
 	$(CC) -c $(CFLAGS) program/wave.c -o program/wave.o
 
-renderer.o: renderer.c saugns.h renderer/generator.h program.h program/param.h program/slope.h program/wave.h audiodev.h wavfile.h common.h
+ptrlist.o: ptrlist.c ptrlist.h common.h
+	$(CC) -c $(CFLAGS) ptrlist.c
+
+renderer.o: renderer.c saugns.h renderer/generator.h program.h program/param.h program/slope.h program/wave.h audiodev.h wavfile.h ptrlist.h common.h
 	$(CC) -c $(CFLAGS) renderer.c
 
 renderer/generator.o: renderer/generator.c renderer/generator.h renderer/osc.h program.h program/param.h program/slope.h program/wave.h math.h common.h
 	$(CC) -c $(CFLAGS) renderer/generator.c -o renderer/generator.o
 
-saugns.o: saugns.c saugns.h program.h program/param.h program/slope.h program/wave.h common.h
+renderer/osc.o: renderer/osc.c renderer/osc.h program/wave.h math.h common.h
+	$(CC) -c $(CFLAGS) renderer/osc.c -o renderer/osc.o
+
+saugns.o: saugns.c saugns.h program.h program/param.h program/slope.h program/wave.h ptrlist.h common.h
 	$(CC) -c $(CFLAGS) saugns.c
 
-test-builder.o: test-builder.c saugns.h program.h program/param.h program/slope.h program/wave.h builder/scanner.h builder/file.h builder/lexer.h builder/symtab.h common.h
+test-builder.o: test-builder.c saugns.h program.h program/param.h program/slope.h program/wave.h builder/scanner.h builder/file.h builder/lexer.h builder/symtab.h ptrlist.h common.h
 	$(CC) -c $(CFLAGS) test-builder.c
 
 wavfile.o: wavfile.c wavfile.h common.h

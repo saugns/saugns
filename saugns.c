@@ -23,8 +23,8 @@
  */
 static void print_usage(bool by_arg) {
 	fputs(
-"Usage: saugns [-a|-m] [-r srate] [-p] [-o wavfile] scriptfile\n"
-"       saugns [-c] [-p] scriptfile\n"
+"Usage: saugns [-a|-m] [-r srate] [-p] [-o wavfile] scriptfile(s)\n"
+"       saugns [-c] [-p] scriptfile(s)\n"
 "\n"
 "By default, audio device output is enabled.\n"
 "\n"
@@ -34,8 +34,8 @@ static void print_usage(bool by_arg) {
 "     \tif unsupported for audio device, warns and prints rate used instead.\n"
 "  -o \tWrite a 16-bit PCM WAV file, always using the sample rate requested;\n"
 "     \tdisables audio device output by default.\n"
-"  -c \tCheck script only, reporting any errors or requested info.\n"
-"  -p \tPrint script info after loading.\n"
+"  -c \tCheck scripts only, reporting any errors or requested info.\n"
+"  -p \tPrint info for scripts after loading.\n"
 "  -h \tPrint this message.\n"
 "  -v \tPrint version.\n",
 	(by_arg) ? stdout : stderr);
@@ -82,7 +82,7 @@ enum {
  */
 static bool parse_args(int argc, char **restrict argv,
 		uint32_t *restrict flags,
-		const char **restrict script_path,
+		SAU_PtrList *restrict script_paths,
 		const char **restrict wav_path,
 		uint32_t *restrict srate) {
 	int i;
@@ -91,13 +91,12 @@ static bool parse_args(int argc, char **restrict argv,
 		--argc;
 		++argv;
 		if (argc < 1) {
-			if (!*script_path) goto INVALID;
+			if (!script_paths->count) goto INVALID;
 			break;
 		}
 		arg = *argv;
 		if (*arg != '-') {
-			if (*script_path) goto INVALID;
-			*script_path = arg;
+			SAU_PtrList_add(script_paths, arg);
 			continue;
 		}
 NEXT_C:
@@ -118,7 +117,7 @@ NEXT_C:
 		case 'h':
 			if (*flags != 0) goto INVALID;
 			print_usage(true);
-			return false;
+			goto CLEAR;
 		case 'm':
 			if ((*flags & (ARG_ENABLE_AUDIO_DEV |
 					ARG_ONLY_COMPILE)) != 0)
@@ -155,72 +154,93 @@ NEXT_C:
 			continue;
 		case 'v':
 			print_version();
-			return false;
+			goto CLEAR;
 		default:
 			goto INVALID;
 		}
 		goto NEXT_C;
 	}
-	return (*script_path != NULL);
+	return (script_paths->count != 0);
 
 INVALID:
 	print_usage(false);
+CLEAR:
+	SAU_PtrList_clear(script_paths);
 	return false;
 }
 
 /*
- * Process the given script file.
- *
- * \return true unless error occurred
+ * Discard the programs in the list, ignoring NULL entries,
+ * and clearing the list.
  */
-static bool build(const char *restrict fname,
-		SAU_Program **restrict prg_out,
-		uint32_t options) {
-	SAU_Program *prg;
-	if (!(prg = SAU_build(fname)))
-		return false;
-	if ((options & ARG_PRINT_INFO) != 0)
-		SAU_Program_print_info(prg);
-	if ((options & ARG_ONLY_COMPILE) != 0) {
-		SAU_discard_Program(prg);
-		*prg_out = NULL;
-		return true;
+static void discard_programs(SAU_PtrList *restrict prg_list) {
+	SAU_Program **prgs = (SAU_Program**) SAU_PtrList_ITEMS(prg_list);
+	for (size_t i = 0; i < prg_list->count; ++i) {
+		SAU_Program *prg = prgs[i];
+		if (prg != NULL) SAU_discard_Program(prg);
 	}
-	*prg_out = prg;
+	SAU_PtrList_clear(prg_list);
+}
+
+/*
+ * Process the listed script files.
+ *
+ * \return true if at least one script succesfully built
+ */
+static bool build(const SAU_PtrList *restrict path_list,
+		SAU_PtrList *restrict prg_list,
+		uint32_t options) {
+	if (!SAU_build(path_list, prg_list))
+		return false;
+	if ((options & ARG_PRINT_INFO) != 0) {
+		const SAU_Program **prgs =
+			(const SAU_Program**) SAU_PtrList_ITEMS(prg_list);
+		for (size_t i = 0; i < prg_list->count; ++i) {
+			const SAU_Program *prg = prgs[i];
+			if (prg != NULL) SAU_Program_print_info(prg);
+		}
+	}
+	if ((options & ARG_ONLY_COMPILE) != 0) {
+		discard_programs(prg_list);
+	}
 	return true;
 }
 
 /*
- * Produce results from the given program.
+ * Produce results from the list of programs, ignoring NULL entries.
  *
  * \return true unless error occurred
  */
-static bool render(SAU_Program *restrict prg,
+static bool render(const SAU_PtrList *restrict prg_list,
 		uint32_t srate, uint32_t options,
 		const char *restrict wav_path) {
 	bool use_audiodev = (wav_path != NULL) ?
 		((options & ARG_ENABLE_AUDIO_DEV) != 0) :
 		((options & ARG_DISABLE_AUDIO_DEV) == 0);
-	return SAU_render(prg, srate, use_audiodev, wav_path);
+	return SAU_render(prg_list, srate, use_audiodev, wav_path);
 }
 
 /**
  * Main function.
  */
 int main(int argc, char **argv) {
-	const char *script_path = NULL, *wav_path = NULL;
+	SAU_PtrList script_paths = (SAU_PtrList){0};
+	SAU_PtrList prg_list = (SAU_PtrList){0};
+	const char *wav_path = NULL;
 	uint32_t options = 0;
-	SAU_Program *prg;
 	uint32_t srate = DEFAULT_SRATE;
 
-	if (!parse_args(argc, argv, &options, &script_path, &wav_path,
+	if (!parse_args(argc, argv, &options, &script_paths, &wav_path,
 			&srate))
 		return 0;
-	if (!build(script_path, &prg, options))
+
+	bool error = !build(&script_paths, &prg_list, options);
+	SAU_PtrList_clear(&script_paths);
+	if (error)
 		return 1;
-	if (prg != NULL) {
-		bool error = !render(prg, srate, options, wav_path);
-		SAU_discard_Program(prg);
+	if (prg_list.count > 0) {
+		error = !render(&prg_list, srate, options, wav_path);
+		discard_programs(&prg_list);
 		if (error)
 			return 1;
 	}

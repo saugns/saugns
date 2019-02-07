@@ -27,7 +27,7 @@
  */
 bool SAU_ArrType_add(void *restrict _o,
 		const void *restrict item, size_t item_size) {
-	SAU_UInt8Arr *restrict o = _o;
+	SAU_ByteArr *restrict o = _o;
 	if (!SAU_ArrType_upsize(o, o->count + 1, item_size)) {
 		return false;
 	}
@@ -49,7 +49,7 @@ bool SAU_ArrType_add(void *restrict _o,
  */
 bool SAU_ArrType_upsize(void *restrict _o,
 		size_t count, size_t item_size) {
-	SAU_UInt8Arr *restrict o = _o;
+	SAU_ByteArr *restrict o = _o;
 	size_t asize = o->asize;
 	if (!o->a) asize = 0;
 	size_t min_asize = count * item_size;
@@ -74,7 +74,7 @@ bool SAU_ArrType_upsize(void *restrict _o,
  * (Generic version of the function, to be used through wrapper.)
  */
 void SAU_ArrType_clear(void *restrict _o) {
-	SAU_UInt8Arr *restrict o = _o;
+	SAU_ByteArr *restrict o = _o;
 	if (o->a) {
 		free(o->a);
 		o->a = NULL;
@@ -97,7 +97,7 @@ void SAU_ArrType_clear(void *restrict _o) {
  */
 bool SAU_ArrType_memdup(void *restrict _o,
 		const void **restrict dst, size_t item_size) {
-	SAU_UInt8Arr *restrict o = _o;
+	SAU_ByteArr *restrict o = _o;
 	if (!o->count) {
 		*dst = NULL;
 		return true;

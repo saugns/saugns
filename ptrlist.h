@@ -12,7 +12,7 @@
  */
 
 #pragma once
-#include "../common.h"
+#include "common.h"
 
 /**
  * Pointer list type using an array with resizing.

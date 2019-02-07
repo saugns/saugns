@@ -13,10 +13,12 @@
 
 #pragma once
 #include "program.h"
+#include "ptrlist.h"
 
-#define SAU_VERSION_STR "saugns v0.6.0"
+#define SAU_VERSION_STR "saugns v0.6.1"
 
-SAU_Program* SAU_build(const char *restrict fname);
+size_t SAU_build(const SAU_PtrList *restrict path_list,
+		SAU_PtrList *restrict prg_list);
 
-bool SAU_render(SAU_Program *restrict prg, uint32_t srate,
+bool SAU_render(const SAU_PtrList *restrict prg_list, uint32_t srate,
 		bool use_audiodev, const char *restrict wav_path);

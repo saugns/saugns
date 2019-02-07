@@ -142,7 +142,7 @@ static size_t count_ev_values(const SAU_ProgramEvent *restrict e) {
 #define COUNT_GEN_BUFS(op_nest_depth) ((1 + (op_nest_depth)) * 4)
 
 static bool alloc_for_program(SAU_Generator *restrict o,
-		SAU_Program *restrict prg) {
+		const SAU_Program *restrict prg) {
 	size_t i;
 
 	i = prg->ev_count;
@@ -221,7 +221,7 @@ static EventValue *convert_tpar_update(EventValue *restrict val,
 }
 
 static bool convert_program(SAU_Generator *restrict o,
-		SAU_Program *restrict prg,
+		const SAU_Program *restrict prg,
 		uint32_t srate) {
 	if (!alloc_for_program(o, prg))
 		return false;
@@ -298,7 +298,8 @@ static bool convert_program(SAU_Generator *restrict o,
 /**
  * Create instance for program \p prg and sample rate \p srate.
  */
-SAU_Generator* SAU_create_Generator(SAU_Program *restrict prg, uint32_t srate) {
+SAU_Generator* SAU_create_Generator(const SAU_Program *restrict prg,
+		uint32_t srate) {
 	SAU_Generator *o = calloc(1, sizeof(SAU_Generator));
 	if (!o) return NULL;
 	if (!convert_program(o, prg, srate)) {
@@ -520,44 +521,15 @@ static uint32_t run_block(SAU_Generator *restrict o,
 		SAU_TimedParam_run(&n->amp, amp, len, o->srate, &n->amp_pos, NULL);
 	}
 	if (!wave_env) {
-		/*
-		 * Generate normal output,
-		 * each output added,
-		 * for carriers or PM input.
-		 */
 		const float *lut = SAU_Wave_luts[n->wave];
-		for (i = 0; i < len; ++i) {
-			float s;
-			int32_t s_pm = 0;
-			float s_freq = freq[i];
-			float s_amp = amp[i];
-			if (pm_buf) {
-				s_pm = lrintf(pm_buf[i] * (float) INT32_MAX);
-			}
-			s = SAU_Osc_run(&n->osc, lut, o->osc_coeff, s_freq, s_pm) * s_amp;
-			if (acc_ind) s += s_buf[i];
-			s_buf[i] = s;
-		}
+		SAU_Osc_block_add(&n->osc, lut, o->osc_coeff,
+			s_buf, len, acc_ind,
+			freq, amp, pm_buf);
 	} else {
-		/*
-		 * Generate output between 0.0 and 1.0 (multiplied by amp),
-		 * each output multiplied,
-		 * for FM or AM input.
-		 */
 		const float *lut = SAU_Wave_luts[n->wave];
-		for (i = 0; i < len; ++i) {
-			float s;
-			int32_t s_pm = 0;
-			float s_freq = freq[i];
-			float s_amp = amp[i] * 0.5f;
-			if (pm_buf) {
-				s_pm = lrintf(pm_buf[i] * (float) INT32_MAX);
-			}
-			s = SAU_Osc_run(&n->osc, lut, o->osc_coeff, s_freq, s_pm);
-			s = (s * s_amp) + fabs(s_amp);
-			if (acc_ind) s *= s_buf[i];
-			s_buf[i] = s;
-		}
+		SAU_Osc_block_mul(&n->osc, lut, o->osc_coeff,
+			s_buf, len, acc_ind,
+			freq, amp, pm_buf);
 	}
 	/*
 	 * Update time duration left, zero rest of buffer if unfilled.

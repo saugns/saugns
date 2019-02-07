@@ -651,7 +651,7 @@ static void print_opline(const SAU_ProgramOpData *restrict od) {
 /**
  * Print information about program contents. Useful for debugging.
  */
-void SAU_Program_print_info(SAU_Program *restrict o) {
+void SAU_Program_print_info(const SAU_Program *restrict o) {
 	fprintf(stdout,
 		"Program: \"%s\"\n", o->name);
 	fprintf(stdout,

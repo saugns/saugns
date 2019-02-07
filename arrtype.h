@@ -83,4 +83,4 @@ bool SAU_ArrType_memdup(void *restrict o,
 		const void **restrict dst, size_t item_size);
 
 /** uint8_t array type. */
-SAU_DEF_ArrType(SAU_UInt8Arr, uint8_t, );
+SAU_DEF_ArrType(SAU_ByteArr, uint8_t, );

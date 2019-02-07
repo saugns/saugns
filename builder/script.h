@@ -12,8 +12,8 @@
  */
 
 #pragma once
-#include "ptrlist.h"
 #include "../program.h"
+#include "../ptrlist.h"
 
 /**
  * Script data operator flags.

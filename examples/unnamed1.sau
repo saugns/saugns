@@ -1,4 +1,4 @@
 Osin fD3 t2 p+<
 	Osin r(1/3) a0 a[v1 t0.05 cexp] t0.05
-        ; a[v0 t1 cexp]
+	; a[v0 t1 cexp]
 >

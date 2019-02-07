@@ -17,17 +17,35 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-/**
+/*
  * Create program for the given script file. Invokes the parser.
  *
  * \return instance or NULL on error
  */
-SAU_Program* SAU_build(const char *restrict fname) {
-	SAU_Script *sd = SAU_load_Script(fname);
+static SAU_Program *build_program(const char *restrict path) {
+	SAU_Script *sd = SAU_load_Script(path);
 	if (!sd) return NULL;
 
 	SAU_Program *o = SAU_build_Program(sd);
 	SAU_discard_Script(sd);
 	if (!o) return NULL;
 	return o;
+}
+
+/**
+ * Build the listed script files, adding the result to
+ * the program list for each script (even when the result is NULL).
+ *
+ * \return number of programs successfully built
+ */
+size_t SAU_build(const SAU_PtrList *restrict path_list,
+		SAU_PtrList *restrict prg_list) {
+	size_t built = 0;
+	const char **paths = (const char**) SAU_PtrList_ITEMS(path_list);
+	for (size_t i = 0; i < path_list->count; ++i) {
+		SAU_Program *prg = build_program(paths[i]);
+		if (prg != NULL) ++built;
+		SAU_PtrList_add(prg_list, prg);
+	}
+	return built;
 }
