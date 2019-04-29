@@ -5,6 +5,7 @@ LFLAGS_LINUX=$(LFLAGS) -lasound
 LFLAGS_SNDIO=$(LFLAGS) -lsndio
 LFLAGS_OSSAUDIO=$(LFLAGS) -lossaudio
 OBJ=common.o \
+    arrtype.o \
     ptrlist.o \
     builder/symtab.o \
     builder/lexer.o \
@@ -12,6 +13,7 @@ OBJ=common.o \
     builder/parseconv.o \
     builder.o \
     mempool.o \
+    slope.o \
     wave.o \
     renderer.o \
     renderer/generator.o \
@@ -40,6 +42,9 @@ sgensys: $(OBJ)
 		$(CC) $(OBJ) $(LFLAGS) -o sgensys; \
 	fi
 
+arrtype.o: arrtype.c arrtype.h common.h
+	$(CC) -c $(CFLAGS) arrtype.c
+
 audiodev.o: audiodev.c audiodev/*.c audiodev.h common.h
 	$(CC) -c $(CFLAGS) audiodev.c
 
@@ -52,10 +57,10 @@ builder.o: builder.c sgensys.h builder/lexer.h script.h program.h ptrlist.h wave
 builder/lexer.o: builder/lexer.c builder/lexer.h builder/symtab.h math.h common.h
 	$(CC) -c $(CFLAGS) builder/lexer.c -o builder/lexer.o
 
-builder/parseconv.o: builder/parseconv.c program.h wave.h math.h script.h ptrlist.h common.h
+builder/parseconv.o: builder/parseconv.c program.h slope.h wave.h math.h script.h ptrlist.h arrtype.h common.h
 	$(CC) -c $(CFLAGS) builder/parseconv.c -o builder/parseconv.o
 
-builder/parser.o: builder/parser.c script.h ptrlist.h builder/symtab.h program.h wave.h math.h common.h
+builder/parser.o: builder/parser.c script.h ptrlist.h builder/symtab.h program.h slope.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) builder/parser.c -o builder/parser.o
 
 builder/symtab.o: builder/symtab.c builder/symtab.h mempool.h common.h
@@ -67,14 +72,17 @@ mempool.o: mempool.c mempool.h common.h
 ptrlist.o: ptrlist.c ptrlist.h common.h
 	$(CC) -c $(CFLAGS) ptrlist.c
 
-renderer.o: renderer.c sgensys.h renderer/generator.h program.h wave.h math.h audiodev.h wavfile.h common.h
+renderer.o: renderer.c sgensys.h renderer/generator.h program.h slope.h wave.h math.h audiodev.h wavfile.h common.h
 	$(CC) -c $(CFLAGS_FAST) renderer.c
 
-renderer/generator.o: renderer/generator.c renderer/generator.h renderer/osc.h program.h wave.h math.h common.h
+renderer/generator.o: renderer/generator.c renderer/generator.h renderer/osc.h program.h slope.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS_FAST) renderer/generator.c -o renderer/generator.o
 
-sgensys.o: sgensys.c sgensys.h program.h wave.h math.h common.h
+sgensys.o: sgensys.c sgensys.h program.h slope.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) sgensys.c
+
+slope.o: slope.c slope.h math.h common.h
+	$(CC) -c $(CFLAGS_FAST) slope.c
 
 wave.o: wave.c wave.h math.h common.h
 	$(CC) -c $(CFLAGS_FAST) wave.c
