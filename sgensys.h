@@ -1,5 +1,5 @@
 /* sgensys: Main functions and project definitions.
- * Copyright (c) 2011-2013, 2017-2018 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -14,7 +14,7 @@
 #pragma once
 #include "program.h"
 
-SGS_Program* SGS_build(const char *fname);
+SGS_Program* SGS_build(const char *script_arg, bool is_path);
 
 bool SGS_render(SGS_Program *prg, uint32_t srate,
 		bool use_audiodev, const char *wav_path);

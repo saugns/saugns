@@ -1,5 +1,5 @@
 /* sgensys: Script file data and functions.
- * Copyright (c) 2011-2012, 2017-2018 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -115,5 +115,6 @@ typedef struct SGS_Script {
 	SGS_ScriptOptions sopt;
 } SGS_Script;
 
-SGS_Script *SGS_load_Script(const char *fname);
+struct SGS_File;
+SGS_Script *SGS_load_Script(struct SGS_File *f);
 void SGS_discard_Script(SGS_Script *o);
