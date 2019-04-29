@@ -118,5 +118,6 @@ typedef struct SGS_Script {
 	SGS_ScriptOptions sopt;
 } SGS_Script;
 
-SGS_Script *SGS_load_Script(const char *fname);
+struct SGS_File;
+SGS_Script *SGS_load_Script(struct SGS_File *f);
 void SGS_discard_Script(SGS_Script *o);
