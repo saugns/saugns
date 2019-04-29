@@ -8,7 +8,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #include "symtab.h"
@@ -55,10 +55,10 @@ static bool tryc(char c, FILE *f) {
   return false;
 }
 
-static bool readsym(FILE *f, char *buf, uint32_t buf_len,
-                    uint32_t *sym_len) {
-  uint32_t i = 0;
-  uint32_t max_len = buf_len - 1;
+static bool readsym(FILE *f, char *buf, size_t buf_len,
+                    size_t *sym_len) {
+  size_t i = 0;
+  size_t max_len = buf_len - 1;
   bool truncate = false;
   for (;;) {
     if (i == max_len) {
@@ -97,9 +97,9 @@ static int32_t getinum(FILE *f) {
 
 static int32_t strfind(FILE *f, const char *const*str) {
   int32_t ret;
-  uint32_t i, len, pos, matchpos;
+  size_t i, len, pos, matchpos;
   char c, undo[256];
-  uint32_t strc;
+  size_t strc;
   const char **s;
   for (len = 0, strc = 0; str[strc]; ++strc)
     if ((i = strlen(str[strc])) > len) len = i;
@@ -186,20 +186,34 @@ static void fini_parser(SGS_Parser *o) {
   SGS_destroy_SymTab(o->st);
 }
 
+/*
+ * Scope values.
+ */
 enum {
-  /* parsing scopes */
   SCOPE_SAME = 0,
   SCOPE_TOP = 1,
   SCOPE_BIND = '@',
-  SCOPE_NEST = '['
+  SCOPE_NEST = '[',
 };
 
+/*
+ * Current "location" (what is being parsed/worked on) for parse level.
+ */
 enum {
-  SDPL_IN_DEFAULTS = 1<<0, /* adjusting default values */
-  SDPL_IN_NODE = 1<<1,     /* adjusting operator and/or voice */
-  SDPL_NESTED_SCOPE = 1<<2,
-  SDPL_NEW_EVENT_FORK = 1<<3,
-  SDPL_BIND_MULTIPLE = 1<<4, /* previous node interpreted as set of nodes */
+  SDPL_IN_NONE = 0, // no target for parameters
+  SDPL_IN_DEFAULTS, // adjusting default values
+  SDPL_IN_EVENT,    // adjusting operator and/or voice
+};
+
+/*
+ * Parse level flags.
+ */
+enum {
+  SDPL_BIND_MULTIPLE = 1<<0, // previous node interpreted as set of nodes
+  SDPL_NESTED_SCOPE = 1<<1,
+  SDPL_NEW_EVENT_FORK = 1<<2,
+  SDPL_ACTIVE_EV = 1<<3,
+  SDPL_ACTIVE_OP = 1<<4,
 };
 
 /*
@@ -211,6 +225,7 @@ typedef struct ParseLevel {
   SGS_Parser *o;
   struct ParseLevel *parent;
   uint32_t pl_flags;
+  uint8_t location;
   uint8_t scope;
   SGS_ScriptEvData *event, *last_event;
   SGS_ScriptOpData *operator, *first_operator, *last_operator;
@@ -283,12 +298,13 @@ static void warning(SGS_Parser *o, const char *str) {
 }
 #define WARN_INVALID "invalid character"
 
-typedef float (*ReadSym_f)(SGS_Parser *o);
+typedef float (*NumSym_f)(SGS_Parser *o);
 
 typedef struct NumParser {
   SGS_Parser *pr;
-  ReadSym_f read_sym_f;
+  NumSym_f numsym_f;
   char buf[64];
+  bool has_infnum;
 } NumParser;
 static double read_num_r(NumParser *o, uint8_t pri, uint32_t level) {
   SGS_Parser *pr = o->pr;
@@ -309,10 +325,10 @@ static double read_num_r(NumParser *o, uint8_t pri, uint32_t level) {
     if (level == 0) return num;
     goto EVAL;
   }
-  if (o->read_sym_f && IS_ALPHA(c)) {
+  if (o->numsym_f && IS_ALPHA(c)) {
     ungetc(c, pr->f);
-    num = o->read_sym_f(pr);
-    if (num != num)
+    num = o->numsym_f(pr);
+    if (isnan(num))
       return NAN;
     if (minus) num = -num;
   } else {
@@ -335,6 +351,7 @@ EVAL:
   if (pri == 0)
     return num; /* defer all */
   for (;;) {
+    if (isinf(num)) o->has_infnum = true;
     if (level > 0) read_ws(pr);
     c = getc(pr->f);
     switch (c) {
@@ -367,17 +384,27 @@ EVAL:
       }
       goto DEFER;
     }
-    if (num != num) goto DEFER;
+    if (isnan(num)) goto DEFER;
   }
 DEFER:
   ungetc(c, pr->f);
   return num;
 }
-static bool read_num(SGS_Parser *o, ReadSym_f read_symbol, float *var) {
-  NumParser np = {o, read_symbol, {0}};
+static bool read_num(SGS_Parser *o, NumSym_f read_numsym,
+                     float *var, bool mul_inv) {
+  NumParser np = {o, read_numsym, {0}, false};
   float num = read_num_r(&np, 0, 0);
-  if (num != num)
+  if (isnan(num))
     return false;
+  if (isinf(num)) np.has_infnum = true;
+  if (mul_inv) {
+    num = 1.f / num;
+    if (isinf(num)) np.has_infnum = true;
+  }
+  if (np.has_infnum) {
+    warning(o, "discarding expression with infinite number");
+    return false;
+  }
   *var = num;
   return true;
 }
@@ -472,9 +499,9 @@ static float read_note(SGS_Parser *o) {
 #define LABEL_LEN 80
 #define LABEL_LEN_A "80"
 typedef char LabelBuf[LABEL_LEN];
-static uint32_t read_label(SGS_Parser *o, LabelBuf label, char op) {
+static size_t read_label(SGS_Parser *o, LabelBuf label, char op) {
   char nolabel_msg[] = "ignoring ? without label name";
-  uint32_t len = 0;
+  size_t len = 0;
   bool error;
   nolabel_msg[9] = op; /* replace ? */
   error = !readsym(o->f, label, LABEL_LEN, &len);
@@ -502,49 +529,51 @@ static int32_t read_wavetype(SGS_Parser *o) {
   return wave;
 }
 
-static bool read_valit(SGS_Parser *o, ReadSym_f read_symbol,
-                        SGS_ProgramValit *vi) {
-  static const char *const valittypes[] = {
-    "lin",
-    "exp",
-    "log",
-    0
-  };
-  char c;
+static bool read_ramp(SGS_Parser *o, NumSym_f read_numsym,
+                      SGS_Ramp *ramp, bool mul_inv) {
   bool goal = false;
   int32_t type;
-  vi->time_ms = SGS_TIME_DEFAULT;
-  vi->type = SGS_VALIT_LIN; /* default */
+  bool time_set = false;
+  char c;
+  ramp->type = SGS_RAMP_LIN; /* default */
   while ((c = read_char(o)) != EOF) {
     switch (c) {
     case NEWLINE:
       ++o->line;
       break;
     case 'c':
-      type = strfind(o->f, valittypes);
-      if (type >= 0) {
-        vi->type = type + SGS_VALIT_LIN;
+      // "state" (type 0) disallowed
+      type = strfind(o->f, SGS_Ramp_names + 1) + 1;
+      if (type <= 0) {
+        warning(o, "invalid curve type; available types are:");
+        uint8_t i = 1;
+        fprintf(stderr, "\t%s", SGS_Ramp_names[i]);
+        while (++i < SGS_RAMP_TYPES) {
+          fprintf(stderr, ", %s", SGS_Ramp_names[i]);
+        }
+        putc('\n', stderr);
         break;
       }
-      goto INVALID;
+      ramp->type = type;
+      break;
     case 't': {
       float time;
-      if (read_num(o, 0, &time)) {
+      if (read_num(o, 0, &time, false)) {
         if (time < 0.f) {
           warning(o, "ignoring 't' with sub-zero time");
           break;
         }
-        vi->time_ms = lrint(time * 1000.f);
+        ramp->time_ms = lrint(time * 1000.f);
+        time_set = true;
       }
       break; }
     case 'v':
-      if (read_num(o, read_symbol, &vi->goal))
+      if (read_num(o, read_numsym, &ramp->goal, mul_inv))
         goal = true;
       break;
     case '}':
       goto RETURN;
     default:
-    INVALID:
       warning(o, WARN_INVALID);
       break;
     }
@@ -552,9 +581,15 @@ static bool read_valit(SGS_Parser *o, ReadSym_f read_symbol,
   warning(o, "end of file without closing '}'");
 RETURN:
   if (!goal) {
-    warning(o, "ignoring gradual parameter change with no target value");
-    vi->type = SGS_VALIT_NONE;
+    warning(o, "ignoring value ramp with no target value");
+    ramp->type = SGS_RAMP_STATE;
     return false;
+  }
+  if (time_set)
+    ramp->flags &= ~SGS_RAMP_TIME_DEFAULT;
+  else {
+    ramp->flags |= SGS_RAMP_TIME_DEFAULT;
+    ramp->time_ms = o->sopt.def_time_ms; // initial default
   }
   return true;
 }
@@ -571,7 +606,7 @@ static bool parse_waittime(ParseLevel *pl) {
   } else {
     float wait;
     uint32_t wait_ms;
-    read_num(o, 0, &wait);
+    read_num(o, 0, &wait, false);
     if (wait < 0.f) {
       warning(o, "ignoring '\\' with sub-zero time");
       return false;
@@ -636,10 +671,11 @@ static void destroy_event_node(SGS_ScriptEvData *e) {
 }
 
 static void end_operator(ParseLevel *pl) {
+  if (!(pl->pl_flags & SDPL_ACTIVE_OP))
+    return;
+  pl->pl_flags &= ~SDPL_ACTIVE_OP;
   SGS_Parser *o = pl->o;
   SGS_ScriptOpData *op = pl->operator;
-  if (!op)
-    return; /* nothing to do */
   if (!op->on_prev) { /* initial event should reset its parameters */
     op->op_params |= SGS_POPP_ADJCS |
                      SGS_POPP_WAVE |
@@ -668,39 +704,40 @@ static void end_operator(ParseLevel *pl) {
     if (op->dynamp != pop->dynamp)
       op->op_params |= SGS_POPP_DYNAMP;
   }
-  if (op->valitfreq.type != SGS_VALIT_NONE)
+  if (op->ramp_freq.type != SGS_RAMP_STATE)
     op->op_params |= SGS_POPP_ATTR |
-                     SGS_POPP_VALITFREQ;
-  if (op->valitamp.type != SGS_VALIT_NONE)
+                     SGS_POPP_RAMP_FREQ;
+  if (op->ramp_amp.type != SGS_RAMP_STATE)
     op->op_params |= SGS_POPP_ATTR |
-                     SGS_POPP_VALITAMP;
-  if (!(pl->pl_flags & SDPL_NESTED_SCOPE)) {
+                     SGS_POPP_RAMP_AMP;
+  if (!(op->op_flags & SGS_SDOP_NESTED)) {
     op->amp *= o->sopt.ampmult;
-    op->valitamp.goal *= o->sopt.ampmult;
+    op->ramp_amp.goal *= o->sopt.ampmult;
   }
   pl->operator = NULL;
   pl->last_operator = op;
 }
 
 static void end_event(ParseLevel *pl) {
+  if (!(pl->pl_flags & SDPL_ACTIVE_EV))
+    return;
+  pl->pl_flags &= ~SDPL_ACTIVE_EV;
   SGS_Parser *o = pl->o;
   SGS_ScriptEvData *e = pl->event;
   SGS_ScriptEvData *pve;
-  if (!e)
-    return; /* nothing to do */
   end_operator(pl);
   pve = e->voice_prev;
   if (!pve) { /* initial event should reset its parameters */
     e->ev_flags |= SGS_SDEV_NEW_OPGRAPH;
     e->vo_params |= SGS_PVOP_ATTR |
-                    SGS_PVOP_PANNING;
+                    SGS_PVOP_PAN;
   } else {
-    if (e->panning != pve->panning)
-      e->vo_params |= SGS_PVOP_PANNING;
+    if (e->pan != pve->pan)
+      e->vo_params |= SGS_PVOP_PAN;
   }
-  if (e->valitpanning.type != SGS_VALIT_NONE)
+  if (e->ramp_pan.type != SGS_RAMP_STATE)
     e->vo_params |= SGS_PVOP_ATTR |
-                    SGS_PVOP_VALITPANNING;
+                    SGS_PVOP_RAMP_PAN;
   pl->last_event = e;
   pl->event = NULL;
   SGS_ScriptEvData *group_e = (pl->main_ev != NULL) ? pl->main_ev : e;
@@ -742,10 +779,10 @@ static void begin_event(ParseLevel *pl, uint8_t linktype,
     }
     e->voice_prev = pve;
     e->vo_attr = pve->vo_attr;
-    e->panning = pve->panning;
-    e->valitpanning = pve->valitpanning;
+    e->pan = pve->pan;
+    e->ramp_pan = pve->ramp_pan;
   } else { /* set defaults */
-    e->panning = 0.5f; /* center */
+    e->pan = 0.5f; /* center */
   }
   if (!is_composite) {
     if (!o->events)
@@ -755,6 +792,7 @@ static void begin_event(ParseLevel *pl, uint8_t linktype,
     o->last_event = e;
     pl->main_ev = NULL;
   }
+  pl->pl_flags |= SDPL_ACTIVE_EV;
 }
 
 static void begin_operator(ParseLevel *pl, uint8_t linktype,
@@ -794,8 +832,8 @@ static void begin_operator(ParseLevel *pl, uint8_t linktype,
     op->phase = pop->phase;
     op->amp = pop->amp;
     op->dynamp = pop->dynamp;
-    op->valitfreq = pop->valitfreq;
-    op->valitamp = pop->valitamp;
+    op->ramp_freq = pop->ramp_freq;
+    op->ramp_amp = pop->ramp_amp;
     SGS_PtrList_soft_copy(&op->fmods, &pop->fmods);
     SGS_PtrList_soft_copy(&op->pmods, &pop->pmods);
     SGS_PtrList_soft_copy(&op->amods, &pop->amods);
@@ -869,21 +907,8 @@ static void begin_operator(ParseLevel *pl, uint8_t linktype,
     SGS_SymTab_set(o->st, pop->label, strlen(pop->label), op);
     op->label = pop->label;
   }
+  pl->pl_flags |= SDPL_ACTIVE_OP;
 }
-
-/*
- * Default values for new nodes are being set.
- */
-#define in_defaults(pl) ((pl)->pl_flags & SDPL_IN_DEFAULTS)
-#define enter_defaults(pl) ((void)((pl)->pl_flags |= SDPL_IN_DEFAULTS))
-#define leave_defaults(pl) ((void)((pl)->pl_flags &= ~SDPL_IN_DEFAULTS))
-
-/*
- * Values for current node are being set.
- */
-#define in_current_node(pl) ((pl)->pl_flags & SDPL_IN_NODE)
-#define enter_current_node(pl) ((void)((pl)->pl_flags |= SDPL_IN_NODE))
-#define leave_current_node(pl) ((void)((pl)->pl_flags &= ~SDPL_IN_NODE))
 
 /*
  * Begin a new operator - depending on the context, either for the present
@@ -895,7 +920,7 @@ static void begin_node(ParseLevel *pl, SGS_ScriptOpData *previous,
                        uint8_t linktype, bool is_composite) {
   pl->on_prev = previous;
   if (!pl->event ||
-      !in_current_node(pl) /* previous event implicitly ended */ ||
+      pl->location != SDPL_IN_EVENT /* previous event implicitly ended */ ||
       pl->next_wait_ms ||
       is_composite)
     begin_event(pl, linktype, is_composite);
@@ -918,7 +943,9 @@ static void begin_scope(SGS_Parser *o, ParseLevel *pl,
   pl->scope = newscope;
   if (parent_pl != NULL) {
     pl->parent = parent_pl;
-    pl->pl_flags = parent_pl->pl_flags;
+    pl->pl_flags = parent_pl->pl_flags &
+                   (SDPL_NESTED_SCOPE | SDPL_BIND_MULTIPLE);
+    pl->location = parent_pl->location;
     if (newscope == SCOPE_SAME)
       pl->scope = parent_pl->scope;
     pl->event = parent_pl->event;
@@ -964,23 +991,22 @@ static void end_scope(ParseLevel *pl) {
 static bool parse_settings(ParseLevel *pl) {
   SGS_Parser *o = pl->o;
   char c;
-  enter_defaults(pl);
-  leave_current_node(pl);
+  pl->location = SDPL_IN_DEFAULTS;
   while ((c = read_char(o)) != EOF) {
     switch (c) {
     case 'a':
-      if (read_num(o, 0, &o->sopt.ampmult)) {
+      if (read_num(o, 0, &o->sopt.ampmult, false)) {
         o->sopt.changed |= SGS_SOPT_AMPMULT;
       }
       break;
     case 'f':
-      if (read_num(o, read_note, &o->sopt.def_freq)) {
+      if (read_num(o, read_note, &o->sopt.def_freq, false)) {
         o->sopt.changed |= SGS_SOPT_DEF_FREQ;
       }
       break;
     case 'n': {
       float freq;
-      if (read_num(o, 0, &freq)) {
+      if (read_num(o, 0, &freq, false)) {
         if (freq < 1.f) {
           warning(o, "ignoring tuning frequency (Hz) below 1.0");
           break;
@@ -990,14 +1016,13 @@ static bool parse_settings(ParseLevel *pl) {
       }
       break; }
     case 'r':
-      if (read_num(o, 0, &o->sopt.def_ratio)) {
-        o->sopt.def_ratio = 1.f / o->sopt.def_ratio;
+      if (read_num(o, 0, &o->sopt.def_ratio, true)) {
         o->sopt.changed |= SGS_SOPT_DEF_RATIO;
       }
       break;
     case 't': {
       float time;
-      if (read_num(o, 0, &time)) {
+      if (read_num(o, 0, &time, false)) {
         if (time < 0.f) {
           warning(o, "ignoring 't' with sub-zero time");
           break;
@@ -1021,8 +1046,7 @@ static bool parse_level(SGS_Parser *o, ParseLevel *parent_pl,
 static bool parse_step(ParseLevel *pl) {
   SGS_Parser *o = pl->o;
   char c;
-  leave_defaults(pl);
-  enter_current_node(pl);
+  pl->location = SDPL_IN_EVENT;
   while ((c = read_char(o)) != EOF) {
     SGS_ScriptEvData *e = pl->event;
     SGS_ScriptOpData *op = pl->operator;
@@ -1031,11 +1055,11 @@ static bool parse_step(ParseLevel *pl) {
       if ((pl->pl_flags & SDPL_NESTED_SCOPE) != 0)
         goto UNKNOWN;
       if (tryc('{', o->f)) {
-        if (read_valit(o, 0, &e->valitpanning))
-          e->vo_attr |= SGS_PVOA_VALITPANNING;
-      } else if (read_num(o, 0, &e->panning)) {
-        if (e->valitpanning.type == SGS_VALIT_NONE)
-          e->vo_attr &= ~SGS_PVOA_VALITPANNING;
+        if (read_ramp(o, 0, &e->ramp_pan, false))
+          e->vo_attr |= SGS_PVOA_RAMP_PAN;
+      } else if (read_num(o, 0, &e->pan, false)) {
+        if (e->ramp_pan.type == SGS_RAMP_STATE)
+          e->vo_attr &= ~SGS_PVOA_RAMP_PAN;
       }
       break;
     case '\\':
@@ -1047,7 +1071,7 @@ static bool parse_step(ParseLevel *pl) {
     case 'a':
       if (tryc('!', o->f)) {
         if (!testc('[', o->f)) {
-          read_num(o, 0, &op->dynamp);
+          read_num(o, 0, &op->dynamp, false);
         }
         if (tryc('[', o->f)) {
           if (op->amods.count > 0) {
@@ -1057,19 +1081,19 @@ static bool parse_step(ParseLevel *pl) {
           parse_level(o, pl, NL_AMODS, SCOPE_NEST);
         }
       } else if (tryc('{', o->f)) {
-        if (read_valit(o, 0, &op->valitamp))
-          op->attr |= SGS_POPA_VALITAMP;
+        if (read_ramp(o, 0, &op->ramp_amp, false))
+          op->attr |= SGS_POPA_RAMP_AMP;
       } else {
-        read_num(o, 0, &op->amp);
+        read_num(o, 0, &op->amp, false);
         op->op_params |= SGS_POPP_AMP;
-        if (op->valitamp.type == SGS_VALIT_NONE)
-          op->attr &= ~SGS_POPA_VALITAMP;
+        if (op->ramp_amp.type == SGS_RAMP_STATE)
+          op->attr &= ~SGS_POPA_RAMP_AMP;
       }
       break;
     case 'f':
       if (tryc('!', o->f)) {
         if (!testc('[', o->f)) {
-          if (read_num(o, 0, &op->dynfreq)) {
+          if (read_num(o, 0, &op->dynfreq, false)) {
             op->attr &= ~SGS_POPA_DYNFREQRATIO;
           }
         }
@@ -1081,16 +1105,16 @@ static bool parse_step(ParseLevel *pl) {
           parse_level(o, pl, NL_FMODS, SCOPE_NEST);
         }
       } else if (tryc('{', o->f)) {
-        if (read_valit(o, read_note, &op->valitfreq)) {
-          op->attr |= SGS_POPA_VALITFREQ;
-          op->attr &= ~SGS_POPA_VALITFREQRATIO;
+        if (read_ramp(o, read_note, &op->ramp_freq, false)) {
+          op->attr |= SGS_POPA_RAMP_FREQ;
+          op->attr &= ~SGS_POPA_RAMP_FREQRATIO;
         }
-      } else if (read_num(o, read_note, &op->freq)) {
+      } else if (read_num(o, read_note, &op->freq, false)) {
         op->attr &= ~SGS_POPA_FREQRATIO;
         op->op_params |= SGS_POPP_FREQ;
-        if (op->valitfreq.type == SGS_VALIT_NONE)
-          op->attr &= ~(SGS_POPA_VALITFREQ |
-                        SGS_POPA_VALITFREQRATIO);
+        if (op->ramp_freq.type == SGS_RAMP_STATE)
+          op->attr &= ~(SGS_POPA_RAMP_FREQ |
+                        SGS_POPA_RAMP_FREQRATIO);
       }
       break;
     case 'p':
@@ -1103,7 +1127,7 @@ static bool parse_step(ParseLevel *pl) {
           parse_level(o, pl, NL_PMODS, SCOPE_NEST);
         } else
           goto UNKNOWN;
-      } else if (read_num(o, 0, &op->phase)) {
+      } else if (read_num(o, 0, &op->phase, false)) {
         op->phase = fmod(op->phase, 1.f);
         if (op->phase < 0.f)
           op->phase += 1.f;
@@ -1111,12 +1135,11 @@ static bool parse_step(ParseLevel *pl) {
       }
       break;
     case 'r':
-      if (!(pl->pl_flags & SDPL_NESTED_SCOPE))
+      if (!(op->op_flags & SGS_SDOP_NESTED))
         goto UNKNOWN;
       if (tryc('!', o->f)) {
         if (!testc('[', o->f)) {
-          if (read_num(o, 0, &op->dynfreq)) {
-            op->dynfreq = 1.f / op->dynfreq;
+          if (read_num(o, 0, &op->dynfreq, true)) {
             op->attr |= SGS_POPA_DYNFREQRATIO;
           }
         }
@@ -1128,23 +1151,21 @@ static bool parse_step(ParseLevel *pl) {
           parse_level(o, pl, NL_FMODS, SCOPE_NEST);
         }
       } else if (tryc('{', o->f)) {
-        if (read_valit(o, read_note, &op->valitfreq)) {
-          op->valitfreq.goal = 1.f / op->valitfreq.goal;
-          op->attr |= SGS_POPA_VALITFREQ |
-                      SGS_POPA_VALITFREQRATIO;
+        if (read_ramp(o, read_note, &op->ramp_freq, true)) {
+          op->attr |= SGS_POPA_RAMP_FREQ |
+                      SGS_POPA_RAMP_FREQRATIO;
         }
-      } else if (read_num(o, 0, &op->freq)) {
-        op->freq = 1.f / op->freq;
+      } else if (read_num(o, 0, &op->freq, true)) {
         op->attr |= SGS_POPA_FREQRATIO;
         op->op_params |= SGS_POPP_FREQ;
-        if (op->valitfreq.type == SGS_VALIT_NONE)
-          op->attr &= ~(SGS_POPA_VALITFREQ |
-                        SGS_POPA_VALITFREQRATIO);
+        if (op->ramp_freq.type == SGS_RAMP_STATE)
+          op->attr &= ~(SGS_POPA_RAMP_FREQ |
+                        SGS_POPA_RAMP_FREQRATIO);
       }
       break;
     case 's': {
       float silence;
-      read_num(o, 0, &silence);
+      read_num(o, 0, &silence, false);
       if (silence < 0.f) {
         warning(o, "ignoring 's' with sub-zero time");
         break;
@@ -1156,7 +1177,7 @@ static bool parse_step(ParseLevel *pl) {
         op->op_flags |= SGS_SDOP_TIME_DEFAULT; /* later fitted or kept to default */
         op->time_ms = o->sopt.def_time_ms;
       } else if (tryc('i', o->f)) {
-        if (!(pl->pl_flags & SDPL_NESTED_SCOPE)) {
+        if (!(op->op_flags & SGS_SDOP_NESTED)) {
           warning(o, "ignoring 'ti' (infinite time) for non-nested operator");
           break;
         }
@@ -1164,7 +1185,7 @@ static bool parse_step(ParseLevel *pl) {
         op->time_ms = SGS_TIME_INF;
       } else {
         float time;
-        read_num(o, 0, &time);
+        read_num(o, 0, &time, false);
         if (time < 0.f) {
           warning(o, "ignoring 't' with sub-zero time");
           break;
@@ -1199,7 +1220,7 @@ static bool parse_level(SGS_Parser *o, ParseLevel *parent_pl,
   LabelBuf label;
   ParseLevel pl;
   char c;
-  uint32_t label_len;
+  size_t label_len;
   uint8_t flags = 0;
   bool endscope = false;
   begin_scope(o, &pl, parent_pl, linktype, newscope);
@@ -1215,10 +1236,7 @@ static bool parse_level(SGS_Parser *o, ParseLevel *parent_pl,
         if (o->calllevel > 1)
           goto RETURN;
         flags = 0;
-        leave_defaults(&pl);
-        if (in_current_node(&pl)) {
-          leave_current_node(&pl);
-        }
+        pl.location = SDPL_IN_NONE;
         pl.first_operator = NULL;
       }
       break;
@@ -1238,7 +1256,7 @@ static bool parse_level(SGS_Parser *o, ParseLevel *parent_pl,
         o->nextc = c;
         goto RETURN;
       }
-      if (in_defaults(&pl) || !pl.event)
+      if (pl.location == SDPL_IN_DEFAULTS || !pl.event)
         goto INVALID;
       begin_node(&pl, pl.operator, NL_REFER, true);
       flags = parse_step(&pl) ? (HANDLE_DEFER | DEFERRED_STEP) : 0;
@@ -1261,8 +1279,7 @@ static bool parse_level(SGS_Parser *o, ParseLevel *parent_pl,
         warning(o, "ignoring label assignment to label reference");
         pl.set_label = NULL;
       }
-      leave_defaults(&pl);
-      leave_current_node(&pl);
+      pl.location = SDPL_IN_NONE;
       label_len = read_label(o, label, c);
       if (label_len > 0) {
         SGS_ScriptOpData *ref = SGS_SymTab_get(o->st, label, label_len);
@@ -1291,8 +1308,8 @@ static bool parse_level(SGS_Parser *o, ParseLevel *parent_pl,
       warning(o, "opening '[' out of place");
       break;
     case '\\':
-      if (in_defaults(&pl) ||
-          (pl.pl_flags & SDPL_NESTED_SCOPE && pl.event))
+      if (pl.location == SDPL_IN_DEFAULTS ||
+          ((pl.pl_flags & SDPL_NESTED_SCOPE) != 0 && pl.event != NULL))
         goto INVALID;
       parse_waittime(&pl);
       break;
@@ -1312,7 +1329,7 @@ static bool parse_level(SGS_Parser *o, ParseLevel *parent_pl,
       warning(o, "opening '{' out of place");
       break;
     case '|':
-      if (in_defaults(&pl) ||
+      if (pl.location == SDPL_IN_DEFAULTS ||
           ((pl.pl_flags & SDPL_NESTED_SCOPE) != 0 && pl.event != NULL))
         goto INVALID;
       if (newscope == SCOPE_SAME) {
@@ -1325,7 +1342,7 @@ static bool parse_level(SGS_Parser *o, ParseLevel *parent_pl,
         break;
       }
       flush_durgroup(o);
-      leave_current_node(&pl);
+      pl.location = SDPL_IN_NONE;
       break;
     case '}':
       warning(o, "closing '}' without opening '{'");
@@ -1420,23 +1437,25 @@ static void time_durgroup(SGS_ScriptEvData *e_last) {
 
 static void time_operator(SGS_ScriptOpData *op) {
   SGS_ScriptEvData *e = op->event;
-  if (op->valitfreq.time_ms == SGS_TIME_DEFAULT)
-    op->valitfreq.time_ms = op->time_ms;
-  if (op->valitamp.time_ms == SGS_TIME_DEFAULT)
-    op->valitamp.time_ms = op->time_ms;
   if ((op->op_flags & (SGS_SDOP_TIME_DEFAULT | SGS_SDOP_NESTED)) ==
                       (SGS_SDOP_TIME_DEFAULT | SGS_SDOP_NESTED)) {
     op->op_flags &= ~SGS_SDOP_TIME_DEFAULT;
     if (!(op->op_flags & SGS_SDOP_HAS_COMPOSITE))
       op->time_ms = SGS_TIME_INF;
   }
-  if (op->time_ms != SGS_TIME_INF && !(op->op_flags & SGS_SDOP_SILENCE_ADDED)) {
-    op->time_ms += op->silence_ms;
-    op->op_flags |= SGS_SDOP_SILENCE_ADDED;
+  if (op->time_ms != SGS_TIME_INF) {
+    if (op->ramp_freq.flags & SGS_RAMP_TIME_DEFAULT)
+      op->ramp_freq.time_ms = op->time_ms;
+    if (op->ramp_amp.flags & SGS_RAMP_TIME_DEFAULT)
+      op->ramp_amp.time_ms = op->time_ms;
+    if (!(op->op_flags & SGS_SDOP_SILENCE_ADDED)) {
+      op->time_ms += op->silence_ms;
+      op->op_flags |= SGS_SDOP_SILENCE_ADDED;
+    }
   }
   if ((e->ev_flags & SGS_SDEV_ADD_WAIT_DURATION) != 0) {
     if (e->next != NULL)
-      ((SGS_ScriptEvData*)e->next)->wait_ms += op->time_ms;
+      e->next->wait_ms += op->time_ms;
     e->ev_flags &= ~SGS_SDEV_ADD_WAIT_DURATION;
   }
   size_t i;
@@ -1457,11 +1476,10 @@ static void time_operator(SGS_ScriptOpData *op) {
 
 static void time_event(SGS_ScriptEvData *e) {
   /*
-   * Fill in blank valit durations, handle silence as well as the case of
+   * Adjust default ramp durations, handle silence as well as the case of
    * adding present event duration to wait time of next event.
    */
-  if (e->valitpanning.time_ms == SGS_TIME_DEFAULT)
-    e->valitpanning.time_ms = 1000; /* FIXME! */
+  // e->ramp_pan.flags &= ~SGS_RAMP_TIME_DEFAULT; // TODO: revisit semantics
   size_t i;
   SGS_ScriptOpData **ops;
   ops = (SGS_ScriptOpData**) SGS_PtrList_ITEMS(&e->operators);
@@ -1484,10 +1502,11 @@ static void time_event(SGS_ScriptEvData *e) {
       ce->wait_ms += ce_op_prev->time_ms;
       if ((ce_op->op_flags & SGS_SDOP_TIME_DEFAULT) != 0) {
         ce_op->op_flags &= ~SGS_SDOP_TIME_DEFAULT;
-        ce_op->time_ms = ((ce_op->op_flags & SGS_SDOP_NESTED) != 0 &&
-                          !ce->next) ?
-                         SGS_TIME_INF :
-                         ce_op_prev->time_ms - ce_op_prev->silence_ms;
+        if ((ce_op->op_flags &
+             (SGS_SDOP_NESTED | SGS_SDOP_HAS_COMPOSITE)) == SGS_SDOP_NESTED)
+          ce_op->time_ms = SGS_TIME_INF;
+        else
+          ce_op->time_ms = ce_op_prev->time_ms - ce_op_prev->silence_ms;
       }
       time_event(ce);
       if (ce_op->time_ms == SGS_TIME_INF)
@@ -1516,8 +1535,8 @@ static void flatten_events(SGS_ScriptEvData *e) {
   SGS_ScriptEvBranch *fork = e->forks;
   SGS_ScriptEvData *ce = fork->events;
   SGS_ScriptEvData *se = e->next, *se_prev = e;
-  int32_t wait_ms = 0;
-  int32_t added_wait_ms = 0;
+  uint32_t wait_ms = 0;
+  uint32_t added_wait_ms = 0;
   while (ce != NULL) {
     if (!se) {
       /*
