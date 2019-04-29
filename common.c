@@ -8,7 +8,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #include "common.h"
@@ -74,19 +74,5 @@ void *SGS_memdup(const void *src, size_t size) {
 		return NULL;
 	}
 	memcpy(dst, src, size);
-	return dst;
-}
-
-/**
- * Allocates copy of \p src.
- *
- * \return new allocation or NULL on failure
- */
-char *SGS_strdup(const char *src) {
-	if (!src) return NULL;
-	size_t len = strlen(src);
-	char *dst = SGS_memdup(src, len + 1);
-	if (!dst) return NULL;
-	dst[len] = '\0';
 	return dst;
 }
