@@ -8,6 +8,7 @@ OBJ=common.o \
     ptrlist.o \
     builder/symtab.o \
     builder/file.o \
+    builder/scanner.o \
     builder/lexer.o \
     builder/parser.o \
     builder/parseconv.o \
@@ -51,7 +52,7 @@ audiodev.o: audiodev.c audiodev/*.c audiodev.h common.h
 common.o: common.c common.h
 	$(CC) -c $(CFLAGS) common.c
 
-builder.o: builder.c sgensys.h builder/lexer.h script.h program.h ptrlist.h slope.h wave.h math.h common.h
+builder.o: builder.c sgensys.h builder/file.h builder/scanner.h builder/lexer.h script.h program.h ptrlist.h slope.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) builder.c
 
 builder/file.o: builder/file.c builder/file.h common.h
@@ -65,6 +66,9 @@ builder/parseconv.o: builder/parseconv.c program.h slope.h wave.h math.h script.
 
 builder/parser.o: builder/parser.c script.h ptrlist.h builder/symtab.h builder/file.h program.h slope.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) builder/parser.c -o builder/parser.o
+
+builder/scanner.o: builder/scanner.c builder/scanner.h builder/file.h math.h common.h
+	$(CC) -c $(CFLAGS) builder/scanner.c -o builder/scanner.o
 
 builder/symtab.o: builder/symtab.c builder/symtab.h mempool.h common.h
 	$(CC) -c $(CFLAGS) builder/symtab.c -o builder/symtab.o
