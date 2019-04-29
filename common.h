@@ -61,3 +61,6 @@ void *SGS_memdup(const void *src, size_t size) SGS__malloclike;
 
 #define SGS_HASHTAB_STATS 0
 #define SGS_LEXER_QUIET 0
+
+/* Disable old parser, run scanner testing instead. Takes precedence. */
+#define SGS_TEST_SCANNER 0
