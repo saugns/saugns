@@ -197,9 +197,7 @@ Parameters:
 		signal, multiplied by its amplitude parameter (defaulting
 		to 1.0).
 			The product of the modulator amplitudes is used to
-		frequency-modulate the carrier(s), be they the final
-		carrier(s) or in turn modulator(s) for one or more other
-		carrier(s).
+		frequency-modulate the carrier(s).
 	a	Amplitude, where 1.0 corresponds to a level of 0dB and
 		0.0 is silence. (Note that the final output level is scaled
 		down by the number of voices; alternatively, the S "a" option
@@ -215,17 +213,14 @@ Parameters:
 		signal, multiplied by its amplitude parameter (defaulting
 		to 1.0).
 			The product of the modulator amplitudes is used to
-		amplitude-modulate the carrier(s), be they the final
-		carrier(s) or in turn modulator(s) for one or more other
-		carrier(s).
+		amplitude-modulate the carrier(s).
 	p	Set the beginning phase of the wave. For example, p(3/4) will
 		make a sine or triangle wave begin at its "bottom". This is
 		often more useful for modulators used by "f,w"/"r,w" or "a,w".
 			"Modulator list" values are supported for PM (phase
                 modulation); see section.
 			The sum of the modulator amplitudes is used to
-		phase-modulate the carrier(s), be they the final carrier(s)
-		or in turn modulator(s) for one or more other carrier(s).
+		phase-modulate the carrier(s).
 	s	Silent time before playing, time in seconds.
 			Works like adding a delay, except it only affects this
 		oscillator.
@@ -318,10 +313,20 @@ Parameters and object binding:
 	or AM. (Note: Support for this is experimental and incomplete.)
 
 Labels and referencing:
-	Any object when specified may be prefixed by "'label " in order
-	to define a label for it, where the label consists of alphanumeric
-	characters and/or '_'; thereafter the label can be referenced using
-	"@label", to place future changes later in the script.
+	An object can be assigned a label by inserting "'name " in front of
+	adding the object, where the "name" is a case-sensitive string with
+	alphanumeric characters and/or '_'. The label can then be used to
+	refer back to the object as "@name", to start a new step for the
+	object anywhere later in the script.
+		Such a new "@name" step does not automatically set a new
+	time duration for the object, so "t" (see "Parameters") or other
+	time-altering syntax (see "Timing") must be used in order for the
+	old time duration value to be changed.
+		Note that a "@name" reference placed in a nesting scope
+	different from the original (e.g. outside a list, or in a new list)
+	does not move the object into the new nesting scope. It will not be
+	added to, nor removed from, any list by being referenced anywhere.
+	The time scope is however new and of the reference.
 
 Frequencies as notes:
 	Frequency values may be specified as notes. Currently, justly
