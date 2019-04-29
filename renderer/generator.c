@@ -8,7 +8,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #include "generator.h"
@@ -16,22 +16,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define MS_TO_SRT(ms, srate) \
-  lrintf(((ms) * .001f) * (srate))
-
-typedef union BufValue {
-  int32_t i;
-  float f;
-} BufValue;
-
 #define BUF_LEN 256
-typedef BufValue Buf[BUF_LEN];
-
-typedef struct ParameterValit {
-  uint32_t time, pos;
-  float goal;
-  uint8_t type;
-} ParameterValit;
+typedef union Buf {
+  int32_t i[BUF_LEN];
+  float f[BUF_LEN];
+} Buf;
 
 /*
  * Operator node flags.
@@ -50,7 +39,7 @@ typedef struct OperatorNode {
   const SGS_ProgramOpAdjcs *adjcs;
   float amp, dynamp;
   float freq, dynfreq;
-  ParameterValit valitamp, valitfreq;
+  SGS_Slope slope_amp, slope_freq;
 } OperatorNode;
 
 /*
@@ -67,8 +56,8 @@ typedef struct VoiceNode {
   uint8_t attr;
   const SGS_ProgramOpRef *op_list;
   uint32_t op_count;
-  float panning;
-  ParameterValit valitpanning;
+  float pan;
+  SGS_Slope slope_pan;
 } VoiceNode;
 
 typedef union EventValue {
@@ -132,14 +121,14 @@ static size_t count_ev_values(const SGS_ProgramEvent *e) {
     params = e->vo_data->params;
     params &= ~(SGS_PVOP_OPLIST);
     count += count_flags(params);
-    if ((params & SGS_PVOP_VALITPANNING) != 0) count += 2;
+    if ((params & SGS_PVOP_SLOPE_PAN) != 0) count += 2;
   }
   for (size_t i = 0; i < e->op_data_count; ++i) {
     params = e->op_data[i].params;
     params &= ~(SGS_POPP_ADJCS);
     count += count_flags(params);
-    if ((params & SGS_POPP_VALITFREQ) != 0) count += 2;
-    if ((params & SGS_POPP_VALITAMP) != 0) count += 2;
+    if ((params & SGS_POPP_SLOPE_FREQ) != 0) count += 2;
+    if ((params & SGS_POPP_SLOPE_AMP) != 0) count += 2;
   }
   return count;
 }
@@ -226,7 +215,7 @@ static bool convert_program(SGS_Generator *o, SGS_Program *prg,
     uint32_t params;
     uint16_t vo_id = prg_e->vo_id;
     e->vals = ev_v;
-    e->waittime = MS_TO_SRT(prg_e->wait_ms, srate);
+    e->waittime = SGS_MS_TO_SRT(prg_e->wait_ms, srate);
     vo_wait_time += e->waittime;
     //e->vd.id = SGS_PVO_NO_ID;
     e->vd.id = vo_id;
@@ -248,16 +237,16 @@ static bool convert_program(SGS_Generator *o, SGS_Program *prg,
       if (params & SGS_POPP_TIME) {
         (*ev_v++).i = (pod->time_ms == SGS_TIME_INF) ?
           SGS_TIME_INF :
-          MS_TO_SRT(pod->time_ms, srate);
+          SGS_MS_TO_SRT(pod->time_ms, srate);
       }
       if (params & SGS_POPP_SILENCE)
-        (*ev_v++).i = MS_TO_SRT(pod->silence_ms, srate);
+        (*ev_v++).i = SGS_MS_TO_SRT(pod->silence_ms, srate);
       if (params & SGS_POPP_FREQ)
         (*ev_v++).f = pod->freq;
-      if (params & SGS_POPP_VALITFREQ) {
-        (*ev_v++).i = MS_TO_SRT(pod->valitfreq.time_ms, srate);
-        (*ev_v++).f = pod->valitfreq.goal;
-        (*ev_v++).i = pod->valitfreq.type;
+      if (params & SGS_POPP_SLOPE_FREQ) {
+        (*ev_v++).i = pod->slope_freq.time_ms;
+        (*ev_v++).f = pod->slope_freq.goal;
+        (*ev_v++).i = pod->slope_freq.type;
       }
       if (params & SGS_POPP_DYNFREQ)
         (*ev_v++).f = pod->dynfreq;
@@ -265,10 +254,10 @@ static bool convert_program(SGS_Generator *o, SGS_Program *prg,
         (*ev_v++).i = SGS_Osc_PHASE(pod->phase);
       if (params & SGS_POPP_AMP)
         (*ev_v++).f = pod->amp;
-      if (params & SGS_POPP_VALITAMP) {
-        (*ev_v++).i = MS_TO_SRT(pod->valitamp.time_ms, srate);
-        (*ev_v++).f = pod->valitamp.goal;
-        (*ev_v++).i = pod->valitamp.type;
+      if (params & SGS_POPP_SLOPE_AMP) {
+        (*ev_v++).i = pod->slope_amp.time_ms;
+        (*ev_v++).f = pod->slope_amp.goal;
+        (*ev_v++).i = pod->slope_amp.type;
       }
       if (params & SGS_POPP_DYNAMP)
         (*ev_v++).f = pod->dynamp;
@@ -284,12 +273,12 @@ static bool convert_program(SGS_Generator *o, SGS_Program *prg,
       }
       if (params & SGS_PVOP_ATTR)
         (*ev_v++).i = pvd->attr;
-      if (params & SGS_PVOP_PANNING)
-        (*ev_v++).f = pvd->panning;
-      if (params & SGS_PVOP_VALITPANNING) {
-        (*ev_v++).i = MS_TO_SRT(pvd->valitpanning.time_ms, srate);
-        (*ev_v++).f = pvd->valitpanning.goal;
-        (*ev_v++).i = pvd->valitpanning.type;
+      if (params & SGS_PVOP_PAN)
+        (*ev_v++).f = pvd->pan;
+      if (params & SGS_PVOP_SLOPE_PAN) {
+        (*ev_v++).i = pvd->slope_pan.time_ms;
+        (*ev_v++).f = pvd->slope_pan.goal;
+        (*ev_v++).i = pvd->slope_pan.type;
       }
       o->voices[vo_id].pos = -vo_wait_time;
       vo_wait_time = 0;
@@ -376,11 +365,11 @@ static void handle_event(SGS_Generator *o, EventNode *e) {
         on->silence = (*val++).i;
       if (params & SGS_POPP_FREQ)
         on->freq = (*val++).f;
-      if (params & SGS_POPP_VALITFREQ) {
-        on->valitfreq.time = (*val++).i;
-        on->valitfreq.pos = 0;
-        on->valitfreq.goal = (*val++).f;
-        on->valitfreq.type = (*val++).i;
+      if (params & SGS_POPP_SLOPE_FREQ) {
+        on->slope_freq.time_ms = (*val++).i;
+        on->slope_freq.pos = 0;
+        on->slope_freq.goal = (*val++).f;
+        on->slope_freq.type = (*val++).i;
       }
       if (params & SGS_POPP_DYNFREQ)
         on->dynfreq = (*val++).f;
@@ -388,11 +377,11 @@ static void handle_event(SGS_Generator *o, EventNode *e) {
         SGS_Osc_SET_PHASE(&on->osc, (uint32_t)(*val++).i);
       if (params & SGS_POPP_AMP)
         on->amp = (*val++).f;
-      if (params & SGS_POPP_VALITAMP) {
-        on->valitamp.time = (*val++).i;
-        on->valitamp.pos = 0;
-        on->valitamp.goal = (*val++).f;
-        on->valitamp.type = (*val++).i;
+      if (params & SGS_POPP_SLOPE_AMP) {
+        on->slope_amp.time_ms = (*val++).i;
+        on->slope_amp.pos = 0;
+        on->slope_amp.goal = (*val++).f;
+        on->slope_amp.type = (*val++).i;
       }
       if (params & SGS_POPP_DYNAMP)
         on->dynamp = (*val++).f;
@@ -408,13 +397,13 @@ static void handle_event(SGS_Generator *o, EventNode *e) {
         uint8_t attr = (uint8_t)(*val++).i;
         vn->attr = attr;
       }
-      if (params & SGS_PVOP_PANNING)
-        vn->panning = (*val++).f;
-      if (params & SGS_PVOP_VALITPANNING) {
-        vn->valitpanning.time = (*val++).i;
-        vn->valitpanning.pos = 0;
-        vn->valitpanning.goal = (*val++).f;
-        vn->valitpanning.type = (*val++).i;
+      if (params & SGS_PVOP_PAN)
+        vn->pan = (*val++).f;
+      if (params & SGS_PVOP_SLOPE_PAN) {
+        vn->slope_pan.time_ms = (*val++).i;
+        vn->slope_pan.pos = 0;
+        vn->slope_pan.goal = (*val++).f;
+        vn->slope_pan.type = (*val++).i;
       }
       vn->flags |= VN_INIT;
       vn->pos = 0;
@@ -429,81 +418,35 @@ static void handle_event(SGS_Generator *o, EventNode *e) {
  * Fill buffer with buf_len float values for a parameter; these may
  * either simply be a copy of the supplied state, or modified.
  *
- * If a parameter valit (VALue ITeration) is supplied, the values
- * are shaped according to its timing, target value and curve
- * selection. Once elapsed, the state will also be set to its final
- * value.
+ * If a parameter slope is supplied, it is used.
  *
- * Passing a modifier buffer will accordingly multiply each output
- * value, done to get absolute values from ratios.
+ * If not NULL, \p modbuf will be used as a sequence of value
+ * multipliers. This is used to get actual values from ratios.
  */
-static bool run_param(BufValue *buf, uint32_t buf_len, ParameterValit *vi,
-                      float *state, const BufValue *modbuf) {
-  uint32_t i, end, len, filllen;
-  double coeff;
-  float s0 = *state;
-  if (!vi) {
-    filllen = buf_len;
-    goto FILL;
+static bool run_param(SGS_Generator *o,
+                      float *buf, uint32_t buf_len, SGS_Slope *slope,
+                      float *state, const float *modbuf) {
+  uint32_t i;
+  if (!slope) {
+    float s0 = *state;
+    if (modbuf) {
+      for (i = 0; i < buf_len; ++i)
+        buf[i] = s0 * modbuf[i];
+    } else {
+      for (i = 0; i < buf_len; ++i)
+        buf[i] = s0;
+    }
+    return false;
   }
-  coeff = 1.f / vi->time;
-  len = vi->time - vi->pos;
-  if (len > buf_len) {
-    len = buf_len;
-    filllen = 0;
-  } else {
-    filllen = buf_len - len;
-  }
-  switch (vi->type) {
-  case SGS_VALIT_LIN:
-    for (i = vi->pos, end = i + len; i < end; ++i) {
-      (*buf++).f = s0 + (vi->goal - s0) * (i * coeff);
-    }
-    break;
-  case SGS_VALIT_EXP:
-    for (i = vi->pos, end = i + len; i < end; ++i) {
-      double mod = 1.f - i * coeff,
-             modp2 = mod * mod,
-             modp3 = modp2 * mod;
-      mod = modp3 + (modp2 * modp3 - modp2) *
-                    (mod * (629.f/1792.f) + modp2 * (1163.f/1792.f));
-      (*buf++).f = vi->goal + (s0 - vi->goal) * mod;
-    }
-    break;
-  case SGS_VALIT_LOG:
-    for (i = vi->pos, end = i + len; i < end; ++i) {
-      double mod = i * coeff,
-             modp2 = mod * mod,
-             modp3 = modp2 * mod;
-      mod = modp3 + (modp2 * modp3 - modp2) *
-                    (mod * (629.f/1792.f) + modp2 * (1163.f/1792.f));
-      (*buf++).f = s0 + (vi->goal - s0) * mod;
-    }
-    break;
+  bool done = !SGS_Slope_run(slope, o->srate, buf, buf_len, *state);
+  if (done) {
+    *state = slope->goal;
   }
   if (modbuf) {
-    buf -= len;
-    for (i = 0; i < len; ++i) {
-      (*buf++).f *= (*modbuf++).f;
-    }
+    for (i = 0; i < buf_len; ++i)
+      buf[i] *= modbuf[i];
   }
-  vi->pos += len;
-  if (vi->time == vi->pos) {
-    s0 = *state = vi->goal; /* when reached, valit target becomes new state */
-  FILL:
-    /*
-     * Set the remaining values, if any, using the state.
-     */
-    if (modbuf) {
-      for (i = 0; i < filllen; ++i)
-        buf[i].f = s0 * modbuf[i].f;
-    } else {
-      for (i = 0; i < filllen; ++i)
-        buf[i].f = s0;
-    }
-    return (vi != 0);
-  }
-  return 0;
+  return done;
 }
 
 /*
@@ -516,19 +459,19 @@ static bool run_param(BufValue *buf, uint32_t buf_len, ParameterValit *vi,
  * Returns number of samples generated for the node.
  */
 static uint32_t run_block(SGS_Generator *o, Buf *bufs, uint32_t buf_len,
-                          OperatorNode *n, BufValue *parent_freq,
+                          OperatorNode *n, float *parent_freq,
                           bool wave_env, uint32_t acc_ind) {
   uint32_t i, len;
-  BufValue *sbuf, *freq, *freqmod, *pm, *amp;
+  int32_t *sbuf = bufs->i, *pm;
+  float *freq, *freqmod, *amp;
   Buf *nextbuf = bufs + 1;
-  ParameterValit *vi;
+  SGS_Slope *slope;
   uint32_t fmodc = 0, pmodc = 0, amodc = 0;
   if (n->adjcs) {
     fmodc = n->adjcs->fmodc;
     pmodc = n->adjcs->pmodc;
     amodc = n->adjcs->amodc;
   }
-  sbuf = *bufs;
   len = buf_len;
   /*
    * If silence, zero-fill and delay processing for duration.
@@ -539,7 +482,7 @@ static uint32_t run_block(SGS_Generator *o, Buf *bufs, uint32_t buf_len,
     if (zero_len > len)
       zero_len = len;
     if (!acc_ind) for (i = 0; i < zero_len; ++i)
-      sbuf[i].i = 0;
+      sbuf[i] = 0;
     len -= zero_len;
     if (n->time != SGS_TIME_INF) n->time -= zero_len;
     n->silence -= zero_len;
@@ -551,7 +494,7 @@ static uint32_t run_block(SGS_Generator *o, Buf *bufs, uint32_t buf_len,
    */
   if ((n->flags & ON_VISITED) != 0) {
       for (i = 0; i < len; ++i)
-        sbuf[i].i = 0;
+        sbuf[i] = 0;
       return zero_len + len;
   }
   n->flags |= ON_VISITED;
@@ -567,40 +510,40 @@ static uint32_t run_block(SGS_Generator *o, Buf *bufs, uint32_t buf_len,
    * Handle frequency (alternatively ratio) parameter, including frequency
    * modulation if modulators linked.
    */
-  freq = *(nextbuf++);
-  if (n->attr & SGS_POPA_VALITFREQ) {
-    vi = &n->valitfreq;
-    if (n->attr & SGS_POPA_VALITFREQRATIO) {
+  freq = (nextbuf++)->f;
+  if (n->attr & SGS_POPA_SLOPE_FREQ) {
+    slope = &n->slope_freq;
+    if (n->attr & SGS_POPA_SLOPE_FREQRATIO) {
       freqmod = parent_freq;
       if (!(n->attr & SGS_POPA_FREQRATIO)) {
         n->attr |= SGS_POPA_FREQRATIO;
-        n->freq /= parent_freq[0].f;
+        n->freq /= parent_freq[0];
       }
     } else {
-      freqmod = 0;
+      freqmod = NULL;
       if (n->attr & SGS_POPA_FREQRATIO) {
         n->attr &= ~SGS_POPA_FREQRATIO;
-        n->freq *= parent_freq[0].f;
+        n->freq *= parent_freq[0];
       }
     }
   } else {
-    vi = 0;
+    slope = NULL;
     freqmod = (n->attr & SGS_POPA_FREQRATIO) ? parent_freq : 0;
   }
-  if (run_param(freq, len, vi, &n->freq, freqmod))
-    n->attr &= ~(SGS_POPA_VALITFREQ|SGS_POPA_VALITFREQRATIO);
+  if (run_param(o, freq, len, slope, &n->freq, freqmod))
+    n->attr &= ~(SGS_POPA_SLOPE_FREQ|SGS_POPA_SLOPE_FREQRATIO);
   if (fmodc) {
     const uint32_t *fmods = n->adjcs->adjcs;
-    BufValue *fmbuf;
+    float *fmbuf;
     for (i = 0; i < fmodc; ++i)
       run_block(o, nextbuf, len, &o->operators[fmods[i]], freq, true, i);
-    fmbuf = *nextbuf;
+    fmbuf = nextbuf->f;
     if (n->attr & SGS_POPA_FREQRATIO) {
       for (i = 0; i < len; ++i)
-        freq[i].f += (n->dynfreq * parent_freq[i].f - freq[i].f) * fmbuf[i].f;
+        freq[i] += (n->dynfreq * parent_freq[i] - freq[i]) * fmbuf[i];
     } else {
       for (i = 0; i < len; ++i)
-        freq[i].f += (n->dynfreq - freq[i].f) * fmbuf[i].f;
+        freq[i] += (n->dynfreq - freq[i]) * fmbuf[i];
     }
   }
   /*
@@ -611,7 +554,7 @@ static uint32_t run_block(SGS_Generator *o, Buf *bufs, uint32_t buf_len,
     const uint32_t *pmods = &n->adjcs->adjcs[fmodc];
     for (i = 0; i < pmodc; ++i)
       run_block(o, nextbuf, len, &o->operators[pmods[i]], freq, false, i);
-    pm = *(nextbuf++);
+    pm = (nextbuf++)->i;
   }
   /*
    * Handle amplitude parameter, including amplitude modulation if
@@ -622,46 +565,48 @@ static uint32_t run_block(SGS_Generator *o, Buf *bufs, uint32_t buf_len,
     float dynampdiff = n->dynamp - n->amp;
     for (i = 0; i < amodc; ++i)
       run_block(o, nextbuf, len, &o->operators[amods[i]], freq, true, i);
-    amp = *(nextbuf++);
+    amp = (nextbuf++)->f;
     for (i = 0; i < len; ++i)
-      amp[i].f = n->amp + amp[i].f * dynampdiff;
+      amp[i] = n->amp + amp[i] * dynampdiff;
   } else {
-    amp = *(nextbuf++);
-    vi = (n->attr & SGS_POPA_VALITAMP) ? &n->valitamp : 0;
-    if (run_param(amp, len, vi, &n->amp, 0))
-      n->attr &= ~SGS_POPA_VALITAMP;
+    amp = (nextbuf++)->f;
+    slope = (n->attr & SGS_POPA_SLOPE_AMP) ? &n->slope_amp : 0;
+    if (run_param(o, amp, len, slope, &n->amp, 0))
+      n->attr &= ~SGS_POPA_SLOPE_AMP;
   }
   if (!wave_env) {
     /*
      * Generate integer output - either for voice output or phase modulation
      * input.
      */
-    const int16_t *lut = SGS_Wave_luts[n->wave];
+    const float *lut = SGS_Wave_luts[n->wave];
     for (i = 0; i < len; ++i) {
       int32_t s, spm = 0;
-      float sfreq = freq[i].f;
-      float samp = amp[i].f;
-      if (pm) spm = pm[i].i;
-      SGS_Osc_RUN_S16(&n->osc, lut, o->osc_coeff, sfreq, spm, samp, s);
-      if (acc_ind) s += sbuf[i].i;
-      sbuf[i].i = s;
+      float sfreq = freq[i];
+      float samp = amp[i];
+      if (pm) spm = pm[i];
+      s = lrintf(SGS_Osc_run(&n->osc, lut, o->osc_coeff, sfreq, spm) * samp *
+                 (float) INT16_MAX);
+      if (acc_ind) s += sbuf[i];
+      sbuf[i] = s;
     }
   } else {
+    float *f_sbuf = (float*) sbuf;
     /*
      * Generate float output - used as waveform envelopes for modulating
      * frequency or amplitude.
      */
-    const int16_t *lut = SGS_Wave_luts[n->wave];
+    const float *lut = SGS_Wave_luts[n->wave];
     for (i = 0; i < len; ++i) {
       float s;
-      float sfreq = freq[i].f;
-      float samp = amp[i].f * 0.5f;
+      float sfreq = freq[i];
+      float samp = amp[i] * 0.5f;
       int32_t spm = 0;
-      if (pm) spm = pm[i].i;
-      SGS_Osc_RUN_SF(&n->osc, lut, o->osc_coeff, sfreq, spm, s);
+      if (pm) spm = pm[i];
+      s = SGS_Osc_run(&n->osc, lut, o->osc_coeff, sfreq, spm);
       s = (s * samp) + fabs(samp);
-      if (acc_ind) s *= sbuf[i].f;
-      sbuf[i].f = s;
+      if (acc_ind) s *= f_sbuf[i];
+      f_sbuf[i] = s;
     }
   }
   /*
@@ -671,7 +616,7 @@ static uint32_t run_block(SGS_Generator *o, Buf *bufs, uint32_t buf_len,
     if (!acc_ind && skip_len > 0) {
       sbuf += len;
       for (i = 0; i < skip_len; ++i)
-        sbuf[i].i = 0;
+        sbuf[i] = 0;
     }
     n->time -= len;
   }
@@ -689,24 +634,24 @@ static uint32_t run_block(SGS_Generator *o, Buf *bufs, uint32_t buf_len,
  */
 static void mix_output(SGS_Generator *o, VoiceNode *vn,
                        int16_t **st_out, uint32_t len) {
-  BufValue *s_buf = o->bufs[0];
+  int32_t *s_buf = o->bufs[0].i;
   float scale = o->amp_scale;
-  if (vn->attr & SGS_PVOA_VALITPANNING) {
-    BufValue *pan_buf = o->bufs[1];
-    if (run_param(pan_buf, len, &vn->valitpanning,
-        &vn->panning, 0)) {
-      vn->attr &= ~SGS_PVOA_VALITPANNING;
+  if (vn->attr & SGS_PVOA_SLOPE_PAN) {
+    float *pan_buf = o->bufs[1].f;
+    if (run_param(o, pan_buf, len, &vn->slope_pan,
+        &vn->pan, 0)) {
+      vn->attr &= ~SGS_PVOA_SLOPE_PAN;
     }
     for (uint32_t i = 0; i < len; ++i) {
-      float s = s_buf[i].i * scale;
-      float p = s * pan_buf[i].f;
+      float s = s_buf[i] * scale;
+      float p = s * pan_buf[i];
       *(*st_out)++ += lrintf(s - p);
       *(*st_out)++ += lrintf(p);
     }
   } else {
     for (uint32_t i = 0; i < len; ++i) {
-      float s = s_buf[i].i * scale;
-      float p = s * vn->panning;
+      float s = s_buf[i] * scale;
+      float p = s * vn->pan;
       *(*st_out)++ += lrintf(s - p);
       *(*st_out)++ += lrintf(p);
     }
