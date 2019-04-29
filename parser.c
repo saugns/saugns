@@ -39,7 +39,7 @@
 /* Sensible to print, for ASCII only. */
 #define IS_VISIBLE(c) ((c) >= '!' && (c) <= '~')
 
-static uint8_t test_symchar(SGS_File *f, uint8_t c) {
+static uint8_t test_symchar(SGS_File *f SGS__maybe_unused, uint8_t c) {
   return IS_SYMCHAR(c);
 }
 
@@ -79,7 +79,6 @@ static int32_t read_strfind(SGS_File *f, const char *const*str) {
   pos = matchpos = 0;
   for (;;) {
     uint8_t c = SGS_File_GETC(f);
-    if (c <= SGS_FILE_MARKER) break;
     for (i = 0; i < strc; ++i) {
       if (!s[i]) continue;
       else if (!s[i][pos]) {
@@ -90,6 +89,7 @@ static int32_t read_strfind(SGS_File *f, const char *const*str) {
         s[i] = 0;
       }
     }
+    if (c <= SGS_FILE_MARKER) break;
     if (pos == len) break;
     ++pos;
   }
@@ -137,7 +137,6 @@ static const SGS_ScriptOptions def_sopt = {
  */
 static void init_parser(SGS_Parser *o) {
   *o = (SGS_Parser){0};
-  o->f = SGS_create_File();
   o->mp = SGS_create_Mempool(0);
   o->st = SGS_create_Symtab();
   o->sopt = def_sopt;
@@ -147,7 +146,6 @@ static void init_parser(SGS_Parser *o) {
  * Finalize parser instance.
  */
 static void fini_parser(SGS_Parser *o) {
-  SGS_destroy_File(o->f);
   SGS_destroy_Symtab(o->st);
 }
 
@@ -1307,16 +1305,17 @@ RETURN:
 /*
  * Process file.
  *
+ * The file is closed after parse,
+ * but the SGS_File instance is not destroyed.
+ *
  * \return true if completed, false on error preventing parse
  */
-static bool parse_file(SGS_Parser *o, const char *fname) {
-  if (!SGS_File_fopenrb(o->f, fname)) {
-    SGS_error(NULL, "couldn't open script file \"%s\" for reading", fname);
-    return false;
-  }
+static bool parse_file(SGS_Parser *o, SGS_File *f) {
+  o->f = f;
   o->line = 1;
   parse_level(o, 0, SGS_POP_CARR, SCOPE_TOP);
   SGS_File_close(o->f);
+  o->f = NULL; // freed by invoker
   return true;
 }
 
@@ -1527,18 +1526,21 @@ static void postparse_passes(SGS_Parser *o) {
  *
  * \return instance or NULL on error preventing parse
  */
-SGS_Script* SGS_load_Script(const char *fname) {
+SGS_Script* SGS_load_Script(SGS_File *f) {
+  if (!f) return NULL;
+
   SGS_Parser pr;
   init_parser(&pr);
+  const char *name = f->path;
   SGS_Script *o = NULL;
-  if (!parse_file(&pr, fname)) {
+  if (!parse_file(&pr, f)) {
     goto DONE;
   }
   postparse_passes(&pr);
   o = SGS_Mempool_alloc(pr.mp, sizeof(SGS_Script));
   o->mp = pr.mp;
   o->events = pr.events;
-  o->name = fname;
+  o->name = name;
   o->sopt = pr.sopt;
 
 DONE:

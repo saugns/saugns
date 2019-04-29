@@ -1,5 +1,5 @@
 /* sgensys: Main module / Command-line interface.
- * Copyright (c) 2011-2013, 2017-2019 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -13,9 +13,12 @@
 
 #include "sgensys.h"
 #include "script.h"
-#if SGS_TEST_LEXER
+#if SGS_TEST_SCANNER
+# include "scanner.h"
+#elif SGS_TEST_LEXER
 # include "lexer.h"
 #endif
+#include "file.h"
 #include "generator.h"
 #include "audiodev.h"
 #include "wavfile.h"
@@ -30,8 +33,8 @@
  */
 static void print_usage(bool by_arg) {
 	fputs(
-"Usage: sgensys [-a|-m] [-r srate] [-p] [-o wavfile] scriptfile\n"
-"       sgensys [-c] [-p] scriptfile\n"
+"Usage: sgensys [-a|-m] [-r srate] [-p] [-o wavfile] [-e] script\n"
+"       sgensys [-c] [-p] [-e] script\n"
 "\n"
 "By default, audio device output is enabled.\n"
 "\n"
@@ -41,6 +44,7 @@ static void print_usage(bool by_arg) {
 "     \tif unsupported for audio device, warns and prints rate used instead.\n"
 "  -o \tWrite a 16-bit PCM WAV file, always using the sample rate requested;\n"
 "     \tdisables audio device output by default.\n"
+"  -e \tEvaluate string instead of file.\n"
 "  -c \tCheck script only, reporting any errors or requested info.\n"
 "  -p \tPrint info for script after loading.\n"
 "  -h \tPrint this message.\n"
@@ -78,6 +82,7 @@ enum {
 	ARG_DISABLE_AUDIO_DEV = 1<<2,
 	ARG_ONLY_COMPILE = 1<<3,
 	ARG_PRINT_INFO = 1<<4,
+	ARG_EVAL_STRING = 1<<5,
 };
 
 /*
@@ -88,7 +93,7 @@ enum {
  * \return true if args valid and script path set
  */
 static bool parse_args(int argc, char **argv, uint32_t *flags,
-		const char **script_path, const char **wav_path,
+		const char **script_arg, const char **wav_path,
 		uint32_t *srate) {
 	int i;
 	for (;;) {
@@ -96,13 +101,13 @@ static bool parse_args(int argc, char **argv, uint32_t *flags,
 		--argc;
 		++argv;
 		if (argc < 1) {
-			if (!*script_path) goto INVALID;
+			if (!*script_arg) goto INVALID;
 			break;
 		}
 		arg = *argv;
 		if (*arg != '-') {
-			if (*script_path) goto INVALID;
-			*script_path = arg;
+			if (*script_arg) goto INVALID;
+			*script_arg = arg;
 			continue;
 		}
 NEXT_C:
@@ -119,6 +124,9 @@ NEXT_C:
 			if ((*flags & ARG_FULL_RUN) != 0)
 				goto INVALID;
 			*flags |= ARG_ONLY_COMPILE;
+			break;
+		case 'e':
+			*flags |= ARG_EVAL_STRING;
 			break;
 		case 'h':
 			if (*flags != 0) goto INVALID;
@@ -166,7 +174,7 @@ NEXT_C:
 		}
 		goto NEXT_C;
 	}
-	return (*script_path != NULL);
+	return (*script_arg != NULL);
 
 INVALID:
 	print_usage(false);
@@ -174,31 +182,78 @@ INVALID:
 }
 
 /*
+ * Open file for script arg.
+ *
+ * \return instance or NULL on error
+ */
+static SGS_File *open_file(const char *script_arg, bool is_path) {
+	SGS_File *f = SGS_create_File();
+	if (!f) return NULL;
+	if (!is_path) {
+		SGS_File_stropenrb(f, "-e ...", script_arg);
+		return f;
+	}
+	if (!SGS_File_fopenrb(f, script_arg)) {
+		SGS_error(NULL,
+"couldn't open script file \"%s\" for reading", script_arg);
+		SGS_destroy_File(f);
+		return NULL;
+	}
+	return f;
+}
+
+/*
  * Create program for the given script file. Invokes the parser.
  *
  * \return instance or NULL on error
  */
-SGS_Program* SGS_build(const char *fname) {
-#if SGS_TEST_LEXER
+SGS_Program* SGS_build(const char *script_arg, bool is_path) {
+	SGS_File *f = open_file(script_arg, is_path);
+	if (!f) return NULL;
+
+	SGS_Program *o = NULL;
+#if SGS_TEST_SCANNER
 	SGS_Symtab *symtab = SGS_create_Symtab();
-	SGS_Lexer *lexer = SGS_create_Lexer(fname, symtab);
-	if (!lexer) return NULL;
+	SGS_Scanner *scanner = SGS_create_Scanner(f, symtab);
+	if (!scanner) {
+		SGS_destroy_Symtab(symtab);
+		goto CLOSE;
+	}
 	for (;;) {
-		SGS_ScriptToken *token = SGS_Lexer_get_token(lexer);
-		if (token->type <= 0) break;
+		char c = SGS_Scanner_getc(scanner);
+		if (!c) {
+			putchar('\n');
+			break;
+		}
+		putchar(c);
+	}
+	SGS_destroy_Scanner(scanner);
+	SGS_destroy_Symtab(symtab);
+	o = (SGS_Program*) calloc(1, sizeof(SGS_Program)); // placeholder
+#elif SGS_TEST_LEXER
+	SGS_Symtab *symtab = SGS_create_Symtab();
+	SGS_Lexer *lexer = SGS_create_Lexer(f, symtab);
+	if (!lexer) {
+		SGS_destroy_Symtab(symtab);
+		goto CLOSE;
+	}
+	for (;;) {
+		SGS_ScriptToken token;
+		if (!SGS_Lexer_get(lexer, &token)) break;
 	}
 	SGS_destroy_Lexer(lexer);
 	SGS_destroy_Symtab(symtab);
-	return (SGS_Program*) calloc(1, sizeof(SGS_Program)); //0;
+	o = (SGS_Program*) calloc(1, sizeof(SGS_Program)); // placeholder
 #else // OLD PARSER
-	SGS_Script *sd = SGS_load_Script(fname);
-	if (!sd) return NULL;
+	SGS_Script *sd = SGS_load_Script(f);
+	if (!sd) goto CLOSE;
 
-	SGS_Program *o = SGS_build_Program(sd);
+	o = SGS_build_Program(sd);
 	SGS_discard_Script(sd);
-	if (!o) return NULL;
-	return o;
 #endif
+CLOSE:
+	SGS_destroy_File(f);
+	return o;
 }
 
 /*
@@ -206,10 +261,11 @@ SGS_Program* SGS_build(const char *fname) {
  *
  * \return true unless error occurred
  */
-static bool build(const char *fname, SGS_Program **prg_out,
+static bool build(const char *script_arg, SGS_Program **prg_out,
 		uint32_t options) {
 	SGS_Program *prg;
-	if (!(prg = SGS_build(fname)))
+	bool is_path = !(options & ARG_EVAL_STRING);
+	if (!(prg = SGS_build(script_arg, is_path)))
 		return false;
 	if ((options & ARG_PRINT_INFO) != 0)
 		SGS_Program_print_info(prg);
@@ -313,15 +369,15 @@ static bool render(SGS_Program *prg, uint32_t srate,
  * Main function.
  */
 int main(int argc, char **argv) {
-	const char *script_path = NULL, *wav_path = NULL;
+	const char *script_arg = NULL, *wav_path = NULL;
 	uint32_t options = 0;
 	SGS_Program *prg;
 	uint32_t srate = DEFAULT_SRATE;
 
-	if (!parse_args(argc, argv, &options, &script_path, &wav_path,
+	if (!parse_args(argc, argv, &options, &script_arg, &wav_path,
 			&srate))
 		return 0;
-	if (!build(script_path, &prg, options))
+	if (!build(script_arg, &prg, options))
 		return 1;
 	if (prg != NULL) {
 		bool error = !render(prg, srate, options, wav_path);
