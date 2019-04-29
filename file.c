@@ -54,21 +54,40 @@ SGS_File *SGS_create_File(void) {
 }
 
 /**
- * Destroy instance. Closes file if open.
+ * Create instance with parent.
+ *
+ * Sets the default callback for reading and writing modes.
  */
-void SGS_destroy_File(SGS_File *o) {
+SGS_File *SGS_create_sub_File(SGS_File *parent) {
+	if (!parent) return NULL;
+	SGS_File *o = SGS_create_File();
+	if (!o) return NULL;
+	o->parent = parent;
+	return o;
+}
+
+/**
+ * Destroy instance. Closes file if open.
+ *
+ * \return parent instance or NULL
+ */
+SGS_File *SGS_destroy_File(SGS_File *o) {
 	if (o->close_f) {
 		o->close_f(o);
 	}
+	SGS_File *parent = o->parent;
 	free(o);
+	return parent;
 }
 
-static size_t file_mode_fread(SGS_File *o, SGS_FileMode *m);
+static size_t mode_fread(SGS_File *o, SGS_FileMode *m);
+static size_t mode_strread(SGS_File *o, SGS_FileMode *m);
 
-static void file_ref_close(SGS_File *o);
+static void ref_fclose(SGS_File *o);
+static void ref_strclose(SGS_File *o);
 
 /**
- * Open file for reading.
+ * Open stdio file for reading.
  *
  * The file is automatically closed when EOF or a read error occurs,
  * but \a path is only cleared with an explicit call to SGS_File_close()
@@ -84,21 +103,47 @@ bool SGS_File_fopenrb(SGS_File *o, const char *path) {
 	if (!f) return false;
 
 	o->mr.call_pos = 0;
-	o->mr.f = file_mode_fread;
+	o->mr.f = mode_fread;
 	o->status = SGS_FILE_OK;
 	o->end_pos = (size_t) -1;
 	o->ref = f;
 	o->path = path;
-	o->close_f = file_ref_close;
+	o->close_f = ref_fclose;
 	return true;
 }
 
 /**
- * Close file if open. Reset buffer read and write modes, but not
- * buffer contents.
+ * Open string as file for reading. The string must be NULL-terminated.
+ * The path is optional and only used to name the file.
+ *
+ * The file is automatically closed upon a NULL byte,
+ * but \a path is only cleared with an explicit call to SGS_File_close()
+ * or SGS_File_reset(), so as to remain available for printing.
+ *
+ * \return true on success
+ */
+bool SGS_File_stropenrb(SGS_File *o,
+		const char *path, const char *str) {
+	SGS_File_close(o);
+
+	if (!str) return false;
+
+	o->mr.call_pos = 0;
+	o->mr.f = mode_strread;
+	o->status = SGS_FILE_OK;
+	o->end_pos = (size_t) -1;
+	o->ref = (void*) str;
+	o->path = path;
+	o->close_f = ref_strclose;
+	return true;
+}
+
+/**
+ * Close file if open. Reset buffer read and write modes,
+ * but not buffer contents.
  */
 void SGS_File_close(SGS_File *o) {
-	if (o->close_f) {
+	if (o->close_f != NULL) {
 		o->close_f(o);
 		o->close_f = NULL;
 	}
@@ -109,11 +154,23 @@ void SGS_File_close(SGS_File *o) {
 }
 
 /**
- * Reset file object. Like SGS_File_close(), except it also zeroes the buffer.
+ * Reset file. Like SGS_File_close(), but also zeroes the buffer.
  */
 void SGS_File_reset(SGS_File *o) {
 	SGS_File_close(o);
 	memset(o->buf, 0, SGS_FBUF_SIZ);
+}
+
+static void end_file(SGS_File *o, bool error) {
+	o->status |= SGS_FILE_END;
+	if (error)
+		o->status |= SGS_FILE_ERROR;
+	if (o->parent != NULL)
+		o->status |= SGS_FILE_CHANGE;
+	if (o->close_f != NULL) {
+		o->close_f(o);
+		o->close_f = NULL;
+	}
 }
 
 static void add_end_marker(SGS_File *o, SGS_FileMode *m,
@@ -124,27 +181,20 @@ static void add_end_marker(SGS_File *o, SGS_FileMode *m,
 }
 
 /*
- * Fill the area of the buffer currently arrived at. This should be
- * called when indicated by SGS_File_NEED_FILL().
+ * Read up to a buffer area of data from a stdio file.
+ * Closes file upon EOF or read error.
  *
- * When EOF or a read error occurs, the file will be closed and
- * the first character after the last one successfully read will
- * be assigned an end marker value. Further calls will reset the
+ * Upon short read, inserts SGS_File_STATUS() value
+ * not counted in return length as an end marker.
+ * If the file is closed, further calls will reset the
  * reading position and write the end marker again.
- *
- * SGS_File_STATUS() will return the same value as the end marker,
- * which is always <= SGS_FILE_MARKER.
  *
  * \return number of characters successfully read
  */
-static size_t file_mode_fread(SGS_File *o, SGS_FileMode *m) {
+static size_t mode_fread(SGS_File *o, SGS_FileMode *m) {
 	FILE *f = o->ref;
 	/*
 	 * Set position to the first character of the buffer area.
-	 *
-	 * Read a buffer area's worth of data from the file, if
-	 * open. Upon short read, insert SGS_File_STATUS() value
-	 * not counted in return length. Close file upon end or error.
 	 */
 	m->pos &= (SGS_FBUF_SIZ - 1) & ~(SGS_FBUF_ALEN - 1);
 	if (!f) {
@@ -155,11 +205,9 @@ static size_t file_mode_fread(SGS_File *o, SGS_FileMode *m) {
 	size_t len = fread(&o->buf[m->pos], 1, SGS_FBUF_ALEN, f);
 	m->call_pos = (m->pos + len) & (SGS_FBUF_SIZ - 1);
 	if (ferror(f)) {
-		o->status |= SGS_FILE_ERROR;
-	}
-	if (feof(f)) {
-		o->status |= SGS_FILE_END;
-		file_ref_close(o);
+		end_file(o, true);
+	} else if (feof(f)) {
+		end_file(o, false);
 	}
 	if (len < SGS_FBUF_ALEN) {
 		add_end_marker(o, m, len);
@@ -168,13 +216,58 @@ static size_t file_mode_fread(SGS_File *o, SGS_FileMode *m) {
 }
 
 /*
- * Close file without clearing state.
+ * Read up to a buffer area of data from a string, advancing
+ * the pointer, unless the string is NULL. Closes file
+ * (setting the string to NULL) upon NULL byte.
+ *
+ * Upon short read, inserts SGS_File_STATUS() value
+ * not counted in return length as an end marker.
+ * If the file is closed, further calls will reset the
+ * reading position and write the end marker again.
+ *
+ * \return number of characters successfully read
  */
-static void file_ref_close(SGS_File *o) {
+static size_t mode_strread(SGS_File *o, SGS_FileMode *m) {
+	const char *str = o->ref;
+	/*
+	 * Set position to the first character of the buffer area.
+	 */
+	m->pos &= (SGS_FBUF_SIZ - 1) & ~(SGS_FBUF_ALEN - 1);
+	if (!str) {
+		m->call_pos = m->pos;
+		add_end_marker(o, m, 0);
+		return 0;
+	}
+	size_t len = strlen(str);
+	if (len >= SGS_FBUF_ALEN) {
+		len = SGS_FBUF_ALEN;
+		memcpy(&o->buf[m->pos], str, len);
+		o->ref += len;
+		m->call_pos = (m->pos + len) & (SGS_FBUF_SIZ - 1);
+		return len;
+	}
+	memcpy(&o->buf[m->pos], str, len);
+	end_file(o, false);
+	m->call_pos += len;
+	add_end_marker(o, m, len);
+	return len;
+}
+
+/*
+ * Close stdio file without clearing state.
+ */
+static void ref_fclose(SGS_File *o) {
 	if (o->ref != NULL) {
 		fclose(o->ref);
 		o->ref = NULL;
 	}
+}
+
+/*
+ * Close string file by clearing field.
+ */
+static void ref_strclose(SGS_File *o) {
+	o->ref = NULL;
 }
 
 #define IS_SPACE(c) ((c) == ' ' || (c) == '\t')

@@ -145,13 +145,14 @@ void SGS_FileMode_reset(SGS_FileMode *m);
  * the relevant flags are set to the status field.
  * The first character after the last one successfully read
  * is then assigned the status as a marker value on each read.
- * The value (the sum of flags) is at most SGS_File_MARKER,
+ * The value (the sum of flags) is at most SGS_FILE_MARKER,
  * which is less than a valid character in normal text.
  */
 enum {
 	SGS_FILE_OK = 0,
 	SGS_FILE_END = 1<<0,
 	SGS_FILE_ERROR = 1<<1,
+	SGS_FILE_CHANGE = 1<<2,
 	SGS_FILE_MARKER = 0x07,
 };
 
@@ -164,6 +165,7 @@ typedef void (*SGS_FileClose_f)(SGS_File *o);
 
 /**
  * File type using circular buffer, meant for scanning and parsing.
+ * Supports creating sub-instances, e.g. used for nested file includes.
  *
  * Maintains states for reading and writing to the buffer and
  * calling a function for each mode to perform action at chosen
@@ -180,14 +182,18 @@ struct SGS_File {
 	size_t end_pos;
 	void *ref;
 	const char *path;
+	SGS_File *parent;
 	SGS_FileClose_f close_f;
 	uint8_t buf[SGS_FBUF_SIZ];
 };
 
 SGS_File *SGS_create_File(void) SGS__malloclike;
-void SGS_destroy_File(SGS_File *o);
+SGS_File *SGS_create_sub_File(SGS_File *parent) SGS__malloclike;
+SGS_File *SGS_destroy_File(SGS_File *o);
 
 bool SGS_File_fopenrb(SGS_File *o, const char *path);
+bool SGS_File_stropenrb(SGS_File *o,
+		const char *path, const char *str);
 
 void SGS_File_close(SGS_File *o);
 void SGS_File_reset(SGS_File *o);

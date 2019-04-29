@@ -127,5 +127,6 @@ typedef struct SGS_Script {
 	struct SGS_Mempool *mp;
 } SGS_Script;
 
-SGS_Script *SGS_load_Script(const char *fname) SGS__malloclike;
+struct SGS_File;
+SGS_Script *SGS_load_Script(struct SGS_File *f) SGS__malloclike;
 void SGS_discard_Script(SGS_Script *o);

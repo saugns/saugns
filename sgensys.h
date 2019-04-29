@@ -59,3 +59,6 @@ void SGS_error(const char *label, const char *fmt, ...)
 
 #define SGS_HASHTAB_STATS 0
 #define SGS_LEXER_QUIET 0
+
+/* Disable old parser, run scanner testing instead. Takes precedence. */
+#define SGS_TEST_SCANNER 0
