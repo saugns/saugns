@@ -1,5 +1,5 @@
 /* sgensys: Script file data and functions.
- * Copyright (c) 2011-2012, 2017-2021 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -8,7 +8,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #pragma once
@@ -44,7 +44,7 @@ typedef struct SGS_ScriptOpData {
 	uint8_t wave;
 	uint32_t time_ms, silence_ms;
 	float freq, dynfreq, phase, amp, dynamp;
-	SGS_ProgramValit valitfreq, valitamp;
+	SGS_Ramp ramp_freq, ramp_amp;
 	/* node adjacents in operator linkage graph */
 	SGS_PtrList fmods, pmods, amods;
 } SGS_ScriptOpData;
@@ -54,8 +54,10 @@ typedef struct SGS_ScriptOpData {
  */
 enum {
 	SGS_SDEV_VOICE_LATER_USED = 1<<0,
-	SGS_SDEV_ADD_WAIT_DURATION = 1<<1,
-	SGS_SDEV_NEW_OPGRAPH = 1<<2,
+	SGS_SDEV_VOICE_SET_DUR = 1<<1,
+	SGS_SDEV_IMPLICIT_TIME = 1<<2,
+	SGS_SDEV_ADD_WAIT_DURATION = 1<<3,
+	SGS_SDEV_NEW_OPGRAPH = 1<<4,
 };
 
 struct SGS_ScriptEvBranch;
@@ -76,8 +78,8 @@ typedef struct SGS_ScriptEvData {
 	uint32_t vo_params;
 	struct SGS_ScriptEvData *voice_prev; /* preceding event for voice */
 	uint8_t vo_attr;
-	float panning;
-	SGS_ProgramValit valitpanning;
+	float pan;
+	SGS_Ramp ramp_pan;
 	SGS_PtrList op_graph;
 } SGS_ScriptEvData;
 

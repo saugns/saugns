@@ -171,7 +171,7 @@ Parameters:
 		previous as its default time. The exception is modulators,
 		for which the last sub-step is infinite ("ti") by default.
 	f	Frequency in Hz. Can be negative to flip wave shape timewise.
-			Gradual value adjustment also supported; see section.
+			Value ramp also supported; see section.
 	f![]	A second frequency in Hz may follow the "!", for a range to
 		use with FM by wave or envelope.
 			A list of modulator operators may be specified
@@ -186,7 +186,7 @@ Parameters:
 		the frequency to use. For an n:m carrier-modulator frequency
 		ratio, a value of the form (m/n) may be used; e.g., for a
 		3:4 frequency ratio, "r(4/3)".
-			Gradual value adjustment also supported; see section.
+			Value ramp also supported; see section.
 	r![]	(For modulator operators only.) A second relative frequency,
 		for a range to use with FM by wave or envelope.
 			A list of modulator operators may be specified
@@ -195,16 +195,14 @@ Parameters:
 		in a 0.0 to 1.0 range, i.e. a positive signal, multiplied by
 		its amplitude parameter (defaulting to 1.0).
 			The product of the modulator amplitudes is used to
-		frequency-modulate the carrier(s), be they the final
-		carrier(s) or in turn modulator(s) for one or more other
-		carrier(s).
+		frequency-modulate the carrier(s).
 	a	Amplitude, where 1.0 corresponds to a level of 0dB and
 		0.0 is silence. (Note that the final output level is scaled
 		down by the number of voices; alternatively, the S "a" option
 		can be used to set a multiplier used when adding a top-level
 		carrier. Panning will further reduce output level unless
 		fully left or right.) Can be negative to flip sign of result.
-			Gradual value adjustment also supported; see section.
+			Value ramp also supported; see section.
 	a![]	A second amplitude may follow the "!", for a range to use
 		with AM by wave or envelope.
 			A list of modulator operators may be specified
@@ -213,9 +211,7 @@ Parameters:
 		in a 0.0 to 1.0 range, i.e. a positive signal, multiplied by
 		its amplitude parameter (defaulting to 1.0).
 			The product of the modulator amplitudes is used to
-		amplitude-modulate the carrier(s), be they the final
-		carrier(s) or in turn modulator(s) for one or more other
-		carrier(s).
+		amplitude-modulate the carrier(s).
 	p	Set the beginning phase of the wave. For example, p(3/4) will
 		make a sine or triangle wave begin at its "bottom". This is
 		mostly used where wanted for waves used by f!/r! or a!.
@@ -223,8 +219,7 @@ Parameters:
 		this list replaces any previous PM modulators set, and may be
 		empty.
 			The sum of the modulator amplitudes is used to
-		phase-modulate the carrier(s), be they the final carrier(s)
-		or in turn modulator(s) for one or more other carrier(s).
+		phase-modulate the carrier(s).
 	s	Silent time before playing, time in seconds.
 			Works like adding a delay, except it only affects this
 		operator.
@@ -237,7 +232,7 @@ Set the panning (left-right "balance") of the voice associated with
 the present operator(s), affecting the left and right output levels.
 Value range is 0 (all-left) to 1 (all-right). Default is 0.5 (center).
 Panning not at either extreme end will reduce level.
-		Gradual value adjustment also supported; see section.
+		Value ramp also supported; see section.
 
 Quit: Q
 -------
@@ -268,15 +263,19 @@ Numerical expressions:
 		Some parameters support named constants specific to that type
 	of value. Such a name can be written instead of a number.
 
-Gradual value adjustment:
+Value ramp:
 	Some parameters are noted to support this. Instead of typing the
 	value directly, the following sub-parameters are specified within
 	"{}" (curly brackets):
 	v	Target value.
 	t	Time to reach target value.
-	c	Change type; either lin, exp or log. (exp and log use
-		ear-tuned polynomial approximations designed to sound
-		natural, and which are symmetric to one another.)
+	c	Curve type (default 'lin'):
+			lin	Linear trajectory over time.
+			exp	Exponential trajectory over time.
+			log	Logarithmic trajectory over time.
+		(The 'exp' and 'log' types use ear-tuned polynomial
+		approximations designed to sound natural, and
+		symmetric one to another.)
 
 Parameters and operator binding:
 	When specifying or referencing operators within "@[...]", any
@@ -287,10 +286,20 @@ Parameters and operator binding:
 	or AM. (Note: Support for this is experimental and incomplete.)
 
 Labels and referencing:
-	Any operator when specified may be prefixed by "'label " in order
-	to define a label for it, where the label consists of alphanumeric
-	characters and/or '_'; thereafter the label can be referenced using
-	"@label", to place future changes later in the script.
+	An object can be assigned a label by inserting "'name " in front of
+	adding the object, where the "name" is a case-sensitive string with
+	alphanumeric characters and/or '_'. The label can then be used to
+	refer back to the object as "@name", to start a new step for the
+	object anywhere later in the script.
+		Such a new "@name" step does not automatically set a new
+	time duration for the object, so "t" (see "Parameters") or other
+	time-altering syntax (see "Timing") must be used in order for the
+	old time duration value to be changed.
+		Note that a "@name" reference placed in a nesting scope
+	different from the original (e.g. outside a list, or in a new list)
+	does not move the object into the new nesting scope. It will not be
+	added to, nor removed from, any list by being referenced anywhere.
+	The time scope is however new and of the reference.
 
 Frequencies as notes:
 	Frequency values may be specified as notes. Currently, justly
