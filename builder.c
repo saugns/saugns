@@ -8,12 +8,14 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #include "sgensys.h"
 #include "script.h"
-#if SGS_TEST_LEXER
+#if SGS_TEST_SCANNER
+# include "builder/scanner.h"
+#elif SGS_TEST_LEXER
 # include "builder/lexer.h"
 #endif
 #include "builder/file.h"
@@ -52,7 +54,25 @@ SGS_Program* SGS_build(const char *script_arg, bool is_path) {
 	if (!f) return NULL;
 
 	SGS_Program *o = NULL;
-#if SGS_TEST_LEXER
+#if SGS_TEST_SCANNER
+	SGS_SymTab *symtab = SGS_create_SymTab();
+	SGS_Scanner *scanner = SGS_create_Scanner(f, symtab);
+	if (!scanner) {
+		SGS_destroy_SymTab(symtab);
+		goto CLOSE;
+	}
+	for (;;) {
+		char c = SGS_Scanner_getc(scanner);
+		if (!c) {
+			putchar('\n');
+			break;
+		}
+		putchar(c);
+	}
+	SGS_destroy_Scanner(scanner);
+	SGS_destroy_SymTab(symtab);
+	o = (SGS_Program*) calloc(1, sizeof(SGS_Program)); // placeholder
+#elif SGS_TEST_LEXER
 	SGS_SymTab *symtab = SGS_create_SymTab();
 	SGS_Lexer *lexer = SGS_create_Lexer(f, symtab);
 	if (!lexer) {
