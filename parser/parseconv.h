@@ -8,7 +8,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #include "../arrtype.h"
@@ -129,7 +129,7 @@ static uint32_t VoAlloc_update(VoAlloc *va, SGS_ScriptEvData *e) {
 	VAState *vas = &va->a[vo_id];
 	vas->last_ev = e;
 	vas->flags &= ~VA_OPLIST;
-	if ((e->ev_flags & SGS_SDEV_NEW_OPGRAPH) != 0)
+	if ((e->ev_flags & SGS_SDEV_VOICE_SET_DUR) != 0)
 		vas->duration_ms = voice_duration(e);
 	return vo_id;
 }
@@ -255,8 +255,8 @@ static void ParseConv_convert_opdata(ParseConv *o,
 	ood->phase = op->phase;
 	ood->amp = op->amp;
 	ood->dynamp = op->dynamp;
-	ood->valitfreq = op->valitfreq;
-	ood->valitamp = op->valitamp;
+	ood->ramp_freq = op->ramp_freq;
+	ood->ramp_amp = op->ramp_amp;
 	VAState *vas = &o->va.a[o->ev->vo_id];
 	if (op->amods) {
 		ood->amods = oas->amods =
@@ -391,8 +391,8 @@ static void ParseConv_convert_event(ParseConv *o, SGS_ScriptEvData *e) {
 			SGS_Mempool_alloc(o->mp, sizeof(SGS_ProgramVoData));
 		ovd->params = vo_params;
 		ovd->attr = e->vo_attr;
-		ovd->panning = e->panning;
-		ovd->valitpanning = e->valitpanning;
+		ovd->pan = e->pan;
+		ovd->ramp_pan = e->ramp_pan;
 		if ((e->ev_flags & SGS_SDEV_NEW_OPGRAPH) != 0) {
 			vas->op_graph = SGS_create_ProgramIDArr(o->mp,
 					&e->op_graph, NULL);

@@ -11,6 +11,7 @@ OBJ=error.o \
     lexer.o \
     parser.o \
     mempool.o \
+    ramp.o \
     wave.o \
     generator.o \
     audiodev.o \
@@ -56,7 +57,7 @@ error.o: error.c sgensys.h
 lexer.o: lexer.c lexer.h symtab.h math.h sgensys.h
 	$(CC) -c $(CFLAGS) lexer.c
 
-parser.o: parser.c parser/parseconv.h script.h mempool.h symtab.h program.h wave.h math.h arrtype.h sgensys.h
+parser.o: parser.c parser/parseconv.h script.h mempool.h symtab.h program.h ramp.h wave.h math.h arrtype.h sgensys.h
 	$(CC) -c $(CFLAGS) parser.c
 
 symtab.o: symtab.c symtab.h mempool.h sgensys.h
@@ -65,10 +66,13 @@ symtab.o: symtab.c symtab.h mempool.h sgensys.h
 mempool.o: mempool.c mempool.h sgensys.h
 	$(CC) -c $(CFLAGS) mempool.c
 
-generator.o: generator.c generator.h osc.h program.h wave.h math.h sgensys.h
+ramp.o: ramp.c ramp.h math.h sgensys.h
+	$(CC) -c $(CFLAGS_FAST) ramp.c
+
+generator.o: generator.c generator.h osc.h program.h ramp.h wave.h math.h sgensys.h
 	$(CC) -c $(CFLAGS_FAST) generator.c
 
-sgensys.o: sgensys.c lexer.h script.h generator.h program.h wave.h math.h audiodev.h wavfile.h sgensys.h
+sgensys.o: sgensys.c lexer.h script.h generator.h program.h ramp.h wave.h math.h audiodev.h wavfile.h sgensys.h
 	$(CC) -c $(CFLAGS) sgensys.c
 
 wave.o: wave.c wave.h math.h sgensys.h
