@@ -9,6 +9,7 @@ OBJ=error.o \
     arrtype.o \
     symtab.o \
     file.o \
+    scanner.o \
     lexer.o \
     parser.o \
     parseconv.o \
@@ -68,6 +69,9 @@ parseconv.o: parseconv.c program.h ramp.h wave.h math.h script.h mempool.h arrty
 parser.o: parser.c script.h mempool.h symtab.h file.h program.h ramp.h wave.h math.h sgensys.h
 	$(CC) -c $(CFLAGS) parser.c
 
+scanner.o: scanner.c scanner.h file.h math.h sgensys.h
+	$(CC) -c $(CFLAGS) scanner.c -o scanner.o
+
 symtab.o: symtab.c symtab.h mempool.h sgensys.h
 	$(CC) -c $(CFLAGS) symtab.c
 
@@ -80,7 +84,7 @@ ramp.o: ramp.c ramp.h math.h sgensys.h
 generator.o: generator.c generator.h osc.h program.h ramp.h wave.h math.h mempool.h sgensys.h
 	$(CC) -c $(CFLAGS_FAST) generator.c
 
-sgensys.o: sgensys.c lexer.h script.h generator.h program.h ramp.h wave.h math.h audiodev.h wavfile.h sgensys.h
+sgensys.o: sgensys.c file.h lexer.h scanner.h symtab.h script.h generator.h program.h ramp.h wave.h math.h audiodev.h wavfile.h sgensys.h
 	$(CC) -c $(CFLAGS) sgensys.c
 
 wave.o: wave.c wave.h math.h sgensys.h
