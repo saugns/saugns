@@ -8,10 +8,11 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #pragma once
+#include "ramp.h"
 #include "wave.h"
 
 /*
@@ -23,8 +24,8 @@
  */
 enum {
 	SGS_PVOP_OPLIST = 1<<0,
-	SGS_PVOP_PANNING = 1<<1,
-	SGS_PVOP_VALITPANNING = 1<<2,
+	SGS_PVOP_PAN = 1<<1,
+	SGS_PVOP_RAMP_PAN = 1<<2,
 	SGS_PVOP_ATTR = 1<<3,
 };
 
@@ -37,11 +38,11 @@ enum {
 	SGS_POPP_TIME = 1<<2,
 	SGS_POPP_SILENCE = 1<<3,
 	SGS_POPP_FREQ = 1<<4,
-	SGS_POPP_VALITFREQ = 1<<5,
+	SGS_POPP_RAMP_FREQ = 1<<5,
 	SGS_POPP_DYNFREQ = 1<<6,
 	SGS_POPP_PHASE = 1<<7,
 	SGS_POPP_AMP = 1<<8,
-	SGS_POPP_VALITAMP = 1<<9,
+	SGS_POPP_RAMP_AMP = 1<<9,
 	SGS_POPP_DYNAMP = 1<<10,
 	SGS_POPP_ATTR = 1<<11,
 };
@@ -67,14 +68,13 @@ enum {
  */
 enum {
 	SGS_TIME_INF = UINT32_MAX, /* special handling for nested operators */
-	SGS_TIME_DEFAULT = UINT32_MAX, /* internal default for valits */
 };
 
 /**
  * Voice atttributes
  */
 enum {
-	SGS_PVOA_VALITPANNING = 1<<0,
+	SGS_PVOA_RAMP_PAN = 1<<0,
 };
 
 /**
@@ -83,19 +83,9 @@ enum {
 enum {
 	SGS_POPA_FREQRATIO = 1<<0,
 	SGS_POPA_DYNFREQRATIO = 1<<1,
-	SGS_POPA_VALITFREQ = 1<<2,
-	SGS_POPA_VALITFREQRATIO = 1<<3,
-	SGS_POPA_VALITAMP = 1<<4,
-};
-
-/**
- * Value iteration types
- */
-enum {
-	SGS_VALIT_NONE = 0, /* when none given */
-	SGS_VALIT_LIN,
-	SGS_VALIT_EXP,
-	SGS_VALIT_LOG
+	SGS_POPA_RAMP_FREQ = 1<<2,
+	SGS_POPA_RAMP_FREQRATIO = 1<<3,
+	SGS_POPA_RAMP_AMP = 1<<4,
 };
 
 typedef struct SGS_ProgramIDArr {
@@ -120,19 +110,13 @@ typedef struct SGS_ProgramOpRef {
 	uint8_t level; /* > 0 if used as a modulator */
 } SGS_ProgramOpRef;
 
-typedef struct SGS_ProgramValit {
-	uint32_t time_ms, pos_ms;
-	float goal;
-	uint8_t type;
-} SGS_ProgramValit;
-
 typedef struct SGS_ProgramVoData {
 	const SGS_ProgramOpRef *op_list;
 	uint32_t op_count;
 	uint32_t params;
 	uint8_t attr;
-	float panning;
-	SGS_ProgramValit valitpanning;
+	float pan;
+	SGS_Ramp ramp_pan;
 } SGS_ProgramVoData;
 
 typedef struct SGS_ProgramOpData {
@@ -144,7 +128,7 @@ typedef struct SGS_ProgramOpData {
 	uint32_t time_ms, silence_ms;
 	float freq, dynfreq, amp, dynamp;
 	uint32_t phase;
-	SGS_ProgramValit valitfreq, valitamp;
+	SGS_Ramp ramp_freq, ramp_amp;
 } SGS_ProgramOpData;
 
 typedef struct SGS_ProgramEvent {
