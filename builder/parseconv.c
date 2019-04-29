@@ -8,7 +8,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #include "../program.h"
@@ -279,8 +279,8 @@ static void ParseConv_convert_opdata(ParseConv *o,
 	ood.phase = op->phase;
 	ood.amp = op->amp;
 	ood.dynamp = op->dynamp;
-	ood.valitfreq = op->valitfreq;
-	ood.valitamp = op->valitamp;
+	ood.ramp_freq = op->ramp_freq;
+	ood.ramp_amp = op->ramp_amp;
 	if ((op->op_params & SGS_POPP_ADJCS) != 0) {
 		VAState *vas = &o->va.a[o->ev->vo_id];
 		vas->flags |= VA_OPLIST;
@@ -414,8 +414,8 @@ static void ParseConv_convert_event(ParseConv *o, SGS_ScriptEvData *e) {
 		SGS_ProgramVoData *ovd = calloc(1, sizeof(SGS_ProgramVoData));
 		ovd->params = vo_params;
 		ovd->attr = e->vo_attr;
-		ovd->panning = e->panning;
-		ovd->valitpanning = e->valitpanning;
+		ovd->pan = e->pan;
+		ovd->ramp_pan = e->ramp_pan;
 		if ((e->ev_flags & SGS_SDEV_NEW_OPGRAPH) != 0) {
 			if (vas->op_graph != NULL) free(vas->op_graph);
 			vas->op_graph = create_OpGraph(e);

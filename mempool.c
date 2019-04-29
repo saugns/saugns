@@ -8,7 +8,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
  * View the file COPYING for details, or if missing, see
- * <http://www.gnu.org/licenses/>.
+ * <https://www.gnu.org/licenses/>.
  */
 
 #include "mempool.h"
@@ -217,7 +217,7 @@ void *SGS_MemPool_alloc(SGS_MemPool *o, const void *src, size_t size) {
 			 * one originally at i.
 			 *
 			 * The free space at i/j needs to remain fudged until
-			 * after copy_blocks_up_one(), since it relies on
+			 * after copy_blocks_up_one(), which relies on
 			 * binary search.
 			 */
 			BlockEntry tmp = o->blocks[i];
