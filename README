@@ -10,7 +10,7 @@ retro-ish. It is however easy to use for experimenting with sounds.
 "FM" of most commercial synthesizers). An arbitrary number of
 oscillators can be used.
 
-The program reads Sound Generation Script files and produces audio.
+The program reads a Sound Generation Script file or string.
 Output can be to system audio, and/or a 16-bit PCM WAV file.
 
 Supported platforms include x86 and x86-64,
@@ -25,13 +25,13 @@ Other systems are untested. The following audio systems are expected:
 Building and installing
 =======================
 
-Building can be done using make (GNU or BSD) and a modern C compiler.
-On supported systems, there is no extra configuration.
+Building requires a C99 compiler and `make` (GNU or BSD).
+On Linux systems, the ALSA library must be installed to build.
+In the cases of the 4 major BSDs, the base systems have it all.
 
-There are no extra dependencies except system audio libraries as
-needed for the platform. (On Linux systems, the ALSA sound library
-headers often need to be installed. The BSDs supported provide
-everything needed.)
+A simple test after building is the following, which should
+play a sine wave at 444Hz for 1 second:
+	./sgensys -e "Osin"
 
 There is currently no install script or target provided. After
 building, the 'sgensys' binary and the 'examples/' directory
