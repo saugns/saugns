@@ -50,7 +50,7 @@ audiodev.o: audiodev.c audiodev/*.c audiodev.h common.h
 common.o: common.c common.h
 	$(CC) -c $(CFLAGS) common.c
 
-builder.o: builder.c sgensys.h builder/lexer.h script.h program.h ptrlist.h wave.h math.h common.h
+builder.o: builder.c sgensys.h builder/file.h builder/lexer.h script.h program.h ptrlist.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) builder.c
 
 builder/file.o: builder/file.c builder/file.h common.h
