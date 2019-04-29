@@ -1,5 +1,5 @@
 /* sgensys: Main module / Command-line interface.
- * Copyright (c) 2011-2013, 2017-2019 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -23,8 +23,8 @@
  */
 static void print_usage(bool by_arg) {
 	fputs(
-"Usage: sgensys [-a|-m] [-r srate] [-p] [-o wavfile] scriptfile\n"
-"       sgensys [-c] [-p] scriptfile\n"
+"Usage: sgensys [-a|-m] [-r srate] [-p] [-o wavfile] [-e] script\n"
+"       sgensys [-c] [-p] [-e] script\n"
 "\n"
 "By default, audio device output is enabled.\n"
 "\n"
@@ -34,6 +34,7 @@ static void print_usage(bool by_arg) {
 "     \tif unsupported for audio device, warns and prints rate used instead.\n"
 "  -o \tWrite a 16-bit PCM WAV file, always using the sample rate requested;\n"
 "     \tdisables audio device output by default.\n"
+"  -e \tEvaluate string instead of file.\n"
 "  -c \tCheck script only, reporting any errors or requested info.\n"
 "  -p \tPrint info for script after loading.\n"
 "  -h \tPrint this message.\n"
@@ -71,6 +72,7 @@ enum {
 	ARG_DISABLE_AUDIO_DEV = 1<<2,
 	ARG_ONLY_COMPILE = 1<<3,
 	ARG_PRINT_INFO = 1<<4,
+	ARG_EVAL_STRING = 1<<5,
 };
 
 /*
@@ -81,7 +83,7 @@ enum {
  * \return true if args valid and script path set
  */
 static bool parse_args(int argc, char **argv, uint32_t *flags,
-		const char **script_path, const char **wav_path,
+		const char **script_arg, const char **wav_path,
 		uint32_t *srate) {
 	int i;
 	for (;;) {
@@ -89,13 +91,13 @@ static bool parse_args(int argc, char **argv, uint32_t *flags,
 		--argc;
 		++argv;
 		if (argc < 1) {
-			if (!*script_path) goto INVALID;
+			if (!*script_arg) goto INVALID;
 			break;
 		}
 		arg = *argv;
 		if (*arg != '-') {
-			if (*script_path) goto INVALID;
-			*script_path = arg;
+			if (*script_arg) goto INVALID;
+			*script_arg = arg;
 			continue;
 		}
 NEXT_C:
@@ -112,6 +114,9 @@ NEXT_C:
 			if ((*flags & ARG_FULL_RUN) != 0)
 				goto INVALID;
 			*flags |= ARG_ONLY_COMPILE;
+			break;
+		case 'e':
+			*flags |= ARG_EVAL_STRING;
 			break;
 		case 'h':
 			if (*flags != 0) goto INVALID;
@@ -159,7 +164,7 @@ NEXT_C:
 		}
 		goto NEXT_C;
 	}
-	return (*script_path != NULL);
+	return (*script_arg != NULL);
 
 INVALID:
 	print_usage(false);
@@ -171,10 +176,11 @@ INVALID:
  *
  * \return true unless error occurred
  */
-static bool build(const char *fname, SGS_Program **prg_out,
+static bool build(const char *script_arg, SGS_Program **prg_out,
 		uint32_t options) {
 	SGS_Program *prg;
-	if (!(prg = SGS_build(fname)))
+	bool is_path = !(options & ARG_EVAL_STRING);
+	if (!(prg = SGS_build(script_arg, is_path)))
 		return false;
 	if ((options & ARG_PRINT_INFO) != 0)
 		SGS_Program_print_info(prg);
@@ -205,15 +211,15 @@ static bool render(SGS_Program *prg, uint32_t srate,
  * Main function.
  */
 int main(int argc, char **argv) {
-	const char *script_path = NULL, *wav_path = NULL;
+	const char *script_arg = NULL, *wav_path = NULL;
 	uint32_t options = 0;
 	SGS_Program *prg;
 	uint32_t srate = DEFAULT_SRATE;
 
-	if (!parse_args(argc, argv, &options, &script_path, &wav_path,
+	if (!parse_args(argc, argv, &options, &script_arg, &wav_path,
 			&srate))
 		return 0;
-	if (!build(script_path, &prg, options))
+	if (!build(script_arg, &prg, options))
 		return 1;
 	if (prg != NULL) {
 		bool error = !render(prg, srate, options, wav_path);
