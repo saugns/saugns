@@ -134,7 +134,8 @@ static SGS_Program *build_program(const char *restrict script_arg,
 		bool is_path) {
 	SGS_Program *o = NULL;
 	SGS_SymTab *symtab = SGS_create_SymTab();
-	if (!symtab) return NULL;
+	if (!symtab)
+		return NULL;
 #if SGS_TEST_SCANNER
 	SGS_Scanner *scanner = SGS_create_Scanner(symtab);
 	if (!scanner) goto CLOSE;
@@ -149,7 +150,7 @@ static SGS_Program *build_program(const char *restrict script_arg,
 	}
 	o = (SGS_Program*) calloc(1, sizeof(SGS_Program)); // placeholder
 CLOSE:
-	if (scanner) SGS_destroy_Scanner(scanner);
+	SGS_destroy_Scanner(scanner);
 #else
 	SGS_Lexer *lexer = SGS_create_Lexer(symtab);
 	if (!lexer) goto CLOSE;
@@ -160,7 +161,7 @@ CLOSE:
 	}
 	o = (SGS_Program*) calloc(1, sizeof(SGS_Program)); // placeholder
 CLOSE:
-	if (lexer) SGS_destroy_Lexer(lexer);
+	SGS_destroy_Lexer(lexer);
 #endif
 	SGS_destroy_SymTab(symtab);
 	return o;
@@ -226,6 +227,5 @@ int main(int argc, char **restrict argv) {
 		// no audio output
 		discard_programs(&prg_objs);
 	}
-
 	return 0;
 }
