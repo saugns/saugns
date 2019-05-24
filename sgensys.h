@@ -15,7 +15,7 @@
 #include "program.h"
 #include "ptrlist.h"
 
-#define SGS_VERSION_STR "sgensys v0.2-beta"
+#define SGS_VERSION_STR "sgensys v0.2-dev"
 
 #define SGS_DEFAULT_SRATE 96000
 
