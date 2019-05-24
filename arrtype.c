@@ -105,9 +105,8 @@ bool SGS_ArrType_memdup(void *restrict _o,
 	}
 	size_t size = o->count * item_size;
 	void *a = SGS_memdup(o->a, size);
-	if (!a) {
+	if (!a)
 		return false;
-	}
 	*dst = a;
 	return true;
 }
