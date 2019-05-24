@@ -1,5 +1,5 @@
 /* sgensys: Pointer list module.
- * Copyright (c) 2011-2012, 2018 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2018-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -30,9 +30,8 @@ bool SGS_PtrList_add(SGS_PtrList *restrict o, const void *restrict item) {
 		} else {
 			const size_t asize = 2 * sizeof(const void*);
 			const void **a = malloc(asize);
-			if (!a) {
+			if (!a)
 				return false;
-			}
 			a[0] = (const void*) o->items;
 			a[1] = item;
 			o->items = a;
@@ -47,18 +46,16 @@ bool SGS_PtrList_add(SGS_PtrList *restrict o, const void *restrict item) {
 	if (o->count == o->old_count) {
 		if (asize == isize) asize <<= 1;
 		const void **a = malloc(asize);
-		if (!a) {
+		if (!a)
 			return false;
-		}
 		memcpy(a, o->items, isize);
 		o->items = a;
 		o->asize = asize;
 	} else if (asize == isize) {
 		asize <<= 1;
 		const void **a = realloc(o->items, asize);
-		if (!a) {
+		if (!a)
 			return false;
-		}
 		o->items = a;
 		o->asize = asize;
 	}
@@ -98,9 +95,8 @@ bool SGS_PtrList_memdup(SGS_PtrList *restrict o, const void ***restrict dst) {
 	size_t size = o->count * sizeof(const void*);
 	const void **src = SGS_PtrList_ITEMS(o);
 	const void **a = SGS_memdup(src, size);
-	if (!a) {
+	if (!a)
 		return false;
-	}
 	*dst = a;
 	return true;
 }
