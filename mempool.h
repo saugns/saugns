@@ -1,5 +1,5 @@
 /* sgensys: Memory pool module.
- * Copyright (c) 2014, 2018 Joel K. Pettersson
+ * Copyright (c) 2014, 2018-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the

@@ -33,9 +33,8 @@ static inline SGS_AudioDev *open_linux(const char *restrict alsa_name,
 	if ((err = snd_pcm_open(&handle, alsa_name, SND_PCM_STREAM_PLAYBACK,
 			0)) < 0) {
 		o = open_oss(oss_name, oss_mode, channels, srate);
-		if (o) {
+		if (o != NULL)
 			return o;
-		}
 		SGS_error(NULL, "could neither use ALSA nor OSS");
 		goto ERROR;
 	}
