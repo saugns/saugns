@@ -1,5 +1,5 @@
 /* sgensys: Memory pool module.
- * Copyright (c) 2014, 2018 Joel K. Pettersson
+ * Copyright (c) 2014, 2018-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -45,7 +45,7 @@ static void *BlockArr_add(BlockArr *restrict o,
 	if (!_BlockArr_add(o, NULL))
 		return NULL;
 	void *mem = calloc(1, size_alloc);
-	if (mem == NULL)
+	if (!mem)
 		return NULL;
 	o->a[i].mem = mem;
 	o->a[i].free = size_alloc - size_used;
@@ -154,7 +154,7 @@ struct SGS_MemPool {
  */
 SGS_MemPool *SGS_create_MemPool(size_t block_size) {
 	SGS_MemPool *o = calloc(1, sizeof(SGS_MemPool));
-	if (o == NULL)
+	if (!o)
 		return NULL;
 	o->block_size = (block_size > 0) ?
 		ALIGN_SIZE(block_size) :
@@ -166,6 +166,8 @@ SGS_MemPool *SGS_create_MemPool(size_t block_size) {
  * Destroy instance.
  */
 void SGS_destroy_MemPool(SGS_MemPool *restrict o) {
+	if (!o)
+		return;
 	BlockArr_clear(&o->blocks);
 	free(o);
 }
@@ -197,7 +199,7 @@ void *SGS_MemPool_alloc(SGS_MemPool *restrict o, size_t size) {
 			size :
 			o->block_size;
 		ret = BlockArr_add(&o->blocks, alloc_size, size);
-		if (ret == NULL)
+		if (!ret)
 			return NULL;
 	}
 	/*
@@ -242,7 +244,7 @@ void *SGS_MemPool_alloc(SGS_MemPool *restrict o, size_t size) {
 void *SGS_MemPool_memdup(SGS_MemPool *restrict o,
 		const void *restrict src, size_t size) {
 	void *ret = SGS_MemPool_alloc(o, size);
-	if (ret == NULL)
+	if (!ret)
 		return NULL;
 	if (src != NULL) {
 		memcpy(ret, src, size);

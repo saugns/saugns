@@ -169,7 +169,7 @@ bool SGS_Slope_run(SGS_Slope *restrict o, float *restrict buf,
 		fill_state(o, buf, 0, buf_len, mulbuf);
 		return false;
 	}
-	uint32_t time = SGS_MS_TO_SRT(o->time_ms, srate);
+	uint32_t time = SGS_MS_IN_SAMPLES(o->time_ms, srate);
 	if ((o->flags & SGS_SLP_SLOPE_RATIO) != 0) {
 		if (!(o->flags & SGS_SLP_STATE_RATIO)) {
 			// divide v0 and enable ratio to match slope and vt
