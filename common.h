@@ -89,5 +89,8 @@ int SGS_getopt(int argc, char *const*restrict argv,
 /* Run scanner instead of lexer in 'test-scan' program. */
 #define SGS_TEST_SCANNER 0
 
+/* Print test statistics for scanner. */
+#define SGS_SCANNER_STATS 0
+
 /* Make test lexer quiet enough to time it. */
 #define SGS_LEXER_QUIET 1
