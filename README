@@ -98,8 +98,9 @@ Each of these keywords is further described in its own section below.
 		wave type, as in "Osin".
 	P	Panning for the voice at the current location; to be
 		followed by the new value.
-	Q	Quit script; end parsing, turning all that follows
-		into a comment. (Optional.) Other ways to comment exist.
+	Q	Quit script; end parsing, commenting out all that follows.
+		Optional. (Commenting more generally uses "#", "//",
+		or "/*...*/" syntax.)
 
 See the section 'Timing' for modifiers.
 
@@ -244,10 +245,11 @@ Panning not at either extreme end will reduce level.
 Q: Quit
 -------
 
-Quit script; end parsing, turning all that follows into a comment.
-(Optional.)
+Quit script; end parsing, commenting out all that follows.
+Optional.
 
-Generally, comments are added using "#" (line comment) instead.
+Commenting more generally uses "#" or "//" line comments,
+or "/*...*/" C-style block comments.
 
 Values and expressions
 ----------------------
@@ -256,7 +258,8 @@ Whitespace is not allowed within multi-character names, keywords or
 numbers, and separates values. Spaces and tabs may otherwise be used or
 omitted anywhere.
 
-Following a "#", the rest of a line is commented out.
+Following a "#" or "//", the rest of a line is commented out.
+Following "/*", text is commented out until "*/" is encountered.
 
 Numerical expressions:
 	A number can be specified with or without a decimal point;

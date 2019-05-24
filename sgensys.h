@@ -20,7 +20,7 @@
 #define SGS_CLINAME_STR "sgensys"
 
 /* Version printout string, for -v option. */
-#define SGS_VERSION_STR "v0.2-beta"
+#define SGS_VERSION_STR "v0.2-dev"
 
 /* Default sample rate, see -r option. */
 #define SGS_DEFAULT_SRATE 96000
@@ -94,6 +94,9 @@ void SGS_error(const char *restrict label, const char *restrict fmt, ...)
 
 /* Run scanner instead of lexer in 'test-scan' program. */
 #define SGS_TEST_SCANNER 0
+
+/* Print test statistics for scanner. */
+#define SGS_SCANNER_STATS 0
 
 /* Make test lexer quiet enough to time it. */
 #define SGS_LEXER_QUIET 1
