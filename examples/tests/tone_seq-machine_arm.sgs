@@ -1,11 +1,13 @@
-# Variation #5 of the first sgensys script made,
-# originally called "crashtofix.sgs". The script
-# remained after debugging was done, producing its
-# "machine arm" version of the original tone sequence.
-# Further edited to allow more easily varying the sound.
-#
-# Tests nested PM and gradual value changes with
-# compound step syntax.
+/*
+ * Variation #5 of the first sgensys script made,
+ * originally called "crashtofix.sgs". The script
+ * remained after debugging was done, producing its
+ * "machine arm" version of the original tone sequence.
+ * Further edited to allow more easily varying the sound.
+ *
+ * Tests nested PM and gradual value changes with
+ * compound step syntax.
+ */
 'rt=0.15
 Osin	f220 p[
 		Osin r7/2 a0.5
