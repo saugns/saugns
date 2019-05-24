@@ -57,9 +57,8 @@ bool SGS_ArrType_upsize(void *restrict _o,
 		if (!asize) asize = item_size;
 		while (asize < min_asize) asize <<= 1;
 		void *a = realloc(o->a, asize);
-		if (!a) {
+		if (!a)
 			return false;
-		}
 		o->a = a;
 		o->asize = asize;
 		memset(a + old_asize, 0, asize - old_asize);
@@ -103,9 +102,8 @@ bool SGS_ArrType_memdup(void *restrict _o,
 	}
 	size_t size = o->count * item_size;
 	void *a = SGS_memdup(o->a, size);
-	if (!a) {
+	if (!a)
 		return false;
-	}
 	*dst = a;
 	return true;
 }
