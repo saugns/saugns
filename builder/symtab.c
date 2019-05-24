@@ -121,9 +121,11 @@ static bool HashTab_extend(HashTab *restrict o) {
 static TabItem *HashTab_unique_item(HashTab *restrict o,
 		SGS_MemPool *restrict memp,
 		const void *restrict key, size_t len, size_t extra) {
-	if (key == NULL || len == 0) return NULL;
+	if (!key || len == 0)
+		return NULL;
 	if (o->count == (o->alloc / 2)) {
-		if (!HashTab_extend(o)) return NULL;
+		if (!HashTab_extend(o))
+			return NULL;
 	}
 
 	size_t hash = HashTab_hash_key(o, key, len);
@@ -137,7 +139,8 @@ static TabItem *HashTab_unique_item(HashTab *restrict o,
 #endif
 	}
 	item = SGS_MemPool_alloc(memp, GET_TABITEM_SIZE(len + extra));
-	if (item == NULL) return NULL;
+	if (!item)
+		return NULL;
 	item->prev = o->items[hash];
 	o->items[hash] = item;
 	item->key_len = len;
@@ -158,9 +161,10 @@ struct SGS_SymTab {
  */
 SGS_SymTab *SGS_create_SymTab(void) {
 	SGS_SymTab *o = calloc(1, sizeof(SGS_SymTab));
-	if (o == NULL) return NULL;
+	if (!o)
+		return NULL;
 	o->memp = SGS_create_MemPool(0);
-	if (o->memp == NULL) {
+	if (!o->memp) {
 		free(o);
 		return NULL;
 	}
@@ -171,6 +175,8 @@ SGS_SymTab *SGS_create_SymTab(void) {
  * Destroy instance.
  */
 void SGS_destroy_SymTab(SGS_SymTab *restrict o) {
+	if (!o)
+		return;
 #if SGS_HASHTAB_STATS
 	printf("collision count: %zd\n", collision_count);
 #endif
@@ -205,11 +211,13 @@ const char **SGS_SymTab_pool_stra(SGS_SymTab *restrict o,
 		size_t n) {
 	const char **res_stra;
 	res_stra = SGS_MemPool_alloc(o->memp, sizeof(const char*) * n);
-	if (!res_stra) return NULL;
+	if (!res_stra)
+		return NULL;
 	for (size_t i = 0; i < n; ++i) {
 		const char *str = SGS_SymTab_pool_str(o,
 				stra[i], strlen(stra[i]));
-		if (!str) return NULL;
+		if (!str)
+			return NULL;
 		res_stra[i] = str;
 	}
 	return res_stra;
@@ -223,7 +231,8 @@ const char **SGS_SymTab_pool_stra(SGS_SymTab *restrict o,
 void *SGS_SymTab_get(SGS_SymTab *restrict o,
 		const void *restrict key, size_t len) {
 	TabItem *item = HashTab_unique_item(&o->strtab, o->memp, key, len, 1);
-	if (!item) return NULL;
+	if (!item)
+		return NULL;
 	return item->data;
 }
 
@@ -235,7 +244,8 @@ void *SGS_SymTab_get(SGS_SymTab *restrict o,
 void *SGS_SymTab_set(SGS_SymTab *restrict o,
 		const void *restrict key, size_t len, void *restrict value) {
 	TabItem *item = HashTab_unique_item(&o->strtab, o->memp, key, len, 1);
-	if (!item) return NULL;
+	if (!item)
+		return NULL;
 	void *old_value = item->data;
 	item->data = value;
 	return old_value;
