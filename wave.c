@@ -1,5 +1,5 @@
 /* sgensys: Wave module.
- * Copyright (c) 2011-2012, 2017-2018 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -39,7 +39,8 @@ const char *const SGS_Wave_names[SGS_WAVE_TYPES + 1] = {
  */
 void SGS_global_init_Wave(void) {
 	static bool done = false;
-	if (done) return;
+	if (done)
+		return;
 	done = true;
 
 	float *const sin_lut = SGS_Wave_luts[SGS_WAVE_SIN];
@@ -137,8 +138,8 @@ void SGS_global_init_Wave(void) {
  * Print an index-value table for a LUT.
  */
 void SGS_Wave_print(uint8_t id) {
-	if (id >= SGS_WAVE_TYPES) return;
-
+	if (id >= SGS_WAVE_TYPES)
+		return;
 	const float *lut = SGS_Wave_luts[id];
 	const char *lut_name = SGS_Wave_names[id];
 	fprintf(stderr, "LUT: %s\n", lut_name);

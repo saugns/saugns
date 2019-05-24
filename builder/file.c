@@ -44,7 +44,8 @@ static inline void mode_reset(SGS_File *restrict o) {
  */
 SGS_File *SGS_create_File(void) {
 	SGS_File *o = calloc(1, sizeof(SGS_File));
-	if (!o) return NULL;
+	if (!o)
+		return NULL;
 	mode_reset(o);
 	return o;
 }
@@ -53,9 +54,11 @@ SGS_File *SGS_create_File(void) {
  * Create instance with parent. Sets the default callback.
  */
 SGS_File *SGS_create_sub_File(SGS_File *restrict parent) {
-	if (!parent) return NULL;
+	if (!parent)
+		return NULL;
 	SGS_File *o = SGS_create_File();
-	if (!o) return NULL;
+	if (!o)
+		return NULL;
 	o->parent = parent;
 	return o;
 }
@@ -66,8 +69,8 @@ SGS_File *SGS_create_sub_File(SGS_File *restrict parent) {
  * \return parent instance or NULL
  */
 SGS_File *SGS_destroy_File(SGS_File *restrict o) {
-	if (!o) return NULL;
-
+	if (!o)
+		return NULL;
 	if (o->close_f != NULL) {
 		o->close_f(o);
 	}
@@ -93,10 +96,11 @@ static void ref_strclose(SGS_File *restrict o);
  */
 bool SGS_File_fopenrb(SGS_File *restrict o, const char *restrict path) {
 	SGS_File_close(o);
-	if (!path) return false;
-
+	if (!path)
+		return false;
 	FILE *f = fopen(path, "rb");
-	if (!f) return false;
+	if (!f)
+		return false;
 	o->pos = 0;
 	o->call_pos = 0;
 	o->call_f = mode_fread;
@@ -121,8 +125,8 @@ bool SGS_File_fopenrb(SGS_File *restrict o, const char *restrict path) {
 bool SGS_File_stropenrb(SGS_File *restrict o,
 		const char *restrict path, const char *restrict str) {
 	SGS_File_close(o);
-	if (!str) return false;
-
+	if (!str)
+		return false;
 	o->pos = 0;
 	o->call_pos = 0;
 	o->call_f = mode_strread;
@@ -429,7 +433,6 @@ bool SGS_File_getd(SGS_File *restrict o,
 		c = SGS_File_GETC(o);
 		++len;
 	}
-
 DONE:
 	res = (double) num;
 	if (isinf(res)) truncate = true;
