@@ -393,9 +393,9 @@ ERROR:
  *
  * \return instance or NULL on error
  */
-SGS_Script *SGS_load_Script(struct SGS_File *restrict f) {
+SGS_Script *SGS_load_Script(const char *restrict script_arg, bool is_path) {
 	ParseConv pc = (ParseConv){0};
-	SGS_Parse *p = SGS_create_Parse(f);
+	SGS_Parse *p = SGS_create_Parse(script_arg, is_path);
 	if (!p)
 		return NULL;
 	SGS_Script *o = ParseConv_convert(&pc, p);
