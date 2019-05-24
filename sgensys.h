@@ -14,7 +14,7 @@
 #pragma once
 #include "program.h"
 
-#define SGS_VERSION_STR "sgensys v0.5.0"
+#define SGS_VERSION_STR "sgensys v0.5.1"
 
 SGS_Program* SGS_build(const char *restrict script_arg, bool is_path);
 

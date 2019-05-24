@@ -61,7 +61,8 @@ static int32_t get_piarg(const char *restrict str) {
 	int32_t i;
 	errno = 0;
 	i = strtol(str, &endp, 10);
-	if (errno || i <= 0 || endp == str || *endp) return -1;
+	if (errno || i <= 0 || endp == str || *endp)
+		return -1;
 	return i;
 }
 
@@ -167,7 +168,6 @@ NEXT_C:
 		goto NEXT_C;
 	}
 	return (*script_arg != NULL);
-
 INVALID:
 	print_usage(false);
 	return false;
@@ -192,7 +192,6 @@ static bool build(const char *restrict script_arg,
 		*prg_out = NULL;
 		return true;
 	}
-
 	*prg_out = prg;
 	return true;
 }
@@ -218,7 +217,6 @@ int main(int argc, char **restrict argv) {
 	uint32_t options = 0;
 	SGS_Program *prg;
 	uint32_t srate = DEFAULT_SRATE;
-
 	if (!parse_args(argc, argv, &options, &script_arg, &srate, &wav_path))
 		return 0;
 	if (!build(script_arg, &prg, options))
@@ -229,6 +227,5 @@ int main(int argc, char **restrict argv) {
 		if (error)
 			return 1;
 	}
-
 	return 0;
 }

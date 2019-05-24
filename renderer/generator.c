@@ -148,9 +148,8 @@ static bool alloc_for_program(SGS_Generator *restrict o,
   i = prg->ev_count;
   if (i > 0) {
     o->events = calloc(i, sizeof(EventNode));
-    if (!o->events) {
+    if (!o->events)
       return false;
-    }
     o->ev_count = i;
   }
   size_t ev_val_count = 0, ev_op_data_count = 0;
@@ -161,46 +160,40 @@ static bool alloc_for_program(SGS_Generator *restrict o,
   }
   if (ev_val_count > 0) {
     o->ev_values = calloc(ev_val_count, sizeof(EventValue));
-    if (!o->ev_values) {
+    if (!o->ev_values)
       return false;
-    }
     o->ev_val_count = ev_val_count;
   }
   if (ev_op_data_count > 0) {
     o->ev_op_data = calloc(ev_op_data_count, sizeof(EventOpData));
-    if (!o->ev_op_data) {
+    if (!o->ev_op_data)
       return false;
-    }
     o->ev_op_data_count = ev_op_data_count;
   }
   i = prg->vo_count;
   if (i > 0) {
     o->voices = calloc(i, sizeof(VoiceNode));
-    if (!o->voices) {
+    if (!o->voices)
       return false;
-    }
     o->vo_count = i;
   }
   i = prg->op_count;
   if (i > 0) {
     o->operators = calloc(i, sizeof(OperatorNode));
-    if (!o->operators) {
+    if (!o->operators)
       return false;
-    }
     o->op_count = i;
   }
   i = COUNT_GEN_BUFS(prg->op_nest_depth);
   if (i > 0) {
     o->gen_bufs = calloc(i, sizeof(Buf));
-    if (!o->gen_bufs) {
+    if (!o->gen_bufs)
       return false;
-    }
     o->gen_buf_count = i;
   }
   o->mix_bufs = calloc(2, sizeof(Buf));
-  if (!o->mix_bufs) {
+  if (!o->mix_bufs)
     return false;
-  }
 
   return true;
 }
@@ -299,7 +292,8 @@ static bool convert_program(SGS_Generator *restrict o,
  */
 SGS_Generator* SGS_create_Generator(SGS_Program *restrict prg, uint32_t srate) {
   SGS_Generator *o = calloc(1, sizeof(SGS_Generator));
-  if (!o) return NULL;
+  if (!o)
+    return NULL;
   if (!convert_program(o, prg, srate)) {
     SGS_destroy_Generator(o);
     return NULL;
@@ -312,13 +306,15 @@ SGS_Generator* SGS_create_Generator(SGS_Program *restrict prg, uint32_t srate) {
  * Destroy instance.
  */
 void SGS_destroy_Generator(SGS_Generator *restrict o) {
-  if (o->gen_bufs) free(o->gen_bufs);
-  if (o->mix_bufs) free(o->mix_bufs);
-  if (o->events) free(o->events);
-  if (o->voices) free(o->voices);
-  if (o->operators) free(o->operators);
-  if (o->ev_values) free(o->ev_values);
-  if (o->ev_op_data) free(o->ev_op_data);
+  if (!o)
+    return;
+  free(o->gen_bufs);
+  free(o->mix_bufs);
+  free(o->events);
+  free(o->voices);
+  free(o->operators);
+  free(o->ev_values);
+  free(o->ev_op_data);
   free(o);
 }
 
@@ -450,7 +446,8 @@ static uint32_t run_block(SGS_Generator *restrict o,
     len -= zero_len;
     if (n->time != SGS_TIME_INF) n->time -= zero_len;
     n->silence -= zero_len;
-    if (!len) return zero_len;
+    if (!len)
+      return zero_len;
     s_buf += zero_len;
   }
   /*
