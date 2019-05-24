@@ -16,7 +16,7 @@
 #include "ptrarr.h"
 
 #define SGS_CLINAME_STR "sgensys"
-#define SGS_VERSION_STR "v0.2-beta"
+#define SGS_VERSION_STR "v0.2-dev"
 
 #define SGS_DEFAULT_SRATE 96000
 

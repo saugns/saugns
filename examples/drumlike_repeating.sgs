@@ -1,9 +1,9 @@
-# Produces "drum-like" repeating sound
+// Produces "drum-like" repeating sound
 
-#Osin t2 f244.4 p+[Osin r(2/3)]
-#Q
+//Osin t2 f244.4 p+[Osin r(2/3)]
+//Q
 
-# Uses negative frequency for a decreasing 'saw' slope
+// Uses negative frequency for a decreasing 'saw' slope
 Osin t10 f(44.4),(44.4*4)~[
 	Osaw f(-1/.50) p+[
 		Osin f244.4 p+[Osin r(2/3)] a0.1
