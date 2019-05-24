@@ -15,6 +15,7 @@ OBJ=\
 	ptrlist.o \
 	builder/file.o \
 	builder/symtab.o \
+	builder/scanner.o \
 	builder/parser.o \
 	builder/voicegraph.o \
 	builder/parseconv.o \
@@ -75,19 +76,19 @@ test-scan: $(TEST1_OBJ)
 arrtype.o: arrtype.c arrtype.h common.h
 	$(CC) -c $(CFLAGS) arrtype.c
 
-builder/builder.o: builder/builder.c sgensys.h script.h ptrlist.h program.h ramp.h wave.h math.h builder/file.h common.h
+builder/builder.o: builder/builder.c sgensys.h script.h ptrlist.h program.h ramp.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) builder/builder.c -o builder/builder.o
 
 builder/file.o: builder/file.c builder/file.h common.h
 	$(CC) -c $(CFLAGS) builder/file.c -o builder/file.o
 
-builder/lexer.o: builder/lexer.c builder/lexer.h builder/file.h builder/symtab.h math.h common.h
+builder/lexer.o: builder/lexer.c builder/lexer.h builder/file.h builder/symtab.h builder/scanner.h math.h common.h
 	$(CC) -c $(CFLAGS) builder/lexer.c -o builder/lexer.o
 
 builder/parseconv.o: builder/parseconv.c builder/parseconv.h program.h ramp.h wave.h math.h script.h ptrlist.h arrtype.h common.h
 	$(CC) -c $(CFLAGS) builder/parseconv.c -o builder/parseconv.o
 
-builder/parser.o: builder/parser.c builder/file.h builder/symtab.h script.h ptrlist.h program.h ramp.h wave.h math.h common.h
+builder/parser.o: builder/parser.c builder/scanner.h builder/file.h builder/symtab.h script.h ptrlist.h program.h ramp.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) builder/parser.c -o builder/parser.o
 
 builder/scanner.o: builder/scanner.c builder/scanner.h builder/file.h builder/symtab.h math.h common.h
