@@ -15,6 +15,7 @@ OBJ=\
 	ptrlist.o \
 	loader/file.o \
 	loader/symtab.o \
+	loader/scanner.o \
 	loader/parser.o \
 	loader/voicegraph.o \
 	loader/parseconv.o \
@@ -78,19 +79,19 @@ arrtype.o: arrtype.c arrtype.h common.h
 common.o: common.c common.h
 	$(CC) -c $(CFLAGS) common.c
 
-loader/loader.o: loader/loader.c sgensys.h script.h ptrlist.h program.h ramp.h wave.h math.h loader/file.h common.h
+loader/loader.o: loader/loader.c sgensys.h script.h ptrlist.h program.h ramp.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) loader/loader.c -o loader/loader.o
 
 loader/file.o: loader/file.c loader/file.h common.h
 	$(CC) -c $(CFLAGS) loader/file.c -o loader/file.o
 
-loader/lexer.o: loader/lexer.c loader/lexer.h loader/file.h loader/symtab.h math.h common.h
+loader/lexer.o: loader/lexer.c loader/lexer.h loader/file.h loader/symtab.h loader/scanner.h math.h common.h
 	$(CC) -c $(CFLAGS) loader/lexer.c -o loader/lexer.o
 
 loader/parseconv.o: loader/parseconv.c loader/parseconv.h program.h ramp.h wave.h math.h script.h ptrlist.h arrtype.h common.h
 	$(CC) -c $(CFLAGS) loader/parseconv.c -o loader/parseconv.o
 
-loader/parser.o: loader/parser.c loader/file.h loader/symtab.h script.h ptrlist.h program.h ramp.h wave.h math.h common.h
+loader/parser.o: loader/parser.c loader/scanner.h loader/file.h loader/symtab.h script.h ptrlist.h program.h ramp.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) loader/parser.c -o loader/parser.o
 
 loader/scanner.o: loader/scanner.c loader/scanner.h loader/file.h loader/symtab.h math.h common.h
