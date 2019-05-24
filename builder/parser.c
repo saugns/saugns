@@ -11,8 +11,8 @@
  * <https://www.gnu.org/licenses/>.
  */
 
+#include "scanner.h"
 #include "symtab.h"
-#include "file.h"
 #include "parser.h"
 #include "../math.h"
 #include <string.h>
@@ -26,26 +26,10 @@
 /* Basic character types. */
 #define IS_LOWER(c) ((c) >= 'a' && (c) <= 'z')
 #define IS_UPPER(c) ((c) >= 'A' && (c) <= 'Z')
-#define IS_DIGIT(c) ((c) >= '0' && (c) <= '9')
 #define IS_ALPHA(c) (IS_LOWER(c) || IS_UPPER(c))
-#define IS_ALNUM(c) (IS_ALPHA(c) || IS_DIGIT(c))
-#define IS_SPACE(c) ((c) == ' ' || (c) == '\t')
-#define IS_LNBRK(c) ((c) == '\n' || (c) == '\r')
-
-/* Valid characters in identifiers. */
-#define IS_SYMCHAR(c) (IS_ALNUM(c) || (c) == '_')
 
 /* Sensible to print, for ASCII only. */
 #define IS_VISIBLE(c) ((c) >= '!' && (c) <= '~')
-
-static uint8_t filter_symchar(SSG_File *restrict f SSG__maybe_unused,
-		uint8_t c) {
-	return IS_SYMCHAR(c) ? c : 0;
-}
-
-/*
- * Parser scanner
- */
 
 typedef struct ScanLookup {
 	SSG_ScriptOptions sopt;
@@ -53,114 +37,29 @@ typedef struct ScanLookup {
 	const char *const*ramp_names;
 } ScanLookup;
 
-typedef struct PScanner {
-	SSG_File *f;
-	uint32_t line;
-	uint8_t c, next_c;
-	bool newline;
-	bool stash;
-	SSG_SymTab *st;
-	ScanLookup *sl;
-} PScanner;
-
-static void init_scanner(PScanner *restrict o,
-		SSG_File *restrict f,
-		SSG_SymTab *restrict st,
-		ScanLookup *restrict sl) {
-	*o = (PScanner){0};
-	o->f = f;
-	o->line = 1;
-	o->st = st;
-	o->sl = sl;
-}
-
-static void fini_scanner(PScanner *restrict o) {
-	SSG_File_close(o->f);
-	o->f = NULL; // freed by invoker
-}
-
 /*
- * Common warning printing function for script errors; requires that o->c
- * is set to the character where the error was detected.
+ * Default script options, used until changed in a script.
  */
-static void SSG__noinline scan_warning(PScanner *restrict o,
-		const char *restrict str) {
-	SSG_File *f = o->f;
-	uint8_t c = o->c;
-	if (IS_VISIBLE(c)) {
-		fprintf(stderr, "warning: %s [line %d, at '%c'] - %s\n",
-				f->path, o->line, c, str);
-	} else if (SSG_File_AT_EOF(f)) {
-		fprintf(stderr, "warning: %s [line %d, at EOF] - %s\n",
-				f->path, o->line, str);
-	} else {
-		fprintf(stderr, "warning: %s [line %d, at 0x%02hhX] - %s\n",
-				f->path, o->line, c, str);
-	}
-}
+static const SSG_ScriptOptions def_sopt = {
+	.changed = 0,
+	.ampmult = 1.f,
+	.A4_freq = 444.f,
+	.def_time_ms = 1000,
+	.def_freq = 444.f,
+	.def_relfreq = 1.f,
+};
 
-#define SCAN_NEWLINE '\n'
-static uint8_t scan_getc(PScanner *restrict o) {
-	SSG_File *f = o->f;
-	uint8_t c;
-	if (o->newline) {
-		++o->line;
-		o->newline = false;
-	}
-	SSG_File_skipspace(f);
-	if (o->stash) {
-		o->stash = false;
-		c = o->next_c;
-	} else {
-		c = SSG_File_GETC(f);
-	}
-	if (c == '#') {
-		SSG_File_skipline(f);
-		c = SSG_File_GETC(f);
-	}
-	if (c == '\n') {
-		SSG_File_TRYC(f, '\r');
-		c = SCAN_NEWLINE;
-		o->newline = true;
-	} else if (c == '\r') {
-		c = SCAN_NEWLINE;
-		o->newline = true;
-	} else {
-		SSG_File_skipspace(f);
-	}
-	o->c = c;
-	return c;
-}
-
-static bool scan_stashc(PScanner *restrict o, uint8_t c) {
-	if (o->stash) {
-		SSG_warning("PScanner", "only one stashed character supported");
+static bool init_ScanLookup(ScanLookup *restrict o, SSG_SymTab *restrict st) {
+	o->sopt = def_sopt;
+	o->wave_names = SSG_SymTab_pool_stra(st,
+			SSG_Wave_names, SSG_WAVE_TYPES);
+	if (!o->wave_names)
 		return false;
-	}
-	o->next_c = c;
-	o->stash = true;
+	o->ramp_names = SSG_SymTab_pool_stra(st,
+			SSG_Ramp_names, SSG_RAMP_TYPES);
+	if (!o->ramp_names)
+		return false;
 	return true;
-}
-
-static void scan_ws(PScanner *restrict o) {
-	SSG_File *f = o->f;
-	for (;;) {
-		uint8_t c = SSG_File_GETC(f);
-		if (IS_SPACE(c))
-			continue;
-		if (c == '\n') {
-			++o->line;
-			SSG_File_TRYC(f, '\r');
-		} else if (c == '\r') {
-			++o->line;
-		} else if (c == '#') {
-			SSG_File_skipline(f);
-			c = SSG_File_GETC(f);
-		} else {
-			SSG_File_UNGETC(f);
-			break;
-		}
-	}
 }
 
 /*
@@ -169,51 +68,72 @@ static void scan_ws(PScanner *restrict o) {
  *
  * \return false if EOF reached
  */
-static bool handle_unknown_or_end(PScanner *restrict o) {
-	SSG_File *f = o->f;
-	if (SSG_File_AT_EOF(f) || SSG_File_AFTER_EOF(f)) {
+static bool handle_unknown_or_eof(SSG_Scanner *restrict o, uint8_t c) {
+	if (c == 0)
 		return false;
+	if (IS_VISIBLE(c)) {
+		SSG_Scanner_warning(o, NULL,
+				"invalid character '%c'", c);
+	} else {
+		SSG_Scanner_warning(o, NULL,
+				"invalid character (value 0x%02hhX)", c);
 	}
-	scan_warning(o, "invalid character");
 	return true;
 }
 
-typedef float (*NumSym_f)(PScanner *restrict o);
+/*
+ * Print warning for EOF without closing \p c scope-closing character.
+ */
+static void warn_eof_without_closing(SSG_Scanner *restrict o, uint8_t c) {
+	SSG_Scanner_warning(o, NULL, "end of file without closing '%c'", c);
+}
+
+/*
+ * Print warning for scope-closing character without scope-opening character.
+ */
+static void warn_closing_without_opening(SSG_Scanner *restrict o,
+		uint8_t close_c, uint8_t open_c) {
+	SSG_Scanner_warning(o, NULL, "closing '%c' without opening '%c'",
+			close_c, open_c);
+}
+
+typedef float (*NumSym_f)(SSG_Scanner *restrict o);
 
 typedef struct NumParser {
-	PScanner *sc;
+	SSG_Scanner *sc;
 	NumSym_f numsym_f;
+	SSG_ScanFrame sf_start;
 	bool has_infnum;
 } NumParser;
 static double scan_num_r(NumParser *restrict o, uint8_t pri, uint32_t level) {
-	PScanner *sc = o->sc;
-	SSG_File *f = sc->f;
+	SSG_Scanner *sc = o->sc;
 	double num;
 	bool minus = false;
 	uint8_t c;
-	if (level > 0) scan_ws(sc);
-	c = SSG_File_GETC(f);
+	if (level > 0) SSG_Scanner_skipws(sc);
+	c = SSG_Scanner_getc(sc);
 	if ((level > 0) && (c == '+' || c == '-')) {
 		if (c == '-') minus = true;
-		scan_ws(sc);
-		c = SSG_File_GETC(f);
+		SSG_Scanner_skipws(sc);
+		c = SSG_Scanner_getc(sc);
 	}
 	if (c == '(') {
 		num = scan_num_r(o, 255, level+1);
 		if (minus) num = -num;
-		if (level == 0) return num;
+		if (level == 0)
+			return num;
 		goto EVAL;
 	}
 	if (o->numsym_f && IS_ALPHA(c)) {
-		SSG_File_UNGETC(f);
+		SSG_Scanner_ungetc(sc);
 		num = o->numsym_f(sc);
 		if (isnan(num))
 			return NAN;
 		if (minus) num = -num;
 	} else {
 		size_t read_len;
-		SSG_File_UNGETC(f);
-		SSG_File_getd(f, &num, false, &read_len);
+		SSG_Scanner_ungetc(sc);
+		SSG_Scanner_getd(sc, &num, false, &read_len);
 		if (read_len == 0)
 			return NAN;
 		if (minus) num = -num;
@@ -223,9 +143,12 @@ EVAL:
 		return num; /* defer all */
 	for (;;) {
 		if (isinf(num)) o->has_infnum = true;
-		if (level > 0) scan_ws(sc);
-		c = SSG_File_GETC(f);
+		if (level > 0) SSG_Scanner_skipws(sc);
+		c = SSG_Scanner_getc(sc);
 		switch (c) {
+		case SSG_SCAN_SPACE:
+		case SSG_SCAN_LNBRK:
+			break;
 		case '(':
 			num *= scan_num_r(o, 255, level+1);
 			break;
@@ -251,7 +174,7 @@ EVAL:
 			break;
 		default:
 			if (pri == 255) {
-				scan_warning(sc,
+				SSG_Scanner_warning(sc, &o->sf_start,
 "numerical expression has '(' without closing ')'");
 			}
 			goto DEFER;
@@ -259,31 +182,33 @@ EVAL:
 		if (isnan(num)) goto DEFER;
 	}
 DEFER:
-	SSG_File_UNGETC(f);
+	SSG_Scanner_ungetc(sc);
 	return num;
 }
-static bool SSG__noinline scan_num(PScanner *restrict o,
+static bool SSG__noinline scan_num(SSG_Scanner *restrict o,
 		NumSym_f scan_numsym, float *restrict var) {
-	NumParser np = {o, scan_numsym, false};
+	NumParser np = {o, scan_numsym, o->sf, false};
 	float num = scan_num_r(&np, 0, 0);
 	if (isnan(num))
 		return false;
 	if (isinf(num)) np.has_infnum = true;
 	if (np.has_infnum) {
-		scan_warning(o, "discarding expression with infinite number");
+		SSG_Scanner_warning(o, &np.sf_start,
+				"discarding expression with infinite number");
 		return false;
 	}
 	*var = num;
 	return true;
 }
 
-static SSG__noinline bool scan_time_val(PScanner *restrict o,
+static SSG__noinline bool scan_time_val(SSG_Scanner *restrict o,
 		uint32_t *restrict val) {
+	SSG_ScanFrame sf = o->sf;
 	float val_s;
 	if (!scan_num(o, NULL, &val_s))
 		return false;
 	if (val_s < 0.f) {
-		scan_warning(o, "discarding negative time value");
+		SSG_Scanner_warning(o, &sf, "discarding negative time value");
 		return false;
 	}
 	*val = lrint(val_s * 1000.f);
@@ -291,7 +216,7 @@ static SSG__noinline bool scan_time_val(PScanner *restrict o,
 }
 
 #define OCTAVES 11
-static float scan_note(PScanner *restrict o) {
+static float scan_note(SSG_Scanner *restrict o) {
 	static const float octaves[OCTAVES] = {
 		(1.f/16.f),
 		(1.f/8.f),
@@ -337,43 +262,43 @@ static float scan_note(PScanner *restrict o) {
 			25.f/12.f
 		}
 	};
-	SSG_File *f = o->f;
+	ScanLookup *sl = o->data;
 	float freq;
-	o->c = SSG_File_GETC(f);
+	uint8_t c = SSG_Scanner_getc(o);
 	int32_t octave;
 	int32_t semitone = 1, note;
 	int32_t subnote = -1;
 	size_t read_len;
-	if (o->c >= 'a' && o->c <= 'g') {
-		subnote = o->c - 'c';
+	if (c >= 'a' && c <= 'g') {
+		subnote = c - 'c';
 		if (subnote < 0) /* a, b */
 			subnote += 7;
-		o->c = SSG_File_GETC(f);
+		c = SSG_Scanner_getc(o);
 	}
-	if (o->c < 'A' || o->c > 'G') {
-		scan_warning(o,
+	if (c < 'A' || c > 'G') {
+		SSG_Scanner_warning(o, NULL,
 "invalid note specified - should be C, D, E, F, G, A or B");
 		return NAN;
 	}
-	note = o->c - 'C';
+	note = c - 'C';
 	if (note < 0) /* A, B */
 		note += 7;
-	o->c = SSG_File_GETC(f);
-	if (o->c == 's')
+	c = SSG_Scanner_getc(o);
+	if (c == 's')
 		semitone = 2;
-	else if (o->c == 'f')
+	else if (c == 'f')
 		semitone = 0;
 	else
-		SSG_File_UNGETC(f);
-	SSG_File_geti(f, &octave, false, &read_len);
+		SSG_Scanner_ungetc(o);
+	SSG_Scanner_geti(o, &octave, false, &read_len);
 	if (read_len == 0)
 		octave = 4;
 	else if (octave >= OCTAVES) {
-		scan_warning(o,
+		SSG_Scanner_warning(o, NULL,
 "invalid octave specified for note - valid range 0-10");
 		octave = 4;
 	}
-	freq = o->sl->sopt.A4_freq * (3.f/5.f); /* get C4 */
+	freq = sl->sopt.A4_freq * (3.f/5.f); /* get C4 */
 	freq *= octaves[octave] * notes[semitone][note];
 	if (subnote >= 0)
 		freq *= 1.f + (notes[semitone][note+1] /
@@ -382,74 +307,51 @@ static float scan_note(PScanner *restrict o) {
 	return freq;
 }
 
-#define LABEL_BUFLEN 80
-#define LABEL_MAXLEN_S "79"
-typedef char LabelBuf[LABEL_BUFLEN];
-static size_t scan_label(PScanner *restrict o, LabelBuf label, char op) {
-	char nolabel_msg[] = "ignoring ? without label name";
-	SSG_File *f = o->f;
-	size_t len = 0;
-	bool truncated;
-	nolabel_msg[9] = op; /* replace ? */
-	truncated = !SSG_File_getstr(f, label, LABEL_BUFLEN, &len, filter_symchar);
-	if (len == 0) {
-		scan_warning(o, nolabel_msg);
+static const char *scan_label(SSG_Scanner *restrict o,
+		size_t *restrict lenp, char op) {
+	const void *s = NULL;
+	SSG_Scanner_getsymstr(o, &s, lenp);
+	if (*lenp == 0) {
+		SSG_Scanner_warning(o, NULL,
+				"ignoring %c without label name", op);
 	}
-	if (truncated) {
-		o->c = SSG_File_RETC(f);
-		scan_warning(o,
-"limiting label name to "LABEL_MAXLEN_S" characters");
-		SSG_File_skipstr(f, filter_symchar);
-	}
-	o->c = SSG_File_RETC(f);
-	return len;
+	return s;
 }
 
-static bool scan_symafind(PScanner *restrict o,
-		const char *const*restrict stra,
-		size_t n, size_t *restrict found_i) {
-	LabelBuf buf;
-	SSG_File *f = o->f;
-	size_t len = 0;
-	bool truncated;
-	truncated = !SSG_File_getstr(f, buf, LABEL_BUFLEN, &len, filter_symchar);
+static bool scan_symafind(SSG_Scanner *restrict o,
+		const char *const*restrict stra, size_t n,
+		size_t *restrict found_i, const char *restrict print_type) {
+	SSG_ScanFrame sf_begin = o->sf;
+	const void *key = NULL;
+	size_t len;
+	SSG_Scanner_getsymstr(o, &key, &len);
 	if (len == 0) {
-		scan_warning(o, "label missing");
+		SSG_Scanner_warning(o, NULL, "%s missing", print_type);
 		return false;
 	}
-	if (truncated) {
-		scan_warning(o,
-"limiting label name to "LABEL_MAXLEN_S" characters");
-		SSG_File_skipstr(f, filter_symchar);
-	}
-	const char *key = SSG_SymTab_pool_str(o->st, buf, len);
 	for (size_t i = 0; i < n; ++i) {
 		if (stra[i] == key) {
-			o->c = SSG_File_RETC(f);
 			*found_i = i;
 			return true;
 		}
 	}
-	return false;
-}
-
-static bool scan_wavetype(PScanner *restrict o, size_t *restrict found_id) {
-	const char *const *names = o->sl->wave_names;
-	if (scan_symafind(o, names, SSG_WAVE_TYPES, found_id))
-		return true;
-
-	scan_warning(o, "invalid wave type; available types are:");
-	size_t i = 0;
-	fprintf(stderr, "\t%s", names[i]);
-	while (++i < SSG_WAVE_TYPES) {
-		fprintf(stderr, ", %s", names[i]);
+	SSG_Scanner_warning(o, &sf_begin,
+			"invalid %s; available types are:", print_type);
+	fprintf(stderr, "\t%s", stra[0]);
+	for (size_t i = 1; i < n; ++i) {
+		fprintf(stderr, ", %s", stra[i]);
 	}
 	putc('\n', stderr);
 	return false;
 }
 
-static bool scan_ramp_state(PScanner *restrict o,
-		NumSym_f scan_numsym,
+static bool scan_wavetype(SSG_Scanner *restrict o, size_t *restrict found_id) {
+	ScanLookup *sl = o->data;
+	return scan_symafind(o, sl->wave_names, SSG_WAVE_TYPES,
+			found_id, "wave type");
+}
+
+static bool scan_ramp_state(SSG_Scanner *restrict o, NumSym_f scan_numsym,
 		SSG_Ramp *restrict ramp, bool mult) {
 	if (!scan_num(o, scan_numsym, &ramp->v0))
 		return false;
@@ -462,12 +364,13 @@ static bool scan_ramp_state(PScanner *restrict o,
 	return true;
 }
 
-static bool scan_ramp(PScanner *restrict o, NumSym_f scan_numsym,
+static bool scan_ramp(SSG_Scanner *restrict o, NumSym_f scan_numsym,
 		SSG_Ramp *restrict ramp, bool mult) {
+	ScanLookup *sl = o->data;
 	bool goal = false;
 	bool time_set = (ramp->flags & SSG_RAMPP_TIME) != 0;
 	float vt;
-	uint32_t time_ms = o->sl->sopt.def_time_ms;
+	uint32_t time_ms = sl->sopt.def_time_ms;
 	uint8_t type = ramp->type; // has default
 	if ((ramp->flags & SSG_RAMPP_GOAL) != 0) {
 		// allow partial change
@@ -478,25 +381,16 @@ static bool scan_ramp(PScanner *restrict o, NumSym_f scan_numsym,
 		time_ms = ramp->time_ms;
 	}
 	for (;;) {
-		uint8_t c = scan_getc(o);
+		uint8_t c = SSG_Scanner_getc_nospace(o);
 		switch (c) {
-		case SCAN_NEWLINE:
+		case SSG_SCAN_LNBRK:
 			break;
 		case 'c': {
-			const char *const *names = o->sl->ramp_names;
 			size_t id;
-			if (!scan_symafind(o, names, SSG_RAMP_TYPES, &id)) {
-				scan_warning(o,
-"invalid ramp curve; available types are:");
-				size_t i = 0;
-				fprintf(stderr, "\t%s", names[i]);
-				while (++i < SSG_RAMP_TYPES) {
-					fprintf(stderr, ", %s", names[i]);
-				}
-				putc('\n', stderr);
-				break;
+			if (scan_symafind(o, sl->ramp_names, SSG_RAMP_TYPES,
+					&id, "ramp curve")) {
+				type = id;
 			}
-			type = id;
 			break; }
 		case 't':
 			if (scan_time_val(o, &time_ms))
@@ -509,15 +403,17 @@ static bool scan_ramp(PScanner *restrict o, NumSym_f scan_numsym,
 		case '}':
 			goto RETURN;
 		default:
-			if (!handle_unknown_or_end(o)) goto FINISH;
+			if (!handle_unknown_or_eof(o, c)) {
+				warn_eof_without_closing(o, '}');
+				goto RETURN;
+			}
 			break;
 		}
 	}
-FINISH:
-	scan_warning(o, "end of file without closing '}'");
 RETURN:
 	if (!goal) {
-		scan_warning(o, "ignoring value ramp with no target value");
+		SSG_Scanner_warning(o, NULL,
+				"ignoring value ramp with no target value");
 		return false;
 	}
 	ramp->vt = vt;
@@ -540,27 +436,14 @@ RETURN:
  */
 
 typedef struct SSG_Parser {
-	PScanner sc;
 	ScanLookup sl;
+	SSG_Scanner *sc;
 	SSG_SymTab *st;
 	uint32_t call_level;
-	uint32_t scope_id;
 	/* node state */
 	SSG_ParseEvData *events;
 	SSG_ParseEvData *last_event;
 } SSG_Parser;
-
-/*
- * Default script options, used until changed in a script.
- */
-static const SSG_ScriptOptions def_sopt = {
-	.changed = 0,
-	.ampmult = 1.f,
-	.A4_freq = 444.f,
-	.def_time_ms = 1000,
-	.def_freq = 444.f,
-	.def_relfreq = 1.f,
-};
 
 /*
  * Initialize parser instance.
@@ -568,20 +451,19 @@ static const SSG_ScriptOptions def_sopt = {
  * The same symbol table and script-set data will be used
  * until the instance is finalized.
  */
-static void init_parser(SSG_Parser *restrict o) {
+static void init_Parser(SSG_Parser *restrict o) {
 	*o = (SSG_Parser){0};
 	o->st = SSG_create_SymTab();
-	o->sl.sopt = def_sopt;
-	o->sl.wave_names = SSG_SymTab_pool_stra(o->st,
-			SSG_Wave_names, SSG_WAVE_TYPES);
-	o->sl.ramp_names = SSG_SymTab_pool_stra(o->st,
-			SSG_Ramp_names, SSG_RAMP_TYPES);
+	init_ScanLookup(&o->sl, o->st);
+	o->sc = SSG_create_Scanner(o->st);
+	o->sc->data = &o->sl;
 }
 
 /*
  * Finalize parser instance.
  */
-static void fini_parser(SSG_Parser *restrict o) {
+static void fini_Parser(SSG_Parser *restrict o) {
+	SSG_destroy_Scanner(o->sc);
 	SSG_destroy_SymTab(o->st);
 }
 
@@ -638,12 +520,11 @@ typedef struct ParseLevel {
 
 static bool parse_waittime(ParseLevel *restrict pl) {
 	SSG_Parser *o = pl->o;
-	PScanner *sc = &o->sc;
-	SSG_File *f = sc->f;
+	SSG_Scanner *sc = o->sc;
 	/* FIXME: ADD_WAIT_DURATION */
-	if (SSG_File_TRYC(f, 't')) {
+	if (SSG_Scanner_tryc(sc, 't')) {
 		if (!pl->last_operator) {
-			scan_warning(sc,
+			SSG_Scanner_warning(sc, NULL,
 "add wait for last duration before any parts given");
 			return false;
 		}
@@ -713,6 +594,7 @@ static void end_operator(ParseLevel *restrict pl) {
 		return;
 	pl->pl_flags &= ~SDPL_ACTIVE_OP;
 	SSG_Parser *o = pl->o;
+	ScanLookup *sl = &o->sl;
 	SSG_ParseOpData *op = pl->operator;
 	if (SSG_Ramp_ENABLED(&op->freq))
 		op->op_params |= SSG_POPP_FREQ;
@@ -721,15 +603,15 @@ static void end_operator(ParseLevel *restrict pl) {
 	if (SSG_Ramp_ENABLED(&op->amp)) {
 		op->op_params |= SSG_POPP_AMP;
 		if (!(op->op_flags & SSG_SDOP_NESTED)) {
-			op->amp.v0 *= o->sl.sopt.ampmult;
-			op->amp.vt *= o->sl.sopt.ampmult;
+			op->amp.v0 *= sl->sopt.ampmult;
+			op->amp.vt *= sl->sopt.ampmult;
 		}
 	}
 	if (SSG_Ramp_ENABLED(&op->amp2)) {
 		op->op_params |= SSG_POPP_AMP2;
 		if (!(op->op_flags & SSG_SDOP_NESTED)) {
-			op->amp2.v0 *= o->sl.sopt.ampmult;
-			op->amp2.vt *= o->sl.sopt.ampmult;
+			op->amp2.v0 *= sl->sopt.ampmult;
+			op->amp2.vt *= sl->sopt.ampmult;
 		}
 	}
 	SSG_ParseOpData *pop = op->op_prev;
@@ -828,6 +710,7 @@ static void begin_event(ParseLevel *restrict pl,
 static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
 		bool is_composite) {
 	SSG_Parser *o = pl->o;
+	ScanLookup *sl = &o->sl;
 	SSG_ParseEvData *e = pl->event;
 	SSG_ParseOpData *op, *pop = pl->op_prev;
 	/*
@@ -843,7 +726,7 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
 	/*
 	 * Initialize node.
 	 */
-	op->time.v_ms = o->sl.sopt.def_time_ms; /* time is not copied */
+	op->time.v_ms = sl->sopt.def_time_ms; /* time is not copied */
 	SSG_Ramp_reset(&op->freq);
 	SSG_Ramp_reset(&op->freq2);
 	SSG_Ramp_reset(&op->amp);
@@ -879,10 +762,10 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
 		 * New operator with initial parameter values.
 		 */
 		if (!(pl->pl_flags & SDPL_NESTED_SCOPE)) {
-			op->freq.v0 = o->sl.sopt.def_freq;
+			op->freq.v0 = sl->sopt.def_freq;
 		} else {
 			op->op_flags |= SSG_SDOP_NESTED;
-			op->freq.v0 = o->sl.sopt.def_relfreq;
+			op->freq.v0 = sl->sopt.def_relfreq;
 			op->freq.flags |= SSG_RAMPP_STATE_RATIO;
 		}
 		op->freq.flags |= SSG_RAMPP_STATE;
@@ -991,7 +874,8 @@ static void end_scope(ParseLevel *restrict pl) {
 		 */
 		if (pl->first_operator != NULL) {
 			pl->parent->pl_flags |= SDPL_BIND_MULTIPLE;
-			begin_node(pl->parent, pl->first_operator, pl->parent->last_linktype, false);
+			begin_node(pl->parent, pl->first_operator,
+					pl->parent->last_linktype, false);
 		}
 	} else if (!pl->parent) {
 		/*
@@ -1005,8 +889,8 @@ static void end_scope(ParseLevel *restrict pl) {
 			group_to->groupfrom = pl->group_from;
 	}
 	if (pl->set_label != NULL) {
-		scan_warning(&o->sc,
-"ignoring label assignment without operator");
+		SSG_Scanner_warning(o->sc, NULL,
+				"ignoring label assignment without operator");
 	}
 }
 
@@ -1016,46 +900,42 @@ static void end_scope(ParseLevel *restrict pl) {
 
 static bool parse_settings(ParseLevel *restrict pl) {
 	SSG_Parser *o = pl->o;
-	PScanner *sc = &o->sc;
+	ScanLookup *sl = &o->sl;
+	SSG_Scanner *sc = o->sc;
 	pl->location = SDPL_IN_DEFAULTS;
 	for (;;) {
-		uint8_t c = scan_getc(sc);
+		uint8_t c = SSG_Scanner_getc_nospace(sc);
 		switch (c) {
 		case 'a':
-			if (scan_num(sc, NULL, &o->sl.sopt.ampmult)) {
-				o->sl.sopt.changed |= SSG_SOPT_AMPMULT;
-			}
+			if (scan_num(sc, NULL, &sl->sopt.ampmult))
+				sl->sopt.changed |= SSG_SOPT_AMPMULT;
 			break;
 		case 'f':
-			if (scan_num(sc, scan_note, &o->sl.sopt.def_freq)) {
-				o->sl.sopt.changed |= SSG_SOPT_DEF_FREQ;
-			}
+			if (scan_num(sc, scan_note, &sl->sopt.def_freq))
+				sl->sopt.changed |= SSG_SOPT_DEF_FREQ;
 			break;
 		case 'n': {
 			float freq;
 			if (scan_num(sc, NULL, &freq)) {
 				if (freq < 1.f) {
-					scan_warning(sc,
+					SSG_Scanner_warning(sc, NULL,
 "ignoring tuning frequency (Hz) below 1.0");
 					break;
 				}
-				o->sl.sopt.A4_freq = freq;
-				o->sl.sopt.changed |= SSG_SOPT_A4_FREQ;
+				sl->sopt.A4_freq = freq;
+				sl->sopt.changed |= SSG_SOPT_A4_FREQ;
 			}
 			break; }
 		case 'r':
-			if (scan_num(sc, NULL, &o->sl.sopt.def_relfreq)) {
-				o->sl.sopt.changed |= SSG_SOPT_DEF_RATIO;
-			}
+			if (scan_num(sc, NULL, &sl->sopt.def_relfreq))
+				sl->sopt.changed |= SSG_SOPT_DEF_RATIO;
 			break;
 		case 't':
-			if (scan_time_val(sc, &o->sl.sopt.def_time_ms)) {
-				o->sl.sopt.changed |= SSG_SOPT_DEF_TIME;
-			}
+			if (scan_time_val(sc, &sl->sopt.def_time_ms))
+				sl->sopt.changed |= SSG_SOPT_DEF_TIME;
 			break;
 		default:
-		/*UNKNOWN:*/
-			scan_stashc(sc, c);
+			SSG_Scanner_ungetc(sc);
 			return true; /* let parse_level() take care of it */
 		}
 	}
@@ -1068,22 +948,21 @@ static bool parse_level(SSG_Parser *restrict o,
 
 static bool parse_ev_amp(ParseLevel *restrict pl) {
 	SSG_Parser *o = pl->o;
-	PScanner *sc = &o->sc;
-	SSG_File *f = sc->f;
+	SSG_Scanner *sc = o->sc;
 	SSG_ParseOpData *op = pl->operator;
-	if (SSG_File_TRYC(f, '{')) {
+	if (SSG_Scanner_tryc(sc, '{')) {
 		scan_ramp(sc, NULL, &op->amp, false);
 	} else {
 		scan_ramp_state(sc, NULL, &op->amp, false);
 	}
-	if (SSG_File_TRYC(f, ',')) {
-		if (SSG_File_TRYC(f, '{')) {
+	if (SSG_Scanner_tryc(sc, ',')) {
+		if (SSG_Scanner_tryc(sc, '{')) {
 			scan_ramp(sc, NULL, &op->amp2, false);
 		} else {
 			scan_ramp_state(sc, NULL, &op->amp2, false);
 		}
 	}
-	if (SSG_File_TRYC(f, '~') && SSG_File_TRYC(f, '[')) {
+	if (SSG_Scanner_tryc(sc, '~') && SSG_Scanner_tryc(sc, '[')) {
 		if (op->amods.count > 0) {
 			op->op_params |= SSG_POPP_ADJCS;
 			SSG_PtrList_clear(&op->amods);
@@ -1095,25 +974,24 @@ static bool parse_ev_amp(ParseLevel *restrict pl) {
 
 static bool parse_ev_freq(ParseLevel *restrict pl, bool rel_freq) {
 	SSG_Parser *o = pl->o;
-	PScanner *sc = &o->sc;
-	SSG_File *f = sc->f;
+	SSG_Scanner *sc = o->sc;
 	SSG_ParseOpData *op = pl->operator;
 	if (rel_freq && !(op->op_flags & SSG_SDOP_NESTED))
 		return true; // reject
 	NumSym_f numsym_f = rel_freq ? NULL : scan_note;
-	if (SSG_File_TRYC(f, '{')) {
+	if (SSG_Scanner_tryc(sc, '{')) {
 		scan_ramp(sc, numsym_f, &op->freq, rel_freq);
 	} else {
 		scan_ramp_state(sc, numsym_f, &op->freq, rel_freq);
 	}
-	if (SSG_File_TRYC(f, ',')) {
-		if (SSG_File_TRYC(f, '{')) {
+	if (SSG_Scanner_tryc(sc, ',')) {
+		if (SSG_Scanner_tryc(sc, '{')) {
 			scan_ramp(sc, numsym_f, &op->freq2, rel_freq);
 		} else {
 			scan_ramp_state(sc, numsym_f, &op->freq2, rel_freq);
 		}
 	}
-	if (SSG_File_TRYC(f, '~') && SSG_File_TRYC(f, '[')) {
+	if (SSG_Scanner_tryc(sc, '~') && SSG_Scanner_tryc(sc, '[')) {
 		if (op->fmods.count > 0) {
 			op->op_params |= SSG_POPP_ADJCS;
 			SSG_PtrList_clear(&op->fmods);
@@ -1125,8 +1003,7 @@ static bool parse_ev_freq(ParseLevel *restrict pl, bool rel_freq) {
 
 static bool parse_ev_phase(ParseLevel *restrict pl) {
 	SSG_Parser *o = pl->o;
-	PScanner *sc = &o->sc;
-	SSG_File *f = sc->f;
+	SSG_Scanner *sc = o->sc;
 	SSG_ParseOpData *op = pl->operator;
 	if (scan_num(sc, NULL, &op->phase)) {
 		op->phase = fmod(op->phase, 1.f);
@@ -1134,7 +1011,7 @@ static bool parse_ev_phase(ParseLevel *restrict pl) {
 			op->phase += 1.f;
 		op->op_params |= SSG_POPP_PHASE;
 	}
-	if (SSG_File_TRYC(f, '+') && SSG_File_TRYC(f, '[')) {
+	if (SSG_Scanner_tryc(sc, '+') && SSG_Scanner_tryc(sc, '[')) {
 		if (op->pmods.count > 0) {
 			op->op_params |= SSG_POPP_ADJCS;
 			SSG_PtrList_clear(&op->pmods);
@@ -1146,18 +1023,17 @@ static bool parse_ev_phase(ParseLevel *restrict pl) {
 
 static bool parse_step(ParseLevel *restrict pl) {
 	SSG_Parser *o = pl->o;
-	PScanner *sc = &o->sc;
-	SSG_File *f = sc->f;
+	SSG_Scanner *sc = o->sc;
 	SSG_ParseEvData *e = pl->event;
 	SSG_ParseOpData *op = pl->operator;
 	pl->location = SDPL_IN_EVENT;
 	for (;;) {
-		uint8_t c = scan_getc(sc);
+		uint8_t c = SSG_Scanner_getc_nospace(sc);
 		switch (c) {
 		case 'P':
 			if ((pl->pl_flags & SDPL_NESTED_SCOPE) != 0)
 				goto UNKNOWN;
-			if (SSG_File_TRYC(f, '{')) {
+			if (SSG_Scanner_tryc(sc, '{')) {
 				scan_ramp(sc, NULL, &e->pan, false);
 			} else {
 				scan_ramp_state(sc, NULL, &e->pan, false);
@@ -1184,13 +1060,13 @@ static bool parse_step(ParseLevel *restrict pl) {
 			scan_time_val(sc, &op->silence_ms);
 			break;
 		case 't':
-			if (SSG_File_TRYC(f, '*')) {
+			if (SSG_Scanner_tryc(sc, '*')) {
 				/* later fitted or kept to default */
 				op->time.v_ms = o->sl.sopt.def_time_ms;
 				op->time.flags = 0;
-			} else if (SSG_File_TRYC(f, 'i')) {
+			} else if (SSG_Scanner_tryc(sc, 'i')) {
 				if (!(op->op_flags & SSG_SDOP_NESTED)) {
-					scan_warning(sc,
+					SSG_Scanner_warning(sc, NULL,
 "ignoring 'ti' (infinite time) for non-nested operator");
 					break;
 				}
@@ -1211,7 +1087,7 @@ static bool parse_step(ParseLevel *restrict pl) {
 			break; }
 		default:
 		UNKNOWN:
-			scan_stashc(sc, c);
+			SSG_Scanner_ungetc(sc);
 			return true; /* let parse_level() take care of it */
 		}
 	}
@@ -1226,19 +1102,18 @@ enum {
 static bool parse_level(SSG_Parser *restrict o,
 		ParseLevel *restrict parent_pl,
 		uint8_t linktype, uint8_t newscope) {
-	LabelBuf label;
 	ParseLevel pl;
+	const char *label;
 	size_t label_len;
 	uint8_t flags = 0;
 	bool endscope = false;
 	begin_scope(o, &pl, parent_pl, linktype, newscope);
 	++o->call_level;
-	PScanner *sc = &o->sc;
-	SSG_File *f = sc->f;
+	SSG_Scanner *sc = o->sc;
 	for (;;) {
-		uint8_t c = scan_getc(sc);
+		uint8_t c = SSG_Scanner_getc_nospace(sc);
 		switch (c) {
-		case SCAN_NEWLINE:
+		case SSG_SCAN_LNBRK:
 			if (pl.scope == SCOPE_TOP) {
 				/*
 				 * On top level of script,
@@ -1256,12 +1131,12 @@ static bool parse_level(SSG_Parser *restrict o,
 			 * Label assignment (set to what follows).
 			 */
 			if (pl.set_label != NULL) {
-				scan_warning(sc,
+				SSG_Scanner_warning(sc, NULL,
 "ignoring label assignment to label assignment");
 				break;
 			}
-			label_len = scan_label(sc, label, c);
-			pl.set_label = SSG_SymTab_pool_str(o->st, label, label_len);
+			label = scan_label(sc, &label_len, c);
+			pl.set_label = label;
 			break;
 		case ';':
 			if (pl.location == SDPL_IN_DEFAULTS || !pl.event)
@@ -1272,7 +1147,7 @@ static bool parse_level(SSG_Parser *restrict o,
 				0;
 			break;
 		case '@':
-			if (SSG_File_TRYC(f, '[')) {
+			if (SSG_Scanner_tryc(sc, '[')) {
 				end_operator(&pl);
 				if (parse_level(o, &pl, pl.linktype, SCOPE_BIND))
 					goto RETURN;
@@ -1288,17 +1163,17 @@ static bool parse_level(SSG_Parser *restrict o,
 			 * Label reference (get and use value).
 			 */
 			if (pl.set_label != NULL) {
-				scan_warning(sc,
+				SSG_Scanner_warning(sc, NULL,
 "ignoring label assignment to label reference");
 				pl.set_label = NULL;
 			}
 			pl.location = SDPL_IN_NONE;
-			label_len = scan_label(sc, label, c);
+			label = scan_label(sc, &label_len, c);
 			if (label_len > 0) {
-				SSG_ParseOpData *ref =
-					SSG_SymTab_get(o->st, label, label_len);
+				SSG_ParseOpData *ref;
+				ref = SSG_SymTab_get(o->st, label, label_len);
 				if (!ref)
-					scan_warning(sc,
+					SSG_Scanner_warning(sc, NULL,
 "ignoring reference to undefined label");
 				else {
 					begin_node(&pl, ref, NL_REFER, false);
@@ -1346,7 +1221,7 @@ static bool parse_level(SSG_Parser *restrict o,
 				endscope = true;
 				goto RETURN;
 			}
-			scan_warning(sc, "closing ']' without opening '['");
+			warn_closing_without_opening(sc, ']', '[');
 			break;
 		case '|':
 			if (pl.location == SDPL_IN_DEFAULTS ||
@@ -1354,7 +1229,7 @@ static bool parse_level(SSG_Parser *restrict o,
 					&& pl.event != NULL))
 				goto INVALID;
 			if (!pl.event) {
-				scan_warning(sc,
+				SSG_Scanner_warning(sc, NULL,
 "end of sequence before any parts given");
 				break;
 			}
@@ -1369,11 +1244,11 @@ static bool parse_level(SSG_Parser *restrict o,
 			pl.location = SDPL_IN_NONE;
 			break;
 		case '}':
-			scan_warning(sc, "closing '}' without opening '{'");
+			warn_closing_without_opening(sc, '}', '{');
 			break;
 		default:
 		INVALID:
-			if (!handle_unknown_or_end(sc)) goto FINISH;
+			if (!handle_unknown_or_eof(sc, c)) goto FINISH;
 			break;
 		}
 		/* Return to sub-parsing routines. */
@@ -1391,30 +1266,30 @@ static bool parse_level(SSG_Parser *restrict o,
 	}
 FINISH:
 	if (newscope == SCOPE_NEST || newscope == SCOPE_BIND)
-		scan_warning(sc, "end of file without closing ']'s");
+		warn_eof_without_closing(sc, ']');
 RETURN:
 	end_scope(&pl);
 	--o->call_level;
-	/*
-	 * Should return from the calling scope
-	 * if/when the parent scope is ended.
-	 */
+	/* Should return from calling scope if/when parent scope is ended. */
 	return (endscope && pl.scope != newscope);
 }
 
 /*
  * Process file.
  *
- * The file is closed after parse,
- * but the SSG_File instance is not destroyed.
- *
- * \return true if completed, false on error preventing parse
+ * \return name of script, or NULL on error preventing parse
  */
-static bool parse_file(SSG_Parser *restrict o, SSG_File *restrict f) {
-	init_scanner(&o->sc, f, o->st, &o->sl);
-	parse_level(o, 0, NL_GRAPH, SCOPE_TOP);
-	fini_scanner(&o->sc);
-	return true;
+static const char *parse_file(SSG_Parser *restrict o,
+		const char *restrict script, bool is_path) {
+	SSG_Scanner *sc = o->sc;
+	const char *name;
+	if (!SSG_Scanner_open(sc, script, is_path)) {
+		return NULL;
+	}
+	parse_level(o, NULL, NL_GRAPH, SCOPE_TOP);
+	name = sc->f->path;
+	SSG_Scanner_close(sc);
+	return name;
 }
 
 /**
@@ -1422,24 +1297,21 @@ static bool parse_file(SSG_Parser *restrict o, SSG_File *restrict f) {
  *
  * \return instance or NULL on error preventing parse
  */
-SSG_Parse *SSG_create_Parse(SSG_File *restrict f) {
-	if (!f) return NULL;
-
+SSG_Parse* SSG_create_Parse(const char *restrict script_arg, bool is_path) {
+	if (!script_arg)
+		return NULL;
 	SSG_Parser pr;
-	init_parser(&pr);
-	const char *name = f->path;
 	SSG_Parse *o = NULL;
-	if (!parse_file(&pr, f)) {
-		goto DONE;
-	}
+	init_Parser(&pr);
+	const char *name = parse_file(&pr, script_arg, is_path);
+	if (!name) goto DONE;
 
 	o = calloc(1, sizeof(SSG_Parse));
 	o->events = pr.events;
 	o->name = name;
 	o->sopt = pr.sl.sopt;
-
 DONE:
-	fini_parser(&pr);
+	fini_Parser(&pr);
 	return o;
 }
 
@@ -1447,8 +1319,10 @@ DONE:
  * Destroy instance.
  */
 void SSG_destroy_Parse(SSG_Parse *restrict o) {
+	if (!o)
+		return;
 	SSG_ParseEvData *e;
-	for (e = o->events; e; ) {
+	for (e = o->events; e != NULL; ) {
 		SSG_ParseEvData *e_next = e->next;
 		destroy_event_node(e);
 		e = e_next;
