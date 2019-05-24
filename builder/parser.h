@@ -62,6 +62,5 @@ typedef struct SGS_Parse {
 	SGS_ScriptOptions sopt;
 } SGS_Parse;
 
-struct SGS_File;
-SGS_Parse *SGS_create_Parse(struct SGS_File *restrict f);
+SGS_Parse *SGS_create_Parse(const char *restrict script_arg, bool is_path);
 void SGS_destroy_Parse(SGS_Parse *restrict o);
