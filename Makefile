@@ -19,6 +19,7 @@ OBJ=\
 	ptrarr.o \
 	loader/file.o \
 	loader/symtab.o \
+	loader/scanner.o \
 	loader/parser.o \
 	loader/parseconv.o \
 	loader/loader.o \
@@ -90,16 +91,16 @@ help.o: common.h help.c help.h ramp.h wave.h
 loader/file.o: common.h loader/file.c loader/file.h
 	$(CC) -c $(CFLAGS) loader/file.c -o loader/file.o
 
-loader/lexer.o: common.h loader/file.h loader/lexer.c loader/lexer.h loader/symtab.h math.h mempool.h
+loader/lexer.o: common.h loader/file.h loader/lexer.c loader/lexer.h loader/scanner.h loader/symtab.h math.h mempool.h
 	$(CC) -c $(CFLAGS) loader/lexer.c -o loader/lexer.o
 
-loader/loader.o: loader/loader.c sgensys.h script.h ptrarr.h program.h ramp.h wave.h math.h loader/file.h common.h
+loader/loader.o: common.h loader/loader.c math.h program.h ptrarr.h ramp.h script.h sgensys.h wave.h
 	$(CC) -c $(CFLAGS) loader/loader.c -o loader/loader.o
 
 loader/parseconv.o: arrtype.h common.h help.h loader/parseconv.c math.h program.h ptrarr.h ramp.h script.h wave.h
 	$(CC) -c $(CFLAGS) loader/parseconv.c -o loader/parseconv.o
 
-loader/parser.o: common.h help.h loader/file.h loader/parser.c loader/symtab.h math.h mempool.h program.h ptrarr.h ramp.h script.h wave.h
+loader/parser.o: common.h help.h loader/file.h loader/parser.c loader/scanner.h loader/symtab.h math.h mempool.h program.h ptrarr.h ramp.h script.h wave.h
 	$(CC) -c $(CFLAGS_SIZE) loader/parser.c -o loader/parser.o
 
 loader/scanner.o: common.h loader/file.h loader/scanner.c loader/scanner.h loader/symtab.h math.h mempool.h
