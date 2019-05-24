@@ -48,8 +48,3 @@ void SGS_Lexer_close(SGS_Lexer *restrict o);
 
 bool SGS_Lexer_get(SGS_Lexer *restrict o, SGS_ScriptToken *restrict t);
 bool SGS_Lexer_get_special(SGS_Lexer *restrict o, SGS_ScriptToken *restrict t);
-
-void SGS_Lexer_warning(SGS_Lexer *restrict o, const char *restrict fmt, ...)
-		sgsPrintflike(2, 3);
-void SGS_Lexer_error(SGS_Lexer *restrict o, const char *restrict fmt, ...)
-		sgsPrintflike(2, 3);
