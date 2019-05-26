@@ -18,7 +18,7 @@
  * Ramp types.
  */
 enum {
-	SGS_RAMP_STATE = 0,
+	SGS_RAMP_HOLD = 0,
 	SGS_RAMP_LIN,
 	SGS_RAMP_EXP,
 	SGS_RAMP_LOG,
