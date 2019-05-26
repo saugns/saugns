@@ -18,18 +18,11 @@
  * Ramp types.
  */
 enum {
-	SGS_RAMP_STATE = 0,
+	SGS_RAMP_HOLD = 0,
 	SGS_RAMP_LIN,
 	SGS_RAMP_EXP,
 	SGS_RAMP_LOG,
 	SGS_RAMP_TYPES
-};
-
-/**
- * Ramp flags.
- */
-enum {
-	SGS_RAMP_TIME_DEFAULT = 1<<0, // for use while deciding values
 };
 
 /** Names of ramp types, with an extra NULL pointer at the end. */
@@ -46,7 +39,6 @@ typedef struct SGS_Ramp {
 	uint32_t pos;
 	float goal;
 	uint8_t type;
-	uint8_t flags;
 } SGS_Ramp;
 
 bool SGS_Ramp_run(SGS_Ramp *restrict o, uint32_t srate,
