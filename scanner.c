@@ -23,7 +23,7 @@
 /**
  * Create instance.
  *
- * Assigns a modifiable copy of the SGS_Scanner_def_c_handlers array,
+ * Assigns a modifiable copy of the SGS_Scanner_def_c_filters array,
  * freed when the instance is destroyed.
  *
  * \return instance, or NULL on failure
@@ -36,10 +36,10 @@ SGS_Scanner *SGS_create_Scanner(SGS_Symtab *restrict symtab) {
 	o->f = SGS_create_File();
 	if (!o->f) goto ERROR;
 	o->symtab = symtab;
-	size_t handlers_size = sizeof(SGS_ScannerCHandler_f) * SGS_SCAN_CHVALS;
-	o->c_handlers = malloc(handlers_size);
-	if (!o->c_handlers) goto ERROR;
-	memcpy(o->c_handlers, SGS_Scanner_def_c_handlers, handlers_size);
+	size_t filters_size = sizeof(SGS_ScanCFilter_f) * SGS_SCAN_CFILTERS;
+	o->c_filters = malloc(filters_size);
+	if (!o->c_filters) goto ERROR;
+	memcpy(o->c_filters, SGS_Scanner_def_c_filters, filters_size);
 	o->strbuf = calloc(1, STRBUF_LEN);
 	if (!o->strbuf) goto ERROR;
 	return o;
@@ -53,9 +53,9 @@ ERROR:
  * Destroy instance.
  */
 void SGS_destroy_Scanner(SGS_Scanner *restrict o) {
-	if (o->f) SGS_destroy_File(o->f);
-	if (o->strbuf) free(o->strbuf);
-	if (o->c_handlers) free(o->c_handlers);
+	SGS_destroy_File(o->f);
+	free(o->strbuf);
+	free(o->c_filters);
 	free(o);
 }
 
@@ -77,8 +77,8 @@ bool SGS_Scanner_open(SGS_Scanner *restrict o,
 		return false;
 	}
 
-	o->line_pos = 1; // not increased upon first read
-	o->char_pos = 0;
+	o->cf.line_num = 1; // not increased upon first read
+	o->cf.char_num = 0;
 	return true;
 }
 
@@ -99,7 +99,7 @@ static void print_stderr(SGS_Scanner *restrict o,
 	SGS_File *f = o->f;
 	if (options & PRINT_FILE_INFO) {
 		fprintf(stderr, "%s:%d:%d: ",
-			f->path, o->line_pos, o->char_pos);
+			f->path, o->cf.line_num, o->cf.char_num);
 	}
 	if (prefix != NULL) {
 		fprintf(stderr, "%s: ", prefix);
@@ -171,7 +171,7 @@ static bool read_symstr(SGS_File *restrict f,
 		}
 		uint8_t c = SGS_File_GETC(f);
 		if (!IS_SYMCHAR(c)) {
-			SGS_FileMode_DECP(&f->mr);
+			SGS_File_DECP(f);
 			break;
 		}
 		buf[i++] = c;
@@ -190,7 +190,7 @@ static bool read_symstr(SGS_File *restrict f,
  *
  * \return 0 or SGS_SCAN_EOF
  */
-uint8_t SGS_Scanner_handle_invalid(SGS_Scanner *restrict o, uint8_t c) {
+uint8_t SGS_Scanner_filter_invalid(SGS_Scanner *restrict o, uint8_t c) {
 	SGS_File *f = o->f;
 	if (!SGS_File_AFTER_EOF(f)) {
 		SGS_Scanner_warning(o, "invalid character (value 0x%02hhX)", c);
@@ -206,30 +206,29 @@ uint8_t SGS_Scanner_handle_invalid(SGS_Scanner *restrict o, uint8_t c) {
 /**
  * Get characters until the next is neither a space nor a tab.
  *
- * \return 0
+ * \return SGS_SCAN_SPACE
  */
-uint8_t SGS_Scanner_handle_space(SGS_Scanner *restrict o,
+uint8_t SGS_Scanner_filter_space(SGS_Scanner *restrict o,
 		uint8_t c SGS__maybe_unused) {
-	o->char_pos += SGS_File_skipspace(o->f);
-	return 0;
+	SGS_File *f = o->f;
+	o->cf.char_num += SGS_File_skipspace(f);
+	return SGS_SCAN_SPACE;
 }
 
 /**
  * Get characters until the next is not a linebreak.
  *
- * \return 0
+ * \return SGS_SCAN_LNBRK
  */
-uint8_t SGS_Scanner_handle_linebreaks(SGS_Scanner *restrict o, uint8_t c) {
+uint8_t SGS_Scanner_filter_linebreaks(SGS_Scanner *restrict o, uint8_t c) {
 	SGS_File *f = o->f;
-	++o->line_pos;
+	++o->cf.line_num;
 	if (c == '\n') SGS_File_TRYC(f, '\r');
 	while (SGS_File_trynewline(f)) {
-		++o->line_pos;
+		++o->cf.line_num;
 	}
-	o->c_flags |= SGS_SCAN_C_NEWLINE;
-	o->old_char_pos = o->char_pos;
-	o->char_pos = 0;
-	return 0;
+	o->cf.char_num = 0;
+	return SGS_SCAN_LNBRK;
 }
 
 /**
@@ -237,60 +236,62 @@ uint8_t SGS_Scanner_handle_linebreaks(SGS_Scanner *restrict o, uint8_t c) {
  *
  * Call for a character to use it as a line comment opener.
  *
- * \return 0
+ * \return SGS_SCAN_SPACE
  */
-uint8_t SGS_Scanner_handle_linecomment(SGS_Scanner *restrict o,
+uint8_t SGS_Scanner_filter_linecomment(SGS_Scanner *restrict o,
 		uint8_t c SGS__maybe_unused) {
-	o->char_pos += SGS_File_skipline(o->f);
-	return 0;
+	SGS_File *f = o->f;
+	o->cf.char_num += SGS_File_skipline(f);
+	return SGS_SCAN_SPACE;
 }
 
 /**
  * Get characters until encountering \p check_c followed by match_c.
  * Requires setting the match_c field before calling for a character.
- * (See e.g. SGS_Scanner_handle_slashcomments(), which uses this for
+ * (See e.g. SGS_Scanner_filter_slashcomments(), which uses this for
  * C-style comments.)
  *
  * Does not set the newline field, even if the comment contains newlines;
  * any newlines within a block comment are ignored (commented out), apart
  * from in line numbering.
  *
- * \return 0 or SGS_SCAN_EOF (on unterminated comment)
+ * \return SGS_SCAN_SPACE or SGS_SCAN_EOF (on unterminated comment)
  */
-uint8_t SGS_Scanner_handle_blockcomment(SGS_Scanner *restrict o,
+uint8_t SGS_Scanner_filter_blockcomment(SGS_Scanner *restrict o,
 		uint8_t check_c) {
-	int32_t line_pos = o->line_pos;
-	int32_t char_pos = o->char_pos;
+	SGS_File *f = o->f;
+	int32_t line_num = o->cf.line_num;
+	int32_t char_num = o->cf.char_num;
 	for (;;) {
-		uint8_t c = SGS_File_GETC(o->f);
-		++char_pos;
+		uint8_t c = SGS_File_GETC(f);
+		++char_num;
 		if (c == '\n') {
-			++line_pos;
-			SGS_File_TRYC(o->f, '\r');
-			char_pos = 0;
+			++line_num;
+			SGS_File_TRYC(f, '\r');
+			char_num = 0;
 		} else if (c == '\r') {
-			++line_pos;
-			char_pos = 0;
+			++line_num;
+			char_num = 0;
 		} else if (c == check_c) {
-			c = SGS_File_GETC(o->f);
-			if (c == o->match_c) {
-				++char_pos;
+			c = SGS_File_GETC(f);
+			if (c == o->cf.match_c) {
+				++char_num;
 				break; /* end of block comment */
 			} else {
-				SGS_FileMode_DECP(&o->f->mr);
+				SGS_File_DECP(f);
 			}
-		} else if (c <= SGS_FILE_MARKER && SGS_File_AFTER_EOF(o->f)) {
-			c = SGS_Scanner_handle_invalid(o, c);
-			o->c_flags |= SGS_SCAN_C_ERROR;
-			--o->char_pos; // print for beginning of comment
+		} else if (c <= SGS_FILE_MARKER && SGS_File_AFTER_EOF(f)) {
+			c = SGS_Scanner_filter_invalid(o, c);
+			o->cf.flags |= SGS_SCAN_C_ERROR;
+			--o->cf.char_num; // print for beginning of comment
 			SGS_Scanner_error(o, "unterminated comment");
-			++o->char_pos;
+			++o->cf.char_num;
 			return SGS_SCAN_EOF;
 		}
 	}
-	o->line_pos = line_pos;
-	o->char_pos = char_pos;
-	return 0;
+	o->cf.line_num = line_num;
+	o->cf.char_num = char_num;
+	return SGS_SCAN_SPACE;
 }
 
 /**
@@ -300,20 +301,21 @@ uint8_t SGS_Scanner_handle_blockcomment(SGS_Scanner *restrict o,
  * handling comment if present, otherwise simply returning the first
  * character.
  *
- * \return \p c, 0, or SGS_SCAN_EOF (on unterminated block comment)
+ * \return \p c, SGS_SCAN_SPACE, or SGS_SCAN_EOF (on unterminated comment)
  */
-uint8_t SGS_Scanner_handle_slashcomments(SGS_Scanner *restrict o, uint8_t c) {
-	uint8_t next_c = SGS_File_GETC(o->f);
+uint8_t SGS_Scanner_filter_slashcomments(SGS_Scanner *restrict o, uint8_t c) {
+	SGS_File *f = o->f;
+	uint8_t next_c = SGS_File_GETC(f);
 	if (next_c == '*') {
-		++o->char_pos;
-		o->match_c = '/';
-		return SGS_Scanner_handle_blockcomment(o, next_c);
+		++o->cf.char_num;
+		o->cf.match_c = '/';
+		return SGS_Scanner_filter_blockcomment(o, next_c);
 	}
 	if (next_c == '/') {
-		++o->char_pos;
-		return SGS_Scanner_handle_linecomment(o, next_c);
+		++o->cf.char_num;
+		return SGS_Scanner_filter_linecomment(o, next_c);
 	}
-	SGS_FileMode_DECP(&o->f->mr);
+	SGS_File_DECP(f);
 	return c;
 }
 
@@ -325,56 +327,56 @@ uint8_t SGS_Scanner_handle_slashcomments(SGS_Scanner *restrict o, uint8_t c) {
  * for the first character position only. (For example,
  * git-style comments, or old Fortran comments.)
  *
- * \return \p c or 0
+ * \return \p c or SGS_SCAN_SPACE
  */
-uint8_t SGS_Scanner_handle_char1comments(SGS_Scanner *restrict o, uint8_t c) {
-	if (o->char_pos == 1) return SGS_Scanner_handle_linecomment(o, c);
+uint8_t SGS_Scanner_filter_char1comments(SGS_Scanner *restrict o, uint8_t c) {
+	if (o->cf.char_num == 1) return SGS_Scanner_filter_linecomment(o, c);
 	return c;
 }
 
 /**
- * Default array of character handler functions for SGS_Scanner_getc().
+ * Default array of character filter functions for SGS_Scanner_getc().
  * Each Scanner instance is assigned a copy for which entries may be changed.
  *
  * NULL when the character is simply accepted.
  */
-const SGS_ScannerCHandler_f SGS_Scanner_def_c_handlers[SGS_SCAN_CHVALS] = {
-	/* NUL 0x00 */ SGS_Scanner_handle_invalid, // also for values above 127
-	/* SOH 0x01 */ SGS_Scanner_handle_invalid,
-	/* STX 0x02 */ SGS_Scanner_handle_invalid,
-	/* ETX 0x03 */ SGS_Scanner_handle_invalid,
-	/* EOT 0x04 */ SGS_Scanner_handle_invalid,
-	/* ENQ 0x05 */ SGS_Scanner_handle_invalid,
-	/* ACK 0x06 */ SGS_Scanner_handle_invalid,
-	/* BEL '\a' */ SGS_Scanner_handle_invalid, // SGS_FILE_MARKER
-	/* BS  '\b' */ SGS_Scanner_handle_invalid,
-	/* HT  '\t' */ SGS_Scanner_handle_space,
-	/* LF  '\n' */ SGS_Scanner_handle_linebreaks,
-	/* VT  '\v' */ SGS_Scanner_handle_invalid,
-	/* FF  '\f' */ SGS_Scanner_handle_invalid,
-	/* CR  '\r' */ SGS_Scanner_handle_linebreaks,
-	/* SO  0x0E */ SGS_Scanner_handle_invalid,
-	/* SI  0x0F */ SGS_Scanner_handle_invalid,
-	/* DLE 0x10 */ SGS_Scanner_handle_invalid,
-	/* DC1 0x11 */ SGS_Scanner_handle_invalid,
-	/* DC2 0x12 */ SGS_Scanner_handle_invalid,
-	/* DC3 0x13 */ SGS_Scanner_handle_invalid,
-	/* DC4 0x14 */ SGS_Scanner_handle_invalid,
-	/* NAK 0x15 */ SGS_Scanner_handle_invalid,
-	/* SYN 0x16 */ SGS_Scanner_handle_invalid,
-	/* ETB 0x17 */ SGS_Scanner_handle_invalid,
-	/* CAN 0x18 */ SGS_Scanner_handle_invalid,
-	/* EM  0x19 */ SGS_Scanner_handle_invalid,
-	/* SUB 0x1A */ SGS_Scanner_handle_invalid,
-	/* ESC 0x1B */ SGS_Scanner_handle_invalid,
-	/* FS  0x1C */ SGS_Scanner_handle_invalid,
-	/* GS  0x1D */ SGS_Scanner_handle_invalid,
-	/* RS  0x1E */ SGS_Scanner_handle_invalid,
-	/* US  0x1F */ SGS_Scanner_handle_invalid,
-	/*     ' '  */ SGS_Scanner_handle_space,
+const SGS_ScanCFilter_f SGS_Scanner_def_c_filters[SGS_SCAN_CFILTERS] = {
+	/* NUL 0x00 */ SGS_Scanner_filter_invalid, // also for values above 127
+	/* SOH 0x01 */ SGS_Scanner_filter_invalid,
+	/* STX 0x02 */ SGS_Scanner_filter_invalid,
+	/* ETX 0x03 */ SGS_Scanner_filter_invalid,
+	/* EOT 0x04 */ SGS_Scanner_filter_invalid,
+	/* ENQ 0x05 */ SGS_Scanner_filter_invalid,
+	/* ACK 0x06 */ SGS_Scanner_filter_invalid,
+	/* BEL '\a' */ SGS_Scanner_filter_invalid, // SGS_FILE_MARKER
+	/* BS  '\b' */ SGS_Scanner_filter_invalid,
+	/* HT  '\t' */ SGS_Scanner_filter_space,
+	/* LF  '\n' */ SGS_Scanner_filter_linebreaks,
+	/* VT  '\v' */ SGS_Scanner_filter_invalid,
+	/* FF  '\f' */ SGS_Scanner_filter_invalid,
+	/* CR  '\r' */ SGS_Scanner_filter_linebreaks,
+	/* SO  0x0E */ SGS_Scanner_filter_invalid,
+	/* SI  0x0F */ SGS_Scanner_filter_invalid,
+	/* DLE 0x10 */ SGS_Scanner_filter_invalid,
+	/* DC1 0x11 */ SGS_Scanner_filter_invalid,
+	/* DC2 0x12 */ SGS_Scanner_filter_invalid,
+	/* DC3 0x13 */ SGS_Scanner_filter_invalid,
+	/* DC4 0x14 */ SGS_Scanner_filter_invalid,
+	/* NAK 0x15 */ SGS_Scanner_filter_invalid,
+	/* SYN 0x16 */ SGS_Scanner_filter_invalid,
+	/* ETB 0x17 */ SGS_Scanner_filter_invalid,
+	/* CAN 0x18 */ SGS_Scanner_filter_invalid,
+	/* EM  0x19 */ SGS_Scanner_filter_invalid,
+	/* SUB 0x1A */ SGS_Scanner_filter_invalid,
+	/* ESC 0x1B */ SGS_Scanner_filter_invalid,
+	/* FS  0x1C */ SGS_Scanner_filter_invalid,
+	/* GS  0x1D */ SGS_Scanner_filter_invalid,
+	/* RS  0x1E */ SGS_Scanner_filter_invalid,
+	/* US  0x1F */ SGS_Scanner_filter_invalid,
+	/*     ' '  */ SGS_Scanner_filter_space,
 	/*     '!'  */ NULL,
 	/*     '"'  */ NULL,
-	/*     '#'  */ SGS_Scanner_handle_linecomment,
+	/*     '#'  */ SGS_Scanner_filter_linecomment,
 	/*     '$'  */ NULL,
 	/*     '%'  */ NULL,
 	/*     '&'  */ NULL,
@@ -386,7 +388,7 @@ const SGS_ScannerCHandler_f SGS_Scanner_def_c_handlers[SGS_SCAN_CHVALS] = {
 	/*     ','  */ NULL,
 	/*     '-'  */ NULL,
 	/*     '.'  */ NULL,
-	/*     '/'  */ SGS_Scanner_handle_slashcomments,
+	/*     '/'  */ SGS_Scanner_filter_slashcomments,
 	/* num '0'  */ NULL,
 	/* num '1'  */ NULL,
 	/* num '2'  */ NULL,
@@ -466,13 +468,39 @@ const SGS_ScannerCHandler_f SGS_Scanner_def_c_handlers[SGS_SCAN_CHVALS] = {
 	/*     '|'  */ NULL,
 	/*     '}'  */ NULL,
 	/*     '~'  */ NULL,
-	/* DEL 0x7F */ SGS_Scanner_handle_invalid,
+	/* DEL 0x7F */ SGS_Scanner_filter_invalid,
 };
 
+/*
+ * Perform pending updates before a get call.
+ */
+static void update_cframe(SGS_Scanner *restrict o) {
+	if ((o->cf.flags & SGS_SCAN_C_LNBRK) != 0) {
+		++o->cf.line_num;
+		o->cf.char_num = 0;
+		o->cf.flags &= ~SGS_SCAN_C_LNBRK;
+	}
+	o->s_flags &= ~SGS_SCAN_S_UNGETC;
+}
+
+/*
+ * Set previous character to \p c.
+ *
+ * Used to make getting after an undo use the character.
+ */
+static void set_prevc(SGS_Scanner *restrict o, uint8_t c) {
+	SGS_File *f = o->f;
+	size_t r_pos = f->pos;
+	SGS_File_DECP(f);
+	SGS_File_FIXP(f);
+	SGS_File_SETC_NC(f, c);
+	f->pos = r_pos;
+}
+
 /**
- * Get next character (with filtering); remove spaces, tabs,
- * comments, and replace newlines with a single SGS_SCAN_EOL
- * ('\n') character.
+ * Get next character. Reduces whitespace, returning one space marker
+ * for spaces, tabs, and/or comments, and one linebreak marker
+ * for linebreaks.
  *
  * Upon end of file, 0 will be returned. A 0 value in the
  * input is otherwise moved past, printing a warning.
@@ -480,37 +508,85 @@ const SGS_ScannerCHandler_f SGS_Scanner_def_c_handlers[SGS_SCAN_CHVALS] = {
  * \return character or 0 upon end of file
  */
 uint8_t SGS_Scanner_getc(SGS_Scanner *restrict o) {
+	SGS_File *f = o->f;
 	uint8_t c;
-	SGS_ScannerCHandler_f handler;
-	if ((o->c_flags & SGS_SCAN_C_NEWLINE) != 0) {
-		++o->line_pos;
-		o->char_pos = 0;
-		o->c_flags &= ~SGS_SCAN_C_NEWLINE;
+	bool skipped_space = false;
+	update_cframe(o);
+	for (;;) {
+		++o->cf.char_num;
+		c = SGS_File_GETC(f);
+		SGS_ScanCFilter_f filter = SGS_Scanner_getfilter(o, c);
+		if (!filter) break;
+		c = filter(o, c);
+		if (c == SGS_SCAN_SPACE) {
+			skipped_space = true;
+			continue;
+		}
+		if (c != 0) break;
 	}
-	do {
-		++o->char_pos;
-		c = SGS_File_GETC(o->f);
-		handler = SGS_Scanner_get_c_handler(o, c);
-		if (!handler) break;
-		c = handler(o, c);
-	} while (c == 0);
 	if (c == SGS_SCAN_EOF) return 0;
-	if ((o->c_flags & SGS_SCAN_C_NEWLINE) != 0) {
+	set_prevc(o, c);
+	if (skipped_space) {
 		/*
-		 * Handle greedy scanning past newline characters.
-		 * Unget char, set position, and return newline
-		 * (also setting preceding char to newline so a
-		 * following unget will work).
+		 * Unget a character and store skipped space
+		 * before returning it.
 		 */
-		SGS_File_UNGETC(o->f);
-		--o->line_pos;
-		o->char_pos = o->old_char_pos;
-		c = SGS_SCAN_EOL;
-		o->f->mw.pos = o->f->mr.pos - 1;
-		SGS_FileMode_FIXP(&o->f->mw);
-		SGS_File_SETC_NC(o->f, c);
+		SGS_File_UNGETC(f);
+		--o->cf.char_num;
+		set_prevc(o, SGS_SCAN_SPACE);
+		return SGS_SCAN_SPACE;
 	}
-	o->s_flags &= ~SGS_SCAN_S_UNGETC;
+	if (c == SGS_SCAN_LNBRK) {
+		o->cf.flags |= SGS_SCAN_C_LNBRK;
+	}
+	return c;
+}
+
+/**
+ * Get next character. Removes whitespace, except for a single linebreak
+ * marker if linebreaks were filtered.
+ *
+ * Upon end of file, 0 will be returned. A 0 value in the
+ * input is otherwise moved past, printing a warning.
+ *
+ * \return character or 0 upon end of file
+ */
+uint8_t SGS_Scanner_getc_nospace(SGS_Scanner *restrict o) {
+	SGS_File *f = o->f;
+	uint8_t c;
+	SGS_ScanCFilter_f filter;
+	int32_t old_char_num;
+	bool skipped_lnbrk = false;
+	update_cframe(o);
+	for (;;) {
+		++o->cf.char_num;
+		c = SGS_File_GETC(f);
+		filter = SGS_Scanner_getfilter(o, c);
+		if (!filter) break;
+		c = filter(o, c);
+		if (c == SGS_SCAN_SPACE) continue;
+		if (c == SGS_SCAN_LNBRK) {
+			skipped_lnbrk = true;
+			old_char_num = o->cf.char_num;
+			++o->cf.line_num;
+			o->cf.char_num = 0;
+			continue;
+		}
+		if (c != 0) break;
+	}
+	if (c == SGS_SCAN_EOF) return 0;
+	set_prevc(o, c);
+	if (skipped_lnbrk) {
+		/*
+		 * Unget a character and store skipped linebreak
+		 * before returning it.
+		 */
+		SGS_File_UNGETC(f);
+		--o->cf.line_num;
+		o->cf.char_num = old_char_num;
+		set_prevc(o, SGS_SCAN_LNBRK);
+		return SGS_SCAN_LNBRK;
+	}
 	return c;
 }
 
@@ -529,11 +605,12 @@ uint8_t SGS_Scanner_getc(SGS_Scanner *restrict o) {
  */
 void SGS_Scanner_ungetc(SGS_Scanner *restrict o) {
 	if ((o->s_flags & SGS_SCAN_S_UNGETC) != 0) {
-		SGS_Scanner_error(o, "scanner ungetc repeated by parsing code (return without action)");
+		SGS_Scanner_error(o, "scanner ungetc repeated; return without action");
 		return;
 	}
-	SGS_File_UNGETC(o->f);
-	--o->char_pos;
+	SGS_File *f = o->f;
+	SGS_File_UNGETC(f);
+	--o->cf.char_num;
 	o->s_flags |= SGS_SCAN_S_UNGETC;
 }
 
@@ -572,18 +649,19 @@ bool SGS_Scanner_getsymstr(SGS_Scanner *restrict o,
 	SGS_File *f = o->f;
 	size_t len;
 	bool truncated;
-	SGS_FileMode_DECP(&f->mr);
+	update_cframe(o);
+	SGS_File_DECP(f);
 	truncated = !read_symstr(f, o->strbuf, STRBUF_LEN, &len);
 	if (len == 0) {
 		*strp = NULL;
 		if (lenp) *lenp = 0;
 		return true;
 	}
-	o->char_pos += len - 1;
+	o->cf.char_num += len - 1;
 	if (truncated) {
 		SGS_Scanner_warning(o,
 "limiting identifier to %d characters", (STRBUF_LEN - 1));
-		o->char_pos += SGS_File_skipstr(f, filter_symchar);
+		o->cf.char_num += SGS_File_skipstr(f, filter_symchar);
 	}
 	const char *pool_str;
 	pool_str = SGS_Symtab_pool_str(o->symtab, o->strbuf, len);
