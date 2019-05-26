@@ -248,17 +248,15 @@ static void ParseConv_convert_opdata(ParseConv *restrict o,
 	SGS_ProgramOpData *ood = OpDataArr_add(&o->ev_op_data, NULL);
 	ood->id = op_id;
 	ood->params = op->op_params;
-	ood->attr = op->attr;
-	ood->wave = op->wave;
 	ood->time = op->time;
 	ood->silence_ms = op->silence_ms;
+	ood->attr = op->attr;
+	ood->wave = op->wave;
 	ood->freq = op->freq;
-	ood->dynfreq = op->dynfreq;
-	ood->phase = op->phase;
 	ood->amp = op->amp;
+	ood->phase = op->phase;
+	ood->dynfreq = op->dynfreq;
 	ood->dynamp = op->dynamp;
-	ood->ramp_freq = op->ramp_freq;
-	ood->ramp_amp = op->ramp_amp;
 	VAState *vas = &o->va.a[o->ev->vo_id];
 	if (op->amods) {
 		ood->amods = oas->amods =
@@ -397,7 +395,6 @@ static void ParseConv_convert_event(ParseConv *restrict o,
 		ovd->params = vo_params;
 		ovd->attr = e->vo_attr;
 		ovd->pan = e->pan;
-		ovd->ramp_pan = e->ramp_pan;
 		if ((e->ev_flags & SGS_SDEV_NEW_OPGRAPH) != 0) {
 			vas->op_graph = SGS_create_ProgramIDArr(o->mp,
 					&e->op_graph, NULL);
@@ -582,11 +579,11 @@ void SGS_Program_print_info(SGS_Program *restrict o) {
 			if (od->time.flags & SGS_TIMEP_IMPLICIT)
 				fprintf(stdout,
 					"\n\top %d \tt=IMPL\tf=%.f",
-					od->id, od->freq);
+					od->id, od->freq.v0);
 			else
 				fprintf(stdout,
 					"\n\top %d \tt=%d \tf=%.f",
-					od->id, od->time.v_ms, od->freq);
+					od->id, od->time.v_ms, od->freq.v0);
 			print_linked("\n\t    a,w", od->amods);
 			print_linked("\n\t    f,w", od->fmods);
 			print_linked("\n\t    p", od->pmods);
