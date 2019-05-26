@@ -15,14 +15,14 @@
 #include "math.h"
 
 const char *const SGS_Slope_names[SGS_SLOPE_TYPES + 1] = {
-	"state",
+	"hold",
 	"lin",
 	"exp",
 	"log",
 	NULL
 };
 
-static void fill_state(float *restrict buf, uint32_t len,
+static void fill_hold(float *restrict buf, uint32_t len,
 		float s0) {
 	uint32_t i;
 	for (i = 0; i < len; ++i)
@@ -89,8 +89,8 @@ bool SGS_Slope_run(SGS_Slope *restrict o, uint32_t srate,
 		fill_len = buf_len - len;
 	}
 	switch (o->type) {
-	case SGS_SLOPE_STATE:
-		fill_state(buf, len, s0);
+	case SGS_SLOPE_HOLD:
+		fill_hold(buf, len, s0);
 		break;
 	case SGS_SLOPE_LIN:
 		fill_lin(buf, len, s0, o->goal, o->pos, inv_time);
@@ -107,7 +107,7 @@ bool SGS_Slope_run(SGS_Slope *restrict o, uint32_t srate,
 		/*
 		 * Set the remaining values, if any, using the goal.
 		 */
-		fill_state(buf + len, fill_len, o->goal);
+		fill_hold(buf + len, fill_len, o->goal);
 		return false;
 	}
 	return true;
