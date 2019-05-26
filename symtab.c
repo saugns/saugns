@@ -183,6 +183,31 @@ const void *SGS_Symtab_pool_str(SGS_Symtab *restrict o,
 }
 
 /**
+ * Add the first \p n strings from \p stra to the string pool of the
+ * symbol table, except any already present. An array of pointers to
+ * the unique string pool copies of all \p stra strings is allocated
+ * and returned; it will be freed when the symbol table is destroyed.
+ *
+ * All strings in \p stra need to be null-terminated.
+ *
+ * \return array of pointers to unique strings, or NULL on allocation failure
+ */
+const char **SGS_Symtab_pool_stra(SGS_Symtab *restrict o,
+		const char *const*restrict stra,
+		size_t n) {
+	const char **res_stra;
+	res_stra = SGS_Mempool_alloc(o->malc, sizeof(const char*) * n);
+	if (!res_stra) return NULL;
+	for (size_t i = 0; i < n; ++i) {
+		const char *str = SGS_Symtab_pool_str(o,
+				stra[i], strlen(stra[i]));
+		if (!str) return NULL;
+		res_stra[i] = str;
+	}
+	return res_stra;
+}
+
+/**
  * Return value associated with string.
  *
  * \return value, or NULL if none
