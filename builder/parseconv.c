@@ -274,17 +274,15 @@ static void ParseConv_convert_opdata(ParseConv *restrict o,
 	ood.id = op_id;
 	ood.params = op->op_params;
 	ood.adjcs = NULL;
-	ood.attr = op->attr;
-	ood.wave = op->wave;
 	ood.time_ms = op->time_ms;
 	ood.silence_ms = op->silence_ms;
+	ood.attr = op->attr;
+	ood.wave = op->wave;
 	ood.freq = op->freq;
-	ood.dynfreq = op->dynfreq;
-	ood.phase = op->phase;
 	ood.amp = op->amp;
+	ood.phase = op->phase;
+	ood.dynfreq = op->dynfreq;
 	ood.dynamp = op->dynamp;
-	ood.slope_freq = op->slope_freq;
-	ood.slope_amp = op->slope_amp;
 	if ((op->op_params & SGS_POPP_ADJCS) != 0) {
 		VAState *vas = &o->va.a[o->ev->vo_id];
 		vas->flags |= VA_OPLIST;
@@ -422,7 +420,6 @@ static void ParseConv_convert_event(ParseConv *restrict o,
 		ovd->params = vo_params;
 		ovd->attr = e->vo_attr;
 		ovd->pan = e->pan;
-		ovd->slope_pan = e->slope_pan;
 		if ((e->ev_flags & SGS_SDEV_NEW_OPGRAPH) != 0) {
 			if (vas->op_graph != NULL) free(vas->op_graph);
 			vas->op_graph = create_OpGraph(e);
@@ -651,11 +648,11 @@ void SGS_Program_print_info(SGS_Program *restrict o) {
 			if (od->time_ms == SGS_TIME_INF)
 				fprintf(stdout,
 					"\n\top %d \tt=INF \tf=%.f",
-					od->id, od->freq);
+					od->id, od->freq.v0);
 			else
 				fprintf(stdout,
 					"\n\top %d \tt=%d \tf=%.f",
-					od->id, od->time_ms, od->freq);
+					od->id, od->time_ms, od->freq.v0);
 			if (ga != NULL) {
 				print_linked("\n\t    f!<", ">", ga->fmodc,
 					ga->adjcs);
