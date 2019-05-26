@@ -46,13 +46,13 @@ static uint8_t filter_symchar(SGS_File *restrict o SGS__maybe_unused,
  * Read identifier string into \p buf. At most \p buf_len - 1 characters
  * are read, and the string is always NULL-terminated.
  *
- * If \p str_len is not NULL, it will be set to the string length.
+ * If \p lenp is not NULL, it will be used to set the string length.
  *
  * \return true if the string fit into the buffer, false if truncated
  */
 static bool read_symstr(SGS_File *restrict f,
 		uint8_t *restrict buf, size_t buf_len,
-		size_t *restrict sym_len) {
+		size_t *restrict lenp) {
 	size_t i = 0;
 	size_t max_len = buf_len - 1;
 	bool truncate = false;
@@ -63,13 +63,13 @@ static bool read_symstr(SGS_File *restrict f,
 		}
 		uint8_t c = SGS_File_GETC(f);
 		if (!IS_SYMCHAR(c)) {
-			SGS_FileMode_DECP(&f->mr);
+			SGS_File_DECP(f);
 			break;
 		}
 		buf[i++] = c;
 	}
 	buf[i] = '\0';
-	*sym_len = i;
+	if (lenp) *lenp = i;
 	return !truncate;
 }
 
@@ -113,8 +113,8 @@ ERROR:
  * Destroy instance.
  */
 void SGS_destroy_Lexer(SGS_Lexer *restrict o) {
-	if (o->f) SGS_destroy_File(o->f);
-	if (o->strbuf) free(o->strbuf);
+	SGS_destroy_File(o->f);
+	free(o->strbuf);
 	free(o);
 }
 
@@ -263,7 +263,7 @@ static uint8_t handle_numeric_value(SGS_Lexer *restrict o,
 	SGS_ScriptToken *t = &o->token;
 	double num;
 	size_t read_len;
-	SGS_FileMode_DECP(&o->f->mr);
+	SGS_File_DECP(o->f);
 	SGS_File_getd(o->f, &num, false, &read_len);
 	t->type = SGS_T_VAL_REAL;
 	t->data.f = num;
@@ -275,7 +275,7 @@ static uint8_t handle_identifier(SGS_Lexer *restrict o,
 	SGS_File *f = o->f;
 	SGS_ScriptToken *t = &o->token;
 	size_t len;
-	SGS_FileMode_DECP(&f->mr);
+	SGS_File_DECP(f);
 	if (!read_symstr(f, o->strbuf, STRBUF_LEN, &len)) {
 		SGS_Lexer_warning(o,
 "identifier length limited to %d characters", (STRBUF_LEN - 1));
