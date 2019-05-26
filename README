@@ -280,9 +280,14 @@ Value sweep:
 	subparameters can be given values within "[]" (square brackets):
 	v	Goal value.
 	t	Time to reach goal value.
-	c	Change type; either lin, exp or log. (exp and log use
-		ear-tuned polynomial approximations designed to sound
-		natural, and which are symmetric to one another.)
+	c	Curve type (default 'lin'):
+			hold	Hold old value until time.
+			lin	Linear trajectory over time.
+			exp	Exponential trajectory over time.
+			log	Logarithmic trajectory over time.
+		(The 'exp' and 'log' types use ear-tuned polynomial
+		approximations designed to sound natural, and
+		symmetric one to another.)
 
 Modulator list:
 	Within "[]", written after the name of a parameter that supports it,

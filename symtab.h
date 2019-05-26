@@ -22,6 +22,9 @@ void SGS_destroy_Symtab(SGS_Symtab *restrict o);
 
 const void *SGS_Symtab_pool_str(SGS_Symtab *restrict o,
 		const void *restrict str, size_t len);
+const char **SGS_Symtab_pool_stra(SGS_Symtab *restrict o,
+		const char *const* restrict stra,
+		size_t n);
 
 void *SGS_Symtab_get(SGS_Symtab *restrict o,
 		const void *restrict key, size_t len);

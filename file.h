@@ -14,49 +14,30 @@
 #pragma once
 #include "sgensys.h"
 
-#define SGS_FBUF_ALEN 4096
-#define SGS_FBUF_ANUM 2
-#define SGS_FBUF_SIZ  (SGS_FBUF_ALEN * SGS_FBUF_ANUM)
+#define SGS_FILE_ALEN   4096
+#define SGS_FILE_ANUM   2
+#define SGS_FILE_BUFSIZ (SGS_FILE_ALEN * SGS_FILE_ANUM)
 
 struct SGS_File;
 typedef struct SGS_File SGS_File;
 
-struct SGS_FileMode;
-typedef struct SGS_FileMode SGS_FileMode;
-
 /**
  * Action callback type. Must update call position, may change position,
  * and may e.g. handle file reading or writing to/from the buffer in
- * addition. Should return the number of characters successfully handled.
+ * addition. Should return the number of bytes successfully handled.
  */
-typedef size_t (*SGS_FileUpdate_f)(SGS_File *restrict o,
-		SGS_FileMode *restrict m);
+typedef size_t (*SGS_FileAction_f)(SGS_File *restrict o);
 
-size_t SGS_File_wrap(SGS_File *restrict o,
-		SGS_FileMode *restrict m); // default mode callback
-
-/**
- * Mode subtype for SGS_File.
- *
- * Data for reading or writing, with callback for performing action
- * when \a pos == \a call_pos.
- */
-struct SGS_FileMode {
-	size_t pos;
-	size_t call_pos;
-	SGS_FileUpdate_f f;
-};
-
-void SGS_FileMode_reset(SGS_FileMode *restrict m);
+size_t SGS_File_action_wrap(SGS_File *restrict o); // default callback
 
 /**
  * Flip to the beginning of the next buffer area.
  *
  * \return new position
  */
-#define SGS_FileMode_ANEXT(o) \
-	((o)->pos = ((o)->pos + SGS_FBUF_ALEN) \
-		& ((SGS_FBUF_SIZ - 1) & ~(SGS_FBUF_ALEN - 1)))
+#define SGS_File_ANEXT(o) \
+	((o)->pos = ((o)->pos + SGS_FILE_ALEN) \
+		& ((SGS_FILE_BUFSIZ - 1) & ~(SGS_FILE_ALEN - 1)))
 
 /**
  * Flip to the next buffer area,
@@ -64,17 +45,17 @@ void SGS_FileMode_reset(SGS_FileMode *restrict m);
  *
  * \return new position
  */
-#define SGS_FileMode_AINC(o) \
-	((o)->pos = ((o)->pos + SGS_FBUF_ALEN) \
-		& (SGS_FBUF_SIZ - 1))
+#define SGS_File_AINC(o) \
+	((o)->pos = ((o)->pos + SGS_FILE_ALEN) \
+		& (SGS_FILE_BUFSIZ - 1))
 
 /**
  * Get position relative to buffer area.
  *
  * \return position
  */
-#define SGS_FileMode_APOS(o) \
-	((o)->pos & (SGS_FBUF_ALEN - 1))
+#define SGS_File_APOS(o) \
+	((o)->pos & (SGS_FILE_ALEN - 1))
 
 /**
  * Get remaining length (characters after position)
@@ -82,8 +63,8 @@ void SGS_FileMode_reset(SGS_FileMode *restrict m);
  *
  * \return length
  */
-#define SGS_FileMode_AREM(o) \
-	((SGS_FBUF_ALEN - 1) - ((o)->pos & (SGS_FBUF_ALEN - 1)))
+#define SGS_File_AREM(o) \
+	((SGS_FILE_ALEN - 1) - ((o)->pos & (SGS_FILE_ALEN - 1)))
 
 /**
  * Get remaining length (characters after position)
@@ -91,14 +72,14 @@ void SGS_FileMode_reset(SGS_FileMode *restrict m);
  *
  * \return length
  */
-#define SGS_FileMode_BREM(o) \
-	((SGS_FBUF_SIZ - 1) - ((o)->pos & (SGS_FBUF_SIZ - 1)))
+#define SGS_File_BREM(o) \
+	((SGS_FILE_BUFSIZ - 1) - ((o)->pos & (SGS_FILE_BUFSIZ - 1)))
 
 /**
  * True if at call position, prior to calling callback.
  * (The callback is expected to change the call position.)
  */
-#define SGS_FileMode_NEED_CALL(o) \
+#define SGS_File_NEED_CALL(o) \
 	((o)->pos == (o)->call_pos)
 
 /**
@@ -110,8 +91,8 @@ void SGS_FileMode_reset(SGS_FileMode *restrict m);
  *
  * \return length
  */
-#define SGS_FileMode_CREM(o) \
-	(((o)->call_pos - (o)->pos) & (SGS_FBUF_SIZ - 1))
+#define SGS_File_CREM(o) \
+	(((o)->call_pos - (o)->pos) & (SGS_FILE_BUFSIZ - 1))
 
 /**
  * Increment position without limiting it to the buffer boundary.
@@ -121,7 +102,7 @@ void SGS_FileMode_reset(SGS_FileMode *restrict m);
  *
  * \return new position
  */
-#define SGS_FileMode_INCP(o) (++(o)->pos)
+#define SGS_File_INCP(o) (++(o)->pos)
 
 /**
  * Decrement position without limiting it to the buffer boundary.
@@ -131,14 +112,14 @@ void SGS_FileMode_reset(SGS_FileMode *restrict m);
  *
  * \return new position
  */
-#define SGS_FileMode_DECP(o) (--(o)->pos)
+#define SGS_File_DECP(o) (--(o)->pos)
 
 /**
  * Wrap position to within the buffer boundary.
  *
  * \return new position
  */
-#define SGS_FileMode_FIXP(o) ((o)->pos &= SGS_FBUF_SIZ - 1)
+#define SGS_File_FIXP(o) ((o)->pos &= SGS_FILE_BUFSIZ - 1)
 
 /**
  * File reading status constants.
@@ -169,24 +150,24 @@ typedef void (*SGS_FileClose_f)(SGS_File *restrict o);
  * File type using circular buffer, meant for scanning and parsing.
  * Supports creating sub-instances, e.g. used for nested file includes.
  *
- * Maintains states for reading and writing to the buffer and
- * calling a function for each mode to perform action at chosen
- * positions in the buffer.
+ * Maintains state for moving through the buffer and calling a function
+ * to perform action at chosen positions in the buffer.
  *
  * The default callback simply increases and wraps the call position.
  * Opening a file for reading sets a callback to fill the buffer
  * one area at a time.
  */
 struct SGS_File {
-	SGS_FileMode mr;
-	SGS_FileMode mw;
+	size_t pos;
+	size_t call_pos;
+	SGS_FileAction_f call_f;
 	uint8_t status;
 	size_t end_pos;
 	void *ref;
 	const char *path;
 	SGS_File *parent;
 	SGS_FileClose_f close_f;
-	uint8_t buf[SGS_FBUF_SIZ];
+	uint8_t buf[SGS_FILE_BUFSIZ];
 };
 
 SGS_File *SGS_create_File(void) SGS__malloclike;
@@ -201,13 +182,13 @@ void SGS_File_close(SGS_File *restrict o);
 void SGS_File_reset(SGS_File *restrict o);
 
 /**
- * Check \p mode position and call its callback if at the call position.
+ * Check position and call callback if at the call position.
  *
  * Wraps position to within the buffer boundary.
  */
-#define SGS_File_UPDATE(o, mode) ((void) \
-	((SGS_FileMode_FIXP(mode), SGS_FileMode_NEED_CALL(mode)) \
-		&& (mode)->f((o), (mode))))
+#define SGS_File_UPDATE(o) ((void) \
+	((SGS_File_FIXP(o), SGS_File_NEED_CALL(o)) \
+		&& (o)->call_f((o))))
 
 /**
  * Get current character, without advancing position.
@@ -215,8 +196,8 @@ void SGS_File_reset(SGS_File *restrict o);
  * \return current character
  */
 #define SGS_File_RETC(o) \
-	(SGS_File_UPDATE((o), &(o)->mr), \
-	 (o)->buf[(o)->mr.pos])
+	(SGS_File_UPDATE((o)), \
+	 (o)->buf[(o)->pos])
 
 /**
  * Get current character without checking buffer area boundaries
@@ -225,19 +206,18 @@ void SGS_File_reset(SGS_File *restrict o);
  * \return current character
  */
 #define SGS_File_RETC_NC(o) \
-	((o)->buf[(o)->mr.pos])
+	((o)->buf[(o)->pos])
 
 /**
  * Get current character, advancing position after retrieval.
  *
- * Equivalent to SGS_File_RETC() followed by SGS_FileMode_INCP()
- * for the read mode.
+ * Equivalent to SGS_File_RETC() followed by SGS_File_INCP().
  *
  * \return current character
  */
 #define SGS_File_GETC(o) \
-	(SGS_File_UPDATE((o), &(o)->mr), \
-	 (o)->buf[(o)->mr.pos++])
+	(SGS_File_UPDATE((o)), \
+	 (o)->buf[(o)->pos++])
 
 /**
  * Get current character without checking buffer area boundaries
@@ -246,20 +226,20 @@ void SGS_File_reset(SGS_File *restrict o);
  * \return current character
  */
 #define SGS_File_GETC_NC(o) \
-	((o)->buf[(o)->mr.pos++])
+	((o)->buf[(o)->pos++])
 
 /**
  * Undo the getting of a character.
  * Wraps position to within the buffer boundary.
  *
  * Assuming the read callback is called at multiples of the buffer area
- * length, this can safely be done up to (SGS_FBUF_ALEN - 1) times, plus
+ * length, this can safely be done up to (SGS_FILE_ALEN - 1) times, plus
  * the number of characters gotten within the current buffer area.
  *
  * \return new position
  */
 #define SGS_File_UNGETC(o) \
-	((o)->mr.pos = ((o)->mr.pos - 1) & (SGS_FBUF_SIZ - 1))
+	((o)->pos = ((o)->pos - 1) & (SGS_FILE_BUFSIZ - 1))
 
 /**
  * Compare current character to value \p c, without advancing position.
@@ -267,60 +247,60 @@ void SGS_File_reset(SGS_File *restrict o);
  * \return true if equal
  */
 #define SGS_File_TESTC(o, c) \
-	(SGS_File_UPDATE((o), &(o)->mr), \
-	 ((o)->buf[(o)->mr.pos] == (c)))
+	(SGS_File_UPDATE((o)), \
+	 ((o)->buf[(o)->pos] == (c)))
 
 /**
  * Compare current character to value \p c, advancing position if equal.
  *
- * Equivalent to SGS_File_TESTC() followed by SGS_FileMode_INCP()
+ * Equivalent to SGS_File_TESTC() followed by SGS_File_INCP()
  * when true.
  *
  * \return true if character got
  */
 #define SGS_File_TRYC(o, c) \
-	(SGS_File_TESTC(o, c) && (SGS_FileMode_INCP(&(o)->mr), true))
+	(SGS_File_TESTC((o), c) && (SGS_File_INCP((o)), true))
 
 /**
  * Undo the getting of \p n number of characters.
  * Wraps position to within the buffer boundary.
  *
  * Assuming the read callback is called at multiples of the buffer area
- * length, this can safely be done for n <= (SGS_FBUF_ALEN - 1) plus the
+ * length, this can safely be done for n <= (SGS_FILE_ALEN - 1) plus the
  * number of characters gotten within the current buffer area.
  *
  * \return new position
  */
 #define SGS_File_UNGETN(o, n) \
-	((o)->mr.pos = ((o)->mr.pos - (n)) & (SGS_FBUF_SIZ - 1))
+	((o)->pos = ((o)->pos - (n)) & (SGS_FILE_BUFSIZ - 1))
 
 /**
  * Set current character, without advancing position.
  */
 #define SGS_File_SETC(o, c) ((void) \
-	(SGS_File_UPDATE((o), &(o)->mw), \
-	 ((o)->buf[(o)->mw.pos] = (c))))
+	(SGS_File_UPDATE((o)), \
+	 ((o)->buf[(o)->pos] = (c))))
 
 /**
  * Set current character without checking buffer area boundaries nor
  * handling callback, without advancing position.
  */
 #define SGS_File_SETC_NC(o, c) ((void) \
-	((o)->buf[(o)->mw.pos] = (c)))
+	((o)->buf[(o)->pos] = (c)))
 
 /**
  * Set current character, advancing position after write.
  */
 #define SGS_File_PUTC(o, c) ((void) \
-	(SGS_File_UPDATE((o), &(o)->mw), \
-	 ((o)->buf[(o)->mw.pos++] = (c))))
+	(SGS_File_UPDATE((o)), \
+	 ((o)->buf[(o)->pos++] = (c))))
 
 /**
  * Set current character without checking buffer area boundaries nor
  * handling callback, advancing position after write.
  */
 #define SGS_File_PUTC_NC(o, c) ((void) \
-	((o)->buf[(o)->mw.pos++] = (c)))
+	((o)->buf[(o)->pos++] = (c)))
 
 /**
  * Non-zero if EOF reached or a read error has occurred.
@@ -343,7 +323,7 @@ void SGS_File_reset(SGS_File *restrict o);
  * before handling the situation.
  */
 #define SGS_File_AT_EOF(o) \
-	((o)->end_pos == (o)->mr.pos)
+	((o)->end_pos == (o)->pos)
 
 /**
  * True if the current position is the one after which
@@ -355,7 +335,7 @@ void SGS_File_reset(SGS_File *restrict o);
  * before handling the situation.
  */
 #define SGS_File_AFTER_EOF(o) \
-	((o)->end_pos == ((o)->mr.pos - 1))
+	((o)->end_pos == (((o)->pos - 1) & (SGS_FILE_BUFSIZ - 1)))
 
 /**
  * Get newline in portable way, advancing position if newline read.
@@ -365,12 +345,12 @@ void SGS_File_reset(SGS_File *restrict o);
 static inline bool SGS_File_trynewline(SGS_File *restrict o) {
 	uint8_t c = SGS_File_RETC(o);
 	if (c == '\n') {
-		SGS_FileMode_INCP(&o->mr);
+		SGS_File_INCP(o);
 		SGS_File_TRYC(o, '\r');
 		return true;
 	}
 	if (c == '\r') {
-		SGS_FileMode_INCP(&o->mr);
+		SGS_File_INCP(o);
 		return true;
 	}
 	return false;
@@ -384,13 +364,13 @@ typedef uint8_t (*SGS_FileFilter_f)(SGS_File *restrict o, uint8_t c);
 
 bool SGS_File_getstr(SGS_File *restrict o,
 		void *restrict buf, size_t buf_len,
-		size_t *restrict str_len, SGS_FileFilter_f c_filter);
+		size_t *restrict lenp, SGS_FileFilter_f filter_f);
 bool SGS_File_geti(SGS_File *restrict o,
 		int32_t *restrict var, bool allow_sign,
-		size_t *restrict str_len);
+		size_t *restrict lenp);
 bool SGS_File_getd(SGS_File *restrict o,
 		double *restrict var, bool allow_sign,
-		size_t *restrict str_len);
-size_t SGS_File_skipstr(SGS_File *restrict o, SGS_FileFilter_f c_filter);
+		size_t *restrict lenp);
+size_t SGS_File_skipstr(SGS_File *restrict o, SGS_FileFilter_f filter_f);
 size_t SGS_File_skipspace(SGS_File *restrict o);
 size_t SGS_File_skipline(SGS_File *restrict o);
