@@ -18,7 +18,7 @@
  * Slope types.
  */
 enum {
-	SGS_SLOPE_STATE = 0,
+	SGS_SLOPE_HOLD = 0,
 	SGS_SLOPE_LIN,
 	SGS_SLOPE_EXP,
 	SGS_SLOPE_LOG,

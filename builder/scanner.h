@@ -22,9 +22,9 @@ typedef struct SGS_Scanner SGS_Scanner;
  * Number of values for which character handlers are defined.
  *
  * Values below this are given their own function pointer;
- * SGS_Scanner_get_c_handler() handles mapping of other values.
+ * SGS_Scanner_get_c_filter() handles mapping of other values.
  */
-#define SGS_SCAN_CHVALS 128
+#define SGS_SCAN_CFILTERS 128
 
 /**
  * Function type used for SGS_Scanner_getc() character handlers.
@@ -40,22 +40,26 @@ typedef struct SGS_Scanner SGS_Scanner;
  * NULL can be used as a function value, meaning that the character
  * read is to be accepted and used as-is.
  */
-typedef uint8_t (*SGS_ScannerCHandler_f)(SGS_Scanner *restrict o, uint8_t c);
+typedef uint8_t (*SGS_ScanCFilter_f)(SGS_Scanner *o, uint8_t c);
 
 /**
  * Special character values.
  */
 enum {
 	/**
+	 * Returned for spaces and tabs after filtering.
+	 * Also used for comparison with SGS_Scanner_tryc().
+	 */
+	SGS_SCAN_SPACE = ' ',
+	/**
 	 * Returned for newlines after filtering.
 	 * Also used for comparison with SGS_Scanner_tryc().
 	 */
-	SGS_SCAN_EOL = '\n',
+	SGS_SCAN_LNBRK = '\n',
 	/**
-	 * Used internally, never returned after filtering.
-	 * Returned by character handler to indicate that
-	 * EOF is reached and error-checking has completed,
-	 * and that scanning is done.
+	 * Used internally. Returned by character filter
+	 * to indicate that EOF is reached, error-checking done,
+	 * and scanning complete for the file.
 	 */
 	SGS_SCAN_EOF = 0xFF,
 };
@@ -65,19 +69,19 @@ enum {
  */
 enum {
 	SGS_SCAN_C_ERROR = 1<<0, // character-level error encountered in script
-	SGS_SCAN_C_NEWLINE = 1<<1, // newline scanned; must return SGS_SCAN_EOL
+	SGS_SCAN_C_LNBRK = 1<<1, // linebreak scanned last get character call
 };
 
-extern const SGS_ScannerCHandler_f SGS_Scanner_def_c_handlers[SGS_SCAN_CHVALS];
+extern const SGS_ScanCFilter_f SGS_Scanner_def_c_filters[SGS_SCAN_CFILTERS];
 
-uint8_t SGS_Scanner_handle_invalid(SGS_Scanner *restrict o, uint8_t c);
-uint8_t SGS_Scanner_handle_space(SGS_Scanner *restrict o, uint8_t c);
-uint8_t SGS_Scanner_handle_linebreaks(SGS_Scanner *restrict o, uint8_t c);
-uint8_t SGS_Scanner_handle_linecomment(SGS_Scanner *restrict o, uint8_t c);
-uint8_t SGS_Scanner_handle_blockcomment(SGS_Scanner *restrict o,
+uint8_t SGS_Scanner_filter_invalid(SGS_Scanner *restrict o, uint8_t c);
+uint8_t SGS_Scanner_filter_space(SGS_Scanner *restrict o, uint8_t c);
+uint8_t SGS_Scanner_filter_linebreaks(SGS_Scanner *restrict o, uint8_t c);
+uint8_t SGS_Scanner_filter_linecomment(SGS_Scanner *restrict o, uint8_t c);
+uint8_t SGS_Scanner_filter_blockcomment(SGS_Scanner *restrict o,
 		uint8_t check_c);
-uint8_t SGS_Scanner_handle_slashcomments(SGS_Scanner *restrict o, uint8_t c);
-uint8_t SGS_Scanner_handle_char1comments(SGS_Scanner *restrict o, uint8_t c);
+uint8_t SGS_Scanner_filter_slashcomments(SGS_Scanner *restrict o, uint8_t c);
+uint8_t SGS_Scanner_filter_char1comments(SGS_Scanner *restrict o, uint8_t c);
 
 /**
  * Scanner state flags for current file.
@@ -88,19 +92,27 @@ enum {
 };
 
 /**
+ * State for character.
+ */
+typedef struct SGS_ScanCFrame {
+	int32_t line_num;
+	int32_t char_num;
+	uint8_t c;
+	uint8_t match_c; // for use by character handlers
+	uint8_t flags;
+} SGS_ScanCFrame;
+
+/**
  * Scanner type.
  */
 struct SGS_Scanner {
 	SGS_File *f;
 	SGS_SymTab *symtab;
-	SGS_ScannerCHandler_f *c_handlers; // copy of SGS_Scanner_def_c_handlers
-	int32_t line_pos;
-	int32_t char_pos;
-	int32_t old_char_pos;
-	uint8_t match_c; // for use by character handlers
-	uint8_t c_flags;
+	SGS_ScanCFilter_f *c_filters; // copy of SGS_Scanner_def_c_filters
+	SGS_ScanCFrame cf;
 	uint8_t s_flags;
 	uint8_t *strbuf;
+	void *data; // for use by user
 };
 
 SGS_Scanner *SGS_create_Scanner(SGS_SymTab *restrict symtab) SGS__malloclike;
@@ -114,18 +126,19 @@ void SGS_Scanner_close(SGS_Scanner *restrict o);
  * Get character handler to call for character \p c,
  * or NULL if the character is simply to be accepted.
  *
- * Values below SGS_SCAN_CHVALS are assigned the handler for the raw value;
+ * Values below SGS_SCAN_CFILTERS are assigned the handler for the raw value;
  * other values are assigned the handler for '\0'.
  *
- * \return SGS_ScannerCHandler_f or NULL
+ * \return SGS_ScanCFilter_f or NULL
  */
-static inline SGS_ScannerCHandler_f
-SGS_Scanner_get_c_handler(SGS_Scanner *restrict o, uint8_t c) {
-	if (c >= SGS_SCAN_CHVALS) c = 0;
-	return o->c_handlers[c];
+static inline SGS_ScanCFilter_f SGS_Scanner_getfilter(SGS_Scanner *restrict o,
+		uint8_t c) {
+	if (c >= SGS_SCAN_CFILTERS) c = 0;
+	return o->c_filters[c];
 }
 
 uint8_t SGS_Scanner_getc(SGS_Scanner *restrict o);
+uint8_t SGS_Scanner_getc_nospace(SGS_Scanner *restrict o);
 void SGS_Scanner_ungetc(SGS_Scanner *restrict o);
 bool SGS_Scanner_tryc(SGS_Scanner *restrict o, uint8_t testc);
 
