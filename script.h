@@ -42,15 +42,16 @@ typedef struct SGS_ScriptOpData {
 	struct SGS_ScriptOpData *next; /* next in list, scope, grouping... */
 	struct SGS_ScriptOpData *on_prev; /* preceding for same op(s) */
 	uint32_t op_flags;
+	/* operator parameters */
 	uint32_t op_id; /* not set by parser; for later use (parseconv.c) */
 	uint32_t op_params;
 	SGS_Time time;
 	uint32_t silence_ms;
 	uint8_t attr;
 	uint8_t wave;
-	float freq, dynfreq, amp, dynamp;
+	SGS_RampParam freq, amp;
+	float dynfreq, dynamp;
 	uint32_t phase;
-	SGS_Ramp ramp_freq, ramp_amp;
 	/* node adjacents in operator linkage graph */
 	SGS_ScriptListData *amods, *fmods, *pmods;
 } SGS_ScriptOpData;
@@ -84,8 +85,7 @@ typedef struct SGS_ScriptEvData {
 	uint32_t vo_params;
 	struct SGS_ScriptEvData *voice_prev; /* preceding event for voice */
 	uint8_t vo_attr;
-	float pan;
-	SGS_Ramp ramp_pan;
+	SGS_RampParam pan;
 	SGS_ScriptListData op_graph;
 } SGS_ScriptEvData;
 
