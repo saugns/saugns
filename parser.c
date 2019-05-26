@@ -21,7 +21,7 @@
 #include <stdlib.h>
 
 /*
- * File-reading functions
+ * File-reading code
  */
 
 /* Basic character types. */
@@ -39,65 +39,419 @@
 /* Sensible to print, for ASCII only. */
 #define IS_VISIBLE(c) ((c) >= '!' && (c) <= '~')
 
-static uint8_t test_symchar(SGS_File *restrict f SGS__maybe_unused,
-                            uint8_t c) {
-  return IS_SYMCHAR(c);
+static uint8_t filter_symchar(SGS_File *restrict f SGS__maybe_unused,
+                              uint8_t c) {
+  return IS_SYMCHAR(c) ? c : 0;
 }
 
-static bool read_sym(SGS_File *restrict f, char *restrict buf, size_t buf_len,
-                     size_t *restrict sym_len) {
-  size_t i = 0;
-  size_t max_len = buf_len - 1;
-  bool truncate = false;
+/*
+ * Parser scanner
+ */
+
+typedef struct ScanLookup {
+  SGS_ScriptOptions sopt;
+  const char *const*wave_names;
+  const char *const*ramp_names;
+} ScanLookup;
+
+typedef struct PScanner {
+  SGS_File *f;
+  uint32_t line;
+  uint8_t c, next_c;
+  bool newline;
+  bool stash;
+  SGS_Symtab *st;
+  ScanLookup *sl;
+} PScanner;
+
+typedef float (*NumSym_f)(PScanner *restrict o);
+
+static void init_scanner(PScanner *restrict o,
+                         SGS_File *restrict f,
+                         SGS_Symtab *restrict st,
+                         ScanLookup *restrict sl) {
+  *o = (PScanner){0};
+  o->f = f;
+  o->line = 1;
+  o->st = st;
+  o->sl = sl;
+}
+
+static void fini_scanner(PScanner *restrict o) {
+  SGS_File_close(o->f);
+  o->f = NULL; // freed by invoker
+}
+
+/*
+ * Common warning printing function for script errors; requires that o->c
+ * is set to the character where the error was detected.
+ */
+static void SGS__noinline scan_warning(PScanner *restrict o,
+                                       const char *restrict str) {
+  SGS_File *f = o->f;
+  uint8_t c = o->c;
+  if (IS_VISIBLE(c)) {
+    fprintf(stderr, "warning: %s [line %d, at '%c'] - %s\n",
+            f->path, o->line, c, str);
+  } else if (SGS_File_AT_EOF(f)) {
+    fprintf(stderr, "warning: %s [line %d, at EOF] - %s\n",
+            f->path, o->line, str);
+  } else {
+    fprintf(stderr, "warning: %s [line %d, at 0x%02hhX] - %s\n",
+            f->path, o->line, c, str);
+  }
+}
+
+#define SCAN_NEWLINE '\n'
+static uint8_t scan_getc(PScanner *restrict o) {
+  SGS_File *f = o->f;
+  uint8_t c;
+  if (o->newline) {
+    ++o->line;
+    o->newline = false;
+  }
+  SGS_File_skipspace(f);
+  if (o->stash) {
+    o->stash = false;
+    c = o->next_c;
+  } else {
+    c = SGS_File_GETC(f);
+  }
+  if (c == '#') {
+    SGS_File_skipline(f);
+    c = SGS_File_GETC(f);
+  }
+  if (c == '\n') {
+    SGS_File_TRYC(f, '\r');
+    c = SCAN_NEWLINE;
+    o->newline = true;
+  } else if (c == '\r') {
+    c = SCAN_NEWLINE;
+    o->newline = true;
+  } else {
+    SGS_File_skipspace(f);
+  }
+  o->c = c;
+  return c;
+}
+
+static bool scan_stashc(PScanner *restrict o, uint8_t c) {
+  if (o->stash) {
+    SGS_warning("PScanner", "only one stashed character supported");
+    return false;
+  }
+  o->next_c = c;
+  o->stash = true;
+  return true;
+}
+
+static void scan_ws(PScanner *restrict o) {
+  SGS_File *f = o->f;
   for (;;) {
-    if (i == max_len) {
-      truncate = true;
-      break;
-    }
     uint8_t c = SGS_File_GETC(f);
-    if (!IS_SYMCHAR(c)) {
+    if (IS_SPACE(c))
+      continue;
+    if (c == '\n') {
+      ++o->line;
+      SGS_File_TRYC(f, '\r');
+    } else if (c == '\r') {
+      ++o->line;
+    } else if (c == '#') {
+      SGS_File_skipline(f);
+      c = SGS_File_GETC(f);
+    } else {
       SGS_File_UNGETC(f);
       break;
     }
-    buf[i++] = c;
   }
-  buf[i] = '\0';
-  *sym_len = i;
-  return !truncate;
 }
 
-static int32_t read_strfind(SGS_File *restrict f,
-                            const char *const*restrict str) {
-  int32_t ret;
-  size_t i, len, pos, matchpos;
-  size_t strc;
-  const char **s;
-  for (len = 0, strc = 0; str[strc]; ++strc)
-    if ((i = strlen(str[strc])) > len) len = i;
-  s = malloc(sizeof(const char*) * strc);
-  for (i = 0; i < strc; ++i)
-    s[i] = str[i];
-  ret = -1;
-  pos = matchpos = 0;
-  for (;;) {
-    uint8_t c = SGS_File_GETC(f);
-    for (i = 0; i < strc; ++i) {
-      if (!s[i]) continue;
-      else if (!s[i][pos]) {
-        s[i] = 0;
-        ret = i;
-        matchpos = pos-1;
-      } else if (c != s[i][pos]) {
-        s[i] = 0;
-      }
-    }
-    if (c <= SGS_FILE_MARKER) break;
-    if (pos == len) break;
-    ++pos;
+/*
+ * Handle unknown character, checking for EOF and treating
+ * the character as invalid if not an end marker.
+ *
+ * \return false if EOF reached
+ */
+static bool handle_unknown_or_end(PScanner *restrict o) {
+  SGS_File *f = o->f;
+  if (SGS_File_AT_EOF(f) ||
+      SGS_File_AFTER_EOF(f)) {
+    return false;
   }
-  free(s);
-  SGS_File_UNGETN(f, (pos-matchpos));
-  return ret;
+  scan_warning(o, "invalid character");
+  return true;
+}
+
+typedef struct NumParser {
+  PScanner *sc;
+  NumSym_f numsym_f;
+  bool has_infnum;
+  bool after_rpar;
+} NumParser;
+enum {
+  NUMEXP_SUB = 0,
+  NUMEXP_ADT,
+  NUMEXP_MLT,
+  NUMEXP_POW,
+  NUMEXP_NUM,
+};
+static double scan_num_r(NumParser *restrict o,
+                         uint8_t pri, uint32_t level) {
+  PScanner *sc = o->sc;
+  SGS_File *f = sc->f;
+  double num;
+  uint8_t c;
+  if (level > 0) scan_ws(sc);
+  c = SGS_File_GETC(f);
+  if (c == '(') {
+    num = scan_num_r(o, NUMEXP_SUB, level+1);
+  } else if (c == '+' || c == '-') {
+    num = scan_num_r(o, NUMEXP_ADT, level);
+    if (isnan(num)) goto DEFER;
+    if (c == '-') num = -num;
+  } else if (o->numsym_f && IS_ALPHA(c)) {
+    SGS_File_UNGETC(f);
+    num = o->numsym_f(sc);
+    if (isnan(num)) goto REJECT;
+  } else {
+    size_t read_len;
+    SGS_File_UNGETC(f);
+    SGS_File_getd(f, &num, false, &read_len);
+    if (read_len == 0) goto REJECT;
+  }
+  if (pri == NUMEXP_NUM) goto ACCEPT; /* defer all operations */
+  for (;;) {
+    bool rpar_mlt = false;
+    if (isinf(num)) o->has_infnum = true;
+    if (level > 0) scan_ws(sc);
+    c = SGS_File_GETC(f);
+    if (pri < NUMEXP_MLT) {
+      rpar_mlt = o->after_rpar;
+      o->after_rpar = false;
+    }
+    switch (c) {
+    case '(':
+      if (pri >= NUMEXP_MLT) goto DEFER;
+      num *= scan_num_r(o, NUMEXP_SUB, level+1);
+      break;
+    case ')':
+      if (pri != NUMEXP_SUB || level == 0) goto DEFER;
+      o->after_rpar = true;
+      goto ACCEPT;
+    case '^':
+      if (pri > NUMEXP_POW) goto DEFER;
+      num = pow(num, scan_num_r(o, NUMEXP_POW, level));
+      break;
+    case '*':
+      if (pri >= NUMEXP_MLT) goto DEFER;
+      num *= scan_num_r(o, NUMEXP_MLT, level);
+      break;
+    case '/':
+      if (pri >= NUMEXP_MLT) goto DEFER;
+      num /= scan_num_r(o, NUMEXP_MLT, level);
+      break;
+    case '%':
+      if (pri >= NUMEXP_MLT) goto DEFER;
+      num = fmod(num, scan_num_r(o, NUMEXP_MLT, level));
+      break;
+    case '+':
+      if (pri >= NUMEXP_ADT) goto DEFER;
+      num += scan_num_r(o, NUMEXP_ADT, level);
+      break;
+    case '-':
+      if (pri >= NUMEXP_ADT) goto DEFER;
+      num -= scan_num_r(o, NUMEXP_ADT, level);
+      break;
+    default:
+      if (rpar_mlt && !(IS_SPACE(c) || IS_LNBRK(c))) {
+        SGS_File_UNGETC(f);
+        double rval = scan_num_r(o, NUMEXP_MLT, level);
+        if (isnan(rval)) goto ACCEPT;
+        num *= rval;
+        break;
+      }
+      if (pri == NUMEXP_SUB && level > 0) {
+        scan_warning(sc, "numerical expression has '(' without closing ')'");
+      }
+      goto DEFER;
+    }
+    if (isnan(num)) goto DEFER;
+  }
+DEFER:
+  SGS_File_UNGETC(f);
+ACCEPT:
+  if (0)
+REJECT: {
+    num = NAN;
+  }
+  return num;
+}
+static bool scan_num(PScanner *restrict o, NumSym_f scan_numsym,
+                     float *restrict var) {
+  NumParser np = {o, scan_numsym, false, false};
+  float num = scan_num_r(&np, NUMEXP_SUB, 0);
+  if (isnan(num))
+    return false;
+  if (isinf(num)) np.has_infnum = true;
+  if (np.has_infnum) {
+    scan_warning(o, "discarding expression with infinite number");
+    return false;
+  }
+  *var = num;
+  return true;
+}
+
+#define OCTAVES 11
+static float scan_note(PScanner *restrict o) {
+  static const float octaves[OCTAVES] = {
+    (1.f/16.f),
+    (1.f/8.f),
+    (1.f/4.f),
+    (1.f/2.f),
+    1.f, /* no. 4 - standard tuning here */
+    2.f,
+    4.f,
+    8.f,
+    16.f,
+    32.f,
+    64.f
+  };
+  static const float notes[3][8] = {
+    { /* flat */
+      48.f/25.f,
+      16.f/15.f,
+      6.f/5.f,
+      32.f/25.f,
+      36.f/25.f,
+      8.f/5.f,
+      9.f/5.f,
+      96.f/25.f
+    },
+    { /* normal (9/8 replaced with 10/9 for symmetry) */
+      1.f,
+      10.f/9.f,
+      5.f/4.f,
+      4.f/3.f,
+      3.f/2.f,
+      5.f/3.f,
+      15.f/8.f,
+      2.f
+    },
+    { /* sharp */
+      25.f/24.f,
+      75.f/64.f,
+      125.f/96.f,
+      25.f/18.f,
+      25.f/16.f,
+      225.f/128.f,
+      125.f/64.f,
+      25.f/12.f
+    }
+  };
+  SGS_File *f = o->f;
+  float freq;
+  o->c = SGS_File_GETC(f);
+  int32_t octave;
+  int32_t semitone = 1, note;
+  int32_t subnote = -1;
+  size_t read_len;
+  if (o->c >= 'a' && o->c <= 'g') {
+    subnote = o->c - 'c';
+    if (subnote < 0) /* a, b */
+      subnote += 7;
+    o->c = SGS_File_GETC(f);
+  }
+  if (o->c < 'A' || o->c > 'G') {
+    scan_warning(o, "invalid note specified - should be C, D, E, F, G, A or B");
+    return NAN;
+  }
+  note = o->c - 'C';
+  if (note < 0) /* A, B */
+    note += 7;
+  o->c = SGS_File_GETC(f);
+  if (o->c == 's')
+    semitone = 2;
+  else if (o->c == 'f')
+    semitone = 0;
+  else
+    SGS_File_UNGETC(f);
+  SGS_File_geti(f, &octave, false, &read_len);
+  if (read_len == 0)
+    octave = 4;
+  else if (octave >= OCTAVES) {
+    scan_warning(o, "invalid octave specified for note - valid range 0-10");
+    octave = 4;
+  }
+  freq = o->sl->sopt.A4_freq * (3.f/5.f); /* get C4 */
+  freq *= octaves[octave] * notes[semitone][note];
+  if (subnote >= 0)
+    freq *= 1.f + (notes[semitone][note+1] / notes[semitone][note] - 1.f) *
+                  (notes[1][subnote] - 1.f);
+  return freq;
+}
+
+#define LABEL_BUFLEN 80
+#define LABEL_MAXLEN_S "79"
+typedef char LabelBuf[LABEL_BUFLEN];
+static size_t scan_label(PScanner *restrict o, LabelBuf label, char op) {
+  char nolabel_msg[] = "ignoring ? without label name";
+  SGS_File *f = o->f;
+  size_t len = 0;
+  bool truncated;
+  nolabel_msg[9] = op; /* replace ? */
+  truncated = !SGS_File_getstr(f, label, LABEL_BUFLEN, &len, filter_symchar);
+  if (len == 0) {
+    scan_warning(o, nolabel_msg);
+  }
+  if (truncated) {
+    o->c = SGS_File_RETC(f);
+    scan_warning(o, "limiting label name to "LABEL_MAXLEN_S" characters");
+    SGS_File_skipstr(f, filter_symchar);
+  }
+  o->c = SGS_File_RETC(f);
+  return len;
+}
+
+static bool scan_symafind(PScanner *restrict o,
+                          const char *const*restrict stra,
+                          size_t n, size_t *restrict found_i) {
+  LabelBuf buf;
+  SGS_File *f = o->f;
+  size_t len = 0;
+  bool truncated;
+  truncated = !SGS_File_getstr(f, buf, LABEL_BUFLEN, &len, filter_symchar);
+  if (len == 0) {
+    scan_warning(o, "label missing");
+    return false;
+  }
+  if (truncated) {
+    scan_warning(o, "limiting label name to "LABEL_MAXLEN_S" characters");
+    SGS_File_skipstr(f, filter_symchar);
+  }
+  const char *key = SGS_Symtab_pool_str(o->st, buf, len);
+  for (size_t i = 0; i < n; ++i) {
+    if (stra[i] == key) {
+      o->c = SGS_File_RETC(f);
+      *found_i = i;
+      return true;
+    }
+  }
+  return false;
+}
+
+static bool scan_wavetype(PScanner *restrict o, size_t *restrict found_id) {
+  const char *const *names = o->sl->wave_names;
+  if (scan_symafind(o, names, SGS_WAVE_TYPES, found_id))
+    return true;
+
+  scan_warning(o, "invalid wave type; available types are:");
+  size_t i = 0;
+  fprintf(stderr, "\t%s", names[i]);
+  while (++i < SGS_WAVE_TYPES) {
+    fprintf(stderr, ", %s", names[i]);
+  }
+  putc('\n', stderr);
+  return false;
 }
 
 /*
@@ -105,14 +459,12 @@ static int32_t read_strfind(SGS_File *restrict f,
  */
 
 typedef struct SGS_Parser {
-  SGS_File *f;
+  PScanner sc;
+  ScanLookup sl;
   SGS_Symtab *st;
   SGS_Mempool *mp;
-  uint32_t line;
   uint32_t call_level;
   uint32_t scope_id;
-  uint8_t c, next_c;
-  SGS_ScriptOptions sopt;
   /* node state */
   SGS_ScriptEvData *events;
   SGS_ScriptEvData *last_event;
@@ -131,8 +483,6 @@ static const SGS_ScriptOptions def_sopt = {
   .def_ratio = 1.f,
 };
 
-typedef float (*NumSym_f)(SGS_Parser *restrict o);
-
 /*
  * Initialize parser instance.
  *
@@ -143,7 +493,11 @@ static void init_parser(SGS_Parser *restrict o) {
   *o = (SGS_Parser){0};
   o->mp = SGS_create_Mempool(0);
   o->st = SGS_create_Symtab();
-  o->sopt = def_sopt;
+  o->sl.sopt = def_sopt;
+  o->sl.wave_names = SGS_Symtab_pool_stra(o->st,
+                       SGS_Wave_names, SGS_WAVE_TYPES);
+  o->sl.ramp_names = SGS_Symtab_pool_stra(o->st,
+                       SGS_Ramp_names, SGS_RAMP_TYPES);
 }
 
 /*
@@ -203,7 +557,7 @@ typedef struct ParseLevel {
   uint32_t next_wait_ms; /* added for next event */
   float used_ampmult; /* update on node creation */
   /* parameter handling (handles passed from enclosing scope, flag got there) */
-  SGS_Ramp *op_sweep;
+  SGS_RampParam *op_sweep;
   NumSym_f numsym_f;
 } ParseLevel;
 
@@ -212,340 +566,23 @@ typedef struct SGS_ScriptEvBranch {
   struct SGS_ScriptEvBranch *prev;
 } SGS_ScriptEvBranch;
 
-/*
- * Common warning printing function for script errors; requires that o->c
- * is set to the character where the error was detected.
- */
-static void SGS__noinline scan_warning(SGS_Parser *restrict o,
-                                       const char *restrict str) {
-  SGS_File *f = o->f;
-  uint8_t c = o->c;
-  if (IS_VISIBLE(c)) {
-    fprintf(stderr, "warning: %s [line %d, at '%c'] - %s\n",
-            f->path, o->line, c, str);
-  } else if (SGS_File_AT_EOF(f)) {
-    fprintf(stderr, "warning: %s [line %d, at EOF] - %s\n",
-            f->path, o->line, str);
-  } else {
-    fprintf(stderr, "warning: %s [line %d, at 0x%02hhX] - %s\n",
-            f->path, o->line, c, str);
-  }
-}
-
-#define SCAN_NEWLINE '\n'
-static uint8_t scan_char(SGS_Parser *restrict o) {
-  uint8_t c;
-  SGS_File_skipspace(o->f);
-  if (o->next_c != 0) {
-    c = o->next_c;
-    o->next_c = 0;
-  } else {
-    c = SGS_File_GETC(o->f);
-  }
-  if (c == '#') {
-    SGS_File_skipline(o->f);
-    c = SGS_File_GETC(o->f);
-  }
-  if (c == '\n') {
-    SGS_File_TRYC(o->f, '\r');
-    c = SCAN_NEWLINE;
-  } else if (c == '\r') {
-    c = SCAN_NEWLINE;
-  } else {
-    SGS_File_skipspace(o->f);
-  }
-  o->c = c;
-  return c;
-}
-
-static void scan_ws(SGS_Parser *restrict o) {
-  for (;;) {
-    uint8_t c = SGS_File_GETC(o->f);
-    if (IS_SPACE(c))
-      continue;
-    if (c == '\n') {
-      ++o->line;
-      SGS_File_TRYC(o->f, '\r');
-    } else if (c == '\r') {
-      ++o->line;
-    } else if (c == '#') {
-      SGS_File_skipline(o->f);
-      c = SGS_File_GETC(o->f);
-    } else {
-      SGS_File_UNGETC(o->f);
-      break;
-    }
-  }
-}
-
-/*
- * Handle unknown character, checking for EOF and treating
- * the character as invalid if not an end marker.
- *
- * \return false if EOF reached
- */
-static bool handle_unknown_or_end(SGS_Parser *restrict o) {
-  if (SGS_File_AT_EOF(o->f) ||
-      SGS_File_AFTER_EOF(o->f)) {
-    return false;
-  }
-  scan_warning(o, "invalid character");
-  return true;
-}
-
-typedef struct NumParser {
-  SGS_Parser *pr;
-  NumSym_f numsym_f;
-  bool has_infnum;
-  bool after_rpar;
-} NumParser;
-enum {
-  NUMEXP_SUB = 0,
-  NUMEXP_ADT,
-  NUMEXP_MLT,
-  NUMEXP_POW,
-  NUMEXP_NUM,
-};
-static double scan_num_r(NumParser *restrict o, uint8_t pri, uint32_t level) {
-  SGS_Parser *pr = o->pr;
-  double num;
-  uint8_t c;
-  if (level > 0) scan_ws(pr);
-  c = SGS_File_GETC(pr->f);
-  if (c == '(') {
-    num = scan_num_r(o, NUMEXP_SUB, level+1);
-  } else if (c == '+' || c == '-') {
-    num = scan_num_r(o, NUMEXP_ADT, level);
-    if (isnan(num)) goto DEFER;
-    if (c == '-') num = -num;
-  } else if (o->numsym_f && IS_ALPHA(c)) {
-    SGS_File_UNGETC(pr->f);
-    num = o->numsym_f(pr);
-    if (isnan(num)) goto REJECT;
-  } else {
-    size_t read_len;
-    SGS_File_UNGETC(pr->f);
-    SGS_File_getd(pr->f, &num, false, &read_len);
-    if (read_len == 0) goto REJECT;
-  }
-  if (pri == NUMEXP_NUM) goto ACCEPT; /* defer all operations */
-  for (;;) {
-    bool rpar_mlt = false;
-    if (isinf(num)) o->has_infnum = true;
-    if (level > 0) scan_ws(pr);
-    c = SGS_File_GETC(pr->f);
-    if (pri < NUMEXP_MLT) {
-      rpar_mlt = o->after_rpar;
-      o->after_rpar = false;
-    }
-    switch (c) {
-    case '(':
-      if (pri >= NUMEXP_MLT) goto DEFER;
-      num *= scan_num_r(o, NUMEXP_SUB, level+1);
-      break;
-    case ')':
-      if (pri != NUMEXP_SUB || level == 0) goto DEFER;
-      o->after_rpar = true;
-      goto ACCEPT;
-    case '^':
-      if (pri > NUMEXP_POW) goto DEFER;
-      num = pow(num, scan_num_r(o, NUMEXP_POW, level));
-      break;
-    case '*':
-      if (pri >= NUMEXP_MLT) goto DEFER;
-      num *= scan_num_r(o, NUMEXP_MLT, level);
-      break;
-    case '/':
-      if (pri >= NUMEXP_MLT) goto DEFER;
-      num /= scan_num_r(o, NUMEXP_MLT, level);
-      break;
-    case '%':
-      if (pri >= NUMEXP_MLT) goto DEFER;
-      num = fmod(num, scan_num_r(o, NUMEXP_MLT, level));
-      break;
-    case '+':
-      if (pri >= NUMEXP_ADT) goto DEFER;
-      num += scan_num_r(o, NUMEXP_ADT, level);
-      break;
-    case '-':
-      if (pri >= NUMEXP_ADT) goto DEFER;
-      num -= scan_num_r(o, NUMEXP_ADT, level);
-      break;
-    default:
-      if (rpar_mlt && !(IS_SPACE(c) || IS_LNBRK(c))) {
-        SGS_File_UNGETC(pr->f);
-        double rval = scan_num_r(o, NUMEXP_MLT, level);
-        if (isnan(rval)) goto ACCEPT;
-        num *= rval;
-        break;
-      }
-      if (pri == NUMEXP_SUB && level > 0) {
-        scan_warning(pr, "numerical expression has '(' without closing ')'");
-      }
-      goto DEFER;
-    }
-    if (isnan(num)) goto DEFER;
-  }
-DEFER:
-  SGS_File_UNGETC(pr->f);
-ACCEPT:
-  if (0)
-REJECT: {
-    num = NAN;
-  }
-  return num;
-}
-static bool scan_num(SGS_Parser *restrict o, NumSym_f scan_numsym,
-                     float *restrict var) {
-  NumParser np = {o, scan_numsym, false, false};
-  float num = scan_num_r(&np, NUMEXP_SUB, 0);
-  if (isnan(num))
-    return false;
-  if (isinf(num)) np.has_infnum = true;
-  if (np.has_infnum) {
-    scan_warning(o, "discarding expression with infinite number");
-    return false;
-  }
-  *var = num;
-  return true;
-}
-
-#define OCTAVES 11
-static float scan_note(SGS_Parser *restrict o) {
-  static const float octaves[OCTAVES] = {
-    (1.f/16.f),
-    (1.f/8.f),
-    (1.f/4.f),
-    (1.f/2.f),
-    1.f, /* no. 4 - standard tuning here */
-    2.f,
-    4.f,
-    8.f,
-    16.f,
-    32.f,
-    64.f
-  };
-  static const float notes[3][8] = {
-    { /* flat */
-      48.f/25.f,
-      16.f/15.f,
-      6.f/5.f,
-      32.f/25.f,
-      36.f/25.f,
-      8.f/5.f,
-      9.f/5.f,
-      96.f/25.f
-    },
-    { /* normal (9/8 replaced with 10/9 for symmetry) */
-      1.f,
-      10.f/9.f,
-      5.f/4.f,
-      4.f/3.f,
-      3.f/2.f,
-      5.f/3.f,
-      15.f/8.f,
-      2.f
-    },
-    { /* sharp */
-      25.f/24.f,
-      75.f/64.f,
-      125.f/96.f,
-      25.f/18.f,
-      25.f/16.f,
-      225.f/128.f,
-      125.f/64.f,
-      25.f/12.f
-    }
-  };
-  float freq;
-  o->c = SGS_File_GETC(o->f);
-  int32_t octave;
-  int32_t semitone = 1, note;
-  int32_t subnote = -1;
-  size_t read_len;
-  if (o->c >= 'a' && o->c <= 'g') {
-    subnote = o->c - 'c';
-    if (subnote < 0) /* a, b */
-      subnote += 7;
-    o->c = SGS_File_GETC(o->f);
-  }
-  if (o->c < 'A' || o->c > 'G') {
-    scan_warning(o, "invalid note specified - should be C, D, E, F, G, A or B");
-    return NAN;
-  }
-  note = o->c - 'C';
-  if (note < 0) /* A, B */
-    note += 7;
-  o->c = SGS_File_GETC(o->f);
-  if (o->c == 's')
-    semitone = 2;
-  else if (o->c == 'f')
-    semitone = 0;
-  else
-    SGS_File_UNGETC(o->f);
-  SGS_File_geti(o->f, &octave, false, &read_len);
-  if (read_len == 0)
-    octave = 4;
-  else if (octave >= OCTAVES) {
-    scan_warning(o, "invalid octave specified for note - valid range 0-10");
-    octave = 4;
-  }
-  freq = o->sopt.A4_freq * (3.f/5.f); /* get C4 */
-  freq *= octaves[octave] * notes[semitone][note];
-  if (subnote >= 0)
-    freq *= 1.f + (notes[semitone][note+1] / notes[semitone][note] - 1.f) *
-                  (notes[1][subnote] - 1.f);
-  return freq;
-}
-
-#define LABEL_LEN 80
-#define LABEL_LEN_A "80"
-typedef char LabelBuf[LABEL_LEN];
-static size_t scan_label(SGS_Parser *restrict o, LabelBuf label, char op) {
-  char nolabel_msg[] = "ignoring ? without label name";
-  size_t len = 0;
-  nolabel_msg[9] = op; /* replace ? */
-  bool truncated = !read_sym(o->f, label, LABEL_LEN, &len);
-  if (len == 0) {
-    scan_warning(o, nolabel_msg);
-  }
-  if (truncated) {
-    scan_warning(o, "ignoring label name from "LABEL_LEN_A"th character");
-    SGS_File_skipstr(o->f, test_symchar);
-  }
-  o->c = SGS_File_RETC(o->f);
-  return len;
-}
-
-static int32_t scan_wavetype(SGS_Parser *restrict o) {
-  int32_t wave = read_strfind(o->f, SGS_Wave_names);
-  if (wave < 0) {
-    scan_warning(o, "invalid wave type; available types are:");
-    uint8_t i = 0;
-    fprintf(stderr, "\t%s", SGS_Wave_names[i]);
-    while (++i < SGS_WAVE_TYPES) {
-      fprintf(stderr, ", %s", SGS_Wave_names[i]);
-    }
-    putc('\n', stderr);
-  }
-  return wave;
-}
-
 static bool parse_waittime(ParseLevel *restrict pl) {
   SGS_Parser *o = pl->o;
+  PScanner *sc = &o->sc;
+  SGS_File *f = sc->f;
   /* FIXME: ADD_WAIT_DURATION */
-  if (SGS_File_TRYC(o->f, 't')) {
+  if (SGS_File_TRYC(f, 't')) {
     if (!pl->ev_last) {
-      scan_warning(o, "add wait for last duration before any parts given");
+      scan_warning(sc, "add wait for last duration before any parts given");
       return false;
     }
     pl->last_event->ev_flags |= SGS_SDEV_ADD_WAIT_DURATION;
   } else {
     float wait;
     uint32_t wait_ms;
-    scan_num(o, 0, &wait);
+    scan_num(sc, 0, &wait);
     if (wait < 0.f) {
-      scan_warning(o, "ignoring '\\' with sub-zero time");
+      scan_warning(sc, "ignoring '\\' with sub-zero time");
       return false;
     }
     wait_ms = SGS_ui32rint(wait * 1000.f);
@@ -563,7 +600,8 @@ static void end_operator(ParseLevel *restrict pl) {
     return;
   pl->pl_flags &= ~SDPL_OWN_OP;
   SGS_ScriptOpData *op = pl->operator;
-  if (!op->on_prev) { /* initial event should reset its parameters */
+  SGS_ScriptOpData *pop = op->on_prev;
+  if (!pop) { /* initial event should reset its parameters */
     op->op_params |= SGS_POPP_WAVE |
                      SGS_POPP_TIME |
                      SGS_POPP_SILENCE |
@@ -574,7 +612,6 @@ static void end_operator(ParseLevel *restrict pl) {
                      SGS_POPP_DYNAMP |
                      SGS_POPP_ATTR;
   } else {
-    SGS_ScriptOpData *pop = op->on_prev;
     if (op->attr != pop->attr)
       op->op_params |= SGS_POPP_ATTR;
     if (op->wave != pop->wave)
@@ -590,15 +627,13 @@ static void end_operator(ParseLevel *restrict pl) {
     if (op->dynamp != pop->dynamp)
       op->op_params |= SGS_POPP_DYNAMP;
   }
-  if (op->ramp_freq.type != SGS_RAMP_STATE)
-    op->op_params |= SGS_POPP_ATTR |
-                     SGS_POPP_RAMP_FREQ;
-  if (op->ramp_amp.type != SGS_RAMP_STATE)
-    op->op_params |= SGS_POPP_ATTR |
-                     SGS_POPP_RAMP_AMP;
+  if ((op->freq.flags & SGS_RAP_RAMP) != 0)
+    op->op_params |= SGS_POPP_ATTR;
+  if ((op->amp.flags & SGS_RAP_RAMP) != 0)
+    op->op_params |= SGS_POPP_ATTR;
   if (!(op->op_flags & SGS_SDOP_NESTED)) {
-    op->amp *= pl->used_ampmult;
-    op->ramp_amp.goal *= pl->used_ampmult;
+    op->amp.v0 *= pl->used_ampmult;
+    op->amp.vt *= pl->used_ampmult;
   }
   pl->operator = NULL;
 }
@@ -618,12 +653,13 @@ static void end_event(ParseLevel *restrict pl) {
     e->vo_params |= SGS_PVOP_ATTR |
                     SGS_PVOP_PAN;
   } else {
-    if (e->pan != pve->pan)
+    if (e->vo_attr != pve->vo_attr)
+      e->vo_params |= SGS_PVOP_ATTR;
+    if (e->pan.v0 != pve->pan.v0)
       e->vo_params |= SGS_PVOP_PAN;
   }
-  if (e->ramp_pan.type != SGS_RAMP_STATE)
-    e->vo_params |= SGS_PVOP_ATTR |
-                    SGS_PVOP_RAMP_PAN;
+  if ((e->pan.flags & SGS_RAP_RAMP) != 0)
+    e->vo_params |= SGS_PVOP_ATTR;
   pl->last_event = e;
   pl->event = NULL;
   SGS_ScriptEvData *group_e = (pl->main_ev != NULL) ? pl->main_ev : e;
@@ -669,9 +705,9 @@ static void begin_event(ParseLevel *restrict pl, bool is_compstep) {
     e->voice_prev = pve;
     e->vo_attr = pve->vo_attr;
     e->pan = pve->pan;
-    e->ramp_pan = pve->ramp_pan;
   } else { /* set defaults */
-    e->pan = 0.5f; /* center */
+    e->pan.v0 = 0.5f; /* center */
+    e->pan.ramp = SGS_RAMP_LIN; /* if ramp enabled */
   }
   if (!is_compstep) {
     if (!o->events)
@@ -696,7 +732,7 @@ static void begin_operator(ParseLevel *restrict pl, bool is_compstep) {
   op = pl->operator;
   if (!is_compstep)
     pl->pl_flags |= SDPL_NEW_EVENT_FORK;
-  pl->used_ampmult = o->sopt.ampmult;
+  pl->used_ampmult = o->sl.sopt.ampmult;
   /*
    * Initialize node.
    */
@@ -710,12 +746,10 @@ static void begin_operator(ParseLevel *restrict pl, bool is_compstep) {
     op->attr = pop->attr;
     op->wave = pop->wave;
     op->freq = pop->freq;
-    op->dynfreq = pop->dynfreq;
-    op->phase = pop->phase;
     op->amp = pop->amp;
+    op->phase = pop->phase;
+    op->dynfreq = pop->dynfreq;
     op->dynamp = pop->dynamp;
-    op->ramp_freq = pop->ramp_freq;
-    op->ramp_amp = pop->ramp_amp;
     if ((pl->pl_flags & SDPL_BIND_MULTIPLE) != 0) {
       SGS_ScriptOpData *mpop = pop;
       uint32_t max_time = 0;
@@ -730,15 +764,17 @@ static void begin_operator(ParseLevel *restrict pl, bool is_compstep) {
     /*
      * New operator with initial parameter values.
      */
-    op->time = (SGS_Time){o->sopt.def_time_ms, 0};
-    op->amp = 1.0f;
+    op->time = (SGS_Time){o->sl.sopt.def_time_ms, 0};
+    op->amp.v0 = 1.0f;
+    op->amp.ramp = SGS_RAMP_LIN; /* if ramp enabled */
     if (!(pl->pl_flags & SDPL_NESTED_SCOPE)) {
-      op->freq = o->sopt.def_freq;
+      op->freq.v0 = o->sl.sopt.def_freq;
     } else {
       op->op_flags |= SGS_SDOP_NESTED;
-      op->freq = o->sopt.def_ratio;
+      op->freq.v0 = o->sl.sopt.def_ratio;
       op->attr |= SGS_POPA_FREQRATIO;
     }
+    op->freq.ramp = SGS_RAMP_LIN; /* if ramp enabled */
   }
   op->event = e;
   /*
@@ -867,7 +903,7 @@ static void end_scope(ParseLevel *restrict pl) {
     pl->parent->pl_flags |= pl->pl_flags & SDPL_SET_SWEEP;
   }
   if (pl->set_label != NULL) {
-    scan_warning(o, "ignoring label assignment without operator");
+    scan_warning(&o->sc, "ignoring label assignment without operator");
   }
 }
 
@@ -878,10 +914,12 @@ static void end_scope(ParseLevel *restrict pl) {
 #define PARSE_IN__HEAD(Name, GuardCond) \
   SGS_Parser *o = pl->o; \
   if (!(GuardCond)) { pl->sub_f = NULL; return; } \
+  PScanner *sc = &o->sc; \
+  SGS_File *f = sc->f; \
   pl->sub_f = (Name); \
   uint8_t c; \
   for (;;) { \
-    c = scan_char(o); \
+    c = scan_getc(sc); \
     /* switch (c) { ... default: ... goto DEFER; } */
 
 #define PARSE_IN__TAIL() \
@@ -889,46 +927,46 @@ static void end_scope(ParseLevel *restrict pl) {
   } \
   return; \
 DEFER: \
-  o->next_c = c; /* let parse_level() take care of it */
+  scan_stashc(sc, c); /* let parse_level() take care of it */
 
 static void parse_in_settings(ParseLevel *restrict pl) {
   PARSE_IN__HEAD(parse_in_settings, true)
     switch (c) {
     case 'a':
-      if (scan_num(o, 0, &o->sopt.ampmult)) {
-        o->sopt.set |= SGS_SOPT_AMPMULT;
+      if (scan_num(sc, 0, &o->sl.sopt.ampmult)) {
+        o->sl.sopt.set |= SGS_SOPT_AMPMULT;
       }
       break;
     case 'f':
-      if (scan_num(o, scan_note, &o->sopt.def_freq)) {
-        o->sopt.set |= SGS_SOPT_DEF_FREQ;
+      if (scan_num(sc, scan_note, &o->sl.sopt.def_freq)) {
+        o->sl.sopt.set |= SGS_SOPT_DEF_FREQ;
       }
-      if (SGS_File_TRYC(o->f, ',') && SGS_File_TRYC(o->f, 'n')) {
+      if (SGS_File_TRYC(sc->f, ',') && SGS_File_TRYC(sc->f, 'n')) {
         float freq;
-        if (scan_num(o, 0, &freq)) {
+        if (scan_num(sc, 0, &freq)) {
           if (freq < 1.f) {
-            scan_warning(o, "ignoring tuning frequency (Hz) below 1.0");
+            scan_warning(sc, "ignoring tuning frequency (Hz) below 1.0");
             break;
           }
-          o->sopt.A4_freq = freq;
-          o->sopt.set |= SGS_SOPT_A4_FREQ;
+          o->sl.sopt.A4_freq = freq;
+          o->sl.sopt.set |= SGS_SOPT_A4_FREQ;
         }
       }
       break;
     case 'r':
-      if (scan_num(o, 0, &o->sopt.def_ratio)) {
-        o->sopt.set |= SGS_SOPT_DEF_RATIO;
+      if (scan_num(sc, 0, &o->sl.sopt.def_ratio)) {
+        o->sl.sopt.set |= SGS_SOPT_DEF_RATIO;
       }
       break;
     case 't': {
       float time;
-      if (scan_num(o, 0, &time)) {
+      if (scan_num(sc, 0, &time)) {
         if (time < 0.f) {
-          scan_warning(o, "ignoring 't' with sub-zero time");
+          scan_warning(sc, "ignoring 't' with sub-zero time");
           break;
         }
-        o->sopt.def_time_ms = SGS_ui32rint(time * 1000.f);
-        o->sopt.set |= SGS_SOPT_DEF_TIME;
+        o->sl.sopt.def_time_ms = SGS_ui32rint(time * 1000.f);
+        o->sl.sopt.set |= SGS_SOPT_DEF_TIME;
       }
       break; }
     default:
@@ -942,45 +980,46 @@ static bool parse_level(SGS_Parser *restrict o,
                         uint8_t linktype, uint8_t newscope, uint8_t close_c);
 
 static void parse_in_par_sweep(ParseLevel *restrict pl) {
-  int32_t type;
-  SGS_Ramp *ramp = pl->op_sweep;
+  SGS_RampParam *rap = pl->op_sweep;
   if (!(pl->pl_flags & SDPL_SET_SWEEP)) {
     pl->pl_flags |= SDPL_SET_SWEEP;
     /* set default values */
-    ramp->flags |= SGS_RAMP_TIME_DEFAULT;
-    ramp->time_ms = pl->o->sopt.def_time_ms;
-    ramp->type = SGS_RAMP_LIN;
+    rap->flags |= SGS_RAP_TIME_DEFAULT;
+    rap->time_ms = pl->o->sl.sopt.def_time_ms;
+    rap->flags |= SGS_RAP_RAMP;
+    rap->ramp = SGS_RAMP_LIN;
   }
   PARSE_IN__HEAD(parse_in_par_sweep, true)
     switch (c) {
-    case 'c':
-      // "state" (type 0) disallowed
-      type = read_strfind(o->f, SGS_Ramp_names + 1) + 1;
-      if (type <= 0) {
-        scan_warning(o, "invalid curve type; available types are:");
-        uint8_t i = 1;
-        fprintf(stderr, "\t%s", SGS_Ramp_names[i]);
+    case 'c': {
+      const char *const *names = sc->sl->ramp_names;
+      size_t type;
+      if (!scan_symafind(sc, names, SGS_RAMP_TYPES, &type)) {
+        scan_warning(sc, "invalid curve type; available types are:");
+        size_t i = 0;
+        fprintf(stderr, "\t%s", names[i]);
         while (++i < SGS_RAMP_TYPES) {
-          fprintf(stderr, ", %s", SGS_Ramp_names[i]);
+          fprintf(stderr, ", %s", names[i]);
         }
         putc('\n', stderr);
         break;
       }
-      ramp->type = type;
-      break;
+      rap->ramp = type;
+      rap->flags |= SGS_RAP_RAMP;
+      break; }
     case 't': {
       float time;
-      if (scan_num(o, 0, &time)) {
+      if (scan_num(sc, 0, &time)) {
         if (time < 0.f) {
-          scan_warning(o, "ignoring 't' with sub-zero time");
+          scan_warning(sc, "ignoring 't' with sub-zero time");
           break;
         }
-        ramp->time_ms = SGS_ui32rint(time * 1000.f);
-        ramp->flags &= ~SGS_RAMP_TIME_DEFAULT;
+        rap->time_ms = SGS_ui32rint(time * 1000.f);
+        rap->flags &= ~SGS_RAP_TIME_DEFAULT;
       }
       break; }
     case 'v':
-      if (scan_num(o, pl->numsym_f, &ramp->goal))
+      if (scan_num(sc, pl->numsym_f, &rap->vt))
         (void)0; // pl->pl_flags |= SDPL_SET_SWEEP;
       break;
     default:
@@ -991,14 +1030,16 @@ static void parse_in_par_sweep(ParseLevel *restrict pl) {
 
 static bool parse_par_list(ParseLevel *restrict pl,
                           NumSym_f numsym_f,
-                          SGS_Ramp *restrict op_sweep, bool ratio,
+                          SGS_RampParam *restrict op_sweep, bool ratio,
                           uint8_t linktype) {
   SGS_Parser *o = pl->o;
-  bool clear = SGS_File_TRYC(o->f, '-');
+  PScanner *sc = &o->sc;
+  SGS_File *f = sc->f;
+  bool clear = SGS_File_TRYC(f, '-');
   bool empty = true;
   pl->op_sweep = op_sweep;
   pl->numsym_f = numsym_f;
-  while (SGS_File_TRYC(o->f, '[')) {
+  while (SGS_File_TRYC(f, '[')) {
     empty = false;
     pl->nest_list = SGS_Mempool_alloc(o->mp, sizeof(*pl->nest_list));
     parse_level(o, pl, linktype, SCOPE_NEST, ']');
@@ -1020,15 +1061,15 @@ static void parse_in_op_step(ParseLevel *restrict pl) {
     case 'P':
       if ((pl->pl_flags & SDPL_NESTED_SCOPE) != 0)
         goto DEFER;
-      if (scan_num(o, 0, &e->pan)) {
-        if (e->ramp_pan.type == SGS_RAMP_STATE)
-          e->vo_attr &= ~SGS_PVOA_RAMP_PAN;
+      if (scan_num(sc, 0, &e->pan.v0)) {
+        if (!(e->pan.flags & SGS_RAP_RAMP))
+          e->vo_attr &= ~SGS_PVOA_PAN_RAMP;
       }
-      parse_par_list(pl, NULL, &e->ramp_pan, false, 0);
+      parse_par_list(pl, NULL, &e->pan, false, 0);
       if (pl->pl_flags & SDPL_SET_SWEEP) {
         pl->pl_flags &= ~SDPL_SET_SWEEP;
         pl->op_sweep = NULL;
-        e->vo_attr |= SGS_PVOA_RAMP_PAN;
+        e->vo_attr |= SGS_PVOA_PAN_RAMP;
       }
       break;
     case '\\':
@@ -1038,46 +1079,46 @@ static void parse_in_op_step(ParseLevel *restrict pl) {
       }
       break;
     case 'a':
-      if (scan_num(o, 0, &op->amp)) {
+      if (scan_num(sc, 0, &op->amp.v0)) {
         op->op_params |= SGS_POPP_AMP;
-        if (op->ramp_amp.type == SGS_RAMP_STATE)
-          op->attr &= ~SGS_POPA_RAMP_AMP;
+        if (!(op->amp.flags & SGS_RAP_RAMP))
+          op->attr &= ~SGS_POPA_AMP_RAMP;
       }
-      parse_par_list(pl, NULL, &op->ramp_amp, false, 0);
+      parse_par_list(pl, NULL, &op->amp, false, 0);
       if (pl->pl_flags & SDPL_SET_SWEEP) {
         pl->pl_flags &= ~SDPL_SET_SWEEP;
         pl->op_sweep = NULL;
-        op->attr |= SGS_POPA_RAMP_AMP;
+        op->attr |= SGS_POPA_AMP_RAMP;
       }
-      if (SGS_File_TRYC(o->f, ',') && SGS_File_TRYC(o->f, 'w')) {
-        scan_num(o, 0, &op->dynamp);
+      if (SGS_File_TRYC(f, ',') && SGS_File_TRYC(f, 'w')) {
+        scan_num(sc, 0, &op->dynamp);
         parse_par_list(pl, NULL, NULL, false, SGS_POP_AMOD);
       }
       break;
     case 'f':
-      if (scan_num(o, scan_note, &op->freq)) {
+      if (scan_num(sc, scan_note, &op->freq.v0)) {
         op->attr &= ~SGS_POPA_FREQRATIO;
         op->op_params |= SGS_POPP_FREQ;
-        if (op->ramp_freq.type == SGS_RAMP_STATE)
-          op->attr &= ~(SGS_POPA_RAMP_FREQ |
-                        SGS_POPA_RAMP_FREQRATIO);
+        if (!(op->freq.flags & SGS_RAP_RAMP))
+          op->attr &= ~(SGS_POPA_FREQ_RAMP |
+                        SGS_POPA_FREQRATIO_RAMP);
       }
-      parse_par_list(pl, scan_note, &op->ramp_freq, false, 0);
+      parse_par_list(pl, scan_note, &op->freq, false, 0);
       if (pl->pl_flags & SDPL_SET_SWEEP) {
         pl->pl_flags &= ~SDPL_SET_SWEEP;
         pl->op_sweep = NULL;
-        op->attr |= SGS_POPA_RAMP_FREQ;
-        op->attr &= ~SGS_POPA_RAMP_FREQRATIO;
+        op->attr |= SGS_POPA_FREQ_RAMP;
+        op->attr &= ~SGS_POPA_FREQRATIO_RAMP;
       }
-      if (SGS_File_TRYC(o->f, ',') && SGS_File_TRYC(o->f, 'w')) {
-        if (scan_num(o, 0, &op->dynfreq))
+      if (SGS_File_TRYC(f, ',') && SGS_File_TRYC(f, 'w')) {
+        if (scan_num(sc, 0, &op->dynfreq))
           op->attr &= ~SGS_POPA_DYNFREQRATIO;
         parse_par_list(pl, scan_note, NULL, false, SGS_POP_FMOD);
       }
       break;
     case 'p': {
       float phase;
-      if (scan_num(o, 0, &phase)) {
+      if (scan_num(sc, 0, &phase)) {
         op->phase = SGS_cyclepos_dtoui32(phase);
         op->op_params |= SGS_POPP_PHASE;
       }
@@ -1086,50 +1127,50 @@ static void parse_in_op_step(ParseLevel *restrict pl) {
     case 'r':
       if (!(op->op_flags & SGS_SDOP_NESTED))
         goto DEFER;
-      if (scan_num(o, 0, &op->freq)) {
+      if (scan_num(sc, 0, &op->freq.v0)) {
         op->attr |= SGS_POPA_FREQRATIO;
         op->op_params |= SGS_POPP_FREQ;
-        if (op->ramp_freq.type == SGS_RAMP_STATE)
-          op->attr &= ~(SGS_POPA_RAMP_FREQ |
-                        SGS_POPA_RAMP_FREQRATIO);
+        if (!(op->freq.flags & SGS_RAP_RAMP))
+          op->attr &= ~(SGS_POPA_FREQ_RAMP |
+                        SGS_POPA_FREQRATIO_RAMP);
       }
-      parse_par_list(pl, scan_note, &op->ramp_freq, true, 0);
+      parse_par_list(pl, scan_note, &op->freq, true, 0);
       if (pl->pl_flags & SDPL_SET_SWEEP) {
         pl->pl_flags &= ~SDPL_SET_SWEEP;
         pl->op_sweep = NULL;
-        op->attr |= SGS_POPA_RAMP_FREQ |
-                    SGS_POPA_RAMP_FREQRATIO;
+        op->attr |= SGS_POPA_FREQ_RAMP |
+                    SGS_POPA_FREQRATIO_RAMP;
       }
-      if (SGS_File_TRYC(o->f, ',') && SGS_File_TRYC(o->f, 'w')) {
-        if (scan_num(o, 0, &op->dynfreq))
+      if (SGS_File_TRYC(f, ',') && SGS_File_TRYC(f, 'w')) {
+        if (scan_num(sc, 0, &op->dynfreq))
           op->attr |= SGS_POPA_DYNFREQRATIO;
         parse_par_list(pl, scan_note, NULL, true, SGS_POP_FMOD);
       }
       break;
     case 's': {
       float silence;
-      if (!scan_num(o, 0, &silence)) break;
+      if (!scan_num(sc, 0, &silence)) break;
       if (silence < 0.f) {
-        scan_warning(o, "ignoring 's' with sub-zero time");
+        scan_warning(sc, "ignoring 's' with sub-zero time");
         break;
       }
       op->silence_ms = SGS_ui32rint(silence * 1000.f);
       break; }
     case 't':
-      if (SGS_File_TRYC(o->f, 'd')) {
-        op->time = (SGS_Time){o->sopt.def_time_ms, 0};
-      } else if (SGS_File_TRYC(o->f, 'i')) {
+      if (SGS_File_TRYC(f, 'd')) {
+        op->time = (SGS_Time){o->sl.sopt.def_time_ms, 0};
+      } else if (SGS_File_TRYC(f, 'i')) {
         if (!(op->op_flags & SGS_SDOP_NESTED)) {
-          scan_warning(o, "ignoring 'ti' (implicit time) for non-nested operator");
+          scan_warning(sc, "ignoring 'ti' (implicit time) for non-nested operator");
           break;
         }
-        op->time = (SGS_Time){o->sopt.def_time_ms,
+        op->time = (SGS_Time){o->sl.sopt.def_time_ms,
           SGS_TIMEP_SET | SGS_TIMEP_IMPLICIT};
       } else {
         float time;
-        if (!scan_num(o, 0, &time)) break;
+        if (!scan_num(sc, 0, &time)) break;
         if (time < 0.f) {
-          scan_warning(o, "ignoring 't' with sub-zero time");
+          scan_warning(sc, "ignoring 't' with sub-zero time");
           break;
         }
         op->time = (SGS_Time){SGS_ui32rint(time * 1000.f),
@@ -1138,8 +1179,8 @@ static void parse_in_op_step(ParseLevel *restrict pl) {
       op->op_params |= SGS_POPP_TIME;
       break;
     case 'w': {
-      int32_t wave = scan_wavetype(o);
-      if (wave < 0)
+      size_t wave;
+      if (!scan_wavetype(sc, &wave))
         break;
       op->wave = wave;
       break; }
@@ -1159,13 +1200,14 @@ static bool parse_level(SGS_Parser *restrict o,
   begin_scope(o, &pl, parent_pl, linktype, newscope, close_c);
   ++o->call_level;
   uint8_t c;
+  PScanner *sc = &o->sc;
+  SGS_File *f = sc->f;
   for (;;) {
     /* Use sub-parsing routine? May also happen inside nested calls. */
     if (pl.sub_f) pl.sub_f(&pl);
-    c = scan_char(o);
+    c = scan_getc(sc);
     switch (c) {
     case SCAN_NEWLINE:
-      ++o->line;
       if (pl.scope == SCOPE_TOP) {
         /*
          * On top level of script, each line has a new "subscope".
@@ -1180,27 +1222,27 @@ static bool parse_level(SGS_Parser *restrict o,
        * Label assignment (set to what follows).
        */
       if (pl.set_label != NULL) {
-        scan_warning(o, "ignoring label assignment to label assignment");
+        scan_warning(sc, "ignoring label assignment to label assignment");
         break;
       }
-      label_len = scan_label(o, label, c);
+      label_len = scan_label(sc, label, c);
       pl.set_label = SGS_Symtab_pool_str(o->st, label, label_len);
       break;
     case ';':
       if (newscope == SCOPE_SAME) {
-        o->next_c = c;
+        scan_stashc(sc, c);
         goto RETURN;
       }
       if (pl.sub_f == parse_in_settings || !pl.event)
         goto INVALID;
       if ((pl.operator->time.flags & (SGS_TIMEP_SET|SGS_TIMEP_IMPLICIT))
           == (SGS_TIMEP_SET|SGS_TIMEP_IMPLICIT))
-        scan_warning(o, "ignoring 'ti' (implicit time) before ';' separator");
+        scan_warning(sc, "ignoring 'ti' (implicit time) before ';' separator");
       begin_node(&pl, pl.operator, true);
       pl.sub_f = parse_in_op_step;
       break;
     case '@':
-      if (SGS_File_TRYC(o->f, '[')) {
+      if (SGS_File_TRYC(f, '[')) {
         end_operator(&pl);
         if (parse_level(o, &pl, pl.linktype, SCOPE_BIND, ']'))
           goto RETURN;
@@ -1214,15 +1256,15 @@ static bool parse_level(SGS_Parser *restrict o,
        * Label reference (get and use value).
        */
       if (pl.set_label != NULL) {
-        scan_warning(o, "ignoring label assignment to label reference");
+        scan_warning(sc, "ignoring label assignment to label reference");
         pl.set_label = NULL;
       }
       pl.sub_f = NULL;
-      label_len = scan_label(o, label, c);
+      label_len = scan_label(sc, label, c);
       if (label_len > 0) {
         SGS_ScriptOpData *ref = SGS_Symtab_get(o->st, label, label_len);
         if (!ref)
-          scan_warning(o, "ignoring reference to undefined label");
+          scan_warning(sc, "ignoring reference to undefined label");
         else {
           begin_node(&pl, ref, false);
           SGS_Symtab_set(o->st, label, label_len, pl.operator); /* update */
@@ -1231,11 +1273,11 @@ static bool parse_level(SGS_Parser *restrict o,
       }
       break;
     case 'O': {
-      int32_t wave = scan_wavetype(o);
-      if (wave < 0)
+      size_t wave;
+      if (!scan_wavetype(sc, &wave))
         break;
       if (pl.parent && !pl.linktype && pl.parent->op_sweep) {
-        scan_warning(o, "modulators not supported here");
+        scan_warning(sc, "modulators not supported here");
         break;
       }
       begin_node(&pl, 0, false);
@@ -1248,7 +1290,7 @@ static bool parse_level(SGS_Parser *restrict o,
       pl.sub_f = parse_in_settings;
       break;
     case '<':
-      scan_warning(o, "opening '<' out of place");
+      scan_warning(sc, "opening '<' out of place");
       break;
     case '\\':
       if (pl.sub_f == parse_in_settings ||
@@ -1257,10 +1299,10 @@ static bool parse_level(SGS_Parser *restrict o,
       parse_waittime(&pl);
       break;
     case '>':
-      scan_warning(o, "closing '>' without opening '<'");
+      scan_warning(sc, "closing '>' without opening '<'");
       break;
     case '[':
-      scan_warning(o, "opening '[' out of place");
+      scan_warning(sc, "opening '[' out of place");
       break;
     case ']':
       if (c == close_c) {
@@ -1268,19 +1310,19 @@ static bool parse_level(SGS_Parser *restrict o,
         endscope = true;
         goto RETURN;
       }
-      scan_warning(o, "closing ']' without opening '['");
+      scan_warning(sc, "closing ']' without opening '['");
       break;
     case '|':
       if (pl.sub_f == parse_in_settings ||
           ((pl.pl_flags & SDPL_NESTED_SCOPE) != 0 && pl.event != NULL))
         goto INVALID;
       if (newscope == SCOPE_SAME) {
-        o->next_c = c;
+        scan_stashc(sc, c);
         goto RETURN;
       }
       end_event(&pl);
       if (!o->group_start) {
-        scan_warning(o, "no sounds precede time separator");
+        scan_warning(sc, "no sounds precede time separator");
         break;
       }
       flush_durgroup(o);
@@ -1288,13 +1330,13 @@ static bool parse_level(SGS_Parser *restrict o,
       break;
     default:
     INVALID:
-      if (!handle_unknown_or_end(o)) goto FINISH;
+      if (!handle_unknown_or_end(sc)) goto FINISH;
       break;
     }
   }
 FINISH:
   if (close_c == ']' && c != close_c)
-    scan_warning(o, "end of file without closing ']'s");
+    scan_warning(sc, "end of file without closing ']'s");
 RETURN:
   end_scope(&pl);
   --o->call_level;
@@ -1311,11 +1353,9 @@ RETURN:
  * \return true if completed, false on error preventing parse
  */
 static bool parse_file(SGS_Parser *restrict o, SGS_File *restrict f) {
-  o->f = f;
-  o->line = 1;
+  init_scanner(&o->sc, f, o->st, &o->sl);
   parse_level(o, 0, SGS_POP_CARR, SCOPE_TOP, 0);
-  SGS_File_close(o->f);
-  o->f = NULL; // freed by invoker
+  fini_scanner(&o->sc);
   return true;
 }
 
@@ -1370,10 +1410,10 @@ static void time_operator(SGS_ScriptOpData *restrict op) {
     op->time.flags |= SGS_TIMEP_SET; /* no durgroup yet */
   }
   if (!(op->time.flags & SGS_TIMEP_IMPLICIT)) {
-    if (op->ramp_freq.flags & SGS_RAMP_TIME_DEFAULT)
-      op->ramp_freq.time_ms = op->time.v_ms;
-    if (op->ramp_amp.flags & SGS_RAMP_TIME_DEFAULT)
-      op->ramp_amp.time_ms = op->time.v_ms;
+    if ((op->freq.flags & SGS_RAP_TIME_DEFAULT) != 0)
+      op->freq.time_ms = op->time.v_ms;
+    if ((op->amp.flags & SGS_RAP_TIME_DEFAULT) != 0)
+      op->amp.time_ms = op->time.v_ms;
   }
   if (!(op->op_flags & SGS_SDOP_SILENCE_ADDED)) {
     op->time.v_ms += op->silence_ms;
@@ -1403,7 +1443,7 @@ static void time_event(SGS_ScriptEvData *restrict e) {
    * Adjust default ramp durations, handle silence as well as the case of
    * adding present event duration to wait time of next event.
    */
-  // e->ramp_pan.flags &= ~SGS_RAMP_TIME_DEFAULT; // TODO: revisit semantics
+  // e->pan.flags &= ~SGS_RAP_TIME_DEFAULT; // TODO: revisit semantics
   for (SGS_ScriptOpData *op = e->operators.first_on; op; op = op->next) {
     time_operator(op);
   }
@@ -1541,7 +1581,7 @@ SGS_Script* SGS_load_Script(SGS_File *restrict f) {
   o->mp = pr.mp;
   o->events = pr.events;
   o->name = name;
-  o->sopt = pr.sopt;
+  o->sopt = pr.sl.sopt;
 
 DONE:
   fini_parser(&pr);
