@@ -1,5 +1,5 @@
 /* sgensys: Audio program data and functions.
- * Copyright (c) 2011-2013, 2017-2018 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -20,17 +20,34 @@
  */
 
 /**
- * Voice parameter flags
+ * Ramp parameter flags.
+ */
+enum {
+	SGS_RAP_RAMP = 1<<0,
+	SGS_RAP_TIME_DEFAULT = 1<<1, // for use while deciding values
+};
+
+/**
+ * Ramp parameter type.
+ */
+typedef struct SGS_RampParam {
+	float v0, vt;
+	uint32_t time_ms;
+	uint8_t ramp;
+	uint8_t flags;
+} SGS_RampParam;
+
+/**
+ * Voice parameter flags.
  */
 enum {
 	SGS_PVOP_OPLIST = 1<<0,
 	SGS_PVOP_PAN = 1<<1,
-	SGS_PVOP_RAMP_PAN = 1<<2,
-	SGS_PVOP_ATTR = 1<<3,
+	SGS_PVOP_ATTR = 1<<2,
 };
 
 /**
- * Operator parameter flags
+ * Operator parameter flags.
  */
 enum {
 	SGS_POPP_ADJCS = 1<<0,
@@ -38,17 +55,15 @@ enum {
 	SGS_POPP_TIME = 1<<2,
 	SGS_POPP_SILENCE = 1<<3,
 	SGS_POPP_FREQ = 1<<4,
-	SGS_POPP_RAMP_FREQ = 1<<5,
-	SGS_POPP_DYNFREQ = 1<<6,
-	SGS_POPP_PHASE = 1<<7,
-	SGS_POPP_AMP = 1<<8,
-	SGS_POPP_RAMP_AMP = 1<<9,
-	SGS_POPP_DYNAMP = 1<<10,
-	SGS_POPP_ATTR = 1<<11,
+	SGS_POPP_DYNFREQ = 1<<5,
+	SGS_POPP_PHASE = 1<<6,
+	SGS_POPP_AMP = 1<<7,
+	SGS_POPP_DYNAMP = 1<<8,
+	SGS_POPP_ATTR = 1<<9,
 };
 
 /**
- * Voice ID constants
+ * Voice ID constants.
  */
 enum {
 	SGS_PVO_NO_ID = UINT16_MAX, /* voice ID missing */
@@ -56,7 +71,7 @@ enum {
 };
 
 /**
- * Operator ID constants
+ * Operator ID constants.
  */
 enum {
 	SGS_POP_NO_ID = UINT32_MAX, /* operator ID missing */
@@ -64,28 +79,28 @@ enum {
 };
 
 /**
- * Timing special values
+ * Timing special values.
  */
 enum {
 	SGS_TIME_INF = UINT32_MAX, /* special handling for nested operators */
 };
 
 /**
- * Voice atttributes
+ * Voice atttributes.
  */
 enum {
-	SGS_PVOA_RAMP_PAN = 1<<0,
+	SGS_PVOA_PAN_RAMP = 1<<0,
 };
 
 /**
- * Operator atttributes
+ * Operator atttributes.
  */
 enum {
 	SGS_POPA_FREQRATIO = 1<<0,
 	SGS_POPA_DYNFREQRATIO = 1<<1,
-	SGS_POPA_RAMP_FREQ = 1<<2,
-	SGS_POPA_RAMP_FREQRATIO = 1<<3,
-	SGS_POPA_RAMP_AMP = 1<<4,
+	SGS_POPA_FREQ_RAMP = 1<<2,
+	SGS_POPA_FREQRATIO_RAMP = 1<<3,
+	SGS_POPA_AMP_RAMP = 1<<4,
 };
 
 /**
@@ -122,8 +137,7 @@ typedef struct SGS_ProgramVoData {
 	uint32_t op_count;
 	uint32_t params;
 	uint8_t attr;
-	float pan;
-	SGS_Ramp ramp_pan;
+	SGS_RampParam pan;
 } SGS_ProgramVoData;
 
 typedef struct SGS_ProgramOpData {
@@ -133,8 +147,8 @@ typedef struct SGS_ProgramOpData {
 	uint8_t attr;
 	uint8_t wave;
 	uint32_t time_ms, silence_ms;
-	float freq, dynfreq, phase, amp, dynamp;
-	SGS_Ramp ramp_freq, ramp_amp;
+	float dynfreq, phase, dynamp;
+	SGS_RampParam freq, amp;
 } SGS_ProgramOpData;
 
 typedef struct SGS_ProgramEvent {
