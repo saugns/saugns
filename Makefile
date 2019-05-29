@@ -22,6 +22,7 @@ OBJ=\
 	mempool.o \
 	ramp.o \
 	wave.o \
+	renderer/osc.o \
 	renderer/generator.o \
 	player/audiodev.o \
 	player/wavfile.o \
@@ -120,6 +121,9 @@ ramp.o: ramp.c ramp.h math.h common.h
 
 renderer/generator.o: renderer/generator.c renderer/generator.h renderer/osc.h program.h ramp.h wave.h math.h mempool.h common.h
 	$(CC) -c $(CFLAGS_FAST) renderer/generator.c -o renderer/generator.o
+
+renderer/osc.o: renderer/osc.c renderer/osc.h wave.h math.h common.h
+	$(CC) -c $(CFLAGS_FAST) renderer/osc.c -o renderer/osc.o
 
 sgensys.o: common.h help.h math.h program.h ptrlist.h ramp.h sgensys.c sgensys.h wave.h
 	$(CC) -c $(CFLAGS) sgensys.c
