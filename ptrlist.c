@@ -1,5 +1,5 @@
 /* sgensys: Pointer list module.
- * Copyright (c) 2011-2012, 2018 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2018-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -22,18 +22,17 @@
  *
  * \return true unless allocation failed
  */
-bool SGS_PtrList_add(SGS_PtrList *restrict o, const void *restrict item) {
+bool SGS_PtrList_add(SGS_PtrList *restrict o, void *restrict item) {
 	if (!o->asize) {
 		if (o->count == 0) {
-			o->items = (const void**) item;
+			o->items = (void**) item;
 			o->count = 1;
 		} else {
-			const size_t asize = 2 * sizeof(const void*);
-			const void **a = malloc(asize);
-			if (!a) {
+			size_t asize = 2 * sizeof(void*);
+			void **a = malloc(asize);
+			if (!a)
 				return false;
-			}
-			a[0] = (const void*) o->items;
+			a[0] = (void*) o->items;
 			a[1] = item;
 			o->items = a;
 			o->count = 2;
@@ -42,23 +41,21 @@ bool SGS_PtrList_add(SGS_PtrList *restrict o, const void *restrict item) {
 		return true;
 	}
 
-	size_t isize = o->count * sizeof(const void*);
+	size_t isize = o->count * sizeof(void*);
 	size_t asize = o->asize;
 	if (o->count == o->old_count) {
 		if (asize == isize) asize <<= 1;
-		const void **a = malloc(asize);
-		if (!a) {
+		void **a = malloc(asize);
+		if (!a)
 			return false;
-		}
 		memcpy(a, o->items, isize);
 		o->items = a;
 		o->asize = asize;
 	} else if (asize == isize) {
 		asize <<= 1;
-		const void **a = realloc(o->items, asize);
-		if (!a) {
+		void **a = realloc(o->items, asize);
+		if (!a)
 			return false;
-		}
 		o->items = a;
 		o->asize = asize;
 	}
@@ -90,17 +87,16 @@ void SGS_PtrList_clear(SGS_PtrList *restrict o) {
  *
  * \return true unless allocation failed
  */
-bool SGS_PtrList_memdup(SGS_PtrList *restrict o, const void ***restrict dst) {
+bool SGS_PtrList_memdup(SGS_PtrList *restrict o, void ***restrict dst) {
 	if (!o->count) {
 		*dst = NULL;
 		return true;
 	}
-	size_t size = o->count * sizeof(const void*);
-	const void **src = SGS_PtrList_ITEMS(o);
-	const void **a = SGS_memdup(src, size);
-	if (!a) {
+	size_t size = o->count * sizeof(void*);
+	void **src = SGS_PtrList_ITEMS(o);
+	void **a = SGS_memdup(src, size);
+	if (!a)
 		return false;
-	}
 	*dst = a;
 	return true;
 }
