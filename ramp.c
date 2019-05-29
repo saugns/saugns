@@ -173,7 +173,7 @@ bool SGS_Ramp_run(SGS_Ramp *restrict o, float *restrict buf,
 		fill_state(o, buf, 0, buf_len, mulbuf);
 		return false;
 	}
-	uint32_t time = SGS_ms_in_samples(o->time_ms, srate);
+	uint32_t time = SGS_ms_in_samples(o->time_ms, srate, NULL);
 	if ((o->flags & SGS_RAMPP_GOAL_RATIO) != 0) {
 		if (!(o->flags & SGS_RAMPP_STATE_RATIO)) {
 			// divide v0 and enable ratio to match vt

@@ -26,8 +26,15 @@
 /**
  * Convert time in ms to time in samples for a sample rate.
  */
-static inline uint64_t SGS_ms_in_samples(uint64_t time_ms, uint64_t srate) {
+static inline uint64_t SGS_ms_in_samples(uint64_t time_ms, uint64_t srate,
+		int *carry) {
 	uint64_t time = time_ms * srate;
-	time = (time + 500) / 1000;
+	if (carry) {
+		int64_t error;
+		time += *carry;
+		error = time % 1000;
+		*carry = error;
+	}
+	time /= 1000;
 	return time;
 }

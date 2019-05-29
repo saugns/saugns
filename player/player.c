@@ -64,7 +64,7 @@ static bool SGS_init_Output(SGS_Output *restrict o, uint32_t srate,
 			max_srate = ad_srate;
 	}
 
-	o->ch_len = SGS_ms_in_samples(BUF_TIME_MS, max_srate);
+	o->ch_len = SGS_ms_in_samples(BUF_TIME_MS, max_srate, NULL);
 	if (o->ch_len < CH_MIN_LEN) o->ch_len = CH_MIN_LEN;
 	o->buf_len = o->ch_len * NUM_CHANNELS;
 	o->buf = calloc(o->buf_len, sizeof(int16_t));
