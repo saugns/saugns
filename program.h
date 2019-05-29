@@ -20,29 +20,11 @@
  */
 
 /**
- * Slope parameter flags.
- */
-enum {
-	SGS_SLP_SLOPE = 1<<0,
-};
-
-/**
- * Slope parameter type.
- */
-typedef struct SGS_SlopeParam {
-	float v0, vt;
-	uint32_t time_ms;
-	uint8_t slope;
-	uint8_t flags;
-} SGS_SlopeParam;
-
-/**
  * Voice parameter flags.
  */
 enum {
 	SGS_PVOP_OPLIST = 1<<0,
 	SGS_PVOP_PAN = 1<<1,
-	SGS_PVOP_ATTR = 1<<2,
 };
 
 /**
@@ -58,7 +40,6 @@ enum {
 	SGS_POPP_PHASE = 1<<6,
 	SGS_POPP_AMP = 1<<7,
 	SGS_POPP_DYNAMP = 1<<8,
-	SGS_POPP_ATTR = 1<<9,
 };
 
 /**
@@ -83,24 +64,6 @@ enum {
 enum {
 	SGS_TIME_INF = UINT32_MAX, /* special handling for nested operators */
 	SGS_TIME_DEFAULT = UINT32_MAX, /* default for slopes while parsing */
-};
-
-/**
- * Voice atttributes.
- */
-enum {
-	SGS_PVOA_PAN_SLOPE = 1<<0,
-};
-
-/**
- * Operator atttributes.
- */
-enum {
-	SGS_POPA_FREQRATIO = 1<<0,
-	SGS_POPA_DYNFREQRATIO = 1<<1,
-	SGS_POPA_FREQ_SLOPE = 1<<2,
-	SGS_POPA_FREQRATIO_SLOPE = 1<<3,
-	SGS_POPA_AMP_SLOPE = 1<<4,
 };
 
 /**
@@ -136,19 +99,17 @@ typedef struct SGS_ProgramVoData {
 	const SGS_ProgramOpRef *op_list;
 	uint32_t op_count;
 	uint32_t params;
-	uint8_t attr;
-	SGS_SlopeParam pan;
+	SGS_Slope pan;
 } SGS_ProgramVoData;
 
 typedef struct SGS_ProgramOpData {
 	const SGS_ProgramOpAdjcs *adjcs;
 	uint32_t id;
 	uint32_t params;
-	uint8_t attr;
 	uint8_t wave;
 	uint32_t time_ms, silence_ms;
 	float dynfreq, phase, dynamp;
-	SGS_SlopeParam freq, amp;
+	SGS_Slope freq, amp;
 } SGS_ProgramOpData;
 
 typedef struct SGS_ProgramEvent {
@@ -184,4 +145,4 @@ struct SGS_Script;
 SGS_Program* SGS_build_Program(struct SGS_Script *restrict sd);
 void SGS_discard_Program(SGS_Program *restrict o);
 
-void SGS_Program_print_info(SGS_Program *restrict o);
+void SGS_Program_print_info(const SGS_Program *restrict o);

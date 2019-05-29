@@ -40,9 +40,8 @@ typedef struct SGS_ScriptOpData {
 	uint32_t op_id; /* not used by parser; for program module */
 	uint32_t op_params;
 	uint32_t time_ms, silence_ms;
-	uint8_t attr;
 	uint8_t wave;
-	SGS_SlopeParam freq, amp;
+	SGS_Slope freq, amp;
 	float phase, dynfreq, dynamp;
 	/* node adjacents in operator linkage graph */
 	SGS_PtrList fmods, pmods, amods;
@@ -72,8 +71,7 @@ typedef struct SGS_ScriptEvData {
 	uint32_t vo_id; /* not used by parser; for program module */
 	uint32_t vo_params;
 	struct SGS_ScriptEvData *voice_prev; /* preceding event for voice */
-	uint8_t vo_attr;
-	SGS_SlopeParam pan;
+	SGS_Slope pan;
 	SGS_PtrList op_graph;
 } SGS_ScriptEvData;
 
