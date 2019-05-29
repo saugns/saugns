@@ -1,5 +1,5 @@
 /* sgensys: Audio generator module.
- * Copyright (c) 2011-2012, 2017-2018 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
