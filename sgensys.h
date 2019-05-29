@@ -17,6 +17,8 @@
 
 #define SGS_VERSION_STR "sgensys v0.2-beta"
 
+#define SGS_DEFAULT_SRATE 96000
+
 size_t SGS_build(const SGS_PtrList *restrict script_args, bool are_paths,
 		SGS_PtrList *restrict prg_objs);
 
