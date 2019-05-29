@@ -1,5 +1,5 @@
 /* sgensys: Generic array module.
- * Copyright (c) 2018 Joel K. Pettersson
+ * Copyright (c) 2018-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -82,5 +82,5 @@ void SGS_ArrType_clear(void *restrict o);
 bool SGS_ArrType_memdup(void *restrict o,
 		const void **restrict dst, size_t item_size);
 
-/** uint8_t array type. */
-SGS_DEF_ArrType(SGS_UInt8Arr, uint8_t, );
+/** Byte (uint8_t) array type. */
+SGS_DEF_ArrType(SGS_ByteArr, uint8_t, );
