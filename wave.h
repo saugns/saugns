@@ -1,14 +1,18 @@
 /* sgensys: Wave module.
- * Copyright (c) 2011-2012, 2017-2019 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
- * This file and the software of which it is part is distributed under the
- * terms of the GNU Lesser General Public License, either version 3 or (at
- * your option) any later version, WITHOUT ANY WARRANTY, not even of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
  *
- * View the file COPYING for details, or if missing, see
- * <https://www.gnu.org/licenses/>.
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
 #pragma once
@@ -33,8 +37,9 @@ enum {
 	SGS_WAVE_SQR,
 	SGS_WAVE_TRI,
 	SGS_WAVE_SAW,
-	SGS_WAVE_SHA,
-	SGS_WAVE_SZH,
+	SGS_WAVE_AHS,
+	SGS_WAVE_HRS,
+	SGS_WAVE_SRS,
 	SGS_WAVE_SSR,
 	SGS_WAVE_TYPES
 };
@@ -65,6 +70,6 @@ static inline float SGS_Wave_get_lerp(const float *restrict lut,
 	return s;
 }
 
-extern void SGS_global_init_Wave(void);
+void SGS_global_init_Wave(void);
 
-extern void SGS_Wave_print(uint8_t id);
+void SGS_Wave_print(uint8_t id);
