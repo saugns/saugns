@@ -140,19 +140,23 @@ Wave types:
 			Lacks full "bite" at low frequencies.
 			Decreasing slope; use negative amplitude
 			or frequency for increasing slope.
-	sha	Half-frequency absolute sine (adjusted).
+	ahs	Absolute half-frequency sine (adjusted).
+			Sine-based parabola-like wave.
 			Frequency halved to restore base frequency,
 			peak amplitude centered and doubled, phase
 			shifted to begin and end at zero amplitude.
 			A softer alternative to "saw" (saw wave).
-	szh	Half-zero'd sine (adjusted).
-			Positive half kept, negative half zero'd,
-			peak amplitude centered and doubled, phase
+	hrs	Half-rectified sine (adjusted).
+			Positive half kept, negative half zero'd.
+			Peak amplitude centered and doubled, phase
 			shifted to begin and end at zero amplitude.
 			A warm and full sound.
-	ssr	Square root of sine.
+	srs	Square root of sine.
 			Mirrored for the negative half.
 			A softer alternative to "sqr" (square wave).
+	ssr	Squared & square root of sine.
+			A little more thin and sharp, it differs from
+			"srs" a little like "srs" differs from "szh".
 
 Parameters:
 	t	Time duration in seconds. If no "t" setting is given, the
@@ -233,7 +237,7 @@ Parameters:
 	s	Silent time before playing, time in seconds.
 			Works like adding a delay, except it only affects this
 		operator.
-	w	Set (change) wave type. See list of wave types for values.
+	w	Wave type. See "Wave types" for values.
 
 Panning: P
 ----------
