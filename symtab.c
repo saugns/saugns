@@ -12,7 +12,6 @@
  */
 
 #include "symtab.h"
-#include "mempool.h"
 #include <string.h>
 #include <stdlib.h>
 
