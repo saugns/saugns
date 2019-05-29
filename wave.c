@@ -1,14 +1,18 @@
 /* sgensys: Wave module.
- * Copyright (c) 2011-2012, 2017-2019 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
- * This file and the software of which it is part is distributed under the
- * terms of the GNU Lesser General Public License, either version 3 or (at
- * your option) any later version, WITHOUT ANY WARRANTY, not even of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
  *
- * View the file COPYING for details, or if missing, see
- * <https://www.gnu.org/licenses/>.
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
 #include "wave.h"
@@ -24,8 +28,9 @@ const char *const SGS_Wave_names[SGS_WAVE_TYPES + 1] = {
 	"sqr",
 	"tri",
 	"saw",
-	"sha",
-	"szh",
+	"ahs",
+	"hrs",
+	"srs",
 	"ssr",
 	NULL
 };
@@ -114,8 +119,9 @@ void SGS_global_init_Wave(void) {
 	float *const sqr_lut = SGS_Wave_luts[SGS_WAVE_SQR];
 	float *const tri_lut = SGS_Wave_luts[SGS_WAVE_TRI];
 	float *const saw_lut = SGS_Wave_luts[SGS_WAVE_SAW];
-	float *const sha_lut = SGS_Wave_luts[SGS_WAVE_SHA];
-	float *const szh_lut = SGS_Wave_luts[SGS_WAVE_SZH];
+	float *const ahs_lut = SGS_Wave_luts[SGS_WAVE_AHS];
+	float *const hrs_lut = SGS_Wave_luts[SGS_WAVE_HRS];
+	float *const srs_lut = SGS_Wave_luts[SGS_WAVE_SRS];
 	float *const ssr_lut = SGS_Wave_luts[SGS_WAVE_SSR];
 	int i;
 	const double val_scale = SGS_Wave_MAXVAL;
@@ -125,6 +131,7 @@ void SGS_global_init_Wave(void) {
 	 *  - sin
 	 *  - sqr (fill only)
 	 *  - tri
+	 *  - srs
 	 *  - ssr
 	 */
 	for (i = 0; i < HALFLEN; ++i) {
@@ -141,7 +148,9 @@ void SGS_global_init_Wave(void) {
 		else
 			tri_lut[i] = val_scale * 2.f * x_rev;
 
-		ssr_lut[i] = val_scale * sqrtf(sin_x);
+		srs_lut[i] = val_scale * sqrtf(sin_x);
+
+		ssr_lut[i] = val_scale * (sin_x * sin_x);
 	}
 	/*
 	 * Replacement tanh-based stEP. (An experimental example
@@ -175,6 +184,7 @@ void SGS_global_init_Wave(void) {
 	 *  - sqr
 	 *  - tri
 	 *  - saw
+	 *  - srs
 	 *  - ssr
 	 */
 	for (; i < SGS_Wave_LEN; ++i) {
@@ -186,27 +196,27 @@ void SGS_global_init_Wave(void) {
 
 		saw_lut[i] = -saw_lut[(SGS_Wave_LEN-1) - (i-1)];
 
-		ssr_lut[i] = -ssr_lut[i - HALFLEN];
+		ssr_lut[i] = srs_lut[i] = -srs_lut[i - HALFLEN];
 	}
 	/* Full cycle:
-	 *  - sha
-	 *  - szh
+	 *  - ahs
+	 *  - hrs
 	 */
 	for (i = 0; i < SGS_Wave_LEN; ++i) {
 		const double x = i * len_scale;
 
-		double sha_x = sin((SGS_PI * x) * 0.5f + SGS_ASIN_1_2);
-		sha_x = fabs(sha_x) - 0.5f;
-		sha_x += sha_x;
-		sha_lut[i] = val_scale * sha_x;
+		double ahs_x = sin((SGS_PI * x) * 0.5f + SGS_ASIN_1_2);
+		ahs_x = fabs(ahs_x) - 0.5f;
+		ahs_x += ahs_x;
+		ahs_lut[i] = val_scale * ahs_x;
 
-		double szh_x = sin((SGS_PI * x) + SGS_ASIN_1_2);
-		if (szh_x > 0.f) {
-			szh_x -= 0.5f;
-			szh_x += szh_x;
-			szh_lut[i] = val_scale * szh_x;
+		double hrs_x = sin((SGS_PI * x) + SGS_ASIN_1_2);
+		if (hrs_x > 0.f) {
+			hrs_x -= 0.5f;
+			hrs_x += hrs_x;
+			hrs_lut[i] = val_scale * hrs_x;
 		} else {
-			szh_lut[i] = -SGS_Wave_MAXVAL;
+			hrs_lut[i] = -SGS_Wave_MAXVAL;
 		}
 	}
 }
