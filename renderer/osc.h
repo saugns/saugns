@@ -1,37 +1,29 @@
-/* sgensys: Oscillator module.
- * Copyright (c) 2011-2012, 2017-2018 Joel K. Pettersson
+/* sgensys: Oscillator implementation.
+ * Copyright (c) 2011, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
- * This file and the software of which it is part is distributed under the
- * terms of the GNU Lesser General Public License, either version 3 or (at
- * your option) any later version, WITHOUT ANY WARRANTY, not even of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
  *
- * View the file COPYING for details, or if missing, see
- * <https://www.gnu.org/licenses/>.
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
 #pragma once
 #include "../wave.h"
 #include "../math.h"
 
-/**
- * Oscillator data. Only includes phase, as most parameters are
- * either common to several instances or may differ each sample.
- */
 typedef struct SGS_Osc {
 	uint32_t phase;
+	float coeff;
+	const float *lut;
 } SGS_Osc;
-
-/**
- * Get phase as 32-bit unsigned int value.
- */
-#define SGS_Osc_GET_PHASE(o) ((uint32_t) (o)->phase)
-
-/**
- * Set phase as 32-bit unsigned int value.
- */
-#define SGS_Osc_SET_PHASE(o, p) ((void) ((o)->phase = (p)))
 
 /**
  * Convert floating point phase value (0.0 = 0 deg., 1.0 = 360 deg.)
@@ -40,40 +32,82 @@ typedef struct SGS_Osc {
 #define SGS_Osc_PHASE(p) ((uint32_t) lrint((p) * 4294967296.0))
 
 /**
- * Calculate the sample rate-dependent coefficent multiplied
- * by the frequency to give the per-sample phase increment.
+ * Calculate the coefficent, based on the sample rate,
+ * used to give the per-sample phase increment
+ * by multiplying with the frequency used.
  */
-#define SGS_Osc_SRATE_COEFF(srate) ((double) 4294967296.0/(srate))
+#define SGS_Osc_COEFF(srate) ((float) 4294967296.0/(srate))
 
 /**
- * Calculate the number of samples in a wave cycle.
+ * Get LUT for wave type enum.
+ */
+#define SGS_Osc_LUT(wave) \
+	(SGS_Wave_luts[(wave) < SGS_WAVE_TYPES ? (wave) : SGS_WAVE_SIN])
+
+/**
+ * Initialize instance for use.
+ */
+static inline void SGS_init_Osc(SGS_Osc *restrict o, uint32_t srate) {
+	o->phase = 0;
+	o->coeff = SGS_Osc_COEFF(srate);
+	o->lut = SGS_Osc_LUT(SGS_WAVE_SIN);
+}
+
+/**
+ * Calculate length of wave cycle for \p freq.
  *
- * Can be used to adjust timing.
+ * \return number of samples
  */
-#define SGS_Osc_CYCLE_LEN(coeff, freq) \
-	((uint32_t) lrint(4294967296.0 / ((coeff)*(freq))))
+static inline uint32_t SGS_Osc_cycle_len(SGS_Osc *restrict o, float freq) {
+	return lrintf(4294967296.0 / (o->coeff * freq));
+}
 
 /**
- * Calculate the number of samples from the beginning of the
- * current wave cycle, using the current sample position.
+ * Calculate position in wave cycle for \p freq, based on \p pos.
  *
- * Can be used to adjust timing.
+ * \return number of samples
  */
-#define SGS_Osc_CYCLE_POS(coeff, freq, spos, cpos_out) do{ \
-	uint32_t SGS_Osc__inc = lrint((coeff)*(freq)); \
-	uint32_t SGS_Osc__phs = SGS_Osc__inc * (uint32_t)(spos); \
-	(cpos_out) = SGS_Osc__phs / SGS_Osc__inc; \
-}while(0)
+static inline uint32_t SGS_Osc_cycle_pos(SGS_Osc *restrict o,
+		float freq, uint32_t pos) {
+	uint32_t inc = lrintf(o->coeff * freq);
+	uint32_t phs = inc * pos;
+	return phs / inc;
+}
 
 /**
- * Produce floating point output in the -1.0 to 1.0 range.
+ * Calculate offset relative to wave cycle for \p freq, based on \p pos.
+ *
+ * Can be used to reduce time length to something rounder and reduce clicks.
  */
-static inline float SGS_Osc_run(SGS_Osc *restrict o,
-		const float *restrict lut, double coeff,
-		float freq, int16_t pm_s16) {
-	uint32_t phase = o->phase + (pm_s16 << 16);
-	float s = SGS_Wave_get_lerp(lut, phase);
-	uint32_t phase_inc = lrint(coeff * freq);
-	o->phase += phase_inc;
+static inline int32_t SGS_Osc_cycle_offs(SGS_Osc *restrict o,
+		float freq, uint32_t pos) {
+	uint32_t inc = lrintf(o->coeff * freq);
+	uint32_t phs = inc * pos;
+	return (phs - SGS_Wave_SCALE) / inc;
+}
+
+/**
+ * Get next sample.
+ *
+ * \return value from -1.0 to 1.0
+ */
+static inline float SGS_Osc_get(SGS_Osc *restrict o,
+		float freq, int32_t pm_s32) {
+	uint32_t phase = o->phase + pm_s32;
+	float s = SGS_Wave_get_lerp(o->lut, phase);
+	o->phase += lrintf(o->coeff * freq);
 	return s;
 }
+
+void SGS_Osc_run(SGS_Osc *restrict o,
+		float *restrict buf, size_t buf_len,
+		uint32_t layer,
+		const float *restrict freq,
+		const float *restrict amp,
+		const float *restrict pm_f);
+void SGS_Osc_run_env(SGS_Osc *restrict o,
+		float *restrict buf, size_t buf_len,
+		uint32_t layer,
+		const float *restrict freq,
+		const float *restrict amp,
+		const float *restrict pm_f);
