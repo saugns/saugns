@@ -1,5 +1,5 @@
 /* sgensys: Value slope module.
- * Copyright (c) 2011-2013, 2017-2018 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -22,26 +22,53 @@ const char *const SGS_Slope_names[SGS_SLOPE_TYPES + 1] = {
 	NULL
 };
 
-static void fill_hold(float *restrict buf, uint32_t len,
-		float s0) {
+const SGS_SlopeFill_f SGS_Slope_fills[SGS_SLOPE_TYPES] = {
+	SGS_Slope_fill_hold,
+	SGS_Slope_fill_lin,
+	SGS_Slope_fill_exp,
+	SGS_Slope_fill_log,
+};
+
+/**
+ * Fill \p buf with \p len values along a straight horizontal line,
+ * i.e. \p len copies of \p v0.
+ */
+void SGS_Slope_fill_hold(float *restrict buf, uint32_t len,
+		float v0, float vt SGS__maybe_unused,
+		uint32_t pos SGS__maybe_unused, uint32_t time SGS__maybe_unused) {
 	uint32_t i;
 	for (i = 0; i < len; ++i)
-		buf[i] = s0;
+		buf[i] = v0;
 }
 
-static void fill_lin(float *restrict buf, uint32_t len,
-		float s0, float goal, uint32_t pos, double inv_time) {
+/**
+ * Fill \p buf with \p len values along a linear trajectory
+ * from \p v0 (at position 0) to \p vt (at position \p time),
+ * beginning at position \p pos.
+ */
+void SGS_Slope_fill_lin(float *restrict buf, uint32_t len,
+		float v0, float vt,
+		uint32_t pos, uint32_t time) {
+	const double inv_time = 1.f / time;
 	uint32_t i, end;
 	for (i = pos, end = i + len; i < end; ++i) {
-		(*buf++) = s0 + (goal - s0) * (i * inv_time);
+		(*buf++) = v0 + (vt - v0) * (i * inv_time);
 	}
 }
 
-/*
- * Ear-tuned polynomial, designed to sound natural.
+/**
+ * Fill \p buf with \p len values along an exponential trajectory
+ * from \p v0 (at position 0) to \p vt (at position \p time),
+ * beginning at position \p pos.
+ *
+ * Uses an ear-tuned polynomial, designed to sound natural.
+ * (Unlike a real exponential curve, it has a definite beginning
+ * and end. It is symmetric to the corresponding logarithmic curve.)
  */
-static void fill_exp(float *restrict buf, uint32_t len,
-		float s0, float goal, uint32_t pos, double inv_time) {
+void SGS_Slope_fill_exp(float *restrict buf, uint32_t len,
+		float v0, float vt,
+		uint32_t pos, uint32_t time) {
+	const double inv_time = 1.f / time;
 	uint32_t i, end;
 	for (i = pos, end = i + len; i < end; ++i) {
 		double mod = 1.f - i * inv_time,
@@ -49,15 +76,23 @@ static void fill_exp(float *restrict buf, uint32_t len,
 			modp3 = modp2 * mod;
 		mod = modp3 + (modp2 * modp3 - modp2) *
 		      (mod * (629.f/1792.f) + modp2 * (1163.f/1792.f));
-		(*buf++) = goal + (s0 - goal) * mod;
+		(*buf++) = vt + (v0 - vt) * mod;
 	}
 }
 
-/*
- * Ear-tuned polynomial, designed to sound natural.
+/**
+ * Fill \p buf with \p len values along a logarithmic trajectory
+ * from \p v0 (at position 0) to \p vt (at position \p time),
+ * beginning at position \p pos.
+ *
+ * Uses an ear-tuned polynomial, designed to sound natural.
+ * (Unlike a real logarithmic curve, it has a definite beginning
+ * and end. It is symmetric to the corresponding exponential curve.)
  */
-static void fill_log(float *restrict buf, uint32_t len,
-		float s0, float goal, uint32_t pos, double inv_time) {
+void SGS_Slope_fill_log(float *restrict buf, uint32_t len,
+		float v0, float vt,
+		uint32_t pos, uint32_t time) {
+	const double inv_time = 1.f / time;
 	uint32_t i, end;
 	for (i = pos, end = i + len; i < end; ++i) {
 		double mod = i * inv_time,
@@ -65,49 +100,106 @@ static void fill_log(float *restrict buf, uint32_t len,
 			modp3 = modp2 * mod;
 		mod = modp3 + (modp2 * modp3 - modp2) *
 		      (mod * (629.f/1792.f) + modp2 * (1163.f/1792.f));
-		(*buf++) = s0 + (goal - s0) * mod;
+		(*buf++) = v0 + (vt - v0) * mod;
 	}
 }
 
 /**
- * Fill \p buf with \p buf_len values, shaped according to the
- * slope and its attributes.
+ * Set instance to default values.
  *
- * \return true until goal reached
+ * (This does not include values specific to a particular parameter.)
  */
-bool SGS_Slope_run(SGS_Slope *restrict o, uint32_t srate,
-		float *restrict buf, uint32_t buf_len, float s0) {
-	uint32_t time = SGS_MS_IN_SAMPLES(o->time_ms, srate);
-	uint32_t len, fill_len;
-	double inv_time;
-	inv_time = 1.f / time;
-	len = time - o->pos;
-	if (len > buf_len) {
-		len = buf_len;
-		fill_len = 0;
+void SGS_Slope_reset(SGS_Slope *restrict o) {
+	*o = (SGS_Slope){0};
+	o->slope = SGS_SLOPE_LIN; // default if slope enabled
+}
+
+/**
+ * Copy changes from \p src to the instance,
+ * preserving non-overridden parts of state.
+ */
+void SGS_Slope_copy(SGS_Slope *restrict o,
+		const SGS_Slope *restrict src) {
+	uint8_t mask = 0;
+	if ((src->flags & SGS_SLP_STATE) != 0) {
+		o->v0 = src->v0;
+		mask |= SGS_SLP_STATE | SGS_SLP_STATE_RATIO;
+	}
+	if ((src->flags & SGS_SLP_SLOPE) != 0) {
+		o->vt = src->vt;
+		o->time_ms = src->time_ms;
+		o->slope = src->slope;
+		mask |= SGS_SLP_SLOPE | SGS_SLP_SLOPE_RATIO;
+	}
+	o->flags &= ~mask;
+	o->flags |= (src->flags & mask);
+}
+
+/*
+ * Fill \p buf from \p from to \p to - 1 with copies of \a v0.
+ *
+ * If the SGS_SLP_STATE_RATIO flag is set, multiply using \p mulbuf
+ * for each value.
+ */
+static void fill_state(SGS_Slope *restrict o, float *restrict buf,
+		uint32_t from, uint32_t to,
+		const float *restrict mulbuf) {
+	if ((o->flags & SGS_SLP_STATE_RATIO) != 0) {
+		for (uint32_t i = from; i < to; ++i)
+			buf[i] = o->v0 * mulbuf[i];
 	} else {
-		fill_len = buf_len - len;
+		for (uint32_t i = from; i < to; ++i)
+			buf[i] = o->v0;
 	}
-	switch (o->type) {
-	case SGS_SLOPE_HOLD:
-		fill_hold(buf, len, s0);
-		break;
-	case SGS_SLOPE_LIN:
-		fill_lin(buf, len, s0, o->goal, o->pos, inv_time);
-		break;
-	case SGS_SLOPE_EXP:
-		fill_exp(buf, len, s0, o->goal, o->pos, inv_time);
-		break;
-	case SGS_SLOPE_LOG:
-		fill_log(buf, len, s0, o->goal, o->pos, inv_time);
-		break;
+}
+
+/**
+ * Fill \p buf with \p buf_len values for the parameter.
+ * If a slope is used, it will be applied; when elapsed,
+ * the target value will become the new value.
+ * If the initial and/or target value is a ratio,
+ * \p mulbuf is used for a sequence of value multipliers.
+ *
+ * \return true if slope target not yet reached
+ */
+bool SGS_Slope_run(SGS_Slope *restrict o, float *restrict buf,
+		uint32_t buf_len, uint32_t srate,
+		uint32_t *restrict pos, const float *restrict mulbuf) {
+	if (!(o->flags & SGS_SLP_SLOPE)) {
+		fill_state(o, buf, 0, buf_len, mulbuf);
+		return false;
 	}
-	o->pos += len;
-	if (o->pos == time) {
+	uint32_t time = SGS_MS_IN_SAMPLES(o->time_ms, srate);
+	if ((o->flags & SGS_SLP_SLOPE_RATIO) != 0) {
+		if (!(o->flags & SGS_SLP_STATE_RATIO)) {
+			// divide v0 and enable ratio to match slope and vt
+			o->v0 /= mulbuf[0];
+			o->flags |= SGS_SLP_STATE_RATIO;
+		}
+	} else {
+		if ((o->flags & SGS_SLP_STATE_RATIO) != 0) {
+			// multiply v0 and disable ratio to match slope and vt
+			o->v0 *= mulbuf[0];
+			o->flags &= ~SGS_SLP_STATE_RATIO;
+		}
+	}
+	uint32_t len;
+	len = time - *pos;
+	if (len > buf_len) len = buf_len;
+	SGS_Slope_fills[o->slope](buf, len, o->v0, o->vt, *pos, time);
+	if ((o->flags & SGS_SLP_SLOPE_RATIO) != 0) {
+		for (uint32_t i = 0; i < len; ++i)
+			buf[i] *= mulbuf[i];
+	}
+	*pos += len;
+	if (*pos == time) {
 		/*
-		 * Set the remaining values, if any, using the goal.
+		 * Goal reached; turn into new initial value.
+		 * Fill any remaining buffer values using it.
 		 */
-		fill_hold(buf + len, fill_len, o->goal);
+		o->v0 = o->vt;
+		o->flags &= ~(SGS_SLP_SLOPE | SGS_SLP_SLOPE_RATIO);
+		fill_state(o, buf, len, buf_len, mulbuf);
 		return false;
 	}
 	return true;
