@@ -1,5 +1,5 @@
 /* sgensys: Pointer list module.
- * Copyright (c) 2011-2012, 2018 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2018-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -22,7 +22,7 @@
  * it, unless/until added to.
  */
 typedef struct SGS_PtrList {
-	const void **items;
+	void **items;
 	size_t count;
 	size_t old_count;
 	size_t asize;
@@ -37,16 +37,16 @@ typedef struct SGS_PtrList {
 #define SGS_PtrList_ITEMS(o) \
 	((o)->count > 1 ? \
 		(o)->items : \
-		((const void**) &(o)->items))
+		((void**) &(o)->items))
 
 /**
  * Get the item \p i.
  */
 #define SGS_PtrList_GET(o, i) \
-	((const void*) SGS_PtrList_ITEMS(o)[i])
+	((void*) SGS_PtrList_ITEMS(o)[i])
 
-bool SGS_PtrList_add(SGS_PtrList *restrict o, const void *restrict item);
+bool SGS_PtrList_add(SGS_PtrList *restrict o, void *restrict item);
 void SGS_PtrList_clear(SGS_PtrList *restrict o);
-bool SGS_PtrList_memdup(SGS_PtrList *restrict o, const void ***restrict dst);
+bool SGS_PtrList_memdup(SGS_PtrList *restrict o, void ***restrict dst);
 void SGS_PtrList_soft_copy(SGS_PtrList *restrict dst,
 		const SGS_PtrList *restrict src);

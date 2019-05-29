@@ -70,10 +70,26 @@ typedef struct SGS_Osc {
  */
 static inline float SGS_Osc_run(SGS_Osc *restrict o,
 		const float *restrict lut, double coeff,
-		float freq, int16_t pm_s16) {
-	uint32_t phase = o->phase + (pm_s16 << 16);
+		float freq, int32_t pm_s32) {
+	uint32_t phase = o->phase + pm_s32;
 	float s = SGS_Wave_get_lerp(lut, phase);
 	uint32_t phase_inc = lrint(coeff * freq);
 	o->phase += phase_inc;
 	return s;
 }
+
+void SGS_Osc_block_add(SGS_Osc *restrict o,
+		const float *restrict lut, double coeff,
+		float *restrict buf, size_t buf_len,
+		size_t op_num,
+		const float *restrict freq,
+		const float *restrict amp,
+		const float *restrict pm_f);
+
+void SGS_Osc_block_mul(SGS_Osc *restrict o,
+		const float *restrict lut, double coeff,
+		float *restrict buf, size_t buf_len,
+		size_t op_num,
+		const float *restrict freq,
+		const float *restrict amp,
+		const float *restrict pm_f);
