@@ -77,7 +77,7 @@ static bool SGS_fini_Renderer(SGS_Renderer *restrict o) {
 
 /*
  * Produce audio for program \p prg, optionally sending it
- * to a given audio device and/or WAV file.
+ * to the audio device and/or WAV file.
  *
  * \return true unless error occurred
  */
@@ -88,6 +88,8 @@ static bool SGS_Renderer_run(SGS_Renderer *restrict o,
 	size_t len;
 	bool error = false;
 	bool run;
+	use_audiodev = use_audiodev && (o->ad != NULL);
+	use_wavfile = use_wavfile && (o->wf != NULL);
 	do {
 		run = SGS_Generator_run(gen, o->buf, o->ch_len, &len);
 		if (use_audiodev && !SGS_AudioDev_write(o->ad, o->buf, len)) {
@@ -142,7 +144,7 @@ bool SGS_render(const SGS_PtrList *restrict prg_objs, uint32_t srate,
 			(const SGS_Program**) SGS_PtrList_ITEMS(prg_objs);
 		for (size_t i = 0; i < prg_objs->count; ++i) {
 			if (!SGS_Renderer_run(&re, prgs[i], srate,
-						re.ad != NULL, re.wf != NULL))
+						true, true))
 				status = false;
 		}
 	}

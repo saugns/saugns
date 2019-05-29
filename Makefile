@@ -21,6 +21,7 @@ OBJ=\
 	slope.o \
 	wave.o \
 	renderer.o \
+	renderer/osc.o \
 	renderer/generator.o \
 	audiodev.o \
 	wavfile.o \
@@ -100,7 +101,7 @@ builder/scanner.o: builder/scanner.c builder/scanner.h builder/file.h builder/sy
 builder/symtab.o: builder/symtab.c builder/symtab.h mempool.h common.h
 	$(CC) -c $(CFLAGS) builder/symtab.c -o builder/symtab.o
 
-mempool.o: mempool.c mempool.h common.h
+mempool.o: mempool.c mempool.h arrtype.h common.h
 	$(CC) -c $(CFLAGS) mempool.c
 
 ptrlist.o: ptrlist.c ptrlist.h common.h
@@ -111,6 +112,9 @@ renderer.o: renderer.c sgensys.h renderer/generator.h ptrlist.h program.h slope.
 
 renderer/generator.o: renderer/generator.c renderer/generator.h renderer/osc.h program.h slope.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) renderer/generator.c -o renderer/generator.o
+
+renderer/osc.o: renderer/osc.c renderer/osc.h wave.h math.h common.h
+	$(CC) -c $(CFLAGS) renderer/osc.c -o renderer/osc.o
 
 sgensys.o: sgensys.c sgensys.h ptrlist.h program.h slope.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) sgensys.c
