@@ -16,8 +16,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define DEFAULT_SRATE 44100
-
 /*
  * Print command line usage instructions.
  */
@@ -30,7 +28,7 @@ static void print_usage(bool by_arg) {
 "\n"
 "  -a \tAudible; always enable audio device output.\n"
 "  -m \tMuted; always disable audio device output.\n"
-"  -r \tSample rate in Hz (default 44100);\n"
+"  -r \tSample rate in Hz (default "SGS_STREXP(SGS_DEFAULT_SRATE)");\n"
 "     \tif unsupported for audio device, warns and prints rate used instead.\n"
 "  -o \tWrite a 16-bit PCM WAV file, always using the sample rate requested;\n"
 "     \tdisables audio device output by default.\n"
@@ -232,7 +230,7 @@ int main(int argc, char **restrict argv) {
 	SGS_PtrList prg_objs = (SGS_PtrList){0};
 	const char *wav_path = NULL;
 	uint32_t options = 0;
-	uint32_t srate = DEFAULT_SRATE;
+	uint32_t srate = SGS_DEFAULT_SRATE;
 	if (!parse_args(argc, argv, &options, &script_args, &wav_path,
 			&srate))
 		return 0;
