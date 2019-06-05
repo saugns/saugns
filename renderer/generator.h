@@ -12,13 +12,13 @@
  */
 
 #pragma once
-#include "program.h"
+#include "../program.h"
 
-struct SGSGenerator;
-typedef struct SGSGenerator SGSGenerator;
+struct SGS_Generator;
+typedef struct SGS_Generator SGS_Generator;
 
-SGSGenerator* SGS_create_generator(SGSProgram *prg, uint32_t srate);
-void SGS_destroy_generator(SGSGenerator *o);
+SGS_Generator* SGS_create_Generator(SGS_Program *prg, uint32_t srate);
+void SGS_destroy_Generator(SGS_Generator *o);
 
-bool SGS_generator_run(SGSGenerator *o, int16_t *buf, size_t buf_len,
+bool SGS_Generator_run(SGS_Generator *o, int16_t *buf, size_t buf_len,
                        size_t *gen_len);

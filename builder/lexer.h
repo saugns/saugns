@@ -65,20 +65,20 @@ enum {
 	SGS_T_TILDE          = SGS_T_1CT('~'),
 };
 
-typedef struct SGSToken {
+typedef struct SGS_ScriptToken {
 	int32_t type;
 	union {
 		const char *id;
 	} data;
-} SGSToken;
+} SGS_ScriptToken;
 
-struct SGSLexer;
-typedef struct SGSLexer SGSLexer;
+struct SGS_Lexer;
+typedef struct SGS_Lexer SGS_Lexer;
 
-SGSLexer *SGS_create_lexer(const char *filename, SGSSymtab *symtab);
-void SGS_destroy_lexer(SGSLexer *o);
+SGS_Lexer *SGS_create_Lexer(const char *filename, SGS_SymTab *symtab);
+void SGS_destroy_Lexer(SGS_Lexer *o);
 
-SGSToken *SGS_get_token(SGSLexer *o);
+SGS_ScriptToken *SGS_Lexer_get_token(SGS_Lexer *o);
 
-void SGS_lexer_warning(SGSLexer *o, const char *fmt, ...);
-void SGS_lexer_error(SGSLexer *o, const char *fmt, ...);
+void SGS_Lexer_warning(SGS_Lexer *o, const char *fmt, ...);
+void SGS_Lexer_error(SGS_Lexer *o, const char *fmt, ...);
