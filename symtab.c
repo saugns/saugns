@@ -33,8 +33,8 @@ typedef struct StrEntry {
 #define GET_STRING_ENTRY_SIZE(str_len) \
 	(offsetof(StrEntry, str) + (str_len))
 
-struct SGSSymtab {
-	SGSMempool *malc;
+struct SGS_Symtab {
+	SGS_Mempool *malc;
 	StrEntry **strtab;
 	size_t strtab_count;
 	size_t strtab_alloc;
@@ -45,8 +45,8 @@ struct SGSSymtab {
  *
  * \return instance, or NULL on allocation failure
  */
-SGSSymtab *SGS_create_Symtab(void) {
-	SGSSymtab *o = calloc(1, sizeof(SGSSymtab));
+SGS_Symtab *SGS_create_Symtab(void) {
+	SGS_Symtab *o = calloc(1, sizeof(SGS_Symtab));
 	if (o == NULL) return NULL;
 	o->malc = SGS_create_Mempool(0);
 	if (o->malc == NULL) {
@@ -59,7 +59,7 @@ SGSSymtab *SGS_create_Symtab(void) {
 /**
  * Destroy instance.
  */
-void SGS_destroy_Symtab(SGSSymtab *o) {
+void SGS_destroy_Symtab(SGS_Symtab *o) {
 #if SGS_HASHTAB_STATS
 	printf("collision count: %zd\n", collision_count);
 #endif
@@ -73,7 +73,7 @@ void SGS_destroy_Symtab(SGSSymtab *o) {
  *
  * \return hash
  */
-static size_t hash_string(SGSSymtab *o,
+static size_t hash_string(SGS_Symtab *o,
 		const char *str, size_t len) {
 	size_t i;
 	size_t hash;
@@ -94,7 +94,7 @@ static size_t hash_string(SGSSymtab *o,
  *
  * \return true, or false on allocation failure
  */
-static bool extend_strtab(SGSSymtab *o) {
+static bool extend_strtab(SGS_Symtab *o) {
 	StrEntry **old_strtab = o->strtab;
 	size_t old_strtab_alloc = o->strtab_alloc;
 	size_t i;
@@ -137,7 +137,7 @@ static bool extend_strtab(SGSSymtab *o) {
  *
  * \return StrEntry, or NULL if none
  */
-static StrEntry *unique_entry(SGSSymtab *o,
+static StrEntry *unique_entry(SGS_Symtab *o,
 		const void *str, size_t len) {
 	size_t hash;
 	StrEntry *entry;
@@ -158,7 +158,7 @@ static StrEntry *unique_entry(SGSSymtab *o,
 	++collision_count;
 #endif
 ADD_ENTRY:
-	entry = SGSMempool_alloc(o->malc, GET_STRING_ENTRY_SIZE(len + 1));
+	entry = SGS_Mempool_alloc(o->malc, GET_STRING_ENTRY_SIZE(len + 1));
 	if (entry == NULL) return NULL;
 	entry->prev = o->strtab[hash];
 	o->strtab[hash] = entry;
@@ -176,7 +176,7 @@ ADD_ENTRY:
  *
  * \return unique copy of \p str for instance, or NULL on allocation failure
  */
-const void *SGSSymtab_pool_str(SGSSymtab *o,
+const void *SGS_Symtab_pool_str(SGS_Symtab *o,
 		const void *str, size_t len) {
 	StrEntry *entry = unique_entry(o, str, len);
 	return (entry) ? entry->str : NULL;
@@ -187,7 +187,7 @@ const void *SGSSymtab_pool_str(SGSSymtab *o,
  *
  * \return value, or NULL if none
  */
-void *SGSSymtab_get(SGSSymtab *o,
+void *SGS_Symtab_get(SGS_Symtab *o,
 		const void *key, size_t len) {
 	StrEntry *entry;
 	entry = unique_entry(o, key, len);
@@ -200,7 +200,7 @@ void *SGSSymtab_get(SGSSymtab *o,
  *
  * \return previous value, or NULL if none
  */
-void *SGSSymtab_set(SGSSymtab *o,
+void *SGS_Symtab_set(SGS_Symtab *o,
 		const void *key, size_t len, void *value) {
 	StrEntry *entry;
 	entry = unique_entry(o, key, len);
