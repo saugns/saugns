@@ -12,7 +12,7 @@
  */
 
 #include "lexer.h"
-#include "math.h"
+#include "../math.h"
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
@@ -22,32 +22,32 @@
 
 #define STRING_MAX_LEN 1024
 
-struct SGSLexer {
+struct SGS_Lexer {
 	uint8_t buf[BUF_LEN];
 	size_t read_pos;
 	size_t fill_pos;
 	uint8_t *read_exception;
 	FILE *file;
 	const char *filename;
-	SGSSymtab *symtab;
+	SGS_SymTab *symtab;
 	uint32_t line_num, char_num;
-	SGSToken token;
+	SGS_ScriptToken token;
 	uint8_t string[STRING_MAX_LEN];
 };
 
 /**
- * Create SGSLexer for the given file and using the given symbol
+ * Create SGS_Lexer for the given file and using the given symbol
  * table.
  *
  * \return instance, or NULL on failure.
  */
-SGSLexer *SGS_create_lexer(const char *filename, SGSSymtab *symtab) {
-	SGSLexer *o;
+SGS_Lexer *SGS_create_Lexer(const char *filename, SGS_SymTab *symtab) {
+	SGS_Lexer *o;
 	if (symtab == NULL) return NULL;
 	FILE *file = fopen(filename, "rb");
 	if (file == NULL) return NULL;
 
-	o = calloc(1, sizeof(SGSLexer));
+	o = calloc(1, sizeof(SGS_Lexer));
 	if (o == NULL) return NULL;
 	o->file = file;
 	o->filename = filename;
@@ -56,10 +56,10 @@ SGSLexer *SGS_create_lexer(const char *filename, SGSSymtab *symtab) {
 }
 
 /**
- * Destroy instance, also closing the file for which the SGSLexer
+ * Destroy instance, also closing the file for which the SGS_Lexer
  * was made.
  */
-void SGS_destroy_lexer(SGSLexer *o) {
+void SGS_destroy_Lexer(SGS_Lexer *o) {
 	if (o == NULL) return;
 	fclose(o->file);
 	free(o);
@@ -113,7 +113,7 @@ enum {
  *
  * \return number of characters read.
  */
-static size_t read_fill_bufarea(SGSLexer *o) {
+static size_t read_fill_bufarea(SGS_Lexer *o) {
 	size_t read;
 	/*
 	 * Read a buffer area's worth of data from the file.
@@ -199,7 +199,7 @@ enum {
 	PRINT_FILE_INFO = 1<<0
 };
 
-static void print_stderr(SGSLexer *o, uint32_t options, const char *prefix,
+static void print_stderr(SGS_Lexer *o, uint32_t options, const char *prefix,
 	const char *fmt, va_list ap) {
 	if (options & PRINT_FILE_INFO) {
 		fprintf(stderr, "%s:%d:%d: ",
@@ -215,7 +215,7 @@ static void print_stderr(SGSLexer *o, uint32_t options, const char *prefix,
 /**
  * Print warning message including file name and current position.
  */
-void SGS_lexer_warning(SGSLexer *o, const char *fmt, ...) {
+void SGS_Lexer_warning(SGS_Lexer *o, const char *fmt, ...) {
 	va_list ap;
 	va_start(ap, fmt);
 	print_stderr(o, PRINT_FILE_INFO, "warning", fmt, ap);
@@ -225,7 +225,7 @@ void SGS_lexer_warning(SGSLexer *o, const char *fmt, ...) {
 /**
  * Print error message including file name and current position.
  */
-void SGS_lexer_error(SGSLexer *o, const char *fmt, ...) {
+void SGS_Lexer_error(SGS_Lexer *o, const char *fmt, ...) {
 	va_list ap;
 	va_start(ap, fmt);
 	print_stderr(o, PRINT_FILE_INFO, "error", fmt, ap);
@@ -254,25 +254,25 @@ void SGS_lexer_error(SGSLexer *o, const char *fmt, ...) {
 #define IS_IDHEAD(c) IS_ALPHA(c)
 #define IS_IDTAIL(c) (IS_ALNUM(c) || (c) == '_')
 
-static void handle_unknown_or_end(SGSLexer *o, uint8_t c) {
-	SGSToken *t = &o->token;
+static void handle_unknown_or_end(SGS_Lexer *o, uint8_t c) {
+	SGS_ScriptToken *t = &o->token;
 	if (READ_EXCEPTION(o)) {
 		if (c == READ_EOF) {
 			t->type = SGS_T_EOF;
 			return;
 		} else {
 			t->type = SGS_T_ERROR;
-			SGS_lexer_error(o, "file reading failed");
+			SGS_Lexer_error(o, "file reading failed");
 			return;
 		}
 	}
 	t->type = SGS_T_INVALID;
 #if !SGS_LEXER_QUIET
-	SGS_lexer_warning(o, "invalid character (value 0x%hhx)", c);
+	SGS_Lexer_warning(o, "invalid character (value 0x%hhx)", c);
 #endif
 }
 
-static uint8_t handle_blanks(SGSLexer *o, uint8_t c) {
+static uint8_t handle_blanks(SGS_Lexer *o, uint8_t c) {
 	do {
 		++o->char_num;
 		c = READ_GETC(o);
@@ -280,7 +280,7 @@ static uint8_t handle_blanks(SGSLexer *o, uint8_t c) {
 	return c;
 }
 
-static uint8_t handle_linebreaks(SGSLexer *o, uint8_t c) {
+static uint8_t handle_linebreaks(SGS_Lexer *o, uint8_t c) {
 	do {
 		uint8_t nl, nc;
 
@@ -298,7 +298,7 @@ static uint8_t handle_linebreaks(SGSLexer *o, uint8_t c) {
 	return c;
 }
 
-static uint8_t handle_line_comment(SGSLexer *o) {
+static uint8_t handle_line_comment(SGS_Lexer *o) {
 	uint8_t c;
 	do {
 		c = READ_GETC(o);
@@ -306,12 +306,12 @@ static uint8_t handle_line_comment(SGSLexer *o) {
 	return handle_linebreaks(o, c);
 }
 
-static void handle_block_comment(SGSLexer *o, uint8_t c) {
-	SGS_lexer_warning(o, "cannot yet handle comment marked by '%c'", c);
+static void handle_block_comment(SGS_Lexer *o, uint8_t c) {
+	SGS_Lexer_warning(o, "cannot yet handle comment marked by '%c'", c);
 }
 
-static void handle_numeric_value(SGSLexer *o, uint8_t first_digit) {
-	SGSToken *t = &o->token;
+static void handle_numeric_value(SGS_Lexer *o, uint8_t first_digit) {
+	SGS_ScriptToken *t = &o->token;
 	uint32_t c = first_digit;
 	uint32_t i = 0;
 	do {
@@ -329,8 +329,8 @@ static void handle_numeric_value(SGSLexer *o, uint8_t first_digit) {
 	READ_UNGETC(o);
 }
 
-static void handle_identifier(SGSLexer *o, uint8_t id_head) {
-	SGSToken *t = &o->token;
+static void handle_identifier(SGS_Lexer *o, uint8_t id_head) {
+	SGS_ScriptToken *t = &o->token;
 	const char *pool_str;
 	uint8_t c = id_head;
 	uint32_t i = 0;
@@ -341,14 +341,14 @@ static void handle_identifier(SGSLexer *o, uint8_t id_head) {
 	if (i == (STRING_MAX_LEN - 1)) {
 		o->string[i] = '\0';
 		// TODO: warn and handle too-long-string
-		SGS_lexer_error(o, "cannot handle string longer than %d characters", STRING_MAX_LEN);
+		SGS_Lexer_error(o, "cannot handle string longer than %d characters", STRING_MAX_LEN);
 	} else { /* string ended gracefully */
 		++i;
 		o->string[i] = '\0';
 	}
-	pool_str = SGS_symtab_pool_str(o->symtab, (const char*)o->string, i);
+	pool_str = SGS_SymTab_pool_str(o->symtab, (const char*)o->string, i);
 	if (pool_str == NULL) {
-		SGS_lexer_error(o, "failed to register string '%s'", o->string);
+		SGS_Lexer_error(o, "failed to register string '%s'", o->string);
 	}
 	t->type = SGS_T_ID_STR;
 	t->data.id = pool_str;
@@ -358,17 +358,17 @@ static void handle_identifier(SGSLexer *o, uint8_t id_head) {
 /**
  * Return the next token from the current file. The token is overwritten on
  * each call, so it must be copied before a new call if it is to be preserved.
- * Memory for the token is handled by the SGSLexer instance.
+ * Memory for the token is handled by the SGS_Lexer instance.
  *
  * Upon end of file, the SGS_T_EOF token is returned; upon any file-reading
  * error, the SGS_T_ERROR token is returned.
  *
- * See the SGSToken type and the tokens defined in lexer.h for more
+ * See the SGS_ScriptToken type and the tokens defined in lexer.h for more
  * information.
  * \return the address of the current token
  */
-SGSToken *SGS_get_token(SGSLexer *o) {
-	SGSToken *t = &o->token;
+SGS_ScriptToken *SGS_Lexer_get_token(SGS_Lexer *o) {
+	SGS_ScriptToken *t = &o->token;
 	uint8_t c;
 	c = READ_GETC(o);
 TEST_1STCHAR:
