@@ -174,7 +174,7 @@ static void BlockArr_copy_up_one(BlockArr *o,
 }
 #endif
 
-struct SGSMempool {
+struct SGS_Mempool {
 	BlockArr blocks;
 	size_t block_size;
 };
@@ -192,8 +192,8 @@ struct SGSMempool {
  *
  * \return instance, or NULL on allocation failure
  */
-SGSMempool *SGS_create_Mempool(size_t block_size) {
-	SGSMempool *o = calloc(1, sizeof(SGSMempool));
+SGS_Mempool *SGS_create_Mempool(size_t block_size) {
+	SGS_Mempool *o = calloc(1, sizeof(SGS_Mempool));
 	if (!o)
 		return NULL;
 	o->block_size = (block_size > 0) ?
@@ -205,7 +205,7 @@ SGSMempool *SGS_create_Mempool(size_t block_size) {
 /**
  * Destroy instance.
  */
-void SGS_destroy_Mempool(SGSMempool *o) {
+void SGS_destroy_Mempool(SGS_Mempool *o) {
 	if (!o)
 		return;
 	BlockArr_clear(&o->blocks);
@@ -218,7 +218,7 @@ void SGS_destroy_Mempool(SGSMempool *o) {
  *
  * \return allocated memory, or NULL on allocation failure
  */
-void *SGSMempool_alloc(SGSMempool *o, size_t size) {
+void *SGS_Mempool_alloc(SGS_Mempool *o, size_t size) {
 #if !SGS_MEM_DEBUG
 	size_t i = o->blocks.count;
 	void *mem;
@@ -279,9 +279,9 @@ void *SGSMempool_alloc(SGSMempool *o, size_t size) {
  *
  * \return allocated memory, or NULL on allocation failure
  */
-void *SGSMempool_memdup(SGSMempool *o,
+void *SGS_Mempool_memdup(SGS_Mempool *o,
 		const void *src, size_t size) {
-	void *mem = SGSMempool_alloc(o, size);
+	void *mem = SGS_Mempool_alloc(o, size);
 	if (!mem)
 		return NULL;
 	if (src != NULL)
