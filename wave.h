@@ -12,18 +12,18 @@
  */
 
 #pragma once
-#include "sgensys.h"
+#include "common.h"
 
-#define SGSWave_LENBITS 11
-#define SGSWave_LEN     (1<<SGSWave_LENBITS) /* 2048 */
-#define SGSWave_LENMASK (SGSWave_LEN - 1)
+#define SGS_Wave_LENBITS 11
+#define SGS_Wave_LEN     (1<<SGS_Wave_LENBITS) /* 2048 */
+#define SGS_Wave_LENMASK (SGS_Wave_LEN - 1)
 
-#define SGSWave_MAXVAL ((1<<15) - 1)
-#define SGSWave_MINVAL (-SGSWave_MAXVAL)
+#define SGS_Wave_MAXVAL ((1<<15) - 1)
+#define SGS_Wave_MINVAL (-SGS_Wave_MAXVAL)
 
-#define SGSWave_SCALEBITS (32-SGSWave_LENBITS)
-#define SGSWave_SCALE     (1<<SGSWave_SCALEBITS)
-#define SGSWave_SCALEMASK (SGSWave_SCALE - 1)
+#define SGS_Wave_SCALEBITS (32-SGS_Wave_LENBITS)
+#define SGS_Wave_SCALE     (1<<SGS_Wave_SCALEBITS)
+#define SGS_Wave_SCALEMASK (SGS_Wave_SCALE - 1)
 
 /**
  * Wave types.
@@ -42,17 +42,17 @@ enum {
 };
 
 /** LUTs for wave types. */
-extern int16_t SGSWave_luts[SGS_WAVE_TYPES][SGSWave_LEN];
+extern int16_t SGS_Wave_luts[SGS_WAVE_TYPES][SGS_Wave_LEN];
 
 /** Names of wave types, with an extra NULL pointer at the end. */
-extern const char *const SGSWave_names[SGS_WAVE_TYPES + 1];
+extern const char *const SGS_Wave_names[SGS_WAVE_TYPES + 1];
 
 /**
  * Turn 32-bit unsigned phase value into LUT index.
  */
-#define SGSWave_INDEX(phase) \
-	(((uint32_t)(phase)) >> SGSWave_SCALEBITS)
+#define SGS_Wave_INDEX(phase) \
+	(((uint32_t)(phase)) >> SGS_Wave_SCALEBITS)
 
 extern void SGS_global_init_Wave(void);
 
-extern void SGSWave_print(uint8_t id);
+extern void SGS_Wave_print(uint8_t id);

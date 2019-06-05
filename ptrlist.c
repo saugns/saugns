@@ -22,7 +22,7 @@
  *
  * \return true unless allocation failed
  */
-bool SGSPtrList_add(SGSPtrList *o, const void *item) {
+bool SGS_PtrList_add(SGS_PtrList *o, const void *item) {
 	if (!o->asize) {
 		if (o->count == 0) {
 			o->items = (const void**) item;
@@ -70,7 +70,7 @@ bool SGSPtrList_add(SGSPtrList *o, const void *item) {
 /**
  * Clear the given list.
  */
-void SGSPtrList_clear(SGSPtrList *o) {
+void SGS_PtrList_clear(SGS_PtrList *o) {
 	if (o->count > o->old_count && o->asize > 0) {
 		free(o->items);
 	}
@@ -90,18 +90,17 @@ void SGSPtrList_clear(SGSPtrList *o) {
  *
  * \return true unless allocation failed
  */
-bool SGSPtrList_memdup(SGSPtrList *o, const void ***dst) {
+bool SGS_PtrList_memdup(SGS_PtrList *o, const void ***dst) {
 	if (!o->count) {
 		*dst = NULL;
 		return true;
 	}
 	size_t size = o->count * sizeof(const void*);
-	const void **src = SGSPtrList_ITEMS(o);
-	const void **a = malloc(size);
+	const void **src = SGS_PtrList_ITEMS(o);
+	const void **a = SGS_memdup(src, size);
 	if (!a) {
 		return false;
 	}
-	memcpy(a, src, size);
 	*dst = a;
 	return true;
 }
@@ -121,8 +120,8 @@ bool SGSPtrList_memdup(SGSPtrList *o, const void ***dst) {
  * through iteration between \a old_count and \a count, all
  * accessing of freed memory is avoided.
  */
-void SGSPtrList_soft_copy(SGSPtrList *dst, const SGSPtrList *src) {
-	SGSPtrList_clear(dst);
+void SGS_PtrList_soft_copy(SGS_PtrList *dst, const SGS_PtrList *src) {
+	SGS_PtrList_clear(dst);
 	dst->items = src->items;
 	dst->count = src->count;
 	dst->old_count = src->count;
