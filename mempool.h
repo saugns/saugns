@@ -11,12 +11,12 @@
  */
 
 #pragma once
-#include "sgensys.h"
+#include "common.h"
 
-struct SGSMemPool;
-typedef struct SGSMemPool SGSMemPool;
+struct SGS_MemPool;
+typedef struct SGS_MemPool SGS_MemPool;
 
-SGSMemPool *SGS_create_mempool(size_t block_size);
-void SGS_destroy_mempool(SGSMemPool *o);
+SGS_MemPool *SGS_create_MemPool(size_t block_size);
+void SGS_destroy_MemPool(SGS_MemPool *o);
 
-void *SGS_mempool_alloc(SGSMemPool *o, size_t size);
+void *SGS_MemPool_alloc(SGS_MemPool *o, size_t size);
