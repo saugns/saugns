@@ -12,7 +12,7 @@
  */
 
 #include "symtab.h"
-#include "mempool.h"
+#include "../mempool.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -33,24 +33,24 @@ typedef struct StringEntry {
 #define GET_STRING_ENTRY_SIZE(str_len) \
 	(offsetof(StringEntry, str) + (str_len))
 
-typedef struct SGSSymnode {
+typedef struct SymNode {
   const char *key;
   void *value;
-  struct SGSSymnode *next;
-} SGSSymnode;
+  struct SymNode *next;
+} SymNode;
 
-struct SGSSymtab {
-	SGSMemPool *mempool;
+struct SGS_SymTab {
+	SGS_MemPool *mempool;
 	StringEntry **strtab;
 	uint32_t strtab_count;
 	uint32_t strtab_alloc;
-  SGSSymnode *node;
+  SymNode *node;
 };
 
-SGSSymtab* SGS_create_symtab(void) {
-	SGSSymtab *o = calloc(1, sizeof(SGSSymtab));
+SGS_SymTab* SGS_create_SymTab(void) {
+	SGS_SymTab *o = calloc(1, sizeof(SGS_SymTab));
 	if (o == NULL) return NULL;
-	o->mempool = SGS_create_mempool(0);
+	o->mempool = SGS_create_MemPool(0);
 	if (o->mempool == NULL) {
 		free(o);
 		return NULL;
@@ -58,17 +58,17 @@ SGSSymtab* SGS_create_symtab(void) {
 	return o;
 }
 
-void SGS_destroy_symtab(SGSSymtab *o) {
-  SGSSymnode *n = o->node;
+void SGS_destroy_SymTab(SGS_SymTab *o) {
+  SymNode *n = o->node;
   while (n) {
-    SGSSymnode *nn = n->next;
+    SymNode *nn = n->next;
     free(n);
     n = nn;
   }
 #if SGS_HASHTAB_STATS
   printf("collision count: %d\n", collision_count);
 #endif
-	SGS_destroy_mempool(o->mempool);
+	SGS_destroy_MemPool(o->mempool);
 	free(o->strtab);
 }
 
@@ -76,7 +76,7 @@ void SGS_destroy_symtab(SGSSymtab *o) {
  * Return the hash of the given string \p str of lenght \p len.
  * \return the hash of \p str
  */
-static uint32_t hash_string(SGSSymtab *o, const char *str, uint32_t len) {
+static uint32_t hash_string(SGS_SymTab *o, const char *str, uint32_t len) {
 	uint32_t i;
 	uint32_t hash;
 	/*
@@ -95,7 +95,7 @@ static uint32_t hash_string(SGSSymtab *o, const char *str, uint32_t len) {
  * Increase the size of the hash table for the string pool.
  * \return the new allocation size, or -1 upon failure
  */
-static int32_t extend_strtab(SGSSymtab *o) {
+static int32_t extend_strtab(SGS_SymTab *o) {
 	StringEntry **old_strtab = o->strtab;
 	uint32_t old_strtab_alloc = o->strtab_alloc;
 	uint32_t i;
@@ -138,7 +138,7 @@ static int32_t extend_strtab(SGSSymtab *o) {
  *
  * \return unique copy of \p str for symtab instance, or NULL on failure
  */
-const char *SGS_symtab_pool_str(SGSSymtab *o, const char *str, uint32_t len) {
+const char *SGS_SymTab_pool_str(SGS_SymTab *o, const char *str, uint32_t len) {
 	uint32_t hash;
 	StringEntry *entry;
 	if (str == NULL || len == 0) return NULL;
@@ -156,7 +156,7 @@ const char *SGS_symtab_pool_str(SGSSymtab *o, const char *str, uint32_t len) {
 	/*
 	 * Register string.
 	 */
-	entry = SGS_mempool_alloc(o->mempool, GET_STRING_ENTRY_SIZE(len + 1));
+	entry = SGS_MemPool_alloc(o->mempool, GET_STRING_ENTRY_SIZE(len + 1));
 	if (entry == NULL) return NULL;
 #if SGS_HASHTAB_STATS
 	if (o->strtab[hash] != NULL) {
@@ -173,8 +173,8 @@ const char *SGS_symtab_pool_str(SGSSymtab *o, const char *str, uint32_t len) {
 	return entry->str;
 }
 
-void* SGS_symtab_get(SGSSymtab *o, const char *key) {
-  SGSSymnode *n = o->node;
+void* SGS_SymTab_get(SGS_SymTab *o, const char *key) {
+  SymNode *n = o->node;
   while (n) {
     if (!strcmp(n->key, key))
       return n->value;
@@ -183,18 +183,18 @@ void* SGS_symtab_get(SGSSymtab *o, const char *key) {
   return 0;
 }
 
-static SGSSymnode* SGS_symnode_alloc(const char *key, void *value) {
-  SGSSymnode *o = malloc(sizeof(SGSSymnode));
+static SymNode* SymNode_alloc(const char *key, void *value) {
+  SymNode *o = malloc(sizeof(SymNode));
   o->key = key;
   o->value = value;
   o->next = 0;
   return o;
 }
 
-void* SGS_symtab_set(SGSSymtab *o, const char *key, void *value) {
-  SGSSymnode *n = o->node;
+void* SGS_SymTab_set(SGS_SymTab *o, const char *key, void *value) {
+  SymNode *n = o->node;
   if (!n) {
-    o->node = SGS_symnode_alloc(key, value);
+    o->node = SymNode_alloc(key, value);
     return 0;
   }
   for (;;) {
@@ -207,8 +207,6 @@ void* SGS_symtab_set(SGSSymtab *o, const char *key, void *value) {
       break;
     n = n->next;
   }
-  n->next = SGS_symnode_alloc(key, value);
+  n->next = SymNode_alloc(key, value);
   return 0;
 }
-
-/* EOF */
