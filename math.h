@@ -12,8 +12,7 @@
  */
 
 #pragma once
-#include "sgensys.h"
-
+#include "common.h"
 #include <math.h>
 
 #define SGS_PI       3.14159265358979323846
