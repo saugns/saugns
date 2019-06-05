@@ -12,21 +12,21 @@
  */
 
 #pragma once
-#include "sgensys.h"
+#include "common.h"
 
 /**
  * Pointer list type using an array with resizing.
  *
- * A soft copy (SGSPtrList_soft_copy()) references
+ * A soft copy (SGS_PtrList_soft_copy()) references
  * the original underlying array instead of duplicating
  * it, unless/until added to.
  */
-typedef struct SGSPtrList {
+typedef struct SGS_PtrList {
 	const void **items;
 	size_t count;
 	size_t old_count;
 	size_t asize;
-} SGSPtrList;
+} SGS_PtrList;
 
 /**
  * Get the underlying array holding items.
@@ -34,7 +34,7 @@ typedef struct SGSPtrList {
  * The array pointer is used in place of an array if at most
  * 1 item is held.
  */
-#define SGSPtrList_ITEMS(o) \
+#define SGS_PtrList_ITEMS(o) \
 	((o)->count > 1 ? \
 		(o)->items : \
 		((const void**) &(o)->items))
@@ -42,10 +42,10 @@ typedef struct SGSPtrList {
 /**
  * Get the item \p i.
  */
-#define SGSPtrList_GET(o, i) \
-	((const void*) SGSPtrList_ITEMS(o)[i])
+#define SGS_PtrList_GET(o, i) \
+	((const void*) SGS_PtrList_ITEMS(o)[i])
 
-bool SGSPtrList_add(SGSPtrList *o, const void *item);
-void SGSPtrList_clear(SGSPtrList *o);
-bool SGSPtrList_memdup(SGSPtrList *o, const void ***dst);
-void SGSPtrList_soft_copy(SGSPtrList *dst, const SGSPtrList *src);
+bool SGS_PtrList_add(SGS_PtrList *o, const void *item);
+void SGS_PtrList_clear(SGS_PtrList *o);
+bool SGS_PtrList_memdup(SGS_PtrList *o, const void ***dst);
+void SGS_PtrList_soft_copy(SGS_PtrList *dst, const SGS_PtrList *src);
