@@ -1,7 +1,7 @@
-Osin	f220 t1.0 p*[
-		#Osin r(2/7) r!(5/7){Otri r(2/5)} a0.5
-		Osin r(2/7) a0.5
-		Osin r(1/7) a0.25
+Osin	f220 t1.0 p+[
+		#Osin r(7/2) r!(7/5)@[Otri r(5/2)] a0.5
+		Osin r(7/2) a0.5
+		Osin r(7/1) a0.25
 	]
 ;	f440 t1.5
 ;	f400 t0.5
