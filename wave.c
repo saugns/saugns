@@ -15,11 +15,11 @@
 #include "math.h"
 #include <stdio.h>
 
-#define HALFLEN (SGSWave_LEN>>1)
+#define HALFLEN (SGS_Wave_LEN>>1)
 
-int16_t SGSWave_luts[SGS_WAVE_TYPES][SGSWave_LEN];
+int16_t SGS_Wave_luts[SGS_WAVE_TYPES][SGS_Wave_LEN];
 
-const char *const SGSWave_names[SGS_WAVE_TYPES + 1] = {
+const char *const SGS_Wave_names[SGS_WAVE_TYPES + 1] = {
 	"sin",
 	"sqr",
 	"tri",
@@ -42,17 +42,17 @@ void SGS_global_init_Wave(void) {
 	if (done) return;
 	done = true;
 
-	int16_t *const sin_lut = SGSWave_luts[SGS_WAVE_SIN];
-	int16_t *const sqr_lut = SGSWave_luts[SGS_WAVE_SQR];
-	int16_t *const tri_lut = SGSWave_luts[SGS_WAVE_TRI];
-	int16_t *const saw_lut = SGSWave_luts[SGS_WAVE_SAW];
-	int16_t *const sha_lut = SGSWave_luts[SGS_WAVE_SHA];
-	int16_t *const szh_lut = SGSWave_luts[SGS_WAVE_SZH];
-	int16_t *const shh_lut = SGSWave_luts[SGS_WAVE_SHH];
-	int16_t *const ssr_lut = SGSWave_luts[SGS_WAVE_SSR];
-//	int16_t *const szhhr_lut = SGSWave_luts[SGS_WAVE_SZHHR];
+	int16_t *const sin_lut = SGS_Wave_luts[SGS_WAVE_SIN];
+	int16_t *const sqr_lut = SGS_Wave_luts[SGS_WAVE_SQR];
+	int16_t *const tri_lut = SGS_Wave_luts[SGS_WAVE_TRI];
+	int16_t *const saw_lut = SGS_Wave_luts[SGS_WAVE_SAW];
+	int16_t *const sha_lut = SGS_Wave_luts[SGS_WAVE_SHA];
+	int16_t *const szh_lut = SGS_Wave_luts[SGS_WAVE_SZH];
+	int16_t *const shh_lut = SGS_Wave_luts[SGS_WAVE_SHH];
+	int16_t *const ssr_lut = SGS_Wave_luts[SGS_WAVE_SSR];
+//	int16_t *const szhhr_lut = SGS_Wave_luts[SGS_WAVE_SZHHR];
 	int i;
-	const double val_scale = SGSWave_MAXVAL;
+	const double val_scale = SGS_Wave_MAXVAL;
 	const double len_scale = 1.f / HALFLEN;
 	/*
 	 * First half:
@@ -69,14 +69,14 @@ void SGS_global_init_Wave(void) {
 		const double sin_x = sin(SGS_PI * x);
 		sin_lut[i] = lrint(val_scale * sin_x);
 
-		sqr_lut[i] = SGSWave_MAXVAL;
+		sqr_lut[i] = SGS_Wave_MAXVAL;
 
 		if (i < (HALFLEN>>1))
 			tri_lut[i] = lrint(val_scale * 2.f * x);
 		else
 			tri_lut[i] = lrint(val_scale * 2.f * x_rev);
 
-		saw_lut[i] = lrint(val_scale * x_rev);
+		saw_lut[i] = SGS_Wave_MINVAL + lrint(val_scale * x);
 
 		ssr_lut[i] = lrint(val_scale * sqrt(sin_x));
 	}
@@ -87,14 +87,14 @@ void SGS_global_init_Wave(void) {
 	 *  - saw
 	 *  - ssr
 	 */
-	for (; i < SGSWave_LEN; ++i) {
+	for (; i < SGS_Wave_LEN; ++i) {
 		sin_lut[i] = -sin_lut[i - HALFLEN];
 
-		sqr_lut[i] = -SGSWave_MAXVAL;
+		sqr_lut[i] = -SGS_Wave_MAXVAL;
 
 		tri_lut[i] = -tri_lut[i - HALFLEN];
 
-		saw_lut[i] = -saw_lut[(SGSWave_LEN-1) - i];
+		saw_lut[i] = -saw_lut[(SGS_Wave_LEN-1) - i];
 
 		ssr_lut[i] = -ssr_lut[i - HALFLEN];
 	}
@@ -104,7 +104,7 @@ void SGS_global_init_Wave(void) {
 	 *  - shh
 //	 *  - szhhr
 	 */
-	for (i = 0; i < SGSWave_LEN; ++i) {
+	for (i = 0; i < SGS_Wave_LEN; ++i) {
 		const double x = i * len_scale;
 
 		double sha_x = sin((SGS_PI * x) * 0.5f + SGS_ASIN_1_2);
@@ -122,8 +122,8 @@ void SGS_global_init_Wave(void) {
 //				szh_x;
 //			szhhr_lut[i] = lrint(val_scale * szhhr_x);
 		} else {
-			szh_lut[i] = -SGSWave_MAXVAL;
-//			szhhr_lut[i] = -SGSWave_MAXVAL;
+			szh_lut[i] = -SGS_Wave_MAXVAL;
+//			szhhr_lut[i] = -SGS_Wave_MAXVAL;
 		}
 
 		double shh_x = sin((SGS_PI * x) * 0.25f);
@@ -136,13 +136,13 @@ void SGS_global_init_Wave(void) {
 /**
  * Print an index-value table for a LUT.
  */
-void SGSWave_print(uint8_t id) {
+void SGS_Wave_print(uint8_t id) {
 	if (id >= SGS_WAVE_TYPES) return;
 
-	const int16_t *lut = SGSWave_luts[id];
-	const char *lut_name = SGSWave_names[id];
+	const int16_t *lut = SGS_Wave_luts[id];
+	const char *lut_name = SGS_Wave_names[id];
 	fprintf(stderr, "LUT: %s\n", lut_name);
-	for (int i = 0; i < SGSWave_LEN; ++i) {
+	for (int i = 0; i < SGS_Wave_LEN; ++i) {
 		int v = (int) lut[i];
 		fprintf(stderr, "[\t%d]: \t%d\n", i, v);
 	}

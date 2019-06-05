@@ -106,13 +106,15 @@ Set parameter default value or other option; runs during parsing.
 Usage: "S", followed by zero or more parameters, each with a value.
 
 Parameters:
-	f	Set default O "f" (frequency, Hz) value; defaults to 444.
-	r	Set default O "r" (frequency ratio) value; defaults to 1.
+	f	Set default O "f" (frequency, Hz) value; defaults to 440.
+	r	Set default O "r" (relative frequency) value; defaults to 1.
 	t	Set default O "t" (time, seconds) value; defaults to 1.
-	a	Set multiplier for O "a" (amplitude) value applied to all
-		top-level carriers; defaults to 1.
+	a	Set multiplier for O "a" (amplitude) value, applied when
+		adding a top-level carrier. If used, this disables automatic
+		down-scaling of amplitude by the number of voices, for
+		manual control instead.
 	n	Sets A4 tuning (Hz) for O "f" (frequency, Hz) value using
-		note syntax; defaults to 444.
+		note syntax; defaults to 440.
 
 Operator: O (followed by wave type)
 -----------------------------------
@@ -127,7 +129,9 @@ Wave types:
 	sin	Sine.
 	sqr	Square (naive).
 	tri	Triangle (naive).
-	saw	Saw (naive, decreasing).
+	saw	Saw (naive).
+			Increasing slope; use negative amplitude
+			or frequency for decreasing slope.
 	sha	Half-frequency absolute sine (adjusted).
 			Frequency halved to restore base frequency,
 			peak amplitude centered and doubled, phase
@@ -169,38 +173,48 @@ Parameters:
 			Special non-number literals can also specify time:
 		d	Definite default time can be set using "td", always.
 		i	Implicit time can be set using "ti", for modulators.
-	f	Frequency in Hz.
+	f	Frequency in Hz. Can be negative to flip wave shape timewise.
 			Gradual value adjustment also supported; see section.
 	f![]	A second frequency in Hz may follow the "!", for a range to
-		use with FM by wave or envelope. A list of modulator
-		operators may be specified within "[]"; this list replaces
-		any previous FM modulators set, and may be empty.
+		use with FM by wave or envelope.
+			A list of modulator operators may be specified
+		within "[]"; this list replaces any previous FM modulators
+		set, and may be empty. Each modulator will produce a result
+		in a 0.0 to 1.0 range, i.e. a positive signal, multiplied by
+		its amplitude parameter (defaulting to 1.0).
 			The product of the modulator amplitudes is used to
-		frequency-modulate the carrier(s), be they the final
-		carrier(s) or in turn modulator(s) for one or more other
-		carrier(s).
-	r	(For modulator operators only.) Frequency ratio of carrier
-		to modulator. Keeps frequency that of the carrier divided by
-		the given number. May be used in the form r(n/m) for an
-		n:m ratio.
+		frequency-modulate the carrier(s).
+	r	(For modulator operators only.) Relative frequency, a value
+		which will be multiplied by the carrier frequency to give
+		the frequency to use. For an n:m carrier-modulator frequency
+		ratio, a value of the form (m/n) may be used; e.g., for a
+		3:4 frequency ratio, "r(4/3)".
 			Gradual value adjustment also supported; see section.
-	r![]	(For modulator operators only.) A second frequency ratio,
-		for a range to use with FM by wave or envelope. A list of
-		modulator operators may be specified within "[]"; this list
-		replaces any previous FM modulators set, and may be empty.
+	r![]	(For modulator operators only.) A second relative frequency,
+		for a range to use with FM by wave or envelope.
+			A list of modulator operators may be specified
+		within "[]"; this list replaces any previous FM modulators
+		set, and may be empty. Each modulator will produce a result
+		in a 0.0 to 1.0 range, i.e. a positive signal, multiplied by
+		its amplitude parameter (defaulting to 1.0).
 			The product of the modulator amplitudes is used to
 		frequency-modulate the carrier(s), be they the final
 		carrier(s) or in turn modulator(s) for one or more other
 		carrier(s).
-	a	Amplitude, where 1.0 corresponds to a level of 0dB. (Note
-		that for top-level carriers, the "S a" value is used as a
-		multiplier. Panning will also reduce the output level
-		unless at the extreme left or right.)
+	a	Amplitude, where 1.0 corresponds to a level of 0dB and
+		0.0 is silence. (Note that the final output level is scaled
+		down by the number of voices; alternatively, the S "a" option
+		can be used to set a multiplier used when adding a top-level
+		carrier. Panning will further reduce output level unless
+		fully left or right.) Can be negative to flip sign of result.
 			Gradual value adjustment also supported; see section.
 	a![]	A second amplitude may follow the "!", for a range to use
-		with AM by wave or envelope. A list of modulator operators
-		may be specified within "[]"; this list replaces any
-		previous AM modulators set, and may be empty.
+		with AM by wave or envelope.
+			A list of modulator operators may be specified
+		within "[]"; this list replaces any previous AM modulators
+		set, and may be empty. Each modulator will produce a result
+		in a 0.0 to 1.0 range, i.e. a positive signal, multiplied by
+		its amplitude parameter (defaulting to 1.0).
 			The product of the modulator amplitudes is used to
 		amplitude-modulate the carrier(s), be they the final
 		carrier(s) or in turn modulator(s) for one or more other
@@ -258,8 +272,8 @@ Numerical expressions:
 		^	To the power of (right-associative)
 		* / %	Multiplication, division, remainder
 		+ -	Addition, subtraction
-	Parentheses can also be used to multiply when written after something
-	to multiply with, e.g. "2(3)" means "2*(3)" and gives "6".
+	Parentheses also allow shorthand multiplication (leaving out a
+	"*" between two parts), e.g. "2(3)" and "(2)3" both give "6".
 		Some parameters support named constants specific to that type
 	of value. Such a name can be written instead of a number.
 
@@ -275,30 +289,30 @@ Gradual value adjustment:
 		natural, and which are symmetric to one another.)
 
 Parameters and operator binding:
-	When specifying or referencing operators within {} brackets, any
-	parameters set following the closing '}' will be bound to and apply
+	When specifying or referencing operators within "@[...]", any
+	parameters set following the closing ']' will be bound to and apply
 	to all of them.
 		Significantly, this allows multiple carriers (given within
-	the {}) to be linked to the same modulator(s), whether for FM, PM,
+	the []) to be linked to the same modulator(s), whether for FM, PM,
 	or AM. (Note: Support for this is experimental and incomplete.)
 
 Labels and referencing:
 	Any operator when specified may be prefixed by "'label " in order
 	to define a label for it, where the label is anything followed by
-	whitespace; thereafter the label may be referenced as ":label",
+	whitespace; thereafter the label may be referenced as "@label",
 	allowing future changes to be placed at any later point in the
 	script.
 
 Frequencies as notes:
-		Frequency values may be specified as notes. Currently,
-		justly intoned C-major scale is supported; "S n" sets
-		the A4 tuning (default 444Hz). The value consists of the
-		note (C, D, E, F, G, A or B), optionally given a prefix
-		and/or suffix. The prefix is an optional subnote (c, d,
-		e, f, g, a or b) inside an inner octave (between note and
-		next note). The suffix is an optional s (sharp) or
-		f (flat), and/or, in the last position, an octave number
-		(from 0-10, default 4).
+	Frequency values may be specified as notes. Currently, justly
+	intoned C-major scale is supported; "S n" sets the A4 tuning
+	(default 440 Hz).
+		The value consists of the note (C, D, E, F, G, A or B),
+	optionally given a prefix and/or suffix. The prefix is an optional
+	subnote (c, d, e, f, g, a or b) inside an inner octave (between
+	note and next note). The suffix is an optional s (sharp) or
+	f (flat), and/or, in the last position, an octave number
+	(from 0-10, default 4).
 
 Timing
 ------

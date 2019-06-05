@@ -1,71 +1,90 @@
-CFLAGS=-std=c99 -W -Wall -O2
-CFLAGS_FAST=$(CFLAGS) -ffast-math
+CFLAGS_COMMON=-std=c99 -W -Wall
+CFLAGS=$(CFLAGS_COMMON) -O2
+CFLAGS_FAST=$(CFLAGS_COMMON) -O3 -ffast-math
 LFLAGS=-s -lm
 LFLAGS_LINUX=$(LFLAGS) -lasound
 LFLAGS_SNDIO=$(LFLAGS) -lsndio
 LFLAGS_OSSAUDIO=$(LFLAGS) -lossaudio
-OBJ=audiodev.o \
-    wavfile.o \
+OBJ=common.o \
     ptrlist.o \
+    builder/symtab.o \
+    builder/lexer.o \
+    builder/parser.o \
+    builder/parseconv.o \
+    builder.o \
     mempool.o \
-    symtab.o \
-    lexer.o \
-    parser.o \
-    program.o \
     wave.o \
-    generator.o \
+    renderer.o \
+    renderer/generator.o \
+    audiodev.o \
+    wavfile.o \
     sgensys.o
+BIN=sgensys
 
-all: sgensys
+all: $(BIN)
+
+check: $(BIN)
+	for f in */*.sgs examples/*/*.sgs; do \
+		./$(BIN) -c $$f; \
+	done
 
 clean:
-	rm -f $(OBJ) sgensys
+	rm -f $(OBJ) $(BIN)
 
-sgensys: $(OBJ)
+$(BIN): $(OBJ)
 	@UNAME="`uname -s`"; \
 	if [ $$UNAME = 'Linux' ]; then \
 		echo "Linking for Linux (using ALSA and OSS)."; \
-		$(CC) $(OBJ) $(LFLAGS_LINUX) -o sgensys; \
+		$(CC) $(OBJ) $(LFLAGS_LINUX) -o $(BIN); \
 	elif [ $$UNAME = 'OpenBSD' ]; then \
 		echo "Linking for OpenBSD (using sndio)."; \
-		$(CC) $(OBJ) $(LFLAGS_SNDIO) -o sgensys; \
+		$(CC) $(OBJ) $(LFLAGS_SNDIO) -o $(BIN); \
 	elif [ $$UNAME = 'NetBSD' ]; then \
 		echo "Linking for NetBSD (using OSS)."; \
-		$(CC) $(OBJ) $(LFLAGS_OSSAUDIO) -o sgensys; \
+		$(CC) $(OBJ) $(LFLAGS_OSSAUDIO) -o $(BIN); \
 	else \
 		echo "Linking for UNIX with OSS."; \
-		$(CC) $(OBJ) $(LFLAGS) -o sgensys; \
+		$(CC) $(OBJ) $(LFLAGS) -o $(BIN); \
 	fi
 
-audiodev.o: audiodev.c audiodev/*.c audiodev.h sgensys.h
+audiodev.o: audiodev.c audiodev/*.c audiodev.h common.h
 	$(CC) -c $(CFLAGS) audiodev.c
 
-generator.o: generator.c generator.h program.h wave.h math.h osc.h sgensys.h
-	$(CC) -c $(CFLAGS_FAST) generator.c
+common.o: common.c common.h
+	$(CC) -c $(CFLAGS) common.c
 
-lexer.o: lexer.c lexer.h symtab.h math.h sgensys.h
-	$(CC) -c $(CFLAGS) lexer.c
+builder.o: builder.c sgensys.h builder/lexer.h script.h program.h ptrlist.h wave.h math.h common.h
+	$(CC) -c $(CFLAGS) builder.c
 
-mempool.o: mempool.c mempool.h sgensys.h
+builder/lexer.o: builder/lexer.c builder/lexer.h builder/symtab.h math.h common.h
+	$(CC) -c $(CFLAGS) builder/lexer.c -o builder/lexer.o
+
+builder/parseconv.o: builder/parseconv.c program.h wave.h math.h script.h ptrlist.h common.h
+	$(CC) -c $(CFLAGS) builder/parseconv.c -o builder/parseconv.o
+
+builder/parser.o: builder/parser.c script.h ptrlist.h builder/symtab.h program.h wave.h math.h common.h
+	$(CC) -c $(CFLAGS) builder/parser.c -o builder/parser.o
+
+builder/symtab.o: builder/symtab.c builder/symtab.h mempool.h common.h
+	$(CC) -c $(CFLAGS) builder/symtab.c -o builder/symtab.o
+
+mempool.o: mempool.c mempool.h common.h
 	$(CC) -c $(CFLAGS) mempool.c
 
-parser.o: parser.c parser.h ptrlist.h symtab.h program.h wave.h math.h sgensys.h
-	$(CC) -c $(CFLAGS) parser.c
-
-program.o: program.c program.h wave.h parser.h ptrlist.h sgensys.h
-	$(CC) -c $(CFLAGS) program.c
-
-ptrlist.o: ptrlist.c ptrlist.h sgensys.h
+ptrlist.o: ptrlist.c ptrlist.h common.h
 	$(CC) -c $(CFLAGS) ptrlist.c
 
-sgensys.o: sgensys.c generator.h program.h audiodev.h wavfile.h sgensys.h
+renderer.o: renderer.c sgensys.h renderer/generator.h program.h wave.h math.h audiodev.h wavfile.h common.h
+	$(CC) -c $(CFLAGS_FAST) renderer.c
+
+renderer/generator.o: renderer/generator.c renderer/generator.h renderer/osc.h program.h wave.h math.h common.h
+	$(CC) -c $(CFLAGS_FAST) renderer/generator.c -o renderer/generator.o
+
+sgensys.o: sgensys.c sgensys.h program.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) sgensys.c
 
-symtab.o: symtab.c symtab.h mempool.h sgensys.h
-	$(CC) -c $(CFLAGS) symtab.c
-
-wave.o: wave.c wave.h math.h sgensys.h
+wave.o: wave.c wave.h math.h common.h
 	$(CC) -c $(CFLAGS_FAST) wave.c
 
-wavfile.o: wavfile.c wavfile.h sgensys.h
+wavfile.o: wavfile.c wavfile.h common.h
 	$(CC) -c $(CFLAGS) wavfile.c
