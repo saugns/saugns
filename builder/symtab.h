@@ -12,15 +12,15 @@
  */
 
 #pragma once
-#include "sgensys.h"
+#include "../common.h"
 
-struct SGSSymtab;
-typedef struct SGSSymtab SGSSymtab;
+struct SGS_SymTab;
+typedef struct SGS_SymTab SGS_SymTab;
 
-SGSSymtab* SGS_create_symtab(void);
-void SGS_destroy_symtab(SGSSymtab *o);
+SGS_SymTab* SGS_create_SymTab(void);
+void SGS_destroy_SymTab(SGS_SymTab *o);
 
-const char *SGS_symtab_pool_str(SGSSymtab *o, const char *str, uint32_t len);
+const char *SGS_SymTab_pool_str(SGS_SymTab *o, const char *str, uint32_t len);
 
-void* SGS_symtab_get(SGSSymtab *o, const char *key);
-void* SGS_symtab_set(SGSSymtab *o, const char *key, void *value);
+void* SGS_SymTab_get(SGS_SymTab *o, const char *key);
+void* SGS_SymTab_set(SGS_SymTab *o, const char *key, void *value);
