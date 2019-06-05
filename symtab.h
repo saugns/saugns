@@ -14,16 +14,16 @@
 #pragma once
 #include "sgensys.h"
 
-struct SGSSymtab;
-typedef struct SGSSymtab SGSSymtab;
+struct SGS_Symtab;
+typedef struct SGS_Symtab SGS_Symtab;
 
-SGSSymtab *SGS_create_Symtab(void) SGS__malloclike;
-void SGS_destroy_Symtab(SGSSymtab *o);
+SGS_Symtab *SGS_create_Symtab(void) SGS__malloclike;
+void SGS_destroy_Symtab(SGS_Symtab *o);
 
-const void *SGSSymtab_pool_str(SGSSymtab *o,
+const void *SGS_Symtab_pool_str(SGS_Symtab *o,
 		const void *str, size_t len);
 
-void *SGSSymtab_get(SGSSymtab *o,
+void *SGS_Symtab_get(SGS_Symtab *o,
 		const void *key, size_t len);
-void *SGSSymtab_set(SGSSymtab *o,
+void *SGS_Symtab_set(SGS_Symtab *o,
 		const void *key, size_t len, void *value);

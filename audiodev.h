@@ -14,11 +14,11 @@
 #pragma once
 #include "sgensys.h"
 
-struct SGSAudioDev;
-typedef struct SGSAudioDev SGSAudioDev;
+struct SGS_AudioDev;
+typedef struct SGS_AudioDev SGS_AudioDev;
 
-SGSAudioDev *SGS_open_AudioDev(uint16_t channels, uint32_t *srate);
-void SGS_close_AudioDev(SGSAudioDev *ad);
+SGS_AudioDev *SGS_open_AudioDev(uint16_t channels, uint32_t *srate);
+void SGS_close_AudioDev(SGS_AudioDev *ad);
 
-uint32_t SGSAudioDev_get_srate(const SGSAudioDev *ad);
-bool SGSAudioDev_write(SGSAudioDev *ad, const int16_t *buf, uint32_t samples);
+uint32_t SGS_AudioDev_get_srate(const SGS_AudioDev *ad);
+bool SGS_AudioDev_write(SGS_AudioDev *ad, const int16_t *buf, uint32_t samples);

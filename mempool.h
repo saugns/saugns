@@ -18,12 +18,12 @@
 #pragma once
 #include "sgensys.h"
 
-struct SGSMempool;
-typedef struct SGSMempool SGSMempool;
+struct SGS_Mempool;
+typedef struct SGS_Mempool SGS_Mempool;
 
-SGSMempool *SGS_create_Mempool(size_t block_size) SGS__malloclike;
-void SGS_destroy_Mempool(SGSMempool *o);
+SGS_Mempool *SGS_create_Mempool(size_t block_size) SGS__malloclike;
+void SGS_destroy_Mempool(SGS_Mempool *o);
 
-void *SGSMempool_alloc(SGSMempool *o, size_t size) SGS__malloclike;
-void *SGSMempool_memdup(SGSMempool *o,
+void *SGS_Mempool_alloc(SGS_Mempool *o, size_t size) SGS__malloclike;
+void *SGS_Mempool_memdup(SGS_Mempool *o,
 		const void *src, size_t size) SGS__malloclike;
