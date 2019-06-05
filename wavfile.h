@@ -12,12 +12,12 @@
  */
 
 #pragma once
-#include "sgensys.h"
+#include "common.h"
 
-struct SGSWAVFile;
-typedef struct SGSWAVFile SGSWAVFile;
+struct SGS_WAVFile;
+typedef struct SGS_WAVFile SGS_WAVFile;
 
-SGSWAVFile *SGS_create_wavfile(const char *fpath, uint16_t channels, uint32_t srate);
-int SGS_close_wavfile(SGSWAVFile *o);
+SGS_WAVFile *SGS_create_WAVFile(const char *fpath, uint16_t channels, uint32_t srate);
+int SGS_close_WAVFile(SGS_WAVFile *o);
 
-bool SGS_wavfile_write(SGSWAVFile *o, const int16_t *buf, uint32_t samples);
+bool SGS_WAVFile_write(SGS_WAVFile *o, const int16_t *buf, uint32_t samples);

@@ -1,4 +1,4 @@
-/* sgensys: Parsing data to audio program translator module.
+/* sgensys: Audio program data and functions.
  * Copyright (c) 2011-2013, 2017-2018 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -62,56 +62,72 @@ enum {
 	SGS_VALIT_LOG
 };
 
-typedef struct SGSProgramGraph {
+typedef struct SGS_ProgramGraph {
 	uint32_t opc;
 	int32_t ops[1]; /* sized to opc */
-} SGSProgramGraph;
+} SGS_ProgramGraph;
 
-typedef struct SGSProgramGraphAdjcs {
+typedef struct SGS_ProgramGraphAdjcs {
 	uint32_t fmodc;
 	uint32_t pmodc;
 	uint32_t amodc;
 	uint32_t level;  /* index for buffer used to store result to use if
 	                    node revisited when traversing the graph. */
 	int32_t adjcs[1]; /* sized to total number */
-} SGSProgramGraphAdjcs;
+} SGS_ProgramGraphAdjcs;
 
-typedef struct SGSProgramValit {
+typedef struct SGS_ProgramValit {
 	int32_t time_ms, pos_ms;
 	float goal;
 	uint8_t type;
-} SGSProgramValit;
+} SGS_ProgramValit;
 
-typedef struct SGSProgramVoiceData {
-	const SGSProgramGraph *graph;
+typedef struct SGS_ProgramVoData {
+	const SGS_ProgramGraph *graph;
 	uint8_t attr;
 	float panning;
-	SGSProgramValit valitpanning;
-} SGSProgramVoiceData;
+	SGS_ProgramValit valitpanning;
+} SGS_ProgramVoData;
 
-typedef struct SGSProgramOperatorData {
-	const SGSProgramGraphAdjcs *adjcs;
+typedef struct SGS_ProgramOpData {
+	const SGS_ProgramGraphAdjcs *adjcs;
 	uint32_t operator_id;
-	uint8_t attr, wave;
+	uint8_t attr;
+	uint8_t wave;
 	int32_t time_ms, silence_ms;
 	float freq, dynfreq, phase, amp, dynamp;
-	SGSProgramValit valitfreq, valitamp;
-} SGSProgramOperatorData;
+	SGS_ProgramValit valitfreq, valitamp;
+} SGS_ProgramOpData;
 
-typedef struct SGSProgramEvent {
+typedef struct SGS_ProgramEvent {
 	int32_t wait_ms;
 	uint32_t params;
 	uint32_t voice_id; /* needed for both voice and operator data */
-	const SGSProgramVoiceData *voice;
-	const SGSProgramOperatorData *operator;
-} SGSProgramEvent;
+	const SGS_ProgramVoData *voice;
+	const SGS_ProgramOpData *operator;
+} SGS_ProgramEvent;
 
-typedef struct SGSProgram {
-	const SGSProgramEvent *events;
-	size_t eventc;
-	uint32_t operatorc;
-	uint32_t voicec;
-} SGSProgram;
+/**
+ * Program flags affecting interpretation.
+ */
+enum {
+	SGS_PROG_AMP_DIV_VOICES = 1<<0,
+};
 
-SGSProgram* SGS_open_program(const char *filename);
-void SGS_close_program(SGSProgram *o);
+/**
+ * Main program type. Contains everything needed for interpretation.
+ */
+typedef struct SGS_Program {
+	const SGS_ProgramEvent **events;
+	size_t event_count;
+	uint32_t operator_count;
+	uint16_t voice_count;
+	uint16_t flags;
+	const char *name;
+} SGS_Program;
+
+struct SGS_Script;
+SGS_Program* SGS_build_Program(struct SGS_Script *sd);
+void SGS_discard_Program(SGS_Program *o);
+
+void SGS_Program_print_info(SGS_Program *o);
