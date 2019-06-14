@@ -39,7 +39,7 @@
 /* Sensible to print, for ASCII only. */
 #define IS_VISIBLE(c) ((c) >= '!' && (c) <= '~')
 
-static uint8_t filter_symchar(SGS_File *restrict f SGS__maybe_unused,
+static uint8_t filter_symchar(SGS_File *restrict f sgsMaybeUnused,
                               uint8_t c) {
   return IS_SYMCHAR(c) ? c : 0;
 }
@@ -84,8 +84,8 @@ static void fini_scanner(PScanner *restrict o) {
  * Common warning printing function for script errors; requires that o->c
  * is set to the character where the error was detected.
  */
-static void SGS__noinline scan_warning(PScanner *restrict o,
-                                       const char *restrict str) {
+static void sgsNoinline scan_warning(PScanner *restrict o,
+                                     const char *restrict str) {
   SGS_File *f = o->f;
   uint8_t c = o->c;
   if (IS_VISIBLE(c)) {
@@ -1568,7 +1568,7 @@ static void postparse_passes(SGS_Parser *restrict o) {
  *
  * \return instance or NULL on error preventing parse
  */
-SGS_Script* SGS_load_Script(SGS_File *restrict f) {
+SGS_Script* SGS_read_Script(SGS_File *restrict f) {
   if (!f) return NULL;
 
   SGS_Parser pr;

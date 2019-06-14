@@ -17,7 +17,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define BUF_LEN 256
+#define BUF_LEN 1024
 typedef union Buf {
   int32_t i[BUF_LEN];
   float f[BUF_LEN];
@@ -87,7 +87,7 @@ struct SGS_Generator {
 #define COUNT_BUFS(op_nest_depth) ((1 + (op_nest_depth)) * 4)
 
 static bool alloc_for_program(SGS_Generator *restrict o,
-                              SGS_Program *restrict prg) {
+                              const SGS_Program *restrict prg) {
   size_t i;
 
   i = prg->ev_count;
@@ -121,7 +121,7 @@ ERROR:
 }
 
 static bool convert_program(SGS_Generator *restrict o,
-                            SGS_Program *restrict prg, uint32_t srate) {
+                            const SGS_Program *restrict prg, uint32_t srate) {
   if (!alloc_for_program(o, prg))
     return false;
 
@@ -151,7 +151,7 @@ static bool convert_program(SGS_Generator *restrict o,
 /**
  * Create instance for program \p prg and sample rate \p srate.
  */
-SGS_Generator* SGS_create_Generator(SGS_Program *restrict prg,
+SGS_Generator* SGS_create_Generator(const SGS_Program *restrict prg,
                                     uint32_t srate) {
   SGS_Mempool *mem = SGS_create_Mempool(0);
   if (!mem)

@@ -1,5 +1,5 @@
-/* sgensys: Memory pool module.
- * Copyright (c) 2014, 2018-2020 Joel K. Pettersson
+/* sgensys: WAV file writer module.
+ * Copyright (c) 2011-2012, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -16,14 +16,14 @@
  */
 
 #pragma once
-#include "sgensys.h"
+#include "../sgensys.h"
 
-struct SGS_Mempool;
-typedef struct SGS_Mempool SGS_Mempool;
+struct SGS_WAVFile;
+typedef struct SGS_WAVFile SGS_WAVFile;
 
-SGS_Mempool *SGS_create_Mempool(size_t block_size) sgsMalloclike;
-void SGS_destroy_Mempool(SGS_Mempool *restrict o);
+SGS_WAVFile *SGS_create_WAVFile(const char *restrict fpath,
+		uint16_t channels, uint32_t srate) sgsMalloclike;
+int SGS_close_WAVFile(SGS_WAVFile *restrict o);
 
-void *SGS_Mempool_alloc(SGS_Mempool *restrict o, size_t size) sgsMalloclike;
-void *SGS_Mempool_memdup(SGS_Mempool *restrict o,
-		const void *restrict src, size_t size) sgsMalloclike;
+bool SGS_WAVFile_write(SGS_WAVFile *restrict o,
+		const int16_t *restrict buf, uint32_t samples);
