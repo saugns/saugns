@@ -37,7 +37,7 @@
 /* Visible ASCII character. */
 #define IS_VISIBLE(c) ((c) >= '!' && (c) <= '~')
 
-static uint8_t filter_symchar(SGS_File *restrict o SGS__maybe_unused,
+static uint8_t filter_symchar(SGS_File *restrict o sgsMaybeUnused,
                uint8_t c) {
 	return IS_SYMCHAR(c) ? c : 0;
 }
@@ -203,7 +203,7 @@ static void warning_character(SGS_Lexer *restrict o, uint8_t c) {
 typedef uint8_t (*HandleValue_f)(SGS_Lexer *restrict o, uint8_t c);
 
 static uint8_t handle_invalid(SGS_Lexer *restrict o,
-		uint8_t c SGS__maybe_unused) {
+		uint8_t c sgsMaybeUnused) {
 	SGS_ScriptToken *t = &o->token;
 	t->type = SGS_T_INVALID;
 	if (!SGS_File_AFTER_EOF(o->f)) {
@@ -241,7 +241,7 @@ static uint8_t handle_linebreaks(SGS_Lexer *restrict o, uint8_t c) {
 }
 
 static uint8_t handle_linecomment(SGS_Lexer *restrict o,
-		uint8_t SGS__maybe_unused c) {
+		uint8_t sgsMaybeUnused c) {
 	o->char_num += SGS_File_skipline(o->f);
 	return SGS_File_GETC_NC(o->f);
 }
@@ -259,7 +259,7 @@ static uint8_t handle_special(SGS_Lexer *restrict o, uint8_t c) {
 }
 
 static uint8_t handle_numeric_value(SGS_Lexer *restrict o,
-		uint8_t SGS__maybe_unused c) {
+		uint8_t sgsMaybeUnused c) {
 	SGS_ScriptToken *t = &o->token;
 	double num;
 	size_t read_len;
@@ -271,7 +271,7 @@ static uint8_t handle_numeric_value(SGS_Lexer *restrict o,
 }
 
 static uint8_t handle_identifier(SGS_Lexer *restrict o,
-		uint8_t SGS__maybe_unused c) {
+		uint8_t sgsMaybeUnused c) {
 	SGS_File *f = o->f;
 	SGS_ScriptToken *t = &o->token;
 	size_t len;
