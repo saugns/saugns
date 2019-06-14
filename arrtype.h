@@ -49,36 +49,36 @@ typedef struct Name { \
  * to prefix their names.
  */
 #define sgsArrTypeMethods(Name, ElementType, MethodPrefix) \
-static inline ElementType SGS__maybe_unused \
+static inline ElementType sgsMaybeUnused \
 *MethodPrefix##Name##_add(Name *restrict o, \
 		const ElementType *restrict item) { \
 	return SGS_ArrType_add(o, item, sizeof(ElementType)); \
 } \
-static inline ElementType SGS__maybe_unused \
+static inline ElementType sgsMaybeUnused \
 *MethodPrefix##Name##_drop(Name *restrict o) { \
 	return (o->count > 0) ? &o->a[--o->count] : NULL; \
 } \
-static inline bool SGS__maybe_unused \
+static inline bool sgsMaybeUnused \
 MethodPrefix##Name##_upsize(Name *restrict o, size_t count) { \
 	return SGS_ArrType_upsize(o, count, sizeof(ElementType)); \
 } \
-static inline ElementType SGS__maybe_unused \
+static inline ElementType sgsMaybeUnused \
 *MethodPrefix##Name##_get(Name *restrict o, size_t i) { \
 	return (o->count > i) ? &o->a[i] : NULL; \
 } \
-static inline ElementType SGS__maybe_unused \
+static inline ElementType sgsMaybeUnused \
 *MethodPrefix##Name##_tip(Name *restrict o) { \
 	return (o->count > 0) ? &o->a[o->count - 1] : NULL; \
 } \
-static inline void SGS__maybe_unused \
+static inline void sgsMaybeUnused \
 MethodPrefix##Name##_clear(Name *restrict o) { \
 	SGS_ArrType_clear(o); \
 } \
-static inline bool SGS__maybe_unused \
+static inline bool sgsMaybeUnused \
 MethodPrefix##Name##_memdup(Name *restrict o, ElementType **restrict dst) { \
 	return SGS_ArrType_memdup(o, (void**) dst, sizeof(ElementType)); \
 } \
-static inline bool SGS__maybe_unused \
+static inline bool sgsMaybeUnused \
 MethodPrefix##Name##_mpmemdup(Name *restrict o, ElementType **restrict dst, \
 		struct SGS_Mempool *restrict mempool) { \
 	return SGS_ArrType_mpmemdup(o, (void**) dst, sizeof(ElementType), \

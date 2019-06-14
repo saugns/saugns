@@ -170,8 +170,8 @@ struct SGS_File {
 	uint8_t buf[SGS_FILE_BUFSIZ];
 };
 
-SGS_File *SGS_create_File(void) SGS__malloclike;
-SGS_File *SGS_create_sub_File(SGS_File *restrict parent) SGS__malloclike;
+SGS_File *SGS_create_File(void) sgsMalloclike;
+SGS_File *SGS_create_sub_File(SGS_File *restrict parent) sgsMalloclike;
 SGS_File *SGS_destroy_File(SGS_File *restrict o);
 
 bool SGS_File_fopenrb(SGS_File *restrict o, const char *restrict path);

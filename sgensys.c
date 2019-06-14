@@ -13,35 +13,41 @@
 
 #include "sgensys.h"
 #include "script.h"
+#include "arrtype.h"
 #include "file.h"
 #include "generator.h"
-#include "audiodev.h"
-#include "wavfile.h"
+#include "player/audiodev.h"
+#include "player/wavfile.h"
+#include "math.h"
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 
-#define DEFAULT_SRATE 44100
+struct SGS_ScriptArg {
+	const char *str;
+};
+sgsArrType(SGS_ScriptArgArr, struct SGS_ScriptArg, )
+sgsArrType(SGS_ProgramArr, SGS_Program*, )
 
 /*
  * Print command line usage instructions.
  */
 static void print_usage(bool by_arg) {
 	fputs(
-"Usage: sgensys [-a|-m] [-r srate] [-p] [-o wavfile] [-e] script\n"
-"       sgensys [-c] [-p] [-e] script\n"
+"Usage: sgensys [-a|-m] [-r <srate>] [-p] [-o <wavfile>] [-e] <script>...\n"
+"       sgensys [-c] [-p] [-e] <script>...\n"
 "\n"
 "By default, audio device output is enabled.\n"
 "\n"
 "  -a \tAudible; always enable audio device output.\n"
 "  -m \tMuted; always disable audio device output.\n"
-"  -r \tSample rate in Hz (default 44100);\n"
+"  -r \tSample rate in Hz (default "SGS_STREXP(SGS_DEFAULT_SRATE)");\n"
 "     \tif unsupported for audio device, warns and prints rate used instead.\n"
 "  -o \tWrite a 16-bit PCM WAV file, always using the sample rate requested;\n"
 "     \tdisables audio device output by default.\n"
-"  -e \tEvaluate string instead of file.\n"
-"  -c \tCheck script only, reporting any errors or requested info.\n"
-"  -p \tPrint info for script after loading.\n"
+"  -e \tEvaluate strings instead of files.\n"
+"  -c \tCheck scripts only, reporting any errors or requested info.\n"
+"  -p \tPrint info for scripts after loading.\n"
 "  -h \tPrint this message.\n"
 "  -v \tPrint version.\n",
 	(by_arg) ? stdout : stderr);
@@ -88,21 +94,23 @@ enum {
  * \return true if args valid and script path set
  */
 static bool parse_args(int argc, char **restrict argv,
-		uint32_t *restrict flags, const char **restrict script_arg,
-		uint32_t *restrict srate, const char **restrict wav_path) {
+		uint32_t *restrict flags,
+		SGS_ScriptArgArr *restrict script_args,
+		const char **restrict wav_path,
+		uint32_t *restrict srate) {
 	int i;
 	for (;;) {
 		const char *arg;
 		--argc;
 		++argv;
 		if (argc < 1) {
-			if (!*script_arg) goto INVALID;
+			if (!script_args->count) goto INVALID;
 			break;
 		}
 		arg = *argv;
 		if (*arg != '-') {
-			if (*script_arg) goto INVALID;
-			*script_arg = arg;
+			struct SGS_ScriptArg entry = {arg};
+			SGS_ScriptArgArr_add(script_args, &entry);
 			continue;
 		}
 NEXT_C:
@@ -126,7 +134,7 @@ NEXT_C:
 		case 'h':
 			if (*flags != 0) goto INVALID;
 			print_usage(true);
-			return false;
+			goto CLEAR;
 		case 'm':
 			if ((*flags & (ARG_ENABLE_AUDIO_DEV |
 					ARG_ONLY_COMPILE)) != 0)
@@ -163,16 +171,17 @@ NEXT_C:
 			continue;
 		case 'v':
 			print_version();
-			return false;
+			goto CLEAR;
 		default:
 			goto INVALID;
 		}
 		goto NEXT_C;
 	}
-	return (*script_arg != NULL);
-
+	return (script_args->count != 0);
 INVALID:
 	print_usage(false);
+CLEAR:
+	SGS_ScriptArgArr_clear(script_args);
 	return false;
 }
 
@@ -197,17 +206,18 @@ static SGS_File *open_file(const char *restrict script_arg, bool is_path) {
 	return f;
 }
 
-/**
+/*
  * Create program for the given script file. Invokes the parser.
  *
  * \return instance or NULL on error
  */
-SGS_Program* SGS_build(const char *restrict script_arg, bool is_path) {
+static SGS_Program *build_program(const char *restrict script_arg,
+		bool is_path) {
 	SGS_File *f = open_file(script_arg, is_path);
 	if (!f) return NULL;
 
 	SGS_Program *o = NULL;
-	SGS_Script *sd = SGS_load_Script(f);
+	SGS_Script *sd = SGS_read_Script(f);
 	if (!sd) goto CLOSE;
 	o = SGS_build_Program(sd);
 	SGS_discard_Script(sd);
@@ -217,53 +227,140 @@ CLOSE:
 }
 
 /*
- * Process the given script file.
+ * Load the listed scripts and build inner programs for them,
+ * adding each result (even if NULL) to the program list.
  *
- * \return true unless error occurred
+ * \return number of items successfully processed
  */
-static bool build(const char *restrict script_arg,
-		SGS_Program **restrict prg_out,
-		uint32_t options) {
-	SGS_Program *prg;
-	bool is_path = !(options & ARG_EVAL_STRING);
-	if (!(prg = SGS_build(script_arg, is_path)))
-		return false;
-	if ((options & ARG_PRINT_INFO) != 0)
-		SGS_Program_print_info(prg);
-	if ((options & ARG_ONLY_COMPILE) != 0) {
-		SGS_discard_Program(prg);
-		*prg_out = NULL;
-		return true;
+size_t SGS_read(const SGS_ScriptArgArr *restrict script_args, bool are_paths,
+		SGS_ProgramArr *restrict prg_objs) {
+	size_t built = 0;
+	for (size_t i = 0; i < script_args->count; ++i) {
+		const SGS_Program *prg = build_program(script_args->a[i].str,
+				are_paths);
+		if (prg != NULL) ++built;
+		SGS_ProgramArr_add(prg_objs, &prg);
 	}
+	return built;
+}
 
-	*prg_out = prg;
+/*
+ * Discard the programs in the list, ignoring NULL entries,
+ * and clearing the list.
+ */
+static void discard_programs(SGS_ProgramArr *restrict prg_objs) {
+	for (size_t i = 0; i < prg_objs->count; ++i) {
+		SGS_discard_Program(prg_objs->a[i]);
+	}
+	SGS_ProgramArr_clear(prg_objs);
+}
+
+/*
+ * Process the listed scripts.
+ *
+ * \return true if at least one script succesfully built
+ */
+static bool read(const SGS_ScriptArgArr *restrict script_args,
+		SGS_ProgramArr *restrict prg_objs,
+		uint32_t options) {
+	bool are_paths = !(options & ARG_EVAL_STRING);
+	if (!SGS_read(script_args, are_paths, prg_objs))
+		return false;
+	if ((options & ARG_PRINT_INFO) != 0) {
+		for (size_t i = 0; i < prg_objs->count; ++i) {
+			const SGS_Program *prg = prg_objs->a[i];
+			if (prg != NULL) SGS_Program_print_info(prg);
+		}
+	}
+	if ((options & ARG_ONLY_COMPILE) != 0) {
+		discard_programs(prg_objs);
+	}
 	return true;
 }
 
-#define BUF_SAMPLES 1024
+#define BUF_TIME_MS  256
+#define CH_MIN_LEN   1
 #define NUM_CHANNELS 2
 
-static int16_t audio_buf[BUF_SAMPLES * NUM_CHANNELS];
+typedef struct SGS_Output {
+	SGS_AudioDev *ad;
+	SGS_WAVFile *wf;
+	uint32_t ad_srate;
+	int16_t *buf;
+	size_t buf_len;
+	size_t ch_len;
+} SGS_Output;
 
 /*
- * Produce audio for the given SGS_Program, optionally sending it
- * to a given audio device and/or WAV file.
+ * Set up use of audio device and/or WAV file, and buffer of suitable size.
  *
  * \return true unless error occurred
  */
-static bool produce_audio(SGS_Program *restrict prg, uint32_t srate,
-		SGS_AudioDev *restrict ad, SGS_WAVFile *restrict wf) {
+static bool SGS_init_Output(SGS_Output *restrict o, uint32_t srate,
+		bool use_audiodev, const char *restrict wav_path) {
+	uint32_t ad_srate = srate;
+	uint32_t max_srate = srate;
+	*o = (SGS_Output){0};
+	if (use_audiodev) {
+		o->ad = SGS_open_AudioDev(NUM_CHANNELS, &ad_srate);
+		if (!o->ad)
+			return false;
+		o->ad_srate = ad_srate;
+	}
+	if (wav_path != NULL) {
+		o->wf = SGS_create_WAVFile(wav_path, NUM_CHANNELS, srate);
+		if (!o->wf)
+			return false;
+	}
+	if (ad_srate != srate) {
+		if (!o->wf || ad_srate > srate)
+			max_srate = ad_srate;
+	}
+
+	o->ch_len = SGS_ms_in_samples(BUF_TIME_MS, max_srate, NULL);
+	if (o->ch_len < CH_MIN_LEN) o->ch_len = CH_MIN_LEN;
+	o->buf_len = o->ch_len * NUM_CHANNELS;
+	o->buf = calloc(o->buf_len, sizeof(int16_t));
+	if (!o->buf)
+		return false;
+	return true;
+}
+
+/*
+ * \return true unless error occurred
+ */
+static bool SGS_fini_Output(SGS_Output *restrict o) {
+	free(o->buf);
+	if (o->ad != NULL) SGS_close_AudioDev(o->ad);
+	if (o->wf != NULL)
+		return (SGS_close_WAVFile(o->wf) == 0);
+	return true;
+}
+
+/*
+ * Produce audio for program \p prg, optionally sending it
+ * to the audio device and/or WAV file.
+ *
+ * \return true unless error occurred
+ */
+static bool SGS_Output_run(SGS_Output *restrict o,
+		const SGS_Program *restrict prg, uint32_t srate,
+		bool use_audiodev, bool use_wavfile) {
 	SGS_Generator *gen = SGS_create_Generator(prg, srate);
+	if (!gen)
+		return false;
 	size_t len;
 	bool error = false;
 	bool run;
+	use_audiodev = use_audiodev && (o->ad != NULL);
+	use_wavfile = use_wavfile && (o->wf != NULL);
 	do {
-		run = SGS_Generator_run(gen, audio_buf, BUF_SAMPLES, &len);
-		if (ad && !SGS_AudioDev_write(ad, audio_buf, len)) {
+		run = SGS_Generator_run(gen, o->buf, o->ch_len, &len);
+		if (use_audiodev && !SGS_AudioDev_write(o->ad, o->buf, len)) {
 			error = true;
 			SGS_error(NULL, "audio device write failed");
 		}
-		if (wf && !SGS_WAVFile_write(wf, audio_buf, len)) {
+		if (use_wavfile && !SGS_WAVFile_write(o->wf, o->buf, len)) {
 			error = true;
 			SGS_error(NULL, "WAV file write failed");
 		}
@@ -273,75 +370,88 @@ static bool produce_audio(SGS_Program *restrict prg, uint32_t srate,
 }
 
 /*
- * Run the given program through the audio generator until completion.
+ * Run the listed programs through the audio generator until completion,
+ * ignoring NULL entries.
+ *
  * The output is sent to either none, one, or both of the audio device
  * or a WAV file.
  *
  * \return true unless error occurred
  */
-bool SGS_render(SGS_Program *restrict prg, uint32_t srate,
+bool SGS_play(const SGS_ProgramArr *restrict prg_objs, uint32_t srate,
 		bool use_audiodev, const char *restrict wav_path) {
-	SGS_AudioDev *ad = NULL;
-	uint32_t ad_srate = srate;
-	SGS_WAVFile *wf = NULL;
-	bool status = true;
-	if (use_audiodev) {
-		ad = SGS_open_AudioDev(NUM_CHANNELS, &ad_srate);
-		if (!ad) goto CLEANUP;
-	}
-	if (wav_path) {
-		wf = SGS_create_WAVFile(wav_path, NUM_CHANNELS, srate);
-		if (!wf) goto CLEANUP;
-	}
+	if (!prg_objs->count)
+		return true;
 
-	if (ad && wf && (ad_srate != srate)) {
+	SGS_Output out;
+	bool status = true;
+	if (!SGS_init_Output(&out, srate, use_audiodev, wav_path)) {
+		status = false;
+		goto CLEANUP;
+	}
+	if (out.ad != NULL && out.wf != NULL && (out.ad_srate != srate)) {
 		SGS_warning(NULL,
-			"generating audio twice, using different sample rates");
-		status = produce_audio(prg, ad_srate, ad, NULL);
-		status = status && produce_audio(prg, srate, NULL, wf);
+"generating audio twice, using different sample rates");
+		for (size_t i = 0; i < prg_objs->count; ++i) {
+			const SGS_Program *prg = prg_objs->a[i];
+			if (!prg) continue;
+			if (!SGS_Output_run(&out, prg, out.ad_srate,
+						true, false))
+				status = false;
+			if (!SGS_Output_run(&out, prg, srate,
+						false, true))
+				status = false;
+		}
 	} else {
-		status = produce_audio(prg, ad_srate, ad, wf);
+		if (out.ad != NULL) srate = out.ad_srate;
+		for (size_t i = 0; i < prg_objs->count; ++i) {
+			const SGS_Program *prg = prg_objs->a[i];
+			if (!prg) continue;
+			if (!SGS_Output_run(&out, prg, srate,
+						true, true))
+				status = false;
+		}
 	}
 
 CLEANUP:
-	if (ad) {
-		SGS_close_AudioDev(ad);
-	}
-	if (wf) {
-		status = status && (SGS_close_WAVFile(wf) == 0);
-	}
+	if (!SGS_fini_Output(&out))
+		status = false;
 	return status;
 }
 
 /*
- * Produce results from the given program.
+ * Produce results from the list of programs, ignoring NULL entries.
  *
  * \return true unless error occurred
  */
-static bool render(SGS_Program *restrict prg, uint32_t srate,
-		uint32_t options, const char *restrict wav_path) {
+static bool play(const SGS_ProgramArr *restrict prg_objs,
+		uint32_t srate, uint32_t options,
+		const char *restrict wav_path) {
 	bool use_audiodev = (wav_path != NULL) ?
-			((options & ARG_ENABLE_AUDIO_DEV) != 0) :
-			((options & ARG_DISABLE_AUDIO_DEV) == 0);
-	return SGS_render(prg, srate, use_audiodev, wav_path);
+		((options & ARG_ENABLE_AUDIO_DEV) != 0) :
+		((options & ARG_DISABLE_AUDIO_DEV) == 0);
+	return SGS_play(prg_objs, srate, use_audiodev, wav_path);
 }
 
 /**
  * Main function.
  */
 int main(int argc, char **restrict argv) {
-	const char *script_arg = NULL, *wav_path = NULL;
+	SGS_ScriptArgArr script_args = (SGS_ScriptArgArr){0};
+	SGS_ProgramArr prg_objs = (SGS_ProgramArr){0};
+	const char *wav_path = NULL;
 	uint32_t options = 0;
-	SGS_Program *prg;
-	uint32_t srate = DEFAULT_SRATE;
-
-	if (!parse_args(argc, argv, &options, &script_arg, &srate, &wav_path))
+	uint32_t srate = SGS_DEFAULT_SRATE;
+	if (!parse_args(argc, argv, &options, &script_args, &wav_path,
+			&srate))
 		return 0;
-	if (!build(script_arg, &prg, options))
+	bool error = !read(&script_args, &prg_objs, options);
+	SGS_ScriptArgArr_clear(&script_args);
+	if (error)
 		return 1;
-	if (prg != NULL) {
-		bool error = !render(prg, srate, options, wav_path);
-		SGS_discard_Program(prg);
+	if (prg_objs.count > 0) {
+		error = !play(&prg_objs, srate, options, wav_path);
+		discard_programs(&prg_objs);
 		if (error)
 			return 1;
 	}
