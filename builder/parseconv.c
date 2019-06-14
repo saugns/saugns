@@ -620,7 +620,7 @@ static void print_oplist(const SGS_ProgramOpRef *restrict list,
 /**
  * Print information about program contents. Useful for debugging.
  */
-void SGS_Program_print_info(SGS_Program *restrict o) {
+void SGS_Program_print_info(const SGS_Program *restrict o) {
 	fprintf(stdout,
 		"Program: \"%s\"\n", o->name);
 	fprintf(stdout,
