@@ -17,7 +17,7 @@
 struct SGS_Symtab;
 typedef struct SGS_Symtab SGS_Symtab;
 
-SGS_Symtab *SGS_create_Symtab(void) SGS__malloclike;
+SGS_Symtab *SGS_create_Symtab(void) sgsMalloclike;
 void SGS_destroy_Symtab(SGS_Symtab *restrict o);
 
 const void *SGS_Symtab_pool_str(SGS_Symtab *restrict o,

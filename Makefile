@@ -2,7 +2,9 @@
 CC=cc
 CFLAGS_COMMON=-std=c99 -W -Wall
 CFLAGS=$(CFLAGS_COMMON) -O2
-CFLAGS_FAST=$(CFLAGS_COMMON) -O3 -ffast-math
+CFLAGS_FAST=$(CFLAGS_COMMON) -O3
+CFLAGS_FASTF=$(CFLAGS_COMMON) -O3 -ffast-math
+CFLAGS_SIZE=$(CFLAGS_COMMON) -Os
 LFLAGS=-s -lm
 LFLAGS_LINUX=$(LFLAGS) -lasound
 LFLAGS_SNDIO=$(LFLAGS) -lsndio
@@ -20,8 +22,8 @@ OBJ=\
 	ramp.o \
 	wave.o \
 	generator.o \
-	audiodev.o \
-	wavfile.o \
+	player/audiodev.o \
+	player/wavfile.o \
 	sgensys.o
 TEST1_OBJ=\
 	arrtype.o \
@@ -35,9 +37,9 @@ TEST1_OBJ=\
 
 all: $(BIN)
 check: $(BIN)
-	for f in */*.sgs examples/*/*.sgs; do \
-		./$(BIN) -c $$f; \
-	done
+	./$(BIN) -c $(ARGS) */*.sgs examples/*/*.sgs
+fullcheck: $(BIN)
+	./$(BIN) -m $(ARGS) */*.sgs examples/*/*.sgs
 tests: test-scan
 clean:
 	rm -f $(OBJ) $(BIN)
@@ -73,44 +75,44 @@ test-scan: $(TEST1_OBJ)
 arrtype.o: arrtype.c arrtype.h mempool.h sgensys.h
 	$(CC) -c $(CFLAGS) arrtype.c
 
-audiodev.o: audiodev.c audiodev/*.c audiodev.h sgensys.h
-	$(CC) -c $(CFLAGS) audiodev.c
+error.o: sgensys.h error.c
+	$(CC) -c $(CFLAGS_SIZE) error.c
 
-error.o: error.c sgensys.h
-	$(CC) -c $(CFLAGS) error.c
+mempool.o: sgensys.h mempool.c mempool.h
+	$(CC) -c $(CFLAGS_FAST) mempool.c
 
-file.o: file.c file.h sgensys.h
+player/audiodev.o: sgensys.h player/audiodev.c player/audiodev.h player/audiodev/*.c
+	$(CC) -c $(CFLAGS_SIZE) player/audiodev.c -o player/audiodev.o
+
+player/wavfile.o: sgensys.h player/wavfile.c player/wavfile.h
+	$(CC) -c $(CFLAGS) player/wavfile.c -o player/wavfile.o
+
+ramp.o: sgensys.h math.h ramp.c ramp.h
+	$(CC) -c $(CFLAGS_FASTF) ramp.c
+
+file.o: sgensys.h file.c file.h
 	$(CC) -c $(CFLAGS) file.c
 
-lexer.o: lexer.c lexer.h file.h symtab.h math.h sgensys.h
+lexer.o: sgensys.h math.h file.h lexer.c lexer.h symtab.h
 	$(CC) -c $(CFLAGS) lexer.c
 
-parser.o: parser.c parser/parseconv.h file.h symtab.h script.h mempool.h program.h ramp.h wave.h math.h arrtype.h sgensys.h
-	$(CC) -c $(CFLAGS) parser.c
+parser.o: sgensys.h arrtype.h math.h mempool.h program.h ramp.h file.h parser.c parser/parseconv.h symtab.h script.h wave.h
+	$(CC) -c $(CFLAGS_SIZE) parser.c
 
-scanner.o: scanner.c scanner.h file.h symtab.h math.h sgensys.h
-	$(CC) -c $(CFLAGS) scanner.c
+scanner.o: sgensys.h math.h mempool.h file.h scanner.c scanner.h symtab.h
+	$(CC) -c $(CFLAGS_FAST) scanner.c
 
-symtab.o: symtab.c symtab.h mempool.h sgensys.h
-	$(CC) -c $(CFLAGS) symtab.c
+symtab.o: sgensys.h mempool.h symtab.c symtab.h
+	$(CC) -c $(CFLAGS_FAST) symtab.c
 
-mempool.o: mempool.c mempool.h sgensys.h
-	$(CC) -c $(CFLAGS) mempool.c
+generator.o: sgensys.h math.h mempool.h program.h ramp.h generator.c generator.h osc.h wave.h
+	$(CC) -c $(CFLAGS_FASTF) generator.c
 
-ramp.o: ramp.c ramp.h math.h sgensys.h
-	$(CC) -c $(CFLAGS_FAST) ramp.c
+sgensys.o: sgensys.c generator.h script.h arrtype.h program.h ramp.h wave.h math.h file.h player/audiodev.h player/wavfile.h sgensys.h
+	$(CC) -c $(CFLAGS_SIZE) sgensys.c
 
-generator.o: generator.c generator.h osc.h program.h ramp.h wave.h math.h mempool.h sgensys.h
-	$(CC) -c $(CFLAGS_FAST) generator.c
-
-sgensys.o: sgensys.c file.h script.h generator.h program.h ramp.h wave.h math.h audiodev.h wavfile.h sgensys.h
-	$(CC) -c $(CFLAGS) sgensys.c
-
-test-scan.o: test-scan.c lexer.h scanner.h file.h symtab.h program.h ramp.h wave.h math.h sgensys.h
+test-scan.o: sgensys.h math.h program.h ramp.h file.h lexer.h scanner.h symtab.h test-scan.c wave.h
 	$(CC) -c $(CFLAGS) test-scan.c
 
-wave.o: wave.c wave.h math.h sgensys.h
-	$(CC) -c $(CFLAGS_FAST) wave.c
-
-wavfile.o: wavfile.c wavfile.h sgensys.h
-	$(CC) -c $(CFLAGS) wavfile.c
+wave.o: sgensys.h math.h wave.c wave.h
+	$(CC) -c $(CFLAGS_FASTF) wave.c
