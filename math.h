@@ -20,7 +20,7 @@
 #define SGS_SQRT_1_2 0.70710678118654752440 // sqrt(0.5), 1/sqrt(2)
 
 /**
- * Convert time in ms to time in samples for a sample-rate.
+ * Convert time in ms to time in samples for a sample rate.
  */
 static inline uint32_t SGS_ms_in_samples(uint32_t time_ms, uint32_t srate) {
 	uint64_t time = time_ms * srate;
