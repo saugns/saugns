@@ -1,14 +1,18 @@
 /* sgensys: Linux audio output support.
- * Copyright (c) 2013, 2017-2018 Joel K. Pettersson
+ * Copyright (c) 2013, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
- * This file and the software of which it is part is distributed under the
- * terms of the GNU Lesser General Public License, either version 3 or (at
- * your option) any later version, WITHOUT ANY WARRANTY, not even of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
  *
- * View the file COPYING for details, or if missing, see
- * <https://www.gnu.org/licenses/>.
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
 #include "oss.c" /* used in fallback mechanism */
@@ -33,9 +37,8 @@ static inline SGS_AudioDev *open_linux(const char *restrict alsa_name,
 	if ((err = snd_pcm_open(&handle, alsa_name, SND_PCM_STREAM_PLAYBACK,
 			0)) < 0) {
 		o = open_oss(oss_name, oss_mode, channels, srate);
-		if (o) {
+		if (o != NULL)
 			return o;
-		}
 		SGS_error(NULL, "could neither use ALSA nor OSS");
 		goto ERROR;
 	}
@@ -44,20 +47,20 @@ static inline SGS_AudioDev *open_linux(const char *restrict alsa_name,
 		goto ERROR;
 	tmp = *srate;
 	if (!params
-	    || (err = snd_pcm_hw_params_any(handle, params)) < 0
-	    || (err = snd_pcm_hw_params_set_access(handle, params,
-		SND_PCM_ACCESS_RW_INTERLEAVED)) < 0
-	    || (err = snd_pcm_hw_params_set_format(handle, params,
-		SND_PCM_FORMAT_S16)) < 0
-	    || (err = snd_pcm_hw_params_set_channels(handle, params,
-		channels)) < 0
-	    || (err = snd_pcm_hw_params_set_rate_near(handle, params, &tmp,
-		0)) < 0
-	    || (err = snd_pcm_hw_params(handle, params)) < 0)
+			|| (err = snd_pcm_hw_params_any(handle, params)) < 0
+			|| (err = snd_pcm_hw_params_set_access(handle, params,
+				SND_PCM_ACCESS_RW_INTERLEAVED)) < 0
+			|| (err = snd_pcm_hw_params_set_format(handle, params,
+				SND_PCM_FORMAT_S16)) < 0
+			|| (err = snd_pcm_hw_params_set_channels(handle,
+				params, channels)) < 0
+			|| (err = snd_pcm_hw_params_set_rate_near(handle,
+				params, &tmp, 0)) < 0
+			|| (err = snd_pcm_hw_params(handle, params)) < 0)
 		goto ERROR;
 	if (tmp != *srate) {
 		SGS_warning("ALSA", "sample rate %d unsupported, using %d",
-			*srate, tmp);
+				*srate, tmp);
 		*srate = tmp;
 	}
 
@@ -72,8 +75,7 @@ ERROR:
 	SGS_error("ALSA", "%s", snd_strerror(err));
 	if (handle) snd_pcm_close(handle);
 	if (params) snd_pcm_hw_params_free(params);
-	SGS_error("ALSA", "configuration for device \"%s\" failed",
-		alsa_name);
+	SGS_error("ALSA", "configuration for device \"%s\" failed", alsa_name);
 	return NULL;
 }
 

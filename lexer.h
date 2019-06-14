@@ -39,7 +39,7 @@ typedef struct SGS_ScriptToken {
 struct SGS_Lexer;
 typedef struct SGS_Lexer SGS_Lexer;
 
-SGS_Lexer *SGS_create_Lexer(SGS_Symtab *restrict symtab) SGS__malloclike;
+SGS_Lexer *SGS_create_Lexer(SGS_Symtab *restrict symtab) sgsMalloclike;
 void SGS_destroy_Lexer(SGS_Lexer *restrict o);
 
 bool SGS_Lexer_open(SGS_Lexer *restrict o,
@@ -50,6 +50,6 @@ bool SGS_Lexer_get(SGS_Lexer *restrict o, SGS_ScriptToken *restrict t);
 bool SGS_Lexer_get_special(SGS_Lexer *restrict o, SGS_ScriptToken *restrict t);
 
 void SGS_Lexer_warning(SGS_Lexer *restrict o, const char *restrict fmt, ...)
-		SGS__printflike(2, 3);
+		sgsPrintflike(2, 3);
 void SGS_Lexer_error(SGS_Lexer *restrict o, const char *restrict fmt, ...)
-		SGS__printflike(2, 3);
+		sgsPrintflike(2, 3);
