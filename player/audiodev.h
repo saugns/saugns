@@ -1,5 +1,5 @@
-/* sgensys: Memory pool module.
- * Copyright (c) 2014, 2018-2020 Joel K. Pettersson
+/* sgensys: System audio output support module.
+ * Copyright (c) 2011-2014, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -16,14 +16,15 @@
  */
 
 #pragma once
-#include "sgensys.h"
+#include "../sgensys.h"
 
-struct SGS_Mempool;
-typedef struct SGS_Mempool SGS_Mempool;
+struct SGS_AudioDev;
+typedef struct SGS_AudioDev SGS_AudioDev;
 
-SGS_Mempool *SGS_create_Mempool(size_t block_size) sgsMalloclike;
-void SGS_destroy_Mempool(SGS_Mempool *restrict o);
+SGS_AudioDev *SGS_open_AudioDev(uint16_t channels, uint32_t *restrict srate)
+	sgsMalloclike;
+void SGS_close_AudioDev(SGS_AudioDev *restrict o);
 
-void *SGS_Mempool_alloc(SGS_Mempool *restrict o, size_t size) sgsMalloclike;
-void *SGS_Mempool_memdup(SGS_Mempool *restrict o,
-		const void *restrict src, size_t size) sgsMalloclike;
+uint32_t SGS_AudioDev_get_srate(const SGS_AudioDev *restrict o);
+bool SGS_AudioDev_write(SGS_AudioDev *restrict o,
+		const int16_t *restrict buf, uint32_t samples);
