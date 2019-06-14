@@ -79,7 +79,7 @@ audiodev.o: audiodev.c audiodev/*.c audiodev.h common.h
 common.o: common.c common.h
 	$(CC) -c $(CFLAGS) common.c
 
-builder.o: builder.c sgensys.h script.h program.h ptrlist.h slope.h wave.h math.h builder/file.h common.h
+builder.o: builder.c sgensys.h script.h ptrlist.h program.h slope.h wave.h math.h builder/file.h common.h
 	$(CC) -c $(CFLAGS) builder.c
 
 builder/file.o: builder/file.c builder/file.h common.h
@@ -106,19 +106,19 @@ mempool.o: mempool.c mempool.h common.h
 ptrlist.o: ptrlist.c ptrlist.h common.h
 	$(CC) -c $(CFLAGS) ptrlist.c
 
-renderer.o: renderer.c sgensys.h renderer/generator.h program.h slope.h wave.h math.h audiodev.h wavfile.h common.h
+renderer.o: renderer.c sgensys.h renderer/generator.h ptrlist.h program.h slope.h wave.h math.h audiodev.h wavfile.h common.h
 	$(CC) -c $(CFLAGS) renderer.c
 
 renderer/generator.o: renderer/generator.c renderer/generator.h renderer/osc.h program.h slope.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) renderer/generator.c -o renderer/generator.o
 
-sgensys.o: sgensys.c sgensys.h program.h slope.h wave.h math.h common.h
+sgensys.o: sgensys.c sgensys.h ptrlist.h program.h slope.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) sgensys.c
 
 slope.o: slope.c slope.h math.h common.h
 	$(CC) -c $(CFLAGS) slope.c
 
-test-builder.o: test-builder.c sgensys.h builder/lexer.h builder/scanner.h builder/file.h builder/symtab.h program.h slope.h wave.h math.h common.h
+test-builder.o: test-builder.c sgensys.h builder/lexer.h builder/scanner.h builder/file.h builder/symtab.h ptrlist.h program.h slope.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) test-builder.c
 
 wave.o: wave.c wave.h math.h common.h

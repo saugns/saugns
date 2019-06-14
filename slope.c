@@ -77,7 +77,7 @@ static void fill_log(float *restrict buf, uint32_t len,
  */
 bool SGS_Slope_run(SGS_Slope *restrict o, uint32_t srate,
 		float *restrict buf, uint32_t buf_len, float s0) {
-	uint32_t time = SGS_MS_TO_SRT(o->time_ms, srate);
+	uint32_t time = SGS_MS_IN_SAMPLES(o->time_ms, srate);
 	uint32_t len, fill_len;
 	double inv_time;
 	inv_time = 1.f / time;
