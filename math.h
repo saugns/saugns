@@ -1,5 +1,5 @@
 /* sgensys: Math definitions.
- * Copyright (c) 2011-2012, 2017-2018 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -20,7 +20,7 @@
 #define SGS_SQRT_1_2 0.70710678118654752440 // sqrt(0.5), 1/sqrt(2)
 
 /**
- * Convert time in ms to time in samples for a sample-rate.
+ * Convert time in ms to time in samples for a sample rate.
  */
-#define SGS_MS_TO_SRT(ms, srate) \
+#define SGS_MS_IN_SAMPLES(ms, srate) \
 	lrintf(((ms) * .001f) * (srate))
