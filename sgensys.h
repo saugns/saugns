@@ -13,10 +13,12 @@
 
 #pragma once
 #include "program.h"
+#include "ptrlist.h"
 
 #define SGS_VERSION_STR "sgensys v0.2-beta"
 
-SGS_Program* SGS_build(const char *restrict script_arg, bool is_path);
+size_t SGS_build(const SGS_PtrList *restrict script_args, bool are_paths,
+		SGS_PtrList *restrict prg_objs);
 
-bool SGS_render(SGS_Program *restrict prg, uint32_t srate,
+bool SGS_render(const SGS_PtrList *restrict prg_objs, uint32_t srate,
 		bool use_audiodev, const char *restrict wav_path);
