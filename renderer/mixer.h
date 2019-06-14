@@ -14,7 +14,7 @@
 #pragma once
 #include "../slope.h"
 
-#define SAU_MIX_BUFLEN 256
+#define SAU_MIX_BUFLEN 1024
 
 typedef struct SAU_Mixer {
 	float *mix_l, *mix_r;

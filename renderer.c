@@ -15,31 +15,86 @@
 #include "renderer/generator.h"
 #include "audiodev.h"
 #include "wavfile.h"
+#include "math.h"
+#include <stdlib.h>
 
-#define BUF_SAMPLES 1024
+#define BUF_TIME_MS  256
 #define NUM_CHANNELS 2
 
-static int16_t audio_buf[BUF_SAMPLES * NUM_CHANNELS];
+typedef struct SAU_Renderer {
+	SAU_AudioDev *ad;
+	SAU_WAVFile *wf;
+	uint32_t ad_srate;
+	int16_t *buf;
+	size_t buf_len;
+	size_t ch_len;
+} SAU_Renderer;
 
 /*
- * Produce audio for the given program, optionally sending it
+ * Set up use of audio device and/or WAV file, and buffer of suitable size.
+ *
+ * \return true unless error occurred
+ */
+static bool SAU_init_Renderer(SAU_Renderer *restrict o, uint32_t srate,
+		bool use_audiodev, const char *restrict wav_path) {
+	uint32_t ad_srate = srate;
+	uint32_t max_srate = srate;
+	*o = (SAU_Renderer){0};
+	if (use_audiodev) {
+		o->ad = SAU_open_AudioDev(NUM_CHANNELS, &ad_srate);
+		if (!o->ad)
+			return false;
+		o->ad_srate = ad_srate;
+	}
+	if (wav_path != NULL) {
+		o->wf = SAU_create_WAVFile(wav_path, NUM_CHANNELS, srate);
+		if (!o->wf)
+			return false;
+	}
+	if (ad_srate != srate) {
+		if (!o->wf || ad_srate > srate)
+			max_srate = ad_srate;
+	}
+
+	o->ch_len = SAU_MS_IN_SAMPLES(BUF_TIME_MS, max_srate);
+	o->buf_len = o->ch_len * NUM_CHANNELS;
+	o->buf = calloc(o->buf_len, sizeof(int16_t));
+	if (!o->buf)
+		return false;
+	return true;
+}
+
+/*
+ * \return true unless error occurred
+ */
+static bool SAU_fini_Renderer(SAU_Renderer *restrict o) {
+	free(o->buf);
+	if (o->ad != NULL) SAU_close_AudioDev(o->ad);
+	if (o->wf != NULL)
+		return (SAU_close_WAVFile(o->wf) == 0);
+	return true;
+}
+
+/*
+ * Produce audio for program \p prg, optionally sending it
  * to a given audio device and/or WAV file.
  *
  * \return true unless error occurred
  */
-static bool produce_audio(const SAU_Program *restrict prg, uint32_t srate,
-		SAU_AudioDev *restrict ad, SAU_WAVFile *restrict wf) {
+static bool SAU_Renderer_run(SAU_Renderer *restrict o,
+		const SAU_Program *restrict prg, uint32_t srate,
+		bool use_audiodev, bool use_wavfile) {
 	SAU_Generator *gen = SAU_create_Generator(prg, srate);
 	size_t len;
 	bool error = false;
 	bool run;
 	do {
-		run = SAU_Generator_run(gen, audio_buf, BUF_SAMPLES, &len);
-		if (ad && !SAU_AudioDev_write(ad, audio_buf, len)) {
+		run = SAU_Generator_run(gen, o->buf, o->ch_len, &len);
+		if (use_audiodev && !SAU_AudioDev_write(o->ad, o->buf, len)) {
 			error = true;
 			SAU_error(NULL, "audio device write failed");
 		}
-		if (wf && !SAU_WAVFile_write(wf, audio_buf, len)) {
+		if (use_wavfile && !SAU_WAVFile_write(o->wf, o->buf, len)) {
 			error = true;
 			SAU_error(NULL, "WAV file write failed");
 		}
@@ -59,51 +114,41 @@ static bool produce_audio(const SAU_Program *restrict prg, uint32_t srate,
  */
 bool SAU_render(const SAU_PtrList *restrict prg_objs, uint32_t srate,
 		bool use_audiodev, const char *restrict wav_path) {
-	if (!prg_objs->count) return true;
+	if (!prg_objs->count)
+		return true;
 
-	SAU_AudioDev *ad = NULL;
-	uint32_t ad_srate = srate;
-	SAU_WAVFile *wf = NULL;
+	SAU_Renderer re;
 	bool status = true;
-	if (use_audiodev) {
-		ad = SAU_open_AudioDev(NUM_CHANNELS, &ad_srate);
-		if (!ad) {
-			status = false;
-			goto CLEANUP;
-		}
+	if (!SAU_init_Renderer(&re, srate, use_audiodev, wav_path)) {
+		status = false;
+		goto CLEANUP;
 	}
-	if (wav_path != NULL) {
-		wf = SAU_create_WAVFile(wav_path, NUM_CHANNELS, srate);
-		if (!wf) {
-			status = false;
-			goto CLEANUP;
-		}
-	}
-	if (ad != NULL && wf != NULL && (ad_srate != srate)) {
+	if (re.ad != NULL && re.wf != NULL && (re.ad_srate != srate)) {
 		SAU_warning(NULL,
-			"generating audio twice, using different sample rates");
+"generating audio twice, using different sample rates");
 		const SAU_Program **prgs =
 			(const SAU_Program**) SAU_PtrList_ITEMS(prg_objs);
 		for (size_t i = 0; i < prg_objs->count; ++i) {
-			if (!produce_audio(prgs[i], ad_srate, ad, NULL))
+			if (!SAU_Renderer_run(&re, prgs[i], re.ad_srate,
+						true, false))
 				status = false;
-			if (!produce_audio(prgs[i], srate, NULL, wf))
+			if (!SAU_Renderer_run(&re, prgs[i], srate,
+						false, true))
 				status = false;
 		}
 	} else {
+		if (re.ad != NULL) srate = re.ad_srate;
 		const SAU_Program **prgs =
 			(const SAU_Program**) SAU_PtrList_ITEMS(prg_objs);
 		for (size_t i = 0; i < prg_objs->count; ++i) {
-			if (!produce_audio(prgs[i], ad_srate, ad, wf))
+			if (!SAU_Renderer_run(&re, prgs[i], srate,
+						re.ad != NULL, re.wf != NULL))
 				status = false;
 		}
 	}
 
 CLEANUP:
-	if (ad != NULL) SAU_close_AudioDev(ad);
-	if (wf != NULL) {
-		if (SAU_close_WAVFile(wf) != 0)
-			status = false;
-	}
+	if (!SAU_fini_Renderer(&re))
+		status = false;
 	return status;
 }
