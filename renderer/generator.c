@@ -16,7 +16,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define BUF_LEN 256
+#define BUF_LEN 1024
 typedef union Buf {
   int32_t i[BUF_LEN];
   float f[BUF_LEN];
@@ -137,7 +137,7 @@ static size_t count_ev_values(const SGS_ProgramEvent *restrict e) {
 #define COUNT_BUFS(op_nest_depth) ((1 + (op_nest_depth)) * 4)
 
 static bool alloc_for_program(SGS_Generator *restrict o,
-                              SGS_Program *restrict prg) {
+                              const SGS_Program *restrict prg) {
   size_t i;
 
   i = prg->ev_count;
@@ -197,7 +197,7 @@ static bool alloc_for_program(SGS_Generator *restrict o,
 }
 
 static bool convert_program(SGS_Generator *restrict o,
-                            SGS_Program *restrict prg, uint32_t srate) {
+                            const SGS_Program *restrict prg, uint32_t srate) {
   if (!alloc_for_program(o, prg))
     return false;
 
@@ -216,7 +216,7 @@ static bool convert_program(SGS_Generator *restrict o,
     uint32_t params;
     uint16_t vo_id = prg_e->vo_id;
     e->vals = ev_v;
-    e->waittime = SGS_MS_TO_SRT(prg_e->wait_ms, srate);
+    e->waittime = SGS_MS_IN_SAMPLES(prg_e->wait_ms, srate);
     vo_wait_time += e->waittime;
     //e->vd.id = SGS_PVO_NO_ID;
     e->vd.id = vo_id;
@@ -238,10 +238,10 @@ static bool convert_program(SGS_Generator *restrict o,
       if (params & SGS_POPP_TIME) {
         (*ev_v++).i = (pod->time_ms == SGS_TIME_INF) ?
           SGS_TIME_INF :
-          SGS_MS_TO_SRT(pod->time_ms, srate);
+          SGS_MS_IN_SAMPLES(pod->time_ms, srate);
       }
       if (params & SGS_POPP_SILENCE)
-        (*ev_v++).i = SGS_MS_TO_SRT(pod->silence_ms, srate);
+        (*ev_v++).i = SGS_MS_IN_SAMPLES(pod->silence_ms, srate);
       if (params & SGS_POPP_FREQ)
         (*ev_v++).f = pod->freq;
       if (params & SGS_POPP_RAMP_FREQ) {
@@ -292,7 +292,7 @@ static bool convert_program(SGS_Generator *restrict o,
 /**
  * Create instance for program \p prg and sample rate \p srate.
  */
-SGS_Generator* SGS_create_Generator(SGS_Program *restrict prg,
+SGS_Generator* SGS_create_Generator(const SGS_Program *restrict prg,
                                     uint32_t srate) {
   SGS_Generator *o = calloc(1, sizeof(SGS_Generator));
   if (!o) return NULL;
