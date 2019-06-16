@@ -75,7 +75,7 @@ typedef struct SGS_ScriptToken {
 struct SGS_Lexer;
 typedef struct SGS_Lexer SGS_Lexer;
 
-SGS_Lexer *SGS_create_Lexer(const char *filename, SGS_Symtab *symtab)
+SGS_Lexer *SGS_create_Lexer(const char *fname, SGS_Symtab *symtab)
 	SGS__malloclike;
 void SGS_destroy_Lexer(SGS_Lexer *o);
 
