@@ -28,11 +28,13 @@
 #if defined(__GNUC__) || defined(__clang__)
 # define SGS__malloclike __attribute__((malloc))
 # define SGS__maybe_unused __attribute__((unused))
+# define SGS__noinline __attribute__((noinline))
 # define SGS__printflike(string_index, first_to_check) \
 	__attribute__((format(printf, string_index, first_to_check)))
 #else
 # define SGS__malloclike
 # define SGS__maybe_unused
+# define SGS__noinline
 # define SGS__printflike(string_index, first_to_check)
 #endif
 
