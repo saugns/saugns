@@ -11,8 +11,8 @@
  * <https://www.gnu.org/licenses/>.
  */
 
-#include "program.h"
 #include "script.h"
+#include "program.h"
 #include "mempool.h"
 #include "arrtype.h"
 #include <stdio.h>

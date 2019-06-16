@@ -8,6 +8,7 @@ LFLAGS_OSSAUDIO=$(LFLAGS) -lossaudio
 OBJ=error.o \
     arrtype.o \
     symtab.o \
+    file.o \
     lexer.o \
     parser.o \
     parseconv.o \
@@ -55,13 +56,16 @@ audiodev.o: audiodev.c audiodev/*.c audiodev.h sgensys.h
 error.o: error.c sgensys.h
 	$(CC) -c $(CFLAGS) error.c
 
-lexer.o: lexer.c lexer.h symtab.h math.h sgensys.h
+file.o: file.c file.h sgensys.h
+	$(CC) -c $(CFLAGS) file.c
+
+lexer.o: lexer.c lexer.h symtab.h file.h math.h sgensys.h
 	$(CC) -c $(CFLAGS) lexer.c
 
 parseconv.o: parseconv.c program.h ramp.h wave.h math.h script.h mempool.h arrtype.h sgensys.h
 	$(CC) -c $(CFLAGS) parseconv.c
 
-parser.o: parser.c script.h mempool.h symtab.h program.h ramp.h wave.h math.h sgensys.h
+parser.o: parser.c script.h mempool.h symtab.h file.h program.h ramp.h wave.h math.h sgensys.h
 	$(CC) -c $(CFLAGS) parser.c
 
 symtab.o: symtab.c symtab.h mempool.h sgensys.h
