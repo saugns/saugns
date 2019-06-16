@@ -45,7 +45,7 @@ static void print_usage(bool by_arg) {
  * Print version.
  */
 static void print_version(void) {
-	puts("sgensys v0.2.5");
+	puts("sgensys v0.2.6");
 }
 
 /*
