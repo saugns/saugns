@@ -10,7 +10,7 @@ retro-ish. It is however easy to use for experimenting with sounds.
 "FM" of most commercial synthesizers). An arbitrary number of
 oscillators can be used.
 
-The program reads SGS script files and produces audio.
+The program reads Sound Generation Script files and produces audio.
 Output can be to system audio, and/or a 16-bit PCM WAV file.
 
 Tested mainly on x86 and x86-64. Comes with support for
