@@ -1,4 +1,4 @@
-/* sgensys: Common definitions.
+/* saugns: Common definitions.
  * Copyright (c) 2011-2012, 2019-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -41,7 +41,7 @@ static void print_stderr(const char *restrict msg_type,
  * Print warning message. If \p label is not NULL, it will be
  * added after "warning" within square brackets.
  */
-void SGS_warning(const char *restrict label, const char *restrict fmt, ...) {
+void SAU_warning(const char *restrict label, const char *restrict fmt, ...) {
 	va_list ap;
 	va_start(ap, fmt);
 	print_stderr("warning", label, fmt, ap);
@@ -52,7 +52,7 @@ void SGS_warning(const char *restrict label, const char *restrict fmt, ...) {
  * Print error message. If \p label is not NULL, it will be
  * added after "error" within square brackets.
  */
-void SGS_error(const char *restrict label, const char *restrict fmt, ...) {
+void SAU_error(const char *restrict label, const char *restrict fmt, ...) {
 	va_list ap;
 	va_start(ap, fmt);
 	print_stderr("error", label, fmt, ap);
@@ -66,7 +66,7 @@ void SGS_error(const char *restrict label, const char *restrict fmt, ...) {
  *
  * \return new allocation or NULL on failure
  */
-void *SGS_memdup(const void *restrict src, size_t size) {
+void *SAU_memdup(const void *restrict src, size_t size) {
 	if (!size)
 		return NULL;
 	if (!src)
@@ -88,15 +88,15 @@ void *SGS_memdup(const void *restrict src, size_t size) {
  * In large part based on the public domain
  * getopt() version by Christopher Wellons.
  */
-int SGS_getopt(int argc, char *const*restrict argv,
-		const char *restrict optstring, struct SGS_opt *restrict opt) {
+int SAU_getopt(int argc, char *const*restrict argv,
+		const char *restrict optstring, struct SAU_opt *restrict opt) {
 	(void)argc;
 	if (opt->ind == 0) {
 		opt->ind = 1;
 		opt->pos = 1;
 	}
 	const char *arg = argv[opt->ind];
-	if (!arg || arg[0] != '-' || !SGS_IS_ASCIIVISIBLE(arg[1]))
+	if (!arg || arg[0] != '-' || !SAU_IS_ASCIIVISIBLE(arg[1]))
 		return -1;
 	if (!strcmp(arg, "--")) {
 		++opt->ind;

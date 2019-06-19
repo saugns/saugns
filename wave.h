@@ -1,4 +1,4 @@
-/* sgensys: Wave module.
+/* saugns: Wave module.
  * Copyright (c) 2011-2012, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -19,81 +19,81 @@
 #include "common.h"
 
 /* table length in sample values */
-#define SGS_Wave_LENBITS 11
-#define SGS_Wave_LEN     (1<<SGS_Wave_LENBITS) /* 2048 */
-#define SGS_Wave_LENMASK (SGS_Wave_LEN - 1)
+#define SAU_Wave_LENBITS 11
+#define SAU_Wave_LEN     (1<<SAU_Wave_LENBITS) /* 2048 */
+#define SAU_Wave_LENMASK (SAU_Wave_LEN - 1)
 
 /* sample amplitude range */
-#define SGS_Wave_MAXVAL 1.f
-#define SGS_Wave_MINVAL (-SGS_Wave_MAXVAL)
+#define SAU_Wave_MAXVAL 1.f
+#define SAU_Wave_MINVAL (-SAU_Wave_MAXVAL)
 
 /* sample length in integer phase */
-#define SGS_Wave_SLENBITS (32-SGS_Wave_LENBITS)
-#define SGS_Wave_SLEN     (1<<SGS_Wave_SLENBITS)
-#define SGS_Wave_SLENMASK (SGS_Wave_SLEN - 1)
+#define SAU_Wave_SLENBITS (32-SAU_Wave_LENBITS)
+#define SAU_Wave_SLEN     (1<<SAU_Wave_SLENBITS)
+#define SAU_Wave_SLENMASK (SAU_Wave_SLEN - 1)
 
 /**
  * Wave types.
  */
 enum {
-	SGS_WAVE_SIN = 0,
-	SGS_WAVE_SQR,
-	SGS_WAVE_TRI,
-	SGS_WAVE_SAW,
-	SGS_WAVE_AHS,
-	SGS_WAVE_HRS,
-	SGS_WAVE_SRS,
-	SGS_WAVE_SSR,
-	SGS_WAVE_TYPES
+	SAU_WAVE_SIN = 0,
+	SAU_WAVE_SQR,
+	SAU_WAVE_TRI,
+	SAU_WAVE_SAW,
+	SAU_WAVE_AHS,
+	SAU_WAVE_HRS,
+	SAU_WAVE_SRS,
+	SAU_WAVE_SSR,
+	SAU_WAVE_TYPES
 };
 
 /** LUTs for wave types. */
-extern float *const SGS_Wave_luts[SGS_WAVE_TYPES];
+extern float *const SAU_Wave_luts[SAU_WAVE_TYPES];
 
 /** Pre-integrated LUTs for wave types. */
-extern float *const SGS_Wave_piluts[SGS_WAVE_TYPES];
+extern float *const SAU_Wave_piluts[SAU_WAVE_TYPES];
 
 /** Information about or for use with a wave type. */
-struct SGS_WaveCoeffs {
+struct SAU_WaveCoeffs {
 	float amp_scale;
 	float amp_dc;
 	int32_t phase_adj;
 };
 
 /** Extra values for use with PILUTs. */
-extern const struct SGS_WaveCoeffs SGS_Wave_picoeffs[SGS_WAVE_TYPES];
+extern const struct SAU_WaveCoeffs SAU_Wave_picoeffs[SAU_WAVE_TYPES];
 
 /** Names of wave types, with an extra NULL pointer at the end. */
-extern const char *const SGS_Wave_names[SGS_WAVE_TYPES + 1];
+extern const char *const SAU_Wave_names[SAU_WAVE_TYPES + 1];
 
 /**
  * Turn 32-bit unsigned phase value into LUT index.
  */
-#define SGS_Wave_INDEX(phase) \
-	(((uint32_t)(phase)) >> SGS_Wave_SLENBITS)
+#define SAU_Wave_INDEX(phase) \
+	(((uint32_t)(phase)) >> SAU_Wave_SLENBITS)
 
 /**
  * Get LUT value for 32-bit unsigned phase using linear interpolation.
  *
  * \return sample
  */
-static inline double SGS_Wave_get_lerp(const float *restrict lut,
+static inline double SAU_Wave_get_lerp(const float *restrict lut,
 		uint32_t phase) {
-	uint32_t ind = SGS_Wave_INDEX(phase);
+	uint32_t ind = SAU_Wave_INDEX(phase);
 	float s0 = lut[ind];
-	float s1 = lut[(ind + 1) & SGS_Wave_LENMASK];
-	double x = ((phase & SGS_Wave_SLENMASK) * (1.f / SGS_Wave_SLEN));
+	float s1 = lut[(ind + 1) & SAU_Wave_LENMASK];
+	double x = ((phase & SAU_Wave_SLENMASK) * (1.f / SAU_Wave_SLEN));
 	return s0 + (s1 - s0) * x;
 }
 
 /** Get scale constant to differentiate values in a pre-integrated table. */
-#define SGS_Wave_DVSCALE(wave) \
-	(SGS_Wave_picoeffs[wave].amp_scale * 0.125f * (float) UINT32_MAX)
+#define SAU_Wave_DVSCALE(wave) \
+	(SAU_Wave_picoeffs[wave].amp_scale * 0.125f * (float) UINT32_MAX)
 
 /** Get offset constant to apply to result from using a pre-integrated table. */
-#define SGS_Wave_DVOFFSET(wave) \
-	(SGS_Wave_picoeffs[wave].amp_dc)
+#define SAU_Wave_DVOFFSET(wave) \
+	(SAU_Wave_picoeffs[wave].amp_dc)
 
-void SGS_global_init_Wave(void);
+void SAU_global_init_Wave(void);
 
-void SGS_Wave_print(uint8_t id);
+void SAU_Wave_print(uint8_t id);
