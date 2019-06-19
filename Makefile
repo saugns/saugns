@@ -7,8 +7,8 @@ LFLAGS_LINUX=$(LFLAGS) -lasound
 LFLAGS_SNDIO=$(LFLAGS) -lsndio
 LFLAGS_OSSAUDIO=$(LFLAGS) -lossaudio
 PREFIX=/usr/local
-BIN=ssndgen
-SHARE=ssndgen
+BIN=saugns
+SHARE=saugns
 OBJ=\
 	common.o \
 	help.o \
@@ -31,7 +31,7 @@ OBJ=\
 	player/audiodev.o \
 	player/wavfile.o \
 	player/player.o \
-	ssndgen.o
+	saugns.o
 TEST1_OBJ=\
 	common.o \
 	arrtype.o \
@@ -79,7 +79,7 @@ test-scan: $(TEST1_OBJ)
 arrtype.o: arrtype.c arrtype.h common.h mempool.h
 	$(CC) -c $(CFLAGS) arrtype.c
 
-builder/builder.o: builder/builder.c common.h math.h program.h ptrarr.h ramp.h script.h ssndgen.h time.h wave.h
+builder/builder.o: builder/builder.c common.h math.h program.h ptrarr.h ramp.h saugns.h script.h time.h wave.h
 	$(CC) -c $(CFLAGS) builder/builder.c -o builder/builder.o
 
 builder/scriptconv.o: arrtype.h builder/scriptconv.c builder/scriptconv.h common.h math.h mempool.h program.h ptrarr.h ramp.h script.h time.h wave.h
@@ -109,7 +109,7 @@ mempool.o: common.h mempool.c mempool.h
 player/audiodev.o: common.h player/audiodev.c player/audiodev.h player/audiodev/*.c
 	$(CC) -c $(CFLAGS) player/audiodev.c -o player/audiodev.o
 
-player/player.o: common.h interp/interp.h math.h player/audiodev.h player/player.c player/wavfile.h program.h ptrarr.h ramp.h ssndgen.h time.h wave.h
+player/player.o: common.h interp/interp.h math.h player/audiodev.h player/player.c player/wavfile.h program.h ptrarr.h ramp.h saugns.h time.h wave.h
 	$(CC) -c $(CFLAGS_FAST) player/player.c -o player/player.o
 
 player/wavfile.o: common.h player/wavfile.c player/wavfile.h
@@ -139,10 +139,10 @@ reader/scanner.o: common.h math.h mempool.h reader/file.h reader/scanner.c reade
 reader/symtab.o: common.h mempool.h reader/symtab.c reader/symtab.h
 	$(CC) -c $(CFLAGS) reader/symtab.c -o reader/symtab.o
 
-ssndgen.o: common.h help.h math.h program.h ptrarr.h ramp.h ssndgen.c ssndgen.h time.h wave.h
-	$(CC) -c $(CFLAGS) ssndgen.c
+saugns.o: common.h help.h math.h program.h ptrarr.h ramp.h saugns.c saugns.h time.h wave.h
+	$(CC) -c $(CFLAGS) saugns.c
 
-test-scan.o: common.h math.h mempool.h program.h ptrarr.h ramp.h reader/lexer.h reader/scanner.h reader/file.h reader/symtab.h ssndgen.h test-scan.c time.h wave.h
+test-scan.o: common.h math.h mempool.h program.h ptrarr.h ramp.h reader/lexer.h reader/scanner.h reader/file.h reader/symtab.h saugns.h test-scan.c time.h wave.h
 	$(CC) -c $(CFLAGS) test-scan.c
 
 wave.o: common.h math.h wave.c wave.h

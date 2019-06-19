@@ -1,4 +1,4 @@
-/* ssndgen: Main module / Command-line interface.
+/* saugns: Main module / Command-line interface.
  * Copyright (c) 2011-2013, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -11,26 +11,26 @@
  * <https://www.gnu.org/licenses/>.
  */
 
-#include "ssndgen.h"
+#include "saugns.h"
 #include "help.h"
 #include <errno.h>
 #include <stdlib.h>
-#define NAME SSG_CLINAME_STR
+#define NAME SAU_CLINAME_STR
 
 /*
  * Print trailing list of topic types for \p h_type.
  */
 static void print_help(const char *h_type) {
-	const char *const *h_names = SSG_find_help(h_type);
+	const char *const *h_names = SAU_find_help(h_type);
 	if (!h_names) {
 		h_type = "-h <topic>";
-		h_names = SSG_Help_names;
+		h_names = SAU_Help_names;
 	}
 	fprintf(stderr,
 "\n"
 "List of %s types:\n",
 		h_type);
-	SSG_print_names(h_names, "\t", stdout);
+	SAU_print_names(h_names, "\t", stdout);
 }
 
 /*
@@ -52,7 +52,7 @@ static void print_usage(bool h_arg, const char *h_type) {
 "\n"
 "  -a \tAudible; always enable audio device output.\n"
 "  -m \tMuted; always disable audio device output.\n"
-"  -r \tSample rate in Hz (default "SSG_STREXP(SSG_DEFAULT_SRATE)");\n"
+"  -r \tSample rate in Hz (default "SAU_STREXP(SAU_DEFAULT_SRATE)");\n"
 "     \tif unsupported for audio device, warns and prints rate used instead.\n"
 "  -o \tWrite a 16-bit PCM WAV file, always using the sample rate requested;\n"
 "     \tdisables audio device output by default.\n"
@@ -68,7 +68,7 @@ static void print_usage(bool h_arg, const char *h_type) {
  * Print version.
  */
 static void print_version(void) {
-	puts(NAME" "SSG_VERSION_STR);
+	puts(NAME" "SAU_VERSION_STR);
 }
 
 /*
@@ -95,13 +95,13 @@ static int32_t get_piarg(const char *restrict str) {
  */
 static bool parse_args(int argc, char **restrict argv,
 		uint32_t *restrict flags,
-		SSG_PtrArr *restrict script_args,
+		SAU_PtrArr *restrict script_args,
 		const char **restrict wav_path,
 		uint32_t *restrict srate) {
 	int i;
 	bool h_arg = false;
 	const char *h_type = NULL;
-	*srate = SSG_DEFAULT_SRATE;
+	*srate = SAU_DEFAULT_SRATE;
 	for (;;) {
 		const char *arg;
 		--argc;
@@ -112,26 +112,26 @@ static bool parse_args(int argc, char **restrict argv,
 		}
 		arg = *argv;
 		if (*arg != '-') {
-			SSG_PtrArr_add(script_args, (void*) arg);
+			SAU_PtrArr_add(script_args, (void*) arg);
 			continue;
 		}
 NEXT_C:
 		if (!*++arg) continue;
 		switch (*arg) {
 		case 'a':
-			if ((*flags & (SSG_ARG_AUDIO_DISABLE |
-					SSG_ARG_MODE_CHECK)) != 0)
+			if ((*flags & (SAU_ARG_AUDIO_DISABLE |
+					SAU_ARG_MODE_CHECK)) != 0)
 				goto USAGE;
-			*flags |= SSG_ARG_MODE_FULL |
-				SSG_ARG_AUDIO_ENABLE;
+			*flags |= SAU_ARG_MODE_FULL |
+				SAU_ARG_AUDIO_ENABLE;
 			break;
 		case 'c':
-			if ((*flags & SSG_ARG_MODE_FULL) != 0)
+			if ((*flags & SAU_ARG_MODE_FULL) != 0)
 				goto USAGE;
-			*flags |= SSG_ARG_MODE_CHECK;
+			*flags |= SAU_ARG_MODE_CHECK;
 			break;
 		case 'e':
-			*flags |= SSG_ARG_EVAL_STRING;
+			*flags |= SAU_ARG_EVAL_STRING;
 			break;
 		case 'h':
 			h_arg = true;
@@ -144,17 +144,17 @@ NEXT_C:
 			h_type = arg;
 			goto USAGE;
 		case 'm':
-			if ((*flags & (SSG_ARG_AUDIO_ENABLE |
-					SSG_ARG_MODE_CHECK)) != 0)
+			if ((*flags & (SAU_ARG_AUDIO_ENABLE |
+					SAU_ARG_MODE_CHECK)) != 0)
 				goto USAGE;
-			*flags |= SSG_ARG_MODE_FULL |
-				SSG_ARG_AUDIO_DISABLE;
+			*flags |= SAU_ARG_MODE_FULL |
+				SAU_ARG_AUDIO_DISABLE;
 			break;
 		case 'o':
 			if (arg[1] != '\0') goto USAGE;
-			if ((*flags & SSG_ARG_MODE_CHECK) != 0)
+			if ((*flags & SAU_ARG_MODE_CHECK) != 0)
 				goto USAGE;
-			*flags |= SSG_ARG_MODE_FULL;
+			*flags |= SAU_ARG_MODE_FULL;
 			--argc;
 			++argv;
 			if (argc < 1) goto USAGE;
@@ -162,13 +162,13 @@ NEXT_C:
 			*wav_path = arg;
 			continue;
 		case 'p':
-			*flags |= SSG_ARG_PRINT_INFO;
+			*flags |= SAU_ARG_PRINT_INFO;
 			break;
 		case 'r':
 			if (arg[1] != '\0') goto USAGE;
-			if ((*flags & SSG_ARG_MODE_CHECK) != 0)
+			if ((*flags & SAU_ARG_MODE_CHECK) != 0)
 				goto USAGE;
-			*flags |= SSG_ARG_MODE_FULL;
+			*flags |= SAU_ARG_MODE_FULL;
 			--argc;
 			++argv;
 			if (argc < 1) goto USAGE;
@@ -189,7 +189,7 @@ NEXT_C:
 USAGE:
 	print_usage(h_arg, h_type);
 CLEAR:
-	SSG_PtrArr_clear(script_args);
+	SAU_PtrArr_clear(script_args);
 	return false;
 }
 
@@ -197,21 +197,21 @@ CLEAR:
  * Main function.
  */
 int main(int argc, char **restrict argv) {
-	SSG_PtrArr script_args = (SSG_PtrArr){0};
-	SSG_PtrArr prg_objs = (SSG_PtrArr){0};
+	SAU_PtrArr script_args = (SAU_PtrArr){0};
+	SAU_PtrArr prg_objs = (SAU_PtrArr){0};
 	const char *wav_path = NULL;
 	uint32_t options = 0;
 	uint32_t srate = 0;
 	if (!parse_args(argc, argv, &options, &script_args, &wav_path,
 			&srate))
 		return 0;
-	bool error = !SSG_build(&script_args, options, &prg_objs);
-	SSG_PtrArr_clear(&script_args);
+	bool error = !SAU_build(&script_args, options, &prg_objs);
+	SAU_PtrArr_clear(&script_args);
 	if (error)
 		return 1;
 	if (prg_objs.count > 0) {
-		error = !SSG_play(&prg_objs, srate, options, wav_path);
-		SSG_discard(&prg_objs);
+		error = !SAU_play(&prg_objs, srate, options, wav_path);
+		SAU_discard(&prg_objs);
 		if (error)
 			return 1;
 	}

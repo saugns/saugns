@@ -1,4 +1,4 @@
-/* ssndgen: Help data and printout code.
+/* saugns: Help data and printout code.
  * Copyright (c) 2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -20,7 +20,7 @@
 #include "wave.h"
 #include <string.h>
 
-const char *const SSG_Help_names[SSG_HELP_TYPES + 1] = {
+const char *const SAU_Help_names[SAU_HELP_TYPES + 1] = {
 	"ramp",
 	"wave",
 	NULL
@@ -31,16 +31,16 @@ const char *const SSG_Help_names[SSG_HELP_TYPES + 1] = {
  *
  * \return predefined array or NULL if none
  */
-const char *const *SSG_find_help(const char *restrict str) {
+const char *const *SAU_find_help(const char *restrict str) {
 	const char *const *namearr = NULL;
 	size_t i;
-	if (!SSG_find_name(SSG_Help_names, str, &i))
+	if (!SAU_find_name(SAU_Help_names, str, &i))
 		return namearr;
 	switch (i) {
-	case SSG_HELP_RAMP:
-		return SSG_Ramp_names;
-	case SSG_HELP_WAVE:
-		return SSG_Wave_names;
+	case SAU_HELP_RAMP:
+		return SAU_Ramp_names;
+	case SAU_HELP_WAVE:
+		return SAU_Wave_names;
 	}
 	return namearr;
 }
@@ -51,7 +51,7 @@ const char *const *SSG_find_help(const char *restrict str) {
  *
  * \return true if found
  */
-bool SSG_find_name(const char *const *restrict namearr,
+bool SAU_find_name(const char *const *restrict namearr,
 		const char *restrict str, size_t *restrict id) {
 	if (!str)
 		return false;
@@ -74,7 +74,7 @@ bool SSG_find_name(const char *const *restrict namearr,
  *
  * \return true if any items printed
  */
-bool SSG_print_names(const char *const *restrict namearr,
+bool SAU_print_names(const char *const *restrict namearr,
 		const char *restrict headstr,
 		FILE *restrict out) {
 	if (!namearr[0])

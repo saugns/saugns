@@ -1,4 +1,4 @@
-/* ssndgen: Parser output data and functions.
+/* saugns: Parser output data and functions.
  * Copyright (c) 2011-2012, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -19,51 +19,51 @@
 /**
  * Node type for operator data.
  */
-typedef struct SSG_ParseOpData {
-	struct SSG_ParseEvData *event;
-	struct SSG_ParseOpData *next_bound;
-	SSG_SymStr *label;
+typedef struct SAU_ParseOpData {
+	struct SAU_ParseEvData *event;
+	struct SAU_ParseOpData *next_bound;
+	SAU_SymStr *label;
 	uint32_t op_flags;
 	/* operator parameters */
 	uint32_t op_params;
-	SSG_Time time;
+	SAU_Time time;
 	uint32_t silence_ms;
 	uint8_t wave;
-	SSG_Ramp freq, freq2;
-	SSG_Ramp amp, amp2;
+	SAU_Ramp freq, freq2;
+	SAU_Ramp amp, amp2;
 	float phase;
-	struct SSG_ParseOpData *op_prev; /* preceding for same op(s) */
+	struct SAU_ParseOpData *op_prev; /* preceding for same op(s) */
 	void *op_conv; /* for parseconv */
 	/* node adjacents in operator linkage graph */
-	SSG_PtrArr fmods, pmods, amods;
-} SSG_ParseOpData;
+	SAU_PtrArr fmods, pmods, amods;
+} SAU_ParseOpData;
 
 /**
  * Node type for event data. Includes any voice and operator data part
  * of the event.
  */
-typedef struct SSG_ParseEvData {
-	struct SSG_ParseEvData *next;
-	struct SSG_ParseEvData *groupfrom;
-	struct SSG_ParseEvData *composite;
+typedef struct SAU_ParseEvData {
+	struct SAU_ParseEvData *next;
+	struct SAU_ParseEvData *groupfrom;
+	struct SAU_ParseEvData *composite;
 	uint32_t wait_ms;
 	uint32_t ev_flags;
-	SSG_PtrArr operators; /* operator nodes directly linked from event */
+	SAU_PtrArr operators; /* operator nodes directly linked from event */
 	void *ev_conv; /* for parseconv */
 	/* voice parameters */
 	uint32_t vo_params;
-	struct SSG_ParseEvData *vo_prev; /* preceding event for voice */
-	SSG_Ramp pan;
-} SSG_ParseEvData;
+	struct SAU_ParseEvData *vo_prev; /* preceding event for voice */
+	SAU_Ramp pan;
+} SAU_ParseEvData;
 
 /**
  * Type returned after processing a file.
  */
-typedef struct SSG_Parse {
-	SSG_ParseEvData *events;
+typedef struct SAU_Parse {
+	SAU_ParseEvData *events;
 	const char *name; // currently simply set to the filename
-	SSG_ScriptOptions sopt;
-} SSG_Parse;
+	SAU_ScriptOptions sopt;
+} SAU_Parse;
 
-SSG_Parse *SSG_create_Parse(const char *restrict script_arg, bool is_path);
-void SSG_destroy_Parse(SSG_Parse *restrict o);
+SAU_Parse *SAU_create_Parse(const char *restrict script_arg, bool is_path);
+void SAU_destroy_Parse(SAU_Parse *restrict o);
