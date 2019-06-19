@@ -1,5 +1,5 @@
-/* sgensys: WAV file writer module.
- * Copyright (c) 2011-2012, 2017-2018 Joel K. Pettersson
+/* saugns: WAV file writer module.
+ * Copyright (c) 2011-2012, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -38,7 +38,7 @@ static void fputl(uint32_t i32, FILE *restrict stream) {
 #define SOUND_BITS 16
 #define SOUND_BYTES (SOUND_BITS / 8)
 
-struct SGS_WAVFile {
+struct SAU_WAVFile {
 	FILE *f;
 	uint16_t channels;
 	uint32_t samples;
@@ -46,19 +46,19 @@ struct SGS_WAVFile {
 
 /**
  * Create 16-bit WAV file for audio output. Sound data may thereafter be
- * written any number of times using SGS_WAVFile_write().
+ * written any number of times using SAU_WAVFile_write().
  *
  * \return instance or NULL if fopen fails
  */
-SGS_WAVFile *SGS_create_WAVFile(const char *restrict fpath,
+SAU_WAVFile *SAU_create_WAVFile(const char *restrict fpath,
 		uint16_t channels, uint32_t srate) {
 	FILE *f = fopen(fpath, "wb");
 	if (!f) {
-		SGS_error(NULL, "couldn't open WAV file \"%s\" for writing",
+		SAU_error(NULL, "couldn't open WAV file \"%s\" for writing",
 			fpath);
 		return NULL;
 	}
-	SGS_WAVFile *o = malloc(sizeof(SGS_WAVFile));
+	SAU_WAVFile *o = malloc(sizeof(SAU_WAVFile));
 	o->f = f;
 	o->channels = channels;
 	o->samples = 0;
@@ -89,7 +89,7 @@ SGS_WAVFile *SGS_create_WAVFile(const char *restrict fpath,
  *
  * \return true if write successful
  */
-bool SGS_WAVFile_write(SGS_WAVFile *restrict o,
+bool SAU_WAVFile_write(SAU_WAVFile *restrict o,
 		const int16_t *restrict buf, uint32_t samples) {
 	uint32_t written;
 	written = fwrite(buf, o->channels * SOUND_BYTES, samples, o->f);
@@ -105,7 +105,7 @@ bool SGS_WAVFile_write(SGS_WAVFile *restrict o,
  *
  * \return value of ferror, checked before closing file
  */
-int SGS_close_WAVFile(SGS_WAVFile *restrict o) {
+int SAU_close_WAVFile(SAU_WAVFile *restrict o) {
 	int err;
 	FILE *f = o->f;
 	uint32_t bytes = o->channels * o->samples * SOUND_BYTES;
