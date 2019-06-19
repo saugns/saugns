@@ -1,4 +1,4 @@
-/* sgensys: Common definitions.
+/* saugns: Common definitions.
  * Copyright (c) 2011-2012, 2019-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -29,16 +29,16 @@
  */
 
 #if defined(__GNUC__) || defined(__clang__)
-# define sgsMalloclike __attribute__((malloc))
-# define sgsMaybeUnused __attribute__((unused))
-# define sgsNoinline __attribute__((noinline))
-# define sgsPrintflike(string_index, first_to_check) \
+# define sauMalloclike __attribute__((malloc))
+# define sauMaybeUnused __attribute__((unused))
+# define sauNoinline __attribute__((noinline))
+# define sauPrintflike(string_index, first_to_check) \
 	__attribute__((format(printf, string_index, first_to_check)))
 #else
-# define sgsMalloclike
-# define sgsMaybeUnused
-# define sgsNoinline
-# define sgsPrintflike(string_index, first_to_check)
+# define sauMalloclike
+# define sauMaybeUnused
+# define sauNoinline
+# define sauPrintflike(string_index, first_to_check)
 #endif
 
 /*
@@ -46,51 +46,51 @@
  */
 
 /** Turn \p arg into string literal before macro-expanding it. */
-#define SGS_STRLIT(arg) #arg
+#define SAU_STRLIT(arg) #arg
 
 /** Turn \p arg into string literal after macro-expanding it. */
-#define SGS_STREXP(arg) SGS_STRLIT(arg)
+#define SAU_STREXP(arg) SAU_STRLIT(arg)
 
 /** Is \p c a visible non-whitespace 7-bit ASCII character? */
-#define SGS_IS_ASCIIVISIBLE(c) ((c) >= '!' && (c) <= '~')
+#define SAU_IS_ASCIIVISIBLE(c) ((c) >= '!' && (c) <= '~')
 
 /*
  * Utility functions.
  */
 
-void SGS_warning(const char *restrict label, const char *restrict fmt, ...)
-	sgsPrintflike(2, 3);
-void SGS_error(const char *restrict label, const char *restrict fmt, ...)
-	sgsPrintflike(2, 3);
+void SAU_warning(const char *restrict label, const char *restrict fmt, ...)
+	sauPrintflike(2, 3);
+void SAU_error(const char *restrict label, const char *restrict fmt, ...)
+	sauPrintflike(2, 3);
 
-void *SGS_memdup(const void *restrict src, size_t size) sgsMalloclike;
+void *SAU_memdup(const void *restrict src, size_t size) sauMalloclike;
 
-/** SGS_getopt() data. Initialize to zero, except \a err for error messages. */
-struct SGS_opt {
-	int ind; /* set to zero to start over next SGS_getopt() call */
+/** SAU_getopt() data. Initialize to zero, except \a err for error messages. */
+struct SAU_opt {
+	int ind; /* set to zero to start over next SAU_getopt() call */
 	int err;
 	int pos;
 	int opt;
 	const char *arg;
 };
-int SGS_getopt(int argc, char *const*restrict argv,
-		const char *restrict optstring, struct SGS_opt *restrict opt);
+int SAU_getopt(int argc, char *const*restrict argv,
+		const char *restrict optstring, struct SAU_opt *restrict opt);
 
 /*
  * Debugging options.
  */
 
 /* Debug-friendly memory handling? (Slower.) */
-//#define SGS_MEM_DEBUG 1
+//#define SAU_MEM_DEBUG 1
 
 /* Print hash collision info for symtab. */
-//#define SGS_SYMTAB_STATS 0
+//#define SAU_SYMTAB_STATS 0
 
 /* Run scanner instead of lexer in 'test-scan' program. */
-#define SGS_TEST_SCANNER 0
+#define SAU_TEST_SCANNER 0
 
 /* Print test statistics for scanner. */
-#define SGS_SCANNER_STATS 0
+#define SAU_SCANNER_STATS 0
 
 /* Make test lexer quiet enough to time it. */
-#define SGS_LEXER_QUIET 1
+#define SAU_LEXER_QUIET 1

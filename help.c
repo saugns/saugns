@@ -1,4 +1,4 @@
-/* sgensys: Help data and printout code.
+/* saugns: Help data and printout code.
  * Copyright (c) 2020-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -21,7 +21,7 @@
 #include "wave.h"
 #include <string.h>
 
-const char *const SGS_Help_names[SGS_HELP_TYPES + 1] = {
+const char *const SAU_Help_names[SAU_HELP_TYPES + 1] = {
 	"help",
 	"math",
 	"ramp",
@@ -34,19 +34,19 @@ const char *const SGS_Help_names[SGS_HELP_TYPES + 1] = {
  *
  * \return predefined array or NULL if none
  */
-const char *const *SGS_find_help(const char *restrict str) {
+const char *const *SAU_find_help(const char *restrict str) {
 	size_t i;
-	if (!SGS_find_name(SGS_Help_names, str, &i))
+	if (!SAU_find_name(SAU_Help_names, str, &i))
 		return NULL;
 	switch (i) {
-	case SGS_HELP_HELP:
-		return SGS_Help_names;
-	case SGS_HELP_MATH:
-		return SGS_Math_names;
-	case SGS_HELP_RAMP:
-		return SGS_Ramp_names;
-	case SGS_HELP_WAVE:
-		return SGS_Wave_names;
+	case SAU_HELP_HELP:
+		return SAU_Help_names;
+	case SAU_HELP_MATH:
+		return SAU_Math_names;
+	case SAU_HELP_RAMP:
+		return SAU_Ramp_names;
+	case SAU_HELP_WAVE:
+		return SAU_Wave_names;
 	}
 	return NULL;
 }
@@ -57,7 +57,7 @@ const char *const *SGS_find_help(const char *restrict str) {
  *
  * \return true if found
  */
-bool SGS_find_name(const char *const *restrict namearr,
+bool SAU_find_name(const char *const *restrict namearr,
 		const char *restrict str, size_t *restrict id) {
 	if (!str)
 		return false;
@@ -80,7 +80,7 @@ bool SGS_find_name(const char *const *restrict namearr,
  *
  * \return true if any items printed
  */
-bool SGS_print_names(const char *const *restrict namearr,
+bool SAU_print_names(const char *const *restrict namearr,
 		const char *restrict headstr,
 		FILE *restrict out) {
 	if (!namearr[0])
