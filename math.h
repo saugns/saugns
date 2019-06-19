@@ -1,4 +1,4 @@
-/* sgensys: Math definitions.
+/* saugns: Math definitions.
  * Copyright (c) 2011-2012, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -19,14 +19,14 @@
 #include "common.h"
 #include <math.h>
 
-#define SGS_PI       3.14159265358979323846
-#define SGS_ASIN_1_2 0.52359877559829887308 // asin(0.5)
-#define SGS_SQRT_1_2 0.70710678118654752440 // sqrt(0.5), 1/sqrt(2)
+#define SAU_PI       3.14159265358979323846
+#define SAU_ASIN_1_2 0.52359877559829887308 // asin(0.5)
+#define SAU_SQRT_1_2 0.70710678118654752440 // sqrt(0.5), 1/sqrt(2)
 
 /**
  * Convert time in ms to time in samples for a sample rate.
  */
-#define SGS_MS_IN_SAMPLES(ms, srate) \
+#define SAU_MS_IN_SAMPLES(ms, srate) \
 	lrintf(((ms) * .001f) * (srate))
 
 /**
@@ -37,7 +37,7 @@
  *
  * \return metallic value
  */
-static inline double SGS_met(double x) {
+static inline double SAU_met(double x) {
 	return 0.5f * (x + sqrt(x * x + 4.f));
 }
 
@@ -45,18 +45,18 @@ static inline double SGS_met(double x) {
  * Math functions.
  */
 enum {
-	SGS_MATH_ABS = 0,
-	SGS_MATH_EXP,
-	SGS_MATH_LOG,
-	SGS_MATH_SQRT,
-	SGS_MATH_MET,
-	SGS_MATH_FUNCTIONS
+	SAU_MATH_ABS = 0,
+	SAU_MATH_EXP,
+	SAU_MATH_LOG,
+	SAU_MATH_SQRT,
+	SAU_MATH_MET,
+	SAU_MATH_FUNCTIONS
 };
 
-typedef double (*SGS_Math_val_f)(double x);
+typedef double (*SAU_Math_val_f)(double x);
 
 /** Names of math functions. */
-extern const char *const SGS_Math_names[SGS_MATH_FUNCTIONS + 1];
+extern const char *const SAU_Math_names[SAU_MATH_FUNCTIONS + 1];
 
 /** Value functions for math functions. */
-extern const SGS_Math_val_f SGS_Math_val_func[SGS_MATH_FUNCTIONS];
+extern const SAU_Math_val_f SAU_Math_val_func[SAU_MATH_FUNCTIONS];

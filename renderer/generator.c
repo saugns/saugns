@@ -1,4 +1,4 @@
-/* sgensys: Audio generator module.
+/* saugns: Audio generator module.
  * Copyright (c) 2011-2012, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -17,7 +17,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define BUF_LEN SGS_MIX_BUFLEN
+#define BUF_LEN SAU_MIX_BUFLEN
 typedef float Buf[BUF_LEN];
 
 /*
@@ -28,13 +28,13 @@ enum {
 };
 
 typedef struct OperatorNode {
-	SGS_Osc osc;
+	SAU_Osc osc;
 	uint32_t time;
 	uint32_t silence;
 	uint8_t flags;
-	const SGS_ProgramOpList *fmods, *pmods, *amods;
-	SGS_Ramp amp, freq;
-	SGS_Ramp amp2, freq2;
+	const SAU_ProgramOpList *fmods, *pmods, *amods;
+	SAU_Ramp amp, freq;
+	SAU_Ramp amp2, freq2;
 	uint32_t amp_pos, freq_pos;
 	uint32_t amp2_pos, freq2_pos;
 } OperatorNode;
@@ -50,28 +50,28 @@ typedef struct VoiceNode {
 	int32_t pos; /* negative for wait time */
 	uint32_t duration;
 	uint8_t flags;
-	const SGS_ProgramOpRef *graph;
+	const SAU_ProgramOpRef *graph;
 	uint32_t op_count;
-	SGS_Ramp pan;
+	SAU_Ramp pan;
 	uint32_t pan_pos;
 } VoiceNode;
 
 typedef union EventValue {
 	int32_t ival;
 	//float fval;
-	const SGS_Ramp *ramp;
+	const SAU_Ramp *ramp;
 } EventValue;
 
 typedef struct EventOpData {
 	uint32_t id;
 	uint32_t params;
-	const SGS_ProgramOpList *fmods, *pmods, *amods;
+	const SAU_ProgramOpList *fmods, *pmods, *amods;
 } EventOpData;
 
 typedef struct EventVoData {
 	uint16_t id;
 	uint32_t params;
-	const SGS_ProgramOpRef *graph;
+	const SAU_ProgramOpRef *graph;
 	uint32_t op_count;
 } EventVoData;
 
@@ -83,11 +83,11 @@ typedef struct EventNode {
 	uint32_t od_count;
 } EventNode;
 
-struct SGS_Generator {
+struct SAU_Generator {
 	uint32_t srate;
 	uint32_t buf_count;
 	Buf *bufs;
-	SGS_Mixer *mixer;
+	SAU_Mixer *mixer;
 	size_t event, ev_count;
 	EventNode *events;
 	uint32_t event_pos;
@@ -110,12 +110,12 @@ static uint32_t count_flags(uint32_t flags) {
 	return count;
 }
 
-static size_t count_ev_values(const SGS_ProgramEvent *restrict e) {
+static size_t count_ev_values(const SAU_ProgramEvent *restrict e) {
 	size_t count = 0;
 	uint32_t params;
 	if (e->vo_data) {
 		params = e->vo_data->params;
-		params &= ~(SGS_PVOP_GRAPH);
+		params &= ~(SAU_PVOP_GRAPH);
 		count += count_flags(params);
 	}
 	for (size_t i = 0; i < e->op_data_count; ++i) {
@@ -128,8 +128,8 @@ static size_t count_ev_values(const SGS_ProgramEvent *restrict e) {
 // maximum number of buffers needed for op nesting depth
 #define COUNT_BUFS(op_nest_depth) ((1 + (op_nest_depth)) * 7)
 
-static bool alloc_for_program(SGS_Generator *restrict o,
-		const SGS_Program *restrict prg) {
+static bool alloc_for_program(SAU_Generator *restrict o,
+		const SAU_Program *restrict prg) {
 	size_t i;
 
 	i = prg->ev_count;
@@ -141,7 +141,7 @@ static bool alloc_for_program(SGS_Generator *restrict o,
 	}
 	size_t ev_val_count = 0, ev_op_data_count = 0;
 	for (size_t i = 0; i < prg->ev_count; ++i) {
-		const SGS_ProgramEvent *ev = &prg->events[i];
+		const SAU_ProgramEvent *ev = &prg->events[i];
 		ev_val_count += count_ev_values(ev);
 		ev_op_data_count += ev->op_data_count;
 	}
@@ -178,17 +178,17 @@ static bool alloc_for_program(SGS_Generator *restrict o,
 			return false;
 		o->buf_count = i;
 	}
-	o->mixer = SGS_create_Mixer();
+	o->mixer = SAU_create_Mixer();
 	if (!o->mixer)
 		return false;
 
 	return true;
 }
 
-static const SGS_ProgramOpList blank_oplist = {0};
+static const SAU_ProgramOpList blank_oplist = {0};
 
-static bool convert_program(SGS_Generator *restrict o,
-		const SGS_Program *restrict prg, uint32_t srate) {
+static bool convert_program(SAU_Generator *restrict o,
+		const SAU_Program *restrict prg, uint32_t srate) {
 	if (!alloc_for_program(o, prg))
 		return false;
 
@@ -198,29 +198,29 @@ static bool convert_program(SGS_Generator *restrict o,
 
 	o->srate = srate;
 	float scale = 1.f;
-	if ((prg->mode & SGS_PMODE_AMP_DIV_VOICES) != 0)
+	if ((prg->mode & SAU_PMODE_AMP_DIV_VOICES) != 0)
 		scale /= o->vo_count;
-	SGS_Mixer_set_srate(o->mixer, srate);
-	SGS_Mixer_set_scale(o->mixer, scale);
+	SAU_Mixer_set_srate(o->mixer, srate);
+	SAU_Mixer_set_scale(o->mixer, scale);
 	for (size_t i = 0; i < prg->op_count; ++i) {
 		OperatorNode *on = &o->operators[i];
-		SGS_init_Osc(&on->osc, srate);
+		SAU_init_Osc(&on->osc, srate);
 		on->fmods = on->pmods = on->amods = &blank_oplist;
 	}
 	for (size_t i = 0; i < prg->ev_count; ++i) {
-		const SGS_ProgramEvent *prg_e = &prg->events[i];
+		const SAU_ProgramEvent *prg_e = &prg->events[i];
 		EventNode *e = &o->events[i];
 		uint32_t params;
 		uint16_t vo_id = prg_e->vo_id;
 		e->vals = ev_v;
-		e->waittime = SGS_MS_IN_SAMPLES(prg_e->wait_ms, srate);
+		e->waittime = SAU_MS_IN_SAMPLES(prg_e->wait_ms, srate);
 		vo_wait_time += e->waittime;
-		//e->vd.id = SGS_PVO_NO_ID;
+		//e->vd.id = SAU_PVO_NO_ID;
 		e->vd.id = vo_id;
 		e->od = ev_od;
 		e->od_count = prg_e->op_data_count;
 		for (size_t j = 0; j < prg_e->op_data_count; ++j) {
-			const SGS_ProgramOpData *pod = &prg_e->op_data[j];
+			const SAU_ProgramOpData *pod = &prg_e->op_data[j];
 			uint32_t op_id = pod->id;
 			params = pod->params;
 			ev_od->id = op_id;
@@ -228,34 +228,34 @@ static bool convert_program(SGS_Generator *restrict o,
 			ev_od->fmods = pod->fmods;
 			ev_od->pmods = pod->pmods;
 			ev_od->amods = pod->amods;
-			if (params & SGS_POPP_WAVE)
+			if (params & SAU_POPP_WAVE)
 				(*ev_v++).ival = pod->wave;
-			if (params & SGS_POPP_TIME) {
+			if (params & SAU_POPP_TIME) {
 				(*ev_v++).ival =
-					(pod->time_ms == SGS_TIME_INF) ?
-					SGS_TIME_INF :
-					SGS_MS_IN_SAMPLES(pod->time_ms, srate);
+					(pod->time_ms == SAU_TIME_INF) ?
+					SAU_TIME_INF :
+					SAU_MS_IN_SAMPLES(pod->time_ms, srate);
 			}
-			if (params & SGS_POPP_SILENCE)
+			if (params & SAU_POPP_SILENCE)
 				(*ev_v++).ival =
-					SGS_MS_IN_SAMPLES(pod->silence_ms,
+					SAU_MS_IN_SAMPLES(pod->silence_ms,
 							srate);
-			if (params & SGS_POPP_FREQ)
+			if (params & SAU_POPP_FREQ)
 				(*ev_v++).ramp = &pod->freq;
-			if (params & SGS_POPP_FREQ2)
+			if (params & SAU_POPP_FREQ2)
 				(*ev_v++).ramp = &pod->freq2;
-			if (params & SGS_POPP_PHASE)
-				(*ev_v++).ival = SGS_Osc_PHASE(pod->phase);
-			if (params & SGS_POPP_AMP)
+			if (params & SAU_POPP_PHASE)
+				(*ev_v++).ival = SAU_Osc_PHASE(pod->phase);
+			if (params & SAU_POPP_AMP)
 				(*ev_v++).ramp = &pod->amp;
-			if (params & SGS_POPP_AMP2)
+			if (params & SAU_POPP_AMP2)
 				(*ev_v++).ramp = &pod->amp2;
-			if (params & SGS_POPP_PAN)
+			if (params & SAU_POPP_PAN)
 				(*ev_v++).ramp = &pod->pan;
 			++ev_od;
 		}
 		if (prg_e->vo_data) {
-			const SGS_ProgramVoData *pvd = prg_e->vo_data;
+			const SAU_ProgramVoData *pvd = prg_e->vo_data;
 			e->vd.params = pvd->params;
 			if (pvd->graph != NULL) {
 				e->vd.graph = pvd->graph;
@@ -272,26 +272,26 @@ static bool convert_program(SGS_Generator *restrict o,
 /**
  * Create instance for program \p prg and sample rate \p srate.
  */
-SGS_Generator* SGS_create_Generator(const SGS_Program *restrict prg,
+SAU_Generator* SAU_create_Generator(const SAU_Program *restrict prg,
 		uint32_t srate) {
-	SGS_Generator *o = calloc(1, sizeof(SGS_Generator));
+	SAU_Generator *o = calloc(1, sizeof(SAU_Generator));
 	if (!o)
 		return NULL;
 	if (!convert_program(o, prg, srate)) {
-		SGS_destroy_Generator(o);
+		SAU_destroy_Generator(o);
 		return NULL;
 	}
-	SGS_global_init_Wave();
+	SAU_global_init_Wave();
 	return o;
 }
 
 /**
  * Destroy instance.
  */
-void SGS_destroy_Generator(SGS_Generator *restrict o) {
+void SAU_destroy_Generator(SAU_Generator *restrict o) {
 	if (!o)
 		return;
-	SGS_destroy_Mixer(o->mixer);
+	SAU_destroy_Mixer(o->mixer);
 	free(o->bufs);
 	free(o->events);
 	free(o->voices);
@@ -304,14 +304,14 @@ void SGS_destroy_Generator(SGS_Generator *restrict o) {
 /*
  * Set voice duration according to the current list of operators.
  */
-static void set_voice_duration(SGS_Generator *restrict o,
+static void set_voice_duration(SAU_Generator *restrict o,
 		VoiceNode *restrict vn) {
 	uint32_t time = 0;
 	for (uint32_t i = 0; i < vn->op_count; ++i) {
-		const SGS_ProgramOpRef *or = &vn->graph[i];
-		if (or->use != SGS_POP_CARR) continue;
+		const SAU_ProgramOpRef *or = &vn->graph[i];
+		if (or->use != SAU_POP_CARR) continue;
 		OperatorNode *on = &o->operators[or->id];
-		if (on->time == SGS_TIME_INF) continue;
+		if (on->time == SAU_TIME_INF) continue;
 		if (on->time > time)
 			time = on->time;
 	}
@@ -321,21 +321,21 @@ static void set_voice_duration(SGS_Generator *restrict o,
 /*
  * Process an event update for a timed parameter.
  */
-static const EventValue *handle_ramp_update(SGS_Ramp *restrict ramp,
+static const EventValue *handle_ramp_update(SAU_Ramp *restrict ramp,
 		uint32_t *restrict ramp_pos,
 		const EventValue *restrict val) {
-	const SGS_Ramp *src = (*val++).ramp;
-	if ((src->flags & SGS_RAMPP_GOAL) != 0) {
+	const SAU_Ramp *src = (*val++).ramp;
+	if ((src->flags & SAU_RAMPP_GOAL) != 0) {
 		*ramp_pos = 0;
 	}
-	SGS_Ramp_copy(ramp, src);
+	SAU_Ramp_copy(ramp, src);
 	return val;
 }
 
 /*
  * Process one event; to be called for the event when its time comes.
  */
-static void handle_event(SGS_Generator *restrict o, EventNode *restrict e) {
+static void handle_event(SAU_Generator *restrict o, EventNode *restrict e) {
 	if (1) /* more types to be added in the future */ {
 		const EventValue *val = e->vals;
 		uint32_t params;
@@ -346,7 +346,7 @@ static void handle_event(SGS_Generator *restrict o, EventNode *restrict e) {
 		 * updates for their operators.
 		 */
 		VoiceNode *vn = NULL;
-		if (e->vd.id != SGS_PVO_NO_ID)
+		if (e->vd.id != SAU_PVO_NO_ID)
 			vn = &o->voices[e->vd.id];
 		for (size_t i = 0; i < e->od_count; ++i) {
 			EventOpData *od = &e->od[i];
@@ -355,27 +355,27 @@ static void handle_event(SGS_Generator *restrict o, EventNode *restrict e) {
 			if (od->fmods != NULL) on->fmods = od->fmods;
 			if (od->pmods != NULL) on->pmods = od->pmods;
 			if (od->amods != NULL) on->amods = od->amods;
-			if (params & SGS_POPP_WAVE)
-				SGS_Osc_set_wave(&on->osc, (*val++).ival);
-			if (params & SGS_POPP_TIME)
+			if (params & SAU_POPP_WAVE)
+				SAU_Osc_set_wave(&on->osc, (*val++).ival);
+			if (params & SAU_POPP_TIME)
 				on->time = (*val++).ival;
-			if (params & SGS_POPP_SILENCE)
+			if (params & SAU_POPP_SILENCE)
 				on->silence = (*val++).ival;
-			if (params & SGS_POPP_FREQ)
+			if (params & SAU_POPP_FREQ)
 				val = handle_ramp_update(&on->freq,
 						&on->freq_pos, val);
-			if (params & SGS_POPP_FREQ2)
+			if (params & SAU_POPP_FREQ2)
 				val = handle_ramp_update(&on->freq2,
 						&on->freq2_pos, val);
-			if (params & SGS_POPP_PHASE)
-				SGS_Osc_set_phase(&on->osc, (*val++).ival);
-			if (params & SGS_POPP_AMP)
+			if (params & SAU_POPP_PHASE)
+				SAU_Osc_set_phase(&on->osc, (*val++).ival);
+			if (params & SAU_POPP_AMP)
 				val = handle_ramp_update(&on->amp,
 						&on->amp_pos, val);
-			if (params & SGS_POPP_AMP2)
+			if (params & SAU_POPP_AMP2)
 				val = handle_ramp_update(&on->amp2,
 						&on->amp2_pos, val);
-			if (params & SGS_POPP_PAN)
+			if (params & SAU_POPP_PAN)
 				val = handle_ramp_update(&vn->pan,
 						&vn->pan_pos, val);
 		}
@@ -404,7 +404,7 @@ static void handle_event(SGS_Generator *restrict o, EventNode *restrict e) {
  *
  * Returns number of samples generated for the node.
  */
-static uint32_t run_block(SGS_Generator *restrict o,
+static uint32_t run_block(SAU_Generator *restrict o,
 		Buf *restrict bufs, uint32_t buf_len,
 		OperatorNode *restrict n,
 		float *restrict parent_freq,
@@ -424,7 +424,7 @@ static uint32_t run_block(SGS_Generator *restrict o,
 		if (!acc_ind) for (i = 0; i < zero_len; ++i)
 			s_buf[i] = 0;
 		len -= zero_len;
-		if (n->time != SGS_TIME_INF) n->time -= zero_len;
+		if (n->time != SAU_TIME_INF) n->time -= zero_len;
 		n->silence -= zero_len;
 		if (!len)
 			return zero_len;
@@ -443,7 +443,7 @@ static uint32_t run_block(SGS_Generator *restrict o,
 	 * Limit length to time duration of operator.
 	 */
 	uint32_t skip_len = 0;
-	if (n->time < len && n->time != SGS_TIME_INF) {
+	if (n->time < len && n->time != SAU_TIME_INF) {
 		skip_len = len - n->time;
 		len = n->time;
 	}
@@ -452,10 +452,10 @@ static uint32_t run_block(SGS_Generator *restrict o,
 	 * if modulators linked.
 	 */
 	freq = *(bufs++);
-	SGS_Ramp_run(&n->freq, &n->freq_pos, freq, len, o->srate, parent_freq);
+	SAU_Ramp_run(&n->freq, &n->freq_pos, freq, len, o->srate, parent_freq);
 	if (n->fmods->count > 0) {
 		float *freq2 = *(bufs++);
-		SGS_Ramp_run(&n->freq2, &n->freq2_pos,
+		SAU_Ramp_run(&n->freq2, &n->freq2_pos,
 				freq2, len, o->srate, parent_freq);
 		for (i = 0; i < n->fmods->count; ++i)
 			run_block(o, bufs, len, &o->operators[n->fmods->ids[i]],
@@ -464,7 +464,7 @@ static uint32_t run_block(SGS_Generator *restrict o,
 		for (i = 0; i < len; ++i)
 			freq[i] += (freq2[i] - freq[i]) * fm_buf[i];
 	} else {
-		SGS_Ramp_skip(&n->freq2, &n->freq2_pos, len, o->srate);
+		SAU_Ramp_skip(&n->freq2, &n->freq2_pos, len, o->srate);
 	}
 	/*
 	 * If phase modulators linked, get phase offsets for modulation.
@@ -481,10 +481,10 @@ static uint32_t run_block(SGS_Generator *restrict o,
 	 * modulators linked.
 	 */
 	amp = *(bufs++);
-	SGS_Ramp_run(&n->amp, &n->amp_pos, amp, len, o->srate, NULL);
+	SAU_Ramp_run(&n->amp, &n->amp_pos, amp, len, o->srate, NULL);
 	if (n->amods->count > 0) {
 		float *amp2 = *(bufs++);
-		SGS_Ramp_run(&n->amp2, &n->amp2_pos, amp2, len, o->srate, NULL);
+		SAU_Ramp_run(&n->amp2, &n->amp2_pos, amp2, len, o->srate, NULL);
 		for (i = 0; i < n->amods->count; ++i)
 			run_block(o, bufs, len, &o->operators[n->amods->ids[i]],
 					freq, true, i);
@@ -492,17 +492,17 @@ static uint32_t run_block(SGS_Generator *restrict o,
 		for (i = 0; i < len; ++i)
 			amp[i] += (amp2[i] - amp[i]) * am_buf[i];
 	} else {
-		SGS_Ramp_skip(&n->amp2, &n->amp2_pos, len, o->srate);
+		SAU_Ramp_skip(&n->amp2, &n->amp2_pos, len, o->srate);
 	}
 	if (!wave_env) {
-		SGS_Osc_run(&n->osc, s_buf, len, acc_ind, freq, amp, pm_buf);
+		SAU_Osc_run(&n->osc, s_buf, len, acc_ind, freq, amp, pm_buf);
 	} else {
-		SGS_Osc_run_env(&n->osc, s_buf, len, acc_ind, freq, amp, pm_buf);
+		SAU_Osc_run_env(&n->osc, s_buf, len, acc_ind, freq, amp, pm_buf);
 	}
 	/*
 	 * Update time duration left, zero rest of buffer if unfilled.
 	 */
-	if (n->time != SGS_TIME_INF) {
+	if (n->time != SAU_TIME_INF) {
 		if (!acc_ind && skip_len > 0) {
 			s_buf += len;
 			for (i = 0; i < skip_len; ++i)
@@ -520,10 +520,10 @@ static uint32_t run_block(SGS_Generator *restrict o,
  *
  * \return number of samples generated
  */
-static uint32_t run_voice(SGS_Generator *restrict o,
+static uint32_t run_voice(SAU_Generator *restrict o,
 		VoiceNode *restrict vn, uint32_t len) {
 	uint32_t out_len = 0;
-	const SGS_ProgramOpRef *ops = vn->graph;
+	const SAU_ProgramOpRef *ops = vn->graph;
 	uint32_t opc = vn->op_count;
 	if (!ops)
 		return 0;
@@ -536,7 +536,7 @@ static uint32_t run_voice(SGS_Generator *restrict o,
 	for (i = 0; i < opc; ++i) {
 		uint32_t last_len;
 		// TODO: finish redesign
-		if (ops[i].use != SGS_POP_CARR) continue;
+		if (ops[i].use != SAU_POP_CARR) continue;
 		OperatorNode *n = &o->operators[ops[i].id];
 		if (n->time == 0) continue;
 		last_len = run_block(o, o->bufs, time, n,
@@ -544,7 +544,7 @@ static uint32_t run_voice(SGS_Generator *restrict o,
 		if (last_len > out_len) out_len = last_len;
 	}
 	if (out_len > 0) {
-		SGS_Mixer_add(o->mixer, o->bufs[0], out_len,
+		SAU_Mixer_add(o->mixer, o->bufs[0], out_len,
 				&vn->pan, &vn->pan_pos);
 	}
 	vn->duration -= time;
@@ -558,14 +558,14 @@ static uint32_t run_voice(SGS_Generator *restrict o,
  *
  * \return number of samples generated
  */
-static uint32_t run_for_time(SGS_Generator *restrict o,
+static uint32_t run_for_time(SAU_Generator *restrict o,
 		uint32_t time, int16_t *restrict buf) {
 	int16_t *sp = buf;
 	uint32_t gen_len = 0;
 	while (time > 0) {
 		uint32_t len = time;
 		if (len > BUF_LEN) len = BUF_LEN;
-		SGS_Mixer_clear(o->mixer);
+		SAU_Mixer_clear(o->mixer);
 		uint32_t last_len = 0;
 		for (uint32_t i = o->voice; i < o->vo_count; ++i) {
 			VoiceNode *vn = &o->voices[i];
@@ -594,7 +594,7 @@ static uint32_t run_for_time(SGS_Generator *restrict o,
 		time -= len;
 		if (last_len > 0) {
 			gen_len += last_len;
-			SGS_Mixer_write(o->mixer, &sp, last_len);
+			SAU_Mixer_write(o->mixer, &sp, last_len);
 		}
 	}
 	return gen_len;
@@ -603,11 +603,11 @@ static uint32_t run_for_time(SGS_Generator *restrict o,
 /*
  * Any error checking following audio generation goes here.
  */
-static void check_final_state(SGS_Generator *restrict o) {
+static void check_final_state(SAU_Generator *restrict o) {
 	for (uint16_t i = 0; i < o->vo_count; ++i) {
 		VoiceNode *vn = &o->voices[i];
 		if (!(vn->flags & VN_INIT)) {
-			SGS_warning("generator",
+			SAU_warning("generator",
 "voice %hd left uninitialized (never used)", i);
 		}
 	}
@@ -623,7 +623,7 @@ static void check_final_state(SGS_Generator *restrict o) {
  *
  * \return true unless the signal has ended
  */
-bool SGS_Generator_run(SGS_Generator *restrict o,
+bool SAU_Generator_run(SAU_Generator *restrict o,
 		int16_t *restrict buf, size_t buf_len,
 		size_t *restrict out_len) {
 	int16_t *sp = buf;

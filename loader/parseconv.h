@@ -1,4 +1,4 @@
-/* sgensys: Parse result to audio program converter.
+/* saugns: Parse result to audio program converter.
  * Copyright (c) 2011-2012, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -20,62 +20,62 @@
  * Voice allocation state flags.
  */
 enum {
-	SGS_VAS_GRAPH = 1<<0,
+	SAU_VAS_GRAPH = 1<<0,
 };
 
 /*
  * Per-voice state used during program data allocation.
  */
-typedef struct SGS_VoAllocState {
-	SGS_ScriptEvData *last_ev;
-	SGS_ProgramOpList *op_carrs;
+typedef struct SAU_VoAllocState {
+	SAU_ScriptEvData *last_ev;
+	SAU_ProgramOpList *op_carrs;
 	uint32_t flags;
 	uint32_t duration_ms;
-} SGS_VoAllocState;
+} SAU_VoAllocState;
 
-SGS_DEF_ArrType(SGS_VoAlloc, SGS_VoAllocState, _)
+SAU_DEF_ArrType(SAU_VoAlloc, SAU_VoAllocState, _)
 
 /*
  * Operator allocation state flags.
  */
 enum {
-	SGS_OAS_VISITED = 1<<0,
+	SAU_OAS_VISITED = 1<<0,
 };
 
 /*
  * Per-operator state used during program data allocation.
  */
-typedef struct SGS_OpAllocState {
-	SGS_ScriptOpData *last_pod;
-	SGS_ProgramOpList *fmods, *pmods, *amods;
+typedef struct SAU_OpAllocState {
+	SAU_ScriptOpData *last_pod;
+	SAU_ProgramOpList *fmods, *pmods, *amods;
 	uint32_t flags;
 	//uint32_t duration_ms;
-} SGS_OpAllocState;
+} SAU_OpAllocState;
 
-SGS_DEF_ArrType(SGS_OpAlloc, SGS_OpAllocState, _)
+SAU_DEF_ArrType(SAU_OpAlloc, SAU_OpAllocState, _)
 
-SGS_DEF_ArrType(OpRefArr, SGS_ProgramOpRef, )
+SAU_DEF_ArrType(OpRefArr, SAU_ProgramOpRef, )
 
 /**
  * Voice data, held during program building and set per event.
  */
-typedef struct SGS_VoiceGraph {
+typedef struct SAU_VoiceGraph {
 	OpRefArr vo_graph;
-	SGS_VoAlloc *va;
-	SGS_OpAlloc *oa;
+	SAU_VoAlloc *va;
+	SAU_OpAlloc *oa;
 	uint32_t op_nest_depth;
-} SGS_VoiceGraph;
+} SAU_VoiceGraph;
 
 /**
  * Initialize instance for use.
  */
-static inline void SGS_init_VoiceGraph(SGS_VoiceGraph *restrict o,
-		SGS_VoAlloc *restrict va, SGS_OpAlloc *restrict oa) {
+static inline void SAU_init_VoiceGraph(SAU_VoiceGraph *restrict o,
+		SAU_VoAlloc *restrict va, SAU_OpAlloc *restrict oa) {
 	o->va = va;
 	o->oa = oa;
 }
 
-void SGS_fini_VoiceGraph(SGS_VoiceGraph *restrict o);
+void SAU_fini_VoiceGraph(SAU_VoiceGraph *restrict o);
 
-bool SGS_VoiceGraph_set(SGS_VoiceGraph *restrict o,
-		const SGS_ProgramEvent *restrict ev);
+bool SAU_VoiceGraph_set(SAU_VoiceGraph *restrict o,
+		const SAU_ProgramEvent *restrict ev);

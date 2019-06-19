@@ -1,4 +1,4 @@
-/* sgensys: Math definitions.
+/* saugns: Math definitions.
  * Copyright (c) 2011-2012, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -17,7 +17,7 @@
 
 #include "math.h"
 
-const char *const SGS_Math_names[SGS_MATH_FUNCTIONS + 1] = {
+const char *const SAU_Math_names[SAU_MATH_FUNCTIONS + 1] = {
 	"abs",
 	"exp",
 	"log",
@@ -26,10 +26,10 @@ const char *const SGS_Math_names[SGS_MATH_FUNCTIONS + 1] = {
 	NULL
 };
 
-const SGS_Math_val_f SGS_Math_val_func[SGS_MATH_FUNCTIONS] = {
+const SAU_Math_val_f SAU_Math_val_func[SAU_MATH_FUNCTIONS] = {
 	fabs,
 	exp,
 	log,
 	sqrt,
-	SGS_met,
+	SAU_met,
 };

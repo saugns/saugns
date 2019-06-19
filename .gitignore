@@ -5,6 +5,7 @@
 **/*.o
 mgensys
 sgensys
+saugns
 test-builder
 test-scan
 
