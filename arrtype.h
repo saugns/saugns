@@ -1,4 +1,4 @@
-/* sgensys: Generic array module.
+/* saugns: Generic array module.
  * Copyright (c) 2018-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -25,14 +25,14 @@
  * Each concrete type uses inline wrappers around generic methods.
  */
 
-struct SGS_MemPool;
+struct SAU_MemPool;
 
 /**
  * Declare array type using \p Name, with \p ElementType.
  *
- * Only declares type, not methods. See sgsArrType().
+ * Only declares type, not methods. See sauArrType().
  */
-#define sgsArrTypeStruct(Name, ElementType) \
+#define sauArrTypeStruct(Name, ElementType) \
 typedef struct Name { \
 	ElementType *a; \
 	size_t count; \
@@ -42,62 +42,62 @@ typedef struct Name { \
 /**
  * Declare array methods for \p Name, with \p ElementType.
  *
- * Only declares methods, not type. See sgsArrType().
+ * Only declares methods, not type. See sauArrType().
  *
  * The Name_*() methods defined are inline wrappers around the
  * generic methods. If not blank, \p MethodPrefix will be used
  * to prefix their names.
  */
-#define sgsArrTypeMethods(Name, ElementType, MethodPrefix) \
-static inline ElementType sgsMaybeUnused \
+#define sauArrTypeMethods(Name, ElementType, MethodPrefix) \
+static inline ElementType sauMaybeUnused \
 *MethodPrefix##Name##_add(Name *restrict o, \
 		const ElementType *restrict item) { \
-	return SGS_ArrType_add(o, item, sizeof(ElementType)); \
+	return SAU_ArrType_add(o, item, sizeof(ElementType)); \
 } \
-static inline bool sgsMaybeUnused \
+static inline bool sauMaybeUnused \
 MethodPrefix##Name##_upsize(Name *restrict o, size_t count) { \
-	return SGS_ArrType_upsize(o, count, sizeof(ElementType)); \
+	return SAU_ArrType_upsize(o, count, sizeof(ElementType)); \
 } \
-static inline void sgsMaybeUnused \
+static inline void sauMaybeUnused \
 MethodPrefix##Name##_clear(Name *restrict o) { \
-	SGS_ArrType_clear(o); \
+	SAU_ArrType_clear(o); \
 } \
-static inline bool sgsMaybeUnused \
+static inline bool sauMaybeUnused \
 MethodPrefix##Name##_memdup(Name *restrict o, \
 		ElementType **restrict dst) { \
-	return SGS_ArrType_memdup(o, (void**) dst, sizeof(ElementType)); \
+	return SAU_ArrType_memdup(o, (void**) dst, sizeof(ElementType)); \
 } \
-static inline bool sgsMaybeUnused \
+static inline bool sauMaybeUnused \
 MethodPrefix##Name##_mpmemdup(Name *restrict o, \
 		ElementType **restrict dst, \
-		struct SGS_MemPool *restrict mempool) { \
-	return SGS_ArrType_mpmemdup(o, (void**) dst, \
+		struct SAU_MemPool *restrict mempool) { \
+	return SAU_ArrType_mpmemdup(o, (void**) dst, \
 		sizeof(ElementType), mempool); \
 }
 
 /**
  * Declare both type and methods for \p Name, with \p ElementType.
  *
- * Combines sgsArrTypeStruct() and sgsArrTypeMethods().
+ * Combines sauArrTypeStruct() and sauArrTypeMethods().
  *
  * The Name_*() methods defined are inline wrappers around the
  * generic methods. If not blank, \p MethodPrefix will be used
  * to prefix their names.
  */
-#define sgsArrType(Name, ElementType, MethodPrefix) \
-sgsArrTypeStruct(Name, ElementType) \
-sgsArrTypeMethods(Name, ElementType, MethodPrefix)
+#define sauArrType(Name, ElementType, MethodPrefix) \
+sauArrTypeStruct(Name, ElementType) \
+sauArrTypeMethods(Name, ElementType, MethodPrefix)
 
-void *SGS_ArrType_add(void *restrict o,
+void *SAU_ArrType_add(void *restrict o,
 		const void *restrict item, size_t item_size);
-bool SGS_ArrType_upsize(void *restrict o,
+bool SAU_ArrType_upsize(void *restrict o,
 		size_t count, size_t item_size);
-void SGS_ArrType_clear(void *restrict o);
-bool SGS_ArrType_memdup(void *restrict o,
+void SAU_ArrType_clear(void *restrict o);
+bool SAU_ArrType_memdup(void *restrict o,
 		void **restrict dst, size_t item_size);
-bool SGS_ArrType_mpmemdup(void *restrict o,
+bool SAU_ArrType_mpmemdup(void *restrict o,
 		void **restrict dst, size_t item_size,
-		struct SGS_MemPool *mempool);
+		struct SAU_MemPool *mempool);
 
 /** Byte (uint8_t) array type. */
-sgsArrType(SGS_ByteArr, uint8_t, )
+sauArrType(SAU_ByteArr, uint8_t, )

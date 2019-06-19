@@ -1,4 +1,4 @@
-/* sgensys: Audio script loader / program builder module.
+/* saugns: Audio script loader / program builder module.
  * Copyright (c) 2011-2013, 2017-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -11,7 +11,7 @@
  * <https://www.gnu.org/licenses/>.
  */
 
-#include "../sgensys.h"
+#include "../saugns.h"
 #include "../script.h"
 
 /*
@@ -19,12 +19,12 @@
  *
  * \return instance or NULL on error
  */
-static SGS_Script *build_program(const char *restrict script_arg,
+static SAU_Script *build_program(const char *restrict script_arg,
 		bool is_path) {
-	SGS_Script *sd = SGS_load_Script(script_arg, is_path);
-	if (sd && SGS_build_Program(sd))
+	SAU_Script *sd = SAU_load_Script(script_arg, is_path);
+	if (sd && SAU_build_Program(sd))
 		return sd;
-	SGS_discard_Script(sd);
+	SAU_discard_Script(sd);
 	return NULL;
 }
 
@@ -34,15 +34,15 @@ static SGS_Script *build_program(const char *restrict script_arg,
  *
  * \return number of items successfully processed
  */
-size_t SGS_load(const SGS_PtrArr *restrict script_args, uint32_t options,
-		SGS_PtrArr *restrict script_objs) {
-	bool are_paths = !(options & SGS_OPT_EVAL_STRING);
+size_t SAU_load(const SAU_PtrArr *restrict script_args, uint32_t options,
+		SAU_PtrArr *restrict script_objs) {
+	bool are_paths = !(options & SAU_OPT_EVAL_STRING);
 	size_t built = 0;
-	const char **args = (const char**) SGS_PtrArr_ITEMS(script_args);
+	const char **args = (const char**) SAU_PtrArr_ITEMS(script_args);
 	for (size_t i = 0; i < script_args->count; ++i) {
-		SGS_Script *script = build_program(args[i], are_paths);
+		SAU_Script *script = build_program(args[i], are_paths);
 		if (script != NULL) ++built;
-		SGS_PtrArr_add(script_objs, script);
+		SAU_PtrArr_add(script_objs, script);
 	}
 	return built;
 }
