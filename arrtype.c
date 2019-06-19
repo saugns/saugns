@@ -1,4 +1,4 @@
-/* sgensys: Generic array module.
+/* saugns: Generic array module.
  * Copyright (c) 2018-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -33,10 +33,10 @@
  *
  * \return item in array, or NULL if allocation failed
  */
-void *SGS_ArrType_add(void *restrict _o,
+void *SAU_ArrType_add(void *restrict _o,
 		const void *restrict item, size_t item_size) {
-	SGS_ByteArr *restrict o = _o;
-	if (!SGS_ArrType_upsize(o, o->count + 1, item_size))
+	SAU_ByteArr *restrict o = _o;
+	if (!SAU_ArrType_upsize(o, o->count + 1, item_size))
 		return NULL;
 	size_t offs = o->count * item_size;
 	void *mem = o->a + offs;
@@ -56,9 +56,9 @@ void *SGS_ArrType_add(void *restrict _o,
  *
  * \return true unless allocation failed
  */
-bool SGS_ArrType_upsize(void *restrict _o,
+bool SAU_ArrType_upsize(void *restrict _o,
 		size_t count, size_t item_size) {
-	SGS_ByteArr *restrict o = _o;
+	SAU_ByteArr *restrict o = _o;
 	size_t asize = o->asize;
 	if (!o->a) asize = 0;
 	size_t min_asize = count * item_size;
@@ -79,8 +79,8 @@ bool SGS_ArrType_upsize(void *restrict _o,
  *
  * (Generic version of the function, to be used through wrapper.)
  */
-void SGS_ArrType_clear(void *restrict _o) {
-	SGS_ByteArr *restrict o = _o;
+void SAU_ArrType_clear(void *restrict _o) {
+	SAU_ByteArr *restrict o = _o;
 	free(o->a);
 	o->a = NULL;
 	o->count = 0;
@@ -99,15 +99,15 @@ void SGS_ArrType_clear(void *restrict _o) {
  *
  * \return true unless allocation failed
  */
-bool SGS_ArrType_memdup(void *restrict _o,
+bool SAU_ArrType_memdup(void *restrict _o,
 		void **restrict dst, size_t item_size) {
-	SGS_ByteArr *restrict o = _o;
+	SAU_ByteArr *restrict o = _o;
 	if (!o->count) {
 		*dst = NULL;
 		return true;
 	}
 	size_t size = o->count * item_size;
-	void *a = SGS_memdup(o->a, size);
+	void *a = SAU_memdup(o->a, size);
 	if (!a)
 		return false;
 	*dst = a;
@@ -127,16 +127,16 @@ bool SGS_ArrType_memdup(void *restrict _o,
  *
  * \return true unless allocation failed
  */
-bool SGS_ArrType_mpmemdup(void *restrict _o,
+bool SAU_ArrType_mpmemdup(void *restrict _o,
 		void **restrict dst, size_t item_size,
-		SGS_MemPool *restrict mempool) {
-	SGS_ByteArr *restrict o = _o;
+		SAU_MemPool *restrict mempool) {
+	SAU_ByteArr *restrict o = _o;
 	if (!o->count) {
 		*dst = NULL;
 		return true;
 	}
 	size_t size = o->count * item_size;
-	void *a = SGS_MemPool_memdup(mempool, o->a, size);
+	void *a = SAU_MemPool_memdup(mempool, o->a, size);
 	if (!a)
 		return false;
 	*dst = a;
