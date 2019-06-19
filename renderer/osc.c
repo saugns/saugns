@@ -1,4 +1,4 @@
-/* sgensys: Oscillator module.
+/* saugns: Oscillator module.
  * Copyright (c) 2011-2012, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -22,7 +22,7 @@
  *
  * \p pm_f may be NULL for no PM input.
  */
-void SGS_Osc_block_add(SGS_Osc *restrict o,
+void SAU_Osc_block_add(SAU_Osc *restrict o,
 		const float *restrict lut, double coeff,
 		float *restrict buf, size_t buf_len,
 		size_t op_num,
@@ -34,7 +34,7 @@ void SGS_Osc_block_add(SGS_Osc *restrict o,
 		if (pm_f != NULL) {
 			s_pm = lrintf(pm_f[i] * (float) INT32_MAX);
 		}
-		float s = SGS_Osc_run(o, lut, coeff, freq[i], s_pm) * amp[i];
+		float s = SAU_Osc_run(o, lut, coeff, freq[i], s_pm) * amp[i];
 		if (op_num != 0) s += buf[i];
 		buf[i] = s;
 	}
@@ -50,7 +50,7 @@ void SGS_Osc_block_add(SGS_Osc *restrict o,
  *
  * \p pm_f may be NULL for no PM input.
  */
-void SGS_Osc_block_mul(SGS_Osc *restrict o,
+void SAU_Osc_block_mul(SAU_Osc *restrict o,
 		const float *restrict lut, double coeff,
 		float *restrict buf, size_t buf_len,
 		size_t op_num,
@@ -62,7 +62,7 @@ void SGS_Osc_block_mul(SGS_Osc *restrict o,
 		if (pm_f != NULL) {
 			s_pm = lrintf(pm_f[i] * (float) INT32_MAX);
 		}
-		float s = SGS_Osc_run(o, lut, coeff, freq[i], s_pm);
+		float s = SAU_Osc_run(o, lut, coeff, freq[i], s_pm);
 		float s_amp = amp[i] * 0.5f;
 		s = (s * s_amp) + fabs(s_amp);
 		if (op_num != 0) s *= buf[i];
