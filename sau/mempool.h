@@ -1,5 +1,5 @@
-/* saugns: Sound file writer module.
- * Copyright (c) 2011-2012, 2017-2022 Joel K. Pettersson
+/* SAU library: Memory pool module.
+ * Copyright (c) 2014, 2018-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -16,23 +16,17 @@
  */
 
 #pragma once
-#include "../saugns.h"
+#include "common.h"
 
-enum {
-	SGS_SNDFILE_RAW = 0,
-	SGS_SNDFILE_AU,
-	SGS_SNDFILE_WAV,
-	SGS_SNDFILE_FORMATS
-};
+struct SAU_Mempool;
+typedef struct SAU_Mempool SAU_Mempool;
 
-struct SGS_SndFile;
-typedef struct SGS_SndFile SGS_SndFile;
+SAU_Mempool *SAU_create_Mempool(size_t start_size) sauMalloclike;
+void SAU_destroy_Mempool(SAU_Mempool *restrict o);
 
-SGS_SndFile *SGS_create_SndFile(const char *restrict fpath, unsigned format,
-		uint16_t channels, uint32_t srate) sauMalloclike;
-int SGS_close_SndFile(SGS_SndFile *restrict o);
-
-bool SGS_SndFile_write(SGS_SndFile *restrict o,
-		int16_t *restrict buf, uint32_t samples);
-
-extern const char *const SGS_SndFile_formats[SGS_SNDFILE_FORMATS];
+void *SAU_mpalloc(SAU_Mempool *restrict o, size_t size) sauMalloclike;
+void *SAU_mpmemdup(SAU_Mempool *restrict o,
+		const void *restrict src, size_t size) sauMalloclike;
+typedef void (*SAU_Dtor_f)(void *o);
+bool SAU_mpregdtor(SAU_Mempool *restrict o,
+		SAU_Dtor_f func, void *restrict arg);

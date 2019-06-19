@@ -1,51 +1,33 @@
 .POSIX:
 CC=cc
-CFLAGS_COMMON=-std=c99 -W -Wall
+CFLAGS_COMMON=-std=c99 -W -Wall -I.
 CFLAGS=$(CFLAGS_COMMON) -O2
 CFLAGS_FAST=$(CFLAGS_COMMON) -O3
 CFLAGS_FASTF=$(CFLAGS_COMMON) -O3 -ffast-math
 CFLAGS_SIZE=$(CFLAGS_COMMON) -Os
-LFLAGS=-s -lm
+LFLAGS=-s -Lsau -lsau -lm
 LFLAGS_LINUX=$(LFLAGS) -lasound
 LFLAGS_SNDIO=$(LFLAGS) -lsndio
 LFLAGS_OSSAUDIO=$(LFLAGS) -lossaudio
+LFLAGS_TESTS=-s -Lsau -lsau-tests -lm
 PREFIX=/usr/local
-BIN=sgensys
-SHARE=sgensys
+BIN=saugns
+SHARE=saugns
 OBJ=\
-	arrtype.o \
-	error.o \
-	math.o \
-	help.o \
-	file.o \
-	symtab.o \
-	scanner.o \
-	parser.o \
-	parseconv.o \
-	mempool.o \
-	ramp.o \
-	wave.o \
-	generator.o \
 	player/audiodev.o \
 	player/sndfile.o \
-	sgensys.o
+	saugns.o
 TEST1_OBJ=\
-	arrtype.o \
-	error.o \
-	file.o \
-	symtab.o \
-	scanner.o \
-	lexer.o \
-	mempool.o \
 	test-scan.o
 
 all: $(BIN)
 check: $(BIN)
-	./$(BIN) -cd $(ARGS) */*.sgs examples/*/*.sgs examples/*/*/*.sgs
+	./$(BIN) -cd $(ARGS) */*.sau examples/*/*.sau examples/*/*/*.sau
 fullcheck: $(BIN)
-	./$(BIN) -md $(ARGS) */*.sgs examples/*/*.sgs examples/*/*/*.sgs
+	./$(BIN) -md $(ARGS) */*.sau examples/*/*.sau examples/*/*/*.sau
 tests: test-scan
 clean:
+	(cd sau; make clean)
 	rm -f $(OBJ) $(BIN)
 	rm -f $(TEST1_OBJ) test-scan
 install: $(BIN)
@@ -57,7 +39,7 @@ uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/bin/$(BIN)
 	rm -Rf $(DESTDIR)$(PREFIX)/share/$(SHARE)
 
-$(BIN): $(OBJ)
+$(BIN): $(OBJ) sau/libsau.a
 	@UNAME="`uname -s`"; \
 	if [ $$UNAME = 'Linux' ]; then \
 		echo "Linking for Linux (using ALSA and OSS)."; \
@@ -73,59 +55,20 @@ $(BIN): $(OBJ)
 		$(CC) $(OBJ) $(LFLAGS) -o $(BIN); \
 	fi
 
-test-scan: $(TEST1_OBJ)
-	$(CC) $(TEST1_OBJ) $(LFLAGS) -o test-scan
+sau/libsau.a sau/libsau-tests.a: sau/*.[hc] sau/*/*.[hc]
+	(cd sau; make)
 
-arrtype.o: arrtype.c arrtype.h mempool.h sgensys.h
-	$(CC) -c $(CFLAGS) arrtype.c
+test-scan: $(TEST1_OBJ) sau/libsau-tests.a
+	$(CC) $(TEST1_OBJ) $(LFLAGS_TESTS) -o test-scan
 
-error.o: sgensys.h error.c
-	$(CC) -c $(CFLAGS_SIZE) error.c
-
-help.o: sgensys.h help.c help.h math.h ramp.h wave.h
-	$(CC) -c $(CFLAGS_SIZE) help.c
-
-math.o: sgensys.h math.c math.h
-	$(CC) -c $(CFLAGS_FAST) math.c
-
-mempool.o: sgensys.h mempool.c mempool.h
-	$(CC) -c $(CFLAGS_FAST) mempool.c
-
-player/audiodev.o: sgensys.h player/audiodev.c player/audiodev.h player/audiodev/*.c
+player/audiodev.o: player/audiodev.c player/audiodev.h player/audiodev/*.c sau/common.h
 	$(CC) -c $(CFLAGS_SIZE) player/audiodev.c -o player/audiodev.o
 
-player/sndfile.o: sgensys.h player/sndfile.c player/sndfile.h
+player/sndfile.o: player/sndfile.c player/sndfile.h sau/common.h
 	$(CC) -c $(CFLAGS) player/sndfile.c -o player/sndfile.o
 
-ramp.o: sgensys.h math.h ramp.c ramp.h
-	$(CC) -c $(CFLAGS_FASTF) ramp.c
+saugns.o: saugns.c saugns.h player/audiodev.h player/sndfile.h sau/common.h sau/help.h sau/generator.h sau/script.h sau/arrtype.h sau/program.h sau/ramp.h sau/wave.h sau/math.h sau/file.h sau/scanner.h sau/symtab.h
+	$(CC) -c $(CFLAGS_SIZE) saugns.c
 
-file.o: sgensys.h file.c file.h
-	$(CC) -c $(CFLAGS) file.c
-
-lexer.o: sgensys.h math.h mempool.h file.h lexer.c lexer.h scanner.h symtab.h
-	$(CC) -c $(CFLAGS) lexer.c
-
-parseconv.o: arrtype.h sgensys.h math.h mempool.h program.h ramp.h parseconv.c script.h wave.h
-	$(CC) -c $(CFLAGS) parseconv.c
-
-parser.o: sgensys.h math.h mempool.h program.h ramp.h file.h parser.c scanner.h symtab.h script.h wave.h
-	$(CC) -c $(CFLAGS_SIZE) parser.c
-
-scanner.o: sgensys.h math.h mempool.h file.h scanner.c scanner.h symtab.h
-	$(CC) -c $(CFLAGS_FAST) scanner.c
-
-symtab.o: sgensys.h mempool.h symtab.c symtab.h
-	$(CC) -c $(CFLAGS_FAST) symtab.c
-
-generator.o: sgensys.h math.h mempool.h program.h ramp.h generator.c generator.h generator/osc.h wave.h
-	$(CC) -c $(CFLAGS_FASTF) generator.c
-
-sgensys.o: sgensys.c help.h generator.h script.h arrtype.h program.h ramp.h wave.h math.h file.h player/audiodev.h player/sndfile.h scanner.h symtab.h sgensys.h
-	$(CC) -c $(CFLAGS_SIZE) sgensys.c
-
-test-scan.o: sgensys.h math.h program.h ramp.h file.h lexer.h scanner.h symtab.h sgensys.h test-scan.c wave.h
+test-scan.o: test-scan.c saugns.h sau/common.h sau/math.h sau/program.h sau/ramp.h sau/file.h sau/lexer.h sau/scanner.h sau/symtab.h sau/wave.h
 	$(CC) -c $(CFLAGS) test-scan.c
-
-wave.o: sgensys.h math.h wave.c wave.h
-	$(CC) -c $(CFLAGS_FASTF) wave.c
