@@ -1,4 +1,4 @@
-/* sgensys: Test program for experimental reader code.
+/* saugns: Test program for experimental reader code.
  * Copyright (c) 2017-2023 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -11,15 +11,15 @@
  * <https://www.gnu.org/licenses/>.
  */
 
-#include "sgensys.h"
-#include "program.h"
-#include "arrtype.h"
-#if SGS_TEST_SCANNER
-# include "scanner.h"
+#include "saugns.h"
+#include <sau/program.h>
+#include <sau/arrtype.h>
+#if TEST_SCANNER
+# include <sau/scanner.h>
 #else
-# include "lexer.h"
+# include <sau/lexer.h>
 #endif
-#include "file.h"
+#include <sau/file.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -29,19 +29,19 @@
  * Command line options flags.
  */
 enum {
-	SGS_OPT_MODE_FULL     = 1<<0,
-	SGS_OPT_SYSAU_ENABLE  = 1<<1,
-	SGS_OPT_SYSAU_DISABLE = 1<<2,
-	SGS_OPT_MODE_CHECK    = 1<<3,
-	SGS_OPT_PRINT_INFO    = 1<<4,
-	SGS_OPT_EVAL_STRING   = 1<<5,
+	OPT_MODE_FULL     = 1<<0,
+	OPT_SYSAU_ENABLE  = 1<<1,
+	OPT_SYSAU_DISABLE = 1<<2,
+	OPT_MODE_CHECK    = 1<<3,
+	OPT_PRINT_INFO    = 1<<4,
+	OPT_EVAL_STRING   = 1<<5,
 };
 
-struct SGS_ScriptArg {
+struct SAU_ScriptArg {
 	const char *str;
 };
-sgsArrType(SGS_ScriptArgArr, struct SGS_ScriptArg, )
-sgsArrType(SGS_ProgramArr, SGS_Program*, )
+sauArrType(SAU_ScriptArgArr, struct SAU_ScriptArg, )
+sauArrType(SAU_ProgramArr, SAU_Program*, )
 
 /*
  * Print command line usage instructions.
@@ -62,7 +62,7 @@ static void print_usage(bool h_arg) {
  * Print version.
  */
 static void print_version(void) {
-	fputs(NAME" ("SGS_CLINAME_STR") "SGS_VERSION_STR"\n", stdout);
+	fputs(NAME" ("CLINAME_STR") "VERSION_STR"\n", stdout);
 }
 
 /*
@@ -74,7 +74,7 @@ static void print_version(void) {
  */
 static bool parse_args(int argc, char **restrict argv,
 		uint32_t *restrict flags,
-		SGS_ScriptArgArr *restrict script_args) {
+		SAU_ScriptArgArr *restrict script_args) {
 	bool h_arg = false;
 	for (;;) {
 		const char *arg;
@@ -86,8 +86,8 @@ static bool parse_args(int argc, char **restrict argv,
 		}
 		arg = *argv;
 		if (*arg != '-') {
-			struct SGS_ScriptArg entry = {arg};
-			SGS_ScriptArgArr_add(script_args, &entry);
+			struct SAU_ScriptArg entry = {arg};
+			SAU_ScriptArgArr_add(script_args, &entry);
 			continue;
 		}
 NEXT_C:
@@ -97,18 +97,18 @@ NEXT_C:
 			print_version();
 			goto ABORT;
 		case 'c':
-			if ((*flags & SGS_OPT_MODE_FULL) != 0)
+			if ((*flags & OPT_MODE_FULL) != 0)
 				goto USAGE;
-			*flags |= SGS_OPT_MODE_CHECK;
+			*flags |= OPT_MODE_CHECK;
 			break;
 		case 'e':
-			*flags |= SGS_OPT_EVAL_STRING;
+			*flags |= OPT_EVAL_STRING;
 			break;
 		case 'h':
 			h_arg = true;
 			goto USAGE;
 		case 'p':
-			*flags |= SGS_OPT_PRINT_INFO;
+			*flags |= OPT_PRINT_INFO;
 			break;
 		default:
 			goto USAGE;
@@ -119,7 +119,7 @@ NEXT_C:
 USAGE:
 	print_usage(h_arg);
 ABORT:
-	SGS_ScriptArgArr_clear(script_args);
+	SAU_ScriptArgArr_clear(script_args);
 	return false;
 }
 
@@ -127,23 +127,23 @@ ABORT:
  * Discard the programs in the list, ignoring NULL entries,
  * and clearing the list.
  */
-static void SGS_discard(SGS_ProgramArr *restrict prg_objs) {
+static void discard(SAU_ProgramArr *restrict prg_objs) {
 	for (size_t i = 0; i < prg_objs->count; ++i) {
 		free(prg_objs->a[i]); // for placeholder
 	}
-	SGS_ProgramArr_clear(prg_objs);
+	SAU_ProgramArr_clear(prg_objs);
 }
 
-#if SGS_TEST_SCANNER
+#if TEST_SCANNER
 /*
  * Functions for scanning a file and printing the
  * contents with whitespace and comment filtering
  * as is done by default.
  */
 
-static inline void scan_simple(SGS_Scanner *o) {
+static inline void scan_simple(SAU_Scanner *o) {
 	for (;;) {
-		uint8_t c = SGS_Scanner_getc(o);
+		uint8_t c = SAU_Scanner_getc(o);
 		if (!c) {
 			putchar('\n');
 			break;
@@ -152,14 +152,14 @@ static inline void scan_simple(SGS_Scanner *o) {
 	}
 }
 
-static inline void scan_with_undo(SGS_Scanner *o) {
+static inline void scan_with_undo(SAU_Scanner *o) {
 	for (;;) {
-		uint32_t i = 0, max = SGS_SCAN_UNGET_MAX;
+		uint32_t i = 0, max = SAU_SCAN_UNGET_MAX;
 		uint8_t c;
 		bool end = false;
 		for (i = 0; ++i <= max; ) {
-			c = SGS_Scanner_retc(o);
-			c = SGS_Scanner_getc(o);
+			c = SAU_Scanner_retc(o);
+			c = SAU_Scanner_getc(o);
 			if (!c) {
 				end = true;
 				++i;
@@ -168,11 +168,11 @@ static inline void scan_with_undo(SGS_Scanner *o) {
 		}
 		max = i - 1;
 		for (i = 0; ++i <= max; ) {
-			SGS_Scanner_ungetc(o);
+			SAU_Scanner_ungetc(o);
 		}
 		for (i = 0; ++i <= max; ) {
-			c = SGS_Scanner_retc(o);
-			c = SGS_Scanner_getc(o);
+			c = SAU_Scanner_retc(o);
+			c = SAU_Scanner_getc(o);
 			putchar(c);
 //			putchar('\n'); // for scanner.c test/debug printouts
 		}
@@ -188,38 +188,38 @@ static inline void scan_with_undo(SGS_Scanner *o) {
 /*
  * Run script through test code.
  *
- * \return SGS_Program or NULL on error
+ * \return SAU_Program or NULL on error
  */
-static SGS_Program *build_program(const char *restrict script_arg,
+static SAU_Program *build_program(const char *restrict script_arg,
 		bool is_path) {
-	SGS_Program *o = NULL;
-	SGS_Mempool *mempool = SGS_create_Mempool(0);
-	SGS_Symtab *symtab = SGS_create_Symtab(mempool);
+	SAU_Program *o = NULL;
+	SAU_Mempool *mempool = SAU_create_Mempool(0);
+	SAU_Symtab *symtab = SAU_create_Symtab(mempool);
 	if (!symtab)
 		return NULL;
-#if SGS_TEST_SCANNER
-	SGS_Scanner *scanner = SGS_create_Scanner(symtab);
+#if TEST_SCANNER
+	SAU_Scanner *scanner = SAU_create_Scanner(symtab);
 	if (!scanner) goto CLOSE;
-	if (!SGS_Scanner_open(scanner, script_arg, is_path)) goto CLOSE;
+	if (!SAU_Scanner_open(scanner, script_arg, is_path)) goto CLOSE;
 	/* print file contents with whitespace and comment filtering */
 	//scan_simple(scanner);
 	scan_with_undo(scanner);
-	o = (SGS_Program*) calloc(1, sizeof(SGS_Program)); // placeholder
+	o = (SAU_Program*) calloc(1, sizeof(SAU_Program)); // placeholder
 CLOSE:
-	SGS_destroy_Scanner(scanner);
+	SAU_destroy_Scanner(scanner);
 #else
-	SGS_Lexer *lexer = SGS_create_Lexer(symtab);
+	SAU_Lexer *lexer = SAU_create_Lexer(symtab);
 	if (!lexer) goto CLOSE;
-	if (!SGS_Lexer_open(lexer, script_arg, is_path)) goto CLOSE;
+	if (!SAU_Lexer_open(lexer, script_arg, is_path)) goto CLOSE;
 	for (;;) {
-		SGS_ScriptToken token;
-		if (!SGS_Lexer_get(lexer, &token)) break;
+		SAU_ScriptToken token;
+		if (!SAU_Lexer_get(lexer, &token)) break;
 	}
-	o = (SGS_Program*) calloc(1, sizeof(SGS_Program)); // placeholder
+	o = (SAU_Program*) calloc(1, sizeof(SAU_Program)); // placeholder
 CLOSE:
-	SGS_destroy_Lexer(lexer);
+	SAU_destroy_Lexer(lexer);
 #endif
-	SGS_destroy_Mempool(mempool);
+	SAU_destroy_Mempool(mempool);
 	return o;
 }
 
@@ -229,15 +229,15 @@ CLOSE:
  *
  * \return number of items successfully processed
  */
-static size_t SGS_read(const SGS_ScriptArgArr *restrict script_args,
-		uint32_t options, SGS_ProgramArr *restrict prg_objs) {
-	bool are_paths = !(options & SGS_OPT_EVAL_STRING);
+static size_t read_scripts(const SAU_ScriptArgArr *restrict script_args,
+		uint32_t options, SAU_ProgramArr *restrict prg_objs) {
+	bool are_paths = !(options & OPT_EVAL_STRING);
 	size_t built = 0;
 	for (size_t i = 0; i < script_args->count; ++i) {
-		const SGS_Program *prg = build_program(script_args->a[i].str,
+		const SAU_Program *prg = build_program(script_args->a[i].str,
 				are_paths);
 		if (prg != NULL) ++built;
-		SGS_ProgramArr_add(prg_objs, &prg);
+		SAU_ProgramArr_add(prg_objs, &prg);
 	}
 	return built;
 }
@@ -246,18 +246,18 @@ static size_t SGS_read(const SGS_ScriptArgArr *restrict script_args,
  * Main function.
  */
 int main(int argc, char **restrict argv) {
-	SGS_ScriptArgArr script_args = (SGS_ScriptArgArr){0};
-	SGS_ProgramArr prg_objs = (SGS_ProgramArr){0};
+	SAU_ScriptArgArr script_args = (SAU_ScriptArgArr){0};
+	SAU_ProgramArr prg_objs = (SAU_ProgramArr){0};
 	uint32_t options = 0;
 	if (!parse_args(argc, argv, &options, &script_args))
 		return 0;
-	bool error = !SGS_read(&script_args, options, &prg_objs);
-	SGS_ScriptArgArr_clear(&script_args);
+	bool error = !read_scripts(&script_args, options, &prg_objs);
+	SAU_ScriptArgArr_clear(&script_args);
 	if (error)
 		return 1;
 	if (prg_objs.count > 0) {
 		// no audio output
-		SGS_discard(&prg_objs);
+		discard(&prg_objs);
 	}
 	return 0;
 }
