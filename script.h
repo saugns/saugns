@@ -1,4 +1,4 @@
-/* sgensys: Script file data and functions.
+/* saugns: Script file data and functions.
  * Copyright (c) 2011-2012, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -18,64 +18,64 @@
  * Script data operator flags.
  */
 enum {
-	SGS_SDOP_LATER_USED = 1<<0,
-	SGS_SDOP_MULTIPLE = 1<<1,
-	SGS_SDOP_NESTED = 1<<2,
-	SGS_SDOP_TIME_DEFAULT = 1<<3,
-	SGS_SDOP_SILENCE_ADDED = 1<<4,
-	SGS_SDOP_HAS_COMPOSITE = 1<<5,
+	SAU_SDOP_LATER_USED = 1<<0,
+	SAU_SDOP_MULTIPLE = 1<<1,
+	SAU_SDOP_NESTED = 1<<2,
+	SAU_SDOP_TIME_DEFAULT = 1<<3,
+	SAU_SDOP_SILENCE_ADDED = 1<<4,
+	SAU_SDOP_HAS_COMPOSITE = 1<<5,
 };
 
 /**
  * Node type for nested list data.
  */
-typedef struct SGS_ScriptListData {
-	struct SGS_ScriptOpData *first_item;
-	struct SGS_ScriptListData *next_list;
+typedef struct SAU_ScriptListData {
+	struct SAU_ScriptOpData *first_item;
+	struct SAU_ScriptListData *next_list;
 	uint8_t use_type;
-} SGS_ScriptListData;
+} SAU_ScriptListData;
 
 /**
  * Object type for operator, shared by all references.
  */
-typedef struct SGS_ScriptOpObj {
-	struct SGS_ScriptOpData *last_ref;   // updated until timewise last
-	struct SGS_ScriptEvData *root_event; // where object was created
+typedef struct SAU_ScriptOpObj {
+	struct SAU_ScriptOpData *last_ref;   // updated until timewise last
+	struct SAU_ScriptEvData *root_event; // where object was created
 	uint32_t op_id; /* for conversion */
-} SGS_ScriptOpObj;
+} SAU_ScriptOpObj;
 
 /**
  * Data assignment and reference type for operator.
  */
-typedef struct SGS_ScriptOpData {
-	struct SGS_ScriptOpData *next_item;
-	struct SGS_ScriptEvData *event;
-	struct SGS_ScriptOpObj *obj;      /* shared by all references */
-	struct SGS_ScriptOpData *on_prev; /* preceding for same op(s) */
-	struct SGS_SymStr *label;
+typedef struct SAU_ScriptOpData {
+	struct SAU_ScriptOpData *next_item;
+	struct SAU_ScriptEvData *event;
+	struct SAU_ScriptOpObj *obj;      /* shared by all references */
+	struct SAU_ScriptOpData *on_prev; /* preceding for same op(s) */
+	struct SAU_SymStr *label;
 	uint32_t op_flags;
 	/* operator parameters */
 	uint32_t params;
 	uint32_t time_ms, silence_ms;
 	uint8_t wave;
 	uint8_t use_type;
-	SGS_Ramp freq, freq2;
-	SGS_Ramp amp, amp2;
-	SGS_Ramp pan;
+	SAU_Ramp freq, freq2;
+	SAU_Ramp amp, amp2;
+	SAU_Ramp pan;
 	float phase;
 	/* node adjacents in operator linkage graph */
-	SGS_ScriptListData *mods;
-} SGS_ScriptOpData;
+	SAU_ScriptListData *mods;
+} SAU_ScriptOpData;
 
 /**
  * Script data event flags.
  */
 enum {
-	SGS_SDEV_VOICE_LATER_USED = 1<<0,
-	SGS_SDEV_ADD_WAIT_DURATION = 1<<1,
+	SAU_SDEV_VOICE_LATER_USED = 1<<0,
+	SAU_SDEV_ADD_WAIT_DURATION = 1<<1,
 };
 
-struct SGS_ScriptEvBranch;
+struct SAU_ScriptEvBranch;
 
 /**
  * Node type for event data. Events are placed in time per script contents,
@@ -87,17 +87,17 @@ struct SGS_ScriptEvBranch;
  * (E.g. a tree of carriers and modulators in one event, and then an update
  * node for a modulator in the next event. An update could add a sub-tree.)
  */
-typedef struct SGS_ScriptEvData {
-	struct SGS_ScriptEvData *next;
-	struct SGS_ScriptEvData *group_backref;
-	struct SGS_ScriptEvBranch *forks;
+typedef struct SAU_ScriptEvData {
+	struct SAU_ScriptEvData *next;
+	struct SAU_ScriptEvData *group_backref;
+	struct SAU_ScriptEvBranch *forks;
 	uint32_t wait_ms;
 	uint32_t ev_flags;
-	SGS_ScriptListData op_objs;
+	SAU_ScriptListData op_objs;
 	/* for conversion */
 	uint32_t vo_id;
-	struct SGS_ScriptEvData *root_ev; // if main object not created here
-} SGS_ScriptEvData;
+	struct SAU_ScriptEvData *root_ev; // if main object not created here
+} SAU_ScriptEvData;
 
 /**
  * Script data option flags.
@@ -105,12 +105,12 @@ typedef struct SGS_ScriptEvData {
  * Set after parsing the setting of script options in a script.
  */
 enum {
-	SGS_SOPT_AMPMULT = 1<<0,
-	SGS_SOPT_A4_FREQ = 1<<1,
-	SGS_SOPT_DEF_TIME = 1<<2,
-	SGS_SOPT_DEF_FREQ = 1<<3,
-	SGS_SOPT_DEF_RELFREQ = 1<<4,
-	SGS_SOPT_DEF_CHANMIX = 1<<5,
+	SAU_SOPT_AMPMULT = 1<<0,
+	SAU_SOPT_A4_FREQ = 1<<1,
+	SAU_SOPT_DEF_TIME = 1<<2,
+	SAU_SOPT_DEF_FREQ = 1<<3,
+	SAU_SOPT_DEF_RELFREQ = 1<<4,
+	SAU_SOPT_DEF_CHANMIX = 1<<5,
 };
 
 /**
@@ -118,8 +118,8 @@ enum {
  *
  * The final state is included in the parse result.
  */
-typedef struct SGS_ScriptOptions {
-	uint32_t set;   // flags (SGS_SOPT_*) set upon change by script
+typedef struct SAU_ScriptOptions {
+	uint32_t set;   // flags (SAU_SOPT_*) set upon change by script
 	float ampmult;  // amplitude multiplier for non-modulator operators
 	float A4_freq;  // A4 tuning for frequency as note
 	/* operator parameter default values (use depends on context) */
@@ -127,17 +127,17 @@ typedef struct SGS_ScriptOptions {
 	float def_freq,
 	      def_relfreq,
 	      def_chanmix;
-} SGS_ScriptOptions;
+} SAU_ScriptOptions;
 
 /**
  * Type returned after processing a file.
  */
-typedef struct SGS_Script {
-	SGS_ScriptEvData *events;
+typedef struct SAU_Script {
+	SAU_ScriptEvData *events;
 	const char *name; // currently simply set to the filename
-	SGS_ScriptOptions sopt;
-	struct SGS_MemPool *mem; // holds memory for the specific script
-} SGS_Script;
+	SAU_ScriptOptions sopt;
+	struct SAU_MemPool *mem; // holds memory for the specific script
+} SAU_Script;
 
-SGS_Script *SGS_load_Script(const char *restrict script_arg, bool is_path);
-void SGS_discard_Script(SGS_Script *restrict o);
+SAU_Script *SAU_load_Script(const char *restrict script_arg, bool is_path);
+void SAU_discard_Script(SAU_Script *restrict o);

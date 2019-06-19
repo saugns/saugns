@@ -1,4 +1,4 @@
-/* sgensys: Value ramp module.
+/* saugns: Value ramp module.
  * Copyright (c) 2011-2013, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -22,45 +22,45 @@
  * Ramp types.
  */
 enum {
-	SGS_RAMP_HOLD = 0,
-	SGS_RAMP_LIN,
-	SGS_RAMP_EXP,
-	SGS_RAMP_LOG,
-	SGS_RAMP_XPE,
-	SGS_RAMP_LGE,
-	SGS_RAMP_COS,
-	SGS_RAMP_TYPES
+	SAU_RAMP_HOLD = 0,
+	SAU_RAMP_LIN,
+	SAU_RAMP_EXP,
+	SAU_RAMP_LOG,
+	SAU_RAMP_XPE,
+	SAU_RAMP_LGE,
+	SAU_RAMP_COS,
+	SAU_RAMP_TYPES
 };
 
 /** Names of ramp types, with an extra NULL pointer at the end. */
-extern const char *const SGS_Ramp_names[SGS_RAMP_TYPES + 1];
+extern const char *const SAU_Ramp_names[SAU_RAMP_TYPES + 1];
 
-typedef void (*SGS_Ramp_fill_f)(float *restrict buf, uint32_t len,
+typedef void (*SAU_Ramp_fill_f)(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf);
 
 /** Curve fill functions for ramp types. */
-extern const SGS_Ramp_fill_f SGS_Ramp_fill_funcs[SGS_RAMP_TYPES];
+extern const SAU_Ramp_fill_f SAU_Ramp_fill_funcs[SAU_RAMP_TYPES];
 
-void SGS_Ramp_fill_hold(float *restrict buf, uint32_t len,
+void SAU_Ramp_fill_hold(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf);
-void SGS_Ramp_fill_lin(float *restrict buf, uint32_t len,
+void SAU_Ramp_fill_lin(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf);
-void SGS_Ramp_fill_exp(float *restrict buf, uint32_t len,
+void SAU_Ramp_fill_exp(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf);
-void SGS_Ramp_fill_log(float *restrict buf, uint32_t len,
+void SAU_Ramp_fill_log(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf);
-void SGS_Ramp_fill_xpe(float *restrict buf, uint32_t len,
+void SAU_Ramp_fill_xpe(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf);
-void SGS_Ramp_fill_lge(float *restrict buf, uint32_t len,
+void SAU_Ramp_fill_lge(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf);
-void SGS_Ramp_fill_cos(float *restrict buf, uint32_t len,
+void SAU_Ramp_fill_cos(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf);
 
@@ -68,11 +68,11 @@ void SGS_Ramp_fill_cos(float *restrict buf, uint32_t len,
  * Ramp parameter flags.
  */
 enum {
-	SGS_RAMPP_STATE       = 1<<0, // v0 set
-	SGS_RAMPP_STATE_RATIO = 1<<1,
-	SGS_RAMPP_GOAL        = 1<<2, // vt and time_ms set
-	SGS_RAMPP_GOAL_RATIO  = 1<<3,
-	SGS_RAMPP_TIME        = 1<<4, // manually used for tracking changes
+	SAU_RAMPP_STATE       = 1<<0, // v0 set
+	SAU_RAMPP_STATE_RATIO = 1<<1,
+	SAU_RAMPP_GOAL        = 1<<2, // vt and time_ms set
+	SAU_RAMPP_GOAL_RATIO  = 1<<3,
+	SAU_RAMPP_TIME        = 1<<4, // manually used for tracking changes
 };
 
 /**
@@ -81,12 +81,12 @@ enum {
  * Holds data for parameters with support for gradual change,
  * both during script processing and audio rendering.
  */
-typedef struct SGS_Ramp {
+typedef struct SAU_Ramp {
 	float v0, vt;
 	uint32_t time_ms;
 	uint8_t type;
 	uint8_t flags;
-} SGS_Ramp;
+} SAU_Ramp;
 
 /**
  * Get the main flags showing whether state and/or goal are enabled.
@@ -94,15 +94,15 @@ typedef struct SGS_Ramp {
  *
  * \return flag values
  */
-#define SGS_Ramp_ENABLED(o) \
-	((o)->flags & (SGS_RAMPP_STATE | SGS_RAMPP_GOAL))
+#define SAU_Ramp_ENABLED(o) \
+	((o)->flags & (SAU_RAMPP_STATE | SAU_RAMPP_GOAL))
 
-void SGS_Ramp_reset(SGS_Ramp *restrict o);
-void SGS_Ramp_copy(SGS_Ramp *restrict o,
-		const SGS_Ramp *restrict src);
+void SAU_Ramp_reset(SAU_Ramp *restrict o);
+void SAU_Ramp_copy(SAU_Ramp *restrict o,
+		const SAU_Ramp *restrict src);
 
-bool SGS_Ramp_run(SGS_Ramp *restrict o, uint32_t *restrict pos,
+bool SAU_Ramp_run(SAU_Ramp *restrict o, uint32_t *restrict pos,
 		float *restrict buf, uint32_t buf_len, uint32_t srate,
 		const float *restrict mulbuf);
-bool SGS_Ramp_skip(SGS_Ramp *restrict o, uint32_t *restrict pos,
+bool SAU_Ramp_skip(SAU_Ramp *restrict o, uint32_t *restrict pos,
 		uint32_t skip_len, uint32_t srate);

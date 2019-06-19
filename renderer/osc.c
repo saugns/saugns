@@ -1,4 +1,4 @@
-/* sgensys: Oscillator implementation.
+/* saugns: Oscillator implementation.
  * Copyright (c) 2011, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -19,24 +19,24 @@
 
 #if !USE_PILUT
 /*
- * Implementation of SGS_Osc_run()
+ * Implementation of SAU_Osc_run()
  * using naive LUTs with linear interpolation.
  *
  * Post-increments phase each sample.
  */
-static void naive_run(SGS_Osc *restrict o,
+static void naive_run(SAU_Osc *restrict o,
 		float *restrict buf, size_t buf_len,
 		uint32_t layer,
 		const float *restrict freq,
 		const float *restrict amp,
 		const float *restrict pm_f) {
-	const float *const lut = SGS_Wave_luts[o->wave];
+	const float *const lut = SAU_Wave_luts[o->wave];
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t phase = o->phase;
 		if (pm_f != NULL) {
 			phase += lrintf(pm_f[i] * (float) INT32_MAX);
 		}
-		float s = SGS_Wave_get_lerp(lut, phase) * amp[i];
+		float s = SAU_Wave_get_lerp(lut, phase) * amp[i];
 		o->phase += lrintf(o->coeff * freq[i]);
 		if (layer > 0) s += buf[i];
 		buf[i] = s;
@@ -44,24 +44,24 @@ static void naive_run(SGS_Osc *restrict o,
 }
 
 /*
- * Implementation of SGS_Osc_run_env()
+ * Implementation of SAU_Osc_run_env()
  * using naive LUTs with linear interpolation.
  *
  * Post-increments phase each sample.
  */
-static void naive_run_env(SGS_Osc *restrict o,
+static void naive_run_env(SAU_Osc *restrict o,
 		float *restrict buf, size_t buf_len,
 		uint32_t layer,
 		const float *restrict freq,
 		const float *restrict amp,
 		const float *restrict pm_f) {
-	const float *const lut = SGS_Wave_luts[o->wave];
+	const float *const lut = SAU_Wave_luts[o->wave];
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t phase = o->phase;
 		if (pm_f != NULL) {
 			phase += lrintf(pm_f[i] * (float) INT32_MAX);
 		}
-		float s = SGS_Wave_get_lerp(lut, phase);
+		float s = SAU_Wave_get_lerp(lut, phase);
 		o->phase += lrintf(o->coeff * freq[i]);
 		float s_amp = amp[i] * 0.5f;
 		s = (s * s_amp) + fabs(s_amp);
@@ -72,22 +72,22 @@ static void naive_run_env(SGS_Osc *restrict o,
 #endif
 
 #if USE_PILUT
-static void SGS_Osc_reset(SGS_Osc *o) {
-	const float *const lut = SGS_Wave_piluts[o->wave];
-	const float diff_scale = SGS_Wave_DVSCALE(o->wave);
-	const float diff_offset = SGS_Wave_DVOFFSET(o->wave);
-	if (o->flags & SGS_OSC_RESET_DIFF) {
+static void SAU_Osc_reset(SAU_Osc *o) {
+	const float *const lut = SAU_Wave_piluts[o->wave];
+	const float diff_scale = SAU_Wave_DVSCALE(o->wave);
+	const float diff_offset = SAU_Wave_DVOFFSET(o->wave);
+	if (o->flags & SAU_OSC_RESET_DIFF) {
 		/* Set up for differentiation start and a valid previous. */
-		int32_t phase_diff = SGS_Wave_SLEN;
+		int32_t phase_diff = SAU_Wave_SLEN;
 		int32_t phase = o->phase + phase_diff; /* good for 0 Hz case */
-		o->prev_Is = SGS_Wave_get_lerp(lut, phase - phase_diff);
-		double Is = SGS_Wave_get_lerp(lut, phase);
+		o->prev_Is = SAU_Wave_get_lerp(lut, phase - phase_diff);
+		double Is = SAU_Wave_get_lerp(lut, phase);
 		double x = (diff_scale / phase_diff);
 		o->prev_diff_s = (Is - o->prev_Is) * x + diff_offset;
 		o->prev_Is = Is;
 		o->prev_phase = phase;
 	}
-	o->flags &= ~SGS_OSC_RESET;
+	o->flags &= ~SAU_OSC_RESET;
 }
 #endif
 
@@ -102,18 +102,18 @@ static void SGS_Osc_reset(SGS_Osc *o) {
  *
  * \p pm_f may be NULL for no PM input.
  */
-void SGS_Osc_run(SGS_Osc *restrict o,
+void SAU_Osc_run(SAU_Osc *restrict o,
 		float *restrict buf, size_t buf_len,
 		uint32_t layer,
 		const float *restrict freq,
 		const float *restrict amp,
 		const float *restrict pm_f) {
 #if USE_PILUT /* higher-quality audio */
-	const float *const lut = SGS_Wave_piluts[o->wave];
-	const float diff_scale = SGS_Wave_DVSCALE(o->wave);
-	const float diff_offset = SGS_Wave_DVOFFSET(o->wave);
-	if (o->flags & SGS_OSC_RESET)
-		SGS_Osc_reset(o);
+	const float *const lut = SAU_Wave_piluts[o->wave];
+	const float diff_scale = SAU_Wave_DVSCALE(o->wave);
+	const float diff_offset = SAU_Wave_DVOFFSET(o->wave);
+	if (o->flags & SAU_OSC_RESET)
+		SAU_Osc_reset(o);
 	if (pm_f != NULL) {
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s;
@@ -124,7 +124,7 @@ void SGS_Osc_run(SGS_Osc *restrict o,
 			if (phase_diff == 0) {
 				s = o->prev_diff_s;
 			} else {
-				double Is = SGS_Wave_get_lerp(lut, phase);
+				double Is = SAU_Wave_get_lerp(lut, phase);
 				double x = (diff_scale / phase_diff);
 				s = (Is - o->prev_Is) * x + diff_offset;
 				o->prev_Is = Is;
@@ -144,7 +144,7 @@ void SGS_Osc_run(SGS_Osc *restrict o,
 			if (phase_diff == 0) {
 				s = o->prev_diff_s;
 			} else {
-				double Is = SGS_Wave_get_lerp(lut, phase);
+				double Is = SAU_Wave_get_lerp(lut, phase);
 				double x = (diff_scale / phase_diff);
 				s = (Is - o->prev_Is) * x + diff_offset;
 				o->prev_Is = Is;
@@ -173,18 +173,18 @@ void SGS_Osc_run(SGS_Osc *restrict o,
  *
  * \p pm_f may be NULL for no PM input.
  */
-void SGS_Osc_run_env(SGS_Osc *restrict o,
+void SAU_Osc_run_env(SAU_Osc *restrict o,
 		float *restrict buf, size_t buf_len,
 		uint32_t layer,
 		const float *restrict freq,
 		const float *restrict amp,
 		const float *restrict pm_f) {
 #if USE_PILUT /* higher-quality audio */
-	const float *const lut = SGS_Wave_piluts[o->wave];
-	const float diff_scale = SGS_Wave_DVSCALE(o->wave);
-	const float diff_offset = SGS_Wave_DVOFFSET(o->wave);
-	if (o->flags & SGS_OSC_RESET)
-		SGS_Osc_reset(o);
+	const float *const lut = SAU_Wave_piluts[o->wave];
+	const float diff_scale = SAU_Wave_DVSCALE(o->wave);
+	const float diff_offset = SAU_Wave_DVOFFSET(o->wave);
+	if (o->flags & SAU_OSC_RESET)
+		SAU_Osc_reset(o);
 	if (pm_f != NULL) {
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s;
@@ -195,7 +195,7 @@ void SGS_Osc_run_env(SGS_Osc *restrict o,
 			if (phase_diff == 0) {
 				s = o->prev_diff_s;
 			} else {
-				double Is = SGS_Wave_get_lerp(lut, phase);
+				double Is = SAU_Wave_get_lerp(lut, phase);
 				double x = (diff_scale / phase_diff);
 				s = (Is - o->prev_Is) * x + diff_offset;
 				o->prev_Is = Is;
@@ -216,7 +216,7 @@ void SGS_Osc_run_env(SGS_Osc *restrict o,
 			if (phase_diff == 0) {
 				s = o->prev_diff_s;
 			} else {
-				double Is = SGS_Wave_get_lerp(lut, phase);
+				double Is = SAU_Wave_get_lerp(lut, phase);
 				double x = (diff_scale / phase_diff);
 				s = (Is - o->prev_Is) * x + diff_offset;
 				o->prev_Is = Is;
