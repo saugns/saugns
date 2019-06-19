@@ -1,0 +1,26 @@
+/*
+ * Variation #5 of the first saugns script made,
+ * originally called "crashtofix.sgs". The script
+ * remained after debugging was done, producing its
+ * "machine arm" version of the original tone sequence.
+ * Further edited to allow more easily varying the sound.
+ *
+ * Tests nested PM and gradual value changes with
+ * compound step syntax.
+ */
+'rt=0.15
+Osin	f220 p[
+		Osin r7/2 a0.5
+		Osin r7/5 a0.5 p[Osin r10/7 a1/2]
+	] t1.0
+;	f[rxpe g440 t$rt] t1.5
+;	f[rxpe g400 t$rt] t0.5
+;	f[rxpe g350 t$rt] t0.5
+;	f[rxpe g325 t$rt] t1.5
+;\1	f[rxpe g220 t$rt] t1
+;	f[rxpe g440 t$rt] t1.5
+;	f[rxpe g415 t$rt] t0.5
+;	f[rxpe g445 t$rt] t0.5
+;	f[rxpe g490 t$rt] t1.0
+;	f[rxpe g420 t$rt] t1.0
+;	f[rxpe g440 t$rt] t1.5
