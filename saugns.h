@@ -1,4 +1,4 @@
-/* sgensys: Main functions and project definitions.
+/* saugns: Main functions and project definitions.
  * Copyright (c) 2011-2013, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -15,10 +15,10 @@
 #include "program.h"
 #include "ptrlist.h"
 
-#define SGS_VERSION_STR "sgensys v0.3.0"
+#define SAU_VERSION_STR "saugns v0.3.0b"
 
-size_t SGS_build(const SGS_PtrList *restrict script_args, bool are_paths,
-		SGS_PtrList *restrict prg_objs);
+size_t SAU_build(const SAU_PtrList *restrict script_args, bool are_paths,
+		SAU_PtrList *restrict prg_objs);
 
-bool SGS_render(const SGS_PtrList *restrict prg_objs, uint32_t srate,
+bool SAU_render(const SAU_PtrList *restrict prg_objs, uint32_t srate,
 		bool use_audiodev, const char *restrict wav_path);

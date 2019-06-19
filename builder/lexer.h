@@ -1,4 +1,4 @@
-/* sgensys: Script lexer module.
+/* saugns: Script lexer module.
  * Copyright (c) 2014, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -18,14 +18,14 @@
  * Token enumerations.
  */
 enum {
-	SGS_T_INVALID = 0,
-	SGS_T_ID_STR,
-	SGS_T_VAL_INT,
-	SGS_T_VAL_REAL,
-	SGS_T_SPECIAL,
+	SAU_T_INVALID = 0,
+	SAU_T_ID_STR,
+	SAU_T_VAL_INT,
+	SAU_T_VAL_REAL,
+	SAU_T_SPECIAL,
 };
 
-typedef struct SGS_ScriptToken {
+typedef struct SAU_ScriptToken {
 	uint32_t type;
 	union {
 		const char *id;
@@ -34,17 +34,17 @@ typedef struct SGS_ScriptToken {
 		uint8_t b;
 		char c;
 	} data;
-} SGS_ScriptToken;
+} SAU_ScriptToken;
 
-struct SGS_Lexer;
-typedef struct SGS_Lexer SGS_Lexer;
+struct SAU_Lexer;
+typedef struct SAU_Lexer SAU_Lexer;
 
-SGS_Lexer *SGS_create_Lexer(SGS_SymTab *restrict symtab) SGS__malloclike;
-void SGS_destroy_Lexer(SGS_Lexer *restrict o);
+SAU_Lexer *SAU_create_Lexer(SAU_SymTab *restrict symtab) SAU__malloclike;
+void SAU_destroy_Lexer(SAU_Lexer *restrict o);
 
-bool SGS_Lexer_open(SGS_Lexer *restrict o,
+bool SAU_Lexer_open(SAU_Lexer *restrict o,
 		const char *restrict script, bool is_path);
-void SGS_Lexer_close(SGS_Lexer *restrict o);
+void SAU_Lexer_close(SAU_Lexer *restrict o);
 
-bool SGS_Lexer_get(SGS_Lexer *restrict o, SGS_ScriptToken *restrict t);
-bool SGS_Lexer_get_special(SGS_Lexer *restrict o, SGS_ScriptToken *restrict t);
+bool SAU_Lexer_get(SAU_Lexer *restrict o, SAU_ScriptToken *restrict t);
+bool SAU_Lexer_get_special(SAU_Lexer *restrict o, SAU_ScriptToken *restrict t);
