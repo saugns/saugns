@@ -1,4 +1,4 @@
-/* sgensys: Parser output to script data converter.
+/* saugns: Parser output to script data converter.
  * Copyright (c) 2011-2012, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -27,19 +27,19 @@
  * only allowed on the "top" operator level, so the algorithm only deals with
  * this for the events involved.
  */
-static void group_events(SGS_ParseEvData *restrict to) {
-	SGS_ParseEvData *e, *e_after = to->next;
+static void group_events(SAU_ParseEvData *restrict to) {
+	SAU_ParseEvData *e, *e_after = to->next;
 	size_t i;
 	uint32_t wait = 0, waitcount = 0;
 	for (e = to->groupfrom; e != e_after; ) {
-		SGS_ParseOpData **ops;
-		ops = (SGS_ParseOpData**) SGS_PtrList_ITEMS(&e->operators);
+		SAU_ParseOpData **ops;
+		ops = (SAU_ParseOpData**) SAU_PtrList_ITEMS(&e->operators);
 		for (i = 0; i < e->operators.count; ++i) {
-			SGS_ParseOpData *op = ops[i];
+			SAU_ParseOpData *op = ops[i];
 			if (e->next == e_after &&
-i == (e->operators.count - 1) && (op->op_flags & SGS_SDOP_TIME_DEFAULT) != 0) {
+i == (e->operators.count - 1) && (op->op_flags & SAU_SDOP_TIME_DEFAULT) != 0) {
 				/* default for last node in group */
-				op->op_flags &= ~SGS_SDOP_TIME_DEFAULT;
+				op->op_flags &= ~SAU_SDOP_TIME_DEFAULT;
 			}
 			if (wait < op->time_ms)
 				wait = op->time_ms;
@@ -51,13 +51,13 @@ i == (e->operators.count - 1) && (op->op_flags & SGS_SDOP_TIME_DEFAULT) != 0) {
 		}
 	}
 	for (e = to->groupfrom; e != e_after; ) {
-		SGS_ParseOpData **ops;
-		ops = (SGS_ParseOpData**) SGS_PtrList_ITEMS(&e->operators);
+		SAU_ParseOpData **ops;
+		ops = (SAU_ParseOpData**) SAU_PtrList_ITEMS(&e->operators);
 		for (i = 0; i < e->operators.count; ++i) {
-			SGS_ParseOpData *op = ops[i];
-			if ((op->op_flags & SGS_SDOP_TIME_DEFAULT) != 0) {
+			SAU_ParseOpData *op = ops[i];
+			if ((op->op_flags & SAU_SDOP_TIME_DEFAULT) != 0) {
 				/* fill in sensible default time */
-				op->op_flags &= ~SGS_SDOP_TIME_DEFAULT;
+				op->op_flags &= ~SAU_SDOP_TIME_DEFAULT;
 				op->time_ms = wait + waitcount;
 			}
 		}
@@ -71,53 +71,53 @@ i == (e->operators.count - 1) && (op->op_flags & SGS_SDOP_TIME_DEFAULT) != 0) {
 		e_after->wait_ms += wait;
 }
 
-static void time_operator(SGS_ParseOpData *restrict op) {
-	SGS_ParseEvData *e = op->event;
-	if (op->freq.time_ms == SGS_TIME_DEFAULT)
+static void time_operator(SAU_ParseOpData *restrict op) {
+	SAU_ParseEvData *e = op->event;
+	if (op->freq.time_ms == SAU_TIME_DEFAULT)
 		op->freq.time_ms = op->time_ms;
-	if (op->amp.time_ms == SGS_TIME_DEFAULT)
+	if (op->amp.time_ms == SAU_TIME_DEFAULT)
 		op->amp.time_ms = op->time_ms;
-	if ((op->op_flags & (SGS_SDOP_TIME_DEFAULT | SGS_SDOP_NESTED)) ==
-			(SGS_SDOP_TIME_DEFAULT | SGS_SDOP_NESTED)) {
-		op->op_flags &= ~SGS_SDOP_TIME_DEFAULT;
-		op->time_ms = SGS_TIME_INF;
+	if ((op->op_flags & (SAU_SDOP_TIME_DEFAULT | SAU_SDOP_NESTED)) ==
+			(SAU_SDOP_TIME_DEFAULT | SAU_SDOP_NESTED)) {
+		op->op_flags &= ~SAU_SDOP_TIME_DEFAULT;
+		op->time_ms = SAU_TIME_INF;
 	}
-	if (op->time_ms != SGS_TIME_INF &&
-			!(op->op_flags & SGS_SDOP_SILENCE_ADDED)) {
+	if (op->time_ms != SAU_TIME_INF &&
+			!(op->op_flags & SAU_SDOP_SILENCE_ADDED)) {
 		op->time_ms += op->silence_ms;
-		op->op_flags |= SGS_SDOP_SILENCE_ADDED;
+		op->op_flags |= SAU_SDOP_SILENCE_ADDED;
 	}
-	if ((e->ev_flags & SGS_SDEV_ADD_WAIT_DURATION) != 0) {
+	if ((e->ev_flags & SAU_SDEV_ADD_WAIT_DURATION) != 0) {
 		if (e->next != NULL)
-			((SGS_ParseEvData*)e->next)->wait_ms += op->time_ms;
-		e->ev_flags &= ~SGS_SDEV_ADD_WAIT_DURATION;
+			((SAU_ParseEvData*)e->next)->wait_ms += op->time_ms;
+		e->ev_flags &= ~SAU_SDEV_ADD_WAIT_DURATION;
 	}
 	size_t i;
-	SGS_ParseOpData **ops;
-	ops = (SGS_ParseOpData**) SGS_PtrList_ITEMS(&op->fmods);
+	SAU_ParseOpData **ops;
+	ops = (SAU_ParseOpData**) SAU_PtrList_ITEMS(&op->fmods);
 	for (i = op->fmods.old_count; i < op->fmods.count; ++i) {
 		time_operator(ops[i]);
 	}
-	ops = (SGS_ParseOpData**) SGS_PtrList_ITEMS(&op->pmods);
+	ops = (SAU_ParseOpData**) SAU_PtrList_ITEMS(&op->pmods);
 	for (i = op->pmods.old_count; i < op->pmods.count; ++i) {
 		time_operator(ops[i]);
 	}
-	ops = (SGS_ParseOpData**) SGS_PtrList_ITEMS(&op->amods);
+	ops = (SAU_ParseOpData**) SAU_PtrList_ITEMS(&op->amods);
 	for (i = op->amods.old_count; i < op->amods.count; ++i) {
 		time_operator(ops[i]);
 	}
 }
 
-static void time_event(SGS_ParseEvData *restrict e) {
+static void time_event(SAU_ParseEvData *restrict e) {
 	/*
 	 * Fill in blank ramp durations, handle silence as well as the case of
 	 * adding present event duration to wait time of next event.
 	 */
-	if (e->pan.time_ms == SGS_TIME_DEFAULT)
+	if (e->pan.time_ms == SAU_TIME_DEFAULT)
 		e->pan.time_ms = 1000; /* FIXME! */
 	size_t i;
-	SGS_ParseOpData **ops;
-	ops = (SGS_ParseOpData**) SGS_PtrList_ITEMS(&e->operators);
+	SAU_ParseOpData **ops;
+	ops = (SAU_ParseOpData**) SAU_PtrList_ITEMS(&e->operators);
 	for (i = e->operators.old_count; i < e->operators.count; ++i) {
 		time_operator(ops[i]);
 	}
@@ -125,34 +125,34 @@ static void time_event(SGS_ParseEvData *restrict e) {
 	 * Timing for composites - done before event list flattened.
 	 */
 	if (e->composite != NULL) {
-		SGS_ParseEvData *ce = e->composite;
-		SGS_ParseOpData *ce_op, *ce_op_prev, *e_op;
-		ce_op = (SGS_ParseOpData*) SGS_PtrList_GET(&ce->operators, 0);
+		SAU_ParseEvData *ce = e->composite;
+		SAU_ParseOpData *ce_op, *ce_op_prev, *e_op;
+		ce_op = (SAU_ParseOpData*) SAU_PtrList_GET(&ce->operators, 0);
 		ce_op_prev = ce_op->op_prev;
 		e_op = ce_op_prev;
-		if ((e_op->op_flags & SGS_SDOP_TIME_DEFAULT) != 0)
-			e_op->op_flags &= ~SGS_SDOP_TIME_DEFAULT;
+		if ((e_op->op_flags & SAU_SDOP_TIME_DEFAULT) != 0)
+			e_op->op_flags &= ~SAU_SDOP_TIME_DEFAULT;
 		for (;;) {
 			ce->wait_ms += ce_op_prev->time_ms;
-			if ((ce_op->op_flags & SGS_SDOP_TIME_DEFAULT) != 0) {
-				ce_op->op_flags &= ~SGS_SDOP_TIME_DEFAULT;
+			if ((ce_op->op_flags & SAU_SDOP_TIME_DEFAULT) != 0) {
+				ce_op->op_flags &= ~SAU_SDOP_TIME_DEFAULT;
 				ce_op->time_ms =
-((ce_op->op_flags & SGS_SDOP_NESTED) != 0 && !ce->next) ?
-					SGS_TIME_INF :
+((ce_op->op_flags & SAU_SDOP_NESTED) != 0 && !ce->next) ?
+					SAU_TIME_INF :
 					ce_op_prev->time_ms - ce_op_prev->silence_ms;
 			}
 			time_event(ce);
-			if (ce_op->time_ms == SGS_TIME_INF)
-				e_op->time_ms = SGS_TIME_INF;
-			else if (e_op->time_ms != SGS_TIME_INF)
+			if (ce_op->time_ms == SAU_TIME_INF)
+				e_op->time_ms = SAU_TIME_INF;
+			else if (e_op->time_ms != SAU_TIME_INF)
 				e_op->time_ms += ce_op->time_ms +
 					(ce->wait_ms - ce_op_prev->time_ms);
-			ce_op->op_params &= ~SGS_POPP_TIME;
+			ce_op->op_params &= ~SAU_POPP_TIME;
 			ce_op_prev = ce_op;
 			ce = ce->next;
 			if (!ce) break;
-			ce_op = (SGS_ParseOpData*)
-				SGS_PtrList_GET(&ce->operators, 0);
+			ce_op = (SAU_ParseOpData*)
+				SAU_PtrList_GET(&ce->operators, 0);
 		}
 	}
 }
@@ -164,9 +164,9 @@ static void time_event(SGS_ParseEvData *restrict e) {
  * Such events, if attached to the passed event, will be given their place in
  * the ordinary event list.
  */
-static void flatten_events(SGS_ParseEvData *restrict e) {
-	SGS_ParseEvData *ce = e->composite;
-	SGS_ParseEvData *se = e->next, *se_prev = e;
+static void flatten_events(SAU_ParseEvData *restrict e) {
+	SAU_ParseEvData *ce = e->composite;
+	SAU_ParseEvData *se = e->next, *se_prev = e;
 	int32_t wait_ms = 0;
 	int32_t added_wait_ms = 0;
 	while (ce != NULL) {
@@ -194,7 +194,7 @@ static void flatten_events(SGS_ParseEvData *restrict e) {
 		 * of the ordinary sequence.
 		 */
 		if (se->wait_ms >= (ce->wait_ms + added_wait_ms)) {
-			SGS_ParseEvData *ce_next = ce->next;
+			SAU_ParseEvData *ce_next = ce->next;
 			se->wait_ms -= ce->wait_ms + added_wait_ms;
 			added_wait_ms = 0;
 			wait_ms = 0;
@@ -203,7 +203,7 @@ static void flatten_events(SGS_ParseEvData *restrict e) {
 			se_prev->next = se;
 			ce = ce_next;
 		} else {
-			SGS_ParseEvData *se_next, *ce_next;
+			SAU_ParseEvData *se_next, *ce_next;
 			se_next = se->next;
 			ce_next = ce->next;
 			ce->wait_ms -= wait_ms;
@@ -220,7 +220,7 @@ static void flatten_events(SGS_ParseEvData *restrict e) {
 }
 
 typedef struct ParseConv {
-	SGS_ScriptEvData *ev, *first_ev;
+	SAU_ScriptEvData *ev, *first_ev;
 } ParseConv;
 
 /*
@@ -228,8 +228,8 @@ typedef struct ParseConv {
  * adding it to the list to be used for the current program event.
  */
 static bool ParseConv_add_opdata(ParseConv *restrict o,
-		SGS_ParseOpData *restrict pod) {
-	SGS_ScriptOpData *od = calloc(1, sizeof(SGS_ScriptOpData));
+		SAU_ParseOpData *restrict pod) {
+	SAU_ScriptOpData *od = calloc(1, sizeof(SAU_ScriptOpData));
 	if (!od)
 		return false;
 	pod->op_conv = od;
@@ -251,7 +251,7 @@ static bool ParseConv_add_opdata(ParseConv *restrict o,
 	/* fmods */
 	/* pmods */
 	/* amods */
-	if (!SGS_PtrList_add(&o->ev->op_all, od)) goto ERROR;
+	if (!SAU_PtrList_add(&o->ev->op_all, od)) goto ERROR;
 	return true;
 
 ERROR:
@@ -264,13 +264,13 @@ ERROR:
  * visiting new operator nodes as they branch out.
  */
 static bool ParseConv_add_ops(ParseConv *restrict o,
-		const SGS_PtrList *restrict pod_list) {
-	SGS_ParseOpData **pods;
-	pods = (SGS_ParseOpData**) SGS_PtrList_ITEMS(pod_list);
+		const SAU_PtrList *restrict pod_list) {
+	SAU_ParseOpData **pods;
+	pods = (SAU_ParseOpData**) SAU_PtrList_ITEMS(pod_list);
 	for (size_t i = pod_list->old_count; i < pod_list->count; ++i) {
-		SGS_ParseOpData *pod = pods[i];
+		SAU_ParseOpData *pod = pods[i];
 		// TODO: handle multiple operator nodes
-		//if (pod->op_flags & SGS_SDOP_MULTIPLE) continue;
+		//if (pod->op_flags & SAU_SDOP_MULTIPLE) continue;
 		if (!ParseConv_add_opdata(o, pod)) goto ERROR;
 		if (!ParseConv_add_ops(o, &pod->fmods)) goto ERROR;
 		if (!ParseConv_add_ops(o, &pod->pmods)) goto ERROR;
@@ -287,24 +287,24 @@ ERROR:
  * visiting all operator nodes as they branch out.
  */
 static bool ParseConv_link_ops(ParseConv *restrict o,
-		SGS_PtrList *restrict od_list,
-		const SGS_PtrList *restrict pod_list) {
-	SGS_ParseOpData **pods;
-	pods = (SGS_ParseOpData**) SGS_PtrList_ITEMS(pod_list);
+		SAU_PtrList *restrict od_list,
+		const SAU_PtrList *restrict pod_list) {
+	SAU_ParseOpData **pods;
+	pods = (SAU_ParseOpData**) SAU_PtrList_ITEMS(pod_list);
 	for (size_t i = 0; i < pod_list->count; ++i) {
-		SGS_ParseOpData *pod = pods[i];
+		SAU_ParseOpData *pod = pods[i];
 		// TODO: handle multiple operator nodes
-		//if (pod->op_flags & SGS_SDOP_MULTIPLE) continue;
-		SGS_ScriptOpData *od = pod->op_conv;
+		//if (pod->op_flags & SAU_SDOP_MULTIPLE) continue;
+		SAU_ScriptOpData *od = pod->op_conv;
 		if (!od) goto ERROR;
-		SGS_ScriptEvData *e = od->event;
-		if (e->ev_flags & SGS_SDEV_NEW_OPGRAPH) {
+		SAU_ScriptEvData *e = od->event;
+		if (e->ev_flags & SAU_SDEV_NEW_OPGRAPH) {
 			// Handle linking for carriers separately
-			if (od->op_flags & SGS_SDOP_NEW_CARRIER)
-				SGS_PtrList_add(&e->op_graph, od);
+			if (od->op_flags & SAU_SDOP_NEW_CARRIER)
+				SAU_PtrList_add(&e->op_graph, od);
 		}
-		if (od_list != NULL) SGS_PtrList_add(od_list, od);
-		if (od->op_params & SGS_POPP_ADJCS) {
+		if (od_list != NULL) SAU_PtrList_add(od_list, od);
+		if (od->op_params & SAU_POPP_ADJCS) {
 			if (!ParseConv_link_ops(o,
 					&od->fmods, &pod->fmods)) goto ERROR;
 			if (!ParseConv_link_ops(o,
@@ -316,7 +316,7 @@ static bool ParseConv_link_ops(ParseConv *restrict o,
 	return true;
 
 ERROR:
-	SGS_error("parseconv", "converted node missing at some level");
+	SAU_error("parseconv", "converted node missing at some level");
 	return false;
 }
 
@@ -324,8 +324,8 @@ ERROR:
  * Convert the given event data node and all associated operator data nodes.
  */
 static bool ParseConv_add_event(ParseConv *restrict o,
-		SGS_ParseEvData *restrict pe) {
-	SGS_ScriptEvData *e = calloc(1, sizeof(SGS_ScriptEvData));
+		SAU_ParseEvData *restrict pe) {
+	SAU_ScriptEvData *e = calloc(1, sizeof(SAU_ScriptEvData));
 	if (!e)
 		return false;
 	pe->ev_conv = e;
@@ -355,9 +355,9 @@ ERROR:
  * Ideally, adjustments of parse data would be
  * more cleanly separated into the later stages.
  */
-static SGS_Script *ParseConv_convert(ParseConv *restrict o,
-		SGS_Parse *restrict p) {
-	SGS_ParseEvData *pe;
+static SAU_Script *ParseConv_convert(ParseConv *restrict o,
+		SAU_Parse *restrict p) {
+	SAU_ParseEvData *pe;
 	for (pe = p->events; pe != NULL; pe = pe->next) {
 		time_event(pe);
 		if (pe->groupfrom != NULL) group_events(pe);
@@ -372,7 +372,7 @@ static SGS_Script *ParseConv_convert(ParseConv *restrict o,
 	/*
 	 * Convert adjusted parser output to script data.
 	 */
-	SGS_Script *s = calloc(1, sizeof(SGS_Script));
+	SAU_Script *s = calloc(1, sizeof(SAU_Script));
 	if (!s)
 		return NULL;
 	s->name = p->name;
@@ -384,7 +384,7 @@ static SGS_Script *ParseConv_convert(ParseConv *restrict o,
 	return s;
 
 ERROR:
-	SGS_discard_Script(s);
+	SAU_discard_Script(s);
 	return NULL;
 }
 
@@ -393,51 +393,51 @@ ERROR:
  *
  * \return instance or NULL on error
  */
-SGS_Script *SGS_load_Script(const char *restrict script_arg, bool is_path) {
+SAU_Script *SAU_load_Script(const char *restrict script_arg, bool is_path) {
 	ParseConv pc = (ParseConv){0};
-	SGS_Parse *p = SGS_create_Parse(script_arg, is_path);
+	SAU_Parse *p = SAU_create_Parse(script_arg, is_path);
 	if (!p)
 		return NULL;
-	SGS_Script *o = ParseConv_convert(&pc, p);
-	SGS_destroy_Parse(p);
+	SAU_Script *o = ParseConv_convert(&pc, p);
+	SAU_destroy_Parse(p);
 	return o;
 }
 
 /*
  * Destroy the given operator data node.
  */
-static void destroy_operator(SGS_ScriptOpData *restrict op) {
-	SGS_PtrList_clear(&op->op_next);
-	SGS_PtrList_clear(&op->fmods);
-	SGS_PtrList_clear(&op->pmods);
-	SGS_PtrList_clear(&op->amods);
+static void destroy_operator(SAU_ScriptOpData *restrict op) {
+	SAU_PtrList_clear(&op->op_next);
+	SAU_PtrList_clear(&op->fmods);
+	SAU_PtrList_clear(&op->pmods);
+	SAU_PtrList_clear(&op->amods);
 	free(op);
 }
 
 /*
  * Destroy the given event data node and all associated operator data nodes.
  */
-static void destroy_event_node(SGS_ScriptEvData *restrict e) {
+static void destroy_event_node(SAU_ScriptEvData *restrict e) {
 	size_t i;
-	SGS_ScriptOpData **ops;
-	ops = (SGS_ScriptOpData**) SGS_PtrList_ITEMS(&e->op_all);
+	SAU_ScriptOpData **ops;
+	ops = (SAU_ScriptOpData**) SAU_PtrList_ITEMS(&e->op_all);
 	for (i = e->op_all.old_count; i < e->op_all.count; ++i) {
 		destroy_operator(ops[i]);
 	}
-	SGS_PtrList_clear(&e->op_all);
-	SGS_PtrList_clear(&e->op_graph);
+	SAU_PtrList_clear(&e->op_all);
+	SAU_PtrList_clear(&e->op_graph);
 	free(e);
 }
 
 /**
  * Destroy script data.
  */
-void SGS_discard_Script(SGS_Script *restrict o) {
+void SAU_discard_Script(SAU_Script *restrict o) {
 	if (!o)
 		return;
-	SGS_ScriptEvData *e;
+	SAU_ScriptEvData *e;
 	for (e = o->events; e != NULL; ) {
-		SGS_ScriptEvData *e_next = e->next;
+		SAU_ScriptEvData *e_next = e->next;
 		destroy_event_node(e);
 		e = e_next;
 	}

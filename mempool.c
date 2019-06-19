@@ -1,4 +1,4 @@
-/* sgensys: Memory pool module.
+/* saugns: Memory pool module.
  * Copyright (c) 2014, 2018-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -31,7 +31,7 @@ typedef struct BlockEntry {
 	size_t free;
 } BlockEntry;
 
-SGS_DEF_ArrType(BlockArr, BlockEntry, _)
+SAU_DEF_ArrType(BlockArr, BlockEntry, _)
 
 /*
  * Allocate new memory block,
@@ -134,7 +134,7 @@ static void BlockArr_copy_up_one(BlockArr *restrict o,
 	}
 }
 
-struct SGS_MemPool {
+struct SAU_MemPool {
 	BlockArr blocks;
 	size_t block_size;
 };
@@ -152,8 +152,8 @@ struct SGS_MemPool {
  *
  * \return instance, or NULL on allocation failure
  */
-SGS_MemPool *SGS_create_MemPool(size_t block_size) {
-	SGS_MemPool *o = calloc(1, sizeof(SGS_MemPool));
+SAU_MemPool *SAU_create_MemPool(size_t block_size) {
+	SAU_MemPool *o = calloc(1, sizeof(SAU_MemPool));
 	if (!o)
 		return NULL;
 	o->block_size = (block_size > 0) ?
@@ -165,7 +165,7 @@ SGS_MemPool *SGS_create_MemPool(size_t block_size) {
 /**
  * Destroy instance.
  */
-void SGS_destroy_MemPool(SGS_MemPool *restrict o) {
+void SAU_destroy_MemPool(SAU_MemPool *restrict o) {
 	if (!o)
 		return;
 	BlockArr_clear(&o->blocks);
@@ -178,7 +178,7 @@ void SGS_destroy_MemPool(SGS_MemPool *restrict o) {
  *
  * \return allocated memory, or NULL on allocation failure
  */
-void *SGS_MemPool_alloc(SGS_MemPool *restrict o, size_t size) {
+void *SAU_MemPool_alloc(SAU_MemPool *restrict o, size_t size) {
 	size_t i = o->blocks.count;
 	void *ret;
 	size = ALIGN_SIZE(size);
@@ -233,9 +233,9 @@ void *SGS_MemPool_alloc(SGS_MemPool *restrict o, size_t size) {
  *
  * \return allocated memory, or NULL on allocation failure
  */
-void *SGS_MemPool_memdup(SGS_MemPool *restrict o,
+void *SAU_MemPool_memdup(SAU_MemPool *restrict o,
 		const void *restrict src, size_t size) {
-	void *ret = SGS_MemPool_alloc(o, size);
+	void *ret = SAU_MemPool_alloc(o, size);
 	if (!ret)
 		return NULL;
 	if (src != NULL) {
