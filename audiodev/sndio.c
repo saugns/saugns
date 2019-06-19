@@ -1,5 +1,5 @@
-/* sgensys: sndio audio output support.
- * Copyright (c) 2018 Joel K. Pettersson
+/* saugns: sndio audio output support.
+ * Copyright (c) 2018-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -17,7 +17,7 @@
 /*
  * \return instance or NULL on failure
  */
-static inline SGS_AudioDev *open_sndio(const char *restrict name,
+static inline SAU_AudioDev *open_sndio(const char *restrict name,
 		unsigned mode, uint16_t channels,
 		uint32_t *restrict srate) {
 	struct sio_hdl *hdl = sio_open(name, mode, 0);
@@ -33,17 +33,17 @@ static inline SGS_AudioDev *open_sndio(const char *restrict name,
 	par.pchan = channels;
 	par.rate = *srate;
 	par.xrun = SIO_SYNC;
-	if ((!sio_setpar(hdl, &par)) ||
-	    (!sio_getpar(hdl, &par))) goto ERROR;
+	if ((!sio_setpar(hdl, &par)) || (!sio_getpar(hdl, &par)))
+		goto ERROR;
 	if (par.rate != *srate) {
-		SGS_warning("sndio", "sample rate %d unsupported, using %d",
+		SAU_warning("sndio", "sample rate %d unsupported, using %d",
 			*srate, par.rate);
 		*srate = par.rate;
 	}
 
 	if (!sio_start(hdl)) goto ERROR;
 
-	SGS_AudioDev *o = malloc(sizeof(SGS_AudioDev));
+	SAU_AudioDev *o = malloc(sizeof(SAU_AudioDev));
 	o->ref.handle = hdl;
 	o->type = TYPE_SNDIO;
 	o->channels = channels;
@@ -51,7 +51,7 @@ static inline SGS_AudioDev *open_sndio(const char *restrict name,
 	return o;
 
 ERROR:
-	SGS_error("sndio", "configuration for device \"%s\" failed",
+	SAU_error("sndio", "configuration for device \"%s\" failed",
 		name);
 	return NULL;
 }
@@ -60,7 +60,7 @@ ERROR:
  * Destroy instance. Close sndio device,
  * ending playback in the process.
  */
-static inline void close_sndio(SGS_AudioDev *o) {
+static inline void close_sndio(SAU_AudioDev *o) {
 	sio_close(o->ref.handle);
 	free(o);
 }
@@ -70,7 +70,7 @@ static inline void close_sndio(SGS_AudioDev *o) {
  *
  * \return true if write sucessful, otherwise false
  */
-static inline bool sndio_write(SGS_AudioDev *restrict o,
+static inline bool sndio_write(SAU_AudioDev *restrict o,
 		const int16_t *restrict buf, uint32_t samples) {
 	size_t bytes = samples * o->channels * SOUND_BYTES;
 	size_t wlen;

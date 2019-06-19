@@ -1,5 +1,5 @@
-/* sgensys: OSS audio output support.
- * Copyright (c) 2011-2014, 2017-2018 Joel K. Pettersson
+/* saugns: OSS audio output support.
+ * Copyright (c) 2011-2014, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -25,7 +25,7 @@
 /*
  * \return instance or NULL on failure
  */
-static inline SGS_AudioDev *open_oss(const char *restrict name, int mode,
+static inline SAU_AudioDev *open_oss(const char *restrict name, int mode,
 		uint16_t channels, uint32_t *restrict srate) {
 	const char *err_name = NULL;
 	int tmp, fd;
@@ -41,9 +41,9 @@ static inline SGS_AudioDev *open_oss(const char *restrict name, int mode,
 		goto ERROR;
 	}
 	if (tmp != AFMT_S16_NE) {
-		SGS_error("OSS", "16-bit signed integer native endian format unsupported");
-                goto ERROR;
-        }
+		SAU_error("OSS", "16-bit signed integer native endian format unsupported");
+		goto ERROR;
+	}
 
 	tmp = channels;
 	if (ioctl(fd, SNDCTL_DSP_CHANNELS, &tmp) == -1) {
@@ -51,10 +51,10 @@ static inline SGS_AudioDev *open_oss(const char *restrict name, int mode,
 		goto ERROR;
 	}
 	if (tmp != channels) {
-		SGS_error("OSS", "%d channels unsupported",
+		SAU_error("OSS", "%d channels unsupported",
 			channels);
-                goto ERROR;
-        }
+		goto ERROR;
+	}
 
 	tmp = *srate;
 	if (ioctl(fd, SNDCTL_DSP_SPEED, &tmp) == -1) {
@@ -62,12 +62,12 @@ static inline SGS_AudioDev *open_oss(const char *restrict name, int mode,
 		goto ERROR;
 	}
 	if ((uint32_t) tmp != *srate) {
-		SGS_warning("OSS", "sample rate %d unsupported, using %d",
+		SAU_warning("OSS", "sample rate %d unsupported, using %d",
 			*srate, tmp);
 		*srate = tmp;
 	}
 
-	SGS_AudioDev *o = malloc(sizeof(SGS_AudioDev));
+	SAU_AudioDev *o = malloc(sizeof(SAU_AudioDev));
 	o->ref.fd = fd;
 	o->type = TYPE_OSS;
 	o->channels = channels;
@@ -76,10 +76,10 @@ static inline SGS_AudioDev *open_oss(const char *restrict name, int mode,
 
 ERROR:
 	if (err_name)
-		SGS_error("OSS", "%s: %s", err_name, strerror(errno));
+		SAU_error("OSS", "%s: %s", err_name, strerror(errno));
 	if (fd != -1)
 		close(fd);
-	SGS_error("OSS", "configuration for device \"%s\" failed",
+	SAU_error("OSS", "configuration for device \"%s\" failed",
 		name);
 	return NULL;
 }
@@ -88,7 +88,7 @@ ERROR:
  * Destroy instance. Close OSS device,
  * ending playback in the process.
  */
-static inline void close_oss(SGS_AudioDev *restrict o) {
+static inline void close_oss(SAU_AudioDev *restrict o) {
 	close(o->ref.fd);
 	free(o);
 }
@@ -98,7 +98,7 @@ static inline void close_oss(SGS_AudioDev *restrict o) {
  *
  * \return true if write sucessful, otherwise false
  */
-static inline bool oss_write(SGS_AudioDev *restrict o,
+static inline bool oss_write(SAU_AudioDev *restrict o,
 		const int16_t *restrict buf, uint32_t samples) {
 	size_t length = samples * o->channels * SOUND_BYTES;
 	size_t written = write(o->ref.fd, buf, length);
