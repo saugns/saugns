@@ -1,4 +1,4 @@
-/* ssndgen: Memory pool module.
+/* saugns: Memory pool module.
  * Copyright (c) 2014, 2018-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -16,13 +16,13 @@
  */
 
 #include "mempool.h"
-#ifndef SSG_MEM_DEBUG
+#ifndef SAU_MEM_DEBUG
 /*
  * Debug-friendly memory handling? (Slower.)
  *
  * Enable to simply calloc every allocation.
  */
-# define SSG_MEM_DEBUG 0
+# define SAU_MEM_DEBUG 0
 #endif
 #include <stdlib.h>
 #include <string.h>
@@ -37,7 +37,7 @@ typedef struct MemBlock {
 	char *mem;
 } MemBlock;
 
-struct SSG_MemPool {
+struct SAU_MemPool {
 	MemBlock *a;
 	size_t count, first_i, alloc_len;
 	size_t block_size, skip_size;
@@ -48,7 +48,7 @@ struct SSG_MemPool {
  *
  * \return true, or false on allocation failure
  */
-static bool upsize(SSG_MemPool *restrict o) {
+static bool upsize(SAU_MemPool *restrict o) {
 	size_t new_alloc_len = (o->alloc_len > 0) ?
 		(o->alloc_len << 2) :
 		1;
@@ -56,7 +56,7 @@ static bool upsize(SSG_MemPool *restrict o) {
 	if (!new_a)
 		return false;
 	o->a = new_a;
-#if !SSG_MEM_DEBUG
+#if !SAU_MEM_DEBUG
 	o->block_size <<= 1;
 	if (o->first_i < (o->alloc_len * 2) / 3) {
 		/*
@@ -73,13 +73,13 @@ static bool upsize(SSG_MemPool *restrict o) {
 	return true;
 }
 
-#if !SSG_MEM_DEBUG
+#if !SAU_MEM_DEBUG
 /*
  * Allocate new memory block, initialized to zero bytes.
  *
  * \return allocated memory, or NULL on allocation failure
  */
-static void *add(SSG_MemPool *restrict o, size_t size_used) {
+static void *add(SAU_MemPool *restrict o, size_t size_used) {
 	if (o->count == o->alloc_len && !upsize(o))
 		return NULL;
 	size_t block_size = o->block_size;
@@ -104,7 +104,7 @@ static void *add(SSG_MemPool *restrict o, size_t size_used) {
  *
  * \return true if found, false if not
  */
-static bool first_smallest(const SSG_MemPool *restrict o,
+static bool first_smallest(const SAU_MemPool *restrict o,
 		size_t size, size_t *restrict id) {
 	size_t i;
 	ptrdiff_t min = o->first_i;
@@ -147,7 +147,7 @@ static bool first_smallest(const SSG_MemPool *restrict o,
  * by the previous such block, until finally the last such block overwrites
  * the block at \p to.
  */
-static void copy_up_one(SSG_MemPool *restrict o,
+static void copy_up_one(SAU_MemPool *restrict o,
 		size_t to, size_t from) {
 	if (from == (to - 1) || o->a[from].free == o->a[to - 1].free) {
 		/*
@@ -186,8 +186,8 @@ static void copy_up_one(SSG_MemPool *restrict o,
  *
  * \return instance, or NULL on allocation failure
  */
-SSG_MemPool *SSG_create_MemPool(size_t start_size) {
-	SSG_MemPool *o = calloc(1, sizeof(SSG_MemPool));
+SAU_MemPool *SAU_create_MemPool(size_t start_size) {
+	SAU_MemPool *o = calloc(1, sizeof(SAU_MemPool));
 	if (!o)
 		return NULL;
 	o->block_size = (start_size > 0) ?
@@ -202,7 +202,7 @@ SSG_MemPool *SSG_create_MemPool(size_t start_size) {
  *
  * Frees all memory blocks.
  */
-void SSG_destroy_MemPool(SSG_MemPool *restrict o) {
+void SAU_destroy_MemPool(SAU_MemPool *restrict o) {
 	if (!o)
 		return;
 	for (size_t i = 0; i < o->count; ++i) {
@@ -218,8 +218,8 @@ void SSG_destroy_MemPool(SSG_MemPool *restrict o) {
  *
  * \return allocated memory, or NULL on allocation failure
  */
-void *SSG_MemPool_alloc(SSG_MemPool *restrict o, size_t size) {
-#if !SSG_MEM_DEBUG
+void *SAU_MemPool_alloc(SAU_MemPool *restrict o, size_t size) {
+#if !SAU_MEM_DEBUG
 	size_t i = o->count;
 	void *mem;
 	size = ALIGN_SIZE(size);
@@ -263,7 +263,7 @@ void *SSG_MemPool_alloc(SSG_MemPool *restrict o, size_t size) {
 		}
 	}
 	return mem;
-#else /* SSG_MEM_DEBUG */
+#else /* SAU_MEM_DEBUG */
 	if (o->count == o->alloc_len && !upsize(o))
 		return NULL;
 	void *mem = calloc(1, size);
@@ -281,9 +281,9 @@ void *SSG_MemPool_alloc(SSG_MemPool *restrict o, size_t size) {
  *
  * \return allocated memory, or NULL on allocation failure
  */
-void *SSG_MemPool_memdup(SSG_MemPool *restrict o,
+void *SAU_MemPool_memdup(SAU_MemPool *restrict o,
 		const void *restrict src, size_t size) {
-	void *mem = SSG_MemPool_alloc(o, size);
+	void *mem = SAU_MemPool_alloc(o, size);
 	if (!mem)
 		return NULL;
 	if (src != NULL)
