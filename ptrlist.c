@@ -1,4 +1,4 @@
-/* ssndgen: Pointer list module.
+/* saugns: Pointer list module.
  * Copyright (c) 2011-2012, 2018-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -27,7 +27,7 @@
  *
  * \return true unless allocation failed
  */
-bool SSG_PtrList_add(SSG_PtrList *restrict o, void *restrict item) {
+bool SAU_PtrList_add(SAU_PtrList *restrict o, void *restrict item) {
 	if (!o->asize) {
 		if (o->count == 0) {
 			o->items = (void**) item;
@@ -72,7 +72,7 @@ bool SSG_PtrList_add(SSG_PtrList *restrict o, void *restrict item) {
 /**
  * Clear the given list.
  */
-void SSG_PtrList_clear(SSG_PtrList *restrict o) {
+void SAU_PtrList_clear(SAU_PtrList *restrict o) {
 	if (o->count > o->old_count && o->asize > 0) {
 		free(o->items);
 	}
@@ -92,14 +92,14 @@ void SSG_PtrList_clear(SSG_PtrList *restrict o) {
  *
  * \return true unless allocation failed
  */
-bool SSG_PtrList_memdup(SSG_PtrList *restrict o, void ***restrict dst) {
+bool SAU_PtrList_memdup(SAU_PtrList *restrict o, void ***restrict dst) {
 	if (!o->count) {
 		*dst = NULL;
 		return true;
 	}
 	size_t size = o->count * sizeof(void*);
-	void **src = SSG_PtrList_ITEMS(o);
-	void **a = SSG_memdup(src, size);
+	void **src = SAU_PtrList_ITEMS(o);
+	void **a = SAU_memdup(src, size);
 	if (!a)
 		return false;
 	*dst = a;
@@ -117,15 +117,15 @@ bool SSG_PtrList_memdup(SSG_PtrList *restrict o, void ***restrict dst) {
  *
  * \return true unless allocation failed
  */
-bool SSG_PtrList_mpmemdup(SSG_PtrList *restrict o, void ***restrict dst,
-		SSG_MemPool *restrict mempool) {
+bool SAU_PtrList_mpmemdup(SAU_PtrList *restrict o, void ***restrict dst,
+		SAU_MemPool *restrict mempool) {
 	if (!o->count) {
 		*dst = NULL;
 		return true;
 	}
 	size_t size = o->count * sizeof(void*);
-	void **src = SSG_PtrList_ITEMS(o);
-	void **a = SSG_MemPool_memdup(mempool, src, size);
+	void **src = SAU_PtrList_ITEMS(o);
+	void **a = SAU_MemPool_memdup(mempool, src, size);
 	if (!a)
 		return false;
 	*dst = a;
@@ -147,9 +147,9 @@ bool SSG_PtrList_mpmemdup(SSG_PtrList *restrict o, void ***restrict dst,
  * through iteration between \a old_count and \a count, all
  * accessing of freed memory is avoided.
  */
-void SSG_PtrList_soft_copy(SSG_PtrList *restrict dst,
-		const SSG_PtrList *restrict src) {
-	SSG_PtrList_clear(dst);
+void SAU_PtrList_soft_copy(SAU_PtrList *restrict dst,
+		const SAU_PtrList *restrict src) {
+	SAU_PtrList_clear(dst);
 	dst->items = src->items;
 	dst->count = src->count;
 	dst->old_count = src->count;

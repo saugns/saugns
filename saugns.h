@@ -1,4 +1,4 @@
-/* ssndgen: Main functions and project definitions.
+/* saugns: Main functions and project definitions.
  * Copyright (c) 2011-2013, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -15,12 +15,12 @@
 #include "program.h"
 #include "ptrlist.h"
 
-#define SSG_VERSION_STR "ssndgen v0.2-dev"
+#define SAU_VERSION_STR "saugns v0.3-dev"
 
-#define SSG_DEFAULT_SRATE 96000
+#define SAU_DEFAULT_SRATE 96000
 
-size_t SSG_build(const SSG_PtrList *restrict script_args, bool are_paths,
-		SSG_PtrList *restrict prg_objs);
+size_t SAU_build(const SAU_PtrList *restrict script_args, bool are_paths,
+		SAU_PtrList *restrict prg_objs);
 
-bool SSG_render(const SSG_PtrList *restrict prg_objs, uint32_t srate,
+bool SAU_render(const SAU_PtrList *restrict prg_objs, uint32_t srate,
 		bool use_audiodev, const char *restrict wav_path);

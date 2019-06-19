@@ -1,4 +1,4 @@
-/* ssndgen: Audio generator module.
+/* saugns: Audio generator module.
  * Copyright (c) 2011-2012, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -14,13 +14,13 @@
 #pragma once
 #include "../program.h"
 
-struct SSG_Generator;
-typedef struct SSG_Generator SSG_Generator;
+struct SAU_Generator;
+typedef struct SAU_Generator SAU_Generator;
 
-SSG_Generator* SSG_create_Generator(const SSG_Program *restrict prg,
-		uint32_t srate) SSG__malloclike;
-void SSG_destroy_Generator(SSG_Generator *restrict o);
+SAU_Generator* SAU_create_Generator(const SAU_Program *restrict prg,
+		uint32_t srate) SAU__malloclike;
+void SAU_destroy_Generator(SAU_Generator *restrict o);
 
-bool SSG_Generator_run(SSG_Generator *restrict o,
+bool SAU_Generator_run(SAU_Generator *restrict o,
 		int16_t *restrict buf, size_t buf_len,
 		size_t *restrict out_len);

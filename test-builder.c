@@ -1,4 +1,4 @@
-/* ssndgen: Test program for experimental builder code.
+/* saugns: Test program for experimental builder code.
  * Copyright (c) 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -11,8 +11,8 @@
  * <https://www.gnu.org/licenses/>.
  */
 
-#include "ssndgen.h"
-#if SSG_TEST_SCANNER
+#include "saugns.h"
+#if SAU_TEST_SCANNER
 # include "builder/scanner.h"
 #else
 # include "builder/lexer.h"
@@ -41,7 +41,7 @@ static void print_usage(bool by_arg) {
  * Print version.
  */
 static void print_version(void) {
-	puts(SSG_VERSION_STR);
+	puts(SAU_VERSION_STR);
 }
 
 /*
@@ -65,7 +65,7 @@ enum {
  */
 static bool parse_args(int argc, char **restrict argv,
 		uint32_t *restrict flags,
-		SSG_PtrList *restrict script_args) {
+		SAU_PtrList *restrict script_args) {
 	for (;;) {
 		const char *arg;
 		--argc;
@@ -76,7 +76,7 @@ static bool parse_args(int argc, char **restrict argv,
 		}
 		arg = *argv;
 		if (*arg != '-') {
-			SSG_PtrList_add(script_args, (void*) arg);
+			SAU_PtrList_add(script_args, (void*) arg);
 			continue;
 		}
 NEXT_C:
@@ -109,7 +109,7 @@ NEXT_C:
 INVALID:
 	print_usage(false);
 CLEAR:
-	SSG_PtrList_clear(script_args);
+	SAU_PtrList_clear(script_args);
 	return false;
 }
 
@@ -117,53 +117,53 @@ CLEAR:
  * Discard the programs in the list, ignoring NULL entries,
  * and clearing the list.
  */
-static void discard_programs(SSG_PtrList *restrict prg_objs) {
-	SSG_Program **prgs = (SSG_Program**) SSG_PtrList_ITEMS(prg_objs);
+static void discard_programs(SAU_PtrList *restrict prg_objs) {
+	SAU_Program **prgs = (SAU_Program**) SAU_PtrList_ITEMS(prg_objs);
 	for (size_t i = 0; i < prg_objs->count; ++i) {
-		SSG_discard_Program(prgs[i]);
+		SAU_discard_Program(prgs[i]);
 	}
-	SSG_PtrList_clear(prg_objs);
+	SAU_PtrList_clear(prg_objs);
 }
 
 /*
  * Run script through test code.
  *
- * \return SSG_Program or NULL on error
+ * \return SAU_Program or NULL on error
  */
-static SSG_Program *build_program(const char *restrict script_arg,
+static SAU_Program *build_program(const char *restrict script_arg,
 		bool is_path) {
-	SSG_Program *o = NULL;
-	SSG_SymTab *symtab = SSG_create_SymTab();
+	SAU_Program *o = NULL;
+	SAU_SymTab *symtab = SAU_create_SymTab();
 	if (!symtab)
 		return NULL;
-#if SSG_TEST_SCANNER
-	SSG_Scanner *scanner = SSG_create_Scanner(symtab);
+#if SAU_TEST_SCANNER
+	SAU_Scanner *scanner = SAU_create_Scanner(symtab);
 	if (!scanner) goto CLOSE;
-	if (!SSG_Scanner_open(scanner, script_arg, is_path)) goto CLOSE;
+	if (!SAU_Scanner_open(scanner, script_arg, is_path)) goto CLOSE;
 	for (;;) {
-		uint8_t c = SSG_Scanner_getc(scanner);
+		uint8_t c = SAU_Scanner_getc(scanner);
 		if (!c) {
 			putchar('\n');
 			break;
 		}
 		putchar(c);
 	}
-	o = (SSG_Program*) calloc(1, sizeof(SSG_Program)); // placeholder
+	o = (SAU_Program*) calloc(1, sizeof(SAU_Program)); // placeholder
 CLOSE:
-	SSG_destroy_Scanner(scanner);
+	SAU_destroy_Scanner(scanner);
 #else
-	SSG_Lexer *lexer = SSG_create_Lexer(symtab);
+	SAU_Lexer *lexer = SAU_create_Lexer(symtab);
 	if (!lexer) goto CLOSE;
-	if (!SSG_Lexer_open(lexer, script_arg, is_path)) goto CLOSE;
+	if (!SAU_Lexer_open(lexer, script_arg, is_path)) goto CLOSE;
 	for (;;) {
-		SSG_ScriptToken token;
-		if (!SSG_Lexer_get(lexer, &token)) break;
+		SAU_ScriptToken token;
+		if (!SAU_Lexer_get(lexer, &token)) break;
 	}
-	o = (SSG_Program*) calloc(1, sizeof(SSG_Program)); // placeholder
+	o = (SAU_Program*) calloc(1, sizeof(SAU_Program)); // placeholder
 CLOSE:
-	SSG_destroy_Lexer(lexer);
+	SAU_destroy_Lexer(lexer);
 #endif
-	SSG_destroy_SymTab(symtab);
+	SAU_destroy_SymTab(symtab);
 	return o;
 }
 
@@ -173,14 +173,14 @@ CLOSE:
  *
  * \return number of programs successfully built
  */
-size_t SSG_build(const SSG_PtrList *restrict script_args, bool are_paths,
-		SSG_PtrList *restrict prg_objs) {
+size_t SAU_build(const SAU_PtrList *restrict script_args, bool are_paths,
+		SAU_PtrList *restrict prg_objs) {
 	size_t built = 0;
-	const char **args = (const char**) SSG_PtrList_ITEMS(script_args);
+	const char **args = (const char**) SAU_PtrList_ITEMS(script_args);
 	for (size_t i = 0; i < script_args->count; ++i) {
-		SSG_Program *prg = build_program(args[i], are_paths);
+		SAU_Program *prg = build_program(args[i], are_paths);
 		if (prg != NULL) ++built;
-		SSG_PtrList_add(prg_objs, prg);
+		SAU_PtrList_add(prg_objs, prg);
 	}
 	return built;
 }
@@ -190,18 +190,18 @@ size_t SSG_build(const SSG_PtrList *restrict script_args, bool are_paths,
  *
  * \return true if at least one script succesfully built
  */
-static bool build(const SSG_PtrList *restrict script_args,
-		SSG_PtrList *restrict prg_objs,
+static bool build(const SAU_PtrList *restrict script_args,
+		SAU_PtrList *restrict prg_objs,
 		uint32_t options) {
 	bool are_paths = !(options & ARG_EVAL_STRING);
-	if (!SSG_build(script_args, are_paths, prg_objs))
+	if (!SAU_build(script_args, are_paths, prg_objs))
 		return false;
 	if ((options & ARG_PRINT_INFO) != 0) {
-		const SSG_Program **prgs =
-			(const SSG_Program**) SSG_PtrList_ITEMS(prg_objs);
+		const SAU_Program **prgs =
+			(const SAU_Program**) SAU_PtrList_ITEMS(prg_objs);
 		for (size_t i = 0; i < prg_objs->count; ++i) {
-			const SSG_Program *prg = prgs[i];
-			if (prg != NULL) SSG_Program_print_info(prg);
+			const SAU_Program *prg = prgs[i];
+			if (prg != NULL) SAU_Program_print_info(prg);
 		}
 	}
 	if ((options & ARG_ONLY_COMPILE) != 0) {
@@ -214,13 +214,13 @@ static bool build(const SSG_PtrList *restrict script_args,
  * Main function.
  */
 int main(int argc, char **restrict argv) {
-	SSG_PtrList script_args = (SSG_PtrList){0};
-	SSG_PtrList prg_objs = (SSG_PtrList){0};
+	SAU_PtrList script_args = (SAU_PtrList){0};
+	SAU_PtrList prg_objs = (SAU_PtrList){0};
 	uint32_t options = 0;
 	if (!parse_args(argc, argv, &options, &script_args))
 		return 0;
 	bool error = !build(&script_args, &prg_objs, options);
-	SSG_PtrList_clear(&script_args);
+	SAU_PtrList_clear(&script_args);
 	if (error)
 		return 1;
 	if (prg_objs.count > 0) {

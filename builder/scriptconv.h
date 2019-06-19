@@ -1,4 +1,4 @@
-/* ssndgen: Script data to audio program converter.
+/* saugns: Script data to audio program converter.
  * Copyright (c) 2011-2012, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -21,69 +21,69 @@
  * Voice allocation state flags.
  */
 enum {
-	SSG_VAS_GRAPH = 1<<0,
+	SAU_VAS_GRAPH = 1<<0,
 };
 
 /**
  * Per-voice state used during program data allocation.
  */
-typedef struct SSG_VoAllocState {
-	SSG_ScriptEvData *last_ev;
-	const SSG_ProgramOpList *op_carriers;
+typedef struct SAU_VoAllocState {
+	SAU_ScriptEvData *last_ev;
+	const SAU_ProgramOpList *op_carriers;
 	uint32_t flags;
 	uint32_t duration_ms;
-} SSG_VoAllocState;
+} SAU_VoAllocState;
 
-SSG_DEF_ArrType(SSG_VoAlloc, SSG_VoAllocState, _)
+SAU_DEF_ArrType(SAU_VoAlloc, SAU_VoAllocState, _)
 
 /**
  * Operator allocation state flags.
  */
 enum {
-	SSG_OAS_VISITED = 1<<0,
+	SAU_OAS_VISITED = 1<<0,
 };
 
 /**
  * Per-operator state used during program data allocation.
  */
-typedef struct SSG_OpAllocState {
-	SSG_ScriptOpData *last_sod;
-	const SSG_ProgramOpList *fmods;
-	const SSG_ProgramOpList *pmods;
-	const SSG_ProgramOpList *amods;
+typedef struct SAU_OpAllocState {
+	SAU_ScriptOpData *last_sod;
+	const SAU_ProgramOpList *fmods;
+	const SAU_ProgramOpList *pmods;
+	const SAU_ProgramOpList *amods;
 	uint32_t flags;
 	//uint32_t duration_ms;
-} SSG_OpAllocState;
+} SAU_OpAllocState;
 
-SSG_DEF_ArrType(SSG_OpAlloc, SSG_OpAllocState, _)
+SAU_DEF_ArrType(SAU_OpAlloc, SAU_OpAllocState, _)
 
-SSG_DEF_ArrType(OpRefArr, SSG_ProgramOpRef, )
+SAU_DEF_ArrType(OpRefArr, SAU_ProgramOpRef, )
 
 /**
  * Voice data, held during program building and set per event.
  */
-typedef struct SSG_VoiceGraph {
+typedef struct SAU_VoiceGraph {
 	OpRefArr vo_graph;
 	uint32_t op_nest_level;
 	uint32_t op_nest_max; // for all traversals
-	SSG_VoAlloc *va;
-	SSG_OpAlloc *oa;
-	SSG_MemPool *mem;
-} SSG_VoiceGraph;
+	SAU_VoAlloc *va;
+	SAU_OpAlloc *oa;
+	SAU_MemPool *mem;
+} SAU_VoiceGraph;
 
 /**
  * Initialize instance for use.
  */
-static inline void SSG_init_VoiceGraph(SSG_VoiceGraph *restrict o,
-		SSG_VoAlloc *restrict va,
-		SSG_OpAlloc *restrict oa,
-		SSG_MemPool *restrict mem) {
+static inline void SAU_init_VoiceGraph(SAU_VoiceGraph *restrict o,
+		SAU_VoAlloc *restrict va,
+		SAU_OpAlloc *restrict oa,
+		SAU_MemPool *restrict mem) {
 	o->va = va;
 	o->oa = oa;
 	o->mem = mem;
 }
 
-void SSG_fini_VoiceGraph(SSG_VoiceGraph *restrict o);
+void SAU_fini_VoiceGraph(SAU_VoiceGraph *restrict o);
 
-bool SSG_VoiceGraph_set(SSG_VoiceGraph *restrict o,
-		const SSG_ProgramEvent *restrict ev);
+bool SAU_VoiceGraph_set(SAU_VoiceGraph *restrict o,
+		const SAU_ProgramEvent *restrict ev);

@@ -1,4 +1,4 @@
-/* ssndgen: Script file parser.
+/* saugns: Script file parser.
  * Copyright (c) 2011-2012, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -32,7 +32,7 @@
 #define IS_VISIBLE(c) ((c) >= '!' && (c) <= '~')
 
 typedef struct ScanLookup {
-	SSG_ScriptOptions sopt;
+	SAU_ScriptOptions sopt;
 	const char *const*wave_names;
 	const char *const*ramp_names;
 } ScanLookup;
@@ -40,7 +40,7 @@ typedef struct ScanLookup {
 /*
  * Default script options, used until changed in a script.
  */
-static const SSG_ScriptOptions def_sopt = {
+static const SAU_ScriptOptions def_sopt = {
 	.changed = 0,
 	.ampmult = 1.f,
 	.A4_freq = 444.f,
@@ -49,14 +49,14 @@ static const SSG_ScriptOptions def_sopt = {
 	.def_relfreq = 1.f,
 };
 
-static bool init_ScanLookup(ScanLookup *restrict o, SSG_SymTab *restrict st) {
+static bool init_ScanLookup(ScanLookup *restrict o, SAU_SymTab *restrict st) {
 	o->sopt = def_sopt;
-	o->wave_names = SSG_SymTab_pool_stra(st,
-			SSG_Wave_names, SSG_WAVE_TYPES);
+	o->wave_names = SAU_SymTab_pool_stra(st,
+			SAU_Wave_names, SAU_WAVE_TYPES);
 	if (!o->wave_names)
 		return false;
-	o->ramp_names = SSG_SymTab_pool_stra(st,
-			SSG_Ramp_names, SSG_RAMP_TYPES);
+	o->ramp_names = SAU_SymTab_pool_stra(st,
+			SAU_Ramp_names, SAU_RAMP_TYPES);
 	if (!o->ramp_names)
 		return false;
 	return true;
@@ -68,14 +68,14 @@ static bool init_ScanLookup(ScanLookup *restrict o, SSG_SymTab *restrict st) {
  *
  * \return false if EOF reached
  */
-static bool handle_unknown_or_eof(SSG_Scanner *restrict o, uint8_t c) {
+static bool handle_unknown_or_eof(SAU_Scanner *restrict o, uint8_t c) {
 	if (c == 0)
 		return false;
 	if (IS_VISIBLE(c)) {
-		SSG_Scanner_warning(o, NULL,
+		SAU_Scanner_warning(o, NULL,
 				"invalid character '%c'", c);
 	} else {
-		SSG_Scanner_warning(o, NULL,
+		SAU_Scanner_warning(o, NULL,
 				"invalid character (value 0x%02hhX)", c);
 	}
 	return true;
@@ -84,38 +84,38 @@ static bool handle_unknown_or_eof(SSG_Scanner *restrict o, uint8_t c) {
 /*
  * Print warning for EOF without closing \p c scope-closing character.
  */
-static void warn_eof_without_closing(SSG_Scanner *restrict o, uint8_t c) {
-	SSG_Scanner_warning(o, NULL, "end of file without closing '%c'", c);
+static void warn_eof_without_closing(SAU_Scanner *restrict o, uint8_t c) {
+	SAU_Scanner_warning(o, NULL, "end of file without closing '%c'", c);
 }
 
 /*
  * Print warning for scope-closing character without scope-opening character.
  */
-static void warn_closing_without_opening(SSG_Scanner *restrict o,
+static void warn_closing_without_opening(SAU_Scanner *restrict o,
 		uint8_t close_c, uint8_t open_c) {
-	SSG_Scanner_warning(o, NULL, "closing '%c' without opening '%c'",
+	SAU_Scanner_warning(o, NULL, "closing '%c' without opening '%c'",
 			close_c, open_c);
 }
 
-typedef float (*NumSym_f)(SSG_Scanner *restrict o);
+typedef float (*NumSym_f)(SAU_Scanner *restrict o);
 
 typedef struct NumParser {
-	SSG_Scanner *sc;
+	SAU_Scanner *sc;
 	NumSym_f numsym_f;
-	SSG_ScanFrame sf_start;
+	SAU_ScanFrame sf_start;
 	bool has_infnum;
 } NumParser;
 static double scan_num_r(NumParser *restrict o, uint8_t pri, uint32_t level) {
-	SSG_Scanner *sc = o->sc;
+	SAU_Scanner *sc = o->sc;
 	double num;
 	bool minus = false;
 	uint8_t c;
-	if (level > 0) SSG_Scanner_skipws(sc);
-	c = SSG_Scanner_getc(sc);
+	if (level > 0) SAU_Scanner_skipws(sc);
+	c = SAU_Scanner_getc(sc);
 	if ((level > 0) && (c == '+' || c == '-')) {
 		if (c == '-') minus = true;
-		SSG_Scanner_skipws(sc);
-		c = SSG_Scanner_getc(sc);
+		SAU_Scanner_skipws(sc);
+		c = SAU_Scanner_getc(sc);
 	}
 	if (c == '(') {
 		num = scan_num_r(o, 255, level+1);
@@ -125,15 +125,15 @@ static double scan_num_r(NumParser *restrict o, uint8_t pri, uint32_t level) {
 		goto EVAL;
 	}
 	if (o->numsym_f && IS_ALPHA(c)) {
-		SSG_Scanner_ungetc(sc);
+		SAU_Scanner_ungetc(sc);
 		num = o->numsym_f(sc);
 		if (isnan(num))
 			return NAN;
 		if (minus) num = -num;
 	} else {
 		size_t read_len;
-		SSG_Scanner_ungetc(sc);
-		SSG_Scanner_getd(sc, &num, false, &read_len);
+		SAU_Scanner_ungetc(sc);
+		SAU_Scanner_getd(sc, &num, false, &read_len);
 		if (read_len == 0)
 			return NAN;
 		if (minus) num = -num;
@@ -143,11 +143,11 @@ EVAL:
 		return num; /* defer all */
 	for (;;) {
 		if (isinf(num)) o->has_infnum = true;
-		if (level > 0) SSG_Scanner_skipws(sc);
-		c = SSG_Scanner_getc(sc);
+		if (level > 0) SAU_Scanner_skipws(sc);
+		c = SAU_Scanner_getc(sc);
 		switch (c) {
-		case SSG_SCAN_SPACE:
-		case SSG_SCAN_LNBRK:
+		case SAU_SCAN_SPACE:
+		case SAU_SCAN_LNBRK:
 			break;
 		case '(':
 			num *= scan_num_r(o, 255, level+1);
@@ -174,7 +174,7 @@ EVAL:
 			break;
 		default:
 			if (pri == 255) {
-				SSG_Scanner_warning(sc, &o->sf_start,
+				SAU_Scanner_warning(sc, &o->sf_start,
 "numerical expression has '(' without closing ')'");
 			}
 			goto DEFER;
@@ -182,10 +182,10 @@ EVAL:
 		if (isnan(num)) goto DEFER;
 	}
 DEFER:
-	SSG_Scanner_ungetc(sc);
+	SAU_Scanner_ungetc(sc);
 	return num;
 }
-static bool SSG__noinline scan_num(SSG_Scanner *restrict o,
+static bool SAU__noinline scan_num(SAU_Scanner *restrict o,
 		NumSym_f scan_numsym, float *restrict var) {
 	NumParser np = {o, scan_numsym, o->sf, false};
 	float num = scan_num_r(&np, 0, 0);
@@ -193,7 +193,7 @@ static bool SSG__noinline scan_num(SSG_Scanner *restrict o,
 		return false;
 	if (isinf(num)) np.has_infnum = true;
 	if (np.has_infnum) {
-		SSG_Scanner_warning(o, &np.sf_start,
+		SAU_Scanner_warning(o, &np.sf_start,
 				"discarding expression with infinite number");
 		return false;
 	}
@@ -201,14 +201,14 @@ static bool SSG__noinline scan_num(SSG_Scanner *restrict o,
 	return true;
 }
 
-static SSG__noinline bool scan_time_val(SSG_Scanner *restrict o,
+static SAU__noinline bool scan_time_val(SAU_Scanner *restrict o,
 		uint32_t *restrict val) {
-	SSG_ScanFrame sf = o->sf;
+	SAU_ScanFrame sf = o->sf;
 	float val_s;
 	if (!scan_num(o, NULL, &val_s))
 		return false;
 	if (val_s < 0.f) {
-		SSG_Scanner_warning(o, &sf, "discarding negative time value");
+		SAU_Scanner_warning(o, &sf, "discarding negative time value");
 		return false;
 	}
 	*val = lrint(val_s * 1000.f);
@@ -216,7 +216,7 @@ static SSG__noinline bool scan_time_val(SSG_Scanner *restrict o,
 }
 
 #define OCTAVES 11
-static float scan_note(SSG_Scanner *restrict o) {
+static float scan_note(SAU_Scanner *restrict o) {
 	static const float octaves[OCTAVES] = {
 		(1.f/16.f),
 		(1.f/8.f),
@@ -264,7 +264,7 @@ static float scan_note(SSG_Scanner *restrict o) {
 	};
 	ScanLookup *sl = o->data;
 	float freq;
-	uint8_t c = SSG_Scanner_getc(o);
+	uint8_t c = SAU_Scanner_getc(o);
 	int32_t octave;
 	int32_t semitone = 1, note;
 	int32_t subnote = -1;
@@ -273,28 +273,28 @@ static float scan_note(SSG_Scanner *restrict o) {
 		subnote = c - 'c';
 		if (subnote < 0) /* a, b */
 			subnote += 7;
-		c = SSG_Scanner_getc(o);
+		c = SAU_Scanner_getc(o);
 	}
 	if (c < 'A' || c > 'G') {
-		SSG_Scanner_warning(o, NULL,
+		SAU_Scanner_warning(o, NULL,
 "invalid note specified - should be C, D, E, F, G, A or B");
 		return NAN;
 	}
 	note = c - 'C';
 	if (note < 0) /* A, B */
 		note += 7;
-	c = SSG_Scanner_getc(o);
+	c = SAU_Scanner_getc(o);
 	if (c == 's')
 		semitone = 2;
 	else if (c == 'f')
 		semitone = 0;
 	else
-		SSG_Scanner_ungetc(o);
-	SSG_Scanner_geti(o, &octave, false, &read_len);
+		SAU_Scanner_ungetc(o);
+	SAU_Scanner_geti(o, &octave, false, &read_len);
 	if (read_len == 0)
 		octave = 4;
 	else if (octave >= OCTAVES) {
-		SSG_Scanner_warning(o, NULL,
+		SAU_Scanner_warning(o, NULL,
 "invalid octave specified for note - valid range 0-10");
 		octave = 4;
 	}
@@ -307,26 +307,26 @@ static float scan_note(SSG_Scanner *restrict o) {
 	return freq;
 }
 
-static const char *scan_label(SSG_Scanner *restrict o,
+static const char *scan_label(SAU_Scanner *restrict o,
 		size_t *restrict lenp, char op) {
 	const void *s = NULL;
-	SSG_Scanner_getsymstr(o, &s, lenp);
+	SAU_Scanner_getsymstr(o, &s, lenp);
 	if (*lenp == 0) {
-		SSG_Scanner_warning(o, NULL,
+		SAU_Scanner_warning(o, NULL,
 				"ignoring %c without label name", op);
 	}
 	return s;
 }
 
-static bool scan_symafind(SSG_Scanner *restrict o,
+static bool scan_symafind(SAU_Scanner *restrict o,
 		const char *const*restrict stra, size_t n,
 		size_t *restrict found_i, const char *restrict print_type) {
-	SSG_ScanFrame sf_begin = o->sf;
+	SAU_ScanFrame sf_begin = o->sf;
 	const void *key = NULL;
 	size_t len;
-	SSG_Scanner_getsymstr(o, &key, &len);
+	SAU_Scanner_getsymstr(o, &key, &len);
 	if (len == 0) {
-		SSG_Scanner_warning(o, NULL, "%s missing", print_type);
+		SAU_Scanner_warning(o, NULL, "%s missing", print_type);
 		return false;
 	}
 	for (size_t i = 0; i < n; ++i) {
@@ -335,7 +335,7 @@ static bool scan_symafind(SSG_Scanner *restrict o,
 			return true;
 		}
 	}
-	SSG_Scanner_warning(o, &sf_begin,
+	SAU_Scanner_warning(o, &sf_begin,
 			"invalid %s; available types are:", print_type);
 	fprintf(stderr, "\t%s", stra[0]);
 	for (size_t i = 1; i < n; ++i) {
@@ -345,49 +345,49 @@ static bool scan_symafind(SSG_Scanner *restrict o,
 	return false;
 }
 
-static bool scan_wavetype(SSG_Scanner *restrict o, size_t *restrict found_id) {
+static bool scan_wavetype(SAU_Scanner *restrict o, size_t *restrict found_id) {
 	ScanLookup *sl = o->data;
-	return scan_symafind(o, sl->wave_names, SSG_WAVE_TYPES,
+	return scan_symafind(o, sl->wave_names, SAU_WAVE_TYPES,
 			found_id, "wave type");
 }
 
-static bool scan_ramp_state(SSG_Scanner *restrict o, NumSym_f scan_numsym,
-		SSG_Ramp *restrict ramp, bool mult) {
+static bool scan_ramp_state(SAU_Scanner *restrict o, NumSym_f scan_numsym,
+		SAU_Ramp *restrict ramp, bool mult) {
 	if (!scan_num(o, scan_numsym, &ramp->v0))
 		return false;
 	if (mult) {
-		ramp->flags |= SSG_RAMPP_STATE_RATIO;
+		ramp->flags |= SAU_RAMPP_STATE_RATIO;
 	} else {
-		ramp->flags &= ~SSG_RAMPP_STATE_RATIO;
+		ramp->flags &= ~SAU_RAMPP_STATE_RATIO;
 	}
-	ramp->flags |= SSG_RAMPP_STATE;
+	ramp->flags |= SAU_RAMPP_STATE;
 	return true;
 }
 
-static bool scan_ramp(SSG_Scanner *restrict o, NumSym_f scan_numsym,
-		SSG_Ramp *restrict ramp, bool mult) {
+static bool scan_ramp(SAU_Scanner *restrict o, NumSym_f scan_numsym,
+		SAU_Ramp *restrict ramp, bool mult) {
 	ScanLookup *sl = o->data;
 	bool goal = false;
-	bool time_set = (ramp->flags & SSG_RAMPP_TIME) != 0;
+	bool time_set = (ramp->flags & SAU_RAMPP_TIME) != 0;
 	float vt;
 	uint32_t time_ms = sl->sopt.def_time_ms;
 	uint8_t type = ramp->type; // has default
-	if ((ramp->flags & SSG_RAMPP_GOAL) != 0) {
+	if ((ramp->flags & SAU_RAMPP_GOAL) != 0) {
 		// allow partial change
-		if (((ramp->flags & SSG_RAMPP_GOAL_RATIO) != 0) == mult) {
+		if (((ramp->flags & SAU_RAMPP_GOAL_RATIO) != 0) == mult) {
 			goal = true;
 			vt = ramp->vt;
 		}
 		time_ms = ramp->time_ms;
 	}
 	for (;;) {
-		uint8_t c = SSG_Scanner_getc_nospace(o);
+		uint8_t c = SAU_Scanner_getc_nospace(o);
 		switch (c) {
-		case SSG_SCAN_LNBRK:
+		case SAU_SCAN_LNBRK:
 			break;
 		case 'c': {
 			size_t id;
-			if (scan_symafind(o, sl->ramp_names, SSG_RAMP_TYPES,
+			if (scan_symafind(o, sl->ramp_names, SAU_RAMP_TYPES,
 					&id, "ramp curve")) {
 				type = id;
 			}
@@ -412,22 +412,22 @@ static bool scan_ramp(SSG_Scanner *restrict o, NumSym_f scan_numsym,
 	}
 RETURN:
 	if (!goal) {
-		SSG_Scanner_warning(o, NULL,
+		SAU_Scanner_warning(o, NULL,
 				"ignoring value ramp with no target value");
 		return false;
 	}
 	ramp->vt = vt;
 	ramp->time_ms = time_ms;
 	ramp->type = type;
-	ramp->flags |= SSG_RAMPP_GOAL;
+	ramp->flags |= SAU_RAMPP_GOAL;
 	if (mult)
-		ramp->flags |= SSG_RAMPP_GOAL_RATIO;
+		ramp->flags |= SAU_RAMPP_GOAL_RATIO;
 	else
-		ramp->flags &= ~SSG_RAMPP_GOAL_RATIO;
+		ramp->flags &= ~SAU_RAMPP_GOAL_RATIO;
 	if (time_set)
-		ramp->flags |= SSG_RAMPP_TIME;
+		ramp->flags |= SAU_RAMPP_TIME;
 	else
-		ramp->flags &= ~SSG_RAMPP_TIME;
+		ramp->flags &= ~SAU_RAMPP_TIME;
 	return true;
 }
 
@@ -435,15 +435,15 @@ RETURN:
  * Parser
  */
 
-typedef struct SSG_Parser {
+typedef struct SAU_Parser {
 	ScanLookup sl;
-	SSG_Scanner *sc;
-	SSG_SymTab *st;
+	SAU_Scanner *sc;
+	SAU_SymTab *st;
 	uint32_t call_level;
 	/* node state */
-	SSG_ParseEvData *events;
-	SSG_ParseEvData *last_event;
-} SSG_Parser;
+	SAU_ParseEvData *events;
+	SAU_ParseEvData *last_event;
+} SAU_Parser;
 
 /*
  * Initialize parser instance.
@@ -451,20 +451,20 @@ typedef struct SSG_Parser {
  * The same symbol table and script-set data will be used
  * until the instance is finalized.
  */
-static void init_Parser(SSG_Parser *restrict o) {
-	*o = (SSG_Parser){0};
-	o->st = SSG_create_SymTab();
+static void init_Parser(SAU_Parser *restrict o) {
+	*o = (SAU_Parser){0};
+	o->st = SAU_create_SymTab();
 	init_ScanLookup(&o->sl, o->st);
-	o->sc = SSG_create_Scanner(o->st);
+	o->sc = SAU_create_Scanner(o->st);
 	o->sc->data = &o->sl;
 }
 
 /*
  * Finalize parser instance.
  */
-static void fini_Parser(SSG_Parser *restrict o) {
-	SSG_destroy_Scanner(o->sc);
-	SSG_destroy_SymTab(o->st);
+static void fini_Parser(SAU_Parser *restrict o) {
+	SAU_destroy_Scanner(o->sc);
+	SAU_destroy_SymTab(o->st);
 }
 
 /*
@@ -501,34 +501,34 @@ enum {
  *
  */
 typedef struct ParseLevel {
-	SSG_Parser *o;
+	SAU_Parser *o;
 	struct ParseLevel *parent;
 	uint32_t pl_flags;
 	uint8_t location;
 	uint8_t scope;
-	SSG_ParseEvData *event, *last_event;
-	SSG_ParseOpData *operator, *first_operator, *last_operator;
-	SSG_ParseOpData *parent_op, *op_prev;
+	SAU_ParseEvData *event, *last_event;
+	SAU_ParseOpData *operator, *first_operator, *last_operator;
+	SAU_ParseOpData *parent_op, *op_prev;
 	uint8_t linktype;
 	uint8_t last_linktype; /* FIXME: kludge */
 	const char *set_label; /* label assigned to next node */
 	/* timing/delay */
-	SSG_ParseEvData *group_from; /* where to begin for group_events() */
-	SSG_ParseEvData *composite; /* grouping of events for a voice and/or operator */
+	SAU_ParseEvData *group_from; /* where to begin for group_events() */
+	SAU_ParseEvData *composite; /* grouping of events for a voice and/or operator */
 	uint32_t next_wait_ms; /* added for next event */
 } ParseLevel;
 
 static bool parse_waittime(ParseLevel *restrict pl) {
-	SSG_Parser *o = pl->o;
-	SSG_Scanner *sc = o->sc;
+	SAU_Parser *o = pl->o;
+	SAU_Scanner *sc = o->sc;
 	/* FIXME: ADD_WAIT_DURATION */
-	if (SSG_Scanner_tryc(sc, 't')) {
+	if (SAU_Scanner_tryc(sc, 't')) {
 		if (!pl->last_operator) {
-			SSG_Scanner_warning(sc, NULL,
+			SAU_Scanner_warning(sc, NULL,
 "add wait for last duration before any parts given");
 			return false;
 		}
-		pl->last_event->ev_flags |= SSG_SDEV_ADD_WAIT_DURATION;
+		pl->last_event->ev_flags |= SAU_SDEV_ADD_WAIT_DURATION;
 	} else {
 		uint32_t wait_ms;
 		if (!scan_time_val(sc, &wait_ms))
@@ -554,38 +554,38 @@ enum {
 /*
  * Destroy the given operator data node.
  */
-static void destroy_operator(SSG_ParseOpData *restrict op) {
+static void destroy_operator(SAU_ParseOpData *restrict op) {
 	size_t i;
-	SSG_ParseOpData **ops;
-	ops = (SSG_ParseOpData**) SSG_PtrList_ITEMS(&op->fmods);
+	SAU_ParseOpData **ops;
+	ops = (SAU_ParseOpData**) SAU_PtrList_ITEMS(&op->fmods);
 	for (i = op->fmods.old_count; i < op->fmods.count; ++i) {
 		destroy_operator(ops[i]);
 	}
-	SSG_PtrList_clear(&op->fmods);
-	ops = (SSG_ParseOpData**) SSG_PtrList_ITEMS(&op->pmods);
+	SAU_PtrList_clear(&op->fmods);
+	ops = (SAU_ParseOpData**) SAU_PtrList_ITEMS(&op->pmods);
 	for (i = op->pmods.old_count; i < op->pmods.count; ++i) {
 		destroy_operator(ops[i]);
 	}
-	SSG_PtrList_clear(&op->pmods);
-	ops = (SSG_ParseOpData**) SSG_PtrList_ITEMS(&op->amods);
+	SAU_PtrList_clear(&op->pmods);
+	ops = (SAU_ParseOpData**) SAU_PtrList_ITEMS(&op->amods);
 	for (i = op->amods.old_count; i < op->amods.count; ++i) {
 		destroy_operator(ops[i]);
 	}
-	SSG_PtrList_clear(&op->amods);
+	SAU_PtrList_clear(&op->amods);
 	free(op);
 }
 
 /*
  * Destroy the given event data node and all associated operator data nodes.
  */
-static void destroy_event_node(SSG_ParseEvData *restrict e) {
+static void destroy_event_node(SAU_ParseEvData *restrict e) {
 	size_t i;
-	SSG_ParseOpData **ops;
-	ops = (SSG_ParseOpData**) SSG_PtrList_ITEMS(&e->operators);
+	SAU_ParseOpData **ops;
+	ops = (SAU_ParseOpData**) SAU_PtrList_ITEMS(&e->operators);
 	for (i = e->operators.old_count; i < e->operators.count; ++i) {
 		destroy_operator(ops[i]);
 	}
-	SSG_PtrList_clear(&e->operators);
+	SAU_PtrList_clear(&e->operators);
 	free(e);
 }
 
@@ -593,48 +593,48 @@ static void end_operator(ParseLevel *restrict pl) {
 	if (!(pl->pl_flags & SDPL_ACTIVE_OP))
 		return;
 	pl->pl_flags &= ~SDPL_ACTIVE_OP;
-	SSG_Parser *o = pl->o;
+	SAU_Parser *o = pl->o;
 	ScanLookup *sl = &o->sl;
-	SSG_ParseOpData *op = pl->operator;
-	if (SSG_Ramp_ENABLED(&op->freq))
-		op->op_params |= SSG_POPP_FREQ;
-	if (SSG_Ramp_ENABLED(&op->freq2))
-		op->op_params |= SSG_POPP_FREQ2;
-	if (SSG_Ramp_ENABLED(&op->amp)) {
-		op->op_params |= SSG_POPP_AMP;
-		if (!(op->op_flags & SSG_SDOP_NESTED)) {
+	SAU_ParseOpData *op = pl->operator;
+	if (SAU_Ramp_ENABLED(&op->freq))
+		op->op_params |= SAU_POPP_FREQ;
+	if (SAU_Ramp_ENABLED(&op->freq2))
+		op->op_params |= SAU_POPP_FREQ2;
+	if (SAU_Ramp_ENABLED(&op->amp)) {
+		op->op_params |= SAU_POPP_AMP;
+		if (!(op->op_flags & SAU_SDOP_NESTED)) {
 			op->amp.v0 *= sl->sopt.ampmult;
 			op->amp.vt *= sl->sopt.ampmult;
 		}
 	}
-	if (SSG_Ramp_ENABLED(&op->amp2)) {
-		op->op_params |= SSG_POPP_AMP2;
-		if (!(op->op_flags & SSG_SDOP_NESTED)) {
+	if (SAU_Ramp_ENABLED(&op->amp2)) {
+		op->op_params |= SAU_POPP_AMP2;
+		if (!(op->op_flags & SAU_SDOP_NESTED)) {
 			op->amp2.v0 *= sl->sopt.ampmult;
 			op->amp2.vt *= sl->sopt.ampmult;
 		}
 	}
-	SSG_ParseOpData *pop = op->op_prev;
+	SAU_ParseOpData *pop = op->op_prev;
 	if (!pop) {
 		/*
 		 * Reset all operator state for initial event.
 		 */
-		op->op_params |= SSG_POPP_ADJCS |
-			SSG_POPP_WAVE |
-			SSG_POPP_TIME |
-			SSG_POPP_SILENCE |
-			SSG_POPP_FREQ |
-			SSG_POPP_FREQ2 |
-			SSG_POPP_PHASE |
-			SSG_POPP_AMP |
-			SSG_POPP_AMP2;
+		op->op_params |= SAU_POPP_ADJCS |
+			SAU_POPP_WAVE |
+			SAU_POPP_TIME |
+			SAU_POPP_SILENCE |
+			SAU_POPP_FREQ |
+			SAU_POPP_FREQ2 |
+			SAU_POPP_PHASE |
+			SAU_POPP_AMP |
+			SAU_POPP_AMP2;
 	} else {
 		if (op->wave != pop->wave)
-			op->op_params |= SSG_POPP_WAVE;
-		/* SSG_TIME set when time set */
+			op->op_params |= SAU_POPP_WAVE;
+		/* SAU_TIME set when time set */
 		if (op->silence_ms != 0)
-			op->op_params |= SSG_POPP_SILENCE;
-		/* SSG_PHASE set when phase set */
+			op->op_params |= SAU_POPP_SILENCE;
+		/* SAU_PHASE set when phase set */
 	}
 	pl->operator = NULL;
 	pl->last_operator = op;
@@ -644,17 +644,17 @@ static void end_event(ParseLevel *restrict pl) {
 	if (!(pl->pl_flags & SDPL_ACTIVE_EV))
 		return;
 	pl->pl_flags &= ~SDPL_ACTIVE_EV;
-	SSG_ParseEvData *e = pl->event;
+	SAU_ParseEvData *e = pl->event;
 	end_operator(pl);
-	if (SSG_Ramp_ENABLED(&e->pan))
-		e->vo_params |= SSG_PVOP_PAN;
-	SSG_ParseEvData *pve = e->vo_prev;
+	if (SAU_Ramp_ENABLED(&e->pan))
+		e->vo_params |= SAU_PVOP_PAN;
+	SAU_ParseEvData *pve = e->vo_prev;
 	if (!pve) {
 		/*
 		 * Reset all voice state for initial event.
 		 */
-		e->ev_flags |= SSG_SDEV_NEW_OPGRAPH;
-		e->vo_params |= SSG_PVOP_PAN;
+		e->ev_flags |= SAU_SDEV_NEW_OPGRAPH;
+		e->vo_params |= SAU_PVOP_PAN;
 	}
 	pl->last_event = e;
 	pl->event = NULL;
@@ -662,17 +662,17 @@ static void end_event(ParseLevel *restrict pl) {
 
 static void begin_event(ParseLevel *restrict pl,
 		bool is_composite) {
-	SSG_Parser *o = pl->o;
-	SSG_ParseEvData *e;
+	SAU_Parser *o = pl->o;
+	SAU_ParseEvData *e;
 	end_event(pl);
-	pl->event = calloc(1, sizeof(SSG_ParseEvData));
+	pl->event = calloc(1, sizeof(SAU_ParseEvData));
 	e = pl->event;
 	e->wait_ms = pl->next_wait_ms;
 	pl->next_wait_ms = 0;
-	SSG_Ramp_reset(&e->pan);
+	SAU_Ramp_reset(&e->pan);
 	if (pl->op_prev != NULL) {
-		SSG_ParseEvData *pve = pl->op_prev->event;
-		pve->ev_flags |= SSG_SDEV_VOICE_LATER_USED;
+		SAU_ParseEvData *pve = pl->op_prev->event;
+		pve->ev_flags |= SAU_SDEV_VOICE_LATER_USED;
 		if (is_composite) {
 			if (!pl->composite) {
 				pve->composite = e;
@@ -681,10 +681,10 @@ static void begin_event(ParseLevel *restrict pl,
 				pve->next = e;
 			}
 		} else if (pve->composite != NULL) {
-			SSG_ParseEvData *last_ce;
+			SAU_ParseEvData *last_ce;
 			for (last_ce = pve->composite; last_ce->next;
 					last_ce = last_ce->next) ;
-			last_ce->ev_flags |= SSG_SDEV_VOICE_LATER_USED;
+			last_ce->ev_flags |= SAU_SDEV_VOICE_LATER_USED;
 		}
 		e->vo_prev = pve;
 	} else {
@@ -692,7 +692,7 @@ static void begin_event(ParseLevel *restrict pl,
 		 * New voice with initial parameter values.
 		 */
 		e->pan.v0 = 0.5f; /* center */
-		e->pan.flags |= SSG_RAMPP_STATE;
+		e->pan.flags |= SAU_RAMPP_STATE;
 	}
 	if (!pl->group_from)
 		pl->group_from = e;
@@ -709,15 +709,15 @@ static void begin_event(ParseLevel *restrict pl,
 
 static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
 		bool is_composite) {
-	SSG_Parser *o = pl->o;
+	SAU_Parser *o = pl->o;
 	ScanLookup *sl = &o->sl;
-	SSG_ParseEvData *e = pl->event;
-	SSG_ParseOpData *op, *pop = pl->op_prev;
+	SAU_ParseEvData *e = pl->event;
+	SAU_ParseOpData *op, *pop = pl->op_prev;
 	/*
 	 * It is assumed that a valid voice event exists.
 	 */
 	end_operator(pl);
-	pl->operator = calloc(1, sizeof(SSG_ParseOpData));
+	pl->operator = calloc(1, sizeof(SAU_ParseOpData));
 	op = pl->operator;
 	if (!pl->first_operator)
 		pl->first_operator = op;
@@ -727,33 +727,33 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
 	 * Initialize node.
 	 */
 	op->time.v_ms = sl->sopt.def_time_ms; /* time is not copied */
-	SSG_Ramp_reset(&op->freq);
-	SSG_Ramp_reset(&op->freq2);
-	SSG_Ramp_reset(&op->amp);
-	SSG_Ramp_reset(&op->amp2);
+	SAU_Ramp_reset(&op->freq);
+	SAU_Ramp_reset(&op->freq2);
+	SAU_Ramp_reset(&op->amp);
+	SAU_Ramp_reset(&op->amp2);
 	if (pop != NULL) {
-		pop->op_flags |= SSG_SDOP_LATER_USED;
+		pop->op_flags |= SAU_SDOP_LATER_USED;
 		op->op_prev = pop;
 		op->op_flags = pop->op_flags &
-			(SSG_SDOP_NESTED | SSG_SDOP_MULTIPLE);
+			(SAU_SDOP_NESTED | SAU_SDOP_MULTIPLE);
 		if (is_composite) {
-			pop->op_flags |= SSG_SDOP_HAS_COMPOSITE;
+			pop->op_flags |= SAU_SDOP_HAS_COMPOSITE;
 		} else {
-			op->time.flags |= SSG_TIMEP_SET;
+			op->time.flags |= SAU_TIMEP_SET;
 		}
 		op->wave = pop->wave;
 		op->phase = pop->phase;
-		SSG_PtrList_soft_copy(&op->fmods, &pop->fmods);
-		SSG_PtrList_soft_copy(&op->pmods, &pop->pmods);
-		SSG_PtrList_soft_copy(&op->amods, &pop->amods);
+		SAU_PtrList_soft_copy(&op->fmods, &pop->fmods);
+		SAU_PtrList_soft_copy(&op->pmods, &pop->pmods);
+		SAU_PtrList_soft_copy(&op->amods, &pop->amods);
 		if ((pl->pl_flags & SDPL_BIND_MULTIPLE) != 0) {
-			SSG_ParseOpData *mpop = pop;
+			SAU_ParseOpData *mpop = pop;
 			uint32_t max_time = 0;
 			do {
 				if (max_time < mpop->time.v_ms)
 					max_time = mpop->time.v_ms;
 			} while ((mpop = mpop->next_bound) != NULL);
-			op->op_flags |= SSG_SDOP_MULTIPLE;
+			op->op_flags |= SAU_SDOP_MULTIPLE;
 			op->time.v_ms = max_time;
 			pl->pl_flags &= ~SDPL_BIND_MULTIPLE;
 		}
@@ -764,13 +764,13 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
 		if (!(pl->pl_flags & SDPL_NESTED_SCOPE)) {
 			op->freq.v0 = sl->sopt.def_freq;
 		} else {
-			op->op_flags |= SSG_SDOP_NESTED;
+			op->op_flags |= SAU_SDOP_NESTED;
 			op->freq.v0 = sl->sopt.def_relfreq;
-			op->freq.flags |= SSG_RAMPP_STATE_RATIO;
+			op->freq.flags |= SAU_RAMPP_STATE_RATIO;
 		}
-		op->freq.flags |= SSG_RAMPP_STATE;
+		op->freq.flags |= SAU_RAMPP_STATE;
 		op->amp.v0 = 1.0f;
-		op->amp.flags |= SSG_RAMPP_STATE;
+		op->amp.flags |= SAU_RAMPP_STATE;
 	}
 	op->event = e;
 	/*
@@ -780,13 +780,13 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
 	 */
 	if (linktype == NL_REFER ||
 			linktype == NL_GRAPH) {
-		SSG_PtrList_add(&e->operators, op);
+		SAU_PtrList_add(&e->operators, op);
 		if (linktype == NL_GRAPH) {
-			e->ev_flags |= SSG_SDEV_NEW_OPGRAPH;
-			op->op_flags |= SSG_SDOP_NEW_CARRIER;
+			e->ev_flags |= SAU_SDEV_NEW_OPGRAPH;
+			op->op_flags |= SAU_SDOP_NEW_CARRIER;
 		}
 	} else {
-		SSG_PtrList *list = NULL;
+		SAU_PtrList *list = NULL;
 		switch (linktype) {
 		case NL_FMODS:
 			list = &pl->parent_op->fmods;
@@ -798,8 +798,8 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
 			list = &pl->parent_op->amods;
 			break;
 		}
-		pl->parent_op->op_params |= SSG_POPP_ADJCS;
-		SSG_PtrList_add(list, op);
+		pl->parent_op->op_params |= SAU_POPP_ADJCS;
+		SAU_PtrList_add(list, op);
 	}
 	/*
 	 * Assign label. If no new label but previous node
@@ -807,11 +807,11 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
 	 * point to new node, but keep pointer in previous node.
 	 */
 	if (pl->set_label != NULL) {
-		SSG_SymTab_set(o->st, pl->set_label, strlen(pl->set_label), op);
+		SAU_SymTab_set(o->st, pl->set_label, strlen(pl->set_label), op);
 		op->label = pl->set_label;
 		pl->set_label = NULL;
 	} else if (!is_composite && pop != NULL && pop->label != NULL) {
-		SSG_SymTab_set(o->st, pop->label, strlen(pop->label), op);
+		SAU_SymTab_set(o->st, pop->label, strlen(pop->label), op);
 		op->label = pop->label;
 	}
 	pl->pl_flags |= SDPL_ACTIVE_OP;
@@ -824,7 +824,7 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
  * Used instead of directly calling begin_operator() and/or begin_event().
  */
 static void begin_node(ParseLevel *restrict pl,
-		SSG_ParseOpData *restrict previous,
+		SAU_ParseOpData *restrict previous,
 		uint8_t linktype, bool is_composite) {
 	pl->op_prev = previous;
 	if (!pl->event ||
@@ -837,7 +837,7 @@ static void begin_node(ParseLevel *restrict pl,
 	pl->last_linktype = linktype; /* FIXME: kludge */
 }
 
-static void begin_scope(SSG_Parser *restrict o, ParseLevel *restrict pl,
+static void begin_scope(SAU_Parser *restrict o, ParseLevel *restrict pl,
 		ParseLevel *restrict parent_pl,
 		uint8_t linktype, uint8_t newscope) {
 	*pl = (ParseLevel){0};
@@ -862,7 +862,7 @@ static void begin_scope(SSG_Parser *restrict o, ParseLevel *restrict pl,
 }
 
 static void end_scope(ParseLevel *restrict pl) {
-	SSG_Parser *o = pl->o;
+	SAU_Parser *o = pl->o;
 	end_operator(pl);
 	if (pl->scope == SCOPE_BIND) {
 		if (!pl->parent->group_from)
@@ -882,14 +882,14 @@ static void end_scope(ParseLevel *restrict pl) {
 		 * At end of top scope, ie. at end of script -
 		 * end last event and adjust timing.
 		 */
-		SSG_ParseEvData *group_to;
+		SAU_ParseEvData *group_to;
 		end_event(pl);
 		group_to = (pl->composite) ? pl->composite : pl->last_event;
 		if (group_to)
 			group_to->groupfrom = pl->group_from;
 	}
 	if (pl->set_label != NULL) {
-		SSG_Scanner_warning(o->sc, NULL,
+		SAU_Scanner_warning(o->sc, NULL,
 				"ignoring label assignment without operator");
 	}
 }
@@ -899,73 +899,73 @@ static void end_scope(ParseLevel *restrict pl) {
  */
 
 static bool parse_settings(ParseLevel *restrict pl) {
-	SSG_Parser *o = pl->o;
+	SAU_Parser *o = pl->o;
 	ScanLookup *sl = &o->sl;
-	SSG_Scanner *sc = o->sc;
+	SAU_Scanner *sc = o->sc;
 	pl->location = SDPL_IN_DEFAULTS;
 	for (;;) {
-		uint8_t c = SSG_Scanner_getc_nospace(sc);
+		uint8_t c = SAU_Scanner_getc_nospace(sc);
 		switch (c) {
 		case 'a':
 			if (scan_num(sc, NULL, &sl->sopt.ampmult))
-				sl->sopt.changed |= SSG_SOPT_AMPMULT;
+				sl->sopt.changed |= SAU_SOPT_AMPMULT;
 			break;
 		case 'f':
 			if (scan_num(sc, scan_note, &sl->sopt.def_freq))
-				sl->sopt.changed |= SSG_SOPT_DEF_FREQ;
+				sl->sopt.changed |= SAU_SOPT_DEF_FREQ;
 			break;
 		case 'n': {
 			float freq;
 			if (scan_num(sc, NULL, &freq)) {
 				if (freq < 1.f) {
-					SSG_Scanner_warning(sc, NULL,
+					SAU_Scanner_warning(sc, NULL,
 "ignoring tuning frequency (Hz) below 1.0");
 					break;
 				}
 				sl->sopt.A4_freq = freq;
-				sl->sopt.changed |= SSG_SOPT_A4_FREQ;
+				sl->sopt.changed |= SAU_SOPT_A4_FREQ;
 			}
 			break; }
 		case 'r':
 			if (scan_num(sc, NULL, &sl->sopt.def_relfreq))
-				sl->sopt.changed |= SSG_SOPT_DEF_RATIO;
+				sl->sopt.changed |= SAU_SOPT_DEF_RATIO;
 			break;
 		case 't':
 			if (scan_time_val(sc, &sl->sopt.def_time_ms))
-				sl->sopt.changed |= SSG_SOPT_DEF_TIME;
+				sl->sopt.changed |= SAU_SOPT_DEF_TIME;
 			break;
 		default:
-			SSG_Scanner_ungetc(sc);
+			SAU_Scanner_ungetc(sc);
 			return true; /* let parse_level() take care of it */
 		}
 	}
 	return false;
 }
 
-static bool parse_level(SSG_Parser *restrict o,
+static bool parse_level(SAU_Parser *restrict o,
 		ParseLevel *restrict parent_pl,
 		uint8_t linktype, uint8_t newscope);
 
 static bool parse_ev_amp(ParseLevel *restrict pl) {
-	SSG_Parser *o = pl->o;
-	SSG_Scanner *sc = o->sc;
-	SSG_ParseOpData *op = pl->operator;
-	if (SSG_Scanner_tryc(sc, '{')) {
+	SAU_Parser *o = pl->o;
+	SAU_Scanner *sc = o->sc;
+	SAU_ParseOpData *op = pl->operator;
+	if (SAU_Scanner_tryc(sc, '{')) {
 		scan_ramp(sc, NULL, &op->amp, false);
 	} else {
 		scan_ramp_state(sc, NULL, &op->amp, false);
 	}
-	if (SSG_Scanner_tryc(sc, ',')) {
-		if (SSG_Scanner_tryc(sc, '{')) {
+	if (SAU_Scanner_tryc(sc, ',')) {
+		if (SAU_Scanner_tryc(sc, '{')) {
 			scan_ramp(sc, NULL, &op->amp2, false);
 		} else {
 			scan_ramp_state(sc, NULL, &op->amp2, false);
 		}
 	}
-	if (SSG_Scanner_tryc(sc, '~') && SSG_Scanner_tryc(sc, '[')) {
+	if (SAU_Scanner_tryc(sc, '~') && SAU_Scanner_tryc(sc, '[')) {
 		if (op->amods.count > 0) {
-			op->op_params |= SSG_POPP_ADJCS;
-			SSG_PtrList_clear(&op->amods);
+			op->op_params |= SAU_POPP_ADJCS;
+			SAU_PtrList_clear(&op->amods);
 		}
 		parse_level(o, pl, NL_AMODS, SCOPE_NEST);
 	}
@@ -973,28 +973,28 @@ static bool parse_ev_amp(ParseLevel *restrict pl) {
 }
 
 static bool parse_ev_freq(ParseLevel *restrict pl, bool rel_freq) {
-	SSG_Parser *o = pl->o;
-	SSG_Scanner *sc = o->sc;
-	SSG_ParseOpData *op = pl->operator;
-	if (rel_freq && !(op->op_flags & SSG_SDOP_NESTED))
+	SAU_Parser *o = pl->o;
+	SAU_Scanner *sc = o->sc;
+	SAU_ParseOpData *op = pl->operator;
+	if (rel_freq && !(op->op_flags & SAU_SDOP_NESTED))
 		return true; // reject
 	NumSym_f numsym_f = rel_freq ? NULL : scan_note;
-	if (SSG_Scanner_tryc(sc, '{')) {
+	if (SAU_Scanner_tryc(sc, '{')) {
 		scan_ramp(sc, numsym_f, &op->freq, rel_freq);
 	} else {
 		scan_ramp_state(sc, numsym_f, &op->freq, rel_freq);
 	}
-	if (SSG_Scanner_tryc(sc, ',')) {
-		if (SSG_Scanner_tryc(sc, '{')) {
+	if (SAU_Scanner_tryc(sc, ',')) {
+		if (SAU_Scanner_tryc(sc, '{')) {
 			scan_ramp(sc, numsym_f, &op->freq2, rel_freq);
 		} else {
 			scan_ramp_state(sc, numsym_f, &op->freq2, rel_freq);
 		}
 	}
-	if (SSG_Scanner_tryc(sc, '~') && SSG_Scanner_tryc(sc, '[')) {
+	if (SAU_Scanner_tryc(sc, '~') && SAU_Scanner_tryc(sc, '[')) {
 		if (op->fmods.count > 0) {
-			op->op_params |= SSG_POPP_ADJCS;
-			SSG_PtrList_clear(&op->fmods);
+			op->op_params |= SAU_POPP_ADJCS;
+			SAU_PtrList_clear(&op->fmods);
 		}
 		parse_level(o, pl, NL_FMODS, SCOPE_NEST);
 	}
@@ -1002,19 +1002,19 @@ static bool parse_ev_freq(ParseLevel *restrict pl, bool rel_freq) {
 }
 
 static bool parse_ev_phase(ParseLevel *restrict pl) {
-	SSG_Parser *o = pl->o;
-	SSG_Scanner *sc = o->sc;
-	SSG_ParseOpData *op = pl->operator;
+	SAU_Parser *o = pl->o;
+	SAU_Scanner *sc = o->sc;
+	SAU_ParseOpData *op = pl->operator;
 	if (scan_num(sc, NULL, &op->phase)) {
 		op->phase = fmod(op->phase, 1.f);
 		if (op->phase < 0.f)
 			op->phase += 1.f;
-		op->op_params |= SSG_POPP_PHASE;
+		op->op_params |= SAU_POPP_PHASE;
 	}
-	if (SSG_Scanner_tryc(sc, '+') && SSG_Scanner_tryc(sc, '[')) {
+	if (SAU_Scanner_tryc(sc, '+') && SAU_Scanner_tryc(sc, '[')) {
 		if (op->pmods.count > 0) {
-			op->op_params |= SSG_POPP_ADJCS;
-			SSG_PtrList_clear(&op->pmods);
+			op->op_params |= SAU_POPP_ADJCS;
+			SAU_PtrList_clear(&op->pmods);
 		}
 		parse_level(o, pl, NL_PMODS, SCOPE_NEST);
 	}
@@ -1022,18 +1022,18 @@ static bool parse_ev_phase(ParseLevel *restrict pl) {
 }
 
 static bool parse_step(ParseLevel *restrict pl) {
-	SSG_Parser *o = pl->o;
-	SSG_Scanner *sc = o->sc;
-	SSG_ParseEvData *e = pl->event;
-	SSG_ParseOpData *op = pl->operator;
+	SAU_Parser *o = pl->o;
+	SAU_Scanner *sc = o->sc;
+	SAU_ParseEvData *e = pl->event;
+	SAU_ParseOpData *op = pl->operator;
 	pl->location = SDPL_IN_EVENT;
 	for (;;) {
-		uint8_t c = SSG_Scanner_getc_nospace(sc);
+		uint8_t c = SAU_Scanner_getc_nospace(sc);
 		switch (c) {
 		case 'P':
 			if ((pl->pl_flags & SDPL_NESTED_SCOPE) != 0)
 				goto UNKNOWN;
-			if (SSG_Scanner_tryc(sc, '{')) {
+			if (SAU_Scanner_tryc(sc, '{')) {
 				scan_ramp(sc, NULL, &e->pan, false);
 			} else {
 				scan_ramp_state(sc, NULL, &e->pan, false);
@@ -1060,24 +1060,24 @@ static bool parse_step(ParseLevel *restrict pl) {
 			scan_time_val(sc, &op->silence_ms);
 			break;
 		case 't':
-			if (SSG_Scanner_tryc(sc, '*')) {
+			if (SAU_Scanner_tryc(sc, '*')) {
 				/* later fitted or kept to default */
 				op->time.v_ms = o->sl.sopt.def_time_ms;
 				op->time.flags = 0;
-			} else if (SSG_Scanner_tryc(sc, 'i')) {
-				if (!(op->op_flags & SSG_SDOP_NESTED)) {
-					SSG_Scanner_warning(sc, NULL,
+			} else if (SAU_Scanner_tryc(sc, 'i')) {
+				if (!(op->op_flags & SAU_SDOP_NESTED)) {
+					SAU_Scanner_warning(sc, NULL,
 "ignoring 'ti' (infinite time) for non-nested operator");
 					break;
 				}
-				op->time.flags |= SSG_TIMEP_SET
-					| SSG_TIMEP_LINKED;
+				op->time.flags |= SAU_TIMEP_SET
+					| SAU_TIMEP_LINKED;
 			} else {
 				if (!scan_time_val(sc, &op->time.v_ms))
 					break;
-				op->time.flags = SSG_TIMEP_SET;
+				op->time.flags = SAU_TIMEP_SET;
 			}
-			op->op_params |= SSG_POPP_TIME;
+			op->op_params |= SAU_POPP_TIME;
 			break;
 		case 'w': {
 			size_t wave;
@@ -1087,7 +1087,7 @@ static bool parse_step(ParseLevel *restrict pl) {
 			break; }
 		default:
 		UNKNOWN:
-			SSG_Scanner_ungetc(sc);
+			SAU_Scanner_ungetc(sc);
 			return true; /* let parse_level() take care of it */
 		}
 	}
@@ -1099,7 +1099,7 @@ enum {
 	DEFERRED_STEP = 1<<2,
 	DEFERRED_SETTINGS = 1<<4
 };
-static bool parse_level(SSG_Parser *restrict o,
+static bool parse_level(SAU_Parser *restrict o,
 		ParseLevel *restrict parent_pl,
 		uint8_t linktype, uint8_t newscope) {
 	ParseLevel pl;
@@ -1109,11 +1109,11 @@ static bool parse_level(SSG_Parser *restrict o,
 	bool endscope = false;
 	begin_scope(o, &pl, parent_pl, linktype, newscope);
 	++o->call_level;
-	SSG_Scanner *sc = o->sc;
+	SAU_Scanner *sc = o->sc;
 	for (;;) {
-		uint8_t c = SSG_Scanner_getc_nospace(sc);
+		uint8_t c = SAU_Scanner_getc_nospace(sc);
 		switch (c) {
-		case SSG_SCAN_LNBRK:
+		case SAU_SCAN_LNBRK:
 			if (pl.scope == SCOPE_TOP) {
 				/*
 				 * On top level of script,
@@ -1131,7 +1131,7 @@ static bool parse_level(SSG_Parser *restrict o,
 			 * Label assignment (set to what follows).
 			 */
 			if (pl.set_label != NULL) {
-				SSG_Scanner_warning(sc, NULL,
+				SAU_Scanner_warning(sc, NULL,
 "ignoring label assignment to label assignment");
 				break;
 			}
@@ -1147,7 +1147,7 @@ static bool parse_level(SSG_Parser *restrict o,
 				0;
 			break;
 		case '@':
-			if (SSG_Scanner_tryc(sc, '[')) {
+			if (SAU_Scanner_tryc(sc, '[')) {
 				end_operator(&pl);
 				if (parse_level(o, &pl, pl.linktype, SCOPE_BIND))
 					goto RETURN;
@@ -1163,17 +1163,17 @@ static bool parse_level(SSG_Parser *restrict o,
 			 * Label reference (get and use value).
 			 */
 			if (pl.set_label != NULL) {
-				SSG_Scanner_warning(sc, NULL,
+				SAU_Scanner_warning(sc, NULL,
 "ignoring label assignment to label reference");
 				pl.set_label = NULL;
 			}
 			pl.location = SDPL_IN_NONE;
 			label = scan_label(sc, &label_len, c);
 			if (label_len > 0) {
-				SSG_ParseOpData *ref;
-				ref = SSG_SymTab_get(o->st, label, label_len);
+				SAU_ParseOpData *ref;
+				ref = SAU_SymTab_get(o->st, label, label_len);
 				if (!ref)
-					SSG_Scanner_warning(sc, NULL,
+					SAU_Scanner_warning(sc, NULL,
 "ignoring reference to undefined label");
 				else {
 					begin_node(&pl, ref, NL_REFER, false);
@@ -1229,12 +1229,12 @@ static bool parse_level(SSG_Parser *restrict o,
 					&& pl.event != NULL))
 				goto INVALID;
 			if (!pl.event) {
-				SSG_Scanner_warning(sc, NULL,
+				SAU_Scanner_warning(sc, NULL,
 "end of sequence before any parts given");
 				break;
 			}
 			if (pl.group_from != NULL) {
-				SSG_ParseEvData *group_to = (pl.composite) ?
+				SAU_ParseEvData *group_to = (pl.composite) ?
 					pl.composite :
 					pl.event;
 				group_to->groupfrom = pl.group_from;
@@ -1279,16 +1279,16 @@ RETURN:
  *
  * \return name of script, or NULL on error preventing parse
  */
-static const char *parse_file(SSG_Parser *restrict o,
+static const char *parse_file(SAU_Parser *restrict o,
 		const char *restrict script, bool is_path) {
-	SSG_Scanner *sc = o->sc;
+	SAU_Scanner *sc = o->sc;
 	const char *name;
-	if (!SSG_Scanner_open(sc, script, is_path)) {
+	if (!SAU_Scanner_open(sc, script, is_path)) {
 		return NULL;
 	}
 	parse_level(o, NULL, NL_GRAPH, SCOPE_TOP);
 	name = sc->f->path;
-	SSG_Scanner_close(sc);
+	SAU_Scanner_close(sc);
 	return name;
 }
 
@@ -1297,16 +1297,16 @@ static const char *parse_file(SSG_Parser *restrict o,
  *
  * \return instance or NULL on error preventing parse
  */
-SSG_Parse* SSG_create_Parse(const char *restrict script_arg, bool is_path) {
+SAU_Parse* SAU_create_Parse(const char *restrict script_arg, bool is_path) {
 	if (!script_arg)
 		return NULL;
-	SSG_Parser pr;
-	SSG_Parse *o = NULL;
+	SAU_Parser pr;
+	SAU_Parse *o = NULL;
 	init_Parser(&pr);
 	const char *name = parse_file(&pr, script_arg, is_path);
 	if (!name) goto DONE;
 
-	o = calloc(1, sizeof(SSG_Parse));
+	o = calloc(1, sizeof(SAU_Parse));
 	o->events = pr.events;
 	o->name = name;
 	o->sopt = pr.sl.sopt;
@@ -1318,12 +1318,12 @@ DONE:
 /**
  * Destroy instance.
  */
-void SSG_destroy_Parse(SSG_Parse *restrict o) {
+void SAU_destroy_Parse(SAU_Parse *restrict o) {
 	if (!o)
 		return;
-	SSG_ParseEvData *e;
+	SAU_ParseEvData *e;
 	for (e = o->events; e != NULL; ) {
-		SSG_ParseEvData *e_next = e->next;
+		SAU_ParseEvData *e_next = e->next;
 		destroy_event_node(e);
 		e = e_next;
 	}

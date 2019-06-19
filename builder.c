@@ -1,4 +1,4 @@
-/* ssndgen: Audio program builder module.
+/* saugns: Audio program builder module.
  * Copyright (c) 2011-2013, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -11,7 +11,7 @@
  * <https://www.gnu.org/licenses/>.
  */
 
-#include "ssndgen.h"
+#include "saugns.h"
 #include "script.h"
 #include <string.h>
 #include <stdlib.h>
@@ -22,13 +22,13 @@
  *
  * \return instance or NULL on error
  */
-static SSG_Program *build_program(const char *restrict script_arg,
+static SAU_Program *build_program(const char *restrict script_arg,
 		bool is_path) {
-	SSG_Script *sd = SSG_load_Script(script_arg, is_path);
+	SAU_Script *sd = SAU_load_Script(script_arg, is_path);
 	if (!sd)
 		return NULL;
-	SSG_Program *o = SSG_build_Program(sd);
-	SSG_discard_Script(sd);
+	SAU_Program *o = SAU_build_Program(sd);
+	SAU_discard_Script(sd);
 	return o;
 }
 
@@ -38,14 +38,14 @@ static SSG_Program *build_program(const char *restrict script_arg,
  *
  * \return number of programs successfully built
  */
-size_t SSG_build(const SSG_PtrList *restrict script_args, bool are_paths,
-		SSG_PtrList *restrict prg_objs) {
+size_t SAU_build(const SAU_PtrList *restrict script_args, bool are_paths,
+		SAU_PtrList *restrict prg_objs) {
 	size_t built = 0;
-	const char **args = (const char**) SSG_PtrList_ITEMS(script_args);
+	const char **args = (const char**) SAU_PtrList_ITEMS(script_args);
 	for (size_t i = 0; i < script_args->count; ++i) {
-		SSG_Program *prg = build_program(args[i], are_paths);
+		SAU_Program *prg = build_program(args[i], are_paths);
 		if (prg != NULL) ++built;
-		SSG_PtrList_add(prg_objs, prg);
+		SAU_PtrList_add(prg_objs, prg);
 	}
 	return built;
 }
