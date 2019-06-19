@@ -1,4 +1,4 @@
-/* ssndgen: Program voice graph traverser.
+/* saugns: Program voice graph traverser.
  * Copyright (c) 2018-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -13,24 +13,24 @@
 
 #include "scriptconv.h"
 
-static bool SSG_VoiceGraph_handle_op_node(SSG_VoiceGraph *restrict o,
-		SSG_ProgramOpRef *restrict op_ref);
+static bool SAU_VoiceGraph_handle_op_node(SAU_VoiceGraph *restrict o,
+		SAU_ProgramOpRef *restrict op_ref);
 
 /*
  * Traverse operator list, as part of building a graph for the voice.
  *
  * \return true, or false on allocation failure
  */
-static bool SSG_VoiceGraph_handle_op_list(SSG_VoiceGraph *restrict o,
-		const SSG_ProgramOpList *restrict op_list, uint8_t mod_use) {
+static bool SAU_VoiceGraph_handle_op_list(SAU_VoiceGraph *restrict o,
+		const SAU_ProgramOpList *restrict op_list, uint8_t mod_use) {
 	if (!op_list) {
-		SSG_error("voicegraph", "fail on blank operator list");
+		SAU_error("voicegraph", "fail on blank operator list");
 		return false;
 	}
-	SSG_ProgramOpRef op_ref = {0, mod_use, o->op_nest_level};
+	SAU_ProgramOpRef op_ref = {0, mod_use, o->op_nest_level};
 	for (uint32_t i = 0; i < op_list->count; ++i) {
 		op_ref.id = op_list->ids[i];
-		if (!SSG_VoiceGraph_handle_op_node(o, &op_ref))
+		if (!SAU_VoiceGraph_handle_op_node(o, &op_ref))
 			return false;
 	}
 	return true;
@@ -42,11 +42,11 @@ static bool SSG_VoiceGraph_handle_op_list(SSG_VoiceGraph *restrict o,
  *
  * \return true, or false on allocation failure
  */
-static bool SSG_VoiceGraph_handle_op_node(SSG_VoiceGraph *restrict o,
-		SSG_ProgramOpRef *restrict op_ref) {
-	SSG_OpAllocState *oas = &o->oa->a[op_ref->id];
-	if (oas->flags & SSG_OAS_VISITED) {
-		SSG_warning("voicegraph",
+static bool SAU_VoiceGraph_handle_op_node(SAU_VoiceGraph *restrict o,
+		SAU_ProgramOpRef *restrict op_ref) {
+	SAU_OpAllocState *oas = &o->oa->a[op_ref->id];
+	if (oas->flags & SAU_OAS_VISITED) {
+		SAU_warning("voicegraph",
 "skipping operator %d; circular references unsupported",
 			op_ref->id);
 		return true;
@@ -55,14 +55,14 @@ static bool SSG_VoiceGraph_handle_op_node(SSG_VoiceGraph *restrict o,
 		o->op_nest_max = o->op_nest_level;
 	}
 	++o->op_nest_level;
-	oas->flags |= SSG_OAS_VISITED;
-	if (!SSG_VoiceGraph_handle_op_list(o, oas->fmods, SSG_POP_FMOD))
+	oas->flags |= SAU_OAS_VISITED;
+	if (!SAU_VoiceGraph_handle_op_list(o, oas->fmods, SAU_POP_FMOD))
 		return false;
-	if (!SSG_VoiceGraph_handle_op_list(o, oas->pmods, SSG_POP_PMOD))
+	if (!SAU_VoiceGraph_handle_op_list(o, oas->pmods, SAU_POP_PMOD))
 		return false;
-	if (!SSG_VoiceGraph_handle_op_list(o, oas->amods, SSG_POP_AMOD))
+	if (!SAU_VoiceGraph_handle_op_list(o, oas->amods, SAU_POP_AMOD))
 		return false;
-	oas->flags &= ~SSG_OAS_VISITED;
+	oas->flags &= ~SAU_OAS_VISITED;
 	--o->op_nest_level;
 	if (!OpRefArr_add(&o->vo_graph, op_ref))
 		return false;
@@ -76,15 +76,15 @@ static bool SSG_VoiceGraph_handle_op_node(SSG_VoiceGraph *restrict o,
  *
  * \return true, or false on allocation failure
  */
-bool SSG_VoiceGraph_set(SSG_VoiceGraph *restrict o,
-		const SSG_ProgramEvent *restrict ev) {
-	SSG_VoAllocState *vas = &o->va->a[ev->vo_id];
+bool SAU_VoiceGraph_set(SAU_VoiceGraph *restrict o,
+		const SAU_ProgramEvent *restrict ev) {
+	SAU_VoAllocState *vas = &o->va->a[ev->vo_id];
 	if (!vas->op_carriers->count) goto DONE;
-	if (!SSG_VoiceGraph_handle_op_list(o, vas->op_carriers, SSG_POP_CARR))
+	if (!SAU_VoiceGraph_handle_op_list(o, vas->op_carriers, SAU_POP_CARR))
 		return false;
-	SSG_ProgramVoData *vd = (SSG_ProgramVoData*) ev->vo_data;
+	SAU_ProgramVoData *vd = (SAU_ProgramVoData*) ev->vo_data;
 	if (!OpRefArr_mpmemdup(&o->vo_graph,
-				(SSG_ProgramOpRef**) &vd->graph, o->mem))
+				(SAU_ProgramOpRef**) &vd->graph, o->mem))
 		return false;
 	vd->graph_count = o->vo_graph.count;
 DONE:
@@ -95,6 +95,6 @@ DONE:
 /**
  * Destroy data held by instance.
  */
-void SSG_fini_VoiceGraph(SSG_VoiceGraph *restrict o) {
+void SAU_fini_VoiceGraph(SAU_VoiceGraph *restrict o) {
 	OpRefArr_clear(&o->vo_graph);
 }
