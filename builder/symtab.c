@@ -1,4 +1,4 @@
-/* sgensys: Symbol table module.
+/* saugns: Symbol table module.
  * Copyright (c) 2011-2012, 2014, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -18,7 +18,7 @@
 
 #define HASHTAB_ALLOC_INITIAL 1024
 
-#if SGS_HASHTAB_STATS
+#if SAU_HASHTAB_STATS
 static size_t collision_count = 0;
 #include <stdio.h>
 #endif
@@ -119,7 +119,7 @@ static bool HashTab_extend(HashTab *restrict o) {
  * \return TabItem, or NULL on allocation failure
  */
 static TabItem *HashTab_unique_item(HashTab *restrict o,
-		SGS_MemPool *restrict memp,
+		SAU_MemPool *restrict memp,
 		const void *restrict key, size_t len, size_t extra) {
 	if (!key || len == 0)
 		return NULL;
@@ -134,11 +134,11 @@ static TabItem *HashTab_unique_item(HashTab *restrict o,
 		if (item->key_len == len &&
 			!memcmp(item->key, key, len)) return item;
 		item = item->prev;
-#if SGS_HASHTAB_STATS
+#if SAU_HASHTAB_STATS
 		++collision_count;
 #endif
 	}
-	item = SGS_MemPool_alloc(memp, GET_TABITEM_SIZE(len + extra));
+	item = SAU_MemPool_alloc(memp, GET_TABITEM_SIZE(len + extra));
 	if (!item)
 		return NULL;
 	item->prev = o->items[hash];
@@ -149,8 +149,8 @@ static TabItem *HashTab_unique_item(HashTab *restrict o,
 	return item;
 }
 
-struct SGS_SymTab {
-	SGS_MemPool *memp;
+struct SAU_SymTab {
+	SAU_MemPool *memp;
 	HashTab strtab;
 };
 
@@ -159,11 +159,11 @@ struct SGS_SymTab {
  *
  * \return instance, or NULL on allocation failure
  */
-SGS_SymTab *SGS_create_SymTab(void) {
-	SGS_SymTab *o = calloc(1, sizeof(SGS_SymTab));
+SAU_SymTab *SAU_create_SymTab(void) {
+	SAU_SymTab *o = calloc(1, sizeof(SAU_SymTab));
 	if (!o)
 		return NULL;
-	o->memp = SGS_create_MemPool(0);
+	o->memp = SAU_create_MemPool(0);
 	if (!o->memp) {
 		free(o);
 		return NULL;
@@ -174,13 +174,13 @@ SGS_SymTab *SGS_create_SymTab(void) {
 /**
  * Destroy instance.
  */
-void SGS_destroy_SymTab(SGS_SymTab *restrict o) {
+void SAU_destroy_SymTab(SAU_SymTab *restrict o) {
 	if (!o)
 		return;
-#if SGS_HASHTAB_STATS
+#if SAU_HASHTAB_STATS
 	printf("collision count: %zd\n", collision_count);
 #endif
-	SGS_destroy_MemPool(o->memp);
+	SAU_destroy_MemPool(o->memp);
 	fini_HashTab(&o->strtab);
 }
 
@@ -190,7 +190,7 @@ void SGS_destroy_SymTab(SGS_SymTab *restrict o) {
  *
  * \return unique copy of \p str for instance, or NULL on allocation failure
  */
-const void *SGS_SymTab_pool_str(SGS_SymTab *restrict o,
+const void *SAU_SymTab_pool_str(SAU_SymTab *restrict o,
 		const void *restrict str, size_t len) {
 	TabItem *item = HashTab_unique_item(&o->strtab, o->memp, str, len, 1);
 	return (item != NULL) ? item->key : NULL;
@@ -206,15 +206,15 @@ const void *SGS_SymTab_pool_str(SGS_SymTab *restrict o,
  *
  * \return array of pointers to unique strings, or NULL on allocation failure
  */
-const char **SGS_SymTab_pool_stra(SGS_SymTab *restrict o,
+const char **SAU_SymTab_pool_stra(SAU_SymTab *restrict o,
 		const char *const*restrict stra,
 		size_t n) {
 	const char **res_stra;
-	res_stra = SGS_MemPool_alloc(o->memp, sizeof(const char*) * n);
+	res_stra = SAU_MemPool_alloc(o->memp, sizeof(const char*) * n);
 	if (!res_stra)
 		return NULL;
 	for (size_t i = 0; i < n; ++i) {
-		const char *str = SGS_SymTab_pool_str(o,
+		const char *str = SAU_SymTab_pool_str(o,
 				stra[i], strlen(stra[i]));
 		if (!str)
 			return NULL;
@@ -228,7 +228,7 @@ const char **SGS_SymTab_pool_stra(SGS_SymTab *restrict o,
  *
  * \return value, or NULL if none
  */
-void *SGS_SymTab_get(SGS_SymTab *restrict o,
+void *SAU_SymTab_get(SAU_SymTab *restrict o,
 		const void *restrict key, size_t len) {
 	TabItem *item = HashTab_unique_item(&o->strtab, o->memp, key, len, 1);
 	if (!item)
@@ -241,7 +241,7 @@ void *SGS_SymTab_get(SGS_SymTab *restrict o,
  *
  * \return previous value, or NULL if none
  */
-void *SGS_SymTab_set(SGS_SymTab *restrict o,
+void *SAU_SymTab_set(SAU_SymTab *restrict o,
 		const void *restrict key, size_t len, void *restrict value) {
 	TabItem *item = HashTab_unique_item(&o->strtab, o->memp, key, len, 1);
 	if (!item)
