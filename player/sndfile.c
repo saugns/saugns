@@ -1,4 +1,4 @@
-/* sgensys: Sound file writer module.
+/* saugns: Sound file writer module.
  * Copyright (c) 2011-2012, 2017-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -127,7 +127,7 @@ SGS_SndFile *SGS_create_SndFile(const char *restrict fpath, unsigned format,
 	bool is_subfile = !fpath;
 	FILE *f = stdout;
 	if (!is_subfile && !(f = fopen(fpath, "wb"))) {
-		SGS_error(NULL, "couldn't open %s file \"%s\" for writing",
+		SAU_error(NULL, "couldn't open %s file \"%s\" for writing",
 			SGS_SndFile_formats[format], fpath);
 		return NULL;
 	}
