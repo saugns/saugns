@@ -1,4 +1,4 @@
-/* sgensys: Common definitions.
+/* saugns: Common definitions.
  * Copyright (c) 2011-2012, 2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -26,38 +26,38 @@
  */
 
 #if defined(__GNUC__) || defined(__clang__)
-# define SGS__malloclike __attribute__((malloc))
-# define SGS__maybe_unused __attribute__((unused))
-# define SGS__noinline __attribute__((noinline))
-# define SGS__printflike(string_index, first_to_check) \
+# define SAU__malloclike __attribute__((malloc))
+# define SAU__maybe_unused __attribute__((unused))
+# define SAU__noinline __attribute__((noinline))
+# define SAU__printflike(string_index, first_to_check) \
 	__attribute__((format(printf, string_index, first_to_check)))
 #else
-# define SGS__malloclike
-# define SGS__maybe_unused
-# define SGS__noinline
-# define SGS__printflike(string_index, first_to_check)
+# define SAU__malloclike
+# define SAU__maybe_unused
+# define SAU__noinline
+# define SAU__printflike(string_index, first_to_check)
 #endif
 
 /*
  * Utility functions.
  */
 
-void SGS_warning(const char *restrict label, const char *restrict fmt, ...)
-	SGS__printflike(2, 3);
-void SGS_error(const char *restrict label, const char *restrict fmt, ...)
-	SGS__printflike(2, 3);
+void SAU_warning(const char *restrict label, const char *restrict fmt, ...)
+	SAU__printflike(2, 3);
+void SAU_error(const char *restrict label, const char *restrict fmt, ...)
+	SAU__printflike(2, 3);
 
-void *SGS_memdup(const void *restrict src, size_t size) SGS__malloclike;
+void *SAU_memdup(const void *restrict src, size_t size) SAU__malloclike;
 
 /*
  * Debugging options.
  */
 
 /* Run scanner instead of lexer in 'test-builder' program. */
-#define SGS_TEST_SCANNER 0
+#define SAU_TEST_SCANNER 0
 /* Print test statistics for scanner. */
-#define SGS_SCANNER_STATS 0
+#define SAU_SCANNER_STATS 0
 /* Print hash collision info for symtab. */
-#define SGS_HASHTAB_STATS 0
+#define SAU_HASHTAB_STATS 0
 /* Make test lexer quiet enough to time it. */
-#define SGS_LEXER_QUIET 1
+#define SAU_LEXER_QUIET 1
