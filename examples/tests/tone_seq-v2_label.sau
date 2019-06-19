@@ -1,0 +1,23 @@
+/*
+ * Variation #2 of the first saugns script made,
+ * changed to test the label syntax.
+ */
+	S	a0.5
+			/0.5
+'a	Osin	f220 t1
+'b	Osin	f110 t0.5 a.05 	|
+	@a	f440 t1.5
+	@b	f220 t0.5 a.05 	|
+	@a	f400 t0.5 	|
+	@a	f350 t0.5 	|
+	@a	f325 t1.5 	| /1
+	@a	f220 t1 	|
+	@a	f440 t1.5 	|
+	@a	f415 t0.5 	|
+	@a	f445 t0.5 	|
+	@a	f490 t1 	|
+	@a	f420 t1 	|
+	@a	f440 t1.5 	| /1
+
+'a	Osin	f660 t2
+#Q

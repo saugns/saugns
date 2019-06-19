@@ -3,8 +3,11 @@
 
 *.o
 **/*.o
+*.a
+**/*.a
 mgensys
 sgensys
+saugns
 test-builder
 test-scan
 
