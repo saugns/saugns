@@ -1,4 +1,4 @@
-/* sgensys: System audio output support module.
+/* saugns: System audio output support module.
  * Copyright (c) 2011-2014, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -16,13 +16,13 @@
  */
 
 #pragma once
-#include "../sgensys.h"
+#include "../saugns.h"
 
 struct SGS_AudioDev;
 typedef struct SGS_AudioDev SGS_AudioDev;
 
 SGS_AudioDev *SGS_open_AudioDev(uint16_t channels, uint32_t *restrict srate)
-	sgsMalloclike;
+	sauMalloclike;
 void SGS_close_AudioDev(SGS_AudioDev *restrict o);
 
 uint32_t SGS_AudioDev_get_srate(const SGS_AudioDev *restrict o);
