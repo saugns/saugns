@@ -1,4 +1,4 @@
-/* sgensys: System audio output support module.
+/* saugns: System audio output support module.
  * Copyright (c) 2011-2014, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -89,7 +89,7 @@ SGS_AudioDev *SGS_open_AudioDev(uint16_t channels, uint32_t *restrict srate) {
 	*srate = o->srate;
 	return o;
 ERROR:
-	SGS_error(NULL, "couldn't open audio device for output");
+	SAU_error(NULL, "couldn't open audio device for output");
 	free(o);
 	return NULL;
 }
