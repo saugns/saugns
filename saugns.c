@@ -1,4 +1,4 @@
-/* sgensys: Main module / Command-line interface.
+/* saugns: Main module / Command-line interface.
  * Copyright (c) 2011-2013, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -11,7 +11,7 @@
  * <https://www.gnu.org/licenses/>.
  */
 
-#include "sgensys.h"
+#include "saugns.h"
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,14 +21,14 @@
  */
 static void print_usage(bool by_arg) {
 	fputs(
-"Usage: sgensys [-a|-m] [-r <srate>] [-p] [-o <wavfile>] [-e] <script>...\n"
-"       sgensys [-c] [-p] [-e] <script>...\n"
+"Usage: saugns [-a|-m] [-r <srate>] [-p] [-o <wavfile>] [-e] <script>...\n"
+"       saugns [-c] [-p] [-e] <script>...\n"
 "\n"
 "By default, audio device output is enabled.\n"
 "\n"
 "  -a \tAudible; always enable audio device output.\n"
 "  -m \tMuted; always disable audio device output.\n"
-"  -r \tSample rate in Hz (default "SGS_STREXP(SGS_DEFAULT_SRATE)");\n"
+"  -r \tSample rate in Hz (default "SAU_STREXP(SAU_DEFAULT_SRATE)");\n"
 "     \tif unsupported for audio device, warns and prints rate used instead.\n"
 "  -o \tWrite a 16-bit PCM WAV file, always using the sample rate requested;\n"
 "     \tdisables audio device output by default.\n"
@@ -44,7 +44,7 @@ static void print_usage(bool by_arg) {
  * Print version.
  */
 static void print_version(void) {
-	puts(SGS_VERSION_STR);
+	puts(SAU_VERSION_STR);
 }
 
 /*
@@ -83,7 +83,7 @@ enum {
  */
 static bool parse_args(int argc, char **restrict argv,
 		uint32_t *restrict flags,
-		SGS_PtrList *restrict script_args,
+		SAU_PtrList *restrict script_args,
 		const char **restrict wav_path,
 		uint32_t *restrict srate) {
 	int i;
@@ -97,7 +97,7 @@ static bool parse_args(int argc, char **restrict argv,
 		}
 		arg = *argv;
 		if (*arg != '-') {
-			SGS_PtrList_add(script_args, (void*) arg);
+			SAU_PtrList_add(script_args, (void*) arg);
 			continue;
 		}
 NEXT_C:
@@ -168,7 +168,7 @@ NEXT_C:
 INVALID:
 	print_usage(false);
 CLEAR:
-	SGS_PtrList_clear(script_args);
+	SAU_PtrList_clear(script_args);
 	return false;
 }
 
@@ -176,12 +176,12 @@ CLEAR:
  * Discard the programs in the list, ignoring NULL entries,
  * and clearing the list.
  */
-static void discard_programs(SGS_PtrList *restrict prg_objs) {
-	SGS_Program **prgs = (SGS_Program**) SGS_PtrList_ITEMS(prg_objs);
+static void discard_programs(SAU_PtrList *restrict prg_objs) {
+	SAU_Program **prgs = (SAU_Program**) SAU_PtrList_ITEMS(prg_objs);
 	for (size_t i = 0; i < prg_objs->count; ++i) {
-		SGS_discard_Program(prgs[i]);
+		SAU_discard_Program(prgs[i]);
 	}
-	SGS_PtrList_clear(prg_objs);
+	SAU_PtrList_clear(prg_objs);
 }
 
 /*
@@ -189,18 +189,18 @@ static void discard_programs(SGS_PtrList *restrict prg_objs) {
  *
  * \return true if at least one script succesfully built
  */
-static bool build(const SGS_PtrList *restrict script_args,
-		SGS_PtrList *restrict prg_objs,
+static bool build(const SAU_PtrList *restrict script_args,
+		SAU_PtrList *restrict prg_objs,
 		uint32_t options) {
 	bool are_paths = !(options & ARG_EVAL_STRING);
-	if (!SGS_build(script_args, are_paths, prg_objs))
+	if (!SAU_build(script_args, are_paths, prg_objs))
 		return false;
 	if ((options & ARG_PRINT_INFO) != 0) {
-		const SGS_Program **prgs =
-			(const SGS_Program**) SGS_PtrList_ITEMS(prg_objs);
+		const SAU_Program **prgs =
+			(const SAU_Program**) SAU_PtrList_ITEMS(prg_objs);
 		for (size_t i = 0; i < prg_objs->count; ++i) {
-			const SGS_Program *prg = prgs[i];
-			if (prg != NULL) SGS_Program_print_info(prg);
+			const SAU_Program *prg = prgs[i];
+			if (prg != NULL) SAU_Program_print_info(prg);
 		}
 	}
 	if ((options & ARG_ONLY_COMPILE) != 0) {
@@ -214,29 +214,29 @@ static bool build(const SGS_PtrList *restrict script_args,
  *
  * \return true unless error occurred
  */
-static bool render(const SGS_PtrList *restrict prg_objs,
+static bool render(const SAU_PtrList *restrict prg_objs,
 		uint32_t srate, uint32_t options,
 		const char *restrict wav_path) {
 	bool use_audiodev = (wav_path != NULL) ?
 		((options & ARG_ENABLE_AUDIO_DEV) != 0) :
 		((options & ARG_DISABLE_AUDIO_DEV) == 0);
-	return SGS_render(prg_objs, srate, use_audiodev, wav_path);
+	return SAU_render(prg_objs, srate, use_audiodev, wav_path);
 }
 
 /**
  * Main function.
  */
 int main(int argc, char **restrict argv) {
-	SGS_PtrList script_args = (SGS_PtrList){0};
-	SGS_PtrList prg_objs = (SGS_PtrList){0};
+	SAU_PtrList script_args = (SAU_PtrList){0};
+	SAU_PtrList prg_objs = (SAU_PtrList){0};
 	const char *wav_path = NULL;
 	uint32_t options = 0;
-	uint32_t srate = SGS_DEFAULT_SRATE;
+	uint32_t srate = SAU_DEFAULT_SRATE;
 	if (!parse_args(argc, argv, &options, &script_args, &wav_path,
 			&srate))
 		return 0;
 	bool error = !build(&script_args, &prg_objs, options);
-	SGS_PtrList_clear(&script_args);
+	SAU_PtrList_clear(&script_args);
 	if (error)
 		return 1;
 	if (prg_objs.count > 0) {

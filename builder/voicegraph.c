@@ -1,4 +1,4 @@
-/* sgensys: Program voice graph traverser.
+/* saugns: Program voice graph traverser.
  * Copyright (c) 2018-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -19,12 +19,12 @@
  *
  * \return true, or false on allocation failure
  */
-static bool SGS_VoiceGraph_traverse_ops(SGS_VoiceGraph *restrict o,
-		SGS_ProgramOpRef *restrict op_ref, uint32_t level) {
-	SGS_OpAllocState *oas = &o->oa->a[op_ref->id];
+static bool SAU_VoiceGraph_traverse_ops(SAU_VoiceGraph *restrict o,
+		SAU_ProgramOpRef *restrict op_ref, uint32_t level) {
+	SAU_OpAllocState *oas = &o->oa->a[op_ref->id];
 	uint32_t i;
-	if ((oas->flags & SGS_OAS_VISITED) != 0) {
-		SGS_warning("parseconv",
+	if ((oas->flags & SAU_OAS_VISITED) != 0) {
+		SAU_warning("parseconv",
 "skipping operator %d; circular references unsupported",
 			op_ref->id);
 		return true;
@@ -34,37 +34,37 @@ static bool SGS_VoiceGraph_traverse_ops(SGS_VoiceGraph *restrict o,
 	}
 	op_ref->level = level++;
 	if (oas->adjcs != NULL) {
-		SGS_ProgramOpRef mod_op_ref;
-		const SGS_ProgramOpAdjcs *adjcs = oas->adjcs;
+		SAU_ProgramOpRef mod_op_ref;
+		const SAU_ProgramOpAdjcs *adjcs = oas->adjcs;
 		const uint32_t *mods = oas->adjcs->adjcs;
 		uint32_t modc = 0;
-		oas->flags |= SGS_OAS_VISITED;
+		oas->flags |= SAU_OAS_VISITED;
 		i = 0;
 		modc += adjcs->fmodc;
 		for (; i < modc; ++i) {
 			mod_op_ref.id = mods[i];
-			mod_op_ref.use = SGS_POP_FMOD;
+			mod_op_ref.use = SAU_POP_FMOD;
 //			fprintf(stderr, "visit fmod node %d\n", mod_op_ref.id);
-			if (!SGS_VoiceGraph_traverse_ops(o, &mod_op_ref, level))
+			if (!SAU_VoiceGraph_traverse_ops(o, &mod_op_ref, level))
 				return false;
 		}
 		modc += adjcs->pmodc;
 		for (; i < modc; ++i) {
 			mod_op_ref.id = mods[i];
-			mod_op_ref.use = SGS_POP_PMOD;
+			mod_op_ref.use = SAU_POP_PMOD;
 //			fprintf(stderr, "visit pmod node %d\n", mod_op_ref.id);
-			if (!SGS_VoiceGraph_traverse_ops(o, &mod_op_ref, level))
+			if (!SAU_VoiceGraph_traverse_ops(o, &mod_op_ref, level))
 				return false;
 		}
 		modc += adjcs->amodc;
 		for (; i < modc; ++i) {
 			mod_op_ref.id = mods[i];
-			mod_op_ref.use = SGS_POP_AMOD;
+			mod_op_ref.use = SAU_POP_AMOD;
 //			fprintf(stderr, "visit amod node %d\n", mod_op_ref.id);
-			if (!SGS_VoiceGraph_traverse_ops(o, &mod_op_ref, level))
+			if (!SAU_VoiceGraph_traverse_ops(o, &mod_op_ref, level))
 				return false;
 		}
-		oas->flags &= ~SGS_OAS_VISITED;
+		oas->flags &= ~SAU_OAS_VISITED;
 	}
 	if (!OpRefArr_add(&o->op_list, op_ref))
 		return false;
@@ -78,19 +78,19 @@ static bool SGS_VoiceGraph_traverse_ops(SGS_VoiceGraph *restrict o,
  *
  * \return true, or false on allocation failure
  */
-bool SGS_VoiceGraph_set(SGS_VoiceGraph *restrict o,
-		const SGS_ProgramEvent *restrict ev) {
-	SGS_ProgramOpRef op_ref = {0, SGS_POP_CARR, 0};
-	SGS_VoAllocState *vas = &o->va->a[ev->vo_id];
-	SGS_ProgramVoData *vd = (SGS_ProgramVoData*) ev->vo_data;
-	const SGS_ProgramOpGraph *graph = vas->op_graph;
+bool SAU_VoiceGraph_set(SAU_VoiceGraph *restrict o,
+		const SAU_ProgramEvent *restrict ev) {
+	SAU_ProgramOpRef op_ref = {0, SAU_POP_CARR, 0};
+	SAU_VoAllocState *vas = &o->va->a[ev->vo_id];
+	SAU_ProgramVoData *vd = (SAU_ProgramVoData*) ev->vo_data;
+	const SAU_ProgramOpGraph *graph = vas->op_graph;
 	uint32_t i;
 	if (!graph)
 		return true;
 	for (i = 0; i < graph->opc; ++i) {
 		op_ref.id = graph->ops[i];
 //		fprintf(stderr, "visit node %d\n", op_ref.id);
-		if (!SGS_VoiceGraph_traverse_ops(o, &op_ref, 0))
+		if (!SAU_VoiceGraph_traverse_ops(o, &op_ref, 0))
 			return false;
 	}
 	if (!OpRefArr_memdup(&o->op_list, &vd->op_list))
@@ -103,6 +103,6 @@ bool SGS_VoiceGraph_set(SGS_VoiceGraph *restrict o,
 /**
  * Destroy data held by instance.
  */
-void SGS_fini_VoiceGraph(SGS_VoiceGraph *restrict o) {
+void SAU_fini_VoiceGraph(SAU_VoiceGraph *restrict o) {
 	OpRefArr_clear(&o->op_list);
 }
