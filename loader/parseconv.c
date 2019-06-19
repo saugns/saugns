@@ -1,4 +1,4 @@
-/* sgensys: Parse result to audio program converter.
+/* saugns: Parse result to audio program converter.
  * Copyright (c) 2011-2012, 2017-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -25,20 +25,20 @@
  * Allocation of events, voices, operators.
  */
 
-static const SGS_ProgramOpList blank_oplist = {0};
+static const SAU_ProgramOpList blank_oplist = {0};
 
-static sgsNoinline const SGS_ProgramOpList*
-create_ProgramOpList(const SGS_ScriptListData *restrict list_in,
-		SGS_MemPool *restrict mem) {
+static sauNoinline const SAU_ProgramOpList*
+create_ProgramOpList(const SAU_ScriptListData *restrict list_in,
+		SAU_MemPool *restrict mem) {
 	uint32_t count = 0;
-	const SGS_ScriptOpRef *op;
+	const SAU_ScriptOpRef *op;
 	for (op = list_in->first_item; op != NULL; op = op->next_item) {
 		++count;
 	}
 	if (!count)
 		return &blank_oplist;
-	SGS_ProgramOpList *o = SGS_MemPool_alloc(mem,
-			sizeof(SGS_ProgramOpList) + sizeof(uint32_t) * count);
+	SAU_ProgramOpList *o = SAU_MemPool_alloc(mem,
+			sizeof(SAU_ProgramOpList) + sizeof(uint32_t) * count);
 	if (!o)
 		return NULL;
 	o->count = count;
@@ -53,20 +53,20 @@ create_ProgramOpList(const SGS_ScriptListData *restrict list_in,
  * Voice allocation state flags.
  */
 enum {
-	SGS_VAS_GRAPH = 1<<0,
+	SAU_VAS_GRAPH = 1<<0,
 };
 
 /*
  * Per-voice state used during program data allocation.
  */
-typedef struct SGS_VoAllocState {
-	SGS_ScriptEvData *last_ev;
-	const SGS_ProgramOpList *op_carrs;
+typedef struct SAU_VoAllocState {
+	SAU_ScriptEvData *last_ev;
+	const SAU_ProgramOpList *op_carrs;
 	uint32_t flags;
 	uint32_t duration_ms;
-} SGS_VoAllocState;
+} SAU_VoAllocState;
 
-sgsArrType(SGS_VoAlloc, SGS_VoAllocState, _)
+sauArrType(SAU_VoAlloc, SAU_VoAllocState, _)
 
 /*
  * Get voice ID for event, setting it to \p vo_id.
@@ -74,23 +74,23 @@ sgsArrType(SGS_VoAlloc, SGS_VoAllocState, _)
  * \return true, or false on allocation failure
  */
 static bool
-SGS_VoAlloc_get_id(SGS_VoAlloc *restrict va,
-		const SGS_ScriptEvData *restrict e, uint32_t *restrict vo_id) {
+SAU_VoAlloc_get_id(SAU_VoAlloc *restrict va,
+		const SAU_ScriptEvData *restrict e, uint32_t *restrict vo_id) {
 	if (e->root_ev != NULL) {
 		*vo_id = e->root_ev->vo_id;
 		return true;
 	}
 	for (size_t id = 0; id < va->count; ++id) {
-		SGS_VoAllocState *vas = &va->a[id];
-		if (!(vas->last_ev->ev_flags & SGS_SDEV_VOICE_LATER_USED)
+		SAU_VoAllocState *vas = &va->a[id];
+		if (!(vas->last_ev->ev_flags & SAU_SDEV_VOICE_LATER_USED)
 			&& vas->duration_ms == 0) {
-			*vas = (SGS_VoAllocState){0};
+			*vas = (SAU_VoAllocState){0};
 			*vo_id = id;
 			goto ASSIGNED;
 		}
 	}
 	*vo_id = va->count;
-	if (!_SGS_VoAlloc_add(va, NULL))
+	if (!_SAU_VoAlloc_add(va, NULL))
 		return false;
 ASSIGNED:
 	return true;
@@ -105,21 +105,21 @@ ASSIGNED:
  * \return true, or false on allocation failure
  */
 static bool
-SGS_VoAlloc_update(SGS_VoAlloc *restrict va,
-		SGS_ScriptEvData *restrict e, uint32_t *restrict vo_id) {
+SAU_VoAlloc_update(SAU_VoAlloc *restrict va,
+		SAU_ScriptEvData *restrict e, uint32_t *restrict vo_id) {
 	for (uint32_t id = 0; id < va->count; ++id) {
 		if (va->a[id].duration_ms < e->wait_ms)
 			va->a[id].duration_ms = 0;
 		else
 			va->a[id].duration_ms -= e->wait_ms;
 	}
-	if (!SGS_VoAlloc_get_id(va, e, vo_id))
+	if (!SAU_VoAlloc_get_id(va, e, vo_id))
 		return false;
 	e->vo_id = *vo_id;
-	SGS_VoAllocState *vas = &va->a[*vo_id];
+	SAU_VoAllocState *vas = &va->a[*vo_id];
 	vas->last_ev = e;
-	vas->flags &= ~SGS_VAS_GRAPH;
-	if ((e->ev_flags & SGS_SDEV_VOICE_SET_DUR) != 0)
+	vas->flags &= ~SAU_VAS_GRAPH;
+	if ((e->ev_flags & SAU_SDEV_VOICE_SET_DUR) != 0)
 		vas->duration_ms = e->dur_ms;
 	return true;
 }
@@ -128,28 +128,28 @@ SGS_VoAlloc_update(SGS_VoAlloc *restrict va,
  * Clear voice allocator.
  */
 static void
-SGS_VoAlloc_clear(SGS_VoAlloc *restrict o) {
-	_SGS_VoAlloc_clear(o);
+SAU_VoAlloc_clear(SAU_VoAlloc *restrict o) {
+	_SAU_VoAlloc_clear(o);
 }
 
 /*
  * Operator allocation state flags.
  */
 enum {
-	SGS_OAS_VISITED = 1<<0,
+	SAU_OAS_VISITED = 1<<0,
 };
 
 /*
  * Per-operator state used during program data allocation.
  */
-typedef struct SGS_OpAllocState {
-	SGS_ScriptOpRef *last_pod;
-	const SGS_ProgramOpList *amods, *fmods, *pmods, *fpmods;
+typedef struct SAU_OpAllocState {
+	SAU_ScriptOpRef *last_pod;
+	const SAU_ProgramOpList *amods, *fmods, *pmods, *fpmods;
 	uint32_t flags;
 	//uint32_t duration_ms;
-} SGS_OpAllocState;
+} SAU_OpAllocState;
 
-sgsArrType(SGS_OpAlloc, SGS_OpAllocState, _)
+sauArrType(SAU_OpAlloc, SAU_OpAllocState, _)
 
 /*
  * Get operator ID for event, setting it to \p op_id.
@@ -159,22 +159,22 @@ sgsArrType(SGS_OpAlloc, SGS_OpAllocState, _)
  * \return true, or false on allocation failure
  */
 static bool
-SGS_OpAlloc_get_id(SGS_OpAlloc *restrict oa,
-		const SGS_ScriptOpRef *restrict od, uint32_t *restrict op_id) {
+SAU_OpAlloc_get_id(SAU_OpAlloc *restrict oa,
+		const SAU_ScriptOpRef *restrict od, uint32_t *restrict op_id) {
 	if (od->on_prev != NULL) {
 		*op_id = od->obj->op_id;
 		return true;
 	}
 //	for (uint32_t id = 0; id < oa->count; ++id) {
-//		if (!(oa->a[op_id].last_pod->op_flags & SGS_SDOP_LATER_USED)
+//		if (!(oa->a[op_id].last_pod->op_flags & SAU_SDOP_LATER_USED)
 //			&& oa->a[op_id].duration_ms == 0) {
-//			oa->a[id] = (SGS_OpAllocState){0};
+//			oa->a[id] = (SAU_OpAllocState){0};
 //			*op_id = id;
 //			goto ASSIGNED;
 //		}
 //	}
 	*op_id = oa->count;
-	if (!_SGS_OpAlloc_add(oa, NULL))
+	if (!_SAU_OpAlloc_add(oa, NULL))
 		return false;
 //ASSIGNED:
 	return true;
@@ -192,20 +192,20 @@ SGS_OpAlloc_get_id(SGS_OpAlloc *restrict oa,
  * \return true, or false on allocation failure
  */
 static bool
-SGS_OpAlloc_update(SGS_OpAlloc *restrict oa,
-		SGS_ScriptOpRef *restrict od,
+SAU_OpAlloc_update(SAU_OpAlloc *restrict oa,
+		SAU_ScriptOpRef *restrict od,
 		uint32_t *restrict op_id) {
-//	SGS_ScriptEvData *e = od->event;
+//	SAU_ScriptEvData *e = od->event;
 //	for (uint32_t id = 0; id < oa->count; ++id) {
 //		if (oa->a[id].duration_ms < e->wait_ms)
 //			oa->a[id].duration_ms = 0;
 //		else
 //			oa->a[id].duration_ms -= e->wait_ms;
 //	}
-	if (!SGS_OpAlloc_get_id(oa, od, op_id))
+	if (!SAU_OpAlloc_get_id(oa, od, op_id))
 		return false;
 	od->obj->op_id = *op_id;
-	SGS_OpAllocState *oas = &oa->a[*op_id];
+	SAU_OpAllocState *oas = &oa->a[*op_id];
 	oas->last_pod = od;
 //	oas->duration_ms = od->time.v_ms;
 	return true;
@@ -215,50 +215,50 @@ SGS_OpAlloc_update(SGS_OpAlloc *restrict oa,
  * Clear operator allocator.
  */
 static void
-SGS_OpAlloc_clear(SGS_OpAlloc *restrict o) {
-	_SGS_OpAlloc_clear(o);
+SAU_OpAlloc_clear(SAU_OpAlloc *restrict o) {
+	_SAU_OpAlloc_clear(o);
 }
 
-sgsArrType(OpRefArr, SGS_ProgramOpRef, )
+sauArrType(OpRefArr, SAU_ProgramOpRef, )
 
 /**
  * Voice data, held during program building and set per event.
  */
-typedef struct SGS_VoiceGraph {
+typedef struct SAU_VoiceGraph {
 	OpRefArr vo_graph;
-	SGS_VoAlloc *va;
-	SGS_OpAlloc *oa;
+	SAU_VoAlloc *va;
+	SAU_OpAlloc *oa;
 	uint32_t op_nest_level, op_nest_max;
-	struct SGS_MemPool *mem;
-} SGS_VoiceGraph;
+	struct SAU_MemPool *mem;
+} SAU_VoiceGraph;
 
 /**
  * Initialize instance for use.
  */
 static inline void
-SGS_init_VoiceGraph(SGS_VoiceGraph *restrict o,
-		SGS_VoAlloc *restrict va,
-		SGS_OpAlloc *restrict oa,
-		struct SGS_MemPool *restrict mem) {
+SAU_init_VoiceGraph(SAU_VoiceGraph *restrict o,
+		SAU_VoAlloc *restrict va,
+		SAU_OpAlloc *restrict oa,
+		struct SAU_MemPool *restrict mem) {
 	o->va = va;
 	o->oa = oa;
 	o->mem = mem;
 }
 
-void SGS_fini_VoiceGraph(SGS_VoiceGraph *restrict o);
+void SAU_fini_VoiceGraph(SAU_VoiceGraph *restrict o);
 
-bool SGS_VoiceGraph_set(SGS_VoiceGraph *restrict o,
-		const SGS_ProgramEvent *restrict ev);
+bool SAU_VoiceGraph_set(SAU_VoiceGraph *restrict o,
+		const SAU_ProgramEvent *restrict ev);
 
 typedef struct ParseConv {
-	SGS_PtrArr ev_list;
-	SGS_VoAlloc va;
-	SGS_OpAlloc oa;
-	SGS_ProgramEvent *ev;
-	SGS_VoiceGraph ev_vo_graph;
-	SGS_PtrArr ev_od_list;
+	SAU_PtrArr ev_list;
+	SAU_VoAlloc va;
+	SAU_OpAlloc oa;
+	SAU_ProgramEvent *ev;
+	SAU_VoiceGraph ev_vo_graph;
+	SAU_PtrArr ev_od_list;
 	uint32_t duration_ms;
-	SGS_MemPool *mem;
+	SAU_MemPool *mem;
 } ParseConv;
 
 /*
@@ -267,10 +267,10 @@ typedef struct ParseConv {
  * \return true, or false on allocation failure
  */
 static inline bool
-set_oplist(const SGS_ProgramOpList **restrict dstp,
-		const SGS_ScriptListData *restrict src,
-		SGS_MemPool *restrict mem) {
-	const SGS_ProgramOpList *dst = create_ProgramOpList(src, mem);
+set_oplist(const SAU_ProgramOpList **restrict dstp,
+		const SAU_ScriptListData *restrict src,
+		SAU_MemPool *restrict mem) {
+	const SAU_ProgramOpList *dst = create_ProgramOpList(src, mem);
 	if (!dst)
 		return false;
 	*dstp = dst;
@@ -285,36 +285,36 @@ set_oplist(const SGS_ProgramOpList **restrict dstp,
  */
 static bool
 ParseConv_convert_opdata(ParseConv *restrict o,
-		const SGS_ScriptOpRef *restrict op, uint32_t op_id) {
-	SGS_OpAllocState *oas = &o->oa.a[op_id];
-	SGS_ProgramOpData *od = op->data;
-	if (!SGS_PtrArr_add(&o->ev_od_list, od)) goto MEM_ERR;
+		const SAU_ScriptOpRef *restrict op, uint32_t op_id) {
+	SAU_OpAllocState *oas = &o->oa.a[op_id];
+	SAU_ProgramOpData *od = op->data;
+	if (!SAU_PtrArr_add(&o->ev_od_list, od)) goto MEM_ERR;
 	od->id = op_id;
 	/* ...mods */
-	SGS_VoAllocState *vas = &o->va.a[o->ev->vo_id];
-	const SGS_ScriptListData *mods[SGS_POP_USES] = {0};
-	for (SGS_ScriptListData *in_list = op->mods;
+	SAU_VoAllocState *vas = &o->va.a[o->ev->vo_id];
+	const SAU_ScriptListData *mods[SAU_POP_USES] = {0};
+	for (SAU_ScriptListData *in_list = op->mods;
 			in_list != NULL; in_list = in_list->next_list) {
-		vas->flags |= SGS_VAS_GRAPH;
+		vas->flags |= SAU_VAS_GRAPH;
 		mods[in_list->use_type] = in_list;
 	}
-	if (mods[SGS_POP_AMOD] != NULL) {
-		if (!set_oplist(&oas->amods, mods[SGS_POP_AMOD], o->mem))
+	if (mods[SAU_POP_AMOD] != NULL) {
+		if (!set_oplist(&oas->amods, mods[SAU_POP_AMOD], o->mem))
 			goto MEM_ERR;
 		od->amods = oas->amods;
 	}
-	if (mods[SGS_POP_FMOD] != NULL) {
-		if (!set_oplist(&oas->fmods, mods[SGS_POP_FMOD], o->mem))
+	if (mods[SAU_POP_FMOD] != NULL) {
+		if (!set_oplist(&oas->fmods, mods[SAU_POP_FMOD], o->mem))
 			goto MEM_ERR;
 		od->fmods = oas->fmods;
 	}
-	if (mods[SGS_POP_PMOD] != NULL) {
-		if (!set_oplist(&oas->pmods, mods[SGS_POP_PMOD], o->mem))
+	if (mods[SAU_POP_PMOD] != NULL) {
+		if (!set_oplist(&oas->pmods, mods[SAU_POP_PMOD], o->mem))
 			goto MEM_ERR;
 		od->pmods = oas->pmods;
 	}
-	if (mods[SGS_POP_FPMOD] != NULL) {
-		if (!set_oplist(&oas->fpmods, mods[SGS_POP_FPMOD], o->mem))
+	if (mods[SAU_POP_FPMOD] != NULL) {
+		if (!set_oplist(&oas->fpmods, mods[SAU_POP_FPMOD], o->mem))
 			goto MEM_ERR;
 		od->fpmods = oas->fpmods;
 	}
@@ -332,17 +332,17 @@ MEM_ERR:
  */
 static bool
 ParseConv_convert_ops(ParseConv *restrict o,
-		SGS_ScriptListData *restrict op_list) {
+		SAU_ScriptListData *restrict op_list) {
 	if (!op_list)
 		return true;
-	for (SGS_ScriptOpRef *op = op_list->first_item;
+	for (SAU_ScriptOpRef *op = op_list->first_item;
 			op != NULL; op = op->next_item) {
 		// TODO: handle multiple operator nodes
-		if ((op->op_flags & SGS_SDOP_MULTIPLE) != 0) continue;
+		if ((op->op_flags & SAU_SDOP_MULTIPLE) != 0) continue;
 		uint32_t op_id;
-		if (!SGS_OpAlloc_update(&o->oa, op, &op_id))
+		if (!SAU_OpAlloc_update(&o->oa, op, &op_id))
 			return false;
-		for (SGS_ScriptListData *in_list = op->mods;
+		for (SAU_ScriptListData *in_list = op->mods;
 				in_list != NULL; in_list = in_list->next_list) {
 			if (!ParseConv_convert_ops(o, in_list))
 				return false;
@@ -354,8 +354,8 @@ ParseConv_convert_ops(ParseConv *restrict o,
 }
 
 static bool
-SGS_VoiceGraph_handle_op_node(SGS_VoiceGraph *restrict o,
-		SGS_ProgramOpRef *restrict op_ref);
+SAU_VoiceGraph_handle_op_node(SAU_VoiceGraph *restrict o,
+		SAU_ProgramOpRef *restrict op_ref);
 
 /*
  * Traverse operator list, as part of building a graph for the voice.
@@ -363,14 +363,14 @@ SGS_VoiceGraph_handle_op_node(SGS_VoiceGraph *restrict o,
  * \return true, or false on allocation failure
  */
 static bool
-SGS_VoiceGraph_handle_op_list(SGS_VoiceGraph *restrict o,
-		const SGS_ProgramOpList *restrict op_list, uint8_t mod_use) {
+SAU_VoiceGraph_handle_op_list(SAU_VoiceGraph *restrict o,
+		const SAU_ProgramOpList *restrict op_list, uint8_t mod_use) {
 	if (!op_list)
 		return true;
-	SGS_ProgramOpRef op_ref = {0, mod_use, o->op_nest_level};
+	SAU_ProgramOpRef op_ref = {0, mod_use, o->op_nest_level};
 	for (uint32_t i = 0; i < op_list->count; ++i) {
 		op_ref.id = op_list->ids[i];
-		if (!SGS_VoiceGraph_handle_op_node(o, &op_ref))
+		if (!SAU_VoiceGraph_handle_op_node(o, &op_ref))
 			return false;
 	}
 	return true;
@@ -383,11 +383,11 @@ SGS_VoiceGraph_handle_op_list(SGS_VoiceGraph *restrict o,
  * \return true, or false on allocation failure
  */
 static bool
-SGS_VoiceGraph_handle_op_node(SGS_VoiceGraph *restrict o,
-		SGS_ProgramOpRef *restrict op_ref) {
-	SGS_OpAllocState *oas = &o->oa->a[op_ref->id];
-	if (oas->flags & SGS_OAS_VISITED) {
-		SGS_warning("voicegraph",
+SAU_VoiceGraph_handle_op_node(SAU_VoiceGraph *restrict o,
+		SAU_ProgramOpRef *restrict op_ref) {
+	SAU_OpAllocState *oas = &o->oa->a[op_ref->id];
+	if (oas->flags & SAU_OAS_VISITED) {
+		SAU_warning("voicegraph",
 "skipping operator %u; circular references unsupported",
 			op_ref->id);
 		return true;
@@ -396,16 +396,16 @@ SGS_VoiceGraph_handle_op_node(SGS_VoiceGraph *restrict o,
 		o->op_nest_max = o->op_nest_level;
 	}
 	++o->op_nest_level;
-	oas->flags |= SGS_OAS_VISITED;
-	if (!SGS_VoiceGraph_handle_op_list(o, oas->amods, SGS_POP_AMOD))
+	oas->flags |= SAU_OAS_VISITED;
+	if (!SAU_VoiceGraph_handle_op_list(o, oas->amods, SAU_POP_AMOD))
 		return false;
-	if (!SGS_VoiceGraph_handle_op_list(o, oas->fmods, SGS_POP_FMOD))
+	if (!SAU_VoiceGraph_handle_op_list(o, oas->fmods, SAU_POP_FMOD))
 		return false;
-	if (!SGS_VoiceGraph_handle_op_list(o, oas->pmods, SGS_POP_PMOD))
+	if (!SAU_VoiceGraph_handle_op_list(o, oas->pmods, SAU_POP_PMOD))
 		return false;
-	if (!SGS_VoiceGraph_handle_op_list(o, oas->fpmods, SGS_POP_FPMOD))
+	if (!SAU_VoiceGraph_handle_op_list(o, oas->fpmods, SAU_POP_FPMOD))
 		return false;
-	oas->flags &= ~SGS_OAS_VISITED;
+	oas->flags &= ~SAU_OAS_VISITED;
 	--o->op_nest_level;
 	if (!OpRefArr_add(&o->vo_graph, op_ref))
 		return false;
@@ -420,15 +420,15 @@ SGS_VoiceGraph_handle_op_node(SGS_VoiceGraph *restrict o,
  * \return true, or false on allocation failure
  */
 bool
-SGS_VoiceGraph_set(SGS_VoiceGraph *restrict o,
-		const SGS_ProgramEvent *restrict ev) {
-	SGS_VoAllocState *vas = &o->va->a[ev->vo_id];
+SAU_VoiceGraph_set(SAU_VoiceGraph *restrict o,
+		const SAU_ProgramEvent *restrict ev) {
+	SAU_VoAllocState *vas = &o->va->a[ev->vo_id];
 	if (!vas->op_carrs || !vas->op_carrs->count) goto DONE;
-	if (!SGS_VoiceGraph_handle_op_list(o, vas->op_carrs, SGS_POP_CARR))
+	if (!SAU_VoiceGraph_handle_op_list(o, vas->op_carrs, SAU_POP_CARR))
 		return false;
-	SGS_ProgramVoData *vd = (SGS_ProgramVoData*) ev->vo_data;
+	SAU_ProgramVoData *vd = (SAU_ProgramVoData*) ev->vo_data;
 	if (!OpRefArr_mpmemdup(&o->vo_graph,
-				(SGS_ProgramOpRef**) &vd->graph, o->mem))
+				(SAU_ProgramOpRef**) &vd->graph, o->mem))
 		return false;
 	vd->op_count = o->vo_graph.count;
 DONE:
@@ -440,7 +440,7 @@ DONE:
  * Destroy data held by instance.
  */
 void
-SGS_fini_VoiceGraph(SGS_VoiceGraph *restrict o) {
+SAU_fini_VoiceGraph(SAU_VoiceGraph *restrict o) {
 	OpRefArr_clear(&o->vo_graph);
 }
 
@@ -454,38 +454,38 @@ SGS_fini_VoiceGraph(SGS_VoiceGraph *restrict o) {
  */
 static bool
 ParseConv_convert_event(ParseConv *restrict o,
-		SGS_ScriptEvData *restrict e) {
+		SAU_ScriptEvData *restrict e) {
 	uint32_t vo_id;
-	if (!SGS_VoAlloc_update(&o->va, e, &vo_id)) goto MEM_ERR;
-	SGS_VoAllocState *vas = &o->va.a[vo_id];
-	SGS_ProgramEvent *out_ev = SGS_MemPool_alloc(o->mem,
-			sizeof(SGS_ProgramEvent));
-	if (!out_ev || !SGS_PtrArr_add(&o->ev_list, out_ev)) goto MEM_ERR;
+	if (!SAU_VoAlloc_update(&o->va, e, &vo_id)) goto MEM_ERR;
+	SAU_VoAllocState *vas = &o->va.a[vo_id];
+	SAU_ProgramEvent *out_ev = SAU_MemPool_alloc(o->mem,
+			sizeof(SAU_ProgramEvent));
+	if (!out_ev || !SAU_PtrArr_add(&o->ev_list, out_ev)) goto MEM_ERR;
 	out_ev->wait_ms = e->wait_ms;
 	out_ev->vo_id = vo_id;
 	o->ev = out_ev;
 	if (!ParseConv_convert_ops(o, &e->main_refs)) goto MEM_ERR;
 	if (o->ev_od_list.count > 0) {
-		if (!SGS_PtrArr_mpmemdup(&o->ev_od_list,
+		if (!SAU_PtrArr_mpmemdup(&o->ev_od_list,
 					(void***) &out_ev->op_data,
 					o->mem)) goto MEM_ERR;
 		out_ev->op_data_count = o->ev_od_list.count;
 		o->ev_od_list.count = 0; // reuse allocation
 	}
 	if (!e->root_ev)
-		vas->flags |= SGS_VAS_GRAPH;
-	if ((vas->flags & SGS_VAS_GRAPH) != 0) {
-		SGS_ProgramVoData *ovd = SGS_MemPool_alloc(o->mem,
-				sizeof(SGS_ProgramVoData));
+		vas->flags |= SAU_VAS_GRAPH;
+	if ((vas->flags & SAU_VAS_GRAPH) != 0) {
+		SAU_ProgramVoData *ovd = SAU_MemPool_alloc(o->mem,
+				sizeof(SAU_ProgramVoData));
 		if (!ovd) goto MEM_ERR;
-		ovd->params = SGS_PVOP_GRAPH;
+		ovd->params = SAU_PVOP_GRAPH;
 		if (!e->root_ev) {
 			if (!set_oplist(&vas->op_carrs, &e->main_refs, o->mem))
 				goto MEM_ERR;
 		}
 		out_ev->vo_data = ovd;
-		if ((vas->flags & SGS_VAS_GRAPH) != 0) {
-			if (!SGS_VoiceGraph_set(&o->ev_vo_graph, out_ev))
+		if ((vas->flags & SAU_VAS_GRAPH) != 0) {
+			if (!SAU_VoiceGraph_set(&o->ev_vo_graph, out_ev))
 				goto MEM_ERR;
 		}
 	}
@@ -501,37 +501,37 @@ MEM_ERR:
  */
 static bool
 ParseConv_check_validity(ParseConv *restrict o,
-		SGS_Script *restrict script) {
+		SAU_Script *restrict script) {
 	bool error = false;
-	if (o->va.count > SGS_PVO_MAX_ID) {
+	if (o->va.count > SAU_PVO_MAX_ID) {
 		fprintf(stderr,
 "%s: error: number of voices used cannot exceed %u\n",
-			script->name, SGS_PVO_MAX_ID);
+			script->name, SAU_PVO_MAX_ID);
 		error = true;
 	}
-	if (o->oa.count > SGS_POP_MAX_ID) {
+	if (o->oa.count > SAU_POP_MAX_ID) {
 		fprintf(stderr,
 "%s: error: number of operators used cannot exceed %u\n",
-			script->name, SGS_POP_MAX_ID);
+			script->name, SAU_POP_MAX_ID);
 		error = true;
 	}
 	return !error;
 }
 
-static SGS_Program*
+static SAU_Program*
 ParseConv_create_program(ParseConv *restrict o,
-		SGS_Script *restrict script) {
-	SGS_Program *prg = SGS_MemPool_alloc(o->mem, sizeof(SGS_Program));
+		SAU_Script *restrict script) {
+	SAU_Program *prg = SAU_MemPool_alloc(o->mem, sizeof(SAU_Program));
 	if (!prg) goto MEM_ERR;
-	if (!SGS_PtrArr_mpmemdup(&o->ev_list,
+	if (!SAU_PtrArr_mpmemdup(&o->ev_list,
 				(void***) &prg->events, o->mem)) goto MEM_ERR;
 	prg->ev_count = o->ev_list.count;
-	if (!(script->sopt.set & SGS_SOPT_AMPMULT)) {
+	if (!(script->sopt.set & SAU_SOPT_AMPMULT)) {
 		/*
 		 * Enable amplitude scaling (division) by voice count,
 		 * handled by audio generator.
 		 */
-		prg->mode |= SGS_PMODE_AMP_DIV_VOICES;
+		prg->mode |= SAU_PMODE_AMP_DIV_VOICES;
 	}
 	prg->vo_count = o->va.count;
 	prg->op_count = o->oa.count;
@@ -546,21 +546,21 @@ MEM_ERR:
 /*
  * Build program, allocating events, voices, and operators.
  */
-static SGS_Program*
+static SAU_Program*
 ParseConv_convert(ParseConv *restrict o,
-		SGS_Script *restrict script) {
-	SGS_Program *prg = NULL;
+		SAU_Script *restrict script) {
+	SAU_Program *prg = NULL;
 	o->mem = script->mem;
 	if (!o->mem) goto MEM_ERR;
-	SGS_init_VoiceGraph(&o->ev_vo_graph, &o->va, &o->oa, o->mem);
+	SAU_init_VoiceGraph(&o->ev_vo_graph, &o->va, &o->oa, o->mem);
 
 	uint32_t remaining_ms = 0;
-	for (SGS_ScriptEvData *e = script->events; e; e = e->next) {
+	for (SAU_ScriptEvData *e = script->events; e; e = e->next) {
 		if (!ParseConv_convert_event(o, e)) goto MEM_ERR;
 		o->duration_ms += e->wait_ms;
 	}
 	for (size_t i = 0; i < o->va.count; ++i) {
-		SGS_VoAllocState *vas = &o->va.a[i];
+		SAU_VoAllocState *vas = &o->va.a[i];
 		if (vas->duration_ms > remaining_ms)
 			remaining_ms = vas->duration_ms;
 	}
@@ -572,13 +572,13 @@ ParseConv_convert(ParseConv *restrict o,
 
 	if (false)
 	MEM_ERR: {
-		SGS_error("parseconv", "memory allocation failure");
+		SAU_error("parseconv", "memory allocation failure");
 	}
-	SGS_OpAlloc_clear(&o->oa);
-	SGS_VoAlloc_clear(&o->va);
-	SGS_PtrArr_clear(&o->ev_od_list);
-	SGS_PtrArr_clear(&o->ev_list);
-	SGS_fini_VoiceGraph(&o->ev_vo_graph);
+	SAU_OpAlloc_clear(&o->oa);
+	SAU_VoAlloc_clear(&o->va);
+	SAU_PtrArr_clear(&o->ev_od_list);
+	SAU_PtrArr_clear(&o->ev_list);
+	SAU_fini_VoiceGraph(&o->ev_vo_graph);
 	return prg;
 }
 
@@ -588,19 +588,19 @@ ParseConv_convert(ParseConv *restrict o,
  * \return instance or NULL on error
  */
 bool
-SGS_build_Program(SGS_Script *restrict sd) {
+SAU_build_Program(SAU_Script *restrict sd) {
 	ParseConv pc = (ParseConv){0};
-	SGS_Program *o = ParseConv_convert(&pc, sd);
+	SAU_Program *o = ParseConv_convert(&pc, sd);
 	if (!o)
 		return false;
 	sd->program = o;
 	return true;
 }
 
-static sgsNoinline void
+static sauNoinline void
 print_linked(const char *restrict header,
 		const char *restrict footer,
-		const SGS_ProgramOpList *restrict list) {
+		const SAU_ProgramOpList *restrict list) {
 	if (!list || !list->count)
 		return;
 	fprintf(stdout, "%s%u", header, list->ids[0]);
@@ -610,9 +610,9 @@ print_linked(const char *restrict header,
 }
 
 static void
-print_graph(const SGS_ProgramOpRef *restrict graph,
+print_graph(const SAU_ProgramOpRef *restrict graph,
 		uint32_t count) {
-	static const char *const uses[SGS_POP_USES] = {
+	static const char *const uses[SAU_POP_USES] = {
 		" CA",
 		" AM",
 		" FM",
@@ -640,29 +640,29 @@ print_graph(const SGS_ProgramOpRef *restrict graph,
 	putc(']', stdout);
 }
 
-static sgsNoinline void
-print_ramp(const SGS_Ramp *restrict ramp, char c) {
+static sauNoinline void
+print_ramp(const SAU_Ramp *restrict ramp, char c) {
 	if (!ramp)
 		return;
 	putc('\t', stdout);
 	putc(c, stdout);
-	if ((ramp->flags & SGS_RAMPP_STATE) != 0) {
-		if ((ramp->flags & SGS_RAMPP_GOAL) != 0)
+	if ((ramp->flags & SAU_RAMPP_STATE) != 0) {
+		if ((ramp->flags & SAU_RAMPP_GOAL) != 0)
 			fprintf(stdout,
 				"=%-6.2f->%-6.2f", ramp->v0, ramp->vt);
 		else
 			fprintf(stdout,
 				"=%-6.2f\t", ramp->v0);
 	} else {
-		if ((ramp->flags & SGS_RAMPP_GOAL) != 0)
+		if ((ramp->flags & SAU_RAMPP_GOAL) != 0)
 			fprintf(stdout,
 				"->%-6.2f\t", ramp->vt);
 	}
 }
 
 static void
-print_opline(const SGS_ProgramOpData *restrict od) {
-	if (od->time.flags & SGS_TIMEP_IMPLICIT) {
+print_opline(const SAU_ProgramOpData *restrict od) {
+	if (od->time.flags & SAU_TIMEP_IMPLICIT) {
 		fprintf(stdout,
 			"\n\top %u \tt=IMPL  ", od->id);
 	} else {
@@ -677,7 +677,7 @@ print_opline(const SGS_ProgramOpData *restrict od) {
  * Print information about program contents. Useful for debugging.
  */
 void
-SGS_Program_print_info(const SGS_Program *restrict o) {
+SAU_Program_print_info(const SAU_Program *restrict o) {
 	fprintf(stdout,
 		"Program: \"%s\"\n", o->name);
 	fprintf(stdout,
@@ -690,8 +690,8 @@ SGS_Program_print_info(const SGS_Program *restrict o) {
 		o->vo_count,
 		o->op_count);
 	for (size_t ev_id = 0; ev_id < o->ev_count; ++ev_id) {
-		const SGS_ProgramEvent *ev = o->events[ev_id];
-		const SGS_ProgramVoData *vd = ev->vo_data;
+		const SAU_ProgramEvent *ev = o->events[ev_id];
+		const SAU_ProgramVoData *vd = ev->vo_data;
 		fprintf(stdout,
 			"/%u \tEV %zu \t(VO %hu)",
 			ev->wait_ms, ev_id, ev->vo_id);
@@ -701,7 +701,7 @@ SGS_Program_print_info(const SGS_Program *restrict o) {
 			print_graph(vd->graph, vd->op_count);
 		}
 		for (size_t i = 0; i < ev->op_data_count; ++i) {
-			const SGS_ProgramOpData *od = ev->op_data[i];
+			const SAU_ProgramOpData *od = ev->op_data[i];
 			print_opline(od);
 			print_linked("\n\t    aw[", "]", od->amods);
 			print_linked("\n\t    fw[", "]", od->fmods);

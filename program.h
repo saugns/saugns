@@ -1,4 +1,4 @@
-/* sgensys: Audio program data and functions.
+/* saugns: Audio program data and functions.
  * Copyright (c) 2011-2013, 2017-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -23,9 +23,9 @@
  * Time parameter flags.
  */
 enum {
-	SGS_TIMEP_SET      = 1<<0, // use the \a v_ms value or implicit value
-	SGS_TIMEP_DEFAULT  = 1<<1, // the \a v_ms value set was default value
-	SGS_TIMEP_IMPLICIT = 1<<2, // use an implicit value from other source
+	SAU_TIMEP_SET      = 1<<0, // use the \a v_ms value or implicit value
+	SAU_TIMEP_DEFAULT  = 1<<1, // the \a v_ms value set was default value
+	SAU_TIMEP_IMPLICIT = 1<<2, // use an implicit value from other source
 };
 
 /**
@@ -33,117 +33,117 @@ enum {
  *
  * Holds data for a generic time parameter.
  */
-typedef struct SGS_Time {
+typedef struct SAU_Time {
 	uint32_t v_ms;
 	uint8_t flags;
-} SGS_Time;
+} SAU_Time;
 
 /**
  * Voice parameter flags.
  */
 enum {
-	SGS_PVOP_GRAPH = 1<<0,
-	SGS_PVO_PARAMS = (1<<1) - 1,
+	SAU_PVOP_GRAPH = 1<<0,
+	SAU_PVO_PARAMS = (1<<1) - 1,
 };
 
 /**
  * Ramp use IDs.
  */
 enum {
-	SGS_PRAMP_PAN = 0,
-	SGS_PRAMP_AMP,
-	SGS_PRAMP_AMP2,
-	SGS_PRAMP_FREQ,
-	SGS_PRAMP_FREQ2,
+	SAU_PRAMP_PAN = 0,
+	SAU_PRAMP_AMP,
+	SAU_PRAMP_AMP2,
+	SAU_PRAMP_FREQ,
+	SAU_PRAMP_FREQ2,
 };
 
 /**
  * Operator parameter flags. For parameters without other tracking only.
  */
 enum {
-	SGS_POPP_WAVE = 1<<0,
-	SGS_POPP_TIME = 1<<1,
-	SGS_POPP_PHASE = 1<<2,
-	SGS_POP_PARAMS = (1<<3) - 1,
+	SAU_POPP_WAVE = 1<<0,
+	SAU_POPP_TIME = 1<<1,
+	SAU_POPP_PHASE = 1<<2,
+	SAU_POP_PARAMS = (1<<3) - 1,
 };
 
 /*
  * Voice ID constants.
  */
-#define SGS_PVO_NO_ID  UINT16_MAX       /* voice ID missing */
-#define SGS_PVO_MAX_ID (UINT16_MAX - 1) /* error if exceeded */
+#define SAU_PVO_NO_ID  UINT16_MAX       /* voice ID missing */
+#define SAU_PVO_MAX_ID (UINT16_MAX - 1) /* error if exceeded */
 
 /*
  * Operator ID constants.
  */
-#define SGS_POP_NO_ID  UINT32_MAX       /* operator ID missing */
-#define SGS_POP_MAX_ID (UINT32_MAX - 1) /* error if exceeded */
+#define SAU_POP_NO_ID  UINT32_MAX       /* operator ID missing */
+#define SAU_POP_MAX_ID (UINT32_MAX - 1) /* error if exceeded */
 
 /**
  * Operator use types.
  */
 enum {
-	SGS_POP_CARR = 0,
-	SGS_POP_AMOD,
-	SGS_POP_FMOD,
-	SGS_POP_PMOD,
-	SGS_POP_FPMOD,
-	SGS_POP_USES,
+	SAU_POP_CARR = 0,
+	SAU_POP_AMOD,
+	SAU_POP_FMOD,
+	SAU_POP_PMOD,
+	SAU_POP_FPMOD,
+	SAU_POP_USES,
 };
 
-typedef struct SGS_ProgramOpRef {
+typedef struct SAU_ProgramOpRef {
 	uint32_t id;
 	uint8_t use;
 	uint8_t level; /* > 0 if used as a modulator */
-} SGS_ProgramOpRef;
+} SAU_ProgramOpRef;
 
-typedef struct SGS_ProgramOpList {
+typedef struct SAU_ProgramOpList {
 	uint32_t count;
 	uint32_t ids[];
-} SGS_ProgramOpList;
+} SAU_ProgramOpList;
 
-typedef struct SGS_ProgramVoData {
-	const SGS_ProgramOpRef *graph;
+typedef struct SAU_ProgramVoData {
+	const SAU_ProgramOpRef *graph;
 	uint32_t op_count;
 	uint32_t params;
-} SGS_ProgramVoData;
+} SAU_ProgramVoData;
 
-typedef struct SGS_ProgramOpData {
+typedef struct SAU_ProgramOpData {
 	uint32_t params;
 	uint8_t wave;
 	uint8_t use_type;
-	SGS_Time time;
-	SGS_Ramp *freq, *freq2;
-	SGS_Ramp *amp, *amp2;
-	SGS_Ramp *pan;
+	SAU_Time time;
+	SAU_Ramp *freq, *freq2;
+	SAU_Ramp *amp, *amp2;
+	SAU_Ramp *pan;
 	float phase;
 	/* assigned after parsing */
 	uint32_t id;
-	const SGS_ProgramOpList *amods, *fmods, *pmods, *fpmods;
-} SGS_ProgramOpData;
+	const SAU_ProgramOpList *amods, *fmods, *pmods, *fpmods;
+} SAU_ProgramOpData;
 
-typedef struct SGS_ProgramEvent {
+typedef struct SAU_ProgramEvent {
 	uint32_t wait_ms;
 	uint16_t vo_id;
 	uint32_t op_data_count;
-	const SGS_ProgramVoData *vo_data;
-	const SGS_ProgramOpData **op_data;
-} SGS_ProgramEvent;
+	const SAU_ProgramVoData *vo_data;
+	const SAU_ProgramOpData **op_data;
+} SAU_ProgramEvent;
 
 /**
  * Program flags affecting interpretation.
  */
 enum {
-	SGS_PMODE_AMP_DIV_VOICES = 1<<0,
+	SAU_PMODE_AMP_DIV_VOICES = 1<<0,
 };
 
-struct SGS_Script;
+struct SAU_Script;
 
 /**
  * Main program type. Contains everything needed for interpretation.
  */
-typedef struct SGS_Program {
-	SGS_ProgramEvent **events;
+typedef struct SAU_Program {
+	SAU_ProgramEvent **events;
 	size_t ev_count;
 	uint16_t mode;
 	uint16_t vo_count;
@@ -151,9 +151,9 @@ typedef struct SGS_Program {
 	uint8_t op_nest_depth;
 	uint32_t duration_ms;
 	const char *name;
-} SGS_Program;
+} SAU_Program;
 
-struct SGS_Script;
-bool SGS_build_Program(struct SGS_Script *restrict sd);
+struct SAU_Script;
+bool SAU_build_Program(struct SAU_Script *restrict sd);
 
-void SGS_Program_print_info(const SGS_Program *restrict o);
+void SAU_Program_print_info(const SAU_Program *restrict o);

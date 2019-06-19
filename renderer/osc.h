@@ -1,4 +1,4 @@
-/* sgensys: Oscillator implementation.
+/* saugns: Oscillator implementation.
  * Copyright (c) 2011, 2017-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -31,21 +31,21 @@
  * Convert floating point phase value (0.0 = 0 deg., 1.0 = 360 deg.)
  * to 32-bit unsigned int, as used by freqor for oscillator.
  */
-#define SGS_Freqor_PHASE(p) ((uint32_t) lrintf((p) * (float) UINT32_MAX))
+#define SAU_Freqor_PHASE(p) ((uint32_t) lrintf((p) * (float) UINT32_MAX))
 
 /**
  * Calculate the coefficent, based on the sample rate,
  * used to give the per-sample phase increment
  * by multiplying with the frequency used.
  */
-#define SGS_Freqor_COEFF(srate) (((float) UINT32_MAX)/(srate))
+#define SAU_Freqor_COEFF(srate) (((float) UINT32_MAX)/(srate))
 
-typedef struct SGS_Freqor {
+typedef struct SAU_Freqor {
 	uint32_t phase;
 	float coeff;
-} SGS_Freqor;
+} SAU_Freqor;
 
-void SGS_Freqor_fill(SGS_Freqor *restrict o,
+void SAU_Freqor_fill(SAU_Freqor *restrict o,
 		int32_t *restrict pinc_i32,
 		int32_t *restrict pofs_i32,
 		size_t buf_len,
@@ -53,11 +53,11 @@ void SGS_Freqor_fill(SGS_Freqor *restrict o,
 		const float *restrict pm_f,
 		const float *restrict fpm_f);
 
-#define SGS_OSC_RESET_DIFF  (1<<0)
-#define SGS_OSC_RESET       ((1<<1) - 1)
+#define SAU_OSC_RESET_DIFF  (1<<0)
+#define SAU_OSC_RESET       ((1<<1) - 1)
 
-typedef struct SGS_Osc {
-	SGS_Freqor freqor;
+typedef struct SAU_Osc {
+	SAU_Freqor freqor;
 	uint8_t wave;
 	uint8_t flags;
 #if USE_PILUT
@@ -65,44 +65,44 @@ typedef struct SGS_Osc {
 	double prev_Is;
 	float prev_diff_s;
 #endif
-} SGS_Osc;
+} SAU_Osc;
 
 /**
  * Initialize instance for use.
  */
-static inline void SGS_init_Osc(SGS_Osc *restrict o, uint32_t srate) {
-	*o = (SGS_Osc){
+static inline void SAU_init_Osc(SAU_Osc *restrict o, uint32_t srate) {
+	*o = (SAU_Osc){
 #if USE_PILUT
-		.freqor = (SGS_Freqor){
-			.phase = SGS_Wave_picoeffs[SGS_WAVE_SIN].phase_adj,
-			.coeff = SGS_Freqor_COEFF(srate),
+		.freqor = (SAU_Freqor){
+			.phase = SAU_Wave_picoeffs[SAU_WAVE_SIN].phase_adj,
+			.coeff = SAU_Freqor_COEFF(srate),
 		},
 #else
-		.freqor = (SGS_Freqor){
+		.freqor = (SAU_Freqor){
 			.phase = 0,
-			.coeff = SGS_Freqor_COEFF(srate),
+			.coeff = SAU_Freqor_COEFF(srate),
 		},
 #endif
-		.wave = SGS_WAVE_SIN,
-		.flags = SGS_OSC_RESET,
+		.wave = SAU_WAVE_SIN,
+		.flags = SAU_OSC_RESET,
 	};
 }
 
-static inline void SGS_Osc_set_phase(SGS_Osc *restrict o, uint32_t phase) {
+static inline void SAU_Osc_set_phase(SAU_Osc *restrict o, uint32_t phase) {
 #if USE_PILUT
-	o->freqor.phase = phase + SGS_Wave_picoeffs[o->wave].phase_adj;
+	o->freqor.phase = phase + SAU_Wave_picoeffs[o->wave].phase_adj;
 #else
 	o->freqor.phase = phase;
 #endif
 }
 
-static inline void SGS_Osc_set_wave(SGS_Osc *restrict o, uint8_t wave) {
+static inline void SAU_Osc_set_wave(SAU_Osc *restrict o, uint8_t wave) {
 #if USE_PILUT
-	int32_t old_offset = SGS_Wave_picoeffs[o->wave].phase_adj;
-	int32_t offset = SGS_Wave_picoeffs[wave].phase_adj;
+	int32_t old_offset = SAU_Wave_picoeffs[o->wave].phase_adj;
+	int32_t offset = SAU_Wave_picoeffs[wave].phase_adj;
 	o->freqor.phase += offset - old_offset;
 	o->wave = wave;
-	o->flags |= SGS_OSC_RESET_DIFF;
+	o->flags |= SAU_OSC_RESET_DIFF;
 #else
 	o->wave = wave;
 #endif
@@ -113,7 +113,7 @@ static inline void SGS_Osc_set_wave(SGS_Osc *restrict o, uint8_t wave) {
  *
  * \return number of samples
  */
-static inline uint32_t SGS_Osc_cycle_len(SGS_Osc *restrict o, float freq) {
+static inline uint32_t SAU_Osc_cycle_len(SAU_Osc *restrict o, float freq) {
 	return lrintf(((float) UINT32_MAX) / (o->freqor.coeff * freq));
 }
 
@@ -122,7 +122,7 @@ static inline uint32_t SGS_Osc_cycle_len(SGS_Osc *restrict o, float freq) {
  *
  * \return number of samples
  */
-static inline uint32_t SGS_Osc_cycle_pos(SGS_Osc *restrict o,
+static inline uint32_t SAU_Osc_cycle_pos(SAU_Osc *restrict o,
 		float freq, uint32_t pos) {
 	uint32_t inc = lrintf(o->freqor.coeff * freq);
 	uint32_t phs = inc * pos;
@@ -134,14 +134,14 @@ static inline uint32_t SGS_Osc_cycle_pos(SGS_Osc *restrict o,
  *
  * Can be used to reduce time length to something rounder and reduce clicks.
  */
-static inline int32_t SGS_Osc_cycle_offs(SGS_Osc *restrict o,
+static inline int32_t SAU_Osc_cycle_offs(SAU_Osc *restrict o,
 		float freq, uint32_t pos) {
 	uint32_t inc = lrintf(o->freqor.coeff * freq);
 	uint32_t phs = inc * pos;
-	return (phs - SGS_Wave_SLEN) / inc;
+	return (phs - SAU_Wave_SLEN) / inc;
 }
 
-void SGS_Osc_run(SGS_Osc *restrict o,
+void SAU_Osc_run(SAU_Osc *restrict o,
 		float *restrict buf, size_t buf_len,
 		const int32_t *restrict pinc_buf,
 		const int32_t *restrict pofs_buf);
