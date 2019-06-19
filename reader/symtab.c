@@ -1,4 +1,4 @@
-/* sgensys: Symbol table module.
+/* saugns: Symbol table module.
  * Copyright (c) 2011-2012, 2014, 2017-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -17,19 +17,19 @@
 
 #define STRTAB_ALLOC_INITIAL 1024
 
-#ifndef SGS_SYMTAB_STATS
+#ifndef SAU_SYMTAB_STATS
 /*
  * Print symbol table statistics for testing?
  */
-# define SGS_SYMTAB_STATS 0
+# define SAU_SYMTAB_STATS 0
 #endif
-#if SGS_SYMTAB_STATS
+#if SAU_SYMTAB_STATS
 static size_t collision_count = 0;
 #include <stdio.h>
 #endif
 
 typedef struct StrTab {
-	SGS_SymStr **sstra;
+	SAU_SymStr **sstra;
 	size_t count;
 	size_t alloc;
 } StrTab;
@@ -66,13 +66,13 @@ static size_t StrTab_hash_key(StrTab *restrict o,
  * \return true, or false on allocation failure
  */
 static bool StrTab_upsize(StrTab *restrict o) {
-	SGS_SymStr **sstra, **old_sstra = o->sstra;
+	SAU_SymStr **sstra, **old_sstra = o->sstra;
 	size_t alloc, old_alloc = o->alloc;
 	size_t i;
 	alloc = (old_alloc > 0) ?
 		(old_alloc << 1) :
 		STRTAB_ALLOC_INITIAL;
-	sstra = calloc(alloc, sizeof(SGS_SymStr*));
+	sstra = calloc(alloc, sizeof(SAU_SymStr*));
 	if (!sstra)
 		return false;
 	o->alloc = alloc;
@@ -82,9 +82,9 @@ static bool StrTab_upsize(StrTab *restrict o) {
 	 * Rehash entries
 	 */
 	for (i = 0; i < old_alloc; ++i) {
-		SGS_SymStr *node = old_sstra[i];
+		SAU_SymStr *node = old_sstra[i];
 		while (node != NULL) {
-			SGS_SymStr *prev_node;
+			SAU_SymStr *prev_node;
 			size_t hash;
 			hash = StrTab_hash_key(o, node->key, node->key_len);
 			/*
@@ -111,10 +111,10 @@ static bool StrTab_upsize(StrTab *restrict o) {
  *
  * Initializes the hash table if empty.
  *
- * \return SGS_SymStr, or NULL on allocation failure
+ * \return SAU_SymStr, or NULL on allocation failure
  */
-static SGS_SymStr *StrTab_unique_node(StrTab *restrict o,
-		SGS_MemPool *restrict memp,
+static SAU_SymStr *StrTab_unique_node(StrTab *restrict o,
+		SAU_MemPool *restrict memp,
 		const void *restrict key, size_t len, size_t extra) {
 	if (!key || len == 0)
 		return NULL;
@@ -124,16 +124,16 @@ static SGS_SymStr *StrTab_unique_node(StrTab *restrict o,
 	}
 
 	size_t hash = StrTab_hash_key(o, key, len);
-	SGS_SymStr *sstr = o->sstra[hash];
+	SAU_SymStr *sstr = o->sstra[hash];
 	while (sstr != NULL) {
 		if (sstr->key_len == len &&
 			!memcmp(sstr->key, key, len)) return sstr;
 		sstr = sstr->prev;
-#if SGS_SYMTAB_STATS
+#if SAU_SYMTAB_STATS
 		++collision_count;
 #endif
 	}
-	sstr = SGS_mpalloc(memp, sizeof(SGS_SymStr) + (len + extra));
+	sstr = SAU_mpalloc(memp, sizeof(SAU_SymStr) + (len + extra));
 	if (!sstr)
 		return NULL;
 	sstr->prev = o->sstra[hash];
@@ -144,13 +144,13 @@ static SGS_SymStr *StrTab_unique_node(StrTab *restrict o,
 	return sstr;
 }
 
-struct SGS_SymTab {
-	SGS_MemPool *memp;
+struct SAU_SymTab {
+	SAU_MemPool *memp;
 	StrTab strt;
 };
 
-static void fini_SymTab(SGS_SymTab *restrict o) {
-#if SGS_SYMTAB_STATS
+static void fini_SymTab(SAU_SymTab *restrict o) {
+#if SAU_SYMTAB_STATS
 	fprintf(stderr, "collision count: %zd\n", collision_count);
 #endif
 	fini_StrTab(&o->strt);
@@ -161,11 +161,11 @@ static void fini_SymTab(SGS_SymTab *restrict o) {
  *
  * \return instance, or NULL on allocation failure
  */
-SGS_SymTab *SGS_create_SymTab(SGS_MemPool *restrict mempool) {
+SAU_SymTab *SAU_create_SymTab(SAU_MemPool *restrict mempool) {
 	if (!mempool)
 		return NULL;
-	SGS_SymTab *o = SGS_mpalloc(mempool, sizeof(SGS_SymTab));
-	if (!SGS_mpregdtor(mempool, (SGS_Dtor_f) fini_SymTab, o))
+	SAU_SymTab *o = SAU_mpalloc(mempool, sizeof(SAU_SymTab));
+	if (!SAU_mpregdtor(mempool, (SAU_Dtor_f) fini_SymTab, o))
 		return NULL;
 	o->memp = mempool;
 	return o;
@@ -177,7 +177,7 @@ SGS_SymTab *SGS_create_SymTab(SGS_MemPool *restrict mempool) {
  *
  * \return unique node for \p str, or NULL on allocation failure
  */
-SGS_SymStr *SGS_SymTab_get_symstr(SGS_SymTab *restrict o,
+SAU_SymStr *SAU_SymTab_get_symstr(SAU_SymTab *restrict o,
 		const void *restrict str, size_t len) {
 	return StrTab_unique_node(&o->strt, o->memp, str, len, 1);
 }
@@ -187,9 +187,9 @@ SGS_SymStr *SGS_SymTab_get_symstr(SGS_SymTab *restrict o,
  *
  * \return item, or NULL if none
  */
-SGS_SymItem *SGS_SymTab_add_item(SGS_SymTab *restrict o,
-		SGS_SymStr *restrict symstr, uint32_t sym_type) {
-	SGS_SymItem *item = SGS_mpalloc(o->memp, sizeof(SGS_SymItem));
+SAU_SymItem *SAU_SymTab_add_item(SAU_SymTab *restrict o,
+		SAU_SymStr *restrict symstr, uint32_t sym_type) {
+	SAU_SymItem *item = SAU_mpalloc(o->memp, sizeof(SAU_SymItem));
 	if (!item)
 		return NULL;
 	item->sym_type = sym_type;
@@ -204,9 +204,9 @@ SGS_SymItem *SGS_SymTab_add_item(SGS_SymTab *restrict o,
  *
  * \return item, or NULL if none
  */
-SGS_SymItem *SGS_SymTab_find_item(SGS_SymTab *restrict o sgsMaybeUnused,
-		SGS_SymStr *restrict symstr, uint32_t sym_type) {
-	SGS_SymItem *item = symstr->item;
+SAU_SymItem *SAU_SymTab_find_item(SAU_SymTab *restrict o sauMaybeUnused,
+		SAU_SymStr *restrict symstr, uint32_t sym_type) {
+	SAU_SymItem *item = symstr->item;
 	while (item) {
 		if (item->sym_type == sym_type)
 			return item;
@@ -219,22 +219,22 @@ SGS_SymItem *SGS_SymTab_find_item(SGS_SymTab *restrict o sgsMaybeUnused,
  * Add the first \p n strings from \p stra to the string pool of the
  * symbol table. For each, an item will be prepared according to the
  * \p sym_type (with the type used assumed to store ID data) and the
- * current string index from 0 to n will be set for SGS_SYM_DATA_ID.
+ * current string index from 0 to n will be set for SAU_SYM_DATA_ID.
  *
  * All strings in \p stra need to be null-terminated.
  *
  * \return true, or false on allocation failure
  */
-bool SGS_SymTab_add_stra(SGS_SymTab *restrict o,
+bool SAU_SymTab_add_stra(SAU_SymTab *restrict o,
 		const char *const*restrict stra, size_t n,
 		uint32_t sym_type) {
 	for (size_t i = 0; i < n; ++i) {
-		SGS_SymItem *item;
-		SGS_SymStr *s = SGS_SymTab_get_symstr(o,
+		SAU_SymItem *item;
+		SAU_SymStr *s = SAU_SymTab_get_symstr(o,
 				stra[i], strlen(stra[i]));
-		if (!s || !(item = SGS_SymTab_add_item(o, s, sym_type)))
+		if (!s || !(item = SAU_SymTab_add_item(o, s, sym_type)))
 			return false;
-		item->data_use = SGS_SYM_DATA_ID;
+		item->data_use = SAU_SYM_DATA_ID;
 		item->data.id = i;
 	}
 	return true;

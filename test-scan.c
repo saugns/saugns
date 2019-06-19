@@ -1,4 +1,4 @@
-/* sgensys: Test program for experimental reader code.
+/* saugns: Test program for experimental reader code.
  * Copyright (c) 2017-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -11,8 +11,8 @@
  * <https://www.gnu.org/licenses/>.
  */
 
-#include "sgensys.h"
-#if SGS_TEST_SCANNER
+#include "saugns.h"
+#if SAU_TEST_SCANNER
 # include "reader/scanner.h"
 #else
 # include "reader/lexer.h"
@@ -42,7 +42,7 @@ static void print_usage(void) {
  * Print version.
  */
 static void print_version(void) {
-	puts(NAME" ("SGS_CLINAME_STR") "SGS_VERSION_STR);
+	puts(NAME" ("SAU_CLINAME_STR") "SAU_VERSION_STR);
 }
 
 /*
@@ -54,7 +54,7 @@ static void print_version(void) {
  */
 static bool parse_args(int argc, char **restrict argv,
 		uint32_t *restrict flags,
-		SGS_PtrArr *restrict script_args) {
+		SAU_PtrArr *restrict script_args) {
 	for (;;) {
 		const char *arg;
 		--argc;
@@ -65,24 +65,24 @@ static bool parse_args(int argc, char **restrict argv,
 		}
 		arg = *argv;
 		if (*arg != '-') {
-			SGS_PtrArr_add(script_args, (void*) arg);
+			SAU_PtrArr_add(script_args, (void*) arg);
 			continue;
 		}
 NEXT_C:
 		if (!*++arg) continue;
 		switch (*arg) {
 		case 'c':
-			if ((*flags & SGS_OPT_MODE_FULL) != 0)
+			if ((*flags & SAU_OPT_MODE_FULL) != 0)
 				goto USAGE;
-			*flags |= SGS_OPT_MODE_CHECK;
+			*flags |= SAU_OPT_MODE_CHECK;
 			break;
 		case 'e':
-			*flags |= SGS_OPT_EVAL_STRING;
+			*flags |= SAU_OPT_EVAL_STRING;
 			break;
 		case 'h':
 			goto USAGE;
 		case 'p':
-			*flags |= SGS_OPT_PRINT_INFO;
+			*flags |= SAU_OPT_PRINT_INFO;
 			break;
 		case 'v':
 			print_version();
@@ -96,7 +96,7 @@ NEXT_C:
 USAGE:
 	print_usage();
 ABORT:
-	SGS_PtrArr_clear(script_args);
+	SAU_PtrArr_clear(script_args);
 	return false;
 }
 
@@ -104,24 +104,24 @@ ABORT:
  * Discard the programs in the list, ignoring NULL entries,
  * and clearing the list.
  */
-void SGS_discard(SGS_PtrArr *restrict prg_objs) {
-	SGS_Program **prgs = (SGS_Program**) SGS_PtrArr_ITEMS(prg_objs);
+void SAU_discard(SAU_PtrArr *restrict prg_objs) {
+	SAU_Program **prgs = (SAU_Program**) SAU_PtrArr_ITEMS(prg_objs);
 	for (size_t i = 0; i < prg_objs->count; ++i) {
 		free(prgs[i]); // for placeholder
 	}
-	SGS_PtrArr_clear(prg_objs);
+	SAU_PtrArr_clear(prg_objs);
 }
 
-#if SGS_TEST_SCANNER
+#if SAU_TEST_SCANNER
 /*
  * Functions for scanning a file and printing the
  * contents with whitespace and comment filtering
  * as is done by default.
  */
 
-static inline void scan_simple(SGS_Scanner *o) {
+static inline void scan_simple(SAU_Scanner *o) {
 	for (;;) {
-		uint8_t c = SGS_Scanner_getc(o);
+		uint8_t c = SAU_Scanner_getc(o);
 		if (!c) {
 			putchar('\n');
 			break;
@@ -130,13 +130,13 @@ static inline void scan_simple(SGS_Scanner *o) {
 	}
 }
 
-static inline void scan_with_undo(SGS_Scanner *o) {
+static inline void scan_with_undo(SAU_Scanner *o) {
 	for (;;) {
-		uint32_t i = 0, max = SGS_SCAN_UNGET_MAX;
+		uint32_t i = 0, max = SAU_SCAN_UNGET_MAX;
 		uint8_t c;
 		bool end = false;
 		for (i = 0; ++i <= max; ) {
-			c = SGS_Scanner_getc(o);
+			c = SAU_Scanner_getc(o);
 			if (!c) {
 				end = true;
 				++i;
@@ -145,10 +145,10 @@ static inline void scan_with_undo(SGS_Scanner *o) {
 		}
 		max = i - 1;
 		for (i = 0; ++i <= max; ) {
-			SGS_Scanner_ungetc(o);
+			SAU_Scanner_ungetc(o);
 		}
 		for (i = 0; ++i <= max; ) {
-			c = SGS_Scanner_getc(o);
+			c = SAU_Scanner_getc(o);
 			putchar(c);
 //			putchar('\n'); // for scanner.c test/debug printouts
 		}
@@ -164,38 +164,38 @@ static inline void scan_with_undo(SGS_Scanner *o) {
 /*
  * Run script through test code.
  *
- * \return SGS_Program or NULL on error
+ * \return SAU_Program or NULL on error
  */
-static SGS_Program *build_program(const char *restrict script_arg,
+static SAU_Program *build_program(const char *restrict script_arg,
 		bool is_path) {
-	SGS_Program *o = NULL;
-	SGS_MemPool *mempool = SGS_create_MemPool(0);
-	SGS_SymTab *symtab = SGS_create_SymTab(mempool);
+	SAU_Program *o = NULL;
+	SAU_MemPool *mempool = SAU_create_MemPool(0);
+	SAU_SymTab *symtab = SAU_create_SymTab(mempool);
 	if (!symtab)
 		return NULL;
-#if SGS_TEST_SCANNER
-	SGS_Scanner *scanner = SGS_create_Scanner(symtab);
+#if SAU_TEST_SCANNER
+	SAU_Scanner *scanner = SAU_create_Scanner(symtab);
 	if (!scanner) goto CLOSE;
-	if (!SGS_Scanner_open(scanner, script_arg, is_path)) goto CLOSE;
+	if (!SAU_Scanner_open(scanner, script_arg, is_path)) goto CLOSE;
 	/* print file contents with whitespace and comment filtering */
 	//scan_simple(scanner);
 	scan_with_undo(scanner);
-	o = (SGS_Program*) calloc(1, sizeof(SGS_Program)); // placeholder
+	o = (SAU_Program*) calloc(1, sizeof(SAU_Program)); // placeholder
 CLOSE:
-	SGS_destroy_Scanner(scanner);
+	SAU_destroy_Scanner(scanner);
 #else
-	SGS_Lexer *lexer = SGS_create_Lexer(symtab);
+	SAU_Lexer *lexer = SAU_create_Lexer(symtab);
 	if (!lexer) goto CLOSE;
-	if (!SGS_Lexer_open(lexer, script_arg, is_path)) goto CLOSE;
+	if (!SAU_Lexer_open(lexer, script_arg, is_path)) goto CLOSE;
 	for (;;) {
-		SGS_ScriptToken token;
-		if (!SGS_Lexer_get(lexer, &token)) break;
+		SAU_ScriptToken token;
+		if (!SAU_Lexer_get(lexer, &token)) break;
 	}
-	o = (SGS_Program*) calloc(1, sizeof(SGS_Program)); // placeholder
+	o = (SAU_Program*) calloc(1, sizeof(SAU_Program)); // placeholder
 CLOSE:
-	SGS_destroy_Lexer(lexer);
+	SAU_destroy_Lexer(lexer);
 #endif
-	SGS_destroy_MemPool(mempool);
+	SAU_destroy_MemPool(mempool);
 	return o;
 }
 
@@ -205,15 +205,15 @@ CLOSE:
  *
  * \return number of items successfully processed
  */
-size_t SGS_read(const SGS_PtrArr *restrict script_args, uint32_t options,
-		SGS_PtrArr *restrict prg_objs) {
-	bool are_paths = !(options & SGS_OPT_EVAL_STRING);
+size_t SAU_read(const SAU_PtrArr *restrict script_args, uint32_t options,
+		SAU_PtrArr *restrict prg_objs) {
+	bool are_paths = !(options & SAU_OPT_EVAL_STRING);
 	size_t built = 0;
-	const char **args = (const char**) SGS_PtrArr_ITEMS(script_args);
+	const char **args = (const char**) SAU_PtrArr_ITEMS(script_args);
 	for (size_t i = 0; i < script_args->count; ++i) {
-		SGS_Program *prg = build_program(args[i], are_paths);
+		SAU_Program *prg = build_program(args[i], are_paths);
 		if (prg != NULL) ++built;
-		SGS_PtrArr_add(prg_objs, prg);
+		SAU_PtrArr_add(prg_objs, prg);
 	}
 	return built;
 }
@@ -222,18 +222,18 @@ size_t SGS_read(const SGS_PtrArr *restrict script_args, uint32_t options,
  * Main function.
  */
 int main(int argc, char **restrict argv) {
-	SGS_PtrArr script_args = (SGS_PtrArr){0};
-	SGS_PtrArr prg_objs = (SGS_PtrArr){0};
+	SAU_PtrArr script_args = (SAU_PtrArr){0};
+	SAU_PtrArr prg_objs = (SAU_PtrArr){0};
 	uint32_t options = 0;
 	if (!parse_args(argc, argv, &options, &script_args))
 		return 0;
-	bool error = !SGS_read(&script_args, options, &prg_objs);
-	SGS_PtrArr_clear(&script_args);
+	bool error = !SAU_read(&script_args, options, &prg_objs);
+	SAU_PtrArr_clear(&script_args);
 	if (error)
 		return 1;
 	if (prg_objs.count > 0) {
 		// no audio output
-		SGS_discard(&prg_objs);
+		SAU_discard(&prg_objs);
 	}
 	return 0;
 }

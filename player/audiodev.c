@@ -1,4 +1,4 @@
-/* sgensys: System audio output support module.
+/* saugns: System audio output support module.
  * Copyright (c) 2011-2014, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -39,7 +39,7 @@ enum {
 	TYPE_SNDIO,
 };
 
-struct SGS_AudioDev {
+struct SAU_AudioDev {
 	union DevRef ref;
 	const char *name;
 	uint8_t type;
@@ -66,12 +66,12 @@ static const char *getenv_nonblank(const char *restrict env_name) {
 
 /**
  * Open audio device for 16-bit sound output. Sound data may thereafter be
- * written any number of times using SGS_AudioDev_write().
+ * written any number of times using SAU_AudioDev_write().
  *
  * \return instance or NULL on failure
  */
-SGS_AudioDev *SGS_open_AudioDev(uint16_t channels, uint32_t *restrict srate) {
-	SGS_AudioDev *o = calloc(1, sizeof(SGS_AudioDev));
+SAU_AudioDev *SAU_open_AudioDev(uint16_t channels, uint32_t *restrict srate) {
+	SAU_AudioDev *o = calloc(1, sizeof(SAU_AudioDev));
 	if (!o) goto ERROR;
 	/*
 	 * Set generic values before platform-specific handling...
@@ -89,7 +89,7 @@ SGS_AudioDev *SGS_open_AudioDev(uint16_t channels, uint32_t *restrict srate) {
 	*srate = o->srate;
 	return o;
 ERROR:
-	SGS_error(NULL, "couldn't open audio device for output");
+	SAU_error(NULL, "couldn't open audio device for output");
 	free(o);
 	return NULL;
 }
@@ -97,7 +97,7 @@ ERROR:
 /**
  * Close the given audio device. Destroys the instance.
  */
-void SGS_close_AudioDev(SGS_AudioDev *restrict o) {
+void SAU_close_AudioDev(SAU_AudioDev *restrict o) {
 	if (!o)
 		return;
 #ifdef __linux
@@ -113,7 +113,7 @@ void SGS_close_AudioDev(SGS_AudioDev *restrict o) {
 /**
  * \return sample rate set for system audio output
  */
-uint32_t SGS_AudioDev_get_srate(const SGS_AudioDev *restrict o) {
+uint32_t SAU_AudioDev_get_srate(const SAU_AudioDev *restrict o) {
 	return o->srate;
 }
 
@@ -125,7 +125,7 @@ uint32_t SGS_AudioDev_get_srate(const SGS_AudioDev *restrict o) {
  *
  * \return true upon suceessful write, otherwise false
  */
-bool SGS_AudioDev_write(SGS_AudioDev *restrict o,
+bool SAU_AudioDev_write(SAU_AudioDev *restrict o,
 		const int16_t *restrict buf, uint32_t samples) {
 #ifdef __linux
 	return linux_write(o, buf, samples);

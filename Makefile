@@ -10,8 +10,8 @@ LFLAGS_LINUX=$(LFLAGS) -lasound
 LFLAGS_SNDIO=$(LFLAGS) -lsndio
 LFLAGS_OSSAUDIO=$(LFLAGS) -lossaudio
 PREFIX=/usr/local
-BIN=sgensys
-SHARE=sgensys
+BIN=saugns
+SHARE=saugns
 OBJ=\
 	common.o \
 	help.o \
@@ -32,7 +32,7 @@ OBJ=\
 	player/audiodev.o \
 	player/wavfile.o \
 	player/player.o \
-	sgensys.o
+	saugns.o
 TEST1_OBJ=\
 	common.o \
 	ptrarr.o \
@@ -45,9 +45,9 @@ TEST1_OBJ=\
 
 all: $(BIN)
 check: $(BIN)
-	./$(BIN) -c $(ARGS) */*.sgs examples/*/*.sgs examples/*/*/*.sgs
+	./$(BIN) -c $(ARGS) */*.sau examples/*/*.sau examples/*/*/*.sau
 fullcheck: $(BIN)
-	./$(BIN) -m $(ARGS) */*.sgs examples/*/*.sgs examples/*/*/*.sgs
+	./$(BIN) -m $(ARGS) */*.sau examples/*/*.sau examples/*/*/*.sau
 tests: test-scan
 clean:
 	rm -f $(OBJ) $(BIN)
@@ -98,7 +98,7 @@ mempool.o: common.h mempool.c mempool.h
 player/audiodev.o: common.h player/audiodev.c player/audiodev.h player/audiodev/*.c
 	$(CC) -c $(CFLAGS_SIZE) player/audiodev.c -o player/audiodev.o
 
-player/player.o: common.h player/audiodev.h player/player.c player/wavfile.h renderer/generator.h math.h program.h ptrarr.h ramp.h sgensys.h wave.h
+player/player.o: common.h player/audiodev.h player/player.c player/wavfile.h renderer/generator.h math.h program.h ptrarr.h ramp.h saugns.h wave.h
 	$(CC) -c $(CFLAGS) player/player.c -o player/player.o
 
 player/wavfile.o: common.h player/wavfile.c player/wavfile.h
@@ -116,7 +116,7 @@ reader/file.o: common.h reader/file.c reader/file.h
 reader/lexer.o: common.h math.h mempool.h reader/file.h reader/lexer.c reader/lexer.h reader/scanner.h reader/symtab.h
 	$(CC) -c $(CFLAGS) reader/lexer.c -o reader/lexer.o
 
-reader/reader.o: common.h math.h program.h ptrarr.h ramp.h reader/file.h reader/reader.c reader/scanner.h reader/script.h sgensys.h wave.h
+reader/reader.o: common.h math.h program.h ptrarr.h ramp.h reader/file.h reader/reader.c reader/scanner.h reader/script.h saugns.h wave.h
 	$(CC) -c $(CFLAGS) reader/reader.c -o reader/reader.o
 
 reader/parseconv.o: arrtype.h common.h math.h program.h ptrarr.h ramp.h reader/parseconv.c reader/script.h wave.h
@@ -137,10 +137,10 @@ renderer/generator.o: common.h math.h mempool.h program.h ramp.h renderer/genera
 renderer/osc.o: common.h math.h renderer/osc.c renderer/osc.h wave.h
 	$(CC) -c $(CFLAGS_FASTF) renderer/osc.c -o renderer/osc.o
 
-sgensys.o: common.h help.h math.h program.h ptrarr.h ramp.h sgensys.c sgensys.h wave.h
-	$(CC) -c $(CFLAGS) sgensys.c
+saugns.o: common.h help.h math.h program.h ptrarr.h ramp.h saugns.c saugns.h wave.h
+	$(CC) -c $(CFLAGS) saugns.c
 
-test-scan.o: common.h math.h program.h ptrarr.h ramp.h reader/file.h reader/lexer.h reader/scanner.h reader/symtab.h sgensys.h test-scan.c wave.h
+test-scan.o: common.h math.h program.h ptrarr.h ramp.h reader/file.h reader/lexer.h reader/scanner.h reader/symtab.h saugns.h test-scan.c wave.h
 	$(CC) -c $(CFLAGS) test-scan.c
 
 wave.o: common.h math.h wave.c wave.h

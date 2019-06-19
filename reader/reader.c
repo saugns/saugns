@@ -1,4 +1,4 @@
-/* sgensys: Audio script reader / program builder module.
+/* saugns: Audio script reader / program builder module.
  * Copyright (c) 2011-2013, 2017-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -11,7 +11,7 @@
  * <https://www.gnu.org/licenses/>.
  */
 
-#include "../sgensys.h"
+#include "../saugns.h"
 #include "script.h"
 
 /**
@@ -20,16 +20,16 @@
  *
  * \return number of items successfully processed
  */
-size_t SGS_read(const SGS_PtrArr *restrict script_args, uint32_t options,
-		SGS_PtrArr *restrict prg_objs) {
-	bool are_paths = !(options & SGS_OPT_EVAL_STRING);
+size_t SAU_read(const SAU_PtrArr *restrict script_args, uint32_t options,
+		SAU_PtrArr *restrict prg_objs) {
+	bool are_paths = !(options & SAU_OPT_EVAL_STRING);
 	size_t built = 0;
-	const char **args = (const char**) SGS_PtrArr_ITEMS(script_args);
+	const char **args = (const char**) SAU_PtrArr_ITEMS(script_args);
 	for (size_t i = 0; i < script_args->count; ++i) {
-		SGS_Program *prg = SGS_build_Program(
-				SGS_read_Script(args[i], are_paths), false);
+		SAU_Program *prg = SAU_build_Program(
+				SAU_read_Script(args[i], are_paths), false);
 		if (prg != NULL) ++built;
-		SGS_PtrArr_add(prg_objs, prg);
+		SAU_PtrArr_add(prg_objs, prg);
 	}
 	return built;
 }

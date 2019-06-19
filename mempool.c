@@ -1,4 +1,4 @@
-/* sgensys: Memory pool module.
+/* saugns: Memory pool module.
  * Copyright (c) 2014, 2018-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -16,13 +16,13 @@
  */
 
 #include "mempool.h"
-#ifndef SGS_MEM_DEBUG
+#ifndef SAU_MEM_DEBUG
 /*
  * Debug-friendly memory handling? (Slower.)
  *
  * Enable to simply calloc every allocation.
  */
-# define SGS_MEM_DEBUG 0
+# define SAU_MEM_DEBUG 0
 #endif
 #include <stdlib.h>
 #include <string.h>
@@ -38,12 +38,12 @@ typedef struct MemBlock {
 } MemBlock;
 
 typedef struct DtorItem {
-	SGS_Dtor_f func;
+	SAU_Dtor_f func;
 	void *arg;
 	struct DtorItem *prev;
 } DtorItem;
 
-struct SGS_MemPool {
+struct SAU_MemPool {
 	MemBlock *a;
 	size_t count, first_i, a_len;
 	size_t block_size, skip_size;
@@ -55,13 +55,13 @@ struct SGS_MemPool {
  *
  * \return true, or false on allocation failure
  */
-static bool upsize(SGS_MemPool *restrict o) {
+static bool upsize(SAU_MemPool *restrict o) {
 	size_t new_a_len = (o->a_len > 0) ?  (o->a_len << 1) : 1;
 	MemBlock *new_a = realloc(o->a, sizeof(MemBlock) * new_a_len);
 	if (!new_a)
 		return false;
 	o->a = new_a;
-#if !SGS_MEM_DEBUG
+#if !SAU_MEM_DEBUG
 	o->block_size <<= 1;
 	if (o->first_i < (o->a_len * 2) / 3) {
 		/*
@@ -78,13 +78,13 @@ static bool upsize(SGS_MemPool *restrict o) {
 	return true;
 }
 
-#if !SGS_MEM_DEBUG
+#if !SAU_MEM_DEBUG
 /*
  * Allocate new memory block, initialized to zero bytes.
  *
  * \return allocated memory, or NULL on allocation failure
  */
-static void *add(SGS_MemPool *restrict o, size_t size_used) {
+static void *add(SAU_MemPool *restrict o, size_t size_used) {
 	if (o->count == o->a_len && !upsize(o))
 		return NULL;
 	size_t block_size = o->block_size;
@@ -109,7 +109,7 @@ static void *add(SGS_MemPool *restrict o, size_t size_used) {
  *
  * \return true if found, false if not
  */
-static bool first_smallest(const SGS_MemPool *restrict o,
+static bool first_smallest(const SAU_MemPool *restrict o,
 		size_t size, size_t *restrict id) {
 	size_t i;
 	ptrdiff_t min = o->first_i;
@@ -152,7 +152,7 @@ static bool first_smallest(const SGS_MemPool *restrict o,
  * by the previous such block, until finally the last such block overwrites
  * the block at \p to.
  */
-static void copy_up_one(SGS_MemPool *restrict o,
+static void copy_up_one(SAU_MemPool *restrict o,
 		size_t to, size_t from) {
 	if (from == (to - 1) || o->a[from].free == o->a[to - 1].free) {
 		/*
@@ -191,8 +191,8 @@ static void copy_up_one(SGS_MemPool *restrict o,
  *
  * \return instance, or NULL on allocation failure
  */
-SGS_MemPool *SGS_create_MemPool(size_t start_size) {
-	SGS_MemPool *o = calloc(1, sizeof(SGS_MemPool));
+SAU_MemPool *SAU_create_MemPool(size_t start_size) {
+	SAU_MemPool *o = calloc(1, sizeof(SAU_MemPool));
 	if (!o)
 		return NULL;
 	o->block_size = (start_size > 0) ?
@@ -208,7 +208,7 @@ SGS_MemPool *SGS_create_MemPool(size_t start_size) {
  * Frees all memory blocks. Any destructor functions registered
  * are called beforehand, in the reverse order of registration.
  */
-void SGS_destroy_MemPool(SGS_MemPool *restrict o) {
+void SAU_destroy_MemPool(SAU_MemPool *restrict o) {
 	if (!o)
 		return;
 	for (DtorItem *n = o->last_dtor; n; n = n->prev) {
@@ -227,8 +227,8 @@ void SGS_destroy_MemPool(SGS_MemPool *restrict o) {
  *
  * \return allocated memory, or NULL on allocation failure
  */
-void *SGS_mpalloc(SGS_MemPool *restrict o, size_t size) {
-#if !SGS_MEM_DEBUG
+void *SAU_mpalloc(SAU_MemPool *restrict o, size_t size) {
+#if !SAU_MEM_DEBUG
 	size_t i = o->count;
 	void *mem;
 	size = ALIGN_SIZE(size);
@@ -272,7 +272,7 @@ void *SGS_mpalloc(SGS_MemPool *restrict o, size_t size) {
 		}
 	}
 	return mem;
-#else /* SGS_MEM_DEBUG */
+#else /* SAU_MEM_DEBUG */
 	if (o->count == o->a_len && !upsize(o))
 		return NULL;
 	void *mem = calloc(1, size);
@@ -290,9 +290,9 @@ void *SGS_mpalloc(SGS_MemPool *restrict o, size_t size) {
  *
  * \return allocated memory, or NULL on allocation failure
  */
-void *SGS_mpmemdup(SGS_MemPool *restrict o,
+void *SAU_mpmemdup(SAU_MemPool *restrict o,
 		const void *restrict src, size_t size) {
-	void *mem = SGS_mpalloc(o, size);
+	void *mem = SAU_mpalloc(o, size);
 	if (!mem)
 		return NULL;
 	if (src != NULL)
@@ -306,11 +306,11 @@ void *SGS_mpmemdup(SGS_MemPool *restrict o,
  *
  * \return true, or false for NULL func or arg or on allocation failure
  */
-bool SGS_mpregdtor(SGS_MemPool *restrict o,
-		SGS_Dtor_f func, void *restrict arg) {
+bool SAU_mpregdtor(SAU_MemPool *restrict o,
+		SAU_Dtor_f func, void *restrict arg) {
 	if (!func || !arg)
 		return false;
-	DtorItem *n = SGS_mpalloc(o, sizeof(DtorItem));
+	DtorItem *n = SAU_mpalloc(o, sizeof(DtorItem));
 	if (!n)
 		return false;
 	n->func = func;

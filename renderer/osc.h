@@ -1,4 +1,4 @@
-/* sgensys: Oscillator implementation.
+/* saugns: Oscillator implementation.
  * Copyright (c) 2011, 2017-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -31,25 +31,25 @@
  * Calculate the coefficent, based on the sample rate, used for
  * the per-sample phase by multiplying with the frequency used.
  */
-#define SGS_Phasor_COEFF(srate) (((float) UINT32_MAX)/(srate))
+#define SAU_Phasor_COEFF(srate) (((float) UINT32_MAX)/(srate))
 
-typedef struct SGS_Phasor {
+typedef struct SAU_Phasor {
 	uint32_t phase;
 	float coeff;
-} SGS_Phasor;
+} SAU_Phasor;
 
-void SGS_Phasor_fill(SGS_Phasor *restrict o,
+void SAU_Phasor_fill(SAU_Phasor *restrict o,
 		uint32_t *restrict phase_ui32,
 		size_t buf_len,
 		const float *restrict freq_f,
 		const float *restrict pm_f,
 		const float *restrict fpm_f);
 
-#define SGS_OSC_RESET_DIFF  (1<<0)
-#define SGS_OSC_RESET       ((1<<1) - 1)
+#define SAU_OSC_RESET_DIFF  (1<<0)
+#define SAU_OSC_RESET       ((1<<1) - 1)
 
-typedef struct SGS_Osc {
-	SGS_Phasor phasor;
+typedef struct SAU_Osc {
+	SAU_Phasor phasor;
 	uint8_t wave;
 	uint8_t flags;
 #if USE_PILUT
@@ -57,44 +57,44 @@ typedef struct SGS_Osc {
 	double prev_Is;
 	float prev_diff_s;
 #endif
-} SGS_Osc;
+} SAU_Osc;
 
 /**
  * Initialize instance for use.
  */
-static inline void SGS_init_Osc(SGS_Osc *restrict o, uint32_t srate) {
-	*o = (SGS_Osc){
+static inline void SAU_init_Osc(SAU_Osc *restrict o, uint32_t srate) {
+	*o = (SAU_Osc){
 #if USE_PILUT
-		.phasor = (SGS_Phasor){
-			.phase = SGS_Wave_picoeffs[SGS_WAVE_SIN].phase_adj,
-			.coeff = SGS_Phasor_COEFF(srate),
+		.phasor = (SAU_Phasor){
+			.phase = SAU_Wave_picoeffs[SAU_WAVE_SIN].phase_adj,
+			.coeff = SAU_Phasor_COEFF(srate),
 		},
 #else
-		.phasor = (SGS_Phasor){
+		.phasor = (SAU_Phasor){
 			.phase = 0,
-			.coeff = SGS_Phasor_COEFF(srate),
+			.coeff = SAU_Phasor_COEFF(srate),
 		},
 #endif
-		.wave = SGS_WAVE_SIN,
-		.flags = SGS_OSC_RESET,
+		.wave = SAU_WAVE_SIN,
+		.flags = SAU_OSC_RESET,
 	};
 }
 
-static inline void SGS_Osc_set_phase(SGS_Osc *restrict o, uint32_t phase) {
+static inline void SAU_Osc_set_phase(SAU_Osc *restrict o, uint32_t phase) {
 #if USE_PILUT
-	o->phasor.phase = phase + SGS_Wave_picoeffs[o->wave].phase_adj;
+	o->phasor.phase = phase + SAU_Wave_picoeffs[o->wave].phase_adj;
 #else
 	o->phasor.phase = phase;
 #endif
 }
 
-static inline void SGS_Osc_set_wave(SGS_Osc *restrict o, uint8_t wave) {
+static inline void SAU_Osc_set_wave(SAU_Osc *restrict o, uint8_t wave) {
 #if USE_PILUT
-	int32_t old_offset = SGS_Wave_picoeffs[o->wave].phase_adj;
-	int32_t offset = SGS_Wave_picoeffs[wave].phase_adj;
+	int32_t old_offset = SAU_Wave_picoeffs[o->wave].phase_adj;
+	int32_t offset = SAU_Wave_picoeffs[wave].phase_adj;
 	o->phasor.phase += offset - old_offset;
 	o->wave = wave;
-	o->flags |= SGS_OSC_RESET_DIFF;
+	o->flags |= SAU_OSC_RESET_DIFF;
 #else
 	o->wave = wave;
 #endif
@@ -105,7 +105,7 @@ static inline void SGS_Osc_set_wave(SGS_Osc *restrict o, uint8_t wave) {
  *
  * \return number of samples
  */
-static inline uint32_t SGS_Osc_cycle_len(SGS_Osc *restrict o, float freq) {
+static inline uint32_t SAU_Osc_cycle_len(SAU_Osc *restrict o, float freq) {
 	return lrintf(((float) UINT32_MAX) / (o->phasor.coeff * freq));
 }
 
@@ -114,7 +114,7 @@ static inline uint32_t SGS_Osc_cycle_len(SGS_Osc *restrict o, float freq) {
  *
  * \return number of samples
  */
-static inline uint32_t SGS_Osc_cycle_pos(SGS_Osc *restrict o,
+static inline uint32_t SAU_Osc_cycle_pos(SAU_Osc *restrict o,
 		float freq, uint32_t pos) {
 	uint32_t inc = lrintf(o->phasor.coeff * freq);
 	uint32_t phs = inc * pos;
@@ -126,13 +126,13 @@ static inline uint32_t SGS_Osc_cycle_pos(SGS_Osc *restrict o,
  *
  * Can be used to reduce time length to something rounder and reduce clicks.
  */
-static inline int32_t SGS_Osc_cycle_offs(SGS_Osc *restrict o,
+static inline int32_t SAU_Osc_cycle_offs(SAU_Osc *restrict o,
 		float freq, uint32_t pos) {
 	uint32_t inc = lrintf(o->phasor.coeff * freq);
 	uint32_t phs = inc * pos;
-	return (phs - SGS_Wave_SLEN) / inc;
+	return (phs - SAU_Wave_SLEN) / inc;
 }
 
-void SGS_Osc_run(SGS_Osc *restrict o,
+void SAU_Osc_run(SAU_Osc *restrict o,
 		float *restrict buf, size_t buf_len,
 		const uint32_t *restrict phase_buf);

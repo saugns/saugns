@@ -1,4 +1,4 @@
-/* sgensys: Memory pool module.
+/* saugns: Memory pool module.
  * Copyright (c) 2014, 2018-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -18,15 +18,15 @@
 #pragma once
 #include "common.h"
 
-struct SGS_MemPool;
-typedef struct SGS_MemPool SGS_MemPool;
+struct SAU_MemPool;
+typedef struct SAU_MemPool SAU_MemPool;
 
-SGS_MemPool *SGS_create_MemPool(size_t start_size) sgsMalloclike;
-void SGS_destroy_MemPool(SGS_MemPool *restrict o);
+SAU_MemPool *SAU_create_MemPool(size_t start_size) sauMalloclike;
+void SAU_destroy_MemPool(SAU_MemPool *restrict o);
 
-void *SGS_mpalloc(SGS_MemPool *restrict o, size_t size) sgsMalloclike;
-void *SGS_mpmemdup(SGS_MemPool *restrict o,
-		const void *restrict src, size_t size) sgsMalloclike;
-typedef void (*SGS_Dtor_f)(void *o);
-bool SGS_mpregdtor(SGS_MemPool *restrict o,
-		SGS_Dtor_f func, void *restrict arg);
+void *SAU_mpalloc(SAU_MemPool *restrict o, size_t size) sauMalloclike;
+void *SAU_mpmemdup(SAU_MemPool *restrict o,
+		const void *restrict src, size_t size) sauMalloclike;
+typedef void (*SAU_Dtor_f)(void *o);
+bool SAU_mpregdtor(SAU_MemPool *restrict o,
+		SAU_Dtor_f func, void *restrict arg);
