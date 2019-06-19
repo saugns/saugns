@@ -1,4 +1,4 @@
-/* ssndgen: Common definitions.
+/* saugns: Common definitions.
  * Copyright (c) 2011-2012, 2019-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -29,16 +29,16 @@
  */
 
 #if defined(__GNUC__) || defined(__clang__)
-# define SSG__malloclike __attribute__((malloc))
-# define SSG__maybe_unused __attribute__((unused))
-# define SSG__noinline __attribute__((noinline))
-# define SSG__printflike(string_index, first_to_check) \
+# define SAU__malloclike __attribute__((malloc))
+# define SAU__maybe_unused __attribute__((unused))
+# define SAU__noinline __attribute__((noinline))
+# define SAU__printflike(string_index, first_to_check) \
 	__attribute__((format(printf, string_index, first_to_check)))
 #else
-# define SSG__malloclike
-# define SSG__maybe_unused
-# define SSG__noinline
-# define SSG__printflike(string_index, first_to_check)
+# define SAU__malloclike
+# define SAU__maybe_unused
+# define SAU__noinline
+# define SAU__printflike(string_index, first_to_check)
 #endif
 
 /*
@@ -46,51 +46,51 @@
  */
 
 /** Turn \p arg into string literal before macro-expanding it. */
-#define SSG_STRLIT(arg) #arg
+#define SAU_STRLIT(arg) #arg
 
 /** Turn \p arg into string literal after macro-expanding it. */
-#define SSG_STREXP(arg) SSG_STRLIT(arg)
+#define SAU_STREXP(arg) SAU_STRLIT(arg)
 
 /** Is \p c a visible non-whitespace 7-bit ASCII character? */
-#define SSG_IS_ASCIIVISIBLE(c) ((c) >= '!' && (c) <= '~')
+#define SAU_IS_ASCIIVISIBLE(c) ((c) >= '!' && (c) <= '~')
 
 /*
  * Utility functions.
  */
 
-void SSG_warning(const char *restrict label, const char *restrict fmt, ...)
-	SSG__printflike(2, 3);
-void SSG_error(const char *restrict label, const char *restrict fmt, ...)
-	SSG__printflike(2, 3);
+void SAU_warning(const char *restrict label, const char *restrict fmt, ...)
+	SAU__printflike(2, 3);
+void SAU_error(const char *restrict label, const char *restrict fmt, ...)
+	SAU__printflike(2, 3);
 
-void *SSG_memdup(const void *restrict src, size_t size) SSG__malloclike;
+void *SAU_memdup(const void *restrict src, size_t size) SAU__malloclike;
 
-/** SSG_getopt() data. Initialize to zero, except \a err for error messages. */
-struct SSG_opt {
-	int ind; /* set to zero to start over next SSG_getopt() call */
+/** SAU_getopt() data. Initialize to zero, except \a err for error messages. */
+struct SAU_opt {
+	int ind; /* set to zero to start over next SAU_getopt() call */
 	int err;
 	int pos;
 	int opt;
 	const char *arg;
 };
-int SSG_getopt(int argc, char *const*restrict argv,
-		const char *restrict optstring, struct SSG_opt *restrict opt);
+int SAU_getopt(int argc, char *const*restrict argv,
+		const char *restrict optstring, struct SAU_opt *restrict opt);
 
 /*
  * Debugging options.
  */
 
 /* Debug-friendly memory handling? (Slower.) */
-//#define SSG_MEM_DEBUG 1
+//#define SAU_MEM_DEBUG 1
 
 /* Print symbol table statistics for testing? */
-//#define SSG_SYMTAB_STATS 0
+//#define SAU_SYMTAB_STATS 0
 
 /* Make test lexer quiet enough to time it. */
-#define SSG_LEXER_QUIET 1
+#define SAU_LEXER_QUIET 1
 
 /* Run scanner directly instead of lexer in 'test-scan' program. */
-#define SSG_TEST_SCANNER 0
+#define SAU_TEST_SCANNER 0
 
 /* Print test statistics for scanner. */
-#define SSG_SCANNER_STATS 0
+#define SAU_SCANNER_STATS 0
