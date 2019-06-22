@@ -442,6 +442,9 @@ static bool scan_ramp_state(PScanner *restrict o,
 
 static bool scan_ramp(PScanner *restrict o, NumSym_f scan_numsym,
                       SGS_Ramp *restrict ramp, bool ratio) {
+  if (!SGS_File_TRYC(o->f, '{')) {
+    return scan_ramp_state(o, scan_numsym, ramp, ratio);
+  }
   bool goal = false;
   bool time_set = (ramp->flags & SGS_RAMPP_TIME) != 0;
   float vt;
@@ -723,15 +726,7 @@ static void end_operator(ParseLevel *restrict pl) {
     /*
      * Reset all operator state for initial event.
      */
-    op->op_params |= SGS_POPP_ADJCS |
-                     SGS_POPP_WAVE |
-                     SGS_POPP_TIME |
-                     SGS_POPP_SILENCE |
-                     SGS_POPP_FREQ |
-                     SGS_POPP_DYNFREQ |
-                     SGS_POPP_PHASE |
-                     SGS_POPP_AMP |
-                     SGS_POPP_DYNAMP;
+    op->op_params = SGS_POP_PARAMS;
   } else {
     if (op->wave != pop->wave)
       op->op_params |= SGS_POPP_WAVE;
@@ -763,7 +758,7 @@ static void end_event(ParseLevel *restrict pl) {
      * Reset all voice state for initial event.
      */
     e->ev_flags |= SGS_SDEV_NEW_OPGRAPH;
-    e->vo_params |= SGS_PVOP_PAN;
+    e->vo_params = SGS_PVO_PARAMS & ~SGS_PVOP_OPLIST;
   }
   pl->last_event = e;
   pl->event = NULL;
@@ -1086,11 +1081,7 @@ static bool parse_step(ParseLevel *restrict pl) {
     case 'P':
       if ((pl->pl_flags & SDPL_NESTED_SCOPE) != 0)
         goto UNKNOWN;
-      if (SGS_File_TRYC(f, '{')) {
-        scan_ramp(sc, NULL, &e->pan, false);
-      } else {
-        scan_ramp_state(sc, NULL, &e->pan, false);
-      }
+      scan_ramp(sc, NULL, &e->pan, false);
       break;
     case '\\':
       if (parse_waittime(pl)) {
@@ -1110,10 +1101,8 @@ static bool parse_step(ParseLevel *restrict pl) {
           }
           parse_level(o, pl, NL_AMODS, SCOPE_NEST);
         }
-      } else if (SGS_File_TRYC(f, '{')) {
-        scan_ramp(sc, NULL, &op->amp, false);
       } else {
-        scan_ramp_state(sc, NULL, &op->amp, false);
+        scan_ramp(sc, NULL, &op->amp, false);
       }
       break;
     case 'f':
@@ -1128,10 +1117,8 @@ static bool parse_step(ParseLevel *restrict pl) {
           }
           parse_level(o, pl, NL_FMODS, SCOPE_NEST);
         }
-      } else if (SGS_File_TRYC(f, '{')) {
-        scan_ramp(sc, scan_note, &op->freq, false);
       } else {
-        scan_ramp_state(sc, scan_note, &op->freq, false);
+        scan_ramp(sc, scan_note, &op->freq, false);
       }
       break;
     case 'p':
@@ -1165,10 +1152,8 @@ static bool parse_step(ParseLevel *restrict pl) {
           }
           parse_level(o, pl, NL_FMODS, SCOPE_NEST);
         }
-      } else if (SGS_File_TRYC(f, '{')) {
-        scan_ramp(sc, NULL, &op->freq, true);
       } else {
-        scan_ramp_state(sc, NULL, &op->freq, true);
+        scan_ramp(sc, NULL, &op->freq, true);
       }
       break;
     case 's': {
