@@ -15,7 +15,7 @@
 #include "program.h"
 #include "ptrlist.h"
 
-#define SGS_VERSION_STR "sgensys v0.2.11"
+#define SGS_VERSION_STR "sgensys v0.2.12"
 
 size_t SGS_build(const SGS_PtrList *restrict script_args, bool are_paths,
 		SGS_PtrList *restrict prg_objs);
