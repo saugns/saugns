@@ -1,5 +1,5 @@
 /* sgensys: Value ramp module.
- * Copyright (c) 2011-2013, 2017-2020 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -19,6 +19,8 @@ const char *const SGS_Ramp_names[SGS_RAMP_TYPES + 1] = {
 	"lin",
 	"exp",
 	"log",
+	"xpe",
+	"lge",
 	NULL
 };
 
@@ -27,6 +29,8 @@ const SGS_Ramp_fill_f SGS_Ramp_fill_funcs[SGS_RAMP_TYPES] = {
 	SGS_Ramp_fill_lin,
 	SGS_Ramp_fill_exp,
 	SGS_Ramp_fill_log,
+	SGS_Ramp_fill_xpe,
+	SGS_Ramp_fill_lge,
 };
 
 /**
@@ -61,11 +65,45 @@ void SGS_Ramp_fill_lin(float *restrict buf, uint32_t len,
  * from \p v0 (at position 0) to \p vt (at position \p time),
  * beginning at position \p pos.
  *
- * Uses an ear-tuned polynomial, designed to sound natural.
- * (Unlike a real exponential curve, it has a definite beginning
- * and end. It is symmetric to the corresponding logarithmic curve.)
+ * Unlike a real exponential curve, it has a definite beginning
+ * and end. (Uses one of 'xpe' or 'lge', depending on whether
+ * the curve rises or falls.)
  */
 void SGS_Ramp_fill_exp(float *restrict buf, uint32_t len,
+		float v0, float vt,
+		uint32_t pos, uint32_t time) {
+	(v0 > vt ?
+		SGS_Ramp_fill_xpe :
+		SGS_Ramp_fill_lge)(buf, len, v0, vt, pos, time);
+}
+
+/**
+ * Fill \p buf with \p len values along a logarithmic trajectory
+ * from \p v0 (at position 0) to \p vt (at position \p time),
+ * beginning at position \p pos.
+ *
+ * Unlike a real "log(1 + x)" curve, it has a definite beginning
+ * and end. (Uses one of 'xpe' or 'lge', depending on whether
+ * the curve rises or falls.)
+ */
+void SGS_Ramp_fill_log(float *restrict buf, uint32_t len,
+		float v0, float vt,
+		uint32_t pos, uint32_t time) {
+	(v0 < vt ?
+		SGS_Ramp_fill_xpe :
+		SGS_Ramp_fill_lge)(buf, len, v0, vt, pos, time);
+}
+
+/**
+ * Fill \p buf with \p len values along an "envelope" trajectory
+ * which exponentially saturates and decays (like a capacitor),
+ * from \p v0 (at position 0) to \p vt (at position \p time),
+ * beginning at position \p pos.
+ *
+ * Uses an ear-tuned polynomial, designed to sound natural,
+ * and symmetric to the "opposite" 'lge' type.
+ */
+void SGS_Ramp_fill_xpe(float *restrict buf, uint32_t len,
 		float v0, float vt,
 		uint32_t pos, uint32_t time) {
 	const float inv_time = 1.f / time;
@@ -81,15 +119,15 @@ void SGS_Ramp_fill_exp(float *restrict buf, uint32_t len,
 }
 
 /**
- * Fill \p buf with \p len values along a logarithmic trajectory
+ * Fill \p buf with \p len values along an "envelope" trajectory
+ * which logarithmically saturates and decays (opposite of a capacitor),
  * from \p v0 (at position 0) to \p vt (at position \p time),
  * beginning at position \p pos.
  *
- * Uses an ear-tuned polynomial, designed to sound natural.
- * (Unlike a real logarithmic curve, it has a definite beginning
- * and end. It is symmetric to the corresponding exponential curve.)
+ * Uses an ear-tuned polynomial, designed to sound natural,
+ * and symmetric to the "opposite" 'xpe' type.
  */
-void SGS_Ramp_fill_log(float *restrict buf, uint32_t len,
+void SGS_Ramp_fill_lge(float *restrict buf, uint32_t len,
 		float v0, float vt,
 		uint32_t pos, uint32_t time) {
 	const float inv_time = 1.f / time;
