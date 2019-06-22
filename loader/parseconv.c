@@ -27,14 +27,15 @@ static SGS_ProgramOpGraph
 *create_OpGraph(const SGS_ScriptEvData *restrict vo_in) {
 	uint32_t size;
 	size = vo_in->op_graph.count;
-	if (!size) return NULL;
-
+	if (!size)
+		return NULL;
 	const SGS_ScriptOpData **ops;
 	uint32_t i;
 	ops = (const SGS_ScriptOpData**) SGS_PtrList_ITEMS(&vo_in->op_graph);
 	SGS_ProgramOpGraph *o;
 	o = malloc(sizeof(SGS_ProgramOpGraph) + sizeof(uint32_t) * (size - 1));
-	if (!o) return NULL;
+	if (!o)
+		return NULL;
 	o->opc = size;
 	for (i = 0; i < size; ++i) {
 		o->ops[i] = ops[i]->op_id;
@@ -48,14 +49,15 @@ static SGS_ProgramOpAdjcs
 	size = op_in->fmods.count +
 		op_in->pmods.count +
 		op_in->amods.count;
-	if (!size) return NULL;
-
+	if (!size)
+		return NULL;
 	const SGS_ScriptOpData **ops;
 	uint32_t i;
 	uint32_t *data;
 	SGS_ProgramOpAdjcs *o;
 	o = malloc(sizeof(SGS_ProgramOpAdjcs) + sizeof(uint32_t) * (size - 1));
-	if (!o) return NULL;
+	if (!o)
+		return NULL;
 	o->fmodc = op_in->fmods.count;
 	o->pmodc = op_in->pmods.count;
 	o->amodc = op_in->amods.count;
@@ -376,7 +378,8 @@ static void ParseConv_traverse_voice(ParseConv *restrict o,
 	SGS_ProgramVoData *vd = (SGS_ProgramVoData*) ev->vo_data;
 	const SGS_ProgramOpGraph *graph = vas->op_graph;
 	uint32_t i;
-	if (!graph) return;
+	if (!graph)
+		return;
 	for (i = 0; i < graph->opc; ++i) {
 		op_ref.id = graph->ops[i];
 //		fprintf(stderr, "visit node %u\n", op_ref.id);
@@ -483,7 +486,6 @@ static SGS_Program *_ParseConv_copy_out(ParseConv *restrict o,
 	prg->duration_ms = o->duration_ms;
 	prg->name = parse->name;
 	return prg;
-
 ERROR:
 	if (events != NULL) free(events);
 	if (prg != NULL) free(prg);
@@ -564,6 +566,8 @@ static void Program_destroy_event_data(SGS_ProgramEvent *restrict e) {
  * Destroy instance.
  */
 void SGS_discard_Program(SGS_Program *restrict o) {
+	if (!o)
+		return;
 	if (o->events != NULL) {
 		for (size_t i = 0; i < o->ev_count; ++i) {
 			SGS_ProgramEvent *e = &o->events[i];
@@ -578,7 +582,8 @@ static void print_linked(const char *restrict header,
 		const char *restrict footer,
 		uint32_t count, const uint32_t *restrict nodes) {
 	uint32_t i;
-	if (!count) return;
+	if (!count)
+		return;
 	fprintf(stdout, "%s%u", header, nodes[0]);
 	for (i = 0; ++i < count; )
 		fprintf(stdout, ", %u", nodes[i]);

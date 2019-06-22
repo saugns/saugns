@@ -273,11 +273,17 @@ Value ramp:
 	c	Ramp curve type (default 'lin'):
 			hold	Hold old value until time.
 			lin	Linear trajectory over time.
-			exp	Exponential trajectory over time.
-			log	Logarithmic trajectory over time.
-		(The 'exp' and 'log' types use ear-tuned polynomial
-		approximations designed to sound natural, and
-		symmetric one to another.)
+			exp	Exponential-like increase or decrease.
+			log	"log(1 + x)"-like increase or decrease.
+			xpe	Exponential-like envelope (saturate or decay).
+			lge	"log(1 + x)"-like envelope (saturate or decay).
+			cos	A "cos(x)"-like falling or rising trajectory.
+		(The 'xpe' and 'lge' types use ear-tuned polynomial
+		approximations with definite beginnings and ends,
+		designed to sound natural, and symmetric one to another.
+		The 'xpe' increases like 'log' and decreases like 'exp',
+		like a capacitor, natural-sounding for envelope-like use.
+		The 'lge' increases like 'exp' and decreases like 'log'.)
 
 Parameters and operator binding:
 	When specifying or referencing operators within "@[...]", any
