@@ -44,7 +44,8 @@ static inline void mode_reset(SGS_File *restrict o) {
  */
 SGS_File *SGS_create_File(void) {
 	SGS_File *o = calloc(1, sizeof(SGS_File));
-	if (!o) return NULL;
+	if (!o)
+		return NULL;
 	mode_reset(o);
 	return o;
 }
@@ -53,9 +54,11 @@ SGS_File *SGS_create_File(void) {
  * Create instance with parent. Sets the default callback.
  */
 SGS_File *SGS_create_sub_File(SGS_File *restrict parent) {
-	if (!parent) return NULL;
+	if (!parent)
+		return NULL;
 	SGS_File *o = SGS_create_File();
-	if (!o) return NULL;
+	if (!o)
+		return NULL;
 	o->parent = parent;
 	return o;
 }
@@ -66,8 +69,8 @@ SGS_File *SGS_create_sub_File(SGS_File *restrict parent) {
  * \return parent instance or NULL
  */
 SGS_File *SGS_destroy_File(SGS_File *restrict o) {
-	if (!o) return NULL;
-
+	if (!o)
+		return NULL;
 	if (o->close_f != NULL) {
 		o->close_f(o);
 	}
@@ -93,10 +96,11 @@ static void ref_strclose(SGS_File *restrict o);
  */
 bool SGS_File_fopenrb(SGS_File *restrict o, const char *restrict path) {
 	SGS_File_close(o);
-	if (!path) return false;
-
+	if (!path)
+		return false;
 	FILE *f = fopen(path, "rb");
-	if (!f) return false;
+	if (!f)
+		return false;
 	o->pos = 0;
 	o->call_pos = 0;
 	o->call_f = mode_fread;
@@ -121,8 +125,8 @@ bool SGS_File_fopenrb(SGS_File *restrict o, const char *restrict path) {
 bool SGS_File_stropenrb(SGS_File *restrict o,
 		const char *restrict path, const char *restrict str) {
 	SGS_File_close(o);
-	if (!str) return false;
-
+	if (!str)
+		return false;
 	o->pos = 0;
 	o->call_pos = 0;
 	o->call_f = mode_strread;
@@ -156,22 +160,35 @@ void SGS_File_reset(SGS_File *restrict o) {
 	memset(o->buf, 0, SGS_FILE_BUFSIZ);
 }
 
-static void end_file(SGS_File *restrict o, bool error) {
-	o->status |= SGS_FILE_END;
-	if (error)
-		o->status |= SGS_FILE_ERROR;
-	if (o->parent != NULL)
-		o->status |= SGS_FILE_CHANGE;
-	if (o->close_f != NULL) {
-		o->close_f(o);
-		o->close_f = NULL;
+/**
+ * Mark currently opened file as ended. Used automatically on and
+ * after EOF, but can also be called manually to act as if EOF
+ * follows the current buffer contents.
+ *
+ * The first time this is called for an open file, will set file
+ * status and close internal reference. If \p error is true, will
+ * set SGS_FILE_ERROR status. If there is a parent file instance,
+ * will set SGS_FILE_CHANGE status.
+ *
+ * On each call, an end marker will be written \p keep_len bytes
+ * after the current position in the buffer. The callback call
+ * position is set to the position after the marker.
+ */
+void SGS_File_end(SGS_File *restrict o, size_t keep_len, bool error) {
+	if (o->ref != NULL) {
+		o->status |= SGS_FILE_END;
+		if (error)
+			o->status |= SGS_FILE_ERROR;
+		if (o->parent != NULL)
+			o->status |= SGS_FILE_CHANGE;
+		if (o->close_f != NULL) {
+			o->close_f(o);
+			o->close_f = NULL;
+		}
 	}
-}
-
-static inline void add_end_marker(SGS_File *restrict o) {
-	o->end_pos = o->call_pos;
-	o->buf[o->call_pos] = o->status;
-	++o->call_pos;
+	o->end_pos = (o->pos + keep_len) & (SGS_FILE_BUFSIZ - 1);
+	o->buf[o->end_pos] = o->status;
+	o->call_pos = (o->end_pos + 1) & (SGS_FILE_BUFSIZ - 1);
 }
 
 /*
@@ -192,20 +209,12 @@ static size_t mode_fread(SGS_File *restrict o) {
 	 */
 	o->pos &= (SGS_FILE_BUFSIZ - 1) & ~(SGS_FILE_ALEN - 1);
 	if (!f) {
-		o->call_pos = o->pos;
-		add_end_marker(o);
+		SGS_File_end(o, 0, false); // repeat marker
 		return 0;
 	}
 	size_t len = fread(&o->buf[o->pos], 1, SGS_FILE_ALEN, f);
 	o->call_pos = (o->pos + len) & (SGS_FILE_BUFSIZ - 1);
-	if (ferror(f)) {
-		end_file(o, true);
-	} else if (feof(f)) {
-		end_file(o, false);
-	}
-	if (len < SGS_FILE_ALEN) {
-		add_end_marker(o);
-	}
+	if (len < SGS_FILE_ALEN) SGS_File_end(o, len, ferror(f) != 0);
 	return len;
 }
 
@@ -228,8 +237,7 @@ static size_t mode_strread(SGS_File *restrict o) {
 	 */
 	o->pos &= (SGS_FILE_BUFSIZ - 1) & ~(SGS_FILE_ALEN - 1);
 	if (!str) {
-		o->call_pos = o->pos;
-		add_end_marker(o);
+		SGS_File_end(o, 0, false); // repeat marker
 		return 0;
 	}
 	size_t len = strlen(str);
@@ -241,9 +249,7 @@ static size_t mode_strread(SGS_File *restrict o) {
 		return len;
 	}
 	memcpy(&o->buf[o->pos], str, len);
-	end_file(o, false);
-	o->call_pos += len;
-	add_end_marker(o);
+	SGS_File_end(o, len, false);
 	return len;
 }
 
@@ -429,7 +435,6 @@ bool SGS_File_getd(SGS_File *restrict o,
 		c = SGS_File_GETC(o);
 		++len;
 	}
-
 DONE:
 	res = (double) num;
 	if (isinf(res)) truncate = true;
