@@ -437,10 +437,10 @@ static bool scan_wavetype(PScanner *restrict o, size_t *restrict found_id) {
 
 static bool scan_ramp_state(PScanner *restrict o,
                             NumSym_f scan_numsym,
-                            SGS_Ramp *restrict ramp, bool ratio) {
-  if (!scan_num(o, scan_numsym, &ramp->v0, ratio))
+                            SGS_Ramp *restrict ramp, bool mult) {
+  if (!scan_num(o, scan_numsym, &ramp->v0, false))
     return false;
-  if (ratio) {
+  if (mult) {
     ramp->flags |= SGS_RAMP_STATE_RATIO;
   } else {
     ramp->flags &= ~SGS_RAMP_STATE_RATIO;
@@ -450,7 +450,7 @@ static bool scan_ramp_state(PScanner *restrict o,
 }
 
 static bool scan_ramp(PScanner *restrict o, NumSym_f scan_numsym,
-                      SGS_Ramp *restrict ramp, bool ratio) {
+                      SGS_Ramp *restrict ramp, bool mult) {
   bool goal = false;
   bool time_set = (ramp->flags & SGS_RAMP_TIME_SET) != 0;
   float vt;
@@ -458,7 +458,7 @@ static bool scan_ramp(PScanner *restrict o, NumSym_f scan_numsym,
   uint8_t curve = ramp->curve; // has default
   if ((ramp->flags & SGS_RAMP_CURVE) != 0) {
     // allow partial change
-    if (((ramp->flags & SGS_RAMP_CURVE_RATIO) != 0) == ratio) {
+    if (((ramp->flags & SGS_RAMP_CURVE_RATIO) != 0) == mult) {
       goal = true;
       vt = ramp->vt;
     }
@@ -496,7 +496,7 @@ static bool scan_ramp(PScanner *restrict o, NumSym_f scan_numsym,
       }
       break; }
     case 'v':
-      if (scan_num(o, scan_numsym, &vt, ratio))
+      if (scan_num(o, scan_numsym, &vt, false))
         goal = true;
       break;
     case '}':
@@ -517,7 +517,7 @@ RETURN:
   ramp->time_ms = time_ms;
   ramp->curve = curve;
   ramp->flags |= SGS_RAMP_CURVE;
-  if (ratio)
+  if (mult)
     ramp->flags |= SGS_RAMP_CURVE_RATIO;
   else
     ramp->flags &= ~SGS_RAMP_CURVE_RATIO;
@@ -552,7 +552,7 @@ static const SGS_ScriptOptions def_sopt = {
   .A4_freq = 444.f,
   .def_time_ms = 1000,
   .def_freq = 444.f,
-  .def_ratio = 1.f,
+  .def_relfreq = 1.f,
 };
 
 /*
@@ -876,7 +876,7 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
       op->freq.v0 = o->sl.sopt.def_freq;
     } else {
       op->op_flags |= SGS_SDOP_NESTED;
-      op->freq.v0 = o->sl.sopt.def_ratio;
+      op->freq.v0 = o->sl.sopt.def_relfreq;
       op->freq.flags |= SGS_RAMP_STATE_RATIO;
     }
     op->freq.flags |= SGS_RAMP_STATE;
@@ -950,7 +950,7 @@ static void begin_node(ParseLevel *restrict pl,
 static void begin_scope(SGS_Parser *restrict o, ParseLevel *restrict pl,
                         ParseLevel *restrict parent_pl,
                         uint8_t linktype, uint8_t newscope) {
-  memset(pl, 0, sizeof(ParseLevel));
+  *pl = (ParseLevel){0};
   pl->o = o;
   pl->scope = newscope;
   if (parent_pl != NULL) {
@@ -1036,7 +1036,7 @@ static bool parse_settings(ParseLevel *restrict pl) {
       }
       break; }
     case 'r':
-      if (scan_num(sc, NULL, &o->sl.sopt.def_ratio, true)) {
+      if (scan_num(sc, NULL, &o->sl.sopt.def_relfreq, false)) {
         o->sl.sopt.changed |= SGS_SOPT_DEF_RATIO;
       }
       break;
@@ -1146,7 +1146,7 @@ static bool parse_step(ParseLevel *restrict pl) {
         goto UNKNOWN;
       if (SGS_File_TRYC(f, '!')) {
         if (!SGS_File_TESTC(f, '[')) {
-          scan_num(sc, NULL, &op->dynfreq, true);
+          scan_num(sc, NULL, &op->dynfreq, false);
         }
         if (SGS_File_TRYC(f, '[')) {
           if (op->fmods.count > 0) {
