@@ -6,7 +6,7 @@ Osin t15 f500 f!501[Osin f1] p+[
 ] |
 
 Osin t15 f400 f!500[Osqr f10] p+[
-	Osin r(2/1.22) a.5
+	Osin r(1.22/2) a.5
 	Osin f244 a.5
 ] |
 
@@ -16,7 +16,7 @@ Osin t15 f600 f!666[Osin f2] p+[
 ] |
 
 Osin t15 f222 f!666[Osin f0.1] p+[
-	Osin r(1/2)
-	Osin r(3/4)
-	Osin r(7/3)
+	Osin r(2/1)
+	Osin r(4/3)
+	Osin r(3/7)
 ]
