@@ -1,5 +1,5 @@
 /* sgensys: Value ramp module.
- * Copyright (c) 2011-2013, 2017-2020 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -22,6 +22,8 @@ enum {
 	SGS_RAMP_LIN,
 	SGS_RAMP_EXP,
 	SGS_RAMP_LOG,
+	SGS_RAMP_XPE,
+	SGS_RAMP_LGE,
 	SGS_RAMP_TYPES
 };
 
@@ -44,6 +46,12 @@ void SGS_Ramp_fill_exp(float *restrict buf, uint32_t len,
 		float v0, float vt,
 		uint32_t pos, uint32_t time);
 void SGS_Ramp_fill_log(float *restrict buf, uint32_t len,
+		float v0, float vt,
+		uint32_t pos, uint32_t time);
+void SGS_Ramp_fill_xpe(float *restrict buf, uint32_t len,
+		float v0, float vt,
+		uint32_t pos, uint32_t time);
+void SGS_Ramp_fill_lge(float *restrict buf, uint32_t len,
 		float v0, float vt,
 		uint32_t pos, uint32_t time);
 
