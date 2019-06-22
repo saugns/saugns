@@ -258,10 +258,15 @@ Value ramp:
 			hold	Hold old value until time.
 			lin	Linear trajectory over time.
 			exp	Exponential trajectory over time.
-			log	Logarithmic trajectory over time.
+			log	A "log(1 + x)" trajectory over time.
+			esd	Exponentially saturate or decay.
+			lsd	Logarithmically saturate or decay.
 		(The 'exp' and 'log' types use ear-tuned polynomial
-		approximations designed to sound natural, and
-		symmetric one to another.)
+		approximations with definite beginnings and ends,
+		designed to sound natural, and symmetric one to another.
+		The 'esd' increases like 'log' and decreases like 'exp',
+		like a capacitor, natural-sounding for envelope-like use.
+		The 'lsd' increases like 'exp' and decreases like 'log'.)
 
 Parameters and operator binding:
 	When specifying or referencing operators within "@[...]", any

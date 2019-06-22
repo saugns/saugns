@@ -1085,7 +1085,8 @@ static bool parse_step(ParseLevel *restrict pl) {
       break;
     case '\\':
       if (parse_waittime(pl)) {
-        begin_node(pl, pl->operator, NL_REFER, false);
+        // FIXME: Buggy update node handling for carriers etc. if enabled.
+        //begin_node(pl, pl->operator, NL_REFER, false);
       }
       break;
     case 'a':
@@ -1335,7 +1336,7 @@ static bool parse_level(SGS_Parser *restrict o,
         goto RETURN;
       }
       if (!pl.event) {
-        scan_warning(sc, "end of sequence before any parts given");
+        scan_warning(sc, "no sounds precede time separator");
         break;
       }
       if (pl.group_from != NULL) {
@@ -1408,16 +1409,11 @@ static void group_events(SGS_ScriptEvData *restrict to) {
     ops = (SGS_ScriptOpData**) SGS_PtrList_ITEMS(&e->operators);
     for (i = 0; i < e->operators.count; ++i) {
       SGS_ScriptOpData *op = ops[i];
-      if (e->next == e_after &&
-          i == (e->operators.count - 1) &&
-          (op->op_flags & SGS_SDOP_TIME_DEFAULT) != 0) /* default for last node in group */
-        op->op_flags &= ~SGS_SDOP_TIME_DEFAULT;
       if (wait < op->time_ms)
         wait = op->time_ms;
     }
     e = e->next;
     if (e != NULL) {
-      /*wait -= e->wait_ms;*/
       waitcount += e->wait_ms;
     }
   }
