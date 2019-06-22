@@ -1,5 +1,5 @@
 /* sgensys: Value ramp module.
- * Copyright (c) 2011-2013, 2017-2020 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -15,25 +15,31 @@
 #include "math.h"
 
 const char *const SGS_Ramp_names[SGS_RAMP_TYPES + 1] = {
-	"hold",
+	"sah",
 	"lin",
+	"cos",
 	"exp",
 	"log",
+	"xpe",
+	"lge",
 	NULL
 };
 
 const SGS_Ramp_fill_f SGS_Ramp_fill_funcs[SGS_RAMP_TYPES] = {
-	SGS_Ramp_fill_hold,
+	SGS_Ramp_fill_sah,
 	SGS_Ramp_fill_lin,
+	SGS_Ramp_fill_cos,
 	SGS_Ramp_fill_exp,
 	SGS_Ramp_fill_log,
+	SGS_Ramp_fill_xpe,
+	SGS_Ramp_fill_lge,
 };
 
 /**
- * Fill \p buf with \p len values along a straight horizontal line,
- * i.e. \p len copies of \p v0.
+ * Fill \p buf with \p len values along a "sample and hold"
+ * straight horizontal line, i.e. \p len copies of \p v0.
  */
-void SGS_Ramp_fill_hold(float *restrict buf, uint32_t len,
+void SGS_Ramp_fill_sah(float *restrict buf, uint32_t len,
 		float v0, float vt sgsMaybeUnused,
 		uint32_t pos sgsMaybeUnused, uint32_t time sgsMaybeUnused) {
 	uint32_t i;
@@ -61,11 +67,45 @@ void SGS_Ramp_fill_lin(float *restrict buf, uint32_t len,
  * from \p v0 (at position 0) to \p vt (at position \p time),
  * beginning at position \p pos.
  *
- * Uses an ear-tuned polynomial, designed to sound natural.
- * (Unlike a real exponential curve, it has a definite beginning
- * and end. It is symmetric to the corresponding logarithmic curve.)
+ * Unlike a real exponential curve, it has a definite beginning
+ * and end. (Uses one of 'xpe' or 'lge', depending on whether
+ * the curve rises or falls.)
  */
 void SGS_Ramp_fill_exp(float *restrict buf, uint32_t len,
+		float v0, float vt,
+		uint32_t pos, uint32_t time) {
+	(v0 > vt ?
+		SGS_Ramp_fill_xpe :
+		SGS_Ramp_fill_lge)(buf, len, v0, vt, pos, time);
+}
+
+/**
+ * Fill \p buf with \p len values along a logarithmic trajectory
+ * from \p v0 (at position 0) to \p vt (at position \p time),
+ * beginning at position \p pos.
+ *
+ * Unlike a real "log(1 + x)" curve, it has a definite beginning
+ * and end. (Uses one of 'xpe' or 'lge', depending on whether
+ * the curve rises or falls.)
+ */
+void SGS_Ramp_fill_log(float *restrict buf, uint32_t len,
+		float v0, float vt,
+		uint32_t pos, uint32_t time) {
+	(v0 < vt ?
+		SGS_Ramp_fill_xpe :
+		SGS_Ramp_fill_lge)(buf, len, v0, vt, pos, time);
+}
+
+/**
+ * Fill \p buf with \p len values along an "envelope" trajectory
+ * which exponentially saturates and decays (like a capacitor),
+ * from \p v0 (at position 0) to \p vt (at position \p time),
+ * beginning at position \p pos.
+ *
+ * Uses an ear-tuned polynomial, designed to sound natural,
+ * and symmetric to the "opposite" 'lge' type.
+ */
+void SGS_Ramp_fill_xpe(float *restrict buf, uint32_t len,
 		float v0, float vt,
 		uint32_t pos, uint32_t time) {
 	const float inv_time = 1.f / time;
@@ -81,15 +121,15 @@ void SGS_Ramp_fill_exp(float *restrict buf, uint32_t len,
 }
 
 /**
- * Fill \p buf with \p len values along a logarithmic trajectory
+ * Fill \p buf with \p len values along an "envelope" trajectory
+ * which logarithmically saturates and decays (opposite of a capacitor),
  * from \p v0 (at position 0) to \p vt (at position \p time),
  * beginning at position \p pos.
  *
- * Uses an ear-tuned polynomial, designed to sound natural.
- * (Unlike a real logarithmic curve, it has a definite beginning
- * and end. It is symmetric to the corresponding exponential curve.)
+ * Uses an ear-tuned polynomial, designed to sound natural,
+ * and symmetric to the "opposite" 'xpe' type.
  */
-void SGS_Ramp_fill_log(float *restrict buf, uint32_t len,
+void SGS_Ramp_fill_lge(float *restrict buf, uint32_t len,
 		float v0, float vt,
 		uint32_t pos, uint32_t time) {
 	const float inv_time = 1.f / time;
@@ -101,6 +141,27 @@ void SGS_Ramp_fill_log(float *restrict buf, uint32_t len,
 		mod = modp3 + (modp2 * modp3 - modp2) *
 			(mod * (629.f/1792.f) + modp2 * (1163.f/1792.f));
 		(*buf++) = v0 + (vt - v0) * mod;
+	}
+}
+
+/**
+ * Fill \p buf with \p len values along a sinuous trajectory
+ * from \p v0 (at position 0) to \p vt (at position \p time),
+ * beginning at position \p pos.
+ *
+ * Rises or falls similarly to how cos() moves from trough to
+ * crest and back. Uses the simplest polynomial giving a good
+ * sinuous curve (almost exactly 99% accurate; too "x"-like).
+ */
+void SGS_Ramp_fill_cos(float *restrict buf, uint32_t len,
+		float v0, float vt,
+		uint32_t pos, uint32_t time) {
+	const float inv_time = 1.f / time;
+	uint32_t i, end;
+	for (i = pos, end = i + len; i < end; ++i) {
+		float x = i * inv_time;
+		float v = v0 + (vt - v0) * (3.f - (x+x))*x*x;
+		(*buf++) = v;
 	}
 }
 
