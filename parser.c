@@ -630,14 +630,7 @@ static void end_operator(ParseLevel *restrict pl) {
     /*
      * Reset all operator state for initial event.
      */
-    op->op_params |= SGS_POPP_WAVE |
-                     SGS_POPP_TIME |
-                     SGS_POPP_SILENCE |
-                     SGS_POPP_FREQ |
-                     SGS_POPP_DYNFREQ |
-                     SGS_POPP_PHASE |
-                     SGS_POPP_AMP |
-                     SGS_POPP_DYNAMP;
+    op->op_params = SGS_POP_PARAMS;
   } else {
     if (op->wave != pop->wave)
       op->op_params |= SGS_POPP_WAVE;
@@ -668,7 +661,7 @@ static void end_event(ParseLevel *restrict pl) {
      * Reset all voice state for initial event.
      */
     e->ev_flags |= SGS_SDEV_NEW_OPGRAPH;
-    e->vo_params |= SGS_PVOP_PAN;
+    e->vo_params = SGS_PVO_PARAMS & ~SGS_PVOP_OPLIST;
   }
   pl->last_event = e;
   pl->event = NULL;
