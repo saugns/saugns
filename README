@@ -127,8 +127,8 @@ Wave types:
 	sqr	Square (naive).
 	tri	Triangle (naive).
 	saw	Saw (naive).
-			Increasing slope; use negative amplitude
-			or frequency for decreasing slope.
+			Increasing ramp; use negative amplitude
+			or frequency for decreasing ramp.
 	sha	Half-frequency absolute sine (adjusted).
 			Frequency halved to restore base frequency,
 			peak amplitude centered and doubled, phase
@@ -167,7 +167,7 @@ Parameters:
 		explicitly set - with the exception of nested operators for
 		the last part, which will have infinite time (ti) by default.
 	f	Frequency in Hz. Can be negative to flip wave shape timewise.
-			Value slope also supported; see section.
+			Value ramp also supported; see section.
 	f![]	A second frequency in Hz may follow the "!", for a range to
 		use with FM by wave or envelope.
 			A list of modulator operators may be specified
@@ -181,7 +181,7 @@ Parameters:
 		to modulator. Keeps frequency that of the carrier divided by
 		the given number. May be used in the form r(n/m) for an
 		n:m ratio.
-			Value slope also supported; see section.
+			Value ramp also supported; see section.
 	r![]	(For modulator operators only.) A second frequency ratio,
 		for a range to use with FM by wave or envelope.
 			A list of modulator operators may be specified
@@ -197,7 +197,7 @@ Parameters:
 		can be used to set a multiplier used when adding a top-level
 		carrier. Panning will further reduce output level unless
 		fully left or right.) Can be negative to flip sign of result.
-			Value slope also supported; see section.
+			Value ramp also supported; see section.
 	a![]	A second amplitude may follow the "!", for a range to use
 		with AM by wave or envelope.
 			A list of modulator operators may be specified
@@ -227,7 +227,7 @@ Set the panning (left-right "balance") of the voice associated with
 the present operator(s), affecting the left and right output levels.
 Value range is 0 (all-left) to 1 (all-right). Default is 0.5 (center).
 Panning not at either extreme end will reduce level.
-		Value slope also supported; see section.
+		Value ramp also supported; see section.
 
 Quit: Q
 -------
@@ -249,20 +249,25 @@ Following a "#", the rest of a line is commented out.
 Numerical expressions are allowed within parentheses, allowing numbers
 to be specified using basic arithmetic and freely placed whitespace.
 
-Value slope:
+Value ramp:
 	Some parameters are noted to support this. Instead of typing the
 	value directly, the following sub-parameters are specified within
 	"{}" (curly brackets):
 	v	Target value.
-	t	Time to reach target value.
-	c	Change type (default 'lin'):
+	t	Time to reach target value (default re-use time duration).
+	c	Curve type (default 'lin'):
 			hold	Hold old value until time.
 			lin	Linear trajectory over time.
 			exp	Exponential trajectory over time.
-			log	Logarithmic trajectory over time.
+			log	A "log(1 + x)" trajectory over time.
+			esd	Exponentially saturate or decay.
+			lsd	Logarithmically saturate or decay.
 		(The 'exp' and 'log' types use ear-tuned polynomial
-		approximations designed to sound natural, and
-		symmetric one to another.)
+		approximations with definite beginnings and ends,
+		designed to sound natural, and symmetric one to another.
+		The 'esd' increases like 'log' and decreases like 'exp',
+		like a capacitor, natural-sounding for envelope-like use.
+		The 'lsd' increases like 'exp' and decreases like 'log'.)
 
 Parameters and operator binding:
 	When specifying or referencing operators within "@[...]", any

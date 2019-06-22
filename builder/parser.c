@@ -50,7 +50,7 @@ static uint8_t filter_symchar(SGS_File *restrict f SGS__maybe_unused,
 typedef struct ScanLookup {
   SGS_ScriptOptions sopt;
   const char *const*wave_names;
-  const char *const*slope_names;
+  const char *const*rac_names;
 } ScanLookup;
 
 typedef struct PScanner {
@@ -429,34 +429,34 @@ static bool scan_wavetype(PScanner *restrict o, size_t *restrict found_id) {
   return false;
 }
 
-static bool scan_slp_state(PScanner *restrict o,
-                           NumSym_f scan_numsym,
-                           SGS_Slope *restrict slp, bool ratio) {
-  if (!scan_num(o, scan_numsym, &slp->v0, ratio))
+static bool scan_ramp_state(PScanner *restrict o,
+                            NumSym_f scan_numsym,
+                            SGS_Ramp *restrict ramp, bool ratio) {
+  if (!scan_num(o, scan_numsym, &ramp->v0, ratio))
     return false;
   if (ratio) {
-    slp->flags |= SGS_SLP_STATE_RATIO;
+    ramp->flags |= SGS_RAMP_STATE_RATIO;
   } else {
-    slp->flags &= ~SGS_SLP_STATE_RATIO;
+    ramp->flags &= ~SGS_RAMP_STATE_RATIO;
   }
-  slp->flags |= SGS_SLP_STATE;
+  ramp->flags |= SGS_RAMP_STATE;
   return true;
 }
 
-static bool scan_slp_slope(PScanner *restrict o,
-                           NumSym_f scan_numsym,
-                           SGS_Slope *restrict slp, bool ratio) {
+static bool scan_ramp(PScanner *restrict o,
+                      NumSym_f scan_numsym,
+                      SGS_Ramp *restrict ramp, bool ratio) {
   bool goal = false;
   float vt;
   uint32_t time_ms = SGS_TIME_DEFAULT;
-  uint8_t slope = slp->slope; // has default
-  if ((slp->flags & SGS_SLP_SLOPE) != 0) {
+  uint8_t curve = ramp->curve; // has default
+  if ((ramp->flags & SGS_RAMP_CURVE) != 0) {
     // allow partial change
-    if (((slp->flags & SGS_SLP_SLOPE_RATIO) != 0) == ratio) {
+    if (((ramp->flags & SGS_RAMP_CURVE_RATIO) != 0) == ratio) {
       goal = true;
-      vt = slp->vt;
+      vt = ramp->vt;
     }
-    time_ms = slp->time_ms;
+    time_ms = ramp->time_ms;
   }
   for (;;) {
     uint8_t c = scan_getc(o);
@@ -464,19 +464,19 @@ static bool scan_slp_slope(PScanner *restrict o,
     case SCAN_NEWLINE:
       break;
     case 'c': {
-      const char *const *names = o->sl->slope_names;
+      const char *const *names = o->sl->rac_names;
       size_t type;
-      if (!scan_symafind(o, names, SGS_SLOPE_TYPES, &type)) {
-        scan_warning(o, "invalid slope change type; available types are:");
+      if (!scan_symafind(o, names, SGS_RAC_TYPES, &type)) {
+        scan_warning(o, "invalid curve type; available types are:");
         size_t i = 0;
         fprintf(stderr, "\t%s", names[i]);
-        while (++i < SGS_SLOPE_TYPES) {
+        while (++i < SGS_RAC_TYPES) {
           fprintf(stderr, ", %s", names[i]);
         }
         putc('\n', stderr);
         break;
       }
-      slope = type;
+      curve = type;
       break; }
     case 't': {
       float time;
@@ -503,18 +503,18 @@ FINISH:
   scan_warning(o, "end of file without closing '}'");
 RETURN:
   if (!goal) {
-    scan_warning(o, "ignoring value slope with no target value");
+    scan_warning(o, "ignoring value ramp with no target value");
     return false;
   }
-  slp->vt = vt;
-  slp->time_ms = time_ms;
-  slp->slope = slope;
+  ramp->vt = vt;
+  ramp->time_ms = time_ms;
+  ramp->curve = curve;
   if (ratio) {
-    slp->flags |= SGS_SLP_SLOPE_RATIO;
+    ramp->flags |= SGS_RAMP_CURVE_RATIO;
   } else {
-    slp->flags &= ~SGS_SLP_SLOPE_RATIO;
+    ramp->flags &= ~SGS_RAMP_CURVE_RATIO;
   }
-  slp->flags |= SGS_SLP_SLOPE;
+  ramp->flags |= SGS_RAMP_CURVE;
   return true;
 }
 
@@ -557,8 +557,8 @@ static void init_parser(SGS_Parser *restrict o) {
   o->sl.sopt = def_sopt;
   o->sl.wave_names = SGS_SymTab_pool_stra(o->st,
                        SGS_Wave_names, SGS_WAVE_TYPES);
-  o->sl.slope_names = SGS_SymTab_pool_stra(o->st,
-                        SGS_Slope_names, SGS_SLOPE_TYPES);
+  o->sl.rac_names = SGS_SymTab_pool_stra(o->st,
+                      SGS_RampCurve_names, SGS_RAC_TYPES);
 }
 
 /*
@@ -701,9 +701,9 @@ static void end_operator(ParseLevel *restrict pl) {
   SGS_ScriptOpData *op = pl->operator;
   if (!op)
     return; /* nothing to do */
-  if (SGS_Slope_ENABLED(&op->freq))
+  if (SGS_Ramp_ENABLED(&op->freq))
     op->op_params |= SGS_POPP_FREQ;
-  if (SGS_Slope_ENABLED(&op->amp)) {
+  if (SGS_Ramp_ENABLED(&op->amp)) {
     op->op_params |= SGS_POPP_AMP;
     if (!(pl->pl_flags & SDPL_NESTED_SCOPE))
       op->amp.v0 *= o->sl.sopt.ampmult;
@@ -741,7 +741,7 @@ static void end_event(ParseLevel *restrict pl) {
   if (!e)
     return; /* nothing to do */
   end_operator(pl);
-  if (SGS_Slope_ENABLED(&e->pan))
+  if (SGS_Ramp_ENABLED(&e->pan))
     e->vo_params |= SGS_PVOP_PAN;
   SGS_ScriptEvData *pve = e->voice_prev;
   if (!pve) {
@@ -763,7 +763,7 @@ static void begin_event(ParseLevel *restrict pl, uint8_t linktype,
   e = pl->event;
   e->wait_ms = pl->next_wait_ms;
   pl->next_wait_ms = 0;
-  SGS_Slope_reset(&e->pan);
+  SGS_Ramp_reset(&e->pan);
   if (pl->on_prev != NULL) {
     pve = pl->on_prev->event;
     pve->ev_flags |= SGS_SDEV_VOICE_LATER_USED;
@@ -778,7 +778,7 @@ static void begin_event(ParseLevel *restrict pl, uint8_t linktype,
      * New voice with initial parameter values.
      */
     e->pan.v0 = 0.5f; /* center */
-    e->pan.flags |= SGS_SLP_STATE;
+    e->pan.flags |= SGS_RAMP_STATE;
   }
   if (!pl->group_from)
     pl->group_from = e;
@@ -817,8 +817,8 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
   /*
    * Initialize node.
    */
-  SGS_Slope_reset(&op->freq);
-  SGS_Slope_reset(&op->amp);
+  SGS_Ramp_reset(&op->freq);
+  SGS_Ramp_reset(&op->amp);
   if (pop != NULL) {
     pop->op_flags |= SGS_SDOP_LATER_USED;
     op->on_prev = pop;
@@ -858,11 +858,11 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
     } else {
       op->op_flags |= SGS_SDOP_NESTED;
       op->freq.v0 = o->sl.sopt.def_ratio;
-      op->freq.flags |= SGS_SLP_STATE_RATIO;
+      op->freq.flags |= SGS_RAMP_STATE_RATIO;
     }
-    op->freq.flags |= SGS_SLP_STATE;
+    op->freq.flags |= SGS_RAMP_STATE;
     op->amp.v0 = 1.0f;
-    op->amp.flags |= SGS_SLP_STATE;
+    op->amp.flags |= SGS_RAMP_STATE;
   }
   op->event = e;
   /*
@@ -1057,9 +1057,9 @@ static bool parse_step(ParseLevel *restrict pl) {
       if ((pl->pl_flags & SDPL_NESTED_SCOPE) != 0)
         goto UNKNOWN;
       if (SGS_File_TRYC(f, '{')) {
-        scan_slp_slope(sc, NULL, &e->pan, false);
+        scan_ramp(sc, NULL, &e->pan, false);
       } else {
-        scan_slp_state(sc, NULL, &e->pan, false);
+        scan_ramp_state(sc, NULL, &e->pan, false);
       }
       break;
     case '\\':
@@ -1080,9 +1080,9 @@ static bool parse_step(ParseLevel *restrict pl) {
           parse_level(o, pl, NL_AMODS, SCOPE_NEST);
         }
       } else if (SGS_File_TRYC(f, '{')) {
-        scan_slp_slope(sc, NULL, &op->amp, false);
+        scan_ramp(sc, NULL, &op->amp, false);
       } else {
-        scan_slp_state(sc, NULL, &op->amp, false);
+        scan_ramp_state(sc, NULL, &op->amp, false);
       }
       break;
     case 'f':
@@ -1098,9 +1098,9 @@ static bool parse_step(ParseLevel *restrict pl) {
           parse_level(o, pl, NL_FMODS, SCOPE_NEST);
         }
       } else if (SGS_File_TRYC(f, '{')) {
-        scan_slp_slope(sc, scan_note, &op->freq, false);
+        scan_ramp(sc, scan_note, &op->freq, false);
       } else {
-        scan_slp_state(sc, scan_note, &op->freq, false);
+        scan_ramp_state(sc, scan_note, &op->freq, false);
       }
       break;
     case 'p':
@@ -1135,9 +1135,9 @@ static bool parse_step(ParseLevel *restrict pl) {
           parse_level(o, pl, NL_FMODS, SCOPE_NEST);
         }
       } else if (SGS_File_TRYC(f, '{')) {
-        scan_slp_slope(sc, NULL, &op->freq, true);
+        scan_ramp(sc, NULL, &op->freq, true);
       } else {
-        scan_slp_state(sc, NULL, &op->freq, true);
+        scan_ramp_state(sc, NULL, &op->freq, true);
       }
       break;
     case 's': {
@@ -1461,7 +1461,7 @@ static void time_operator(SGS_ScriptOpData *restrict op) {
 
 static void time_event(SGS_ScriptEvData *restrict e) {
   /*
-   * Fill in blank slope durations, handle silence as well as the case of
+   * Fill in blank ramp durations, handle silence as well as the case of
    * adding present event duration to wait time of next event.
    */
   if (e->pan.time_ms == SGS_TIME_DEFAULT)

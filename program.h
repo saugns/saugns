@@ -12,7 +12,7 @@
  */
 
 #pragma once
-#include "slope.h"
+#include "ramp.h"
 #include "wave.h"
 
 /*
@@ -63,7 +63,7 @@ enum {
  */
 enum {
 	SGS_TIME_INF = UINT32_MAX, /* special handling for nested operators */
-	SGS_TIME_DEFAULT = UINT32_MAX, /* default for slopes while parsing */
+	SGS_TIME_DEFAULT = UINT32_MAX, /* default for ramps while parsing */
 };
 
 /**
@@ -99,7 +99,7 @@ typedef struct SGS_ProgramVoData {
 	const SGS_ProgramOpRef *op_list;
 	uint32_t op_count;
 	uint32_t params;
-	SGS_Slope pan;
+	SGS_Ramp pan;
 } SGS_ProgramVoData;
 
 typedef struct SGS_ProgramOpData {
@@ -109,7 +109,7 @@ typedef struct SGS_ProgramOpData {
 	uint8_t wave;
 	uint32_t time_ms, silence_ms;
 	float dynfreq, phase, dynamp;
-	SGS_Slope freq, amp;
+	SGS_Ramp freq, amp;
 } SGS_ProgramOpData;
 
 typedef struct SGS_ProgramEvent {
