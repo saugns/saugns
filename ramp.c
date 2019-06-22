@@ -19,6 +19,8 @@ const char *const SGS_RampCurve_names[SGS_RAC_TYPES + 1] = {
 	"lin",
 	"exp",
 	"log",
+	"esd",
+	"lsd",
 	NULL
 };
 
@@ -27,6 +29,8 @@ const SGS_RampCurve_f SGS_RampCurve_funcs[SGS_RAC_TYPES] = {
 	SGS_RampCurve_lin,
 	SGS_RampCurve_exp,
 	SGS_RampCurve_log,
+	SGS_RampCurve_esd,
+	SGS_RampCurve_lsd,
 };
 
 /**
@@ -61,11 +65,45 @@ void SGS_RampCurve_lin(float *restrict buf, uint32_t len,
  * from \p v0 (at position 0) to \p vt (at position \p time),
  * beginning at position \p pos.
  *
- * Uses an ear-tuned polynomial, designed to sound natural.
- * (Unlike a real exponential curve, it has a definite beginning
- * and end. It is symmetric to the corresponding logarithmic curve.)
+ * Unlike a real exponential curve, it has a definite beginning
+ * and end. (Uses one of 'esd' or 'lsd', depending on whether
+ * the curve rises or falls.)
  */
 void SGS_RampCurve_exp(float *restrict buf, uint32_t len,
+		float v0, float vt,
+		uint32_t pos, uint32_t time) {
+	(v0 > vt ?
+		SGS_RampCurve_esd :
+		SGS_RampCurve_lsd)(buf, len, v0, vt, pos, time);
+}
+
+/**
+ * Fill \p buf with \p len values along a logarithmic trajectory
+ * from \p v0 (at position 0) to \p vt (at position \p time),
+ * beginning at position \p pos.
+ *
+ * Unlike a real "log(1 + x)" curve, it has a definite beginning
+ * and end. (Uses one of 'esd' or 'lsd', depending on whether
+ * the curve rises or falls.)
+ */
+void SGS_RampCurve_log(float *restrict buf, uint32_t len,
+		float v0, float vt,
+		uint32_t pos, uint32_t time) {
+	(v0 < vt ?
+		SGS_RampCurve_esd :
+		SGS_RampCurve_lsd)(buf, len, v0, vt, pos, time);
+}
+
+/**
+ * Fill \p buf with \p len values along a trajectory which
+ * exponentially saturates and decays (like a capacitor),
+ * from \p v0 (at position 0) to \p vt (at position \p time),
+ * beginning at position \p pos.
+ *
+ * Uses an ear-tuned polynomial, designed to sound natural,
+ * and symmetric to the "opposite" 'lsd' type.
+ */
+void SGS_RampCurve_esd(float *restrict buf, uint32_t len,
 		float v0, float vt,
 		uint32_t pos, uint32_t time) {
 	const float inv_time = 1.f / time;
@@ -81,15 +119,15 @@ void SGS_RampCurve_exp(float *restrict buf, uint32_t len,
 }
 
 /**
- * Fill \p buf with \p len values along a logarithmic trajectory
+ * Fill \p buf with \p len values along a trajectory which
+ * logarithmically saturates and decays (opposite of a capacitor),
  * from \p v0 (at position 0) to \p vt (at position \p time),
  * beginning at position \p pos.
  *
- * Uses an ear-tuned polynomial, designed to sound natural.
- * (Unlike a real logarithmic curve, it has a definite beginning
- * and end. It is symmetric to the corresponding exponential curve.)
+ * Uses an ear-tuned polynomial, designed to sound natural,
+ * and symmetric to the "opposite" 'esd' type.
  */
-void SGS_RampCurve_log(float *restrict buf, uint32_t len,
+void SGS_RampCurve_lsd(float *restrict buf, uint32_t len,
 		float v0, float vt,
 		uint32_t pos, uint32_t time) {
 	const float inv_time = 1.f / time;
