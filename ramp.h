@@ -22,6 +22,8 @@ enum {
 	SGS_RAC_LIN,
 	SGS_RAC_EXP,
 	SGS_RAC_LOG,
+	SGS_RAC_ESD,
+	SGS_RAC_LSD,
 	SGS_RAC_TYPES
 };
 
@@ -44,6 +46,12 @@ void SGS_RampCurve_exp(float *restrict buf, uint32_t len,
 		float v0, float vt,
 		uint32_t pos, uint32_t time);
 void SGS_RampCurve_log(float *restrict buf, uint32_t len,
+		float v0, float vt,
+		uint32_t pos, uint32_t time);
+void SGS_RampCurve_esd(float *restrict buf, uint32_t len,
+		float v0, float vt,
+		uint32_t pos, uint32_t time);
+void SGS_RampCurve_lsd(float *restrict buf, uint32_t len,
 		float v0, float vt,
 		uint32_t pos, uint32_t time);
 
