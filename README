@@ -295,13 +295,22 @@ Value ramp:
 	v	Goal value.
 	t	Time to reach goal (default is the external "t" duration).
 	c	Ramp curve type (default 'lin'):
-			hold	Hold old value until time.
+			sah	Sample and hold until time (then jump to goal).
 			lin	Linear trajectory over time.
-			exp	Exponential trajectory over time.
-			log	Logarithmic trajectory over time.
-		(The 'exp' and 'log' types use ear-tuned polynomial
-		approximations designed to sound natural, and
-		symmetric one to another.)
+			cos	Half cosine (S-curve) trajectory over time.
+			exp	Steep "exp(x)-1"-like increase or decrease.
+			log	Steep "log(x+1)"-like increase or decrease.
+			xpe	Exponential envelope shape (saturate or decay).
+			lge	Logarithmic envelope shape (saturate or decay).
+		(The 'exp' and 'log' shapes use ear-tuned polynomial
+		approximations with definite beginnings and ends,
+		designed to sound natural for frequency sweeping,
+		and symmetric one to the other. The 'xpe' shape increases
+		like 'log' and decreases like 'exp', much like a capacitor
+		charges and discharges, natural-sounding for an envelope;
+		and 'lge' increases like 'exp' and decreases like 'log'.
+		The 'cos' shape sounds similar to 'lin', except it has a
+		smoothly curved start and stop, and a steeper middle.)
 
 Parameters and object binding:
 	When specifying or referencing objects within "@[...]", any
