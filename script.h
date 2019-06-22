@@ -100,7 +100,7 @@ typedef struct SGS_ScriptOptions {
 	/* operator parameter default values (use depends on context) */
 	uint32_t def_time_ms;
 	float def_freq,
-	      def_ratio;
+	      def_relfreq;
 } SGS_ScriptOptions;
 
 /**

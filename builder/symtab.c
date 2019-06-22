@@ -53,12 +53,13 @@ static size_t HashTab_hash_key(HashTab *restrict o,
 	size_t i;
 	size_t hash;
 	/*
-	 * Calculate hash.
+	 * Calculate DJB2 hash,
+	 * varied by adding "len".
 	 */
-	hash = len;
+	hash = 5381 + (len * 33);
 	for (i = 0; i < len; ++i) {
 		size_t c = key[i];
-		hash = 37 * hash + c;
+		hash = ((hash << 5) + hash) ^ c;
 	}
 	hash &= (o->alloc - 1);
 	return hash;

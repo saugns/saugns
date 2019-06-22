@@ -181,6 +181,8 @@ bool SGS_File_stropenrb(SGS_File *restrict o,
 void SGS_File_close(SGS_File *restrict o);
 void SGS_File_reset(SGS_File *restrict o);
 
+void SGS_File_end(SGS_File *restrict o, size_t keep_len, bool error);
+
 /**
  * Check position and call callback if at the call position.
  *
