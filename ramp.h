@@ -1,5 +1,5 @@
 /* sgensys: Value ramp module.
- * Copyright (c) 2011-2013, 2017-2020 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -18,10 +18,13 @@
  * Ramp curves.
  */
 enum {
-	SGS_RAMP_HOLD = 0,
+	SGS_RAMP_SAH = 0,
 	SGS_RAMP_LIN,
+	SGS_RAMP_COS,
 	SGS_RAMP_EXP,
 	SGS_RAMP_LOG,
+	SGS_RAMP_XPE,
+	SGS_RAMP_LGE,
 	SGS_RAMP_TYPES
 };
 
@@ -34,7 +37,7 @@ typedef void (*SGS_Ramp_fill_f)(float *restrict buf, uint32_t len,
 /** Functions for ramp curve types. */
 extern const SGS_Ramp_fill_f SGS_Ramp_fill_funcs[SGS_RAMP_TYPES];
 
-void SGS_Ramp_fill_hold(float *restrict buf, uint32_t len,
+void SGS_Ramp_fill_sah(float *restrict buf, uint32_t len,
 		float v0, float vt,
 		uint32_t pos, uint32_t time);
 void SGS_Ramp_fill_lin(float *restrict buf, uint32_t len,
@@ -44,6 +47,15 @@ void SGS_Ramp_fill_exp(float *restrict buf, uint32_t len,
 		float v0, float vt,
 		uint32_t pos, uint32_t time);
 void SGS_Ramp_fill_log(float *restrict buf, uint32_t len,
+		float v0, float vt,
+		uint32_t pos, uint32_t time);
+void SGS_Ramp_fill_xpe(float *restrict buf, uint32_t len,
+		float v0, float vt,
+		uint32_t pos, uint32_t time);
+void SGS_Ramp_fill_lge(float *restrict buf, uint32_t len,
+		float v0, float vt,
+		uint32_t pos, uint32_t time);
+void SGS_Ramp_fill_cos(float *restrict buf, uint32_t len,
 		float v0, float vt,
 		uint32_t pos, uint32_t time);
 

@@ -30,14 +30,14 @@ static void copy_list_ids(uint32_t **dst, const SGS_ScriptListData *list_in) {
 		*(*dst)++ = op->op_id;
 }
 
-static const SGS_ProgramIDArr *
+static sgsNoinline const SGS_ProgramIDArr *
 SGS_create_ProgramIDArr(SGS_Mempool *restrict mp,
 		const SGS_ScriptListData *restrict list_in,
 		const SGS_ProgramIDArr *restrict copy) {
 	uint32_t count = list_in->count;
 	if (!list_in->append) copy = NULL;
 	if (!count)
-		return copy ? NULL : &blank_idarr; // NULL if !count, non-update
+		return copy ? copy : &blank_idarr;
 	if (copy) count += copy->count;
 	SGS_ProgramIDArr *idarr = SGS_mpalloc(mp,
 			sizeof(SGS_ProgramIDArr) + sizeof(uint32_t) * count);
@@ -66,7 +66,7 @@ enum {
  */
 typedef struct SGS_VoAllocState {
 	SGS_ScriptEvData *last_ev;
-	const SGS_ProgramIDArr *op_graph;
+	const SGS_ProgramIDArr *op_carrs;
 	uint32_t flags;
 	uint32_t duration_ms;
 } SGS_VoAllocState;
@@ -77,7 +77,8 @@ sgsArrType(SGS_VoAlloc, SGS_VoAllocState, _)
  * Returns the longest operator duration among top-level operators for
  * the graph of the voice event.
  */
-static uint32_t voice_duration(const SGS_ScriptEvData *restrict ve) {
+static uint32_t
+voice_duration(const SGS_ScriptEvData *restrict ve) {
 	uint32_t duration_ms = 0;
 	for (SGS_ScriptOpData *op = ve->operators.first_on; op; op = op->next) {
 		if (op->time.v_ms > duration_ms)
@@ -89,9 +90,10 @@ static uint32_t voice_duration(const SGS_ScriptEvData *restrict ve) {
 /*
  * Get voice ID for event, setting it to \p vo_id.
  *
- * \return true if voice found, false if voice added or recycled
+ * \return true, or false on allocation failure
  */
-static bool SGS_VoAlloc_get_id(SGS_VoAlloc *restrict va,
+static bool
+SGS_VoAlloc_get_id(SGS_VoAlloc *restrict va,
 		const SGS_ScriptEvData *restrict e, uint32_t *restrict vo_id) {
 	if (e->voice_prev != NULL) {
 		*vo_id = e->voice_prev->vo_id;
@@ -103,12 +105,14 @@ static bool SGS_VoAlloc_get_id(SGS_VoAlloc *restrict va,
 			&& vas->duration_ms == 0) {
 			*vas = (SGS_VoAllocState){0};
 			*vo_id = id;
-			return false;
+			goto ASSIGNED;
 		}
 	}
 	*vo_id = va->count;
-	_SGS_VoAlloc_add(va, NULL);
-	return false;
+	if (!_SGS_VoAlloc_add(va, NULL))
+		return false;
+ASSIGNED:
+	return true;
 }
 
 /*
@@ -116,30 +120,34 @@ static bool SGS_VoAlloc_get_id(SGS_VoAlloc *restrict va,
  *
  * Use the current voice if any, otherwise reusing an expired voice
  * if possible, or allocating a new if not.
+ *
+ * \return true, or false on allocation failure
  */
-static uint32_t SGS_VoAlloc_update(SGS_VoAlloc *restrict va,
-		SGS_ScriptEvData *restrict e) {
-	uint32_t vo_id;
-	for (vo_id = 0; vo_id < va->count; ++vo_id) {
-		if (va->a[vo_id].duration_ms < e->wait_ms)
-			va->a[vo_id].duration_ms = 0;
+static bool
+SGS_VoAlloc_update(SGS_VoAlloc *restrict va,
+		SGS_ScriptEvData *restrict e, uint32_t *restrict vo_id) {
+	for (uint32_t id = 0; id < va->count; ++id) {
+		if (va->a[id].duration_ms < e->wait_ms)
+			va->a[id].duration_ms = 0;
 		else
-			va->a[vo_id].duration_ms -= e->wait_ms;
+			va->a[id].duration_ms -= e->wait_ms;
 	}
-	SGS_VoAlloc_get_id(va, e, &vo_id);
-	e->vo_id = vo_id;
-	SGS_VoAllocState *vas = &va->a[vo_id];
+	if (!SGS_VoAlloc_get_id(va, e, vo_id))
+		return false;
+	e->vo_id = *vo_id;
+	SGS_VoAllocState *vas = &va->a[*vo_id];
 	vas->last_ev = e;
 	vas->flags &= ~SGS_VAS_GRAPH;
 	if ((e->ev_flags & SGS_SDEV_VOICE_SET_DUR) != 0)
 		vas->duration_ms = voice_duration(e);
-	return vo_id;
+	return true;
 }
 
 /*
  * Clear voice allocator.
  */
-static inline void SGS_VoAlloc_clear(SGS_VoAlloc *restrict o) {
+static inline void
+SGS_VoAlloc_clear(SGS_VoAlloc *restrict o) {
 	_SGS_VoAlloc_clear(o);
 }
 
@@ -167,9 +175,10 @@ sgsArrType(SGS_OpAlloc, SGS_OpAllocState, _)
  * (Tracking of expired operators for reuse of their IDs is currently
  * disabled.)
  *
- * \return true if operator found, false if operator added or recycled
+ * \return true, or false on allocation failure
  */
-static bool SGS_OpAlloc_get_id(SGS_OpAlloc *restrict oa,
+static bool
+SGS_OpAlloc_get_id(SGS_OpAlloc *restrict oa,
 		const SGS_ScriptOpData *restrict od, uint32_t *restrict op_id) {
 	if (od->on_prev != NULL) {
 		*op_id = od->on_prev->op_id;
@@ -180,12 +189,14 @@ static bool SGS_OpAlloc_get_id(SGS_OpAlloc *restrict oa,
 //			&& oa->a[id].duration_ms == 0) {
 //			oa->a[id] = (SGS_OpAllocState){0};
 //			*op_id = id;
-//			return false;
+//			goto ASSIGNED;
 //		}
 //	}
 	*op_id = oa->count;
-	_SGS_OpAlloc_add(oa, NULL);
-	return false;
+	if (!_SGS_OpAlloc_add(oa, NULL))
+		return false;
+//ASSIGNED:
+	return true;
 }
 
 /*
@@ -196,29 +207,34 @@ static bool SGS_OpAlloc_get_id(SGS_OpAlloc *restrict oa,
  * disabled.)
  *
  * Only valid to call for single-operator nodes.
+ *
+ * \return true, or false on allocation failure
  */
-static uint32_t SGS_OpAlloc_update(SGS_OpAlloc *restrict oa,
-		SGS_ScriptOpData *restrict od) {
+static bool
+SGS_OpAlloc_update(SGS_OpAlloc *restrict oa,
+		SGS_ScriptOpData *restrict od,
+		uint32_t *restrict op_id) {
 //	SGS_ScriptEvData *e = od->event;
-	uint32_t op_id;
-//	for (op_id = 0; op_id < oa->count; ++op_id) {
-//		if (oa->a[op_id].duration_ms < e->wait_ms)
-//			oa->a[op_id].duration_ms = 0;
+//	for (uint32_t id = 0; id < oa->count; ++id) {
+//		if (oa->a[id].duration_ms < e->wait_ms)
+//			oa->a[id].duration_ms = 0;
 //		else
-//			oa->a[op_id].duration_ms -= e->wait_ms;
+//			oa->a[id].duration_ms -= e->wait_ms;
 //	}
-	SGS_OpAlloc_get_id(oa, od, &op_id);
-	od->op_id = op_id;
-	SGS_OpAllocState *oas = &oa->a[op_id];
+	if (!SGS_OpAlloc_get_id(oa, od, op_id))
+		return false;
+	od->op_id = *op_id;
+	SGS_OpAllocState *oas = &oa->a[*op_id];
 	oas->last_pod = od;
 //	oas->duration_ms = od->time.v_ms;
-	return op_id;
+	return true;
 }
 
 /*
  * Clear operator allocator.
  */
-static inline void SGS_OpAlloc_clear(SGS_OpAlloc *restrict o) {
+static inline void
+SGS_OpAlloc_clear(SGS_OpAlloc *restrict o) {
 	_SGS_OpAlloc_clear(o);
 }
 
@@ -230,28 +246,31 @@ sgsArrType(OpRefArr, SGS_ProgramOpRef, )
  * Voice data, held during program building and set per event.
  */
 typedef struct SGS_VoiceGraph {
-	OpRefArr op_list;
+	OpRefArr vo_graph;
 	SGS_VoAlloc *va;
 	SGS_OpAlloc *oa;
-	uint32_t op_nest_depth;
+	uint32_t op_nest_level, op_nest_max;
 } SGS_VoiceGraph;
 
 /**
  * Initialize instance for use.
  */
-static inline void SGS_init_VoiceGraph(SGS_VoiceGraph *restrict o,
+static inline void
+SGS_init_VoiceGraph(SGS_VoiceGraph *restrict o,
 		SGS_VoAlloc *restrict va, SGS_OpAlloc *restrict oa) {
 	o->va = va;
 	o->oa = oa;
 }
 
-void SGS_fini_VoiceGraph(SGS_VoiceGraph *restrict o);
+static void
+SGS_fini_VoiceGraph(SGS_VoiceGraph *restrict o);
 
-bool SGS_VoiceGraph_set(SGS_VoiceGraph *restrict o,
+static bool
+SGS_VoiceGraph_set(SGS_VoiceGraph *restrict o,
 		const SGS_ProgramEvent *restrict ev,
 		SGS_Mempool *restrict mp);
 
-sgsArrType(OpDataArr, SGS_ProgramOpData, )
+sgsArrType(OpDataArr, SGS_ProgramOpData, _)
 
 typedef struct ParseConv {
 	SGS_PEvArr ev_arr;
@@ -265,60 +284,115 @@ typedef struct ParseConv {
 } ParseConv;
 
 /*
+ * Replace program operator list.
+ *
+ * \return true, or false on allocation failure
+ */
+static inline bool
+set_oplist(const SGS_ProgramIDArr **restrict dstp,
+		const SGS_ScriptListData *restrict src,
+		SGS_Mempool *restrict mem) {
+	const SGS_ProgramIDArr *dst = SGS_create_ProgramIDArr(mem, src, *dstp);
+	if (!dst)
+		return false;
+	*dstp = dst;
+	return true;
+}
+
+/*
  * Convert data for an operator node to program operator data,
  * adding it to the list to be used for the current program event.
+ *
+ * \return true, or false on allocation failure
  */
-static void ParseConv_convert_opdata(ParseConv *restrict o,
+static bool
+ParseConv_convert_opdata(ParseConv *restrict o,
 		const SGS_ScriptOpData *restrict op, uint32_t op_id) {
 	SGS_OpAllocState *oas = &o->oa.a[op_id];
-	SGS_ProgramOpData *ood = OpDataArr_add(&o->ev_op_data, NULL);
+	SGS_ProgramOpData *ood = _OpDataArr_add(&o->ev_op_data, NULL);
+	if (!ood) goto MEM_ERR;
 	ood->id = op_id;
 	ood->params = op->op_params;
 	ood->time = op->time;
 	ood->silence_ms = op->silence_ms;
-	ood->wave = op->wave;
-	ood->freq = op->freq;
 	ood->amp = op->amp;
+	ood->dynamp = op->dynamp;
+	ood->freq = op->freq;
 	ood->phase = op->phase;
 	ood->dynfreq = op->dynfreq;
-	ood->dynamp = op->dynamp;
+	ood->wave = op->wave;
 	SGS_VoAllocState *vas = &o->va.a[o->ev->vo_id];
 	if (op->amods) {
-		ood->amods = oas->amods =
-			SGS_create_ProgramIDArr(o->mp, op->amods, oas->amods);
 		vas->flags |= SGS_VAS_GRAPH;
+		if (!set_oplist(&oas->amods, op->amods, o->mp))
+			goto MEM_ERR;
+		ood->amods = oas->amods;
 	}
 	if (op->fmods) {
-		ood->fmods = oas->fmods =
-			SGS_create_ProgramIDArr(o->mp, op->fmods, oas->fmods);
 		vas->flags |= SGS_VAS_GRAPH;
+		if (!set_oplist(&oas->fmods, op->fmods, o->mp))
+			goto MEM_ERR;
+		ood->fmods = oas->fmods;
 	}
 	if (op->pmods) {
-		ood->pmods = oas->pmods =
-			SGS_create_ProgramIDArr(o->mp, op->pmods, oas->pmods);
 		vas->flags |= SGS_VAS_GRAPH;
+		if (!set_oplist(&oas->pmods, op->pmods, o->mp))
+			goto MEM_ERR;
+		ood->pmods = oas->pmods;
 	}
+	return true;
+MEM_ERR:
+	return false;
 }
 
 /*
  * Visit each operator node in the list and recurse through each node's
  * sublists in turn, creating new output events as needed for the
  * operator data.
+ *
+ * \return true, or false on allocation failure
  */
-static void ParseConv_convert_ops(ParseConv *restrict o,
+static bool
+ParseConv_convert_ops(ParseConv *restrict o,
 		SGS_ScriptListData *restrict op_list) {
 	if (!op_list)
-		return;
+		return true;
 	if (op_list->append) ParseConv_convert_ops(o, op_list->prev);
 	for (SGS_ScriptOpData *op = op_list->first_on; op; op = op->next) {
 		// TODO: handle multiple operator nodes
 		if ((op->op_flags & SGS_SDOP_MULTIPLE) != 0) continue;
-		uint32_t op_id = SGS_OpAlloc_update(&o->oa, op);
-		ParseConv_convert_ops(o, op->fmods);
-		ParseConv_convert_ops(o, op->pmods);
-		ParseConv_convert_ops(o, op->amods);
-		ParseConv_convert_opdata(o, op, op_id);
+		uint32_t op_id;
+		if (!SGS_OpAlloc_update(&o->oa, op, &op_id) ||
+		    !ParseConv_convert_ops(o, op->amods) ||
+		    !ParseConv_convert_ops(o, op->fmods) ||
+		    !ParseConv_convert_ops(o, op->pmods) ||
+		    !ParseConv_convert_opdata(o, op, op_id))
+			return false;
 	}
+	return true;
+}
+
+static bool
+SGS_VoiceGraph_handle_op_node(SGS_VoiceGraph *restrict o,
+		SGS_ProgramOpRef *restrict op_ref);
+
+/*
+ * Traverse operator list, as part of building a graph for the voice.
+ *
+ * \return true, or false on allocation failure
+ */
+static bool
+SGS_VoiceGraph_handle_op_list(SGS_VoiceGraph *restrict o,
+		const SGS_ProgramIDArr *restrict op_list, uint8_t mod_use) {
+	if (!op_list)
+		return true;
+	SGS_ProgramOpRef op_ref = {0, mod_use, o->op_nest_level};
+	for (uint32_t i = 0; i < op_list->count; ++i) {
+		op_ref.id = op_list->ids[i];
+		if (!SGS_VoiceGraph_handle_op_node(o, &op_ref))
+			return false;
+	}
+	return true;
 }
 
 /*
@@ -327,45 +401,30 @@ static void ParseConv_convert_ops(ParseConv *restrict o,
  *
  * \return true, or false on allocation failure
  */
-static bool SGS_VoiceGraph_traverse_ops(SGS_VoiceGraph *restrict o,
-		SGS_ProgramOpRef *restrict op_ref, uint32_t level) {
+static bool
+SGS_VoiceGraph_handle_op_node(SGS_VoiceGraph *restrict o,
+		SGS_ProgramOpRef *restrict op_ref) {
 	SGS_OpAllocState *oas = &o->oa->a[op_ref->id];
-	uint32_t i;
-	if ((oas->flags & SGS_OAS_VISITED) != 0) {
-		SGS_warning("parseconv",
+	if (oas->flags & SGS_OAS_VISITED) {
+		SGS_warning("voicegraph",
 "skipping operator %u; circular references unsupported",
 			op_ref->id);
 		return true;
 	}
-	if (level > o->op_nest_depth) {
-		o->op_nest_depth = level;
+	if (o->op_nest_level > o->op_nest_max) {
+		o->op_nest_max = o->op_nest_level;
 	}
-	SGS_ProgramOpRef mod_op_ref;
-	op_ref->level = level++;
+	++o->op_nest_level;
 	oas->flags |= SGS_OAS_VISITED;
-	if (oas->amods != NULL) for (i = 0; i < oas->amods->count; ++i) {
-		mod_op_ref.id = oas->amods->ids[i];
-		mod_op_ref.use = SGS_POP_AMOD;
-//		fprintf(stderr, "visit amod node %d\n", mod_op_ref.id);
-		if (!SGS_VoiceGraph_traverse_ops(o, &mod_op_ref, level))
-			return false;
-	}
-	if (oas->fmods != NULL) for (i = 0; i < oas->fmods->count; ++i) {
-		mod_op_ref.id = oas->fmods->ids[i];
-		mod_op_ref.use = SGS_POP_FMOD;
-//		fprintf(stderr, "visit fmod node %d\n", mod_op_ref.id);
-		if (!SGS_VoiceGraph_traverse_ops(o, &mod_op_ref, level))
-			return false;
-	}
-	if (oas->pmods != NULL) for (i = 0; i < oas->pmods->count; ++i) {
-		mod_op_ref.id = oas->pmods->ids[i];
-		mod_op_ref.use = SGS_POP_PMOD;
-//		fprintf(stderr, "visit pmod node %d\n", mod_op_ref.id);
-		if (!SGS_VoiceGraph_traverse_ops(o, &mod_op_ref, level))
-			return false;
-	}
+	if (!SGS_VoiceGraph_handle_op_list(o, oas->amods, SGS_POP_AMOD))
+		return false;
+	if (!SGS_VoiceGraph_handle_op_list(o, oas->fmods, SGS_POP_FMOD))
+		return false;
+	if (!SGS_VoiceGraph_handle_op_list(o, oas->pmods, SGS_POP_PMOD))
+		return false;
 	oas->flags &= ~SGS_OAS_VISITED;
-	if (!OpRefArr_add(&o->op_list, op_ref))
+	--o->op_nest_level;
+	if (!OpRefArr_add(&o->vo_graph, op_ref))
 		return false;
 	return true;
 }
@@ -377,35 +436,30 @@ static bool SGS_VoiceGraph_traverse_ops(SGS_VoiceGraph *restrict o,
  *
  * \return true, or false on allocation failure
  */
-bool SGS_VoiceGraph_set(SGS_VoiceGraph *restrict o,
+static bool
+SGS_VoiceGraph_set(SGS_VoiceGraph *restrict o,
 		const SGS_ProgramEvent *restrict ev,
 		SGS_Mempool *restrict mp) {
-	SGS_ProgramOpRef op_ref = {0, SGS_POP_CARR, 0};
 	SGS_VoAllocState *vas = &o->va->a[ev->vo_id];
+	if (!vas->op_carrs || !vas->op_carrs->count) goto DONE;
+	if (!SGS_VoiceGraph_handle_op_list(o, vas->op_carrs, SGS_POP_CARR))
+		return false;
 	SGS_ProgramVoData *vd = (SGS_ProgramVoData*) ev->vo_data;
-	const SGS_ProgramIDArr *graph = vas->op_graph;
-	uint32_t i;
-	if (!graph)
-		return true;
-	for (i = 0; i < graph->count; ++i) {
-		op_ref.id = graph->ids[i];
-//		fprintf(stderr, "visit node %u\n", op_ref.id);
-		if (!SGS_VoiceGraph_traverse_ops(o, &op_ref, 0))
-			return false;
-	}
-	if (!OpRefArr_mpmemdup(&o->op_list,
+	if (!OpRefArr_mpmemdup(&o->vo_graph,
 				(SGS_ProgramOpRef**) &vd->op_list, mp))
 		return false;
-	vd->op_count = o->op_list.count;
-	o->op_list.count = 0; // reuse allocation
+	vd->op_count = o->vo_graph.count;
+DONE:
+	o->vo_graph.count = 0; // reuse allocation
 	return true;
 }
 
 /**
  * Destroy data held by instance.
  */
-void SGS_fini_VoiceGraph(SGS_VoiceGraph *restrict o) {
-	OpRefArr_clear(&o->op_list);
+static void
+SGS_fini_VoiceGraph(SGS_VoiceGraph *restrict o) {
+	OpRefArr_clear(&o->vo_graph);
 }
 
 /*
@@ -413,20 +467,26 @@ void SGS_fini_VoiceGraph(SGS_VoiceGraph *restrict o) {
  * series of output events.
  *
  * This is the "main" per-event conversion function.
+ *
+ * \return true, or false on allocation failure
  */
-static void ParseConv_convert_event(ParseConv *restrict o,
+static bool
+ParseConv_convert_event(ParseConv *restrict o,
 		SGS_ScriptEvData *restrict e) {
-	uint32_t vo_id = SGS_VoAlloc_update(&o->va, e);
+	uint32_t vo_id;
 	uint32_t vo_params;
+	if (!SGS_VoAlloc_update(&o->va, e, &vo_id)) goto MEM_ERR;
 	SGS_VoAllocState *vas = &o->va.a[vo_id];
 	SGS_ProgramEvent *out_ev = SGS_PEvArr_add(&o->ev_arr, NULL);
+	if (!out_ev) goto MEM_ERR;
 	out_ev->wait_ms = e->wait_ms;
 	out_ev->vo_id = vo_id;
 	o->ev = out_ev;
-	ParseConv_convert_ops(o, &e->operators);
+	if (!ParseConv_convert_ops(o, &e->operators)) goto MEM_ERR;
 	if (o->ev_op_data.count > 0) {
-		OpDataArr_mpmemdup(&o->ev_op_data,
-				(SGS_ProgramOpData**) &out_ev->op_data, o->mp);
+		if (!_OpDataArr_mpmemdup(&o->ev_op_data,
+					(SGS_ProgramOpData**) &out_ev->op_data,
+					o->mp)) goto MEM_ERR;
 		out_ev->op_data_count = o->ev_op_data.count;
 		o->ev_op_data.count = 0; // reuse allocation
 	}
@@ -438,27 +498,57 @@ static void ParseConv_convert_event(ParseConv *restrict o,
 	if (vo_params != 0) {
 		SGS_ProgramVoData *ovd =
 			SGS_mpalloc(o->mp, sizeof(SGS_ProgramVoData));
+		if (!ovd) goto MEM_ERR;
 		ovd->params = vo_params;
 		ovd->pan = e->pan;
 		if ((e->ev_flags & SGS_SDEV_NEW_OPGRAPH) != 0) {
-			vas->op_graph = SGS_create_ProgramIDArr(o->mp,
-					&e->op_graph, NULL);
-			ovd->carrs = vas->op_graph;
+			if (!set_oplist(&vas->op_carrs, &e->op_graph, o->mp))
+				goto MEM_ERR;
+			ovd->carrs = vas->op_carrs;
 		}
 		out_ev->vo_data = ovd;
 		if ((vas->flags & SGS_VAS_GRAPH) != 0) {
-			SGS_VoiceGraph_set(&o->ev_vo_graph, out_ev, o->mp);
+			if (!SGS_VoiceGraph_set(&o->ev_vo_graph, out_ev, o->mp))
+				goto MEM_ERR;
 		}
 	}
+	return true;
+MEM_ERR:
+	return false;
 }
 
-static SGS_Program *_ParseConv_copy_out(ParseConv *restrict o,
+/*
+ * Check whether program can be returned for use.
+ *
+ * \return true, unless invalid data detected
+ */
+static bool
+ParseConv_check_validity(ParseConv *restrict o,
+		SGS_Script *restrict parse) {
+	bool error = false;
+	if (o->va.count > SGS_PVO_MAX_ID) {
+		fprintf(stderr,
+"%s: error: number of voices used cannot exceed %u\n",
+			parse->name, SGS_PVO_MAX_ID);
+		error = true;
+	}
+	if (o->oa.count > SGS_POP_MAX_ID) {
+		fprintf(stderr,
+"%s: error: number of operators used cannot exceed %u\n",
+			parse->name, SGS_POP_MAX_ID);
+		error = true;
+	}
+	return !error;
+}
+
+static SGS_Program *
+ParseConv_create_program(ParseConv *restrict o,
 		SGS_Script *restrict parse) {
 	SGS_Program *prg = SGS_mpalloc(o->mp, sizeof(SGS_Program));
-	if (!prg) goto ERROR;
+	if (!prg) goto MEM_ERR;
 	if (!SGS_PEvArr_mpmemdup(&o->ev_arr,
 				(SGS_ProgramEvent**) &prg->events, o->mp))
-		goto ERROR;
+		goto MEM_ERR;
 	prg->ev_count = o->ev_arr.count;
 	if (!(parse->sopt.set & SGS_SOPT_AMPMULT)) {
 		/*
@@ -467,70 +557,54 @@ static SGS_Program *_ParseConv_copy_out(ParseConv *restrict o,
 		 */
 		prg->mode |= SGS_PMODE_AMP_DIV_VOICES;
 	}
-	if (o->va.count > SGS_PVO_MAX_ID) {
-		fprintf(stderr,
-"%s: error: number of voices used cannot exceed %u\n",
-			parse->name, SGS_PVO_MAX_ID);
-		goto ERROR;
-	}
 	prg->vo_count = o->va.count;
-	if (o->oa.count > SGS_POP_MAX_ID) {
-		fprintf(stderr,
-"%s: error: number of operators used cannot exceed %u\n",
-			parse->name, SGS_POP_MAX_ID);
-		goto ERROR;
-	}
 	prg->op_count = o->oa.count;
-	if (o->ev_vo_graph.op_nest_depth > UINT8_MAX) {
-		fprintf(stderr,
-"%s: error: operators nested %u levels, maximum is %u levels\n",
-			parse->name, o->ev_vo_graph.op_nest_depth, UINT8_MAX);
-		goto ERROR;
-	}
-	prg->op_nest_depth = o->ev_vo_graph.op_nest_depth;
+	prg->op_nest_depth = o->ev_vo_graph.op_nest_max;
 	prg->duration_ms = o->duration_ms;
 	prg->name = parse->name;
 	prg->mp = o->mp;
 	o->mp = NULL; // don't destroy
 	return prg;
-ERROR:
+MEM_ERR:
 	return NULL;
-}
-
-static void _ParseConv_cleanup(ParseConv *restrict o) {
-	SGS_OpAlloc_clear(&o->oa);
-	SGS_VoAlloc_clear(&o->va);
-	SGS_fini_VoiceGraph(&o->ev_vo_graph);
-	OpDataArr_clear(&o->ev_op_data);
-	SGS_PEvArr_clear(&o->ev_arr);
-	SGS_destroy_Mempool(o->mp); // NULL'd if kept for result
 }
 
 /*
  * Build program, allocating events, voices, and operators.
  */
-static SGS_Program *ParseConv_convert(ParseConv *restrict o,
+static SGS_Program *
+ParseConv_convert(ParseConv *restrict o,
 		SGS_Script *restrict parse) {
-	SGS_Program *prg;
-	SGS_ScriptEvData *e;
-	size_t i;
-	uint32_t remaining_ms = 0;
-
+	SGS_Program *prg = NULL;
 	o->mp = SGS_create_Mempool(0);
+	if (!o->mp) goto MEM_ERR;
 	SGS_init_VoiceGraph(&o->ev_vo_graph, &o->va, &o->oa);
-	for (e = parse->events; e; e = e->next) {
-		ParseConv_convert_event(o, e);
+	uint32_t remaining_ms = 0;
+	for (SGS_ScriptEvData *e = parse->events; e; e = e->next) {
+		if (!ParseConv_convert_event(o, e)) goto MEM_ERR;
 		o->duration_ms += e->wait_ms;
 	}
-	for (i = 0; i < o->va.count; ++i) {
+	for (size_t i = 0; i < o->va.count; ++i) {
 		SGS_VoAllocState *vas = &o->va.a[i];
 		if (vas->duration_ms > remaining_ms)
 			remaining_ms = vas->duration_ms;
 	}
 	o->duration_ms += remaining_ms;
+	if (ParseConv_check_validity(o, parse)) {
+		prg = ParseConv_create_program(o, parse);
+		if (!prg) goto MEM_ERR;
+	}
 
-	prg = _ParseConv_copy_out(o, parse);
-	_ParseConv_cleanup(o);
+	if (false)
+	MEM_ERR: {
+		SGS_error("parseconv", "memory allocation failure");
+	}
+	SGS_fini_VoiceGraph(&o->ev_vo_graph);
+	_OpDataArr_clear(&o->ev_op_data);
+	SGS_OpAlloc_clear(&o->oa);
+	SGS_VoAlloc_clear(&o->va);
+	SGS_PEvArr_clear(&o->ev_arr);
+	SGS_destroy_Mempool(o->mp); // NULL'd if kept for result
 	return prg;
 }
 
@@ -539,7 +613,8 @@ static SGS_Program *ParseConv_convert(ParseConv *restrict o,
  *
  * \return instance or NULL on error
  */
-SGS_Program* SGS_build_Program(SGS_Script *restrict sd) {
+SGS_Program *
+SGS_build_Program(SGS_Script *restrict sd) {
 	ParseConv pc = (ParseConv){0};
 	SGS_Program *o = ParseConv_convert(&pc, sd);
 	return o;
@@ -548,13 +623,15 @@ SGS_Program* SGS_build_Program(SGS_Script *restrict sd) {
 /**
  * Destroy instance.
  */
-void SGS_discard_Program(SGS_Program *restrict o) {
+void
+SGS_discard_Program(SGS_Program *restrict o) {
 	if (!o)
 		return;
 	SGS_destroy_Mempool(o->mp);
 }
 
-static void print_linked(const char *restrict header,
+static sgsNoinline void
+print_linked(const char *restrict header,
 		const SGS_ProgramIDArr *restrict idarr) {
 	if (!idarr || !idarr->count)
 		return;
@@ -564,7 +641,8 @@ static void print_linked(const char *restrict header,
 	fprintf(stdout, "]");
 }
 
-static void print_oplist(const SGS_ProgramOpRef *restrict list,
+static void
+print_oplist(const SGS_ProgramOpRef *restrict list,
 		uint32_t count) {
 	if (!list)
 		return;
@@ -593,7 +671,8 @@ static void print_oplist(const SGS_ProgramOpRef *restrict list,
 	putc(']', stdout);
 }
 
-static void print_opline(const SGS_ProgramOpData *restrict od) {
+static void
+print_opline(const SGS_ProgramOpData *restrict od) {
 	if (od->time.flags & SGS_TIMEP_IMPLICIT) {
 		fprintf(stdout,
 			"\n\top %u \tt=IMPL  \t", od->id);
@@ -632,7 +711,8 @@ static void print_opline(const SGS_ProgramOpData *restrict od) {
 /**
  * Print information about program contents. Useful for debugging.
  */
-void SGS_Program_print_info(const SGS_Program *restrict o) {
+void
+SGS_Program_print_info(const SGS_Program *restrict o) {
 	fprintf(stdout,
 		"Program: \"%s\"\n", o->name);
 	fprintf(stdout,
