@@ -184,6 +184,7 @@ typedef float (*NumSym_f)(PScanner *restrict o);
 typedef struct NumParser {
   PScanner *sc;
   NumSym_f numsym_f;
+  bool has_infnum;
 } NumParser;
 static double scan_num_r(NumParser *restrict o,
                          uint8_t pri, uint32_t level) {
@@ -208,7 +209,7 @@ static double scan_num_r(NumParser *restrict o,
   if (o->numsym_f && IS_ALPHA(c)) {
     SGS_File_UNGETC(f);
     num = o->numsym_f(sc);
-    if (num != num)
+    if (isnan(num))
       return NAN;
     if (minus) num = -num;
   } else {
@@ -223,6 +224,7 @@ EVAL:
   if (pri == 0)
     return num; /* defer all */
   for (;;) {
+    if (isinf(num)) o->has_infnum = true;
     if (level > 0) scan_ws(sc);
     c = SGS_File_GETC(f);
     switch (c) {
@@ -255,7 +257,7 @@ EVAL:
       }
       goto DEFER;
     }
-    if (num != num) goto DEFER;
+    if (isnan(num)) goto DEFER;
   }
 DEFER:
   SGS_File_UNGETC(f);
@@ -263,13 +265,17 @@ DEFER:
 }
 static bool scan_num(PScanner *restrict o, NumSym_f scan_numsym,
                      float *restrict var, bool mul_inv) {
-  NumParser np = {o, scan_numsym};
+  NumParser np = {o, scan_numsym, false};
   float num = scan_num_r(&np, 0, 0);
-  if (num != num)
+  if (isnan(num))
     return false;
-  if (mul_inv) num = 1.f / num;
-  if (fabs(num) == INFINITY) {
-    scan_warning(o, "discarding infinite number");
+  if (isinf(num)) np.has_infnum = true;
+  if (mul_inv) {
+    num = 1.f / num;
+    if (isinf(num)) np.has_infnum = true;
+  }
+  if (np.has_infnum) {
+    scan_warning(o, "discarding expression with infinite number");
     return false;
   }
   *var = num;
@@ -430,11 +436,11 @@ static bool scan_wavetype(PScanner *restrict o, size_t *restrict found_id) {
 }
 
 static bool scan_ramp_state(PScanner *restrict o,
-                           NumSym_f scan_numsym,
-                           SGS_Ramp *restrict ramp, bool ratio) {
-  if (!scan_num(o, scan_numsym, &ramp->v0, ratio))
+                            NumSym_f scan_numsym,
+                            SGS_Ramp *restrict ramp, bool mult) {
+  if (!scan_num(o, scan_numsym, &ramp->v0, false))
     return false;
-  if (ratio) {
+  if (mult) {
     ramp->flags |= SGS_RAMP_STATE_RATIO;
   } else {
     ramp->flags &= ~SGS_RAMP_STATE_RATIO;
@@ -444,15 +450,15 @@ static bool scan_ramp_state(PScanner *restrict o,
 }
 
 static bool scan_ramp(PScanner *restrict o,
-                           NumSym_f scan_numsym,
-                           SGS_Ramp *restrict ramp, bool ratio) {
+                      NumSym_f scan_numsym,
+                      SGS_Ramp *restrict ramp, bool mult) {
   bool goal = false;
   float vt;
   uint32_t time_ms = SGS_TIME_DEFAULT;
   uint8_t curve = ramp->curve; // has default
   if ((ramp->flags & SGS_RAMP_CURVE) != 0) {
     // allow partial change
-    if (((ramp->flags & SGS_RAMP_CURVE_RATIO) != 0) == ratio) {
+    if (((ramp->flags & SGS_RAMP_CURVE_RATIO) != 0) == mult) {
       goal = true;
       vt = ramp->vt;
     }
@@ -489,7 +495,7 @@ static bool scan_ramp(PScanner *restrict o,
       }
       break; }
     case 'v':
-      if (scan_num(o, scan_numsym, &vt, ratio))
+      if (scan_num(o, scan_numsym, &vt, false))
         goal = true;
       break;
     case '}':
@@ -509,7 +515,7 @@ RETURN:
   ramp->vt = vt;
   ramp->time_ms = time_ms;
   ramp->curve = curve;
-  if (ratio) {
+  if (mult) {
     ramp->flags |= SGS_RAMP_CURVE_RATIO;
   } else {
     ramp->flags &= ~SGS_RAMP_CURVE_RATIO;
@@ -542,7 +548,7 @@ static const SGS_ScriptOptions def_sopt = {
   .A4_freq = 444.f,
   .def_time_ms = 1000,
   .def_freq = 444.f,
-  .def_ratio = 1.f,
+  .def_relfreq = 1.f,
 };
 
 /*
@@ -861,7 +867,7 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
       op->freq.v0 = o->sl.sopt.def_freq;
     } else {
       op->op_flags |= SGS_SDOP_NESTED;
-      op->freq.v0 = o->sl.sopt.def_ratio;
+      op->freq.v0 = o->sl.sopt.def_relfreq;
       op->freq.flags |= SGS_RAMP_STATE_RATIO;
     }
     op->freq.flags |= SGS_RAMP_STATE;
@@ -934,7 +940,7 @@ static void begin_node(ParseLevel *restrict pl,
 static void begin_scope(SGS_Parser *restrict o, ParseLevel *restrict pl,
                         ParseLevel *restrict parent_pl,
                         uint8_t linktype, uint8_t newscope) {
-  memset(pl, 0, sizeof(ParseLevel));
+  *pl = (ParseLevel){0};
   pl->o = o;
   pl->scope = newscope;
   if (parent_pl != NULL) {
@@ -1019,7 +1025,7 @@ static bool parse_settings(ParseLevel *restrict pl) {
       }
       break; }
     case 'r':
-      if (scan_num(sc, NULL, &o->sl.sopt.def_ratio, true)) {
+      if (scan_num(sc, NULL, &o->sl.sopt.def_relfreq, false)) {
         o->sl.sopt.changed |= SGS_SOPT_DEF_RATIO;
       }
       break;
@@ -1129,7 +1135,7 @@ static bool parse_step(ParseLevel *restrict pl) {
         goto UNKNOWN;
       if (SGS_File_TRYC(f, '!')) {
         if (!SGS_File_TESTC(f, '[')) {
-          scan_num(sc, NULL, &op->dynfreq, true);
+          scan_num(sc, NULL, &op->dynfreq, false);
         }
         if (SGS_File_TRYC(f, '[')) {
           if (op->fmods.count > 0) {
