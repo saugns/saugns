@@ -605,10 +605,17 @@ static void end_operator(ParseLevel *restrict pl) {
   SGS_ScriptOpData *op = pl->operator;
   if (SGS_Ramp_ENABLED(&op->freq))
     op->op_params |= SGS_POPP_FREQ;
+  if (SGS_Ramp_ENABLED(&op->freq2))
+    op->op_params |= SGS_POPP_FREQ2;
   if (SGS_Ramp_ENABLED(&op->amp)) {
     op->op_params |= SGS_POPP_AMP;
     op->amp.v0 *= pl->used_ampmult;
     op->amp.vt *= pl->used_ampmult;
+  }
+  if (SGS_Ramp_ENABLED(&op->amp2)) {
+    op->op_params |= SGS_POPP_AMP2;
+    op->amp2.v0 *= pl->used_ampmult;
+    op->amp2.vt *= pl->used_ampmult;
   }
   SGS_ScriptOpData *pop = op->on_prev;
   if (!pop) {
@@ -620,11 +627,7 @@ static void end_operator(ParseLevel *restrict pl) {
     if (op->wave != pop->wave)
       op->op_params |= SGS_POPP_WAVE;
     /* SGS_TIME set when time set */
-    if (op->dynfreq != pop->dynfreq)
-      op->op_params |= SGS_POPP_DYNFREQ;
     /* SGS_PHASE set when phase set */
-    if (op->dynamp != pop->dynamp)
-      op->op_params |= SGS_POPP_DYNAMP;
   }
   pl->operator = NULL;
 }
@@ -725,7 +728,9 @@ static void begin_operator(ParseLevel *restrict pl, bool is_compstep) {
    * Initialize node.
    */
   SGS_Ramp_reset(&op->freq);
+  SGS_Ramp_reset(&op->freq2);
   SGS_Ramp_reset(&op->amp);
+  SGS_Ramp_reset(&op->amp2);
   if (pop != NULL) {
     pop->op_flags |= SGS_SDOP_LATER_USED;
     op->on_prev = pop;
@@ -735,8 +740,6 @@ static void begin_operator(ParseLevel *restrict pl, bool is_compstep) {
       (pop->time.flags & SGS_TIMEP_IMPLICIT)};
     op->wave = pop->wave;
     op->phase = pop->phase;
-    op->dynfreq = pop->dynfreq;
-    op->dynamp = pop->dynamp;
     if ((pl->pl_flags & SDPL_BIND_MULTIPLE) != 0) {
       SGS_ScriptOpData *mpop = pop;
       uint32_t max_time = 0;
@@ -1056,6 +1059,50 @@ static bool parse_par_list(ParseLevel *restrict pl,
   return empty;
 }
 
+static bool parse_op_amp(ParseLevel *restrict pl) {
+  SGS_Parser *o = pl->o;
+  PScanner *sc = &o->sc;
+  SGS_File *f = sc->f;
+  SGS_ScriptOpData *op = pl->operator;
+  scan_ramp_state(sc, NULL, &op->amp, false);
+  parse_par_list(pl, NULL, &op->amp, false, 0);
+  if (SGS_File_TRYC(f, ',') && SGS_File_TRYC(f, 'w')) {
+    scan_ramp_state(sc, NULL, &op->amp2, false);
+    parse_par_list(pl, NULL, &op->amp2, false, SGS_POP_AMOD);
+  }
+  return false;
+}
+
+static bool parse_op_freq(ParseLevel *restrict pl, bool rel_freq) {
+  SGS_Parser *o = pl->o;
+  PScanner *sc = &o->sc;
+  SGS_File *f = sc->f;
+  SGS_ScriptOpData *op = pl->operator;
+  if (rel_freq && !(op->op_flags & SGS_SDOP_NESTED))
+    return true; // reject
+  NumSym_f numsym_f = rel_freq ? NULL : scan_note;
+  scan_ramp_state(sc, numsym_f, &op->freq, rel_freq);
+  parse_par_list(pl, numsym_f, &op->freq, rel_freq, 0);
+  if (SGS_File_TRYC(f, ',') && SGS_File_TRYC(f, 'w')) {
+    scan_ramp_state(sc, numsym_f, &op->freq2, rel_freq);
+    parse_par_list(pl, numsym_f, &op->freq2, rel_freq, SGS_POP_FMOD);
+  }
+  return false;
+}
+
+static bool parse_op_phase(ParseLevel *restrict pl) {
+  SGS_Parser *o = pl->o;
+  PScanner *sc = &o->sc;
+  SGS_ScriptOpData *op = pl->operator;
+  double val;
+  if (scan_num(sc, NULL, &val)) {
+    op->phase = SGS_cyclepos_dtoui32(val);
+    op->op_params |= SGS_POPP_PHASE;
+  }
+  parse_par_list(pl, NULL, NULL, false, SGS_POP_PMOD);
+  return false;
+}
+
 static void parse_in_op_step(ParseLevel *restrict pl) {
   PARSE_IN__HEAD(parse_in_op_step, pl->operator)
     SGS_ScriptEvData *e = pl->event;
@@ -1081,43 +1128,16 @@ static void parse_in_op_step(ParseLevel *restrict pl) {
       }
       break;
     case 'a':
-      scan_ramp_state(sc, NULL, &op->amp, false);
-      parse_par_list(pl, NULL, &op->amp, false, 0);
-      if (SGS_File_TRYC(f, ',') && SGS_File_TRYC(f, 'w')) {
-        if (scan_num(sc, NULL, &val)) {
-          op->dynamp = val;
-        }
-        parse_par_list(pl, NULL, NULL, false, SGS_POP_AMOD);
-      }
+      if (parse_op_amp(pl)) goto DEFER;
       break;
     case 'f':
-      scan_ramp_state(sc, scan_note, &op->freq, false);
-      parse_par_list(pl, scan_note, &op->freq, false, 0);
-      if (SGS_File_TRYC(f, ',') && SGS_File_TRYC(f, 'w')) {
-        if (scan_num(sc, NULL, &val)) {
-          op->dynfreq = val;
-        }
-        parse_par_list(pl, scan_note, NULL, false, SGS_POP_FMOD);
-      }
+      if (parse_op_freq(pl, false)) goto DEFER;
       break;
     case 'p':
-      if (scan_num(sc, NULL, &val)) {
-        op->phase = SGS_cyclepos_dtoui32(val);
-        op->op_params |= SGS_POPP_PHASE;
-      }
-      parse_par_list(pl, NULL, NULL, false, SGS_POP_PMOD);
+      if (parse_op_phase(pl)) goto DEFER;
       break;
     case 'r':
-      if (!(op->op_flags & SGS_SDOP_NESTED))
-        goto DEFER;
-      scan_ramp_state(sc, scan_note, &op->freq, true);
-      parse_par_list(pl, scan_note, &op->freq, true, 0);
-      if (SGS_File_TRYC(f, ',') && SGS_File_TRYC(f, 'w')) {
-        if (scan_num(sc, 0, &val)) {
-          op->dynfreq = val;
-        }
-        parse_par_list(pl, scan_note, NULL, true, SGS_POP_FMOD);
-      }
+      if (parse_op_freq(pl, true)) goto DEFER;
       break;
     case 't':
       if (SGS_File_TRYC(f, 'd')) {
@@ -1366,6 +1386,12 @@ static void time_durgroup(SGS_ScriptEvData *restrict e_last) {
     e_after->wait_ms += wait_after;
 }
 
+static inline void time_ramp(SGS_Ramp *restrict ramp,
+                             uint32_t default_time_ms) {
+  if (!(ramp->flags & SGS_RAMPP_TIME))
+    ramp->time_ms = default_time_ms;
+}
+
 static uint32_t time_operator(SGS_ScriptOpData *restrict op) {
   uint32_t dur_ms = op->time.v_ms;
   if (!(op->op_params & SGS_POPP_TIME))
@@ -1378,10 +1404,10 @@ static uint32_t time_operator(SGS_ScriptOpData *restrict op) {
     }
   }
   if (!(op->time.flags & SGS_TIMEP_IMPLICIT)) {
-    if (!(op->freq.flags & SGS_RAMPP_TIME))
-      op->freq.time_ms = op->time.v_ms;
-    if (!(op->amp.flags & SGS_RAMPP_TIME))
-      op->amp.time_ms = op->time.v_ms;
+    time_ramp(&op->freq, op->time.v_ms);
+    time_ramp(&op->freq2, op->time.v_ms);
+    time_ramp(&op->amp, op->time.v_ms);
+    time_ramp(&op->amp2, op->time.v_ms);
   }
   if (op->amods) for (SGS_ScriptOpData *subop = op->amods->first_on; subop;
        subop = subop->next) {
