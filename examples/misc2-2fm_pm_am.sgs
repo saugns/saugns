@@ -1,12 +1,12 @@
-Osin t4 f200 f!400[
-	Osin r(3/1) r!(24/1)[
-		Osin f10 f!5[Osin f2]
+Osin t4 f200,400~[
+	Osin r(3/1),(24/1)~[
+		Osin f10,5~[Osin f2]
 	]
-] a0.5 a!1.0[
+] a0.5,1.0~[
 	Osin f1
 ] |
 
-Osin t12 f120 a0.5 a!1.0[
+Osin t12 f120 a0.5,1.0~[
 	Osin f0.222
 ] p+[
 	Osin f190 a1 p+[Osin f1125 a1]
