@@ -94,3 +94,5 @@ void SGS_Ramp_copy(SGS_Ramp *restrict o,
 bool SGS_Ramp_run(SGS_Ramp *restrict o, float *restrict buf,
 		uint32_t buf_len, uint32_t srate,
 		uint32_t *restrict pos, const float *restrict mulbuf);
+bool SGS_Ramp_skip(SGS_Ramp *restrict o,
+		uint32_t skip_len, uint32_t srate, uint32_t *restrict pos);
