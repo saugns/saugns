@@ -55,10 +55,10 @@ enum {
 	SGS_POPP_WAVE = 1<<1,
 	SGS_POPP_TIME = 1<<2,
 	SGS_POPP_FREQ = 1<<3,
-	SGS_POPP_DYNFREQ = 1<<4,
+	SGS_POPP_FREQ2 = 1<<4,
 	SGS_POPP_PHASE = 1<<5,
 	SGS_POPP_AMP = 1<<6,
-	SGS_POPP_DYNAMP = 1<<7,
+	SGS_POPP_AMP2 = 1<<7,
 	SGS_POP_PARAMS = (1<<8) - 1,
 };
 
@@ -109,8 +109,9 @@ typedef struct SGS_ProgramOpData {
 	uint32_t params;
 	SGS_Time time;
 	uint8_t wave;
-	float dynfreq, phase, dynamp;
-	SGS_Ramp freq, amp;
+	SGS_Ramp freq, freq2;
+	SGS_Ramp amp, amp2;
+	float phase;
 } SGS_ProgramOpData;
 
 typedef struct SGS_ProgramEvent {
