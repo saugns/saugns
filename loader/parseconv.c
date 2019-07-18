@@ -295,9 +295,9 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 	od->time = op->time;
 	od->wave = op->wave;
 	od->freq = op->freq;
-	od->dynfreq = op->dynfreq;
+	od->freq2 = op->freq2;
 	od->amp = op->amp;
-	od->dynamp = op->dynamp;
+	od->amp2 = op->amp2;
 	od->phase = op->phase;
 	SGS_VoAllocState *vas = &o->va.a[o->ev->vo_id];
 	if (op->mods_set & (1<<SGS_POP_FMOD)) {
@@ -719,9 +719,9 @@ SGS_Program_print_info(const SGS_Program *restrict o) {
 		for (size_t i = 0; i < ev->op_data_count; ++i) {
 			const SGS_ProgramOpData *od = &ev->op_data[i];
 			print_opline(od);
-			print_linked("\n\t    f![", "]", od->fmods);
+			print_linked("\n\t    f~[", "]", od->fmods);
 			print_linked("\n\t    p+[", "]", od->pmods);
-			print_linked("\n\t    a![", "]", od->amods);
+			print_linked("\n\t    a~[", "]", od->amods);
 		}
 		putc('\n', stdout);
 	}
