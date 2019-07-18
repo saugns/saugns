@@ -42,8 +42,9 @@ typedef struct SGS_ScriptOpData {
 	SGS_Time time;
 	uint32_t silence_ms;
 	uint8_t wave;
-	SGS_Ramp freq, amp;
-	float phase, dynfreq, dynamp;
+	SGS_Ramp freq, freq2;
+	SGS_Ramp amp, amp2;
+	float phase;
 	/* node adjacents in operator linkage graph */
 	SGS_PtrList fmods, pmods, amods;
 } SGS_ScriptOpData;

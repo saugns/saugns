@@ -238,10 +238,10 @@ static void ParseConv_convert_opdata(ParseConv *restrict o,
 	ood.silence_ms = op->silence_ms;
 	ood.wave = op->wave;
 	ood.freq = op->freq;
+	ood.freq2 = op->freq2;
 	ood.amp = op->amp;
+	ood.amp2 = op->amp2;
 	ood.phase = op->phase;
-	ood.dynfreq = op->dynfreq;
-	ood.dynamp = op->dynamp;
 	if ((op->op_params & SGS_POPP_ADJCS) != 0) {
 		SGS_VoAllocState *vas = &o->va.a[o->ev->vo_id];
 		vas->flags |= SGS_VAS_GRAPH;
