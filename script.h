@@ -45,8 +45,8 @@ typedef struct SGS_ScriptOpData {
 	uint32_t op_id; /* not set by parser; for later use (parseconv.c) */
 	uint32_t op_params;
 	SGS_Time time;
-	SGS_Ramp freq, amp;
-	float dynfreq, dynamp;
+	SGS_Ramp amp, amp2;
+	SGS_Ramp freq, freq2;
 	uint32_t phase;
 	uint8_t wave;
 	/* node adjacents in operator linkage graph */
