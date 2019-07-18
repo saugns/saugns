@@ -35,8 +35,9 @@ typedef struct OperatorNode {
 	uint8_t flags;
 	const SGS_ProgramOpList *fmods, *pmods, *amods;
 	SGS_Ramp amp, freq;
+	SGS_Ramp amp2, freq2;
 	uint32_t amp_pos, freq_pos;
-	float dynamp, dynfreq;
+	uint32_t amp2_pos, freq2_pos;
 } OperatorNode;
 
 /*
@@ -82,7 +83,7 @@ struct SGS_Generator {
 };
 
 // maximum number of buffers needed for op nesting depth
-#define COUNT_GEN_BUFS(op_nest_depth) ((1 + (op_nest_depth)) * 4)
+#define COUNT_GEN_BUFS(op_nest_depth) ((1 + (op_nest_depth)) * 7)
 
 static bool alloc_for_program(SGS_Generator *restrict o,
 		const SGS_Program *restrict prg) {
@@ -268,16 +269,18 @@ static void handle_event(SGS_Generator *restrict o, EventNode *restrict e) {
 			if (params & SGS_POPP_FREQ)
 				handle_ramp_update(&on->freq,
 						&on->freq_pos, &od->freq);
-			if (params & SGS_POPP_DYNFREQ)
-				on->dynfreq = od->dynfreq;
+			if (params & SGS_POPP_FREQ2)
+				handle_ramp_update(&on->freq2,
+						&on->freq2_pos, &od->freq2);
 			if (params & SGS_POPP_PHASE)
 				SGS_Osc_set_phase(&on->osc,
 						SGS_Osc_PHASE(od->phase));
 			if (params & SGS_POPP_AMP)
 				handle_ramp_update(&on->amp,
 						&on->amp_pos, &od->amp);
-			if (params & SGS_POPP_DYNAMP)
-				on->dynamp = od->dynamp;
+			if (params & SGS_POPP_AMP2)
+				handle_ramp_update(&on->amp2,
+						&on->amp2_pos, &od->amp2);
 		}
 		if (e->vo_data != NULL) {
 			const SGS_ProgramVoData *vd = e->vo_data;
@@ -306,7 +309,7 @@ static void handle_event(SGS_Generator *restrict o, EventNode *restrict e) {
  * Generate up to buf_len samples for an operator node,
  * the remainder (if any) zero-filled if acc_ind is zero.
  *
- * Recursively visits the subnodes of the operator node in the process,
+ * Recursively visits the subnodes of the operator node,
  * if any.
  *
  * Returns number of samples generated for the node.
@@ -342,21 +345,19 @@ static uint32_t run_block(SGS_Generator *restrict o,
 	 * if modulators linked.
 	 */
 	freq = *(bufs++);
-	SGS_Ramp_run(&n->freq, freq, len, o->srate, &n->freq_pos, parent_freq);
+	SGS_Ramp_run(&n->freq, &n->freq_pos, freq, len, o->srate, parent_freq);
 	if (n->fmods->count > 0) {
-		float *fm_buf;
+		float *freq2 = *(bufs++);
+		SGS_Ramp_run(&n->freq2, &n->freq2_pos,
+				freq2, len, o->srate, parent_freq);
 		for (i = 0; i < n->fmods->count; ++i)
 			run_block(o, bufs, len, &o->operators[n->fmods->ids[i]],
 					freq, true, i);
-		fm_buf = *bufs;
-		if ((n->freq.flags & SGS_RAMPP_STATE_RATIO) != 0) {
-			for (i = 0; i < len; ++i)
-				freq[i] += (n->dynfreq * parent_freq[i] -
-						freq[i]) * fm_buf[i];
-		} else {
-			for (i = 0; i < len; ++i)
-				freq[i] += (n->dynfreq - freq[i]) * fm_buf[i];
-		}
+		float *fm_buf = *bufs;
+		for (i = 0; i < len; ++i)
+			freq[i] += (freq2[i] - freq[i]) * fm_buf[i];
+	} else {
+		SGS_Ramp_skip(&n->freq2, &n->freq2_pos, len, o->srate);
 	}
 	/*
 	 * If phase modulators linked, get phase offsets for modulation.
@@ -372,17 +373,19 @@ static uint32_t run_block(SGS_Generator *restrict o,
 	 * Handle amplitude parameter, including amplitude modulation if
 	 * modulators linked.
 	 */
+	amp = *(bufs++);
+	SGS_Ramp_run(&n->amp, &n->amp_pos, amp, len, o->srate, NULL);
 	if (n->amods->count > 0) {
-		float dynampdiff = n->dynamp - n->amp.v0;
+		float *amp2 = *(bufs++);
+		SGS_Ramp_run(&n->amp2, &n->amp2_pos, amp2, len, o->srate, NULL);
 		for (i = 0; i < n->amods->count; ++i)
 			run_block(o, bufs, len, &o->operators[n->amods->ids[i]],
 					freq, true, i);
-		amp = *(bufs++);
+		float *am_buf = *bufs;
 		for (i = 0; i < len; ++i)
-			amp[i] = n->amp.v0 + amp[i] * dynampdiff;
+			amp[i] += (amp2[i] - amp[i]) * am_buf[i];
 	} else {
-		amp = *(bufs++);
-		SGS_Ramp_run(&n->amp, amp, len, o->srate, &n->amp_pos, NULL);
+		SGS_Ramp_skip(&n->amp2, &n->amp2_pos, len, o->srate);
 	}
 	if (!wave_env) {
 		SGS_Osc_run(&n->osc, s_buf, len, acc_ind, freq, amp, pm_buf);
