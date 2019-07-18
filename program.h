@@ -36,10 +36,10 @@ enum {
 	SGS_POPP_TIME = 1<<2,
 	SGS_POPP_SILENCE = 1<<3,
 	SGS_POPP_FREQ = 1<<4,
-	SGS_POPP_DYNFREQ = 1<<5,
+	SGS_POPP_FREQ2 = 1<<5,
 	SGS_POPP_PHASE = 1<<6,
 	SGS_POPP_AMP = 1<<7,
-	SGS_POPP_DYNAMP = 1<<8,
+	SGS_POPP_AMP2 = 1<<8,
 };
 
 /*
@@ -99,10 +99,11 @@ typedef struct SGS_ProgramOpData {
 	const SGS_ProgramOpAdjcs *adjcs;
 	uint32_t id;
 	uint32_t params;
-	uint8_t wave;
 	uint32_t time_ms, silence_ms;
-	float dynfreq, phase, dynamp;
-	SGS_Ramp freq, amp;
+	uint8_t wave;
+	SGS_Ramp freq, freq2;
+	SGS_Ramp amp, amp2;
+	float phase;
 } SGS_ProgramOpData;
 
 typedef struct SGS_ProgramEvent {
