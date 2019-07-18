@@ -300,10 +300,10 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 	ood->params = op->op_params;
 	ood->time = op->time;
 	ood->amp = op->amp;
-	ood->dynamp = op->dynamp;
+	ood->amp2 = op->amp2;
 	ood->freq = op->freq;
+	ood->freq2 = op->freq2;
 	ood->phase = op->phase;
-	ood->dynfreq = op->dynfreq;
 	ood->wave = op->wave;
 	SGS_VoAllocState *vas = &o->va.a[o->ev->vo_id];
 	if (op->amods) {
