@@ -2,20 +2,24 @@
  * Copyright (c) 2011-2013, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
- * This file and the software of which it is part is distributed under the
- * terms of the GNU Lesser General Public License, either version 3 or (at
- * your option) any later version, WITHOUT ANY WARRANTY, not even of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
  *
- * View the file COPYING for details, or if missing, see
- * <https://www.gnu.org/licenses/>.
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
 #pragma once
 #include "common.h"
 
 /**
- * Ramp curves.
+ * Ramp types.
  */
 enum {
 	SGS_RAMP_HOLD = 0,
@@ -27,13 +31,13 @@ enum {
 	SGS_RAMP_TYPES
 };
 
-/** Names of ramp curve types, with an extra NULL pointer at the end. */
+/** Names of ramp types, with an extra NULL pointer at the end. */
 extern const char *const SGS_Ramp_names[SGS_RAMP_TYPES + 1];
 
 typedef void (*SGS_Ramp_fill_f)(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time);
 
-/** Functions for ramp curve types. */
+/** Curve fill functions for ramp types. */
 extern const SGS_Ramp_fill_f SGS_Ramp_fill_funcs[SGS_RAMP_TYPES];
 
 void SGS_Ramp_fill_hold(float *restrict buf, uint32_t len,
@@ -80,7 +84,7 @@ typedef struct SGS_Ramp {
 } SGS_Ramp;
 
 /**
- * Get the main flags showing whether state and/or curve are enabled.
+ * Get the main flags showing whether state and/or goal are enabled.
  * Zero implies that the instance is unused.
  *
  * \return flag values
@@ -92,6 +96,8 @@ void SGS_Ramp_reset(SGS_Ramp *restrict o);
 void SGS_Ramp_copy(SGS_Ramp *restrict o,
 		const SGS_Ramp *restrict src);
 
-bool SGS_Ramp_run(SGS_Ramp *restrict o, float *restrict buf,
-		uint32_t buf_len, uint32_t srate,
-		uint32_t *restrict pos, const float *restrict mulbuf);
+bool SGS_Ramp_run(SGS_Ramp *restrict o, uint32_t *restrict pos,
+		float *restrict buf, uint32_t buf_len, uint32_t srate,
+		const float *restrict mulbuf);
+bool SGS_Ramp_skip(SGS_Ramp *restrict o, uint32_t *restrict pos,
+		uint32_t skip_len, uint32_t srate);

@@ -2,13 +2,17 @@
  * Copyright (c) 2011-2013, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
- * This file and the software of which it is part is distributed under the
- * terms of the GNU Lesser General Public License, either version 3 or (at
- * your option) any later version, WITHOUT ANY WARRANTY, not even of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
  *
- * View the file COPYING for details, or if missing, see
- * <https://www.gnu.org/licenses/>.
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
 #include "ramp.h"
@@ -204,9 +208,9 @@ static void fill_state(SGS_Ramp *restrict o, float *restrict buf,
  *
  * \return true if ramp target not yet reached
  */
-bool SGS_Ramp_run(SGS_Ramp *restrict o, float *restrict buf,
-		uint32_t buf_len, uint32_t srate,
-		uint32_t *restrict pos, const float *restrict mulbuf) {
+bool SGS_Ramp_run(SGS_Ramp *restrict o, uint32_t *restrict pos,
+		float *restrict buf, uint32_t buf_len, uint32_t srate,
+		const float *restrict mulbuf) {
 	if (!(o->flags & SGS_RAMPP_GOAL)) {
 		fill_state(o, buf, 0, buf_len, mulbuf);
 		return false;
@@ -225,8 +229,7 @@ bool SGS_Ramp_run(SGS_Ramp *restrict o, float *restrict buf,
 			o->flags &= ~SGS_RAMPP_STATE_RATIO;
 		}
 	}
-	uint32_t len;
-	len = time - *pos;
+	uint32_t len = time - *pos;
 	if (len > buf_len) len = buf_len;
 	SGS_Ramp_fill_funcs[o->type](buf, len, o->v0, o->vt, *pos, time);
 	if ((o->flags & SGS_RAMPP_GOAL_RATIO) != 0) {
@@ -242,6 +245,38 @@ bool SGS_Ramp_run(SGS_Ramp *restrict o, float *restrict buf,
 		o->v0 = o->vt;
 		o->flags &= ~(SGS_RAMPP_GOAL | SGS_RAMPP_GOAL_RATIO);
 		fill_state(o, buf, len, buf_len, mulbuf);
+		return false;
+	}
+	return true;
+}
+
+/**
+ * Skip ahead \p skip_len values for the ramp.
+ * If a goal is reached, \a vt will become the new state \a v0.
+ *
+ * Use to update ramp and its position without generating samples.
+ *
+ * \return true if ramp target not yet reached
+ */
+bool SGS_Ramp_skip(SGS_Ramp *restrict o, uint32_t *restrict pos,
+		uint32_t skip_len, uint32_t srate) {
+	if (!(o->flags & SGS_RAMPP_GOAL))
+		return false;
+	uint32_t time = SGS_MS_IN_SAMPLES(o->time_ms, srate);
+	uint32_t len = time - *pos;
+	if (len > skip_len) len = skip_len;
+	*pos += len;
+	if (*pos == time) {
+		/*
+		 * Goal reached; turn into new initial value.
+		 */
+		o->v0 = o->vt;
+		if ((o->flags & SGS_RAMPP_GOAL_RATIO) != 0) {
+			o->flags |= SGS_RAMPP_STATE_RATIO;
+		} else {
+			o->flags &= ~SGS_RAMPP_STATE_RATIO;
+		}
+		o->flags &= ~(SGS_RAMPP_GOAL | SGS_RAMPP_GOAL_RATIO);
 		return false;
 	}
 	return true;
