@@ -35,8 +35,9 @@ typedef struct OperatorNode {
 	uint8_t wave;
 	const SAU_ProgramOpAdjcs *adjcs;
 	SAU_Ramp amp, freq;
+	SAU_Ramp amp2, freq2;
 	uint32_t amp_pos, freq_pos;
-	float dynamp, dynfreq;
+	uint32_t amp2_pos, freq2_pos;
 } OperatorNode;
 
 /*
@@ -140,7 +141,7 @@ static size_t count_ev_values(const SAU_ProgramEvent *restrict e) {
 }
 
 // maximum number of buffers needed for op nesting depth
-#define COUNT_BUFS(op_nest_depth) ((1 + (op_nest_depth)) * 4)
+#define COUNT_BUFS(op_nest_depth) ((1 + (op_nest_depth)) * 7)
 
 static bool alloc_for_program(SAU_Generator *restrict o,
 		const SAU_Program *restrict prg) {
@@ -264,14 +265,14 @@ static bool convert_program(SAU_Generator *restrict o,
 							srate);
 			if (params & SAU_POPP_FREQ)
 				ev_v = convert_ramp_update(ev_v, &pod->freq);
-			if (params & SAU_POPP_DYNFREQ)
-				(*ev_v++).f = pod->dynfreq;
+			if (params & SAU_POPP_FREQ2)
+				ev_v = convert_ramp_update(ev_v, &pod->freq2);
 			if (params & SAU_POPP_PHASE)
 				(*ev_v++).i = SAU_Osc_PHASE(pod->phase);
 			if (params & SAU_POPP_AMP)
 				ev_v = convert_ramp_update(ev_v, &pod->amp);
-			if (params & SAU_POPP_DYNAMP)
-				(*ev_v++).f = pod->dynamp;
+			if (params & SAU_POPP_AMP2)
+				ev_v = convert_ramp_update(ev_v, &pod->amp2);
 			++ev_od;
 		}
 		if (prg_e->vo_data) {
@@ -391,16 +392,18 @@ static void handle_event(SAU_Generator *restrict o, EventNode *restrict e) {
 			if (params & SAU_POPP_FREQ)
 				val = handle_ramp_update(&on->freq,
 						&on->freq_pos, val);
-			if (params & SAU_POPP_DYNFREQ)
-				on->dynfreq = (*val++).f;
+			if (params & SAU_POPP_FREQ2)
+				val = handle_ramp_update(&on->freq2,
+						&on->freq2_pos, val);
 			if (params & SAU_POPP_PHASE)
 				SAU_Osc_SET_PHASE(&on->osc,
 						(uint32_t)(*val++).i);
 			if (params & SAU_POPP_AMP)
 				val = handle_ramp_update(&on->amp,
 						&on->amp_pos, val);
-			if (params & SAU_POPP_DYNAMP)
-				on->dynamp = (*val++).f;
+			if (params & SAU_POPP_AMP2)
+				val = handle_ramp_update(&on->amp2,
+						&on->amp2_pos, val);
 		}
 		if (e->vd.id != SAU_PVO_NO_ID) {
 			VoiceNode *vn = &o->voices[e->vd.id];
@@ -427,7 +430,7 @@ static void handle_event(SAU_Generator *restrict o, EventNode *restrict e) {
  * Generate up to buf_len samples for an operator node,
  * the remainder (if any) zero-filled if acc_ind is zero.
  *
- * Recursively visits the subnodes of the operator node in the process,
+ * Recursively visits the subnodes of the operator node,
  * if any.
  *
  * Returns number of samples generated for the node.
@@ -488,20 +491,18 @@ static uint32_t run_block(SAU_Generator *restrict o,
 	freq = *(bufs++);
 	SAU_Ramp_run(&n->freq, freq, len, o->srate, &n->freq_pos, parent_freq);
 	if (fmodc) {
+		float *freq2 = *(bufs++);
+		SAU_Ramp_run(&n->freq2, freq2, len, o->srate,
+				&n->freq2_pos, parent_freq);
 		const uint32_t *fmods = n->adjcs->adjcs;
-		float *fm_buf;
 		for (i = 0; i < fmodc; ++i)
 			run_block(o, bufs, len, &o->operators[fmods[i]],
 					freq, true, i);
-		fm_buf = *bufs;
-		if ((n->freq.flags & SAU_RAMP_STATE_RATIO) != 0) {
-			for (i = 0; i < len; ++i)
-				freq[i] += (n->dynfreq * parent_freq[i] -
-						freq[i]) * fm_buf[i];
-		} else {
-			for (i = 0; i < len; ++i)
-				freq[i] += (n->dynfreq - freq[i]) * fm_buf[i];
-		}
+		float *fm_buf = *bufs;
+		for (i = 0; i < len; ++i)
+			freq[i] += (freq2[i] - freq[i]) * fm_buf[i];
+	} else {
+		SAU_Ramp_skip(&n->freq2, len, o->srate, &n->freq2_pos);
 	}
 	/*
 	 * If phase modulators linked, get phase offsets for modulation.
@@ -518,18 +519,20 @@ static uint32_t run_block(SAU_Generator *restrict o,
 	 * Handle amplitude parameter, including amplitude modulation if
 	 * modulators linked.
 	 */
+	amp = *(bufs++);
+	SAU_Ramp_run(&n->amp, amp, len, o->srate, &n->amp_pos, NULL);
 	if (amodc) {
+		float *amp2 = *(bufs++);
+		SAU_Ramp_run(&n->amp2, amp2, len, o->srate, &n->amp2_pos, NULL);
 		const uint32_t *amods = &n->adjcs->adjcs[fmodc+pmodc];
-		float dynampdiff = n->dynamp - n->amp.v0;
 		for (i = 0; i < amodc; ++i)
 			run_block(o, bufs, len, &o->operators[amods[i]],
 					freq, true, i);
-		amp = *(bufs++);
+		float *am_buf = *bufs;
 		for (i = 0; i < len; ++i)
-			amp[i] = n->amp.v0 + amp[i] * dynampdiff;
+			amp[i] += (amp2[i] - amp[i]) * am_buf[i];
 	} else {
-		amp = *(bufs++);
-		SAU_Ramp_run(&n->amp, amp, len, o->srate, &n->amp_pos, NULL);
+		SAU_Ramp_skip(&n->amp2, len, o->srate, &n->amp2_pos);
 	}
 	if (!wave_env) {
 		const float *lut = SAU_Wave_luts[n->wave];

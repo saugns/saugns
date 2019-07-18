@@ -94,3 +94,5 @@ void SAU_Ramp_copy(SAU_Ramp *restrict o,
 bool SAU_Ramp_run(SAU_Ramp *restrict o, float *restrict buf,
 		uint32_t buf_len, uint32_t srate,
 		uint32_t *restrict pos, const float *restrict mulbuf);
+bool SAU_Ramp_skip(SAU_Ramp *restrict o,
+		uint32_t skip_len, uint32_t srate, uint32_t *restrict pos);

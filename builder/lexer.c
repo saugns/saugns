@@ -66,6 +66,7 @@ SAU_Lexer *SAU_create_Lexer(SAU_SymTab *restrict symtab) {
 #if SAU_LEXER_QUIET
 	o->sc->s_flags |= SAU_SCAN_S_QUIET;
 #endif
+	SAU_Scanner_setws_level(o->sc, SAU_SCAN_WS_NONE);
 	return o;
 ERROR:
 	SAU_destroy_Lexer(o);
@@ -162,7 +163,7 @@ bool SAU_Lexer_get(SAU_Lexer *restrict o, SAU_ScriptToken *restrict t) {
 	SAU_Scanner *sc = o->sc;
 	uint8_t c;
 REGET:
-	c = SAU_Scanner_getc_nospace(sc);
+	c = SAU_Scanner_getc(sc);
 	switch (c) {
 	case 0x00:
 		handle_eof(o, c);
@@ -304,7 +305,7 @@ bool SAU_Lexer_get_special(SAU_Lexer *restrict o,
 	SAU_Scanner *sc = o->sc;
 	uint8_t c;
 	for (;;) {
-		c = SAU_Scanner_getc_nospace(sc);
+		c = SAU_Scanner_getc(sc);
 		if (c == 0) {
 			handle_eof(o, c);
 			break;

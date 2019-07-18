@@ -435,7 +435,7 @@ bool SAU_File_getd(SAU_File *restrict o,
 	}
 DONE:
 	res = (double) num;
-	if (res == INFINITY) truncate = true;
+	if (isinf(res)) truncate = true;
 	if (minus) res = -res;
 	*var = res;
 	SAU_File_DECP(o);

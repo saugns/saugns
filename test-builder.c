@@ -140,6 +140,7 @@ static SAU_Program *build_program(const char *restrict script_arg,
 #if SAU_TEST_SCANNER
 	SAU_Scanner *scanner = SAU_create_Scanner(symtab);
 	if (!scanner) goto CLOSE;
+	SAU_Scanner_setws_level(scanner, SAU_SCAN_WS_RED2);
 	if (!SAU_Scanner_open(scanner, script_arg, is_path)) goto CLOSE;
 	for (;;) {
 		uint8_t c = SAU_Scanner_getc(scanner);

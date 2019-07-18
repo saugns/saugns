@@ -41,8 +41,9 @@ typedef struct SAU_ScriptOpData {
 	uint32_t op_params;
 	uint32_t time_ms, silence_ms;
 	uint8_t wave;
-	SAU_Ramp freq, amp;
-	float phase, dynfreq, dynamp;
+	SAU_Ramp freq, freq2;
+	SAU_Ramp amp, amp2;
+	float phase;
 	/* node adjacents in operator linkage graph */
 	SAU_PtrList fmods, pmods, amods;
 } SAU_ScriptOpData;

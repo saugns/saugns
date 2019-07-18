@@ -221,8 +221,7 @@ bool SAU_Ramp_run(SAU_Ramp *restrict o, float *restrict buf,
 			o->flags &= ~SAU_RAMP_STATE_RATIO;
 		}
 	}
-	uint32_t len;
-	len = time - *pos;
+	uint32_t len = time - *pos;
 	if (len > buf_len) len = buf_len;
 	SAU_RampCurve_funcs[o->curve](buf, len, o->v0, o->vt, *pos, time);
 	if ((o->flags & SAU_RAMP_CURVE_RATIO) != 0) {
@@ -238,6 +237,38 @@ bool SAU_Ramp_run(SAU_Ramp *restrict o, float *restrict buf,
 		o->v0 = o->vt;
 		o->flags &= ~(SAU_RAMP_CURVE | SAU_RAMP_CURVE_RATIO);
 		fill_state(o, buf, len, buf_len, mulbuf);
+		return false;
+	}
+	return true;
+}
+
+/**
+ * Skip ahead \p skip_len values for the ramp.
+ * If a curve is elapsed, the target value will become the new value.
+ *
+ * Use to update ramp and its position without generating samples.
+ *
+ * \return true if ramp target not yet reached
+ */
+bool SAU_Ramp_skip(SAU_Ramp *restrict o,
+		uint32_t skip_len, uint32_t srate, uint32_t *restrict pos) {
+	if (!(o->flags & SAU_RAMP_CURVE))
+		return false;
+	uint32_t time = SAU_MS_IN_SAMPLES(o->time_ms, srate);
+	uint32_t len = time - *pos;
+	if (len > skip_len) len = skip_len;
+	*pos += len;
+	if (*pos == time) {
+		/*
+		 * Goal reached; turn into new initial value.
+		 */
+		o->v0 = o->vt;
+		if ((o->flags & SAU_RAMP_CURVE_RATIO) != 0) {
+			o->flags |= SAU_RAMP_STATE_RATIO;
+		} else {
+			o->flags &= ~SAU_RAMP_STATE_RATIO;
+		}
+		o->flags &= ~(SAU_RAMP_CURVE | SAU_RAMP_CURVE_RATIO);
 		return false;
 	}
 	return true;
