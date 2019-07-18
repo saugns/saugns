@@ -1,0 +1,2 @@
+# Square amplitude modulation with another square varying in frequency
+Osqr f200 a1,0~[Osqr r1,2~[Osin f0.01 p0.75]] t120
