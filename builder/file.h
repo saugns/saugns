@@ -28,7 +28,7 @@ typedef struct SGS_File SGS_File;
  */
 typedef size_t (*SGS_FileAction_f)(SGS_File *restrict o);
 
-size_t SGS_File_action_wrap(SGS_File *restrict o); // default callback
+size_t SGS_File_action_wrap(SGS_File *restrict o); // default & EOF'd callback
 
 /**
  * Flip to the beginning of the next buffer area.
@@ -173,6 +173,10 @@ struct SGS_File {
 SGS_File *SGS_create_File(void) SGS__malloclike;
 SGS_File *SGS_create_sub_File(SGS_File *restrict parent) SGS__malloclike;
 SGS_File *SGS_destroy_File(SGS_File *restrict o);
+
+void SGS_File_init(SGS_File *restrict o,
+		SGS_FileAction_f call_f, void *restrict ref,
+		const char *path, SGS_FileClose_f close_f);
 
 bool SGS_File_fopenrb(SGS_File *restrict o, const char *restrict path);
 bool SGS_File_stropenrb(SGS_File *restrict o,
