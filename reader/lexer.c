@@ -63,6 +63,7 @@ SGS_Lexer *SGS_create_Lexer(SGS_SymTab *restrict symtab) {
 #if SGS_LEXER_QUIET
 	o->sc->s_flags |= SGS_SCAN_S_QUIET;
 #endif
+	SGS_Scanner_setws_level(o->sc, SGS_SCAN_WS_NONE);
 	return o;
 ERROR:
 	SGS_destroy_Lexer(o);
@@ -159,7 +160,7 @@ bool SGS_Lexer_get(SGS_Lexer *restrict o, SGS_ScriptToken *restrict t) {
 	SGS_Scanner *sc = o->sc;
 	uint8_t c;
 REGET:
-	c = SGS_Scanner_getc_nospace(sc);
+	c = SGS_Scanner_getc(sc);
 	switch (c) {
 	case 0x00:
 		handle_eof(o, c);
@@ -301,7 +302,7 @@ bool SGS_Lexer_get_special(SGS_Lexer *restrict o,
 	SGS_Scanner *sc = o->sc;
 	uint8_t c;
 	for (;;) {
-		c = SGS_Scanner_getc_nospace(sc);
+		c = SGS_Scanner_getc(sc);
 		if (c == 0) {
 			handle_eof(o, c);
 			break;

@@ -1,5 +1,5 @@
 /* sgensys: Test program for experimental reader code.
- * Copyright (c) 2017-2021 Joel K. Pettersson
+ * Copyright (c) 2017-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -112,6 +112,55 @@ void SGS_discard(SGS_PtrArr *restrict prg_objs) {
 	SGS_PtrArr_clear(prg_objs);
 }
 
+#if SGS_TEST_SCANNER
+/*
+ * Functions for scanning a file and printing the
+ * contents with whitespace and comment filtering
+ * as is done by default.
+ */
+
+static inline void scan_simple(SGS_Scanner *o) {
+	for (;;) {
+		uint8_t c = SGS_Scanner_getc(o);
+		if (!c) {
+			putchar('\n');
+			break;
+		}
+		putchar(c);
+	}
+}
+
+static inline void scan_with_undo(SGS_Scanner *o) {
+	for (;;) {
+		uint32_t i = 0, max = SGS_SCAN_UNGET_MAX;
+		uint8_t c;
+		bool end = false;
+		for (i = 0; ++i <= max; ) {
+			c = SGS_Scanner_getc(o);
+			if (!c) {
+				end = true;
+				++i;
+				break;
+			}
+		}
+		max = i - 1;
+		for (i = 0; ++i <= max; ) {
+			SGS_Scanner_ungetc(o);
+		}
+		for (i = 0; ++i <= max; ) {
+			c = SGS_Scanner_getc(o);
+			putchar(c);
+//			putchar('\n'); // for scanner.c test/debug printouts
+		}
+//		putchar('\n'); // for scanner.c test/debug printouts
+		if (end) {
+			putchar('\n');
+			break;
+		}
+	}
+}
+#endif
+
 /*
  * Run script through test code.
  *
@@ -128,14 +177,9 @@ static SGS_Program *build_program(const char *restrict script_arg,
 	SGS_Scanner *scanner = SGS_create_Scanner(symtab);
 	if (!scanner) goto CLOSE;
 	if (!SGS_Scanner_open(scanner, script_arg, is_path)) goto CLOSE;
-	for (;;) {
-		uint8_t c = SGS_Scanner_getc(scanner);
-		if (!c) {
-			putchar('\n');
-			break;
-		}
-		putchar(c);
-	}
+	/* print file contents with whitespace and comment filtering */
+	//scan_simple(scanner);
+	scan_with_undo(scanner);
 	o = (SGS_Program*) calloc(1, sizeof(SGS_Program)); // placeholder
 CLOSE:
 	SGS_destroy_Scanner(scanner);
