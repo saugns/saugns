@@ -105,75 +105,74 @@ typedef struct NumParser {
 	SAU_ScanFrame sf_start;
 	bool has_infnum;
 } NumParser;
+enum {
+	NUMEXP_SUB = 0,
+	NUMEXP_ADT,
+	NUMEXP_MLT,
+	NUMEXP_POW,
+	NUMEXP_NUM,
+};
 static double scan_num_r(NumParser *restrict o, uint8_t pri, uint32_t level) {
 	SAU_Scanner *sc = o->sc;
 	double num;
 	bool minus = false;
 	uint8_t c;
-	if (level > 0) SAU_Scanner_skipws(sc);
+	if (level == 1) SAU_Scanner_setws_level(sc, SAU_SCAN_WS_NONE);
 	c = SAU_Scanner_getc(sc);
 	if ((level > 0) && (c == '+' || c == '-')) {
 		if (c == '-') minus = true;
-		SAU_Scanner_skipws(sc);
 		c = SAU_Scanner_getc(sc);
 	}
 	if (c == '(') {
-		num = scan_num_r(o, 255, level+1);
-		if (minus) num = -num;
-		if (level == 0)
-			return num;
-		goto EVAL;
-	}
-	if (o->numsym_f && IS_ALPHA(c)) {
+		num = scan_num_r(o, NUMEXP_SUB, level+1);
+	} else if (o->numsym_f && IS_ALPHA(c)) {
 		SAU_Scanner_ungetc(sc);
 		num = o->numsym_f(sc);
 		if (isnan(num))
 			return NAN;
-		if (minus) num = -num;
 	} else {
 		size_t read_len;
 		SAU_Scanner_ungetc(sc);
 		SAU_Scanner_getd(sc, &num, false, &read_len);
 		if (read_len == 0)
 			return NAN;
-		if (minus) num = -num;
 	}
-EVAL:
-	if (pri == 0)
+	if (minus) num = -num;
+	if (level == 0 || pri == NUMEXP_NUM)
 		return num; /* defer all */
 	for (;;) {
 		if (isinf(num)) o->has_infnum = true;
-		if (level > 0) SAU_Scanner_skipws(sc);
 		c = SAU_Scanner_getc(sc);
 		switch (c) {
-		case SAU_SCAN_SPACE:
-		case SAU_SCAN_LNBRK:
-			break;
 		case '(':
-			num *= scan_num_r(o, 255, level+1);
+			if (pri >= NUMEXP_MLT) goto DEFER;
+			num *= scan_num_r(o, NUMEXP_SUB, level+1);
 			break;
 		case ')':
-			if (pri < 255) goto DEFER;
+			if (pri != NUMEXP_SUB) goto DEFER;
 			return num;
 		case '^':
-			num = exp(log(num) * scan_num_r(o, 0, level));
+			if (pri >= NUMEXP_POW) goto DEFER;
+			num = exp(log(num) * scan_num_r(o, NUMEXP_POW, level));
 			break;
 		case '*':
-			num *= scan_num_r(o, 1, level);
+			if (pri >= NUMEXP_MLT) goto DEFER;
+			num *= scan_num_r(o, NUMEXP_MLT, level);
 			break;
 		case '/':
-			num /= scan_num_r(o, 1, level);
+			if (pri >= NUMEXP_MLT) goto DEFER;
+			num /= scan_num_r(o, NUMEXP_MLT, level);
 			break;
 		case '+':
-			if (pri <= 2) goto DEFER;
-			num += scan_num_r(o, 2, level);
+			if (pri >= NUMEXP_ADT) goto DEFER;
+			num += scan_num_r(o, NUMEXP_ADT, level);
 			break;
 		case '-':
-			if (pri <= 2) goto DEFER;
-			num -= scan_num_r(o, 2, level);
+			if (pri >= NUMEXP_ADT) goto DEFER;
+			num -= scan_num_r(o, NUMEXP_ADT, level);
 			break;
 		default:
-			if (pri == 255) {
+			if (pri == NUMEXP_SUB) {
 				SAU_Scanner_warning(sc, &o->sf_start,
 "numerical expression has '(' without closing ')'");
 			}
@@ -185,10 +184,12 @@ DEFER:
 	SAU_Scanner_ungetc(sc);
 	return num;
 }
-static bool SAU__noinline scan_num(SAU_Scanner *restrict o,
+static sauNoinline bool scan_num(SAU_Scanner *restrict o,
 		NumSym_f scan_numsym, float *restrict var) {
 	NumParser np = {o, scan_numsym, o->sf, false};
-	float num = scan_num_r(&np, 0, 0);
+	uint8_t ws_level = o->ws_level;
+	float num = scan_num_r(&np, NUMEXP_NUM, 0);
+	SAU_Scanner_setws_level(o, ws_level); // restore if changed
 	if (isnan(num))
 		return false;
 	if (isinf(num)) np.has_infnum = true;
@@ -201,7 +202,7 @@ static bool SAU__noinline scan_num(SAU_Scanner *restrict o,
 	return true;
 }
 
-static SAU__noinline bool scan_time_val(SAU_Scanner *restrict o,
+static sauNoinline bool scan_time_val(SAU_Scanner *restrict o,
 		uint32_t *restrict val) {
 	SAU_ScanFrame sf = o->sf;
 	float val_s;
@@ -381,8 +382,9 @@ static bool scan_ramp(SAU_Scanner *restrict o, NumSym_f scan_numsym,
 		time_ms = ramp->time_ms;
 	}
 	for (;;) {
-		uint8_t c = SAU_Scanner_getc_nospace(o);
+		uint8_t c = SAU_Scanner_getc(o);
 		switch (c) {
+		case SAU_SCAN_SPACE:
 		case SAU_SCAN_LNBRK:
 			break;
 		case 'c': {
@@ -439,6 +441,7 @@ typedef struct SAU_Parser {
 	ScanLookup sl;
 	SAU_Scanner *sc;
 	SAU_SymTab *st;
+	SAU_MemPool *mp;
 	uint32_t call_level;
 	/* node state */
 	SAU_ParseEvData *events;
@@ -446,25 +449,37 @@ typedef struct SAU_Parser {
 } SAU_Parser;
 
 /*
- * Initialize parser instance.
- *
- * The same symbol table and script-set data will be used
- * until the instance is finalized.
- */
-static void init_Parser(SAU_Parser *restrict o) {
-	*o = (SAU_Parser){0};
-	o->st = SAU_create_SymTab();
-	init_ScanLookup(&o->sl, o->st);
-	o->sc = SAU_create_Scanner(o->st);
-	o->sc->data = &o->sl;
-}
-
-/*
  * Finalize parser instance.
  */
 static void fini_Parser(SAU_Parser *restrict o) {
 	SAU_destroy_Scanner(o->sc);
 	SAU_destroy_SymTab(o->st);
+	SAU_destroy_MemPool(o->mp);
+}
+
+/*
+ * Initialize parser instance.
+ *
+ * The same symbol table and script-set data will be used
+ * until the instance is finalized.
+ *
+ * \return true, or false on allocation failure
+ */
+static bool init_Parser(SAU_Parser *restrict o) {
+	SAU_MemPool *mp = SAU_create_MemPool(0);
+	SAU_SymTab *st = SAU_create_SymTab(mp);
+	SAU_Scanner *sc = SAU_create_Scanner(st);
+	*o = (SAU_Parser){0};
+	o->sc = sc;
+	o->st = st;
+	o->mp = mp;
+	if (!sc || !st || !mp) goto ERROR;
+	if (!init_ScanLookup(&o->sl, st)) goto ERROR;
+	sc->data = &o->sl;
+	return true;
+ERROR:
+	fini_Parser(o);
+	return false;
 }
 
 /*
@@ -904,8 +919,10 @@ static bool parse_settings(ParseLevel *restrict pl) {
 	SAU_Scanner *sc = o->sc;
 	pl->location = SDPL_IN_DEFAULTS;
 	for (;;) {
-		uint8_t c = SAU_Scanner_getc_nospace(sc);
+		uint8_t c = SAU_Scanner_getc(sc);
 		switch (c) {
+		case SAU_SCAN_SPACE:
+			break;
 		case 'a':
 			if (scan_num(sc, NULL, &sl->sopt.ampmult))
 				sl->sopt.changed |= SAU_SOPT_AMPMULT;
@@ -935,11 +952,13 @@ static bool parse_settings(ParseLevel *restrict pl) {
 				sl->sopt.changed |= SAU_SOPT_DEF_TIME;
 			break;
 		default:
-			SAU_Scanner_ungetc(sc);
-			return true; /* let parse_level() take care of it */
+			goto UNKNOWN;
 		}
 	}
 	return false;
+UNKNOWN:
+	SAU_Scanner_ungetc(sc);
+	return true; /* let parse_level() take care of it */
 }
 
 static bool parse_level(SAU_Parser *restrict o,
@@ -1028,8 +1047,10 @@ static bool parse_step(ParseLevel *restrict pl) {
 	SAU_ParseOpData *op = pl->operator;
 	pl->location = SDPL_IN_EVENT;
 	for (;;) {
-		uint8_t c = SAU_Scanner_getc_nospace(sc);
+		uint8_t c = SAU_Scanner_getc(sc);
 		switch (c) {
+		case SAU_SCAN_SPACE:
+			break;
 		case 'P':
 			if ((pl->pl_flags & SDPL_NESTED_SCOPE) != 0)
 				goto UNKNOWN;
@@ -1086,12 +1107,13 @@ static bool parse_step(ParseLevel *restrict pl) {
 			op->wave = wave;
 			break; }
 		default:
-		UNKNOWN:
-			SAU_Scanner_ungetc(sc);
-			return true; /* let parse_level() take care of it */
+			goto UNKNOWN;
 		}
 	}
 	return false;
+UNKNOWN:
+	SAU_Scanner_ungetc(sc);
+	return true; /* let parse_level() take care of it */
 }
 
 enum {
@@ -1111,8 +1133,10 @@ static bool parse_level(SAU_Parser *restrict o,
 	++o->call_level;
 	SAU_Scanner *sc = o->sc;
 	for (;;) {
-		uint8_t c = SAU_Scanner_getc_nospace(sc);
+		uint8_t c = SAU_Scanner_getc(sc);
 		switch (c) {
+		case SAU_SCAN_SPACE:
+			break;
 		case SAU_SCAN_LNBRK:
 			if (pl.scope == SCOPE_TOP) {
 				/*

@@ -51,7 +51,7 @@ enum {
 	ARG_FULL_RUN = 1<<0, /* identifies any non-compile-only flags */
 	ARG_ENABLE_AUDIO_DEV = 1<<1,
 	ARG_DISABLE_AUDIO_DEV = 1<<2,
-	ARG_ONLY_COMPILE = 1<<3,
+	ARG_ONLY_CHECK = 1<<3,
 	ARG_PRINT_INFO = 1<<4,
 	ARG_EVAL_STRING = 1<<5,
 };
@@ -85,7 +85,7 @@ NEXT_C:
 		case 'c':
 			if ((*flags & ARG_FULL_RUN) != 0)
 				goto INVALID;
-			*flags |= ARG_ONLY_COMPILE;
+			*flags |= ARG_ONLY_CHECK;
 			break;
 		case 'e':
 			*flags |= ARG_EVAL_STRING;
@@ -133,7 +133,8 @@ static void discard_programs(SAU_PtrList *restrict prg_objs) {
 static SAU_Program *build_program(const char *restrict script_arg,
 		bool is_path) {
 	SAU_Program *o = NULL;
-	SAU_SymTab *symtab = SAU_create_SymTab();
+	SAU_MemPool *mempool = SAU_create_MemPool(0);
+	SAU_SymTab *symtab = SAU_create_SymTab(mempool);
 	if (!symtab)
 		return NULL;
 #if SAU_TEST_SCANNER
@@ -164,6 +165,7 @@ CLOSE:
 	SAU_destroy_Lexer(lexer);
 #endif
 	SAU_destroy_SymTab(symtab);
+	SAU_destroy_MemPool(mempool);
 	return o;
 }
 
@@ -204,7 +206,7 @@ static bool build(const SAU_PtrList *restrict script_args,
 			if (prg != NULL) SAU_Program_print_info(prg);
 		}
 	}
-	if ((options & ARG_ONLY_COMPILE) != 0) {
+	if ((options & ARG_ONLY_CHECK) != 0) {
 		discard_programs(prg_objs);
 	}
 	return true;
