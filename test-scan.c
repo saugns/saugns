@@ -21,13 +21,14 @@
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#define NAME "test-scan"
 
 /*
  * Print command line usage instructions.
  */
 static void print_usage(bool by_arg) {
 	fputs(
-"Usage: test-scan [-c] [-p] [-e] <script>...\n"
+"Usage: "NAME" [-c] [-p] [-e] <script>...\n"
 "\n"
 "  -e \tEvaluate strings instead of files.\n"
 "  -c \tCheck scripts only, reporting any errors or requested info.\n"
@@ -41,7 +42,7 @@ static void print_usage(bool by_arg) {
  * Print version.
  */
 static void print_version(void) {
-	puts(SGS_VERSION_STR);
+	puts(NAME" ("SGS_CLINAME_STR") "SGS_VERSION_STR);
 }
 
 /*
@@ -133,7 +134,8 @@ static void discard_programs(SGS_PtrList *restrict prg_objs) {
 static SGS_Program *build_program(const char *restrict script_arg,
 		bool is_path) {
 	SGS_Program *o = NULL;
-	SGS_SymTab *symtab = SGS_create_SymTab();
+	SGS_MemPool *mempool = SGS_create_MemPool(0);
+	SGS_SymTab *symtab = SGS_create_SymTab(mempool);
 	if (!symtab)
 		return NULL;
 #if SGS_TEST_SCANNER
@@ -164,6 +166,7 @@ CLOSE:
 	SGS_destroy_Lexer(lexer);
 #endif
 	SGS_destroy_SymTab(symtab);
+	SGS_destroy_MemPool(mempool);
 	return o;
 }
 
