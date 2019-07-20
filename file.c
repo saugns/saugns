@@ -1,5 +1,5 @@
 /* sgensys: Text file buffer module.
- * Copyright (c) 2014, 2017-2020 Joel K. Pettersson
+ * Copyright (c) 2014, 2017-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -20,6 +20,8 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+
+#define GETD_ALLOW_TAIL_DOT 0
 
 /**
  * Default callback. Moves through the circular buffer in
@@ -391,7 +393,8 @@ bool SGS_File_getd(SGS_File *restrict o,
 		double *restrict var, bool allow_sign,
 		size_t *restrict lenp) {
 	uint8_t c;
-	long double num = 0.f, pos_mul = 1.f;
+	double num_a = 0.f, pos_div = 1.f;
+	int64_t num_b = 0;
 	double res;
 	bool minus = false;
 	bool truncate = false;
@@ -404,36 +407,41 @@ bool SGS_File_getd(SGS_File *restrict o,
 		++len;
 	}
 	if (c != '.') {
-		if (!IS_DIGIT(c)) {
-			SGS_File_UNGETN(o, len);
-			if (lenp) *lenp = 0;
-			return true;
-		}
+		if (!IS_DIGIT(c)) goto NO_NUM;
 		do {
-			num = num * 10.f + (c - '0');
+			num_a = num_a * 10.f + (c - '0');
 			c = SGS_File_GETC(o);
 			++len;
 		} while (IS_DIGIT(c));
 		if (c != '.') goto DONE;
 		c = SGS_File_GETC(o);
+#if GETD_ALLOW_TAIL_DOT
 		++len;
+		if (!IS_DIGIT(c)) goto DONE;
+#else
+		if (!IS_DIGIT(c)) {
+			SGS_File_UNGETN(o, 2);
+			SGS_File_INCP(o);
+			goto DONE;
+		}
+#endif
 	} else {
 		c = SGS_File_GETC(o);
 		++len;
-		if (!IS_DIGIT(c)) {
-			SGS_File_UNGETN(o, len);
-			if (lenp) *lenp = 0;
-			return true;
-		}
+		if (!IS_DIGIT(c)) goto NO_NUM;
 	}
 	while (IS_DIGIT(c)) {
-		pos_mul *= 0.1f;
-		num += (c - '0') * pos_mul;
+		int64_t b = num_b * 10 + (c - '0');
+		if (num_b <= b) {
+			num_b = b;
+			pos_div *= 10.f; // may become inf
+		}
 		c = SGS_File_GETC(o);
 		++len;
 	}
+	num_a += num_b / pos_div; // importantly, num_b is never inf
 DONE:
-	res = (double) num;
+	res = (double) num_a;
 	if (isinf(res)) truncate = true;
 	if (minus) res = -res;
 	*var = res;
@@ -441,6 +449,10 @@ DONE:
 	--len;
 	if (lenp) *lenp = len;
 	return !truncate;
+NO_NUM:
+	SGS_File_UNGETN(o, len);
+	if (lenp) *lenp = 0;
+	return true;
 }
 
 /**
