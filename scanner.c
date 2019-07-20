@@ -26,7 +26,7 @@ static size_t misses = 0;
 #endif
 
 /**
- * Create instance.
+ * Create instance. Requires \p symtab to be a valid instance.
  *
  * Assigns a modifiable copy of the SGS_Scanner_def_filters array,
  * freed when the instance is destroyed.
@@ -46,6 +46,7 @@ SGS_Scanner *SGS_create_Scanner(SGS_Symtab *restrict symtab) {
 	o->filters = malloc(filters_size);
 	if (!o->filters) goto ERROR;
 	memcpy(o->filters, SGS_Scanner_def_filters, filters_size);
+	o->ws_level = SGS_SCAN_WS_ALL;
 	o->strbuf = calloc(1, STRBUF_LEN);
 	if (!o->strbuf) goto ERROR;
 	return o;
@@ -165,52 +166,83 @@ uint8_t SGS_Scanner_filter_invalid(SGS_Scanner *restrict o, uint8_t c) {
 		return 0;
 	}
 	uint8_t status = SGS_File_STATUS(f);
-	if ((status & SGS_FILE_ERROR) != 0) {
+	if (status & SGS_FILE_ERROR) {
 		SGS_Scanner_error(o, NULL,
 			"file reading failed");
 	}
 	return SGS_SCAN_EOF;
 }
 
+static inline void pos_past_linebreak(SGS_Scanner *restrict o,
+		size_t char_num) {
+	++o->sf.line_num;
+	o->sf.char_num = char_num;
+}
+
 /**
- * Get characters until the next is neither a space nor a tab.
+ * Return standard space marker (for space or tab).
  *
  * \return SGS_SCAN_SPACE
  */
-uint8_t SGS_Scanner_filter_space(SGS_Scanner *restrict o,
+uint8_t SGS_Scanner_filter_space_keep(SGS_Scanner *restrict o sgsMaybeUnused,
 		uint8_t c sgsMaybeUnused) {
-	SGS_File *f = o->f;
-	o->sf.char_num += SGS_File_skipspace(f);
+	o->sf.c_flags |= SGS_SCAN_C_SPACE;
 	return SGS_SCAN_SPACE;
 }
 
 /**
- * Get characters until the next is not a linebreak.
+ * Handle linebreak portably (move past CR for LF),
+ * and return standard linebreak marker.
  *
  * \return SGS_SCAN_LNBRK
  */
-uint8_t SGS_Scanner_filter_linebreaks(SGS_Scanner *restrict o, uint8_t c) {
+uint8_t SGS_Scanner_filter_linebreak_keep(SGS_Scanner *restrict o, uint8_t c) {
 	SGS_File *f = o->f;
 	if (c == '\n') SGS_File_TRYC(f, '\r');
-	while (SGS_File_trynewline(f)) {
-		++o->sf.line_num;
-		o->sf.char_num = 0;
-	}
+	o->sf.c_flags |= (SGS_SCAN_C_LNBRK | SGS_SCAN_C_LNBRK_POSUP);
 	return SGS_SCAN_LNBRK;
 }
 
 /**
- * Get characters until the next character ends the line (or file).
+ * Skip spaces and/or linebreaks.
+ *
+ * \return 0
+ */
+uint8_t SGS_Scanner_filter_ws_none(SGS_Scanner *restrict o, uint8_t c) {
+	SGS_File *f = o->f;
+	if (c == '\n') {
+		SGS_File_TRYC(f, '\r');
+	} else if (c != '\r') {
+		o->sf.char_num += SGS_File_skipspace(f);
+		return 0;
+	}
+	o->sf.c_flags |= SGS_SCAN_C_LNBRK;
+	o->sf.c_flags &= ~SGS_SCAN_C_LNBRK_POSUP;
+	pos_past_linebreak(o, 0);
+
+	size_t space_count;
+LNBRK:
+	while (SGS_File_trynewline(f)) pos_past_linebreak(o, 0);
+	space_count = SGS_File_skipspace(f);
+	if (space_count > 0) {
+		o->sf.char_num = space_count;
+		goto LNBRK;
+	}
+	return 0;
+}
+
+/**
+ * Skip characters until the next character ends the line (or file).
  *
  * Call for a character to use it as a line comment opener.
  *
- * \return SGS_SCAN_SPACE
+ * \return 0
  */
 uint8_t SGS_Scanner_filter_linecomment(SGS_Scanner *restrict o,
 		uint8_t c sgsMaybeUnused) {
 	SGS_File *f = o->f;
 	o->sf.char_num += SGS_File_skipline(f);
-	return SGS_SCAN_SPACE;
+	return 0;
 }
 
 /**
@@ -221,8 +253,11 @@ uint8_t SGS_Scanner_filter_linecomment(SGS_Scanner *restrict o,
  *
  * Does not set the linebreak flag. Linebreaks within a block comment
  * are ignored (commented out), apart from in line numbering.
+ * A block comment counts syntactically as a single space (so that
+ * it cannot silently be placed between characters in a token),
+ * unless all whitespace is filtered out.
  *
- * \return SGS_SCAN_SPACE or SGS_SCAN_EOF (on unterminated comment)
+ * \return filtered SGS_SCAN_SPACE, or SGS_SCAN_EOF (on unterminated comment)
  */
 uint8_t SGS_Scanner_filter_blockcomment(SGS_Scanner *restrict o,
 		uint8_t check_c) {
@@ -255,7 +290,7 @@ uint8_t SGS_Scanner_filter_blockcomment(SGS_Scanner *restrict o,
 	}
 	o->sf.line_num = line_num;
 	o->sf.char_num = char_num;
-	return SGS_SCAN_SPACE;
+	return SGS_Scanner_usefilter(o, SGS_SCAN_SPACE, SGS_SCAN_SPACE);
 }
 
 /**
@@ -265,7 +300,7 @@ uint8_t SGS_Scanner_filter_blockcomment(SGS_Scanner *restrict o,
  * handling comment if present, otherwise simply returning the first
  * character.
  *
- * \return \p c, SGS_SCAN_SPACE, or SGS_SCAN_EOF (on unterminated comment)
+ * \return \p c, 0, filtered SGS_SCAN_SPACE, or SGS_SCAN_EOF
  */
 uint8_t SGS_Scanner_filter_slashcomments(SGS_Scanner *restrict o, uint8_t c) {
 	SGS_File *f = o->f;
@@ -291,7 +326,7 @@ uint8_t SGS_Scanner_filter_slashcomments(SGS_Scanner *restrict o, uint8_t c) {
  * for the first character position only. (For example,
  * git-style comments, or old Fortran comments.)
  *
- * \return \p c or SGS_SCAN_SPACE
+ * \return \p c or 0
  */
 uint8_t SGS_Scanner_filter_char1comments(SGS_Scanner *restrict o, uint8_t c) {
 	if (o->sf.char_num == 1)
@@ -315,11 +350,11 @@ const SGS_ScanFilter_f SGS_Scanner_def_filters[SGS_SCAN_FILTER_COUNT] = {
 	/* ACK 0x06 */ SGS_Scanner_filter_invalid,
 	/* BEL '\a' */ SGS_Scanner_filter_invalid, // SGS_FILE_MARKER
 	/* BS  '\b' */ SGS_Scanner_filter_invalid,
-	/* HT  '\t' */ SGS_Scanner_filter_space,
-	/* LF  '\n' */ SGS_Scanner_filter_linebreaks,
+	/* HT  '\t' */ SGS_Scanner_filter_space_keep,
+	/* LF  '\n' */ SGS_Scanner_filter_linebreak_keep,
 	/* VT  '\v' */ SGS_Scanner_filter_invalid,
 	/* FF  '\f' */ SGS_Scanner_filter_invalid,
-	/* CR  '\r' */ SGS_Scanner_filter_linebreaks,
+	/* CR  '\r' */ SGS_Scanner_filter_linebreak_keep,
 	/* SO  0x0E */ SGS_Scanner_filter_invalid,
 	/* SI  0x0F */ SGS_Scanner_filter_invalid,
 	/* DLE 0x10 */ SGS_Scanner_filter_invalid,
@@ -338,7 +373,7 @@ const SGS_ScanFilter_f SGS_Scanner_def_filters[SGS_SCAN_FILTER_COUNT] = {
 	/* GS  0x1D */ SGS_Scanner_filter_invalid,
 	/* RS  0x1E */ SGS_Scanner_filter_invalid,
 	/* US  0x1F */ SGS_Scanner_filter_invalid,
-	/*     ' '  */ SGS_Scanner_filter_space,
+	/*     ' '  */ SGS_Scanner_filter_space_keep,
 	/*     '!'  */ NULL,
 	/*     '"'  */ NULL,
 	/*     '#'  */ SGS_Scanner_filter_linecomment,
@@ -436,36 +471,62 @@ const SGS_ScanFilter_f SGS_Scanner_def_filters[SGS_SCAN_FILTER_COUNT] = {
 	/* DEL 0x7F */ SGS_Scanner_filter_invalid,
 };
 
-/*
- * Assign scan frame from undo buffer.
+/**
+ * Set filter functions for whitespace characters to a standard set.
+ *
+ * \return old ws_level value
  */
-static void restore_frame(SGS_Scanner *restrict o, uint32_t offset) {
-	uint32_t i = (o->undo_pos - offset) & SGS_SCAN_UNGET_MAX;
-	o->sf = o->undo[i];
+uint8_t SGS_Scanner_setws_level(SGS_Scanner *restrict o, uint8_t ws_level) {
+	uint8_t old_level = o->ws_level;
+	switch (ws_level) {
+	case SGS_SCAN_WS_ALL: // default level
+		o->filters['\t'] = SGS_Scanner_filter_space_keep;
+		o->filters['\n'] = SGS_Scanner_filter_linebreak_keep;
+		o->filters['\r'] = SGS_Scanner_filter_linebreak_keep;
+		o->filters[' ']  = SGS_Scanner_filter_space_keep;
+		break;
+	case SGS_SCAN_WS_NONE:
+		o->filters['\t'] = SGS_Scanner_filter_ws_none;
+		o->filters['\n'] = SGS_Scanner_filter_ws_none;
+		o->filters['\r'] = SGS_Scanner_filter_ws_none;
+		o->filters[' ']  = SGS_Scanner_filter_ws_none;
+		break;
+	}
+	o->ws_level = ws_level;
+	return old_level;
+}
+
+/*
+ * Assign scan frame from undo buffer, moving \a undo_pos by \p offset.
+ */
+static void change_frame(SGS_Scanner *restrict o, int offset) {
+	o->undo_pos = (o->undo_pos + offset) & SGS_SCAN_UNGET_MAX;
+	o->sf = o->undo[o->undo_pos];
 }
 
 /*
  * Perform pending updates before a get call.
  */
 static void prepare_frame(SGS_Scanner *restrict o) {
-	if (o->unget_num > 0) {
+	if (o->undo_ungets > 0) {
+		--o->undo_ungets;
 		/*
 		 * Start from frame after the one ungotten to.
 		 */
-		restore_frame(o, --o->unget_num);
+		change_frame(o, +1);
 		return;
 	}
-	if ((o->s_flags & SGS_SCAN_S_DISCARD) != 0) {
+	if (o->s_flags & SGS_SCAN_S_DISCARD) {
 		o->s_flags &= ~SGS_SCAN_S_DISCARD;
 	} else {
 		o->undo_pos = (o->undo_pos + 1) & SGS_SCAN_UNGET_MAX;
 	}
 	o->undo[o->undo_pos] = o->sf;
-	if ((o->sf.c_flags & SGS_SCAN_C_LNBRK) != 0) {
-		o->sf.c_flags &= ~SGS_SCAN_C_LNBRK;
-		++o->sf.line_num;
-		o->sf.char_num = 0;
+	if (o->sf.c_flags & SGS_SCAN_C_LNBRK_POSUP) {
+		o->sf.c_flags &= ~SGS_SCAN_C_LNBRK_POSUP;
+		pos_past_linebreak(o, 0);
 	}
+	o->sf.c_flags &= ~(SGS_SCAN_C_SPACE | SGS_SCAN_C_LNBRK);
 }
 
 /*
@@ -491,15 +552,15 @@ static void set_usedc(SGS_Scanner *restrict o, uint8_t c) {
 static void advance_frame(SGS_Scanner *o, size_t strlen, uint8_t c) {
 	if (strlen == 0)
 		return;
-	uint32_t reget_count = (strlen > o->unget_num) ?
-		o->unget_num :
+	uint32_t reget_count = (strlen > o->undo_ungets) ?
+		o->undo_ungets :
 		strlen;
 	uint32_t char_inc = strlen;
 	if (reget_count > 0) {
 		/*
 		 * Advance past ungets prior to frame to restore to.
 		 */
-		o->unget_num -= (reget_count - 1);
+		o->undo_ungets -= (reget_count - 1);
 	}
 	prepare_frame(o);
 	o->sf.char_num += char_inc;
@@ -508,9 +569,8 @@ static void advance_frame(SGS_Scanner *o, size_t strlen, uint8_t c) {
 }
 
 /**
- * Get next character. Reduces whitespace, returning one space marker
- * for spaces, tabs, and/or comments, and one linebreak marker
- * for linebreaks.
+ * Get next character. Filter functions will be used with
+ * \a match_c set to 0.
  *
  * Upon end of file, 0 will be returned. A 0 value in the
  * input is otherwise moved past, printing a warning.
@@ -520,92 +580,22 @@ static void advance_frame(SGS_Scanner *o, size_t strlen, uint8_t c) {
 uint8_t SGS_Scanner_getc(SGS_Scanner *restrict o) {
 	SGS_File *f = o->f;
 	uint8_t c;
-	bool skipped_space = false;
 	prepare_frame(o);
 	for (;;) {
 		++o->sf.char_num;
 		c = SGS_File_GETC(f);
-		SGS_ScanFilter_f filter = SGS_Scanner_getfilter(o, c);
-		if (!filter) break;
-		c = filter(o, c);
-		if (c == SGS_SCAN_SPACE) {
-			skipped_space = true;
-			continue;
-		}
+		c = SGS_Scanner_usefilter(o, c, 0);
 		if (c != 0) break;
 	}
 	if (c == SGS_SCAN_EOF)
 		return 0;
 	set_usedc(o, c);
-	if (skipped_space) {
-		/*
-		 * Unget a character and store skipped space
-		 * before returning it.
-		 */
-		SGS_File_UNGETC(f);
-		--o->sf.char_num;
-		set_usedc(o, SGS_SCAN_SPACE);
-		return SGS_SCAN_SPACE;
-	}
-	if (c == SGS_SCAN_LNBRK) {
-		o->sf.c_flags |= SGS_SCAN_C_LNBRK;
-	}
 	return c;
 }
 
 /**
- * Get next character. Removes whitespace, except for a single linebreak
- * marker if linebreaks were filtered.
- *
- * Upon end of file, 0 will be returned. A 0 value in the
- * input is otherwise moved past, printing a warning.
- *
- * \return character or 0 upon end of file
- */
-uint8_t SGS_Scanner_getc_nospace(SGS_Scanner *restrict o) {
-	SGS_File *f = o->f;
-	uint8_t c;
-	SGS_ScanFilter_f filter;
-	bool skipped_lnbrk = false;
-	int32_t old_char_num;
-	prepare_frame(o);
-	for (;;) {
-		++o->sf.char_num;
-		c = SGS_File_GETC(f);
-		filter = SGS_Scanner_getfilter(o, c);
-		if (!filter) break;
-		c = filter(o, c);
-		if (c == SGS_SCAN_SPACE) continue;
-		if (c == SGS_SCAN_LNBRK) {
-			skipped_lnbrk = true;
-			old_char_num = o->sf.char_num;
-			++o->sf.line_num;
-			o->sf.char_num = 0;
-			continue;
-		}
-		if (c != 0) break;
-	}
-	if (c == SGS_SCAN_EOF)
-		return 0;
-	set_usedc(o, c);
-	if (skipped_lnbrk) {
-		/*
-		 * Unget a character and store skipped linebreak
-		 * before returning it.
-		 */
-		SGS_File_UNGETC(f);
-		--o->sf.line_num;
-		o->sf.char_num = old_char_num;
-		o->sf.c_flags |= SGS_SCAN_C_LNBRK;
-		set_usedc(o, SGS_SCAN_LNBRK);
-		return SGS_SCAN_LNBRK;
-	}
-	return c;
-}
-
-/**
- * Get next character if it matches \p testc,
- * filtering whitespace like SGS_Scanner_getc().
+ * Get next character if it matches \p testc.
+ * Note that characters removed by filters cannot be tested successfully.
  *
  * For filtered characters, does a get followed by SGS_Scanner_ungetc()
  * if the characters do not match; characters skipped or changed by the
@@ -637,39 +627,6 @@ bool SGS_Scanner_tryc(SGS_Scanner *restrict o, uint8_t testc) {
 }
 
 /**
- * Get next character if it matches \p testc,
- * filtering whitespace like SGS_Scanner_getc_nospace().
- *
- * For filtered characters, does a get followed by SGS_Scanner_ungetc()
- * if the characters do not match; characters skipped or changed by the
- * filtering remain skipped or changed for future gets.
- *
- * \return true if character matched \p testc
- */
-bool SGS_Scanner_tryc_nospace(SGS_Scanner *restrict o, uint8_t testc) {
-	uint8_t c = SGS_File_RETC(o->f);
-	/*
-	 * Use quick handling for unfiltered characters.
-	 */
-	if (!SGS_Scanner_getfilter(o, c)) {
-		if (c != testc)
-			return false;
-		prepare_frame(o);
-		++o->sf.char_num;
-		SGS_File_INCP(o->f);
-		o->sf.c = c;
-		return true;
-	}
-	c = SGS_Scanner_getc_nospace(o);
-	if (c != testc) {
-		o->s_flags |= SGS_SCAN_S_DISCARD;
-		SGS_Scanner_ungetc(o);
-		return false;
-	}
-	return true;
-}
-
-/**
  * Unget one character and jump to the previous scan frame.
  * The next get will jump back and begin with the last character got.
  *
@@ -681,17 +638,18 @@ bool SGS_Scanner_tryc_nospace(SGS_Scanner *restrict o, uint8_t testc) {
  * \return number of unget
  */
 uint32_t SGS_Scanner_ungetc(SGS_Scanner *restrict o) {
-	if (o->unget_num >= SGS_SCAN_UNGET_MAX) {
+	if (o->undo_ungets >= SGS_SCAN_UNGET_MAX) {
 		SGS_error("scanner",
 "Unget function called >%d times in a row; return without action",
 			SGS_SCAN_UNGET_MAX);
-		return o->unget_num;
+		return o->undo_ungets;
 	}
-	restore_frame(o, ++o->unget_num);
-	SGS_File *f = o->f;
-	SGS_File_UNGETC(f);
-	set_usedc(o, o->sf.c);
-	return o->unget_num;
+	++o->undo_ungets;
+	char safe_c = o->undo[o->undo_pos].c;
+	change_frame(o, -1);
+	SGS_File_DECP(o->f);
+	set_usedc(o, safe_c); /* re-getting past skipped comments now safe */
+	return o->undo_ungets;
 }
 
 /**
@@ -819,7 +777,7 @@ static void print_stderr(const SGS_Scanner *restrict o,
 void SGS_Scanner_warning(const SGS_Scanner *restrict o,
 		const SGS_ScanFrame *restrict sf,
 		const char *restrict fmt, ...) {
-	if ((o->s_flags & SGS_SCAN_S_QUIET) != 0)
+	if (o->s_flags & SGS_SCAN_S_QUIET)
 		return;
 	va_list ap;
 	va_start(ap, fmt);
