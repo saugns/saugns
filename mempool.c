@@ -31,7 +31,7 @@ typedef struct BlockEntry {
 	size_t free;
 } BlockEntry;
 
-SAU_DEF_ArrType(BlockArr, BlockEntry, _)
+sauArrType(BlockArr, BlockEntry, _)
 
 /*
  * Allocate new memory block,
