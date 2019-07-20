@@ -38,8 +38,8 @@ const SAU_RampCurve_f SAU_RampCurve_funcs[SAU_RAC_TYPES] = {
  * i.e. \p len copies of \p v0.
  */
 void SAU_RampCurve_hold(float *restrict buf, uint32_t len,
-		float v0, float vt SAU__maybe_unused,
-		uint32_t pos SAU__maybe_unused, uint32_t time SAU__maybe_unused) {
+		float v0, float vt sauMaybeUnused,
+		uint32_t pos sauMaybeUnused, uint32_t time sauMaybeUnused) {
 	uint32_t i;
 	for (i = 0; i < len; ++i)
 		buf[i] = v0;
@@ -200,9 +200,9 @@ static void fill_state(SAU_Ramp *restrict o, float *restrict buf,
  *
  * \return true if ramp target not yet reached
  */
-bool SAU_Ramp_run(SAU_Ramp *restrict o, float *restrict buf,
-		uint32_t buf_len, uint32_t srate,
-		uint32_t *restrict pos, const float *restrict mulbuf) {
+bool SAU_Ramp_run(SAU_Ramp *restrict o, uint32_t *restrict pos,
+		float *restrict buf, uint32_t buf_len, uint32_t srate,
+		const float *restrict mulbuf) {
 	if (!(o->flags & SAU_RAMP_CURVE)) {
 		fill_state(o, buf, 0, buf_len, mulbuf);
 		return false;
@@ -250,8 +250,8 @@ bool SAU_Ramp_run(SAU_Ramp *restrict o, float *restrict buf,
  *
  * \return true if ramp target not yet reached
  */
-bool SAU_Ramp_skip(SAU_Ramp *restrict o,
-		uint32_t skip_len, uint32_t srate, uint32_t *restrict pos) {
+bool SAU_Ramp_skip(SAU_Ramp *restrict o, uint32_t *restrict pos,
+		uint32_t skip_len, uint32_t srate) {
 	if (!(o->flags & SAU_RAMP_CURVE))
 		return false;
 	uint32_t time = SAU_MS_IN_SAMPLES(o->time_ms, srate);
