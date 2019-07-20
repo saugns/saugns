@@ -69,7 +69,7 @@ enum {
 	ARG_FULL_RUN = 1<<0, /* identifies any non-compile-only flags */
 	ARG_ENABLE_AUDIO_DEV = 1<<1,
 	ARG_DISABLE_AUDIO_DEV = 1<<2,
-	ARG_ONLY_COMPILE = 1<<3,
+	ARG_ONLY_CHECK = 1<<3,
 	ARG_PRINT_INFO = 1<<4,
 	ARG_EVAL_STRING = 1<<5,
 };
@@ -105,7 +105,7 @@ NEXT_C:
 		switch (*arg) {
 		case 'a':
 			if ((*flags & (ARG_DISABLE_AUDIO_DEV |
-					ARG_ONLY_COMPILE)) != 0)
+					ARG_ONLY_CHECK)) != 0)
 				goto INVALID;
 			*flags |= ARG_FULL_RUN |
 				ARG_ENABLE_AUDIO_DEV;
@@ -113,7 +113,7 @@ NEXT_C:
 		case 'c':
 			if ((*flags & ARG_FULL_RUN) != 0)
 				goto INVALID;
-			*flags |= ARG_ONLY_COMPILE;
+			*flags |= ARG_ONLY_CHECK;
 			break;
 		case 'e':
 			*flags |= ARG_EVAL_STRING;
@@ -124,14 +124,14 @@ NEXT_C:
 			goto CLEAR;
 		case 'm':
 			if ((*flags & (ARG_ENABLE_AUDIO_DEV |
-					ARG_ONLY_COMPILE)) != 0)
+					ARG_ONLY_CHECK)) != 0)
 				goto INVALID;
 			*flags |= ARG_FULL_RUN |
 				ARG_DISABLE_AUDIO_DEV;
 			break;
 		case 'o':
 			if (arg[1] != '\0') goto INVALID;
-			if ((*flags & ARG_ONLY_COMPILE) != 0)
+			if ((*flags & ARG_ONLY_CHECK) != 0)
 				goto INVALID;
 			*flags |= ARG_FULL_RUN;
 			--argc;
@@ -145,7 +145,7 @@ NEXT_C:
 			break;
 		case 'r':
 			if (arg[1] != '\0') goto INVALID;
-			if ((*flags & ARG_ONLY_COMPILE) != 0)
+			if ((*flags & ARG_ONLY_CHECK) != 0)
 				goto INVALID;
 			*flags |= ARG_FULL_RUN;
 			--argc;
@@ -203,7 +203,7 @@ static bool build(const SAU_PtrList *restrict script_args,
 			if (prg != NULL) SAU_Program_print_info(prg);
 		}
 	}
-	if ((options & ARG_ONLY_COMPILE) != 0) {
+	if ((options & ARG_ONLY_CHECK) != 0) {
 		discard_programs(prg_objs);
 	}
 	return true;

@@ -213,7 +213,7 @@ static void SAU_OpAlloc_clear(SAU_OpAlloc *restrict o) {
 	_SAU_OpAlloc_clear(o);
 }
 
-SAU_DEF_ArrType(OpDataArr, SAU_ProgramOpData, )
+sauArrType(OpDataArr, SAU_ProgramOpData, )
 
 typedef struct ScriptConv {
 	SAU_PtrList ev_list;

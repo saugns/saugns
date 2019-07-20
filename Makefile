@@ -92,16 +92,16 @@ builder.o: builder.c saugns.h script.h ptrlist.h program.h ramp.h wave.h math.h 
 builder/file.o: builder/file.c builder/file.h common.h
 	$(CC) -c $(CFLAGS) builder/file.c -o builder/file.o
 
-builder/lexer.o: builder/lexer.c builder/lexer.h builder/file.h builder/symtab.h builder/scanner.h math.h common.h
+builder/lexer.o: builder/lexer.c builder/lexer.h builder/file.h builder/symtab.h mempool.h builder/scanner.h math.h common.h
 	$(CC) -c $(CFLAGS) builder/lexer.c -o builder/lexer.o
 
 builder/parseconv.o: builder/parseconv.c builder/parser.h program.h ramp.h wave.h math.h script.h ptrlist.h common.h
 	$(CC) -c $(CFLAGS) builder/parseconv.c -o builder/parseconv.o
 
-builder/parser.o: builder/parser.c builder/parser.h builder/scanner.h builder/file.h builder/symtab.h script.h ptrlist.h program.h ramp.h wave.h math.h common.h
+builder/parser.o: builder/parser.c builder/parser.h builder/scanner.h builder/file.h builder/symtab.h mempool.h script.h ptrlist.h program.h ramp.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) builder/parser.c -o builder/parser.o
 
-builder/scanner.o: builder/scanner.c builder/scanner.h builder/file.h builder/symtab.h math.h common.h
+builder/scanner.o: builder/scanner.c builder/scanner.h builder/file.h builder/symtab.h mempool.h math.h common.h
 	$(CC) -c $(CFLAGS) builder/scanner.c -o builder/scanner.o
 
 builder/scriptconv.o: builder/scriptconv.c builder/scriptconv.h program.h ramp.h wave.h math.h script.h ptrlist.h arrtype.h common.h
@@ -137,7 +137,7 @@ renderer/osc.o: renderer/osc.c renderer/osc.h wave.h math.h common.h
 saugns.o: saugns.c saugns.h ptrlist.h program.h ramp.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) saugns.c
 
-test-builder.o: test-builder.c saugns.h builder/lexer.h builder/scanner.h builder/file.h builder/symtab.h ptrlist.h program.h ramp.h wave.h math.h common.h
+test-builder.o: test-builder.c saugns.h builder/lexer.h builder/scanner.h builder/file.h builder/symtab.h mempool.h ptrlist.h program.h ramp.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) test-builder.c
 
 wave.o: wave.c wave.h math.h common.h
