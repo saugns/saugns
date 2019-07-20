@@ -67,7 +67,7 @@ void SAU_Mixer_add(SAU_Mixer *restrict o,
 		float *restrict buf, size_t len,
 		SAU_Ramp *restrict pan, uint32_t *restrict pan_pos) {
 	if ((pan->flags & SAU_RAMP_CURVE) != 0) {
-		SAU_Ramp_run(pan, o->pan_buf, len, o->srate, pan_pos, NULL);
+		SAU_Ramp_run(pan, pan_pos, o->pan_buf, len, o->srate, NULL);
 		for (size_t i = 0; i < len; ++i) {
 			float s = buf[i] * o->scale;
 			float s_r = s * o->pan_buf[i];
