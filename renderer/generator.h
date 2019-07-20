@@ -18,7 +18,7 @@ struct SAU_Generator;
 typedef struct SAU_Generator SAU_Generator;
 
 SAU_Generator* SAU_create_Generator(const SAU_Program *restrict prg,
-		uint32_t srate) SAU__malloclike;
+		uint32_t srate) sauMalloclike;
 void SAU_destroy_Generator(SAU_Generator *restrict o);
 
 bool SAU_Generator_run(SAU_Generator *restrict o,

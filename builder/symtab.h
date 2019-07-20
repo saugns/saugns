@@ -17,7 +17,7 @@
 struct SAU_SymTab;
 typedef struct SAU_SymTab SAU_SymTab;
 
-SAU_SymTab *SAU_create_SymTab(void) SAU__malloclike;
+SAU_SymTab *SAU_create_SymTab(void) sauMalloclike;
 void SAU_destroy_SymTab(SAU_SymTab *restrict o);
 
 const void *SAU_SymTab_pool_str(SAU_SymTab *restrict o,
