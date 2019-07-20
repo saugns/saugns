@@ -65,5 +65,6 @@ typedef struct SAU_Parse {
 	SAU_ScriptOptions sopt;
 } SAU_Parse;
 
-SAU_Parse *SAU_create_Parse(const char *restrict script_arg, bool is_path);
+SAU_Parse *SAU_create_Parse(const char *restrict script_arg, bool is_path)
+	sauMalloclike;
 void SAU_destroy_Parse(SAU_Parse *restrict o);
