@@ -45,7 +45,7 @@ typedef struct SGS_Scanner SGS_Scanner;
  * should be used without filtering.
  *
  * Filter functions may call other filter functions,
- * and are allowed to alter the table.
+ * and are allowed (not done by default functions) to alter the table.
  */
 typedef uint8_t (*SGS_ScanFilter_f)(SGS_Scanner *o, uint8_t c);
 
@@ -77,19 +77,38 @@ enum {
  */
 enum {
 	SGS_SCAN_C_ERROR = 1<<0, // character-level error encountered in script
-	SGS_SCAN_C_LNBRK = 1<<1, // linebreak scanned last get character call
+	SGS_SCAN_C_SPACE = 1<<1, // space scanned during the get
+	SGS_SCAN_C_LNBRK = 1<<2, // linebreak scanned during the get
+	SGS_SCAN_C_LNBRK_POSUP = 1<<3, // pending position update for linebreak
 };
 
 extern const SGS_ScanFilter_f SGS_Scanner_def_filters[SGS_SCAN_FILTER_COUNT];
 
+/**
+ * Whitespace filtering levels, used with
+ * SGS_Scanner_setws_level() to assign standard filter functions.
+ *
+ * Default is SGS_SCAN_WS_ALL. Note that other filter functions,
+ * e.g. comment filters, must filter the whitespace markers they
+ * return using whichever filter functions are set, in order to
+ * avoid excess marker characters in the output.
+ */
+enum {
+	SGS_SCAN_WS_ALL = 0, // include all ws characters mapped to SGS_SCAN_*
+	SGS_SCAN_WS_NONE,    // remove all ws characters
+};
+
 uint8_t SGS_Scanner_filter_invalid(SGS_Scanner *restrict o, uint8_t c);
-uint8_t SGS_Scanner_filter_space(SGS_Scanner *restrict o, uint8_t c);
-uint8_t SGS_Scanner_filter_linebreaks(SGS_Scanner *restrict o, uint8_t c);
+uint8_t SGS_Scanner_filter_space_keep(SGS_Scanner *restrict o, uint8_t c);
+uint8_t SGS_Scanner_filter_linebreak_keep(SGS_Scanner *restrict o, uint8_t c);
+uint8_t SGS_Scanner_filter_ws_none(SGS_Scanner *restrict o, uint8_t c);
 uint8_t SGS_Scanner_filter_linecomment(SGS_Scanner *restrict o, uint8_t c);
 uint8_t SGS_Scanner_filter_blockcomment(SGS_Scanner *restrict o,
 		uint8_t check_c);
 uint8_t SGS_Scanner_filter_slashcomments(SGS_Scanner *restrict o, uint8_t c);
 uint8_t SGS_Scanner_filter_char1comments(SGS_Scanner *restrict o, uint8_t c);
+
+uint8_t SGS_Scanner_setws_level(SGS_Scanner *restrict o, uint8_t ws_level);
 
 /**
  * Scanner state flags for current file.
@@ -122,6 +141,7 @@ struct SGS_Scanner {
 	uint8_t unget_num;
 	uint8_t s_flags;
 	uint8_t match_c; // for use by character filters
+	uint8_t ws_level; // level of SGS_Scanner_setws_level(), presuming use
 	uint8_t *strbuf;
 	void *data; // for use by user
 	SGS_ScanFrame undo[SGS_SCAN_UNGET_MAX + 1];
@@ -149,10 +169,24 @@ static inline SGS_ScanFilter_f SGS_Scanner_getfilter(SGS_Scanner *restrict o,
 	return o->filters[c];
 }
 
+/**
+ * Call character filter for character \p c, unless a blank entry.
+ * If calling, will set \a match_c for use by the filter function.
+ *
+ * \return result
+ */
+static inline uint8_t SGS_Scanner_usefilter(SGS_Scanner *restrict o,
+		uint8_t c, uint8_t match_c) {
+	SGS_ScanFilter_f f = SGS_Scanner_getfilter(o, c);
+	if (f != NULL) {
+		o->match_c = match_c;
+		return f(o, c);
+	}
+	return c;
+}
+
 uint8_t SGS_Scanner_getc(SGS_Scanner *restrict o);
-uint8_t SGS_Scanner_getc_nospace(SGS_Scanner *restrict o);
 bool SGS_Scanner_tryc(SGS_Scanner *restrict o, uint8_t testc);
-bool SGS_Scanner_tryc_nospace(SGS_Scanner *restrict o, uint8_t testc);
 uint32_t SGS_Scanner_ungetc(SGS_Scanner *restrict o);
 bool SGS_Scanner_geti(SGS_Scanner *restrict o,
 		int32_t *restrict var, bool allow_sign,
@@ -160,24 +194,8 @@ bool SGS_Scanner_geti(SGS_Scanner *restrict o,
 bool SGS_Scanner_getd(SGS_Scanner *restrict o,
 		double *restrict var, bool allow_sign,
 		size_t *restrict str_len);
-bool SGS_Scanner_getsymstr(SGS_Scanner *restrict o,
-		const void **restrict strp, size_t *restrict lenp);
-
-/**
- * Advance past space on the same line.
- * Equivalent to calling SGS_Scanner_tryc() for SGS_SCAN_SPACE.
- */
-static inline void SGS_Scanner_skipspace(SGS_Scanner *restrict o) {
-	SGS_Scanner_tryc(o, SGS_SCAN_SPACE);
-}
-
-/**
- * Advance past whitespace, including linebreaks.
- * Equivalent to calling SGS_Scanner_tryc_nospace() for SGS_SCAN_LNBRK.
- */
-static inline void SGS_Scanner_skipws(SGS_Scanner *restrict o) {
-	SGS_Scanner_tryc_nospace(o, SGS_SCAN_LNBRK);
-}
+bool SGS_Scanner_get_symstr(SGS_Scanner *restrict o,
+		SGS_SymStr **restrict symstrp);
 
 void SGS_Scanner_warning(const SGS_Scanner *restrict o,
 		const SGS_ScanFrame *restrict sf,
