@@ -489,11 +489,11 @@ static uint32_t run_block(SAU_Generator *restrict o,
 	 * if modulators linked.
 	 */
 	freq = *(bufs++);
-	SAU_Ramp_run(&n->freq, freq, len, o->srate, &n->freq_pos, parent_freq);
+	SAU_Ramp_run(&n->freq, &n->freq_pos, freq, len, o->srate, parent_freq);
 	if (fmodc) {
 		float *freq2 = *(bufs++);
-		SAU_Ramp_run(&n->freq2, freq2, len, o->srate,
-				&n->freq2_pos, parent_freq);
+		SAU_Ramp_run(&n->freq2, &n->freq2_pos, freq2, len, o->srate,
+				parent_freq);
 		const uint32_t *fmods = n->adjcs->adjcs;
 		for (i = 0; i < fmodc; ++i)
 			run_block(o, bufs, len, &o->operators[fmods[i]],
@@ -502,7 +502,7 @@ static uint32_t run_block(SAU_Generator *restrict o,
 		for (i = 0; i < len; ++i)
 			freq[i] += (freq2[i] - freq[i]) * fm_buf[i];
 	} else {
-		SAU_Ramp_skip(&n->freq2, len, o->srate, &n->freq2_pos);
+		SAU_Ramp_skip(&n->freq2, &n->freq2_pos, len, o->srate);
 	}
 	/*
 	 * If phase modulators linked, get phase offsets for modulation.
@@ -520,10 +520,10 @@ static uint32_t run_block(SAU_Generator *restrict o,
 	 * modulators linked.
 	 */
 	amp = *(bufs++);
-	SAU_Ramp_run(&n->amp, amp, len, o->srate, &n->amp_pos, NULL);
+	SAU_Ramp_run(&n->amp, &n->amp_pos, amp, len, o->srate, NULL);
 	if (amodc) {
 		float *amp2 = *(bufs++);
-		SAU_Ramp_run(&n->amp2, amp2, len, o->srate, &n->amp2_pos, NULL);
+		SAU_Ramp_run(&n->amp2, &n->amp2_pos, amp2, len, o->srate, NULL);
 		const uint32_t *amods = &n->adjcs->adjcs[fmodc+pmodc];
 		for (i = 0; i < amodc; ++i)
 			run_block(o, bufs, len, &o->operators[amods[i]],
@@ -532,7 +532,7 @@ static uint32_t run_block(SAU_Generator *restrict o,
 		for (i = 0; i < len; ++i)
 			amp[i] += (amp2[i] - amp[i]) * am_buf[i];
 	} else {
-		SAU_Ramp_skip(&n->amp2, len, o->srate, &n->amp2_pos);
+		SAU_Ramp_skip(&n->amp2, &n->amp2_pos, len, o->srate);
 	}
 	if (!wave_env) {
 		const float *lut = SAU_Wave_luts[n->wave];

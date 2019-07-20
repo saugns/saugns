@@ -91,7 +91,7 @@ typedef struct VAState {
 	uint32_t duration_ms;
 } VAState;
 
-SAU_DEF_ArrType(VoAlloc, VAState, _)
+sauArrType(VoAlloc, VAState, _)
 
 /*
  * Returns the longest operator duration among top-level operators for
@@ -189,7 +189,7 @@ typedef struct OAState {
 	//uint32_t duration_ms;
 } OAState;
 
-SAU_DEF_ArrType(OpAlloc, OAState, _)
+sauArrType(OpAlloc, OAState, _)
 
 /*
  * Get operator ID for event, setting it to \p op_id.
@@ -251,8 +251,8 @@ static void OpAlloc_clear(OpAlloc *restrict o) {
 	_OpAlloc_clear(o);
 }
 
-SAU_DEF_ArrType(OpRefArr, SAU_ProgramOpRef, )
-SAU_DEF_ArrType(OpDataArr, SAU_ProgramOpData, )
+sauArrType(OpRefArr, SAU_ProgramOpRef, )
+sauArrType(OpDataArr, SAU_ProgramOpData, )
 
 typedef struct ScriptConv {
 	SAU_PtrList ev_list;
