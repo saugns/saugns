@@ -120,11 +120,10 @@ static double scan_num_r(NumParser *restrict o, uint8_t pri, uint32_t level) {
 	double num;
 	bool minus = false;
 	uint8_t c;
-	if (level > 0) SAU_Scanner_skipws(sc);
+	if (level == 1) SAU_Scanner_setws_level(sc, SAU_SCAN_WS_NONE);
 	c = SAU_Scanner_getc(sc);
 	if ((level > 0) && (c == '+' || c == '-')) {
 		if (c == '-') minus = true;
-		SAU_Scanner_skipws(sc);
 		c = SAU_Scanner_getc(sc);
 	}
 	if (c == '(') {
@@ -143,12 +142,8 @@ static double scan_num_r(NumParser *restrict o, uint8_t pri, uint32_t level) {
 		return num; /* defer all */
 	for (;;) {
 		if (isinf(num)) o->has_infnum = true;
-		if (level > 0) SAU_Scanner_skipws(sc);
 		c = SAU_Scanner_getc(sc);
 		switch (c) {
-		case SAU_SCAN_SPACE:
-		case SAU_SCAN_LNBRK:
-			break;
 		case '(':
 			if (pri >= NUMEXP_MLT) goto DEFER;
 			num *= scan_num_r(o, NUMEXP_SUB, level+1);
@@ -192,7 +187,9 @@ DEFER:
 static bool scan_num(SAU_Scanner *restrict o,
 		SAU_ScanNumConst_f scan_numconst, float *restrict var) {
 	NumParser np = {o, scan_numconst, o->sf, false};
+	uint8_t ws_level = o->ws_level;
 	float num = scan_num_r(&np, NUMEXP_NUM, 0);
+	SAU_Scanner_setws_level(o, ws_level); // restore if changed
 	if (isnan(num))
 		return false;
 	if (isinf(num)) np.has_infnum = true;
@@ -414,8 +411,9 @@ static bool scan_ramp(SAU_Scanner *restrict o,
 		time_ms = ramp->time_ms;
 	}
 	for (;;) {
-		uint8_t c = SAU_Scanner_getc_nospace(o);
+		uint8_t c = SAU_Scanner_getc(o);
 		switch (c) {
+		case SAU_SCAN_SPACE:
 		case SAU_SCAN_LNBRK:
 			break;
 		case 'c': {
@@ -905,8 +903,10 @@ static void parse_in_settings(ParseLevel *restrict pl) {
 	pl->sub_f = parse_in_settings;
 	uint8_t c;
 	for (;;) {
-		c = SAU_Scanner_getc_nospace(sc);
+		c = SAU_Scanner_getc(sc);
 		switch (c) {
+		case SAU_SCAN_SPACE:
+			break;
 		case 'a':
 			if (scan_num(sc, NULL, &sl->sopt.ampmult))
 				sl->sopt.changed |= SAU_SOPT_AMPMULT;
@@ -1027,8 +1027,10 @@ static void parse_in_event(ParseLevel *restrict pl) {
 	pl->sub_f = parse_in_event;
 	uint8_t c;
 	for (;;) {
-		c = SAU_Scanner_getc_nospace(sc);
+		c = SAU_Scanner_getc(sc);
 		switch (c) {
+		case SAU_SCAN_SPACE:
+			break;
 		case '\\':
 			if (parse_waittime(pl) && pl->event != NULL) {
 				// FIXME: Replace grouping into and counting
@@ -1102,8 +1104,10 @@ static void parse_level(SAU_Parser *restrict o,
 	SAU_Scanner *sc = o->sc;
 	uint8_t c;
 	for (;;) {
-		c = SAU_Scanner_getc_nospace(sc);
+		c = SAU_Scanner_getc(sc);
 		switch (c) {
+		case SAU_SCAN_SPACE:
+			break;
 		case SAU_SCAN_LNBRK:
 			if (pl.scope == SCOPE_TOP) {
 				/*

@@ -43,7 +43,7 @@ const SAU_Ramp_fill_f SAU_Ramp_fill_funcs[SAU_RAMP_TYPES] = {
  * Fill \p buf with \p len values along a straight horizontal line,
  * i.e. \p len copies of \p v0.
  */
-SAU__noinline void SAU_Ramp_fill_hold(float *restrict buf, uint32_t len,
+sauNoinline void SAU_Ramp_fill_hold(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf) {
 	(void)vt;
