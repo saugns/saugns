@@ -15,7 +15,7 @@
 #include "program.h"
 #include "ptrlist.h"
 
-#define SAU_VERSION_STR "saugns v0.3.0b"
+#define SAU_VERSION_STR "saugns v0.3.1d"
 
 size_t SAU_build(const SAU_PtrList *restrict script_args, bool are_paths,
 		SAU_PtrList *restrict prg_objs);
