@@ -110,11 +110,10 @@ static double scan_num_r(NumParser *restrict o, uint8_t pri, uint32_t level) {
 	double num;
 	bool minus = false;
 	uint8_t c;
-	if (level > 0) SAU_Scanner_skipws(sc);
+	if (level == 1) SAU_Scanner_setws_level(sc, SAU_SCAN_WS_NONE);
 	c = SAU_Scanner_getc(sc);
 	if ((level > 0) && (c == '+' || c == '-')) {
 		if (c == '-') minus = true;
-		SAU_Scanner_skipws(sc);
 		c = SAU_Scanner_getc(sc);
 	}
 	if (c == '(') {
@@ -122,9 +121,7 @@ static double scan_num_r(NumParser *restrict o, uint8_t pri, uint32_t level) {
 		if (minus) num = -num;
 		if (level == 0)
 			return num;
-		goto EVAL;
-	}
-	if (o->numsym_f && IS_ALPHA(c)) {
+	} else if (o->numsym_f && IS_ALPHA(c)) {
 		SAU_Scanner_ungetc(sc);
 		num = o->numsym_f(sc);
 		if (isnan(num))
@@ -138,17 +135,12 @@ static double scan_num_r(NumParser *restrict o, uint8_t pri, uint32_t level) {
 			return NAN;
 		if (minus) num = -num;
 	}
-EVAL:
 	if (pri == 0)
 		return num; /* defer all */
 	for (;;) {
 		if (isinf(num)) o->has_infnum = true;
-		if (level > 0) SAU_Scanner_skipws(sc);
 		c = SAU_Scanner_getc(sc);
 		switch (c) {
-		case SAU_SCAN_SPACE:
-		case SAU_SCAN_LNBRK:
-			break;
 		case '(':
 			num *= scan_num_r(o, 255, level+1);
 			break;
@@ -185,10 +177,12 @@ DEFER:
 	SAU_Scanner_ungetc(sc);
 	return num;
 }
-static bool SAU__noinline scan_num(SAU_Scanner *restrict o,
+static sauNoinline bool scan_num(SAU_Scanner *restrict o,
 		NumSym_f scan_numsym, float *restrict var) {
 	NumParser np = {o, scan_numsym, o->sf, false};
+	uint8_t ws_level = o->ws_level;
 	float num = scan_num_r(&np, 0, 0);
+	SAU_Scanner_setws_level(o, ws_level); // restore if changed
 	if (isnan(num))
 		return false;
 	if (isinf(num)) np.has_infnum = true;
@@ -201,16 +195,19 @@ static bool SAU__noinline scan_num(SAU_Scanner *restrict o,
 	return true;
 }
 
-static bool scan_time(SAU_Scanner *restrict o, float *restrict var) {
+static sauNoinline bool scan_time(SAU_Scanner *restrict o,
+		uint32_t *restrict var) {
 	SAU_ScanFrame sf = o->sf;
-	float num;
-	if (!scan_num(o, NULL, &num))
+	float num_s;
+	if (!scan_num(o, NULL, &num_s))
 		return false;
-	if (num < 0.f) {
+	if (num_s < 0.f) {
 		SAU_Scanner_warning(o, &sf, "discarding negative time value");
 		return false;
 	}
-	*var = num;
+	uint32_t num_ms;
+	num_ms = lrint(num_s * 1000.f);
+	*var = num_ms;
 	return true;
 }
 
@@ -380,8 +377,9 @@ static bool scan_ramp(SAU_Scanner *restrict o, NumSym_f scan_numsym,
 		time_ms = ramp->time_ms;
 	}
 	for (;;) {
-		uint8_t c = SAU_Scanner_getc_nospace(o);
+		uint8_t c = SAU_Scanner_getc(o);
 		switch (c) {
+		case SAU_SCAN_SPACE:
 		case SAU_SCAN_LNBRK:
 			break;
 		case 'c': {
@@ -391,12 +389,9 @@ static bool scan_ramp(SAU_Scanner *restrict o, NumSym_f scan_numsym,
 				curve = type;
 			}
 			break; }
-		case 't': {
-			float time;
-			if (scan_time(o, &time)) {
-				time_ms = lrint(time * 1000.f);
-			}
-			break; }
+		case 't':
+			scan_time(o, &time_ms);
+			break;
 		case 'v':
 			if (scan_num(o, scan_numsym, &vt))
 				goal = true;
@@ -488,8 +483,10 @@ enum {
  * Parse level flags.
  */
 enum {
-	SDPL_NESTED_SCOPE = 1<<0,
-	SDPL_BIND_MULTIPLE = 1<<1, /* previous node interpreted as set of nodes */
+	SDPL_BIND_MULTIPLE = 1<<0, // previous node interpreted as set of nodes
+	SDPL_NESTED_SCOPE = 1<<1,
+	SDPL_ACTIVE_EV = 1<<2,
+	SDPL_ACTIVE_OP = 1<<3,
 };
 
 /*
@@ -527,10 +524,8 @@ static bool parse_waittime(ParseLevel *restrict pl) {
 		}
 		pl->last_event->ev_flags |= SAU_SDEV_ADD_WAIT_DURATION;
 	} else {
-		float wait;
 		uint32_t wait_ms;
-		if (scan_time(sc, &wait)) {
-			wait_ms = lrint(wait * 1000.f);
+		if (scan_time(sc, &wait_ms)) {
 			pl->next_wait_ms += wait_ms;
 		}
 	}
@@ -589,25 +584,26 @@ static void destroy_event_node(SAU_ParseEvData *restrict e) {
 }
 
 static void end_operator(ParseLevel *restrict pl) {
+	if (!(pl->pl_flags & SDPL_ACTIVE_OP))
+		return;
+	pl->pl_flags &= ~SDPL_ACTIVE_OP;
 	SAU_Parser *o = pl->o;
 	ScanLookup *sl = &o->sl;
 	SAU_ParseOpData *op = pl->operator;
-	if (!op)
-		return; /* nothing to do */
 	if (SAU_Ramp_ENABLED(&op->freq))
 		op->op_params |= SAU_POPP_FREQ;
 	if (SAU_Ramp_ENABLED(&op->freq2))
 		op->op_params |= SAU_POPP_FREQ2;
 	if (SAU_Ramp_ENABLED(&op->amp)) {
 		op->op_params |= SAU_POPP_AMP;
-		if (!(pl->pl_flags & SDPL_NESTED_SCOPE)) {
+		if (!(op->op_flags & SAU_SDOP_NESTED)) {
 			op->amp.v0 *= sl->sopt.ampmult;
 			op->amp.vt *= sl->sopt.ampmult;
 		}
 	}
 	if (SAU_Ramp_ENABLED(&op->amp2)) {
 		op->op_params |= SAU_POPP_AMP2;
-		if (!(pl->pl_flags & SDPL_NESTED_SCOPE)) {
+		if (!(op->op_flags & SAU_SDOP_NESTED)) {
 			op->amp2.v0 *= sl->sopt.ampmult;
 			op->amp2.vt *= sl->sopt.ampmult;
 		}
@@ -639,9 +635,10 @@ static void end_operator(ParseLevel *restrict pl) {
 }
 
 static void end_event(ParseLevel *restrict pl) {
+	if (!(pl->pl_flags & SDPL_ACTIVE_EV))
+		return;
+	pl->pl_flags &= ~SDPL_ACTIVE_EV;
 	SAU_ParseEvData *e = pl->event;
-	if (!e)
-		return; /* nothing to do */
 	end_operator(pl);
 	if (SAU_Ramp_ENABLED(&e->pan))
 		e->vo_params |= SAU_PVOP_PAN;
@@ -701,6 +698,7 @@ static void begin_event(ParseLevel *restrict pl, uint8_t linktype,
 		o->last_event = e;
 		pl->composite = NULL;
 	}
+	pl->pl_flags |= SDPL_ACTIVE_EV;
 }
 
 static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
@@ -815,6 +813,7 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
 		SAU_SymTab_set(o->st, pop->label, strlen(pop->label), op);
 		op->label = pop->label;
 	}
+	pl->pl_flags |= SDPL_ACTIVE_OP;
 }
 
 /*
@@ -844,7 +843,8 @@ static void begin_scope(SAU_Parser *restrict o, ParseLevel *restrict pl,
 	pl->scope = newscope;
 	if (parent_pl != NULL) {
 		pl->parent = parent_pl;
-		pl->pl_flags = parent_pl->pl_flags;
+		pl->pl_flags = parent_pl->pl_flags &
+			(SDPL_NESTED_SCOPE | SDPL_BIND_MULTIPLE);
 		pl->location = parent_pl->location;
 		if (newscope == SCOPE_SAME)
 			pl->scope = parent_pl->scope;
@@ -904,8 +904,10 @@ static bool parse_settings(ParseLevel *restrict pl) {
 	SAU_Scanner *sc = o->sc;
 	pl->location = SDPL_IN_DEFAULTS;
 	for (;;) {
-		uint8_t c = SAU_Scanner_getc_nospace(sc);
+		uint8_t c = SAU_Scanner_getc(sc);
 		switch (c) {
+		case SAU_SCAN_SPACE:
+			break;
 		case 'a':
 			if (scan_num(sc, NULL, &sl->sopt.ampmult))
 				sl->sopt.changed |= SAU_SOPT_AMPMULT;
@@ -930,19 +932,19 @@ static bool parse_settings(ParseLevel *restrict pl) {
 			if (scan_num(sc, NULL, &sl->sopt.def_relfreq))
 				sl->sopt.changed |= SAU_SOPT_DEF_RATIO;
 			break;
-		case 't': {
-			float time;
-			if (scan_time(sc, &time)) {
-				sl->sopt.def_time_ms = lrint(time * 1000.f);
+		case 't':
+			if (scan_time(sc, &sl->sopt.def_time_ms)) {
 				sl->sopt.changed |= SAU_SOPT_DEF_TIME;
 			}
-			break; }
+			break;
 		default:
-			SAU_Scanner_ungetc(sc);
-			return true; /* let parse_level() take care of it */
+			goto UNKNOWN;
 		}
 	}
 	return false;
+UNKNOWN:
+	SAU_Scanner_ungetc(sc);
+	return true; /* let parse_level() take care of it */
 }
 
 static bool parse_level(SAU_Parser *restrict o, ParseLevel *restrict parent_pl,
@@ -978,7 +980,7 @@ static bool parse_ev_freq(ParseLevel *restrict pl, bool rel_freq) {
 	SAU_Parser *o = pl->o;
 	SAU_Scanner *sc = o->sc;
 	SAU_ParseOpData *op = pl->operator;
-	if (rel_freq && !(pl->pl_flags & SDPL_NESTED_SCOPE))
+	if (rel_freq && !(op->op_flags & SAU_SDOP_NESTED))
 		return true; // reject
 	NumSym_f numsym_f = rel_freq ? NULL : scan_note;
 	if (SAU_Scanner_tryc(sc, '{')) {
@@ -1031,8 +1033,10 @@ static bool parse_step(ParseLevel *restrict pl) {
 	SAU_ParseOpData *op = pl->operator;
 	pl->location = SDPL_IN_EVENT;
 	for (;;) {
-		uint8_t c = SAU_Scanner_getc_nospace(sc);
+		uint8_t c = SAU_Scanner_getc(sc);
 		switch (c) {
+		case SAU_SCAN_SPACE:
+			break;
 		case 'P':
 			if ((pl->pl_flags & SDPL_NESTED_SCOPE) != 0)
 				goto UNKNOWN;
@@ -1059,19 +1063,16 @@ static bool parse_step(ParseLevel *restrict pl) {
 		case 'r':
 			if (parse_ev_freq(pl, true)) goto UNKNOWN;
 			break;
-		case 's': {
-			float silence;
-			if (scan_time(sc, &silence)) {
-				op->silence_ms = lrint(silence * 1000.f);
-			}
-			break; }
+		case 's':
+			scan_time(sc, &op->silence_ms);
+			break;
 		case 't':
 			if (SAU_Scanner_tryc(sc, '*')) {
 				/* later fitted or kept at default value */
 				op->op_flags |= SAU_SDOP_TIME_DEFAULT;
 				op->time_ms = sl->sopt.def_time_ms;
 			} else if (SAU_Scanner_tryc(sc, 'i')) {
-				if (!(pl->pl_flags & SDPL_NESTED_SCOPE)) {
+				if (!(op->op_flags & SAU_SDOP_NESTED)) {
 					SAU_Scanner_warning(sc, NULL,
 "ignoring 'ti' (infinite time) for non-nested operator");
 					break;
@@ -1079,10 +1080,8 @@ static bool parse_step(ParseLevel *restrict pl) {
 				op->op_flags &= ~SAU_SDOP_TIME_DEFAULT;
 				op->time_ms = SAU_TIME_INF;
 			} else {
-				float time;
-				if (scan_time(sc, &time)) {
+				if (scan_time(sc, &op->time_ms)) {
 					op->op_flags &= ~SAU_SDOP_TIME_DEFAULT;
-					op->time_ms = lrint(time * 1000.f);
 				}
 			}
 			op->op_params |= SAU_POPP_TIME;
@@ -1094,12 +1093,13 @@ static bool parse_step(ParseLevel *restrict pl) {
 			op->wave = wave;
 			break; }
 		default:
-		UNKNOWN:
-			SAU_Scanner_ungetc(sc);
-			return true; /* let parse_level() take care of it */
+			goto UNKNOWN;
 		}
 	}
 	return false;
+UNKNOWN:
+	SAU_Scanner_ungetc(sc);
+	return true; /* let parse_level() take care of it */
 }
 
 enum {
@@ -1118,8 +1118,10 @@ static bool parse_level(SAU_Parser *restrict o, ParseLevel *restrict parent_pl,
 	++o->call_level;
 	SAU_Scanner *sc = o->sc;
 	for (;;) {
-		uint8_t c = SAU_Scanner_getc_nospace(sc);
+		uint8_t c = SAU_Scanner_getc(sc);
 		switch (c) {
+		case SAU_SCAN_SPACE:
+			break;
 		case SAU_SCAN_LNBRK:
 			if (pl.scope == SCOPE_TOP) {
 				/*
