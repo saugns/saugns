@@ -31,7 +31,7 @@ static SGS_ProgramOpGraph
 	uint32_t i;
 	ops = (const SGS_ScriptOpData**) SGS_PtrList_ITEMS(&vo_in->op_graph);
 	SGS_ProgramOpGraph *o;
-	o = malloc(sizeof(SGS_ProgramOpGraph) + sizeof(uint32_t) * (size - 1));
+	o = malloc(sizeof(SGS_ProgramOpGraph) + sizeof(uint32_t) * size);
 	if (!o)
 		return NULL;
 	o->opc = size;
@@ -53,7 +53,7 @@ static SGS_ProgramOpAdjcs
 	uint32_t i;
 	uint32_t *data;
 	SGS_ProgramOpAdjcs *o;
-	o = malloc(sizeof(SGS_ProgramOpAdjcs) + sizeof(uint32_t) * (size - 1));
+	o = malloc(sizeof(SGS_ProgramOpAdjcs) + sizeof(uint32_t) * size);
 	if (!o)
 		return NULL;
 	o->fmodc = op_in->fmods.count;

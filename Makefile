@@ -85,16 +85,16 @@ loader/loader.o: loader/loader.c sgensys.h script.h ptrlist.h program.h ramp.h w
 loader/file.o: loader/file.c loader/file.h common.h
 	$(CC) -c $(CFLAGS) loader/file.c -o loader/file.o
 
-loader/lexer.o: loader/lexer.c loader/lexer.h loader/file.h loader/symtab.h loader/scanner.h math.h common.h
+loader/lexer.o: loader/lexer.c loader/lexer.h loader/file.h loader/symtab.h mempool.h loader/scanner.h math.h common.h
 	$(CC) -c $(CFLAGS) loader/lexer.c -o loader/lexer.o
 
 loader/parseconv.o: loader/parseconv.c loader/parseconv.h program.h ramp.h wave.h math.h script.h ptrlist.h arrtype.h common.h
 	$(CC) -c $(CFLAGS) loader/parseconv.c -o loader/parseconv.o
 
-loader/parser.o: loader/parser.c loader/scanner.h loader/file.h loader/symtab.h script.h ptrlist.h program.h ramp.h wave.h math.h common.h
+loader/parser.o: loader/parser.c loader/scanner.h loader/file.h loader/symtab.h mempool.h script.h ptrlist.h program.h ramp.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) loader/parser.c -o loader/parser.o
 
-loader/scanner.o: loader/scanner.c loader/scanner.h loader/file.h loader/symtab.h math.h common.h
+loader/scanner.o: loader/scanner.c loader/scanner.h loader/file.h loader/symtab.h mempool.h math.h common.h
 	$(CC) -c $(CFLAGS) loader/scanner.c -o loader/scanner.o
 
 loader/symtab.o: loader/symtab.c loader/symtab.h mempool.h common.h
