@@ -78,14 +78,14 @@ typedef struct SGS_ProgramOpRef {
 
 typedef struct SGS_ProgramOpGraph {
 	uint32_t opc;
-	uint32_t ops[1]; /* sized to opc */
+	uint32_t ops[];
 } SGS_ProgramOpGraph;
 
 typedef struct SGS_ProgramOpAdjcs {
 	uint32_t fmodc;
 	uint32_t pmodc;
 	uint32_t amodc;
-	uint32_t adjcs[1]; /* sized to total number */
+	uint32_t adjcs[];
 } SGS_ProgramOpAdjcs;
 
 typedef struct SGS_ProgramVoData {

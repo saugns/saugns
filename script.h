@@ -35,7 +35,7 @@ typedef struct SGS_ScriptOpData {
 	struct SGS_ScriptOpData *on_prev; /* preceding for same op(s) */
 	SGS_PtrList on_next; /* all immediate forward refs for op(s) */
 	struct SGS_ScriptOpData *next_bound;
-	const char *label;
+	struct SGS_SymStr *label;
 	uint32_t op_flags;
 	/* operator parameters */
 	uint32_t op_id; /* not used by parser; for program module */

@@ -15,14 +15,15 @@
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#define NAME SGS_CLINAME_STR
 
 /*
  * Print command line usage instructions.
  */
 static void print_usage(bool by_arg) {
 	fputs(
-"Usage: sgensys [-a|-m] [-r <srate>] [-p] [-o <wavfile>] [-e] <script>...\n"
-"       sgensys [-c] [-p] [-e] <script>...\n"
+"Usage: "NAME" [-a|-m] [-r <srate>] [-p] [-o <wavfile>] [-e] <script>...\n"
+"       "NAME" [-c] [-p] [-e] <script>...\n"
 "\n"
 "By default, audio device output is enabled.\n"
 "\n"
@@ -44,7 +45,7 @@ static void print_usage(bool by_arg) {
  * Print version.
  */
 static void print_version(void) {
-	puts(SGS_VERSION_STR);
+	puts(NAME" "SGS_VERSION_STR);
 }
 
 /*
