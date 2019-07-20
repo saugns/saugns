@@ -120,16 +120,16 @@ ramp.o: common.h math.h ramp.c ramp.h time.h
 reader/file.o: common.h reader/file.c reader/file.h
 	$(CC) -c $(CFLAGS) reader/file.c -o reader/file.o
 
-reader/lexer.o: common.h math.h reader/file.h reader/lexer.c reader/lexer.h reader/scanner.h reader/symtab.h
+reader/lexer.o: common.h math.h mempool.h reader/file.h reader/lexer.c reader/lexer.h reader/scanner.h reader/symtab.h
 	$(CC) -c $(CFLAGS) reader/lexer.c -o reader/lexer.o
 
 reader/parseconv.o: common.h math.h program.h ptrarr.h ramp.h reader/parseconv.c reader/parser.h script.h time.h wave.h
 	$(CC) -c $(CFLAGS) reader/parseconv.c -o reader/parseconv.o
 
-reader/parser.o: common.h math.h program.h ptrarr.h ramp.h reader/file.h reader/parser.c reader/parser.h reader/scanner.h reader/symtab.h script.h time.h wave.h
+reader/parser.o: common.h math.h mempool.h program.h ptrarr.h ramp.h reader/file.h reader/parser.c reader/parser.h reader/scanner.h reader/symtab.h script.h time.h wave.h
 	$(CC) -c $(CFLAGS) reader/parser.c -o reader/parser.o
 
-reader/scanner.o: common.h math.h reader/file.h reader/scanner.c reader/scanner.h reader/symtab.h
+reader/scanner.o: common.h math.h mempool.h reader/file.h reader/scanner.c reader/scanner.h reader/symtab.h
 	$(CC) -c $(CFLAGS) reader/scanner.c -o reader/scanner.o
 
 reader/symtab.o: common.h mempool.h reader/symtab.c reader/symtab.h
@@ -138,7 +138,7 @@ reader/symtab.o: common.h mempool.h reader/symtab.c reader/symtab.h
 saugns.o: common.h math.h program.h ptrarr.h ramp.h saugns.c saugns.h time.h wave.h
 	$(CC) -c $(CFLAGS) saugns.c
 
-test-scan.o: common.h math.h program.h ptrarr.h ramp.h reader/lexer.h reader/scanner.h reader/file.h reader/symtab.h saugns.h test-scan.c time.h wave.h
+test-scan.o: common.h math.h mempool.h program.h ptrarr.h ramp.h reader/lexer.h reader/scanner.h reader/file.h reader/symtab.h saugns.h test-scan.c time.h wave.h
 	$(CC) -c $(CFLAGS) test-scan.c
 
 wave.o: common.h math.h wave.c wave.h

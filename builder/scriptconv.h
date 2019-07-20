@@ -34,7 +34,7 @@ typedef struct SAU_VoAllocState {
 	uint32_t duration_ms;
 } SAU_VoAllocState;
 
-SAU_DEF_ArrType(SAU_VoAlloc, SAU_VoAllocState, _)
+sauArrType(SAU_VoAlloc, SAU_VoAllocState, _)
 
 /**
  * Operator allocation state flags.
@@ -55,9 +55,9 @@ typedef struct SAU_OpAllocState {
 	//uint32_t duration_ms;
 } SAU_OpAllocState;
 
-SAU_DEF_ArrType(SAU_OpAlloc, SAU_OpAllocState, _)
+sauArrType(SAU_OpAlloc, SAU_OpAllocState, _)
 
-SAU_DEF_ArrType(OpRefArr, SAU_ProgramOpRef, )
+sauArrType(OpRefArr, SAU_ProgramOpRef, )
 
 /**
  * Voice data, held during program building and set per event.

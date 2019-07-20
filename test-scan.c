@@ -122,7 +122,8 @@ static void discard_programs(SAU_PtrArr *restrict prg_objs) {
 static SAU_Program *build_program(const char *restrict script_arg,
 		bool is_path) {
 	SAU_Program *o = NULL;
-	SAU_SymTab *symtab = SAU_create_SymTab();
+	SAU_MemPool *mempool = SAU_create_MemPool(0);
+	SAU_SymTab *symtab = SAU_create_SymTab(mempool);
 	if (!symtab)
 		return NULL;
 #if SAU_TEST_SCANNER
@@ -153,6 +154,7 @@ CLOSE:
 	SAU_destroy_Lexer(lexer);
 #endif
 	SAU_destroy_SymTab(symtab);
+	SAU_destroy_MemPool(mempool);
 	return o;
 }
 

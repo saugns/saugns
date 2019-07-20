@@ -23,7 +23,7 @@
 
 static const SAU_ProgramOpList blank_oplist = {0};
 
-static SAU__noinline const SAU_ProgramOpList
+static sauNoinline const SAU_ProgramOpList
 *create_ProgramOpList(const SAU_PtrArr *restrict op_list,
 		SAU_MemPool *restrict mem) {
 	if (!op_list->count)
@@ -186,7 +186,7 @@ static void SAU_OpAlloc_clear(SAU_OpAlloc *restrict o) {
 	_SAU_OpAlloc_clear(o);
 }
 
-SAU_DEF_ArrType(OpDataArr, SAU_ProgramOpData, )
+sauArrType(OpDataArr, SAU_ProgramOpData, )
 
 typedef struct ScriptConv {
 	SAU_PtrArr ev_list;
