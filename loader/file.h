@@ -1,5 +1,5 @@
 /* sgensys: Text file buffer module.
- * Copyright (c) 2014, 2017-2020 Joel K. Pettersson
+ * Copyright (c) 2014, 2017-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -239,7 +239,7 @@ void SGS_File_end(SGS_File *restrict o, size_t keep_len, bool error);
 	((o)->buf[(o)->pos++])
 
 /**
- * Undo the getting of a character.
+ * Undo the getting of a character, writing \p c in place of what was got.
  * Wraps position to within the buffer boundary.
  *
  * Assuming the read callback is called at multiples of the buffer area
@@ -248,8 +248,9 @@ void SGS_File_end(SGS_File *restrict o, size_t keep_len, bool error);
  *
  * \return new position
  */
-#define SGS_File_UNGETC(o) \
-	((o)->pos = ((o)->pos - 1) & (SGS_FILE_BUFSIZ - 1))
+#define SGS_File_UNGETC(o, c) \
+	(((o)->buf[(o)->pos = ((o)->pos - 1) & (SGS_FILE_BUFSIZ - 1)] = (c)), \
+	 ((o)->pos = (o)->pos) /* bogus pos assignment to silence -Wunused */)
 
 /**
  * Compare current character to value \p c, without advancing position.
