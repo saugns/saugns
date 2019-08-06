@@ -1,6 +1,7 @@
 .POSIX:
 CC=cc
-CFLAGS=-std=c99 -W -Wall -O2 -ffast-math
+CFLAGS=-std=c99 -W -Wall -O2
+CFLAGS_FAST=$(CFLAGS) -ffast-math
 LFLAGS=-s -lm
 LFLAGS_LINUX=$(LFLAGS) -lasound
 LFLAGS_SNDIO=$(LFLAGS) -lsndio
@@ -110,19 +111,19 @@ ptrlist.o: ptrlist.c ptrlist.h common.h
 	$(CC) -c $(CFLAGS) ptrlist.c
 
 ramp.o: ramp.c ramp.h math.h common.h
-	$(CC) -c $(CFLAGS) ramp.c
+	$(CC) -c $(CFLAGS_FAST) ramp.c
 
 renderer.o: renderer.c saugns.h renderer/generator.h ptrlist.h program.h ramp.h wave.h math.h audiodev.h wavfile.h common.h
-	$(CC) -c $(CFLAGS) renderer.c
+	$(CC) -c $(CFLAGS_FAST) renderer.c
 
 renderer/generator.o: renderer/generator.c renderer/generator.h renderer/mixer.h renderer/osc.h program.h ramp.h wave.h math.h common.h
-	$(CC) -c $(CFLAGS) renderer/generator.c -o renderer/generator.o
+	$(CC) -c $(CFLAGS_FAST) renderer/generator.c -o renderer/generator.o
 
 renderer/mixer.o: renderer/mixer.c renderer/mixer.h ramp.h math.h common.h
-	$(CC) -c $(CFLAGS) renderer/mixer.c -o renderer/mixer.o
+	$(CC) -c $(CFLAGS_FAST) renderer/mixer.c -o renderer/mixer.o
 
 renderer/osc.o: renderer/osc.c renderer/osc.h wave.h math.h common.h
-	$(CC) -c $(CFLAGS) renderer/osc.c -o renderer/osc.o
+	$(CC) -c $(CFLAGS_FAST) renderer/osc.c -o renderer/osc.o
 
 saugns.o: saugns.c saugns.h ptrlist.h program.h ramp.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) saugns.c
@@ -131,7 +132,7 @@ test-builder.o: test-builder.c saugns.h builder/lexer.h builder/scanner.h builde
 	$(CC) -c $(CFLAGS) test-builder.c
 
 wave.o: wave.c wave.h math.h common.h
-	$(CC) -c $(CFLAGS) wave.c
+	$(CC) -c $(CFLAGS_FAST) wave.c
 
 wavfile.o: wavfile.c wavfile.h common.h
 	$(CC) -c $(CFLAGS) wavfile.c
