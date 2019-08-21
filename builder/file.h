@@ -28,7 +28,7 @@ typedef struct SAU_File SAU_File;
  */
 typedef size_t (*SAU_FileAction_f)(SAU_File *restrict o);
 
-size_t SAU_File_action_wrap(SAU_File *restrict o); // default callback
+size_t SAU_File_action_wrap(SAU_File *restrict o); // default & EOF'd callback
 
 /**
  * Flip to the beginning of the next buffer area.
@@ -174,12 +174,18 @@ SAU_File *SAU_create_File(void) sauMalloclike;
 SAU_File *SAU_create_sub_File(SAU_File *restrict parent) sauMalloclike;
 SAU_File *SAU_destroy_File(SAU_File *restrict o);
 
+void SAU_File_init(SAU_File *restrict o,
+		SAU_FileAction_f call_f, void *restrict ref,
+		const char *path, SAU_FileClose_f close_f);
+
 bool SAU_File_fopenrb(SAU_File *restrict o, const char *restrict path);
 bool SAU_File_stropenrb(SAU_File *restrict o,
 		const char *restrict path, const char *restrict str);
 
 void SAU_File_close(SAU_File *restrict o);
 void SAU_File_reset(SAU_File *restrict o);
+
+void SAU_File_end(SAU_File *restrict o, size_t keep_len, bool error);
 
 /**
  * Check position and call callback if at the call position.

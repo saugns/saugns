@@ -18,25 +18,48 @@
 #include <stdio.h>
 
 /**
- * Increase call position by buffer area length,
- * wrapping it to within the buffer boundary.
+ * Default callback. Moves through the circular buffer in
+ * one of two ways, depending on whether or not file status
+ * has SAU_FILE_END set.
  *
- * Default callback.
+ * If clear, increases call position to the beginning
+ * of the next buffer area, wrapping it to within the
+ * buffer boundary.
  *
- * \return length of buffer area
+ * If set, instead calls SAU_File_end(), writing out the
+ * end marker to the current character in the buffer and
+ * increasing the wrapped position by one.
+ *
+ * \return call position difference in clear case, or 0
  */
 size_t SAU_File_action_wrap(SAU_File *restrict o) {
-	o->call_pos = (o->call_pos + SAU_FILE_ALEN) & (SAU_FILE_BUFSIZ - 1);
-	return SAU_FILE_ALEN;
+	if (o->status & SAU_FILE_END) {
+		SAU_File_end(o, 0, false); // repeat end marker
+		return 0;
+	}
+	size_t skip_len = o->call_pos - (o->call_pos & ~(SAU_FILE_ALEN - 1));
+	size_t len = SAU_FILE_ALEN - skip_len;
+	o->call_pos = (o->call_pos + len) & (SAU_FILE_BUFSIZ - 1);
+	return len;
 }
 
-/*
- * Reset position and callback to default values.
+/**
+ * Reset all state other than buffer contents.
+ * Used for opening and closing.
  */
-static inline void mode_reset(SAU_File *restrict o) {
+void SAU_File_init(SAU_File *restrict o,
+		SAU_FileAction_f call_f, void *restrict ref,
+		const char *path, SAU_FileClose_f close_f) {
+	if (o->close_f != NULL) o->close_f(o);
+
 	o->pos = 0;
-	o->call_pos = SAU_FILE_ALEN;
-	o->call_f = SAU_File_action_wrap;
+	o->call_pos = 0;
+	o->call_f = call_f;
+	o->status = SAU_FILE_OK;
+	o->end_pos = (size_t) -1;
+	o->ref = ref;
+	o->path = path;
+	o->close_f = close_f;
 }
 
 /**
@@ -46,7 +69,7 @@ SAU_File *SAU_create_File(void) {
 	SAU_File *o = calloc(1, sizeof(SAU_File));
 	if (!o)
 		return NULL;
-	mode_reset(o);
+	SAU_File_init(o, SAU_File_action_wrap, NULL, NULL, NULL);
 	return o;
 }
 
@@ -71,9 +94,8 @@ SAU_File *SAU_create_sub_File(SAU_File *restrict parent) {
 SAU_File *SAU_destroy_File(SAU_File *restrict o) {
 	if (!o)
 		return NULL;
-	if (o->close_f != NULL) {
-		o->close_f(o);
-	}
+
+	if (o->close_f != NULL) o->close_f(o);
 	SAU_File *parent = o->parent;
 	free(o);
 	return parent;
@@ -83,32 +105,24 @@ static size_t mode_fread(SAU_File *restrict o);
 static size_t mode_strread(SAU_File *restrict o);
 
 static void ref_fclose(SAU_File *restrict o);
-static void ref_strclose(SAU_File *restrict o);
 
 /**
  * Open stdio file for reading.
  *
  * The file is automatically closed when EOF or a read error occurs,
- * but \a path is only cleared with an explicit call to SAU_File_close()
- * or SAU_File_reset(), so as to remain available for printing.
+ * but \a path is only cleared with a new open call or a call
+ * to SAU_File_reset(), so as to remain available for printing.
  *
  * \return true on success
  */
 bool SAU_File_fopenrb(SAU_File *restrict o, const char *restrict path) {
-	SAU_File_close(o);
+	SAU_File_close(o); // close regardless of open success
 	if (!path)
 		return false;
 	FILE *f = fopen(path, "rb");
 	if (!f)
 		return false;
-	o->pos = 0;
-	o->call_pos = 0;
-	o->call_f = mode_fread;
-	o->status = SAU_FILE_OK;
-	o->end_pos = (size_t) -1;
-	o->ref = f;
-	o->path = path;
-	o->close_f = ref_fclose;
+	SAU_File_init(o, mode_fread, f, path, ref_fclose);
 	return true;
 }
 
@@ -117,65 +131,75 @@ bool SAU_File_fopenrb(SAU_File *restrict o, const char *restrict path) {
  * The path is optional and only used to name the file.
  *
  * The file is automatically closed upon a NULL byte,
- * but \a path is only cleared with an explicit call to SAU_File_close()
- * or SAU_File_reset(), so as to remain available for printing.
+ * but \a path is only cleared with a new open call or a call
+ * to SAU_File_reset(), so as to remain available for printing.
  *
  * \return true on success
  */
 bool SAU_File_stropenrb(SAU_File *restrict o,
 		const char *restrict path, const char *restrict str) {
-	SAU_File_close(o);
+	SAU_File_close(o); // close regardless of open success
 	if (!str)
 		return false;
-	o->pos = 0;
-	o->call_pos = 0;
-	o->call_f = mode_strread;
-	o->status = SAU_FILE_OK;
-	o->end_pos = (size_t) -1;
-	o->ref = (void*) str;
-	o->path = path;
-	o->close_f = ref_strclose;
+	SAU_File_init(o, mode_strread, (void*) str, path, NULL);
 	return true;
 }
 
 /**
- * Close file if open. Reset position and callback,
- * but not buffer contents.
+ * Close and clear internal reference if open. Sets SAU_FILE_END status
+ * and restores the callback to SAU_File_action_wrap(). If there is a
+ * parent file instance, will set SAU_FILE_CHANGE status.
+ *
+ * Leaves buffer contents and remaining parts of state untouched.
+ *
+ * Automatically used by SAU_File_end().
+ * Re-opening also automatically closes.
  */
 void SAU_File_close(SAU_File *restrict o) {
-	if (o->close_f != NULL) {
-		o->close_f(o);
-		o->close_f = NULL;
-	}
-	mode_reset(o);
-	o->status = SAU_FILE_OK;
-	o->path = NULL;
-}
-
-/**
- * Reset file. Like SAU_File_close(), but also zeroes the buffer.
- */
-void SAU_File_reset(SAU_File *restrict o) {
-	SAU_File_close(o);
-	memset(o->buf, 0, SAU_FILE_BUFSIZ);
-}
-
-static void end_file(SAU_File *restrict o, bool error) {
+	if (o->status & SAU_FILE_END)
+		return;
 	o->status |= SAU_FILE_END;
-	if (error)
-		o->status |= SAU_FILE_ERROR;
 	if (o->parent != NULL)
 		o->status |= SAU_FILE_CHANGE;
 	if (o->close_f != NULL) {
 		o->close_f(o);
 		o->close_f = NULL;
 	}
+	o->ref = NULL;
+	o->call_pos = (o->pos + 1) & (SAU_FILE_BUFSIZ - 1);
+	o->call_f = SAU_File_action_wrap;
 }
 
-static inline void add_end_marker(SAU_File *restrict o) {
-	o->end_pos = o->call_pos;
-	o->buf[o->call_pos] = o->status;
-	++o->call_pos;
+/**
+ * Reset state. Closes if open, clears file status (to SAU_FILE_OK),
+ * and zeroes the buffer.
+ */
+void SAU_File_reset(SAU_File *restrict o) {
+	SAU_File_init(o, SAU_File_action_wrap, NULL, NULL, NULL);
+	memset(o->buf, 0, SAU_FILE_BUFSIZ);
+}
+
+/**
+ * Mark currently opened file as ended. Used automatically on and
+ * after EOF, but can also be called manually to act as if EOF
+ * follows the current buffer contents.
+ *
+ * The first time this is called for an open file, will call
+ * SAU_File_close(), which will close the internal reference
+ * and reset the callback. If \p error is true, will
+ * additionally set SAU_FILE_ERROR status beforehand.
+ *
+ * On each call, an end marker will be written \p keep_len bytes
+ * after the current position in the buffer. The callback call
+ * position is set to the position after the marker.
+ */
+void SAU_File_end(SAU_File *restrict o, size_t keep_len, bool error) {
+	SAU_File_close(o);
+	if (error)
+		o->status |= SAU_FILE_ERROR;
+	o->end_pos = (o->pos + keep_len) & (SAU_FILE_BUFSIZ - 1);
+	o->buf[o->end_pos] = o->status;
+	o->call_pos = (o->end_pos + 1) & (SAU_FILE_BUFSIZ - 1);
 }
 
 /*
@@ -191,25 +215,12 @@ static inline void add_end_marker(SAU_File *restrict o) {
  */
 static size_t mode_fread(SAU_File *restrict o) {
 	FILE *f = o->ref;
-	/*
-	 * Set position to the first character of the buffer area.
-	 */
+	size_t len;
+	// Move to and fill at the first character of the buffer area.
 	o->pos &= (SAU_FILE_BUFSIZ - 1) & ~(SAU_FILE_ALEN - 1);
-	if (!f) {
-		o->call_pos = o->pos;
-		add_end_marker(o);
-		return 0;
-	}
-	size_t len = fread(&o->buf[o->pos], 1, SAU_FILE_ALEN, f);
+	len = fread(&o->buf[o->pos], 1, SAU_FILE_ALEN, f);
 	o->call_pos = (o->pos + len) & (SAU_FILE_BUFSIZ - 1);
-	if (ferror(f)) {
-		end_file(o, true);
-	} else if (feof(f)) {
-		end_file(o, false);
-	}
-	if (len < SAU_FILE_ALEN) {
-		add_end_marker(o);
-	}
+	if (len < SAU_FILE_ALEN) SAU_File_end(o, len, ferror(f) != 0);
 	return len;
 }
 
@@ -227,27 +238,18 @@ static size_t mode_fread(SAU_File *restrict o) {
  */
 static size_t mode_strread(SAU_File *restrict o) {
 	const char *str = o->ref;
-	/*
-	 * Set position to the first character of the buffer area.
-	 */
+	size_t len;
+	// Move to and fill at the first character of the buffer area.
 	o->pos &= (SAU_FILE_BUFSIZ - 1) & ~(SAU_FILE_ALEN - 1);
-	if (!str) {
-		o->call_pos = o->pos;
-		add_end_marker(o);
-		return 0;
-	}
-	size_t len = strlen(str);
+	len = strlen(str);
 	if (len >= SAU_FILE_ALEN) {
 		len = SAU_FILE_ALEN;
-		memcpy(&o->buf[o->pos], str, len);
 		o->ref += len;
 		o->call_pos = (o->pos + len) & (SAU_FILE_BUFSIZ - 1);
-		return len;
+	} else {
+		SAU_File_end(o, len, false);
 	}
 	memcpy(&o->buf[o->pos], str, len);
-	end_file(o, false);
-	o->call_pos += len;
-	add_end_marker(o);
 	return len;
 }
 
@@ -259,13 +261,6 @@ static void ref_fclose(SAU_File *restrict o) {
 		fclose(o->ref);
 		o->ref = NULL;
 	}
-}
-
-/*
- * Close string file by clearing field.
- */
-static void ref_strclose(SAU_File *restrict o) {
-	o->ref = NULL;
 }
 
 #define IS_SPACE(c) ((c) == ' ' || (c) == '\t')
