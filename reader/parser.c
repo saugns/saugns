@@ -117,6 +117,25 @@ static void warn_closing_without_opening(SGS_Scanner *restrict o,
 			close_c, open_c);
 }
 
+/*
+ * Handle '#'-commands.
+ */
+static uint8_t scan_filter_hashcommands(SGS_Scanner *restrict o, uint8_t c) {
+	SGS_File *f = o->f;
+	uint8_t next_c = SGS_File_GETC(f);
+	if (next_c == '!') {
+		++o->sf.char_num;
+		return SGS_Scanner_filter_linecomment(o, next_c);
+	}
+	if (next_c == 'Q') {
+		SGS_File_DECP(f);
+		SGS_Scanner_close(o);
+		return SGS_SCAN_EOF;
+	}
+	SGS_File_DECP(f);
+	return c;
+}
+
 static SGS_SymItem *scan_sym(SGS_Scanner *restrict o, uint32_t type_id,
 		const char *const*restrict help_stra) {
 	const char *type_label = scan_sym_labels[type_id];
@@ -576,6 +595,7 @@ static bool init_Parser(SGS_Parser *restrict o) {
 	o->tmp = tmp;
 	if (!rmp || !sc || !tmp) goto ERROR;
 	if (!init_ScanLookup(&o->sl, st)) goto ERROR;
+	sc->filters['#'] = scan_filter_hashcommands;
 	sc->data = &o->sl;
 	return true;
 ERROR:
@@ -1324,8 +1344,6 @@ static bool parse_level(SGS_Parser *restrict o,
 			od->wave = wave;
 			parse_in_event(o);
 			break; }
-		case 'Q':
-			goto FINISH;
 		case 'S':
 			parse_in_settings(o);
 			break;
