@@ -93,9 +93,6 @@ Each of these keywords is further described in its own section below.
 		wave type, as in "Osin".
 	P	Panning for the voice at the current location; to be
 		followed by the new value.
-	Q	Quit script; end parsing, commenting out all that follows.
-		Optional. (Commenting more generally uses "#", "//",
-		or "/*...*/" syntax.)
 
 See the section 'Timing' for modifiers.
 
@@ -216,15 +213,6 @@ Value range is 0 (all-left) to 1 (all-right). Default is 0.5 (center).
 Panning not at either extreme end will reduce level.
 		"Value ramp" values are supported; see section.
 
-Q: Quit
--------
-
-Quit script; end parsing, commenting out all that follows.
-Optional.
-
-Commenting more generally uses "#" or "//" line comments,
-or "/*...*/" C-style block comments.
-
 Values and expressions
 ----------------------
 
@@ -232,8 +220,11 @@ Whitespace is not allowed within multi-character names, keywords or
 numbers, and separates values. Spaces and tabs may otherwise be used or
 omitted anywhere.
 
-Following a "#" or "//", the rest of a line is commented out.
-Following "/*", text is commented out until "*/" is encountered.
+Comment syntax:
+	"//" (C++-comment) comments out the rest of the line.
+	"/*" (C-comment) comments out text until after the next "*/".
+	"#!" (Shebang) comments out the rest of the line.
+	"#Q" (Quit file) comments out the rest of the whole file.
 
 Numerical expressions are allowed within parentheses, allowing numbers
 to be specified using basic arithmetic and freely placed whitespace.

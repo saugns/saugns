@@ -96,6 +96,25 @@ static void warn_closing_without_opening(SAU_Scanner *restrict o,
 			close_c, open_c);
 }
 
+/*
+ * Handle '#'-commands.
+ */
+static uint8_t scan_filter_hashcommands(SAU_Scanner *restrict o, uint8_t c) {
+	SAU_File *f = o->f;
+	uint8_t next_c = SAU_File_GETC(f);
+	if (next_c == '!') {
+		++o->sf.char_num;
+		return SAU_Scanner_filter_linecomment(o, next_c);
+	}
+	if (next_c == 'Q') {
+		SAU_File_DECP(f);
+		SAU_Scanner_close(o);
+		return SAU_SCAN_EOF;
+	}
+	SAU_File_DECP(f);
+	return c;
+}
+
 typedef float (*NumSym_f)(SAU_Scanner *restrict o);
 
 typedef struct NumParser {
@@ -470,6 +489,7 @@ static bool init_Parser(SAU_Parser *restrict o) {
 	o->mp = mp;
 	if (!sc || !st || !mp) goto ERROR;
 	if (!init_ScanLookup(&o->sl, st)) goto ERROR;
+	sc->filters['#'] = scan_filter_hashcommands;
 	sc->data = &o->sl;
 	return true;
 ERROR:
@@ -1215,8 +1235,6 @@ static bool parse_level(SAU_Parser *restrict o, ParseLevel *restrict parent_pl,
 				(HANDLE_DEFER | DEFERRED_STEP) :
 				0;
 			break; }
-		case 'Q':
-			goto FINISH;
 		case 'S':
 			flags = parse_settings(&pl) ?
 				(HANDLE_DEFER | DEFERRED_SETTINGS) :
