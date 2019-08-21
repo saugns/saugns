@@ -29,33 +29,3 @@ S a(1/3)
 @1	\.1 fFs3 t.1 ; \.1 ; \.1 ; \.1
 ;	a2 ; \.1 ; \.1 ; \.1 ; \.1
 |
-
-/.1
-Osin	fB3 t.2 p[Osin r(4/3) Osin f17]
-;	fA4
-;	fG5
-;	\.3 fA4 t.3
-;	fG5 t.1
-;	\.1 fA4 t.2
-;	fG5 t.1
-;	\.1 fG5 t.3
-
-Q
-
-'0 Osin fG3 p[
-	Osin r(4/3)
-] /.1
-@0 f220 /.2
-'1 Osin f500 t.3 p[
-	Osin r(6/5)
-] ; \.1 t.2 ; \.1 t.2 ; \.1 fB3 t.2
-@0 t100 f232
-/.7
-
-Osin t20 f400 p[
-	Osin \2 r(4/3)
-	Osin \4 r(5/3)
-	Osin \6 r(6/3)
-	Osin \8 r(7/3)
-	Osin \10 r(8/3)
-]
