@@ -1,10 +1,10 @@
-# Soft square wave (odd harmonics)
+/* Soft square wave (odd harmonics) */
 Osin p[Osin r2/1 a1/4]
 | /1
 
-# Soft sawtooth wave (all harmonics)
+/* Soft sawtooth wave (all harmonics) */
 Osin p[Osin r1/1 a1/4]
 | /1
 
-# Soft eventooth wave (even harmonics)
+/* Soft eventooth wave (even harmonics) */
 Osin p[Osin r3/1 a1/4]
