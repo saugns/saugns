@@ -128,6 +128,25 @@ static void warn_missing_whitespace(SGS_Scanner *restrict o,
 	SGS_Scanner_warning(o, sf, "missing whitespace before '%c'", next_c);
 }
 
+/*
+ * Handle '#'-commands.
+ */
+static uint8_t scan_filter_hashcommands(SGS_Scanner *restrict o, uint8_t c) {
+	SGS_File *f = o->f;
+	uint8_t next_c = SGS_File_GETC(f);
+	if (next_c == '!') {
+		++o->sf.char_num;
+		return SGS_Scanner_filter_linecomment(o, next_c);
+	}
+	if (next_c == 'Q') {
+		SGS_File_DECP(f);
+		SGS_Scanner_close(o);
+		return SGS_SCAN_EOF;
+	}
+	SGS_File_DECP(f);
+	return c;
+}
+
 static SGS_Symitem *scan_sym(SGS_Scanner *restrict o, uint32_t type_id,
 		const char *const*restrict help_stra) {
 	const char *type_label = scan_sym_labels[type_id];
@@ -621,6 +640,7 @@ static bool init_Parser(SGS_Parser *restrict o,
 	o->prg_mp = prg_mp;
 	if (!sc || !tmp_mp || !prg_mp) goto ERROR;
 	if (!init_ScanLookup(&o->sl, script_arg, st)) goto ERROR;
+	sc->filters['#'] = scan_filter_hashcommands;
 	sc->data = &o->sl;
 	return true;
 ERROR:
@@ -1375,8 +1395,6 @@ static bool parse_level(SGS_Parser *restrict o,
 			pl.operator->wave = wave;
 			pl.sub_f = parse_in_event;
 			break; }
-		case 'Q':
-			goto FINISH;
 		case 'S':
 			pl.sub_f = parse_in_settings;
 			break;
