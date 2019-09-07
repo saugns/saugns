@@ -1,66 +1,8 @@
-saugns is the Scriptable AUdio GeNeration System,
-the implementation of the SAU (Scriptable AUdio) language.
+SAU language reference
+======================
 
 SAU is a simple language for mathematical sound synthesis,
 without support for the use of pre-recorded samples.
-While developed with the aim of becoming useful for writing
-electronic music, the language still has significant limitations,
-and the audio generated is retro-ish in its qualities.
-It is however easy to use for experimenting with sounds.
-
-A collection of basic wave types are supported, as well
-as AM/RM, FM, and PM (the "FM" of most commercial synthesizers).
-An arbitrary number of oscillators can be used.
-
-The program reads SAU (Scriptable AUdio) files or strings.
-Output can be to system audio, and/or a 16-bit PCM WAV file.
-
-Tested mainly on x86 and x86-64. Comes with support for
-running on DragonFly, FreeBSD, Linux, NetBSD, and OpenBSD.
-The following audio systems are expected:
-	DragonFly	OSS
-	FreeBSD  	OSS
-	Linux    	ALSA or OSS
-	NetBSD   	OSS
-	OpenBSD  	sndio
-
-Building and installing
-=======================
-
-Building requires a C99 compiler and `make` (GNU or BSD).
-On Linux systems, the ALSA library must be installed to build.
-In the cases of the 4 major BSDs, the base systems have it all.
-
-A simple test after building is the following, which should
-play a sine wave at 444Hz for 1 second:
-	./saugns -e "Osin"
-
-`make install` will by default copy 'saugns' to '/usr/local/bin/',
-and the contents of 'examples/' to '/usr/local/share/saugns/'.
-(`make uninstall` removes the saugns binary and directory.)
-
-Licensing
-=========
-
-saugns is distributed under the terms of the GNU Lesser General
-Public License (LGPL), version 3 or later. See the file COPYING
-for details, or <https://www.gnu.org/licenses/>.
-
-Some files are licensed under more permissive terms, such as
-the ISC license (2-clause-BSD-equivalent), or
-the 0BSD license (public-domain-equivalent shorter version);
-see the heading comment text of source files.
-
-The example and test scripts included as input for the program
-currently do not have any explicit licensing. If needed in the
-future, some Creative Commons license will be used. Feel free
-to copy from the current ones for your own scripts.
-
-Script syntax overview
-======================
-
-General description
--------------------
 
 The core idea of the language is that of time-ordered steps for
 configuring audio generation: add an oscillator, then later,
