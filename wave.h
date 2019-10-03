@@ -1,5 +1,5 @@
 /* sgensys: Wave module.
- * Copyright (c) 2011-2012, 2017-2018 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -35,9 +35,7 @@ enum {
 	SGS_WAVE_SAW,
 	SGS_WAVE_SHA,
 	SGS_WAVE_SZH,
-	SGS_WAVE_SHH,
 	SGS_WAVE_SSR,
-//	SGS_WAVE_SZHHR,
 	SGS_WAVE_TYPES
 };
 
@@ -63,7 +61,7 @@ static inline float SGS_Wave_get_lerp(const float *restrict lut,
 	uint32_t ind = SGS_Wave_INDEX(phase);
 	float s = lut[ind];
 	s += (lut[(ind + 1) & SGS_Wave_LENMASK] - s) *
-	     ((phase & SGS_Wave_SCALEMASK) * (1.f / SGS_Wave_SCALE));
+		((phase & SGS_Wave_SCALEMASK) * (1.f / SGS_Wave_SCALE));
 	return s;
 }
 
