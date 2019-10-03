@@ -1,5 +1,5 @@
 /* sgensys: Wave module.
- * Copyright (c) 2011-2012, 2017-2018 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -26,11 +26,78 @@ const char *const SGS_Wave_names[SGS_WAVE_TYPES + 1] = {
 	"saw",
 	"sha",
 	"szh",
-	"shh",
 	"ssr",
-//	"szhhr",
 	NULL
 };
+
+/*
+ * Replacement tanh-based stEP. Square wave version.
+ *
+ * Replace value range in \p dst with result of
+ * tanh for upscaled values from \p src.
+ *
+ * For use with a sine wave \p src LUT.
+ */
+static void rep_range_sqr(float *restrict dst, const float *restrict src,
+		size_t from, size_t num) {
+	/*
+	 * Twice the scale factor giving the greatest
+	 * aliasing reduction per number of values.
+	 *
+	 * Used with twice the number of values,
+	 * gives a higher-quality result with
+	 * very similar frequency roll-off.
+	 */
+	const float scale = (float) (SGS_Wave_LEN / num);
+	for (size_t i = from, end = from + num; i < end; ++i) {
+		dst[i] = tanhf(src[i] * scale);
+	}
+}
+
+/*
+ * Replacement tanh-based stEP. Sawtooth wave version.
+ *
+ * Replace value range in \p dst with result of
+ * tanh for upscaled values from \p src.
+ *
+ * The sample \p skip number reduces the length, and should
+ * be chosen to begin filling with the lowest >= 0.f value.
+ * This number of samples needs to be zero-filled at the
+ * middle of the sawtooth shape in order for the
+ * anti-aliasing to properly work.
+ *
+ * For use with a sine wave \p src LUT.
+ */
+static void rep_range_saw(float *restrict dst, const float *restrict src,
+		size_t from, size_t num, size_t skip) {
+	/*
+	 * Twice the scale factor giving the greatest
+	 * aliasing reduction per number of values.
+	 *
+	 * Used with twice the number of values,
+	 * gives a higher-quality result with
+	 * very similar frequency roll-off.
+	 *
+	 * Requires inserting an extra zero value
+	 * at the cycle boundary (e.g. beginning).
+	 */
+	const float scale = (float) (SGS_Wave_LEN / num);
+	for (size_t i = from, end = from + num - skip; i < end; ++i) {
+		float s = tanhf(src[i + skip] * scale);
+		dst[i] = -1.f + s*2.f;
+	}
+}
+
+/*
+ * Copy values in reverse direction in \p lut
+ * from first value range to second value range.
+ */
+static void hmirror_range(float *restrict lut,
+		size_t from, size_t num, size_t offs) {
+	for (size_t i = from, end = from + num; i < end; ++i) {
+		lut[offs - i] = lut[i];
+	}
+}
 
 /**
  * Fill in the look-up tables enumerated by SGS_WAVE_*.
@@ -39,7 +106,8 @@ const char *const SGS_Wave_names[SGS_WAVE_TYPES + 1] = {
  */
 void SGS_global_init_Wave(void) {
 	static bool done = false;
-	if (done) return;
+	if (done)
+		return;
 	done = true;
 
 	float *const sin_lut = SGS_Wave_luts[SGS_WAVE_SIN];
@@ -48,18 +116,15 @@ void SGS_global_init_Wave(void) {
 	float *const saw_lut = SGS_Wave_luts[SGS_WAVE_SAW];
 	float *const sha_lut = SGS_Wave_luts[SGS_WAVE_SHA];
 	float *const szh_lut = SGS_Wave_luts[SGS_WAVE_SZH];
-	float *const shh_lut = SGS_Wave_luts[SGS_WAVE_SHH];
 	float *const ssr_lut = SGS_Wave_luts[SGS_WAVE_SSR];
-//	float *const szhhr_lut = SGS_Wave_luts[SGS_WAVE_SZHHR];
 	int i;
 	const double val_scale = SGS_Wave_MAXVAL;
 	const double len_scale = 1.f / HALFLEN;
 	/*
 	 * First half:
 	 *  - sin
-	 *  - sqr
+	 *  - sqr (fill only)
 	 *  - tri
-	 *  - saw
 	 *  - ssr
 	 */
 	for (i = 0; i < HALFLEN; ++i) {
@@ -76,9 +141,34 @@ void SGS_global_init_Wave(void) {
 		else
 			tri_lut[i] = val_scale * 2.f * x_rev;
 
-		saw_lut[i] = SGS_Wave_MINVAL + val_scale * x;
+		ssr_lut[i] = val_scale * sqrtf(sin_x);
+	}
+	/*
+	 * Replacement tanh-based stEP. (An experimental example
+	 * of the LUT-value-fiddling approach to anti-aliasing.)
+	 *
+	 * Replace ideal step function with tanh-of-sin values.
+	 * Tuned for nice anti-aliasing at mid frequencies, and
+	 * a "nice", yet not too dull sound at low frequencies.
+	 * (The "saw" version zeroes some values at the center,
+	 * though one zero value is displaced to the beginning.)
+	 *
+	 * REP and first half:
+	 *  - sqr (rep only)
+	 *  - saw
+	 */
+	const int rsqr_len = HALFLEN/32;
+	rep_range_sqr(sqr_lut, sin_lut, 0, rsqr_len);
+	hmirror_range(sqr_lut, 0, rsqr_len, HALFLEN);
+	const int rsaw_len = HALFLEN/16;
+	const double saw_scale = 1.f / (HALFLEN - rsaw_len);
+	const int saw_skip = 6; // Pick to start with lowest >= 0.f amplitude
+	// The skipped saw_lut values are == 0.f
+	rep_range_saw(saw_lut+1, sin_lut, 0, rsaw_len, saw_skip);
+	for (i = rsaw_len; i < HALFLEN; ++i) {
+		const double x = (i - rsaw_len) * saw_scale;
 
-		ssr_lut[i] = val_scale * sqrt(sin_x);
+		saw_lut[i+1 - saw_skip] = SGS_Wave_MAXVAL - x;
 	}
 	/* Second half:
 	 *  - sin
@@ -90,19 +180,17 @@ void SGS_global_init_Wave(void) {
 	for (; i < SGS_Wave_LEN; ++i) {
 		sin_lut[i] = -sin_lut[i - HALFLEN];
 
-		sqr_lut[i] = -SGS_Wave_MAXVAL;
+		sqr_lut[i] = -sqr_lut[i - HALFLEN];
 
 		tri_lut[i] = -tri_lut[i - HALFLEN];
 
-		saw_lut[i] = -saw_lut[(SGS_Wave_LEN-1) - i];
+		saw_lut[i] = -saw_lut[(SGS_Wave_LEN-1) - (i-1)];
 
 		ssr_lut[i] = -ssr_lut[i - HALFLEN];
 	}
 	/* Full cycle:
 	 *  - sha
 	 *  - szh
-	 *  - shh
-//	 *  - szhhr
 	 */
 	for (i = 0; i < SGS_Wave_LEN; ++i) {
 		const double x = i * len_scale;
@@ -117,19 +205,9 @@ void SGS_global_init_Wave(void) {
 			szh_x -= 0.5f;
 			szh_x += szh_x;
 			szh_lut[i] = val_scale * szh_x;
-//			double szhhr_x = (szh_x > 0.f) ?
-//				sqrt(szh_x) :
-//				szh_x;
-//			szhhr_lut[i] = val_scale * szhhr_x;
 		} else {
 			szh_lut[i] = -SGS_Wave_MAXVAL;
-//			szhhr_lut[i] = -SGS_Wave_MAXVAL;
 		}
-
-		double shh_x = sin((SGS_PI * x) * 0.25f);
-		shh_x -= 0.5f;
-		shh_x += shh_x;
-		shh_lut[i] = val_scale * shh_x;
 	}
 }
 
@@ -137,13 +215,13 @@ void SGS_global_init_Wave(void) {
  * Print an index-value table for a LUT.
  */
 void SGS_Wave_print(uint8_t id) {
-	if (id >= SGS_WAVE_TYPES) return;
-
+	if (id >= SGS_WAVE_TYPES)
+		return;
 	const float *lut = SGS_Wave_luts[id];
 	const char *lut_name = SGS_Wave_names[id];
-	fprintf(stderr, "LUT: %s\n", lut_name);
+	fprintf(stdout, "LUT: %s\n", lut_name);
 	for (int i = 0; i < SGS_Wave_LEN; ++i) {
 		float v = lut[i];
-		fprintf(stderr, "[\t%d]: \t%.11f\n", i, v);
+		fprintf(stdout, "[\t%d]: \t%.11f\n", i, v);
 	}
 }
