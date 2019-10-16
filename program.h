@@ -1,5 +1,5 @@
 /* sgensys: Audio program data and functions.
- * Copyright (c) 2011-2013, 2017-2019 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -131,7 +131,7 @@ enum {
  * Main program type. Contains everything needed for interpretation.
  */
 typedef struct SGS_Program {
-	SGS_ProgramEvent *events;
+	const SGS_ProgramEvent **events;
 	size_t ev_count;
 	uint16_t mode;
 	uint16_t vo_count;
