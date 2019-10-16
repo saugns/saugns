@@ -144,7 +144,7 @@ static bool alloc_for_program(SSG_Generator *restrict o,
 	}
 	size_t ev_val_count = 0, ev_op_data_count = 0;
 	for (size_t i = 0; i < prg->ev_count; ++i) {
-		const SSG_ProgramEvent *ev = &prg->events[i];
+		const SSG_ProgramEvent *ev = prg->events[i];
 		ev_val_count += count_ev_values(ev);
 		ev_op_data_count += ev->op_data_count;
 	}
@@ -208,7 +208,7 @@ static bool convert_program(SSG_Generator *restrict o,
 		SSG_init_Osc(&on->osc, srate);
 	}
 	for (size_t i = 0; i < prg->ev_count; ++i) {
-		const SSG_ProgramEvent *prg_e = &prg->events[i];
+		const SSG_ProgramEvent *prg_e = prg->events[i];
 		EventNode *e = &o->events[i];
 		uint32_t params;
 		uint16_t vo_id = prg_e->vo_id;
