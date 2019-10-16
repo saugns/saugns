@@ -125,7 +125,7 @@ enum {
  * Main program type. Contains everything needed for interpretation.
  */
 typedef struct SGS_Program {
-	SGS_ProgramEvent *events;
+	const SGS_ProgramEvent **events;
 	size_t ev_count;
 	uint16_t mode;
 	uint16_t vo_count;

@@ -144,7 +144,7 @@ static bool alloc_for_program(SGS_Generator *restrict o,
 	}
 	size_t ev_val_count = 0, ev_op_data_count = 0;
 	for (size_t i = 0; i < prg->ev_count; ++i) {
-		const SGS_ProgramEvent *ev = &prg->events[i];
+		const SGS_ProgramEvent *ev = prg->events[i];
 		ev_val_count += count_ev_values(ev);
 		ev_op_data_count += ev->op_data_count;
 	}
@@ -205,7 +205,7 @@ static bool convert_program(SGS_Generator *restrict o,
 	SGS_Mixer_set_srate(o->mixer, srate);
 	SGS_Mixer_set_scale(o->mixer, scale);
 	for (size_t i = 0; i < prg->ev_count; ++i) {
-		const SGS_ProgramEvent *prg_e = &prg->events[i];
+		const SGS_ProgramEvent *prg_e = prg->events[i];
 		EventNode *e = &o->events[i];
 		uint32_t params;
 		uint16_t vo_id = prg_e->vo_id;
