@@ -13,7 +13,7 @@
 
 #include "scanner.h"
 #include "symtab.h"
-#include "../script.h"
+#include "parser.h"
 #include "../math.h"
 #include <string.h>
 #include <stdlib.h>
@@ -453,8 +453,8 @@ typedef struct SAU_Parser {
 	SAU_SymTab *st;
 	uint32_t call_level;
 	/* node state */
-	SAU_ScriptEvData *events;
-	SAU_ScriptEvData *last_event;
+	SAU_ParseEvData *events;
+	SAU_ParseEvData *last_event;
 } SAU_Parser;
 
 /*
@@ -518,15 +518,15 @@ typedef struct ParseLevel {
 	uint32_t pl_flags;
 	uint8_t location;
 	uint8_t scope;
-	SAU_ScriptEvData *event, *last_event;
-	SAU_ScriptOpData *operator, *first_operator, *last_operator;
-	SAU_ScriptOpData *parent_on, *on_prev;
+	SAU_ParseEvData *event, *last_event;
+	SAU_ParseOpData *operator, *first_operator, *last_operator;
+	SAU_ParseOpData *parent_op, *op_prev;
 	uint8_t linktype;
 	uint8_t last_linktype; /* FIXME: kludge */
 	const char *set_label; /* label assigned to next node */
 	/* timing/delay */
-	SAU_ScriptEvData *group_from; /* where to begin for group_events() */
-	SAU_ScriptEvData *composite; /* grouping of events for a voice and/or operator */
+	SAU_ParseEvData *group_from; /* where to begin for group_events() */
+	SAU_ParseEvData *composite; /* grouping of events for a voice and/or operator */
 	uint32_t next_wait_ms; /* added for next event */
 } ParseLevel;
 
@@ -566,21 +566,20 @@ enum {
 /*
  * Destroy the given operator data node.
  */
-static void destroy_operator(SAU_ScriptOpData *restrict op) {
-	SAU_PtrList_clear(&op->on_next);
+static void destroy_operator(SAU_ParseOpData *restrict op) {
 	size_t i;
-	SAU_ScriptOpData **ops;
-	ops = (SAU_ScriptOpData**) SAU_PtrList_ITEMS(&op->fmods);
+	SAU_ParseOpData **ops;
+	ops = (SAU_ParseOpData**) SAU_PtrList_ITEMS(&op->fmods);
 	for (i = op->fmods.old_count; i < op->fmods.count; ++i) {
 		destroy_operator(ops[i]);
 	}
 	SAU_PtrList_clear(&op->fmods);
-	ops = (SAU_ScriptOpData**) SAU_PtrList_ITEMS(&op->pmods);
+	ops = (SAU_ParseOpData**) SAU_PtrList_ITEMS(&op->pmods);
 	for (i = op->pmods.old_count; i < op->pmods.count; ++i) {
 		destroy_operator(ops[i]);
 	}
 	SAU_PtrList_clear(&op->pmods);
-	ops = (SAU_ScriptOpData**) SAU_PtrList_ITEMS(&op->amods);
+	ops = (SAU_ParseOpData**) SAU_PtrList_ITEMS(&op->amods);
 	for (i = op->amods.old_count; i < op->amods.count; ++i) {
 		destroy_operator(ops[i]);
 	}
@@ -591,22 +590,21 @@ static void destroy_operator(SAU_ScriptOpData *restrict op) {
 /*
  * Destroy the given event data node and all associated operator data nodes.
  */
-static void destroy_event_node(SAU_ScriptEvData *restrict e) {
+static void destroy_event_node(SAU_ParseEvData *restrict e) {
 	size_t i;
-	SAU_ScriptOpData **ops;
-	ops = (SAU_ScriptOpData**) SAU_PtrList_ITEMS(&e->operators);
+	SAU_ParseOpData **ops;
+	ops = (SAU_ParseOpData**) SAU_PtrList_ITEMS(&e->operators);
 	for (i = e->operators.old_count; i < e->operators.count; ++i) {
 		destroy_operator(ops[i]);
 	}
 	SAU_PtrList_clear(&e->operators);
-	SAU_PtrList_clear(&e->op_graph);
 	free(e);
 }
 
 static void end_operator(ParseLevel *restrict pl) {
 	SAU_Parser *o = pl->o;
 	ScanLookup *sl = &o->sl;
-	SAU_ScriptOpData *op = pl->operator;
+	SAU_ParseOpData *op = pl->operator;
 	if (!op)
 		return; /* nothing to do */
 	if (SAU_Ramp_ENABLED(&op->freq))
@@ -623,7 +621,7 @@ static void end_operator(ParseLevel *restrict pl) {
 		if (!(pl->pl_flags & SDPL_NESTED_SCOPE))
 			op->amp2.v0 *= sl->sopt.ampmult;
 	}
-	SAU_ScriptOpData *pop = op->on_prev;
+	SAU_ParseOpData *pop = op->op_prev;
 	if (!pop) {
 		/*
 		 * Reset all operator state for initial event.
@@ -650,13 +648,13 @@ static void end_operator(ParseLevel *restrict pl) {
 }
 
 static void end_event(ParseLevel *restrict pl) {
-	SAU_ScriptEvData *e = pl->event;
+	SAU_ParseEvData *e = pl->event;
 	if (!e)
 		return; /* nothing to do */
 	end_operator(pl);
 	if (SAU_Ramp_ENABLED(&e->pan))
 		e->vo_params |= SAU_PVOP_PAN;
-	SAU_ScriptEvData *pve = e->voice_prev;
+	SAU_ParseEvData *pve = e->vo_prev;
 	if (!pve) {
 		/*
 		 * Reset all voice state for initial event.
@@ -671,23 +669,23 @@ static void end_event(ParseLevel *restrict pl) {
 static void begin_event(ParseLevel *restrict pl, uint8_t linktype,
 		bool is_composite) {
 	SAU_Parser *o = pl->o;
-	SAU_ScriptEvData *e, *pve;
+	SAU_ParseEvData *e, *pve;
 	end_event(pl);
-	pl->event = calloc(1, sizeof(SAU_ScriptEvData));
+	pl->event = calloc(1, sizeof(SAU_ParseEvData));
 	e = pl->event;
 	e->wait_ms = pl->next_wait_ms;
 	pl->next_wait_ms = 0;
 	SAU_Ramp_reset(&e->pan);
-	if (pl->on_prev != NULL) {
-		pve = pl->on_prev->event;
+	if (pl->op_prev != NULL) {
+		pve = pl->op_prev->event;
 		pve->ev_flags |= SAU_SDEV_VOICE_LATER_USED;
 		if (pve->composite != NULL && !is_composite) {
-			SAU_ScriptEvData *last_ce = pve->composite;
+			SAU_ParseEvData *last_ce = pve->composite;
 			while (last_ce->next != NULL)
 				last_ce = last_ce->next;
 			last_ce->ev_flags |= SAU_SDEV_VOICE_LATER_USED;
 		}
-		e->voice_prev = pve;
+		e->vo_prev = pve;
 	} else {
 		/*
 		 * New voice with initial parameter values.
@@ -718,13 +716,13 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
 		bool is_composite) {
 	SAU_Parser *o = pl->o;
 	ScanLookup *sl = &o->sl;
-	SAU_ScriptEvData *e = pl->event;
-	SAU_ScriptOpData *op, *pop = pl->on_prev;
+	SAU_ParseEvData *e = pl->event;
+	SAU_ParseOpData *op, *pop = pl->op_prev;
 	/*
 	 * It is assumed that a valid voice event exists.
 	 */
 	end_operator(pl);
-	pl->operator = calloc(1, sizeof(SAU_ScriptOpData));
+	pl->operator = calloc(1, sizeof(SAU_ParseOpData));
 	op = pl->operator;
 	if (!pl->first_operator)
 		pl->first_operator = op;
@@ -739,7 +737,7 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
 	SAU_Ramp_reset(&op->amp2);
 	if (pop != NULL) {
 		pop->op_flags |= SAU_SDOP_LATER_USED;
-		op->on_prev = pop;
+		op->op_prev = pop;
 		op->op_flags = pop->op_flags &
 			(SAU_SDOP_NESTED | SAU_SDOP_MULTIPLE);
 		if (is_composite) /* time default: previous or infinite time */
@@ -751,18 +749,15 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
 		SAU_PtrList_soft_copy(&op->pmods, &pop->pmods);
 		SAU_PtrList_soft_copy(&op->amods, &pop->amods);
 		if ((pl->pl_flags & SDPL_BIND_MULTIPLE) != 0) {
-			SAU_ScriptOpData *mpop = pop;
+			SAU_ParseOpData *mpop = pop;
 			uint32_t max_time = 0;
 			do {
 				if (max_time < mpop->time_ms)
 					max_time = mpop->time_ms;
-				SAU_PtrList_add(&mpop->on_next, op);
 			} while ((mpop = mpop->next_bound) != NULL);
 			op->op_flags |= SAU_SDOP_MULTIPLE;
 			op->time_ms = max_time;
 			pl->pl_flags &= ~SDPL_BIND_MULTIPLE;
-		} else {
-			SAU_PtrList_add(&pop->on_next, op);
 		}
 	} else {
 		/*
@@ -793,22 +788,22 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
 		SAU_PtrList_add(&e->operators, op);
 		if (linktype == NL_GRAPH) {
 			e->ev_flags |= SAU_SDEV_NEW_OPGRAPH;
-			SAU_PtrList_add(&e->op_graph, op);
+			op->op_flags |= SAU_SDOP_NEW_CARRIER;
 		}
 	} else {
 		SAU_PtrList *list = NULL;
 		switch (linktype) {
 		case NL_FMODS:
-			list = &pl->parent_on->fmods;
+			list = &pl->parent_op->fmods;
 			break;
 		case NL_PMODS:
-			list = &pl->parent_on->pmods;
+			list = &pl->parent_op->pmods;
 			break;
 		case NL_AMODS:
-			list = &pl->parent_on->amods;
+			list = &pl->parent_op->amods;
 			break;
 		}
-		pl->parent_on->op_params |= SAU_POPP_ADJCS;
+		pl->parent_op->op_params |= SAU_POPP_ADJCS;
 		SAU_PtrList_add(list, op);
 	}
 	/*
@@ -833,9 +828,9 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
  * Used instead of directly calling begin_operator() and/or begin_event().
  */
 static void begin_node(ParseLevel *restrict pl,
-		SAU_ScriptOpData *restrict previous,
+		SAU_ParseOpData *restrict previous,
 		uint8_t linktype, bool is_composite) {
-	pl->on_prev = previous;
+	pl->op_prev = previous;
 	if (!pl->event || /* not in event means previous implicitly ended */
 			pl->location != SDPL_IN_EVENT ||
 			pl->next_wait_ms ||
@@ -859,12 +854,12 @@ static void begin_scope(SAU_Parser *restrict o, ParseLevel *restrict pl,
 			pl->scope = parent_pl->scope;
 		pl->event = parent_pl->event;
 		pl->operator = parent_pl->operator;
-		pl->parent_on = parent_pl->parent_on;
+		pl->parent_op = parent_pl->parent_op;
 		if (newscope == SCOPE_BIND)
 			pl->group_from = parent_pl->group_from;
 		if (newscope == SCOPE_NEST) {
 			pl->pl_flags |= SDPL_NESTED_SCOPE;
-			pl->parent_on = parent_pl->operator;
+			pl->parent_op = parent_pl->operator;
 		}
 	}
 	pl->linktype = linktype;
@@ -891,7 +886,7 @@ static void end_scope(ParseLevel *restrict pl) {
 		 * At end of top scope (ie. at end of script),
 		 * end last event and adjust timing.
 		 */
-		SAU_ScriptEvData *group_to;
+		SAU_ParseEvData *group_to;
 		end_event(pl);
 		group_to = (pl->composite) ? pl->composite : pl->last_event;
 		if (group_to)
@@ -962,7 +957,7 @@ static bool parse_level(SAU_Parser *restrict o, ParseLevel *restrict parent_pl,
 static bool parse_ev_amp(ParseLevel *restrict pl) {
 	SAU_Parser *o = pl->o;
 	SAU_Scanner *sc = o->sc;
-	SAU_ScriptOpData *op = pl->operator;
+	SAU_ParseOpData *op = pl->operator;
 	if (SAU_Scanner_tryc(sc, '{')) {
 		scan_ramp(sc, NULL, &op->amp, false);
 	} else {
@@ -988,7 +983,7 @@ static bool parse_ev_amp(ParseLevel *restrict pl) {
 static bool parse_ev_freq(ParseLevel *restrict pl, bool rel_freq) {
 	SAU_Parser *o = pl->o;
 	SAU_Scanner *sc = o->sc;
-	SAU_ScriptOpData *op = pl->operator;
+	SAU_ParseOpData *op = pl->operator;
 	if (rel_freq && !(pl->pl_flags & SDPL_NESTED_SCOPE))
 		return true; // reject
 	NumSym_f numsym_f = rel_freq ? NULL : scan_note;
@@ -1017,7 +1012,7 @@ static bool parse_ev_freq(ParseLevel *restrict pl, bool rel_freq) {
 static bool parse_ev_phase(ParseLevel *restrict pl) {
 	SAU_Parser *o = pl->o;
 	SAU_Scanner *sc = o->sc;
-	SAU_ScriptOpData *op = pl->operator;
+	SAU_ParseOpData *op = pl->operator;
 	if (scan_num(sc, NULL, &op->phase)) {
 		op->phase = fmod(op->phase, 1.f);
 		if (op->phase < 0.f)
@@ -1038,8 +1033,8 @@ static bool parse_step(ParseLevel *restrict pl) {
 	SAU_Parser *o = pl->o;
 	ScanLookup *sl = &o->sl;
 	SAU_Scanner *sc = o->sc;
-	SAU_ScriptEvData *e = pl->event;
-	SAU_ScriptOpData *op = pl->operator;
+	SAU_ParseEvData *e = pl->event;
+	SAU_ParseOpData *op = pl->operator;
 	pl->location = SDPL_IN_EVENT;
 	for (;;) {
 		uint8_t c = SAU_Scanner_getc(sc);
@@ -1192,7 +1187,7 @@ static bool parse_level(SAU_Parser *restrict o, ParseLevel *restrict parent_pl,
 			pl.location = SDPL_IN_NONE;
 			label = scan_label(sc, &label_len, c);
 			if (label_len > 0) {
-				SAU_ScriptOpData *ref;
+				SAU_ParseOpData *ref;
 				ref = SAU_SymTab_get(o->st, label, label_len);
 				if (!ref)
 					SAU_Scanner_warning(sc, NULL,
@@ -1256,7 +1251,7 @@ static bool parse_level(SAU_Parser *restrict o, ParseLevel *restrict parent_pl,
 				break;
 			}
 			if (pl.group_from != NULL) {
-				SAU_ScriptEvData *group_to = (pl.composite) ?
+				SAU_ParseEvData *group_to = (pl.composite) ?
 					pl.composite :
 					pl.event;
 				group_to->groupfrom = pl.group_from;
@@ -1314,240 +1309,21 @@ static const char *parse_file(SAU_Parser *restrict o,
 	return name;
 }
 
-/*
- * Adjust timing for event groupings; the script syntax for time grouping is
- * only allowed on the "top" operator level, so the algorithm only deals with
- * this for the events involved.
- */
-static void group_events(SAU_ScriptEvData *restrict to) {
-	SAU_ScriptEvData *e, *e_after = to->next;
-	size_t i;
-	uint32_t wait = 0, waitcount = 0;
-	for (e = to->groupfrom; e != e_after; ) {
-		SAU_ScriptOpData **ops;
-		ops = (SAU_ScriptOpData**) SAU_PtrList_ITEMS(&e->operators);
-		for (i = 0; i < e->operators.count; ++i) {
-			SAU_ScriptOpData *op = ops[i];
-			if (e->next == e_after &&
-i == (e->operators.count - 1) && (op->op_flags & SAU_SDOP_TIME_DEFAULT) != 0) {
-				/* default for last node in group */
-				op->op_flags &= ~SAU_SDOP_TIME_DEFAULT;
-			}
-			if (wait < op->time_ms)
-				wait = op->time_ms;
-		}
-		e = e->next;
-		if (e != NULL) {
-			/*wait -= e->wait_ms;*/
-			waitcount += e->wait_ms;
-		}
-	}
-	for (e = to->groupfrom; e != e_after; ) {
-		SAU_ScriptOpData **ops;
-		ops = (SAU_ScriptOpData**) SAU_PtrList_ITEMS(&e->operators);
-		for (i = 0; i < e->operators.count; ++i) {
-			SAU_ScriptOpData *op = ops[i];
-			if ((op->op_flags & SAU_SDOP_TIME_DEFAULT) != 0) {
-				/* fill in sensible default time */
-				op->op_flags &= ~SAU_SDOP_TIME_DEFAULT;
-				op->time_ms = wait + waitcount;
-			}
-		}
-		e = e->next;
-		if (e != NULL) {
-			waitcount -= e->wait_ms;
-		}
-	}
-	to->groupfrom = NULL;
-	if (e_after != NULL)
-		e_after->wait_ms += wait;
-}
-
-static void time_operator(SAU_ScriptOpData *restrict op) {
-	SAU_ScriptEvData *e = op->event;
-	if (op->freq.time_ms == SAU_TIME_DEFAULT)
-		op->freq.time_ms = op->time_ms;
-	if (op->amp.time_ms == SAU_TIME_DEFAULT)
-		op->amp.time_ms = op->time_ms;
-	if ((op->op_flags & (SAU_SDOP_TIME_DEFAULT | SAU_SDOP_NESTED)) ==
-			(SAU_SDOP_TIME_DEFAULT | SAU_SDOP_NESTED)) {
-		op->op_flags &= ~SAU_SDOP_TIME_DEFAULT;
-		op->time_ms = SAU_TIME_INF;
-	}
-	if (op->time_ms != SAU_TIME_INF &&
-			!(op->op_flags & SAU_SDOP_SILENCE_ADDED)) {
-		op->time_ms += op->silence_ms;
-		op->op_flags |= SAU_SDOP_SILENCE_ADDED;
-	}
-	if ((e->ev_flags & SAU_SDEV_ADD_WAIT_DURATION) != 0) {
-		if (e->next != NULL)
-			((SAU_ScriptEvData*)e->next)->wait_ms += op->time_ms;
-		e->ev_flags &= ~SAU_SDEV_ADD_WAIT_DURATION;
-	}
-	size_t i;
-	SAU_ScriptOpData **ops;
-	ops = (SAU_ScriptOpData**) SAU_PtrList_ITEMS(&op->fmods);
-	for (i = op->fmods.old_count; i < op->fmods.count; ++i) {
-		time_operator(ops[i]);
-	}
-	ops = (SAU_ScriptOpData**) SAU_PtrList_ITEMS(&op->pmods);
-	for (i = op->pmods.old_count; i < op->pmods.count; ++i) {
-		time_operator(ops[i]);
-	}
-	ops = (SAU_ScriptOpData**) SAU_PtrList_ITEMS(&op->amods);
-	for (i = op->amods.old_count; i < op->amods.count; ++i) {
-		time_operator(ops[i]);
-	}
-}
-
-static void time_event(SAU_ScriptEvData *restrict e) {
-	/*
-	 * Fill in blank ramp durations, handle silence as well as the case of
-	 * adding present event duration to wait time of next event.
-	 */
-	if (e->pan.time_ms == SAU_TIME_DEFAULT)
-		e->pan.time_ms = 1000; /* FIXME! */
-	size_t i;
-	SAU_ScriptOpData **ops;
-	ops = (SAU_ScriptOpData**) SAU_PtrList_ITEMS(&e->operators);
-	for (i = e->operators.old_count; i < e->operators.count; ++i) {
-		time_operator(ops[i]);
-	}
-	/*
-	 * Timing for composites - done before event list flattened.
-	 */
-	if (e->composite != NULL) {
-		SAU_ScriptEvData *ce = e->composite;
-		SAU_ScriptOpData *ce_op, *ce_op_prev, *e_op;
-		ce_op = (SAU_ScriptOpData*) SAU_PtrList_GET(&ce->operators, 0);
-		ce_op_prev = ce_op->on_prev;
-		e_op = ce_op_prev;
-		if ((e_op->op_flags & SAU_SDOP_TIME_DEFAULT) != 0)
-			e_op->op_flags &= ~SAU_SDOP_TIME_DEFAULT;
-		for (;;) {
-			ce->wait_ms += ce_op_prev->time_ms;
-			if ((ce_op->op_flags & SAU_SDOP_TIME_DEFAULT) != 0) {
-				ce_op->op_flags &= ~SAU_SDOP_TIME_DEFAULT;
-				ce_op->time_ms =
-((ce_op->op_flags & SAU_SDOP_NESTED) != 0 && !ce->next) ?
-					SAU_TIME_INF :
-					ce_op_prev->time_ms - ce_op_prev->silence_ms;
-			}
-			time_event(ce);
-			if (ce_op->time_ms == SAU_TIME_INF)
-				e_op->time_ms = SAU_TIME_INF;
-			else if (e_op->time_ms != SAU_TIME_INF)
-				e_op->time_ms += ce_op->time_ms +
-					(ce->wait_ms - ce_op_prev->time_ms);
-			ce_op->op_params &= ~SAU_POPP_TIME;
-			ce_op_prev = ce_op;
-			ce = ce->next;
-			if (!ce) break;
-			ce_op = (SAU_ScriptOpData*)
-				SAU_PtrList_GET(&ce->operators, 0);
-		}
-	}
-}
-
-/*
- * Deals with events that are "composite" (attached to a main event as
- * successive "sub-events" rather than part of the big, linear event sequence).
- *
- * Such events, if attached to the passed event, will be given their place in
- * the ordinary event list.
- */
-static void flatten_events(SAU_ScriptEvData *restrict e) {
-	SAU_ScriptEvData *ce = e->composite;
-	SAU_ScriptEvData *se = e->next, *se_prev = e;
-	int32_t wait_ms = 0;
-	int32_t added_wait_ms = 0;
-	while (ce != NULL) {
-		if (!se) {
-			/*
-			 * No more events in the ordinary sequence,
-			 * so append all composites.
-			 */
-			se_prev->next = ce;
-			break;
-		}
-		/*
-		 * If several events should pass in the ordinary sequence
-		 * before the next composite is inserted, skip ahead.
-		 */
-		wait_ms += se->wait_ms;
-		if (se->next != NULL &&
-(wait_ms + se->next->wait_ms) <= (ce->wait_ms + added_wait_ms)) {
-			se_prev = se;
-			se = se->next;
-			continue;
-		}
-		/*
-		 * Insert next composite before or after the next event
-		 * of the ordinary sequence.
-		 */
-		if (se->wait_ms >= (ce->wait_ms + added_wait_ms)) {
-			SAU_ScriptEvData *ce_next = ce->next;
-			se->wait_ms -= ce->wait_ms + added_wait_ms;
-			added_wait_ms = 0;
-			wait_ms = 0;
-			se_prev->next = ce;
-			se_prev = ce;
-			se_prev->next = se;
-			ce = ce_next;
-		} else {
-			SAU_ScriptEvData *se_next, *ce_next;
-			se_next = se->next;
-			ce_next = ce->next;
-			ce->wait_ms -= wait_ms;
-			added_wait_ms += ce->wait_ms;
-			wait_ms = 0;
-			se->next = ce;
-			ce->next = se_next;
-			se_prev = ce;
-			se = se_next;
-			ce = ce_next;
-		}
-	}
-	e->composite = NULL;
-}
-
-/*
- * Post-parsing passes - perform timing adjustments, flatten event list.
- *
- * Ideally, this function wouldn't exist, all post-parse processing
- * instead being done when creating the sound generation program.
- */
-static void postparse_passes(SAU_Parser *restrict o) {
-	SAU_ScriptEvData *e;
-	for (e = o->events; e != NULL; e = e->next) {
-		time_event(e);
-		if (e->groupfrom != NULL) group_events(e);
-	}
-	/*
-	 * Flatten in separate pass following timing adjustments for events;
-	 * otherwise, cannot always arrange events in the correct order.
-	 */
-	for (e = o->events; e != NULL; e = e->next) {
-		if (e->composite != NULL) flatten_events(e);
-	}
-}
-
 /**
  * Parse a file and return script data.
  *
  * \return instance or NULL on error preventing parse
  */
-SAU_Script* SAU_load_Script(const char *restrict script_arg, bool is_path) {
+SAU_Parse* SAU_create_Parse(const char *restrict script_arg, bool is_path) {
 	if (!script_arg)
 		return NULL;
 	SAU_Parser pr;
-	SAU_Script *o = NULL;
+	SAU_Parse *o = NULL;
 	init_Parser(&pr);
 	const char *name = parse_file(&pr, script_arg, is_path);
 	if (!name) goto DONE;
 
-	postparse_passes(&pr);
-	o = calloc(1, sizeof(SAU_Script));
+	o = calloc(1, sizeof(SAU_Parse));
 	o->events = pr.events;
 	o->name = name;
 	o->sopt = pr.sl.sopt;
@@ -1559,12 +1335,12 @@ DONE:
 /**
  * Destroy instance.
  */
-void SAU_discard_Script(SAU_Script *restrict o) {
+void SAU_destroy_Parse(SAU_Parse *restrict o) {
 	if (!o)
 		return;
-	SAU_ScriptEvData *e;
+	SAU_ParseEvData *e;
 	for (e = o->events; e != NULL; ) {
-		SAU_ScriptEvData *e_next = e->next;
+		SAU_ParseEvData *e_next = e->next;
 		destroy_event_node(e);
 		e = e_next;
 	}

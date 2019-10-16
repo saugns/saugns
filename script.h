@@ -19,11 +19,12 @@
  * Script data operator flags.
  */
 enum {
-	SAU_SDOP_LATER_USED = 1<<0,
-	SAU_SDOP_MULTIPLE = 1<<1,
-	SAU_SDOP_NESTED = 1<<2,
-	SAU_SDOP_TIME_DEFAULT = 1<<3,
-	SAU_SDOP_SILENCE_ADDED = 1<<4,
+	SAU_SDOP_NEW_CARRIER = 1<<0,
+	SAU_SDOP_LATER_USED = 1<<1,
+	SAU_SDOP_MULTIPLE = 1<<2,
+	SAU_SDOP_NESTED = 1<<3,
+	SAU_SDOP_TIME_DEFAULT = 1<<4,
+	SAU_SDOP_SILENCE_ADDED = 1<<5,
 };
 
 /**
@@ -31,19 +32,19 @@ enum {
  */
 typedef struct SAU_ScriptOpData {
 	struct SAU_ScriptEvData *event;
-	struct SAU_ScriptOpData *on_prev; /* preceding for same op(s) */
-	SAU_PtrList on_next; /* all immediate forward refs for op(s) */
 	struct SAU_ScriptOpData *next_bound;
 	const char *label;
 	uint32_t op_flags;
 	/* operator parameters */
-	uint32_t op_id; /* not used by parser; for program module */
+	uint32_t op_id;
 	uint32_t op_params;
 	uint32_t time_ms, silence_ms;
 	uint8_t wave;
 	SAU_Ramp freq, freq2;
 	SAU_Ramp amp, amp2;
 	float phase;
+	struct SAU_ScriptOpData *op_prev; /* preceding for same op(s) */
+	SAU_PtrList op_next; /* all immediate forward refs for op(s) */
 	/* node adjacents in operator linkage graph */
 	SAU_PtrList fmods, pmods, amods;
 } SAU_ScriptOpData;
@@ -52,9 +53,9 @@ typedef struct SAU_ScriptOpData {
  * Script data event flags.
  */
 enum {
-	SAU_SDEV_VOICE_LATER_USED = 1<<0,
-	SAU_SDEV_ADD_WAIT_DURATION = 1<<1,
-	SAU_SDEV_NEW_OPGRAPH = 1<<2,
+	SAU_SDEV_NEW_OPGRAPH = 1<<0,
+	SAU_SDEV_VOICE_LATER_USED = 1<<1,
+	SAU_SDEV_ADD_WAIT_DURATION = 1<<2,
 };
 
 /**
@@ -63,15 +64,13 @@ enum {
  */
 typedef struct SAU_ScriptEvData {
 	struct SAU_ScriptEvData *next;
-	struct SAU_ScriptEvData *groupfrom;
-	struct SAU_ScriptEvData *composite;
 	uint32_t wait_ms;
-	SAU_PtrList operators; /* operators included in event */
 	uint32_t ev_flags;
+	SAU_PtrList op_all;
 	/* voice parameters */
-	uint32_t vo_id; /* not used by parser; for program module */
+	uint32_t vo_id;
 	uint32_t vo_params;
-	struct SAU_ScriptEvData *voice_prev; /* preceding event for voice */
+	struct SAU_ScriptEvData *vo_prev; /* preceding event for voice */
 	SAU_Ramp pan;
 	SAU_PtrList op_graph;
 } SAU_ScriptEvData;

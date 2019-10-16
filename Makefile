@@ -19,6 +19,7 @@ OBJ=\
 	builder/scanner.o \
 	builder/parser.o \
 	builder/parseconv.o \
+	builder/scriptconv.o \
 	builder.o \
 	mempool.o \
 	ramp.o \
@@ -38,7 +39,7 @@ TEST_OBJ=\
 	builder/symtab.o \
 	builder/scanner.o \
 	builder/lexer.o \
-	builder/parseconv.o \
+	builder/scriptconv.o \
 	mempool.o \
 	test-builder.o
 
@@ -111,14 +112,17 @@ builder/file.o: builder/file.c builder/file.h common.h
 builder/lexer.o: builder/lexer.c builder/lexer.h builder/file.h builder/symtab.h builder/scanner.h math.h common.h
 	$(CC) -c $(CFLAGS) builder/lexer.c -o builder/lexer.o
 
-builder/parseconv.o: builder/parseconv.c program.h ramp.h wave.h math.h script.h ptrlist.h arrtype.h common.h
+builder/parseconv.o: builder/parseconv.c builder/parser.h program.h ramp.h wave.h math.h script.h ptrlist.h common.h
 	$(CC) -c $(CFLAGS) builder/parseconv.c -o builder/parseconv.o
 
-builder/parser.o: builder/parser.c builder/scanner.h builder/file.h builder/symtab.h script.h ptrlist.h program.h ramp.h wave.h math.h common.h
+builder/parser.o: builder/parser.c builder/parser.h builder/scanner.h builder/file.h builder/symtab.h script.h ptrlist.h program.h ramp.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) builder/parser.c -o builder/parser.o
 
 builder/scanner.o: builder/scanner.c builder/scanner.h builder/file.h builder/symtab.h math.h common.h
 	$(CC) -c $(CFLAGS) builder/scanner.c -o builder/scanner.o
+
+builder/scriptconv.o: builder/scriptconv.c program.h ramp.h wave.h math.h script.h ptrlist.h arrtype.h common.h
+	$(CC) -c $(CFLAGS) builder/scriptconv.c -o builder/scriptconv.o
 
 builder/symtab.o: builder/symtab.c builder/symtab.h mempool.h common.h
 	$(CC) -c $(CFLAGS) builder/symtab.c -o builder/symtab.o
