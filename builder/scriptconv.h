@@ -1,4 +1,4 @@
-/* sgensys: Parse result to audio program converter.
+/* sgensys: Script data to audio program converter.
  * Copyright (c) 2011-2012, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -46,7 +46,7 @@ enum {
  * Per-operator state used during program data allocation.
  */
 typedef struct SGS_OpAllocState {
-	SGS_ScriptOpData *last_pod;
+	SGS_ScriptOpData *last_sod;
 	SGS_ProgramOpAdjcs *adjcs;
 	uint32_t flags;
 	//uint32_t duration_ms;
