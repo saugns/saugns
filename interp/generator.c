@@ -138,7 +138,7 @@ static bool convert_program(SSG_Generator *restrict o,
 		SSG_init_Osc(&on->osc, srate);
 	}
 	for (size_t i = 0; i < prg->ev_count; ++i) {
-		const SSG_ProgramEvent *prg_e = &prg->events[i];
+		const SSG_ProgramEvent *prg_e = prg->events[i];
 		EventNode *e = SSG_MemPool_alloc(o->mem, sizeof(EventNode));
 		if (!e)
 			return false;
