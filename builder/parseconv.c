@@ -199,19 +199,16 @@ static void flatten_events(SAU_ParseEvData *restrict e) {
 		 * Insert next composite before or after the next event
 		 * of the ordinary sequence.
 		 */
+		SAU_ParseEvData *ce_next = ce->next;
 		if (se->wait_ms >= (ce->wait_ms + added_wait_ms)) {
-			SAU_ParseEvData *ce_next = ce->next;
 			se->wait_ms -= ce->wait_ms + added_wait_ms;
 			added_wait_ms = 0;
 			wait_ms = 0;
 			se_prev->next = ce;
 			se_prev = ce;
 			se_prev->next = se;
-			ce = ce_next;
 		} else {
-			SAU_ParseEvData *se_next, *ce_next;
-			se_next = se->next;
-			ce_next = ce->next;
+			SAU_ParseEvData *se_next = se->next;
 			ce->wait_ms -= wait_ms;
 			added_wait_ms += ce->wait_ms;
 			wait_ms = 0;
@@ -219,8 +216,8 @@ static void flatten_events(SAU_ParseEvData *restrict e) {
 			ce->next = se_next;
 			se_prev = ce;
 			se = se_next;
-			ce = ce_next;
 		}
+		ce = ce_next;
 	}
 	e->composite = NULL;
 }
@@ -238,8 +235,9 @@ static bool ParseConv_add_opdata(ParseConv *restrict o,
 	SAU_ScriptOpData *od = calloc(1, sizeof(SAU_ScriptOpData));
 	if (!od)
 		return false;
+	SAU_ScriptEvData *e = o->ev;
 	pod->op_conv = od;
-	od->event = o->ev;
+	od->event = e;
 	/* next_bound */
 	/* label */
 	od->op_flags = pod->op_flags;
@@ -247,6 +245,10 @@ static bool ParseConv_add_opdata(ParseConv *restrict o,
 	od->time_ms = pod->time_ms;
 	od->silence_ms = pod->silence_ms;
 	od->wave = pod->wave;
+	if (pod->link_type == SAU_PDNL_GRAPH) {
+		e->ev_flags |= SAU_SDEV_NEW_OPGRAPH;
+		od->op_flags |= SAU_SDOP_NEW_CARRIER;
+	}
 	od->freq = pod->freq;
 	od->freq2 = pod->freq2;
 	od->amp = pod->amp;
@@ -335,15 +337,23 @@ static bool ParseConv_add_event(ParseConv *restrict o,
 	if (!e)
 		return false;
 	pe->ev_conv = e;
-	if (o->ev != NULL) o->ev->next = e;
+	if (!o->first_ev)
+		o->first_ev = e;
+	else
+		o->ev->next = e;
 	o->ev = e;
-	if (!o->first_ev) o->first_ev = e;
 	/* groupfrom */
 	/* composite */
 	e->wait_ms = pe->wait_ms;
 	e->ev_flags = pe->ev_flags;
 	e->vo_params = pe->vo_params;
-	if (pe->vo_prev != NULL) e->vo_prev = pe->vo_prev->ev_conv;
+	if (pe->vo_prev != NULL) {
+		e->vo_prev = pe->vo_prev->ev_conv;
+		// TODO: move flag setting from parser
+		//e->vo_prev->ev_flags |= SAU_SDEV_VOICE_LATER_USED;
+	} else {
+		e->ev_flags |= SAU_SDEV_NEW_OPGRAPH;
+	}
 	e->pan = pe->pan;
 	if (!ParseConv_add_ops(o, &pe->operators)) goto ERROR;
 	if (!ParseConv_link_ops(o, NULL, &pe->operators)) goto ERROR;
@@ -368,23 +378,19 @@ static SAU_Script *ParseConv_convert(ParseConv *restrict o,
 		time_event(pe);
 		if (pe->groupfrom != NULL) group_events(pe);
 	}
-	/*
-	 * Flatten in separate pass following timing adjustments for events;
-	 * otherwise, cannot always arrange events in the correct order.
-	 */
-	for (pe = p->events; pe != NULL; pe = pe->next) {
-		if (pe->composite != NULL) flatten_events(pe);
-	}
-	/*
-	 * Convert adjusted parser output to script data.
-	 */
 	SAU_Script *s = calloc(1, sizeof(SAU_Script));
 	if (!s)
 		return NULL;
 	s->name = p->name;
 	s->sopt = p->sopt;
+	/*
+	 * Convert events, flattening the remaining list while proceeding.
+	 * Flattening must be done following the timing adjustment pass;
+	 * otherwise, cannot always arrange events in the correct order.
+	 */
 	for (pe = p->events; pe != NULL; pe = pe->next) {
 		if (!ParseConv_add_event(o, pe)) goto ERROR;
+		if (pe->composite != NULL) flatten_events(pe);
 	}
 	s->events = o->first_ev;
 	return s;
