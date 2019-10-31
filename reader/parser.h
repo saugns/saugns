@@ -17,6 +17,17 @@
 #include "../help.h"
 
 /**
+ * Node link types.
+ */
+enum {
+	SAU_PDNL_REFER = 0,
+	SAU_PDNL_GRAPH,
+	SAU_PDNL_FMODS,
+	SAU_PDNL_PMODS,
+	SAU_PDNL_AMODS,
+};
+
+/**
  * Node type for operator data.
  */
 typedef struct SAU_ParseOpData {
@@ -29,6 +40,7 @@ typedef struct SAU_ParseOpData {
 	SAU_Time time;
 	uint32_t silence_ms;
 	uint8_t wave;
+	uint8_t link_type;
 	SAU_Ramp freq, freq2;
 	SAU_Ramp amp, amp2;
 	float phase;
