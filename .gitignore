@@ -8,6 +8,7 @@ sgensys
 ssndgen
 saugns
 test-builder
+test-scan
 
 *.[ch][-.]*
 **/*.[ch][-.]*

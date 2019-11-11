@@ -26,7 +26,8 @@
 /*
  * Print command line usage instructions.
  */
-static void print_usage(bool by_arg) {
+static void print_usage(bool h_arg sauMaybeUnused,
+		const char *h_type sauMaybeUnused) {
 	fputs(
 "Usage: "NAME" [-c] [-p] [-e] <script>...\n"
 "\n"
@@ -35,7 +36,7 @@ static void print_usage(bool by_arg) {
 "  -p \tPrint info for scripts after loading.\n"
 "  -h \tPrint this message.\n"
 "  -v \tPrint version.\n",
-	(by_arg) ? stdout : stderr);
+		stderr);
 }
 
 /*
@@ -55,12 +56,14 @@ static void print_version(void) {
 static bool parse_args(int argc, char **restrict argv,
 		uint32_t *restrict flags,
 		SAU_PtrArr *restrict script_args) {
+	bool h_arg = false;
+	const char *h_type = NULL;
 	for (;;) {
 		const char *arg;
 		--argc;
 		++argv;
 		if (argc < 1) {
-			if (!script_args->count) goto INVALID;
+			if (!script_args->count) goto USAGE;
 			break;
 		}
 		arg = *argv;
@@ -73,16 +76,22 @@ NEXT_C:
 		switch (*arg) {
 		case 'c':
 			if ((*flags & SAU_ARG_MODE_FULL) != 0)
-				goto INVALID;
+				goto USAGE;
 			*flags |= SAU_ARG_MODE_CHECK;
 			break;
 		case 'e':
 			*flags |= SAU_ARG_EVAL_STRING;
 			break;
 		case 'h':
-			if (*flags != 0) goto INVALID;
-			print_usage(true);
-			goto CLEAR;
+			h_arg = true;
+			if (arg[1] != '\0') goto USAGE;
+			if (*flags != 0) goto USAGE;
+			--argc;
+			++argv;
+			if (argc < 1) goto USAGE;
+			arg = *argv;
+			h_type = arg;
+			goto USAGE;
 		case 'p':
 			*flags |= SAU_ARG_PRINT_INFO;
 			break;
@@ -90,13 +99,13 @@ NEXT_C:
 			print_version();
 			goto CLEAR;
 		default:
-			goto INVALID;
+			goto USAGE;
 		}
 		goto NEXT_C;
 	}
 	return (script_args->count != 0);
-INVALID:
-	print_usage(false);
+USAGE:
+	print_usage(h_arg, h_type);
 CLEAR:
 	SAU_PtrArr_clear(script_args);
 	return false;
@@ -160,21 +169,23 @@ CLOSE:
 
 /**
  * Build the listed scripts, adding each result (even if NULL)
- * to the program list.
+ * to the program list. (NULL scripts are ignored.)
  *
- * \return number of programs successfully built
+ * \return number of failures for non-NULL scripts
  */
 size_t SAU_build(const SAU_PtrArr *restrict script_args, uint32_t options,
 		SAU_PtrArr *restrict prg_objs) {
 	bool are_paths = !(options & SAU_ARG_EVAL_STRING);
-	size_t built = 0;
+	size_t fails = 0;
 	const char **args = (const char**) SAU_PtrArr_ITEMS(script_args);
 	for (size_t i = 0; i < script_args->count; ++i) {
+		if (!args[i]) continue;
 		SAU_Program *prg = build_program(args[i], are_paths);
-		if (prg != NULL) ++built;
+		if (!prg)
+			++fails;
 		SAU_PtrArr_add(prg_objs, prg);
 	}
-	return built;
+	return fails;
 }
 
 /**
@@ -186,7 +197,9 @@ int main(int argc, char **restrict argv) {
 	uint32_t options = 0;
 	if (!parse_args(argc, argv, &options, &script_args))
 		return 0;
-	bool error = !SAU_build(&script_args, options, &prg_objs);
+	size_t fails = SAU_build(&script_args, options, &prg_objs);
+	size_t built = prg_objs.count - fails;
+	bool error = (built == 0);
 	SAU_PtrArr_clear(&script_args);
 	if (error)
 		return 1;

@@ -31,19 +31,21 @@ static SAU_Program *build_program(const char *restrict script_arg,
 
 /**
  * Build the listed scripts, adding each result (even if NULL)
- * to the program list.
+ * to the program list. (NULL scripts are ignored.)
  *
- * \return number of programs successfully built
+ * \return number of failures for non-NULL scripts
  */
 size_t SAU_build(const SAU_PtrArr *restrict script_args, uint32_t options,
 		SAU_PtrArr *restrict prg_objs) {
 	bool are_paths = !(options & SAU_ARG_EVAL_STRING);
-	size_t built = 0;
+	size_t fails = 0;
 	const char **args = (const char**) SAU_PtrArr_ITEMS(script_args);
 	for (size_t i = 0; i < script_args->count; ++i) {
+		if (!args[i]) continue;
 		SAU_Program *prg = build_program(args[i], are_paths);
-		if (prg != NULL) ++built;
+		if (!prg)
+			++fails;
 		SAU_PtrArr_add(prg_objs, prg);
 	}
-	return built;
+	return fails;
 }
