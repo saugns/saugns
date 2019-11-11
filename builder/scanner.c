@@ -26,7 +26,7 @@ static size_t misses = 0;
 #endif
 
 /**
- * Create instance.
+ * Create instance. Requires \p symtab to be a valid instance.
  *
  * Assigns a modifiable copy of the SAU_Scanner_def_filters array,
  * freed when the instance is destroyed.
