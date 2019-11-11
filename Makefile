@@ -31,7 +31,7 @@ OBJ=\
 	audiodev.o \
 	wavfile.o \
 	saugns.o
-TEST_OBJ=\
+TEST1_OBJ=\
 	common.o \
 	arrtype.o \
 	ptrlist.o \
@@ -41,13 +41,13 @@ TEST_OBJ=\
 	builder/lexer.o \
 	builder/scriptconv.o \
 	mempool.o \
-	test-builder.o
+	test-scan.o
 
 all: $(BIN)
-test: test-builder
+tests: test-scan
 clean:
 	rm -f $(OBJ) $(BIN)
-	rm -f $(TEST_OBJ) test-builder
+	rm -f $(TEST1_OBJ) test-scan
 install: $(BIN)
 	@if [ -d "$(DESTDIR)$(PREFIX)/man" ]; then \
 		MANDIR="man"; \
@@ -91,8 +91,8 @@ $(BIN): $(OBJ)
 		$(CC) $(OBJ) $(LFLAGS) -o $(BIN); \
 	fi
 
-test-builder: $(TEST_OBJ)
-	$(CC) $(TEST_OBJ) $(LFLAGS) -o test-builder
+test-scan: $(TEST1_OBJ)
+	$(CC) $(TEST1_OBJ) $(LFLAGS) -o test-scan
 
 arrtype.o: arrtype.c arrtype.h common.h
 	$(CC) -c $(CFLAGS) arrtype.c
@@ -151,8 +151,8 @@ renderer/osc.o: renderer/osc.c renderer/osc.h wave.h math.h common.h
 saugns.o: saugns.c saugns.h ptrlist.h program.h ramp.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) saugns.c
 
-test-builder.o: test-builder.c saugns.h builder/lexer.h builder/scanner.h builder/file.h builder/symtab.h ptrlist.h program.h ramp.h wave.h math.h common.h
-	$(CC) -c $(CFLAGS) test-builder.c
+test-scan.o: test-scan.c saugns.h builder/lexer.h builder/scanner.h builder/file.h builder/symtab.h ptrlist.h program.h ramp.h wave.h math.h common.h
+	$(CC) -c $(CFLAGS) test-scan.c
 
 wave.o: wave.c wave.h math.h common.h
 	$(CC) -c $(CFLAGS_FAST) wave.c
