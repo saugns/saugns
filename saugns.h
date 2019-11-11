@@ -28,7 +28,7 @@
 #define SAU_SYMTAB_STATS 0
 
 size_t SAU_build(const SAU_PtrList *restrict script_args, bool are_paths,
-		SAU_PtrList *restrict prg_objs);
+		SAU_PtrList *restrict prg_objs, bool print_info);
 
 bool SAU_render(const SAU_PtrList *restrict prg_objs, uint32_t srate,
 		bool use_audiodev, const char *restrict wav_path);

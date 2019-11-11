@@ -1,5 +1,5 @@
 /* saugns: Audio program builder module.
- * Copyright (c) 2011-2013, 2017-2019 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -34,18 +34,22 @@ static SAU_Program *build_program(const char *restrict script_arg,
 
 /**
  * Build the listed scripts, adding each result (even if NULL)
- * to the program list.
+ * to the program list. (NULL scripts are ignored.)
  *
- * \return number of programs successfully built
+ * \return number of failures for non-NULL scripts
  */
 size_t SAU_build(const SAU_PtrList *restrict script_args, bool are_paths,
-		SAU_PtrList *restrict prg_objs) {
-	size_t built = 0;
+		SAU_PtrList *restrict prg_objs, bool print_info) {
+	size_t fails = 0;
 	const char **args = (const char**) SAU_PtrList_ITEMS(script_args);
 	for (size_t i = 0; i < script_args->count; ++i) {
+		if (!args[i]) continue;
 		SAU_Program *prg = build_program(args[i], are_paths);
-		if (prg != NULL) ++built;
+		if (!prg)
+			++fails;
+		else if (print_info)
+			SAU_Program_print_info(prg);
 		SAU_PtrList_add(prg_objs, prg);
 	}
-	return built;
+	return fails;
 }

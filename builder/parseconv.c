@@ -29,15 +29,13 @@
  */
 static void group_events(SAU_ParseEvData *restrict to) {
 	SAU_ParseEvData *e, *e_after = to->next;
-	size_t i;
 	uint32_t wait = 0, waitcount = 0;
 	for (e = to->groupfrom; e != e_after; ) {
-		SAU_ParseOpData **ops;
-		ops = (SAU_ParseOpData**) SAU_PtrList_ITEMS(&e->operators);
-		for (i = 0; i < e->operators.count; ++i) {
-			SAU_ParseOpData *op = ops[i];
+		SAU_ParseOpRef *op_ref = e->op_list.refs;
+		for (; op_ref != NULL; op_ref = op_ref->next) {
+			SAU_ParseOpData *op = op_ref->data;
 			if (e->next == e_after &&
-i == (e->operators.count - 1) && (op->op_flags & SAU_SDOP_TIME_DEFAULT) != 0) {
+op_ref == e->op_list.last_ref && (op->op_flags & SAU_SDOP_TIME_DEFAULT) != 0) {
 				/* default for last node in group */
 				op->op_flags &= ~SAU_SDOP_TIME_DEFAULT;
 			}
@@ -51,10 +49,9 @@ i == (e->operators.count - 1) && (op->op_flags & SAU_SDOP_TIME_DEFAULT) != 0) {
 		}
 	}
 	for (e = to->groupfrom; e != e_after; ) {
-		SAU_ParseOpData **ops;
-		ops = (SAU_ParseOpData**) SAU_PtrList_ITEMS(&e->operators);
-		for (i = 0; i < e->operators.count; ++i) {
-			SAU_ParseOpData *op = ops[i];
+		SAU_ParseOpRef *op_ref = e->op_list.refs;
+		for (; op_ref != NULL; op_ref = op_ref->next) {
+			SAU_ParseOpData *op = op_ref->data;
 			if ((op->op_flags & SAU_SDOP_TIME_DEFAULT) != 0) {
 				/* fill in sensible default time */
 				op->op_flags &= ~SAU_SDOP_TIME_DEFAULT;
@@ -75,6 +72,12 @@ static inline void time_ramp(SAU_Ramp *restrict ramp,
 		uint32_t default_time_ms) {
 	if (!(ramp->flags & SAU_RAMPP_TIME))
 		ramp->time_ms = default_time_ms;
+}
+
+static void op_list_fornew(SAU_ParseOpList *restrict ol,
+		void (*on_op)(SAU_ParseOpData *restrict data)) {
+	SAU_ParseOpRef *op_ref = ol->new_refs;
+	for (; op_ref != NULL; op_ref = op_ref->next) on_op(op_ref->data);
 }
 
 static void time_operator(SAU_ParseOpData *restrict op) {
@@ -99,20 +102,9 @@ static void time_operator(SAU_ParseOpData *restrict op) {
 		if (e->next != NULL) e->next->wait_ms += op->time_ms;
 		e->ev_flags &= ~SAU_SDEV_ADD_WAIT_DURATION;
 	}
-	size_t i;
-	SAU_ParseOpData **ops;
-	ops = (SAU_ParseOpData**) SAU_PtrList_ITEMS(&op->fmods);
-	for (i = op->fmods.old_count; i < op->fmods.count; ++i) {
-		time_operator(ops[i]);
-	}
-	ops = (SAU_ParseOpData**) SAU_PtrList_ITEMS(&op->pmods);
-	for (i = op->pmods.old_count; i < op->pmods.count; ++i) {
-		time_operator(ops[i]);
-	}
-	ops = (SAU_ParseOpData**) SAU_PtrList_ITEMS(&op->amods);
-	for (i = op->amods.old_count; i < op->amods.count; ++i) {
-		time_operator(ops[i]);
-	}
+	op_list_fornew(&op->fmod_list, time_operator);
+	op_list_fornew(&op->pmod_list, time_operator);
+	op_list_fornew(&op->amod_list, time_operator);
 }
 
 static void time_event(SAU_ParseEvData *restrict e) {
@@ -121,19 +113,14 @@ static void time_event(SAU_ParseEvData *restrict e) {
 	 * adding present event duration to wait time of next event.
 	 */
 	// e->pan.flags |= SAU_RAMP_TIME_SET; // TODO: revisit semantics
-	size_t i;
-	SAU_ParseOpData **ops;
-	ops = (SAU_ParseOpData**) SAU_PtrList_ITEMS(&e->operators);
-	for (i = e->operators.old_count; i < e->operators.count; ++i) {
-		time_operator(ops[i]);
-	}
+	op_list_fornew(&e->op_list, time_operator);
 	/*
 	 * Timing for composites - done before event list flattened.
 	 */
 	if (e->composite != NULL) {
 		SAU_ParseEvData *ce = e->composite;
 		SAU_ParseOpData *ce_op, *ce_op_prev, *e_op;
-		ce_op = (SAU_ParseOpData*) SAU_PtrList_GET(&ce->operators, 0);
+		ce_op = ce->op_list.refs->data;
 		ce_op_prev = ce_op->op_prev;
 		e_op = ce_op_prev;
 		if ((e_op->op_flags & SAU_SDOP_TIME_DEFAULT) != 0)
@@ -157,8 +144,7 @@ static void time_event(SAU_ParseEvData *restrict e) {
 			ce_op_prev = ce_op;
 			ce = ce->next;
 			if (!ce) break;
-			ce_op = (SAU_ParseOpData*)
-				SAU_PtrList_GET(&ce->operators, 0);
+			ce_op = ce->op_list.refs->data;
 		}
 	}
 }
@@ -231,7 +217,8 @@ typedef struct ParseConv {
  * adding it to the list to be used for the current script event.
  */
 static bool ParseConv_add_opdata(ParseConv *restrict o,
-		SAU_ParseOpData *restrict pod) {
+		SAU_ParseOpRef *restrict pod_ref) {
+	SAU_ParseOpData *pod = pod_ref->data;
 	SAU_ScriptOpData *od = calloc(1, sizeof(SAU_ScriptOpData));
 	if (!od)
 		return false;
@@ -239,13 +226,12 @@ static bool ParseConv_add_opdata(ParseConv *restrict o,
 	pod->op_conv = od;
 	od->event = e;
 	/* next_bound */
-	/* label */
 	od->op_flags = pod->op_flags;
 	od->op_params = pod->op_params;
 	od->time_ms = pod->time_ms;
 	od->silence_ms = pod->silence_ms;
 	od->wave = pod->wave;
-	if (pod->link_type == SAU_PDNL_GRAPH) {
+	if (pod_ref->link_type == SAU_PDNL_GRAPH) {
 		e->ev_flags |= SAU_SDEV_NEW_OPGRAPH;
 		od->op_flags |= SAU_SDOP_NEW_CARRIER;
 	}
@@ -256,9 +242,9 @@ static bool ParseConv_add_opdata(ParseConv *restrict o,
 	od->phase = pod->phase;
 	if (pod->op_prev != NULL) od->op_prev = pod->op_prev->op_conv;
 	/* op_next */
-	/* fmods */
-	/* pmods */
-	/* amods */
+	/* fmod_list */
+	/* pmod_list */
+	/* amod_list */
 	if (!SAU_PtrList_add(&o->ev->op_all, od)) goto ERROR;
 	return true;
 
@@ -272,17 +258,16 @@ ERROR:
  * visiting new operator nodes as they branch out.
  */
 static bool ParseConv_add_ops(ParseConv *restrict o,
-		const SAU_PtrList *restrict pod_list) {
-	SAU_ParseOpData **pods;
-	pods = (SAU_ParseOpData**) SAU_PtrList_ITEMS(pod_list);
-	for (size_t i = pod_list->old_count; i < pod_list->count; ++i) {
-		SAU_ParseOpData *pod = pods[i];
+		const SAU_ParseOpList *restrict pod_list) {
+	SAU_ParseOpRef *pod_ref = pod_list->new_refs;
+	for (; pod_ref != NULL; pod_ref = pod_ref->next) {
+		SAU_ParseOpData *pod = pod_ref->data;
 		// TODO: handle multiple operator nodes
 		//if (pod->op_flags & SAU_SDOP_MULTIPLE) continue;
-		if (!ParseConv_add_opdata(o, pod)) goto ERROR;
-		if (!ParseConv_add_ops(o, &pod->fmods)) goto ERROR;
-		if (!ParseConv_add_ops(o, &pod->pmods)) goto ERROR;
-		if (!ParseConv_add_ops(o, &pod->amods)) goto ERROR;
+		if (!ParseConv_add_opdata(o, pod_ref)) goto ERROR;
+		if (!ParseConv_add_ops(o, &pod->fmod_list)) goto ERROR;
+		if (!ParseConv_add_ops(o, &pod->pmod_list)) goto ERROR;
+		if (!ParseConv_add_ops(o, &pod->amod_list)) goto ERROR;
 	}
 	return true;
 
@@ -296,11 +281,10 @@ ERROR:
  */
 static bool ParseConv_link_ops(ParseConv *restrict o,
 		SAU_PtrList *restrict od_list,
-		const SAU_PtrList *restrict pod_list) {
-	SAU_ParseOpData **pods;
-	pods = (SAU_ParseOpData**) SAU_PtrList_ITEMS(pod_list);
-	for (size_t i = 0; i < pod_list->count; ++i) {
-		SAU_ParseOpData *pod = pods[i];
+		const SAU_ParseOpList *restrict pod_list) {
+	SAU_ParseOpRef *pod_ref = pod_list->refs;
+	for (; pod_ref != NULL; pod_ref = pod_ref->next) {
+		SAU_ParseOpData *pod = pod_ref->data;
 		// TODO: handle multiple operator nodes
 		//if (pod->op_flags & SAU_SDOP_MULTIPLE) continue;
 		SAU_ScriptOpData *od = pod->op_conv;
@@ -308,17 +292,19 @@ static bool ParseConv_link_ops(ParseConv *restrict o,
 		SAU_ScriptEvData *e = od->event;
 		if (e->ev_flags & SAU_SDEV_NEW_OPGRAPH) {
 			// Handle linking for carriers separately
-			if (od->op_flags & SAU_SDOP_NEW_CARRIER)
-				SAU_PtrList_add(&e->op_graph, od);
+			if ((od->op_flags & SAU_SDOP_NEW_CARRIER) != 0
+				&& !SAU_PtrList_add(&e->op_graph, od))
+				goto ERROR;
 		}
-		if (od_list != NULL) SAU_PtrList_add(od_list, od);
+		if (od_list != NULL && !SAU_PtrList_add(od_list, od))
+			goto ERROR;
 		if (od->op_params & SAU_POPP_ADJCS) {
-			if (!ParseConv_link_ops(o,
-					&od->fmods, &pod->fmods)) goto ERROR;
-			if (!ParseConv_link_ops(o,
-					&od->pmods, &pod->pmods)) goto ERROR;
-			if (!ParseConv_link_ops(o,
-					&od->amods, &pod->amods)) goto ERROR;
+			if (!ParseConv_link_ops(o, &od->fmods,
+					&pod->fmod_list)) goto ERROR;
+			if (!ParseConv_link_ops(o, &od->pmods,
+					&pod->pmod_list)) goto ERROR;
+			if (!ParseConv_link_ops(o, &od->amods,
+					&pod->amod_list)) goto ERROR;
 		}
 	}
 	return true;
@@ -355,8 +341,8 @@ static bool ParseConv_add_event(ParseConv *restrict o,
 		e->ev_flags |= SAU_SDEV_NEW_OPGRAPH;
 	}
 	e->pan = pe->pan;
-	if (!ParseConv_add_ops(o, &pe->operators)) goto ERROR;
-	if (!ParseConv_link_ops(o, NULL, &pe->operators)) goto ERROR;
+	if (!ParseConv_add_ops(o, &pe->op_list)) goto ERROR;
+	if (!ParseConv_link_ops(o, NULL, &pe->op_list)) goto ERROR;
 	return true;
 
 ERROR:

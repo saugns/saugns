@@ -2,10 +2,10 @@
 .*.swp
 
 *.o
-mgensys
-sgensys
+**/*.o
 saugns
-test-builder
+test-scan
 
 *.[ch][-.]*
+**/*.[ch][-.]*
 backup/
