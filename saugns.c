@@ -197,16 +197,20 @@ static bool build(const SAU_PtrList *restrict script_args,
 		SAU_PtrList *restrict prg_objs,
 		uint32_t options) {
 	bool are_paths = !(options & ARG_EVAL_STRING);
-	if (!SAU_build(script_args, are_paths, prg_objs))
-		return false;
-	if ((options & ARG_PRINT_INFO) != 0) {
-		const SAU_Program **prgs =
-			(const SAU_Program**) SAU_PtrList_ITEMS(prg_objs);
-		for (size_t i = 0; i < prg_objs->count; ++i) {
-			const SAU_Program *prg = prgs[i];
-			if (prg != NULL) SAU_Program_print_info(prg);
+	SAU_build(script_args, are_paths, prg_objs);
+	const SAU_Program **prgs =
+		(const SAU_Program**) SAU_PtrList_ITEMS(prg_objs);
+	size_t built = 0;
+	for (size_t i = 0; i < prg_objs->count; ++i) {
+		const SAU_Program *prg = prgs[i];
+		if (prg != NULL) {
+			++built;
+			if ((options & ARG_PRINT_INFO) != 0)
+				SAU_Program_print_info(prg);
 		}
 	}
+	if (!built)
+		return false;
 	if ((options & ARG_ONLY_CHECK) != 0) {
 		discard_programs(prg_objs);
 	}
