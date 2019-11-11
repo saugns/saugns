@@ -34,7 +34,6 @@ enum {
 typedef struct SAU_ScriptOpData {
 	struct SAU_ScriptEvData *event;
 	struct SAU_ScriptOpData *next_bound;
-	const char *label;
 	uint32_t op_flags;
 	/* operator parameters */
 	uint32_t op_id;
