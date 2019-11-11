@@ -205,7 +205,9 @@ int main(int argc, char **restrict argv) {
 	if (!parse_args(argc, argv, &options, &script_args, &wav_path,
 			&srate))
 		return 0;
-	bool error = !SAU_build(&script_args, options, &prg_objs);
+	size_t fails = SAU_build(&script_args, options, &prg_objs);
+	size_t built = prg_objs.count - fails;
+	bool error = (built == 0);
 	SAU_PtrArr_clear(&script_args);
 	if (error)
 		return 1;

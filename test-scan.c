@@ -157,21 +157,23 @@ CLOSE:
 
 /**
  * Build the listed scripts, adding each result (even if NULL)
- * to the program list.
+ * to the program list. (NULL scripts are ignored.)
  *
- * \return number of programs successfully built
+ * \return number of failures for non-NULL scripts
  */
 size_t SAU_build(const SAU_PtrArr *restrict script_args, uint32_t options,
 		SAU_PtrArr *restrict prg_objs) {
 	bool are_paths = !(options & SAU_ARG_EVAL_STRING);
-	size_t built = 0;
+	size_t fails = 0;
 	const char **args = (const char**) SAU_PtrArr_ITEMS(script_args);
 	for (size_t i = 0; i < script_args->count; ++i) {
+		if (!args[i]) continue;
 		SAU_Program *prg = build_program(args[i], are_paths);
-		if (prg != NULL) ++built;
+		if (!prg)
+			++fails;
 		SAU_PtrArr_add(prg_objs, prg);
 	}
-	return built;
+	return fails;
 }
 
 /**
@@ -195,7 +197,9 @@ int main(int argc, char **restrict argv) {
 	uint32_t options = 0;
 	if (!parse_args(argc, argv, &options, &script_args))
 		return 0;
-	bool error = !SAU_build(&script_args, options, &prg_objs);
+	size_t fails = SAU_build(&script_args, options, &prg_objs);
+	size_t built = prg_objs.count - fails;
+	bool error = (built == 0);
 	SAU_PtrArr_clear(&script_args);
 	if (error)
 		return 1;
