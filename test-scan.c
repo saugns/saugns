@@ -1,4 +1,4 @@
-/* saugns: Test program for experimental builder code.
+/* saugns: Test program for script scanning code.
  * Copyright (c) 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -25,16 +25,17 @@
 /*
  * Print command line usage instructions.
  */
-static void print_usage(bool by_arg) {
+static void print_usage(bool h_arg sauMaybeUnused,
+		const char *h_type sauMaybeUnused) {
 	fputs(
-"Usage: test-builder [-c] [-p] [-e] <script>...\n"
+"Usage: test-scan [-c] [-p] [-e] <script>...\n"
 "\n"
 "  -e \tEvaluate strings instead of files.\n"
 "  -c \tCheck scripts only, reporting any errors or requested info.\n"
 "  -p \tPrint info for scripts after loading.\n"
 "  -h \tPrint this message.\n"
 "  -v \tPrint version.\n",
-	(by_arg) ? stdout : stderr);
+		stderr);
 }
 
 /*
@@ -48,11 +49,11 @@ static void print_version(void) {
  * Command line argument flags.
  */
 enum {
-	ARG_FULL_RUN = 1<<0, /* identifies any non-compile-only flags */
-	ARG_ENABLE_AUDIO_DEV = 1<<1,
-	ARG_DISABLE_AUDIO_DEV = 1<<2,
-	ARG_ONLY_CHECK = 1<<3,
-	ARG_PRINT_INFO = 1<<4,
+	ARG_DO_RUN     = 1<<0, // more than checking
+	ARG_ONLY_CHECK = 1<<1, // only checking
+	ARG_ENABLE_AUDIO_DEV  = 1<<2,
+	ARG_DISABLE_AUDIO_DEV = 1<<3,
+	ARG_PRINT_INFO  = 1<<4,
 	ARG_EVAL_STRING = 1<<5,
 };
 
@@ -66,12 +67,14 @@ enum {
 static bool parse_args(int argc, char **restrict argv,
 		uint32_t *restrict flags,
 		SAU_PtrList *restrict script_args) {
+	bool h_arg = false;
+	const char *h_type = NULL;
 	for (;;) {
 		const char *arg;
 		--argc;
 		++argv;
 		if (argc < 1) {
-			if (!script_args->count) goto INVALID;
+			if (!script_args->count) goto USAGE;
 			break;
 		}
 		arg = *argv;
@@ -83,17 +86,23 @@ NEXT_C:
 		if (!*++arg) continue;
 		switch (*arg) {
 		case 'c':
-			if ((*flags & ARG_FULL_RUN) != 0)
-				goto INVALID;
+			if ((*flags & ARG_DO_RUN) != 0)
+				goto USAGE;
 			*flags |= ARG_ONLY_CHECK;
 			break;
 		case 'e':
 			*flags |= ARG_EVAL_STRING;
 			break;
 		case 'h':
-			if (*flags != 0) goto INVALID;
-			print_usage(true);
-			goto CLEAR;
+			h_arg = true;
+			if (arg[1] != '\0') goto USAGE;
+			if (*flags != 0) goto USAGE;
+			--argc;
+			++argv;
+			if (argc < 1) goto USAGE;
+			arg = *argv;
+			h_type = arg;
+			goto USAGE;
 		case 'p':
 			*flags |= ARG_PRINT_INFO;
 			break;
@@ -101,13 +110,13 @@ NEXT_C:
 			print_version();
 			goto CLEAR;
 		default:
-			goto INVALID;
+			goto USAGE;
 		}
 		goto NEXT_C;
 	}
 	return (script_args->count != 0);
-INVALID:
-	print_usage(false);
+USAGE:
+	print_usage(h_arg, h_type);
 CLEAR:
 	SAU_PtrList_clear(script_args);
 	return false;
@@ -176,12 +185,14 @@ CLOSE:
  * \return number of programs successfully built
  */
 size_t SAU_build(const SAU_PtrList *restrict script_args, bool are_paths,
-		SAU_PtrList *restrict prg_objs) {
+		SAU_PtrList *restrict prg_objs,
+		bool print_info sauMaybeUnused) {
 	size_t built = 0;
 	const char **args = (const char**) SAU_PtrList_ITEMS(script_args);
 	for (size_t i = 0; i < script_args->count; ++i) {
 		SAU_Program *prg = build_program(args[i], are_paths);
-		if (prg != NULL) ++built;
+		if (prg != NULL)
+			++built;
 		SAU_PtrList_add(prg_objs, prg);
 	}
 	return built;
@@ -196,16 +207,11 @@ static bool build(const SAU_PtrList *restrict script_args,
 		SAU_PtrList *restrict prg_objs,
 		uint32_t options) {
 	bool are_paths = !(options & ARG_EVAL_STRING);
-	if (!SAU_build(script_args, are_paths, prg_objs))
+	bool print_info = (options & ARG_PRINT_INFO) != 0;
+	size_t fails = SAU_build(script_args, are_paths, prg_objs, print_info);
+	size_t built = prg_objs->count - fails;
+	if (!built)
 		return false;
-	if ((options & ARG_PRINT_INFO) != 0) {
-		const SAU_Program **prgs =
-			(const SAU_Program**) SAU_PtrList_ITEMS(prg_objs);
-		for (size_t i = 0; i < prg_objs->count; ++i) {
-			const SAU_Program *prg = prgs[i];
-			if (prg != NULL) SAU_Program_print_info(prg);
-		}
-	}
 	if ((options & ARG_ONLY_CHECK) != 0) {
 		discard_programs(prg_objs);
 	}
@@ -219,8 +225,9 @@ int main(int argc, char **restrict argv) {
 	SAU_PtrList script_args = (SAU_PtrList){0};
 	SAU_PtrList prg_objs = (SAU_PtrList){0};
 	uint32_t options = 0;
-	if (!parse_args(argc, argv, &options, &script_args))
+	if (!parse_args(argc, argv, &options, &script_args)) {
 		return 0;
+	}
 	bool error = !build(&script_args, &prg_objs, options);
 	SAU_PtrList_clear(&script_args);
 	if (error)

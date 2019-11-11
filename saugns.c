@@ -225,16 +225,11 @@ static bool build(const SAU_PtrList *restrict script_args,
 		SAU_PtrList *restrict prg_objs,
 		uint32_t options) {
 	bool are_paths = !(options & ARG_EVAL_STRING);
-	if (!SAU_build(script_args, are_paths, prg_objs))
+	bool print_info = (options & ARG_PRINT_INFO) != 0;
+	size_t fails = SAU_build(script_args, are_paths, prg_objs, print_info);
+	size_t built = prg_objs->count - fails;
+	if (!built)
 		return false;
-	if ((options & ARG_PRINT_INFO) != 0) {
-		const SAU_Program **prgs =
-			(const SAU_Program**) SAU_PtrList_ITEMS(prg_objs);
-		for (size_t i = 0; i < prg_objs->count; ++i) {
-			const SAU_Program *prg = prgs[i];
-			if (prg != NULL) SAU_Program_print_info(prg);
-		}
-	}
 	if ((options & ARG_ONLY_CHECK) != 0) {
 		discard_programs(prg_objs);
 	}
@@ -265,17 +260,14 @@ int main(int argc, char **restrict argv) {
 	uint32_t options = 0;
 	uint32_t srate = 0;
 	if (!parse_args(argc, argv, &options, &script_args, &wav_path,
-			&srate))
+			&srate)) {
 		return 0;
+	}
 	bool error = !build(&script_args, &prg_objs, options);
 	SAU_PtrList_clear(&script_args);
-	if (error)
-		return 1;
-	if (prg_objs.count > 0) {
+	if (!error && prg_objs.count > 0) {
 		error = !render(&prg_objs, srate, options, wav_path);
-		discard_programs(&prg_objs);
-		if (error)
-			return 1;
 	}
-	return 0;
+	discard_programs(&prg_objs);
+	return error ? 1 : 0;
 }
