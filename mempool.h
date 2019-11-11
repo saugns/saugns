@@ -1,5 +1,5 @@
 /* ssndgen: Memory pool module.
- * Copyright (c) 2014, 2018-2020 Joel K. Pettersson
+ * Copyright (c) 2014, 2018-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -21,7 +21,7 @@
 struct SSG_MemPool;
 typedef struct SSG_MemPool SSG_MemPool;
 
-SSG_MemPool *SSG_create_MemPool(size_t block_size) SSG__malloclike;
+SSG_MemPool *SSG_create_MemPool(size_t start_size) SSG__malloclike;
 void SSG_destroy_MemPool(SSG_MemPool *restrict o);
 
 void *SSG_MemPool_alloc(SSG_MemPool *restrict o, size_t size) SSG__malloclike;
