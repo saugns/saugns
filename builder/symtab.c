@@ -12,7 +12,6 @@
  */
 
 #include "symtab.h"
-#include "../mempool.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -155,19 +154,17 @@ struct SAU_SymTab {
 };
 
 /**
- * Create instance.
+ * Create instance. Requires \p mempool to be a valid instance.
  *
  * \return instance, or NULL on allocation failure
  */
-SAU_SymTab *SAU_create_SymTab(void) {
+SAU_SymTab *SAU_create_SymTab(SAU_MemPool *restrict mempool) {
+	if (!mempool)
+		return NULL;
 	SAU_SymTab *o = calloc(1, sizeof(SAU_SymTab));
 	if (!o)
 		return NULL;
-	o->memp = SAU_create_MemPool(0);
-	if (!o->memp) {
-		free(o);
-		return NULL;
-	}
+	o->memp = mempool;
 	return o;
 }
 
@@ -180,7 +177,6 @@ void SAU_destroy_SymTab(SAU_SymTab *restrict o) {
 #if SAU_HASHTAB_STATS
 	printf("collision count: %zd\n", collision_count);
 #endif
-	SAU_destroy_MemPool(o->memp);
 	fini_HashTab(&o->strtab);
 }
 
