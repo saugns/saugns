@@ -12,12 +12,12 @@
  */
 
 #pragma once
-#include "../common.h"
+#include "../mempool.h"
 
 struct SAU_SymTab;
 typedef struct SAU_SymTab SAU_SymTab;
 
-SAU_SymTab *SAU_create_SymTab(void) sauMalloclike;
+SAU_SymTab *SAU_create_SymTab(SAU_MemPool *restrict mempool) sauMalloclike;
 void SAU_destroy_SymTab(SAU_SymTab *restrict o);
 
 const void *SAU_SymTab_pool_str(SAU_SymTab *restrict o,
