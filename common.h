@@ -53,7 +53,7 @@ void *SAU_memdup(const void *restrict src, size_t size) sauMalloclike;
  * Debugging options.
  */
 
-/* Run scanner instead of lexer in 'test-builder' program. */
+/* Run scanner directly instead of lexer in 'test-scan' program. */
 #define SAU_TEST_SCANNER 0
 /* Print test statistics for scanner. */
 #define SAU_SCANNER_STATS 0
