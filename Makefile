@@ -42,12 +42,29 @@ TEST1_OBJ=\
 	loader/lexer.o \
 	builder/scriptconv.o \
 	test-scan.o
+TEST2_OBJ=\
+	common.o \
+	arrtype.o \
+	ptrlist.o \
+	mempool.o \
+	ramp.o \
+	wave.o \
+	loader/file.o \
+	loader/symtab.o \
+	loader/scanner.o \
+	loader/parser.o \
+	loader/parseconv.o \
+	builder/builder.o \
+	builder/scriptconv.o \
+	interp/interp.o \
+	test-interp.o
 
 all: $(BIN)
-tests: test-scan
+tests: test-scan test-interp
 clean:
 	rm -f $(OBJ) $(BIN)
 	rm -f $(TEST1_OBJ) test-scan
+	rm -f $(TEST2_OBJ) test-interp
 install: $(BIN)
 	@if [ -d "$(DESTDIR)$(PREFIX)/man" ]; then \
 		MANDIR="man"; \
@@ -107,6 +124,9 @@ $(BIN): $(OBJ)
 		$(CC) $(OBJ) $(LFLAGS) -o $(BIN); \
 	fi
 
+test-interp: $(TEST2_OBJ)
+	$(CC) $(TEST2_OBJ) $(LFLAGS) -o test-interp
+
 test-scan: $(TEST1_OBJ)
 	$(CC) $(TEST1_OBJ) $(LFLAGS) -o test-scan
 
@@ -124,6 +144,9 @@ common.o: common.c common.h
 
 interp/generator.o: interp/generator.c interp/generator.h interp/mixer.h interp/osc.h program.h ramp.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS_FAST) interp/generator.c -o interp/generator.o
+
+interp/interp.o: interp/interp.c interp/interp.h result.h program.h ramp.h wave.h math.h common.h
+	$(CC) -c $(CFLAGS_FAST) interp/interp.c -o interp/interp.o
 
 interp/mixer.o: interp/mixer.c interp/mixer.h ramp.h math.h common.h
 	$(CC) -c $(CFLAGS_FAST) interp/mixer.c -o interp/mixer.o
@@ -172,6 +195,9 @@ saugns.o: saugns.c saugns.h ptrlist.h program.h ramp.h wave.h math.h common.h
 
 test-scan.o: test-scan.c saugns.h loader/lexer.h loader/scanner.h loader/file.h loader/symtab.h mempool.h ptrlist.h program.h ramp.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) test-scan.c
+
+test-interp.o: test-interp.c saugns.h interp/interp.h result.h ptrlist.h program.h ramp.h wave.h math.h common.h
+	$(CC) -c $(CFLAGS) test-interp.c
 
 wave.o: wave.c wave.h math.h common.h
 	$(CC) -c $(CFLAGS_FAST) wave.c

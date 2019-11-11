@@ -3,6 +3,7 @@
 
 *.o
 saugns
+test-interp
 test-scan
 
 *.[ch][-.]*
