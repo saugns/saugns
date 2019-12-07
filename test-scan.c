@@ -13,11 +13,11 @@
 
 #include "saugns.h"
 #if SAU_TEST_SCANNER
-# include "builder/scanner.h"
+# include "reader/scanner.h"
 #else
-# include "builder/lexer.h"
+# include "reader/lexer.h"
 #endif
-#include "builder/file.h"
+#include "reader/file.h"
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>

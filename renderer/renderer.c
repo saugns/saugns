@@ -11,11 +11,11 @@
  * <https://www.gnu.org/licenses/>.
  */
 
-#include "saugns.h"
-#include "renderer/generator.h"
+#include "../saugns.h"
 #include "audiodev.h"
 #include "wavfile.h"
-#include "time.h"
+#include "../interp/generator.h"
+#include "../time.h"
 #include <stdlib.h>
 
 #define BUF_TIME_MS  256

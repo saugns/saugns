@@ -21,10 +21,6 @@
 enum {
 	SAU_SDOP_NEW_CARRIER = 1<<0,
 	SAU_SDOP_LATER_USED = 1<<1,
-	SAU_SDOP_MULTIPLE = 1<<2,
-	SAU_SDOP_NESTED = 1<<3,
-	SAU_SDOP_SILENCE_ADDED = 1<<4,
-	SAU_SDOP_HAS_COMPOSITE = 1<<5,
 };
 
 /**
@@ -55,7 +51,6 @@ typedef struct SAU_ScriptOpData {
 enum {
 	SAU_SDEV_NEW_OPGRAPH = 1<<0,
 	SAU_SDEV_VOICE_LATER_USED = 1<<1,
-	SAU_SDEV_ADD_WAIT_DURATION = 1<<2,
 };
 
 /**
