@@ -553,7 +553,7 @@ static bool parse_waittime(ParseLevel *restrict pl) {
 "add wait for last duration before any parts given");
 			return false;
 		}
-		pl->last_event->ev_flags |= SAU_SDEV_ADD_WAIT_DURATION;
+		pl->last_event->ev_flags |= SAU_PDEV_ADD_WAIT_DURATION;
 	} else {
 		uint32_t wait_ms;
 		if (scan_time(sc, &wait_ms)) {
@@ -567,39 +567,39 @@ static bool parse_waittime(ParseLevel *restrict pl) {
  * Node- and scope-handling functions
  */
 
-/*
- * Clear list entries without freeing memory.
- *
- * The nodes and associated data remain in
- * the mempool instance used to allocate them.
- */
-static void clear_op_list(SAU_ParseOpList *restrict ol) {
-	ol->refs = NULL;
-	ol->new_refs = NULL;
-	ol->last_ref = NULL;
+static bool copy_op_list(SAU_ParseOpList **restrict ol,
+		const SAU_ParseOpList *restrict src_ol,
+		SAU_MemPool *restrict memp) {
+	if (!src_ol) {
+		*ol = NULL;
+		return true;
+	}
+	if (!*ol) *ol = SAU_MemPool_alloc(memp, sizeof(SAU_ParseOpList));
+	if (!*ol)
+		return false;
+	(*ol)->refs = src_ol->refs;
+	(*ol)->new_refs = NULL;
+	(*ol)->last_ref = NULL;
+	return true;
 }
 
-static void copy_op_list(SAU_ParseOpList *restrict ol,
-		const SAU_ParseOpList *restrict src_ol) {
-	ol->refs = src_ol->refs;
-	ol->new_refs = NULL;
-	ol->last_ref = NULL;
-}
-
-static SAU_ParseOpRef *op_list_add(SAU_ParseOpList *restrict ol,
+static SAU_ParseOpRef *op_list_add(SAU_ParseOpList **restrict ol,
 		SAU_ParseOpData *restrict data,
 		SAU_MemPool *restrict memp) {
+	if (!*ol) *ol = SAU_MemPool_alloc(memp, sizeof(SAU_ParseOpList));
+	if (!*ol)
+		return NULL;
 	SAU_ParseOpRef *ref = SAU_MemPool_alloc(memp, sizeof(SAU_ParseOpRef));
 	if (!ref)
 		return NULL;
 	ref->data = data;
-	if (!ol->refs)
-		ol->refs = ref;
-	if (!ol->new_refs)
-		ol->new_refs = ref;
+	if (!(*ol)->refs)
+		(*ol)->refs = ref;
+	if (!(*ol)->new_refs)
+		(*ol)->new_refs = ref;
 	else
-		ol->last_ref->next = ref;
-	ol->last_ref = ref;
+		(*ol)->last_ref->next = ref;
+	(*ol)->last_ref = ref;
 	return ref;
 }
 
@@ -616,14 +616,14 @@ static void end_operator(ParseLevel *restrict pl) {
 		op->op_params |= SAU_POPP_FREQ2;
 	if (SAU_Ramp_ENABLED(&op->amp)) {
 		op->op_params |= SAU_POPP_AMP;
-		if (!(op->op_flags & SAU_SDOP_NESTED)) {
+		if (!(op->op_flags & SAU_PDOP_NESTED)) {
 			op->amp.v0 *= sl->sopt.ampmult;
 			op->amp.vt *= sl->sopt.ampmult;
 		}
 	}
 	if (SAU_Ramp_ENABLED(&op->amp2)) {
 		op->op_params |= SAU_POPP_AMP2;
-		if (!(op->op_flags & SAU_SDOP_NESTED)) {
+		if (!(op->op_flags & SAU_PDOP_NESTED)) {
 			op->amp2.v0 *= sl->sopt.ampmult;
 			op->amp2.vt *= sl->sopt.ampmult;
 		}
@@ -685,7 +685,6 @@ static void begin_event(ParseLevel *restrict pl,
 	SAU_Ramp_reset(&e->pan);
 	if (prev_op_ref != NULL) {
 		SAU_ParseEvData *pve = prev_op_ref->data->event;
-		pve->ev_flags |= SAU_SDEV_VOICE_LATER_USED;
 		if (is_composite) {
 			if (!pl->composite) {
 				pve->composite = e;
@@ -693,11 +692,6 @@ static void begin_event(ParseLevel *restrict pl,
 			} else {
 				pve->next = e;
 			}
-		} else if (pve->composite != NULL) {
-			SAU_ParseEvData *last_ce = pve->composite;
-			while (last_ce->next != NULL)
-				last_ce = last_ce->next;
-			last_ce->ev_flags |= SAU_SDEV_VOICE_LATER_USED;
 		}
 		e->vo_prev = pve;
 	} else {
@@ -744,7 +738,7 @@ static void begin_operator(ParseLevel *restrict pl,
 	 * current event node, or to an operator node (ordinary or multiple)
 	 * in the case of operator linking/nesting.
 	 */
-	SAU_ParseOpList *ol;
+	SAU_ParseOpList **ol, *tmp_ol;
 	switch (link_type) {
 	case SAU_PDNL_FMODS:
 		ol = &pl->parent_op_ref->data->fmod_list;
@@ -756,11 +750,12 @@ static void begin_operator(ParseLevel *restrict pl,
 		ol = &pl->parent_op_ref->data->amod_list;
 		break;
 	default:
-		ol = &e->op_list;
+		tmp_ol = &e->op_list;
+		ol = &tmp_ol;
 		break;
 	}
 	SAU_ParseOpRef *ref = op_list_add(ol, op, o->mp);
-	if (ol != &e->op_list)
+	if (*ol != &e->op_list)
 		pl->parent_op_ref->data->op_params |= SAU_POPP_ADJCS;
 	pl->op_ref = ref;
 	if (!pl->first_op_ref)
@@ -776,23 +771,22 @@ static void begin_operator(ParseLevel *restrict pl,
 	SAU_Ramp_reset(&op->amp2);
 	if (prev_op_ref != NULL) {
 		SAU_ParseOpData *pop = prev_op_ref->data;
-		pop->op_flags |= SAU_SDOP_LATER_USED;
 		op->op_prev = pop;
 		op->op_flags = pop->op_flags &
-			(SAU_SDOP_NESTED | SAU_SDOP_MULTIPLE);
+			(SAU_PDOP_NESTED | SAU_PDOP_MULTIPLE);
 		if (is_composite) {
 			/*
 			 * Context-sensitive time default.
 			 */
-			pop->op_flags |= SAU_SDOP_HAS_COMPOSITE;
-			op->op_flags |= SAU_SDOP_TIME_DEFAULT;
+			pop->op_flags |= SAU_PDOP_HAS_COMPOSITE;
+			op->op_flags |= SAU_PDOP_TIME_DEFAULT;
 		}
 		op->time_ms = pop->time_ms;
 		op->wave = pop->wave;
 		op->phase = pop->phase;
-		copy_op_list(&op->fmod_list, &pop->fmod_list);
-		copy_op_list(&op->pmod_list, &pop->pmod_list);
-		copy_op_list(&op->amod_list, &pop->amod_list);
+		copy_op_list(&op->fmod_list, pop->fmod_list, o->mp);
+		copy_op_list(&op->pmod_list, pop->pmod_list, o->mp);
+		copy_op_list(&op->amod_list, pop->amod_list, o->mp);
 		if ((pl->pl_flags & SDPL_BIND_MULTIPLE) != 0) {
 			SAU_ParseOpData *mpop = pop;
 			uint32_t max_time = 0;
@@ -800,7 +794,7 @@ static void begin_operator(ParseLevel *restrict pl,
 				if (max_time < mpop->time_ms)
 					max_time = mpop->time_ms;
 			} while ((mpop = mpop->next_bound) != NULL);
-			op->op_flags |= SAU_SDOP_MULTIPLE;
+			op->op_flags |= SAU_PDOP_MULTIPLE;
 			op->time_ms = max_time;
 			pl->pl_flags &= ~SDPL_BIND_MULTIPLE;
 		}
@@ -810,12 +804,12 @@ static void begin_operator(ParseLevel *restrict pl,
 		 *
 		 * time default: depends on context
 		 */
-		op->op_flags = SAU_SDOP_TIME_DEFAULT;
+		op->op_flags = SAU_PDOP_TIME_DEFAULT;
 		op->time_ms = sl->sopt.def_time_ms;
 		if (!(pl->pl_flags & SDPL_NESTED_SCOPE)) {
 			op->freq.v0 = sl->sopt.def_freq;
 		} else {
-			op->op_flags |= SAU_SDOP_NESTED;
+			op->op_flags |= SAU_PDOP_NESTED;
 			op->freq.v0 = sl->sopt.def_relfreq;
 			op->freq.flags |= SAU_RAMP_STATE_RATIO;
 		}
@@ -981,9 +975,9 @@ static bool parse_ev_amp(ParseLevel *restrict pl) {
 		}
 	}
 	if (SAU_Scanner_tryc(sc, '~') && SAU_Scanner_tryc(sc, '[')) {
-		if (op->amod_list.refs != NULL) {
+		if (op->amod_list != NULL) {
 			op->op_params |= SAU_POPP_ADJCS;
-			clear_op_list(&op->amod_list);
+			op->amod_list = NULL;
 		}
 		parse_level(o, pl, SAU_PDNL_AMODS, SCOPE_NEST);
 	}
@@ -994,7 +988,7 @@ static bool parse_ev_freq(ParseLevel *restrict pl, bool rel_freq) {
 	SAU_Parser *o = pl->o;
 	SAU_Scanner *sc = o->sc;
 	SAU_ParseOpData *op = pl->op_ref->data;
-	if (rel_freq && !(op->op_flags & SAU_SDOP_NESTED))
+	if (rel_freq && !(op->op_flags & SAU_PDOP_NESTED))
 		return true; // reject
 	NumSym_f numsym_f = rel_freq ? NULL : scan_note;
 	if (SAU_Scanner_tryc(sc, '{')) {
@@ -1010,9 +1004,9 @@ static bool parse_ev_freq(ParseLevel *restrict pl, bool rel_freq) {
 		}
 	}
 	if (SAU_Scanner_tryc(sc, '~') && SAU_Scanner_tryc(sc, '[')) {
-		if (op->fmod_list.refs != NULL) {
+		if (op->fmod_list != NULL) {
 			op->op_params |= SAU_POPP_ADJCS;
-			clear_op_list(&op->fmod_list);
+			op->fmod_list = NULL;
 		}
 		parse_level(o, pl, SAU_PDNL_FMODS, SCOPE_NEST);
 	}
@@ -1030,9 +1024,9 @@ static bool parse_ev_phase(ParseLevel *restrict pl) {
 		op->op_params |= SAU_POPP_PHASE;
 	}
 	if (SAU_Scanner_tryc(sc, '+') && SAU_Scanner_tryc(sc, '[')) {
-		if (op->pmod_list.refs != NULL) {
+		if (op->pmod_list != NULL) {
 			op->op_params |= SAU_POPP_ADJCS;
-			clear_op_list(&op->pmod_list);
+			op->pmod_list = NULL;
 		}
 		parse_level(o, pl, SAU_PDNL_PMODS, SCOPE_NEST);
 	}
@@ -1088,20 +1082,20 @@ static bool parse_step(ParseLevel *restrict pl) {
 		case 't':
 			if (SAU_Scanner_tryc(sc, '*')) {
 				/* later fitted or kept at default value */
-				op->op_flags |= SAU_SDOP_TIME_DEFAULT;
+				op->op_flags |= SAU_PDOP_TIME_DEFAULT;
 				op->time_ms = sl->sopt.def_time_ms;
 			} else if (SAU_Scanner_tryc(sc, 'i')) {
-				if (!(op->op_flags & SAU_SDOP_NESTED)) {
+				if (!(op->op_flags & SAU_PDOP_NESTED)) {
 					SAU_Scanner_warning(sc, NULL,
 "ignoring 'ti' (infinite time) for non-nested operator");
 					break;
 				}
-				op->op_flags &= ~SAU_SDOP_TIME_DEFAULT;
+				op->op_flags &= ~SAU_PDOP_TIME_DEFAULT;
 				op->time_ms = SAU_TIME_INF;
+			} else if (scan_time(sc, &op->time_ms)) {
+				op->op_flags &= ~SAU_PDOP_TIME_DEFAULT;
 			} else {
-				if (scan_time(sc, &op->time_ms)) {
-					op->op_flags &= ~SAU_SDOP_TIME_DEFAULT;
-				}
+				break;
 			}
 			op->op_params |= SAU_POPP_TIME;
 			break;
