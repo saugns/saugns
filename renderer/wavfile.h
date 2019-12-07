@@ -1,5 +1,5 @@
-/* saugns: System audio output support module.
- * Copyright (c) 2011-2014, 2017-2019 Joel K. Pettersson
+/* saugns: WAV file writer module.
+ * Copyright (c) 2011-2012, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -12,15 +12,14 @@
  */
 
 #pragma once
-#include "common.h"
+#include "../common.h"
 
-struct SAU_AudioDev;
-typedef struct SAU_AudioDev SAU_AudioDev;
+struct SAU_WAVFile;
+typedef struct SAU_WAVFile SAU_WAVFile;
 
-SAU_AudioDev *SAU_open_AudioDev(uint16_t channels, uint32_t *restrict srate)
-	sauMalloclike;
-void SAU_close_AudioDev(SAU_AudioDev *restrict o);
+SAU_WAVFile *SAU_create_WAVFile(const char *restrict fpath,
+		uint16_t channels, uint32_t srate) sauMalloclike;
+int SAU_close_WAVFile(SAU_WAVFile *restrict o);
 
-uint32_t SAU_AudioDev_get_srate(const SAU_AudioDev *restrict o);
-bool SAU_AudioDev_write(SAU_AudioDev *restrict o,
+bool SAU_WAVFile_write(SAU_WAVFile *restrict o,
 		const int16_t *restrict buf, uint32_t samples);
