@@ -39,10 +39,24 @@ typedef struct SAU_ParseOpList {
 } SAU_ParseOpList;
 
 /**
+ * Parse data operator flags.
+ */
+enum {
+	SAU_PDOP_MULTIPLE = 1<<0,
+	SAU_PDOP_NESTED = 1<<1,
+	SAU_PDOP_HAS_COMPOSITE = 1<<2,
+	SAU_PDOP_TIME_DEFAULT = 1<<3,
+	SAU_PDOP_SILENCE_ADDED = 1<<4,
+	SAU_PDOP_IGNORED = 1<<5, // used by parseconv
+};
+
+/**
  * Node type for operator data.
  */
 typedef struct SAU_ParseOpData {
 	struct SAU_ParseEvData *event;
+	SAU_ParseOpList *next_list; // immediate next(s) for same op(s)
+	struct SAU_ParseOpData *prev; // previous for same op(s)
 	struct SAU_ParseOpData *next_bound;
 	uint32_t op_flags;
 	/* operator parameters */
@@ -52,13 +66,20 @@ typedef struct SAU_ParseOpData {
 	SAU_Ramp freq, freq2;
 	SAU_Ramp amp, amp2;
 	float phase;
-	struct SAU_ParseOpData *op_prev; /* preceding for same op(s) */
 	void *op_conv; // for parseconv
+	void *op_context; // for parseconv
 	/* node adjacents in operator linkage graph */
-	SAU_ParseOpList fmod_list;
-	SAU_ParseOpList pmod_list;
-	SAU_ParseOpList amod_list;
+	SAU_ParseOpList *fmod_list;
+	SAU_ParseOpList *pmod_list;
+	SAU_ParseOpList *amod_list;
 } SAU_ParseOpData;
+
+/**
+ * Parse data event flags.
+ */
+enum {
+	SAU_PDEV_ADD_WAIT_DURATION = 1<<0,
+};
 
 /**
  * Node type for event data. Includes any voice and operator data part
@@ -75,9 +96,11 @@ typedef struct SAU_ParseEvData {
 	/* voice parameters */
 	uint32_t vo_params;
 	struct SAU_ParseEvData *vo_prev; /* preceding event for voice */
+	void *vo_context; // for parseconv
 	SAU_Ramp pan;
 } SAU_ParseEvData;
 
+struct SAU_MemPool;
 struct SAU_SymTab;
 
 /**
@@ -88,7 +111,7 @@ typedef struct SAU_Parse {
 	const char *name; // currently simply set to the filename
 	SAU_ScriptOptions sopt;
 	struct SAU_SymTab *symtab;
-	void *mem; // for internal use
+	struct SAU_MemPool *mem; // internally used, provided until destroy
 } SAU_Parse;
 
 SAU_Parse *SAU_create_Parse(const char *restrict script_arg, bool is_path);
