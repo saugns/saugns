@@ -551,7 +551,7 @@ static bool parse_waittime(ParseLevel *restrict pl) {
 "add wait for last duration before any parts given");
 			return false;
 		}
-		pl->last_event->ev_flags |= SAU_SDEV_ADD_WAIT_DURATION;
+		pl->last_event->ev_flags |= SAU_PDEV_ADD_WAIT_DURATION;
 	} else {
 		uint32_t wait_ms;
 		if (scan_time(sc, &wait_ms)) {
@@ -677,7 +677,6 @@ static void begin_event(ParseLevel *restrict pl,
 	SAU_Ramp_reset(&e->pan);
 	if (prev_op_ref != NULL) {
 		SAU_ParseEvData *pve = prev_op_ref->data->event;
-		pve->ev_flags |= SAU_SDEV_VOICE_LATER_USED;
 		if (is_composite) {
 			if (!pl->composite) {
 				pve->composite = e;
@@ -685,11 +684,6 @@ static void begin_event(ParseLevel *restrict pl,
 			} else {
 				pve->next = e;
 			}
-		} else if (pve->composite != NULL) {
-			SAU_ParseEvData *last_ce = pve->composite;
-			while (last_ce->next != NULL)
-				last_ce = last_ce->next;
-			last_ce->ev_flags |= SAU_SDEV_VOICE_LATER_USED;
 		}
 		e->vo_prev = pve;
 	} else {
@@ -767,12 +761,11 @@ static void begin_operator(ParseLevel *restrict pl,
 	SAU_Ramp_reset(&op->amp2);
 	if (prev_op_ref != NULL) {
 		SAU_ParseOpData *pop = prev_op_ref->data;
-		pop->op_flags |= SAU_SDOP_LATER_USED;
 		op->op_prev = pop;
 		op->op_flags = pop->op_flags &
-			(SAU_SDOP_NESTED | SAU_SDOP_MULTIPLE);
+			(SAU_PDOP_NESTED | SAU_PDOP_MULTIPLE);
 		if (is_composite) /* time default: previous or infinite time */
-			op->op_flags |= SAU_SDOP_TIME_DEFAULT;
+			op->op_flags |= SAU_PDOP_TIME_DEFAULT;
 		op->time_ms = pop->time_ms;
 		op->wave = pop->wave;
 		op->phase = pop->phase;
@@ -786,7 +779,7 @@ static void begin_operator(ParseLevel *restrict pl,
 				if (max_time < mpop->time_ms)
 					max_time = mpop->time_ms;
 			} while ((mpop = mpop->next_bound) != NULL);
-			op->op_flags |= SAU_SDOP_MULTIPLE;
+			op->op_flags |= SAU_PDOP_MULTIPLE;
 			op->time_ms = max_time;
 			pl->pl_flags &= ~SDPL_BIND_MULTIPLE;
 		}
@@ -796,12 +789,12 @@ static void begin_operator(ParseLevel *restrict pl,
 		 *
 		 * time default: depends on context
 		 */
-		op->op_flags = SAU_SDOP_TIME_DEFAULT;
+		op->op_flags = SAU_PDOP_TIME_DEFAULT;
 		op->time_ms = sl->sopt.def_time_ms;
 		if (!(pl->pl_flags & SDPL_NESTED_SCOPE)) {
 			op->freq.v0 = sl->sopt.def_freq;
 		} else {
-			op->op_flags |= SAU_SDOP_NESTED;
+			op->op_flags |= SAU_PDOP_NESTED;
 			op->freq.v0 = sl->sopt.def_relfreq;
 			op->freq.flags |= SAU_RAMP_STATE_RATIO;
 		}
@@ -1072,7 +1065,7 @@ static bool parse_step(ParseLevel *restrict pl) {
 		case 't':
 			if (SAU_Scanner_tryc(sc, '*')) {
 				/* later fitted or kept at default value */
-				op->op_flags |= SAU_SDOP_TIME_DEFAULT;
+				op->op_flags |= SAU_PDOP_TIME_DEFAULT;
 				op->time_ms = sl->sopt.def_time_ms;
 			} else if (SAU_Scanner_tryc(sc, 'i')) {
 				if (!(pl->pl_flags & SDPL_NESTED_SCOPE)) {
@@ -1080,12 +1073,12 @@ static bool parse_step(ParseLevel *restrict pl) {
 "ignoring 'ti' (infinite time) for non-nested operator");
 					break;
 				}
-				op->op_flags &= ~SAU_SDOP_TIME_DEFAULT;
+				op->op_flags &= ~SAU_PDOP_TIME_DEFAULT;
 				op->time_ms = SAU_TIME_INF;
+			} else if (scan_time(sc, &op->time_ms)) {
+				op->op_flags &= ~SAU_PDOP_TIME_DEFAULT;
 			} else {
-				if (scan_time(sc, &op->time_ms)) {
-					op->op_flags &= ~SAU_SDOP_TIME_DEFAULT;
-				}
+				break;
 			}
 			op->op_params |= SAU_POPP_TIME;
 			break;
