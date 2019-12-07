@@ -257,8 +257,6 @@ static void ScriptConv_convert_ops(ScriptConv *restrict o,
 	ops = (SAU_ScriptOpData**) SAU_PtrList_ITEMS(op_list);
 	for (size_t i = op_list->old_count; i < op_list->count; ++i) {
 		SAU_ScriptOpData *op = ops[i];
-		// TODO: handle multiple operator nodes
-		if (op->op_flags & SAU_SDOP_MULTIPLE) continue;
 		uint32_t op_id = SAU_OpAlloc_update(&o->oa, op);
 		ScriptConv_convert_opdata(o, op, op_id);
 	}
