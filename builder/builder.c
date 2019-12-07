@@ -11,8 +11,8 @@
  * <https://www.gnu.org/licenses/>.
  */
 
-#include "saugns.h"
-#include "script.h"
+#include "../saugns.h"
+#include "../script.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
