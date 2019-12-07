@@ -17,34 +17,56 @@
 #include "../help.h"
 
 /**
- * Node link types.
+ * Node reference modes.
  */
 enum {
-	SAU_PDNL_REFER = 0,
-	SAU_PDNL_GRAPH,
-	SAU_PDNL_FMODS,
-	SAU_PDNL_PMODS,
-	SAU_PDNL_AMODS,
+	SAU_PDNR_UPDATE = 0,
+	SAU_PDNR_ADD = 1<<0,
 };
 
 typedef struct SAU_ParseOpRef {
 	struct SAU_ParseOpRef *next;
 	struct SAU_ParseOpData *data;
 	SAU_SymStr *label;
-	uint8_t link_type;
+	uint8_t mode;
+	uint8_t list_type;
 } SAU_ParseOpRef;
+
+/**
+ * Node list types.
+ */
+enum {
+	SAU_PDNL_GRAPH = 0,
+	SAU_PDNL_FMODS,
+	SAU_PDNL_PMODS,
+	SAU_PDNL_AMODS,
+};
 
 typedef struct SAU_ParseOpList {
 	SAU_ParseOpRef *refs;
 	SAU_ParseOpRef *new_refs; // NULL on copy
 	SAU_ParseOpRef *last_ref; // NULL on copy
+	uint8_t type;
 } SAU_ParseOpList;
+
+/**
+ * Parse data operator flags.
+ */
+enum {
+	SAU_PDOP_MULTIPLE = 1<<0,
+	SAU_PDOP_NESTED = 1<<1,
+	SAU_PDOP_HAS_COMPOSITE = 1<<2,
+	SAU_PDOP_TIME_DEFAULT = 1<<3,
+	SAU_PDOP_SILENCE_ADDED = 1<<4,
+	SAU_PDOP_IGNORED = 1<<5, // used by parseconv
+};
 
 /**
  * Node type for operator data.
  */
 typedef struct SAU_ParseOpData {
 	struct SAU_ParseEvData *event;
+	struct SAU_ParseOpData *prev; // previous for same op(s)
 	struct SAU_ParseOpData *next_bound;
 	uint32_t op_flags;
 	/* operator parameters */
@@ -55,13 +77,20 @@ typedef struct SAU_ParseOpData {
 	SAU_Ramp freq, freq2;
 	SAU_Ramp amp, amp2;
 	float phase;
-	struct SAU_ParseOpData *op_prev; /* preceding for same op(s) */
 	void *op_conv; // for parseconv
+	void *op_context; // for parseconv
 	/* node adjacents in operator linkage graph */
-	SAU_ParseOpList fmod_list;
-	SAU_ParseOpList pmod_list;
-	SAU_ParseOpList amod_list;
+	SAU_ParseOpList *fmod_list;
+	SAU_ParseOpList *pmod_list;
+	SAU_ParseOpList *amod_list;
 } SAU_ParseOpData;
+
+/**
+ * Parse data event flags.
+ */
+enum {
+	SAU_PDEV_ADD_WAIT_DURATION = 1<<0,
+};
 
 /**
  * Node type for event data. Includes any voice and operator data part
@@ -77,10 +106,12 @@ typedef struct SAU_ParseEvData {
 	void *ev_conv; // for parseconv
 	/* voice parameters */
 	uint32_t vo_params;
-	struct SAU_ParseEvData *vo_prev; /* preceding event for voice */
+	struct SAU_ParseEvData *vo_prev; /* preceding event for same voice */
+	void *vo_context; // for parseconv
 	SAU_Ramp pan;
 } SAU_ParseEvData;
 
+struct SAU_MemPool;
 struct SAU_SymTab;
 
 /**
@@ -91,7 +122,7 @@ typedef struct SAU_Parse {
 	const char *name; // currently simply set to the filename
 	SAU_ScriptOptions sopt;
 	struct SAU_SymTab *symtab;
-	void *mem; // for internal use
+	struct SAU_MemPool *mem; // internally used, provided until destroy
 } SAU_Parse;
 
 SAU_Parse *SAU_create_Parse(const char *restrict script_arg, bool is_path)
