@@ -15,27 +15,35 @@
 #include "../script.h"
 
 /**
- * Node link types.
+ * Node reference modes.
  */
 enum {
-	SAU_PDNL_REFER = 0,
-	SAU_PDNL_GRAPH,
-	SAU_PDNL_FMODS,
-	SAU_PDNL_PMODS,
-	SAU_PDNL_AMODS,
+	SAU_PDNR_UPDATE = 0,
+	SAU_PDNR_ADD = 1<<0,
 };
 
 typedef struct SAU_ParseOpRef {
 	struct SAU_ParseOpRef *next;
 	struct SAU_ParseOpData *data;
 	const char *label;
-	uint8_t link_type;
+	uint8_t mode;
 } SAU_ParseOpRef;
+
+/**
+ * Node list types.
+ */
+enum {
+	SAU_PDNL_GRAPH = 0,
+	SAU_PDNL_FMODS,
+	SAU_PDNL_PMODS,
+	SAU_PDNL_AMODS,
+};
 
 typedef struct SAU_ParseOpList {
 	SAU_ParseOpRef *refs;
 	SAU_ParseOpRef *new_refs; // NULL on copy
 	SAU_ParseOpRef *last_ref; // NULL on copy
+	uint8_t type;
 } SAU_ParseOpList;
 
 /**

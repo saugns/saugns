@@ -529,11 +529,12 @@ typedef struct ParseLevel {
 	uint32_t pl_flags;
 	uint8_t location;
 	uint8_t scope;
+	uint8_t list_type;
+	uint8_t last_list_type; /* FIXME: kludge */
 	SAU_ParseEvData *event, *last_event;
 	SAU_ParseOpRef *op_ref, *parent_op_ref;
 	SAU_ParseOpRef *first_op_ref;
 	SAU_ParseOpData *last_op;
-	uint8_t last_link_type; /* FIXME: kludge */
 	const char *set_label; /* label assigned to next node */
 	/* timing/delay */
 	SAU_ParseEvData *group_from; /* where to begin for group_events() */
@@ -565,6 +566,15 @@ static bool parse_waittime(ParseLevel *restrict pl) {
  * Node- and scope-handling functions
  */
 
+static SAU_ParseOpList *create_op_list(uint8_t list_type,
+		SAU_MemPool *restrict memp) {
+	SAU_ParseOpList *ol = SAU_MemPool_alloc(memp, sizeof(SAU_ParseOpList));
+	if (!ol)
+		return NULL;
+	ol->type = list_type;
+	return ol;
+}
+
 static bool copy_op_list(SAU_ParseOpList **restrict ol,
 		const SAU_ParseOpList *restrict src_ol,
 		SAU_MemPool *restrict memp) {
@@ -578,15 +588,13 @@ static bool copy_op_list(SAU_ParseOpList **restrict ol,
 	(*ol)->refs = src_ol->refs;
 	(*ol)->new_refs = NULL;
 	(*ol)->last_ref = NULL;
+	(*ol)->type = src_ol->type;
 	return true;
 }
 
 static SAU_ParseOpRef *op_list_add(SAU_ParseOpList **restrict ol,
 		SAU_ParseOpData *restrict data,
 		SAU_MemPool *restrict memp) {
-	if (!*ol) *ol = SAU_MemPool_alloc(memp, sizeof(SAU_ParseOpList));
-	if (!*ol)
-		return NULL;
 	SAU_ParseOpRef *ref = SAU_MemPool_alloc(memp, sizeof(SAU_ParseOpRef));
 	if (!ref)
 		return NULL;
@@ -719,12 +727,55 @@ static void begin_event(ParseLevel *restrict pl,
 }
 
 /*
+ * Add new operator to parent(s), ie. either to the
+ * current event node, or to an operator node (ordinary or multiple)
+ * in the case of operator linking/nesting.
+ */
+static SAU_ParseOpRef *list_operator(ParseLevel *restrict pl,
+		SAU_ParseOpData *od, uint8_t ref_mode) {
+	SAU_Parser *o = pl->o;
+	SAU_ParseEvData *e = pl->event;
+	SAU_ParseOpList **ol, *tmp_ol;
+	if (ref_mode & SAU_PDNR_ADD) {
+		switch (pl->list_type) {
+		case SAU_PDNL_FMODS:
+			ol = &pl->parent_op_ref->data->fmod_list;
+			break;
+		case SAU_PDNL_PMODS:
+			ol = &pl->parent_op_ref->data->pmod_list;
+			break;
+		case SAU_PDNL_AMODS:
+			ol = &pl->parent_op_ref->data->amod_list;
+			break;
+		default:
+			tmp_ol = &e->op_list;
+			ol = &tmp_ol;
+			break;
+		}
+	} else {
+		tmp_ol = &e->op_list;
+		ol = &tmp_ol;
+	}
+	if (!*ol)
+		*ol = create_op_list(pl->list_type, o->mp);
+	SAU_ParseOpRef *ref = op_list_add(ol, od, o->mp);
+	if (*ol != &e->op_list)
+		pl->parent_op_ref->data->op_params |= SAU_POPP_ADJCS;
+	pl->op_ref = ref;
+	if (!pl->first_op_ref)
+		pl->first_op_ref = ref;
+	ref->mode = ref_mode;
+	pl->last_list_type = pl->list_type; /* FIXME: kludge */
+	return ref;
+}
+
+/*
  * Begin a new operator - depending on the context, either for the present
  * event or for a new event begun.
  */
 static void begin_operator(ParseLevel *restrict pl,
 		SAU_ParseOpRef *restrict prev_op_ref,
-		uint8_t link_type, bool is_composite) {
+		uint8_t ref_mode, bool is_composite) {
 	SAU_Parser *o = pl->o;
 	ScanLookup *sl = &o->sl;
 	if (!pl->event || /* not in event means previous implicitly ended */
@@ -739,35 +790,7 @@ static void begin_operator(ParseLevel *restrict pl,
 	SAU_ParseOpData *op = SAU_MemPool_alloc(o->mp, sizeof(SAU_ParseOpData));
 	if (!is_composite && pl->last_op != NULL)
 		pl->last_op->next_bound = op;
-	/*
-	 * Add new operator to parent(s), ie. either to the
-	 * current event node, or to an operator node (ordinary or multiple)
-	 * in the case of operator linking/nesting.
-	 */
-	SAU_ParseOpList **ol, *tmp_ol;
-	switch (link_type) {
-	case SAU_PDNL_FMODS:
-		ol = &pl->parent_op_ref->data->fmod_list;
-		break;
-	case SAU_PDNL_PMODS:
-		ol = &pl->parent_op_ref->data->pmod_list;
-		break;
-	case SAU_PDNL_AMODS:
-		ol = &pl->parent_op_ref->data->amod_list;
-		break;
-	default:
-		tmp_ol = &e->op_list;
-		ol = &tmp_ol;
-		break;
-	}
-	SAU_ParseOpRef *ref = op_list_add(ol, op, o->mp);
-	if (*ol != &e->op_list)
-		pl->parent_op_ref->data->op_params |= SAU_POPP_ADJCS;
-	pl->op_ref = ref;
-	if (!pl->first_op_ref)
-		pl->first_op_ref = ref;
-	ref->link_type = link_type;
-	pl->last_link_type = link_type; /* FIXME: kludge */
+	SAU_ParseOpRef *ref = list_operator(pl, op, ref_mode);
 	/*
 	 * Initialize node.
 	 */
@@ -836,10 +859,12 @@ static void begin_operator(ParseLevel *restrict pl,
 }
 
 static void begin_scope(SAU_Parser *restrict o, ParseLevel *restrict pl,
-		ParseLevel *restrict parent_pl, uint8_t newscope) {
+		ParseLevel *restrict parent_pl,
+		uint8_t list_type, uint8_t newscope) {
 	*pl = (ParseLevel){0};
 	pl->o = o;
 	pl->scope = newscope;
+	pl->list_type = list_type;
 	if (!parent_pl) // newscope == SCOPE_TOP
 		return;
 	pl->parent = parent_pl;
@@ -890,8 +915,11 @@ static void end_scope(ParseLevel *restrict pl) {
 		 */
 		if (pl->first_op_ref != NULL) {
 			pl->parent->pl_flags |= SDPL_BIND_MULTIPLE;
+			uint8_t list_type = pl->parent->list_type;
+			pl->parent->list_type = pl->parent->last_list_type;
 			begin_operator(pl->parent, pl->first_op_ref,
-					pl->parent->last_link_type, false);
+					SAU_PDNR_UPDATE, false);
+			pl->parent->list_type = list_type;
 		}
 		break;
 	case SCOPE_NEST:
@@ -955,7 +983,7 @@ UNKNOWN:
 }
 
 static bool parse_level(SAU_Parser *restrict o, ParseLevel *restrict parent_pl,
-		uint8_t link_type, uint8_t newscope);
+		uint8_t list_type, uint8_t newscope);
 
 static bool parse_ev_amp(ParseLevel *restrict pl) {
 	SAU_Parser *o = pl->o;
@@ -1067,7 +1095,7 @@ static bool parse_step(ParseLevel *restrict pl) {
 		case '\\':
 			if (parse_waittime(pl)) {
 				begin_operator(pl, pl->op_ref,
-						SAU_PDNL_REFER, false);
+						SAU_PDNR_UPDATE, false);
 			}
 			break;
 		case 'a':
@@ -1127,13 +1155,13 @@ enum {
 	DEFERRED_SETTINGS = 1<<2,
 };
 static bool parse_level(SAU_Parser *restrict o, ParseLevel *restrict parent_pl,
-		uint8_t link_type, uint8_t newscope) {
+		uint8_t list_type, uint8_t newscope) {
 	ParseLevel pl;
 	const char *label;
 	size_t label_len;
 	uint8_t flags = 0;
 	bool endscope = false;
-	begin_scope(o, &pl, parent_pl, newscope);
+	begin_scope(o, &pl, parent_pl, list_type, newscope);
 	++o->call_level;
 	SAU_Scanner *sc = o->sc;
 	for (;;) {
@@ -1169,7 +1197,7 @@ static bool parse_level(SAU_Parser *restrict o, ParseLevel *restrict parent_pl,
 		case ';':
 			if (pl.location == SDPL_IN_DEFAULTS || !pl.event)
 				goto INVALID;
-			begin_operator(&pl, pl.op_ref, SAU_PDNL_REFER, true);
+			begin_operator(&pl, pl.op_ref, SAU_PDNR_UPDATE, true);
 			flags = parse_step(&pl) ?
 				(HANDLE_DEFER | DEFERRED_STEP) :
 				0;
@@ -1177,7 +1205,7 @@ static bool parse_level(SAU_Parser *restrict o, ParseLevel *restrict parent_pl,
 		case '@':
 			if (SAU_Scanner_tryc(sc, '[')) {
 				end_operator(&pl);
-				if (parse_level(o, &pl, link_type, SCOPE_BIND))
+				if (parse_level(o, &pl, list_type, SCOPE_BIND))
 					goto RETURN;
 				/*
 				 * Multiple-operator node now open.
@@ -1205,7 +1233,7 @@ static bool parse_level(SAU_Parser *restrict o, ParseLevel *restrict parent_pl,
 "ignoring reference to undefined label");
 				else {
 					begin_operator(&pl, ref,
-							SAU_PDNL_REFER, false);
+							SAU_PDNR_UPDATE, false);
 					flags = parse_step(&pl) ?
 						(HANDLE_DEFER | DEFERRED_STEP) :
 						0;
@@ -1216,7 +1244,7 @@ static bool parse_level(SAU_Parser *restrict o, ParseLevel *restrict parent_pl,
 			size_t wave;
 			if (!scan_wavetype(sc, &wave))
 				break;
-			begin_operator(&pl, NULL, link_type, false);
+			begin_operator(&pl, NULL, SAU_PDNR_ADD, false);
 			pl.op_ref->data->wave = wave;
 			flags = parse_step(&pl) ?
 				(HANDLE_DEFER | DEFERRED_STEP) :
@@ -1228,7 +1256,7 @@ static bool parse_level(SAU_Parser *restrict o, ParseLevel *restrict parent_pl,
 				0;
 			break;
 		case '[':
-			if (parse_level(o, &pl, link_type, SCOPE_NEST))
+			if (parse_level(o, &pl, list_type, SCOPE_NEST))
 				goto RETURN;
 			break;
 		case '\\':
