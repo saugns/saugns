@@ -72,15 +72,6 @@ typedef struct SAU_ParseOpData {
 } SAU_ParseOpData;
 
 /**
- * Node type for voice data.
- */
-typedef struct SAU_ParseVoData {
-	struct SAU_ParseEvData *event;
-	uint32_t vo_params;
-	SAU_Ramp pan;
-} SAU_ParseVoData;
-
-/**
  * Parse data event flags.
  */
 enum {
@@ -99,7 +90,8 @@ typedef struct SAU_ParseEvData {
 	uint32_t ev_flags;
 	SAU_ParseOpList op_list; // immediately included operator references
 	void *ev_conv; // for parseconv
-	SAU_ParseVoData *vo_data;
+	uint32_t vo_params;
+	SAU_Ramp pan;
 	struct SAU_ParseEvData *vo_prev; /* preceding event for same voice */
 	void *vo_context; // for parseconv
 } SAU_ParseEvData;

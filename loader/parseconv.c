@@ -102,17 +102,17 @@ static void time_operator(SAU_ParseOpData *restrict op) {
 	op_list_fornew(op->amod_list, time_operator);
 }
 
-static void time_voice(SAU_ParseVoData *restrict vd) {
+static void time_voice(SAU_ParseEvData *restrict e) {
 	/*
 	 * Fill in blank ramp durations, handle silence as well as the case of
 	 * adding present event duration to wait time of next event.
 	 */
-	if (vd->pan.time_ms == SAU_TIME_DEFAULT)
-		vd->pan.time_ms = 1000; /* FIXME! */
+	if (e->pan.time_ms == SAU_TIME_DEFAULT)
+		e->pan.time_ms = 1000; /* FIXME! */
 }
 
 static void time_event(SAU_ParseEvData *restrict e) {
-	if (e->vo_data != NULL) time_voice(e->vo_data);
+	if (e->vo_params != 0) time_voice(e);
 	op_list_fornew(&e->op_list, time_operator);
 	/*
 	 * Timing for composites - done before event list flattened.
@@ -351,7 +351,6 @@ ERROR:
  */
 static bool ParseConv_add_vodata(ParseConv *restrict o,
 		SAU_ParseEvData *restrict pe) {
-	SAU_ParseVoData *pvd = pe->vo_data;
 	SAU_ScriptEvData *e = pe->ev_conv;
 	VoContext *vc;
 	if (!pe->vo_prev) {
@@ -366,10 +365,8 @@ static bool ParseConv_add_vodata(ParseConv *restrict o,
 	}
 	vc->newest = pe;
 	pe->vo_context = vc;
-	if (!pe->vo_data)
-		return true;
-	e->vo_params = pvd->vo_params;
-	e->pan = pvd->pan;
+	e->vo_params = pe->vo_params;
+	e->pan = pe->pan;
 	return true;
 
 ERROR:

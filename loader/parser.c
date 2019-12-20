@@ -531,7 +531,7 @@ typedef struct ParseLevel {
 	uint8_t scope;
 	SAU_ParseEvData *event, *last_event;
 	SAU_ParseOpRef *op_ref, *parent_op_ref;
-	SAU_ParseOpRef *prev_op_ref, *first_op_ref;
+	SAU_ParseOpRef *first_op_ref;
 	SAU_ParseOpData *last_op;
 	uint8_t last_link_type; /* FIXME: kludge */
 	const char *set_label; /* label assigned to next node */
@@ -648,17 +648,17 @@ static void end_operator(ParseLevel *restrict pl) {
 }
 
 static void end_voice_update(ParseLevel *restrict pl) {
-	if (!pl->event || !pl->event->vo_data)
+	if (!pl->event)
 		return;
-	SAU_ParseVoData *vd = pl->event->vo_data;
-	if (SAU_Ramp_ENABLED(&vd->pan))
-		vd->vo_params |= SAU_PVOP_PAN;
-	SAU_ParseEvData *pve = pl->event->vo_prev;
+	SAU_ParseEvData *e = pl->event;
+	if (SAU_Ramp_ENABLED(&e->pan))
+		e->vo_params |= SAU_PVOP_PAN;
+	SAU_ParseEvData *pve = e->vo_prev;
 	if (!pve) {
 		/*
 		 * Reset all voice state for initial event.
 		 */
-		vd->vo_params |= SAU_PVOP_PAN;
+		e->vo_params |= SAU_PVOP_PAN;
 	}
 }
 
@@ -672,7 +672,20 @@ static void end_event(ParseLevel *restrict pl) {
 	pl->event = NULL;
 }
 
+static void begin_voice_update(ParseLevel *restrict pl) {
+	SAU_ParseEvData *e = pl->event;
+	SAU_Ramp_reset(&e->pan);
+	if (!e->vo_prev) {
+		/*
+		 * New voice with initial parameter values.
+		 */
+		e->pan.v0 = 0.5f; /* center */
+		e->pan.flags |= SAU_RAMP_STATE;
+	}
+}
+
 static void begin_event(ParseLevel *restrict pl,
+		SAU_ParseEvData *restrict prev_e,
 		bool is_composite) {
 	SAU_Parser *o = pl->o;
 	end_event(pl);
@@ -680,8 +693,8 @@ static void begin_event(ParseLevel *restrict pl,
 	pl->event = e;
 	e->wait_ms = pl->next_wait_ms;
 	pl->next_wait_ms = 0;
-	if (pl->prev_op_ref != NULL) {
-		SAU_ParseEvData *pve = pl->prev_op_ref->data->event;
+	if (prev_e != NULL) {
+		SAU_ParseEvData *pve = prev_e;
 		if (is_composite) {
 			if (!pl->composite) {
 				pve->composite = e;
@@ -702,24 +715,7 @@ static void begin_event(ParseLevel *restrict pl,
 		o->ev = e;
 		pl->composite = NULL;
 	}
-}
-
-static void begin_voice_update(ParseLevel *restrict pl) {
-	if (pl->event->vo_data != NULL)
-		return;
-	SAU_Parser *o = pl->o;
-	SAU_ParseEvData *e = pl->event;
-	SAU_ParseVoData *vd = SAU_MemPool_alloc(o->mp, sizeof(SAU_ParseVoData));
-	e->vo_data = vd;
-	vd->event = e;
-	SAU_Ramp_reset(&vd->pan);
-	if (!e->vo_prev) {
-		/*
-		 * New voice with initial parameter values.
-		 */
-		vd->pan.v0 = 0.5f; /* center */
-		vd->pan.flags |= SAU_RAMP_STATE;
-	}
+	begin_voice_update(pl);
 }
 
 /*
@@ -731,12 +727,13 @@ static void begin_operator(ParseLevel *restrict pl,
 		uint8_t link_type, bool is_composite) {
 	SAU_Parser *o = pl->o;
 	ScanLookup *sl = &o->sl;
-	pl->prev_op_ref = prev_op_ref;
 	if (!pl->event || /* not in event means previous implicitly ended */
 			pl->location != SDPL_IN_EVENT ||
 			pl->next_wait_ms ||
 			is_composite)
-		begin_event(pl, is_composite);
+		begin_event(pl, (prev_op_ref != NULL ?
+					prev_op_ref->data->event : NULL),
+				is_composite);
 	SAU_ParseEvData *e = pl->event;
 	end_operator(pl);
 	SAU_ParseOpData *op = SAU_MemPool_alloc(o->mp, sizeof(SAU_ParseOpData));
@@ -761,7 +758,6 @@ static void begin_operator(ParseLevel *restrict pl,
 	default:
 		tmp_ol = &e->op_list;
 		ol = &tmp_ol;
-		begin_voice_update(pl);
 		break;
 	}
 	SAU_ParseOpRef *ref = op_list_add(ol, op, o->mp);
@@ -909,11 +905,6 @@ static void end_scope(ParseLevel *restrict pl) {
  * Main parser functions
  */
 
-static SAU_ParseVoData *get_vodata(ParseLevel *restrict pl) {
-	begin_voice_update(pl);
-	return pl->event->vo_data;
-}
-
 static bool parse_settings(ParseLevel *restrict pl) {
 	SAU_Parser *o = pl->o;
 	ScanLookup *sl = &o->sl;
@@ -1046,11 +1037,11 @@ static bool parse_ev_pan(ParseLevel *restrict pl) {
 	SAU_Scanner *sc = o->sc;
 	if ((pl->pl_flags & SDPL_NESTED_SCOPE) != 0)
 		return true; // reject
-	SAU_ParseVoData *vd = get_vodata(pl);
+	SAU_ParseEvData *e = pl->event;
 	if (SAU_Scanner_tryc(sc, '{')) {
-		scan_ramp(sc, NULL, &vd->pan, false);
+		scan_ramp(sc, NULL, &e->pan, false);
 	} else {
-		scan_ramp_state(sc, NULL, &vd->pan, false);
+		scan_ramp_state(sc, NULL, &e->pan, false);
 	}
 	return false;
 }
