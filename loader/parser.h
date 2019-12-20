@@ -66,9 +66,9 @@ typedef struct SAU_ParseOpData {
 	void *op_conv; // for parseconv
 	void *op_context; // for parseconv
 	/* node adjacents in operator linkage graph */
-	SAU_ParseOpList fmod_list;
-	SAU_ParseOpList pmod_list;
-	SAU_ParseOpList amod_list;
+	SAU_ParseOpList *fmod_list;
+	SAU_ParseOpList *pmod_list;
+	SAU_ParseOpList *amod_list;
 } SAU_ParseOpData;
 
 /**

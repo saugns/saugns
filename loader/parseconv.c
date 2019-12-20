@@ -71,6 +71,8 @@ op_ref == e->op_list.last_ref && (op->op_flags & SAU_PDOP_TIME_DEFAULT) != 0) {
 
 static void op_list_fornew(SAU_ParseOpList *restrict ol,
 		void (*on_op)(SAU_ParseOpData *restrict data)) {
+	if (!ol)
+		return;
 	SAU_ParseOpRef *op_ref = ol->new_refs;
 	for (; op_ref != NULL; op_ref = op_ref->next) on_op(op_ref->data);
 }
@@ -95,9 +97,9 @@ static void time_operator(SAU_ParseOpData *restrict op) {
 		if (e->next != NULL) e->next->wait_ms += op->time_ms;
 		e->ev_flags &= ~SAU_PDEV_ADD_WAIT_DURATION;
 	}
-	op_list_fornew(&op->fmod_list, time_operator);
-	op_list_fornew(&op->pmod_list, time_operator);
-	op_list_fornew(&op->amod_list, time_operator);
+	op_list_fornew(op->fmod_list, time_operator);
+	op_list_fornew(op->pmod_list, time_operator);
+	op_list_fornew(op->amod_list, time_operator);
 }
 
 static void time_event(SAU_ParseEvData *restrict e) {
@@ -280,15 +282,17 @@ ERROR:
  */
 static bool ParseConv_add_ops(ParseConv *restrict o,
 		const SAU_ParseOpList *restrict pod_list) {
+	if (!pod_list)
+		return true;
 	SAU_ParseOpRef *pod_ref = pod_list->new_refs;
 	for (; pod_ref != NULL; pod_ref = pod_ref->next) {
 		SAU_ParseOpData *pod = pod_ref->data;
 		// TODO: handle multiple operator nodes
 		if (pod->op_flags & SAU_PDOP_MULTIPLE) continue;
 		if (!ParseConv_add_opdata(o, pod_ref)) goto ERROR;
-		if (!ParseConv_add_ops(o, &pod->fmod_list)) goto ERROR;
-		if (!ParseConv_add_ops(o, &pod->pmod_list)) goto ERROR;
-		if (!ParseConv_add_ops(o, &pod->amod_list)) goto ERROR;
+		if (!ParseConv_add_ops(o, pod->fmod_list)) goto ERROR;
+		if (!ParseConv_add_ops(o, pod->pmod_list)) goto ERROR;
+		if (!ParseConv_add_ops(o, pod->amod_list)) goto ERROR;
 	}
 	return true;
 
@@ -303,6 +307,8 @@ ERROR:
 static bool ParseConv_link_ops(ParseConv *restrict o,
 		SAU_PtrList *restrict od_list,
 		const SAU_ParseOpList *restrict pod_list) {
+	if (!pod_list)
+		return true;
 	SAU_ParseOpRef *pod_ref = pod_list->refs;
 	for (; pod_ref != NULL; pod_ref = pod_ref->next) {
 		SAU_ParseOpData *pod = pod_ref->data;
@@ -321,11 +327,11 @@ static bool ParseConv_link_ops(ParseConv *restrict o,
 			goto ERROR;
 		if (od->op_params & SAU_POPP_ADJCS) {
 			if (!ParseConv_link_ops(o, &od->fmods,
-					&pod->fmod_list)) goto ERROR;
+					pod->fmod_list)) goto ERROR;
 			if (!ParseConv_link_ops(o, &od->pmods,
-					&pod->pmod_list)) goto ERROR;
+					pod->pmod_list)) goto ERROR;
 			if (!ParseConv_link_ops(o, &od->amods,
-					&pod->amod_list)) goto ERROR;
+					pod->amod_list)) goto ERROR;
 		}
 	}
 	return true;
