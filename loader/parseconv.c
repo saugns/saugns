@@ -287,7 +287,8 @@ static bool ParseConv_add_opdata(ParseConv *restrict o,
 	od->time_ms = pod->time_ms;
 	od->silence_ms = pod->silence_ms;
 	od->wave = pod->wave;
-	if (pod_ref->link_type == SAU_PDNL_GRAPH) {
+	if (pod_ref->list_type == SAU_PDNL_GRAPH &&
+			(pod_ref->mode & SAU_PDNR_ADD) != 0) {
 		e->ev_flags |= SAU_SDEV_NEW_OPGRAPH;
 		od->op_flags |= SAU_SDOP_NEW_CARRIER;
 	}
@@ -395,7 +396,6 @@ static bool ParseConv_add_event(ParseConv *restrict o,
 	o->ev = e;
 	e->wait_ms = pe->wait_ms;
 	/* ev_flags */
-	e->vo_params = pe->vo_params;
 	VoContext *vc;
 	if (!pe->vo_prev) {
 		vc = SAU_MemPool_alloc(o->memp, sizeof(VoContext));
@@ -409,6 +409,7 @@ static bool ParseConv_add_event(ParseConv *restrict o,
 	}
 	vc->newest = pe;
 	pe->vo_context = vc;
+	e->vo_params = pe->vo_params;
 	e->pan = pe->pan;
 	if (!ParseConv_add_ops(o, &pe->op_list)) goto ERROR;
 	if (!ParseConv_link_ops(o, NULL, &pe->op_list)) goto ERROR;

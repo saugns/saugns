@@ -15,7 +15,23 @@
 #include "../script.h"
 
 /**
- * Node link types.
+ * Node reference modes.
+ */
+enum {
+	SAU_PDNR_UPDATE = 0,
+	SAU_PDNR_ADD = 1<<0,
+};
+
+typedef struct SAU_ParseOpRef {
+	struct SAU_ParseOpRef *next;
+	struct SAU_ParseOpData *data;
+	const char *label;
+	uint8_t mode;
+	uint8_t list_type;
+} SAU_ParseOpRef;
+
+/**
+ * Node list types.
  */
 enum {
 	SAU_PDNL_REFER = 0,
@@ -25,17 +41,11 @@ enum {
 	SAU_PDNL_AMODS,
 };
 
-typedef struct SAU_ParseOpRef {
-	struct SAU_ParseOpRef *next;
-	struct SAU_ParseOpData *data;
-	const char *label;
-	uint8_t link_type;
-} SAU_ParseOpRef;
-
 typedef struct SAU_ParseOpList {
 	SAU_ParseOpRef *refs;
 	SAU_ParseOpRef *new_refs; // NULL on copy
 	SAU_ParseOpRef *last_ref; // NULL on copy
+	uint8_t type;
 } SAU_ParseOpList;
 
 /**
@@ -95,7 +105,7 @@ typedef struct SAU_ParseEvData {
 	void *ev_conv; // for parseconv
 	/* voice parameters */
 	uint32_t vo_params;
-	struct SAU_ParseEvData *vo_prev; /* preceding event for voice */
+	struct SAU_ParseEvData *vo_prev; /* preceding event for same voice */
 	void *vo_context; // for parseconv
 	SAU_Ramp pan;
 } SAU_ParseEvData;
