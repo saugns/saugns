@@ -90,10 +90,11 @@ typedef struct SAU_ParseEvData {
 	uint32_t ev_flags;
 	SAU_ParseOpList op_list; // immediately included operator references
 	void *ev_conv; // for parseconv
+	/* voice parameters */
 	uint32_t vo_params;
-	SAU_Ramp pan;
 	struct SAU_ParseEvData *vo_prev; /* preceding event for same voice */
 	void *vo_context; // for parseconv
+	SAU_Ramp pan;
 } SAU_ParseEvData;
 
 struct SAU_MemPool;
