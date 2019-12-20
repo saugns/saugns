@@ -102,13 +102,17 @@ static void time_operator(SAU_ParseOpData *restrict op) {
 	op_list_fornew(op->amod_list, time_operator);
 }
 
-static void time_event(SAU_ParseEvData *restrict e) {
+static void time_voice(SAU_ParseVoData *restrict vd) {
 	/*
 	 * Fill in blank ramp durations, handle silence as well as the case of
 	 * adding present event duration to wait time of next event.
 	 */
-	if (e->pan.time_ms == SAU_TIME_DEFAULT)
-		e->pan.time_ms = 1000; /* FIXME! */
+	if (vd->pan.time_ms == SAU_TIME_DEFAULT)
+		vd->pan.time_ms = 1000; /* FIXME! */
+}
+
+static void time_event(SAU_ParseEvData *restrict e) {
+	if (e->vo_data != NULL) time_voice(e->vo_data);
 	op_list_fornew(&e->op_list, time_operator);
 	/*
 	 * Timing for composites - done before event list flattened.
@@ -342,6 +346,37 @@ ERROR:
 }
 
 /*
+ * Convert data for a voice node to script operator data,
+ * adding it for the current event.
+ */
+static bool ParseConv_add_vodata(ParseConv *restrict o,
+		SAU_ParseEvData *restrict pe) {
+	SAU_ParseVoData *pvd = pe->vo_data;
+	SAU_ScriptEvData *e = pe->ev_conv;
+	VoContext *vc;
+	if (!pe->vo_prev) {
+		vc = SAU_MemPool_alloc(o->memp, sizeof(VoContext));
+		if (!vc) goto ERROR;
+		e->ev_flags |= SAU_SDEV_NEW_OPGRAPH;
+	} else {
+		vc = pe->vo_prev->vo_context;
+		SAU_ScriptEvData *vo_prev = vc->newest->ev_conv;
+		e->vo_prev = vo_prev;
+		vo_prev->ev_flags |= SAU_SDEV_VOICE_LATER_USED;
+	}
+	vc->newest = pe;
+	pe->vo_context = vc;
+	if (!pe->vo_data)
+		return true;
+	e->vo_params = pvd->vo_params;
+	e->pan = pvd->pan;
+	return true;
+
+ERROR:
+	return false;
+}
+
+/*
  * Convert the given event data node and all associated operator data nodes.
  */
 static bool ParseConv_add_event(ParseConv *restrict o,
@@ -357,21 +392,7 @@ static bool ParseConv_add_event(ParseConv *restrict o,
 	o->ev = e;
 	e->wait_ms = pe->wait_ms;
 	/* ev_flags */
-	e->vo_params = pe->vo_params;
-	VoContext *vc;
-	if (!pe->vo_prev) {
-		vc = SAU_MemPool_alloc(o->memp, sizeof(VoContext));
-		if (!vc) goto ERROR;
-		e->ev_flags |= SAU_SDEV_NEW_OPGRAPH;
-	} else {
-		vc = pe->vo_prev->vo_context;
-		SAU_ScriptEvData *vo_prev = vc->newest->ev_conv;
-		e->vo_prev = vo_prev;
-		vo_prev->ev_flags |= SAU_SDEV_VOICE_LATER_USED;
-	}
-	vc->newest = pe;
-	pe->vo_context = vc;
-	e->pan = pe->pan;
+	if (!ParseConv_add_vodata(o, pe)) goto ERROR;
 	if (!ParseConv_add_ops(o, &pe->op_list)) goto ERROR;
 	if (!ParseConv_link_ops(o, NULL, &pe->op_list)) goto ERROR;
 	return true;
