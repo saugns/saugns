@@ -27,6 +27,7 @@ typedef struct SAU_ParseOpRef {
 	struct SAU_ParseOpData *data;
 	const char *label;
 	uint8_t mode;
+	uint8_t list_type;
 } SAU_ParseOpRef;
 
 /**

@@ -593,7 +593,7 @@ static bool copy_op_list(SAU_ParseOpList **restrict ol,
 }
 
 static SAU_ParseOpRef *op_list_add(SAU_ParseOpList **restrict ol,
-		SAU_ParseOpData *restrict data,
+		SAU_ParseOpData *restrict data, uint8_t ref_mode,
 		SAU_MemPool *restrict memp) {
 	SAU_ParseOpRef *ref = SAU_MemPool_alloc(memp, sizeof(SAU_ParseOpRef));
 	if (!ref)
@@ -606,6 +606,8 @@ static SAU_ParseOpRef *op_list_add(SAU_ParseOpList **restrict ol,
 	else
 		(*ol)->last_ref->next = ref;
 	(*ol)->last_ref = ref;
+	ref->mode = ref_mode;
+	ref->list_type = (*ol)->type;
 	return ref;
 }
 
@@ -758,13 +760,12 @@ static SAU_ParseOpRef *list_operator(ParseLevel *restrict pl,
 	}
 	if (!*ol)
 		*ol = create_op_list(pl->list_type, o->mp);
-	SAU_ParseOpRef *ref = op_list_add(ol, od, o->mp);
+	SAU_ParseOpRef *ref = op_list_add(ol, od, ref_mode, o->mp);
 	if (*ol != &e->op_list)
 		pl->parent_op_ref->data->op_params |= SAU_POPP_ADJCS;
 	pl->op_ref = ref;
 	if (!pl->first_op_ref)
 		pl->first_op_ref = ref;
-	ref->mode = ref_mode;
 	pl->last_list_type = pl->list_type; /* FIXME: kludge */
 	return ref;
 }

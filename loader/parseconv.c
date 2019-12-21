@@ -233,8 +233,7 @@ typedef struct VoContext {
  * adding it to the list to be used for the current program event.
  */
 static bool ParseConv_add_opdata(ParseConv *restrict o,
-		SAU_ParseOpRef *restrict pod_ref,
-		const SAU_ParseOpList *restrict pod_list) {
+		SAU_ParseOpRef *restrict pod_ref) {
 	SAU_ParseOpData *pod = pod_ref->data;
 	SAU_ScriptOpData *od = calloc(1, sizeof(SAU_ScriptOpData));
 	if (!od)
@@ -248,7 +247,7 @@ static bool ParseConv_add_opdata(ParseConv *restrict o,
 	od->time_ms = pod->time_ms;
 	od->silence_ms = pod->silence_ms;
 	od->wave = pod->wave;
-	if (pod_list->type == SAU_PDNL_GRAPH &&
+	if (pod_ref->list_type == SAU_PDNL_GRAPH &&
 			(pod_ref->mode & SAU_PDNR_ADD) != 0) {
 		e->ev_flags |= SAU_SDEV_NEW_OPGRAPH;
 		od->op_flags |= SAU_SDOP_NEW_CARRIER;
@@ -295,7 +294,7 @@ static bool ParseConv_add_ops(ParseConv *restrict o,
 		SAU_ParseOpData *pod = pod_ref->data;
 		// TODO: handle multiple operator nodes
 		if (pod->op_flags & SAU_PDOP_MULTIPLE) continue;
-		if (!ParseConv_add_opdata(o, pod_ref, pod_list)) goto ERROR;
+		if (!ParseConv_add_opdata(o, pod_ref)) goto ERROR;
 		if (!ParseConv_add_ops(o, pod->fmod_list)) goto ERROR;
 		if (!ParseConv_add_ops(o, pod->pmod_list)) goto ERROR;
 		if (!ParseConv_add_ops(o, pod->amod_list)) goto ERROR;
