@@ -515,7 +515,7 @@ enum {
  */
 enum {
 	SDPL_NESTED_SCOPE = 1<<0,
-	SDPL_BIND_MULTIPLE = 1<<1, /* previous node interpreted as set of nodes */
+	SDPL_BIND_MULTIPLE = 1<<1, // previous node interpreted as set of nodes
 };
 
 /*
@@ -617,18 +617,23 @@ static void end_operator(ParseLevel *restrict pl) {
 	SAU_Parser *o = pl->o;
 	ScanLookup *sl = &o->sl;
 	SAU_ParseOpData *op = pl->op_ref->data;
+	if (op->op_flags & SAU_PDOP_PARSED) {
+//		SAU_warning("parser",
+//"multiple calls to end_operator() for same node");
+		goto ENDED;
+	}
 	if (SAU_Ramp_ENABLED(&op->freq))
 		op->op_params |= SAU_POPP_FREQ;
 	if (SAU_Ramp_ENABLED(&op->freq2))
 		op->op_params |= SAU_POPP_FREQ2;
 	if (SAU_Ramp_ENABLED(&op->amp)) {
 		op->op_params |= SAU_POPP_AMP;
-		if (!(pl->pl_flags & SDPL_NESTED_SCOPE))
+		if (!(op->op_flags & SAU_PDOP_NESTED))
 			op->amp.v0 *= sl->sopt.ampmult;
 	}
 	if (SAU_Ramp_ENABLED(&op->amp2)) {
 		op->op_params |= SAU_POPP_AMP2;
-		if (!(pl->pl_flags & SDPL_NESTED_SCOPE))
+		if (!(op->op_flags & SAU_PDOP_NESTED))
 			op->amp2.v0 *= sl->sopt.ampmult;
 	}
 	SAU_ParseOpData *pop = op->op_prev;
@@ -653,8 +658,10 @@ static void end_operator(ParseLevel *restrict pl) {
 			op->op_params |= SAU_POPP_SILENCE;
 		/* SAU_PHASE set when phase set */
 	}
+ENDED:
 	pl->op_ref = NULL;
 	pl->last_op = op;
+	op->op_flags |= SAU_PDOP_PARSED;
 }
 
 static void end_voice_update(ParseLevel *restrict pl) {
@@ -831,7 +838,7 @@ static void begin_operator(ParseLevel *restrict pl,
 		 */
 		op->op_flags = SAU_PDOP_TIME_DEFAULT;
 		op->time_ms = sl->sopt.def_time_ms;
-		if (!(pl->pl_flags & SDPL_NESTED_SCOPE)) {
+		if (ref->list_type == SAU_PDNL_GRAPH) {
 			op->freq.v0 = sl->sopt.def_freq;
 		} else {
 			op->op_flags |= SAU_PDOP_NESTED;
@@ -1016,7 +1023,7 @@ static bool parse_ev_freq(ParseLevel *restrict pl, bool rel_freq) {
 	SAU_Parser *o = pl->o;
 	SAU_Scanner *sc = o->sc;
 	SAU_ParseOpData *op = pl->op_ref->data;
-	if (rel_freq && !(pl->pl_flags & SDPL_NESTED_SCOPE))
+	if (rel_freq && !(op->op_flags & SAU_PDOP_NESTED))
 		return true; // reject
 	NumSym_f numsym_f = rel_freq ? NULL : scan_note;
 	if (SAU_Scanner_tryc(sc, '{')) {
@@ -1120,7 +1127,7 @@ static bool parse_step(ParseLevel *restrict pl) {
 				op->op_flags |= SAU_PDOP_TIME_DEFAULT;
 				op->time_ms = sl->sopt.def_time_ms;
 			} else if (SAU_Scanner_tryc(sc, 'i')) {
-				if (!(pl->pl_flags & SDPL_NESTED_SCOPE)) {
+				if (!(op->op_flags & SAU_PDOP_NESTED)) {
 					SAU_Scanner_warning(sc, NULL,
 "ignoring 'ti' (infinite time) for non-nested operator");
 					break;
