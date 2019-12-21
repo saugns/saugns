@@ -514,8 +514,11 @@ enum {
  * Parse level flags.
  */
 enum {
-	SDPL_NESTED_SCOPE = 1<<0,
-	SDPL_BIND_MULTIPLE = 1<<1, // previous node interpreted as set of nodes
+	SDPL_BIND_MULTIPLE = 1<<0, // previous node interpreted as set of nodes
+	SDPL_NESTED_SCOPE = 1<<1,
+	SDPL_ACTIVE_EV = 1<<2,
+	SDPL_ACTIVE_VO = 1<<3,
+	SDPL_ACTIVE_OP = 1<<4,
 };
 
 /*
@@ -612,16 +615,12 @@ static SAU_ParseOpRef *op_list_add(SAU_ParseOpList **restrict ol,
 }
 
 static void end_operator(ParseLevel *restrict pl) {
-	if (!pl->op_ref)
+	if (!(pl->pl_flags & SDPL_ACTIVE_OP))
 		return;
+	pl->pl_flags &= ~SDPL_ACTIVE_OP;
 	SAU_Parser *o = pl->o;
 	ScanLookup *sl = &o->sl;
 	SAU_ParseOpData *op = pl->op_ref->data;
-	if (op->op_flags & SAU_PDOP_PARSED) {
-//		SAU_warning("parser",
-//"multiple calls to end_operator() for same node");
-		goto ENDED;
-	}
 	if (SAU_Ramp_ENABLED(&op->freq))
 		op->op_params |= SAU_POPP_FREQ;
 	if (SAU_Ramp_ENABLED(&op->freq2))
@@ -658,15 +657,14 @@ static void end_operator(ParseLevel *restrict pl) {
 			op->op_params |= SAU_POPP_SILENCE;
 		/* SAU_PHASE set when phase set */
 	}
-ENDED:
 	pl->op_ref = NULL;
 	pl->last_op = op;
-	op->op_flags |= SAU_PDOP_PARSED;
 }
 
 static void end_voice_update(ParseLevel *restrict pl) {
-	if (!pl->event)
+	if (!(pl->pl_flags & SDPL_ACTIVE_VO))
 		return;
+	pl->pl_flags &= ~SDPL_ACTIVE_VO;
 	SAU_ParseEvData *e = pl->event;
 	if (SAU_Ramp_ENABLED(&e->pan))
 		e->vo_params |= SAU_PVOP_PAN;
@@ -680,9 +678,10 @@ static void end_voice_update(ParseLevel *restrict pl) {
 }
 
 static void end_event(ParseLevel *restrict pl) {
-	SAU_ParseEvData *e = pl->event;
-	if (!e)
+	if (!(pl->pl_flags & SDPL_ACTIVE_EV))
 		return;
+	pl->pl_flags &= ~SDPL_ACTIVE_EV;
+	SAU_ParseEvData *e = pl->event;
 	end_operator(pl);
 	end_voice_update(pl);
 	pl->last_event = e;
@@ -699,6 +698,7 @@ static void begin_voice_update(ParseLevel *restrict pl) {
 		e->pan.v0 = 0.5f; /* center */
 		e->pan.flags |= SAU_RAMP_STATE;
 	}
+	pl->pl_flags |= SDPL_ACTIVE_VO;
 }
 
 static void begin_event(ParseLevel *restrict pl,
@@ -733,6 +733,7 @@ static void begin_event(ParseLevel *restrict pl,
 		pl->composite = NULL;
 	}
 	begin_voice_update(pl);
+	pl->pl_flags |= SDPL_ACTIVE_EV;
 }
 
 /*
@@ -864,6 +865,7 @@ static void begin_operator(ParseLevel *restrict pl,
 		ref->label = prev_op_ref->label;
 		SAU_SymTab_set(o->st, ref->label, strlen(ref->label), ref);
 	}
+	pl->pl_flags |= SDPL_ACTIVE_OP;
 }
 
 static void begin_scope(SAU_Parser *restrict o, ParseLevel *restrict pl,
@@ -876,7 +878,8 @@ static void begin_scope(SAU_Parser *restrict o, ParseLevel *restrict pl,
 	if (!parent_pl) // newscope == SCOPE_TOP
 		return;
 	pl->parent = parent_pl;
-	pl->pl_flags = parent_pl->pl_flags;
+	pl->pl_flags = parent_pl->pl_flags &
+		(SDPL_NESTED_SCOPE | SDPL_BIND_MULTIPLE);
 	pl->location = parent_pl->location;
 	pl->event = parent_pl->event;
 	pl->op_ref = parent_pl->op_ref;

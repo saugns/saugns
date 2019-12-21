@@ -55,7 +55,6 @@ enum {
 	SAU_PDOP_NESTED = 1<<1,
 	SAU_PDOP_TIME_DEFAULT = 1<<2,
 	SAU_PDOP_SILENCE_ADDED = 1<<3,
-	SAU_PDOP_PARSED = 1<<4, // parsing has moved on
 };
 
 /**
