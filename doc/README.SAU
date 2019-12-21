@@ -227,6 +227,11 @@ Labels and referencing:
 	to define a label for it, where the label consists of alphanumeric
 	characters and/or '_'; thereafter the label can be referenced using
 	"@label", to place future changes later in the script.
+		Note that a "@label" reference placed in a nesting scope
+	different from the original does not add the operator to the new
+	nesting scope. (It will not be moved out from nor into a list by
+	being referenced anywhere.) The time scope is however new and of
+	the reference.
 
 Frequencies as notes:
 	Frequency values may be specified as notes. Currently, justly
