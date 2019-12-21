@@ -627,13 +627,17 @@ static void end_operator(ParseLevel *restrict pl) {
 		op->op_params |= SAU_POPP_FREQ2;
 	if (SAU_Ramp_ENABLED(&op->amp)) {
 		op->op_params |= SAU_POPP_AMP;
-		if (!(op->op_flags & SAU_PDOP_NESTED))
+		if (!(op->op_flags & SAU_PDOP_NESTED)) {
 			op->amp.v0 *= sl->sopt.ampmult;
+			op->amp.vt *= sl->sopt.ampmult;
+		}
 	}
 	if (SAU_Ramp_ENABLED(&op->amp2)) {
 		op->op_params |= SAU_POPP_AMP2;
-		if (!(op->op_flags & SAU_PDOP_NESTED))
+		if (!(op->op_flags & SAU_PDOP_NESTED)) {
 			op->amp2.v0 *= sl->sopt.ampmult;
+			op->amp2.vt *= sl->sopt.ampmult;
+		}
 	}
 	SAU_ParseOpData *pop = op->op_prev;
 	if (!pop) {
