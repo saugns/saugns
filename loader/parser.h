@@ -45,6 +45,7 @@ typedef struct SAU_ParseOpList {
 	SAU_ParseOpRef *refs;
 	SAU_ParseOpRef *new_refs; // NULL on copy
 	SAU_ParseOpRef *last_ref; // NULL on copy
+	struct SAU_ParseOpList *next;
 	uint8_t type;
 } SAU_ParseOpList;
 
@@ -65,7 +66,8 @@ enum {
  */
 typedef struct SAU_ParseOpData {
 	struct SAU_ParseEvData *event;
-	SAU_ParseOpList *next_list; // immediate next(s) for same op(s)
+	SAU_ParseOpList *nest_lists;
+	SAU_ParseOpList *last_nest_list;
 	struct SAU_ParseOpData *prev; // previous for same op(s)
 	struct SAU_ParseOpData *next_bound;
 	uint32_t op_flags;
@@ -78,10 +80,6 @@ typedef struct SAU_ParseOpData {
 	float phase;
 	void *op_conv; // for parseconv
 	void *op_context; // for parseconv
-	/* node adjacents in operator linkage graph */
-	SAU_ParseOpList *fmod_list;
-	SAU_ParseOpList *pmod_list;
-	SAU_ParseOpList *amod_list;
 } SAU_ParseOpData;
 
 /**
