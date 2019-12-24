@@ -501,6 +501,7 @@ ERROR:
  */
 enum {
 	SCOPE_TOP = 0,
+	SCOPE_BLOCK,
 	SCOPE_BIND,
 	SCOPE_NEST,
 };
@@ -541,6 +542,7 @@ typedef struct ParseLevel {
 	SAU_ParseOpRef *op_ref, *parent_op_ref;
 	SAU_ParseOpRef *first_op_ref;
 	SAU_ParseOpData *last_op;
+	SAU_ParseOpList *op_list;
 	SAU_SymStr *set_label;
 	/* timing/delay */
 	SAU_ParseEvData *group_from; /* where to begin for group_events() */
@@ -581,23 +583,6 @@ static SAU_ParseOpList *create_op_list(uint8_t list_type,
 	return ol;
 }
 
-static bool copy_op_list(SAU_ParseOpList **restrict olp,
-		const SAU_ParseOpList *restrict src_ol,
-		SAU_MemPool *restrict memp) {
-	if (!src_ol) {
-		*olp = NULL;
-		return true;
-	}
-	if (!*olp) *olp = SAU_MemPool_alloc(memp, sizeof(SAU_ParseOpList));
-	if (!*olp)
-		return false;
-	(*olp)->refs = src_ol->refs;
-	(*olp)->new_refs = NULL;
-	(*olp)->last_ref = NULL;
-	(*olp)->type = src_ol->type;
-	return true;
-}
-
 static SAU_ParseOpRef *op_list_add(SAU_ParseOpList *restrict ol,
 		SAU_ParseOpData *restrict data, uint8_t ref_mode,
 		SAU_MemPool *restrict memp) {
@@ -617,7 +602,7 @@ static SAU_ParseOpRef *op_list_add(SAU_ParseOpList *restrict ol,
 	return ref;
 }
 
-static void end_operator(ParseLevel *restrict pl) {
+static sauNoinline void end_operator(ParseLevel *restrict pl) {
 	if (!(pl->pl_flags & SDPL_ACTIVE_OP))
 		return;
 	pl->pl_flags &= ~SDPL_ACTIVE_OP;
@@ -668,7 +653,7 @@ static void end_operator(ParseLevel *restrict pl) {
 	pl->last_op = op;
 }
 
-static void end_event(ParseLevel *restrict pl) {
+static sauNoinline void end_event(ParseLevel *restrict pl) {
 	if (!(pl->pl_flags & SDPL_ACTIVE_EV))
 		return;
 	pl->pl_flags &= ~SDPL_ACTIVE_EV;
@@ -737,31 +722,12 @@ static SAU_ParseOpRef *list_operator(ParseLevel *restrict pl,
 		SAU_ParseOpData *od, uint8_t ref_mode) {
 	SAU_Parser *o = pl->o;
 	SAU_ParseEvData *e = pl->event;
-	SAU_ParseOpList **olp, *tmp_ol;
-	if (ref_mode & SAU_PDNR_ADD) {
-		switch (pl->list_type) {
-		case SAU_PDNL_FMODS:
-			olp = &pl->parent_op_ref->data->fmod_list;
-			break;
-		case SAU_PDNL_PMODS:
-			olp = &pl->parent_op_ref->data->pmod_list;
-			break;
-		case SAU_PDNL_AMODS:
-			olp = &pl->parent_op_ref->data->amod_list;
-			break;
-		default:
-			tmp_ol = &e->op_list;
-			olp = &tmp_ol;
-			break;
-		}
-	} else {
-		tmp_ol = &e->op_list;
-		olp = &tmp_ol;
+	SAU_ParseOpList *ol = pl->op_list;
+	if (pl->list_type == SAU_PDNL_GRAPH ||
+			!(ref_mode & SAU_PDNR_ADD)) {
+		ol = &e->op_list;
 	}
-	if (!*olp) *olp = create_op_list(pl->list_type, o->mp);
-	SAU_ParseOpRef *ref = op_list_add(*olp, od, ref_mode, o->mp);
-	if (*olp != &e->op_list)
-		pl->parent_op_ref->data->op_params |= SAU_POPP_ADJCS;
+	SAU_ParseOpRef *ref = op_list_add(ol, od, ref_mode, o->mp);
 	pl->op_ref = ref;
 	if (!pl->first_op_ref)
 		pl->first_op_ref = ref;
@@ -813,9 +779,6 @@ static void begin_operator(ParseLevel *restrict pl,
 		op->time_ms = pop->time_ms;
 		op->wave = pop->wave;
 		op->phase = pop->phase;
-		copy_op_list(&op->fmod_list, pop->fmod_list, o->mp);
-		copy_op_list(&op->pmod_list, pop->pmod_list, o->mp);
-		copy_op_list(&op->amod_list, pop->amod_list, o->mp);
 		if ((pl->pl_flags & SDPL_BIND_MULTIPLE) != 0) {
 			SAU_ParseOpData *mpop = pop;
 			uint32_t max_time = 0;
@@ -871,8 +834,11 @@ static void begin_scope(SAU_Parser *restrict o, ParseLevel *restrict pl,
 	pl->o = o;
 	pl->scope = newscope;
 	pl->list_type = list_type;
-	if (!parent_pl) // newscope == SCOPE_TOP
+	if (!parent_pl) {
+		// handle newscope == SCOPE_TOP here
+		pl->op_list = create_op_list(list_type, o->mp);
 		return;
+	}
 	pl->parent = parent_pl;
 	pl->pl_flags = parent_pl->pl_flags &
 		(SDPL_NESTED_SCOPE | SDPL_BIND_MULTIPLE);
@@ -881,12 +847,18 @@ static void begin_scope(SAU_Parser *restrict o, ParseLevel *restrict pl,
 	pl->op_ref = parent_pl->op_ref;
 	pl->parent_op_ref = parent_pl->parent_op_ref;
 	switch (newscope) {
+	case SCOPE_BLOCK:
+		pl->group_from = parent_pl->group_from;
+		pl->op_list = parent_pl->op_list;
+		break;
 	case SCOPE_BIND:
 		pl->group_from = parent_pl->group_from;
+		pl->op_list = create_op_list(list_type, o->mp);
 		break;
 	case SCOPE_NEST:
 		pl->pl_flags |= SDPL_NESTED_SCOPE;
 		pl->parent_op_ref = parent_pl->op_ref;
+		pl->op_list = create_op_list(list_type, o->mp);
 		break;
 	default:
 		break;
@@ -912,6 +884,17 @@ static void end_scope(ParseLevel *restrict pl) {
 		if (group_to)
 			group_to->groupfrom = pl->group_from;
 		break; }
+	case SCOPE_BLOCK:
+		if (!pl->parent->group_from)
+			pl->parent->group_from = pl->group_from;
+		if (pl->pl_flags & SDPL_ACTIVE_EV) {
+			end_event(pl->parent);
+			pl->parent->pl_flags |= SDPL_ACTIVE_EV;
+			pl->parent->event = pl->event;
+		}
+		if (pl->last_event != NULL)
+			pl->parent->last_event = pl->last_event;
+		break;
 	case SCOPE_BIND:
 		if (!pl->parent->group_from)
 			pl->parent->group_from = pl->group_from;
@@ -929,8 +912,16 @@ static void end_scope(ParseLevel *restrict pl) {
 			pl->parent->list_type = list_type;
 		}
 		break;
-	case SCOPE_NEST:
-		break;
+	case SCOPE_NEST: {
+		if (!pl->parent_op_ref)
+			break;
+		SAU_ParseOpData *parent_op = pl->parent_op_ref->data;
+		if (!parent_op->nest_lists)
+			parent_op->nest_lists = pl->op_list;
+		else
+			parent_op->last_nest_list->next = pl->op_list;
+		parent_op->last_nest_list = pl->op_list;
+		break; }
 	default:
 		break;
 	}
@@ -1009,10 +1000,7 @@ static bool parse_ev_amp(ParseLevel *restrict pl) {
 		}
 	}
 	if (SAU_Scanner_tryc(sc, '~') && SAU_Scanner_tryc(sc, '[')) {
-		if (op->amod_list != NULL) {
-			op->op_params |= SAU_POPP_ADJCS;
-			op->amod_list = NULL;
-		}
+		op->op_params |= SAU_POPP_ADJCS;
 		parse_level(o, pl, SAU_PDNL_AMODS, SCOPE_NEST);
 	}
 	return false;
@@ -1038,10 +1026,7 @@ static bool parse_ev_freq(ParseLevel *restrict pl, bool rel_freq) {
 		}
 	}
 	if (SAU_Scanner_tryc(sc, '~') && SAU_Scanner_tryc(sc, '[')) {
-		if (op->fmod_list != NULL) {
-			op->op_params |= SAU_POPP_ADJCS;
-			op->fmod_list = NULL;
-		}
+		op->op_params |= SAU_POPP_ADJCS;
 		parse_level(o, pl, SAU_PDNL_FMODS, SCOPE_NEST);
 	}
 	return false;
@@ -1058,10 +1043,7 @@ static bool parse_ev_phase(ParseLevel *restrict pl) {
 		op->op_params |= SAU_POPP_PHASE;
 	}
 	if (SAU_Scanner_tryc(sc, '+') && SAU_Scanner_tryc(sc, '[')) {
-		if (op->pmod_list != NULL) {
-			op->op_params |= SAU_POPP_ADJCS;
-			op->pmod_list = NULL;
-		}
+		op->op_params |= SAU_POPP_ADJCS;
 		parse_level(o, pl, SAU_PDNL_PMODS, SCOPE_NEST);
 	}
 	return false;
@@ -1262,7 +1244,7 @@ static bool parse_level(SAU_Parser *restrict o, ParseLevel *restrict parent_pl,
 				0;
 			break;
 		case '[':
-			if (parse_level(o, &pl, list_type, SCOPE_NEST))
+			if (parse_level(o, &pl, list_type, SCOPE_BLOCK))
 				goto RETURN;
 			break;
 		case '\\':
@@ -1272,12 +1254,10 @@ static bool parse_level(SAU_Parser *restrict o, ParseLevel *restrict parent_pl,
 			parse_waittime(&pl);
 			break;
 		case ']':
-			if (pl.scope == SCOPE_BIND) {
-				endscope = true;
-				goto RETURN;
-			}
 			if (pl.scope == SCOPE_NEST) {
 				end_operator(&pl);
+			}
+			if (pl.scope > SCOPE_TOP) {
 				endscope = true;
 				goto RETURN;
 			}
@@ -1325,7 +1305,7 @@ static bool parse_level(SAU_Parser *restrict o, ParseLevel *restrict parent_pl,
 		flags &= ~HANDLE_DEFER;
 	}
 FINISH:
-	if (newscope == SCOPE_NEST || newscope == SCOPE_BIND)
+	if (newscope > SCOPE_TOP)
 		warn_eof_without_closing(sc, ']');
 RETURN:
 	end_scope(&pl);
