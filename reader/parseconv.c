@@ -23,6 +23,14 @@
  * recursive traversal in scriptconv.
  */
 
+static void op_list_fornew(SAU_ParseOpList *restrict ol,
+		void (*on_op)(SAU_ParseOpData *restrict data)) {
+	if (!ol)
+		return;
+	SAU_ParseOpRef *op_ref = ol->new_refs;
+	for (; op_ref != NULL; op_ref = op_ref->next) on_op(op_ref->data);
+}
+
 /*
  * Adjust timing for event groupings; the script syntax for time grouping is
  * only allowed on the "top" operator level, so the algorithm only deals with
@@ -75,14 +83,6 @@ static inline void time_ramp(SAU_Ramp *restrict ramp,
 		ramp->time_ms = default_time_ms;
 }
 
-static void op_list_fornew(SAU_ParseOpList *restrict ol,
-		void (*on_op)(SAU_ParseOpData *restrict data)) {
-	if (!ol)
-		return;
-	SAU_ParseOpRef *op_ref = ol->new_refs;
-	for (; op_ref != NULL; op_ref = op_ref->next) on_op(op_ref->data);
-}
-
 static void time_operator(SAU_ParseOpData *restrict op) {
 	SAU_ParseEvData *e = op->event;
 	if ((op->op_flags & SAU_PDOP_NESTED) != 0 &&
@@ -106,9 +106,10 @@ static void time_operator(SAU_ParseOpData *restrict op) {
 			e->next->wait_ms += op->time.v_ms;
 		e->ev_flags &= ~SAU_PDEV_ADD_WAIT_DURATION;
 	}
-	op_list_fornew(op->fmod_list, time_operator);
-	op_list_fornew(op->pmod_list, time_operator);
-	op_list_fornew(op->amod_list, time_operator);
+	for (SAU_ParseOpList *list = op->nest_lists;
+			list != NULL; list = list->next) {
+		op_list_fornew(list, time_operator);
+	}
 }
 
 static void time_event(SAU_ParseEvData *restrict e) {
@@ -224,6 +225,10 @@ typedef struct ParseConv {
  */
 typedef struct OpContext {
 	SAU_ParseOpData *newest; // most recent in time-ordered events
+	/* current node adjacents in operator linkage graph */
+	SAU_ParseOpList *fmod_list;
+	SAU_ParseOpList *pmod_list;
+	SAU_ParseOpList *amod_list;
 } OpContext;
 
 /*
@@ -259,6 +264,25 @@ static OpContext *ParseConv_update_opcontext(ParseConv *restrict o,
 		od_prev->op_flags |= SAU_SDOP_LATER_USED;
 	}
 	oc->newest = pod;
+	oc->fmod_list = NULL;
+	oc->pmod_list = NULL;
+	oc->amod_list = NULL;
+	for (SAU_ParseOpList *list = pod->nest_lists;
+			list != NULL; list = list->next) {
+		switch (list->type) {
+		case SAU_PDNL_FMODS:
+			oc->fmod_list = list;
+			break;
+		case SAU_PDNL_PMODS:
+			oc->pmod_list = list;
+			break;
+		case SAU_PDNL_AMODS:
+			oc->amod_list = list;
+			break;
+		default:
+			break;
+		}
+	}
 	pod->op_context = oc;
 	return oc;
 }
@@ -332,9 +356,10 @@ static bool ParseConv_add_ops(ParseConv *restrict o,
 			if (pod->op_flags & SAU_PDOP_IGNORED) continue;
 			goto ERROR;
 		}
-		if (!ParseConv_add_ops(o, pod->fmod_list)) goto ERROR;
-		if (!ParseConv_add_ops(o, pod->pmod_list)) goto ERROR;
-		if (!ParseConv_add_ops(o, pod->amod_list)) goto ERROR;
+		OpContext *oc = pod->op_context;
+		if (!ParseConv_add_ops(o, oc->fmod_list)) goto ERROR;
+		if (!ParseConv_add_ops(o, oc->pmod_list)) goto ERROR;
+		if (!ParseConv_add_ops(o, oc->amod_list)) goto ERROR;
 	}
 	return true;
 
@@ -344,13 +369,15 @@ ERROR:
 
 /*
  * Recursively fill in lists for operator node graph,
- * visiting all operator nodes as they branch out.
+ * visiting all linked operator nodes as they branch out.
  */
 static bool ParseConv_link_ops(ParseConv *restrict o,
 		SAU_PtrArr *restrict od_list,
 		const SAU_ParseOpList *restrict pod_list) {
 	if (!pod_list)
 		return true;
+	if (od_list != NULL)
+		SAU_PtrArr_clear(od_list); // rebuild, replacing soft copy
 	SAU_ParseOpRef *pod_ref = pod_list->refs;
 	for (; pod_ref != NULL; pod_ref = pod_ref->next) {
 		SAU_ParseOpData *pod = pod_ref->data;
@@ -366,14 +393,19 @@ static bool ParseConv_link_ops(ParseConv *restrict o,
 		}
 		if (od_list != NULL && !SAU_PtrArr_add(od_list, od))
 			goto ERROR;
-		if (od->op_params & SAU_POPP_ADJCS) {
-			if (!ParseConv_link_ops(o, &od->fmods,
-					pod->fmod_list)) goto ERROR;
-			if (!ParseConv_link_ops(o, &od->pmods,
-					pod->pmod_list)) goto ERROR;
-			if (!ParseConv_link_ops(o, &od->amods,
-					pod->amod_list)) goto ERROR;
+		if (od->op_prev != NULL) {
+			SAU_PtrArr_soft_copy(&od->fmods, &od->op_prev->fmods);
+			SAU_PtrArr_soft_copy(&od->pmods, &od->op_prev->pmods);
+			SAU_PtrArr_soft_copy(&od->amods, &od->op_prev->amods);
 		}
+		if (!(od->op_params & SAU_POPP_ADJCS)) continue;
+		OpContext *oc = pod->op_context;
+		if (!ParseConv_link_ops(o, &od->fmods, oc->fmod_list))
+			goto ERROR;
+		if (!ParseConv_link_ops(o, &od->pmods, oc->pmod_list))
+			goto ERROR;
+		if (!ParseConv_link_ops(o, &od->amods, oc->amod_list))
+			goto ERROR;
 	}
 	return true;
 
