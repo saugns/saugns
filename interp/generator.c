@@ -126,7 +126,6 @@ static size_t count_ev_values(const SAU_ProgramEvent *restrict e) {
 	}
 	for (size_t i = 0; i < e->op_data_count; ++i) {
 		params = e->op_data[i].params;
-		params &= ~(SAU_POPP_ADJCS);
 		count += count_flags(params);
 	}
 	return count;
