@@ -12,8 +12,8 @@
  */
 
 #pragma once
-#include "program.h"
 #include "ptrarr.h"
+#include "program.h"
 
 /*
  * Configuration options.

@@ -24,21 +24,25 @@
 static const SAU_ProgramOpList blank_oplist = {0};
 
 static sauNoinline const SAU_ProgramOpList
-*create_ProgramOpList(const SAU_PtrArr *restrict op_list,
+*create_ProgramOpList(const SAU_NodeList *restrict op_list,
 		SAU_MemPool *restrict mem) {
-	if (!op_list->count)
+	if (!op_list)
 		return &blank_oplist;
-	uint32_t count = op_list->count;
-	const SAU_ScriptOpData **ops;
-	ops = (const SAU_ScriptOpData**) SAU_PtrArr_ITEMS(op_list);
+	uint32_t count = 0;
+	for (SAU_NodeRef *ref = op_list->refs; ref != NULL; ref = ref->next)
+		++count;
+	if (count == 0)
+		return &blank_oplist;
 	SAU_ProgramOpList *o;
 	o = SAU_MemPool_alloc(mem,
 			sizeof(SAU_ProgramOpList) + sizeof(uint32_t) * count);
 	if (!o)
 		return NULL;
 	o->count = count;
-	for (uint32_t i = 0; i < count; ++i) {
-		o->ids[i] = ops[i]->op_id;
+	size_t i = 0;
+	for (SAU_NodeRef *ref = op_list->refs; ref != NULL; ref = ref->next) {
+		SAU_ScriptOpData *od = ref->data;
+		o->ids[i++] = od->op_id;
 	}
 	return o;
 }
@@ -48,12 +52,10 @@ static sauNoinline const SAU_ProgramOpList
  * the graph of the voice event.
  */
 static uint32_t voice_duration(const SAU_ScriptEvData *restrict ve) {
-	SAU_ScriptOpData **ops;
 	uint32_t duration_ms = 0;
-	/* FIXME: node list type? */
-	ops = (SAU_ScriptOpData**) SAU_PtrArr_ITEMS(&ve->op_carriers);
-	for (size_t i = 0; i < ve->op_carriers.count; ++i) {
-		SAU_ScriptOpData *op = ops[i];
+	for (SAU_NodeRef *ref = ve->op_carriers->refs;
+			ref != NULL; ref = ref->next) {
+		SAU_ScriptOpData *op = ref->data;
 		if (op->time.v_ms > duration_ms)
 			duration_ms = op->time.v_ms;
 	}
@@ -225,12 +227,27 @@ static bool ScriptConv_convert_opdata(ScriptConv *restrict o,
 }
 
 /*
+ * Check whether or not a new program op list is needed.
+ *
+ * \return true given non-copied items or list clearing
+ */
+static inline bool need_new_oplist(const SAU_NodeList *restrict op_list,
+		const SAU_ProgramOpList *restrict prev_pol) {
+	if (!prev_pol)
+		return true;
+	if (!op_list)
+		return false;
+	return (op_list->new_refs != NULL) ||
+		((prev_pol->count > 0) && !op_list->refs);
+}
+
+/*
  * Replace program operator list.
  *
  * \return true, or false on allocation failure
  */
 static inline bool update_oplist(const SAU_ProgramOpList **restrict dstp,
-		const SAU_PtrArr *restrict src,
+		const SAU_NodeList *restrict src,
 		SAU_MemPool *restrict mem) {
 	const SAU_ProgramOpList *dst = create_ProgramOpList(src, mem);
 	if (!dst)
@@ -250,11 +267,10 @@ static inline bool update_oplist(const SAU_ProgramOpList **restrict dstp,
  * \return true, or false on allocation failure
  */
 static bool ScriptConv_convert_ops(ScriptConv *restrict o,
-		SAU_PtrArr *restrict op_list) {
-	SAU_ScriptOpData **ops;
-	ops = (SAU_ScriptOpData**) SAU_PtrArr_ITEMS(op_list);
-	for (size_t i = op_list->old_count; i < op_list->count; ++i) {
-		SAU_ScriptOpData *op = ops[i];
+		SAU_NodeList *restrict op_list) {
+	SAU_NodeRef *ref = op_list->new_refs;
+	for (; ref != NULL; ref = ref->next) {
+		SAU_ScriptOpData *op = ref->data;
 		uint32_t op_id;
 		if (!SAU_OpAlloc_update(&o->oa, op, &op_id)) goto ERROR;
 		if (!ScriptConv_convert_opdata(o, op, op_id)) goto ERROR;
@@ -264,15 +280,21 @@ static bool ScriptConv_convert_ops(ScriptConv *restrict o,
 		SAU_VoAllocState *vas = &o->va.a[o->ev->vo_id];
 		SAU_OpAllocState *oas = &o->oa.a[od->id];
 		SAU_ScriptOpData *sod = oas->last_sod;
-		if (od->params & SAU_POPP_ADJCS) {
+		if (need_new_oplist(sod->fmods, oas->fmods)) {
 			vas->flags |= SAU_VAS_GRAPH;
-			if (!update_oplist(&oas->fmods, &sod->fmods, o->mem))
+			if (!update_oplist(&oas->fmods, sod->fmods, o->mem))
 				goto ERROR;
 			od->fmods = oas->fmods;
-			if (!update_oplist(&oas->pmods, &sod->pmods, o->mem))
+		}
+		if (need_new_oplist(sod->pmods, oas->pmods)) {
+			vas->flags |= SAU_VAS_GRAPH;
+			if (!update_oplist(&oas->pmods, sod->pmods, o->mem))
 				goto ERROR;
 			od->pmods = oas->pmods;
-			if (!update_oplist(&oas->amods, &sod->amods, o->mem))
+		}
+		if (need_new_oplist(sod->amods, oas->amods)) {
+			vas->flags |= SAU_VAS_GRAPH;
+			if (!update_oplist(&oas->amods, sod->amods, o->mem))
 				goto ERROR;
 			od->amods = oas->amods;
 		}
@@ -322,7 +344,7 @@ static bool ScriptConv_convert_event(ScriptConv *restrict o,
 		ovd->params = vo_params;
 		ovd->pan = e->pan;
 		if (e->ev_flags & SAU_SDEV_NEW_OPGRAPH) {
-			if (!update_oplist(&vas->op_carriers, &e->op_carriers,
+			if (!update_oplist(&vas->op_carriers, e->op_carriers,
 						o->tmp)) goto ERROR;
 		}
 		out_ev->vo_data = ovd;
