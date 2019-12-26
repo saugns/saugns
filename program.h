@@ -23,7 +23,7 @@
  * Voice parameter flags.
  */
 enum {
-	SAU_PVOP_OPLIST = 1<<0,
+	SAU_PVOP_GRAPH = 1<<0,
 	SAU_PVOP_PAN = 1<<1,
 };
 
@@ -31,15 +31,14 @@ enum {
  * Operator parameter flags.
  */
 enum {
-	SAU_POPP_ADJCS = 1<<0,
-	SAU_POPP_WAVE = 1<<1,
-	SAU_POPP_TIME = 1<<2,
-	SAU_POPP_SILENCE = 1<<3,
-	SAU_POPP_FREQ = 1<<4,
-	SAU_POPP_FREQ2 = 1<<5,
-	SAU_POPP_PHASE = 1<<6,
-	SAU_POPP_AMP = 1<<7,
-	SAU_POPP_AMP2 = 1<<8,
+	SAU_POPP_WAVE = 1<<0,
+	SAU_POPP_TIME = 1<<1,
+	SAU_POPP_SILENCE = 1<<2,
+	SAU_POPP_FREQ = 1<<3,
+	SAU_POPP_FREQ2 = 1<<4,
+	SAU_POPP_PHASE = 1<<5,
+	SAU_POPP_AMP = 1<<6,
+	SAU_POPP_AMP2 = 1<<7,
 };
 
 /*
@@ -76,27 +75,22 @@ typedef struct SAU_ProgramOpRef {
 	uint8_t level; /* > 0 if used as a modulator */
 } SAU_ProgramOpRef;
 
-typedef struct SAU_ProgramOpGraph {
-	uint32_t opc;
-	uint32_t ops[1]; /* sized to opc */
-} SAU_ProgramOpGraph;
-
-typedef struct SAU_ProgramOpAdjcs {
-	uint32_t fmodc;
-	uint32_t pmodc;
-	uint32_t amodc;
-	uint32_t adjcs[1]; /* sized to total number */
-} SAU_ProgramOpAdjcs;
+typedef struct SAU_ProgramOpList {
+	uint32_t count;
+	uint32_t ids[];
+} SAU_ProgramOpList;
 
 typedef struct SAU_ProgramVoData {
-	const SAU_ProgramOpRef *op_list;
-	uint32_t op_count;
+	const SAU_ProgramOpRef *graph;
+	uint32_t graph_count;
 	uint32_t params;
 	SAU_Ramp pan;
 } SAU_ProgramVoData;
 
 typedef struct SAU_ProgramOpData {
-	const SAU_ProgramOpAdjcs *adjcs;
+	const SAU_ProgramOpList *fmods;
+	const SAU_ProgramOpList *pmods;
+	const SAU_ProgramOpList *amods;
 	uint32_t id;
 	uint32_t params;
 	uint32_t time_ms, silence_ms;
@@ -121,6 +115,8 @@ enum {
 	SAU_PMODE_AMP_DIV_VOICES = 1<<0,
 };
 
+struct SAU_MemPool;
+
 /**
  * Main program type. Contains everything needed for interpretation.
  */
@@ -133,6 +129,7 @@ typedef struct SAU_Program {
 	uint8_t op_nest_depth;
 	uint32_t duration_ms;
 	const char *name;
+	struct SAU_MemPool *mem; // internally used, provided until destroy
 } SAU_Program;
 
 struct SAU_Script;

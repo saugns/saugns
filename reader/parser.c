@@ -539,10 +539,10 @@ typedef struct ParseLevel {
 	uint8_t list_type;
 	uint8_t last_list_type; /* FIXME: kludge */
 	SAU_ParseEvData *event, *last_event;
-	SAU_ParseOpRef *op_ref, *parent_op_ref;
-	SAU_ParseOpRef *first_op_ref;
+	SAU_NodeRef *op_ref, *parent_op_ref;
+	SAU_NodeRef *first_op_ref;
 	SAU_ParseOpData *last_op;
-	SAU_ParseOpList *op_list;
+	SAU_NodeList *op_list;
 	SAU_SymStr *set_label;
 	/* timing/delay */
 	SAU_ParseEvData *group_from; /* where to begin for group_events() */
@@ -574,34 +574,6 @@ static bool parse_waittime(ParseLevel *restrict pl) {
  * Node- and scope-handling functions
  */
 
-static SAU_ParseOpList *create_op_list(uint8_t list_type,
-		SAU_MemPool *restrict memp) {
-	SAU_ParseOpList *ol = SAU_MemPool_alloc(memp, sizeof(SAU_ParseOpList));
-	if (!ol)
-		return NULL;
-	ol->type = list_type;
-	return ol;
-}
-
-static SAU_ParseOpRef *op_list_add(SAU_ParseOpList *restrict ol,
-		SAU_ParseOpData *restrict data, uint8_t ref_mode,
-		SAU_MemPool *restrict memp) {
-	SAU_ParseOpRef *ref = SAU_MemPool_alloc(memp, sizeof(SAU_ParseOpRef));
-	if (!ref)
-		return NULL;
-	ref->data = data;
-	if (!ol->refs)
-		ol->refs = ref;
-	if (!ol->new_refs)
-		ol->new_refs = ref;
-	else
-		ol->last_ref->next = ref;
-	ol->last_ref = ref;
-	ref->mode = ref_mode;
-	ref->list_type = ol->type;
-	return ref;
-}
-
 static sauNoinline void end_operator(ParseLevel *restrict pl) {
 	if (!(pl->pl_flags & SDPL_ACTIVE_OP))
 		return;
@@ -632,8 +604,7 @@ static sauNoinline void end_operator(ParseLevel *restrict pl) {
 		/*
 		 * Reset all operator state for initial event.
 		 */
-		op->op_params |= SAU_POPP_ADJCS |
-			SAU_POPP_WAVE |
+		op->op_params |= SAU_POPP_WAVE |
 			SAU_POPP_TIME |
 			SAU_POPP_SILENCE |
 			SAU_POPP_FREQ |
@@ -673,7 +644,7 @@ static sauNoinline void end_event(ParseLevel *restrict pl) {
 }
 
 static void begin_event(ParseLevel *restrict pl,
-		SAU_ParseEvData *restrict pve,
+		SAU_NodeRef *restrict prev_op_ref,
 		bool is_composite) {
 	SAU_Parser *o = pl->o;
 	end_event(pl);
@@ -681,9 +652,11 @@ static void begin_event(ParseLevel *restrict pl,
 	pl->event = e;
 	e->wait_ms = pl->next_wait_ms;
 	pl->next_wait_ms = 0;
-	e->op_list.type = SAU_PDNL_GRAPH;
+	e->op_list.type = SAU_SDLT_GRAPH;
 	SAU_Ramp_reset(&e->pan);
-	if (pve != NULL) {
+	if (prev_op_ref != NULL) {
+		SAU_ParseOpData *pod = prev_op_ref->data;
+		SAU_ParseEvData *pve = pod->event;
 		if (is_composite) {
 			if (!pl->composite) {
 				pve->composite = e;
@@ -718,16 +691,16 @@ static void begin_event(ParseLevel *restrict pl,
  * current event node, or to an operator node (ordinary or multiple)
  * in the case of operator linking/nesting.
  */
-static SAU_ParseOpRef *list_operator(ParseLevel *restrict pl,
+static SAU_NodeRef *list_operator(ParseLevel *restrict pl,
 		SAU_ParseOpData *od, uint8_t ref_mode) {
 	SAU_Parser *o = pl->o;
 	SAU_ParseEvData *e = pl->event;
-	SAU_ParseOpList *ol = pl->op_list;
-	if (pl->list_type == SAU_PDNL_GRAPH ||
-			!(ref_mode & SAU_PDNR_ADD)) {
+	SAU_NodeList *ol = pl->op_list;
+	if (pl->list_type == SAU_SDLT_GRAPH ||
+			!(ref_mode & SAU_SDRM_ADD)) {
 		ol = &e->op_list;
 	}
-	SAU_ParseOpRef *ref = op_list_add(ol, od, ref_mode, o->mp);
+	SAU_NodeRef *ref = SAU_NodeList_add(ol, od, ref_mode, o->mp);
 	pl->op_ref = ref;
 	if (!pl->first_op_ref)
 		pl->first_op_ref = ref;
@@ -740,7 +713,7 @@ static SAU_ParseOpRef *list_operator(ParseLevel *restrict pl,
  * event or for a new event begun.
  */
 static void begin_operator(ParseLevel *restrict pl,
-		SAU_ParseOpRef *restrict prev_op_ref,
+		SAU_NodeRef *restrict prev_op_ref,
 		uint8_t ref_mode, bool is_composite) {
 	SAU_Parser *o = pl->o;
 	ScanLookup *sl = &o->sl;
@@ -748,15 +721,13 @@ static void begin_operator(ParseLevel *restrict pl,
 			pl->location != SDPL_IN_EVENT ||
 			pl->next_wait_ms ||
 			is_composite)
-		begin_event(pl, (prev_op_ref != NULL ?
-					prev_op_ref->data->event : NULL),
-				is_composite);
+		begin_event(pl, prev_op_ref, is_composite);
 	SAU_ParseEvData *e = pl->event;
 	end_operator(pl);
 	SAU_ParseOpData *op = SAU_MemPool_alloc(o->mp, sizeof(SAU_ParseOpData));
 	if (!is_composite && pl->last_op != NULL)
 		pl->last_op->next_bound = op;
-	SAU_ParseOpRef *ref = list_operator(pl, op, ref_mode);
+	SAU_NodeRef *ref = list_operator(pl, op, ref_mode);
 	/*
 	 * Initialize node.
 	 */
@@ -798,7 +769,7 @@ static void begin_operator(ParseLevel *restrict pl,
 		 */
 		op->op_flags = SAU_PDOP_TIME_DEFAULT;
 		op->time_ms = sl->sopt.def_time_ms;
-		if (ref->list_type == SAU_PDNL_GRAPH) {
+		if (ref->list_type == SAU_SDLT_GRAPH) {
 			op->freq.v0 = sl->sopt.def_freq;
 		} else {
 			op->op_flags |= SAU_PDOP_NESTED;
@@ -816,13 +787,15 @@ static void begin_operator(ParseLevel *restrict pl,
 	 * previous node.
 	 */
 	if (pl->set_label != NULL) {
-		ref->label_sym = pl->set_label;
-		ref->label_sym->data = ref;
+		SAU_SymStr *label_sym = pl->set_label;
+		ref->label = label_sym;
+		label_sym->data = ref;
 		pl->set_label = NULL;
 	} else if (!is_composite && prev_op_ref != NULL
-			&& prev_op_ref->label_sym != NULL) {
-		ref->label_sym = prev_op_ref->label_sym;
-		ref->label_sym->data = ref;
+			&& prev_op_ref->label != NULL) {
+		SAU_SymStr *label_sym = prev_op_ref->label;
+		ref->label = label_sym;
+		label_sym->data = ref;
 	}
 	pl->pl_flags |= SDPL_ACTIVE_OP;
 }
@@ -836,7 +809,7 @@ static void begin_scope(SAU_Parser *restrict o, ParseLevel *restrict pl,
 	pl->list_type = list_type;
 	if (!parent_pl) {
 		// handle newscope == SCOPE_TOP here
-		pl->op_list = create_op_list(list_type, o->mp);
+		pl->op_list = SAU_create_NodeList(list_type, o->mp);
 		return;
 	}
 	pl->parent = parent_pl;
@@ -853,12 +826,12 @@ static void begin_scope(SAU_Parser *restrict o, ParseLevel *restrict pl,
 		break;
 	case SCOPE_BIND:
 		pl->group_from = parent_pl->group_from;
-		pl->op_list = create_op_list(list_type, o->mp);
+		pl->op_list = SAU_create_NodeList(list_type, o->mp);
 		break;
 	case SCOPE_NEST:
 		pl->pl_flags |= SDPL_NESTED_SCOPE;
 		pl->parent_op_ref = parent_pl->op_ref;
-		pl->op_list = create_op_list(list_type, o->mp);
+		pl->op_list = SAU_create_NodeList(list_type, o->mp);
 		break;
 	default:
 		break;
@@ -908,7 +881,7 @@ static void end_scope(ParseLevel *restrict pl) {
 			uint8_t list_type = pl->parent->list_type;
 			pl->parent->list_type = pl->parent->last_list_type;
 			begin_operator(pl->parent, pl->first_op_ref,
-					SAU_PDNR_UPDATE, false);
+					SAU_SDRM_UPDATE, false);
 			pl->parent->list_type = list_type;
 		}
 		break;
@@ -1000,8 +973,7 @@ static bool parse_ev_amp(ParseLevel *restrict pl) {
 		}
 	}
 	if (SAU_Scanner_tryc(sc, '~') && SAU_Scanner_tryc(sc, '[')) {
-		op->op_params |= SAU_POPP_ADJCS;
-		parse_level(o, pl, SAU_PDNL_AMODS, SCOPE_NEST);
+		parse_level(o, pl, SAU_SDLT_AMODS, SCOPE_NEST);
 	}
 	return false;
 }
@@ -1026,8 +998,7 @@ static bool parse_ev_freq(ParseLevel *restrict pl, bool rel_freq) {
 		}
 	}
 	if (SAU_Scanner_tryc(sc, '~') && SAU_Scanner_tryc(sc, '[')) {
-		op->op_params |= SAU_POPP_ADJCS;
-		parse_level(o, pl, SAU_PDNL_FMODS, SCOPE_NEST);
+		parse_level(o, pl, SAU_SDLT_FMODS, SCOPE_NEST);
 	}
 	return false;
 }
@@ -1043,8 +1014,7 @@ static bool parse_ev_phase(ParseLevel *restrict pl) {
 		op->op_params |= SAU_POPP_PHASE;
 	}
 	if (SAU_Scanner_tryc(sc, '+') && SAU_Scanner_tryc(sc, '[')) {
-		op->op_params |= SAU_POPP_ADJCS;
-		parse_level(o, pl, SAU_PDNL_PMODS, SCOPE_NEST);
+		parse_level(o, pl, SAU_SDLT_PMODS, SCOPE_NEST);
 	}
 	return false;
 }
@@ -1084,7 +1054,7 @@ static bool parse_step(ParseLevel *restrict pl) {
 		case '\\':
 			if (parse_waittime(pl)) {
 				begin_operator(pl, pl->op_ref,
-						SAU_PDNR_UPDATE, false);
+						SAU_SDRM_UPDATE, false);
 			}
 			break;
 		case 'a':
@@ -1186,7 +1156,7 @@ static bool parse_level(SAU_Parser *restrict o, ParseLevel *restrict parent_pl,
 		case ';':
 			if (pl.location == SDPL_IN_DEFAULTS || !pl.event)
 				goto INVALID;
-			begin_operator(&pl, pl.op_ref, SAU_PDNR_UPDATE, true);
+			begin_operator(&pl, pl.op_ref, SAU_SDRM_UPDATE, true);
 			flags = parse_step(&pl) ?
 				(HANDLE_DEFER | DEFERRED_STEP) :
 				0;
@@ -1215,13 +1185,13 @@ static bool parse_level(SAU_Parser *restrict o, ParseLevel *restrict parent_pl,
 			pl.location = SDPL_IN_NONE;
 			label = scan_label(sc, c);
 			if (label != NULL) {
-				SAU_ParseOpRef *ref = label->data;
+				SAU_NodeRef *ref = label->data;
 				if (!ref)
 					SAU_Scanner_warning(sc, NULL,
 "ignoring reference to undefined label");
 				else {
 					begin_operator(&pl, ref,
-							SAU_PDNR_UPDATE, false);
+							SAU_SDRM_UPDATE, false);
 					flags = parse_step(&pl) ?
 						(HANDLE_DEFER | DEFERRED_STEP) :
 						0;
@@ -1232,8 +1202,9 @@ static bool parse_level(SAU_Parser *restrict o, ParseLevel *restrict parent_pl,
 			size_t wave;
 			if (!scan_wavetype(sc, &wave))
 				break;
-			begin_operator(&pl, NULL, SAU_PDNR_ADD, false);
-			pl.op_ref->data->wave = wave;
+			begin_operator(&pl, NULL, SAU_SDRM_ADD, false);
+			SAU_ParseOpData *od = pl.op_ref->data;
+			od->wave = wave;
 			flags = parse_step(&pl) ?
 				(HANDLE_DEFER | DEFERRED_STEP) :
 				0;
@@ -1325,7 +1296,7 @@ static const char *parse_file(SAU_Parser *restrict o,
 	const char *name;
 	if (!SAU_Scanner_open(sc, script, is_path))
 		return NULL;
-	parse_level(o, NULL, SAU_PDNL_GRAPH, SCOPE_TOP);
+	parse_level(o, NULL, SAU_SDLT_GRAPH, SCOPE_TOP);
 	name = sc->f->path;
 	SAU_Scanner_close(sc);
 	return name;
