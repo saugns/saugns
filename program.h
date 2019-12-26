@@ -33,16 +33,15 @@ enum {
  * Operator parameter flags.
  */
 enum {
-	SAU_POPP_ADJCS = 1<<0,
-	SAU_POPP_WAVE = 1<<1,
-	SAU_POPP_TIME = 1<<2,
-	SAU_POPP_SILENCE = 1<<3,
-	SAU_POPP_FREQ = 1<<4,
-	SAU_POPP_FREQ2 = 1<<5,
-	SAU_POPP_PHASE = 1<<6,
-	SAU_POPP_AMP = 1<<7,
-	SAU_POPP_AMP2 = 1<<8,
-	SAU_POP_PARAMS = (1<<9) - 1
+	SAU_POPP_WAVE = 1<<0,
+	SAU_POPP_TIME = 1<<1,
+	SAU_POPP_SILENCE = 1<<2,
+	SAU_POPP_FREQ = 1<<3,
+	SAU_POPP_FREQ2 = 1<<4,
+	SAU_POPP_PHASE = 1<<5,
+	SAU_POPP_AMP = 1<<6,
+	SAU_POPP_AMP2 = 1<<7,
+	SAU_POP_PARAMS = (1<<8) - 1
 };
 
 /*

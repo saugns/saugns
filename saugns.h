@@ -12,8 +12,8 @@
  */
 
 #pragma once
-#include "program.h"
 #include "ptrarr.h"
+#include "program.h"
 
 #define SAU_CLINAME_STR "saugns"
 #define SAU_VERSION_STR "v0.3-dev"

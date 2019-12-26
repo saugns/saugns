@@ -16,6 +16,7 @@ OBJ=\
 	arrtype.o \
 	ptrarr.o \
 	mempool.o \
+	nodelist.o \
 	ramp.o \
 	wave.o \
 	reader/file.o \
@@ -114,10 +115,10 @@ test-scan: $(TEST1_OBJ)
 arrtype.o: arrtype.c arrtype.h common.h mempool.h
 	$(CC) -c $(CFLAGS) arrtype.c
 
-builder/builder.o: builder/builder.c common.h math.h program.h ptrarr.h ramp.h saugns.h script.h time.h wave.h
+builder/builder.o: builder/builder.c common.h math.h nodelist.h program.h ramp.h saugns.h script.h time.h wave.h
 	$(CC) -c $(CFLAGS) builder/builder.c -o builder/builder.o
 
-builder/scriptconv.o: arrtype.h builder/scriptconv.c builder/scriptconv.h common.h math.h mempool.h program.h ptrarr.h ramp.h script.h time.h wave.h
+builder/scriptconv.o: arrtype.h builder/scriptconv.c builder/scriptconv.h common.h math.h mempool.h nodelist.h program.h ptrarr.h ramp.h script.h time.h wave.h
 	$(CC) -c $(CFLAGS) builder/scriptconv.c -o builder/scriptconv.o
 
 common.o: common.c common.h
@@ -150,6 +151,9 @@ player/player.o: common.h interp/interp.h math.h player/audiodev.h player/player
 player/wavfile.o: common.h player/wavfile.c player/wavfile.h
 	$(CC) -c $(CFLAGS) player/wavfile.c -o player/wavfile.o
 
+nodelist.o: common.h mempool.h nodelist.c nodelist.h
+	$(CC) -c $(CFLAGS) nodelist.c
+
 ptrarr.o: common.h mempool.h ptrarr.c ptrarr.h
 	$(CC) -c $(CFLAGS) ptrarr.c
 
@@ -162,10 +166,10 @@ reader/file.o: common.h reader/file.c reader/file.h
 reader/lexer.o: common.h math.h mempool.h reader/file.h reader/lexer.c reader/lexer.h reader/scanner.h reader/symtab.h
 	$(CC) -c $(CFLAGS) reader/lexer.c -o reader/lexer.o
 
-reader/parseconv.o: common.h help.h math.h mempool.h program.h ptrarr.h ramp.h reader/parseconv.c reader/parser.h reader/symtab.h script.h time.h wave.h
+reader/parseconv.o: common.h help.h math.h mempool.h nodelist.h program.h ramp.h reader/parseconv.c reader/parser.h reader/symtab.h script.h time.h wave.h
 	$(CC) -c $(CFLAGS) reader/parseconv.c -o reader/parseconv.o
 
-reader/parser.o: common.h help.h math.h mempool.h program.h ptrarr.h ramp.h reader/file.h reader/parser.c reader/parser.h reader/scanner.h reader/symtab.h script.h time.h wave.h
+reader/parser.o: common.h help.h math.h mempool.h nodelist.h program.h ramp.h reader/file.h reader/parser.c reader/parser.h reader/scanner.h reader/symtab.h script.h time.h wave.h
 	$(CC) -c $(CFLAGS) reader/parser.c -o reader/parser.o
 
 reader/scanner.o: common.h math.h mempool.h reader/file.h reader/scanner.c reader/scanner.h reader/symtab.h
@@ -174,10 +178,10 @@ reader/scanner.o: common.h math.h mempool.h reader/file.h reader/scanner.c reade
 reader/symtab.o: common.h mempool.h reader/symtab.c reader/symtab.h
 	$(CC) -c $(CFLAGS) reader/symtab.c -o reader/symtab.o
 
-saugns.o: common.h help.h math.h program.h ptrarr.h ramp.h saugns.c saugns.h time.h wave.h
+saugns.o: common.h help.h math.h ptrarr.h program.h ramp.h saugns.c saugns.h time.h wave.h
 	$(CC) -c $(CFLAGS) saugns.c
 
-test-scan.o: common.h math.h mempool.h program.h ptrarr.h ramp.h reader/lexer.h reader/scanner.h reader/file.h reader/symtab.h saugns.h test-scan.c time.h wave.h
+test-scan.o: common.h reader/file.h reader/lexer.h reader/scanner.h reader/symtab.h math.h mempool.h program.h ptrarr.h ramp.h saugns.h test-scan.c time.h wave.h
 	$(CC) -c $(CFLAGS) test-scan.c
 
 wave.o: common.h math.h wave.c wave.h
