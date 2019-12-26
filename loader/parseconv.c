@@ -13,7 +13,6 @@
 
 #include "parser.h"
 #include "../mempool.h"
-#include <stdlib.h>
 
 /*
  * Script data construction from parse data.
@@ -23,11 +22,20 @@
  * recursive traversal in scriptconv.
  */
 
-static void op_list_fornew(SAU_ParseOpList *restrict ol,
+static inline bool create_oplist(SAU_NodeList **restrict olp, uint8_t type,
+		SAU_MemPool *restrict mempool) {
+	SAU_NodeList *ol = SAU_create_NodeList(type, mempool);
+	if (!ol)
+		return false;
+	*olp = ol;
+	return true;
+}
+
+static void oplist_fornew(SAU_NodeList *restrict ol,
 		void (*on_op)(SAU_ParseOpData *restrict data)) {
 	if (!ol)
 		return;
-	SAU_ParseOpRef *op_ref = ol->new_refs;
+	SAU_NodeRef *op_ref = ol->new_refs;
 	for (; op_ref != NULL; op_ref = op_ref->next) on_op(op_ref->data);
 }
 
@@ -40,7 +48,7 @@ static void group_events(SAU_ParseEvData *restrict to) {
 	SAU_ParseEvData *e, *e_after = to->next;
 	uint32_t wait = 0, waitcount = 0;
 	for (e = to->groupfrom; e != e_after; ) {
-		SAU_ParseOpRef *op_ref = e->op_list.refs;
+		SAU_NodeRef *op_ref = e->op_list.refs;
 		for (; op_ref != NULL; op_ref = op_ref->next) {
 			SAU_ParseOpData *op = op_ref->data;
 			if (e->next == e_after &&
@@ -58,7 +66,7 @@ op_ref == e->op_list.last_ref && (op->op_flags & SAU_PDOP_TIME_DEFAULT) != 0) {
 		}
 	}
 	for (e = to->groupfrom; e != e_after; ) {
-		SAU_ParseOpRef *op_ref = e->op_list.refs;
+		SAU_NodeRef *op_ref = e->op_list.refs;
 		for (; op_ref != NULL; op_ref = op_ref->next) {
 			SAU_ParseOpData *op = op_ref->data;
 			if (op->op_flags & SAU_PDOP_TIME_DEFAULT) {
@@ -105,9 +113,9 @@ static void time_operator(SAU_ParseOpData *restrict op) {
 		if (e->next != NULL) e->next->wait_ms += op->time_ms;
 		e->ev_flags &= ~SAU_PDEV_ADD_WAIT_DURATION;
 	}
-	for (SAU_ParseOpList *list = op->nest_lists;
+	for (SAU_NodeList *list = op->nest_lists;
 			list != NULL; list = list->next) {
-		op_list_fornew(list, time_operator);
+		oplist_fornew(list, time_operator);
 	}
 }
 
@@ -117,7 +125,7 @@ static void time_event(SAU_ParseEvData *restrict e) {
 	 * adding present event duration to wait time of next event.
 	 */
 	// e->pan.flags |= SAU_RAMP_TIME_SET; // TODO: revisit semantics
-	op_list_fornew(&e->op_list, time_operator);
+	oplist_fornew(&e->op_list, time_operator);
 	/*
 	 * Timing for composites - done before event list flattened.
 	 */
@@ -214,8 +222,8 @@ static void flatten_events(SAU_ParseEvData *restrict e) {
 
 typedef struct ParseConv {
 	SAU_ScriptEvData *ev, *first_ev;
-	// for temporary data, instance borrowed from converted SAU_Parse
-	SAU_MemPool *memp;
+	SAU_MemPool *mem;
+	SAU_MemPool *tmp; // for temporary data (borrowed from input SAU_Parse)
 } ParseConv;
 
 /*
@@ -224,9 +232,9 @@ typedef struct ParseConv {
 typedef struct OpContext {
 	SAU_ParseOpData *newest; // most recent in time-ordered events
 	/* current node adjacents in operator linkage graph */
-	SAU_ParseOpList *fmod_list;
-	SAU_ParseOpList *pmod_list;
-	SAU_ParseOpList *amod_list;
+	SAU_NodeList *fmod_list;
+	SAU_NodeList *pmod_list;
+	SAU_NodeList *amod_list;
 } OpContext;
 
 /*
@@ -243,7 +251,7 @@ static OpContext *ParseConv_update_opcontext(ParseConv *restrict o,
 		SAU_ParseOpData *restrict pod) {
 	OpContext *oc = NULL;
 	if (!pod->prev) {
-		oc = SAU_MemPool_alloc(o->memp, sizeof(OpContext));
+		oc = SAU_MemPool_alloc(o->tmp, sizeof(OpContext));
 		if (!oc)
 			return NULL;
 	} else {
@@ -265,22 +273,31 @@ static OpContext *ParseConv_update_opcontext(ParseConv *restrict o,
 	oc->fmod_list = NULL;
 	oc->pmod_list = NULL;
 	oc->amod_list = NULL;
-	for (SAU_ParseOpList *list = pod->nest_lists;
+	for (SAU_NodeList *list = pod->nest_lists;
 			list != NULL; list = list->next) {
 		switch (list->type) {
-		case SAU_PDNL_FMODS:
+		case SAU_SDLT_FMODS:
 			oc->fmod_list = list;
 			break;
-		case SAU_PDNL_PMODS:
+		case SAU_SDLT_PMODS:
 			oc->pmod_list = list;
 			break;
-		case SAU_PDNL_AMODS:
+		case SAU_SDLT_AMODS:
 			oc->amod_list = list;
 			break;
 		default:
 			break;
 		}
 	}
+	if (oc->fmod_list != NULL &&
+			!create_oplist(&od->fmods, SAU_SDLT_FMODS, o->mem))
+		return NULL;
+	if (oc->pmod_list != NULL &&
+			!create_oplist(&od->pmods, SAU_SDLT_PMODS, o->mem))
+		return NULL;
+	if (oc->amod_list != NULL &&
+			!create_oplist(&od->amods, SAU_SDLT_AMODS, o->mem))
+		return NULL;
 	pod->op_context = oc;
 	return oc;
 }
@@ -297,11 +314,11 @@ typedef struct VoContext {
  * adding it to the list to be used for the current script event.
  */
 static bool ParseConv_add_opdata(ParseConv *restrict o,
-		SAU_ParseOpRef *restrict pod_ref) {
+		SAU_NodeRef *restrict pod_ref) {
 	SAU_ParseOpData *pod = pod_ref->data;
-	SAU_ScriptOpData *od = calloc(1, sizeof(SAU_ScriptOpData));
-	if (!od)
-		return false;
+	SAU_ScriptOpData *od = SAU_MemPool_alloc(o->mem,
+			sizeof(SAU_ScriptOpData));
+	if (!od) goto ERROR;
 	SAU_ScriptEvData *e = o->ev;
 	pod->op_conv = od;
 	od->event = e;
@@ -311,8 +328,8 @@ static bool ParseConv_add_opdata(ParseConv *restrict o,
 	od->time_ms = pod->time_ms;
 	od->silence_ms = pod->silence_ms;
 	od->wave = pod->wave;
-	if (pod_ref->list_type == SAU_PDNL_GRAPH &&
-			(pod_ref->mode & SAU_PDNR_ADD) != 0) {
+	if (pod_ref->list_type == SAU_SDLT_GRAPH &&
+			(pod_ref->mode & SAU_SDRM_ADD) != 0) {
 		e->ev_flags |= SAU_SDEV_NEW_OPGRAPH;
 		od->op_flags |= SAU_SDOP_NEW_CARRIER;
 	}
@@ -322,15 +339,11 @@ static bool ParseConv_add_opdata(ParseConv *restrict o,
 	od->amp2 = pod->amp2;
 	od->phase = pod->phase;
 	if (!ParseConv_update_opcontext(o, od, pod)) goto ERROR;
-	/* op_next */
-	/* fmods */
-	/* pmods */
-	/* amods */
-	if (!SAU_PtrList_add(&o->ev->op_all, od)) goto ERROR;
+	if (!SAU_NodeList_add(&e->op_all, od, SAU_SDRM_UPDATE, o->mem))
+		goto ERROR;
 	return true;
 
 ERROR:
-	free(od);
 	return false;
 }
 
@@ -339,10 +352,10 @@ ERROR:
  * visiting new operator nodes as they branch out.
  */
 static bool ParseConv_add_ops(ParseConv *restrict o,
-		const SAU_ParseOpList *restrict pod_list) {
-	if (!pod_list)
+		const SAU_NodeList *restrict pol) {
+	if (!pol)
 		return true;
-	SAU_ParseOpRef *pod_ref = pod_list->new_refs;
+	SAU_NodeRef *pod_ref = pol->new_refs;
 	for (; pod_ref != NULL; pod_ref = pod_ref->next) {
 		SAU_ParseOpData *pod = pod_ref->data;
 		if (pod->op_flags & SAU_PDOP_MULTIPLE) {
@@ -370,45 +383,31 @@ ERROR:
  * visiting all linked operator nodes as they branch out.
  */
 static bool ParseConv_link_ops(ParseConv *restrict o,
-		SAU_PtrList *restrict od_list,
-		const SAU_ParseOpList *restrict pod_list) {
-	if (!pod_list)
+		SAU_NodeList *restrict ol,
+		const SAU_NodeList *restrict pol) {
+	if (!pol)
 		return true;
-	if (od_list != NULL)
-		SAU_PtrList_clear(od_list); // rebuild, replacing soft copy
-	SAU_ParseOpRef *pod_ref = pod_list->refs;
+	SAU_NodeRef *pod_ref = pol->refs;
 	for (; pod_ref != NULL; pod_ref = pod_ref->next) {
 		SAU_ParseOpData *pod = pod_ref->data;
 		if (pod->op_flags & SAU_PDOP_IGNORED) continue;
 		SAU_ScriptOpData *od = pod->op_conv;
 		if (!od) goto ERROR;
-		SAU_ScriptEvData *e = od->event;
-		if (e->ev_flags & SAU_SDEV_NEW_OPGRAPH) {
-			// handle linking for carriers separately
-			if ((od->op_flags & SAU_SDOP_NEW_CARRIER) != 0
-				&& !SAU_PtrList_add(&e->op_graph, od))
+		if (ol != NULL) {
+			if (!SAU_NodeList_add(ol, od, SAU_SDRM_ADD, o->mem))
 				goto ERROR;
 		}
-		if (od_list != NULL && !SAU_PtrList_add(od_list, od))
-			goto ERROR;
-		if (od->op_prev != NULL) {
-			SAU_PtrList_soft_copy(&od->fmods, &od->op_prev->fmods);
-			SAU_PtrList_soft_copy(&od->pmods, &od->op_prev->pmods);
-			SAU_PtrList_soft_copy(&od->amods, &od->op_prev->amods);
-		}
-		if (!(od->op_params & SAU_POPP_ADJCS)) continue;
 		OpContext *oc = pod->op_context;
-		if (!ParseConv_link_ops(o, &od->fmods, oc->fmod_list))
+		if (!ParseConv_link_ops(o, od->fmods, oc->fmod_list))
 			goto ERROR;
-		if (!ParseConv_link_ops(o, &od->pmods, oc->pmod_list))
+		if (!ParseConv_link_ops(o, od->pmods, oc->pmod_list))
 			goto ERROR;
-		if (!ParseConv_link_ops(o, &od->amods, oc->amod_list))
+		if (!ParseConv_link_ops(o, od->amods, oc->amod_list))
 			goto ERROR;
 	}
 	return true;
 
 ERROR:
-	SAU_error("parseconv", "converted node missing at some level");
 	return false;
 }
 
@@ -417,9 +416,9 @@ ERROR:
  */
 static bool ParseConv_add_event(ParseConv *restrict o,
 		SAU_ParseEvData *restrict pe) {
-	SAU_ScriptEvData *e = calloc(1, sizeof(SAU_ScriptEvData));
-	if (!e)
-		return false;
+	SAU_ScriptEvData *e = SAU_MemPool_alloc(o->mem,
+			sizeof(SAU_ScriptEvData));
+	if (!e) goto ERROR;
 	pe->ev_conv = e;
 	if (!o->first_ev)
 		o->first_ev = e;
@@ -428,9 +427,10 @@ static bool ParseConv_add_event(ParseConv *restrict o,
 	o->ev = e;
 	e->wait_ms = pe->wait_ms;
 	/* ev_flags */
+	e->op_all.type = SAU_SDLT_GRAPH; // will do, only used for updates
 	VoContext *vc;
 	if (!pe->vo_prev) {
-		vc = SAU_MemPool_alloc(o->memp, sizeof(VoContext));
+		vc = SAU_MemPool_alloc(o->tmp, sizeof(VoContext));
 		if (!vc) goto ERROR;
 		e->ev_flags |= SAU_SDEV_NEW_OPGRAPH;
 	} else {
@@ -444,11 +444,13 @@ static bool ParseConv_add_event(ParseConv *restrict o,
 	e->vo_params = pe->vo_params;
 	e->pan = pe->pan;
 	if (!ParseConv_add_ops(o, &pe->op_list)) goto ERROR;
-	if (!ParseConv_link_ops(o, NULL, &pe->op_list)) goto ERROR;
+	if ((e->ev_flags & SAU_SDEV_NEW_OPGRAPH) != 0 &&
+			!create_oplist(&e->op_graph, SAU_SDLT_GRAPH, o->mem))
+		goto ERROR;
+	if (!ParseConv_link_ops(o, e->op_graph, &pe->op_list)) goto ERROR;
 	return true;
 
 ERROR:
-	free(e);
 	return false;
 }
 
@@ -462,22 +464,24 @@ ERROR:
  */
 static SAU_Script *ParseConv_convert(ParseConv *restrict o,
 		SAU_Parse *restrict p) {
+	o->tmp = p->mem;
+	o->mem = SAU_create_MemPool(0);
+	if (!o->mem) goto ERROR;
 	SAU_ParseEvData *pe;
 	for (pe = p->events; pe != NULL; pe = pe->next) {
 		time_event(pe);
 		if (pe->groupfrom != NULL) group_events(pe);
 	}
-	SAU_Script *s = calloc(1, sizeof(SAU_Script));
-	if (!s)
-		return NULL;
+	SAU_Script *s = SAU_MemPool_alloc(o->mem, sizeof(SAU_Script));
+	if (!s) goto ERROR;
 	s->name = p->name;
 	s->sopt = p->sopt;
+	s->mem = o->mem;
 	/*
 	 * Convert events, flattening the remaining list while proceeding.
 	 * Flattening must be done following the timing adjustment pass;
 	 * otherwise, cannot always arrange events in the correct order.
 	 */
-	o->memp = p->mem;
 	for (pe = p->events; pe != NULL; pe = pe->next) {
 		if (!ParseConv_add_event(o, pe)) goto ERROR;
 		if (pe->composite != NULL) flatten_events(pe);
@@ -486,7 +490,8 @@ static SAU_Script *ParseConv_convert(ParseConv *restrict o,
 	return s;
 
 ERROR:
-	SAU_discard_Script(s);
+	SAU_destroy_MemPool(o->mem);
+	SAU_error("parseconv", "memory allocation failure");
 	return NULL;
 }
 
@@ -505,43 +510,11 @@ SAU_Script *SAU_load_Script(const char *restrict script_arg, bool is_path) {
 	return o;
 }
 
-/*
- * Destroy the given operator data node.
- */
-static void destroy_operator(SAU_ScriptOpData *restrict op) {
-	SAU_PtrList_clear(&op->op_next);
-	SAU_PtrList_clear(&op->fmods);
-	SAU_PtrList_clear(&op->pmods);
-	SAU_PtrList_clear(&op->amods);
-	free(op);
-}
-
-/*
- * Destroy the given event data node and all associated operator data nodes.
- */
-static void destroy_event_node(SAU_ScriptEvData *restrict e) {
-	size_t i;
-	SAU_ScriptOpData **ops;
-	ops = (SAU_ScriptOpData**) SAU_PtrList_ITEMS(&e->op_all);
-	for (i = e->op_all.old_count; i < e->op_all.count; ++i) {
-		destroy_operator(ops[i]);
-	}
-	SAU_PtrList_clear(&e->op_all);
-	SAU_PtrList_clear(&e->op_graph);
-	free(e);
-}
-
 /**
  * Destroy script data.
  */
 void SAU_discard_Script(SAU_Script *restrict o) {
 	if (!o)
 		return;
-	SAU_ScriptEvData *e;
-	for (e = o->events; e != NULL; ) {
-		SAU_ScriptEvData *e_next = e->next;
-		destroy_event_node(e);
-		e = e_next;
-	}
-	free(o);
+	SAU_destroy_MemPool(o->mem);
 }
