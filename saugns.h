@@ -12,10 +12,10 @@
  */
 
 #pragma once
-#include "program.h"
 #include "ptrlist.h"
+#include "program.h"
 
-#define SAU_VERSION_STR "saugns v0.3.6-beta"
+#define SAU_VERSION_STR "saugns v0.3.6-beta2"
 
 size_t SAU_build(const SAU_PtrList *restrict script_args, bool are_paths,
 		SAU_PtrList *restrict prg_objs);
