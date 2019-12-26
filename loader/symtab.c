@@ -26,7 +26,7 @@ typedef struct TabItem {
 	struct TabItem *prev;
 	void *data;
 	size_t key_len;
-	char key[1];
+	char key[];
 } TabItem;
 
 typedef struct HashTab {
@@ -36,7 +36,7 @@ typedef struct HashTab {
 } HashTab;
 
 #define GET_TABITEM_SIZE(key_len) \
-	(offsetof(TabItem, key) + (key_len))
+	(sizeof(TabItem) + (key_len))
 
 static inline void fini_HashTab(HashTab *restrict o) {
 	free(o->items);
