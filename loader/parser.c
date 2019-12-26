@@ -633,8 +633,7 @@ static sauNoinline void end_operator(ParseLevel *restrict pl) {
 		/*
 		 * Reset all operator state for initial event.
 		 */
-		op->op_params |= SAU_POPP_ADJCS |
-			SAU_POPP_WAVE |
+		op->op_params |= SAU_POPP_WAVE |
 			SAU_POPP_TIME |
 			SAU_POPP_SILENCE |
 			SAU_POPP_FREQ |
@@ -1001,7 +1000,6 @@ static bool parse_ev_amp(ParseLevel *restrict pl) {
 		}
 	}
 	if (SAU_Scanner_tryc(sc, '~') && SAU_Scanner_tryc(sc, '[')) {
-		op->op_params |= SAU_POPP_ADJCS;
 		parse_level(o, pl, SAU_PDNL_AMODS, SCOPE_NEST);
 	}
 	return false;
@@ -1027,7 +1025,6 @@ static bool parse_ev_freq(ParseLevel *restrict pl, bool rel_freq) {
 		}
 	}
 	if (SAU_Scanner_tryc(sc, '~') && SAU_Scanner_tryc(sc, '[')) {
-		op->op_params |= SAU_POPP_ADJCS;
 		parse_level(o, pl, SAU_PDNL_FMODS, SCOPE_NEST);
 	}
 	return false;
@@ -1044,7 +1041,6 @@ static bool parse_ev_phase(ParseLevel *restrict pl) {
 		op->op_params |= SAU_POPP_PHASE;
 	}
 	if (SAU_Scanner_tryc(sc, '+') && SAU_Scanner_tryc(sc, '[')) {
-		op->op_params |= SAU_POPP_ADJCS;
 		parse_level(o, pl, SAU_PDNL_PMODS, SCOPE_NEST);
 	}
 	return false;

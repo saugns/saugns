@@ -33,7 +33,9 @@ typedef struct OperatorNode {
 	uint32_t silence;
 	uint8_t flags;
 	uint8_t wave;
-	const SAU_ProgramOpAdjcs *adjcs;
+	const SAU_ProgramOpList *fmods;
+	const SAU_ProgramOpList *pmods;
+	const SAU_ProgramOpList *amods;
 	SAU_Ramp amp, freq;
 	SAU_Ramp amp2, freq2;
 	uint32_t amp_pos, freq_pos;
@@ -65,7 +67,9 @@ typedef union EventValue {
 typedef struct EventOpData {
 	uint32_t id;
 	uint32_t params;
-	const SAU_ProgramOpAdjcs *adjcs;
+	const SAU_ProgramOpList *fmods;
+	const SAU_ProgramOpList *pmods;
+	const SAU_ProgramOpList *amods;
 } EventOpData;
 
 typedef struct EventVoData {
@@ -82,6 +86,8 @@ typedef struct EventNode {
 	uint32_t waittime;
 	uint32_t od_count;
 } EventNode;
+
+static const SAU_ProgramOpList blank_oplist = {0};
 
 struct SAU_Generator {
 	double osc_coeff;
@@ -130,7 +136,6 @@ static size_t count_ev_values(const SAU_ProgramEvent *restrict e) {
 	}
 	for (size_t i = 0; i < e->op_data_count; ++i) {
 		params = e->op_data[i].params;
-		params &= ~(SAU_POPP_ADJCS);
 		count += count_flags(params);
 		if ((params & SAU_POPP_FREQ) != 0)
 			count += count_ramp_values(&e->op_data[i].freq) - 1;
@@ -249,9 +254,9 @@ static bool convert_program(SAU_Generator *restrict o,
 			params = pod->params;
 			ev_od->id = op_id;
 			ev_od->params = params;
-			if (params & SAU_POPP_ADJCS) {
-				ev_od->adjcs = pod->adjcs;
-			}
+			if (pod->fmods != NULL) ev_od->fmods = pod->fmods;
+			if (pod->pmods != NULL) ev_od->pmods = pod->pmods;
+			if (pod->amods != NULL) ev_od->amods = pod->amods;
 			if (params & SAU_POPP_WAVE)
 				(*ev_v++).i = pod->wave;
 			if (params & SAU_POPP_TIME) {
@@ -381,8 +386,12 @@ static void handle_event(SAU_Generator *restrict o, EventNode *restrict e) {
 			EventOpData *od = &e->od[i];
 			OperatorNode *on = &o->operators[od->id];
 			params = od->params;
-			if (params & SAU_POPP_ADJCS)
-				on->adjcs = od->adjcs;
+			if (od->fmods != NULL) on->fmods = od->fmods;
+			if (!on->fmods) on->fmods = &blank_oplist;
+			if (od->pmods != NULL) on->pmods = od->pmods;
+			if (!on->pmods) on->pmods = &blank_oplist;
+			if (od->amods != NULL) on->amods = od->amods;
+			if (!on->amods) on->amods = &blank_oplist;
 			if (params & SAU_POPP_WAVE)
 				on->wave = (*val++).i;
 			if (params & SAU_POPP_TIME)
@@ -440,16 +449,9 @@ static uint32_t run_block(SAU_Generator *restrict o,
 		OperatorNode *restrict n,
 		float *restrict parent_freq,
 		bool wave_env, uint32_t acc_ind) {
-	uint32_t i, len;
+	uint32_t i, len = buf_len;
 	float *s_buf = *(bufs++), *pm_buf;
 	float *freq, *amp;
-	uint32_t fmodc = 0, pmodc = 0, amodc = 0;
-	if (n->adjcs) {
-		fmodc = n->adjcs->fmodc;
-		pmodc = n->adjcs->pmodc;
-		amodc = n->adjcs->amodc;
-	}
-	len = buf_len;
 	/*
 	 * If silence, zero-fill and delay processing for duration.
 	 */
@@ -490,12 +492,12 @@ static uint32_t run_block(SAU_Generator *restrict o,
 	 */
 	freq = *(bufs++);
 	SAU_Ramp_run(&n->freq, &n->freq_pos, freq, len, o->srate, parent_freq);
-	if (fmodc) {
+	if (n->fmods->count > 0) {
 		float *freq2 = *(bufs++);
 		SAU_Ramp_run(&n->freq2, &n->freq2_pos, freq2, len, o->srate,
 				parent_freq);
-		const uint32_t *fmods = n->adjcs->adjcs;
-		for (i = 0; i < fmodc; ++i)
+		const uint32_t *fmods = n->fmods->ids;
+		for (i = 0; i < n->fmods->count; ++i)
 			run_block(o, bufs, len, &o->operators[fmods[i]],
 					freq, true, i);
 		float *fm_buf = *bufs;
@@ -508,9 +510,9 @@ static uint32_t run_block(SAU_Generator *restrict o,
 	 * If phase modulators linked, get phase offsets for modulation.
 	 */
 	pm_buf = NULL;
-	if (pmodc) {
-		const uint32_t *pmods = &n->adjcs->adjcs[fmodc];
-		for (i = 0; i < pmodc; ++i)
+	if (n->pmods->count > 0) {
+		const uint32_t *pmods = n->pmods->ids;
+		for (i = 0; i < n->pmods->count; ++i)
 			run_block(o, bufs, len, &o->operators[pmods[i]],
 					freq, false, i);
 		pm_buf = *(bufs++);
@@ -521,11 +523,11 @@ static uint32_t run_block(SAU_Generator *restrict o,
 	 */
 	amp = *(bufs++);
 	SAU_Ramp_run(&n->amp, &n->amp_pos, amp, len, o->srate, NULL);
-	if (amodc) {
+	if (n->amods->count > 0) {
 		float *amp2 = *(bufs++);
 		SAU_Ramp_run(&n->amp2, &n->amp2_pos, amp2, len, o->srate, NULL);
-		const uint32_t *amods = &n->adjcs->adjcs[fmodc+pmodc];
-		for (i = 0; i < amodc; ++i)
+		const uint32_t *amods = n->amods->ids;
+		for (i = 0; i < n->amods->count; ++i)
 			run_block(o, bufs, len, &o->operators[amods[i]],
 					freq, true, i);
 		float *am_buf = *bufs;

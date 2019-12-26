@@ -440,7 +440,6 @@ static bool ParseConv_link_ops(ParseConv *restrict o,
 			SAU_PtrList_soft_copy(&od->pmods, &od->op_prev->pmods);
 			SAU_PtrList_soft_copy(&od->amods, &od->op_prev->amods);
 		}
-		if (!(od->op_params & SAU_POPP_ADJCS)) continue;
 		OpContext *oc = pod->op_context;
 		if (!ParseConv_link_ops(o, &od->fmods, oc->fmod_list))
 			goto ERROR;
