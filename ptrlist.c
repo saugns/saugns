@@ -12,6 +12,7 @@
  */
 
 #include "ptrlist.h"
+#include "mempool.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -95,6 +96,32 @@ bool SAU_PtrList_memdup(SAU_PtrList *restrict o, void ***restrict dst) {
 	size_t size = o->count * sizeof(void*);
 	void **src = SAU_PtrList_ITEMS(o);
 	void **a = SAU_memdup(src, size);
+	if (!a)
+		return false;
+	*dst = a;
+	return true;
+}
+
+/**
+ * Mempool-using variant of the
+ * memdup function for the contents of the given list.
+ *
+ * \p dst will be set to point to the new allocation
+ * (or to NULL if the list was empty). If the list was
+ * non-empty and allocation failed, \p dst will remain
+ * unaltered.
+ *
+ * \return true unless allocation failed
+ */
+bool SAU_PtrList_mpmemdup(SAU_PtrList *restrict o, void ***restrict dst,
+		SAU_MemPool *restrict mempool) {
+	if (!o->count) {
+		*dst = NULL;
+		return true;
+	}
+	size_t size = o->count * sizeof(void*);
+	void **src = SAU_PtrList_ITEMS(o);
+	void **a = SAU_MemPool_memdup(mempool, src, size);
 	if (!a)
 		return false;
 	*dst = a;
