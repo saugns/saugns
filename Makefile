@@ -114,10 +114,10 @@ test-scan: $(TEST1_OBJ)
 arrtype.o: arrtype.c arrtype.h common.h
 	$(CC) -c $(CFLAGS) arrtype.c
 
-builder/builder.o: builder/builder.c saugns.h script.h ptrlist.h nodelist.h program.h ramp.h wave.h math.h common.h
+builder/builder.o: builder/builder.c saugns.h script.h ptrlist.h program.h nodelist.h ramp.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) builder/builder.c -o builder/builder.o
 
-builder/scriptconv.o: builder/scriptconv.c program.h ramp.h wave.h math.h script.h nodelist.h ptrlist.h arrtype.h common.h
+builder/scriptconv.o: builder/scriptconv.c script.h program.h ptrlist.h arrtype.h nodelist.h ramp.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) builder/scriptconv.c -o builder/scriptconv.o
 
 common.o: common.c common.h
@@ -141,10 +141,10 @@ loader/lexer.o: loader/lexer.c loader/lexer.h loader/file.h loader/symtab.h memp
 loader/parseconv.o: loader/parseconv.c loader/parser.h mempool.h nodelist.h program.h ramp.h wave.h math.h script.h common.h
 	$(CC) -c $(CFLAGS) loader/parseconv.c -o loader/parseconv.o
 
-loader/parser.o: loader/parser.c loader/parser.h loader/scanner.h loader/file.h loader/symtab.h mempool.h nodelist.h script.h program.h ramp.h wave.h math.h common.h
+loader/parser.o: loader/parser.c loader/scanner.h loader/symtab.h loader/parser.h loader/file.h mempool.h script.h nodelist.h program.h ramp.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) loader/parser.c -o loader/parser.o
 
-loader/scanner.o: loader/scanner.c loader/scanner.h loader/file.h loader/symtab.h mempool.h math.h common.h
+loader/scanner.o: loader/scanner.c loader/scanner.h math.h loader/file.h loader/symtab.h mempool.h common.h
 	$(CC) -c $(CFLAGS) loader/scanner.c -o loader/scanner.o
 
 loader/symtab.o: loader/symtab.c loader/symtab.h mempool.h common.h
@@ -153,7 +153,7 @@ loader/symtab.o: loader/symtab.c loader/symtab.h mempool.h common.h
 mempool.o: mempool.c mempool.h arrtype.h common.h
 	$(CC) -c $(CFLAGS) mempool.c
 
-nodelist.o: nodelist.c nodelist.h mempool.h
+nodelist.o: nodelist.c nodelist.h mempool.h common.h
 	$(CC) -c $(CFLAGS) nodelist.c
 
 ptrlist.o: ptrlist.c ptrlist.h common.h
@@ -165,7 +165,7 @@ ramp.o: ramp.c ramp.h math.h common.h
 renderer/audiodev.o: renderer/audiodev.c renderer/audiodev/*.c renderer/audiodev.h common.h
 	$(CC) -c $(CFLAGS) renderer/audiodev.c -o renderer/audiodev.o
 
-renderer/renderer.o: renderer/renderer.c saugns.h renderer/audiodev.h renderer/wavfile.h interp/generator.h ptrlist.h program.h ramp.h wave.h math.h common.h
+renderer/renderer.o: renderer/renderer.c saugns.h renderer/audiodev.h renderer/wavfile.h interp/generator.h math.h ptrlist.h program.h ramp.h wave.h common.h
 	$(CC) -c $(CFLAGS_FAST) renderer/renderer.c -o renderer/renderer.o
 
 renderer/wavfile.o: renderer/wavfile.c renderer/wavfile.h common.h

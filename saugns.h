@@ -12,8 +12,8 @@
  */
 
 #pragma once
-#include "program.h"
 #include "ptrlist.h"
+#include "program.h"
 
 #define SAU_VERSION_STR "saugns v0.3.6"
 
