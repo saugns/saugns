@@ -416,7 +416,6 @@ static bool ParseConv_add_event(ParseConv *restrict o,
 	e->wait_ms = pe->wait_ms;
 	/* ev_flags */
 	e->op_all.type = SAU_NLT_GRAPH; // will do, only used for updates
-	e->op_graph.type = SAU_NLT_GRAPH;
 	VoContext *vc;
 	if (!pe->vo_prev) {
 		vc = SAU_MemPool_alloc(o->tmp, sizeof(VoContext));
@@ -433,7 +432,11 @@ static bool ParseConv_add_event(ParseConv *restrict o,
 	e->vo_params = pe->vo_params;
 	e->pan = pe->pan;
 	if (!ParseConv_add_ops(o, &pe->op_list)) goto ERROR;
-	if (!ParseConv_link_ops(o, &e->op_graph, &pe->op_list)) goto ERROR;
+	if (e->ev_flags & SAU_SDEV_NEW_OPGRAPH) {
+		e->op_graph = SAU_create_NodeList(SAU_NLT_GRAPH, o->omp);
+		if (!e->op_graph) goto ERROR;
+	}
+	if (!ParseConv_link_ops(o, e->op_graph, &pe->op_list)) goto ERROR;
 	return true;
 
 ERROR:

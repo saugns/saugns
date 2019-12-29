@@ -68,7 +68,7 @@ typedef struct SAU_ScriptEvData {
 	uint32_t vo_params;
 	struct SAU_ScriptEvData *vo_prev; /* preceding event for voice */
 	SAU_Ramp pan;
-	SAU_NodeList op_graph;
+	SAU_NodeList *op_graph;
 } SAU_ScriptEvData;
 
 /**

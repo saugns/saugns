@@ -69,7 +69,7 @@ sauArrType(VoAlloc, VAState, _)
  */
 static uint32_t voice_duration(const SAU_ScriptEvData *restrict ve) {
 	uint32_t duration_ms = 0;
-	for (SAU_NodeRef *ref = ve->op_graph.refs;
+	for (SAU_NodeRef *ref = ve->op_graph->refs;
 			ref != NULL; ref = ref->next) {
 		SAU_ScriptOpData *op = ref->data;
 		if (op->time_ms > duration_ms)
@@ -401,7 +401,7 @@ static void ScriptConv_convert_event(ScriptConv *restrict o,
 		ovd->pan = e->pan;
 		if (e->ev_flags & SAU_SDEV_NEW_OPGRAPH) {
 			free(vas->op_graph);
-			vas->op_graph = create_ProgramOpList(&e->op_graph);
+			vas->op_graph = create_ProgramOpList(e->op_graph);
 		}
 		out_ev->vo_data = ovd;
 		if (vas->flags & VA_OPLIST) {
