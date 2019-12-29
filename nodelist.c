@@ -29,46 +29,49 @@ SAU_NodeList *SAU_create_NodeList(uint8_t list_type,
 }
 
 /**
- * Create copy of \src_ol using mempool, unless \src_ol is NULL.
- * A NULL list is copied by setting \p olp to NULL.
+ * Create shallow copy of \src_ol using \p mempool.
+ * If \src_ol is NULL, the copy amounts to setting \p olp to NULL.
+ *
+ * As any node reference items are carried over directly,
+ * further additions to the list will also change \p src_ol.
  *
  * \return true, or false on allocation failure
  */
-bool SAU_copy_NodeList(SAU_NodeList **restrict olp,
+bool SAU_shallow_copy_NodeList(SAU_NodeList **restrict olp,
 		const SAU_NodeList *restrict src_ol,
-		SAU_MemPool *restrict memp) {
+		SAU_MemPool *restrict mempool) {
 	if (!src_ol) {
 		*olp = NULL;
 		return true;
 	}
-	if (!*olp) *olp = SAU_MemPool_alloc(memp, sizeof(SAU_NodeList));
+	if (!*olp) *olp = SAU_MemPool_alloc(mempool, sizeof(SAU_NodeList));
 	if (!*olp)
 		return false;
 	(*olp)->refs = src_ol->refs;
-	(*olp)->new_refs = NULL;
 	(*olp)->last_ref = NULL;
 	(*olp)->type = src_ol->type;
 	return true;
 }
 
 /**
- * Add reference to the list after creation using the mempool.
+ * Add reference item to the list, created using \p mempool.
  *
  * \return instance, or NULL on allocation failure
  */
 SAU_NodeRef *SAU_NodeList_add(SAU_NodeList *restrict ol,
 		void *restrict data, uint8_t ref_mode,
-		SAU_MemPool *restrict memp) {
-	SAU_NodeRef *ref = SAU_MemPool_alloc(memp, sizeof(SAU_NodeRef));
+		SAU_MemPool *restrict mempool) {
+	SAU_NodeRef *ref = SAU_MemPool_alloc(mempool, sizeof(SAU_NodeRef));
 	if (!ref)
 		return NULL;
 	ref->data = data;
 	if (!ol->refs)
 		ol->refs = ref;
-	if (!ol->new_refs)
-		ol->new_refs = ref;
-	else
+	else if (ol->last_ref != NULL)
 		ol->last_ref->next = ref;
+	else {
+		/* un-shallowing of copy can be done here */
+	}
 	ol->last_ref = ref;
 	ref->mode = ref_mode;
 	ref->list_type = ol->type;
@@ -76,10 +79,13 @@ SAU_NodeRef *SAU_NodeList_add(SAU_NodeList *restrict ol,
 }
 
 /**
- * Loop through \a new_refs in list, calling \p data_f on each node.
+ * Loop through non-copied reference items in the list,
+ * calling \p data_f on each node.
  */
 void SAU_NodeList_fornew(SAU_NodeList *restrict ol,
 		SAU_NodeRef_data_f data_f) {
-	SAU_NodeRef *op_ref = ol->new_refs;
+	if (!ol->last_ref)
+		return;
+	SAU_NodeRef *op_ref = ol->refs;
 	for (; op_ref != NULL; op_ref = op_ref->next) data_f(op_ref->data);
 }

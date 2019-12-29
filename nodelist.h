@@ -42,7 +42,6 @@ enum {
 
 typedef struct SAU_NodeList {
 	SAU_NodeRef *refs;
-	SAU_NodeRef *new_refs; // NULL on copy
 	SAU_NodeRef *last_ref; // NULL on copy
 	struct SAU_NodeList *next;
 	uint8_t type;
@@ -53,13 +52,13 @@ typedef void (*SAU_NodeRef_data_f)(void *restrict data);
 struct SAU_MemPool;
 
 SAU_NodeList *SAU_create_NodeList(uint8_t list_type,
-		struct SAU_MemPool *restrict memp);
-bool SAU_copy_NodeList(SAU_NodeList **restrict olp,
+		struct SAU_MemPool *restrict mempool);
+bool SAU_shallow_copy_NodeList(SAU_NodeList **restrict olp,
 		const SAU_NodeList *restrict src_ol,
-		struct SAU_MemPool *restrict memp);
+		struct SAU_MemPool *restrict mempool);
 
 SAU_NodeRef *SAU_NodeList_add(SAU_NodeList *restrict ol,
 		void *restrict data, uint8_t ref_mode,
-		struct SAU_MemPool *restrict memp);
+		struct SAU_MemPool *restrict mempool);
 void SAU_NodeList_fornew(SAU_NodeList *restrict ol,
 		SAU_NodeRef_data_f data_f);
