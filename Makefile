@@ -18,6 +18,7 @@ OBJ=\
 	ramp.o \
 	wave.o \
 	loader/file.o \
+	loader/nodelist.o \
 	loader/symtab.o \
 	loader/scanner.o \
 	loader/parser.o \
@@ -136,6 +137,9 @@ loader/file.o: loader/file.c loader/file.h common.h
 
 loader/lexer.o: loader/lexer.c loader/lexer.h loader/file.h loader/symtab.h mempool.h loader/scanner.h math.h common.h
 	$(CC) -c $(CFLAGS) loader/lexer.c -o loader/lexer.o
+
+loader/nodelist.o: loader/nodelist.c nodelist.h mempool.h
+	$(CC) -c $(CFLAGS) loader/nodelist.c -o loader/nodelist.o
 
 loader/parseconv.o: loader/parseconv.c loader/parser.h mempool.h program.h ramp.h wave.h math.h script.h ptrlist.h common.h
 	$(CC) -c $(CFLAGS) loader/parseconv.c -o loader/parseconv.o

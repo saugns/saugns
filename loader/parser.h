@@ -13,40 +13,7 @@
 
 #pragma once
 #include "../script.h"
-
-/**
- * Node reference modes.
- */
-enum {
-	SAU_PDNR_UPDATE = 0,
-	SAU_PDNR_ADD = 1<<0,
-};
-
-typedef struct SAU_ParseOpRef {
-	struct SAU_ParseOpRef *next;
-	struct SAU_ParseOpData *data;
-	const char *label;
-	uint8_t mode;
-	uint8_t list_type;
-} SAU_ParseOpRef;
-
-/**
- * Node list types.
- */
-enum {
-	SAU_PDNL_GRAPH = 0,
-	SAU_PDNL_FMODS,
-	SAU_PDNL_PMODS,
-	SAU_PDNL_AMODS,
-};
-
-typedef struct SAU_ParseOpList {
-	SAU_ParseOpRef *refs;
-	SAU_ParseOpRef *new_refs; // NULL on copy
-	SAU_ParseOpRef *last_ref; // NULL on copy
-	struct SAU_ParseOpList *next;
-	uint8_t type;
-} SAU_ParseOpList;
+#include "../nodelist.h"
 
 /**
  * Parse data operator flags.
@@ -66,8 +33,8 @@ enum {
 typedef struct SAU_ParseOpData {
 	struct SAU_ParseEvData *event;
 	struct SAU_ParseOpData *prev; // previous for same op(s)
-	SAU_ParseOpList *nest_lists;
-	SAU_ParseOpList *last_nest_list;
+	SAU_NodeList *nest_lists;
+	SAU_NodeList *last_nest_list;
 	struct SAU_ParseOpData *next_bound;
 	uint32_t op_flags;
 	/* operator parameters */
@@ -98,7 +65,7 @@ typedef struct SAU_ParseEvData {
 	struct SAU_ParseEvData *composite;
 	uint32_t wait_ms;
 	uint32_t ev_flags;
-	SAU_ParseOpList op_list; // immediately included operator references
+	SAU_NodeList op_list; // immediately included operator references
 	void *ev_conv; // for parseconv
 	/* voice parameters */
 	uint32_t vo_params;
