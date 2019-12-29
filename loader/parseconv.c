@@ -234,9 +234,9 @@ static bool ParseConv_update_oplist(ParseConv *restrict o,
 		SAU_NodeList **restrict olp,
 		SAU_NodeList *restrict new_ol) {
 	if (!new_ol) {
-		if (!*olp || !(*olp)->last_ref)
+		if (!*olp || !(*olp)->new_refs)
 			return true; // already using copy
-		return SAU_shallow_copy_NodeList(olp, new_ol, o->memp);
+		return SAU_copy_NodeList(olp, *olp, o->memp);
 	}
 	*olp = new_ol;
 	return true;
@@ -359,9 +359,9 @@ ERROR:
  */
 static bool ParseConv_add_ops(ParseConv *restrict o,
 		const SAU_NodeList *restrict pod_list) {
-	if (!pod_list || !pod_list->last_ref)
+	if (!pod_list)
 		return true;
-	SAU_NodeRef *pod_ref = pod_list->refs;
+	SAU_NodeRef *pod_ref = pod_list->new_refs;
 	for (; pod_ref != NULL; pod_ref = pod_ref->next) {
 		SAU_ParseOpData *pod = pod_ref->data;
 		if (pod->op_flags & SAU_PDOP_MULTIPLE) {

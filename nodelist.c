@@ -32,12 +32,12 @@ SAU_NodeList *SAU_create_NodeList(uint8_t list_type,
  * Create shallow copy of \src_ol using \p mempool.
  * If \src_ol is NULL, the copy amounts to setting \p olp to NULL.
  *
- * As any node reference items are carried over directly,
- * further additions to the list will also change \p src_ol.
+ * Further additions to a list with shallowly copied items
+ * will un-shallow the copy.
  *
  * \return true, or false on allocation failure
  */
-bool SAU_shallow_copy_NodeList(SAU_NodeList **restrict olp,
+bool SAU_copy_NodeList(SAU_NodeList **restrict olp,
 		const SAU_NodeList *restrict src_ol,
 		SAU_MemPool *restrict mempool) {
 	if (!src_ol) {
@@ -48,6 +48,7 @@ bool SAU_shallow_copy_NodeList(SAU_NodeList **restrict olp,
 	if (!*olp)
 		return false;
 	(*olp)->refs = src_ol->refs;
+	(*olp)->new_refs = NULL;
 	(*olp)->last_ref = NULL;
 	(*olp)->type = src_ol->type;
 	return true;
@@ -65,12 +66,33 @@ SAU_NodeRef *SAU_NodeList_add(SAU_NodeList *restrict ol,
 	if (!ref)
 		return NULL;
 	ref->data = data;
-	if (!ol->refs)
+	if (!ol->refs) {
 		ol->refs = ref;
-	else if (ol->last_ref != NULL)
+		ol->new_refs = ref;
+	} else if (!ol->new_refs) {
+		/*
+		 * Un-shallow copy.
+		 */
+		SAU_NodeRef *first_ref = SAU_MemPool_memdup(mempool,
+				ol->refs, sizeof(SAU_NodeRef));
+		if (!first_ref)
+			return NULL;
+		SAU_NodeRef *last_ref = first_ref;
+		for (SAU_NodeRef *src_ref = first_ref->next;
+				src_ref != NULL; src_ref = src_ref->next) {
+			SAU_NodeRef *dst_ref = SAU_MemPool_memdup(mempool,
+					src_ref, sizeof(SAU_NodeRef));
+			if (!dst_ref)
+				return NULL;
+			last_ref->next = dst_ref;
+			last_ref = dst_ref;
+		}
+		ol->refs = first_ref;
+		ol->new_refs = ref;
+		ol->last_ref = last_ref;
 		ol->last_ref->next = ref;
-	else {
-		/* un-shallowing of copy can be done here */
+	} else {
+		ol->last_ref->next = ref;
 	}
 	ol->last_ref = ref;
 	ref->mode = ref_mode;
@@ -84,8 +106,6 @@ SAU_NodeRef *SAU_NodeList_add(SAU_NodeList *restrict ol,
  */
 void SAU_NodeList_fornew(SAU_NodeList *restrict ol,
 		SAU_NodeRef_data_f data_f) {
-	if (!ol->last_ref)
-		return;
-	SAU_NodeRef *op_ref = ol->refs;
+	SAU_NodeRef *op_ref = ol->new_refs;
 	for (; op_ref != NULL; op_ref = op_ref->next) data_f(op_ref->data);
 }
