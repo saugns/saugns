@@ -12,7 +12,6 @@
  */
 
 #pragma once
-#include "ptrlist.h"
 #include "nodelist.h"
 #include "program.h"
 
@@ -42,9 +41,9 @@ typedef struct SAU_ScriptOpData {
 	float phase;
 	struct SAU_ScriptOpData *op_prev; /* preceding for same op(s) */
 	/* node adjacents in operator linkage graph */
-	SAU_NodeList *fmods;
-	SAU_NodeList *pmods;
-	SAU_NodeList *amods;
+	SAU_NodeList fmods;
+	SAU_NodeList pmods;
+	SAU_NodeList amods;
 } SAU_ScriptOpData;
 
 /**
@@ -69,7 +68,7 @@ typedef struct SAU_ScriptEvData {
 	uint32_t vo_params;
 	struct SAU_ScriptEvData *vo_prev; /* preceding event for voice */
 	SAU_Ramp pan;
-	SAU_NodeList *op_graph;
+	SAU_NodeList op_graph;
 } SAU_ScriptEvData;
 
 /**

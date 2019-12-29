@@ -221,30 +221,6 @@ typedef struct OpContext {
 } OpContext;
 
 /*
- * Update operator list to prepare for handling new event(s).
- *
- * Create new operator list if there's a \p new_ol to explore when updating.
- * Otherwise, replace the old list with a copy, for a linkage-centric update,
- * unless already using a copy.
- *
- * \return true, or NULL on allocation failure
- */
-static bool ParseConv_update_oplist(ParseConv *restrict o,
-		SAU_NodeList **restrict olp, uint8_t type,
-		bool new_ol) {
-	if (!new_ol) {
-		if (!*olp || !(*olp)->new_refs)
-			return true; // already using copy
-		return SAU_copy_NodeList(olp, *olp, o->omp);
-	}
-	SAU_NodeList *ol = SAU_create_NodeList(type, o->omp);
-	if (!ol)
-		return NULL;
-	*olp = ol;
-	return true;
-}
-
-/*
  * Get operator context for node, updating associated data.
  *
  * If the node is ignored, the SAU_PDOP_IGNORED flag is set
@@ -277,36 +253,27 @@ static OpContext *ParseConv_update_opcontext(ParseConv *restrict o,
 		od_prev->op_flags |= SAU_SDOP_LATER_USED;
 	}
 	oc->newest = pod;
-	SAU_NodeList *fmod_list = NULL;
-	SAU_NodeList *pmod_list = NULL;
-	SAU_NodeList *amod_list = NULL;
+	oc->fmod_list = NULL;
+	oc->pmod_list = NULL;
+	oc->amod_list = NULL;
 	for (SAU_NodeList *list = pod->nest_lists;
 			list != NULL; list = list->next) {
 		switch (list->type) {
 		case SAU_NLT_FMODS:
-			oc->fmod_list = fmod_list = list;
+			oc->fmod_list = list;
 			break;
 		case SAU_NLT_PMODS:
-			oc->pmod_list = pmod_list = list;
+			oc->pmod_list = list;
 			break;
 		case SAU_NLT_AMODS:
-			oc->amod_list = amod_list = list;
+			oc->amod_list = list;
 			break;
 		default:
 			break;
 		}
 	}
-	if (!ParseConv_update_oplist(o, &od->fmods, SAU_NLT_FMODS,
-				fmod_list != NULL)) goto ERROR;
-	if (!ParseConv_update_oplist(o, &od->pmods, SAU_NLT_PMODS,
-				pmod_list != NULL)) goto ERROR;
-	if (!ParseConv_update_oplist(o, &od->amods, SAU_NLT_AMODS,
-				amod_list != NULL)) goto ERROR;
 	pod->op_context = oc;
 	return oc;
-
-ERROR:
-	return NULL;
 }
 
 /*
@@ -346,6 +313,9 @@ static bool ParseConv_add_opdata(ParseConv *restrict o,
 	od->amp = pod->amp;
 	od->amp2 = pod->amp2;
 	od->phase = pod->phase;
+	od->fmods.type = SAU_NLT_FMODS;
+	od->pmods.type = SAU_NLT_PMODS;
+	od->amods.type = SAU_NLT_AMODS;
 	if (!ParseConv_update_opcontext(o, od, pod)) goto ERROR;
 	if (!SAU_NodeList_add(&e->op_all, od, SAU_NRM_UPDATE, o->omp))
 		goto ERROR;
@@ -409,19 +379,16 @@ static bool ParseConv_link_ops(ParseConv *restrict o,
 				goto ERROR;
 		}
 		if (od->op_prev != NULL) {
-			SAU_copy_NodeList(&od->fmods, od->op_prev->fmods,
-					o->omp);
-			SAU_copy_NodeList(&od->pmods, od->op_prev->pmods,
-					o->omp);
-			SAU_copy_NodeList(&od->amods, od->op_prev->amods,
-					o->omp);
+			od->fmods.refs = od->op_prev->fmods.refs;
+			od->pmods.refs = od->op_prev->pmods.refs;
+			od->amods.refs = od->op_prev->amods.refs;
 		}
 		OpContext *oc = pod->op_context;
-		if (!ParseConv_link_ops(o, od->fmods, oc->fmod_list))
+		if (!ParseConv_link_ops(o, &od->fmods, oc->fmod_list))
 			goto ERROR;
-		if (!ParseConv_link_ops(o, od->pmods, oc->pmod_list))
+		if (!ParseConv_link_ops(o, &od->pmods, oc->pmod_list))
 			goto ERROR;
-		if (!ParseConv_link_ops(o, od->amods, oc->amod_list))
+		if (!ParseConv_link_ops(o, &od->amods, oc->amod_list))
 			goto ERROR;
 	}
 	return true;
@@ -448,6 +415,8 @@ static bool ParseConv_add_event(ParseConv *restrict o,
 	o->ev = e;
 	e->wait_ms = pe->wait_ms;
 	/* ev_flags */
+	e->op_all.type = SAU_NLT_GRAPH; // will do, only used for updates
+	e->op_graph.type = SAU_NLT_GRAPH;
 	VoContext *vc;
 	if (!pe->vo_prev) {
 		vc = SAU_MemPool_alloc(o->tmp, sizeof(VoContext));
@@ -464,12 +433,7 @@ static bool ParseConv_add_event(ParseConv *restrict o,
 	e->vo_params = pe->vo_params;
 	e->pan = pe->pan;
 	if (!ParseConv_add_ops(o, &pe->op_list)) goto ERROR;
-	if (e->ev_flags & SAU_SDEV_NEW_OPGRAPH) {
-		e->op_graph = SAU_create_NodeList(SAU_NLT_GRAPH,
-				o->omp);
-		if (!e->op_graph) goto ERROR;
-	}
-	if (!ParseConv_link_ops(o, e->op_graph, &pe->op_list)) goto ERROR;
+	if (!ParseConv_link_ops(o, &e->op_graph, &pe->op_list)) goto ERROR;
 	return true;
 
 ERROR:
