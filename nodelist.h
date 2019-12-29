@@ -1,4 +1,4 @@
-/* saugns: Node list types.
+/* saugns: Node list module.
  * Copyright (c) 2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *

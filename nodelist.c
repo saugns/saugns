@@ -1,4 +1,4 @@
-/* saugns: Node list types.
+/* saugns: Node list module.
  * Copyright (c) 2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -11,9 +11,14 @@
  * <https://www.gnu.org/licenses/>.
  */
 
-#include "../nodelist.h"
-#include "../mempool.h"
+#include "nodelist.h"
+#include "mempool.h"
 
+/**
+ * Create instance using mempool.
+ *
+ * \return instance, or NULL on allocation failure
+ */
 SAU_NodeList *SAU_create_NodeList(uint8_t list_type,
 		SAU_MemPool *restrict memp) {
 	SAU_NodeList *ol = SAU_MemPool_alloc(memp, sizeof(SAU_NodeList));
@@ -23,6 +28,12 @@ SAU_NodeList *SAU_create_NodeList(uint8_t list_type,
 	return ol;
 }
 
+/**
+ * Create copy of \src_ol using mempool, unless \src_ol is NULL.
+ * A NULL list is copied by setting \p olp to NULL.
+ *
+ * \return true, or false on allocation failure
+ */
 bool SAU_copy_NodeList(SAU_NodeList **restrict olp,
 		const SAU_NodeList *restrict src_ol,
 		SAU_MemPool *restrict memp) {
@@ -40,6 +51,11 @@ bool SAU_copy_NodeList(SAU_NodeList **restrict olp,
 	return true;
 }
 
+/**
+ * Add reference to the list after creation using the mempool.
+ *
+ * \return instance, or NULL on allocation failure
+ */
 SAU_NodeRef *SAU_NodeList_add(SAU_NodeList *restrict ol,
 		void *restrict data, uint8_t ref_mode,
 		SAU_MemPool *restrict memp) {
@@ -59,10 +75,11 @@ SAU_NodeRef *SAU_NodeList_add(SAU_NodeList *restrict ol,
 	return ref;
 }
 
+/**
+ * Loop through \a new_refs in list, calling \p data_f on each node.
+ */
 void SAU_NodeList_fornew(SAU_NodeList *restrict ol,
 		SAU_NodeRef_data_f data_f) {
-	if (!ol)
-		return;
 	SAU_NodeRef *op_ref = ol->new_refs;
 	for (; op_ref != NULL; op_ref = op_ref->next) data_f(op_ref->data);
 }
