@@ -291,18 +291,15 @@ static OpContext *ParseConv_update_opcontext(ParseConv *restrict o,
 	}
 	if (oc->fmod_list != NULL &&
 			!create_oplist(&od->fmods, SAU_SDLT_FMODS, o->omp))
-		goto ERROR;
+		return NULL;
 	if (oc->pmod_list != NULL &&
 			!create_oplist(&od->pmods, SAU_SDLT_PMODS, o->omp))
-		goto ERROR;
+		return NULL;
 	if (oc->amod_list != NULL &&
 			!create_oplist(&od->amods, SAU_SDLT_AMODS, o->omp))
-		goto ERROR;
+		return NULL;
 	pod->op_context = oc;
 	return oc;
-
-ERROR:
-	return false;
 }
 
 /*
@@ -321,8 +318,7 @@ static bool ParseConv_add_opdata(ParseConv *restrict o,
 	SAU_ParseOpData *pod = pod_ref->data;
 	SAU_ScriptOpData *od = SAU_MemPool_alloc(o->omp,
 			sizeof(SAU_ScriptOpData));
-	if (!od)
-		return false;
+	if (!od) goto ERROR;
 	SAU_ScriptEvData *e = o->ev;
 	pod->op_conv = od;
 	od->event = e;
@@ -348,7 +344,6 @@ static bool ParseConv_add_opdata(ParseConv *restrict o,
 	return true;
 
 ERROR:
-	SAU_destroy_MemPool(o->omp);
 	return false;
 }
 
@@ -392,8 +387,6 @@ static bool ParseConv_link_ops(ParseConv *restrict o,
 		const SAU_NodeList *restrict pol) {
 	if (!pol)
 		return true;
-	if (ol != NULL)
-		SAU_NodeList_clear(ol); // rebuild, replacing shallow copy
 	SAU_NodeRef *pod_ref = pol->refs;
 	for (; pod_ref != NULL; pod_ref = pod_ref->next) {
 		SAU_ParseOpData *pod = pod_ref->data;
@@ -415,7 +408,6 @@ static bool ParseConv_link_ops(ParseConv *restrict o,
 	return true;
 
 ERROR:
-	SAU_error("parseconv", "converted node missing at some level");
 	return false;
 }
 
@@ -426,8 +418,7 @@ static bool ParseConv_add_event(ParseConv *restrict o,
 		SAU_ParseEvData *restrict pe) {
 	SAU_ScriptEvData *e = SAU_MemPool_alloc(o->omp,
 			sizeof(SAU_ScriptEvData));
-	if (!e)
-		return false;
+	if (!e) goto ERROR;
 	pe->ev_conv = e;
 	if (!o->first_ev)
 		o->first_ev = e;
@@ -475,8 +466,7 @@ static SAU_Script *ParseConv_convert(ParseConv *restrict o,
 		SAU_Parse *restrict p) {
 	o->tmp = p->mem;
 	o->omp = SAU_create_MemPool(0);
-	if (!o->omp)
-		return NULL;
+	if (!o->omp) goto ERROR;
 	SAU_ParseEvData *pe;
 	for (pe = p->events; pe != NULL; pe = pe->next) {
 		time_event(pe);
@@ -500,7 +490,8 @@ static SAU_Script *ParseConv_convert(ParseConv *restrict o,
 	return s;
 
 ERROR:
-	SAU_discard_Script(s);
+	SAU_destroy_MemPool(o->omp);
+	SAU_error("parseconv", "memory allocation failure");
 	return NULL;
 }
 
