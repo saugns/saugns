@@ -222,27 +222,6 @@ typedef struct OpContext {
 } OpContext;
 
 /*
- * Update operator list to prepare for handling new event(s).
- *
- * Assign \p new_ol operator list if available, for a full update.
- * Otherwise, replace the old list with a copy, for a linkage-centric update,
- * unless already using a copy.
- *
- * \return true, or NULL on allocation failure
- */
-static bool ParseConv_update_oplist(ParseConv *restrict o,
-		SAU_NodeList **restrict olp,
-		SAU_NodeList *restrict new_ol) {
-	if (!new_ol) {
-		if (!*olp || !(*olp)->new_refs)
-			return true; // already using copy
-		return SAU_copy_NodeList(olp, *olp, o->memp);
-	}
-	*olp = new_ol;
-	return true;
-}
-
-/*
  * Get operator context for node, updating associated data.
  *
  * If the node is ignored, the SAU_PDOP_IGNORED flag is set
@@ -275,33 +254,27 @@ static OpContext *ParseConv_update_opcontext(ParseConv *restrict o,
 		od_prev->op_flags |= SAU_SDOP_LATER_USED;
 	}
 	oc->newest = pod;
-	SAU_NodeList *fmod_list = NULL;
-	SAU_NodeList *pmod_list = NULL;
-	SAU_NodeList *amod_list = NULL;
+	oc->fmod_list = NULL;
+	oc->pmod_list = NULL;
+	oc->amod_list = NULL;
 	for (SAU_NodeList *list = pod->nest_lists;
 			list != NULL; list = list->next) {
 		switch (list->type) {
 		case SAU_NLT_FMODS:
-			fmod_list = list;
+			oc->fmod_list = list;
 			break;
 		case SAU_NLT_PMODS:
-			pmod_list = list;
+			oc->pmod_list = list;
 			break;
 		case SAU_NLT_AMODS:
-			amod_list = list;
+			oc->amod_list = list;
 			break;
 		default:
 			break;
 		}
 	}
-	if (!ParseConv_update_oplist(o, &oc->fmod_list, fmod_list)) goto ERROR;
-	if (!ParseConv_update_oplist(o, &oc->pmod_list, pmod_list)) goto ERROR;
-	if (!ParseConv_update_oplist(o, &oc->amod_list, amod_list)) goto ERROR;
 	pod->op_context = oc;
 	return oc;
-
-ERROR:
-	return NULL;
 }
 
 /*
