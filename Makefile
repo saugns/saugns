@@ -138,10 +138,10 @@ loader/file.o: loader/file.c loader/file.h common.h
 loader/lexer.o: loader/lexer.c loader/lexer.h loader/file.h loader/symtab.h mempool.h loader/scanner.h math.h common.h
 	$(CC) -c $(CFLAGS) loader/lexer.c -o loader/lexer.o
 
-loader/parseconv.o: loader/parseconv.c loader/parser.h mempool.h nodelist.h program.h ramp.h wave.h math.h script.h ptrlist.h common.h
+loader/parseconv.o: loader/parseconv.c loader/parser.h mempool.h nodelist.h program.h ramp.h wave.h math.h script.h common.h
 	$(CC) -c $(CFLAGS) loader/parseconv.c -o loader/parseconv.o
 
-loader/parser.o: loader/parser.c loader/parser.h loader/scanner.h loader/file.h loader/symtab.h mempool.h nodelist.h script.h ptrlist.h program.h ramp.h wave.h math.h common.h
+loader/parser.o: loader/parser.c loader/parser.h loader/scanner.h loader/file.h loader/symtab.h mempool.h nodelist.h script.h program.h ramp.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) loader/parser.c -o loader/parser.o
 
 loader/scanner.o: loader/scanner.c loader/scanner.h loader/file.h loader/symtab.h mempool.h math.h common.h
