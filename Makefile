@@ -114,10 +114,10 @@ test-scan: $(TEST1_OBJ)
 arrtype.o: arrtype.c arrtype.h common.h
 	$(CC) -c $(CFLAGS) arrtype.c
 
-builder/builder.o: builder/builder.c saugns.h script.h ptrlist.h program.h ramp.h wave.h math.h common.h
+builder/builder.o: builder/builder.c saugns.h script.h ptrlist.h nodelist.h program.h ramp.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) builder/builder.c -o builder/builder.o
 
-builder/scriptconv.o: builder/scriptconv.c program.h ramp.h wave.h math.h script.h ptrlist.h arrtype.h common.h
+builder/scriptconv.o: builder/scriptconv.c program.h ramp.h wave.h math.h script.h nodelist.h ptrlist.h arrtype.h common.h
 	$(CC) -c $(CFLAGS) builder/scriptconv.c -o builder/scriptconv.o
 
 common.o: common.c common.h

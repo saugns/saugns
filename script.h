@@ -13,6 +13,7 @@
 
 #pragma once
 #include "ptrlist.h"
+#include "nodelist.h"
 #include "program.h"
 
 /**
@@ -40,9 +41,10 @@ typedef struct SAU_ScriptOpData {
 	SAU_Ramp amp, amp2;
 	float phase;
 	struct SAU_ScriptOpData *op_prev; /* preceding for same op(s) */
-	SAU_PtrList op_next; /* all immediate forward refs for op(s) */
 	/* node adjacents in operator linkage graph */
-	SAU_PtrList fmods, pmods, amods;
+	SAU_NodeList *fmods;
+	SAU_NodeList *pmods;
+	SAU_NodeList *amods;
 } SAU_ScriptOpData;
 
 /**
@@ -61,13 +63,13 @@ typedef struct SAU_ScriptEvData {
 	struct SAU_ScriptEvData *next;
 	uint32_t wait_ms;
 	uint32_t ev_flags;
-	SAU_PtrList op_all;
+	SAU_NodeList op_all;
 	/* voice parameters */
 	uint32_t vo_id;
 	uint32_t vo_params;
 	struct SAU_ScriptEvData *vo_prev; /* preceding event for voice */
 	SAU_Ramp pan;
-	SAU_PtrList op_graph;
+	SAU_NodeList *op_graph;
 } SAU_ScriptEvData;
 
 /**
@@ -98,6 +100,8 @@ typedef struct SAU_ScriptOptions {
 	      def_relfreq;
 } SAU_ScriptOptions;
 
+struct SAU_MemPool;
+
 /**
  * Type returned after processing a file.
  */
@@ -105,6 +109,7 @@ typedef struct SAU_Script {
 	SAU_ScriptEvData *events;
 	const char *name; // currently simply set to the filename
 	SAU_ScriptOptions sopt;
+	struct SAU_MemPool *mem; // internally used, provided until destroy
 } SAU_Script;
 
 SAU_Script *SAU_load_Script(const char *restrict script_arg, bool is_path);

@@ -24,19 +24,21 @@
  */
 
 static sauNoinline SAU_ProgramOpList
-*create_ProgramOpList(const SAU_PtrList *restrict op_list) {
-	if (!op_list->count)
+*create_ProgramOpList(const SAU_NodeList *restrict op_list) {
+	uint32_t count = 0;
+	for (SAU_NodeRef *ref = op_list->refs; ref != NULL; ref = ref->next)
+		++count;
+	if (count == 0)
 		return NULL;
-	uint32_t size = op_list->count;
-	const SAU_ScriptOpData **ops;
-	ops = (const SAU_ScriptOpData**) SAU_PtrList_ITEMS(op_list);
 	SAU_ProgramOpList *o;
-	o = malloc(sizeof(SAU_ProgramOpList) + sizeof(int32_t) * size);
+	o = malloc(sizeof(SAU_ProgramOpList) + sizeof(int32_t) * count);
 	if (!o)
 		return NULL;
-	o->count = size;
-	for (uint32_t i = 0; i < size; ++i) {
-		o->ids[i] = ops[i]->op_id;
+	o->count = count;
+	size_t i = 0;
+	for (SAU_NodeRef *ref = op_list->refs; ref != NULL; ref = ref->next) {
+		SAU_ScriptOpData *od = ref->data;
+		o->ids[i++] = od->op_id;
 	}
 	return o;
 }
@@ -65,12 +67,10 @@ sauArrType(VoAlloc, VAState, _)
  * the graph of the voice event.
  */
 static uint32_t voice_duration(const SAU_ScriptEvData *restrict ve) {
-	SAU_ScriptOpData **ops;
 	uint32_t duration_ms = 0;
-	/* FIXME: node list type? */
-	ops = (SAU_ScriptOpData**) SAU_PtrList_ITEMS(&ve->op_graph);
-	for (size_t i = 0; i < ve->op_graph.count; ++i) {
-		SAU_ScriptOpData *op = ops[i];
+	for (SAU_NodeRef *ref = ve->op_graph->refs;
+			ref != NULL; ref = ref->next) {
+		SAU_ScriptOpData *op = ref->data;
 		if (op->time_ms > duration_ms)
 			duration_ms = op->time_ms;
 	}
@@ -123,7 +123,7 @@ static uint32_t VoAlloc_update(VoAlloc *restrict va,
 	VAState *vas = &va->a[vo_id];
 	vas->last_ev = e;
 	vas->flags &= ~VA_OPLIST;
-	if (e->ev_flags & SAU_SDEV_NEW_OPGRAPH)
+	if (e->op_graph != NULL)
 		vas->duration_ms = voice_duration(e);
 	return vo_id;
 }
@@ -264,10 +264,12 @@ static void ScriptConv_convert_opdata(ScriptConv *restrict o,
  *
  * \return true given non-copied items or list clearing
  */
-static inline bool need_new_oplist(const SAU_PtrList *restrict op_list,
+static inline bool need_new_oplist(const SAU_NodeList *restrict op_list,
 		const SAU_ProgramOpList *restrict prev_pol) {
-	return (op_list->count > op_list->old_count) ||
-		(prev_pol != NULL && (op_list->count < prev_pol->count));
+	if (!op_list)
+		return false;
+	return (op_list->new_refs != NULL) ||
+		(prev_pol != NULL && op_list->refs != NULL);
 }
 
 /*
@@ -276,11 +278,10 @@ static inline bool need_new_oplist(const SAU_PtrList *restrict op_list,
  * the adjacency lists when all nodes are registered.
  */
 static void ScriptConv_convert_ops(ScriptConv *restrict o,
-		SAU_PtrList *restrict op_list) {
-	SAU_ScriptOpData **ops;
-	ops = (SAU_ScriptOpData**) SAU_PtrList_ITEMS(op_list);
-	for (size_t i = op_list->old_count; i < op_list->count; ++i) {
-		SAU_ScriptOpData *op = ops[i];
+		SAU_NodeList *restrict op_list) {
+	SAU_NodeRef *ref = op_list->new_refs;
+	for (; ref != NULL; ref = ref->next) {
+		SAU_ScriptOpData *op = ref->data;
 		uint32_t op_id = OpAlloc_update(&o->oa, op);
 		ScriptConv_convert_opdata(o, op, op_id);
 	}
@@ -289,19 +290,19 @@ static void ScriptConv_convert_ops(ScriptConv *restrict o,
 		VAState *vas = &o->va.a[o->ev->vo_id];
 		OAState *oas = &o->oa.a[od->id];
 		SAU_ScriptOpData *sod = oas->last_sod;
-		if (need_new_oplist(&sod->fmods, oas->fmods)) {
+		if (need_new_oplist(sod->fmods, oas->fmods)) {
 			vas->flags |= VA_OPLIST;
-			oas->fmods = create_ProgramOpList(&sod->fmods);
+			oas->fmods = create_ProgramOpList(sod->fmods);
 			od->fmods = oas->fmods;
 		}
-		if (need_new_oplist(&sod->pmods, oas->pmods)) {
+		if (need_new_oplist(sod->pmods, oas->pmods)) {
 			vas->flags |= VA_OPLIST;
-			oas->pmods = create_ProgramOpList(&sod->pmods);
+			oas->pmods = create_ProgramOpList(sod->pmods);
 			od->pmods = oas->pmods;
 		}
-		if (need_new_oplist(&sod->amods, oas->amods)) {
+		if (need_new_oplist(sod->amods, oas->amods)) {
 			vas->flags |= VA_OPLIST;
-			oas->amods = create_ProgramOpList(&sod->amods);
+			oas->amods = create_ProgramOpList(sod->amods);
 			od->amods = oas->amods;
 		}
 	}
@@ -391,7 +392,7 @@ static void ScriptConv_convert_event(ScriptConv *restrict o,
 		o->ev_op_data.count = 0; // reuse allocation
 	}
 	vo_params = e->vo_params;
-	if (e->ev_flags & SAU_SDEV_NEW_OPGRAPH)
+	if (e->op_graph != NULL)
 		vas->flags |= VA_OPLIST;
 	if (vas->flags & VA_OPLIST)
 		vo_params |= SAU_PVOP_OPLIST;
@@ -399,9 +400,9 @@ static void ScriptConv_convert_event(ScriptConv *restrict o,
 		SAU_ProgramVoData *ovd = calloc(1, sizeof(SAU_ProgramVoData));
 		ovd->params = vo_params;
 		ovd->pan = e->pan;
-		if (e->ev_flags & SAU_SDEV_NEW_OPGRAPH) {
+		if (e->op_graph != NULL) {
 			free(vas->op_graph);
-			vas->op_graph = create_ProgramOpList(&e->op_graph);
+			vas->op_graph = create_ProgramOpList(e->op_graph);
 		}
 		out_ev->vo_data = ovd;
 		if (vas->flags & VA_OPLIST) {

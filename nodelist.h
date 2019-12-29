@@ -61,5 +61,6 @@ bool SAU_copy_NodeList(SAU_NodeList **restrict olp,
 SAU_NodeRef *SAU_NodeList_add(SAU_NodeList *restrict ol,
 		void *restrict data, uint8_t ref_mode,
 		struct SAU_MemPool *restrict mempool);
+void SAU_NodeList_clear(SAU_NodeList *restrict ol);
 void SAU_NodeList_fornew(SAU_NodeList *restrict ol,
 		SAU_NodeRef_data_f data_f);

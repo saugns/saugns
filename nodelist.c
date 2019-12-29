@@ -44,9 +44,11 @@ bool SAU_copy_NodeList(SAU_NodeList **restrict olp,
 		*olp = NULL;
 		return true;
 	}
-	if (!*olp) *olp = SAU_MemPool_alloc(mempool, sizeof(SAU_NodeList));
-	if (!*olp)
-		return false;
+	if (!*olp) {
+		*olp = SAU_MemPool_alloc(mempool, sizeof(SAU_NodeList));
+		if (!*olp)
+			return false;
+	}
 	(*olp)->refs = src_ol->refs;
 	(*olp)->new_refs = NULL;
 	(*olp)->last_ref = NULL;
@@ -98,6 +100,16 @@ SAU_NodeRef *SAU_NodeList_add(SAU_NodeList *restrict ol,
 	ref->mode = ref_mode;
 	ref->list_type = ol->type;
 	return ref;
+}
+
+/**
+ * Remove reference items from the list,
+ * leaving next list and type fields in place.
+ */
+void SAU_NodeList_clear(SAU_NodeList *restrict ol) {
+	ol->refs = NULL;
+	ol->new_refs = NULL;
+	ol->last_ref = NULL;
 }
 
 /**
