@@ -209,6 +209,15 @@ typedef struct ParseConv {
 	SAU_MemPool *omp; // for output data
 } ParseConv;
 
+static inline bool create_oplist(SAU_NodeList **restrict olp, uint8_t type,
+		SAU_MemPool *restrict mempool) {
+	SAU_NodeList *ol = SAU_create_NodeList(type, mempool);
+	if (!ol)
+		return false;
+	*olp = ol;
+	return true;
+}
+
 /*
  * Per-operator context data for references, used during conversion.
  */
@@ -272,8 +281,20 @@ static OpContext *ParseConv_update_opcontext(ParseConv *restrict o,
 			break;
 		}
 	}
+	if (oc->fmod_list != NULL &&
+			!create_oplist(&od->fmods, SAU_NLT_FMODS, o->omp))
+		goto ERROR;
+	if (oc->pmod_list != NULL &&
+			!create_oplist(&od->pmods, SAU_NLT_PMODS, o->omp))
+		goto ERROR;
+	if (oc->amod_list != NULL &&
+			!create_oplist(&od->amods, SAU_NLT_AMODS, o->omp))
+		goto ERROR;
 	pod->op_context = oc;
 	return oc;
+
+ERROR:
+	return false;
 }
 
 /*
@@ -313,9 +334,6 @@ static bool ParseConv_add_opdata(ParseConv *restrict o,
 	od->amp = pod->amp;
 	od->amp2 = pod->amp2;
 	od->phase = pod->phase;
-	od->fmods.type = SAU_NLT_FMODS;
-	od->pmods.type = SAU_NLT_PMODS;
-	od->amods.type = SAU_NLT_AMODS;
 	if (!ParseConv_update_opcontext(o, od, pod)) goto ERROR;
 	if (!SAU_NodeList_add(&e->op_all, od, SAU_NRM_UPDATE, o->omp))
 		goto ERROR;
@@ -378,17 +396,12 @@ static bool ParseConv_link_ops(ParseConv *restrict o,
 			if (!SAU_NodeList_add(ol, od, SAU_NRM_ADD, o->omp))
 				goto ERROR;
 		}
-		if (od->op_prev != NULL) {
-			od->fmods.refs = od->op_prev->fmods.refs;
-			od->pmods.refs = od->op_prev->pmods.refs;
-			od->amods.refs = od->op_prev->amods.refs;
-		}
 		OpContext *oc = pod->op_context;
-		if (!ParseConv_link_ops(o, &od->fmods, oc->fmod_list))
+		if (!ParseConv_link_ops(o, od->fmods, oc->fmod_list))
 			goto ERROR;
-		if (!ParseConv_link_ops(o, &od->pmods, oc->pmod_list))
+		if (!ParseConv_link_ops(o, od->pmods, oc->pmod_list))
 			goto ERROR;
-		if (!ParseConv_link_ops(o, &od->amods, oc->amod_list))
+		if (!ParseConv_link_ops(o, od->amods, oc->amod_list))
 			goto ERROR;
 	}
 	return true;
@@ -432,10 +445,9 @@ static bool ParseConv_add_event(ParseConv *restrict o,
 	e->vo_params = pe->vo_params;
 	e->pan = pe->pan;
 	if (!ParseConv_add_ops(o, &pe->op_list)) goto ERROR;
-	if (e->ev_flags & SAU_SDEV_NEW_OPGRAPH) {
-		e->op_graph = SAU_create_NodeList(SAU_NLT_GRAPH, o->omp);
-		if (!e->op_graph) goto ERROR;
-	}
+	if ((e->ev_flags & SAU_SDEV_NEW_OPGRAPH) != 0 &&
+			!create_oplist(&e->op_graph, SAU_NLT_GRAPH, o->omp))
+		goto ERROR;
 	if (!ParseConv_link_ops(o, e->op_graph, &pe->op_list)) goto ERROR;
 	return true;
 

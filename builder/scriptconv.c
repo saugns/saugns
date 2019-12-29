@@ -267,6 +267,8 @@ static void ScriptConv_convert_opdata(ScriptConv *restrict o,
  */
 static inline bool need_new_oplist(const SAU_NodeList *restrict op_list,
 		const SAU_ProgramOpList *restrict prev_pol) {
+	if (!op_list)
+		return false;
 	return (op_list->new_refs != NULL) ||
 		(prev_pol != NULL && !op_list->refs);
 }
@@ -289,19 +291,19 @@ static void ScriptConv_convert_ops(ScriptConv *restrict o,
 		VAState *vas = &o->va.a[o->ev->vo_id];
 		OAState *oas = &o->oa.a[od->id];
 		SAU_ScriptOpData *sod = oas->last_sod;
-		if (need_new_oplist(&sod->fmods, oas->fmods)) {
+		if (need_new_oplist(sod->fmods, oas->fmods)) {
 			vas->flags |= VA_OPLIST;
-			oas->fmods = create_ProgramOpList(&sod->fmods);
+			oas->fmods = create_ProgramOpList(sod->fmods);
 			od->fmods = oas->fmods;
 		}
-		if (need_new_oplist(&sod->pmods, oas->pmods)) {
+		if (need_new_oplist(sod->pmods, oas->pmods)) {
 			vas->flags |= VA_OPLIST;
-			oas->pmods = create_ProgramOpList(&sod->pmods);
+			oas->pmods = create_ProgramOpList(sod->pmods);
 			od->pmods = oas->pmods;
 		}
-		if (need_new_oplist(&sod->amods, oas->amods)) {
+		if (need_new_oplist(sod->amods, oas->amods)) {
 			vas->flags |= VA_OPLIST;
-			oas->amods = create_ProgramOpList(&sod->amods);
+			oas->amods = create_ProgramOpList(sod->amods);
 			od->amods = oas->amods;
 		}
 	}

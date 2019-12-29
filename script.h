@@ -41,9 +41,9 @@ typedef struct SAU_ScriptOpData {
 	float phase;
 	struct SAU_ScriptOpData *op_prev; /* preceding for same op(s) */
 	/* node adjacents in operator linkage graph */
-	SAU_NodeList fmods;
-	SAU_NodeList pmods;
-	SAU_NodeList amods;
+	SAU_NodeList *fmods;
+	SAU_NodeList *pmods;
+	SAU_NodeList *amods;
 } SAU_ScriptOpData;
 
 /**
