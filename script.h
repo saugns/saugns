@@ -16,6 +16,24 @@
 #include "program.h"
 
 /**
+ * Node reference modes.
+ */
+enum {
+	SAU_SDRM_UPDATE = 0,
+	SAU_SDRM_ADD = 1<<0,
+};
+
+/**
+ * Node list types.
+ */
+enum {
+	SAU_SDLT_GRAPH = 0,
+	SAU_SDLT_FMODS,
+	SAU_SDLT_PMODS,
+	SAU_SDLT_AMODS,
+};
+
+/**
  * Script data operator flags.
  */
 enum {

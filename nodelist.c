@@ -111,13 +111,3 @@ void SAU_NodeList_clear(SAU_NodeList *restrict ol) {
 	ol->new_refs = NULL;
 	ol->last_ref = NULL;
 }
-
-/**
- * Loop through non-copied reference items in the list,
- * calling \p data_f on each node.
- */
-void SAU_NodeList_fornew(SAU_NodeList *restrict ol,
-		SAU_NodeRef_data_f data_f) {
-	SAU_NodeRef *op_ref = ol->new_refs;
-	for (; op_ref != NULL; op_ref = op_ref->next) data_f(op_ref->data);
-}

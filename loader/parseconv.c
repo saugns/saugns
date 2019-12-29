@@ -22,6 +22,23 @@
  * recursive traversal in scriptconv.
  */
 
+static inline bool create_oplist(SAU_NodeList **restrict olp, uint8_t type,
+		SAU_MemPool *restrict mempool) {
+	SAU_NodeList *ol = SAU_create_NodeList(type, mempool);
+	if (!ol)
+		return false;
+	*olp = ol;
+	return true;
+}
+
+static void oplist_fornew(SAU_NodeList *restrict ol,
+		void (*on_op)(SAU_ParseOpData *restrict data)) {
+	if (!ol)
+		return;
+	SAU_NodeRef *op_ref = ol->new_refs;
+	for (; op_ref != NULL; op_ref = op_ref->next) on_op(op_ref->data);
+}
+
 /*
  * Adjust timing for event groupings; the script syntax for time grouping is
  * only allowed on the "top" operator level, so the algorithm only deals with
@@ -98,7 +115,7 @@ static void time_operator(SAU_ParseOpData *restrict op) {
 	}
 	for (SAU_NodeList *list = op->nest_lists;
 			list != NULL; list = list->next) {
-		SAU_NodeList_fornew(list, (SAU_NodeRef_data_f) time_operator);
+		oplist_fornew(list, time_operator);
 	}
 }
 
@@ -108,7 +125,7 @@ static void time_event(SAU_ParseEvData *restrict e) {
 	 * adding present event duration to wait time of next event.
 	 */
 	// e->pan.flags |= SAU_RAMP_TIME_SET; // TODO: revisit semantics
-	SAU_NodeList_fornew(&e->op_list, (SAU_NodeRef_data_f) time_operator);
+	oplist_fornew(&e->op_list, time_operator);
 	/*
 	 * Timing for composites - done before event list flattened.
 	 */
@@ -209,15 +226,6 @@ typedef struct ParseConv {
 	SAU_MemPool *omp; // for output data
 } ParseConv;
 
-static inline bool create_oplist(SAU_NodeList **restrict olp, uint8_t type,
-		SAU_MemPool *restrict mempool) {
-	SAU_NodeList *ol = SAU_create_NodeList(type, mempool);
-	if (!ol)
-		return false;
-	*olp = ol;
-	return true;
-}
-
 /*
  * Per-operator context data for references, used during conversion.
  */
@@ -268,13 +276,13 @@ static OpContext *ParseConv_update_opcontext(ParseConv *restrict o,
 	for (SAU_NodeList *list = pod->nest_lists;
 			list != NULL; list = list->next) {
 		switch (list->type) {
-		case SAU_NLT_FMODS:
+		case SAU_SDLT_FMODS:
 			oc->fmod_list = list;
 			break;
-		case SAU_NLT_PMODS:
+		case SAU_SDLT_PMODS:
 			oc->pmod_list = list;
 			break;
-		case SAU_NLT_AMODS:
+		case SAU_SDLT_AMODS:
 			oc->amod_list = list;
 			break;
 		default:
@@ -282,13 +290,13 @@ static OpContext *ParseConv_update_opcontext(ParseConv *restrict o,
 		}
 	}
 	if (oc->fmod_list != NULL &&
-			!create_oplist(&od->fmods, SAU_NLT_FMODS, o->omp))
+			!create_oplist(&od->fmods, SAU_SDLT_FMODS, o->omp))
 		goto ERROR;
 	if (oc->pmod_list != NULL &&
-			!create_oplist(&od->pmods, SAU_NLT_PMODS, o->omp))
+			!create_oplist(&od->pmods, SAU_SDLT_PMODS, o->omp))
 		goto ERROR;
 	if (oc->amod_list != NULL &&
-			!create_oplist(&od->amods, SAU_NLT_AMODS, o->omp))
+			!create_oplist(&od->amods, SAU_SDLT_AMODS, o->omp))
 		goto ERROR;
 	pod->op_context = oc;
 	return oc;
@@ -324,8 +332,8 @@ static bool ParseConv_add_opdata(ParseConv *restrict o,
 	od->time_ms = pod->time_ms;
 	od->silence_ms = pod->silence_ms;
 	od->wave = pod->wave;
-	if (pod_ref->list_type == SAU_NLT_GRAPH &&
-			(pod_ref->mode & SAU_NRM_ADD) != 0) {
+	if (pod_ref->list_type == SAU_SDLT_GRAPH &&
+			(pod_ref->mode & SAU_SDRM_ADD) != 0) {
 		e->ev_flags |= SAU_SDEV_NEW_OPGRAPH;
 		od->op_flags |= SAU_SDOP_NEW_CARRIER;
 	}
@@ -335,7 +343,7 @@ static bool ParseConv_add_opdata(ParseConv *restrict o,
 	od->amp2 = pod->amp2;
 	od->phase = pod->phase;
 	if (!ParseConv_update_opcontext(o, od, pod)) goto ERROR;
-	if (!SAU_NodeList_add(&e->op_all, od, SAU_NRM_UPDATE, o->omp))
+	if (!SAU_NodeList_add(&e->op_all, od, SAU_SDRM_UPDATE, o->omp))
 		goto ERROR;
 	return true;
 
@@ -393,7 +401,7 @@ static bool ParseConv_link_ops(ParseConv *restrict o,
 		SAU_ScriptOpData *od = pod->op_conv;
 		if (!od) goto ERROR;
 		if (ol != NULL) {
-			if (!SAU_NodeList_add(ol, od, SAU_NRM_ADD, o->omp))
+			if (!SAU_NodeList_add(ol, od, SAU_SDRM_ADD, o->omp))
 				goto ERROR;
 		}
 		OpContext *oc = pod->op_context;
@@ -428,7 +436,7 @@ static bool ParseConv_add_event(ParseConv *restrict o,
 	o->ev = e;
 	e->wait_ms = pe->wait_ms;
 	/* ev_flags */
-	e->op_all.type = SAU_NLT_GRAPH; // will do, only used for updates
+	e->op_all.type = SAU_SDLT_GRAPH; // will do, only used for updates
 	VoContext *vc;
 	if (!pe->vo_prev) {
 		vc = SAU_MemPool_alloc(o->tmp, sizeof(VoContext));
@@ -446,7 +454,7 @@ static bool ParseConv_add_event(ParseConv *restrict o,
 	e->pan = pe->pan;
 	if (!ParseConv_add_ops(o, &pe->op_list)) goto ERROR;
 	if ((e->ev_flags & SAU_SDEV_NEW_OPGRAPH) != 0 &&
-			!create_oplist(&e->op_graph, SAU_NLT_GRAPH, o->omp))
+			!create_oplist(&e->op_graph, SAU_SDLT_GRAPH, o->omp))
 		goto ERROR;
 	if (!ParseConv_link_ops(o, e->op_graph, &pe->op_list)) goto ERROR;
 	return true;

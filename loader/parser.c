@@ -653,7 +653,7 @@ static void begin_event(ParseLevel *restrict pl,
 	pl->event = e;
 	e->wait_ms = pl->next_wait_ms;
 	pl->next_wait_ms = 0;
-	e->op_list.type = SAU_NLT_GRAPH;
+	e->op_list.type = SAU_SDLT_GRAPH;
 	SAU_Ramp_reset(&e->pan);
 	if (prev_op_ref != NULL) {
 		SAU_ParseOpData *pod = prev_op_ref->data;
@@ -697,8 +697,8 @@ static SAU_NodeRef *list_operator(ParseLevel *restrict pl,
 	SAU_Parser *o = pl->o;
 	SAU_ParseEvData *e = pl->event;
 	SAU_NodeList *ol = pl->op_list;
-	if (pl->list_type == SAU_NLT_GRAPH ||
-			!(ref_mode & SAU_NRM_ADD)) {
+	if (pl->list_type == SAU_SDLT_GRAPH ||
+			!(ref_mode & SAU_SDRM_ADD)) {
 		ol = &e->op_list;
 	}
 	SAU_NodeRef *ref = SAU_NodeList_add(ol, od, ref_mode, o->mp);
@@ -770,7 +770,7 @@ static void begin_operator(ParseLevel *restrict pl,
 		 */
 		op->op_flags = SAU_PDOP_TIME_DEFAULT;
 		op->time_ms = sl->sopt.def_time_ms;
-		if (ref->list_type == SAU_NLT_GRAPH) {
+		if (ref->list_type == SAU_SDLT_GRAPH) {
 			op->freq.v0 = sl->sopt.def_freq;
 		} else {
 			op->op_flags |= SAU_PDOP_NESTED;
@@ -880,7 +880,7 @@ static void end_scope(ParseLevel *restrict pl) {
 			uint8_t list_type = pl->parent->list_type;
 			pl->parent->list_type = pl->parent->last_list_type;
 			begin_operator(pl->parent, pl->first_op_ref,
-					SAU_NRM_UPDATE, false);
+					SAU_SDRM_UPDATE, false);
 			pl->parent->list_type = list_type;
 		}
 		break;
@@ -972,7 +972,7 @@ static bool parse_ev_amp(ParseLevel *restrict pl) {
 		}
 	}
 	if (SAU_Scanner_tryc(sc, '~') && SAU_Scanner_tryc(sc, '[')) {
-		parse_level(o, pl, SAU_NLT_AMODS, SCOPE_NEST);
+		parse_level(o, pl, SAU_SDLT_AMODS, SCOPE_NEST);
 	}
 	return false;
 }
@@ -997,7 +997,7 @@ static bool parse_ev_freq(ParseLevel *restrict pl, bool rel_freq) {
 		}
 	}
 	if (SAU_Scanner_tryc(sc, '~') && SAU_Scanner_tryc(sc, '[')) {
-		parse_level(o, pl, SAU_NLT_FMODS, SCOPE_NEST);
+		parse_level(o, pl, SAU_SDLT_FMODS, SCOPE_NEST);
 	}
 	return false;
 }
@@ -1013,7 +1013,7 @@ static bool parse_ev_phase(ParseLevel *restrict pl) {
 		op->op_params |= SAU_POPP_PHASE;
 	}
 	if (SAU_Scanner_tryc(sc, '+') && SAU_Scanner_tryc(sc, '[')) {
-		parse_level(o, pl, SAU_NLT_PMODS, SCOPE_NEST);
+		parse_level(o, pl, SAU_SDLT_PMODS, SCOPE_NEST);
 	}
 	return false;
 }
@@ -1053,7 +1053,7 @@ static bool parse_step(ParseLevel *restrict pl) {
 		case '\\':
 			if (parse_waittime(pl)) {
 				begin_operator(pl, pl->op_ref,
-						SAU_NRM_UPDATE, false);
+						SAU_SDRM_UPDATE, false);
 			}
 			break;
 		case 'a':
@@ -1155,7 +1155,7 @@ static bool parse_level(SAU_Parser *restrict o, ParseLevel *restrict parent_pl,
 		case ';':
 			if (pl.location == SDPL_IN_DEFAULTS || !pl.event)
 				goto INVALID;
-			begin_operator(&pl, pl.op_ref, SAU_NRM_UPDATE, true);
+			begin_operator(&pl, pl.op_ref, SAU_SDRM_UPDATE, true);
 			flags = parse_step(&pl) ?
 				(HANDLE_DEFER | DEFERRED_STEP) :
 				0;
@@ -1191,7 +1191,7 @@ static bool parse_level(SAU_Parser *restrict o, ParseLevel *restrict parent_pl,
 "ignoring reference to undefined label");
 				else {
 					begin_operator(&pl, ref,
-							SAU_NRM_UPDATE, false);
+							SAU_SDRM_UPDATE, false);
 					flags = parse_step(&pl) ?
 						(HANDLE_DEFER | DEFERRED_STEP) :
 						0;
@@ -1202,7 +1202,7 @@ static bool parse_level(SAU_Parser *restrict o, ParseLevel *restrict parent_pl,
 			size_t wave;
 			if (!scan_wavetype(sc, &wave))
 				break;
-			begin_operator(&pl, NULL, SAU_NRM_ADD, false);
+			begin_operator(&pl, NULL, SAU_SDRM_ADD, false);
 			SAU_ParseOpData *od = pl.op_ref->data;
 			od->wave = wave;
 			flags = parse_step(&pl) ?
@@ -1296,7 +1296,7 @@ static const char *parse_file(SAU_Parser *restrict o,
 	const char *name;
 	if (!SAU_Scanner_open(sc, script, is_path))
 		return NULL;
-	parse_level(o, NULL, SAU_NLT_GRAPH, SCOPE_TOP);
+	parse_level(o, NULL, SAU_SDLT_GRAPH, SCOPE_TOP);
 	name = sc->f->path;
 	SAU_Scanner_close(sc);
 	return name;
