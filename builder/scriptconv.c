@@ -194,9 +194,9 @@ typedef struct ScriptConv {
 	SAU_PtrList ev_list;
 	SAU_VoAlloc va;
 	SAU_OpAlloc oa;
-	SAU_ProgramEvent *ev;
-	SAU_VoiceGraph ev_vo_graph;
 	OpDataArr ev_op_data;
+	SAU_VoiceGraph ev_vo_graph;
+	SAU_ProgramEvent *ev;
 	uint32_t duration_ms;
 	SAU_MemPool *mem;
 	SAU_MemPool *tmp; // for allocations not kept in output
@@ -257,12 +257,60 @@ static inline bool update_oplist(const SAU_ProgramOpList **restrict dstp,
 }
 
 /*
- * Convert the flat script operator data list in two stages,
- * adding all the operator data nodes, then filling in
- * the adjacency lists when all nodes are registered.
+ * Update program operator lists for updated lists in script data.
  *
  * Ensures non-NULL list pointers for SAU_OpAllocState nodes, while for
  * output nodes, they are non-NULL initially and upon changes.
+ *
+ * \return true, or false on allocation failure
+ */
+static bool ScriptConv_update_modlists(ScriptConv *restrict o,
+		SAU_ProgramOpData *restrict od) {
+	SAU_OpAllocState *oas = &o->oa.a[od->id];
+	SAU_ScriptOpData *sod = oas->last_sod;
+	const SAU_NodeList *fmod_list = NULL;
+	const SAU_NodeList *pmod_list = NULL;
+	const SAU_NodeList *amod_list = NULL;
+	for (const SAU_NodeList *list = sod->mod_lists;
+			list != NULL; list = list->next) {
+		switch (list->type) {
+		case SAU_SDLT_FMODS:
+			fmod_list = list;
+			break;
+		case SAU_SDLT_PMODS:
+			pmod_list = list;
+			break;
+		case SAU_SDLT_AMODS:
+			amod_list = list;
+			break;
+		}
+	}
+	SAU_VoAllocState *vas = &o->va.a[o->ev->vo_id];
+	if (need_new_oplist(fmod_list, oas->fmods)) {
+		if (!update_oplist(&oas->fmods, fmod_list, o->mem))
+			return false;
+		vas->flags |= SAU_VAS_GRAPH;
+		od->fmods = oas->fmods;
+	}
+	if (need_new_oplist(pmod_list, oas->pmods)) {
+		if (!update_oplist(&oas->pmods, pmod_list, o->mem))
+			return false;
+		vas->flags |= SAU_VAS_GRAPH;
+		od->pmods = oas->pmods;
+	}
+	if (need_new_oplist(amod_list, oas->amods)) {
+		if (!update_oplist(&oas->amods, amod_list, o->mem))
+			return false;
+		vas->flags |= SAU_VAS_GRAPH;
+		od->amods = oas->amods;
+	}
+	return true;
+}
+
+/*
+ * Convert the flat script operator data list in two stages,
+ * adding all the operator data nodes, then filling in
+ * the adjacency lists when all nodes are registered.
  *
  * \return true, or false on allocation failure
  */
@@ -277,27 +325,7 @@ static bool ScriptConv_convert_ops(ScriptConv *restrict o,
 	}
 	for (size_t i = 0; i < o->ev_op_data.count; ++i) {
 		SAU_ProgramOpData *od = &o->ev_op_data.a[i];
-		SAU_VoAllocState *vas = &o->va.a[o->ev->vo_id];
-		SAU_OpAllocState *oas = &o->oa.a[od->id];
-		SAU_ScriptOpData *sod = oas->last_sod;
-		if (need_new_oplist(sod->fmods, oas->fmods)) {
-			vas->flags |= SAU_VAS_GRAPH;
-			if (!update_oplist(&oas->fmods, sod->fmods, o->mem))
-				goto ERROR;
-			od->fmods = oas->fmods;
-		}
-		if (need_new_oplist(sod->pmods, oas->pmods)) {
-			vas->flags |= SAU_VAS_GRAPH;
-			if (!update_oplist(&oas->pmods, sod->pmods, o->mem))
-				goto ERROR;
-			od->pmods = oas->pmods;
-		}
-		if (need_new_oplist(sod->amods, oas->amods)) {
-			vas->flags |= SAU_VAS_GRAPH;
-			if (!update_oplist(&oas->amods, sod->amods, o->mem))
-				goto ERROR;
-			od->amods = oas->amods;
-		}
+		if (!ScriptConv_update_modlists(o, od)) goto ERROR;
 	}
 	return true;
 ERROR:
