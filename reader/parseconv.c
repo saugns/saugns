@@ -233,10 +233,7 @@ typedef struct ParseConv {
  */
 typedef struct OpContext {
 	SAU_ParseOpData *newest; // most recent in time-ordered events
-	/* current node adjacents in operator linkage graph */
-	SAU_NodeList *fmod_list;
-	SAU_NodeList *pmod_list;
-	SAU_NodeList *amod_list;
+	SAU_NodeList *last_mod_list;
 } OpContext;
 
 /*
@@ -260,9 +257,8 @@ static OpContext *ParseConv_update_opcontext(ParseConv *restrict o,
 		oc = pod->prev->op_context;
 		if (!oc) {
 			/*
-			 * This can happen for orphaned nodes,
-			 * removed from the list in which created,
-			 * yet referred to later (e.g. label use).
+			 * This happens for any follow-on nodes
+			 * (updates) for nodes not handled.
 			 */
 			pod->op_flags |= SAU_PDOP_IGNORED;
 			return NULL;
@@ -272,34 +268,7 @@ static OpContext *ParseConv_update_opcontext(ParseConv *restrict o,
 		od_prev->op_flags |= SAU_SDOP_LATER_USED;
 	}
 	oc->newest = pod;
-	oc->fmod_list = NULL;
-	oc->pmod_list = NULL;
-	oc->amod_list = NULL;
-	for (SAU_NodeList *list = pod->nest_lists;
-			list != NULL; list = list->next) {
-		switch (list->type) {
-		case SAU_SDLT_FMODS:
-			oc->fmod_list = list;
-			break;
-		case SAU_SDLT_PMODS:
-			oc->pmod_list = list;
-			break;
-		case SAU_SDLT_AMODS:
-			oc->amod_list = list;
-			break;
-		default:
-			break;
-		}
-	}
-	if (oc->fmod_list != NULL &&
-			!create_oplist(&od->fmods, SAU_SDLT_FMODS, o->mem))
-		return NULL;
-	if (oc->pmod_list != NULL &&
-			!create_oplist(&od->pmods, SAU_SDLT_PMODS, o->mem))
-		return NULL;
-	if (oc->amod_list != NULL &&
-			!create_oplist(&od->amods, SAU_SDLT_AMODS, o->mem))
-		return NULL;
+	oc->last_mod_list = NULL;
 	pod->op_context = oc;
 	return oc;
 }
@@ -369,10 +338,10 @@ static bool ParseConv_add_ops(ParseConv *restrict o,
 			if (pod->op_flags & SAU_PDOP_IGNORED) continue;
 			goto ERROR;
 		}
-		OpContext *oc = pod->op_context;
-		if (!ParseConv_add_ops(o, oc->fmod_list)) goto ERROR;
-		if (!ParseConv_add_ops(o, oc->pmod_list)) goto ERROR;
-		if (!ParseConv_add_ops(o, oc->amod_list)) goto ERROR;
+		for (SAU_NodeList *list = pod->nest_lists;
+				list != NULL; list = list->next) {
+			if (!ParseConv_add_ops(o, list)) goto ERROR;
+		}
 	}
 	return true;
 
@@ -400,12 +369,18 @@ static bool ParseConv_link_ops(ParseConv *restrict o,
 				goto ERROR;
 		}
 		OpContext *oc = pod->op_context;
-		if (!ParseConv_link_ops(o, od->fmods, oc->fmod_list))
-			goto ERROR;
-		if (!ParseConv_link_ops(o, od->pmods, oc->pmod_list))
-			goto ERROR;
-		if (!ParseConv_link_ops(o, od->amods, oc->amod_list))
-			goto ERROR;
+		for (SAU_NodeList *list = pod->nest_lists;
+				list != NULL; list = list->next) {
+			SAU_NodeList *next_list;
+			if (!create_oplist(&next_list, list->type, o->mem))
+				goto ERROR;
+			if (!od->mod_lists)
+				od->mod_lists = next_list;
+			else
+				oc->last_mod_list->next = next_list;
+			oc->last_mod_list = next_list;
+			if (!ParseConv_link_ops(o, next_list, list)) goto ERROR;
+		}
 	}
 	return true;
 
