@@ -1,5 +1,5 @@
 /* saugns: Main functions and project definitions.
- * Copyright (c) 2011-2013, 2017-2019 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -15,7 +15,7 @@
 #include "ptrlist.h"
 #include "program.h"
 
-#define SAU_VERSION_STR "saugns v0.3.6-beta3"
+#define SAU_VERSION_STR "saugns v0.3.6d"
 
 size_t SAU_build(const SAU_PtrList *restrict script_args, bool are_paths,
 		SAU_PtrList *restrict prg_objs);

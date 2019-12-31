@@ -419,10 +419,11 @@ static bool ParseConv_add_event(ParseConv *restrict o,
 	e->vo_params = pe->vo_params;
 	e->pan = pe->pan;
 	if (!ParseConv_add_ops(o, &pe->op_list)) goto ERROR;
-	if ((e->ev_flags & SAU_SDEV_NEW_OPGRAPH) != 0 &&
-			!create_oplist(&e->op_graph, SAU_SDLT_GRAPH, o->mem))
-		goto ERROR;
-	if (!ParseConv_link_ops(o, e->op_graph, &pe->op_list)) goto ERROR;
+	if (e->ev_flags & SAU_SDEV_NEW_OPGRAPH) {
+		if (!create_oplist(&e->op_carriers, SAU_SDLT_GRAPH, o->mem))
+			goto ERROR;
+	}
+	if (!ParseConv_link_ops(o, e->op_carriers, &pe->op_list)) goto ERROR;
 	return true;
 
 ERROR:

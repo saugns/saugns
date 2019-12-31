@@ -12,6 +12,7 @@
  */
 
 #include "arrtype.h"
+#include "mempool.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -105,6 +106,35 @@ bool SAU_ArrType_memdup(void *restrict _o,
 	}
 	size_t size = o->count * item_size;
 	void *a = SAU_memdup(o->a, size);
+	if (!a)
+		return false;
+	*dst = a;
+	return true;
+}
+
+/**
+ * Mempool-using variant of the
+ * memdup function for the contents of the given array.
+ *
+ * \p dst will be set to point to the new allocation
+ * (or to NULL if the array was empty). If the array was
+ * non-empty and allocation failed, \p will remain
+ * unaltered.
+ *
+ * (Generic version of the function, to be used through wrapper.)
+ *
+ * \return true unless allocation failed
+ */
+bool SAU_ArrType_mpmemdup(void *restrict _o,
+		const void **restrict dst, size_t item_size,
+		SAU_MemPool *restrict mempool) {
+	SAU_ByteArr *restrict o = _o;
+	if (!o->count) {
+		*dst = NULL;
+		return true;
+	}
+	size_t size = o->count * item_size;
+	void *a = SAU_MemPool_memdup(mempool, o->a, size);
 	if (!a)
 		return false;
 	*dst = a;

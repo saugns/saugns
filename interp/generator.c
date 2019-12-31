@@ -53,8 +53,8 @@ typedef struct VoiceNode {
 	int32_t pos; /* negative for wait time */
 	uint32_t duration;
 	uint8_t flags;
-	const SAU_ProgramOpRef *op_list;
-	uint32_t op_count;
+	const SAU_ProgramOpRef *graph;
+	uint32_t graph_count;
 	SAU_Ramp pan;
 	uint32_t pan_pos;
 } VoiceNode;
@@ -76,8 +76,8 @@ typedef struct EventOpData {
 typedef struct EventVoData {
 	uint16_t id;
 	uint32_t params;
-	const SAU_ProgramOpRef *op_list;
-	uint32_t op_count;
+	const SAU_ProgramOpRef *graph;
+	uint32_t graph_count;
 } EventVoData;
 
 typedef struct EventNode {
@@ -121,7 +121,7 @@ static size_t count_ev_values(const SAU_ProgramEvent *restrict e) {
 	uint32_t params;
 	if (e->vo_data) {
 		params = e->vo_data->params;
-		params &= ~(SAU_PVOP_OPLIST);
+		params &= ~(SAU_PVOP_GRAPH);
 		count += count_flags(params);
 	}
 	for (size_t i = 0; i < e->op_data_count; ++i) {
@@ -147,7 +147,7 @@ static bool alloc_for_program(SAU_Generator *restrict o,
 	}
 	size_t ev_val_count = 0, ev_op_data_count = 0;
 	for (size_t i = 0; i < prg->ev_count; ++i) {
-		const SAU_ProgramEvent *ev = &prg->events[i];
+		const SAU_ProgramEvent *ev = prg->events[i];
 		ev_val_count += count_ev_values(ev);
 		ev_op_data_count += ev->op_data_count;
 	}
@@ -208,7 +208,7 @@ static bool convert_program(SAU_Generator *restrict o,
 	SAU_Mixer_set_srate(o->mixer, srate);
 	SAU_Mixer_set_scale(o->mixer, scale);
 	for (size_t i = 0; i < prg->ev_count; ++i) {
-		const SAU_ProgramEvent *prg_e = &prg->events[i];
+		const SAU_ProgramEvent *prg_e = prg->events[i];
 		EventNode *e = &o->events[i];
 		uint32_t params;
 		uint16_t vo_id = prg_e->vo_id;
@@ -256,9 +256,9 @@ static bool convert_program(SAU_Generator *restrict o,
 			const SAU_ProgramVoData *pvd = prg_e->vo_data;
 			params = pvd->params;
 			e->vd.params = params;
-			if (params & SAU_PVOP_OPLIST) {
-				e->vd.op_list = pvd->op_list;
-				e->vd.op_count = pvd->op_count;
+			if (params & SAU_PVOP_GRAPH) {
+				e->vd.graph = pvd->graph;
+				e->vd.graph_count = pvd->graph_count;
 			}
 			if (params & SAU_PVOP_PAN)
 				(*ev_v++).ramp = &pvd->pan;
@@ -308,8 +308,8 @@ void SAU_destroy_Generator(SAU_Generator *restrict o) {
 static void set_voice_duration(SAU_Generator *restrict o,
 		VoiceNode *restrict vn) {
 	uint32_t time = 0;
-	for (uint32_t i = 0; i < vn->op_count; ++i) {
-		const SAU_ProgramOpRef *or = &vn->op_list[i];
+	for (uint32_t i = 0; i < vn->graph_count; ++i) {
+		const SAU_ProgramOpRef *or = &vn->graph[i];
 		if (or->use != SAU_POP_CARR) continue;
 		OperatorNode *on = &o->operators[or->id];
 		if (on->time == SAU_TIME_INF) continue;
@@ -378,9 +378,9 @@ static void handle_event(SAU_Generator *restrict o, EventNode *restrict e) {
 		if (e->vd.id != SAU_PVO_NO_ID) {
 			VoiceNode *vn = &o->voices[e->vd.id];
 			params = e->vd.params;
-			if (params & SAU_PVOP_OPLIST) {
-				vn->op_list = e->vd.op_list;
-				vn->op_count = e->vd.op_count;
+			if (params & SAU_PVOP_GRAPH) {
+				vn->graph = e->vd.graph;
+				vn->graph_count = e->vd.graph_count;
 			}
 			if (params & SAU_PVOP_PAN)
 				val = handle_ramp_update(&vn->pan,
@@ -530,8 +530,8 @@ static uint32_t run_block(SAU_Generator *restrict o,
 static uint32_t run_voice(SAU_Generator *restrict o,
 		VoiceNode *restrict vn, uint32_t len) {
 	uint32_t out_len = 0;
-	const SAU_ProgramOpRef *ops = vn->op_list;
-	uint32_t opc = vn->op_count;
+	const SAU_ProgramOpRef *ops = vn->graph;
+	uint32_t opc = vn->graph_count;
 	if (!ops)
 		return 0;
 	uint32_t acc_ind = 0;

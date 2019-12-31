@@ -45,8 +45,12 @@ typedef struct SAU_PtrList {
 #define SAU_PtrList_GET(o, i) \
 	((void*) SAU_PtrList_ITEMS(o)[i])
 
+struct SAU_MemPool;
+
 bool SAU_PtrList_add(SAU_PtrList *restrict o, void *restrict item);
 void SAU_PtrList_clear(SAU_PtrList *restrict o);
 bool SAU_PtrList_memdup(SAU_PtrList *restrict o, void ***restrict dst);
+bool SAU_PtrList_mpmemdup(SAU_PtrList *restrict o, void ***restrict dst,
+		struct SAU_MemPool *restrict mempool);
 void SAU_PtrList_soft_copy(SAU_PtrList *restrict dst,
 		const SAU_PtrList *restrict src);

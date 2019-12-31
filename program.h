@@ -1,5 +1,5 @@
 /* saugns: Audio program data and functions.
- * Copyright (c) 2011-2013, 2017-2019 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -23,7 +23,7 @@
  * Voice parameter flags.
  */
 enum {
-	SAU_PVOP_OPLIST = 1<<0,
+	SAU_PVOP_GRAPH = 1<<0,
 	SAU_PVOP_PAN = 1<<1,
 };
 
@@ -87,8 +87,8 @@ typedef struct SAU_ProgramOpList {
 } SAU_ProgramOpList;
 
 typedef struct SAU_ProgramVoData {
-	const SAU_ProgramOpRef *op_list;
-	uint32_t op_count;
+	const SAU_ProgramOpRef *graph;
+	uint32_t graph_count;
 	uint32_t params;
 	SAU_Ramp pan;
 } SAU_ProgramVoData;
@@ -127,7 +127,7 @@ struct SAU_MemPool;
  * Main program type. Contains everything needed for interpretation.
  */
 typedef struct SAU_Program {
-	SAU_ProgramEvent *events;
+	const SAU_ProgramEvent **events;
 	size_t ev_count;
 	uint16_t mode;
 	uint16_t vo_count;
