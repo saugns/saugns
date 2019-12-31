@@ -21,6 +21,8 @@
  * Each concrete type uses inline wrappers around generic methods.
  */
 
+struct SAU_MemPool;
+
 /**
  * Declare array type using \p Name, with \p ElementType.
  *
@@ -59,6 +61,13 @@ static inline bool sauMaybeUnused \
 MethodPrefix##Name##_memdup(Name *restrict o, \
 		const ElementType **restrict dst) { \
 	return SAU_ArrType_memdup(o, (const void**) dst, sizeof(ElementType)); \
+} \
+static inline bool sauMaybeUnused \
+MethodPrefix##Name##_mpmemdup(Name *restrict o, \
+		const ElementType **restrict dst, \
+		struct SAU_MemPool *restrict mempool) { \
+	return SAU_ArrType_mpmemdup(o, (const void**) dst, \
+		sizeof(ElementType), mempool); \
 }
 
 /**
@@ -81,6 +90,9 @@ bool SAU_ArrType_upsize(void *restrict o,
 void SAU_ArrType_clear(void *restrict o);
 bool SAU_ArrType_memdup(void *restrict o,
 		const void **restrict dst, size_t item_size);
+bool SAU_ArrType_mpmemdup(void *restrict o,
+		const void **restrict dst, size_t item_size,
+		struct SAU_MemPool *mempool);
 
 /** Byte (uint8_t) array type. */
 sauArrType(SAU_ByteArr, uint8_t, );

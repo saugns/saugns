@@ -11,11 +11,9 @@
  * <https://www.gnu.org/licenses/>.
  */
 
-#include "../script.h"
+#include "builder.h"
 #include "../program.h"
-#include "../mempool.h"
 #include "../ptrlist.h"
-#include "../arrtype.h"
 #include <stdlib.h>
 #include <stdio.h>
 
@@ -52,31 +50,12 @@ static sauNoinline const SAU_ProgramOpList
 }
 
 /*
- * Voice allocation state flags.
- */
-enum {
-	VA_OPLIST = 1<<0,
-};
-
-/*
- * Per-voice state used during program data allocation.
- */
-typedef struct VAState {
-	SAU_ScriptEvData *last_ev;
-	const SAU_ProgramOpList *op_graph;
-	uint32_t flags;
-	uint32_t duration_ms;
-} VAState;
-
-sauArrType(VoAlloc, VAState, _)
-
-/*
  * Returns the longest operator duration among top-level operators for
  * the graph of the voice event.
  */
 static uint32_t voice_duration(const SAU_ScriptEvData *restrict ve) {
 	uint32_t duration_ms = 0;
-	for (SAU_NodeRef *ref = ve->op_graph->refs;
+	for (SAU_NodeRef *ref = ve->op_carriers->refs;
 			ref != NULL; ref = ref->next) {
 		SAU_ScriptOpData *op = ref->data;
 		if (op->time_ms > duration_ms)
@@ -90,23 +69,23 @@ static uint32_t voice_duration(const SAU_ScriptEvData *restrict ve) {
  *
  * \return true if voice found, false if voice added or recycled
  */
-static bool VoAlloc_get_id(VoAlloc *restrict va,
+static bool SAU_VoAlloc_get_id(SAU_VoAlloc *restrict va,
 		const SAU_ScriptEvData *restrict e, uint32_t *restrict vo_id) {
 	if (e->vo_prev != NULL) {
 		*vo_id = e->vo_prev->vo_id;
 		return true;
 	}
 	for (size_t id = 0; id < va->count; ++id) {
-		VAState *vas = &va->a[id];
+		SAU_VoAllocState *vas = &va->a[id];
 		if (!(vas->last_ev->ev_flags & SAU_SDEV_VOICE_LATER_USED)
 			&& vas->duration_ms == 0) {
-			*vas = (VAState){0};
+			*vas = (SAU_VoAllocState){0};
 			*vo_id = id;
 			return false;
 		}
 	}
 	*vo_id = va->count;
-	_VoAlloc_add(va, NULL);
+	_SAU_VoAlloc_add(va, NULL);
 	return false;
 }
 
@@ -116,7 +95,7 @@ static bool VoAlloc_get_id(VoAlloc *restrict va,
  * Use the current voice if any, otherwise reusing an expired voice
  * if possible, or allocating a new if not.
  */
-static uint32_t VoAlloc_update(VoAlloc *restrict va,
+static uint32_t SAU_VoAlloc_update(SAU_VoAlloc *restrict va,
 		SAU_ScriptEvData *restrict e) {
 	uint32_t vo_id;
 	for (vo_id = 0; vo_id < va->count; ++vo_id) {
@@ -125,11 +104,11 @@ static uint32_t VoAlloc_update(VoAlloc *restrict va,
 		else
 			va->a[vo_id].duration_ms -= e->wait_ms;
 	}
-	VoAlloc_get_id(va, e, &vo_id);
+	SAU_VoAlloc_get_id(va, e, &vo_id);
 	e->vo_id = vo_id;
-	VAState *vas = &va->a[vo_id];
+	SAU_VoAllocState *vas = &va->a[vo_id];
 	vas->last_ev = e;
-	vas->flags &= ~VA_OPLIST;
+	vas->flags &= ~SAU_VOAS_GRAPH;
 	if (e->ev_flags & SAU_SDEV_NEW_OPGRAPH)
 		vas->duration_ms = voice_duration(e);
 	return vo_id;
@@ -138,30 +117,9 @@ static uint32_t VoAlloc_update(VoAlloc *restrict va,
 /*
  * Clear voice allocator.
  */
-static void VoAlloc_clear(VoAlloc *restrict o) {
-	_VoAlloc_clear(o);
+static void SAU_VoAlloc_clear(SAU_VoAlloc *restrict o) {
+	_SAU_VoAlloc_clear(o);
 }
-
-/*
- * Operator allocation state flags.
- */
-enum {
-	OA_VISITED = 1<<0,
-};
-
-/*
- * Per-operator state used during program data allocation.
- */
-typedef struct OAState {
-	SAU_ScriptOpData *last_sod;
-	const SAU_ProgramOpList *fmods;
-	const SAU_ProgramOpList *pmods;
-	const SAU_ProgramOpList *amods;
-	uint32_t flags;
-	//uint32_t duration_ms;
-} OAState;
-
-sauArrType(OpAlloc, OAState, _)
 
 /*
  * Get operator ID for event, setting it to \p op_id.
@@ -170,23 +128,23 @@ sauArrType(OpAlloc, OAState, _)
  *
  * \return true if operator found, false if operator added or recycled
  */
-static bool OpAlloc_get_id(OpAlloc *restrict oa,
+static bool SAU_OpAlloc_get_id(SAU_OpAlloc *restrict oa,
 		const SAU_ScriptOpData *restrict od, uint32_t *restrict op_id) {
 	if (od->op_prev != NULL) {
 		*op_id = od->op_prev->op_id;
 		return true;
 	}
 //	for (uint32_t id = 0; id < oa->count; ++id) {
-//		OAState *oas = &oa->a[id];
+//		SAU_OpAllocState *oas = &oa->a[id];
 //		if (!(oas->last_sod->op_flags & SAU_SDOP_LATER_USED)
 //			&& oas->duration_ms == 0) {
-//			*oas = (OAState){0};
+//			*oas = (SAU_OpAllocState){0};
 //			*op_id = id;
 //			return false;
 //		}
 //	}
 	*op_id = oa->count;
-	_OpAlloc_add(oa, NULL);
+	_SAU_OpAlloc_add(oa, NULL);
 	return false;
 }
 
@@ -199,7 +157,7 @@ static bool OpAlloc_get_id(OpAlloc *restrict oa,
  *
  * Only valid to call for single-operator nodes.
  */
-static uint32_t OpAlloc_update(OpAlloc *restrict oa,
+static uint32_t SAU_OpAlloc_update(SAU_OpAlloc *restrict oa,
 		SAU_ScriptOpData *restrict od) {
 //	SAU_ScriptEvData *e = od->event;
 	uint32_t op_id;
@@ -209,9 +167,9 @@ static uint32_t OpAlloc_update(OpAlloc *restrict oa,
 //		else
 //			oa->a[op_id].duration_ms -= e->wait_ms;
 //	}
-	OpAlloc_get_id(oa, od, &op_id);
+	SAU_OpAlloc_get_id(oa, od, &op_id);
 	od->op_id = op_id;
-	OAState *oas = &oa->a[op_id];
+	SAU_OpAllocState *oas = &oa->a[op_id];
 	oas->last_sod = od;
 	oas->flags = 0;
 //	oas->duration_ms = od->time_ms;
@@ -221,22 +179,19 @@ static uint32_t OpAlloc_update(OpAlloc *restrict oa,
 /*
  * Clear operator allocator.
  */
-static void OpAlloc_clear(OpAlloc *restrict o) {
-	_OpAlloc_clear(o);
+static void SAU_OpAlloc_clear(SAU_OpAlloc *restrict o) {
+	_SAU_OpAlloc_clear(o);
 }
 
-sauArrType(OpRefArr, SAU_ProgramOpRef, )
 sauArrType(OpDataArr, SAU_ProgramOpData, )
 
 typedef struct ScriptConv {
 	SAU_PtrList ev_list;
-	VoAlloc va;
-	OpAlloc oa;
+	SAU_VoAlloc va;
+	SAU_OpAlloc oa;
 	SAU_ProgramEvent *ev;
-	OpRefArr ev_vo_oplist;
 	OpDataArr ev_op_data;
-	uint32_t op_nest_level;
-	uint32_t op_nest_max;
+	VoiceGraph ev_vo_graph;
 	uint32_t duration_ms;
 	SAU_MemPool *mem;
 	SAU_MemPool *tmp; // for allocations not kept in output
@@ -295,14 +250,14 @@ static inline bool update_oplist(const SAU_ProgramOpList **restrict dstp,
 /*
  * Update program operator lists for updated lists in script data.
  *
- * Ensures non-NULL list pointers for OAState nodes, while for
+ * Ensures non-NULL list pointers for SAU_OpAllocState nodes, while for
  * output nodes, they are non-NULL initially and upon changes.
  *
  * \return true, or false on allocation failure
  */
 static bool ScriptConv_update_modlists(ScriptConv *restrict o,
 		SAU_ProgramOpData *restrict od) {
-	OAState *oas = &o->oa.a[od->id];
+	SAU_OpAllocState *oas = &o->oa.a[od->id];
 	SAU_ScriptOpData *sod = oas->last_sod;
 	const SAU_NodeList *fmod_list = NULL;
 	const SAU_NodeList *pmod_list = NULL;
@@ -321,23 +276,23 @@ static bool ScriptConv_update_modlists(ScriptConv *restrict o,
 			break;
 		}
 	}
-	VAState *vas = &o->va.a[o->ev->vo_id];
+	SAU_VoAllocState *vas = &o->va.a[o->ev->vo_id];
 	if (need_new_oplist(fmod_list, oas->fmods)) {
 		if (!update_oplist(&oas->fmods, fmod_list, o->mem))
 			return false;
-		vas->flags |= VA_OPLIST;
+		vas->flags |= SAU_VOAS_GRAPH;
 		od->fmods = oas->fmods;
 	}
 	if (need_new_oplist(pmod_list, oas->pmods)) {
 		if (!update_oplist(&oas->pmods, pmod_list, o->mem))
 			return false;
-		vas->flags |= VA_OPLIST;
+		vas->flags |= SAU_VOAS_GRAPH;
 		od->pmods = oas->pmods;
 	}
 	if (need_new_oplist(amod_list, oas->amods)) {
 		if (!update_oplist(&oas->amods, amod_list, o->mem))
 			return false;
-		vas->flags |= VA_OPLIST;
+		vas->flags |= SAU_VOAS_GRAPH;
 		od->amods = oas->amods;
 	}
 	return true;
@@ -353,71 +308,13 @@ static void ScriptConv_convert_ops(ScriptConv *restrict o,
 	SAU_NodeRef *ref = op_list->new_refs;
 	for (; ref != NULL; ref = ref->next) {
 		SAU_ScriptOpData *op = ref->data;
-		uint32_t op_id = OpAlloc_update(&o->oa, op);
+		uint32_t op_id = SAU_OpAlloc_update(&o->oa, op);
 		ScriptConv_convert_opdata(o, op, op_id);
 	}
 	for (size_t i = 0; i < o->ev_op_data.count; ++i) {
 		SAU_ProgramOpData *od = &o->ev_op_data.a[i];
 		ScriptConv_update_modlists(o, od);
 	}
-}
-
-static void ScriptConv_traverse_op_node(ScriptConv *restrict o,
-		SAU_ProgramOpRef *restrict op_ref);
-
-/*
- * Traverse operator list, as part of building a graph for the voice.
- */
-static void ScriptConv_traverse_op_list(ScriptConv *restrict o,
-		const SAU_ProgramOpList *restrict op_list, uint8_t mod_use) {
-	SAU_ProgramOpRef op_ref = {0, mod_use, o->op_nest_level};
-	for (uint32_t i = 0; i < op_list->count; ++i) {
-		op_ref.id = op_list->ids[i];
-		ScriptConv_traverse_op_node(o, &op_ref);
-	}
-}
-
-/*
- * Traverse parts of voice operator graph reached from operator node,
- * adding reference after traversal of modulator lists.
- */
-static void ScriptConv_traverse_op_node(ScriptConv *restrict o,
-		SAU_ProgramOpRef *restrict op_ref) {
-	OAState *oas = &o->oa.a[op_ref->id];
-	if (oas->flags & OA_VISITED) {
-		SAU_warning("scriptconv",
-"skipping operator %d; circular references unsupported",
-			op_ref->id);
-		return;
-	}
-	if (o->op_nest_level > o->op_nest_max) {
-		o->op_nest_max = o->op_nest_level;
-	}
-	++o->op_nest_level;
-	oas->flags |= OA_VISITED;
-	ScriptConv_traverse_op_list(o, oas->fmods, SAU_POP_FMOD);
-	ScriptConv_traverse_op_list(o, oas->pmods, SAU_POP_PMOD);
-	ScriptConv_traverse_op_list(o, oas->amods, SAU_POP_AMOD);
-	oas->flags &= ~OA_VISITED;
-	--o->op_nest_level;
-	OpRefArr_add(&o->ev_vo_oplist, op_ref);
-}
-
-/*
- * Traverse operator graph for voice built during allocation,
- * assigning an operator reference list to the voice and
- * block IDs to the operators.
- */
-static void ScriptConv_traverse_voice(ScriptConv *restrict o,
-		const SAU_ProgramEvent *restrict ev) {
-	VAState *vas = &o->va.a[ev->vo_id];
-	if (!vas->op_graph->count)
-		return;
-	ScriptConv_traverse_op_list(o, vas->op_graph, SAU_POP_CARR);
-	SAU_ProgramVoData *vd = (SAU_ProgramVoData*) ev->vo_data;
-	OpRefArr_memdup(&o->ev_vo_oplist, &vd->op_list);
-	vd->op_count = o->ev_vo_oplist.count;
-	o->ev_vo_oplist.count = 0; // reuse allocation
 }
 
 /*
@@ -428,9 +325,9 @@ static void ScriptConv_traverse_voice(ScriptConv *restrict o,
  */
 static void ScriptConv_convert_event(ScriptConv *restrict o,
 		SAU_ScriptEvData *restrict e) {
-	uint32_t vo_id = VoAlloc_update(&o->va, e);
+	uint32_t vo_id = SAU_VoAlloc_update(&o->va, e);
 	uint32_t vo_params;
-	VAState *vas = &o->va.a[vo_id];
+	SAU_VoAllocState *vas = &o->va.a[vo_id];
 	SAU_ProgramEvent *out_ev;
 	out_ev = SAU_MemPool_alloc(o->tmp, sizeof(SAU_ProgramEvent));
 	SAU_PtrList_add(&o->ev_list, out_ev);
@@ -439,32 +336,30 @@ static void ScriptConv_convert_event(ScriptConv *restrict o,
 	o->ev = out_ev;
 	ScriptConv_convert_ops(o, &e->op_all);
 	if (o->ev_op_data.count > 0) {
-		OpDataArr_memdup(&o->ev_op_data, &out_ev->op_data);
+		OpDataArr_mpmemdup(&o->ev_op_data, &out_ev->op_data, o->mem);
 		out_ev->op_data_count = o->ev_op_data.count;
 		o->ev_op_data.count = 0; // reuse allocation
 	}
 	vo_params = e->vo_params;
 	if (e->ev_flags & SAU_SDEV_NEW_OPGRAPH)
-		vas->flags |= VA_OPLIST;
-	if (vas->flags & VA_OPLIST)
-		vo_params |= SAU_PVOP_OPLIST;
+		vas->flags |= SAU_VOAS_GRAPH;
+	if (vas->flags & SAU_VOAS_GRAPH)
+		vo_params |= SAU_PVOP_GRAPH;
 	if (vo_params != 0) {
 		SAU_ProgramVoData *ovd;
 		ovd = SAU_MemPool_alloc(o->mem, sizeof(SAU_ProgramVoData));
 		ovd->params = vo_params;
 		ovd->pan = e->pan;
 		if (e->ev_flags & SAU_SDEV_NEW_OPGRAPH) {
-			vas->op_graph = create_ProgramOpList(e->op_graph,
+			vas->op_carriers = create_ProgramOpList(e->op_carriers,
 							o->tmp);
 		}
 		out_ev->vo_data = ovd;
-		if (vas->flags & VA_OPLIST) {
-			ScriptConv_traverse_voice(o, out_ev);
+		if (vas->flags & SAU_VOAS_GRAPH) {
+			SAU_VoiceGraph_set(&o->ev_vo_graph, out_ev);
 		}
 	}
 }
-
-static void Program_destroy_event_data(SAU_ProgramEvent *restrict e);
 
 static SAU_Program *_ScriptConv_copy_out(ScriptConv *restrict o,
 		SAU_Script *restrict script) {
@@ -507,13 +402,13 @@ static SAU_Program *_ScriptConv_copy_out(ScriptConv *restrict o,
 		goto ERROR;
 	}
 	prg->op_count = o->oa.count;
-	if (o->op_nest_max > UINT8_MAX) {
+	if (o->ev_vo_graph.op_nest_max > UINT8_MAX) {
 		fprintf(stderr,
 "%s: error: operators nested %d levels, maximum is %d levels\n",
-			script->name, o->op_nest_max, UINT8_MAX);
+			script->name, o->ev_vo_graph.op_nest_max, UINT8_MAX);
 		goto ERROR;
 	}
-	prg->op_nest_depth = o->op_nest_max;
+	prg->op_nest_depth = o->ev_vo_graph.op_nest_max;
 	prg->duration_ms = o->duration_ms;
 	prg->name = script->name;
 	prg->mem = o->mem;
@@ -522,21 +417,6 @@ static SAU_Program *_ScriptConv_copy_out(ScriptConv *restrict o,
 ERROR:
 	free(events);
 	return NULL;
-}
-
-static void _ScriptConv_cleanup(ScriptConv *restrict o) {
-	OpAlloc_clear(&o->oa);
-	VoAlloc_clear(&o->va);
-	OpRefArr_clear(&o->ev_vo_oplist);
-	OpDataArr_clear(&o->ev_op_data);
-	if (o->ev_list.count > 0) {
-		SAU_ProgramEvent **in_events;
-		in_events = (SAU_ProgramEvent**) SAU_PtrList_ITEMS(&o->ev_list);
-		for (size_t i = 0; i < o->ev_list.count; ++i) {
-			Program_destroy_event_data(in_events[i]);
-		}
-	}
-	SAU_PtrList_clear(&o->ev_list);
 }
 
 /*
@@ -549,6 +429,7 @@ static SAU_Program *ScriptConv_convert(ScriptConv *restrict o,
 	if (!o->mem) goto EXIT;
 	o->tmp = SAU_create_MemPool(0);
 	if (!o->tmp) goto EXIT;
+	SAU_init_VoiceGraph(&o->ev_vo_graph, &o->va, &o->oa, o->mem);
 
 	uint32_t remaining_ms = 0;
 	for (SAU_ScriptEvData *e = script->events; e; e = e->next) {
@@ -556,15 +437,19 @@ static SAU_Program *ScriptConv_convert(ScriptConv *restrict o,
 		o->duration_ms += e->wait_ms;
 	}
 	for (size_t i = 0; i < o->va.count; ++i) {
-		VAState *vas = &o->va.a[i];
+		SAU_VoAllocState *vas = &o->va.a[i];
 		if (vas->duration_ms > remaining_ms)
 			remaining_ms = vas->duration_ms;
 	}
 	o->duration_ms += remaining_ms;
 
 	prg = _ScriptConv_copy_out(o, script);
-	_ScriptConv_cleanup(o);
+	SAU_OpAlloc_clear(&o->oa);
+	SAU_VoAlloc_clear(&o->va);
+	OpDataArr_clear(&o->ev_op_data);
+	SAU_PtrList_clear(&o->ev_list);
 EXIT:
+	SAU_fini_VoiceGraph(&o->ev_vo_graph);
 	SAU_destroy_MemPool(o->mem);
 	SAU_destroy_MemPool(o->tmp);
 	return prg;
@@ -581,29 +466,13 @@ SAU_Program* SAU_build_Program(SAU_Script *restrict sd) {
 	return o;
 }
 
-/*
- * Destroy data stored for event. Does not free the event itself.
- */
-static void Program_destroy_event_data(SAU_ProgramEvent *restrict e) {
-	if (e->vo_data != NULL) {
-		free((void*)e->vo_data->op_list);
-	}
-	free((void*)e->op_data);
-}
-
 /**
  * Destroy instance.
  */
 void SAU_discard_Program(SAU_Program *restrict o) {
 	if (!o)
 		return;
-	if (o->events != NULL) {
-		for (size_t i = 0; i < o->ev_count; ++i) {
-			SAU_ProgramEvent *e = &o->events[i];
-			Program_destroy_event_data(e);
-		}
-		free(o->events);
-	}
+	free(o->events);
 	SAU_destroy_MemPool(o->mem);
 }
 
@@ -618,7 +487,7 @@ static void print_linked(const char *restrict header,
 	fprintf(stdout, "%s", footer);
 }
 
-static void print_oplist(const SAU_ProgramOpRef *restrict list,
+static void print_graph(const SAU_ProgramOpRef *restrict graph,
 		uint32_t count) {
 	static const char *const uses[SAU_POP_USES] = {
 		"CA",
@@ -626,17 +495,19 @@ static void print_oplist(const SAU_ProgramOpRef *restrict list,
 		"PM",
 		"AM"
 	};
+	if (!graph)
+		return;
 
 	uint32_t i = 0;
 	uint32_t max_indent = 0;
 	fputs("\n\t    [", stdout);
 	for (;;) {
-		const uint32_t indent = list[i].level * 2;
+		const uint32_t indent = graph[i].level * 2;
 		if (indent > max_indent) max_indent = indent;
-		fprintf(stdout, "%6d:  ", list[i].id);
+		fprintf(stdout, "%6d:  ", graph[i].id);
 		for (uint32_t j = indent; j > 0; --j)
 			putc(' ', stdout);
-		fputs(uses[list[i].use], stdout);
+		fputs(uses[graph[i].use], stdout);
 		if (++i == count) break;
 		fputs("\n\t     ", stdout);
 	}
@@ -703,11 +574,9 @@ void SAU_Program_print_info(const SAU_Program *restrict o) {
 			"\\%d \tEV %zd \t(VO %hd)",
 			ev->wait_ms, ev_id, ev->vo_id);
 		if (vd != NULL) {
-			const SAU_ProgramOpRef *ol = vd->op_list;
 			fprintf(stdout,
 				"\n\tvo %d", ev->vo_id);
-			if (ol != NULL)
-				print_oplist(ol, vd->op_count);
+			print_graph(vd->graph, vd->graph_count);
 		}
 		for (size_t i = 0; i < ev->op_data_count; ++i) {
 			const SAU_ProgramOpData *od = &ev->op_data[i];

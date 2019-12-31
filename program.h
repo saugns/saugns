@@ -23,7 +23,7 @@
  * Voice parameter flags.
  */
 enum {
-	SAU_PVOP_OPLIST = 1<<0,
+	SAU_PVOP_GRAPH = 1<<0,
 	SAU_PVOP_PAN = 1<<1,
 };
 
@@ -87,8 +87,8 @@ typedef struct SAU_ProgramOpList {
 } SAU_ProgramOpList;
 
 typedef struct SAU_ProgramVoData {
-	const SAU_ProgramOpRef *op_list;
-	uint32_t op_count;
+	const SAU_ProgramOpRef *graph;
+	uint32_t graph_count;
 	uint32_t params;
 	SAU_Ramp pan;
 } SAU_ProgramVoData;
