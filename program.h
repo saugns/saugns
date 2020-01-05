@@ -41,28 +41,22 @@ enum {
 	SAU_POPP_AMP2 = 1<<7,
 };
 
-/**
+/*
  * Voice ID constants.
  */
-enum {
-	SAU_PVO_NO_ID = UINT16_MAX, /* voice ID missing */
-	SAU_PVO_MAX_ID = UINT16_MAX - 1, /* error if exceeded */
-};
+#define SAU_PVO_NO_ID  UINT16_MAX       /* voice ID missing */
+#define SAU_PVO_MAX_ID (UINT16_MAX - 1) /* error if exceeded */
 
-/**
+/*
  * Operator ID constants.
  */
-enum {
-	SAU_POP_NO_ID = UINT32_MAX, /* operator ID missing */
-	SAU_POP_MAX_ID = UINT32_MAX - 1, /* error if exceeded */
-};
+#define SAU_POP_NO_ID  UINT32_MAX       /* operator ID missing */
+#define SAU_POP_MAX_ID (UINT32_MAX - 1) /* error if exceeded */
 
-/**
+/*
  * Timing special values.
  */
-enum {
-	SAU_TIME_INF = UINT32_MAX, /* special handling for nested operators */
-};
+#define SAU_TIME_INF   UINT32_MAX /* set and checked for nested operator use */
 
 /**
  * Operator use types.
