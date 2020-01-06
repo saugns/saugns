@@ -1,6 +1,9 @@
 mgensys is the Music GENeration SYStem; it will read a script file and produce
 audio output; once more developed writing to audio files will be implemented.
 
+The program as a whole is licensed under LGPL-3.0+, see COPYING for details.
+Various smaller files are permissively licensed, see their heading comments.
+
 Script syntax:
 
 Whitespace is not allowed within names that come after the initial letter of

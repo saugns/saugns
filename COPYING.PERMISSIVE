@@ -1,5 +1,5 @@
-/* mgensys: Common header (individually licensed)
- * Copyright (c) 2011, 2020 Joel K. Pettersson
+/* FILE DESCRIPTION
+ * Copyright (c) CCYY Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -15,28 +15,3 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#pragma once
-typedef unsigned int uint;
-typedef unsigned short ushort;
-typedef unsigned char uchar;
-
-/*
- * MGSProgram
- */
-
-struct MGSProgram;
-typedef struct MGSProgram MGSProgram;
-
-MGSProgram* MGSProgram_create(const char *filename);
-void MGSProgram_destroy(MGSProgram *o);
-
-/*
- * MGSGenerator
- */
-
-struct MGSGenerator;
-typedef struct MGSGenerator MGSGenerator;
-
-MGSGenerator* MGSGenerator_create(uint srate, MGSProgram *prg);
-void MGSGenerator_destroy(MGSGenerator *o);
-uchar MGSGenerator_run(MGSGenerator *o, short *buf, uint len);
