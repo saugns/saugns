@@ -1,3 +1,21 @@
+/* mgensys: Oscillator module (individually licensed)
+ * Copyright (c) 2011, 2020 Joel K. Pettersson
+ * <joelkpettersson@gmail.com>.
+ *
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+
+#pragma once
 #include "math.h"
 
 extern void MGSOsc_init(void);
@@ -32,12 +50,12 @@ typedef struct MGSOsc {
 #define MGSOsc_RUN(o, osctab, coeff, freq, amp, out) do{ \
   int MGSOsc__s; \
   uint MGSOsc__i; \
-  SET_I2F(MGSOsc__i, (coeff)*(freq)); \
+  MGSOsc__i = lrint((coeff)*(freq)); \
   (o)->phase += MGSOsc__i; \
   MGSOsc__i = (o)->phase >> (32-MGSOsc_TABINDEXBITS); \
   MGSOsc__s = (osctab)[MGSOsc__i]; \
   /* write lerp'd & scaled result */ \
-  SET_I2F((out), \
+  (out) = lrint( \
     (((float)MGSOsc__s) + \
      ((float)(((osctab)[MGSOsc__i + 1] - MGSOsc__s))) * \
      ((float)((o)->phase & MGSOsc_TABINDEXMASK)) * \
@@ -49,12 +67,12 @@ typedef struct MGSOsc {
 #define MGSOsc_RUN_FM(o, osctab, coeff, freq, fm, amp, out) do{ \
   int MGSOsc__s; \
   uint MGSOsc__i; \
-  SET_I2F(MGSOsc__i, (coeff)*(freq)); \
+  MGSOsc__i = lrint((coeff)*(freq)); \
   (o)->phase += MGSOsc__i + ((fm) * ((MGSOsc__i >> 11) - (MGSOsc__i >> 14) + (MGSOsc__i >> 18))); \
   MGSOsc__i = (o)->phase >> (32-MGSOsc_TABINDEXBITS); \
   MGSOsc__s = (osctab)[MGSOsc__i]; \
   /* write lerp'd & scaled result */ \
-  SET_I2F((out), \
+  (out) = lrint( \
     (((float)MGSOsc__s) + \
      ((float)(((osctab)[MGSOsc__i + 1] - MGSOsc__s))) * \
      ((float)((o)->phase & MGSOsc_TABINDEXMASK)) * \
@@ -66,13 +84,13 @@ typedef struct MGSOsc {
 #define MGSOsc_RUN_PM(o, osctab, coeff, freq, pm, amp, out) do{ \
   int MGSOsc__s; \
   uint MGSOsc__i, MGSOsc__p; \
-  SET_I2F(MGSOsc__i, (coeff)*(freq)); \
+  MGSOsc__i = lrint((coeff)*(freq)); \
   (o)->phase += MGSOsc__i; \
   MGSOsc__p = (o)->phase + ((pm) << 16); \
   MGSOsc__i = MGSOsc__p >> (32-MGSOsc_TABINDEXBITS); \
   MGSOsc__s = (osctab)[MGSOsc__i]; \
   /* write lerp'd & scaled result */ \
-  SET_I2F((out), \
+  (out) = lrint( \
     (((float)MGSOsc__s) + \
      ((float)(((osctab)[MGSOsc__i + 1] - MGSOsc__s))) * \
      ((float)(MGSOsc__p & MGSOsc_TABINDEXMASK)) * \
@@ -85,7 +103,7 @@ typedef struct MGSOsc {
 #define MGSOsc_RUN_PM_ENVO(o, osctab, coeff, freq, pm, out) do{ \
   int MGSOsc__s; \
   uint MGSOsc__i, MGSOsc__p; \
-  SET_I2F(MGSOsc__i, (coeff)*(freq)); \
+  MGSOsc__i = lrint((coeff)*(freq)); \
   (o)->phase += MGSOsc__i; \
   MGSOsc__p = (o)->phase + ((pm) << 16); \
   MGSOsc__i = MGSOsc__p >> (32-MGSOsc_TABINDEXBITS); \
@@ -101,7 +119,7 @@ typedef struct MGSOsc {
 
 #define MGSOsc_WAVE_OFFS(o, coeff, freq, timepos, out) do{ \
   uint MGSOsc__i; \
-  SET_I2F(MGSOsc__i, (coeff)*(freq)); \
+  MGSOsc__i = lrint((coeff)*(freq)); \
   uint MGSOsc__p = MGSOsc__i * (uint)(timepos); \
   int MGSOsc__o = MGSOsc__p - (MGSOsc_TABINDEXMASK+1); \
   (out) = (MGSOsc__o / MGSOsc__i); \

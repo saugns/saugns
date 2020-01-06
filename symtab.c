@@ -1,3 +1,20 @@
+/* mgensys: Symbol table module (individually licensed)
+ * Copyright (c) 2011, 2020 Joel K. Pettersson
+ * <joelkpettersson@gmail.com>.
+ *
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+
 #include "mgensys.h"
 #include "symtab.h"
 #include <string.h>
@@ -41,12 +58,11 @@ void* MGSSymtab_get(MGSSymtab *o, const char *key) {
 }
 
 static MGSSymnode* MGSSymnode_alloc(const char *key, void *value) {
-  MGSSymnode *o = malloc(sizeof(MGSSymnode));
+  MGSSymnode *o = calloc(1, sizeof(MGSSymnode));
   int len = strlen(key);
-  o->key = malloc(len);
+  o->key = calloc(1, len + 1);
   strcpy(o->key, key);
   o->value = value;
-  o->next = 0;
   return o;
 }
 
