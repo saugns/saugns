@@ -1,5 +1,5 @@
-/* mgensys: Common header (individually licensed)
- * Copyright (c) 2011, 2020 Joel K. Pettersson
+/* mgensys: System audio output support module (individually licensed)
+ * Copyright (c) 2011-2014, 2017-2018, 2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -16,27 +16,12 @@
  */
 
 #pragma once
-typedef unsigned int uint;
-typedef unsigned short ushort;
-typedef unsigned char uchar;
 
-/*
- * MGSProgram
- */
+struct MGSAudioDev;
+typedef struct MGSAudioDev MGSAudioDev;
 
-struct MGSProgram;
-typedef struct MGSProgram MGSProgram;
+MGSAudioDev *MGS_open_audiodev(uint16_t channels, uint32_t *srate);
+void MGS_close_audiodev(MGSAudioDev *ad);
 
-MGSProgram* MGSProgram_create(const char *filename);
-void MGSProgram_destroy(MGSProgram *o);
-
-/*
- * MGSGenerator
- */
-
-struct MGSGenerator;
-typedef struct MGSGenerator MGSGenerator;
-
-MGSGenerator* MGSGenerator_create(uint srate, MGSProgram *prg);
-void MGSGenerator_destroy(MGSGenerator *o);
-uchar MGSGenerator_run(MGSGenerator *o, short *buf, uint len);
+uint32_t MGS_audiodev_get_srate(const MGSAudioDev *ad);
+bool MGS_audiodev_write(MGSAudioDev *ad, const int16_t *buf, uint32_t samples);

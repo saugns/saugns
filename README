@@ -1,6 +1,14 @@
 mgensys is the Music GENeration SYStem; it will read a script file and produce
 audio output; once more developed writing to audio files will be implemented.
 
+(This is an experimental redesign of the saugns program. The saugns program
+is the more mature and stable version. This program reworks the design from
+a much earlier starting point; if it becomes better, it will become the new
+saugns program.)
+
+The program as a whole is licensed under LGPL-3.0+, see COPYING for details.
+Various smaller files are permissively licensed, see their heading comments.
+
 Script syntax:
 
 Whitespace is not allowed within names that come after the initial letter of
