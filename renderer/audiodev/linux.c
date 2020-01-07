@@ -1,5 +1,5 @@
-/* mgensys: Linux audio output support (individually licensed)
- * Copyright (c) 2013, 2017-2018, 2020 Joel K. Pettersson
+/* mgensys: Linux audio output support.
+ * Copyright (c) 2013, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -25,10 +25,10 @@
  *
  * \return instance or NULL on failure
  */
-static inline MGSAudioDev *open_linux(const char *alsa_name,
-		const char *oss_name, int oss_mode, uint16_t channels,
-		uint32_t *srate) {
-	MGSAudioDev *o;
+static inline MGS_AudioDev *open_linux(const char *restrict alsa_name,
+		const char *restrict oss_name, int oss_mode,
+		uint16_t channels, uint32_t *restrict srate) {
+	MGS_AudioDev *o;
 	uint32_t tmp;
 	int err;
 	snd_pcm_t *handle = NULL;
@@ -37,10 +37,9 @@ static inline MGSAudioDev *open_linux(const char *alsa_name,
 	if ((err = snd_pcm_open(&handle, alsa_name, SND_PCM_STREAM_PLAYBACK,
 			0)) < 0) {
 		o = open_oss(oss_name, oss_mode, channels, srate);
-		if (o) {
+		if (o != NULL)
 			return o;
-		}
-		fprintf(stderr, "error: could neither use ALSA nor OSS\n");
+		MGS_error(NULL, "could neither use ALSA nor OSS");
 		goto ERROR;
 	}
 
@@ -48,24 +47,24 @@ static inline MGSAudioDev *open_linux(const char *alsa_name,
 		goto ERROR;
 	tmp = *srate;
 	if (!params
-	    || (err = snd_pcm_hw_params_any(handle, params)) < 0
-	    || (err = snd_pcm_hw_params_set_access(handle, params,
-		SND_PCM_ACCESS_RW_INTERLEAVED)) < 0
-	    || (err = snd_pcm_hw_params_set_format(handle, params,
-		SND_PCM_FORMAT_S16)) < 0
-	    || (err = snd_pcm_hw_params_set_channels(handle, params,
-		channels)) < 0
-	    || (err = snd_pcm_hw_params_set_rate_near(handle, params, &tmp,
-		0)) < 0
-	    || (err = snd_pcm_hw_params(handle, params)) < 0)
+			|| (err = snd_pcm_hw_params_any(handle, params)) < 0
+			|| (err = snd_pcm_hw_params_set_access(handle, params,
+				SND_PCM_ACCESS_RW_INTERLEAVED)) < 0
+			|| (err = snd_pcm_hw_params_set_format(handle, params,
+				SND_PCM_FORMAT_S16)) < 0
+			|| (err = snd_pcm_hw_params_set_channels(handle,
+				params, channels)) < 0
+			|| (err = snd_pcm_hw_params_set_rate_near(handle,
+				params, &tmp, 0)) < 0
+			|| (err = snd_pcm_hw_params(handle, params)) < 0)
 		goto ERROR;
 	if (tmp != *srate) {
-		fprintf(stderr, "warning [ALSA]: sample rate %d unsupported, using %d\n",
-			*srate, tmp);
+		MGS_warning("ALSA", "sample rate %d unsupported, using %d",
+				*srate, tmp);
 		*srate = tmp;
 	}
 
-	o = malloc(sizeof(MGSAudioDev));
+	o = malloc(sizeof(MGS_AudioDev));
 	o->ref.handle = handle;
 	o->type = TYPE_ALSA;
 	o->channels = channels;
@@ -73,12 +72,10 @@ static inline MGSAudioDev *open_linux(const char *alsa_name,
 	return o;
 
 ERROR:
-	fprintf(stderr, "error [ALSA]: %s\n", snd_strerror(err));
+	MGS_error("ALSA", "%s", snd_strerror(err));
 	if (handle) snd_pcm_close(handle);
 	if (params) snd_pcm_hw_params_free(params);
-	fprintf(stderr,
-		"error [ALSA]: configuration for device \"%s\" failed\n",
-		alsa_name);
+	MGS_error("ALSA", "configuration for device \"%s\" failed", alsa_name);
 	return NULL;
 }
 
@@ -86,12 +83,12 @@ ERROR:
  * Destroy instance. Close ALSA or OSS device,
  * ending playback in the process.
  */
-static inline void close_linux(MGSAudioDev *o) {
+static inline void close_linux(MGS_AudioDev *restrict o) {
 	if (o->type == TYPE_OSS) {
 		close_oss(o);
 		return;
 	}
-	
+
 	snd_pcm_drain(o->ref.handle);
 	snd_pcm_close(o->ref.handle);
 	free(o);
@@ -102,8 +99,8 @@ static inline void close_linux(MGSAudioDev *o) {
  *
  * \return true if write sucessful, otherwise false
  */
-static inline bool linux_write(MGSAudioDev *o, const int16_t *buf,
-		uint32_t samples) {
+static inline bool linux_write(MGS_AudioDev *restrict o,
+		const int16_t *restrict buf, uint32_t samples) {
 	if (o->type == TYPE_OSS) {
 		return oss_write(o, buf, samples);
 	}
@@ -111,12 +108,10 @@ static inline bool linux_write(MGSAudioDev *o, const int16_t *buf,
 	snd_pcm_sframes_t written;
 	while ((written = snd_pcm_writei(o->ref.handle, buf, samples)) < 0) {
 		if (written == -EPIPE) {
-			fputs("warning: ALSA audio device buffer underrun\n",
-				stderr);
+			MGS_warning("ALSA", "audio device buffer underrun");
 			snd_pcm_prepare(o->ref.handle);
 		} else {
-			fprintf(stderr,
-				"warning: %s\n", snd_strerror(written));
+			MGS_warning("ALSA", "%s", snd_strerror(written));
 			break;
 		}
 	}

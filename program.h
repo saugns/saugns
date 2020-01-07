@@ -60,31 +60,31 @@ enum {
   MGS_AMODS = 1<<2
 };
 
-typedef struct MGSProgramNodeChain {
-  uint count;
-  struct MGSProgramNode *chain;
-} MGSProgramNodeChain;
+typedef struct MGS_ProgramNodeChain {
+  uint32_t count;
+  struct MGS_ProgramNode *chain;
+} MGS_ProgramNodeChain;
 
-typedef struct MGSProgramNode {
-  struct MGSProgramNode *next;
-  uchar type, flag, attr, wave, mode;
+typedef struct MGS_ProgramNode {
+  struct MGS_ProgramNode *next;
+  uint8_t type, flag, attr, wave, mode;
   float time, delay, freq, dynfreq, phase, amp, dynamp;
-  uint id;
-  MGSProgramNodeChain pmod, fmod, amod;
+  uint32_t id;
+  MGS_ProgramNodeChain pmod, fmod, amod;
   union { /* type-specific data */
     struct {
-      struct MGSProgramNode *link;
+      struct MGS_ProgramNode *link;
     } nested;
     struct {
-      uchar values;
-      uchar mods;
-      struct MGSProgramNode *ref;
+      uint8_t values;
+      uint8_t mods;
+      struct MGS_ProgramNode *ref;
     } set;
   } spec;
-} MGSProgramNode;
+} MGS_ProgramNode;
 
-struct MGSProgram {
-  MGSProgramNode *nodelist;
-  uint nodec;
-  uint topc; /* nodes >= topc are nested ones, ids starting over from 0 */
+struct MGS_Program {
+  MGS_ProgramNode *nodelist;
+  uint32_t nodec;
+  uint32_t topc; /* nodes >= topc are nested ones, ids starting over from 0 */
 };

@@ -1,4 +1,4 @@
-/* mgensys: Common header (individually licensed)
+/* mgensys: Common header.
  * Copyright (c) 2011, 2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -16,27 +16,29 @@
  */
 
 #pragma once
-typedef unsigned int uint;
-typedef unsigned short ushort;
-typedef unsigned char uchar;
+#include "ptrarr.h"
+
+bool MGS_render(const MGS_PtrArr *restrict prg_objs, uint32_t srate,
+		bool use_audiodev, const char *restrict wav_path);
 
 /*
- * MGSProgram
+ * MGS_Program
  */
 
-struct MGSProgram;
-typedef struct MGSProgram MGSProgram;
+struct MGS_Program;
+typedef struct MGS_Program MGS_Program;
 
-MGSProgram* MGSProgram_create(const char *filename);
-void MGSProgram_destroy(MGSProgram *o);
+MGS_Program* MGS_create_Program(const char *filename);
+void MGS_destroy_Program(MGS_Program *o);
 
 /*
- * MGSGenerator
+ * MGS_Generator
  */
 
-struct MGSGenerator;
-typedef struct MGSGenerator MGSGenerator;
+struct MGS_Generator;
+typedef struct MGS_Generator MGS_Generator;
 
-MGSGenerator* MGSGenerator_create(uint srate, MGSProgram *prg);
-void MGSGenerator_destroy(MGSGenerator *o);
-uchar MGSGenerator_run(MGSGenerator *o, short *buf, uint len);
+MGS_Generator* MGS_create_Generator(const MGS_Program *prg, uint32_t srate);
+void MGS_destroy_Generator(MGS_Generator *o);
+bool MGS_Generator_run(MGS_Generator *o, int16_t *buf, uint32_t len,
+		uint32_t *gen_len);
