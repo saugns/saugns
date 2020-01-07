@@ -43,6 +43,16 @@
 #endif
 
 /*
+ * Utility macros
+ */
+
+/** Turn \p arg into string literal before macro-expanding it. */
+#define MGS_STRLIT(arg) #arg
+
+/** Turn \p arg into string literal after macro-expanding it. */
+#define MGS_STREXP(arg) MGS_STRLIT(arg)
+
+/*
  * Utility functions.
  */
 

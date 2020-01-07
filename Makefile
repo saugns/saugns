@@ -6,7 +6,9 @@ LFLAGS=-s -lm
 LFLAGS_LINUX=$(LFLAGS) -lasound
 LFLAGS_SNDIO=$(LFLAGS) -lsndio
 LFLAGS_OSSAUDIO=$(LFLAGS) -lossaudio
-OBJ=renderer/audiodev.o renderer/wavfile.o renderer/renderer.o \
+OBJ=loader/file.o \
+    builder/builder.o \
+    renderer/audiodev.o renderer/wavfile.o renderer/renderer.o \
     interp/generator.o \
     common.o ptrarr.o wave.o \
     mgensys.o parser.o symtab.o
@@ -35,8 +37,14 @@ mgensys: $(OBJ)
 		$(CC) $(OBJ) $(LFLAGS) -o mgensys; \
 	fi
 
+builder/builder.o: builder/builder.c common.h mgensys.h ptrarr.h
+	$(CC) -c $(CFLAGS) builder/builder.c -o builder/builder.o
+
 interp/generator.o: common.h interp/generator.c interp/osc.h mgensys.h program.h wave.h
 	$(CC) -c $(CFLAGS_FAST) interp/generator.c -o interp/generator.o
+
+loader/file.o: common.h loader/file.c loader/file.h
+	$(CC) -c $(CFLAGS) loader/file.c -o loader/file.o
 
 renderer/audiodev.o: common.h renderer/audiodev.c renderer/audiodev.h renderer/audiodev/*.c
 	$(CC) -c $(CFLAGS) renderer/audiodev.c -o renderer/audiodev.o
@@ -50,7 +58,7 @@ renderer/wavfile.o: common.h renderer/wavfile.c renderer/wavfile.h
 mgensys.o: common.h mgensys.c mgensys.h ptrarr.h
 	$(CC) -c $(CFLAGS) mgensys.c
 
-parser.o: common.h mgensys.h parser.c program.h wave.h
+parser.o: common.h loader/file.h mgensys.h parser.c program.h wave.h
 	$(CC) -c $(CFLAGS) parser.c
 
 ptrarr.o: common.h ptrarr.c ptrarr.h
