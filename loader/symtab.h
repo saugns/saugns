@@ -16,11 +16,12 @@
  */
 
 #pragma once
+
 struct MGS_SymTab;
 typedef struct MGS_SymTab MGS_SymTab;
 
-MGS_SymTab* MGS_SymTab_create(void);
-void MGS_SymTab_destroy(MGS_SymTab *o);
+MGS_SymTab *MGS_create_SymTab(void);
+void MGS_destroy_SymTab(MGS_SymTab *o);
 
-void* MGS_SymTab_get(MGS_SymTab *o, const char *key);
-void* MGS_SymTab_set(MGS_SymTab *o, const char *key, void *value);
+void *MGS_SymTab_get(MGS_SymTab *o, const char *key);
+void *MGS_SymTab_set(MGS_SymTab *o, const char *key, void *value);

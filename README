@@ -1,5 +1,5 @@
-mgensys is the Music GENeration SYStem; it will read a script file and produce
-audio output; once more developed writing to audio files will be implemented.
+mgensys is the Music GENeration SYStem; it reads script files or strings,
+and can output to system audio and/or a 16-bit PCM WAV file.
 
 (This is an experimental redesign of the saugns program. The saugns program
 is the more mature and stable version. This program reworks the design from
@@ -108,7 +108,7 @@ The following operators are supported:
 	further delay it.
 
 Any W operation may be prefixed by "'label " in order to define a label for
-it, where label is anything followed by whitespace; thereafter the label may
+it, where the label is alphanumeric (and/or '_'); thereafter the label may
 be referenced as ":label", allowing future changes to an operation
 previously defined. For practical purposes, label referencing can be
 considered an operation, behaving the same.

@@ -78,8 +78,11 @@ typedef struct MGS_ProgramNode {
   } spec;
 } MGS_ProgramNode;
 
+struct MGS_SymTab;
+
 struct MGS_Program {
   MGS_ProgramNode *nodelist;
   uint32_t nodec;
   uint32_t topc; /* nodes >= topc are nested ones, ids starting over from 0 */
+  struct MGS_SymTab *symtab;
 };
