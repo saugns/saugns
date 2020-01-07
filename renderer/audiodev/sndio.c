@@ -1,5 +1,5 @@
-/* mgensys: sndio audio output support (individually licensed)
- * Copyright (c) 2018, 2020 Joel K. Pettersson
+/* mgensys: sndio audio output support.
+ * Copyright (c) 2018-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -21,8 +21,9 @@
 /*
  * \return instance or NULL on failure
  */
-static inline MGSAudioDev *open_sndio(const char *name,
-		unsigned int mode, uint16_t channels, uint32_t *srate) {
+static inline MGS_AudioDev *open_sndio(const char *restrict name,
+		unsigned mode, uint16_t channels,
+		uint32_t *restrict srate) {
 	struct sio_hdl *hdl = sio_open(name, mode, 0);
 	if (!hdl) goto ERROR;
 
@@ -36,18 +37,17 @@ static inline MGSAudioDev *open_sndio(const char *name,
 	par.pchan = channels;
 	par.rate = *srate;
 	par.xrun = SIO_SYNC;
-	if ((!sio_setpar(hdl, &par)) ||
-	    (!sio_getpar(hdl, &par))) goto ERROR;
+	if ((!sio_setpar(hdl, &par)) || (!sio_getpar(hdl, &par)))
+		goto ERROR;
 	if (par.rate != *srate) {
-		fprintf(stderr,
-			"warning [sndio]: sample rate %d unsupported, using %d\n",
+		MGS_warning("sndio", "sample rate %d unsupported, using %d",
 			*srate, par.rate);
 		*srate = par.rate;
 	}
 
 	if (!sio_start(hdl)) goto ERROR;
 
-	MGSAudioDev *o = malloc(sizeof(MGSAudioDev));
+	MGS_AudioDev *o = malloc(sizeof(MGS_AudioDev));
 	o->ref.handle = hdl;
 	o->type = TYPE_SNDIO;
 	o->channels = channels;
@@ -55,8 +55,7 @@ static inline MGSAudioDev *open_sndio(const char *name,
 	return o;
 
 ERROR:
-	fprintf(stderr,
-		"error [sndio]: configuration for device \"%s\" failed\n",
+	MGS_error("sndio", "configuration for device \"%s\" failed",
 		name);
 	return NULL;
 }
@@ -65,7 +64,7 @@ ERROR:
  * Destroy instance. Close sndio device,
  * ending playback in the process.
  */
-static inline void close_sndio(MGSAudioDev *o) {
+static inline void close_sndio(MGS_AudioDev *restrict o) {
 	sio_close(o->ref.handle);
 	free(o);
 }
@@ -75,8 +74,8 @@ static inline void close_sndio(MGSAudioDev *o) {
  *
  * \return true if write sucessful, otherwise false
  */
-static inline bool sndio_write(MGSAudioDev *o, const int16_t *buf,
-		uint32_t samples) {
+static inline bool sndio_write(MGS_AudioDev *restrict o,
+		const int16_t *restrict buf, uint32_t samples) {
 	size_t bytes = samples * o->channels * SOUND_BYTES;
 	size_t wlen;
 

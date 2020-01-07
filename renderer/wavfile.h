@@ -1,5 +1,5 @@
-/* mgensys: System audio output support module (individually licensed)
- * Copyright (c) 2011-2014, 2017-2018, 2020 Joel K. Pettersson
+/* mgensys: WAV file writer module.
+ * Copyright (c) 2011-2012, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -16,12 +16,14 @@
  */
 
 #pragma once
+#include "../common.h"
 
-struct MGSAudioDev;
-typedef struct MGSAudioDev MGSAudioDev;
+struct MGS_WAVFile;
+typedef struct MGS_WAVFile MGS_WAVFile;
 
-MGSAudioDev *MGS_open_audiodev(uint16_t channels, uint32_t *srate);
-void MGS_close_audiodev(MGSAudioDev *ad);
+MGS_WAVFile *MGS_create_WAVFile(const char *restrict fpath,
+		uint16_t channels, uint32_t srate) mgsMalloclike;
+int MGS_close_WAVFile(MGS_WAVFile *restrict o);
 
-uint32_t MGS_audiodev_get_srate(const MGSAudioDev *ad);
-bool MGS_audiodev_write(MGSAudioDev *ad, const int16_t *buf, uint32_t samples);
+bool MGS_WAVFile_write(MGS_WAVFile *restrict o,
+		const int16_t *restrict buf, uint32_t samples);

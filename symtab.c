@@ -1,4 +1,4 @@
-/* mgensys: Symbol table module (individually licensed)
+/* mgensys: Symbol table module.
  * Copyright (c) 2011, 2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -22,33 +22,33 @@
 
 /* a plain linked list is sufficient at present */
 
-typedef struct MGSSymnode {
+typedef struct MGS_SymNode {
   char *key;
   void *value;
-  struct MGSSymnode *next;
-} MGSSymnode;
+  struct MGS_SymNode *next;
+} MGS_SymNode;
 
-struct MGSSymtab {
-  MGSSymnode *node;
+struct MGS_SymTab {
+  MGS_SymNode *node;
 };
 
-MGSSymtab* MGSSymtab_create(void) {
-  MGSSymtab *o = calloc(1, sizeof(MGSSymtab));
+MGS_SymTab* MGS_SymTab_create(void) {
+  MGS_SymTab *o = calloc(1, sizeof(MGS_SymTab));
   return o;
 }
 
-void MGSSymtab_destroy(MGSSymtab *o) {
-  MGSSymnode *n = o->node;
+void MGS_SymTab_destroy(MGS_SymTab *o) {
+  MGS_SymNode *n = o->node;
   while (n) {
-    MGSSymnode *nn = n->next;
+    MGS_SymNode *nn = n->next;
     free(n->key);
     free(n);
     n = nn;
   }
 }
 
-void* MGSSymtab_get(MGSSymtab *o, const char *key) {
-  MGSSymnode *n = o->node;
+void* MGS_SymTab_get(MGS_SymTab *o, const char *key) {
+  MGS_SymNode *n = o->node;
   while (n) {
     if (!strcmp(n->key, key))
       return n->value;
@@ -57,8 +57,8 @@ void* MGSSymtab_get(MGSSymtab *o, const char *key) {
   return 0;
 }
 
-static MGSSymnode* MGSSymnode_alloc(const char *key, void *value) {
-  MGSSymnode *o = calloc(1, sizeof(MGSSymnode));
+static MGS_SymNode* MGS_SymNode_alloc(const char *key, void *value) {
+  MGS_SymNode *o = calloc(1, sizeof(MGS_SymNode));
   int len = strlen(key);
   o->key = calloc(1, len + 1);
   strcpy(o->key, key);
@@ -66,10 +66,10 @@ static MGSSymnode* MGSSymnode_alloc(const char *key, void *value) {
   return o;
 }
 
-void* MGSSymtab_set(MGSSymtab *o, const char *key, void *value) {
-  MGSSymnode *n = o->node;
+void* MGS_SymTab_set(MGS_SymTab *o, const char *key, void *value) {
+  MGS_SymNode *n = o->node;
   if (!n) {
-    o->node = MGSSymnode_alloc(key, value);
+    o->node = MGS_SymNode_alloc(key, value);
     return 0;
   }
   for (;;) {
@@ -82,6 +82,6 @@ void* MGSSymtab_set(MGSSymtab *o, const char *key, void *value) {
       break;
     n = n->next;
   }
-  n->next = MGSSymnode_alloc(key, value);
+  n->next = MGS_SymNode_alloc(key, value);
   return 0;
 }

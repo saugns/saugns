@@ -1,5 +1,5 @@
-/* mgensys: Math header.
- * Copyright (c) 2011, 2020 Joel K. Pettersson
+/* mgensys: System audio output support module.
+ * Copyright (c) 2011-2014, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -16,17 +16,15 @@
  */
 
 #pragma once
-#include <math.h>
-#define PI 3.141592653589f
-#define DC_OFFSET 1.0E-25
+#include "../common.h"
 
-typedef long long int llong;
+struct MGS_AudioDev;
+typedef struct MGS_AudioDev MGS_AudioDev;
 
-typedef int i16_16; /* fixed-point 16.16 */
-typedef unsigned int ui16_16; /* unsigned fixed-point 16.16 */
+MGS_AudioDev *MGS_open_AudioDev(uint16_t channels, uint32_t *restrict srate)
+	mgsMalloclike;
+void MGS_close_AudioDev(MGS_AudioDev *restrict o);
 
-/**
- * Convert time in ms to time in samples for a sample rate.
- */
-#define MGS_MS_IN_SAMPLES(ms, srate) \
-	lrintf(((ms) * .001f) * (srate))
+uint32_t MGS_AudioDev_get_srate(const MGS_AudioDev *restrict o);
+bool MGS_AudioDev_write(MGS_AudioDev *restrict o,
+		const int16_t *restrict buf, uint32_t samples);
