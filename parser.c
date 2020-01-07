@@ -20,48 +20,48 @@
 #include <stdlib.h>
 
 
-typedef struct MGSParser {
+typedef struct MGS_Parser {
   FILE *f;
   const char *fn;
-  MGSProgram *prg;
-  MGSSymtab *st;
-  uint line;
-  uint reclevel;
+  MGS_Program *prg;
+  MGS_SymTab *st;
+  uint32_t line;
+  uint32_t reclevel;
   /* node state */
-  uint level;
-  uint setdef, setnode;
-  uint nestedc;
-  MGSProgramNode *nested; /* list added to end of top nodes at end of parsing */
-  MGSProgramNode *last_top, *last_nested;
-  MGSProgramNode *undo_last;
+  uint32_t level;
+  uint32_t setdef, setnode;
+  uint32_t nestedc;
+  MGS_ProgramNode *nested; /* list added to end of top nodes at end of parsing */
+  MGS_ProgramNode *last_top, *last_nested;
+  MGS_ProgramNode *undo_last;
   /* settings/ops */
-  uchar n_mode;
+  uint8_t n_mode;
   float n_ampmult;
   float n_time;
   float n_freq, n_ratio;
-} MGSParser;
+} MGS_Parser;
 
 /* things that need to be separate for each nested parse_level() go here */
 typedef struct NodeData {
-  MGSProgramNode *node; /* state for tentative node until end_node() */
-  MGSProgramNodeChain *target;
-  MGSProgramNode *last;
+  MGS_ProgramNode *node; /* state for tentative node until end_node() */
+  MGS_ProgramNodeChain *target;
+  MGS_ProgramNode *last;
   char *setsym;
   /* timing/delay */
-  MGSProgramNode *n_begin;
-  uchar n_end;
-  uchar n_time_delay;
+  MGS_ProgramNode *n_begin;
+  uint8_t n_end;
+  uint8_t n_time_delay;
   float n_add_delay; /* added to node's delay in end_node */
   float n_next_add_delay;
 } NodeData;
 
-static void end_node(MGSParser *o, NodeData *nd);
+static void end_node(MGS_Parser *o, NodeData *nd);
 
-static void new_node(MGSParser *o, NodeData *nd, MGSProgramNodeChain *target, uchar type) {
-  MGSProgram *p = o->prg;
-  MGSProgramNode *n;
+static void new_node(MGS_Parser *o, NodeData *nd, MGS_ProgramNodeChain *target, uint8_t type) {
+  MGS_Program *p = o->prg;
+  MGS_ProgramNode *n;
   end_node(o, nd);
-  n = nd->node = calloc(1, sizeof(MGSProgramNode));
+  n = nd->node = calloc(1, sizeof(MGS_ProgramNode));
   nd->target = target;
   n->type = type;
   /* defaults */
@@ -97,7 +97,7 @@ static void new_node(MGSParser *o, NodeData *nd, MGSProgramNodeChain *target, uc
     nd->n_begin = n;
   else if (nd->n_end) {
     double delay = 0.f;
-    MGSProgramNode *step;
+    MGS_ProgramNode *step;
     for (step = nd->n_begin; step != n; step = step->next) {
       if (delay < step->time)
         delay = step->time;
@@ -115,16 +115,16 @@ static void new_node(MGSParser *o, NodeData *nd, MGSProgramNodeChain *target, uc
   }
 }
 
-static void end_node(MGSParser *o, NodeData *nd) {
-  MGSProgram *p = o->prg;
-  MGSProgramNode *n = nd->node;
+static void end_node(MGS_Parser *o, NodeData *nd) {
+  MGS_Program *p = o->prg;
+  MGS_ProgramNode *n = nd->node;
   if (!n)
     return; /* nothing to do */
   nd->node = 0;
   if (n->type == MGS_TYPE_SETTOP ||
       n->type == MGS_TYPE_SETNESTED) {
     /* check what the set-node changes */
-    MGSProgramNode *ref = n->spec.set.ref;
+    MGS_ProgramNode *ref = n->spec.set.ref;
     /* MGS_TIME set when time set */
     if (n->freq != ref->freq)
       n->spec.set.values |= MGS_FREQ;
@@ -180,15 +180,15 @@ static void end_node(MGSParser *o, NodeData *nd) {
   nd->n_add_delay = 0.f;
 
   if (nd->setsym) {
-    MGSSymtab_set(o->st, nd->setsym, n);
+    MGS_SymTab_set(o->st, nd->setsym, n);
     free(nd->setsym);
     nd->setsym = 0;
   }
 }
 
-static double getnum_r(FILE *f, char *buf, uint len, uchar pri) {
+static double getnum_r(FILE *f, char *buf, uint32_t len, uint8_t pri) {
   char *p = buf;
-  uchar dot = 0;
+  uint8_t dot = 0;
   double num;
   char c;
   do {
@@ -254,7 +254,7 @@ static double getnum_r(FILE *f, char *buf, uint len, uchar pri) {
 static double getnum(FILE *f) {
   char buf[64];
   char *p = buf;
-  uchar dot = 0;
+  uint8_t dot = 0;
   if ((*p = getc(f)) == '(')
     return getnum_r(f, buf, 64, 255);
   do {
@@ -270,9 +270,9 @@ static double getnum(FILE *f) {
 
 static int strfind(FILE *f, const char *const*str) {
   int search, ret;
-  uint i, len, pos, matchpos;
+  uint32_t i, len, pos, matchpos;
   char c, undo[256];
-  uint strc;
+  uint32_t strc;
   const char **s;
 
   for (len = 0, strc = 0; str[strc]; ++strc)
@@ -312,20 +312,20 @@ static void eatws(FILE *f) {
   ungetc(c, f);
 }
 
-static uchar testc(char c, FILE *f) {
+static bool testc(char c, FILE *f) {
   char gc = getc(f);
   ungetc(gc, f);
   return (gc == c);
 }
 
-static uchar testgetc(char c, FILE *f) {
+static bool testgetc(char c, FILE *f) {
   char gc;
   if ((gc = getc(f)) == c) return 1;
   ungetc(gc, f);
-  return 0;
+  return false;
 }
 
-static void warning(MGSParser *o, const char *s, char c) {
+static void warning(MGS_Parser *o, const char *s, char c) {
   char buf[4] = {'\'', c, '\'', 0};
   if (c == EOF) strcpy(buf, "EOF");
   printf("warning: %s [line %d, at %s] - %s\n", o->fn, o->line, buf, s);
@@ -333,8 +333,8 @@ static void warning(MGSParser *o, const char *s, char c) {
 
 #define SYMKEY_LEN 80
 #define SYMKEY_LEN_A "80"
-static uchar read_sym(MGSParser *o, char **sym, char op) {
-  uint i = 0;
+static bool read_sym(MGS_Parser *o, char **sym, char op) {
+  uint32_t i = 0;
   char nosym_msg[] = "ignoring ? without symbol name";
   nosym_msg[9] = op; /* replace ? */
   if (!*sym)
@@ -346,7 +346,7 @@ static uchar read_sym(MGSParser *o, char **sym, char op) {
         warning(o, nosym_msg, c);
       else END_OF_SYM: {
         (*sym)[i] = '\0';
-        return 1;
+        return true;
       }
       break;
     } else if (i == SYMKEY_LEN) {
@@ -355,17 +355,18 @@ static uchar read_sym(MGSParser *o, char **sym, char op) {
     }
     (*sym)[i++] = c;
   }
-  return 0;
+  return false;
 }
 
-static void parse_level(MGSParser *o, MGSProgramNodeChain *chain, uchar modtype);
+static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modtype);
 
-static MGSProgram* parse(FILE *f, const char *fn, MGSParser *o) {
-  memset(o, 0, sizeof(MGSParser));
+static MGS_Program* parse(FILE *f, const char *fn, MGS_Parser *o) {
+  memset(o, 0, sizeof(MGS_Parser));
   o->f = f;
   o->fn = fn;
-  o->prg = calloc(1, sizeof(MGSProgram));
-  o->st = MGSSymtab_create();
+  o->prg = calloc(1, sizeof(MGS_Program));
+  o->prg->name = fn;
+  o->st = MGS_SymTab_create();
   o->line = 1;
   o->n_mode = MGS_MODE_CENTER; /* default until changed */
   o->n_ampmult = 1.f; /* default until changed */
@@ -373,17 +374,17 @@ static MGSProgram* parse(FILE *f, const char *fn, MGSParser *o) {
   o->n_freq = 100.f; /* default until changed */
   o->n_ratio = 1.f; /* default until changed */
   parse_level(o, 0, 0);
-  MGSSymtab_destroy(o->st);
+  MGS_SymTab_destroy(o->st);
   /* concatenate linked lists */
   if (o->last_top)
     o->last_top->next = o->nested;
   return o->prg;
 }
 
-static void parse_level(MGSParser *o, MGSProgramNodeChain *chain, uchar modtype) {
+static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modtype) {
   char c;
   NodeData nd;
-  uint entrylevel = o->level;
+  uint32_t entrylevel = o->level;
   ++o->reclevel;
   memset(&nd, 0, sizeof(NodeData));
   if (chain) {
@@ -514,11 +515,11 @@ static void parse_level(MGSParser *o, MGSProgramNodeChain *chain, uchar modtype)
       else if (chain)
         goto INVALID;
       if (read_sym(o, &nd.setsym, ':')) {
-        MGSProgramNode *ref = MGSSymtab_get(o->st, nd.setsym);
+        MGS_ProgramNode *ref = MGS_SymTab_get(o->st, nd.setsym);
         if (!ref)
           warning(o, "ignoring reference to undefined label", c);
         else {
-          uint type;
+          uint32_t type;
           switch (ref->type) {
           case MGS_TYPE_TOP:
           case MGS_TYPE_SETTOP:
@@ -649,9 +650,9 @@ RETURN:
   --o->reclevel;
 }
 
-MGSProgram* MGSProgram_create(const char *filename) {
-  MGSProgram *o;
-  MGSParser p;
+MGS_Program* MGS_create_Program(const char *filename) {
+  MGS_Program *o;
+  MGS_Parser p;
   FILE *f = fopen(filename, "r");
   if (!f) return 0;
 
@@ -660,10 +661,10 @@ MGSProgram* MGSProgram_create(const char *filename) {
   return o;
 }
 
-void MGSProgram_destroy(MGSProgram *o) {
-  MGSProgramNode *n = o->nodelist;
+void MGS_destroy_Program(MGS_Program *o) {
+  MGS_ProgramNode *n = o->nodelist;
   while (n) {
-    MGSProgramNode *nn = n->next;
+    MGS_ProgramNode *nn = n->next;
     free(n);
     n = nn;
   }

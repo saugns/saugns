@@ -1,4 +1,4 @@
-/* mgensys: Symbol table module (individually licensed)
+/* mgensys: Symbol table module.
  * Copyright (c) 2011, 2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -16,11 +16,11 @@
  */
 
 #pragma once
-struct MGSSymtab;
-typedef struct MGSSymtab MGSSymtab;
+struct MGS_SymTab;
+typedef struct MGS_SymTab MGS_SymTab;
 
-MGSSymtab* MGSSymtab_create(void);
-void MGSSymtab_destroy(MGSSymtab *o);
+MGS_SymTab* MGS_SymTab_create(void);
+void MGS_SymTab_destroy(MGS_SymTab *o);
 
-void* MGSSymtab_get(MGSSymtab *o, const char *key);
-void* MGSSymtab_set(MGSSymtab *o, const char *key, void *value);
+void* MGS_SymTab_get(MGS_SymTab *o, const char *key);
+void* MGS_SymTab_set(MGS_SymTab *o, const char *key, void *value);
