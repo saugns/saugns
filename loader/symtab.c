@@ -15,7 +15,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include "mgensys.h"
+#include "../common.h"
 #include "symtab.h"
 #include <string.h>
 #include <stdlib.h>
@@ -32,12 +32,12 @@ struct MGS_SymTab {
   MGS_SymNode *node;
 };
 
-MGS_SymTab* MGS_SymTab_create(void) {
+MGS_SymTab *MGS_create_SymTab(void) {
   MGS_SymTab *o = calloc(1, sizeof(MGS_SymTab));
   return o;
 }
 
-void MGS_SymTab_destroy(MGS_SymTab *o) {
+void MGS_destroy_SymTab(MGS_SymTab *o) {
   MGS_SymNode *n = o->node;
   while (n) {
     MGS_SymNode *nn = n->next;
@@ -47,7 +47,7 @@ void MGS_SymTab_destroy(MGS_SymTab *o) {
   }
 }
 
-void* MGS_SymTab_get(MGS_SymTab *o, const char *key) {
+void *MGS_SymTab_get(MGS_SymTab *o, const char *key) {
   MGS_SymNode *n = o->node;
   while (n) {
     if (!strcmp(n->key, key))
@@ -57,7 +57,7 @@ void* MGS_SymTab_get(MGS_SymTab *o, const char *key) {
   return 0;
 }
 
-static MGS_SymNode* MGS_SymNode_alloc(const char *key, void *value) {
+static MGS_SymNode *MGS_SymNode_alloc(const char *key, void *value) {
   MGS_SymNode *o = calloc(1, sizeof(MGS_SymNode));
   int len = strlen(key);
   o->key = calloc(1, len + 1);
@@ -66,7 +66,7 @@ static MGS_SymNode* MGS_SymNode_alloc(const char *key, void *value) {
   return o;
 }
 
-void* MGS_SymTab_set(MGS_SymTab *o, const char *key, void *value) {
+void *MGS_SymTab_set(MGS_SymTab *o, const char *key, void *value) {
   MGS_SymNode *n = o->node;
   if (!n) {
     o->node = MGS_SymNode_alloc(key, value);

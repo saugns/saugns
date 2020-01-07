@@ -18,8 +18,18 @@
 #pragma once
 #include "ptrarr.h"
 
+#define MGS_CLINAME_STR "mgensys"
+#define MGS_VERSION_STR "v0.1-beta"
+
+#define MGS_DEFAULT_SRATE 96000
+
+size_t MGS_build(const MGS_PtrArr *restrict script_args, bool are_paths,
+		MGS_PtrArr *restrict prg_objs, bool print_info);
+
 bool MGS_render(const MGS_PtrArr *restrict prg_objs, uint32_t srate,
 		bool use_audiodev, const char *restrict wav_path);
+
+void MGS_discard(MGS_PtrArr *restrict prg_objs);
 
 /*
  * MGS_Program
@@ -28,7 +38,7 @@ bool MGS_render(const MGS_PtrArr *restrict prg_objs, uint32_t srate,
 struct MGS_Program;
 typedef struct MGS_Program MGS_Program;
 
-MGS_Program* MGS_create_Program(const char *filename);
+MGS_Program* MGS_create_Program(const char *file, bool is_path);
 void MGS_destroy_Program(MGS_Program *o);
 
 /*

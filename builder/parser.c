@@ -1,5 +1,5 @@
-/* mgensys: Script parser
- * Copyright (c) 2011, 2020 Joel K. Pettersson
+/* mgensys: Script parser.
+ * Copyright (c) 2011, 2019-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -11,20 +11,37 @@
  * <http://www.gnu.org/licenses/>.
  */
 
-#include "mgensys.h"
-#include "program.h"
-#include "symtab.h"
-#include "math.h"
+#include "../mgensys.h"
+#include "../program.h"
+#include "../math.h"
+#include "../loader/file.h"
+#include "../loader/symtab.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
 
+#define IS_LOWER(c) ((c) >= 'a' && (c) <= 'z')
+#define IS_UPPER(c) ((c) >= 'A' && (c) <= 'Z')
+#define IS_ALPHA(c) (IS_LOWER(c) || IS_UPPER(c))
+#define IS_DIGIT(c) ((c) >= '0' && (c) <= '9')
+#define IS_ALNUM(c) (IS_ALPHA(c) || IS_DIGIT(c))
+#define IS_SPACE(c) ((c) == ' ' || (c) == '\t')
+
+/* Valid characters in identifiers. */
+#define IS_SYMCHAR(c) (IS_ALNUM(c) || (c) == '_')
+
+/* Sensible to print, for ASCII only. */
+#define IS_VISIBLE(c) ((c) >= '!' && (c) <= '~')
+
+static uint8_t filter_symchar(MGS_File *restrict f mgsMaybeUnused,
+                              uint8_t c) {
+  return IS_SYMCHAR(c) ? c : 0;
+}
 
 typedef struct MGS_Parser {
-  FILE *f;
-  const char *fn;
+  MGS_File *f;
   MGS_Program *prg;
-  MGS_SymTab *st;
+  char *symbuf;
   uint32_t line;
   uint32_t reclevel;
   /* node state */
@@ -41,12 +58,63 @@ typedef struct MGS_Parser {
   float n_freq, n_ratio;
 } MGS_Parser;
 
+static mgsNoinline void warning(MGS_Parser *o, const char *s, char c) {
+  MGS_File *f = o->f;
+  if (IS_VISIBLE(c)) {
+    fprintf(stderr, "warning: %s [line %d, at '%c'] - %s\n",
+            f->path, o->line, c, s);
+  } else if (c > MGS_FILE_MARKER) {
+    fprintf(stderr, "warning: %s [line %d, at 0x%xc] - %s\n",
+            f->path, o->line, c, s);
+  } else if (MGS_File_AT_EOF(f)) {
+    fprintf(stderr, "warning: %s [line %d, at EOF] - %s\n",
+            f->path, o->line, s);
+  } else {
+    fprintf(stderr, "warning: %s [line %d] - %s\n",
+            f->path, o->line, s);
+  }
+}
+
+static void skip_ws(MGS_Parser *restrict o) {
+  for (;;) {
+    uint8_t c = MGS_File_GETC(o->f);
+    if (IS_SPACE(c))
+      continue;
+    if (c == '\n') {
+      ++o->line;
+      MGS_File_TRYC(o->f, '\r');
+    } else if (c == '\r') {
+      ++o->line;
+    } else if (c == '#') {
+      MGS_File_skipline(o->f);
+      c = MGS_File_GETC(o->f);
+    } else {
+      MGS_File_UNGETC(o->f);
+      break;
+    }
+  }
+}
+
+/*
+ * Handle unknown character, checking for EOF and treating
+ * the character as invalid if not an end marker.
+ *
+ * \return false if EOF reached
+ */
+static bool check_invalid(MGS_Parser *restrict o, char c) {
+  bool eof = MGS_File_AT_EOF(o->f);
+  if (!eof || c > MGS_FILE_MARKER)
+    warning(o, "invalid character", c);
+  return !eof;
+}
+
 /* things that need to be separate for each nested parse_level() go here */
 typedef struct NodeData {
   MGS_ProgramNode *node; /* state for tentative node until end_node() */
   MGS_ProgramNodeChain *target;
   MGS_ProgramNode *last;
-  char *setsym;
+  const char *setsym;
+  size_t setsym_len;
   /* timing/delay */
   MGS_ProgramNode *n_begin;
   uint8_t n_end;
@@ -180,101 +248,125 @@ static void end_node(MGS_Parser *o, NodeData *nd) {
   nd->n_add_delay = 0.f;
 
   if (nd->setsym) {
-    MGS_SymTab_set(o->st, nd->setsym, n);
-    free(nd->setsym);
-    nd->setsym = 0;
+    MGS_SymTab_set(p->symtab, nd->setsym, n);
+    nd->setsym = NULL;
+    nd->setsym_len = 0;
   }
 }
 
-static double getnum_r(FILE *f, char *buf, uint32_t len, uint8_t pri) {
-  char *p = buf;
-  uint8_t dot = 0;
+typedef float (*NumSym_f)(MGS_Parser *restrict o);
+
+typedef struct NumParser {
+  MGS_Parser *pr;
+  NumSym_f numsym_f;
+  bool has_infnum;
+} NumParser;
+enum {
+  NUMEXP_SUB = 0,
+  NUMEXP_ADT,
+  NUMEXP_MLT,
+  NUMEXP_POW,
+  NUMEXP_NUM,
+};
+static double scan_num_r(NumParser *restrict o, uint8_t pri, uint32_t level) {
+  MGS_Parser *pr = o->pr;
   double num;
-  char c;
-  do {
-    c = getc(f);
-  } while (c == ' ' || c == '\t' || c == '\r' || c == '\n');
+  bool minus = false;
+  uint8_t c;
+  if (level > 0) skip_ws(pr);
+  c = MGS_File_GETC(pr->f);
+  if ((level > 0) && (c == '+' || c == '-')) {
+    if (c == '-') minus = true;
+    skip_ws(pr);
+    c = MGS_File_GETC(pr->f);
+  }
   if (c == '(') {
-    return getnum_r(f, buf, len, 255);
+    num = scan_num_r(o, NUMEXP_SUB, level+1);
+    if (minus) num = -num;
+    if (level == 0) return num;
+    goto EVAL;
   }
-  while ((c >= '0' && c <= '9') || (!dot && (dot = (c == '.')))) {
-    if ((p+1) == (buf+len)) {
-      break;
-    }
-    *p++ = c;
-    c = getc(f);
+  if (o->numsym_f && IS_ALPHA(c)) {
+    MGS_File_UNGETC(pr->f);
+    num = o->numsym_f(pr);
+    if (isnan(num))
+      return NAN;
+    if (minus) num = -num;
+  } else {
+    size_t read_len;
+    MGS_File_UNGETC(pr->f);
+    MGS_File_getd(pr->f, &num, false, &read_len);
+    if (read_len == 0)
+      return NAN;
+    if (minus) num = -num;
   }
-  if (p == buf) {
-    ungetc(c, f);
-    return NAN;
-  }
-  *p = '\0';
-  num = strtod(buf, 0);
+EVAL:
+  if (level == 0 || pri == NUMEXP_NUM)
+    return num; /* defer all */
   for (;;) {
-    while (c == ' ' || c == '\t' || c == '\r' || c == '\n')
-      c = getc(f);
+    if (isinf(num)) o->has_infnum = true;
+    if (level > 0) skip_ws(pr);
+    c = MGS_File_GETC(pr->f);
     switch (c) {
     case '(':
-      num *= getnum_r(f, buf, len, 255);
+      if (pri >= NUMEXP_MLT) goto DEFER;
+      num *= scan_num_r(o, NUMEXP_SUB, level+1);
       break;
     case ')':
-      if (pri < 255)
-        ungetc(c, f);
+      if (pri != NUMEXP_SUB) goto DEFER;
       return num;
-      break;
     case '^':
-      num = exp(log(num) * getnum_r(f, buf, len, 0));
+      if (pri >= NUMEXP_POW) goto DEFER;
+      num = exp(log(num) * scan_num_r(o, NUMEXP_POW, level));
       break;
     case '*':
-      num *= getnum_r(f, buf, len, 1);
+      if (pri >= NUMEXP_MLT) goto DEFER;
+      num *= scan_num_r(o, NUMEXP_MLT, level);
       break;
     case '/':
-      num /= getnum_r(f, buf, len, 1);
+      if (pri >= NUMEXP_MLT) goto DEFER;
+      num /= scan_num_r(o, NUMEXP_MLT, level);
       break;
     case '+':
-      if (pri < 2)
-        return num;
-      num += getnum_r(f, buf, len, 2);
+      if (pri >= NUMEXP_ADT) goto DEFER;
+      num += scan_num_r(o, NUMEXP_ADT, level);
       break;
     case '-':
-      if (pri < 2)
-        return num;
-      num -= getnum_r(f, buf, len, 2);
+      if (pri >= NUMEXP_ADT) goto DEFER;
+      num -= scan_num_r(o, NUMEXP_ADT, level);
       break;
     default:
-      return num;
+      if (pri == NUMEXP_SUB) {
+        warning(pr, "numerical expression has '(' without closing ')'", c);
+      }
+      goto DEFER;
     }
-    if (num != num) {
-      ungetc(c, f);
-      return num;
-    }
-    c = getc(f);
+    if (isnan(num)) goto DEFER;
   }
+DEFER:
+  MGS_File_UNGETC(pr->f);
+  return num;
 }
-static double getnum(FILE *f) {
-  char buf[64];
-  char *p = buf;
-  uint8_t dot = 0;
-  if ((*p = getc(f)) == '(')
-    return getnum_r(f, buf, 64, 255);
-  do {
-    if ((*p >= '0' && *p <= '9') || (!dot && (dot = (*p == '.'))))
-      ++p;
-    else
-      break;
-  } while ((*p = getc(f)) && p < (buf+64));
-  ungetc(*p, f);
-  *p = '\0';
-  return strtod(buf, 0);
+static mgsNoinline bool scan_num(MGS_Parser *restrict o,
+    NumSym_f scan_numsym, float *restrict var) {
+  NumParser np = {o, scan_numsym, false};
+  float num = scan_num_r(&np, NUMEXP_NUM, 0);
+  if (isnan(num))
+    return false;
+  if (isinf(num)) np.has_infnum = true;
+  if (np.has_infnum) {
+    warning(o, "discarding expression with infinite number", 0);
+    return false;
+  }
+  *var = num;
+  return true;
 }
 
-static int strfind(FILE *f, const char *const*str) {
-  int ret;
-  uint32_t i, len, pos, matchpos;
-  char c, undo[256];
-  uint32_t strc;
+static int32_t strfind(MGS_File *restrict f, const char *const*restrict str) {
+  int32_t ret;
+  size_t i, len, pos, matchpos;
+  size_t strc;
   const char **s;
-
   for (len = 0, strc = 0; str[strc]; ++strc)
     if ((i = strlen(str[strc])) > len) len = i;
   s = malloc(sizeof(const char*) * strc);
@@ -282,8 +374,8 @@ static int strfind(FILE *f, const char *const*str) {
     s[i] = str[i];
   ret = -1;
   pos = matchpos = 0;
-  while ((c = getc(f)) != EOF) {
-    undo[pos] = c;
+  for (;;) {
+    uint8_t c = MGS_File_GETC(f);
     for (i = 0; i < strc; ++i) {
       if (!s[i]) continue;
       else if (!s[i][pos]) {
@@ -294,37 +386,13 @@ static int strfind(FILE *f, const char *const*str) {
         s[i] = 0;
       }
     }
+    if (c <= MGS_FILE_MARKER) break;
     if (pos == len) break;
     ++pos;
   }
   free(s);
-  for (i = pos; i > matchpos; --i) ungetc(undo[i], f);
+  MGS_File_UNGETN(f, (pos-matchpos));
   return ret;
-}
-
-static void eatws(FILE *f) {
-  char c;
-  while ((c = getc(f)) == ' ' || c == '\t') ;
-  ungetc(c, f);
-}
-
-static bool testc(char c, FILE *f) {
-  char gc = getc(f);
-  ungetc(gc, f);
-  return (gc == c);
-}
-
-static bool testgetc(char c, FILE *f) {
-  char gc;
-  if ((gc = getc(f)) == c) return 1;
-  ungetc(gc, f);
-  return false;
-}
-
-static void warning(MGS_Parser *o, const char *s, char c) {
-  char buf[4] = {'\'', c, '\'', 0};
-  if (c == EOF) strcpy(buf, "EOF");
-  printf("warning: %s [line %d, at %s] - %s\n", o->fn, o->line, buf, s);
 }
 
 static int32_t scan_wavetype(MGS_Parser *restrict o, char from_c) {
@@ -341,42 +409,37 @@ static int32_t scan_wavetype(MGS_Parser *restrict o, char from_c) {
   return wave;
 }
 
-#define SYMKEY_LEN 80
-#define SYMKEY_LEN_A "80"
-static bool read_sym(MGS_Parser *o, char **sym, char op) {
-  uint32_t i = 0;
+#define SYMKEY_MAXLEN 79
+#define SYMKEY_MAXLEN_A "79"
+static const char *scan_sym(MGS_Parser *o, size_t *len, char op) {
   char nosym_msg[] = "ignoring ? without symbol name";
+  size_t read_len = 0;
+  bool truncated;
   nosym_msg[9] = op; /* replace ? */
-  if (!*sym)
-    *sym = malloc(SYMKEY_LEN);
-  for (;;) {
-    char c = getc(o->f);
-    if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
-      if (i == 0)
-        warning(o, nosym_msg, c);
-      else END_OF_SYM: {
-        (*sym)[i] = '\0';
-        return true;
-      }
-      break;
-    } else if (i == SYMKEY_LEN) {
-      warning(o, "ignoring symbol name from "SYMKEY_LEN_A"th digit", c);
-      goto END_OF_SYM;
-    }
-    (*sym)[i++] = c;
+  truncated = !MGS_File_getstr(o->f, o->symbuf, SYMKEY_MAXLEN + 1,
+      &read_len, filter_symchar);
+  if (read_len == 0) {
+    warning(o, nosym_msg, op);
+    return NULL;
   }
-  return false;
+  if (len != NULL)
+    *len = read_len;
+  if (truncated) {
+    warning(o, "limiting symbol name to "SYMKEY_MAXLEN_A" characters", op);
+    read_len += MGS_File_skipstr(o->f, filter_symchar);
+  }
+  return o->symbuf;
 }
 
 static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modtype);
 
-static MGS_Program* parse(FILE *f, const char *fn, MGS_Parser *o) {
+static MGS_Program* parse(MGS_File *f, MGS_Parser *o) {
   memset(o, 0, sizeof(MGS_Parser));
   o->f = f;
-  o->fn = fn;
   o->prg = calloc(1, sizeof(MGS_Program));
-  o->prg->name = fn;
-  o->st = MGS_SymTab_create();
+  o->prg->symtab = MGS_create_SymTab();
+  o->prg->name = f->path;
+  o->symbuf = calloc(SYMKEY_MAXLEN + 1, sizeof(char));
   o->line = 1;
   o->n_mode = MGS_MODE_CENTER; /* default until changed */
   o->n_ampmult = 1.f; /* default until changed */
@@ -384,7 +447,7 @@ static MGS_Program* parse(FILE *f, const char *fn, MGS_Parser *o) {
   o->n_freq = 100.f; /* default until changed */
   o->n_ratio = 1.f; /* default until changed */
   parse_level(o, 0, 0);
-  MGS_SymTab_destroy(o->st);
+  free(o->symbuf);
   /* concatenate linked lists */
   if (o->last_top)
     o->last_top->next = o->nested;
@@ -393,6 +456,7 @@ static MGS_Program* parse(FILE *f, const char *fn, MGS_Parser *o) {
 
 static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modtype) {
   char c;
+  float f;
   NodeData nd;
   uint32_t entrylevel = o->level;
   ++o->reclevel;
@@ -401,11 +465,14 @@ static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modt
     chain->count = 0;
     chain->chain = 0;
   }
-  while ((c = getc(o->f)) != EOF) {
-    eatws(o->f);
+  for (;;) {
+    c = MGS_File_GETC(o->f);
+    MGS_File_skipspace(o->f);
     switch (c) {
     case '\n':
-    EOL:
+      MGS_File_TRYC(o->f, '\r');
+      /* fall-through */
+    case '\r':
       if (!chain) {
         if (o->setdef > o->level)
           o->setdef = (o->level) ? (o->level - 1) : 0;
@@ -418,20 +485,20 @@ static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modt
       break;
     case '\t':
     case ' ':
-      eatws(o->f);
+      MGS_File_skipspace(o->f);
       break;
     case '#':
-      while ((c = getc(o->f)) != '\n' && c != EOF) ;
-      goto EOL;
+      MGS_File_skipline(o->f);
       break;
     case '/':
       if (o->setdef > o->setnode) goto INVALID;
-      if (testgetc('t', o->f))
+      if (MGS_File_TRYC(o->f, 't')) {
         nd.n_time_delay = 1;
-      else {
-        nd.n_time_delay = 0;
-        nd.n_next_add_delay += getnum(o->f);
+        break;
       }
+      if (!scan_num(o, NULL, &f)) goto INVALID;
+      nd.n_time_delay = 0;
+      nd.n_next_add_delay += f;
       break;
     case '{':
       /* is always got elsewhere before a nesting call to this function */
@@ -496,8 +563,8 @@ static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modt
     case '\\':
       if (o->setdef > o->setnode)
         goto INVALID;
-      else
-        nd.node->delay += getnum(o->f);
+      if (!scan_num(o, NULL, &f)) goto INVALID;
+      nd.node->delay += f;
       break;
     case '\'':
       end_node(o, &nd);
@@ -505,7 +572,7 @@ static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modt
         warning(o, "ignoring label assignment to label assignment", c);
         break;
       }
-      read_sym(o, &nd.setsym, '\'');
+      nd.setsym = scan_sym(o, &nd.setsym_len, '\'');
       break;
     case ':':
       end_node(o, &nd);
@@ -513,8 +580,9 @@ static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modt
         warning(o, "ignoring label assignment to label reference", c);
       else if (chain)
         goto INVALID;
-      if (read_sym(o, &nd.setsym, ':')) {
-        MGS_ProgramNode *ref = MGS_SymTab_get(o->st, nd.setsym);
+      nd.setsym = scan_sym(o, &nd.setsym_len, ':');
+      if (nd.setsym != NULL) {
+        MGS_ProgramNode *ref = MGS_SymTab_get(o->prg->symtab, nd.setsym);
         if (!ref)
           warning(o, "ignoring reference to undefined label", c);
         else {
@@ -548,39 +616,45 @@ static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modt
       }
       break;
     case 'a':
-      if (o->setdef > o->setnode)
-        o->n_ampmult = getnum(o->f);
-      else if (o->setnode > 0) {
+      if (o->setdef > o->setnode) {
+        if (!scan_num(o, NULL, &f)) goto INVALID;
+        o->n_ampmult = f;
+      } else if (o->setnode > 0) {
         if (modtype == MGS_AMODS ||
             modtype == MGS_FMODS)
           goto INVALID;
-        if (testgetc('!', o->f)) {
-          if (!testc('{', o->f)) {
-            nd.node->dynamp = getnum(o->f);
+        if (MGS_File_TRYC(o->f, '!')) {
+          if (!MGS_File_TESTC(o->f, '{')) {
+            if (!scan_num(o, NULL, &f)) goto INVALID;
+            nd.node->dynamp = f;
           }
-          if (testgetc('{', o->f)) {
+          if (MGS_File_TRYC(o->f, '{')) {
             parse_level(o, &nd.node->amod, MGS_AMODS);
           }
         } else {
-          nd.node->amp = getnum(o->f);
+          if (!scan_num(o, NULL, &f)) goto INVALID;
+          nd.node->amp = f;
         }
       } else
         goto INVALID;
       break;
     case 'f':
-      if (o->setdef > o->setnode)
-        o->n_freq = getnum(o->f);
-      else if (o->setnode > 0) {
-        if (testgetc('!', o->f)) {
-          if (!testc('{', o->f)) {
-            nd.node->dynfreq = getnum(o->f);
+      if (o->setdef > o->setnode) {
+        if (!scan_num(o, NULL, &f)) goto INVALID;
+        o->n_freq = f;
+      } else if (o->setnode > 0) {
+        if (MGS_File_TRYC(o->f, '!')) {
+          if (!MGS_File_TESTC(o->f, '{')) {
+            if (!scan_num(o, NULL, &f)) goto INVALID;
+            nd.node->dynfreq = f;
             nd.node->attr &= ~MGS_ATTR_DYNFREQRATIO;
           }
-          if (testgetc('{', o->f)) {
+          if (MGS_File_TRYC(o->f, '{')) {
             parse_level(o, &nd.node->fmod, MGS_FMODS);
           }
         } else {
-          nd.node->freq = getnum(o->f);
+          if (!scan_num(o, NULL, &f)) goto INVALID;
+          nd.node->freq = f;
           nd.node->attr &= ~MGS_ATTR_FREQRATIO;
         }
       } else
@@ -589,42 +663,48 @@ static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modt
     case 'p': {
       if (o->setdef > o->setnode || o->setnode <= 0)
         goto INVALID;
-      if (testgetc('!', o->f)) {
-        if (testgetc('{', o->f)) {
+      if (MGS_File_TRYC(o->f, '!')) {
+        if (MGS_File_TRYC(o->f, '{')) {
           parse_level(o, &nd.node->pmod, MGS_PMODS);
         }
       } else {
-        nd.node->phase = fmod(getnum(o->f), 1.f);
+        if (!scan_num(o, NULL, &f)) goto INVALID;
+        nd.node->phase = fmod(f, 1.f);
         if (nd.node->phase < 0.f)
           nd.node->phase += 1.f;
       }
       break; }
     case 'r':
-      if (o->setdef > o->setnode)
-        o->n_ratio = 1.f / getnum(o->f);
-      else if (o->setnode > 0) {
+      if (o->setdef > o->setnode) {
+        if (!scan_num(o, NULL, &f)) goto INVALID;
+        o->n_ratio = 1.f / f;
+      } else if (o->setnode > 0) {
         if (!chain)
           goto INVALID;
-        if (testgetc('!', o->f)) {
-          if (!testc('{', o->f)) {
-            nd.node->dynfreq = 1.f / getnum(o->f);
+        if (MGS_File_TRYC(o->f, '!')) {
+          if (!MGS_File_TESTC(o->f, '{')) {
+            if (!scan_num(o, NULL, &f)) goto INVALID;
+            nd.node->dynfreq = 1.f / f;
             nd.node->attr |= MGS_ATTR_DYNFREQRATIO;
           }
-          if (testgetc('{', o->f)) {
+          if (MGS_File_TRYC(o->f, '{')) {
             parse_level(o, &nd.node->fmod, MGS_FMODS);
           }
         } else {
-          nd.node->freq = 1.f / getnum(o->f);
+          if (!scan_num(o, NULL, &f)) goto INVALID;
+          nd.node->freq = 1.f / f;
           nd.node->attr |= MGS_ATTR_FREQRATIO;
         }
       } else
         goto INVALID;
       break;
     case 't':
-      if (o->setdef > o->setnode)
-        o->n_time = getnum(o->f);
-      else if (o->setnode > 0) {
-        nd.node->time = getnum(o->f);
+      if (o->setdef > o->setnode) {
+        if (!scan_num(o, NULL, &f)) goto INVALID;
+        o->n_time = f;
+      } else if (o->setnode > 0) {
+        if (!scan_num(o, NULL, &f)) goto INVALID;
+        nd.node->time = f;
         if (nd.node->type == MGS_TYPE_SETTOP ||
             nd.node->type == MGS_TYPE_SETNESTED)
           nd.node->spec.set.values |= MGS_TIME;
@@ -643,7 +723,7 @@ static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modt
       break; }
     default:
     INVALID:
-      warning(o, "invalid character", c);
+      if (!check_invalid(o, c)) goto FINISH;
       break;
     }
   }
@@ -654,27 +734,37 @@ FINISH:
     warning(o, "end of file without closing '}'s", c);
 RETURN:
   end_node(o, &nd);
-  if (nd.setsym)
-    free(nd.setsym);
   --o->reclevel;
 }
 
-MGS_Program* MGS_create_Program(const char *filename) {
-  MGS_Program *o;
+MGS_Program* MGS_create_Program(const char *file, bool is_path) {
+  MGS_Program *o = NULL;
   MGS_Parser p;
-  FILE *f = fopen(filename, "r");
-  if (!f) return 0;
-
-  o = parse(f, filename, &p);
-  fclose(f);
+  MGS_File *f = MGS_create_File();
+  if (!f) goto ERROR;
+  if (!is_path) {
+    if (!MGS_File_stropenrb(f, "<string>", file)) {
+      MGS_error(NULL, "NULL string passed for opening");
+      goto ERROR;
+    }
+  } else if (!MGS_File_fopenrb(f, file)) {
+    MGS_error(NULL, "couldn't open script file \"%s\" for reading", file);
+    goto ERROR;
+  }
+  o = parse(f, &p);
+ERROR:
+  MGS_destroy_File(f);
   return o;
 }
 
 void MGS_destroy_Program(MGS_Program *o) {
+  if (!o)
+    return;
   MGS_ProgramNode *n = o->nodelist;
   while (n) {
     MGS_ProgramNode *nn = n->next;
     free(n);
     n = nn;
   }
+  MGS_destroy_SymTab(o->symtab);
 }
