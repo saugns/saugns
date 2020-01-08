@@ -43,9 +43,33 @@ The following operations are supported:
 S:
 	Set default values for parameters f, r, t, a, \.
 
-Wsin, Wsqr, Wtri, Wsaw:
-	Play sine, square, triangle or saw wave.
+Wsin, Wsqr, W...:
+	Play wave, see wave types list for all types.
 	Supports f, t, a, \ parameters.
+
+Wave types:
+	sin	Sine.
+			For cosine, use (1/4) phase.
+	sqr	Square (anti-aliased cycle).
+			Lacks full "bite" at low frequencies.
+	tri	Triangle (naive).
+	saw	Saw (anti-aliased cycle).
+			Lacks full "bite" at low frequencies.
+			Decreasing slope; use negative amplitude
+			or frequency for increasing slope.
+	sha	Half-frequency absolute sine (adjusted).
+			Frequency halved to restore base frequency,
+			peak amplitude centered and doubled, phase
+			shifted to begin and end at zero amplitude.
+			A softer alternative to "saw" (saw wave).
+	szh	Half-zero'd sine (adjusted).
+			Positive half kept, negative half zero'd,
+			peak amplitude centered and doubled, phase
+			shifted to begin and end at zero amplitude.
+			A warm and full sound.
+	ssr	Square root of sine.
+			Mirrored for the negative half.
+			A softer alternative to "sqr" (square wave).
 
 The following parameters can be found in wave operations:
 	t	Time duration in seconds.
@@ -71,6 +95,7 @@ The following parameters can be found in wave operations:
 	p!{}	A list of modulator (PM) waves is given within the {}, the
 		per-sample sum of which is used to phase-modulate the carrier,
 		be it the final carrier or in turn another modulator.
+	w	Change wave, see wave types list for all types.
 	\	Time shift/delay current operation and following ones, time
 		in seconds.
 

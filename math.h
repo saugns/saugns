@@ -16,11 +16,14 @@
  */
 
 #pragma once
+#include "common.h"
 #include <math.h>
-#define PI 3.141592653589f
-#define DC_OFFSET 1.0E-25
 
-typedef long long int llong;
+#define MGS_PI       3.14159265358979323846
+#define MGS_ASIN_1_2 0.52359877559829887308 // asin(0.5)
+#define MGS_SQRT_1_2 0.70710678118654752440 // sqrt(0.5), 1/sqrt(2)
+
+#define MGS_DC_OFFSET 1.0E-25
 
 typedef int i16_16; /* fixed-point 16.16 */
 typedef unsigned int ui16_16; /* unsigned fixed-point 16.16 */
