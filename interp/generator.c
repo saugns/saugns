@@ -1,4 +1,4 @@
-/* mgensys: Audio generator
+/* mgensys: Audio generator.
  * Copyright (c) 2011, 2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -11,10 +11,10 @@
  * <http://www.gnu.org/licenses/>.
  */
 
-#include "mgensys.h"
+#include "../mgensys.h"
 #include "osc.h"
 #include "env.h"
-#include "program.h"
+#include "../program.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -28,7 +28,6 @@ typedef struct IndexNode {
 typedef struct SoundNode {
   uint32_t time;
   uint8_t type, attr, mode;
-  int16_t *osctype;
   MGS_Osc osc;
   float freq, dynfreq, amp, dynampdiff;
   struct SoundNode *amodchain, *fmodchain, *pmodchain;
@@ -57,7 +56,7 @@ static uint32_t count_flags(uint32_t flags) {
 #define NO_DELAY_OFFS (0x80000000)
 struct MGS_Generator {
   uint32_t srate;
-  double osc_coeff;
+  float osc_coeff;
   int delay_offs;
   uint32_t node, nodec;
   IndexNode nodes[1]; /* sized to number of nodes */
@@ -89,7 +88,7 @@ MGS_Generator* MGS_create_Generator(const MGS_Program *prg, uint32_t srate) {
   o->node = 0;
   o->nodec = prg->topc; /* only loop top-level nodes */
   data = (void*)(((uint8_t*)o) + size + indexsize);
-  MGS_Osc_init();
+  MGS_global_init_Wave();
   step = prg->nodelist;
   for (i = 0; i < prg->nodec; ++i) {
     IndexNode *in = &o->nodes[i];
@@ -104,27 +103,15 @@ MGS_Generator* MGS_create_Generator(const MGS_Program *prg, uint32_t srate) {
       uint32_t time = step->time * srate;
       in->ref = -1;
       n->time = time;
-      switch (step->wave) {
-      case MGS_WAVE_SIN:
-        n->osctype = MGS_Osc_sin;
-        break;
-      case MGS_WAVE_SQR:
-        n->osctype = MGS_Osc_sqr;
-        break;
-      case MGS_WAVE_TRI:
-        n->osctype = MGS_Osc_tri;
-        break;
-      case MGS_WAVE_SAW:
-        n->osctype = MGS_Osc_saw;
-        break;
-      }
       n->attr = step->attr;
       n->mode = step->mode;
       n->amp = step->amp;
       n->dynampdiff = step->dynamp - step->amp;
       n->freq = step->freq;
       n->dynfreq = step->dynfreq;
-      MGS_Osc_SET_PHASE(&n->osc, MGS_Osc_PHASE(step->phase));
+      n->osc.phase = MGS_Osc_PHASE(step->phase);
+      n->osc.coeff = o->osc_coeff;
+      n->osc.lut = MGS_Osc_LUT(step->wave);
       /* mods init part one - replaced with proper entries next loop */
       n->amodchain = (void*)step->amod.chain;
       n->fmodchain = (void*)step->fmod.chain;
@@ -144,6 +131,9 @@ MGS_Generator* MGS_create_Generator(const MGS_Program *prg, uint32_t srate) {
       n->mods = step->spec.set.mods;
       if (n->values & MGS_TIME) {
         (*set).i = step->time * srate; ++set;
+      }
+      if (n->values & MGS_WAVE) {
+        (*set).i = step->wave; ++set;
       }
       if (n->values & MGS_FREQ) {
         (*set).f = step->freq; ++set;
@@ -211,10 +201,11 @@ MGS_Generator* MGS_create_Generator(const MGS_Program *prg, uint32_t srate) {
   return o;
 }
 
+/*
+ * Click reduction: decrease time to make it end at wave cycle's end.
+ */
 static void adjust_time(MGS_Generator *o, SoundNode *n) {
-  int pos_offs;
-  /* click reduction: increase time to make it end at wave cycle's end */
-  MGS_Osc_WAVE_OFFS(&n->osc, o->osc_coeff, n->freq, n->time, pos_offs);
+  int pos_offs = MGS_Osc_cycle_offs(&n->osc, n->freq, n->time);
   n->time -= pos_offs;
   if ((uint32_t)o->delay_offs == NO_DELAY_OFFS || o->delay_offs > pos_offs)
     o->delay_offs = pos_offs;
@@ -244,6 +235,10 @@ static void MGS_Generator_enter_node(MGS_Generator *o, IndexNode *in) {
       } else
         refin->flag &= ~MGS_FLAG_EXEC;
     }
+    if (setn->values & MGS_WAVE) {
+      uint8_t wave = (*data).i; ++data;
+      refn->osc.lut = MGS_Osc_LUT(wave);
+    }
     if (setn->values & MGS_FREQ) {
       refn->freq = (*data).f; ++data;
       adjtime = 1;
@@ -252,7 +247,7 @@ static void MGS_Generator_enter_node(MGS_Generator *o, IndexNode *in) {
       refn->dynfreq = (*data).f; ++data;
     }
     if (setn->values & MGS_PHASE) {
-      MGS_Osc_SET_PHASE(&refn->osc, (uint32_t)(*data).i); ++data;
+      refn->osc.phase = (uint32_t)(*data).i; ++data;
     }
     if (setn->values & MGS_AMP) {
       refn->amp = (*data).f; ++data;
@@ -293,9 +288,9 @@ void MGS_destroy_Generator(MGS_Generator *o) {
  * node sample processing
  */
 
-static float run_waveenv_sample(SoundNode *n, float freq_mult, double osc_coeff);
+static float run_waveenv_sample(SoundNode *n, float freq_mult);
 
-static uint32_t run_sample(SoundNode *n, float freq_mult, double osc_coeff) {
+static uint32_t run_sample(SoundNode *n, float freq_mult) {
   int ret = 0, s;
   float freq;
   float amp;
@@ -307,7 +302,7 @@ static uint32_t run_sample(SoundNode *n, float freq_mult, double osc_coeff) {
     amp = n->amp;
     if (n->amodchain) {
       float am = n->dynampdiff;
-      am *= run_waveenv_sample(n->amodchain, freq, osc_coeff);
+      am *= run_waveenv_sample(n->amodchain, freq);
       amp += am;
     }
     if (n->fmodchain) {
@@ -315,18 +310,18 @@ static uint32_t run_sample(SoundNode *n, float freq_mult, double osc_coeff) {
       if (n->attr & MGS_ATTR_DYNFREQRATIO)
         fm *= freq_mult;
       fm -= freq;
-      fm *= run_waveenv_sample(n->fmodchain, freq, osc_coeff);
+      fm *= run_waveenv_sample(n->fmodchain, freq);
       freq += fm;
     }
     if (n->pmodchain)
-      pm += run_sample(n->pmodchain, freq, osc_coeff);
-    MGS_Osc_RUN_PM(&n->osc, n->osctype, osc_coeff, freq, pm, amp, s);
+      pm += run_sample(n->pmodchain, freq);
+    s = lrintf(MGS_Osc_run(&n->osc, freq, pm << 16) * amp * INT16_MAX);
     ret += s;
   } while ((n = n->link));
   return ret;
 }
 
-static float run_waveenv_sample(SoundNode *n, float freq_mult, double osc_coeff) {
+static float run_waveenv_sample(SoundNode *n, float freq_mult) {
   float ret = 1.f, s;
   float freq;
   int pm = 0;
@@ -339,12 +334,12 @@ static float run_waveenv_sample(SoundNode *n, float freq_mult, double osc_coeff)
       if (n->attr & MGS_ATTR_DYNFREQRATIO)
         fm *= freq_mult;
       fm -= freq;
-      fm *= run_waveenv_sample(n->fmodchain, freq, osc_coeff);
+      fm *= run_waveenv_sample(n->fmodchain, freq);
       freq += fm;
     }
     if (n->pmodchain)
-      pm += run_sample(n->pmodchain, freq, osc_coeff);
-    MGS_Osc_RUN_PM_ENVO(&n->osc, n->osctype, osc_coeff, freq, pm, s);
+      pm += run_sample(n->pmodchain, freq);
+    s = MGS_Osc_run_envo(&n->osc, freq, pm << 16);
     ret *= s;
   } while ((n = n->link));
   return ret;
@@ -354,7 +349,7 @@ static float run_waveenv_sample(SoundNode *n, float freq_mult, double osc_coeff)
  * node block processing
  */
 
-static uint32_t run_node(SoundNode *n, int16_t *sp, uint32_t pos, uint32_t len, double osc_coeff) {
+static uint32_t run_node(SoundNode *n, int16_t *sp, uint32_t pos, uint32_t len) {
   uint32_t ret, time = n->time - pos;
   if (time > len)
     time = len;
@@ -362,7 +357,7 @@ static uint32_t run_node(SoundNode *n, int16_t *sp, uint32_t pos, uint32_t len, 
   if (n->mode == MGS_MODE_RIGHT) ++sp;
   for (; time; --time, sp += 2) {
     int s;
-    s = run_sample(n, /* dummy value */0.f, osc_coeff);
+    s = run_sample(n, /* dummy value */0.f);
     sp[0] += s;
     if (n->mode == MGS_MODE_CENTER)
       sp[1] += s;
@@ -391,7 +386,7 @@ PROCESS:
     if (in->pos < 0) {
       uint32_t delay = -in->pos;
       if ((uint32_t)o->delay_offs != NO_DELAY_OFFS)
-        delay -= o->delay_offs; /* delay inc == previous time inc */
+        delay -= o->delay_offs; /* delay change == previous time change */
       if (delay <= len) {
         /* Split processing so that len is no longer than delay, avoiding
          * cases where the node prior to a node disabling it plays too
@@ -413,7 +408,7 @@ PROCESS:
     if (in->pos < 0) {
       uint32_t delay = -in->pos;
       if ((uint32_t)o->delay_offs != NO_DELAY_OFFS) {
-        in->pos += o->delay_offs; /* delay inc == previous time inc */
+        in->pos += o->delay_offs; /* delay change == previous time change */
         o->delay_offs = NO_DELAY_OFFS;
       }
       if (delay >= len) {
@@ -428,7 +423,7 @@ PROCESS:
       MGS_Generator_enter_node(o, in);
     if (in->flag & MGS_FLAG_EXEC) {
       SoundNode *n = in->node;
-      in->pos += run_node(n, buf, in->pos, len, o->osc_coeff);
+      in->pos += run_node(n, buf, in->pos, len);
       if ((uint32_t)in->pos == n->time)
         in->flag &= ~MGS_FLAG_EXEC;
     }

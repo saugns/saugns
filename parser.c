@@ -269,7 +269,7 @@ static double getnum(FILE *f) {
 }
 
 static int strfind(FILE *f, const char *const*str) {
-  int search, ret;
+  int ret;
   uint32_t i, len, pos, matchpos;
   char c, undo[256];
   uint32_t strc;
@@ -280,7 +280,7 @@ static int strfind(FILE *f, const char *const*str) {
   s = malloc(sizeof(const char*) * strc);
   for (i = 0; i < strc; ++i)
     s[i] = str[i];
-  search = ret = -1;
+  ret = -1;
   pos = matchpos = 0;
   while ((c = getc(f)) != EOF) {
     undo[pos] = c;
@@ -288,15 +288,11 @@ static int strfind(FILE *f, const char *const*str) {
       if (!s[i]) continue;
       else if (!s[i][pos]) {
         s[i] = 0;
-        if (search == (int)i) {
-          ret = i;
-          matchpos = pos-1;
-        }
+        ret = i;
+        matchpos = pos-1;
       } else if (c != s[i][pos]) {
         s[i] = 0;
-        search = -1;
-      } else
-        search = i;
+      }
     }
     if (pos == len) break;
     ++pos;
@@ -329,6 +325,20 @@ static void warning(MGS_Parser *o, const char *s, char c) {
   char buf[4] = {'\'', c, '\'', 0};
   if (c == EOF) strcpy(buf, "EOF");
   printf("warning: %s [line %d, at %s] - %s\n", o->fn, o->line, buf, s);
+}
+
+static int32_t scan_wavetype(MGS_Parser *restrict o, char from_c) {
+  int32_t wave = strfind(o->f, MGS_Wave_names);
+  if (wave < 0) {
+    warning(o, "invalid wave type; available types are:", from_c);
+    int i = 0;
+    fprintf(stderr, "\t%s", MGS_Wave_names[i]);
+    while (++i < MGS_WAVE_TYPES) {
+      fprintf(stderr, ", %s", MGS_Wave_names[i]);
+    }
+    putc('\n', stderr);
+  }
+  return wave;
 }
 
 #define SYMKEY_LEN 80
@@ -469,19 +479,8 @@ static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modt
       o->setdef = o->level + 1;
       break;
     case 'W': {
-      const char *simples[] = {
-        "sin",
-        "sqr",
-        "tri",
-        "saw",
-        0
-      };
-      int wave;
-      wave = strfind(o->f, simples) + MGS_WAVE_SIN;
-      if (wave < MGS_WAVE_SIN) {
-        warning(o, "invalid wave type follows W in file; sin, sqr, tri, saw available", c);
-        break;
-      }
+      int wave = scan_wavetype(o, c);
+      if (wave < 0) break;
       new_node(o, &nd, chain, (chain ? MGS_TYPE_NESTED : MGS_TYPE_TOP));
       nd.node->wave = wave;
       o->setnode = o->level + 1;
@@ -631,6 +630,16 @@ static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modt
       } else
         goto INVALID;
       break;
+    case 'w': {
+      if (o->setdef > o->setnode || o->setnode <= 0)
+        goto INVALID;
+      int wave = scan_wavetype(o, c);
+      if (wave < 0) break;
+      nd.node->wave = wave;
+      if (nd.node->type == MGS_TYPE_SETTOP ||
+          nd.node->type == MGS_TYPE_SETNESTED)
+        nd.node->spec.set.values |= MGS_WAVE;
+      break; }
     default:
     INVALID:
       warning(o, "invalid character", c);
