@@ -1,4 +1,4 @@
-/* mgensys: Audio program data
+/* mgensys: Audio program data.
  * Copyright (c) 2011, 2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -12,6 +12,7 @@
  */
 
 #pragma once
+#include "wave.h"
 
 enum {
   MGS_TYPE_TOP = 0,
@@ -32,13 +33,6 @@ enum {
 };
 
 enum {
-  MGS_WAVE_SIN = 0,
-  MGS_WAVE_SQR,
-  MGS_WAVE_TRI,
-  MGS_WAVE_SAW
-};
-
-enum {
   MGS_MODE_CENTER = 0,
   MGS_MODE_LEFT   = 1,
   MGS_MODE_RIGHT  = 2
@@ -46,12 +40,13 @@ enum {
 
 enum {
   MGS_TIME = 1<<0,
-  MGS_FREQ = 1<<1,
-  MGS_DYNFREQ = 1<<2,
-  MGS_PHASE = 1<<3,
-  MGS_AMP = 1<<4,
-  MGS_DYNAMP = 1<<5,
-  MGS_ATTR = 1<<6
+  MGS_WAVE = 1<<1,
+  MGS_FREQ = 1<<2,
+  MGS_DYNFREQ = 1<<3,
+  MGS_PHASE = 1<<4,
+  MGS_AMP = 1<<5,
+  MGS_DYNAMP = 1<<6,
+  MGS_ATTR = 1<<7
 };
 
 enum {

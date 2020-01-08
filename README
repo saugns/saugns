@@ -41,13 +41,15 @@ involved. Each delaying will delay (shift the time of) all future operations.
 The following operations are supported:
 
 S:
-	Set default values for parameters f, r, t, a, \.
+	Set default value or other global option in the script.
+	a	Amplitude multiplier for all waves. Starts at 1.0.
+	f	Default frequency in Hz. Starts at 100.0.
+	r	Default frequency ratio. Starts at 1.0.
+	t	Default time duration in seconds. Starts at 1.0.
 
-Wsin, Wsqr, Wtri, Wsaw:
-	Play sine, square, triangle or saw wave.
-	Supports f, t, a, \ parameters.
-
-The following parameters can be found in wave operations:
+Wsin, Wsqr, W...:
+	Play wave; see "Wave types" for all types.
+	The supported parameters are...
 	t	Time duration in seconds.
 	f	Frequency in Hz.
 	f!{}	Second frequency in Hz to modulate (FM) to by wave or envelope,
@@ -71,8 +73,36 @@ The following parameters can be found in wave operations:
 	p!{}	A list of modulator (PM) waves is given within the {}, the
 		per-sample sum of which is used to phase-modulate the carrier,
 		be it the final carrier or in turn another modulator.
+	w	Change wave; see "Wave types" for all types.
 	\	Time shift/delay current operation and following ones, time
 		in seconds.
+
+Wave types:
+	sin	Sine.
+			For cosine, use (1/4) phase.
+	sqr	Square (anti-aliased cycle).
+			Lacks full "bite" at low frequencies.
+	tri	Triangle (naive).
+	saw	Saw (anti-aliased cycle).
+			Lacks full "bite" at low frequencies.
+			Decreasing slope; use negative amplitude
+			or frequency for increasing slope.
+	sha	Half-frequency absolute sine (adjusted).
+			Frequency halved to restore base frequency,
+			peak amplitude centered and doubled, phase
+			shifted to begin and end at zero amplitude.
+			A softer alternative to "saw" (saw wave).
+	szh	Half-zero'd sine (adjusted).
+			Positive half kept, negative half zero'd,
+			peak amplitude centered and doubled, phase
+			shifted to begin and end at zero amplitude.
+			A warm and full sound.
+	ssr	Square root of sine.
+			Mirrored for the negative half.
+			A softer alternative to "sqr" (square wave).
+
+Channel mixing:
+	Letters C, L, and R change the channel for succeeding waves.
 
 The following operators are supported:
 

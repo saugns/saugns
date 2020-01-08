@@ -2,8 +2,10 @@
 .*.swp
 
 *.o
+**/*.o
 mgensys
 sgensys
 
 *.[ch][-.]*
+**/*.[ch][-.]*
 backup/
