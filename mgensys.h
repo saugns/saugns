@@ -19,7 +19,7 @@
 #include "ptrarr.h"
 
 #define MGS_CLINAME_STR "mgensys"
-#define MGS_VERSION_STR "v0.1-beta"
+#define MGS_VERSION_STR "v0.1.0"
 
 #define MGS_DEFAULT_SRATE 96000
 
