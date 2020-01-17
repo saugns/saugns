@@ -135,8 +135,9 @@ static void new_node(MGS_Parser *o, NodeData *nd, MGS_ProgramNodeChain *target, 
   /* defaults */
   n->amp = 1.f;
   n->mode = o->n_mode;
-  if (type == MGS_TYPE_TOP ||
-      type == MGS_TYPE_NESTED)
+  if (type == MGS_TYPE_TOP)
+    n->time = -1.f; /* set later */
+  else if (type == MGS_TYPE_NESTED)
     n->time = o->n_time;
   n->freq = o->n_freq;
 
@@ -160,20 +161,6 @@ static void new_node(MGS_Parser *o, NodeData *nd, MGS_ProgramNodeChain *target, 
     if (o->last_top)
       nd->n_add_delay += o->last_top->time;
     nd->n_time_delay = 0;
-  }
-  if (!nd->n_begin)
-    nd->n_begin = n;
-  else if (nd->n_end) {
-    double delay = 0.f;
-    MGS_ProgramNode *step;
-    for (step = nd->n_begin; step != n; step = step->next) {
-      if (delay < step->time)
-        delay = step->time;
-      delay -= step->next->delay;
-    }
-    nd->n_add_delay += delay;
-    nd->n_begin = n;
-    nd->n_end = 0;
   }
   nd->n_next_add_delay = 0.f;
 
@@ -219,8 +206,6 @@ static void end_node(MGS_Parser *o, NodeData *nd) {
        */
       if (o->last_nested == n)
         o->last_nested = o->undo_last;
-      if (nd->n_begin == n)
-        nd->n_begin = 0;
       if (o->last_top == n)
         o->last_top->next = 0;
       free(n);
@@ -243,7 +228,31 @@ static void end_node(MGS_Parser *o, NodeData *nd) {
   nd->last = n;
   ++p->nodec;
 
-  n->amp *= o->n_ampmult;
+  if (n->type != MGS_TYPE_NESTED) /* don't mess with modulation depth */
+    n->amp *= o->n_ampmult;
+  /* node-to-| sequence timing */
+  if (!nd->n_begin)
+    nd->n_begin = n;
+  else if (nd->n_end) {
+    double delay = 0.f, delaycount = 0.f;
+    MGS_ProgramNode *step;
+    for (step = nd->n_begin; step != n; step = step->next) {
+      if (step->next == n && step->time < 0.f)
+        step->time = o->n_time; /* set and use default for last node in group */
+      if (delay < step->time)
+        delay = step->time;
+      delay -= step->next->delay;
+      delaycount += step->next->delay;
+    }
+    for (step = nd->n_begin; step != n; step = step->next) {
+      if (step->time < 0.f)
+        step->time = delay + delaycount; /* fill in sensible default time */
+      delaycount -= step->next->delay;
+    }
+    nd->n_add_delay += delay;
+    nd->n_begin = n;
+    nd->n_end = 0;
+  }
   n->delay += nd->n_add_delay;
   nd->n_add_delay = 0.f;
 
@@ -728,7 +737,12 @@ FINISH:
   if (o->reclevel > 1)
     warning(o, "end of file without closing '}'s", c);
 RETURN:
-  end_node(o, &nd);
+  if (nd.node) {
+    if (nd.node->time < 0.f)
+      nd.node->time = o->n_time; /* use default */
+    nd.n_end = 1; /* end grouping if any */
+    end_node(o, &nd);
+  }
   --o->reclevel;
 }
 

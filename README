@@ -42,7 +42,8 @@ The following operations are supported:
 
 S:
 	Set default value or other global option in the script.
-	a	Amplitude multiplier for all waves. Starts at 1.0.
+	a	Amplitude multiplier for all carrier waves. Starts at 1.0.
+		Effectively a global volume control.
 	f	Default frequency in Hz. Starts at 100.0.
 	r	Default frequency ratio. Starts at 1.0.
 	t	Default time duration in seconds. Starts at 1.0.
@@ -50,7 +51,10 @@ S:
 Wsin, Wsqr, W...:
 	Play wave; see "Wave types" for all types.
 	The supported parameters are...
-	t	Time duration in seconds.
+	t	Time duration in seconds. If no t setting given, default time
+		depends on context - either scaling to fit the duration of
+		play until the end of the current group of sounds, or the
+		default value if alone.
 	f	Frequency in Hz.
 	f!{}	Second frequency in Hz to modulate (FM) to by wave or envelope,
 		and/or a list of modulators given within {} following the
