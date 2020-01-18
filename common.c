@@ -3,8 +3,7 @@
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
+ * purpose with or without fee is hereby granted.
  *
  * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
  * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
@@ -77,4 +76,65 @@ void *SGS_memdup(const void *restrict src, size_t size) {
 		return NULL;
 	memcpy(dst, src, size);
 	return dst;
+}
+
+/**
+ * Command-line argument parser similar to POSIX getopt(),
+ * but replacing opt* global variables with \p opt fields.
+ *
+ * The \a arg field is always set for each valid option, so as to be
+ * available for reading as an unspecified optional option argument.
+ *
+ * In large part based on the public domain
+ * getopt() version by Christopher Wellons.
+ */
+int SGS_getopt(int argc, char *const*restrict argv,
+		const char *restrict optstring, struct SGS_opt *restrict opt) {
+	(void)argc;
+	if (opt->ind == 0) {
+		opt->ind = 1;
+		opt->pos = 1;
+	}
+	const char *arg = argv[opt->ind];
+	if (!arg || arg[0] != '-' || !SGS_IS_ASCIIVISIBLE(arg[1]))
+		return -1;
+	if (!strcmp(arg, "--")) {
+		++opt->ind;
+		return -1;
+	}
+	opt->opt = arg[opt->pos];
+	const char *subs = strchr(optstring, opt->opt);
+	if (opt->opt == ':' || !subs) {
+		if (opt->err != 0 && *optstring != ':')
+			fprintf(stderr, "%s: invalid option '%c'\n",
+					argv[0], opt->opt);
+		return '?';
+	}
+	if (subs[1] == ':') {
+		if (arg[opt->pos + 1] != '\0') {
+			opt->arg = &arg[opt->pos + 1];
+			++opt->ind;
+			opt->pos = 1;
+			return opt->opt;
+		}
+		if (argv[opt->ind + 1] != NULL) {
+			opt->arg = argv[opt->ind + 1];
+			opt->ind += 2;
+			opt->pos = 1;
+			return opt->opt;
+		}
+		if (opt->err != 0 && *optstring != ':')
+			fprintf(stderr,
+"%s: option '%c' requires an argument\n",
+					argv[0], opt->opt);
+		return (*optstring == ':') ? ':' : '?';
+	}
+	if (arg[++opt->pos] == '\0') {
+		++opt->ind;
+		opt->pos = 1;
+		opt->arg = argv[opt->ind];
+	} else {
+		opt->arg = &arg[opt->pos];
+	}
+	return opt->opt;
 }
