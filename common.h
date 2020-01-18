@@ -1,10 +1,9 @@
 /* ssndgen: Common definitions.
- * Copyright (c) 2011-2012, 2019-2020 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2019-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
+ * purpose with or without fee is hereby granted.
  *
  * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
  * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
@@ -52,6 +51,9 @@
 /** Turn \p arg into string literal after macro-expanding it. */
 #define SSG_STREXP(arg) SSG_STRLIT(arg)
 
+/** Is \p c a visible non-whitespace 7-bit ASCII character? */
+#define SSG_IS_ASCIIVISIBLE(c) ((c) >= '!' && (c) <= '~')
+
 /*
  * Utility functions.
  */
@@ -62,6 +64,17 @@ void SSG_error(const char *restrict label, const char *restrict fmt, ...)
 	SSG__printflike(2, 3);
 
 void *SSG_memdup(const void *restrict src, size_t size) SSG__malloclike;
+
+/** SSG_getopt() data. Initialize to zero, except \a err for error messages. */
+struct SSG_opt {
+	int ind; /* set to zero to start over next SSG_getopt() call */
+	int err;
+	int pos;
+	int opt;
+	const char *arg;
+};
+int SSG_getopt(int argc, char *const*restrict argv,
+		const char *restrict optstring, struct SSG_opt *restrict opt);
 
 /*
  * Debugging options.

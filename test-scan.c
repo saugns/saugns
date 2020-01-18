@@ -1,5 +1,5 @@
 /* ssndgen: Test program for experimental reader code.
- * Copyright (c) 2017-2020 Joel K. Pettersson
+ * Copyright (c) 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -26,7 +26,7 @@
 /*
  * Print command line usage instructions.
  */
-static void print_usage(bool by_arg) {
+static void print_usage(void) {
 	fputs(
 "Usage: "NAME" [-c] [-p] [-e] <script>...\n"
 "\n"
@@ -35,7 +35,7 @@ static void print_usage(bool by_arg) {
 "  -p \tPrint info for scripts after loading.\n"
 "  -h \tPrint this message.\n"
 "  -v \tPrint version.\n",
-	(by_arg) ? stdout : stderr);
+		stderr);
 }
 
 /*
@@ -60,7 +60,7 @@ static bool parse_args(int argc, char **restrict argv,
 		--argc;
 		++argv;
 		if (argc < 1) {
-			if (!script_args->count) goto INVALID;
+			if (!script_args->count) goto USAGE;
 			break;
 		}
 		arg = *argv;
@@ -73,31 +73,29 @@ NEXT_C:
 		switch (*arg) {
 		case 'c':
 			if ((*flags & SSG_ARG_MODE_FULL) != 0)
-				goto INVALID;
+				goto USAGE;
 			*flags |= SSG_ARG_MODE_CHECK;
 			break;
 		case 'e':
 			*flags |= SSG_ARG_EVAL_STRING;
 			break;
 		case 'h':
-			if (*flags != 0) goto INVALID;
-			print_usage(true);
-			goto CLEAR;
+			goto USAGE;
 		case 'p':
 			*flags |= SSG_ARG_PRINT_INFO;
 			break;
 		case 'v':
 			print_version();
-			goto CLEAR;
+			goto ABORT;
 		default:
-			goto INVALID;
+			goto USAGE;
 		}
 		goto NEXT_C;
 	}
-	return (script_args->count != 0);
-INVALID:
-	print_usage(false);
-CLEAR:
+	return true;
+USAGE:
+	print_usage();
+ABORT:
 	SSG_PtrArr_clear(script_args);
 	return false;
 }
