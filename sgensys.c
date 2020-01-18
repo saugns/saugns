@@ -12,18 +12,40 @@
  */
 
 #include "sgensys.h"
+#include "help.h"
 #include <errno.h>
-#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #define NAME SGS_CLINAME_STR
+
+/*
+ * Print help list for \p topic,
+ * with an optional \p description in parentheses.
+ */
+static void print_help(const char *restrict topic,
+		const char *restrict description) {
+	const char *const *contents = SGS_find_help(topic);
+	if (!contents || /* silence warning */ !topic) {
+		topic = SGS_Help_names[SGS_HELP_HELP];
+		contents = SGS_Help_names;
+	}
+	fprintf(stderr, "\nList of %s types", topic);
+	if (description != NULL)
+		fprintf(stderr, " (%s)", description);
+	fputs(":\n", stderr);
+	SGS_print_names(contents, "\t", stderr);
+}
 
 /*
  * Print command line usage instructions.
  */
-static void print_usage(bool by_arg) {
+static void print_usage(bool h_arg, const char *restrict h_type) {
 	fputs(
 "Usage: "NAME" [-a|-m] [-r <srate>] [-p] [-o <wavfile>] [-e] <script>...\n"
-"       "NAME" [-c] [-p] [-e] <script>...\n"
+"       "NAME" [-c] [-p] [-e] <script>...\n",
+		stderr);
+	if (!h_type)
+		fputs(
 "\n"
 "By default, audio device output is enabled.\n"
 "\n"
@@ -36,9 +58,15 @@ static void print_usage(bool by_arg) {
 "  -e \tEvaluate strings instead of files.\n"
 "  -c \tCheck scripts only, reporting any errors or requested info.\n"
 "  -p \tPrint info for scripts after loading.\n"
-"  -h \tPrint this message.\n"
+"  -h \tPrint this and list help topics, or print help for '-h <topic>'.\n"
 "  -v \tPrint version.\n",
-	(by_arg) ? stdout : stderr);
+			stderr);
+	if (h_arg) {
+		const char *description = (h_type != NULL) ?
+			"pass '-h' without topic for general usage" :
+			"pass with '-h' as topic";
+		print_help(h_type, description);
+	}
 }
 
 /*
@@ -64,18 +92,6 @@ static int32_t get_piarg(const char *restrict str) {
 }
 
 /*
- * Command line argument flags.
- */
-enum {
-	ARG_FULL_RUN = 1<<0, /* identifies any non-compile-only flags */
-	ARG_ENABLE_AUDIO_DEV = 1<<1,
-	ARG_DISABLE_AUDIO_DEV = 1<<2,
-	ARG_ONLY_COMPILE = 1<<3,
-	ARG_PRINT_INFO = 1<<4,
-	ARG_EVAL_STRING = 1<<5,
-};
-
-/*
  * Parse command line arguments.
  *
  * Print usage instructions if requested or args invalid.
@@ -87,88 +103,84 @@ static bool parse_args(int argc, char **restrict argv,
 		SGS_PtrList *restrict script_args,
 		const char **restrict wav_path,
 		uint32_t *restrict srate) {
-	int i;
-	for (;;) {
-		const char *arg;
-		--argc;
-		++argv;
-		if (argc < 1) {
-			if (!script_args->count) goto INVALID;
-			break;
-		}
-		arg = *argv;
-		if (*arg != '-') {
-			SGS_PtrList_add(script_args, (void*) arg);
-			continue;
-		}
-NEXT_C:
-		if (!*++arg) continue;
-		switch (*arg) {
+	struct SGS_opt opt = (struct SGS_opt){0};
+	int c;
+	int32_t i;
+	bool dashdash = false;
+	bool h_arg = false;
+	const char *h_type = NULL;
+	*srate = SGS_DEFAULT_SRATE;
+	opt.err = 1;
+REPARSE:
+	while ((c = SGS_getopt(argc, argv, "amr:o:ecphv", &opt)) != -1) {
+		switch (c) {
 		case 'a':
-			if ((*flags & (ARG_DISABLE_AUDIO_DEV |
-					ARG_ONLY_COMPILE)) != 0)
-				goto INVALID;
-			*flags |= ARG_FULL_RUN |
-				ARG_ENABLE_AUDIO_DEV;
+			if ((*flags & (SGS_OPT_AUDIO_DISABLE |
+					SGS_OPT_MODE_CHECK)) != 0)
+				goto USAGE;
+			*flags |= SGS_OPT_MODE_FULL |
+				SGS_OPT_AUDIO_ENABLE;
 			break;
 		case 'c':
-			if ((*flags & ARG_FULL_RUN) != 0)
-				goto INVALID;
-			*flags |= ARG_ONLY_COMPILE;
+			if ((*flags & SGS_OPT_MODE_FULL) != 0)
+				goto USAGE;
+			*flags |= SGS_OPT_MODE_CHECK;
 			break;
 		case 'e':
-			*flags |= ARG_EVAL_STRING;
+			*flags |= SGS_OPT_EVAL_STRING;
 			break;
 		case 'h':
-			if (*flags != 0) goto INVALID;
-			print_usage(true);
-			goto CLEAR;
+			h_arg = true;
+			h_type = opt.arg; /* optional argument for -h */
+			goto USAGE;
 		case 'm':
-			if ((*flags & (ARG_ENABLE_AUDIO_DEV |
-					ARG_ONLY_COMPILE)) != 0)
-				goto INVALID;
-			*flags |= ARG_FULL_RUN |
-				ARG_DISABLE_AUDIO_DEV;
+			if ((*flags & (SGS_OPT_AUDIO_ENABLE |
+					SGS_OPT_MODE_CHECK)) != 0)
+				goto USAGE;
+			*flags |= SGS_OPT_MODE_FULL |
+				SGS_OPT_AUDIO_DISABLE;
 			break;
 		case 'o':
-			if (arg[1] != '\0') goto INVALID;
-			if ((*flags & ARG_ONLY_COMPILE) != 0)
-				goto INVALID;
-			*flags |= ARG_FULL_RUN;
-			--argc;
-			++argv;
-			if (argc < 1) goto INVALID;
-			arg = *argv;
-			*wav_path = arg;
+			if ((*flags & SGS_OPT_MODE_CHECK) != 0)
+				goto USAGE;
+			*flags |= SGS_OPT_MODE_FULL;
+			*wav_path = opt.arg;
 			continue;
 		case 'p':
-			*flags |= ARG_PRINT_INFO;
+			*flags |= SGS_OPT_PRINT_INFO;
 			break;
 		case 'r':
-			if (arg[1] != '\0') goto INVALID;
-			if ((*flags & ARG_ONLY_COMPILE) != 0)
-				goto INVALID;
-			*flags |= ARG_FULL_RUN;
-			--argc;
-			++argv;
-			if (argc < 1) goto INVALID;
-			arg = *argv;
-			i = get_piarg(arg);
-			if (i < 0) goto INVALID;
+			if ((*flags & SGS_OPT_MODE_CHECK) != 0)
+				goto USAGE;
+			*flags |= SGS_OPT_MODE_FULL;
+			i = get_piarg(opt.arg);
+			if (i < 0) goto USAGE;
 			*srate = i;
 			continue;
 		case 'v':
 			print_version();
-			goto CLEAR;
+			goto ABORT;
 		default:
-			goto INVALID;
+			fputs("Pass -h for general usage help.\n", stderr);
+			goto ABORT;
 		}
-		goto NEXT_C;
 	}
-	return (script_args->count != 0);
-INVALID:
-	print_usage(false);
-CLEAR:
+	if (opt.ind > 1 && !strcmp(argv[opt.ind - 1], "--")) dashdash = true;
+	for (;;) {
+		if (opt.ind >= argc || !argv[opt.ind]) {
+			if (!script_args->count) goto USAGE;
+			break;
+		}
+		const char *arg = argv[opt.ind];
+		if (!dashdash && c != -1 && arg[0] == '-') goto REPARSE;
+		SGS_PtrList_add(script_args, (void*) arg);
+		++opt.ind;
+		c = 0; /* only goto REPARSE after advancing, to prevent hang */
+	}
+	return true;
+USAGE:
+	print_usage(h_arg, h_type);
+ABORT:
 	SGS_PtrList_clear(script_args);
 	return false;
 }
@@ -177,51 +189,12 @@ CLEAR:
  * Discard the programs in the list, ignoring NULL entries,
  * and clearing the list.
  */
-static void discard_programs(SGS_PtrList *restrict prg_objs) {
+void SGS_discard(SGS_PtrList *restrict prg_objs) {
 	SGS_Program **prgs = (SGS_Program**) SGS_PtrList_ITEMS(prg_objs);
 	for (size_t i = 0; i < prg_objs->count; ++i) {
 		SGS_discard_Program(prgs[i]);
 	}
 	SGS_PtrList_clear(prg_objs);
-}
-
-/*
- * Process the listed scripts.
- *
- * \return true if at least one script succesfully built
- */
-static bool load(const SGS_PtrList *restrict script_args,
-		SGS_PtrList *restrict prg_objs,
-		uint32_t options) {
-	bool are_paths = !(options & ARG_EVAL_STRING);
-	if (!SGS_load(script_args, are_paths, prg_objs))
-		return false;
-	if ((options & ARG_PRINT_INFO) != 0) {
-		const SGS_Program **prgs =
-			(const SGS_Program**) SGS_PtrList_ITEMS(prg_objs);
-		for (size_t i = 0; i < prg_objs->count; ++i) {
-			const SGS_Program *prg = prgs[i];
-			if (prg != NULL) SGS_Program_print_info(prg);
-		}
-	}
-	if ((options & ARG_ONLY_COMPILE) != 0) {
-		discard_programs(prg_objs);
-	}
-	return true;
-}
-
-/*
- * Produce results from the list of programs, ignoring NULL entries.
- *
- * \return true unless error occurred
- */
-static bool play(const SGS_PtrList *restrict prg_objs,
-		uint32_t srate, uint32_t options,
-		const char *restrict wav_path) {
-	bool use_audiodev = (wav_path != NULL) ?
-		((options & ARG_ENABLE_AUDIO_DEV) != 0) :
-		((options & ARG_DISABLE_AUDIO_DEV) == 0);
-	return SGS_play(prg_objs, srate, use_audiodev, wav_path);
 }
 
 /**
@@ -232,17 +205,17 @@ int main(int argc, char **restrict argv) {
 	SGS_PtrList prg_objs = (SGS_PtrList){0};
 	const char *wav_path = NULL;
 	uint32_t options = 0;
-	uint32_t srate = SGS_DEFAULT_SRATE;
+	uint32_t srate = 0;
 	if (!parse_args(argc, argv, &options, &script_args, &wav_path,
 			&srate))
 		return 0;
-	bool error = !load(&script_args, &prg_objs, options);
+	bool error = !SGS_load(&script_args, options, &prg_objs);
 	SGS_PtrList_clear(&script_args);
 	if (error)
 		return 1;
 	if (prg_objs.count > 0) {
-		error = !play(&prg_objs, srate, options, wav_path);
-		discard_programs(&prg_objs);
+		error = !SGS_play(&prg_objs, srate, options, wav_path);
+		SGS_discard(&prg_objs);
 		if (error)
 			return 1;
 	}

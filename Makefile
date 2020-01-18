@@ -14,6 +14,7 @@ BIN=sgensys
 SHARE=sgensys
 OBJ=\
 	common.o \
+	help.o \
 	arrtype.o \
 	ptrlist.o \
 	loader/file.o \
@@ -82,6 +83,9 @@ arrtype.o: arrtype.c arrtype.h common.h
 common.o: common.c common.h
 	$(CC) -c $(CFLAGS) common.c
 
+help.o: common.h help.c help.h ramp.h wave.h
+	$(CC) -c $(CFLAGS_SIZE) help.c
+
 loader/file.o: common.h loader/file.c loader/file.h
 	$(CC) -c $(CFLAGS) loader/file.c -o loader/file.o
 
@@ -91,10 +95,10 @@ loader/lexer.o: common.h loader/file.h loader/lexer.c loader/lexer.h loader/symt
 loader/loader.o: common.h loader/loader.c math.h program.h ptrlist.h ramp.h script.h sgensys.h wave.h
 	$(CC) -c $(CFLAGS) loader/loader.c -o loader/loader.o
 
-loader/parseconv.o: arrtype.h common.h loader/parseconv.c loader/parseconv.h math.h program.h ptrlist.h ramp.h script.h wave.h
+loader/parseconv.o: arrtype.h common.h help.h loader/parseconv.c loader/parseconv.h math.h program.h ptrlist.h ramp.h script.h wave.h
 	$(CC) -c $(CFLAGS) loader/parseconv.c -o loader/parseconv.o
 
-loader/parser.o: common.h loader/file.h loader/parser.c loader/scanner.h loader/symtab.h math.h mempool.h program.h ramp.h script.h wave.h
+loader/parser.o: common.h help.h loader/file.h loader/parser.c loader/scanner.h loader/symtab.h math.h mempool.h program.h ramp.h script.h wave.h
 	$(CC) -c $(CFLAGS_SIZE) loader/parser.c -o loader/parser.o
 
 loader/scanner.o: common.h loader/file.h loader/scanner.c loader/scanner.h loader/symtab.h math.h mempool.h
@@ -133,7 +137,7 @@ renderer/mixer.o: common.h math.h ramp.h renderer/mixer.c renderer/mixer.h
 renderer/osc.o: common.h math.h renderer/osc.c renderer/osc.h wave.h
 	$(CC) -c $(CFLAGS_FASTF) renderer/osc.c -o renderer/osc.o
 
-sgensys.o: sgensys.c sgensys.h ptrlist.h program.h ramp.h wave.h math.h common.h
+sgensys.o: common.h help.h math.h program.h ptrlist.h ramp.h sgensys.c sgensys.h wave.h
 	$(CC) -c $(CFLAGS) sgensys.c
 
 test-scan.o: common.h loader/file.h loader/lexer.h loader/scanner.h loader/symtab.h math.h program.h ptrlist.h ramp.h sgensys.h test-scan.c wave.h
