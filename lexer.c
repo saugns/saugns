@@ -1,5 +1,5 @@
 /* sgensys: Script lexer module.
- * Copyright (c) 2014, 2017-2019 Joel K. Pettersson
+ * Copyright (c) 2014, 2017-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -33,9 +33,6 @@
 
 /* Valid characters in identifiers. */
 #define IS_SYMCHAR(c) (IS_ALNUM(c) || (c) == '_')
-
-/* Visible ASCII character. */
-#define IS_VISIBLE(c) ((c) >= '!' && (c) <= '~')
 
 static uint8_t filter_symchar(SGS_File *restrict o sgsMaybeUnused,
                uint8_t c) {
@@ -193,7 +190,7 @@ void SGS_Lexer_error(SGS_Lexer *restrict o,
  * Print warning message for an invalid character.
  */
 static void warning_character(SGS_Lexer *restrict o, uint8_t c) {
-	if (IS_VISIBLE(c)) {
+	if (SGS_IS_ASCIIVISIBLE(c)) {
 		SGS_Lexer_warning(o, "invalid character: '%c'", (char) c);
 	} else {
 		SGS_Lexer_warning(o, "invalid character (value 0x%02hhX)", c);
@@ -498,7 +495,7 @@ bool SGS_Lexer_get_special(SGS_Lexer *restrict o,
 	++o->char_num;
 	c = SGS_File_GETC(o->f);
 	do {
-		if (IS_VISIBLE(c)) c = handle_special(o, c);
+		if (SGS_IS_ASCIIVISIBLE(c)) c = handle_special(o, c);
 		else c = handle_invalid(o, c);
 	} while (c != 0);
 	if (t != NULL) {
