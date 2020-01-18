@@ -26,9 +26,6 @@
 #define IS_UPPER(c) ((c) >= 'A' && (c) <= 'Z')
 #define IS_ALPHA(c) (IS_LOWER(c) || IS_UPPER(c))
 
-/* Sensible to print, for ASCII only. */
-#define IS_VISIBLE(c) ((c) >= '!' && (c) <= '~')
-
 typedef struct ScanLookup {
 	SSG_ScriptOptions sopt;
 	const char *const*wave_names;
@@ -70,7 +67,7 @@ static bool init_ScanLookup(ScanLookup *restrict o, SSG_SymTab *restrict st) {
 static bool handle_unknown_or_eof(SSG_Scanner *restrict o, uint8_t c) {
 	if (c == 0)
 		return false;
-	if (IS_VISIBLE(c)) {
+	if (SSG_IS_ASCIIVISIBLE(c)) {
 		SSG_Scanner_warning(o, NULL,
 				"invalid character '%c'", c);
 	} else {
@@ -372,11 +369,7 @@ static bool scan_symafind(SSG_Scanner *restrict o,
 	}
 	SSG_Scanner_warning(o, &sf_begin,
 			"invalid %s type value; available are:", print_type);
-	fprintf(stderr, "\t%s", stra[0]);
-	for (size_t i = 1; stra[i] != NULL; ++i) {
-		fprintf(stderr, ", %s", stra[i]);
-	}
-	putc('\n', stderr);
+	SSG_print_names(stra, "\t", stderr);
 	return false;
 }
 
