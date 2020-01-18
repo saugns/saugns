@@ -11,6 +11,7 @@ BIN=saugns
 SHARE=saugns
 OBJ=\
 	common.o \
+	help.o \
 	arrtype.o \
 	ptrarr.o \
 	mempool.o \
@@ -90,6 +91,9 @@ builder/voicegraph.o: arrtype.h builder/scriptconv.h builder/voicegraph.c common
 common.o: common.c common.h
 	$(CC) -c $(CFLAGS) common.c
 
+help.o: common.h help.c help.h ramp.h wave.h
+	$(CC) -c $(CFLAGS) help.c
+
 interp/generator.o: common.h interp/generator.c interp/generator.h interp/mixer.h interp/osc.h math.h mempool.h program.h ramp.h time.h wave.h
 	$(CC) -c $(CFLAGS_FAST) interp/generator.c -o interp/generator.o
 
@@ -123,10 +127,10 @@ reader/file.o: common.h reader/file.c reader/file.h
 reader/lexer.o: common.h math.h mempool.h reader/file.h reader/lexer.c reader/lexer.h reader/scanner.h reader/symtab.h
 	$(CC) -c $(CFLAGS) reader/lexer.c -o reader/lexer.o
 
-reader/parseconv.o: common.h math.h program.h ptrarr.h ramp.h reader/parseconv.c reader/parser.h script.h time.h wave.h
+reader/parseconv.o: common.h help.h math.h mempool.h program.h ptrarr.h ramp.h reader/parseconv.c reader/parser.h reader/symtab.h script.h time.h wave.h
 	$(CC) -c $(CFLAGS) reader/parseconv.c -o reader/parseconv.o
 
-reader/parser.o: common.h math.h mempool.h program.h ptrarr.h ramp.h reader/file.h reader/parser.c reader/parser.h reader/scanner.h reader/symtab.h script.h time.h wave.h
+reader/parser.o: common.h help.h math.h mempool.h program.h ptrarr.h ramp.h reader/file.h reader/parser.c reader/parser.h reader/scanner.h reader/symtab.h script.h time.h wave.h
 	$(CC) -c $(CFLAGS) reader/parser.c -o reader/parser.o
 
 reader/scanner.o: common.h math.h mempool.h reader/file.h reader/scanner.c reader/scanner.h reader/symtab.h
@@ -135,7 +139,7 @@ reader/scanner.o: common.h math.h mempool.h reader/file.h reader/scanner.c reade
 reader/symtab.o: common.h mempool.h reader/symtab.c reader/symtab.h
 	$(CC) -c $(CFLAGS) reader/symtab.c -o reader/symtab.o
 
-saugns.o: common.h math.h program.h ptrarr.h ramp.h saugns.c saugns.h time.h wave.h
+saugns.o: common.h help.h math.h program.h ptrarr.h ramp.h saugns.c saugns.h time.h wave.h
 	$(CC) -c $(CFLAGS) saugns.c
 
 test-scan.o: common.h math.h mempool.h program.h ptrarr.h ramp.h reader/lexer.h reader/scanner.h reader/file.h reader/symtab.h saugns.h test-scan.c time.h wave.h

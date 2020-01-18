@@ -26,6 +26,20 @@
 #include <stdbool.h>
 
 /*
+ * Debug build options.
+ */
+
+/* Debug-friendly memory handling? (Slower.) */
+//#define SAU_MEM_DEBUG 1
+
+/* Run scanner instead of lexer in 'test-builder' program. */
+#define SAU_TEST_SCANNER 0
+/* Print test statistics for scanner. */
+#define SAU_SCANNER_STATS 0
+/* Make test lexer quiet enough to time it. */
+#define SAU_LEXER_QUIET 1
+
+/*
  * Keyword-like macros.
  */
 
@@ -62,19 +76,3 @@ void SAU_error(const char *restrict label, const char *restrict fmt, ...)
 	sauPrintflike(2, 3);
 
 void *SAU_memdup(const void *restrict src, size_t size) sauMalloclike;
-
-/*
- * Debugging options.
- */
-
-/* Debug-friendly memory handling? (Slower.) */
-//#define SAU_MEM_DEBUG 1
-
-/* Run scanner instead of lexer in 'test-builder' program. */
-#define SAU_TEST_SCANNER 0
-/* Print test statistics for scanner. */
-#define SAU_SCANNER_STATS 0
-/* Print hash collision info for symtab. */
-#define SAU_HASHTAB_STATS 0
-/* Make test lexer quiet enough to time it. */
-#define SAU_LEXER_QUIET 1

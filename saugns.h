@@ -15,10 +15,17 @@
 #include "program.h"
 #include "ptrarr.h"
 
+/*
+ * Configuration options.
+ */
+
 #define SAU_CLINAME_STR "saugns"
 #define SAU_VERSION_STR "v0.3-dev"
 
 #define SAU_DEFAULT_SRATE 96000
+
+/* Print symtab test statistics? */
+#define SAU_SYMTAB_STATS 0
 
 /**
  * Command line options flags.
