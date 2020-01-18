@@ -14,6 +14,7 @@
 #pragma once
 #include "../script.h"
 #include "symtab.h"
+#include "../help.h"
 
 /**
  * Node type for operator data.
