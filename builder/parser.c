@@ -14,10 +14,10 @@
 #include "../mgensys.h"
 #include "../program.h"
 #include "../math.h"
+#include "../help.h"
 #include "../loader/file.h"
 #include "../loader/symtab.h"
 #include <string.h>
-#include <stdio.h>
 #include <stdlib.h>
 
 #define IS_LOWER(c) ((c) >= 'a' && (c) <= 'z')
@@ -399,12 +399,7 @@ static int32_t scan_wavetype(MGS_Parser *restrict o, char from_c) {
   int32_t wave = strfind(o->f, MGS_Wave_names);
   if (wave < 0) {
     warning(o, "invalid wave type; available types are:", from_c);
-    int i = 0;
-    fprintf(stderr, "\t%s", MGS_Wave_names[i]);
-    while (++i < MGS_WAVE_TYPES) {
-      fprintf(stderr, ", %s", MGS_Wave_names[i]);
-    }
-    putc('\n', stderr);
+    MGS_print_names(MGS_Wave_names, "\t", stderr);
   }
   return wave;
 }

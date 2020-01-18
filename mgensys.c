@@ -12,19 +12,40 @@
  */
 
 #include "mgensys.h"
+#include "help.h"
 #include <errno.h>
-#include <stdio.h>
 #include <stdlib.h>
+
+/*
+ * Print trailing list of topic types for \p h_type.
+ */
+static void print_help(const char *h_type) {
+	const char *const *h_names = MGS_find_help(h_type);
+	if (!h_names) {
+		h_type = "-h <topic>";
+		h_names = MGS_Help_names;
+	}
+	fprintf(stderr,
+"\n"
+"List of %s types:\n",
+		h_type);
+	MGS_print_names(h_names, "\t", stdout);
+}
 
 /*
  * Print command line usage instructions.
  */
-static void print_usage(bool by_arg) {
+static void print_usage(bool h_arg, const char *h_type) {
 	fputs(
-"Usage: mgensys [-a|-m] [-r <srate>] [-p] [-o <wavfile>] <script>...\n"
-"       mgensys [-a|-m] [-r <srate>] [-p] [-o <wavfile>] -e <string>...\n"
-"       mgensys [-c] [-p] <script>...\n"
-"       mgensys [-c] [-p] -e <string>...\n"
+"Usage: mgensys [-a|-m] [-r <srate>] [-o <wavfile>] [options] <script>...\n"
+"       mgensys [-c] [options] <script>...\n"
+"Common options: [-e] [-p]\n",
+		stderr);
+	if (h_arg) {
+		print_help(h_type);
+		return;
+	}
+	fputs(
 "\n"
 "By default, audio device output is enabled.\n"
 "\n"
@@ -37,9 +58,9 @@ static void print_usage(bool by_arg) {
 "  -e \tEvaluate strings instead of files.\n"
 "  -c \tCheck scripts only, reporting any errors or requested info.\n"
 "  -p \tPrint info for scripts after loading.\n"
-"  -h \tPrint this message.\n"
+"  -h \tPrint help for topic, or list of topics.\n"
 "  -v \tPrint version.\n",
-	(by_arg) ? stdout : stderr);
+		stderr);
 }
 
 /*
@@ -90,12 +111,14 @@ static bool parse_args(int argc, char **restrict argv,
 		uint32_t *restrict srate) {
 	int i;
 	*srate = MGS_DEFAULT_SRATE;
+	bool h_arg = false;
+	const char *h_type = NULL;
 	for (;;) {
 		const char *arg;
 		--argc;
 		++argv;
 		if (argc < 1) {
-			if (!script_args->count) goto INVALID;
+			if (!script_args->count) goto USAGE;
 			break;
 		}
 		arg = *argv;
@@ -109,37 +132,43 @@ NEXT_C:
 		case 'a':
 			if ((*flags & (ARG_DISABLE_AUDIO_DEV |
 					ARG_ONLY_CHECK)) != 0)
-				goto INVALID;
+				goto USAGE;
 			*flags |= ARG_DO_RUN |
 				ARG_ENABLE_AUDIO_DEV;
 			break;
 		case 'c':
 			if ((*flags & ARG_DO_RUN) != 0)
-				goto INVALID;
+				goto USAGE;
 			*flags |= ARG_ONLY_CHECK;
 			break;
 		case 'e':
 			*flags |= ARG_EVAL_STRING;
 			break;
 		case 'h':
-			if (*flags != 0) goto INVALID;
-			print_usage(true);
-			goto CLEAR;
+			h_arg = true;
+			if (arg[1] != '\0') goto USAGE;
+			if (*flags != 0) goto USAGE;
+			--argc;
+			++argv;
+			if (argc < 1) goto USAGE;
+			arg = *argv;
+			h_type = arg;
+			goto USAGE;
 		case 'm':
 			if ((*flags & (ARG_ENABLE_AUDIO_DEV |
 					ARG_ONLY_CHECK)) != 0)
-				goto INVALID;
+				goto USAGE;
 			*flags |= ARG_DO_RUN |
 				ARG_DISABLE_AUDIO_DEV;
 			break;
 		case 'o':
-			if (arg[1] != '\0') goto INVALID;
+			if (arg[1] != '\0') goto USAGE;
 			if ((*flags & ARG_ONLY_CHECK) != 0)
-				goto INVALID;
+				goto USAGE;
 			*flags |= ARG_DO_RUN;
 			--argc;
 			++argv;
-			if (argc < 1) goto INVALID;
+			if (argc < 1) goto USAGE;
 			arg = *argv;
 			*wav_path = arg;
 			continue;
@@ -147,29 +176,29 @@ NEXT_C:
 			*flags |= ARG_PRINT_INFO;
 			break;
 		case 'r':
-			if (arg[1] != '\0') goto INVALID;
+			if (arg[1] != '\0') goto USAGE;
 			if ((*flags & ARG_ONLY_CHECK) != 0)
-				goto INVALID;
+				goto USAGE;
 			*flags |= ARG_DO_RUN;
 			--argc;
 			++argv;
-			if (argc < 1) goto INVALID;
+			if (argc < 1) goto USAGE;
 			arg = *argv;
 			i = get_piarg(arg);
-			if (i < 0) goto INVALID;
+			if (i < 0) goto USAGE;
 			*srate = i;
 			continue;
 		case 'v':
 			print_version();
 			goto CLEAR;
 		default:
-			goto INVALID;
+			goto USAGE;
 		}
 		goto NEXT_C;
 	}
 	return (script_args->count != 0);
-INVALID:
-	print_usage(false);
+USAGE:
+	print_usage(h_arg, h_type);
 CLEAR:
 	MGS_PtrArr_clear(script_args);
 	return false;
