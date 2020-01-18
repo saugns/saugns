@@ -1,5 +1,5 @@
 /* ssndgen: Script lexer module.
- * Copyright (c) 2014, 2017-2020 Joel K. Pettersson
+ * Copyright (c) 2014, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -33,9 +33,6 @@
 
 /* Valid characters in identifiers. */
 #define IS_SYMCHAR(c) (IS_ALNUM(c) || (c) == '_')
-
-/* Visible ASCII character. */
-#define IS_VISIBLE(c) ((c) >= '!' && (c) <= '~')
 
 /*
  * Lexer implementation.
@@ -309,7 +306,7 @@ bool SSG_Lexer_get_special(SSG_Lexer *restrict o,
 			handle_eof(o, c);
 			break;
 		}
-		if (IS_VISIBLE(c)) {
+		if (SSG_IS_ASCIIVISIBLE(c)) {
 			handle_special(o, c);
 			break;
 		}

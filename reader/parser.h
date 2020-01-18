@@ -1,5 +1,5 @@
 /* ssndgen: Parser output data and functions.
- * Copyright (c) 2011-2012, 2017-2020 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -14,6 +14,7 @@
 #pragma once
 #include "../script.h"
 #include "symtab.h"
+#include "../help.h"
 
 /**
  * Linked list of node ranges each for a parse data sublist.
