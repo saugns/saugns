@@ -21,40 +21,29 @@
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#define NAME "test-scan"
 
 /*
  * Print command line usage instructions.
  */
-static void print_usage(bool by_arg) {
+static void print_usage(void) {
 	fputs(
-"Usage: test-scan [-c] [-p] [-e] <script>...\n"
+"Usage: "NAME" [-c] [-p] [-e] <script>...\n"
 "\n"
 "  -e \tEvaluate strings instead of files.\n"
 "  -c \tCheck scripts only, reporting any errors or requested info.\n"
 "  -p \tPrint info for scripts after loading.\n"
 "  -h \tPrint this message.\n"
 "  -v \tPrint version.\n",
-	(by_arg) ? stdout : stderr);
+		stderr);
 }
 
 /*
  * Print version.
  */
 static void print_version(void) {
-	puts(SGS_VERSION_STR);
+	puts(NAME" ("SGS_CLINAME_STR") "SGS_VERSION_STR);
 }
-
-/*
- * Command line argument flags.
- */
-enum {
-	ARG_FULL_RUN = 1<<0, /* identifies any non-compile-only flags */
-	ARG_ENABLE_AUDIO_DEV = 1<<1,
-	ARG_DISABLE_AUDIO_DEV = 1<<2,
-	ARG_ONLY_COMPILE = 1<<3,
-	ARG_PRINT_INFO = 1<<4,
-	ARG_EVAL_STRING = 1<<5,
-};
 
 /*
  * Parse command line arguments.
@@ -71,44 +60,42 @@ static bool parse_args(int argc, char **restrict argv,
 		--argc;
 		++argv;
 		if (argc < 1) {
-			if (!script_args->count) goto INVALID;
+			if (!script_args->count) goto USAGE;
 			break;
 		}
 		arg = *argv;
 		if (*arg != '-') {
-			SGS_PtrList_add(script_args, arg);
+			SGS_PtrList_add(script_args, (void*) arg);
 			continue;
 		}
 NEXT_C:
 		if (!*++arg) continue;
 		switch (*arg) {
 		case 'c':
-			if ((*flags & ARG_FULL_RUN) != 0)
-				goto INVALID;
-			*flags |= ARG_ONLY_COMPILE;
+			if ((*flags & SGS_OPT_MODE_FULL) != 0)
+				goto USAGE;
+			*flags |= SGS_OPT_MODE_CHECK;
 			break;
 		case 'e':
-			*flags |= ARG_EVAL_STRING;
+			*flags |= SGS_OPT_EVAL_STRING;
 			break;
 		case 'h':
-			if (*flags != 0) goto INVALID;
-			print_usage(true);
-			goto CLEAR;
+			goto USAGE;
 		case 'p':
-			*flags |= ARG_PRINT_INFO;
+			*flags |= SGS_OPT_PRINT_INFO;
 			break;
 		case 'v':
 			print_version();
-			goto CLEAR;
+			goto ABORT;
 		default:
-			goto INVALID;
+			goto USAGE;
 		}
 		goto NEXT_C;
 	}
-	return (script_args->count != 0);
-INVALID:
-	print_usage(false);
-CLEAR:
+	return true;
+USAGE:
+	print_usage();
+ABORT:
 	SGS_PtrList_clear(script_args);
 	return false;
 }
@@ -117,7 +104,7 @@ CLEAR:
  * Discard the programs in the list, ignoring NULL entries,
  * and clearing the list.
  */
-static void discard_programs(SGS_PtrList *restrict prg_objs) {
+void SGS_discard(SGS_PtrList *restrict prg_objs) {
 	SGS_Program **prgs = (SGS_Program**) SGS_PtrList_ITEMS(prg_objs);
 	for (size_t i = 0; i < prg_objs->count; ++i) {
 		free(prgs[i]); // for placeholder
@@ -133,8 +120,10 @@ static void discard_programs(SGS_PtrList *restrict prg_objs) {
 static SGS_Program *build_program(const char *restrict script_arg,
 		bool is_path) {
 	SGS_Program *o = NULL;
-	SGS_SymTab *symtab = SGS_create_SymTab();
-	if (!symtab) return NULL;
+	SGS_MemPool *mempool = SGS_create_MemPool(0);
+	SGS_SymTab *symtab = SGS_create_SymTab(mempool);
+	if (!symtab)
+		return NULL;
 #if SGS_TEST_SCANNER
 	SGS_Scanner *scanner = SGS_create_Scanner(symtab);
 	if (!scanner) goto CLOSE;
@@ -149,7 +138,7 @@ static SGS_Program *build_program(const char *restrict script_arg,
 	}
 	o = (SGS_Program*) calloc(1, sizeof(SGS_Program)); // placeholder
 CLOSE:
-	if (scanner) SGS_destroy_Scanner(scanner);
+	SGS_destroy_Scanner(scanner);
 #else
 	SGS_Lexer *lexer = SGS_create_Lexer(symtab);
 	if (!lexer) goto CLOSE;
@@ -160,9 +149,10 @@ CLOSE:
 	}
 	o = (SGS_Program*) calloc(1, sizeof(SGS_Program)); // placeholder
 CLOSE:
-	if (lexer) SGS_destroy_Lexer(lexer);
+	SGS_destroy_Lexer(lexer);
 #endif
 	SGS_destroy_SymTab(symtab);
+	SGS_destroy_MemPool(mempool);
 	return o;
 }
 
@@ -172,8 +162,9 @@ CLOSE:
  *
  * \return number of items successfully processed
  */
-size_t SGS_load(const SGS_PtrList *restrict script_args, bool are_paths,
+size_t SGS_load(const SGS_PtrList *restrict script_args, uint32_t options,
 		SGS_PtrList *restrict prg_objs) {
+	bool are_paths = !(options & SGS_OPT_EVAL_STRING);
 	size_t built = 0;
 	const char **args = (const char**) SGS_PtrList_ITEMS(script_args);
 	for (size_t i = 0; i < script_args->count; ++i) {
@@ -182,31 +173,6 @@ size_t SGS_load(const SGS_PtrList *restrict script_args, bool are_paths,
 		SGS_PtrList_add(prg_objs, prg);
 	}
 	return built;
-}
-
-/*
- * Process the listed scripts.
- *
- * \return true if at least one script succesfully built
- */
-static bool load(const SGS_PtrList *restrict script_args,
-		SGS_PtrList *restrict prg_objs,
-		uint32_t options) {
-	bool are_paths = !(options & ARG_EVAL_STRING);
-	if (!SGS_load(script_args, are_paths, prg_objs))
-		return false;
-//	if ((options & ARG_PRINT_INFO) != 0) {
-//		const SGS_Program **prgs =
-//			(const SGS_Program**) SGS_PtrList_ITEMS(prg_objs);
-//		for (size_t i = 0; i < prg_objs->count; ++i) {
-//			const SGS_Program *prg = prgs[i];
-//			if (prg != NULL) SGS_Program_print_info(prg);
-//		}
-//	}
-	if ((options & ARG_ONLY_COMPILE) != 0) {
-		discard_programs(prg_objs);
-	}
-	return true;
 }
 
 /**
@@ -218,14 +184,13 @@ int main(int argc, char **restrict argv) {
 	uint32_t options = 0;
 	if (!parse_args(argc, argv, &options, &script_args))
 		return 0;
-	bool error = !load(&script_args, &prg_objs, options);
+	bool error = !SGS_load(&script_args, options, &prg_objs);
 	SGS_PtrList_clear(&script_args);
 	if (error)
 		return 1;
 	if (prg_objs.count > 0) {
 		// no audio output
-		discard_programs(&prg_objs);
+		SGS_discard(&prg_objs);
 	}
-
 	return 0;
 }

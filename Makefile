@@ -11,6 +11,7 @@ BIN=sgensys
 SHARE=sgensys
 OBJ=\
 	common.o \
+	help.o \
 	arrtype.o \
 	ptrlist.o \
 	loader/file.o \
@@ -75,25 +76,28 @@ arrtype.o: arrtype.c arrtype.h common.h
 common.o: common.c common.h
 	$(CC) -c $(CFLAGS) common.c
 
+help.o: common.h help.c help.h ramp.h wave.h
+	$(CC) -c $(CFLAGS) help.c
+
 loader/loader.o: loader/loader.c sgensys.h script.h ptrlist.h program.h ramp.h wave.h math.h loader/file.h common.h
 	$(CC) -c $(CFLAGS) loader/loader.c -o loader/loader.o
 
-loader/file.o: loader/file.c loader/file.h common.h
+loader/file.o: common.h loader/file.c loader/file.h
 	$(CC) -c $(CFLAGS) loader/file.c -o loader/file.o
 
-loader/lexer.o: loader/lexer.c loader/lexer.h loader/file.h loader/symtab.h math.h common.h
+loader/lexer.o: common.h loader/file.h loader/lexer.c loader/lexer.h loader/symtab.h math.h mempool.h
 	$(CC) -c $(CFLAGS) loader/lexer.c -o loader/lexer.o
 
-loader/parseconv.o: loader/parseconv.c program.h ramp.h wave.h math.h script.h ptrlist.h arrtype.h common.h
+loader/parseconv.o: arrtype.h common.h help.h loader/parseconv.c math.h program.h ptrlist.h ramp.h script.h wave.h
 	$(CC) -c $(CFLAGS) loader/parseconv.c -o loader/parseconv.o
 
-loader/parser.o: loader/parser.c loader/file.h loader/symtab.h script.h ptrlist.h program.h ramp.h wave.h math.h common.h
+loader/parser.o: common.h help.h loader/file.h loader/parser.c loader/symtab.h math.h mempool.h program.h ptrlist.h ramp.h script.h wave.h
 	$(CC) -c $(CFLAGS) loader/parser.c -o loader/parser.o
 
-loader/scanner.o: loader/scanner.c loader/scanner.h loader/file.h loader/symtab.h math.h common.h
+loader/scanner.o: common.h loader/file.h loader/scanner.c loader/scanner.h loader/symtab.h math.h mempool.h
 	$(CC) -c $(CFLAGS) loader/scanner.c -o loader/scanner.o
 
-loader/symtab.o: loader/symtab.c loader/symtab.h mempool.h common.h
+loader/symtab.o: common.h mempool.h loader/symtab.c loader/symtab.h
 	$(CC) -c $(CFLAGS) loader/symtab.c -o loader/symtab.o
 
 mempool.o: mempool.c mempool.h common.h
@@ -117,10 +121,10 @@ ramp.o: ramp.c ramp.h math.h common.h
 renderer/generator.o: renderer/generator.c renderer/generator.h renderer/osc.h program.h ramp.h wave.h math.h mempool.h common.h
 	$(CC) -c $(CFLAGS_FAST) renderer/generator.c -o renderer/generator.o
 
-sgensys.o: sgensys.c sgensys.h ptrlist.h program.h ramp.h wave.h math.h common.h
+sgensys.o: common.h help.h math.h program.h ptrlist.h ramp.h sgensys.c sgensys.h wave.h
 	$(CC) -c $(CFLAGS) sgensys.c
 
-test-scan.o: test-scan.c sgensys.h loader/lexer.h loader/scanner.h loader/file.h loader/symtab.h ptrlist.h program.h ramp.h wave.h math.h common.h
+test-scan.o: common.h loader/file.h loader/lexer.h loader/scanner.h loader/symtab.h math.h program.h ptrlist.h ramp.h sgensys.h test-scan.c wave.h
 	$(CC) -c $(CFLAGS) test-scan.c
 
 wave.o: wave.c wave.h math.h common.h
