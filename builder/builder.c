@@ -1,5 +1,5 @@
 /* sgensys: Audio program builder module.
- * Copyright (c) 2011-2013, 2017-2019 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -35,8 +35,9 @@ static SGS_Program *build_program(const char *restrict script_arg,
  *
  * \return number of programs successfully built
  */
-size_t SGS_build(const SGS_PtrList *restrict script_args, bool are_paths,
+size_t SGS_build(const SGS_PtrList *restrict script_args, uint32_t options,
 		SGS_PtrList *restrict prg_objs) {
+	bool are_paths = !(options & SGS_OPT_EVAL_STRING);
 	size_t built = 0;
 	const char **args = (const char**) SGS_PtrList_ITEMS(script_args);
 	for (size_t i = 0; i < script_args->count; ++i) {

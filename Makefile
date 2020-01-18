@@ -14,6 +14,7 @@ BIN=sgensys
 SHARE=sgensys
 OBJ=\
 	common.o \
+	help.o \
 	arrtype.o \
 	ptrlist.o \
 	builder/file.o \
@@ -91,7 +92,7 @@ builder/lexer.o: builder/file.h builder/lexer.c builder/lexer.h builder/symtab.h
 builder/parseconv.o: arrtype.h builder/parseconv.c builder/parseconv.h common.h math.h program.h ptrlist.h ramp.h script.h wave.h
 	$(CC) -c $(CFLAGS) builder/parseconv.c -o builder/parseconv.o
 
-builder/parser.o: builder/file.h builder/parser.c builder/scanner.h builder/symtab.h common.h math.h mempool.h program.h ramp.h script.h wave.h
+builder/parser.o: builder/file.h builder/parser.c builder/scanner.h builder/symtab.h common.h help.h math.h mempool.h program.h ramp.h script.h wave.h
 	$(CC) -c $(CFLAGS_SIZE) builder/parser.c -o builder/parser.o
 
 builder/scanner.o: builder/file.h builder/scanner.c builder/scanner.h builder/symtab.h common.h math.h mempool.h
@@ -105,6 +106,9 @@ builder/voicegraph.o: arrtype.h builder/voicegraph.c builder/parseconv.h common.
 
 common.o: common.c common.h
 	$(CC) -c $(CFLAGS) common.c
+
+help.o: common.h help.c help.h ramp.h wave.h
+	$(CC) -c $(CFLAGS_SIZE) help.c
 
 mempool.o: common.h mempool.c mempool.h
 	$(CC) -c $(CFLAGS_FAST) mempool.c
@@ -133,7 +137,7 @@ renderer/mixer.o: common.h math.h ramp.h renderer/mixer.c renderer/mixer.h
 renderer/osc.o: common.h math.h renderer/osc.c renderer/osc.h wave.h
 	$(CC) -c $(CFLAGS_FASTF) renderer/osc.c -o renderer/osc.o
 
-sgensys.o: sgensys.c sgensys.h ptrlist.h program.h ramp.h wave.h math.h common.h
+sgensys.o: common.h help.h math.h program.h ptrlist.h ramp.h sgensys.c sgensys.h wave.h
 	$(CC) -c $(CFLAGS) sgensys.c
 
 test-scan.o: common.h builder/file.h builder/lexer.h builder/scanner.h builder/symtab.h math.h program.h ptrlist.h ramp.h sgensys.h test-scan.c wave.h
