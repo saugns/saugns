@@ -125,6 +125,7 @@ typedef struct SGS_Script {
 	const char *name; // currently simply set to the filename
 	SGS_ScriptOptions sopt;
 	struct SGS_Mempool *mp;
+	struct SGS_Symtab *st;
 } SGS_Script;
 
 struct SGS_File;
