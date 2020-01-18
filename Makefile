@@ -15,6 +15,7 @@ SHARE=sgensys
 OBJ=\
 	arrtype.o \
 	error.o \
+	help.o \
 	file.o \
 	symtab.o \
 	parser.o \
@@ -79,6 +80,9 @@ arrtype.o: arrtype.c arrtype.h mempool.h sgensys.h
 error.o: sgensys.h error.c
 	$(CC) -c $(CFLAGS_SIZE) error.c
 
+help.o: sgensys.h help.c help.h ramp.h wave.h
+	$(CC) -c $(CFLAGS_SIZE) help.c
+
 mempool.o: sgensys.h mempool.c mempool.h
 	$(CC) -c $(CFLAGS_FAST) mempool.c
 
@@ -94,7 +98,7 @@ ramp.o: sgensys.h math.h ramp.c ramp.h
 file.o: sgensys.h file.c file.h
 	$(CC) -c $(CFLAGS) file.c
 
-lexer.o: sgensys.h math.h file.h lexer.c lexer.h symtab.h
+lexer.o: sgensys.h math.h mempool.h file.h lexer.c lexer.h symtab.h
 	$(CC) -c $(CFLAGS) lexer.c
 
 parseconv.o: arrtype.h sgensys.h math.h mempool.h program.h ramp.h parseconv.c script.h wave.h
@@ -112,7 +116,7 @@ symtab.o: sgensys.h mempool.h symtab.c symtab.h
 generator.o: sgensys.h math.h mempool.h program.h ramp.h generator.c generator.h osc.h wave.h
 	$(CC) -c $(CFLAGS_FASTF) generator.c
 
-sgensys.o: sgensys.c generator.h script.h arrtype.h program.h ramp.h wave.h math.h file.h player/audiodev.h player/wavfile.h sgensys.h
+sgensys.o: sgensys.c help.h generator.h script.h arrtype.h program.h ramp.h wave.h math.h file.h player/audiodev.h player/wavfile.h sgensys.h
 	$(CC) -c $(CFLAGS_SIZE) sgensys.c
 
 test-scan.o: sgensys.h math.h program.h ramp.h file.h lexer.h scanner.h symtab.h sgensys.h test-scan.c wave.h
