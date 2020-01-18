@@ -11,6 +11,7 @@ BIN=saugns
 SHARE=saugns
 OBJ=\
 	common.o \
+	help.o \
 	arrtype.o \
 	ptrlist.o \
 	builder/file.o \
@@ -98,7 +99,7 @@ builder/lexer.o: builder/lexer.c builder/lexer.h builder/file.h builder/symtab.h
 builder/parseconv.o: builder/parseconv.c builder/parser.h program.h ramp.h wave.h math.h script.h ptrlist.h common.h
 	$(CC) -c $(CFLAGS) builder/parseconv.c -o builder/parseconv.o
 
-builder/parser.o: builder/parser.c builder/parser.h builder/scanner.h builder/file.h builder/symtab.h mempool.h script.h ptrlist.h program.h ramp.h wave.h math.h common.h
+builder/parser.o: builder/parser.c builder/parser.h builder/scanner.h builder/file.h builder/symtab.h mempool.h script.h ptrlist.h program.h help.h ramp.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) builder/parser.c -o builder/parser.o
 
 builder/scanner.o: builder/scanner.c builder/scanner.h builder/file.h builder/symtab.h mempool.h math.h common.h
@@ -112,6 +113,9 @@ builder/symtab.o: builder/symtab.c builder/symtab.h mempool.h common.h
 
 builder/voicegraph.o: builder/voicegraph.c builder/scriptconv.h program.h ramp.h wave.h math.h script.h ptrlist.h arrtype.h common.h
 	$(CC) -c $(CFLAGS) builder/voicegraph.c -o builder/voicegraph.o
+
+help.o: help.c help.h ramp.h wave.h common.h
+	$(CC) -c $(CFLAGS) help.c
 
 mempool.o: mempool.c mempool.h common.h
 	$(CC) -c $(CFLAGS) mempool.c
@@ -134,7 +138,7 @@ renderer/mixer.o: renderer/mixer.c renderer/mixer.h ramp.h math.h common.h
 renderer/osc.o: renderer/osc.c renderer/osc.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS_FAST) renderer/osc.c -o renderer/osc.o
 
-saugns.o: saugns.c saugns.h ptrlist.h program.h ramp.h wave.h math.h common.h
+saugns.o: saugns.c saugns.h ptrlist.h program.h help.h ramp.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) saugns.c
 
 test-builder.o: test-builder.c saugns.h builder/lexer.h builder/scanner.h builder/file.h builder/symtab.h mempool.h ptrlist.h program.h ramp.h wave.h math.h common.h

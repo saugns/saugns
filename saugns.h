@@ -15,9 +15,17 @@
 #include "program.h"
 #include "ptrlist.h"
 
-#define SAU_VERSION_STR "saugns v0.3-dev"
+/*
+ * Configuration options.
+ */
+
+#define SAU_CLINAME_STR "saugns"
+#define SAU_VERSION_STR "v0.3-dev"
 
 #define SAU_DEFAULT_SRATE 96000
+
+/* Print symtab test statistics? */
+#define SAU_SYMTAB_STATS 0
 
 size_t SAU_build(const SAU_PtrList *restrict script_args, bool are_paths,
 		SAU_PtrList *restrict prg_objs);

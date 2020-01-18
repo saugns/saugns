@@ -1,5 +1,5 @@
 /* saugns: Script lexer module.
- * Copyright (c) 2014, 2017-2019 Joel K. Pettersson
+ * Copyright (c) 2014, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -141,11 +141,11 @@ static void handle_identifier(SAU_Lexer *restrict o,
 		uint8_t c sauMaybeUnused) {
 	SAU_Scanner *sc = o->sc;
 	SAU_ScriptToken *t = &o->token;
-	const void *str;
+	SAU_SymStr *symstr;
 	SAU_Scanner_ungetc(sc);
-	SAU_Scanner_getsymstr(sc, &str, NULL);
+	SAU_Scanner_get_symstr(sc, &symstr);
 	t->type = SAU_T_ID_STR;
-	t->data.id = str;
+	t->data.id = symstr ? symstr->key : NULL;
 	//printf("str == %s\n", str);
 }
 

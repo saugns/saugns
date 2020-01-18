@@ -713,16 +713,13 @@ bool SAU_Scanner_getd(SAU_Scanner *restrict o,
 
 /**
  * Get identifier string. If a valid symbol string was read,
- * the copy set to \p strp will be the unique copy stored
- * in the symbol table. If no string was read,
- * \p strp will be set to NULL.
- *
- * If \p lenp is not NULL, it will be used to set the string length.
+ * then \a symstr will be set to the unique item
+ * stored in the symbol table, otherwise to NULL.
  *
  * \return true if string was short enough to be read in full
  */
-bool SAU_Scanner_getsymstr(SAU_Scanner *restrict o,
-		const void **restrict strp, size_t *restrict lenp) {
+bool SAU_Scanner_get_symstr(SAU_Scanner *restrict o,
+		SAU_SymStr **restrict symstrp) {
 	SAU_File *f = o->f;
 	size_t len;
 	bool truncated;
@@ -732,7 +729,7 @@ bool SAU_Scanner_getsymstr(SAU_Scanner *restrict o,
 	truncated = !read_symstr(f, o->strbuf, STRBUF_LEN, &len);
 	if (len == 0) {
 		o->s_flags |= SAU_SCAN_S_DISCARD;
-		if (lenp) *lenp = 0;
+		*symstrp = NULL;
 		return true;
 	}
 
@@ -744,14 +741,12 @@ bool SAU_Scanner_getsymstr(SAU_Scanner *restrict o,
 	}
 	advance_frame(o, read_len - 1, SAU_File_RETC_NC(f));
 
-	const char *pool_str;
-	pool_str = SAU_SymTab_pool_str(o->symtab, o->strbuf, len);
-	if (!pool_str) {
+	SAU_SymStr *symstr = SAU_SymTab_get_symstr(o->symtab, o->strbuf, len);
+	if (!symstr) {
 		SAU_Scanner_error(o, NULL, "failed to register string '%s'",
 				o->strbuf);
 	}
-	*strp = pool_str;
-	if (lenp) *lenp = len;
+	*symstrp = symstr;
 	return !truncated;
 }
 
