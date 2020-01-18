@@ -13,6 +13,7 @@
 
 #include "scanner.h"
 #include "../script.h"
+#include "../help.h"
 #include "../math.h"
 #include <string.h>
 #include <stdio.h>
@@ -363,11 +364,7 @@ static bool scan_symafind(SGS_Scanner *restrict o,
 	}
 	SGS_Scanner_warning(o, &sf_begin,
 			"invalid %s value; available are:", print_type);
-	fprintf(stderr, "\t%s", stra[0]);
-	for (size_t i = 1; stra[i] != NULL; ++i) {
-		fprintf(stderr, ", %s", stra[i]);
-	}
-	putc('\n', stderr);
+	SGS_print_names(stra, "\t", stderr);
 	return false;
 }
 

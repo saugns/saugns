@@ -3,8 +3,7 @@
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
+ * purpose with or without fee is hereby granted.
  *
  * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
  * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
@@ -65,6 +64,17 @@ void SGS_error(const char *restrict label, const char *restrict fmt, ...)
 	sgsPrintflike(2, 3);
 
 void *SGS_memdup(const void *restrict src, size_t size) sgsMalloclike;
+
+/** SGS_getopt() data. Initialize to zero, except \a err for error messages. */
+struct SGS_opt {
+	int ind; /* set to zero to start over next SGS_getopt() call */
+	int err;
+	int pos;
+	int opt;
+	const char *arg;
+};
+int SGS_getopt(int argc, char *const*restrict argv,
+		const char *restrict optstring, struct SGS_opt *restrict opt);
 
 /*
  * Debugging options.
