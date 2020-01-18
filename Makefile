@@ -10,7 +10,7 @@ OBJ=loader/file.o \
     builder/builder.o \
     renderer/audiodev.o renderer/wavfile.o renderer/renderer.o \
     interp/generator.o \
-    common.o ptrarr.o wave.o \
+    common.o help.o ptrarr.o wave.o \
     mgensys.o parser.o symtab.o
 
 all: mgensys
@@ -40,6 +40,9 @@ mgensys: $(OBJ)
 builder/builder.o: builder/builder.c common.h mgensys.h ptrarr.h
 	$(CC) -c $(CFLAGS) builder/builder.c -o builder/builder.o
 
+help.o: common.h help.c help.h wave.h
+	$(CC) -c $(CFLAGS) help.c
+
 interp/generator.o: common.h interp/generator.c interp/osc.h mgensys.h program.h wave.h
 	$(CC) -c $(CFLAGS_FAST) interp/generator.c -o interp/generator.o
 
@@ -55,10 +58,10 @@ renderer/renderer.o: common.h renderer/audiodev.h renderer/renderer.c renderer/w
 renderer/wavfile.o: common.h renderer/wavfile.c renderer/wavfile.h
 	$(CC) -c $(CFLAGS) renderer/wavfile.c -o renderer/wavfile.o
 
-mgensys.o: common.h mgensys.c mgensys.h ptrarr.h
+mgensys.o: common.h help.h mgensys.c mgensys.h ptrarr.h
 	$(CC) -c $(CFLAGS) mgensys.c
 
-parser.o: common.h loader/file.h mgensys.h parser.c program.h wave.h
+parser.o: common.h help.h loader/file.h mgensys.h parser.c program.h wave.h
 	$(CC) -c $(CFLAGS) parser.c
 
 ptrarr.o: common.h ptrarr.c ptrarr.h
