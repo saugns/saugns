@@ -14,6 +14,7 @@ BIN=sgensys
 SHARE=sgensys
 OBJ=\
 	common.o \
+	help.o \
 	arrtype.o \
 	ptrlist.o \
 	reader/file.o \
@@ -82,6 +83,9 @@ arrtype.o: arrtype.c arrtype.h common.h
 common.o: common.c common.h
 	$(CC) -c $(CFLAGS) common.c
 
+help.o: common.h help.c help.h ramp.h wave.h
+	$(CC) -c $(CFLAGS) help.c
+
 mempool.o: common.h mempool.c mempool.h
 	$(CC) -c $(CFLAGS_FAST) mempool.c
 
@@ -103,7 +107,7 @@ ramp.o: common.h math.h ramp.c ramp.h
 reader/file.o: common.h reader/file.c reader/file.h
 	$(CC) -c $(CFLAGS) reader/file.c -o reader/file.o
 
-reader/lexer.o: common.h math.h reader/file.h reader/lexer.c reader/lexer.h reader/symtab.h
+reader/lexer.o: common.h math.h mempool.h reader/file.h reader/lexer.c reader/lexer.h reader/symtab.h
 	$(CC) -c $(CFLAGS) reader/lexer.c -o reader/lexer.o
 
 reader/reader.o: common.h math.h program.h ptrlist.h ramp.h reader/file.h reader/reader.c script.h sgensys.h wave.h
@@ -124,7 +128,7 @@ reader/symtab.o: common.h mempool.h reader/symtab.c reader/symtab.h
 renderer/generator.o: common.h math.h mempool.h program.h ramp.h renderer/generator.c renderer/generator.h renderer/osc.h wave.h
 	$(CC) -c $(CFLAGS_FASTF) renderer/generator.c -o renderer/generator.o
 
-sgensys.o: common.h math.h program.h ptrlist.h ramp.h sgensys.c sgensys.h wave.h
+sgensys.o: common.h help.h math.h program.h ptrlist.h ramp.h sgensys.c sgensys.h wave.h
 	$(CC) -c $(CFLAGS) sgensys.c
 
 test-scan.o: common.h math.h program.h ptrlist.h ramp.h reader/file.h reader/lexer.h reader/scanner.h reader/symtab.h sgensys.h test-scan.c wave.h

@@ -1,5 +1,5 @@
 /* sgensys: Audio script reader / program builder module.
- * Copyright (c) 2011-2013, 2017-2021 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -62,8 +62,9 @@ CLOSE:
  *
  * \return number of items successfully processed
  */
-size_t SGS_read(const SGS_PtrList *restrict script_args, bool are_paths,
+size_t SGS_read(const SGS_PtrList *restrict script_args, uint32_t options,
 		SGS_PtrList *restrict prg_objs) {
+	bool are_paths = !(options & SGS_OPT_EVAL_STRING);
 	size_t built = 0;
 	const char **args = (const char**) SGS_PtrList_ITEMS(script_args);
 	for (size_t i = 0; i < script_args->count; ++i) {

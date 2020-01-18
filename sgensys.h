@@ -1,5 +1,5 @@
 /* sgensys: Main functions and project definitions.
- * Copyright (c) 2011-2013, 2017-2020 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -15,12 +15,27 @@
 #include "program.h"
 #include "ptrlist.h"
 
-#define SGS_VERSION_STR "sgensys v0.2-beta"
+#define SGS_CLINAME_STR "sgensys"
+#define SGS_VERSION_STR "v0.2-beta"
 
 #define SGS_DEFAULT_SRATE 96000
 
-size_t SGS_read(const SGS_PtrList *restrict script_args, bool are_paths,
+/**
+ * Command line options flags.
+ */
+enum {
+	SGS_OPT_MODE_FULL     = 1<<0,
+	SGS_OPT_AUDIO_ENABLE  = 1<<1,
+	SGS_OPT_AUDIO_DISABLE = 1<<2,
+	SGS_OPT_MODE_CHECK    = 1<<3,
+	SGS_OPT_PRINT_INFO    = 1<<4,
+	SGS_OPT_EVAL_STRING   = 1<<5,
+};
+
+size_t SGS_read(const SGS_PtrList *restrict script_args, uint32_t options,
 		SGS_PtrList *restrict prg_objs);
 
 bool SGS_play(const SGS_PtrList *restrict prg_objs, uint32_t srate,
-		bool use_audiodev, const char *restrict wav_path);
+		uint32_t options, const char *restrict wav_path);
+
+void SGS_discard(SGS_PtrList *restrict prg_objs);
