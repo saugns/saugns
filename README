@@ -44,6 +44,11 @@ sgensys is distributed under the terms of the GNU Lesser General
 Public License (LGPL), version 3 or later. See the file COPYING
 for details, or <https://www.gnu.org/licenses/>.
 
+Some files are licensed under more permissive terms, such as
+the ISC license (2-clause-BSD-equivalent), or
+the 0BSD license (public-domain-equivalent shorter version);
+see the heading comment text of source files.
+
 The example and test scripts included as input for the program
 currently do not have any explicit licensing. If needed in the
 future, some Creative Commons license will be used. Feel free

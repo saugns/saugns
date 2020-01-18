@@ -14,6 +14,7 @@ BIN=sgensys
 SHARE=sgensys
 OBJ=\
 	common.o \
+	help.o \
 	arrtype.o \
 	ptrlist.o \
 	loader/file.o \
@@ -82,10 +83,13 @@ arrtype.o: arrtype.c arrtype.h common.h
 common.o: common.c common.h
 	$(CC) -c $(CFLAGS) common.c
 
+help.o: common.h help.c help.h ramp.h wave.h
+	$(CC) -c $(CFLAGS) help.c
+
 loader/file.o: common.h loader/file.c loader/file.h
 	$(CC) -c $(CFLAGS) loader/file.c -o loader/file.o
 
-loader/lexer.o: common.h loader/file.h loader/lexer.c loader/lexer.h loader/symtab.h math.h
+loader/lexer.o: common.h loader/file.h loader/lexer.c loader/lexer.h loader/symtab.h math.h mempool.h
 	$(CC) -c $(CFLAGS) loader/lexer.c -o loader/lexer.o
 
 loader/loader.o: loader/loader.c sgensys.h script.h ptrlist.h program.h ramp.h wave.h math.h loader/file.h common.h
@@ -124,7 +128,7 @@ ramp.o: common.h math.h ramp.c ramp.h
 renderer/generator.o: common.h math.h mempool.h ramp.h renderer/generator.c renderer/generator.h renderer/osc.h program.h wave.h
 	$(CC) -c $(CFLAGS_FASTF) renderer/generator.c -o renderer/generator.o
 
-sgensys.o: common.h math.h program.h ptrlist.h ramp.h sgensys.c sgensys.h wave.h
+sgensys.o: common.h help.h math.h program.h ptrlist.h ramp.h sgensys.c sgensys.h wave.h
 	$(CC) -c $(CFLAGS) sgensys.c
 
 test-scan.o: common.h loader/file.h loader/lexer.h loader/scanner.h loader/symtab.h math.h program.h ptrlist.h ramp.h sgensys.h test-scan.c wave.h
