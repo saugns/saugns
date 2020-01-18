@@ -1,10 +1,9 @@
 /* sgensys: Common definitions.
- * Copyright (c) 2011-2012, 2018 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2018-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
+ * purpose with or without fee is hereby granted.
  *
  * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
  * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
@@ -17,8 +16,11 @@
 
 #pragma once
 
+/* Program name string, for cli printouts. */
+#define SGS_CLINAME_STR "sgensys"
+
 /* Version printout string, for -v option. */
-#define SGS_VERSION_STR "sgensys v0.2-beta"
+#define SGS_VERSION_STR "v0.2-beta"
 
 /* Default sample rate, see -r option. */
 #define SGS_DEFAULT_SRATE 96000
@@ -58,6 +60,9 @@
 /** Turn \p arg into string literal after macro-expanding it. */
 #define SGS_STREXP(arg) SGS_STRLIT(arg)
 
+/** Is \p c a visible non-whitespace 7-bit ASCII character? */
+#define SGS_IS_ASCIIVISIBLE(c) ((c) >= '!' && (c) <= '~')
+
 /*
  * Utility functions.
  */
@@ -75,9 +80,10 @@ void SGS_error(const char *restrict label, const char *restrict fmt, ...)
 //#define SGS_MEM_DEBUG 1
 
 /* Print hash collision info for symtab. */
-#define SGS_HASHTAB_STATS 0
-/* Make test lexer quiet enough to time it. */
-#define SGS_LEXER_QUIET 1
+//#define SGS_SYMTAB_STATS 0
 
 /* Run scanner instead of lexer in 'test-scan' program. */
 #define SGS_TEST_SCANNER 0
+
+/* Make test lexer quiet enough to time it. */
+#define SGS_LEXER_QUIET 1
