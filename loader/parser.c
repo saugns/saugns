@@ -14,6 +14,7 @@
 #include "symtab.h"
 #include "file.h"
 #include "../script.h"
+#include "../help.h"
 #include "../math.h"
 #include <string.h>
 #include <stdlib.h>
@@ -34,9 +35,6 @@
 
 /* Valid characters in identifiers. */
 #define IS_SYMCHAR(c) (IS_ALNUM(c) || (c) == '_')
-
-/* Sensible to print, for ASCII only. */
-#define IS_VISIBLE(c) ((c) >= '!' && (c) <= '~')
 
 static uint8_t filter_symchar(SGS_File *restrict f sgsMaybeUnused,
                               uint8_t c) {
@@ -87,7 +85,7 @@ static void sgsNoinline scan_warning(PScanner *restrict o,
                                      const char *restrict str) {
   SGS_File *f = o->f;
   uint8_t c = o->c;
-  if (IS_VISIBLE(c)) {
+  if (SGS_IS_ASCIIVISIBLE(c)) {
     fprintf(stderr, "warning: %s [line %d, at '%c'] - %s\n",
             f->path, o->line, c, str);
   } else if (SGS_File_AT_EOF(f)) {
@@ -370,9 +368,10 @@ static float scan_note(PScanner *restrict o) {
 #define LABEL_BUFLEN 80
 #define LABEL_MAXLEN_S "79"
 typedef char LabelBuf[LABEL_BUFLEN];
-static size_t scan_label(PScanner *restrict o, LabelBuf label, char op) {
+static SGS_SymStr *scan_label(PScanner *restrict o, char op) {
   char nolabel_msg[] = "ignoring ? without label name";
   SGS_File *f = o->f;
+  LabelBuf label;
   size_t len = 0;
   bool truncated;
   nolabel_msg[9] = op; /* replace ? */
@@ -386,7 +385,7 @@ static size_t scan_label(PScanner *restrict o, LabelBuf label, char op) {
     SGS_File_skipstr(f, filter_symchar);
   }
   o->c = SGS_File_RETC(f);
-  return len;
+  return SGS_SymTab_get_symstr(o->st, label, len);
 }
 
 static bool scan_symafind(PScanner *restrict o,
@@ -422,12 +421,7 @@ static bool scan_wavetype(PScanner *restrict o, size_t *restrict found_id) {
     return true;
 
   scan_warning(o, "invalid wave type; available types are:");
-  size_t i = 0;
-  fprintf(stderr, "\t%s", names[i]);
-  while (++i < SGS_WAVE_TYPES) {
-    fprintf(stderr, ", %s", names[i]);
-  }
-  putc('\n', stderr);
+  SGS_print_names(names, "\t", stderr);
   return false;
 }
 
@@ -445,12 +439,7 @@ static bool scan_ramp(PScanner *restrict o, NumSym_f scan_numsym,
       size_t type;
       if (!scan_symafind(o, names, SGS_RAMP_TYPES, &type)) {
         scan_warning(o, "invalid curve type; available types are:");
-        size_t i = 0;
-        fprintf(stderr, "\t%s", names[i]);
-        while (++i < SGS_RAMP_TYPES) {
-          fprintf(stderr, ", %s", names[i]);
-        }
-        putc('\n', stderr);
+        SGS_print_names(names, "\t", stderr);
         break;
       }
       rap->ramp = type;
@@ -502,6 +491,7 @@ typedef struct SGS_Parser {
   PScanner sc;
   ScanLookup sl;
   SGS_SymTab *st;
+  SGS_MemPool *mp;
   uint32_t call_level;
   uint32_t scope_id;
   /* node state */
@@ -530,7 +520,8 @@ static const SGS_ScriptOptions def_sopt = {
  */
 static void init_parser(SGS_Parser *restrict o) {
   *o = (SGS_Parser){0};
-  o->st = SGS_create_SymTab();
+  o->mp = SGS_create_MemPool(0);
+  o->st = SGS_create_SymTab(o->mp);
   o->sl.sopt = def_sopt;
   o->sl.wave_names = SGS_SymTab_pool_stra(o->st,
                        SGS_Wave_names, SGS_WAVE_TYPES);
@@ -543,6 +534,7 @@ static void init_parser(SGS_Parser *restrict o) {
  */
 static void fini_parser(SGS_Parser *restrict o) {
   SGS_destroy_SymTab(o->st);
+  SGS_destroy_MemPool(o->mp);
 }
 
 /*
@@ -591,7 +583,7 @@ typedef struct ParseLevel {
   SGS_ScriptOpData *parent_on, *on_prev;
   uint8_t linktype;
   uint8_t last_linktype; /* FIXME: kludge */
-  const char *set_label; /* label assigned to next node */
+  SGS_SymStr *set_label; /* label assigned to next node */
   /* timing/delay */
   SGS_ScriptEvData *main_ev; /* grouping of events for a voice and/or operator */
   uint32_t next_wait_ms; /* added for next event */
@@ -908,12 +900,12 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
    * previous node.
    */
   if (pl->set_label != NULL) {
-    SGS_SymTab_set(o->st, pl->set_label, strlen(pl->set_label), op);
     op->label = pl->set_label;
+    op->label->data = op;
     pl->set_label = NULL;
   } else if (!is_compstep && pop != NULL && pop->label != NULL) {
-    SGS_SymTab_set(o->st, pop->label, strlen(pop->label), op);
     op->label = pop->label;
+    op->label->data = op;
   }
   pl->pl_flags |= SDPL_ACTIVE_OP;
 }
@@ -1230,9 +1222,8 @@ enum {
 static bool parse_level(SGS_Parser *restrict o,
                         ParseLevel *restrict parent_pl,
                         uint8_t linktype, uint8_t newscope) {
-  LabelBuf label;
   ParseLevel pl;
-  size_t label_len;
+  SGS_SymStr *label;
   uint8_t flags = 0;
   bool endscope = false;
   begin_scope(o, &pl, parent_pl, linktype, newscope);
@@ -1262,8 +1253,7 @@ static bool parse_level(SGS_Parser *restrict o,
         scan_warning(sc, "ignoring label assignment to label assignment");
         break;
       }
-      label_len = scan_label(sc, label, c);
-      pl.set_label = SGS_SymTab_pool_str(o->st, label, label_len);
+      pl.set_label = label = scan_label(sc, c);
       break;
     case ';':
       if (newscope == SCOPE_SAME) {
@@ -1297,9 +1287,9 @@ static bool parse_level(SGS_Parser *restrict o,
         pl.set_label = NULL;
       }
       pl.location = SDPL_IN_NONE;
-      label_len = scan_label(sc, label, c);
-      if (label_len > 0) {
-        SGS_ScriptOpData *ref = SGS_SymTab_get(o->st, label, label_len);
+      label = scan_label(sc, c);
+      if (label != NULL) {
+        SGS_ScriptOpData *ref = label->data;
         if (!ref)
           scan_warning(sc, "ignoring reference to undefined label");
         else {
