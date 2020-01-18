@@ -12,7 +12,9 @@
  */
 
 #pragma once
+#include "symtab.h"
 #include "../script.h"
+#include "../help.h"
 
 /**
  * Node type for operator data.
@@ -20,7 +22,7 @@
 typedef struct SAU_ParseOpData {
 	struct SAU_ParseEvData *event;
 	struct SAU_ParseOpData *next_bound;
-	const char *label;
+	SAU_SymStr *label_sym;
 	uint32_t op_flags;
 	/* operator parameters */
 	uint32_t op_params;

@@ -12,7 +12,6 @@
  */
 
 #include "scanner.h"
-#include "symtab.h"
 #include "parser.h"
 #include "../math.h"
 #include <string.h>
@@ -332,48 +331,42 @@ static size_t scan_note_const(SAU_Scanner *restrict o,
 	return len;
 }
 
-static const char *scan_label(SAU_Scanner *restrict o,
-		size_t *restrict lenp, char op) {
-	const void *s = NULL;
-	SAU_Scanner_getsymstr(o, &s, lenp);
-	if (*lenp == 0) {
+static SAU_SymStr *scan_label(SAU_Scanner *restrict o, char op) {
+	SAU_SymStr *symstr;
+	SAU_Scanner_get_symstr(o, &symstr);
+	if (!symstr) {
 		SAU_Scanner_warning(o, NULL,
 				"ignoring %c without label name", op);
 	}
-	return s;
+	return symstr;
 }
 
 static bool scan_symafind(SAU_Scanner *restrict o,
-		const char *const*restrict stra, size_t n,
+		const char *const*restrict stra,
 		size_t *restrict found_i, const char *restrict print_type) {
 	SAU_ScanFrame sf_begin = o->sf;
-	const void *key = NULL;
-	size_t len;
-	SAU_Scanner_getsymstr(o, &key, &len);
-	if (len == 0) {
-		SAU_Scanner_warning(o, NULL, "%s missing", print_type);
+	SAU_SymStr *symstr;
+	SAU_Scanner_get_symstr(o, &symstr);
+	if (!symstr) {
+		SAU_Scanner_warning(o, NULL,
+				"%s type value missing", print_type);
 		return false;
 	}
-	for (size_t i = 0; i < n; ++i) {
-		if (stra[i] == key) {
+	for (size_t i = 0; stra[i] != NULL; ++i) {
+		if (stra[i] == symstr->key) {
 			*found_i = i;
 			return true;
 		}
 	}
 	SAU_Scanner_warning(o, &sf_begin,
-			"invalid %s; available types are:", print_type);
-	fprintf(stderr, "\t%s", stra[0]);
-	for (size_t i = 1; i < n; ++i) {
-		fprintf(stderr, ", %s", stra[i]);
-	}
-	putc('\n', stderr);
+			"invalid %s type value; available are:", print_type);
+	SAU_print_names(stra, "\t", stderr);
 	return false;
 }
 
 static bool scan_wavetype(SAU_Scanner *restrict o, size_t *restrict found_id) {
 	ScanLookup *sl = o->data;
-	return scan_symafind(o, sl->wave_names, SAU_WAVE_TYPES,
-			found_id, "wave type");
+	return scan_symafind(o, sl->wave_names, found_id, "wave");
 }
 
 static bool scan_ramp_state(SAU_Scanner *restrict o,
@@ -418,8 +411,7 @@ static bool scan_ramp(SAU_Scanner *restrict o,
 			break;
 		case 'c': {
 			size_t id;
-			if (scan_symafind(o, sl->ramp_names, SAU_RAMP_TYPES,
-					&id, "ramp curve")) {
+			if (scan_symafind(o, sl->ramp_names, &id, "ramp")) {
 				type = id;
 			}
 			break; }
@@ -555,7 +547,7 @@ typedef struct ParseLevel {
 	SAU_ParseOpData *parent_op, *op_prev;
 	uint8_t linktype;
 	uint8_t last_linktype; /* FIXME: kludge */
-	const char *set_label; /* label assigned to next node */
+	SAU_SymStr *set_label;
 	/* timing/delay */
 	SAU_ParseEvData *group_from; /* where to begin for group_events() */
 	SAU_ParseEvData *composite; /* grouping of events for a voice and/or operator */
@@ -844,12 +836,12 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
 	 * point to new node, but keep pointer in previous node.
 	 */
 	if (pl->set_label != NULL) {
-		SAU_SymTab_set(o->st, pl->set_label, strlen(pl->set_label), op);
-		op->label = pl->set_label;
+		op->label_sym = pl->set_label;
+		op->label_sym->data = op;
 		pl->set_label = NULL;
-	} else if (!is_composite && pop != NULL && pop->label != NULL) {
-		SAU_SymTab_set(o->st, pop->label, strlen(pop->label), op);
-		op->label = pop->label;
+	} else if (!is_composite && pop != NULL && pop->label_sym != NULL) {
+		op->label_sym = pop->label_sym;
+		op->label_sym->data = op;
 	}
 	pl->pl_flags |= SDPL_ACTIVE_OP;
 }
@@ -1140,8 +1132,7 @@ static bool parse_level(SAU_Parser *restrict o,
 		ParseLevel *restrict parent_pl,
 		uint8_t linktype, uint8_t newscope) {
 	ParseLevel pl;
-	const char *label;
-	size_t label_len;
+	SAU_SymStr *label;
 	uint8_t flags = 0;
 	bool endscope = false;
 	begin_scope(o, &pl, parent_pl, linktype, newscope);
@@ -1174,8 +1165,9 @@ static bool parse_level(SAU_Parser *restrict o,
 "ignoring label assignment to label assignment");
 				break;
 			}
-			label = scan_label(sc, &label_len, c);
-			pl.set_label = label;
+			label = scan_label(sc, c);
+			if (label != NULL)
+				pl.set_label = label;
 			break;
 		case ';':
 			if (pl.location == SDPL_IN_DEFAULTS || !pl.event)
@@ -1207,10 +1199,9 @@ static bool parse_level(SAU_Parser *restrict o,
 				pl.set_label = NULL;
 			}
 			pl.location = SDPL_IN_NONE;
-			label = scan_label(sc, &label_len, c);
-			if (label_len > 0) {
-				SAU_ParseOpData *ref;
-				ref = SAU_SymTab_get(o->st, label, label_len);
+			label = scan_label(sc, c);
+			if (label != NULL) {
+				SAU_ParseOpData *ref = label->data;
 				if (!ref)
 					SAU_Scanner_warning(sc, NULL,
 "ignoring reference to undefined label");

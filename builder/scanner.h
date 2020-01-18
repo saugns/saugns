@@ -202,8 +202,8 @@ bool SAU_Scanner_getd(SAU_Scanner *restrict o,
 		double *restrict var, bool allow_sign,
 		size_t *restrict str_len,
 		SAU_ScanNumConst_f numconst_f);
-bool SAU_Scanner_getsymstr(SAU_Scanner *restrict o,
-		const void **restrict strp, size_t *restrict lenp);
+bool SAU_Scanner_get_symstr(SAU_Scanner *restrict o,
+		SAU_SymStr **restrict symstrp);
 
 void SAU_Scanner_warning(const SAU_Scanner *restrict o,
 		const SAU_ScanFrame *restrict sf,

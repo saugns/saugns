@@ -1,5 +1,5 @@
 /* saugns: Symbol table module.
- * Copyright (c) 2011-2012, 2014, 2017-2019 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2014, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -12,33 +12,24 @@
  */
 
 #include "symtab.h"
+#include "../saugns.h" // config
 #include <string.h>
 #include <stdlib.h>
 
-#define HASHTAB_ALLOC_INITIAL 1024
+#define STRTAB_ALLOC_INITIAL 1024
 
-#if SAU_HASHTAB_STATS
+#if SAU_SYMTAB_STATS
 static size_t collision_count = 0;
 #include <stdio.h>
 #endif
 
-typedef struct TabItem {
-	struct TabItem *prev;
-	void *data;
-	size_t key_len;
-	char key[];
-} TabItem;
-
-typedef struct HashTab {
-	TabItem **items;
+typedef struct StrTab {
+	SAU_SymStr **items;
 	size_t count;
 	size_t alloc;
-} HashTab;
+} StrTab;
 
-#define GET_TABITEM_SIZE(key_len) \
-	(sizeof(TabItem) + (key_len))
-
-static inline void fini_HashTab(HashTab *restrict o) {
+static inline void fini_StrTab(StrTab *restrict o) {
 	free(o->items);
 }
 
@@ -47,13 +38,13 @@ static inline void fini_HashTab(HashTab *restrict o) {
  *
  * \return hash
  */
-static size_t HashTab_hash_key(HashTab *restrict o,
+static size_t StrTab_hash_key(StrTab *restrict o,
 		const char *restrict key, size_t len) {
 	size_t i;
 	size_t hash;
 	/*
 	 * Calculate DJB2 hash,
-	 * varied by adding "len".
+	 * varied by adding len.
 	 */
 	hash = 5381 + (len * 33);
 	for (i = 0; i < len; ++i) {
@@ -69,14 +60,14 @@ static size_t HashTab_hash_key(HashTab *restrict o,
  *
  * \return true, or false on allocation failure
  */
-static bool HashTab_extend(HashTab *restrict o) {
-	TabItem **items, **old_items = o->items;
+static bool StrTab_upsize(StrTab *restrict o) {
+	SAU_SymStr **items, **old_items = o->items;
 	size_t alloc, old_alloc = o->alloc;
 	size_t i;
 	alloc = (old_alloc > 0) ?
 		(old_alloc << 1) :
-		HASHTAB_ALLOC_INITIAL;
-	items = calloc(alloc, sizeof(TabItem*));
+		STRTAB_ALLOC_INITIAL;
+	items = calloc(alloc, sizeof(SAU_SymStr*));
 	if (!items)
 		return false;
 	o->alloc = alloc;
@@ -86,11 +77,11 @@ static bool HashTab_extend(HashTab *restrict o) {
 	 * Rehash entries
 	 */
 	for (i = 0; i < old_alloc; ++i) {
-		TabItem *item = old_items[i];
+		SAU_SymStr *item = old_items[i];
 		while (item != NULL) {
-			TabItem *prev_item;
+			SAU_SymStr *prev_item;
 			size_t hash;
-			hash = HashTab_hash_key(o, item->key, item->key_len);
+			hash = StrTab_hash_key(o, item->key, item->key_len);
 			/*
 			 * Before adding the entry to the new table, set
 			 * item->prev to the previous (if any) item with
@@ -115,29 +106,29 @@ static bool HashTab_extend(HashTab *restrict o) {
  *
  * Initializes the hash table if empty.
  *
- * \return TabItem, or NULL on allocation failure
+ * \return SAU_SymStr, or NULL on allocation failure
  */
-static TabItem *HashTab_unique_item(HashTab *restrict o,
+static SAU_SymStr *StrTab_unique_item(StrTab *restrict o,
 		SAU_MemPool *restrict memp,
 		const void *restrict key, size_t len, size_t extra) {
 	if (!key || len == 0)
 		return NULL;
 	if (o->count == (o->alloc / 2)) {
-		if (!HashTab_extend(o))
+		if (!StrTab_upsize(o))
 			return NULL;
 	}
 
-	size_t hash = HashTab_hash_key(o, key, len);
-	TabItem *item = o->items[hash];
+	size_t hash = StrTab_hash_key(o, key, len);
+	SAU_SymStr *item = o->items[hash];
 	while (item != NULL) {
 		if (item->key_len == len &&
 			!memcmp(item->key, key, len)) return item;
 		item = item->prev;
-#if SAU_HASHTAB_STATS
+#if SAU_SYMTAB_STATS
 		++collision_count;
 #endif
 	}
-	item = SAU_MemPool_alloc(memp, GET_TABITEM_SIZE(len + extra));
+	item = SAU_MemPool_alloc(memp, sizeof(SAU_SymStr) + (len + extra));
 	if (!item)
 		return NULL;
 	item->prev = o->items[hash];
@@ -150,7 +141,7 @@ static TabItem *HashTab_unique_item(HashTab *restrict o,
 
 struct SAU_SymTab {
 	SAU_MemPool *memp;
-	HashTab strtab;
+	StrTab strtab;
 };
 
 /**
@@ -174,29 +165,29 @@ SAU_SymTab *SAU_create_SymTab(SAU_MemPool *restrict mempool) {
 void SAU_destroy_SymTab(SAU_SymTab *restrict o) {
 	if (!o)
 		return;
-#if SAU_HASHTAB_STATS
+#if SAU_SYMTAB_STATS
 	printf("collision count: %zd\n", collision_count);
 #endif
-	fini_HashTab(&o->strtab);
+	fini_StrTab(&o->strtab);
 }
 
 /**
- * Add \p str to the string pool of the symbol table, unless already
- * present. Return the copy of \p str unique to the symbol table.
+ * Get the unique item held for \p str in the symbol table,
+ * adding \p str to the string pool unless already present.
  *
- * \return unique copy of \p str for instance, or NULL on allocation failure
+ * \return unique item for \p str, or NULL on allocation failure
  */
-const void *SAU_SymTab_pool_str(SAU_SymTab *restrict o,
+SAU_SymStr *SAU_SymTab_get_symstr(SAU_SymTab *restrict o,
 		const void *restrict str, size_t len) {
-	TabItem *item = HashTab_unique_item(&o->strtab, o->memp, str, len, 1);
-	return (item != NULL) ? item->key : NULL;
+	return StrTab_unique_item(&o->strtab, o->memp, str, len, 1);
 }
 
 /**
  * Add the first \p n strings from \p stra to the string pool of the
  * symbol table, except any already present. An array of pointers to
- * the unique string pool copies of all \p stra strings is allocated
- * and returned; it will be freed when the symbol table is destroyed.
+ * the unique string pool copies of all \p stra strings, followed by
+ * an extra NULL pointer, is allocated and returned; it is stored in
+ * the memory pool used by the symbol table.
  *
  * All strings in \p stra need to be null-terminated.
  *
@@ -206,7 +197,7 @@ const char **SAU_SymTab_pool_stra(SAU_SymTab *restrict o,
 		const char *const*restrict stra,
 		size_t n) {
 	const char **res_stra;
-	res_stra = SAU_MemPool_alloc(o->memp, sizeof(const char*) * n);
+	res_stra = SAU_MemPool_alloc(o->memp, sizeof(const char*) * (n + 1));
 	if (!res_stra)
 		return NULL;
 	for (size_t i = 0; i < n; ++i) {
@@ -217,32 +208,4 @@ const char **SAU_SymTab_pool_stra(SAU_SymTab *restrict o,
 		res_stra[i] = str;
 	}
 	return res_stra;
-}
-
-/**
- * Return value associated with string.
- *
- * \return value, or NULL if none
- */
-void *SAU_SymTab_get(SAU_SymTab *restrict o,
-		const void *restrict key, size_t len) {
-	TabItem *item = HashTab_unique_item(&o->strtab, o->memp, key, len, 1);
-	if (!item)
-		return NULL;
-	return item->data;
-}
-
-/**
- * Set value associated with string.
- *
- * \return previous value, or NULL if none
- */
-void *SAU_SymTab_set(SAU_SymTab *restrict o,
-		const void *restrict key, size_t len, void *restrict value) {
-	TabItem *item = HashTab_unique_item(&o->strtab, o->memp, key, len, 1);
-	if (!item)
-		return NULL;
-	void *old_value = item->data;
-	item->data = value;
-	return old_value;
 }
