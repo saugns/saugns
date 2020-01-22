@@ -1,87 +1,211 @@
 /* mgensys: Symbol table module.
- * Copyright (c) 2011, 2020 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2014, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
- * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
+ * This file and the software of which it is part is distributed under the
+ * terms of the GNU Lesser General Public License, either version 3 or (at
+ * your option) any later version, WITHOUT ANY WARRANTY, not even of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
- * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
- * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
- * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
- * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
- * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
- * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ * View the file COPYING for details, or if missing, see
+ * <http://www.gnu.org/licenses/>.
  */
 
-#include "../common.h"
 #include "symtab.h"
+#include "../mgensys.h" // config
 #include <string.h>
 #include <stdlib.h>
 
-/* a plain linked list is sufficient at present */
+#define STRTAB_ALLOC_INITIAL 1024
 
-typedef struct MGS_SymNode {
-  char *key;
-  void *value;
-  struct MGS_SymNode *next;
-} MGS_SymNode;
+#if MGS_SYMTAB_STATS
+static size_t collision_count = 0;
+#include <stdio.h>
+#endif
+
+typedef struct StrTab {
+	MGS_SymStr **items;
+	size_t count;
+	size_t alloc;
+} StrTab;
+
+static inline void fini_StrTab(StrTab *restrict o) {
+	free(o->items);
+}
+
+/*
+ * Return the hash of the given string \p key of lenght \p len.
+ *
+ * \return hash
+ */
+static size_t StrTab_hash_key(StrTab *restrict o,
+		const char *restrict key, size_t len) {
+	size_t i;
+	size_t hash;
+	/*
+	 * Calculate DJB2 hash,
+	 * varied by adding len.
+	 */
+	hash = 5381 + (len * 33);
+	for (i = 0; i < len; ++i) {
+		size_t c = key[i];
+		hash = ((hash << 5) + hash) ^ c;
+	}
+	hash &= (o->alloc - 1);
+	return hash;
+}
+
+/*
+ * Increase the size of the hash table.
+ *
+ * \return true, or false on allocation failure
+ */
+static bool StrTab_upsize(StrTab *restrict o) {
+	MGS_SymStr **items, **old_items = o->items;
+	size_t alloc, old_alloc = o->alloc;
+	size_t i;
+	alloc = (old_alloc > 0) ?
+		(old_alloc << 1) :
+		STRTAB_ALLOC_INITIAL;
+	items = calloc(alloc, sizeof(MGS_SymStr*));
+	if (!items)
+		return false;
+	o->alloc = alloc;
+	o->items = items;
+
+	/*
+	 * Rehash entries
+	 */
+	for (i = 0; i < old_alloc; ++i) {
+		MGS_SymStr *item = old_items[i];
+		while (item != NULL) {
+			MGS_SymStr *prev_item;
+			size_t hash;
+			hash = StrTab_hash_key(o, item->key, item->key_len);
+			/*
+			 * Before adding the entry to the new table, set
+			 * item->prev to the previous (if any) item with
+			 * the same hash in the new table. Done repeatedly,
+			 * the links are rebuilt, though not necessarily in
+			 * the same order.
+			 */
+			prev_item = item->prev;
+			item->prev = o->items[hash];
+			o->items[hash] = item;
+			item = prev_item;
+		}
+	}
+	free(old_items);
+	return true;
+}
+
+/*
+ * Get unique item for key in hash table, adding it if missing.
+ * If allocated, \p extra is added to the size of the node; use
+ * 1 to add a NULL-byte for a string key.
+ *
+ * Initializes the hash table if empty.
+ *
+ * \return MGS_SymStr, or NULL on allocation failure
+ */
+static MGS_SymStr *StrTab_unique_item(StrTab *restrict o,
+		MGS_MemPool *restrict memp,
+		const void *restrict key, size_t len, size_t extra) {
+	if (!key || len == 0)
+		return NULL;
+	if (o->count == (o->alloc / 2)) {
+		if (!StrTab_upsize(o))
+			return NULL;
+	}
+
+	size_t hash = StrTab_hash_key(o, key, len);
+	MGS_SymStr *item = o->items[hash];
+	while (item != NULL) {
+		if (item->key_len == len &&
+			!memcmp(item->key, key, len)) return item;
+		item = item->prev;
+#if MGS_SYMTAB_STATS
+		++collision_count;
+#endif
+	}
+	item = MGS_MemPool_alloc(memp, sizeof(MGS_SymStr) + (len + extra));
+	if (!item)
+		return NULL;
+	item->prev = o->items[hash];
+	o->items[hash] = item;
+	item->key_len = len;
+	memcpy(item->key, key, len);
+	++o->count;
+	return item;
+}
 
 struct MGS_SymTab {
-  MGS_SymNode *node;
+	MGS_MemPool *memp;
+	StrTab strtab;
 };
 
-MGS_SymTab *MGS_create_SymTab(void) {
-  MGS_SymTab *o = calloc(1, sizeof(MGS_SymTab));
-  return o;
+/**
+ * Create instance. Requires \p mempool to be a valid instance.
+ *
+ * \return instance, or NULL on allocation failure
+ */
+MGS_SymTab *MGS_create_SymTab(MGS_MemPool *restrict mempool) {
+	if (!mempool)
+		return NULL;
+	MGS_SymTab *o = calloc(1, sizeof(MGS_SymTab));
+	if (!o)
+		return NULL;
+	o->memp = mempool;
+	return o;
 }
 
-void MGS_destroy_SymTab(MGS_SymTab *o) {
-  MGS_SymNode *n = o->node;
-  while (n) {
-    MGS_SymNode *nn = n->next;
-    free(n->key);
-    free(n);
-    n = nn;
-  }
+/**
+ * Destroy instance.
+ */
+void MGS_destroy_SymTab(MGS_SymTab *restrict o) {
+	if (!o)
+		return;
+#if MGS_SYMTAB_STATS
+	printf("collision count: %zd\n", collision_count);
+#endif
+	fini_StrTab(&o->strtab);
 }
 
-void *MGS_SymTab_get(MGS_SymTab *o, const char *key) {
-  MGS_SymNode *n = o->node;
-  while (n) {
-    if (!strcmp(n->key, key))
-      return n->value;
-    n = n->next;
-  }
-  return 0;
+/**
+ * Get the unique item held for \p str in the symbol table,
+ * adding \p str to the string pool unless already present.
+ *
+ * \return unique item for \p str, or NULL on allocation failure
+ */
+MGS_SymStr *MGS_SymTab_get_symstr(MGS_SymTab *restrict o,
+		const void *restrict str, size_t len) {
+	return StrTab_unique_item(&o->strtab, o->memp, str, len, 1);
 }
 
-static MGS_SymNode *MGS_SymNode_alloc(const char *key, void *value) {
-  MGS_SymNode *o = calloc(1, sizeof(MGS_SymNode));
-  int len = strlen(key);
-  o->key = calloc(1, len + 1);
-  strcpy(o->key, key);
-  o->value = value;
-  return o;
-}
-
-void *MGS_SymTab_set(MGS_SymTab *o, const char *key, void *value) {
-  MGS_SymNode *n = o->node;
-  if (!n) {
-    o->node = MGS_SymNode_alloc(key, value);
-    return 0;
-  }
-  for (;;) {
-    if (!strcmp(n->key, key)) {
-      void *oldvalue = n->value;
-      n->value = value;
-      return oldvalue;
-    }
-    if (!n->next)
-      break;
-    n = n->next;
-  }
-  n->next = MGS_SymNode_alloc(key, value);
-  return 0;
+/**
+ * Add the first \p n strings from \p stra to the string pool of the
+ * symbol table, except any already present. An array of pointers to
+ * the unique string pool copies of all \p stra strings, followed by
+ * an extra NULL pointer, is allocated and returned; it is stored in
+ * the memory pool used by the symbol table.
+ *
+ * All strings in \p stra need to be null-terminated.
+ *
+ * \return array of pointers to unique strings, or NULL on allocation failure
+ */
+const char **MGS_SymTab_pool_stra(MGS_SymTab *restrict o,
+		const char *const*restrict stra,
+		size_t n) {
+	const char **res_stra;
+	res_stra = MGS_MemPool_alloc(o->memp, sizeof(const char*) * (n + 1));
+	if (!res_stra)
+		return NULL;
+	for (size_t i = 0; i < n; ++i) {
+		const char *str = MGS_SymTab_pool_str(o,
+				stra[i], strlen(stra[i]));
+		if (!str)
+			return NULL;
+		res_stra[i] = str;
+	}
+	return res_stra;
 }

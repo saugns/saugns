@@ -1,27 +1,49 @@
 /* mgensys: Symbol table module.
- * Copyright (c) 2011, 2020 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2014, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
- * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
+ * This file and the software of which it is part is distributed under the
+ * terms of the GNU Lesser General Public License, either version 3 or (at
+ * your option) any later version, WITHOUT ANY WARRANTY, not even of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
- * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
- * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
- * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
- * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
- * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
- * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ * View the file COPYING for details, or if missing, see
+ * <http://www.gnu.org/licenses/>.
  */
 
 #pragma once
+#include "../mempool.h"
+
+/**
+ * Item stored for each unique string associated with the symbol table.
+ */
+typedef struct MGS_SymStr {
+	struct MGS_SymStr *prev;
+	void *data;
+	size_t key_len;
+	char key[];
+} MGS_SymStr;
 
 struct MGS_SymTab;
 typedef struct MGS_SymTab MGS_SymTab;
 
-MGS_SymTab *MGS_create_SymTab(void);
-void MGS_destroy_SymTab(MGS_SymTab *o);
+MGS_SymTab *MGS_create_SymTab(MGS_MemPool *restrict mempool) mgsMalloclike;
+void MGS_destroy_SymTab(MGS_SymTab *restrict o);
 
-void *MGS_SymTab_get(MGS_SymTab *o, const char *key);
-void *MGS_SymTab_set(MGS_SymTab *o, const char *key, void *value);
+MGS_SymStr *MGS_SymTab_get_symstr(MGS_SymTab *restrict o,
+		const void *restrict str, size_t len);
+
+/**
+ * Get the unique copy of \p str held in the symbol table,
+ * adding \p str to the string pool unless already present.
+ *
+ * \return unique copy of \p str, or NULL on allocation failure
+ */
+static inline const void *MGS_SymTab_pool_str(MGS_SymTab *restrict o,
+		const void *restrict str, size_t len) {
+	MGS_SymStr *item = MGS_SymTab_get_symstr(o, str, len);
+	return (item != NULL) ? item->key : NULL;
+}
+const char **MGS_SymTab_pool_stra(MGS_SymTab *restrict o,
+		const char *const* restrict stra,
+		size_t n);

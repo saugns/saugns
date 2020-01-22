@@ -1,4 +1,4 @@
-/* mgensys: Common header.
+/* mgensys: Common header / Command-line interface.
  * Copyright (c) 2011, 2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -18,10 +18,21 @@
 #pragma once
 #include "ptrarr.h"
 
+/*
+ * Configuration options.
+ */
+
 #define MGS_CLINAME_STR "mgensys"
 #define MGS_VERSION_STR "v0.1-dev"
 
 #define MGS_DEFAULT_SRATE 96000
+
+/* Print symtab test statistics? */
+#define MGS_SYMTAB_STATS 0
+
+/*
+ * Command-line interface functions.
+ */
 
 size_t MGS_build(const MGS_PtrArr *restrict script_args, bool are_paths,
 		MGS_PtrArr *restrict prg_objs, bool print_info);

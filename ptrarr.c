@@ -16,7 +16,7 @@
  */
 
 #include "ptrarr.h"
-//#include "mempool.h"
+#include "mempool.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -106,7 +106,6 @@ bool MGS_PtrArr_memdup(MGS_PtrArr *restrict o, void ***restrict dst) {
 	return true;
 }
 
-#if 0 // re-add with mempool
 /**
  * Mempool-using variant of the
  * memdup function for the contents of the given array.
@@ -132,7 +131,6 @@ bool MGS_PtrArr_mpmemdup(MGS_PtrArr *restrict o, void ***restrict dst,
 	*dst = a;
 	return true;
 }
-#endif
 
 /**
  * Copy the array \p src to \p dst (clearing dst first if needed);

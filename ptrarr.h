@@ -54,7 +54,7 @@ struct MGS_MemPool;
 bool MGS_PtrArr_add(MGS_PtrArr *restrict o, void *restrict item);
 void MGS_PtrArr_clear(MGS_PtrArr *restrict o);
 bool MGS_PtrArr_memdup(MGS_PtrArr *restrict o, void ***restrict dst);
-//bool MGS_PtrArr_mpmemdup(MGS_PtrArr *restrict o, void ***restrict dst,
-//		struct MGS_MemPool *restrict mempool);
+bool MGS_PtrArr_mpmemdup(MGS_PtrArr *restrict o, void ***restrict dst,
+		struct MGS_MemPool *restrict mempool);
 void MGS_PtrArr_soft_copy(MGS_PtrArr *restrict dst,
 		const MGS_PtrArr *restrict src);

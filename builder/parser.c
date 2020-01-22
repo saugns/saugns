@@ -16,6 +16,7 @@
 #include "../math.h"
 #include "../help.h"
 #include "../loader/file.h"
+#include "../mempool.h"
 #include "../loader/symtab.h"
 #include <string.h>
 #include <stdlib.h>
@@ -36,6 +37,14 @@
 static uint8_t filter_symchar(MGS_File *restrict f mgsMaybeUnused,
                               uint8_t c) {
   return IS_SYMCHAR(c) ? c : 0;
+}
+
+bool MGS_init_LangOpt(MGS_LangOpt *restrict o, MGS_SymTab *restrict symt) {
+  o->wave_names = MGS_SymTab_pool_stra(symt, MGS_Wave_names,
+      MGS_WAVE_TYPES);
+  if (!o->wave_names)
+    return false;
+  return true;
 }
 
 typedef struct MGS_Parser {
@@ -88,7 +97,7 @@ static void skip_ws(MGS_Parser *restrict o) {
       MGS_File_skipline(o->f);
       c = MGS_File_GETC(o->f);
     } else {
-      MGS_File_UNGETC(o->f);
+      MGS_File_DECP(o->f);
       break;
     }
   }
@@ -113,8 +122,7 @@ typedef struct MGS_NodeData {
   MGS_ProgramNode *node; /* state for tentative node until end_node() */
   MGS_ProgramNodeChain *target;
   MGS_ProgramNode *target_last;
-  const char *setsym;
-  size_t setsym_len;
+  MGS_SymStr *setsym;
   /* timing/delay */
   uint8_t n_time_delay; // TODO: implement
   float n_delay_next;
@@ -129,7 +137,7 @@ static void new_node(MGS_NodeData *nd,
   MGS_ProgramNode *n;
   MGS_ProgramDurScope *dur = o->cur_dur;
   end_node(nd);
-  n = nd->node = calloc(1, sizeof(MGS_ProgramNode));
+  n = nd->node = MGS_MemPool_alloc(p->mem, sizeof(MGS_ProgramNode));
   n->dur = o->cur_dur;
   n->ref_prev = ref_prev;
   n->type = type;
@@ -203,7 +211,6 @@ static void new_node(MGS_NodeData *nd,
 
 static void end_node(MGS_NodeData *nd) {
   MGS_Parser *o = nd->o;
-  MGS_Program *p = o->prg;
   MGS_ProgramNode *n = nd->node;
   if (!n)
     return; /* nothing to do */
@@ -243,9 +250,8 @@ static void end_node(MGS_NodeData *nd) {
     n->amp *= o->n_ampmult;
 
   if (nd->setsym) {
-    MGS_SymTab_set(p->symtab, nd->setsym, n);
+    nd->setsym->data = n;
     nd->setsym = NULL;
-    nd->setsym_len = 0;
   }
 }
 
@@ -255,7 +261,7 @@ static void new_durscope(MGS_NodeData *nd, char from_c) {
   MGS_Parser *o = nd->o;
   MGS_Program *p = o->prg;
   MGS_ProgramDurScope *dur, *prev_dur = o->cur_dur;
-  dur = calloc(1, sizeof(MGS_ProgramDurScope));
+  dur = MGS_MemPool_alloc(p->mem, sizeof(MGS_ProgramDurScope));
   if (prev_dur != NULL) {
     end_durscope(nd);
     if (from_c != 0 && !prev_dur->first_node)
@@ -289,7 +295,8 @@ static void MGS_fini_NodeData(MGS_NodeData *nd) {
   end_node(nd);
 }
 
-typedef float (*NumSym_f)(MGS_Parser *restrict o);
+/* \return length if number read and \p val set */
+typedef size_t (*NumSym_f)(MGS_Parser *restrict o, double *restrict val);
 
 typedef struct NumParser {
   MGS_Parser *pr;
@@ -317,25 +324,24 @@ static double scan_num_r(NumParser *restrict o, uint8_t pri, uint32_t level) {
   }
   if (c == '(') {
     num = scan_num_r(o, NUMEXP_SUB, level+1);
-    if (minus) num = -num;
-    if (level == 0) return num;
-    goto EVAL;
-  }
-  if (o->numsym_f && IS_ALPHA(c)) {
-    MGS_File_UNGETC(pr->f);
-    num = o->numsym_f(pr);
-    if (isnan(num))
+  } else if (o->numsym_f && IS_ALPHA(c)) {
+    MGS_File_DECP(pr->f);
+    size_t read_len = o->numsym_f(pr, &num);
+    if (read_len == 0)
       return NAN;
-    if (minus) num = -num;
+    c = MGS_File_RETC(pr->f);
+    if (IS_SYMCHAR(c)) {
+      MGS_File_UNGETN(pr->f, read_len);
+      return NAN;
+    }
   } else {
+    MGS_File_DECP(pr->f);
     size_t read_len;
-    MGS_File_UNGETC(pr->f);
     MGS_File_getd(pr->f, &num, false, &read_len);
     if (read_len == 0)
       return NAN;
-    if (minus) num = -num;
   }
-EVAL:
+  if (minus) num = -num;
   if (level == 0 || pri == NUMEXP_NUM)
     return num; /* defer all */
   for (;;) {
@@ -379,7 +385,7 @@ EVAL:
     if (isnan(num)) goto DEFER;
   }
 DEFER:
-  MGS_File_UNGETC(pr->f);
+  MGS_File_DECP(pr->f);
   return num;
 }
 static mgsNoinline bool scan_num(MGS_Parser *restrict o,
@@ -410,83 +416,75 @@ static mgsNoinline bool scan_timeval(MGS_Parser *restrict o,
   return true;
 }
 
-static int32_t strfind(MGS_File *restrict f, const char *const*restrict str) {
-  int32_t ret;
-  size_t i, len, pos, matchpos;
-  size_t strc;
-  const char **s;
-  for (len = 0, strc = 0; str[strc]; ++strc)
-    if ((i = strlen(str[strc])) > len) len = i;
-  s = malloc(sizeof(const char*) * strc);
-  for (i = 0; i < strc; ++i)
-    s[i] = str[i];
-  ret = -1;
-  pos = matchpos = 0;
-  for (;;) {
-    uint8_t c = MGS_File_GETC(f);
-    for (i = 0; i < strc; ++i) {
-      if (!s[i]) continue;
-      else if (!s[i][pos]) {
-        s[i] = 0;
-        ret = i;
-        matchpos = pos-1;
-      } else if (c != s[i][pos]) {
-        s[i] = 0;
-      }
-    }
-    if (c <= MGS_FILE_MARKER) break;
-    if (pos == len) break;
-    ++pos;
-  }
-  free(s);
-  MGS_File_UNGETN(f, (pos-matchpos));
-  return ret;
-}
-
-static int32_t scan_wavetype(MGS_Parser *restrict o, char from_c) {
-  int32_t wave = strfind(o->f, MGS_Wave_names);
-  if (wave < 0) {
-    warning(o, "invalid wave type; available types are:", from_c);
-    MGS_print_names(MGS_Wave_names, "\t", stderr);
-  }
-  return wave;
-}
-
 #define SYMKEY_MAXLEN 79
 #define SYMKEY_MAXLEN_A "79"
-static const char *scan_sym(MGS_Parser *o, size_t *len, char op) {
-  char nosym_msg[] = "ignoring ? without symbol name";
-  size_t read_len = 0;
+static bool scan_sym(MGS_Parser *o, MGS_SymStr **sym, char pos_c) {
+  size_t len = 0;
   bool truncated;
-  nosym_msg[9] = op; /* replace ? */
   truncated = !MGS_File_getstr(o->f, o->symbuf, SYMKEY_MAXLEN + 1,
-      &read_len, filter_symchar);
-  if (read_len == 0) {
-    warning(o, nosym_msg, op);
-    return NULL;
+      &len, filter_symchar);
+  if (len == 0) {
+    warning(o, "symbol name missing", pos_c);
+    return false;
   }
-  if (len != NULL)
-    *len = read_len;
+  *sym = MGS_SymTab_get_symstr(o->prg->symt, o->symbuf, len);
   if (truncated) {
-    warning(o, "limiting symbol name to "SYMKEY_MAXLEN_A" characters", op);
-    read_len += MGS_File_skipstr(o->f, filter_symchar);
+    warning(o, "limiting symbol name to "SYMKEY_MAXLEN_A" characters", pos_c);
+    len += MGS_File_skipstr(o->f, filter_symchar);
   }
-  return o->symbuf;
+  return true;
 }
 
-static float numsym_channel(MGS_Parser *restrict o) {
+static bool scan_symafind(MGS_Parser *restrict o,
+                          const char *const*restrict stra,
+                          size_t *restrict found_i, char pos_c) {
+  size_t len = 0;
+  bool truncated = !MGS_File_getstr(o->f, o->symbuf, SYMKEY_MAXLEN + 1,
+      &len, filter_symchar);
+  if (len == 0) {
+    warning(o, "named value missing", pos_c);
+    return false;
+  }
+  const char *key = MGS_SymTab_pool_str(o->prg->symt, o->symbuf, len);
+  if (truncated) {
+    warning(o, "limiting named value to "SYMKEY_MAXLEN_A" characters", pos_c);
+    len += MGS_File_skipstr(o->f, filter_symchar);
+  }
+  for (size_t i = 0; stra[i] != NULL; ++i) {
+    if (stra[i] == key) {
+      *found_i = i;
+      return true;
+    }
+  }
+  return false;
+}
+
+static size_t numsym_channel(MGS_Parser *restrict o, double *restrict val) {
   char c = MGS_File_GETC(o->f);
   switch (c) {
   case 'C':
-    return 0.f;
+    *val = 0.f;
+    return 1;
   case 'L':
-    return -1.f;
+    *val = -1.f;
+    return 1;
   case 'R':
-    return 1.f;
+    *val = 1.f;
+    return 1;
   default:
     MGS_File_DECP(o->f);
-    return NAN;
+    return 0;
   }
+}
+
+static bool scan_wavetype(MGS_Parser *restrict o,
+    size_t *restrict found_id, char pos_c) {
+  const char *const *names = o->prg->lopt.wave_names;
+  if (scan_symafind(o, names, found_id, pos_c))
+    return true;
+  warning(o, "invalid wave type value; available are:", pos_c);
+  MGS_print_names(names, "\t", stderr);
+  return false;
 }
 
 static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modtype);
@@ -494,9 +492,13 @@ static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modt
 static MGS_Program* parse(MGS_File *f, MGS_Parser *o) {
   memset(o, 0, sizeof(MGS_Parser));
   o->f = f;
-  o->prg = calloc(1, sizeof(MGS_Program));
-  o->prg->symtab = MGS_create_SymTab();
+  MGS_MemPool *mem = MGS_create_MemPool(0);
+  MGS_SymTab *symt = MGS_create_SymTab(mem);
+  o->prg = MGS_MemPool_alloc(mem, sizeof(MGS_Program));
+  o->prg->mem = mem;
+  o->prg->symt = symt;
   o->prg->name = f->path;
+  MGS_init_LangOpt(&o->prg->lopt, symt);
   o->symbuf = calloc(SYMKEY_MAXLEN + 1, sizeof(char));
   o->line = 1;
   o->n_pan = 0.f; /* default until changed */
@@ -589,8 +591,8 @@ static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modt
       o->setdef = o->level + 1;
       break;
     case 'W': {
-      int wave = scan_wavetype(o, c);
-      if (wave < 0) break;
+      size_t wave;
+      if (!scan_wavetype(o, &wave, c)) break;
       new_node(&nd, NULL, MGS_TYPE_OP);
       nd.node->wave = wave;
       o->setnode = o->level + 1;
@@ -606,11 +608,11 @@ static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modt
       break;
     case '\'':
       end_node(&nd);
-      if (nd.setsym) {
+      if (nd.setsym != NULL) {
         warning(o, "ignoring label assignment to label assignment", c);
         break;
       }
-      nd.setsym = scan_sym(o, &nd.setsym_len, '\'');
+      scan_sym(o, &nd.setsym, '\'');
       break;
     case ':':
       end_node(&nd);
@@ -618,9 +620,9 @@ static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modt
         warning(o, "ignoring label assignment to label reference", c);
       else if (chain)
         goto INVALID;
-      nd.setsym = scan_sym(o, &nd.setsym_len, ':');
+      if (!scan_sym(o, &nd.setsym, ':')) break;
       if (nd.setsym != NULL) {
-        MGS_ProgramNode *ref = MGS_SymTab_get(o->prg->symtab, nd.setsym);
+        MGS_ProgramNode *ref = nd.setsym->data;
         if (!ref)
           warning(o, "ignoring reference to undefined label", c);
         else {
@@ -738,8 +740,8 @@ static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modt
     case 'w': {
       if (o->setdef > o->setnode || o->setnode <= 0)
         goto INVALID;
-      int wave = scan_wavetype(o, c);
-      if (wave < 0) break;
+      size_t wave;
+      if (!scan_wavetype(o, &wave, c)) break;
       nd.node->wave = wave;
       break; }
     default:
@@ -848,17 +850,6 @@ ERROR:
 void MGS_destroy_Program(MGS_Program *o) {
   if (!o)
     return;
-  MGS_ProgramNode *n = o->node_list;
-  while (n) {
-    MGS_ProgramNode *nn = n->next;
-    free(n);
-    n = nn;
-  }
-  MGS_ProgramDurScope *s = o->dur_list;
-  while (s) {
-    MGS_ProgramDurScope *ns = s->next;
-    free(s);
-    s = ns;
-  }
-  MGS_destroy_SymTab(o->symtab);
+  MGS_destroy_SymTab(o->symt);
+  MGS_destroy_MemPool(o->mem);
 }

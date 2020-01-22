@@ -26,6 +26,13 @@
 #include <stdbool.h>
 
 /*
+ * Debug build options.
+ */
+
+/* Debug-friendly memory handling? (Slower.) */
+//#define MGS_MEM_DEBUG 1
+
+/*
  * Keyword-like macros.
  */
 

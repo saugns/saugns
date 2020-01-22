@@ -10,16 +10,14 @@ OBJ=loader/file.o loader/symtab.o \
     builder/parser.o builder/builder.o \
     renderer/audiodev.o renderer/wavfile.o renderer/renderer.o \
     interp/generator.o \
-    common.o help.o ptrarr.o wave.o \
+    common.o mempool.o ptrarr.o \
+    wave.o help.o \
     mgensys.o
 
 all: mgensys
 
 clean:
 	rm -f $(OBJ) mgensys
-
-common.o: common.c common.h
-	$(CC) -c $(CFLAGS) common.c
 
 mgensys: $(OBJ)
 	@UNAME="`uname -s`"; \
@@ -37,11 +35,16 @@ mgensys: $(OBJ)
 		$(CC) $(OBJ) $(LFLAGS) -o mgensys; \
 	fi
 
+# Objects...
+
 builder/builder.o: builder/builder.c common.h mgensys.h ptrarr.h
 	$(CC) -c $(CFLAGS) builder/builder.c -o builder/builder.o
 
-builder/parser.o: builder/parser.c common.h help.h loader/file.h loader/symtab.h mgensys.h program.h wave.h
+builder/parser.o: builder/parser.c common.h help.h loader/file.h loader/symtab.h mempool.h mgensys.h program.h wave.h
 	$(CC) -c $(CFLAGS) builder/parser.c -o builder/parser.o
+
+common.o: common.c common.h
+	$(CC) -c $(CFLAGS) common.c
 
 help.o: common.h help.c help.h wave.h
 	$(CC) -c $(CFLAGS) help.c
@@ -52,7 +55,7 @@ interp/generator.o: common.h interp/generator.c interp/osc.h math.h mgensys.h pr
 loader/file.o: common.h loader/file.c loader/file.h
 	$(CC) -c $(CFLAGS) loader/file.c -o loader/file.o
 
-loader/symtab.o: common.h loader/symtab.c loader/symtab.h
+loader/symtab.o: common.h loader/symtab.c loader/symtab.h mempool.h mgensys.h
 	$(CC) -c $(CFLAGS) loader/symtab.c -o loader/symtab.o
 
 renderer/audiodev.o: common.h renderer/audiodev.c renderer/audiodev.h renderer/audiodev/*.c
@@ -64,10 +67,13 @@ renderer/renderer.o: common.h renderer/audiodev.h renderer/renderer.c renderer/w
 renderer/wavfile.o: common.h renderer/wavfile.c renderer/wavfile.h
 	$(CC) -c $(CFLAGS) renderer/wavfile.c -o renderer/wavfile.o
 
+mempool.o: common.h mempool.c mempool.h
+	$(CC) -c $(CFLAGS) mempool.c
+
 mgensys.o: common.h help.h mgensys.c mgensys.h ptrarr.h
 	$(CC) -c $(CFLAGS) mgensys.c
 
-ptrarr.o: common.h ptrarr.c ptrarr.h
+ptrarr.o: common.h mempool.h ptrarr.c ptrarr.h
 	$(CC) -c $(CFLAGS) ptrarr.c
 
 wave.o: common.h math.h wave.c wave.h
