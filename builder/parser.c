@@ -48,7 +48,6 @@ typedef struct MGS_Parser {
   uint32_t level;
   uint32_t setdef, setnode;
   uint32_t nestedc;
-  MGS_ProgramNode *nested; /* list added to end of top nodes at end of parsing */
   MGS_ProgramNode *last_top, *last_nested;
   MGS_ProgramNode *undo_last;
   /* settings/ops */
@@ -124,11 +123,13 @@ typedef struct NodeData {
 
 static void end_node(MGS_Parser *o, NodeData *nd);
 
-static void new_node(MGS_Parser *o, NodeData *nd, MGS_ProgramNodeChain *target, uint8_t type) {
+static void new_node(MGS_Parser *o, NodeData *nd,
+    MGS_ProgramNodeChain *target, MGS_ProgramNode *ref_prev, uint8_t type) {
   MGS_Program *p = o->prg;
   MGS_ProgramNode *n;
   end_node(o, nd);
   n = nd->node = calloc(1, sizeof(MGS_ProgramNode));
+  n->ref_prev = ref_prev;
   nd->target = target;
   n->type = type;
   /* defaults */
@@ -139,16 +140,29 @@ static void new_node(MGS_Parser *o, NodeData *nd, MGS_ProgramNodeChain *target, 
   else if (type == MGS_TYPE_NESTED)
     n->time = o->n_time;
   n->freq = o->n_freq;
+  if (ref_prev != NULL) {
+    /* time is not copied */
+    n->wave = ref_prev->wave;
+    n->mode = ref_prev->mode;
+    n->amp = ref_prev->amp;
+    n->dynamp = ref_prev->dynamp;
+    n->freq = ref_prev->freq;
+    n->dynfreq = ref_prev->dynfreq;
+    n->attr = ref_prev->attr;
+    n->pmod = ref_prev->pmod;
+    n->fmod = ref_prev->fmod;
+    n->amod = ref_prev->amod;
+  }
 
   /* tentative linking */
   if (!nd->target) {
-    if (!p->nodelist)
-      p->nodelist = n;
+    if (!p->top_list)
+      p->top_list = n;
     else
       o->last_top->next = n;
   } else {
-    if (!o->nested)
-      o->nested = n;
+    if (!p->nested_list)
+      p->nested_list = n;
     else
       o->last_nested->next = n;
     n->id = o->nestedc++;
@@ -175,31 +189,34 @@ static void end_node(MGS_Parser *o, NodeData *nd) {
   if (!n)
     return; /* nothing to do */
   nd->node = 0;
-  if (n->type == MGS_TYPE_SETTOP ||
-      n->type == MGS_TYPE_SETNESTED) {
+  if (!n->ref_prev) {
+    n->values = MGS_PARAM_MASK;
+  } else {
     /* check what the set-node changes */
-    MGS_ProgramNode *ref = n->spec.set.ref;
+    MGS_ProgramNode *ref = n->ref_prev;
     /* MGS_TIME set when time set */
+    if (n->wave != ref->wave)
+      n->values |= MGS_WAVE;
     if (n->freq != ref->freq)
-      n->spec.set.values |= MGS_FREQ;
+      n->values |= MGS_FREQ;
     if (n->dynfreq != ref->dynfreq)
-      n->spec.set.values |= MGS_DYNFREQ;
+      n->values |= MGS_DYNFREQ;
     if (n->phase != ref->phase)
-      n->spec.set.values |= MGS_PHASE;
+      n->values |= MGS_PHASE;
     if (n->amp != ref->amp)
-      n->spec.set.values |= MGS_AMP;
+      n->values |= MGS_AMP;
     if (n->dynamp != ref->dynamp)
-      n->spec.set.values |= MGS_DYNAMP;
+      n->values |= MGS_DYNAMP;
     if (n->attr != ref->attr)
-      n->spec.set.values |= MGS_ATTR;
+      n->values |= MGS_ATTR;
     if (n->amod.chain != ref->amod.chain)
-      n->spec.set.mods |= MGS_AMODS;
+      n->values |= MGS_AMODS;
     if (n->fmod.chain != ref->fmod.chain)
-      n->spec.set.mods |= MGS_FMODS;
+      n->values |= MGS_FMODS;
     if (n->pmod.chain != ref->pmod.chain)
-      n->spec.set.mods |= MGS_PMODS;
+      n->values |= MGS_PMODS;
 
-    if (!n->spec.set.values && !n->spec.set.mods) {
+    if (!n->values) {
       /* Remove no-operation set node; made simpler
        * by all set nodes being top nodes.
        */
@@ -213,14 +230,13 @@ static void end_node(MGS_Parser *o, NodeData *nd) {
   }
 
   if (!nd->target) {
-    n->flag |= MGS_FLAG_EXEC;
     o->last_top = n;
     n->id = p->topc++;
   } else {
     if (!nd->target->chain)
       nd->target->chain = n;
     else
-      nd->last->spec.nested.link = n;
+      nd->last->nested_next = n;
     ++nd->target->count;
     /*o->last_nested = n;*/ /* already done */
   }
@@ -439,9 +455,6 @@ static MGS_Program* parse(MGS_File *f, MGS_Parser *o) {
   o->n_ratio = 1.f; /* default until changed */
   parse_level(o, 0, 0);
   free(o->symbuf);
-  /* concatenate linked lists */
-  if (o->last_top)
-    o->last_top->next = o->nested;
   return o->prg;
 }
 
@@ -523,7 +536,7 @@ static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modt
       o->n_mode = MGS_MODE_CENTER;
       break;
     case 'E':
-      new_node(o, &nd, 0, MGS_TYPE_ENV);
+      new_node(o, &nd, 0, NULL, MGS_TYPE_ENV);
       o->setnode = o->level + 1;
       break;
     case 'L':
@@ -540,7 +553,7 @@ static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modt
     case 'W': {
       int wave = scan_wavetype(o, c);
       if (wave < 0) break;
-      new_node(o, &nd, chain, (chain ? MGS_TYPE_NESTED : MGS_TYPE_TOP));
+      new_node(o, &nd, chain, NULL, (chain ? MGS_TYPE_NESTED : MGS_TYPE_TOP));
       nd.node->wave = wave;
       o->setnode = o->level + 1;
       break; }
@@ -577,31 +590,7 @@ static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modt
         if (!ref)
           warning(o, "ignoring reference to undefined label", c);
         else {
-          uint32_t type;
-          switch (ref->type) {
-          case MGS_TYPE_TOP:
-          case MGS_TYPE_SETTOP:
-            type = MGS_TYPE_SETTOP;
-            break;
-          case MGS_TYPE_NESTED:
-          case MGS_TYPE_SETNESTED:
-            type = MGS_TYPE_SETNESTED;
-            break;
-          default:
-            type = 0; /* silence warning */
-          }
-          new_node(o, &nd, 0, type);
-          nd.node->spec.set.ref = ref;
-          nd.node->wave = ref->wave;
-          nd.node->mode = ref->mode;
-          nd.node->amp = ref->amp;
-          nd.node->dynamp = ref->dynamp;
-          nd.node->freq = ref->freq;
-          nd.node->dynfreq = ref->dynfreq;
-          nd.node->attr = ref->attr;
-          nd.node->pmod = ref->pmod;
-          nd.node->fmod = ref->fmod;
-          nd.node->amod = ref->amod;
+          new_node(o, &nd, 0, ref, ref->type);
           o->setnode = o->level + 1;
         }
       }
@@ -696,9 +685,7 @@ static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modt
       } else if (o->setnode > 0) {
         if (!scan_num(o, NULL, &f)) goto INVALID;
         nd.node->time = f;
-        if (nd.node->type == MGS_TYPE_SETTOP ||
-            nd.node->type == MGS_TYPE_SETNESTED)
-          nd.node->spec.set.values |= MGS_TIME;
+        nd.node->values |= MGS_TIME;
       } else
         goto INVALID;
       break;
@@ -708,9 +695,6 @@ static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modt
       int wave = scan_wavetype(o, c);
       if (wave < 0) break;
       nd.node->wave = wave;
-      if (nd.node->type == MGS_TYPE_SETTOP ||
-          nd.node->type == MGS_TYPE_SETNESTED)
-        nd.node->spec.set.values |= MGS_WAVE;
       break; }
     default:
     INVALID:
@@ -756,7 +740,13 @@ ERROR:
 void MGS_destroy_Program(MGS_Program *o) {
   if (!o)
     return;
-  MGS_ProgramNode *n = o->nodelist;
+  MGS_ProgramNode *n = o->top_list;
+  while (n) {
+    MGS_ProgramNode *nn = n->next;
+    free(n);
+    n = nn;
+  }
+  n = o->nested_list;
   while (n) {
     MGS_ProgramNode *nn = n->next;
     free(n);
