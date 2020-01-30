@@ -47,6 +47,7 @@ enum {
   MGS_AMP = 1<<8,
   MGS_DYNAMP = 1<<9,
   MGS_ATTR = 1<<10,
+  MGS_MODS_MASK = (1<<3) - 1,
   MGS_PARAM_MASK = (1<<11) - 1
 };
 
@@ -69,9 +70,8 @@ typedef struct MGS_ProgramNode {
 struct MGS_SymTab;
 
 struct MGS_Program {
-  MGS_ProgramNode *top_list;
-  MGS_ProgramNode *nested_list;
+  MGS_ProgramNode *node_list;
   uint32_t nodec;
-  uint32_t topc; /* nodes >= topc are nested ones, ids starting over from 0 */
+  uint32_t topc;
   struct MGS_SymTab *symtab;
 };

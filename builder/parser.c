@@ -47,8 +47,7 @@ typedef struct MGS_Parser {
   /* node state */
   uint32_t level;
   uint32_t setdef, setnode;
-  uint32_t nestedc;
-  MGS_ProgramNode *last_top, *last_nested;
+  MGS_ProgramNode *last_node, *last_top;
   MGS_ProgramNode *undo_last;
   /* settings/ops */
   uint8_t n_mode;
@@ -155,18 +154,14 @@ static void new_node(MGS_Parser *o, NodeData *nd,
   }
 
   /* tentative linking */
-  if (!nd->target) {
-    if (!p->top_list)
-      p->top_list = n;
-    else
-      o->last_top->next = n;
-  } else {
-    if (!p->nested_list)
-      p->nested_list = n;
-    else
-      o->last_nested->next = n;
-    n->id = o->nestedc++;
-  }
+  n->id = p->nodec;
+  ++p->nodec;
+  if (!p->node_list)
+    p->node_list = n;
+  else
+    o->last_node->next = n;
+  o->undo_last = o->last_node;
+  o->last_node = n;
 
   /* prepare timing adjustment */
   nd->n_add_delay += nd->n_next_add_delay;
@@ -176,11 +171,6 @@ static void new_node(MGS_Parser *o, NodeData *nd,
     nd->n_time_delay = 0;
   }
   nd->n_next_add_delay = 0.f;
-
-  if (nd->target) {
-    o->undo_last = o->last_nested;
-    o->last_nested = n; /* can't wait due to recursion for nesting */
-  }
 }
 
 static void end_node(MGS_Parser *o, NodeData *nd) {
@@ -190,7 +180,7 @@ static void end_node(MGS_Parser *o, NodeData *nd) {
     return; /* nothing to do */
   nd->node = 0;
   if (!n->ref_prev) {
-    n->values = MGS_PARAM_MASK;
+    n->values |= MGS_PARAM_MASK & ~MGS_MODS_MASK;
   } else {
     /* check what the set-node changes */
     MGS_ProgramNode *ref = n->ref_prev;
@@ -220,10 +210,9 @@ static void end_node(MGS_Parser *o, NodeData *nd) {
       /* Remove no-operation set node; made simpler
        * by all set nodes being top nodes.
        */
-      if (o->last_nested == n)
-        o->last_nested = o->undo_last;
-      if (o->last_top == n)
-        o->last_top->next = 0;
+      o->undo_last->next = NULL;
+      o->last_node = o->undo_last;
+      --p->nodec;
       free(n);
       return;
     }
@@ -231,17 +220,15 @@ static void end_node(MGS_Parser *o, NodeData *nd) {
 
   if (!nd->target) {
     o->last_top = n;
-    n->id = p->topc++;
+    ++p->topc;
   } else {
     if (!nd->target->chain)
       nd->target->chain = n;
     else
       nd->last->nested_next = n;
+    nd->last = n;
     ++nd->target->count;
-    /*o->last_nested = n;*/ /* already done */
   }
-  nd->last = n;
-  ++p->nodec;
 
   if (n->type != MGS_TYPE_NESTED) /* don't mess with modulation depth */
     n->amp *= o->n_ampmult;
@@ -740,13 +727,7 @@ ERROR:
 void MGS_destroy_Program(MGS_Program *o) {
   if (!o)
     return;
-  MGS_ProgramNode *n = o->top_list;
-  while (n) {
-    MGS_ProgramNode *nn = n->next;
-    free(n);
-    n = nn;
-  }
-  n = o->nested_list;
+  MGS_ProgramNode *n = o->node_list;
   while (n) {
     MGS_ProgramNode *nn = n->next;
     free(n);
