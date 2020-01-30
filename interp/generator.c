@@ -139,10 +139,11 @@ static void upsize_bufs(MGS_Generator *o, SoundNode *n) {
   }
 }
 
-static void init_for_nodelist(MGS_Generator *o, MGS_ProgramNode *step,
-    size_t from, size_t to, Data **node_data) {
+static void init_for_nodelist(MGS_Generator *o, MGS_ProgramNode *node_list) {
   uint32_t srate = o->srate;
-  for (size_t i = from; i < to; ++i) {
+  Data *node_data = o->node_data;
+  size_t i = 0;
+  for (MGS_ProgramNode *step = node_list; step != NULL; step = step->next) {
     IndexNode *indn = &o->index_nodes[i];
     RunNode *runn = &o->run_nodes[i];
     uint32_t delay = step->delay * srate;
@@ -171,7 +172,7 @@ static void init_for_nodelist(MGS_Generator *o, MGS_ProgramNode *step,
       sndn_id = o->index_nodes[ref->id].sndn_id;
     }
     UpdateNode *updn = &o->update_nodes[o->updn_count];
-    Data *set = *node_data;
+    Data *set = node_data;
     updn->values = step->values;
     updn->sndn_id = sndn_id;
     updn->data = set;
@@ -209,18 +210,21 @@ static void init_for_nodelist(MGS_Generator *o, MGS_ProgramNode *step,
       (*set++).i = step->pmod.chain->id;
     }
     ++o->updn_count;
-    *node_data += count_flags(step->values);
+    node_data += count_flags(step->values);
+    if (set != node_data) {
+      MGS_warning("generator", "node %zd data value count off by %d",
+          i, (int)(set - node_data));
+    }
     runn->node = updn;
     runn->pos = -delay;
     runn->type = MGS_RUN_UPDATE;
-    step = step->next;
+    ++i;
   }
 }
 
 MGS_Generator* MGS_create_Generator(const MGS_Program *prg, uint32_t srate) {
   MGS_Generator *o;
   MGS_ProgramNode *step;
-  Data *node_data;
   size_t runn_count = prg->nodec;
   size_t sndn_count = 0; // for allocation, not assigned to field
   size_t updn_count = prg->nodec; // for allocation, not assigned to field
@@ -242,8 +246,7 @@ MGS_Generator* MGS_create_Generator(const MGS_Program *prg, uint32_t srate) {
   o->update_nodes = calloc(updn_count, sizeof(UpdateNode));
   o->node_data = calloc(data_count, sizeof(Data));
   MGS_global_init_Wave();
-  node_data = o->node_data;
-  init_for_nodelist(o, prg->node_list, 0, prg->nodec, &node_data);
+  init_for_nodelist(o, prg->node_list);
   /* mods init part two - give proper entries */
   for (size_t i = 0; i < sndn_count; ++i) {
     SoundNode *sndn = &o->sound_nodes[i];
