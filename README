@@ -9,47 +9,54 @@ saugns program.)
 The program as a whole is licensed under LGPL-3.0+, see COPYING for details.
 Various smaller files are permissively licensed, see their heading comments.
 
-Script syntax:
+Script syntax
+-------------
 
-Whitespace is not allowed within names that come after the initial letter of
-an operation, such as sin, tri. Nor is it allowed within numbers. Apart from
-this, spaces and tabs may be freely placed, or - not recommended - omitted.
+Values can be of several main types, each with its own syntax:
+ * Numbers.
+ * Objects.
+ * Arrays.
 
-Newlines terminate steps, though a new step will also terminate the previous
-one allowing multiple steps on one line.
+Non-negative numbers can be written directly. Within parentheses, conventional
+infix expressions can be used, allowing the signs + and -, and arithmetic with
++, -, *, /, and ^ (to the power of). Parentheses can be nested, and multiplied
+in the conventional way, e.g. (1 + 2(5)) makes 11. Numbers can be written with
+or without a decimal point, and leading zeroes can freely be added or removed.
 
-< and > allow nesting of scope; the step prior to the < remains in scope
-until new steps are given, and a newline or a > will return to the step for
-which the < was given.
+Object types, e.g. "W" (Wave oscillator), have one-letter uppercase names. To
+create an instance, the letter is written, followed by any required argument.
+Additional parameters have one-letter lowercase names, optionally written for
+assigning non-default value(s).
 
-Parameters with nesting use { and } instead, differentiating the two, though
-such nesting also allows newlines.
+The letter "S" behaves like an object type, but is used to set global options.
 
-When a number is given for a parameter, specifying it within parentheses will
-make the syntax freer, allowing mathematical operations and further nesting of
-parentheses. Whitespace including newlines may be freely placed until the
-final closing parenthesis.
+Arrays of objects are created using curly brackets ("{" and "}"), and used to
+set modulators. They are not currently allowed in other contexts.
 
-* Operations consist of a name followed by optional arguments for parameters.
-* Arguments are given for an operation.
-* Operators affect operations much like arguments, but may be more freely
-  placed and do not belong to the present operation.
+A newline ends the scope for assigning values to an object, unless within
+parentheses or brackets part of a value. "<" and ">" allow nesting the scope
+for value assignments; the object prior to the < remains in scope until new
+objects are given, and a newline or a > will return to the object for which
+the < was given.
 
-Operations will output audio at the same time unless time shifts/delays are
-involved. Each delaying will delay (shift the time of) all future operations.
+Each object instance and value assignment has a time position, beginning at
+0 seconds. Time delay modifiers advance the time position.
 
-The following operations are supported:
+The following objects are supported:
 
 S:
 	Set default value or other global option in the script.
 	a	Amplitude multiplier for all carrier waves. Starts at 1.0.
 		Effectively a global volume control.
+	c	Default channel mixing value. Starts at 0.0, i.e. C (center).
+		Useful as a main way of setting the parameter value;
+		see "Channel mixing values" for more.
 	f	Default frequency in Hz. Starts at 100.0.
 	r	Default frequency ratio. Starts at 1.0.
 	t	Default time duration in seconds. Starts at 1.0.
 
 Wsin, Wsqr, W...:
-	Play wave; see "Wave types" for all types.
+	Wave oscillator; see "Wave types" for all types.
 	The supported parameters are...
 	t	Time duration in seconds. If no t setting given, default time
 		depends on context - either scaling to fit the duration of
@@ -78,6 +85,7 @@ Wsin, Wsqr, W...:
 		per-sample sum of which is used to phase-modulate the carrier,
 		be it the final carrier or in turn another modulator.
 	w	Change wave; see "Wave types" for all types.
+	c	Channel mixing; see "Channel mixing values".
 	\	Time shift/delay current operation and following ones, time
 		in seconds.
 
@@ -105,10 +113,16 @@ Wave types:
 			Mirrored for the negative half.
 			A softer alternative to "sqr" (square wave).
 
-Channel mixing:
-	Letters C, L, and R change the channel for succeeding waves.
+Channel mixing values:
+	Panning, where 0.0 is centered. Named constants can be used in place
+	of numbers for the three classic channel "modes". Values outside the
+	range of L to R are allowed, amplifying one channel while giving the
+	other a negative amplitude.
+	C	0.0
+	L	(-1.0)
+	R	1.0
 
-The following operators are supported:
+The following modifiers are supported:
 
 /:	Time shift/delay next operation and following ones, time in seconds.
 	Alternatively, /t will delay by the time of the previous operation.
@@ -116,8 +130,6 @@ The following operators are supported:
 	to begin at the end of all that preceeds it, though / and \ may
 	further delay it.
 
-Any W operation may be prefixed by "'label " in order to define a label for
+Any W instance may be prefixed by "'label " in order to define a label for
 it, where the label is alphanumeric (and/or '_'); thereafter the label may
-be referenced as ":label", allowing future changes to an operation
-previously defined. For practical purposes, label referencing can be
-considered an operation, behaving the same.
+be referenced as ":label", allowing future changes to the instance values.

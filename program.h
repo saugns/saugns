@@ -16,9 +16,9 @@
 
 /* Node types. */
 enum {
-  MGS_TYPE_TOP = 0,
-  MGS_TYPE_NESTED,
-  MGS_TYPE_ENV
+  MGS_TYPE_OP = 0,
+  MGS_TYPE_ENV,
+  MGS_NODE_TYPES
 };
 
 /* Operator attributes. */
@@ -27,18 +27,11 @@ enum {
   MGS_ATTR_DYNFREQRATIO = 1<<1
 };
 
-/* Audio panning modes. */
-enum {
-  MGS_MODE_CENTER = 0,
-  MGS_MODE_LEFT   = 1,
-  MGS_MODE_RIGHT  = 2
-};
-
 /* Operator parameters. */
 enum {
-  MGS_PMODS = 1<<0,
+  MGS_AMODS = 1<<0,
   MGS_FMODS = 1<<1,
-  MGS_AMODS = 1<<2,
+  MGS_PMODS = 1<<2,
   MGS_TIME = 1<<3,
   MGS_WAVE = 1<<4,
   MGS_FREQ = 1<<5,
@@ -46,33 +39,61 @@ enum {
   MGS_PHASE = 1<<7,
   MGS_AMP = 1<<8,
   MGS_DYNAMP = 1<<9,
-  MGS_ATTR = 1<<10,
-  MGS_PARAM_MASK = (1<<11) - 1
+  MGS_PAN = 1<<10,
+  MGS_ATTR = 1<<11,
+  MGS_MODS_MASK = (1<<3) - 1,
+  MGS_PARAM_MASK = (1<<12) - 1
 };
 
-typedef struct MGS_ProgramNodeChain {
-  uint32_t count;
-  struct MGS_ProgramNode *chain;
-} MGS_ProgramNodeChain;
+typedef struct MGS_ProgramNode MGS_ProgramNode;
+typedef struct MGS_ProgramNodeChain MGS_ProgramNodeChain;
+typedef struct MGS_ProgramDurScope MGS_ProgramDurScope;
 
-typedef struct MGS_ProgramNode {
-  struct MGS_ProgramNode *next;
-  struct MGS_ProgramNode *ref_prev;
-  uint8_t type, attr, wave, mode;
-  float time, delay, freq, dynfreq, phase, amp, dynamp;
+struct MGS_ProgramDurScope {
+  MGS_ProgramDurScope *next;
+  MGS_ProgramNode *first_node;
+  MGS_ProgramNode *last_node;
+};
+
+/* Time parameter flags. */
+enum {
+  MGS_TIME_SET = 1<<0,
+};
+
+typedef struct MGS_TimePar {
+  float v;
+  uint32_t flags;
+} MGS_TimePar;
+
+struct MGS_ProgramNodeChain {
+  uint32_t count;
+  MGS_ProgramNode *chain;
+};
+
+struct MGS_ProgramNode {
+  MGS_ProgramNode *next;
+  MGS_ProgramDurScope *dur;
+  MGS_ProgramNode *ref_prev;
+  uint8_t type, attr, wave;
+  MGS_TimePar time;
+  float delay, freq, dynfreq, phase, amp, dynamp, pan;
   uint32_t id;
-  uint32_t values;
+  uint32_t first_id; // first id, not increasing for reference chains
+  uint32_t root_id;  // first id of node, or of root node when nested
+  uint32_t type_id;  // per-type id, unincreased for reference chains
+  uint32_t params;
   MGS_ProgramNodeChain pmod, fmod, amod;
-  struct MGS_ProgramNode *nested_next;
-} MGS_ProgramNode;
+  MGS_ProgramNode *nested_next;
+};
 
 struct MGS_SymTab;
 
 struct MGS_Program {
-  MGS_ProgramNode *top_list;
-  MGS_ProgramNode *nested_list;
-  uint32_t nodec;
-  uint32_t topc; /* nodes >= topc are nested ones, ids starting over from 0 */
+  MGS_ProgramNode *node_list;
+  MGS_ProgramDurScope *dur_list;
+  uint32_t node_count;
+  uint32_t root_count;
+  uint32_t type_counts[MGS_NODE_TYPES];
   struct MGS_SymTab *symtab;
   const char *name;
 };
