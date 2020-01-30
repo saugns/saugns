@@ -19,33 +19,27 @@
 #include <stdlib.h>
 
 enum {
-  MGS_FLAG_EXEC = 1<<0,
-  MGS_FLAG_ENTERED = 1<<1
-};
-
-enum {
-  MGS_RUN_SOUND = 0,
-  MGS_RUN_UPDATE
+  MGS_RUN_PREPARED = 1<<0,
+  MGS_RUN_ACTIVE = 1<<1,
 };
 
 /*
- * Data for mapping program nodes to generator data.
+ * Data for mapping program node IDs to generator data.
  */
 typedef struct IndexNode {
-  void *node;
-  int pos; /* negative for delay/time shift */
+  struct SoundNode *sndn;
   uint32_t sndn_id;
   uint32_t parent_i;
-  uint8_t type;
 } IndexNode;
 
 /*
- * Data for iterating updates and sound nodes.
+ * Data for timed updates to and running of sound nodes.
  */
 typedef struct RunNode {
-  void *node;
   int pos; /* negative for delay/time shift */
-  uint8_t type, flag;
+  uint8_t status;
+  void *node;
+  struct RunNode *ref_prev;
 } RunNode;
 
 typedef struct SoundNode {
@@ -95,7 +89,6 @@ struct MGS_Generator {
   int time_flags;
   uint32_t runn_i, runn_end;
   RunNode *run_nodes;
-  uint32_t indn_i, indn_end;
   IndexNode *index_nodes;
   SoundNode *sound_nodes;
   UpdateNode *update_nodes;
@@ -145,18 +138,13 @@ static void init_for_nodelist(MGS_Generator *o, MGS_ProgramNode *node_list) {
   size_t i = 0;
   for (MGS_ProgramNode *step = node_list; step != NULL; step = step->next) {
     IndexNode *indn = &o->index_nodes[i];
-    RunNode *runn = &o->run_nodes[i];
     uint32_t delay = step->delay * srate;
     uint32_t sndn_id = o->sndn_count;
     if (!step->ref_prev) {
       SoundNode *sndn = &o->sound_nodes[sndn_id];
       uint32_t time = step->time * srate;
-      indn->node = sndn;
-      indn->pos = -delay;
+      indn->sndn = sndn;
       indn->sndn_id = sndn_id;
-      indn->type = step->type;
-      if (step->type != MGS_TYPE_NESTED)
-        runn->flag |= MGS_FLAG_EXEC;
       sndn->time = time;
       sndn->indn_id = i;
       sndn->mode = step->mode; // not included in values
@@ -215,9 +203,9 @@ static void init_for_nodelist(MGS_Generator *o, MGS_ProgramNode *node_list) {
       MGS_warning("generator", "node %zd data value count off by %d",
           i, (int)(set - node_data));
     }
+    RunNode *runn = &o->run_nodes[i];
     runn->node = updn;
     runn->pos = -delay;
-    runn->type = MGS_RUN_UPDATE;
     ++i;
   }
 }
@@ -240,7 +228,6 @@ MGS_Generator* MGS_create_Generator(const MGS_Program *prg, uint32_t srate) {
   o->osc_coeff = MGS_Osc_COEFF(srate);
   o->runn_end = runn_count;
   o->run_nodes = calloc(runn_count, sizeof(RunNode));
-  o->indn_end = prg->nodec;
   o->index_nodes = calloc(prg->nodec, sizeof(IndexNode));
   o->sound_nodes = calloc(sndn_count, sizeof(SoundNode));
   o->update_nodes = calloc(updn_count, sizeof(UpdateNode));
@@ -253,22 +240,22 @@ MGS_Generator* MGS_create_Generator(const MGS_Program *prg, uint32_t srate) {
     uint32_t indn_id = sndn->indn_id;
     if (sndn->amodchain) {
       uint32_t id = ((MGS_ProgramNode*)sndn->amodchain)->id;
-      sndn->amodchain = o->index_nodes[id].node;
+      sndn->amodchain = o->index_nodes[id].sndn;
       o->index_nodes[id].parent_i = indn_id;
     }
     if (sndn->fmodchain) {
       uint32_t id = ((MGS_ProgramNode*)sndn->fmodchain)->id;
-      sndn->fmodchain = o->index_nodes[id].node;
+      sndn->fmodchain = o->index_nodes[id].sndn;
       o->index_nodes[id].parent_i = indn_id;
     }
     if (sndn->pmodchain) {
       uint32_t id = ((MGS_ProgramNode*)sndn->pmodchain)->id;
-      sndn->pmodchain = o->index_nodes[id].node;
+      sndn->pmodchain = o->index_nodes[id].sndn;
       o->index_nodes[id].parent_i = indn_id;
     }
     if (sndn->link) {
       uint32_t id = ((MGS_ProgramNode*)sndn->link)->id;
-      sndn->link = o->index_nodes[id].node;
+      sndn->link = o->index_nodes[id].sndn;
     }
   }
   return o;
@@ -278,6 +265,7 @@ MGS_Generator* MGS_create_Generator(const MGS_Program *prg, uint32_t srate) {
  * Click reduction: decrease time to make it end at wave cycle's end.
  */
 static void adjust_time(MGS_Generator *o, SoundNode *n) {
+return; // FIXME: re-enable after debugging
   int pos_offs = MGS_Osc_cycle_offs(&n->osc, n->freq, n->time);
   n->time -= pos_offs;
   if (!(o->time_flags & MGS_GEN_TIME_OFFS) || o->delay_offs > pos_offs) {
@@ -286,19 +274,7 @@ static void adjust_time(MGS_Generator *o, SoundNode *n) {
   }
 }
 
-static void MGS_Generator_enter_node(MGS_Generator *o, RunNode *runn) {
-  if (runn->type == MGS_RUN_SOUND) {
-    SoundNode *sndn = runn->node;
-    switch (sndn->type) {
-    case MGS_TYPE_TOP:
-      upsize_bufs(o, sndn);
-      adjust_time(o, sndn);
-    case MGS_TYPE_NESTED:
-      break;
-    }
-    runn->flag |= MGS_FLAG_ENTERED;
-    return;
-  }
+static void MGS_Generator_prepare_node(MGS_Generator *o, RunNode *runn) {
   UpdateNode *updn = runn->node;
   SoundNode *sndn = &o->sound_nodes[updn->sndn_id];
   switch (sndn->type) {
@@ -312,10 +288,10 @@ static void MGS_Generator_enter_node(MGS_Generator *o, RunNode *runn) {
       runn->pos = 0;
       if (sndn->time) {
         if (sndn->type == MGS_TYPE_TOP)
-          runn->flag |= MGS_FLAG_EXEC;
+          runn->status |= MGS_RUN_ACTIVE;
         adjtime = true;
       } else
-        runn->flag &= ~MGS_FLAG_EXEC;
+        runn->status &= ~MGS_RUN_ACTIVE;
     }
     if (updn->values & MGS_WAVE) {
       uint8_t wave = (*get++).i;
@@ -341,13 +317,13 @@ static void MGS_Generator_enter_node(MGS_Generator *o, RunNode *runn) {
       sndn->attr = (uint8_t)(*get++).i;
     }
     if (updn->values & MGS_AMODS) {
-      sndn->amodchain = o->index_nodes[(*get++).i].node;
+      sndn->amodchain = o->index_nodes[(*get++).i].sndn;
     }
     if (updn->values & MGS_FMODS) {
-      sndn->fmodchain = o->index_nodes[(*get++).i].node;
+      sndn->fmodchain = o->index_nodes[(*get++).i].sndn;
     }
     if (updn->values & MGS_PMODS) {
-      sndn->pmodchain = o->index_nodes[(*get++).i].node;
+      sndn->pmodchain = o->index_nodes[(*get++).i].sndn;
     }
     if (sndn->type == MGS_TYPE_TOP) {
       upsize_bufs(o, sndn);
@@ -356,20 +332,17 @@ static void MGS_Generator_enter_node(MGS_Generator *o, RunNode *runn) {
     } else {
       IndexNode *indn = &o->index_nodes[sndn->indn_id];
       IndexNode *top_indn = indn;
-      while (top_indn->type == MGS_TYPE_NESTED)
+      while (top_indn->sndn->type == MGS_TYPE_NESTED)
         top_indn = &o->index_nodes[top_indn->parent_i];
       upsize_bufs(o, &o->sound_nodes[top_indn->sndn_id]);
     }
     /* switch to the sound node which is to run */
     runn->node = sndn;
-    runn->type = MGS_RUN_SOUND;
     break; }
   case MGS_TYPE_ENV:
-    //runn->flag &= ~MGS_FLAG_EXEC;
     break;
   }
-// TODO: ensure update node -> sound node
-  runn->flag |= MGS_FLAG_ENTERED;
+  runn->status |= MGS_RUN_PREPARED;
 }
 
 void MGS_destroy_Generator(MGS_Generator *o) {
@@ -554,11 +527,11 @@ PROCESS:
       }
       break;
     }
-    if (!(runn->flag & MGS_FLAG_ENTERED))
+    if (!(runn->status & MGS_RUN_PREPARED))
       /* After return to PROCESS, ensures disabling node is initialized before
        * disabled node would otherwise play.
        */
-      MGS_Generator_enter_node(o, runn);
+      MGS_Generator_prepare_node(o, runn);
   }
   for (i = o->runn_i; i < o->runn_end; ++i) {
     RunNode *runn = &o->run_nodes[i];
@@ -577,13 +550,13 @@ PROCESS:
       len -= delay;
       runn->pos = 0;
     } else
-    if (!(runn->flag & MGS_FLAG_ENTERED))
-      MGS_Generator_enter_node(o, runn);
-    if (runn->flag & MGS_FLAG_EXEC) {
+    if (!(runn->status & MGS_RUN_PREPARED))
+      MGS_Generator_prepare_node(o, runn);
+    if (runn->status & MGS_RUN_ACTIVE) {
       SoundNode *n = runn->node;
       runn->pos += run_node(o, n, buf, runn->pos, len);
       if ((uint32_t)runn->pos == n->time)
-        runn->flag &= ~MGS_FLAG_EXEC;
+        runn->status &= ~MGS_RUN_ACTIVE;
     }
   }
   if (skiplen) {
@@ -595,7 +568,8 @@ PROCESS:
   for(;;) {
     if (o->runn_i == o->runn_end)
       return false;
-    if (o->run_nodes[o->runn_i].flag & MGS_FLAG_EXEC)
+    uint8_t cur_status = o->run_nodes[o->runn_i].status;
+    if (!(cur_status & MGS_RUN_PREPARED) || cur_status & MGS_RUN_ACTIVE)
       break;
     ++o->runn_i;
   }
