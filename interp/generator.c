@@ -38,7 +38,7 @@ typedef struct SoundNode {
   struct SoundNode *fmodchain;
   struct SoundNode *pmodchain;
   MGS_Osc osc;
-  float amp, dynampdiff;
+  float amp, dynamp;
   struct SoundNode *amodchain;
   struct SoundNode *link;
 } SoundNode;
@@ -139,7 +139,7 @@ static void init_for_nodelist(MGS_Generator *o, MGS_ProgramNode *step,
       sndn->attr = step->attr;
       sndn->mode = step->mode;
       sndn->amp = step->amp;
-      sndn->dynampdiff = step->dynamp - step->amp;
+      sndn->dynamp = step->dynamp;
       sndn->freq = step->freq;
       sndn->dynfreq = step->dynfreq;
       sndn->osc.phase = MGS_Osc_PHASE(step->phase);
@@ -159,44 +159,39 @@ static void init_for_nodelist(MGS_Generator *o, MGS_ProgramNode *step,
       if (ref->type == MGS_TYPE_NESTED)
         in->set_ref += prg->topc;
       updn->values = step->values;
-      updn->values &= ~MGS_DYNAMP;
       updn->data = set;
       if (updn->values & MGS_TIME) {
-        (*set).i = step->time * srate; ++set;
+        (*set++).i = step->time * srate;
       }
       if (updn->values & MGS_WAVE) {
-        (*set).i = step->wave; ++set;
+        (*set++).i = step->wave;
       }
       if (updn->values & MGS_FREQ) {
-        (*set).f = step->freq; ++set;
+        (*set++).f = step->freq;
       }
       if (updn->values & MGS_DYNFREQ) {
-        (*set).f = step->dynfreq; ++set;
+        (*set++).f = step->dynfreq;
       }
       if (updn->values & MGS_PHASE) {
-        (*set).i = MGS_Osc_PHASE(step->phase); ++set;
+        (*set++).i = MGS_Osc_PHASE(step->phase);
       }
       if (updn->values & MGS_AMP) {
-        (*set).f = step->amp; ++set;
+        (*set++).f = step->amp;
       }
-      if ((step->dynamp - step->amp) != (ref->dynamp - ref->amp)) {
-        (*set).f = (step->dynamp - step->amp); ++set;
-        updn->values |= MGS_DYNAMP;
+      if (updn->values & MGS_DYNAMP) {
+        (*set++).f = step->dynamp;
       }
       if (updn->values & MGS_ATTR) {
-        (*set).i = step->attr; ++set;
+        (*set++).i = step->attr;
       }
       if (updn->values & MGS_AMODS) {
-        (*set).i = step->amod.chain->id + prg->topc;
-        ++set;
+        (*set++).i = step->amod.chain->id + prg->topc;
       }
       if (updn->values & MGS_FMODS) {
-        (*set).i = step->fmod.chain->id + prg->topc;
-        ++set;
+        (*set++).i = step->fmod.chain->id + prg->topc;
       }
       if (updn->values & MGS_PMODS) {
-        (*set).i = step->pmod.chain->id + prg->topc;
-        ++set;
+        (*set++).i = step->pmod.chain->id + prg->topc;
       }
       *node_data += count_flags(step->values);
     }
@@ -299,11 +294,11 @@ static void MGS_Generator_enter_node(MGS_Generator *o, IndexNode *in) {
     IndexNode *refin = &o->index_nodes[in->set_ref];
     SoundNode *refn = refin->node;
     UpdateNode *updn = in->node;
-    Data *data = updn->data;
+    Data *get = updn->data;
     bool adjtime = false;
     /* set state */
     if (updn->values & MGS_TIME) {
-      refn->time = (*data).i; ++data;
+      refn->time = (*get++).i;
       refin->pos = 0;
       if (refn->time) {
         if (refin->type == MGS_TYPE_TOP)
@@ -313,36 +308,36 @@ static void MGS_Generator_enter_node(MGS_Generator *o, IndexNode *in) {
         refin->flag &= ~MGS_FLAG_EXEC;
     }
     if (updn->values & MGS_WAVE) {
-      uint8_t wave = (*data).i; ++data;
+      uint8_t wave = (*get++).i;
       refn->osc.lut = MGS_Osc_LUT(wave);
     }
     if (updn->values & MGS_FREQ) {
-      refn->freq = (*data).f; ++data;
+      refn->freq = (*get++).f;
       adjtime = true;
     }
     if (updn->values & MGS_DYNFREQ) {
-      refn->dynfreq = (*data).f; ++data;
+      refn->dynfreq = (*get++).f;
     }
     if (updn->values & MGS_PHASE) {
-      refn->osc.phase = (uint32_t)(*data).i; ++data;
+      refn->osc.phase = (uint32_t)(*get++).i;
     }
     if (updn->values & MGS_AMP) {
-      refn->amp = (*data).f; ++data;
+      refn->amp = (*get++).f;
     }
     if (updn->values & MGS_DYNAMP) {
-      refn->dynampdiff = (*data).f; ++data;
+      refn->dynamp = (*get++).f;
     }
     if (updn->values & MGS_ATTR) {
-      refn->attr = (uint8_t)(*data).i; ++data;
+      refn->attr = (uint8_t)(*get++).i;
     }
     if (updn->values & MGS_AMODS) {
-      refn->amodchain = o->index_nodes[(*data).i].node; ++data;
+      refn->amodchain = o->index_nodes[(*get++).i].node;
     }
     if (updn->values & MGS_FMODS) {
-      refn->fmodchain = o->index_nodes[(*data).i].node; ++data;
+      refn->fmodchain = o->index_nodes[(*get++).i].node;
     }
     if (updn->values & MGS_PMODS) {
-      refn->pmodchain = o->index_nodes[(*data).i].node; ++data;
+      refn->pmodchain = o->index_nodes[(*get++).i].node;
     }
     if (refn->type == MGS_TYPE_TOP) {
       upsize_bufs(o, refn);
@@ -410,10 +405,11 @@ BEGIN:
     }
   }
   if (n->amodchain) {
+    float dynampdiff = n->dynamp - n->amp;
     run_block_waveenv(nextbuf, len, n->amodchain, freq);
     amp = *(nextbuf++);
     for (i = 0; i < len; ++i)
-      amp[i].f = n->amp + amp[i].f * n->dynampdiff;
+      amp[i].f = n->amp + amp[i].f * dynampdiff;
   } else {
     amp = *(nextbuf++);
     for (i = 0; i < len; ++i)
