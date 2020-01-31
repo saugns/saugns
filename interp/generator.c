@@ -269,7 +269,6 @@ static void MGS_Generator_prepare_node(MGS_Generator *o, RunNode *runn) {
   switch (sndn->type) {
   case MGS_TYPE_TOP:
   case MGS_TYPE_NESTED: {
-    //RunNode *ref_runn = (runn->ref_prev != NULL) ? runn->ref_prev : runn;
     Data *get = updn->data;
     bool adjtime = false;
     /* set state */
@@ -324,12 +323,14 @@ static void MGS_Generator_prepare_node(MGS_Generator *o, RunNode *runn) {
       IndexNode *top_indn = &o->index_nodes[indn->root_i];
       upsize_bufs(o, top_indn->sndn);
     }
-    //if (ref_runn != runn) {
     if (runn->ref_prev != NULL) {
-      /* take over place of previous node */
+      /*
+       * Ensure previous node is disabled;
+       * prevents simultaneous running and
+       * overlapping audio generation when
+       * timing is tweaked.
+       */
       runn->ref_prev->status &= ~MGS_RUN_ACTIVE;
-      //*runn = *ref_runn;
-      //ref_runn->status &= ~MGS_RUN_ACTIVE;
     }
     runn->node = sndn;
     break; }
