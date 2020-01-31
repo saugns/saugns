@@ -55,6 +55,10 @@ typedef struct SoundNode {
   RunNode *cur_runn;
 } SoundNode;
 
+typedef struct VoiceNode {
+  SoundNode *root_sndn;
+} VoiceNode;
+
 typedef union Data {
   int i;
   float f;
@@ -91,8 +95,9 @@ struct MGS_Generator {
   RunNode *run_nodes;
   IndexNode *index_nodes;
   SoundNode *sound_nodes;
+  VoiceNode *voice_nodes;
   UpdateNode *update_nodes;
-  uint32_t sndn_count, updn_count;
+  size_t sndn_count, vocn_count, updn_count;
   Data *node_data;
 };
 
@@ -151,6 +156,11 @@ static void init_for_nodelist(MGS_Generator *o, MGS_ProgramNode *node_list) {
       sndn->osc.coeff = o->osc_coeff;
       indn->sndn = sndn;
       indn->root_i = step->root_id;
+      if (step->id == step->root_id) {
+        uint32_t vocn_id = o->vocn_count++;
+        VoiceNode *vocn = &o->voice_nodes[vocn_id];
+        vocn->root_sndn = sndn;
+      }
       /* mods init part one - replaced with proper entries next loop */
       sndn->link = (void*)step->nested_next;
     } else {
@@ -219,11 +229,17 @@ MGS_Generator* MGS_create_Generator(const MGS_Program *prg, uint32_t srate) {
   MGS_ProgramNode *step;
   size_t runn_count = prg->node_count;
   size_t sndn_count = 0; // for allocation, not assigned to field
+  size_t vocn_count = 0; // for allocation, not assigned to field
   size_t updn_count = prg->node_count; // for allocation, not assigned to field
   size_t data_count = 0;
   for (step = prg->node_list; step; step = step->next) {
-    if (!step->ref_prev)
+    if (!step->ref_prev) {
       ++sndn_count;
+      if (step->id == step->root_id) {
+        ++vocn_count;
+        //--b
+      }
+    }
     data_count += count_flags(step->params);
   }
   o = calloc(1, sizeof(MGS_Generator));
@@ -234,6 +250,7 @@ MGS_Generator* MGS_create_Generator(const MGS_Program *prg, uint32_t srate) {
   o->run_nodes = calloc(runn_count, sizeof(RunNode));
   o->index_nodes = calloc(prg->node_count, sizeof(IndexNode));
   o->sound_nodes = calloc(sndn_count, sizeof(SoundNode));
+  o->voice_nodes = calloc(vocn_count, sizeof(VoiceNode));
   o->update_nodes = calloc(updn_count, sizeof(UpdateNode));
   o->node_data = calloc(data_count, sizeof(Data));
   MGS_global_init_Wave();
@@ -347,6 +364,7 @@ void MGS_destroy_Generator(MGS_Generator *o) {
   free(o->run_nodes);
   free(o->index_nodes);
   free(o->sound_nodes);
+  free(o->voice_nodes);
   free(o->update_nodes);
   free(o->node_data);
   free(o);

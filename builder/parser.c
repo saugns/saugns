@@ -143,8 +143,9 @@ static void new_node(MGS_Parser *o, NodeData *nd,
     o->cur_node->next = n;
   o->cur_node = n;
   if (!target) {
-    o->cur_root = n;
     n->root_id = n->id;
+    o->cur_root = n;
+    ++p->root_count;
   } else {
     n->root_id = o->cur_root->id;
   }
@@ -215,10 +216,7 @@ static void end_node(MGS_Parser *o, NodeData *nd) {
       n->params |= MGS_PMODS;
   }
 
-  if (!nd->target) {
-    o->cur_root = n;
-    ++p->root_count;
-  } else {
+  if (nd->target != NULL) {
     if (!nd->target->chain)
       nd->target->chain = n;
     else
