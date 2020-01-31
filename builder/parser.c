@@ -47,8 +47,8 @@ typedef struct MGS_Parser {
   /* node state */
   uint32_t level;
   uint32_t setdef, setnode;
-  MGS_ProgramNode *last_node, *last_top;
-  MGS_ProgramNode *undo_last;
+  MGS_ProgramNode *cur_node, *cur_root;
+  MGS_ProgramNode *prev_node, *prev_root;
   /* settings/ops */
   uint8_t n_mode;
   float n_ampmult;
@@ -133,19 +133,21 @@ static void new_node(MGS_Parser *o, NodeData *nd,
   n->type = type;
 
   /* tentative linking */
-  n->id = p->nodec;
-  ++p->nodec;
-  if (!target) {
-    n->root_id = n->id;
-  } else {
-    n->root_id = target->root_id;
-  }
-  o->undo_last = o->last_node;
+  o->prev_node = o->cur_node;
+  o->prev_root = o->cur_root;
+  n->id = p->node_count;
+  ++p->node_count;
   if (!p->node_list)
     p->node_list = n;
   else
-    o->last_node->next = n;
-  o->last_node = n;
+    o->cur_node->next = n;
+  o->cur_node = n;
+  if (!target) {
+    o->cur_root = n;
+    n->root_id = n->id;
+  } else {
+    n->root_id = o->cur_root->id;
+  }
 
   /* defaults */
   n->amp = 1.f;
@@ -155,11 +157,7 @@ static void new_node(MGS_Parser *o, NodeData *nd,
   else if (type == MGS_TYPE_NESTED)
     n->time = o->n_time;
   n->freq = o->n_freq;
-  if (!ref_prev) {
-    n->pmod.root_id = n->root_id;
-    n->fmod.root_id = n->root_id;
-    n->amod.root_id = n->root_id;
-  } else {
+  if (ref_prev != NULL) {
     /* time is not copied */
     n->wave = ref_prev->wave;
     n->mode = ref_prev->mode;
@@ -176,8 +174,8 @@ static void new_node(MGS_Parser *o, NodeData *nd,
   /* prepare timing adjustment */
   nd->n_add_delay += nd->n_next_add_delay;
   if (nd->n_time_delay) {
-    if (o->last_top)
-      nd->n_add_delay += o->last_top->time;
+    if (o->prev_root)
+      nd->n_add_delay += o->prev_root->time;
     nd->n_time_delay = 0;
   }
   nd->n_next_add_delay = 0.f;
@@ -190,47 +188,36 @@ static void end_node(MGS_Parser *o, NodeData *nd) {
     return; /* nothing to do */
   nd->node = 0;
   if (!n->ref_prev) {
-    n->values |= MGS_PARAM_MASK & ~MGS_MODS_MASK;
+    n->params |= MGS_PARAM_MASK & ~MGS_MODS_MASK;
   } else {
     /* check what the set-node changes */
     MGS_ProgramNode *ref = n->ref_prev;
     /* MGS_TIME set when time set */
     if (n->wave != ref->wave)
-      n->values |= MGS_WAVE;
+      n->params |= MGS_WAVE;
     if (n->freq != ref->freq)
-      n->values |= MGS_FREQ;
+      n->params |= MGS_FREQ;
     if (n->dynfreq != ref->dynfreq)
-      n->values |= MGS_DYNFREQ;
+      n->params |= MGS_DYNFREQ;
     if (n->phase != ref->phase)
-      n->values |= MGS_PHASE;
+      n->params |= MGS_PHASE;
     if (n->amp != ref->amp)
-      n->values |= MGS_AMP;
+      n->params |= MGS_AMP;
     if (n->dynamp != ref->dynamp)
-      n->values |= MGS_DYNAMP;
+      n->params |= MGS_DYNAMP;
     if (n->attr != ref->attr)
-      n->values |= MGS_ATTR;
+      n->params |= MGS_ATTR;
     if (n->amod.chain != ref->amod.chain)
-      n->values |= MGS_AMODS;
+      n->params |= MGS_AMODS;
     if (n->fmod.chain != ref->fmod.chain)
-      n->values |= MGS_FMODS;
+      n->params |= MGS_FMODS;
     if (n->pmod.chain != ref->pmod.chain)
-      n->values |= MGS_PMODS;
-
-    if (!n->values) {
-      /* Remove no-operation set node; made simpler
-       * by all set nodes being top nodes.
-       */
-      o->undo_last->next = NULL;
-      o->last_node = o->undo_last;
-      --p->nodec;
-      free(n);
-      return;
-    }
+      n->params |= MGS_PMODS;
   }
 
   if (!nd->target) {
-    o->last_top = n;
-    ++p->topc;
+    o->cur_root = n;
+    ++p->root_count;
   } else {
     if (!nd->target->chain)
       nd->target->chain = n;
@@ -682,7 +669,7 @@ static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modt
       } else if (o->setnode > 0) {
         if (!scan_num(o, NULL, &f)) goto INVALID;
         nd.node->time = f;
-        nd.node->values |= MGS_TIME;
+        nd.node->params |= MGS_TIME;
       } else
         goto INVALID;
       break;

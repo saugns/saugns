@@ -53,7 +53,6 @@ enum {
 
 typedef struct MGS_ProgramNodeChain {
   uint32_t count;
-  uint32_t root_id; // copied from node
   struct MGS_ProgramNode *chain;
 } MGS_ProgramNodeChain;
 
@@ -63,8 +62,8 @@ typedef struct MGS_ProgramNode {
   uint8_t type, attr, wave, mode;
   float time, delay, freq, dynfreq, phase, amp, dynamp;
   uint32_t id;
-  uint32_t root_id; // either first id, or first id of root node for nested
-  uint32_t values;
+  uint32_t root_id; // either id of node, or id of root node for nested
+  uint32_t params;
   MGS_ProgramNodeChain pmod, fmod, amod;
   struct MGS_ProgramNode *nested_next;
 } MGS_ProgramNode;
@@ -73,7 +72,7 @@ struct MGS_SymTab;
 
 struct MGS_Program {
   MGS_ProgramNode *node_list;
-  uint32_t nodec;
-  uint32_t topc;
+  uint32_t node_count;
+  uint32_t root_count;
   struct MGS_SymTab *symtab;
 };
