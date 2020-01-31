@@ -153,9 +153,9 @@ static void new_node(MGS_Parser *o, NodeData *nd,
   /* defaults */
   n->amp = 1.f;
   n->mode = o->n_mode;
-  if (type == MGS_TYPE_TOP)
+  if (!target)
     n->time = -1.f; /* set later */
-  else if (type == MGS_TYPE_NESTED)
+  else
     n->time = o->n_time;
   n->freq = o->n_freq;
   if (ref_prev != NULL) {
@@ -225,7 +225,7 @@ static void end_node(MGS_Parser *o, NodeData *nd) {
     ++nd->target->count;
   }
 
-  if (n->type != MGS_TYPE_NESTED) /* don't mess with modulation depth */
+  if (!nd->target) /* only apply to root operator */
     n->amp *= o->n_ampmult;
   /* node-to-| sequence timing */
   if (!nd->n_begin)
@@ -535,7 +535,7 @@ static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modt
     case 'W': {
       int wave = scan_wavetype(o, c);
       if (wave < 0) break;
-      new_node(o, &nd, chain, NULL, (chain ? MGS_TYPE_NESTED : MGS_TYPE_TOP));
+      new_node(o, &nd, chain, NULL, MGS_TYPE_OPERATOR);
       nd.node->wave = wave;
       o->setnode = o->level + 1;
       break; }

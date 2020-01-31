@@ -283,9 +283,12 @@ static void adjust_time(MGS_Generator *o, SoundNode *n) {
 static void MGS_Generator_prepare_node(MGS_Generator *o, RunNode *runn) {
   UpdateNode *updn = runn->node;
   SoundNode *sndn = updn->sndn;
+  IndexNode *indn = &o->index_nodes[sndn->indn_id];
+  IndexNode *root_indn = &o->index_nodes[indn->root_i];
+  SoundNode *root_sndn = root_indn->sndn;
+  bool is_root = (sndn == root_sndn);
   switch (sndn->type) {
-  case MGS_TYPE_TOP:
-  case MGS_TYPE_NESTED: {
+  case MGS_TYPE_OPERATOR: {
     Data *get = updn->data;
     bool adjtime = false;
     /* set state */
@@ -293,7 +296,7 @@ static void MGS_Generator_prepare_node(MGS_Generator *o, RunNode *runn) {
       sndn->time = (*get++).i;
       runn->pos = 0;
       if (sndn->time) {
-        if (sndn->type == MGS_TYPE_TOP)
+        if (is_root)
           runn->status |= MGS_RUN_ACTIVE;
         adjtime = true;
       } else
@@ -331,15 +334,11 @@ static void MGS_Generator_prepare_node(MGS_Generator *o, RunNode *runn) {
     if (updn->params & MGS_PMODS) {
       sndn->pmodchain = o->index_nodes[(*get++).i].sndn;
     }
-    if (sndn->type == MGS_TYPE_TOP) {
-      upsize_bufs(o, sndn);
+    if (is_root) {
       if (adjtime) /* here so new freq also used if set */
         adjust_time(o, sndn);
-    } else {
-      IndexNode *indn = &o->index_nodes[sndn->indn_id];
-      IndexNode *top_indn = &o->index_nodes[indn->root_i];
-      upsize_bufs(o, top_indn->sndn);
     }
+    upsize_bufs(o, root_sndn);
     if (runn->ref_prev != NULL) {
       /*
        * Ensure previous node is disabled;

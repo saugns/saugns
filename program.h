@@ -16,8 +16,7 @@
 
 /* Node types. */
 enum {
-  MGS_TYPE_TOP = 0,
-  MGS_TYPE_NESTED,
+  MGS_TYPE_OPERATOR = 0,
   MGS_TYPE_ENV
 };
 
