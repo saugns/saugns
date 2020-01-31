@@ -131,6 +131,22 @@ static void new_node(MGS_Parser *o, NodeData *nd,
   n->ref_prev = ref_prev;
   nd->target = target;
   n->type = type;
+
+  /* tentative linking */
+  n->id = p->nodec;
+  ++p->nodec;
+  if (!target) {
+    n->root_id = n->id;
+  } else {
+    n->root_id = target->root_id;
+  }
+  o->undo_last = o->last_node;
+  if (!p->node_list)
+    p->node_list = n;
+  else
+    o->last_node->next = n;
+  o->last_node = n;
+
   /* defaults */
   n->amp = 1.f;
   n->mode = o->n_mode;
@@ -139,7 +155,11 @@ static void new_node(MGS_Parser *o, NodeData *nd,
   else if (type == MGS_TYPE_NESTED)
     n->time = o->n_time;
   n->freq = o->n_freq;
-  if (ref_prev != NULL) {
+  if (!ref_prev) {
+    n->pmod.root_id = n->root_id;
+    n->fmod.root_id = n->root_id;
+    n->amod.root_id = n->root_id;
+  } else {
     /* time is not copied */
     n->wave = ref_prev->wave;
     n->mode = ref_prev->mode;
@@ -152,16 +172,6 @@ static void new_node(MGS_Parser *o, NodeData *nd,
     n->fmod = ref_prev->fmod;
     n->amod = ref_prev->amod;
   }
-
-  /* tentative linking */
-  n->id = p->nodec;
-  ++p->nodec;
-  if (!p->node_list)
-    p->node_list = n;
-  else
-    o->last_node->next = n;
-  o->undo_last = o->last_node;
-  o->last_node = n;
 
   /* prepare timing adjustment */
   nd->n_add_delay += nd->n_next_add_delay;
