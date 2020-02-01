@@ -16,8 +16,9 @@
 
 /* Node types. */
 enum {
-  MGS_TYPE_OPERATOR = 0,
-  MGS_TYPE_ENV
+  MGS_TYPE_OP = 0,
+  MGS_TYPE_ENV,
+  MGS_NODE_TYPES
 };
 
 /* Operator attributes. */
@@ -62,6 +63,7 @@ typedef struct MGS_ProgramNode {
   float time, delay, freq, dynfreq, phase, amp, dynamp;
   uint32_t id;
   uint32_t root_id; // either id of node, or id of root node for nested
+  uint32_t type_id; // per-type id, not increasing for reference chains
   uint32_t params;
   MGS_ProgramNodeChain pmod, fmod, amod;
   struct MGS_ProgramNode *nested_next;
@@ -73,5 +75,6 @@ struct MGS_Program {
   MGS_ProgramNode *node_list;
   uint32_t node_count;
   uint32_t root_count;
+  uint32_t type_counts[MGS_NODE_TYPES];
   struct MGS_SymTab *symtab;
 };

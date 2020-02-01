@@ -149,6 +149,11 @@ static void new_node(MGS_Parser *o, NodeData *nd,
   } else {
     n->root_id = o->cur_root->id;
   }
+  if (!ref_prev) {
+    n->type_id = p->type_counts[type]++;
+  } else {
+    n->type_id = ref_prev->type_id;
+  }
 
   /* defaults */
   n->amp = 1.f;
@@ -535,7 +540,7 @@ static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modt
     case 'W': {
       int wave = scan_wavetype(o, c);
       if (wave < 0) break;
-      new_node(o, &nd, chain, NULL, MGS_TYPE_OPERATOR);
+      new_node(o, &nd, chain, NULL, MGS_TYPE_OP);
       nd.node->wave = wave;
       o->setnode = o->level + 1;
       break; }

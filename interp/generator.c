@@ -145,11 +145,10 @@ static void init_for_nodelist(MGS_Generator *o, MGS_ProgramNode *node_list) {
     IndexNode *indn = &o->index_nodes[i];
     uint32_t delay = step->delay * srate;
     RunNode *runn_ref_prev = NULL;
-    SoundNode *sndn;
+    uint32_t sndn_id = step->type_id;
+    SoundNode *sndn = &o->sound_nodes[sndn_id];
     if (!step->ref_prev) {
-      uint32_t sndn_id = o->sndn_count++;
       uint32_t time = step->time * srate;
-      sndn = &o->sound_nodes[sndn_id];
       sndn->time = time;
       sndn->indn_id = i;
       sndn->mode = step->mode; // not included in params
@@ -166,9 +165,7 @@ static void init_for_nodelist(MGS_Generator *o, MGS_ProgramNode *node_list) {
     } else {
       MGS_ProgramNode *ref = step->ref_prev;
       IndexNode *ref_indn = &o->index_nodes[ref->id];
-      SoundNode *ref_sndn = ref_indn->sndn;
-      sndn = ref_sndn;
-      indn->sndn = ref_sndn;
+      indn->sndn = sndn;
       indn->root_i = ref_indn->root_i;
       /* prepare chain of runn ref_prev per sound node "timeline" */
       runn_ref_prev = &o->run_nodes[ref->id];
@@ -228,17 +225,14 @@ MGS_Generator* MGS_create_Generator(const MGS_Program *prg, uint32_t srate) {
   MGS_Generator *o;
   MGS_ProgramNode *step;
   size_t runn_count = prg->node_count;
-  size_t sndn_count = 0; // for allocation, not assigned to field
-  size_t vocn_count = 0; // for allocation, not assigned to field
-  size_t updn_count = prg->node_count; // for allocation, not assigned to field
+  size_t sndn_count = prg->type_counts[MGS_TYPE_OP];
+  size_t vocn_count = 0;
+  size_t updn_count = prg->node_count;
   size_t data_count = 0;
   for (step = prg->node_list; step; step = step->next) {
-    if (!step->ref_prev) {
-      ++sndn_count;
-      if (step->id == step->root_id) {
-        ++vocn_count;
-        //--b
-      }
+    if (!step->ref_prev && step->id == step->root_id) {
+      ++vocn_count;
+      //--b
     }
     data_count += count_flags(step->params);
   }
@@ -288,7 +282,7 @@ static void MGS_Generator_prepare_node(MGS_Generator *o, RunNode *runn) {
   SoundNode *root_sndn = root_indn->sndn;
   bool is_root = (sndn == root_sndn);
   switch (sndn->type) {
-  case MGS_TYPE_OPERATOR: {
+  case MGS_TYPE_OP: {
     Data *get = updn->data;
     bool adjtime = false;
     /* set state */
