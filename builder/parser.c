@@ -132,7 +132,7 @@ static void new_node(MGS_Parser *o, NodeData *nd,
   nd->target = target;
   n->type = type;
 
-  /* tentative linking */
+  /* IDs and linking */
   o->prev_node = o->cur_node;
   o->prev_root = o->cur_root;
   n->id = p->node_count;
@@ -143,16 +143,28 @@ static void new_node(MGS_Parser *o, NodeData *nd,
     o->cur_node->next = n;
   o->cur_node = n;
   if (!target) {
-    n->root_id = n->id;
-    o->cur_root = n;
-    ++p->root_count;
+    if (!ref_prev) {
+      n->root_id = n->id;
+      ++p->root_count;
+      n->type_id = p->type_counts[type]++;
+      o->cur_root = n;
+    } else {
+      n->root_id = ref_prev->root_id;
+      n->type_id = ref_prev->type_id;
+    }
   } else {
     n->root_id = o->cur_root->id;
-  }
-  if (!ref_prev) {
-    n->type_id = p->type_counts[type]++;
-  } else {
-    n->type_id = ref_prev->type_id;
+    if (!ref_prev) {
+      n->type_id = p->type_counts[type]++;
+    } else {
+      n->type_id = ref_prev->type_id;
+    }
+    if (!target->chain)
+      target->chain = n;
+    else
+      nd->last->nested_next = n;
+    nd->last = n;
+    ++target->count;
   }
 
   /* defaults */
@@ -219,15 +231,6 @@ static void end_node(MGS_Parser *o, NodeData *nd) {
       n->params |= MGS_FMODS;
     if (n->pmod.chain != ref->pmod.chain)
       n->params |= MGS_PMODS;
-  }
-
-  if (nd->target != NULL) {
-    if (!nd->target->chain)
-      nd->target->chain = n;
-    else
-      nd->last->nested_next = n;
-    nd->last = n;
-    ++nd->target->count;
   }
 
   if (!nd->target) /* only apply to root operator */
