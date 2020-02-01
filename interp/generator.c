@@ -555,7 +555,7 @@ PROCESS:
       buf += delay+delay; /* doubled due to stereo interleaving */
       len -= delay;
       runn->pos = 0;
-    } else
+    }
     if (!(runn->status & MGS_RUN_PREPARED))
       MGS_Generator_prepare_node(o, runn);
     if (runn->status & MGS_RUN_ACTIVE) {

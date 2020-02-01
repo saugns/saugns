@@ -109,7 +109,7 @@ static bool check_invalid(MGS_Parser *restrict o, char c) {
 typedef struct NodeData {
   MGS_ProgramNode *node; /* state for tentative node until end_node() */
   MGS_ProgramNodeChain *target;
-  MGS_ProgramNode *last;
+  MGS_ProgramNode *target_last;
   const char *setsym;
   size_t setsym_len;
   /* timing/delay */
@@ -162,8 +162,8 @@ static void new_node(MGS_Parser *o, NodeData *nd,
     if (!target->chain)
       target->chain = n;
     else
-      nd->last->nested_next = n;
-    nd->last = n;
+      nd->target_last->nested_next = n;
+    nd->target_last = n;
     ++target->count;
   }
 
