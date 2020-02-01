@@ -142,23 +142,23 @@ static void new_node(MGS_Parser *o, NodeData *nd,
   else
     o->cur_node->next = n;
   o->cur_node = n;
+  if (!ref_prev) {
+    n->first_id = n->id;
+    n->type_id = p->type_counts[type]++;
+  } else {
+    n->first_id = ref_prev->first_id;
+    n->type_id = ref_prev->type_id;
+  }
   if (!target) {
     if (!ref_prev) {
-      n->root_id = n->id;
+      n->root_id = n->first_id;
       ++p->root_count;
-      n->type_id = p->type_counts[type]++;
       o->cur_root = n;
     } else {
       n->root_id = ref_prev->root_id;
-      n->type_id = ref_prev->type_id;
     }
   } else {
-    n->root_id = o->cur_root->id;
-    if (!ref_prev) {
-      n->type_id = p->type_counts[type]++;
-    } else {
-      n->type_id = ref_prev->type_id;
-    }
+    n->root_id = o->cur_root->first_id;
     if (!target->chain)
       target->chain = n;
     else
@@ -170,7 +170,7 @@ static void new_node(MGS_Parser *o, NodeData *nd,
   /* defaults */
   n->amp = 1.f;
   n->mode = o->n_mode;
-  if (!target)
+  if (n->first_id != n->root_id)
     n->time = -1.f; /* set later */
   else
     n->time = o->n_time;
@@ -233,7 +233,7 @@ static void end_node(MGS_Parser *o, NodeData *nd) {
       n->params |= MGS_PMODS;
   }
 
-  if (!nd->target) /* only apply to root operator */
+  if (n->first_id == n->root_id) /* only apply to root operator */
     n->amp *= o->n_ampmult;
   /* node-to-| sequence timing */
   if (!nd->n_begin)

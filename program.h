@@ -62,8 +62,9 @@ typedef struct MGS_ProgramNode {
   uint8_t type, attr, wave, mode;
   float time, delay, freq, dynfreq, phase, amp, dynamp;
   uint32_t id;
-  uint32_t root_id; // either id of node, or id of root node for nested
-  uint32_t type_id; // per-type id, not increasing for reference chains
+  uint32_t first_id; // first id, not increasing for reference chains
+  uint32_t root_id;  // first id of node, or of root node when nested
+  uint32_t type_id;  // per-type id, unincreased for reference chains
   uint32_t params;
   MGS_ProgramNodeChain pmod, fmod, amod;
   struct MGS_ProgramNode *nested_next;
