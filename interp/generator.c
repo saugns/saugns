@@ -28,7 +28,7 @@ enum {
  */
 typedef struct IndexNode {
   int pos; /* negative for delay/time shift */
-  uint8_t status;
+  uint8_t status, type;
   void *node;
   struct IndexNode *ref_prev;
 } IndexNode;
@@ -36,7 +36,7 @@ typedef struct IndexNode {
 typedef struct SoundNode {
   uint32_t time;
   uint32_t root_i;
-  uint8_t type, attr, mode;
+  uint8_t attr, mode;
   float freq, dynfreq;
   struct SoundNode *fmodchain;
   struct SoundNode *pmodchain;
@@ -199,6 +199,7 @@ static void init_for_nodelist(MGS_Generator *o, MGS_ProgramNode *node_list) {
     IndexNode *indn = &o->index_nodes[i];
     indn->node = updn;
     indn->pos = -delay;
+    indn->type = step->type;
     indn->ref_prev = indn_ref_prev;
     ++i;
   }
@@ -263,7 +264,7 @@ static void MGS_Generator_prepare_node(MGS_Generator *o, IndexNode *indn) {
       root_indn->node :
       ((UpdateNode*)root_indn->node)->sndn;
   bool is_root = (sndn == root_sndn);
-  switch (sndn->type) {
+  switch (indn->type) {
   case MGS_TYPE_OP: {
     Data *get = updn->data;
     bool adjtime = false;
