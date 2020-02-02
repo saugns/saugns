@@ -51,15 +51,12 @@ enum {
   MGS_PARAM_MASK = (1<<11) - 1
 };
 
-/* Scope information kept while parsing. */
-enum {
-  MGS_SCOPE_SEQEND = 1<<0,
-};
-
 typedef struct MGS_NodeScope {
   struct MGS_NodeScope *next;
-  struct MGS_ProgramNode *seqstart;
-  uint32_t scope_flags;
+  struct MGS_ProgramNode *seq_start;
+  bool seq_end;
+  float delay_cur;
+  float delay_next;
 } MGS_NodeScope;
 
 /* Time information kept while parsing. */
