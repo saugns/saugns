@@ -51,9 +51,14 @@ enum {
   MGS_PARAM_MASK = (1<<11) - 1
 };
 
+typedef struct MGS_ProgramNode MGS_ProgramNode;
+typedef struct MGS_ProgramNodeChain MGS_ProgramNodeChain;
+
 typedef struct MGS_NodeScope {
   struct MGS_NodeScope *next;
-  struct MGS_ProgramNode *seq_start;
+  MGS_ProgramNodeChain *target;
+  MGS_ProgramNode *target_last;
+  MGS_ProgramNode *seq_start;
   bool seq_end;
   float delay_cur;
   float delay_next;
@@ -61,7 +66,7 @@ typedef struct MGS_NodeScope {
 
 /* Time information kept while parsing. */
 enum {
-  MGS_TIME_DEFAULT = 1<<0,
+  MGS_TIME_SET = 1<<0,
 };
 
 typedef struct MGS_NodeTime {
@@ -69,12 +74,12 @@ typedef struct MGS_NodeTime {
   uint32_t flags;
 } MGS_NodeTime;
 
-typedef struct MGS_ProgramNodeChain {
+struct MGS_ProgramNodeChain {
   uint32_t count;
   struct MGS_ProgramNode *chain;
-} MGS_ProgramNodeChain;
+};
 
-typedef struct MGS_ProgramNode {
+struct MGS_ProgramNode {
   struct MGS_ProgramNode *next;
   MGS_NodeScope *scope;
   struct MGS_ProgramNode *ref_prev;
@@ -88,7 +93,7 @@ typedef struct MGS_ProgramNode {
   uint32_t params;
   MGS_ProgramNodeChain pmod, fmod, amod;
   struct MGS_ProgramNode *nested_next;
-} MGS_ProgramNode;
+};
 
 struct MGS_SymTab;
 

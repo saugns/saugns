@@ -110,8 +110,6 @@ static bool check_invalid(MGS_Parser *restrict o, char c) {
 typedef struct MGS_NodeData {
   MGS_Parser *o;
   MGS_ProgramNode *node; /* state for tentative node until end_node() */
-  MGS_ProgramNodeChain *target;
-  MGS_ProgramNode *target_last;
   const char *setsym;
   size_t setsym_len;
   /* timing/delay */
@@ -131,8 +129,8 @@ static void new_node(MGS_NodeData *nd,
   n = nd->node = calloc(1, sizeof(MGS_ProgramNode));
   n->scope = nd->scope;
   n->ref_prev = ref_prev;
-  nd->target = target;
   n->type = type;
+  s->target = target;
 
   /* IDs and linking */
   o->prev_node = o->cur_node;
@@ -164,8 +162,8 @@ static void new_node(MGS_NodeData *nd,
     if (!target->chain)
       target->chain = n;
     else
-      nd->target_last->nested_next = n;
-    nd->target_last = n;
+      s->target_last->nested_next = n;
+    s->target_last = n;
     ++target->count;
   }
 
@@ -173,7 +171,6 @@ static void new_node(MGS_NodeData *nd,
   n->amp = 1.f;
   n->mode = o->n_mode;
   n->time.v = o->n_time;
-  n->time.flags |= MGS_TIME_DEFAULT;
   n->freq = o->n_freq;
   if (ref_prev != NULL) {
     /* time is not copied */
@@ -212,7 +209,8 @@ static void end_node(MGS_NodeData *nd) {
   } else {
     /* check what the set-node changes */
     MGS_ProgramNode *ref = n->ref_prev;
-    /* MGS_TIME set when time set */
+    if (n->time.flags & MGS_TIME_SET)
+      n->params |= MGS_TIME;
     if (n->wave != ref->wave)
       n->params |= MGS_WAVE;
     if (n->freq != ref->freq)
@@ -244,9 +242,9 @@ static void end_node(MGS_NodeData *nd) {
     double delay = 0.f, delaycount = 0.f;
     MGS_ProgramNode *step;
     for (step = s->seq_start; step != n; step = step->next) {
-      if (step->next == n && step->time.flags & MGS_TIME_DEFAULT) {
+      if (step->next == n && !(step->time.flags & MGS_TIME_SET)) {
         step->time.v = o->n_time; /* use default for last node in group */
-        step->time.flags &= ~MGS_TIME_DEFAULT;
+        step->time.flags |= MGS_TIME_SET;
       }
       if (delay < step->time.v)
         delay = step->time.v;
@@ -254,9 +252,9 @@ static void end_node(MGS_NodeData *nd) {
       delaycount += step->next->delay;
     }
     for (step = s->seq_start; step != n; step = step->next) {
-      if (step->time.flags & MGS_TIME_DEFAULT) {
+      if (!(step->time.flags & MGS_TIME_SET)) {
         step->time.v = delay + delaycount; /* fill in sensible default time */
-        step->time.flags &= ~MGS_TIME_DEFAULT;
+        step->time.flags |= MGS_TIME_SET;
       }
       delaycount -= step->next->delay;
     }
@@ -702,8 +700,7 @@ static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modt
       } else if (o->setnode > 0) {
         if (!scan_num(o, NULL, &f)) goto INVALID;
         nd.node->time.v = f;
-        nd.node->time.flags &= ~MGS_TIME_DEFAULT;
-        nd.node->params |= MGS_TIME;
+        nd.node->time.flags |= MGS_TIME_SET;
       } else
         goto INVALID;
       break;
