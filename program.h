@@ -55,9 +55,9 @@ typedef struct MGS_ProgramNode MGS_ProgramNode;
 typedef struct MGS_ProgramNodeChain MGS_ProgramNodeChain;
 
 typedef struct MGS_NodeSeq {
-  struct MGS_NodeSeq *next;
-  MGS_ProgramNode *seq_first;
-  MGS_ProgramNode *seq_last;
+  struct MGS_NodeSeq *next_seq;
+  MGS_ProgramNode *first;
+  MGS_ProgramNode *last;
   float delay_next;
 } MGS_NodeSeq;
 
