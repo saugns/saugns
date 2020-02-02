@@ -51,13 +51,25 @@ enum {
   MGS_PARAM_MASK = (1<<11) - 1
 };
 
+/* Scope information kept while parsing. */
+enum {
+  MGS_SCOPE_SEQEND = 1<<0,
+};
+
+typedef struct MGS_NodeScope {
+  struct MGS_NodeScope *next;
+  struct MGS_ProgramNode *seqstart;
+  uint32_t scope_flags;
+} MGS_NodeScope;
+
+/* Time information kept while parsing. */
 enum {
   MGS_TIME_DEFAULT = 1<<0,
 };
 
 typedef struct MGS_NodeTime {
   float v;
-  uint32_t flags; // used during parsing/building
+  uint32_t flags;
 } MGS_NodeTime;
 
 typedef struct MGS_ProgramNodeChain {
@@ -84,8 +96,10 @@ struct MGS_SymTab;
 
 struct MGS_Program {
   MGS_ProgramNode *node_list;
+  MGS_NodeScope *scope_list;
   uint32_t node_count;
   uint32_t root_count;
   uint32_t type_counts[MGS_NODE_TYPES];
+  uint32_t scope_count;
   struct MGS_SymTab *symtab;
 };
