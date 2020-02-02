@@ -100,6 +100,5 @@ struct MGS_Program {
   uint32_t node_count;
   uint32_t root_count;
   uint32_t type_counts[MGS_NODE_TYPES];
-  uint32_t seq_count;
   struct MGS_SymTab *symtab;
 };

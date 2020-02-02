@@ -133,6 +133,7 @@ static void new_node(MGS_NodeData *nd,
   n->type = type;
   if (!seq->first)
     seq->first = n;
+  seq->last = n; // TODO: move to end_node() when nodes stored as tree
 
   /*
    * Handle IDs and linking.
@@ -200,10 +201,8 @@ static void end_node(MGS_NodeData *nd) {
   MGS_Parser *o = nd->o;
   MGS_Program *p = o->prg;
   MGS_ProgramNode *n = nd->node;
-  MGS_NodeSeq *seq = o->cur_seq;
   if (!n)
     return; /* nothing to do */
-  seq->last = n;
   nd->node = 0;
   if (!n->ref_prev) {
     n->params |= MGS_PARAM_MASK & ~MGS_MODS_MASK;
@@ -263,7 +262,6 @@ static void new_nodeseq(MGS_NodeData *nd, char from_c) {
   else
     o->cur_seq->next_seq = seq;
   o->cur_seq = seq;
-  puts("seq");
 }
 
 static void end_nodeseq(MGS_NodeData *nd) {
@@ -732,8 +730,12 @@ static void time_nodeseq(MGS_ProgramNode *n_last) {
   MGS_NodeSeq *seq = n_last->seq;
   double delay = 0.f, delaycount = 0.f;
   MGS_ProgramNode *step;
-  printf("time from %d to %d\n", seq->first->id, seq->last->id);
   for (step = seq->first; step != n_after; ) {
+    if (step->first_id != step->root_id) {
+      /* skip this node; nested nodes are excluded from sequence */
+      step = step->next;
+      continue;
+    }
     if (step->next == n_after) {
       /* accept pre-set default time for last node in group */
       step->time.flags |= MGS_TIME_SET;
@@ -746,6 +748,11 @@ static void time_nodeseq(MGS_ProgramNode *n_last) {
     }
   }
   for (step = seq->first; step != n_after; ) {
+    if (step->first_id != step->root_id) {
+      /* skip this node; nested nodes are excluded from sequence */
+      step = step->next;
+      continue;
+    }
     if (!(step->time.flags & MGS_TIME_SET)) {
       step->time.v = delay + delaycount; /* fill in sensible default time */
       step->time.flags |= MGS_TIME_SET;
