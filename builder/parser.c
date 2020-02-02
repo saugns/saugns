@@ -170,10 +170,8 @@ static void new_node(MGS_Parser *o, NodeData *nd,
   /* defaults */
   n->amp = 1.f;
   n->mode = o->n_mode;
-  if (n->first_id != n->root_id)
-    n->time = -1.f; /* set later */
-  else
-    n->time = o->n_time;
+  n->time.v = o->n_time;
+  n->time.flags |= MGS_TIME_DEFAULT;
   n->freq = o->n_freq;
   if (ref_prev != NULL) {
     /* time is not copied */
@@ -193,7 +191,7 @@ static void new_node(MGS_Parser *o, NodeData *nd,
   nd->n_add_delay += nd->n_next_add_delay;
   if (nd->n_time_delay) {
     if (o->prev_root)
-      nd->n_add_delay += o->prev_root->time;
+      nd->n_add_delay += o->prev_root->time.v;
     nd->n_time_delay = 0;
   }
   nd->n_next_add_delay = 0.f;
@@ -242,16 +240,20 @@ static void end_node(MGS_Parser *o, NodeData *nd) {
     double delay = 0.f, delaycount = 0.f;
     MGS_ProgramNode *step;
     for (step = nd->n_begin; step != n; step = step->next) {
-      if (step->next == n && step->time < 0.f)
-        step->time = o->n_time; /* set and use default for last node in group */
-      if (delay < step->time)
-        delay = step->time;
+      if (step->next == n && step->time.flags & MGS_TIME_DEFAULT) {
+        step->time.v = o->n_time; /* use default for last node in group */
+        step->time.flags &= ~MGS_TIME_DEFAULT;
+      }
+      if (delay < step->time.v)
+        delay = step->time.v;
       delay -= step->next->delay;
       delaycount += step->next->delay;
     }
     for (step = nd->n_begin; step != n; step = step->next) {
-      if (step->time < 0.f)
-        step->time = delay + delaycount; /* fill in sensible default time */
+      if (step->time.flags & MGS_TIME_DEFAULT) {
+        step->time.v = delay + delaycount; /* fill in sensible default time */
+        step->time.flags &= ~MGS_TIME_DEFAULT;
+      }
       delaycount -= step->next->delay;
     }
     nd->n_add_delay += delay;
@@ -674,7 +676,8 @@ static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modt
         o->n_time = f;
       } else if (o->setnode > 0) {
         if (!scan_num(o, NULL, &f)) goto INVALID;
-        nd.node->time = f;
+        nd.node->time.v = f;
+        nd.node->time.flags &= ~MGS_TIME_DEFAULT;
         nd.node->params |= MGS_TIME;
       } else
         goto INVALID;
@@ -699,12 +702,21 @@ FINISH:
     warning(o, "end of file without closing '}'s", c);
 RETURN:
   if (nd.node) {
-    if (nd.node->time < 0.f)
-      nd.node->time = o->n_time; /* use default */
     nd.n_end = 1; /* end grouping if any */
     end_node(o, &nd);
   }
   --o->reclevel;
+}
+
+static void time_node(MGS_ProgramNode *n) {
+}
+
+static void adjust_nodes(MGS_ProgramNode *list) {
+  MGS_ProgramNode *n = list;
+  while (n != NULL) {
+    time_node(n);
+    n = n->next;
+  }
 }
 
 MGS_Program* MGS_create_Program(const char *file, bool is_path) {
@@ -722,6 +734,8 @@ MGS_Program* MGS_create_Program(const char *file, bool is_path) {
     goto ERROR;
   }
   o = parse(f, &p);
+  if (!o) goto ERROR;
+  adjust_nodes(o->node_list);
 ERROR:
   MGS_destroy_File(f);
   return o;

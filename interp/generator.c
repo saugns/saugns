@@ -146,7 +146,7 @@ static void init_for_nodelist(MGS_Generator *o, MGS_ProgramNode *node_list) {
     uint32_t sndn_id = step->type_id;
     SoundNode *sndn = &o->sound_nodes[sndn_id];
     if (!step->ref_prev) {
-      uint32_t time = step->time * srate;
+      uint32_t time = step->time.v * srate;
       sndn->time = time;
       sndn->root_i = step->root_id;
       sndn->mode = step->mode; // not included in params
@@ -167,7 +167,7 @@ static void init_for_nodelist(MGS_Generator *o, MGS_ProgramNode *node_list) {
     updn->sndn = sndn;
     updn->data = set;
     if (updn->params & MGS_TIME) {
-      (*set++).i = step->time * srate;
+      (*set++).i = step->time.v * srate;
     }
     if (updn->params & MGS_WAVE) {
       (*set++).i = step->wave;
@@ -250,6 +250,7 @@ MGS_Generator* MGS_create_Generator(const MGS_Program *prg, uint32_t srate) {
     }
     //sndn->cur_indn = NULL;
   }
+puts("------");
   return o;
 }
 
@@ -340,7 +341,7 @@ static void MGS_Generator_prepare_node(MGS_Generator *o, IndexNode *indn) {
     break;
   }
   indn->status |= MGS_INDN_PREP;
-  //MGS_print_state(o, indn);
+  MGS_print_state(o, indn);
 }
 
 void MGS_destroy_Generator(MGS_Generator *o) {

@@ -51,6 +51,15 @@ enum {
   MGS_PARAM_MASK = (1<<11) - 1
 };
 
+enum {
+  MGS_TIME_DEFAULT = 1<<0,
+};
+
+typedef struct MGS_NodeTime {
+  float v;
+  uint32_t flags; // used during parsing/building
+} MGS_NodeTime;
+
 typedef struct MGS_ProgramNodeChain {
   uint32_t count;
   struct MGS_ProgramNode *chain;
@@ -60,7 +69,8 @@ typedef struct MGS_ProgramNode {
   struct MGS_ProgramNode *next;
   struct MGS_ProgramNode *ref_prev;
   uint8_t type, attr, wave, mode;
-  float time, delay, freq, dynfreq, phase, amp, dynamp;
+  MGS_NodeTime time;
+  float delay, freq, dynfreq, phase, amp, dynamp;
   uint32_t id;
   uint32_t first_id; // first id, not increasing for reference chains
   uint32_t root_id;  // first id of node, or of root node when nested
