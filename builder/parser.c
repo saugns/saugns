@@ -116,8 +116,6 @@ typedef struct MGS_NodeData {
   size_t setsym_len;
   /* timing/delay */
   MGS_NodeScope *scope;
-  MGS_ProgramNode *n_begin;
-  uint8_t n_end;
   uint8_t n_time_delay;
   float n_add_delay; /* added to node's delay in end_node */
   float n_next_add_delay;
@@ -132,6 +130,7 @@ static void new_node(MGS_NodeData *nd,
   MGS_ProgramNode *n;
   end_node(nd);
   n = nd->node = calloc(1, sizeof(MGS_ProgramNode));
+  n->scope = nd->scope;
   n->ref_prev = ref_prev;
   nd->target = target;
   n->type = type;
@@ -205,6 +204,7 @@ static void end_node(MGS_NodeData *nd) {
   MGS_Parser *o = nd->o;
   MGS_Program *p = o->prg;
   MGS_ProgramNode *n = nd->node;
+  MGS_NodeScope *s = nd->scope;
   if (!n)
     return; /* nothing to do */
   nd->node = 0;
@@ -239,12 +239,12 @@ static void end_node(MGS_NodeData *nd) {
   if (n->first_id == n->root_id) /* only apply to root operator */
     n->amp *= o->n_ampmult;
   /* node-to-| sequence timing */
-  if (!nd->n_begin)
-    nd->n_begin = n;
-  else if (nd->n_end) {
+  if (!s->seqstart)
+    s->seqstart = n;
+  else if (s->scope_flags & MGS_SCOPE_SEQEND) {
     double delay = 0.f, delaycount = 0.f;
     MGS_ProgramNode *step;
-    for (step = nd->n_begin; step != n; step = step->next) {
+    for (step = s->seqstart; step != n; step = step->next) {
       if (step->next == n && step->time.flags & MGS_TIME_DEFAULT) {
         step->time.v = o->n_time; /* use default for last node in group */
         step->time.flags &= ~MGS_TIME_DEFAULT;
@@ -254,7 +254,7 @@ static void end_node(MGS_NodeData *nd) {
       delay -= step->next->delay;
       delaycount += step->next->delay;
     }
-    for (step = nd->n_begin; step != n; step = step->next) {
+    for (step = s->seqstart; step != n; step = step->next) {
       if (step->time.flags & MGS_TIME_DEFAULT) {
         step->time.v = delay + delaycount; /* fill in sensible default time */
         step->time.flags &= ~MGS_TIME_DEFAULT;
@@ -262,8 +262,8 @@ static void end_node(MGS_NodeData *nd) {
       delaycount -= step->next->delay;
     }
     nd->n_add_delay += delay;
-    nd->n_begin = n;
-    nd->n_end = 0;
+    s->seqstart = n;
+    s->scope_flags &= ~MGS_SCOPE_SEQEND;
   }
   n->delay += nd->n_add_delay;
   nd->n_add_delay = 0.f;
@@ -276,13 +276,22 @@ static void end_node(MGS_NodeData *nd) {
 }
 
 static void MGS_init_NodeData(MGS_Parser *o, MGS_NodeData *nd) {
+  MGS_Program *p = o->prg;
   memset(nd, 0, sizeof(MGS_NodeData));
   nd->o = o;
+  MGS_NodeScope *s = calloc(1, sizeof(MGS_NodeScope));
+  nd->scope = s;
+  if (!p->scope_list)
+    p->scope_list = s;
+  else
+    o->cur_scope->next = s;
+  o->cur_scope = s; 
 }
 
 static void MGS_fini_NodeData(MGS_NodeData *nd) {
+  MGS_NodeScope *s = nd->scope;
   if (nd->node) {
-    nd->n_end = 1; /* end grouping if any */
+    s->scope_flags |= MGS_SCOPE_SEQEND;
     end_node(nd);
   }
 }
@@ -568,10 +577,10 @@ static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modt
       break; }
     case '|':
       end_node(&nd);
-      if (!nd.n_begin)
+      if (!nd.scope->seqstart)
         warning(o, "end of sequence before any parts given", c);
       else
-        nd.n_end = 1;
+        nd.scope->scope_flags |= MGS_SCOPE_SEQEND;
       break;
     case '\\':
       if (o->setdef > o->setnode)

@@ -79,6 +79,7 @@ typedef struct MGS_ProgramNodeChain {
 
 typedef struct MGS_ProgramNode {
   struct MGS_ProgramNode *next;
+  MGS_NodeScope *scope;
   struct MGS_ProgramNode *ref_prev;
   uint8_t type, attr, wave, mode;
   MGS_NodeTime time;
