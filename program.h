@@ -54,15 +54,12 @@ enum {
 typedef struct MGS_ProgramNode MGS_ProgramNode;
 typedef struct MGS_ProgramNodeChain MGS_ProgramNodeChain;
 
-typedef struct MGS_NodeScope {
-  struct MGS_NodeScope *next;
-  MGS_ProgramNodeChain *target;
-  MGS_ProgramNode *target_last;
-  MGS_ProgramNode *seq_start;
-  bool seq_end;
-  float delay_cur;
+typedef struct MGS_NodeSeq {
+  struct MGS_NodeSeq *next;
+  MGS_ProgramNode *seq_first;
+  MGS_ProgramNode *seq_last;
   float delay_next;
-} MGS_NodeScope;
+} MGS_NodeSeq;
 
 /* Time information kept while parsing. */
 enum {
@@ -81,7 +78,7 @@ struct MGS_ProgramNodeChain {
 
 struct MGS_ProgramNode {
   struct MGS_ProgramNode *next;
-  MGS_NodeScope *scope;
+  MGS_NodeSeq *seq;
   struct MGS_ProgramNode *ref_prev;
   uint8_t type, attr, wave, mode;
   MGS_NodeTime time;
@@ -99,10 +96,10 @@ struct MGS_SymTab;
 
 struct MGS_Program {
   MGS_ProgramNode *node_list;
-  MGS_NodeScope *scope_list;
+  MGS_NodeSeq *seq_list;
   uint32_t node_count;
   uint32_t root_count;
   uint32_t type_counts[MGS_NODE_TYPES];
-  uint32_t scope_count;
+  uint32_t seq_count;
   struct MGS_SymTab *symtab;
 };

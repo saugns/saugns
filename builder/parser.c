@@ -49,7 +49,7 @@ typedef struct MGS_Parser {
   uint32_t setdef, setnode;
   MGS_ProgramNode *cur_node, *cur_root;
   MGS_ProgramNode *prev_node, *prev_root;
-  MGS_NodeScope *cur_scope;
+  MGS_NodeSeq *cur_seq;
   /* settings/ops */
   uint8_t n_mode;
   float n_ampmult;
@@ -110,29 +110,38 @@ static bool check_invalid(MGS_Parser *restrict o, char c) {
 typedef struct MGS_NodeData {
   MGS_Parser *o;
   MGS_ProgramNode *node; /* state for tentative node until end_node() */
+  MGS_ProgramNodeChain *target;
+  MGS_ProgramNode *target_last;
   const char *setsym;
   size_t setsym_len;
   /* timing/delay */
-  MGS_NodeScope *scope;
+  MGS_NodeSeq *seq;
   uint8_t n_time_delay;
 } MGS_NodeData;
 
 static void end_node(MGS_NodeData *nd);
 
 static void new_node(MGS_NodeData *nd,
-    MGS_ProgramNodeChain *target, MGS_ProgramNode *ref_prev, uint8_t type) {
+    MGS_ProgramNode *ref_prev, uint8_t type) {
   MGS_Parser *o = nd->o;
   MGS_Program *p = o->prg;
   MGS_ProgramNode *n;
-  MGS_NodeScope *s = nd->scope;
+  MGS_NodeSeq *s = nd->seq;
   end_node(nd);
   n = nd->node = calloc(1, sizeof(MGS_ProgramNode));
-  n->scope = nd->scope;
+  n->seq = nd->seq;
   n->ref_prev = ref_prev;
   n->type = type;
-  s->target = target;
+  if (!s->seq_first)
+    s->seq_first = n;
 
-  /* IDs and linking */
+  /*
+   * Handle IDs and linking.
+   * References keep the original root ID
+   * and are never added to nesting lists.
+   * TODO: Implement references which copy
+   * nodes to new locations, and/or move.
+   */
   o->prev_node = o->cur_node;
   o->prev_root = o->cur_root;
   n->id = p->node_count;
@@ -144,27 +153,24 @@ static void new_node(MGS_NodeData *nd,
   o->cur_node = n;
   if (!ref_prev) {
     n->first_id = n->id;
-    n->type_id = p->type_counts[type]++;
-  } else {
-    n->first_id = ref_prev->first_id;
-    n->type_id = ref_prev->type_id;
-  }
-  if (!target) {
-    if (!ref_prev) {
+    if (!nd->target) {
       n->root_id = n->first_id;
       ++p->root_count;
       o->cur_root = n;
     } else {
-      n->root_id = ref_prev->root_id;
+      n->root_id = o->cur_root->first_id;
+      if (!nd->target->chain)
+        nd->target->chain = n;
+      else
+        nd->target_last->nested_next = n;
+      nd->target_last = n;
+      ++nd->target->count;
     }
+    n->type_id = p->type_counts[type]++;
   } else {
-    n->root_id = o->cur_root->first_id;
-    if (!target->chain)
-      target->chain = n;
-    else
-      s->target_last->nested_next = n;
-    s->target_last = n;
-    ++target->count;
+    n->first_id = ref_prev->first_id;
+    n->root_id = ref_prev->root_id;
+    n->type_id = ref_prev->type_id;
   }
 
   /* defaults */
@@ -187,12 +193,7 @@ static void new_node(MGS_NodeData *nd,
   }
 
   /* prepare timing adjustment */
-  s->delay_cur += s->delay_next;
-  if (nd->n_time_delay) {
-    if (o->prev_root)
-      s->delay_cur += o->prev_root->time.v;
-    nd->n_time_delay = 0;
-  }
+  n->delay = s->delay_next;
   s->delay_next = 0.f;
 }
 
@@ -200,9 +201,10 @@ static void end_node(MGS_NodeData *nd) {
   MGS_Parser *o = nd->o;
   MGS_Program *p = o->prg;
   MGS_ProgramNode *n = nd->node;
-  MGS_NodeScope *s = nd->scope;
+  MGS_NodeSeq *s = nd->seq;
   if (!n)
     return; /* nothing to do */
+  s->seq_last = n;
   nd->node = 0;
   if (!n->ref_prev) {
     n->params |= MGS_PARAM_MASK & ~MGS_MODS_MASK;
@@ -235,35 +237,6 @@ static void end_node(MGS_NodeData *nd) {
 
   if (n->first_id == n->root_id) /* only apply to root operator */
     n->amp *= o->n_ampmult;
-  /* node-to-| sequence timing */
-  if (!s->seq_start)
-    s->seq_start = n;
-  else if (s->seq_end) {
-    double delay = 0.f, delaycount = 0.f;
-    MGS_ProgramNode *step;
-    for (step = s->seq_start; step != n; step = step->next) {
-      if (step->next == n && !(step->time.flags & MGS_TIME_SET)) {
-        step->time.v = o->n_time; /* use default for last node in group */
-        step->time.flags |= MGS_TIME_SET;
-      }
-      if (delay < step->time.v)
-        delay = step->time.v;
-      delay -= step->next->delay;
-      delaycount += step->next->delay;
-    }
-    for (step = s->seq_start; step != n; step = step->next) {
-      if (!(step->time.flags & MGS_TIME_SET)) {
-        step->time.v = delay + delaycount; /* fill in sensible default time */
-        step->time.flags |= MGS_TIME_SET;
-      }
-      delaycount -= step->next->delay;
-    }
-    s->delay_cur += delay;
-    s->seq_start = n;
-    s->seq_end = false;
-  }
-  n->delay += s->delay_cur;
-  s->delay_cur = 0.f;
 
   if (nd->setsym) {
     MGS_SymTab_set(p->symtab, nd->setsym, n);
@@ -272,25 +245,43 @@ static void end_node(MGS_NodeData *nd) {
   }
 }
 
-static void MGS_init_NodeData(MGS_Parser *o, MGS_NodeData *nd) {
+static void end_nodeseq(MGS_NodeData *nd);
+
+static void new_nodeseq(MGS_NodeData *nd, char from_c) {
+  MGS_Parser *o = nd->o;
   MGS_Program *p = o->prg;
+  MGS_NodeSeq *s = calloc(1, sizeof(MGS_NodeSeq));
+  MGS_NodeSeq *prev_s = nd->seq;
+  if (prev_s != NULL) {
+    end_nodeseq(nd);
+    s->delay_next += prev_s->delay_next;
+    prev_s->delay_next = 0.f;
+    if (from_c != 0 && !prev_s->seq_first)
+      warning(o, "end of sequence before any parts given", from_c);
+  }
+  nd->seq = s;
+  if (!p->seq_list)
+    p->seq_list = s;
+  else
+    o->cur_seq->next = s;
+  o->cur_seq = s; 
+}
+
+static void end_nodeseq(MGS_NodeData *nd) {
+  end_node(nd);
+  nd->seq = NULL;
+}
+
+static void MGS_init_NodeData(MGS_NodeData *nd, MGS_Parser *o,
+    MGS_ProgramNodeChain *target) {
   memset(nd, 0, sizeof(MGS_NodeData));
   nd->o = o;
-  MGS_NodeScope *s = calloc(1, sizeof(MGS_NodeScope));
-  nd->scope = s;
-  if (!p->scope_list)
-    p->scope_list = s;
-  else
-    o->cur_scope->next = s;
-  o->cur_scope = s; 
+  nd->target = target;
+  new_nodeseq(nd, 0);
 }
 
 static void MGS_fini_NodeData(MGS_NodeData *nd) {
-  MGS_NodeScope *s = nd->scope;
-  if (nd->node) {
-    s->seq_end = true;
-    end_node(nd);
-  }
+  end_nodeseq(nd);
 }
 
 typedef float (*NumSym_f)(MGS_Parser *restrict o);
@@ -479,7 +470,7 @@ static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modt
   MGS_NodeData nd;
   uint32_t entrylevel = o->level;
   ++o->reclevel;
-  MGS_init_NodeData(o, &nd);
+  MGS_init_NodeData(&nd, o, chain);
   if (chain) {
     chain->count = 0;
     chain->chain = 0;
@@ -517,7 +508,7 @@ static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modt
       }
       if (!scan_num(o, NULL, &f)) goto INVALID;
       nd.n_time_delay = 0;
-      nd.scope->delay_next += f;
+      nd.seq->delay_next += f;
       break;
     case '{':
       /* is always got elsewhere before a nesting call to this function */
@@ -551,7 +542,7 @@ static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modt
       o->n_mode = MGS_MODE_CENTER;
       break;
     case 'E':
-      new_node(&nd, 0, NULL, MGS_TYPE_ENV);
+      new_node(&nd, NULL, MGS_TYPE_ENV);
       o->setnode = o->level + 1;
       break;
     case 'L':
@@ -568,16 +559,12 @@ static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modt
     case 'W': {
       int wave = scan_wavetype(o, c);
       if (wave < 0) break;
-      new_node(&nd, chain, NULL, MGS_TYPE_OP);
+      new_node(&nd, NULL, MGS_TYPE_OP);
       nd.node->wave = wave;
       o->setnode = o->level + 1;
       break; }
     case '|':
-      end_node(&nd);
-      if (!nd.scope->seq_start)
-        warning(o, "end of sequence before any parts given", c);
-      else
-        nd.scope->seq_end = true;
+      new_nodeseq(&nd, c);
       break;
     case '\\':
       if (o->setdef > o->setnode)
@@ -605,7 +592,7 @@ static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modt
         if (!ref)
           warning(o, "ignoring reference to undefined label", c);
         else {
-          new_node(&nd, 0, ref, ref->type);
+          new_node(&nd, ref, ref->type);
           o->setnode = o->level + 1;
         }
       }
@@ -728,12 +715,58 @@ RETURN:
 }
 
 static void time_node(MGS_ProgramNode *n) {
+  //MGS_NodeSeq *s = n->seq;
+  if (!(n->time.flags & MGS_TIME_SET)) {
+    if (n->first_id != n->root_id)
+      n->time.flags |= MGS_TIME_SET;
+  }
+  // handle timing for sub-components here
+  // handle timing for added silence here
+}
+
+/*
+ * Adjust timing for a node sequence; the syntax for such time grouping is
+ * only allowed on the top scope, so the algorithm only deals with this for
+ * the nodes involved.
+ */
+static void time_nodeseq(MGS_ProgramNode *n_last) {
+  MGS_ProgramNode *n_after = n_last->next;
+  MGS_NodeSeq *s = n_last->seq;
+  double delay = 0.f, delaycount = 0.f;
+  MGS_ProgramNode *step;
+  for (step = s->seq_first; step != n_after; ) {
+    if (step->next == n_after) {
+      /* accept pre-set default time for last node in group */
+      step->time.flags |= MGS_TIME_SET;
+    }
+    if (delay < step->time.v)
+      delay = step->time.v;
+    step = step->next;
+    if (step != NULL) {
+      delaycount += step->delay;
+    }
+  }
+  for (step = s->seq_first; step != n_after; ) {
+    if (!(step->time.flags & MGS_TIME_SET)) {
+      step->time.v = delay + delaycount; /* fill in sensible default time */
+      step->time.flags |= MGS_TIME_SET;
+    }
+    step = step->next;
+    if (step != NULL) {
+      delaycount -= step->delay;
+    }
+  }
+  s->seq_first = NULL;
+  if (n_after != NULL)
+    n_after->delay += delay;
 }
 
 static void adjust_nodes(MGS_ProgramNode *list) {
   MGS_ProgramNode *n = list;
   while (n != NULL) {
+    MGS_NodeSeq *s = n->seq;
     time_node(n);
+    if (n == s->seq_last) time_nodeseq(n);
     n = n->next;
   }
 }
@@ -769,9 +802,9 @@ void MGS_destroy_Program(MGS_Program *o) {
     free(n);
     n = nn;
   }
-  MGS_NodeScope *s = o->scope_list;
+  MGS_NodeSeq *s = o->seq_list;
   while (s) {
-    MGS_NodeScope *ns = s->next;
+    MGS_NodeSeq *ns = s->next;
     free(s);
     s = ns;
   }
