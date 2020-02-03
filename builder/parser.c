@@ -115,7 +115,7 @@ typedef struct MGS_NodeData {
   const char *setsym;
   size_t setsym_len;
   /* timing/delay */
-  uint8_t n_time_delay;
+  uint8_t n_time_delay; // TODO: implement
 } MGS_NodeData;
 
 static void end_node(MGS_NodeData *nd);
@@ -273,12 +273,16 @@ static void MGS_init_NodeData(MGS_NodeData *nd, MGS_Parser *o,
   memset(nd, 0, sizeof(MGS_NodeData));
   nd->o = o;
   nd->target = target;
-  if (!target)
-    new_nodeseq(nd, 0);
+  if (!target) {
+    new_nodeseq(nd, 0); // initial instance
+  } else {
+    target->count = 0;
+    target->chain = 0;
+  }
 }
 
 static void MGS_fini_NodeData(MGS_NodeData *nd) {
-  end_nodeseq(nd);
+  end_node(nd);
 }
 
 typedef float (*NumSym_f)(MGS_Parser *restrict o);
@@ -468,10 +472,6 @@ static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modt
   uint32_t entrylevel = o->level;
   ++o->reclevel;
   MGS_init_NodeData(&nd, o, chain);
-  if (chain) {
-    chain->count = 0;
-    chain->chain = 0;
-  }
   for (;;) {
     c = MGS_File_GETC(o->f);
     MGS_File_skipspace(o->f);
