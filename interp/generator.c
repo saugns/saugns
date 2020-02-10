@@ -120,6 +120,82 @@ static void upsize_bufs(MGS_Generator *o, SoundNode *n) {
   }
 }
 
+static void init_for_opdata(MGS_Generator *o,
+    const MGS_ProgramNode *step, IndexNode *in, Data **node_data) {
+  const MGS_ProgramOpData *op_data = step->data.op;
+  uint32_t sndn_id = step->type_id;
+  uint32_t srate = o->srate;
+  if (!step->ref_prev) {
+    SoundNode *sndn = &o->sound_nodes[sndn_id];
+    uint32_t time = op_data->time.v * srate;
+    in->node = sndn;
+    if (op_data->amod.chain != NULL)
+      sndn->amodchain = &o->sound_nodes[op_data->amod.chain->type_id];
+    if (op_data->fmod.chain != NULL)
+      sndn->fmodchain = &o->sound_nodes[op_data->fmod.chain->type_id];
+    if (op_data->pmod.chain != NULL)
+      sndn->pmodchain = &o->sound_nodes[op_data->pmod.chain->type_id];
+    sndn->time = time;
+    sndn->attr = op_data->attr;
+    sndn->freq = op_data->freq;
+    sndn->dynfreq = op_data->dynfreq;
+    MGS_init_Osc(&sndn->osc, srate);
+    sndn->osc.lut = MGS_Osc_LUT(op_data->wave);
+    sndn->osc.phase = MGS_Osc_PHASE(op_data->phase);
+    sndn->amp = op_data->amp;
+    sndn->dynamp = op_data->dynamp;
+    sndn->pan = op_data->pan;
+    if (step->nested_next != NULL)
+      sndn->link = &o->sound_nodes[step->nested_next->type_id];
+  } else {
+    UpdateNode *updn = &o->update_nodes[o->updn_count++];
+    Data *set = *node_data;
+    const MGS_ProgramNode *ref = step->ref_prev;
+    in->node = updn;
+    in->flag |= MGS_FLAG_UPDATE;
+    in->ref_i = ref->id;
+    updn->params = op_data->params;
+    updn->data = set;
+    if (updn->params & MGS_AMODS) {
+      (*set++).i = op_data->amod.chain->type_id;
+    }
+    if (updn->params & MGS_FMODS) {
+      (*set++).i = op_data->fmod.chain->type_id;
+    }
+    if (updn->params & MGS_PMODS) {
+      (*set++).i = op_data->pmod.chain->type_id;
+    }
+    if (updn->params & MGS_TIME) {
+      (*set++).i = op_data->time.v * srate;
+    }
+    if (updn->params & MGS_WAVE) {
+      (*set++).i = op_data->wave;
+    }
+    if (updn->params & MGS_FREQ) {
+      (*set++).f = op_data->freq;
+    }
+    if (updn->params & MGS_DYNFREQ) {
+      (*set++).f = op_data->dynfreq;
+    }
+    if (updn->params & MGS_PHASE) {
+      (*set++).i = MGS_Osc_PHASE(op_data->phase);
+    }
+    if (updn->params & MGS_AMP) {
+      (*set++).f = op_data->amp;
+    }
+    if (updn->params & MGS_DYNAMP) {
+      (*set++).f = op_data->dynamp;
+    }
+    if (updn->params & MGS_PAN) {
+      (*set++).f = op_data->pan;
+    }
+    if (updn->params & MGS_ATTR) {
+      (*set++).i = op_data->attr;
+    }
+    *node_data += count_flags(op_data->params);
+  }
+}
+
 static void init_for_nodelist(MGS_Generator *o) {
   const MGS_Program *prg = o->prg;
   const MGS_ProgramNode *step = prg->node_list;
@@ -134,75 +210,10 @@ static void init_for_nodelist(MGS_Generator *o) {
       in->flag |= MGS_FLAG_EXEC;
     in->first_i = step->first_id;
     in->root_i = step->root_id;
-    uint32_t sndn_id = step->type_id;
-    if (!step->ref_prev) {
-      SoundNode *sndn = &o->sound_nodes[sndn_id];
-      uint32_t time = step->time.v * srate;
-      in->node = sndn;
-      if (step->amod.chain != NULL)
-        sndn->amodchain = &o->sound_nodes[step->amod.chain->type_id];
-      if (step->fmod.chain != NULL)
-        sndn->fmodchain = &o->sound_nodes[step->fmod.chain->type_id];
-      if (step->pmod.chain != NULL)
-        sndn->pmodchain = &o->sound_nodes[step->pmod.chain->type_id];
-      sndn->time = time;
-      sndn->attr = step->attr;
-      sndn->freq = step->freq;
-      sndn->dynfreq = step->dynfreq;
-      MGS_init_Osc(&sndn->osc, srate);
-      sndn->osc.lut = MGS_Osc_LUT(step->wave);
-      sndn->osc.phase = MGS_Osc_PHASE(step->phase);
-      sndn->amp = step->amp;
-      sndn->dynamp = step->dynamp;
-      sndn->pan = step->pan;
-      if (step->nested_next != NULL)
-        sndn->link = &o->sound_nodes[step->nested_next->type_id];
-    } else {
-      UpdateNode *updn = &o->update_nodes[o->updn_count++];
-      Data *set = node_data;
-      const MGS_ProgramNode *ref = step->ref_prev;
-      in->node = updn;
-      in->flag |= MGS_FLAG_UPDATE;
-      in->ref_i = ref->id;
-      updn->params = step->params;
-      updn->data = set;
-      if (updn->params & MGS_AMODS) {
-        (*set++).i = step->amod.chain->type_id;
-      }
-      if (updn->params & MGS_FMODS) {
-        (*set++).i = step->fmod.chain->type_id;
-      }
-      if (updn->params & MGS_PMODS) {
-        (*set++).i = step->pmod.chain->type_id;
-      }
-      if (updn->params & MGS_TIME) {
-        (*set++).i = step->time.v * srate;
-      }
-      if (updn->params & MGS_WAVE) {
-        (*set++).i = step->wave;
-      }
-      if (updn->params & MGS_FREQ) {
-        (*set++).f = step->freq;
-      }
-      if (updn->params & MGS_DYNFREQ) {
-        (*set++).f = step->dynfreq;
-      }
-      if (updn->params & MGS_PHASE) {
-        (*set++).i = MGS_Osc_PHASE(step->phase);
-      }
-      if (updn->params & MGS_AMP) {
-        (*set++).f = step->amp;
-      }
-      if (updn->params & MGS_DYNAMP) {
-        (*set++).f = step->dynamp;
-      }
-      if (updn->params & MGS_PAN) {
-        (*set++).f = step->pan;
-      }
-      if (updn->params & MGS_ATTR) {
-        (*set++).i = step->attr;
-      }
-      node_data += count_flags(step->params);
+    switch (step->type) {
+    case MGS_TYPE_OP:
+      init_for_opdata(o, step, in, &node_data);
+      break;
     }
     step = step->next;
   }
@@ -214,10 +225,11 @@ MGS_Generator* MGS_create_Generator(const MGS_Program *prg, uint32_t srate) {
   size_t data_count = 0;
   const MGS_ProgramNode *step;
   for (step = prg->node_list; step; step = step->next) {
-    if (step->ref_prev != NULL) {
-      ++updn_count;
-      data_count += count_flags(step->params);
-    }
+    if (!step->ref_prev) continue;
+    MGS_ProgramOpData *op_data = MGS_ProgramNode_get_data(step, MGS_TYPE_OP);
+    if (!op_data) continue;
+    ++updn_count;
+    data_count += count_flags(op_data->params);
   }
   o = calloc(1, sizeof(MGS_Generator));
   o->prg = prg;

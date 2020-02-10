@@ -17,6 +17,7 @@
 /* Node types. */
 enum {
 	MGS_TYPE_OP = 0,
+	MGS_TYPE_ARR,
 	MGS_TYPE_ENV,
 	MGS_NODE_TYPES
 };
@@ -48,6 +49,7 @@ enum {
 typedef struct MGS_ProgramNode MGS_ProgramNode;
 typedef struct MGS_ProgramNodeChain MGS_ProgramNodeChain;
 typedef struct MGS_ProgramDurScope MGS_ProgramDurScope;
+typedef struct MGS_ProgramOpData MGS_ProgramOpData;
 
 struct MGS_ProgramDurScope {
 	MGS_ProgramDurScope *next;
@@ -70,21 +72,41 @@ struct MGS_ProgramNodeChain {
 	MGS_ProgramNode *chain;
 };
 
+struct MGS_ProgramOpData {
+	MGS_TimePar time;
+	uint32_t params;
+	uint8_t attr, wave;
+	float amp, dynamp, pan;
+	float freq, dynfreq, phase;
+	MGS_ProgramNodeChain amod, pmod, fmod;
+};
+
 struct MGS_ProgramNode {
 	MGS_ProgramNode *next;
 	MGS_ProgramDurScope *dur;
 	MGS_ProgramNode *ref_prev;
-	uint8_t type, attr, wave;
-	MGS_TimePar time;
-	float delay, freq, dynfreq, phase, amp, dynamp, pan;
+	float delay;
+	uint8_t type;
 	uint32_t id;
 	uint32_t first_id; // first id, not increasing for reference chains
 	uint32_t root_id;  // first id of node, or of root node when nested
 	uint32_t type_id;  // per-type id, unincreased for reference chains
-	uint32_t params;
-	MGS_ProgramNodeChain pmod, fmod, amod;
+	union {
+		MGS_ProgramOpData *op;
+	} data;
 	MGS_ProgramNode *nested_next;
 };
+
+static inline void *MGS_ProgramNode_get_data(const MGS_ProgramNode *restrict n,
+		uint8_t type) {
+	if (n->type != type)
+		return NULL;
+	switch (n->type) {
+	case MGS_TYPE_OP:
+		return n->data.op;
+	}
+	return NULL;
+}
 
 struct MGS_MemPool;
 struct MGS_SymTab;
