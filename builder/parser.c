@@ -128,16 +128,44 @@ typedef struct MGS_NodeData {
   float n_delay_next;
 } MGS_NodeData;
 
+static void new_opdata(MGS_NodeData *nd) {
+  MGS_Parser *o = nd->o;
+  MGS_Program *p = o->prg;
+  MGS_ProgramNode *n = nd->node;
+  MGS_ProgramOpData *op;
+  /*
+   * Initial operator data.
+   */
+  if (!n->ref_prev) {
+    op = MGS_MemPool_alloc(p->mem, sizeof(MGS_ProgramOpData));
+    op->amp = 1.f;
+    op->dynamp = op->amp;
+    op->pan = o->n_pan;
+    op->freq = o->n_freq;
+    op->dynfreq = op->freq;
+  } else {
+    MGS_ProgramNode *ref = n->ref_prev;
+    op = MGS_MemPool_memdup(p->mem, ref->data.op, sizeof(MGS_ProgramOpData));
+    op->params = 0;
+  }
+  /* time is not copied across reference */
+  op->time.v = o->n_time;
+  op->time.flags = 0;
+  n->data.op = op;
+}
+
 static void end_node(MGS_NodeData *nd);
 
 static void new_node(MGS_NodeData *nd,
     MGS_ProgramNode *ref_prev, uint8_t type) {
   MGS_Parser *o = nd->o;
   MGS_Program *p = o->prg;
-  MGS_ProgramNode *n;
-  MGS_ProgramDurScope *dur = o->cur_dur;
   end_node(nd);
-  n = nd->node = MGS_MemPool_alloc(p->mem, sizeof(MGS_ProgramNode));
+
+  MGS_ProgramDurScope *dur = o->cur_dur;
+  MGS_ProgramNode *n;
+  n = MGS_MemPool_alloc(p->mem, sizeof(MGS_ProgramNode));
+  nd->node = n;
   n->dur = o->cur_dur;
   n->ref_prev = ref_prev;
   n->type = type;
@@ -183,76 +211,51 @@ static void new_node(MGS_NodeData *nd,
     n->type_id = ref_prev->type_id;
   }
 
-  /* defaults */
-  n->amp = 1.f;
-  n->dynamp = n->amp;
-  n->time.v = o->n_time;
-  n->freq = o->n_freq;
-  n->dynfreq = n->freq;
-  n->pan = o->n_pan;
-  if (ref_prev != NULL) {
-    /* time is not copied */
-    n->wave = ref_prev->wave;
-    n->amp = ref_prev->amp;
-    n->dynamp = ref_prev->dynamp;
-    n->freq = ref_prev->freq;
-    n->dynfreq = ref_prev->dynfreq;
-    n->pan = ref_prev->pan;
-    n->attr = ref_prev->attr;
-    n->pmod = ref_prev->pmod;
-    n->fmod = ref_prev->fmod;
-    n->amod = ref_prev->amod;
-  }
-
   /* prepare timing adjustment */
   n->delay = nd->n_delay_next;
   nd->n_delay_next = 0.f;
+
+  switch (type) {
+  case MGS_TYPE_OP:
+    new_opdata(nd);
+    break;
+  }
+}
+
+static void end_opdata(MGS_NodeData *nd) {
+  MGS_Parser *o = nd->o;
+  MGS_ProgramNode *n = nd->node;
+  MGS_ProgramOpData *op = n->data.op;
+  /*
+   * Prepare parsed operator data.
+   */
+  if (!n->ref_prev) {
+    /* first node sets all values */
+    op->params |= MGS_PARAM_MASK & ~MGS_MODS_MASK;
+  } else {
+    if (op->time.flags & MGS_TIME_SET)
+      op->params |= MGS_TIME;
+  }
+  if (n->first_id == n->root_id) /* only apply to non-modulators */
+    op->amp *= o->n_ampmult;
 }
 
 static void end_node(MGS_NodeData *nd) {
-  MGS_Parser *o = nd->o;
   MGS_ProgramNode *n = nd->node;
   if (!n)
     return; /* nothing to do */
-  nd->node = 0;
-  if (!n->ref_prev) {
-    n->params |= MGS_PARAM_MASK & ~MGS_MODS_MASK;
-  } else {
-    /* check what the set-node changes */
-    MGS_ProgramNode *ref = n->ref_prev;
-    if (n->time.flags & MGS_TIME_SET)
-      n->params |= MGS_TIME;
-    if (n->wave != ref->wave)
-      n->params |= MGS_WAVE;
-    if (n->freq != ref->freq)
-      n->params |= MGS_FREQ;
-    if (n->dynfreq != ref->dynfreq)
-      n->params |= MGS_DYNFREQ;
-    if (n->phase != ref->phase)
-      n->params |= MGS_PHASE;
-    if (n->amp != ref->amp)
-      n->params |= MGS_AMP;
-    if (n->dynamp != ref->dynamp)
-      n->params |= MGS_DYNAMP;
-    if (n->pan != ref->pan)
-      n->params |= MGS_PAN;
-    if (n->attr != ref->attr)
-      n->params |= MGS_ATTR;
-    if (n->amod.chain != ref->amod.chain)
-      n->params |= MGS_AMODS;
-    if (n->fmod.chain != ref->fmod.chain)
-      n->params |= MGS_FMODS;
-    if (n->pmod.chain != ref->pmod.chain)
-      n->params |= MGS_PMODS;
-  }
 
-  if (n->first_id == n->root_id) /* only apply to root operator */
-    n->amp *= o->n_ampmult;
+  switch (n->type) {
+  case MGS_TYPE_OP:
+    end_opdata(nd);
+    break;
+  }
 
   if (nd->setsym) {
     nd->setsym->data = n;
     nd->setsym = NULL;
   }
+  nd->node = NULL;
 }
 
 static void end_durscope(MGS_NodeData *nd);
@@ -487,7 +490,7 @@ static bool scan_wavetype(MGS_Parser *restrict o,
   return false;
 }
 
-static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modtype);
+static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint32_t modtype);
 
 static MGS_Program* parse(MGS_File *f, MGS_Parser *o) {
   memset(o, 0, sizeof(MGS_Parser));
@@ -511,7 +514,130 @@ static MGS_Program* parse(MGS_File *f, MGS_Parser *o) {
   return o->prg;
 }
 
-static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modtype) {
+static bool parse_amp(MGS_Parser *o, MGS_ProgramNode *n, uint32_t modtype) {
+  MGS_ProgramOpData *op = MGS_ProgramNode_get_data(n, MGS_TYPE_OP);
+  if (!op) goto INVALID;
+  if (modtype == MGS_AMODS ||
+      modtype == MGS_FMODS)
+    goto INVALID;
+  float f;
+  if (MGS_File_TRYC(o->f, '!')) {
+    if (!MGS_File_TESTC(o->f, '{')) {
+      if (!scan_num(o, NULL, &f)) goto INVALID;
+      op->dynamp = f;
+      op->params |= MGS_DYNAMP;
+    }
+    if (MGS_File_TRYC(o->f, '{')) {
+      parse_level(o, &op->amod, MGS_AMODS);
+      op->params |= MGS_AMODS;
+    }
+  } else {
+    if (!scan_num(o, NULL, &f)) goto INVALID;
+    op->amp = f;
+    op->params |= MGS_AMP;
+  }
+  return true;
+INVALID:
+  return false;
+}
+
+static bool parse_channel(MGS_Parser *o, MGS_ProgramNode *n, uint32_t modtype) {
+  MGS_ProgramOpData *op = MGS_ProgramNode_get_data(n, MGS_TYPE_OP);
+  if (!op) goto INVALID;
+  if (modtype != 0) goto INVALID;
+  float f;
+  /* TODO: support modulation */
+  if (!scan_num(o, numsym_channel, &f)) goto INVALID;
+  op->pan = f;
+  op->params |= MGS_PAN;
+  return true;
+INVALID:
+  return false;
+}
+
+static bool parse_freq(MGS_Parser *o, MGS_ProgramNode *n, bool ratio) {
+  MGS_ProgramOpData *op = MGS_ProgramNode_get_data(n, MGS_TYPE_OP);
+  if (!op) goto INVALID;
+  if (ratio && (n->first_id == n->root_id)) goto INVALID;
+  float f;
+  if (MGS_File_TRYC(o->f, '!')) {
+    if (!MGS_File_TESTC(o->f, '{')) {
+      if (!scan_num(o, NULL, &f)) goto INVALID;
+      if (ratio) {
+        op->dynfreq = 1.f / f;
+        op->attr |= MGS_ATTR_DYNFREQRATIO;
+      } else {
+        op->dynfreq = f;
+        op->attr &= ~MGS_ATTR_DYNFREQRATIO;
+      }
+      op->params |= MGS_DYNFREQ | MGS_ATTR;
+    }
+    if (MGS_File_TRYC(o->f, '{')) {
+      parse_level(o, &op->fmod, MGS_FMODS);
+      op->params |= MGS_FMODS;
+    }
+  } else {
+    if (!scan_num(o, NULL, &f)) goto INVALID;
+    if (ratio) {
+      op->freq = 1.f / f;
+      op->attr |= MGS_ATTR_FREQRATIO;
+    } else {
+      op->freq = f;
+      op->attr &= ~MGS_ATTR_FREQRATIO;
+    }
+    op->params |= MGS_FREQ | MGS_ATTR;
+  }
+  return true;
+INVALID:
+  return false;
+}
+
+static bool parse_phase(MGS_Parser *o, MGS_ProgramNode *n) {
+  MGS_ProgramOpData *op = MGS_ProgramNode_get_data(n, MGS_TYPE_OP);
+  if (!op) goto INVALID;
+  float f;
+  if (MGS_File_TRYC(o->f, '!')) {
+    if (MGS_File_TRYC(o->f, '{')) {
+      parse_level(o, &op->pmod, MGS_PMODS);
+      op->params |= MGS_PMODS;
+    }
+  } else {
+    if (!scan_num(o, NULL, &f)) goto INVALID;
+    op->phase = fmod(f, 1.f);
+    if (op->phase < 0.f)
+      op->phase += 1.f;
+    op->params |= MGS_PHASE;
+  }
+  return true;
+INVALID:
+  return false;
+}
+
+static bool parse_time(MGS_Parser *o, MGS_ProgramNode *n) {
+  MGS_ProgramOpData *op = MGS_ProgramNode_get_data(n, MGS_TYPE_OP);
+  if (!op) goto INVALID;
+  float f;
+  if (!scan_timeval(o, &f)) goto INVALID;
+  op->time.v = f;
+  op->time.flags |= MGS_TIME_SET;
+  return true;
+INVALID:
+  return false;
+}
+
+static bool parse_wave(MGS_Parser *o, MGS_ProgramNode *n, char pos_c) {
+  MGS_ProgramOpData *op = MGS_ProgramNode_get_data(n, MGS_TYPE_OP);
+  if (!op) goto INVALID;
+  size_t wave;
+  if (!scan_wavetype(o, &wave, pos_c)) goto INVALID;
+  op->wave = wave;
+  op->params |= MGS_WAVE;
+  return true;
+INVALID:
+  return false;
+}
+
+static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint32_t modtype) {
   char c;
   float f;
   MGS_NodeData nd;
@@ -594,7 +720,7 @@ static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modt
       size_t wave;
       if (!scan_wavetype(o, &wave, c)) break;
       new_node(&nd, NULL, MGS_TYPE_OP);
-      nd.node->wave = wave;
+      nd.node->data.op->wave = wave;
       o->setnode = o->level + 1;
       break; }
     case '|':
@@ -635,115 +761,57 @@ static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint8_t modt
       if (o->setdef > o->setnode) {
         if (!scan_num(o, NULL, &f)) goto INVALID;
         o->n_ampmult = f;
-      } else if (o->setnode > 0) {
-        if (modtype == MGS_AMODS ||
-            modtype == MGS_FMODS)
-          goto INVALID;
-        if (MGS_File_TRYC(o->f, '!')) {
-          if (!MGS_File_TESTC(o->f, '{')) {
-            if (!scan_num(o, NULL, &f)) goto INVALID;
-            nd.node->dynamp = f;
-          }
-          if (MGS_File_TRYC(o->f, '{')) {
-            parse_level(o, &nd.node->amod, MGS_AMODS);
-          }
-        } else {
-          if (!scan_num(o, NULL, &f)) goto INVALID;
-          nd.node->amp = f;
-        }
-      } else
+        break;
+      } else if (o->setnode <= 0)
         goto INVALID;
+      if (!parse_amp(o, nd.node, modtype)) goto INVALID;
       break;
     case 'c':
       if (o->setdef > o->setnode) {
         if (!scan_num(o, numsym_channel, &f)) goto INVALID;
         o->n_pan = f;
-      } else if (o->setnode > 0) {
-        if (modtype != 0) goto INVALID;
-        /* TODO: support modulation */
-        if (!scan_num(o, numsym_channel, &f)) goto INVALID;
-        nd.node->pan = f;
-      } else
+        break;
+      } else if (o->setnode <= 0)
         goto INVALID;
+      if (!parse_channel(o, nd.node, modtype)) goto INVALID;
       break;
     case 'f':
       if (o->setdef > o->setnode) {
         if (!scan_num(o, NULL, &f)) goto INVALID;
         o->n_freq = f;
-      } else if (o->setnode > 0) {
-        if (MGS_File_TRYC(o->f, '!')) {
-          if (!MGS_File_TESTC(o->f, '{')) {
-            if (!scan_num(o, NULL, &f)) goto INVALID;
-            nd.node->dynfreq = f;
-            nd.node->attr &= ~MGS_ATTR_DYNFREQRATIO;
-          }
-          if (MGS_File_TRYC(o->f, '{')) {
-            parse_level(o, &nd.node->fmod, MGS_FMODS);
-          }
-        } else {
-          if (!scan_num(o, NULL, &f)) goto INVALID;
-          nd.node->freq = f;
-          nd.node->attr &= ~MGS_ATTR_FREQRATIO;
-        }
-      } else
+        break;
+      } else if (o->setnode <= 0)
         goto INVALID;
+      if (!parse_freq(o, nd.node, false)) goto INVALID;
       break;
-    case 'p': {
+    case 'p':
       if (o->setdef > o->setnode || o->setnode <= 0)
         goto INVALID;
-      if (MGS_File_TRYC(o->f, '!')) {
-        if (MGS_File_TRYC(o->f, '{')) {
-          parse_level(o, &nd.node->pmod, MGS_PMODS);
-        }
-      } else {
-        if (!scan_num(o, NULL, &f)) goto INVALID;
-        nd.node->phase = fmod(f, 1.f);
-        if (nd.node->phase < 0.f)
-          nd.node->phase += 1.f;
-      }
-      break; }
+      if (!parse_phase(o, nd.node)) goto INVALID;
+      break;
     case 'r':
       if (o->setdef > o->setnode) {
         if (!scan_num(o, NULL, &f)) goto INVALID;
         o->n_ratio = 1.f / f;
-      } else if (o->setnode > 0) {
-        if (!chain)
-          goto INVALID;
-        if (MGS_File_TRYC(o->f, '!')) {
-          if (!MGS_File_TESTC(o->f, '{')) {
-            if (!scan_num(o, NULL, &f)) goto INVALID;
-            nd.node->dynfreq = 1.f / f;
-            nd.node->attr |= MGS_ATTR_DYNFREQRATIO;
-          }
-          if (MGS_File_TRYC(o->f, '{')) {
-            parse_level(o, &nd.node->fmod, MGS_FMODS);
-          }
-        } else {
-          if (!scan_num(o, NULL, &f)) goto INVALID;
-          nd.node->freq = 1.f / f;
-          nd.node->attr |= MGS_ATTR_FREQRATIO;
-        }
-      } else
+        break;
+      } else if (o->setnode <= 0)
         goto INVALID;
+      if (!parse_freq(o, nd.node, true)) goto INVALID;
       break;
     case 't':
       if (o->setdef > o->setnode) {
         if (!scan_timeval(o, &f)) goto INVALID;
         o->n_time = f;
-      } else if (o->setnode > 0) {
-        if (!scan_timeval(o, &f)) goto INVALID;
-        nd.node->time.v = f;
-        nd.node->time.flags |= MGS_TIME_SET;
-      } else
+        break;
+      } else if (o->setnode <= 0)
         goto INVALID;
+      if (!parse_time(o, nd.node)) goto INVALID;
       break;
-    case 'w': {
+    case 'w':
       if (o->setdef > o->setnode || o->setnode <= 0)
         goto INVALID;
-      size_t wave;
-      if (!scan_wavetype(o, &wave, c)) break;
-      nd.node->wave = wave;
-      break; }
+      if (!parse_wave(o, nd.node, c)) goto INVALID;
+      break;
     default:
     INVALID:
       if (!check_invalid(o, c)) goto FINISH;
@@ -761,9 +829,12 @@ RETURN:
 }
 
 static void time_node(MGS_ProgramNode *n) {
-  if (!(n->time.flags & MGS_TIME_SET)) {
+  MGS_ProgramOpData *op = MGS_ProgramNode_get_data(n, MGS_TYPE_OP);
+  if (!op)
+    return;
+  if (!(op->time.flags & MGS_TIME_SET)) {
     if (n->first_id != n->root_id)
-      n->time.flags |= MGS_TIME_SET;
+      op->time.flags |= MGS_TIME_SET;
   }
   // handle timing for sub-components here
   // handle timing for added silence here
@@ -785,12 +856,14 @@ static void time_durscope(MGS_ProgramNode *n_last) {
       step = step->next;
       continue;
     }
+    MGS_ProgramOpData *op = MGS_ProgramNode_get_data(step, MGS_TYPE_OP);
+    if (!op) continue; /* skip unsupported node */
     if (step->next == n_after) {
       /* accept pre-set default time for last node in group */
-      step->time.flags |= MGS_TIME_SET;
+      op->time.flags |= MGS_TIME_SET;
     }
-    if (delay < step->time.v)
-      delay = step->time.v;
+    if (delay < op->time.v)
+      delay = op->time.v;
     step = step->next;
     if (step != NULL) {
       delaycount += step->delay;
@@ -802,9 +875,11 @@ static void time_durscope(MGS_ProgramNode *n_last) {
       step = step->next;
       continue;
     }
-    if (!(step->time.flags & MGS_TIME_SET)) {
-      step->time.v = delay + delaycount; /* fill in sensible default time */
-      step->time.flags |= MGS_TIME_SET;
+    MGS_ProgramOpData *op = MGS_ProgramNode_get_data(step, MGS_TYPE_OP);
+    if (!op) continue; /* skip unsupported node */
+    if (!(op->time.flags & MGS_TIME_SET)) {
+      op->time.v = delay + delaycount; /* fill in sensible default time */
+      op->time.flags |= MGS_TIME_SET;
     }
     step = step->next;
     if (step != NULL) {
