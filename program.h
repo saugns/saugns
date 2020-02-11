@@ -16,10 +16,13 @@
 
 /* Node types. */
 enum {
-	MGS_TYPE_OP = 0,
+	MGS_BASETYPE_SOUND = 0,
+	MGS_BASETYPES,
+	MGS_TYPE_OP = MGS_BASETYPES,
+	MGS_TYPE_NOISE,
 	MGS_TYPE_ARR,
 	MGS_TYPE_ENV,
-	MGS_NODE_TYPES
+	MGS_TYPES,
 };
 
 /* Operator attributes. */
@@ -49,6 +52,7 @@ enum {
 typedef struct MGS_ProgramNode MGS_ProgramNode;
 typedef struct MGS_ProgramNodeChain MGS_ProgramNodeChain;
 typedef struct MGS_ProgramDurScope MGS_ProgramDurScope;
+typedef struct MGS_ProgramSoundData MGS_ProgramSoundData;
 typedef struct MGS_ProgramOpData MGS_ProgramOpData;
 
 struct MGS_ProgramDurScope {
@@ -72,13 +76,18 @@ struct MGS_ProgramNodeChain {
 	MGS_ProgramNode *chain;
 };
 
-struct MGS_ProgramOpData {
+struct MGS_ProgramSoundData {
 	MGS_TimePar time;
 	uint32_t params;
-	uint8_t attr, wave;
 	float amp, dynamp, pan;
+	MGS_ProgramNodeChain amod;
+};
+
+struct MGS_ProgramOpData {
+	MGS_ProgramSoundData sound;
+	uint8_t attr, wave;
 	float freq, dynfreq, phase;
-	MGS_ProgramNodeChain amod, pmod, fmod;
+	MGS_ProgramNodeChain pmod, fmod;
 };
 
 struct MGS_ProgramNode {
@@ -90,8 +99,9 @@ struct MGS_ProgramNode {
 	uint32_t id;
 	uint32_t first_id; // first id, not increasing for reference chains
 	uint32_t root_id;  // first id of node, or of root node when nested
-	uint32_t type_id;  // per-type id, unincreased for reference chains
+	uint32_t base_id;  // per-base-type id, increased for each first id
 	union {
+		MGS_ProgramSoundData *sound;
 		MGS_ProgramOpData *op;
 	} data;
 	MGS_ProgramNode *nested_next;
@@ -99,13 +109,21 @@ struct MGS_ProgramNode {
 
 static inline void *MGS_ProgramNode_get_data(const MGS_ProgramNode *restrict n,
 		uint8_t type) {
-	if (n->type != type)
-		return NULL;
-	switch (n->type) {
-	case MGS_TYPE_OP:
-		return n->data.op;
+	if (n->type != type) {
+		switch (n->type) {
+		case MGS_TYPE_OP:
+			return (type == MGS_BASETYPE_SOUND) ? n->data.op : NULL;
+		default:
+			return NULL;
+		}
+	} else {
+		switch (n->type) {
+		case MGS_TYPE_OP:
+			return n->data.op;
+		default:
+			return NULL;
+		}
 	}
-	return NULL;
 }
 
 struct MGS_MemPool;
@@ -123,7 +141,7 @@ struct MGS_Program {
 	MGS_ProgramDurScope *dur_list;
 	uint32_t node_count;
 	uint32_t root_count;
-	uint32_t type_counts[MGS_NODE_TYPES];
+	uint32_t base_counts[MGS_BASETYPES];
 	struct MGS_MemPool *mem;
 	struct MGS_SymTab *symt;
 	const char *name;
