@@ -17,9 +17,11 @@
 /* Node types. */
 enum {
 	MGS_BASETYPE_SOUND = 0,
+	MGS_BASETYPE_SCOPE,
 	MGS_BASETYPES,
 	MGS_TYPE_OP = MGS_BASETYPES,
 	MGS_TYPE_NOISE,
+	MGS_TYPE_DUR,
 	MGS_TYPE_ARR,
 	MGS_TYPE_ENV,
 	MGS_TYPES,
@@ -51,15 +53,10 @@ enum {
 
 typedef struct MGS_ProgramNode MGS_ProgramNode;
 typedef struct MGS_ProgramNodeChain MGS_ProgramNodeChain;
-typedef struct MGS_ProgramDurScope MGS_ProgramDurScope;
 typedef struct MGS_ProgramSoundData MGS_ProgramSoundData;
 typedef struct MGS_ProgramOpData MGS_ProgramOpData;
-
-struct MGS_ProgramDurScope {
-	MGS_ProgramDurScope *next;
-	MGS_ProgramNode *first_node;
-	MGS_ProgramNode *last_node;
-};
+typedef struct MGS_ProgramScopeData MGS_ProgramScopeData;
+typedef struct MGS_ProgramDurData MGS_ProgramDurData;
 
 /* Time parameter flags. */
 enum {
@@ -90,9 +87,17 @@ struct MGS_ProgramOpData {
 	MGS_ProgramNodeChain pmod, fmod;
 };
 
+struct MGS_ProgramScopeData {
+	MGS_ProgramNode *first_node;
+	MGS_ProgramNode *last_node;
+};
+
+struct MGS_ProgramDurData {
+	MGS_ProgramScopeData scope;
+};
+
 struct MGS_ProgramNode {
 	MGS_ProgramNode *next;
-	MGS_ProgramDurScope *dur;
 	MGS_ProgramNode *ref_prev;
 	float delay;
 	uint8_t type;
@@ -100,29 +105,21 @@ struct MGS_ProgramNode {
 	uint32_t first_id; // first id, not increasing for reference chains
 	uint32_t root_id;  // first id of node, or of root node when nested
 	uint32_t base_id;  // per-base-type id, increased for each first id
-	union {
-		MGS_ProgramSoundData *sound;
-		MGS_ProgramOpData *op;
-	} data;
+	void *data;
 	MGS_ProgramNode *nested_next;
 };
 
 static inline void *MGS_ProgramNode_get_data(const MGS_ProgramNode *restrict n,
 		uint8_t type) {
-	if (n->type != type) {
-		switch (n->type) {
-		case MGS_TYPE_OP:
-			return (type == MGS_BASETYPE_SOUND) ? n->data.op : NULL;
-		default:
-			return NULL;
-		}
-	} else {
-		switch (n->type) {
-		case MGS_TYPE_OP:
-			return n->data.op;
-		default:
-			return NULL;
-		}
+	if (n->type == type)
+		return n->data;
+	switch (n->type) {
+	case MGS_TYPE_OP:
+		return (type == MGS_BASETYPE_SOUND) ? n->data : NULL;
+	case MGS_TYPE_DUR:
+		return (type == MGS_BASETYPE_SCOPE) ? n->data : NULL;
+	default:
+		return NULL;
 	}
 }
 
@@ -138,7 +135,6 @@ bool MGS_init_LangOpt(MGS_LangOpt *restrict o,
 
 struct MGS_Program {
 	MGS_ProgramNode *node_list;
-	MGS_ProgramDurScope *dur_list;
 	uint32_t node_count;
 	uint32_t root_count;
 	uint32_t base_counts[MGS_BASETYPES];

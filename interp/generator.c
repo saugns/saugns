@@ -142,7 +142,7 @@ static void upsize_bufs(MGS_Generator *o, IndexNode *in) {
 
 static void init_for_opdata(MGS_Generator *o,
     const MGS_ProgramNode *step, RunNode *rn, Data **node_data) {
-  const MGS_ProgramOpData *op_data = step->data.op;
+  const MGS_ProgramOpData *op_data = step->data;
   uint32_t sndn_id = step->base_id;
   uint32_t srate = o->srate;
   if (!step->ref_prev) {
@@ -285,6 +285,11 @@ static void adjust_op_time(MGS_Generator *o, OpNode *n) {
 static void MGS_Generator_enter_node(MGS_Generator *o, RunNode *rn) {
   if (!(rn->flag & MGS_FLAG_UPDATE)) {
     IndexNode *in = rn->node;
+    if (!in) {
+      /* no-op node */
+      rn->flag = MGS_FLAG_ENTERED;
+      return;
+    }
     if (rn->first_i == rn->root_i)
       upsize_bufs(o, in);
     switch (in->type) {
