@@ -9,7 +9,7 @@ LFLAGS_OSSAUDIO=$(LFLAGS) -lossaudio
 OBJ=loader/file.o loader/symtab.o \
     builder/parser.o builder/builder.o \
     renderer/audiodev.o renderer/wavfile.o renderer/renderer.o \
-    interp/generator.o \
+    interp/generator.o interp/osc.o \
     common.o mempool.o ptrarr.o \
     wave.o help.o \
     mgensys.o
@@ -51,6 +51,9 @@ help.o: common.h help.c help.h wave.h
 
 interp/generator.o: common.h interp/generator.c interp/osc.h math.h mgensys.h program.h wave.h
 	$(CC) -c $(CFLAGS_FAST) interp/generator.c -o interp/generator.o
+
+interp/osc.o: common.h interp/osc.c interp/osc.h math.h wave.h
+	$(CC) -c $(CFLAGS_FAST) interp/osc.c -o interp/osc.o
 
 loader/file.o: common.h loader/file.c loader/file.h
 	$(CC) -c $(CFLAGS) loader/file.c -o loader/file.o

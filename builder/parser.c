@@ -58,7 +58,7 @@ typedef struct MGS_Parser {
   uint32_t setdef, setnode;
   MGS_ProgramNode *cur_node, *cur_root;
   MGS_ProgramNode *prev_node, *prev_root;
-  MGS_ProgramDurScope *cur_dur;
+  MGS_ProgramDurData *cur_dur;
   /* settings/ops */
   float n_pan;
   float n_ampmult;
@@ -146,14 +146,24 @@ static void new_opdata(MGS_NodeData *nd) {
     n->base_id = p->base_counts[MGS_BASETYPE_SOUND]++;
   } else {
     MGS_ProgramNode *ref = n->ref_prev;
-    op = MGS_MemPool_memdup(p->mem, ref->data.op, sizeof(MGS_ProgramOpData));
+    op = MGS_MemPool_memdup(p->mem, ref->data, sizeof(MGS_ProgramOpData));
     op->sound.params = 0;
     n->base_id = ref->base_id;
   }
   /* time is not copied across reference */
   op->sound.time.v = o->n_time;
   op->sound.time.flags = 0;
-  n->data.op = op;
+  n->data = op;
+}
+
+static void new_durdata(MGS_NodeData *nd) {
+  MGS_Parser *o = nd->o;
+  MGS_Program *p = o->prg;
+  MGS_ProgramNode *n = nd->node;
+  MGS_ProgramDurData *dur;
+  dur = MGS_MemPool_alloc(p->mem, sizeof(MGS_ProgramDurData));
+  o->cur_dur = dur;
+  n->data = dur;
 }
 
 static void end_node(MGS_NodeData *nd);
@@ -164,16 +174,17 @@ static void new_node(MGS_NodeData *nd,
   MGS_Program *p = o->prg;
   end_node(nd);
 
-  MGS_ProgramDurScope *dur = o->cur_dur;
   MGS_ProgramNode *n;
   n = MGS_MemPool_alloc(p->mem, sizeof(MGS_ProgramNode));
   nd->node = n;
-  n->dur = o->cur_dur;
   n->ref_prev = ref_prev;
   n->type = type;
-  if (!dur->first_node)
-    dur->first_node = n;
-  dur->last_node = n; // TODO: move to end_node() when nodes stored as tree
+  if (o->cur_dur != NULL && type != MGS_TYPE_DUR) {
+    MGS_ProgramDurData *dur = o->cur_dur;
+    if (!dur->scope.first_node)
+      dur->scope.first_node = n;
+    dur->scope.last_node = n;
+  }
 
   /*
    * Handle IDs and linking.
@@ -219,13 +230,16 @@ static void new_node(MGS_NodeData *nd,
   case MGS_TYPE_OP:
     new_opdata(nd);
     break;
+  case MGS_TYPE_DUR:
+    new_durdata(nd);
+    break;
   }
 }
 
 static void end_opdata(MGS_NodeData *nd) {
   MGS_Parser *o = nd->o;
   MGS_ProgramNode *n = nd->node;
-  MGS_ProgramOpData *op = n->data.op;
+  MGS_ProgramOpData *op = n->data;
   /*
    * Prepare parsed operator data.
    */
@@ -242,6 +256,9 @@ static void end_opdata(MGS_NodeData *nd) {
   }
 }
 
+static void end_durdata(MGS_NodeData *nd mgsMaybeUnused) {
+}
+
 static void end_node(MGS_NodeData *nd) {
   MGS_ProgramNode *n = nd->node;
   if (!n)
@@ -250,6 +267,9 @@ static void end_node(MGS_NodeData *nd) {
   switch (n->type) {
   case MGS_TYPE_OP:
     end_opdata(nd);
+    break;
+  case MGS_TYPE_DUR:
+    end_durdata(nd);
     break;
   }
 
@@ -260,36 +280,13 @@ static void end_node(MGS_NodeData *nd) {
   nd->node = NULL;
 }
 
-static void end_durscope(MGS_NodeData *nd);
-
-static void new_durscope(MGS_NodeData *nd, char from_c) {
-  MGS_Parser *o = nd->o;
-  MGS_Program *p = o->prg;
-  MGS_ProgramDurScope *dur, *prev_dur = o->cur_dur;
-  dur = MGS_MemPool_alloc(p->mem, sizeof(MGS_ProgramDurScope));
-  if (prev_dur != NULL) {
-    end_durscope(nd);
-    if (from_c != 0 && !prev_dur->first_node)
-      warning(o, "no sounds precede time separator", from_c);
-  }
-  if (!p->dur_list)
-    p->dur_list = dur;
-  else
-    o->cur_dur->next = dur;
-  o->cur_dur = dur;
-}
-
-static void end_durscope(MGS_NodeData *nd) {
-  end_node(nd);
-}
-
 static void MGS_init_NodeData(MGS_NodeData *nd, MGS_Parser *o,
     MGS_ProgramNodeChain *target) {
   memset(nd, 0, sizeof(MGS_NodeData));
   nd->o = o;
   nd->target = target;
   if (!target) {
-    new_durscope(nd, 0); // initial instance
+    new_node(nd, NULL, MGS_TYPE_DUR); // initial instance
   } else {
     target->count = 0;
     target->chain = 0;
@@ -725,11 +722,16 @@ static void parse_level(MGS_Parser *o, MGS_ProgramNodeChain *chain, uint32_t mod
       size_t wave;
       if (!scan_wavetype(o, &wave, c)) break;
       new_node(&nd, NULL, MGS_TYPE_OP);
-      nd.node->data.op->wave = wave;
+      MGS_ProgramOpData *op = nd.node->data;
+      op->wave = wave;
       o->setnode = o->level + 1;
       break; }
     case '|':
-      new_durscope(&nd, c);
+      if (!o->cur_dur->scope.first_node) {
+        warning(o, "no sounds precede time separator", c);
+        break;
+      }
+      new_node(&nd, NULL, MGS_TYPE_DUR);
       break;
     case '\\':
       if (o->setdef > o->setnode)
@@ -847,12 +849,11 @@ static void time_sound(MGS_ProgramNode *n, MGS_ProgramSoundData *sound) {
  * only allowed on the top scope, so the algorithm only deals with this for
  * the nodes involved.
  */
-static void time_durscope(MGS_ProgramNode *n_last) {
-  MGS_ProgramNode *n_after = n_last->next;
-  MGS_ProgramDurScope *dur = n_last->dur;
+static void time_durscope(MGS_ProgramDurData *dur) {
+  MGS_ProgramNode *n_after = dur->scope.last_node->next;
   double delay = 0.f, delaycount = 0.f;
   MGS_ProgramNode *step;
-  for (step = dur->first_node; step != n_after; ) {
+  for (step = dur->scope.first_node; step != n_after; ) {
     if (step->first_id != step->root_id) {
       /* skip this node; nested nodes are excluded from duration */
       step = step->next;
@@ -872,7 +873,7 @@ static void time_durscope(MGS_ProgramNode *n_last) {
       delaycount += step->delay;
     }
   }
-  for (step = dur->first_node; step != n_after; ) {
+  for (step = dur->scope.first_node; step != n_after; ) {
     if (step->first_id != step->root_id) {
       /* skip this node; nested nodes are excluded from duration */
       step = step->next;
@@ -890,18 +891,23 @@ static void time_durscope(MGS_ProgramNode *n_last) {
       delaycount -= step->delay;
     }
   }
-  dur->first_node = NULL;
   if (n_after != NULL)
     n_after->delay += delay;
 }
 
 static void adjust_nodes(MGS_ProgramNode *list) {
   MGS_ProgramNode *n = list;
+  MGS_ProgramDurData *dur = NULL;
   while (n != NULL) {
+    if (n->type == MGS_TYPE_DUR) {
+      dur = n->data;
+      n = n->next;
+      continue;
+    }
     MGS_ProgramSoundData *sound;
     sound = MGS_ProgramNode_get_data(n, MGS_BASETYPE_SOUND);
     if (sound != NULL) time_sound(n, sound);
-    if (n == n->dur->last_node) time_durscope(n);
+    if (n == dur->scope.last_node) time_durscope(dur);
     n = n->next;
   }
 }

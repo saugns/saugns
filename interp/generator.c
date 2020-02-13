@@ -76,7 +76,10 @@ static uint32_t count_flags(uint32_t flags) {
 }
 
 #define BUF_LEN 256
-typedef Data Buf[BUF_LEN];
+typedef union Buf {
+  float f[BUF_LEN];
+  int32_t i[BUF_LEN];
+} Buf;
 
 #define MGS_GEN_TIME_OFFS (1<<0)
 struct MGS_Generator {
@@ -142,7 +145,7 @@ static void upsize_bufs(MGS_Generator *o, IndexNode *in) {
 
 static void init_for_opdata(MGS_Generator *o,
     const MGS_ProgramNode *step, RunNode *rn, Data **node_data) {
-  const MGS_ProgramOpData *op_data = step->data.op;
+  const MGS_ProgramOpData *op_data = step->data;
   uint32_t sndn_id = step->base_id;
   uint32_t srate = o->srate;
   if (!step->ref_prev) {
@@ -285,6 +288,11 @@ static void adjust_op_time(MGS_Generator *o, OpNode *n) {
 static void MGS_Generator_enter_node(MGS_Generator *o, RunNode *rn) {
   if (!(rn->flag & MGS_FLAG_UPDATE)) {
     IndexNode *in = rn->node;
+    if (!in) {
+      /* no-op node */
+      rn->flag = MGS_FLAG_ENTERED;
+      return;
+    }
     if (rn->first_i == rn->root_i)
       upsize_bufs(o, in);
     switch (in->type) {
@@ -387,61 +395,53 @@ void MGS_destroy_Generator(MGS_Generator *o) {
  */
 
 static void run_block_op_waveenv(Buf *bufs, uint32_t len, OpNode *n,
-    Data *parentfreq);
+    Buf *parentfreq);
 
 static void run_block_op(Buf *bufs, uint32_t len, OpNode *n,
-    Data *parentfreq) {
+    Buf *parentfreq) {
   bool acc = false;
   uint32_t i;
-  Data *sbuf = *bufs, *freq, *amp, *pm;
+  Buf *sbuf = bufs, *freq, *amp, *pm;
   Buf *nextbuf = bufs;
 BEGIN:
-  freq = *(nextbuf++);
+  freq = nextbuf++;
   if (n->attr & MGS_ATTR_FREQRATIO) {
     for (i = 0; i < len; ++i)
-      freq[i].f = n->freq * parentfreq[i].f;
+      freq->f[i] = n->freq * parentfreq->f[i];
   } else {
     for (i = 0; i < len; ++i)
-      freq[i].f = n->freq;
+      freq->f[i] = n->freq;
   }
   if (n->fmodchain) {
-    Data *fmbuf;
+    Buf *fmbuf;
     run_block_op_waveenv(nextbuf, len, n->fmodchain->node, freq);
-    fmbuf = *nextbuf;
+    fmbuf = nextbuf;
     if (n->attr & MGS_ATTR_FREQRATIO) {
       for (i = 0; i < len; ++i)
-        freq[i].f += (n->dynfreq * parentfreq[i].f - freq[i].f) * fmbuf[i].f;
+        freq->f[i] += (n->dynfreq * parentfreq->f[i] - freq->f[i]) * fmbuf->f[i];
     } else {
       for (i = 0; i < len; ++i)
-        freq[i].f += (n->dynfreq - freq[i].f) * fmbuf[i].f;
+        freq->f[i] += (n->dynfreq - freq->f[i]) * fmbuf->f[i];
     }
   }
   if (n->sound.amodchain) {
     float dynampdiff = n->sound.dynamp - n->sound.amp;
     run_block_op_waveenv(nextbuf, len, n->sound.amodchain->node, freq);
-    amp = *(nextbuf++);
+    amp = nextbuf++;
     for (i = 0; i < len; ++i)
-      amp[i].f = n->sound.amp + amp[i].f * dynampdiff;
+      amp->f[i] = n->sound.amp + amp->f[i] * dynampdiff;
   } else {
-    amp = *(nextbuf++);
+    amp = nextbuf++;
     for (i = 0; i < len; ++i)
-      amp[i].f = n->sound.amp;
+      amp->f[i] = n->sound.amp;
   }
   pm = 0;
   if (n->pmodchain) {
     run_block_op(nextbuf, len, n->pmodchain->node, freq);
-    pm = *(nextbuf++);
+    pm = nextbuf++;
   }
-  for (i = 0; i < len; ++i) {
-    int s, spm = 0;
-    float sfreq = freq[i].f, samp = amp[i].f;
-    if (pm)
-      spm = (pm[i].i) << 16;
-    s = lrintf(MGS_Osc_run(&n->osc, sfreq, spm) * samp * INT16_MAX);
-    if (acc)
-      s += sbuf[i].i;
-    sbuf[i].i = s;
-  }
+  MGS_Osc_run(&n->osc, sbuf->f, len,
+      acc, freq->f, amp->f, (pm != NULL) ? pm->f : NULL);
   if (!n->sound.link) return;
   acc = true;
   n = n->sound.link->node;
@@ -450,47 +450,39 @@ BEGIN:
 }
 
 static void run_block_op_waveenv(Buf *bufs, uint32_t len, OpNode *n,
-    Data *parentfreq) {
+    Buf *parentfreq) {
   bool mul = false;
   uint32_t i;
-  Data *sbuf = *bufs, *freq, *pm;
+  Buf *sbuf = bufs, *freq, *pm;
   Buf *nextbuf = bufs;
 BEGIN:
-  freq = *(nextbuf++);
+  freq = nextbuf++;
   if (n->attr & MGS_ATTR_FREQRATIO) {
     for (i = 0; i < len; ++i)
-      freq[i].f = n->freq * parentfreq[i].f;
+      freq->f[i] = n->freq * parentfreq->f[i];
   } else {
     for (i = 0; i < len; ++i)
-      freq[i].f = n->freq;
+      freq->f[i] = n->freq;
   }
   if (n->fmodchain) {
-    Data *fmbuf;
+    Buf *fmbuf;
     run_block_op_waveenv(nextbuf, len, n->fmodchain->node, freq);
-    fmbuf = *nextbuf;
+    fmbuf = nextbuf;
     if (n->attr & MGS_ATTR_FREQRATIO) {
       for (i = 0; i < len; ++i)
-        freq[i].f += (n->dynfreq * parentfreq[i].f - freq[i].f) * fmbuf[i].f;
+        freq->f[i] += (n->dynfreq * parentfreq->f[i] - freq->f[i]) * fmbuf->f[i];
     } else {
       for (i = 0; i < len; ++i)
-        freq[i].f += (n->dynfreq - freq[i].f) * fmbuf[i].f;
+        freq->f[i] += (n->dynfreq - freq->f[i]) * fmbuf->f[i];
     }
   }
   pm = 0;
   if (n->pmodchain) {
     run_block_op(nextbuf, len, n->pmodchain->node, freq);
-    pm = *(nextbuf++);
+    pm = nextbuf++;
   }
-  for (i = 0; i < len; ++i) {
-    float s, sfreq = freq[i].f;
-    int spm = 0;
-    if (pm)
-      spm = (pm[i].i) << 16;
-    s = MGS_Osc_run_envo(&n->osc, sfreq, spm);
-    if (mul)
-      s *= sbuf[i].f;
-    sbuf[i].f = s;
-  }
+  MGS_Osc_run_env(&n->osc, sbuf->f, len,
+      mul, freq->f, (pm != NULL) ? pm->f : NULL);
   if (!n->sound.link) return;
   mul = true;
   n = n->sound.link->node;
@@ -512,12 +504,12 @@ static uint32_t run_op(MGS_Generator *o, OpNode *n, short *sp, uint32_t pos,
     run_block_op(o->bufs, len, n, 0);
     float pan = (1.f + n->sound.pan) * .5f;
     for (i = 0; i < len; ++i, sp += 2) {
-      float s = (*o->bufs)[i].i;
+      float s = (*o->bufs).f[i];
       float s_p = s * pan;
       float s_l = s - s_p;
       float s_r = s_p;
-      sp[0] += lrintf(s_l);
-      sp[1] += lrintf(s_r);
+      sp[0] += lrintf(s_l * INT16_MAX);
+      sp[1] += lrintf(s_r * INT16_MAX);
     }
   } while (time);
   return ret;

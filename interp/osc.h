@@ -87,9 +87,11 @@ static inline int32_t MGS_Osc_cycle_offs(MGS_Osc *restrict o,
 }
 
 /**
- * Produce floating point output in the -1.0 to 1.0 range.
+ * Get next sample.
+ *
+ * \return value from -1.0 to 1.0
  */
-static inline float MGS_Osc_run(MGS_Osc *restrict o,
+static inline float MGS_Osc_get(MGS_Osc *restrict o,
 		float freq, int32_t pm_s32) {
 	uint32_t phase = o->phase + pm_s32;
 	float s = MGS_Wave_get_lerp(o->lut, phase);
@@ -97,10 +99,14 @@ static inline float MGS_Osc_run(MGS_Osc *restrict o,
 	return s;
 }
 
-/**
- * Produce floating point output in the 0.0 to 1.0 range.
- */
-static inline float MGS_Osc_run_envo(MGS_Osc *restrict o,
-		float freq, int32_t pm_s32) {
-	return MGS_Osc_run(o, freq, pm_s32) * 0.5f + 0.5f;
-}
+void MGS_Osc_run(MGS_Osc *restrict o,
+		float *restrict buf, size_t buf_len,
+		uint32_t layer,
+		const float *restrict freq,
+		const float *restrict amp,
+		const float *restrict pm_f);
+void MGS_Osc_run_env(MGS_Osc *restrict o,
+		float *restrict buf, size_t buf_len,
+		uint32_t layer,
+		const float *restrict freq,
+		const float *restrict pm_f);
