@@ -52,11 +52,11 @@ enum {
 };
 
 typedef struct MGS_ProgramNode MGS_ProgramNode;
-typedef struct MGS_ProgramNodeChain MGS_ProgramNodeChain;
 typedef struct MGS_ProgramSoundData MGS_ProgramSoundData;
 typedef struct MGS_ProgramOpData MGS_ProgramOpData;
 typedef struct MGS_ProgramScopeData MGS_ProgramScopeData;
 typedef struct MGS_ProgramDurData MGS_ProgramDurData;
+typedef struct MGS_ProgramArrData MGS_ProgramArrData;
 
 /* Time parameter flags. */
 enum {
@@ -68,23 +68,20 @@ typedef struct MGS_TimePar {
 	uint32_t flags;
 } MGS_TimePar;
 
-struct MGS_ProgramNodeChain {
-	uint32_t count;
-	MGS_ProgramNode *chain;
-};
-
 struct MGS_ProgramSoundData {
 	MGS_TimePar time;
+	MGS_ProgramNode *root;
 	uint32_t params;
 	float amp, dynamp, pan;
-	MGS_ProgramNodeChain amod;
+	MGS_ProgramArrData *amod;
+	MGS_ProgramNode *nested_next;
 };
 
 struct MGS_ProgramOpData {
 	MGS_ProgramSoundData sound;
 	uint8_t attr, wave;
 	float freq, dynfreq, phase;
-	MGS_ProgramNodeChain pmod, fmod;
+	MGS_ProgramArrData *pmod, *fmod;
 };
 
 struct MGS_ProgramScopeData {
@@ -94,6 +91,13 @@ struct MGS_ProgramScopeData {
 
 struct MGS_ProgramDurData {
 	MGS_ProgramScopeData scope;
+	MGS_ProgramNode *next;
+};
+
+struct MGS_ProgramArrData {
+	MGS_ProgramScopeData scope;
+	uint32_t count;
+	uint8_t mod_type;
 };
 
 struct MGS_ProgramNode {
@@ -103,10 +107,8 @@ struct MGS_ProgramNode {
 	uint8_t type;
 	uint32_t id;
 	uint32_t first_id; // first id, not increasing for reference chains
-	uint32_t root_id;  // first id of node, or of root node when nested
 	uint32_t base_id;  // per-base-type id, increased for each first id
 	void *data;
-	MGS_ProgramNode *nested_next;
 };
 
 static inline void *MGS_ProgramNode_get_data(const MGS_ProgramNode *restrict n,

@@ -1,0 +1,4 @@
+'a Wsin f100 p!{Wsin f200} t0.5 |
+:a p!{} t0.5 |
+:a p!{Wsin f200} t0.5 |
+:a p!{} t0.5 |
