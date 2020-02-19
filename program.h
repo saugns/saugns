@@ -57,6 +57,7 @@ typedef struct MGS_ProgramSoundData MGS_ProgramSoundData;
 typedef struct MGS_ProgramOpData MGS_ProgramOpData;
 typedef struct MGS_ProgramScopeData MGS_ProgramScopeData;
 typedef struct MGS_ProgramDurData MGS_ProgramDurData;
+typedef struct MGS_ProgramArrData MGS_ProgramArrData;
 
 /* Time parameter flags. */
 enum {
@@ -68,23 +69,18 @@ typedef struct MGS_TimePar {
 	uint32_t flags;
 } MGS_TimePar;
 
-struct MGS_ProgramNodeChain {
-	uint32_t count;
-	MGS_ProgramNode *chain;
-};
-
 struct MGS_ProgramSoundData {
 	MGS_TimePar time;
 	uint32_t params;
 	float amp, dynamp, pan;
-	MGS_ProgramNodeChain amod;
+	MGS_ProgramArrData *amod;
 };
 
 struct MGS_ProgramOpData {
 	MGS_ProgramSoundData sound;
 	uint8_t attr, wave;
 	float freq, dynfreq, phase;
-	MGS_ProgramNodeChain pmod, fmod;
+	MGS_ProgramArrData *pmod, *fmod;
 };
 
 struct MGS_ProgramScopeData {
@@ -94,6 +90,12 @@ struct MGS_ProgramScopeData {
 
 struct MGS_ProgramDurData {
 	MGS_ProgramScopeData scope;
+};
+
+struct MGS_ProgramArrData {
+	MGS_ProgramScopeData scope;
+	uint32_t count;
+	uint8_t mod_type;
 };
 
 struct MGS_ProgramNode {

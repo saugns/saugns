@@ -152,12 +152,21 @@ static void init_for_opdata(MGS_Generator *o,
     in->type = step->type;
     rn->node = in;
     uint32_t time = op_data->sound.time.v * srate;
-    if (op_data->sound.amod.chain != NULL)
-      opn->sound.amodchain = &o->sound_table[op_data->sound.amod.chain->base_id];
-    if (op_data->fmod.chain != NULL)
-      opn->fmodchain = &o->sound_table[op_data->fmod.chain->base_id];
-    if (op_data->pmod.chain != NULL)
-      opn->pmodchain = &o->sound_table[op_data->pmod.chain->base_id];
+    if (op_data->sound.amod != NULL) {
+      opn->sound.amodchain = (op_data->sound.amod->scope.first_node != NULL) ?
+        &o->sound_table[op_data->sound.amod->scope.first_node->base_id] :
+        NULL;
+    }
+    if (op_data->fmod != NULL) {
+      opn->fmodchain = (op_data->fmod->scope.first_node != NULL) ?
+        &o->sound_table[op_data->fmod->scope.first_node->base_id] :
+        NULL;
+    }
+    if (op_data->pmod != NULL) {
+      opn->pmodchain = (op_data->pmod->scope.first_node != NULL) ?
+        &o->sound_table[op_data->pmod->scope.first_node->base_id] :
+        NULL;
+    }
     opn->sound.time = time;
     opn->attr = op_data->attr;
     opn->freq = op_data->freq;
@@ -180,13 +189,19 @@ static void init_for_opdata(MGS_Generator *o,
     updn->params = op_data->sound.params;
     updn->data = set;
     if (updn->params & MGS_AMODS) {
-      (*set++).i = op_data->sound.amod.chain->base_id;
+      (*set++).i = (op_data->sound.amod->scope.first_node != NULL) ?
+        (int32_t) op_data->sound.amod->scope.first_node->base_id :
+        -1;
     }
     if (updn->params & MGS_FMODS) {
-      (*set++).i = op_data->fmod.chain->base_id;
+      (*set++).i = (op_data->fmod->scope.first_node != NULL) ?
+        (int32_t) op_data->fmod->scope.first_node->base_id :
+        -1;
     }
     if (updn->params & MGS_PMODS) {
-      (*set++).i = op_data->pmod.chain->base_id;
+      (*set++).i = (op_data->pmod->scope.first_node != NULL) ?
+        (int32_t) op_data->pmod->scope.first_node->base_id :
+        -1;
     }
     if (updn->params & MGS_TIME) {
       (*set++).i = op_data->sound.time.v * srate;
@@ -315,13 +330,22 @@ static void MGS_Generator_enter_node(MGS_Generator *o, RunNode *rn) {
     bool adjtime = false;
     /* set state */
     if (updn->params & MGS_AMODS) {
-      refn->sound.amodchain = &o->sound_table[(*get++).i];
+      int32_t id = (*get++).i;
+      refn->sound.amodchain = (id > -1) ?
+        &o->sound_table[id] :
+        NULL;
     }
     if (updn->params & MGS_FMODS) {
-      refn->fmodchain = &o->sound_table[(*get++).i];
+      int32_t id = (*get++).i;
+      refn->fmodchain = (id > -1) ?
+        &o->sound_table[id] :
+        NULL;
     }
     if (updn->params & MGS_PMODS) {
-      refn->pmodchain = &o->sound_table[(*get++).i];
+      int32_t id = (*get++).i;
+      refn->pmodchain = (id > -1) ?
+        &o->sound_table[id] :
+        NULL;
     }
     if (updn->params & MGS_TIME) {
       refn->sound.time = (*get++).i;
