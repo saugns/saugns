@@ -100,7 +100,7 @@ struct MGS_ProgramArrData {
 
 struct MGS_ProgramNode {
 	MGS_ProgramNode *next;
-	MGS_ProgramNode *scope_next;
+	MGS_ProgramNode *use_next;
 	MGS_ProgramNode *ref_prev;
 	float delay;
 	uint8_t type;

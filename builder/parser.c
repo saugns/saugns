@@ -196,7 +196,7 @@ static void new_node(MGS_NodeData *nd,
     if (!dur->scope.first_node)
       dur->scope.first_node = n;
     else
-      dur->scope.last_node->scope_next = n;
+      dur->scope.last_node->use_next = n;
     dur->scope.last_node = n;
   }
 
@@ -227,7 +227,7 @@ static void new_node(MGS_NodeData *nd,
       if (!nd->target->scope.first_node)
         nd->target->scope.first_node = n;
       else
-        nd->target->scope.last_node->scope_next = n;
+        nd->target->scope.last_node->use_next = n;
       nd->target->scope.last_node = n;
       ++nd->target->count;
     }

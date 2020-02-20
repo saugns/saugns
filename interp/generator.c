@@ -177,8 +177,8 @@ static void init_for_opdata(MGS_Generator *o,
     opn->sound.amp = op_data->sound.amp;
     opn->sound.dynamp = op_data->sound.dynamp;
     opn->sound.pan = op_data->sound.pan;
-    if (step->scope_next != NULL)
-      opn->sound.link = &o->sound_table[step->scope_next->base_id];
+    if (step->use_next != NULL)
+      opn->sound.link = &o->sound_table[step->use_next->base_id];
   } else {
     UpdateNode *updn = &o->update_nodes[o->updn_count++];
     Data *set = *node_data;
