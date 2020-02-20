@@ -100,6 +100,7 @@ struct MGS_ProgramArrData {
 
 struct MGS_ProgramNode {
 	MGS_ProgramNode *next;
+	MGS_ProgramNode *scope_next;
 	MGS_ProgramNode *ref_prev;
 	float delay;
 	uint8_t type;
@@ -108,7 +109,6 @@ struct MGS_ProgramNode {
 	uint32_t root_id;  // first id of node, or of root node when nested
 	uint32_t base_id;  // per-base-type id, increased for each first id
 	void *data;
-	MGS_ProgramNode *nested_next;
 };
 
 static inline void *MGS_ProgramNode_get_data(const MGS_ProgramNode *restrict n,

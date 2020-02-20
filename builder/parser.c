@@ -225,7 +225,7 @@ static void new_node(MGS_NodeData *nd,
       if (!nd->target->scope.first_node)
         nd->target->scope.first_node = n;
       else
-        nd->target->scope.last_node->nested_next = n;
+        nd->target->scope.last_node->scope_next = n;
       nd->target->scope.last_node = n;
       ++nd->target->count;
     }
