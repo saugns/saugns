@@ -119,6 +119,7 @@ static inline void *MGS_ProgramNode_get_data(const MGS_ProgramNode *restrict n,
 	case MGS_TYPE_OP:
 		return (type == MGS_BASETYPE_SOUND) ? n->data : NULL;
 	case MGS_TYPE_DUR:
+	case MGS_TYPE_ARR:
 		return (type == MGS_BASETYPE_SCOPE) ? n->data : NULL;
 	default:
 		return NULL;

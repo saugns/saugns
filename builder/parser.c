@@ -173,6 +173,15 @@ static void new_durdata(MGS_NodeData *nd) {
   n->data = dur;
 }
 
+static void new_arrdata(MGS_NodeData *nd) {
+  MGS_Parser *o = nd->o;
+  MGS_Program *p = o->prg;
+  MGS_ProgramNode *n = nd->node;
+  MGS_ProgramArrData *arr;
+  arr = MGS_MemPool_alloc(p->mem, sizeof(MGS_ProgramArrData));
+  n->data = arr;
+}
+
 static void end_node(MGS_NodeData *nd);
 
 static void new_node(MGS_NodeData *nd,
@@ -247,6 +256,9 @@ static void new_node(MGS_NodeData *nd,
   case MGS_TYPE_DUR:
     new_durdata(nd);
     break;
+  case MGS_TYPE_ARR:
+    new_arrdata(nd);
+    break;
   }
 }
 
@@ -273,6 +285,9 @@ static void end_opdata(MGS_NodeData *nd) {
 static void end_durdata(MGS_NodeData *nd mgsMaybeUnused) {
 }
 
+static void end_arrdata(MGS_NodeData *nd mgsMaybeUnused) {
+}
+
 static void end_node(MGS_NodeData *nd) {
   MGS_ProgramNode *n = nd->node;
   if (!(nd->flags & ND_OWN_NODE))
@@ -284,6 +299,9 @@ static void end_node(MGS_NodeData *nd) {
     break;
   case MGS_TYPE_DUR:
     end_durdata(nd);
+    break;
+  case MGS_TYPE_ARR:
+    end_arrdata(nd);
     break;
   }
 
