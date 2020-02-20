@@ -195,6 +195,8 @@ static void new_node(MGS_NodeData *nd,
     MGS_ProgramDurData *dur = o->cur_dur;
     if (!dur->scope.first_node)
       dur->scope.first_node = n;
+    else
+      dur->scope.last_node->scope_next = n;
     dur->scope.last_node = n;
   }
 
