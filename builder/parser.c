@@ -59,7 +59,7 @@ typedef struct MGS_Parser {
   MGS_ProgramNode *cur_node;
   MGS_ProgramNode *prev_node;
   MGS_ProgramNode *cur_dur;
-  MGS_ProgramNode *cur_sound, *cur_sound_root;
+  MGS_ProgramNode *cur_sound;
   struct MGS_NodeData *cur_nd;
   MGS_SymStr *next_setsym;
   /* settings/ops */
@@ -147,11 +147,11 @@ static void new_opdata(MGS_NodeData *nd) {
   if (!n->ref_prev) {
     op = MGS_MemPool_alloc(p->mem, sizeof(MGS_ProgramOpData));
     if (!nd->target) {
-      o->cur_sound_root = n;
       op->sound.root = n;
       ++p->root_count;
     } else {
-      op->sound.root = o->cur_sound_root;
+      MGS_ProgramSoundData *prev_sound = o->cur_sound->data;
+      op->sound.root = prev_sound->root;
     }
     op->sound.amp = 1.f;
     op->sound.dynamp = op->sound.amp;
