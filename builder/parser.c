@@ -58,7 +58,7 @@ typedef struct MGS_Parser {
   uint32_t setdef, setnode;
   MGS_ProgramNode *cur_node, *cur_root;
   MGS_ProgramNode *prev_node, *prev_root;
-  MGS_ProgramDurData *cur_dur;
+  MGS_ProgramNode *cur_dur;
   struct MGS_NodeData *cur_nd;
   MGS_SymStr *next_setsym;
   /* settings/ops */
@@ -169,8 +169,10 @@ static void new_durdata(MGS_NodeData *nd) {
   MGS_ProgramNode *n = nd->node;
   MGS_ProgramDurData *dur;
   dur = MGS_MemPool_alloc(p->mem, sizeof(MGS_ProgramDurData));
-  o->cur_dur = dur;
   n->data = dur;
+  if (o->cur_dur != NULL)
+    o->cur_dur->use_next = n;
+  o->cur_dur = n;
 }
 
 static void new_arrdata(MGS_NodeData *nd) {
@@ -201,11 +203,9 @@ static void new_node(MGS_NodeData *nd,
   n->ref_prev = ref_prev;
   n->type = type;
   if (o->cur_dur != NULL && type != MGS_TYPE_DUR) {
-    MGS_ProgramDurData *dur = o->cur_dur;
+    MGS_ProgramDurData *dur = o->cur_dur->data;
     if (!dur->scope.first_node)
       dur->scope.first_node = n;
-    else
-      dur->scope.last_node->use_next = n;
     dur->scope.last_node = n;
   }
 
@@ -803,13 +803,14 @@ static void parse_level(MGS_Parser *o, MGS_ProgramArrData *chain) {
       op->wave = wave;
       o->setnode = o->level + 1;
       break; }
-    case '|':
-      if (!o->cur_dur->scope.first_node) {
+    case '|': {
+      MGS_ProgramDurData *dur = o->cur_dur->data;
+      if (!dur->scope.first_node) {
         warning(o, "no sounds precede time separator", c);
         break;
       }
       new_node(&nd, NULL, MGS_TYPE_DUR);
-      break;
+      break; }
     case '\\':
       if (o->setdef > o->setnode)
         goto INVALID;
