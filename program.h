@@ -71,6 +71,7 @@ typedef struct MGS_TimePar {
 
 struct MGS_ProgramSoundData {
 	MGS_TimePar time;
+	MGS_ProgramNode *root;
 	uint32_t params;
 	float amp, dynamp, pan;
 	MGS_ProgramArrData *amod;
@@ -100,13 +101,12 @@ struct MGS_ProgramArrData {
 
 struct MGS_ProgramNode {
 	MGS_ProgramNode *next;
-	MGS_ProgramNode *use_next;
+	MGS_ProgramNode *scope_next;
 	MGS_ProgramNode *ref_prev;
 	float delay;
 	uint8_t type;
 	uint32_t id;
 	uint32_t first_id; // first id, not increasing for reference chains
-	uint32_t root_id;  // first id of node, or of root node when nested
 	uint32_t base_id;  // per-base-type id, increased for each first id
 	void *data;
 };

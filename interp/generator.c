@@ -145,6 +145,9 @@ static void init_for_opdata(MGS_Generator *o,
   const MGS_ProgramOpData *op_data = step->data;
   uint32_t sndn_id = step->base_id;
   uint32_t srate = o->srate;
+  rn->root_i = op_data->sound.root->first_id;
+  if (rn->first_i == rn->root_i)
+    rn->flag |= MGS_FLAG_EXEC;
   if (!step->ref_prev) {
     IndexNode *in = &o->sound_table[sndn_id];
     OpNode *opn = calloc(1, sizeof(OpNode));
@@ -177,8 +180,8 @@ static void init_for_opdata(MGS_Generator *o,
     opn->sound.amp = op_data->sound.amp;
     opn->sound.dynamp = op_data->sound.dynamp;
     opn->sound.pan = op_data->sound.pan;
-    if (step->use_next != NULL)
-      opn->sound.link = &o->sound_table[step->use_next->base_id];
+    if (step->scope_next != NULL)
+      opn->sound.link = &o->sound_table[step->scope_next->base_id];
   } else {
     UpdateNode *updn = &o->update_nodes[o->updn_count++];
     Data *set = *node_data;
@@ -243,10 +246,7 @@ static void init_for_nodelist(MGS_Generator *o) {
     RunNode *rn = &o->run_nodes[i];
     uint32_t delay = step->delay * srate;
     rn->pos = -delay;
-    if (step->first_id == step->root_id)
-      rn->flag |= MGS_FLAG_EXEC;
     rn->first_i = step->first_id;
-    rn->root_i = step->root_id;
     switch (step->type) {
     case MGS_TYPE_OP:
       init_for_opdata(o, step, rn, &node_data);

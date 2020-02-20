@@ -56,9 +56,10 @@ typedef struct MGS_Parser {
   /* node state */
   uint32_t level;
   uint32_t setdef, setnode;
-  MGS_ProgramNode *cur_node, *cur_root;
-  MGS_ProgramNode *prev_node, *prev_root;
+  MGS_ProgramNode *cur_node;
+  MGS_ProgramNode *prev_node;
   MGS_ProgramNode *cur_dur;
+  MGS_ProgramNode *cur_sound, *cur_sound_root;
   struct MGS_NodeData *cur_nd;
   MGS_SymStr *next_setsym;
   /* settings/ops */
@@ -145,6 +146,13 @@ static void new_opdata(MGS_NodeData *nd) {
    */
   if (!n->ref_prev) {
     op = MGS_MemPool_alloc(p->mem, sizeof(MGS_ProgramOpData));
+    if (!nd->target) {
+      o->cur_sound_root = n;
+      op->sound.root = n;
+      ++p->root_count;
+    } else {
+      op->sound.root = o->cur_sound_root;
+    }
     op->sound.amp = 1.f;
     op->sound.dynamp = op->sound.amp;
     op->sound.pan = o->n_pan;
@@ -161,6 +169,7 @@ static void new_opdata(MGS_NodeData *nd) {
   op->sound.time.v = o->n_time;
   op->sound.time.flags = 0;
   n->data = op;
+  o->cur_sound = n;
 }
 
 static void new_durdata(MGS_NodeData *nd) {
@@ -171,7 +180,7 @@ static void new_durdata(MGS_NodeData *nd) {
   dur = MGS_MemPool_alloc(p->mem, sizeof(MGS_ProgramDurData));
   n->data = dur;
   if (o->cur_dur != NULL)
-    o->cur_dur->use_next = n;
+    o->cur_dur->scope_next = n;
   o->cur_dur = n;
 }
 
@@ -217,7 +226,6 @@ static void new_node(MGS_NodeData *nd,
    * nodes to new locations, and/or move.
    */
   o->prev_node = o->cur_node;
-  o->prev_root = o->cur_root;
   n->id = p->node_count;
   ++p->node_count;
   if (!p->node_list)
@@ -227,22 +235,16 @@ static void new_node(MGS_NodeData *nd,
   o->cur_node = n;
   if (!ref_prev) {
     n->first_id = n->id;
-    if (!nd->target) {
-      n->root_id = n->first_id;
-      ++p->root_count;
-      o->cur_root = n;
-    } else {
-      n->root_id = o->cur_root->first_id;
+    if (nd->target != NULL) {
       if (!nd->target->scope.first_node)
         nd->target->scope.first_node = n;
       else
-        nd->target->scope.last_node->use_next = n;
+        nd->target->scope.last_node->scope_next = n;
       nd->target->scope.last_node = n;
       ++nd->target->count;
     }
   } else {
     n->first_id = ref_prev->first_id;
-    n->root_id = ref_prev->root_id;
   }
 
   /* prepare timing adjustment */
@@ -277,7 +279,8 @@ static void end_opdata(MGS_NodeData *nd) {
       op->sound.params |= MGS_TIME;
   }
   if (op->sound.params & MGS_AMP) {
-    if (n->first_id == n->root_id) /* only apply to non-modulators */
+    /* only apply to non-modulators */
+    if (n->first_id == op->sound.root->first_id)
       op->sound.amp *= o->n_ampmult;
   }
 }
@@ -611,7 +614,7 @@ static bool parse_freq(MGS_Parser *o, MGS_ProgramNode *n, bool ratio) {
   MGS_Program *p = o->prg;
   MGS_ProgramOpData *op = MGS_ProgramNode_get_data(n, MGS_TYPE_OP);
   if (!op) goto INVALID;
-  if (ratio && (n->first_id == n->root_id)) goto INVALID;
+  if (ratio && (n->first_id == op->sound.root->first_id)) goto INVALID;
   float f;
   if (MGS_File_TRYC(o->f, '!')) {
     if (!MGS_File_TESTC(o->f, '{')) {
@@ -906,7 +909,7 @@ RETURN:
 
 static void time_sound(MGS_ProgramNode *n, MGS_ProgramSoundData *sound) {
   if (!(sound->time.flags & MGS_TIME_SET)) {
-    if (n->first_id != n->root_id)
+    if (n->first_id != sound->root->first_id)
       sound->time.flags |= MGS_TIME_SET;
   }
   // handle timing for sub-components here
@@ -923,14 +926,14 @@ static void time_durscope(MGS_ProgramDurData *dur) {
   double delay = 0.f, delaycount = 0.f;
   MGS_ProgramNode *step;
   for (step = dur->scope.first_node; step != n_after; ) {
-    if (step->first_id != step->root_id) {
+    MGS_ProgramSoundData *sound;
+    sound = MGS_ProgramNode_get_data(step, MGS_BASETYPE_SOUND);
+    if (!sound) continue; /* skip unsupported node */
+    if (step->first_id != sound->root->first_id) {
       /* skip this node; nested nodes are excluded from duration */
       step = step->next;
       continue;
     }
-    MGS_ProgramSoundData *sound;
-    sound = MGS_ProgramNode_get_data(step, MGS_BASETYPE_SOUND);
-    if (!sound) continue; /* skip unsupported node */
     if (step->next == n_after) {
       /* accept pre-set default time for last node in group */
       sound->time.flags |= MGS_TIME_SET;
@@ -943,14 +946,14 @@ static void time_durscope(MGS_ProgramDurData *dur) {
     }
   }
   for (step = dur->scope.first_node; step != n_after; ) {
-    if (step->first_id != step->root_id) {
+    MGS_ProgramSoundData *sound;
+    sound = MGS_ProgramNode_get_data(step, MGS_BASETYPE_SOUND);
+    if (!sound) continue; /* skip unsupported node */
+    if (step->first_id != sound->root->first_id) {
       /* skip this node; nested nodes are excluded from duration */
       step = step->next;
       continue;
     }
-    MGS_ProgramSoundData *sound;
-    sound = MGS_ProgramNode_get_data(step, MGS_BASETYPE_SOUND);
-    if (!sound) continue; /* skip unsupported node */
     if (!(sound->time.flags & MGS_TIME_SET)) {
       sound->time.v = delay + delaycount; /* fill in sensible default time */
       sound->time.flags |= MGS_TIME_SET;
