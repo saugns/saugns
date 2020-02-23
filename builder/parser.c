@@ -11,13 +11,7 @@
  * <http://www.gnu.org/licenses/>.
  */
 
-#include "../mgensys.h"
-#include "../program.h"
-#include "../math.h"
-#include "../help.h"
-#include "../loader/file.h"
-#include "../mempool.h"
-#include "../loader/symtab.h"
+#include "parser.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -892,87 +886,6 @@ RETURN:
   --o->reclevel;
 }
 
-static void time_sound(MGS_ProgramNode *n, MGS_ProgramSoundData *sound) {
-  if (!(sound->time.flags & MGS_TIME_SET)) {
-    if (n->first_id != sound->root->first_id)
-      sound->time.flags |= MGS_TIME_SET;
-  }
-  // handle timing for sub-components here
-  // handle timing for added silence here
-}
-
-/*
- * Adjust timing for a duration scope; the syntax for such time grouping is
- * only allowed on the top scope, so the algorithm only deals with this for
- * the nodes involved.
- */
-static void time_durscope(MGS_ProgramDurData *dur) {
-  MGS_ProgramNode *n_after = dur->scope.last_node->next;
-  double delay = 0.f, delaycount = 0.f;
-  MGS_ProgramNode *step;
-  for (step = dur->scope.first_node; step != n_after; ) {
-    MGS_ProgramSoundData *sound;
-    sound = MGS_ProgramNode_get_data(step, MGS_BASETYPE_SOUND);
-    /*
-     * Skip unsupported nodes, and
-     * exclude nested nodes from duration.
-     */
-    if (!sound || (step->first_id != sound->root->first_id)) {
-      step = step->next;
-      continue;
-    }
-    if (step->next == n_after) {
-      /* accept pre-set default time for last node in group */
-      sound->time.flags |= MGS_TIME_SET;
-    }
-    if (delay < sound->time.v)
-      delay = sound->time.v;
-    step = step->next;
-    if (step != NULL) {
-      delaycount += step->delay;
-    }
-  }
-  for (step = dur->scope.first_node; step != n_after; ) {
-    MGS_ProgramSoundData *sound;
-    sound = MGS_ProgramNode_get_data(step, MGS_BASETYPE_SOUND);
-    /*
-     * Skip unsupported nodes, and
-     * exclude nested nodes from duration.
-     */
-    if (!sound || (step->first_id != sound->root->first_id)) {
-      step = step->next;
-      continue;
-    }
-    if (!(sound->time.flags & MGS_TIME_SET)) {
-      sound->time.v = delay + delaycount; /* fill in sensible default time */
-      sound->time.flags |= MGS_TIME_SET;
-    }
-    step = step->next;
-    if (step != NULL) {
-      delaycount -= step->delay;
-    }
-  }
-  if (n_after != NULL)
-    n_after->delay += delay;
-}
-
-static void adjust_nodes(MGS_ProgramNode *list) {
-  MGS_ProgramNode *n = list;
-  MGS_ProgramDurData *dur = NULL;
-  while (n != NULL) {
-    if (n->type == MGS_TYPE_DUR) {
-      dur = n->data;
-      n = n->next;
-      continue;
-    }
-    MGS_ProgramSoundData *sound;
-    sound = MGS_ProgramNode_get_data(n, MGS_BASETYPE_SOUND);
-    if (sound != NULL) time_sound(n, sound);
-    if (n == dur->scope.last_node) time_durscope(dur);
-    n = n->next;
-  }
-}
-
 MGS_Program* MGS_create_Program(const char *file, bool is_path) {
   MGS_Program *o = NULL;
   MGS_Parser p;
@@ -989,7 +902,7 @@ MGS_Program* MGS_create_Program(const char *file, bool is_path) {
   }
   o = parse(f, &p);
   if (!o) goto ERROR;
-  adjust_nodes(o->node_list);
+  MGS_adjust_node_list(o->node_list);
 ERROR:
   MGS_destroy_File(f);
   return o;
