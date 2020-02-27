@@ -11,7 +11,7 @@
  * <http://www.gnu.org/licenses/>.
  */
 
-#include "generator.h"
+#include "runalloc.h"
 
 static MGS_ModList *create_ModList(const MGS_ProgramArrData *restrict arr_data,
 		MGS_MemPool *restrict mem) {
@@ -73,13 +73,23 @@ mgsNoinline bool MGS_RunAlloc_get_modlist(MGS_RunAlloc *restrict o,
 	return true;
 }
 
-/* does not handle allocation of the sound node itself */
+/*
+ * Fill in sound node data,
+ * adding the node to the list if new (not an update node).
+ *
+ * Does not handle allocation of the sound node itself.
+ *
+ * \return true, or false on allocation failure
+ */
 static bool MGS_RunAlloc_for_sound(MGS_RunAlloc *restrict o,
 		MGS_SoundNode *restrict sndn,
 		const MGS_ProgramNode *restrict n) {
-	if (!MGS_PtrArr_add(&o->sound_list, sndn))
-		return false;
-	MGS_ProgramSoundData *sound_data = n->data;
+	MGS_ProgramSoundData *sound_data;
+	if (!n->ref_prev) {
+		if (!MGS_PtrArr_add(&o->sound_list, sndn))
+			return false;
+	}
+	sound_data = n->data;
 	sndn->time = lrintf(sound_data->time.v * o->srate);
 	sndn->amp = sound_data->amp;
 	sndn->dynamp = sound_data->dynamp;
@@ -89,11 +99,17 @@ static bool MGS_RunAlloc_for_sound(MGS_RunAlloc *restrict o,
 				&sndn->amods_id))
 			return false;
 	}
+	sndn->params = sound_data->params;
 	sndn->root_base_i = sound_data->root->base_id;
 	sndn->type = n->type;
 	return true;
 }
 
+/**
+ * Allocate and initialize operator node.
+ *
+ * \return node, or NULL on allocation failure
+ */
 MGS_OpNode *MGS_RunAlloc_for_op(MGS_RunAlloc *restrict o,
 		const MGS_ProgramNode *restrict n) {
 	MGS_OpNode *opn = MGS_MemPool_alloc(o->mem, sizeof(MGS_OpNode));
@@ -121,15 +137,20 @@ MGS_OpNode *MGS_RunAlloc_for_op(MGS_RunAlloc *restrict o,
 	return opn;
 }
 
-#if 0
-bool MGS_RunAlloc_for_node(MGS_RunAlloc *restrict o,
+/**
+ * Allocate and initialize type-dependent node.
+ *
+ * \return node, or NULL on allocation failure or unsupported type
+ */
+void *MGS_RunAlloc_for_node(MGS_RunAlloc *restrict o,
 		const MGS_ProgramNode *restrict n) {
+	void *data = NULL;
 	switch (n->type) {
 	case MGS_TYPE_OP:
-		if (!MGS_RunAlloc_for_op(o, n))
-			return false;
+		data = MGS_RunAlloc_for_op(o, n);
+		if (!data)
+			return NULL;
 		break;
 	}
-	return true;
+	return data;
 }
-#endif

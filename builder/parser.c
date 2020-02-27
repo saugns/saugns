@@ -163,7 +163,12 @@ static void new_opdata(MGS_NodeData *nd) {
     op->sound.amp = 1.f;
     op->sound.dynamp = op->sound.amp;
     op->sound.pan = o->n_pan;
-    op->freq = o->n_freq;
+    if (!nd->target) {
+      op->freq = o->n_freq;
+    } else {
+      op->freq = o->n_ratio;
+      op->attr |= MGS_ATTR_FREQRATIO | MGS_ATTR_DYNFREQRATIO;
+    }
     op->dynfreq = op->freq;
     n->base_id = p->base_counts[MGS_BASETYPE_SOUND]++;
   } else {
@@ -540,13 +545,6 @@ static bool parse_amp(MGS_Parser *o, MGS_ProgramNode *n) {
   MGS_ProgramSoundData *sound;
   sound = MGS_ProgramNode_get_data(n, MGS_BASETYPE_SOUND);
   if (!sound) goto INVALID;
-  MGS_NodeData *nd = o->cur_nd;
-  if (nd->target != NULL) {
-    MGS_ProgramArrData *target = nd->target;
-    if (target->mod_type == MGS_AMODS ||
-        target->mod_type == MGS_FMODS)
-      goto INVALID;
-  }
   float f;
   if (MGS_File_TRYC(o->f, '!')) {
     if (!MGS_File_TESTC(o->f, '{')) {
@@ -598,11 +596,10 @@ static bool parse_freq(MGS_Parser *o, MGS_ProgramNode *n, bool ratio) {
   if (MGS_File_TRYC(o->f, '!')) {
     if (!MGS_File_TESTC(o->f, '{')) {
       if (!scan_num(o, NULL, &f)) goto INVALID;
+      op->dynfreq = f;
       if (ratio) {
-        op->dynfreq = 1.f / f;
         op->attr |= MGS_ATTR_DYNFREQRATIO;
       } else {
-        op->dynfreq = f;
         op->attr &= ~MGS_ATTR_DYNFREQRATIO;
       }
       op->sound.params |= MGS_DYNFREQ | MGS_ATTR;
@@ -615,11 +612,10 @@ static bool parse_freq(MGS_Parser *o, MGS_ProgramNode *n, bool ratio) {
     }
   } else {
     if (!scan_num(o, NULL, &f)) goto INVALID;
+    op->freq = f;
     if (ratio) {
-      op->freq = 1.f / f;
       op->attr |= MGS_ATTR_FREQRATIO;
     } else {
-      op->freq = f;
       op->attr &= ~MGS_ATTR_FREQRATIO;
     }
     op->sound.params |= MGS_FREQ | MGS_ATTR;
@@ -850,7 +846,7 @@ static void parse_level(MGS_Parser *o, MGS_ProgramArrData *chain) {
     case 'r':
       if (o->setdef > o->setnode) {
         if (!scan_num(o, NULL, &f)) goto INVALID;
-        o->n_ratio = 1.f / f;
+        o->n_ratio = f;
         break;
       } else if (o->setnode <= 0)
         goto INVALID;

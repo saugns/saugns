@@ -45,7 +45,8 @@ void MGS_Osc_run(MGS_Osc *restrict o,
 
 /**
  * Run for \p buf_len samples, generating output
- * for FM or AM input (scaled to 0.0 - 1.0 range).
+ * for FM or AM input (scaled to 0.0 - 1.0 range,
+ * multiplied by \p amp).
  *
  * For \p layer greater than zero, multiplies
  * the output into \p buf instead of assigning it.
@@ -56,6 +57,7 @@ void MGS_Osc_run_env(MGS_Osc *restrict o,
 		float *restrict buf, size_t buf_len,
 		uint32_t layer,
 		const float *restrict freq,
+		const float *restrict amp,
 		const float *restrict pm_f) {
 	for (size_t i = 0; i < buf_len; ++i) {
 		int32_t s_pm = 0;
@@ -63,8 +65,8 @@ void MGS_Osc_run_env(MGS_Osc *restrict o,
 			s_pm = lrintf(pm_f[i] * INT32_MAX);
 		}
 		float s = MGS_Osc_get(o, freq[i], s_pm);
-		float s_amp = 0.5f;
-		s = (s * s_amp) + s_amp;
+		float s_amp = amp[i] * 0.5f;
+		s = (s * s_amp) + fabs(s_amp);
 		if (layer > 0) s *= buf[i];
 		buf[i] = s;
 	}

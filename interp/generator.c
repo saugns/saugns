@@ -11,7 +11,7 @@
  * <http://www.gnu.org/licenses/>.
  */
 
-#include "generator.h"
+#include "runalloc.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -25,30 +25,10 @@ typedef struct RunNode {
   void *node;
   int pos; /* negative for delay/time shift */
   uint8_t flag;
+  uint32_t ref_i;
   uint32_t first_i;
   uint32_t root_i;
 } RunNode;
-
-typedef union Data {
-  int32_t i;
-  uint32_t ui;
-  float f;
-} Data;
-
-typedef struct UpdateNode {
-  uint32_t ref_runn_i;
-  uint32_t params;
-  Data *data;
-} UpdateNode;
-
-static uint32_t count_flags(uint32_t flags) {
-  uint32_t i, count = 0;
-  for (i = 0; i < (8 * sizeof(uint32_t)); ++i) {
-    if (flags & 1) ++count;
-    flags >>= 1;
-  }
-  return count;
-}
 
 #define BUF_LEN 256
 typedef union Buf {
@@ -68,14 +48,10 @@ struct MGS_Generator {
   MGS_ModList **mod_lists;
   uint32_t runn_i, runn_end;
   RunNode *run_nodes;
-  UpdateNode *update_nodes;
-  size_t sndn_count, updn_count;
+  size_t sndn_count;
   MGS_MemPool *mem;
   bool need_upsize;
 };
-
-static size_t calc_bufs_op_env(MGS_Generator *o,
-    size_t count_from, MGS_OpNode *n);
 
 static size_t calc_bufs_op(MGS_Generator *o,
     size_t count_from, MGS_OpNode *n) {
@@ -86,7 +62,7 @@ static size_t calc_bufs_op(MGS_Generator *o,
   if (n->fmods_id > 0) {
     MGS_ModList *fmod_list = o->mod_lists[n->fmods_id];
     for (size_t i = 0; i < fmod_list->count; ++i) {
-      size_t sub_count = calc_bufs_op_env(o, count,
+      size_t sub_count = calc_bufs_op(o, count,
           (MGS_OpNode*) o->sound_list[fmod_list->ids[i]]);
       if (max_count < sub_count) max_count = sub_count;
     }
@@ -94,40 +70,13 @@ static size_t calc_bufs_op(MGS_Generator *o,
   if (n->sound.amods_id > 0) {
     MGS_ModList *amod_list = o->mod_lists[n->sound.amods_id];
     for (size_t i = 0; i < amod_list->count; ++i) {
-      size_t sub_count = calc_bufs_op_env(o, count,
+      size_t sub_count = calc_bufs_op(o, count,
           (MGS_OpNode*) o->sound_list[amod_list->ids[i]]);
       if (max_count < sub_count) max_count = sub_count;
     }
     ++count;
   } else {
     ++count;
-  }
-  if (n->pmods_id > 0) {
-    MGS_ModList *pmod_list = o->mod_lists[n->pmods_id];
-    for (size_t i = 0; i < pmod_list->count; ++i) {
-      size_t sub_count = calc_bufs_op(o, count,
-          (MGS_OpNode*) o->sound_list[pmod_list->ids[i]]);
-      if (max_count < sub_count) max_count = sub_count;
-    }
-    ++count;
-  }
-  if (max_count < count) max_count = count;
-  return max_count;
-}
-
-static size_t calc_bufs_op_env(MGS_Generator *o,
-    size_t count_from, MGS_OpNode *n) {
-  ++count_from;
-  size_t count = count_from;
-  size_t max_count = count;
-  ++count;
-  if (n->fmods_id > 0) {
-    MGS_ModList *fmod_list = o->mod_lists[n->fmods_id];
-    for (size_t i = 0; i < fmod_list->count; ++i) {
-      size_t sub_count = calc_bufs_op_env(o, count,
-          (MGS_OpNode*) o->sound_list[fmod_list->ids[i]]);
-      if (max_count < sub_count) max_count = sub_count;
-    }
   }
   if (n->pmods_id > 0) {
     MGS_ModList *pmod_list = o->mod_lists[n->pmods_id];
@@ -165,68 +114,6 @@ static void upsize_bufs(MGS_Generator *o) {
   o->need_upsize = false;
 }
 
-static void init_for_opdata(MGS_Generator *o,
-    const MGS_ProgramNode *step, RunNode *rn, MGS_RunAlloc *ra) {
-  const MGS_ProgramOpData *op_data = step->data;
-  uint32_t srate = o->srate;
-  rn->root_i = op_data->sound.root->first_id;
-  if (rn->first_i != rn->root_i)
-    rn->flag &= ~MGS_FLAG_EXEC;
-  if (!step->ref_prev) {
-    MGS_OpNode *opn = MGS_RunAlloc_for_op(ra, step);
-    rn->node = opn;
-  } else {
-    UpdateNode *updn = &o->update_nodes[o->updn_count++];
-    size_t data_size = count_flags(op_data->sound.params) * sizeof(Data);
-    Data *set = MGS_MemPool_alloc(o->mem, data_size);
-    const MGS_ProgramNode *ref = step->ref_prev;
-    rn->node = updn;
-    rn->flag |= MGS_FLAG_UPDATE;
-    updn->ref_runn_i = ref->id;
-    updn->params = op_data->sound.params;
-    updn->data = set;
-    if (updn->params & MGS_AMODS) {
-      MGS_RunAlloc_get_modlist(ra, op_data->sound.amod, &set->ui);
-      ++set;
-    }
-    if (updn->params & MGS_FMODS) {
-      MGS_RunAlloc_get_modlist(ra, op_data->fmod, &set->ui);
-      ++set;
-    }
-    if (updn->params & MGS_PMODS) {
-      MGS_RunAlloc_get_modlist(ra, op_data->pmod, &set->ui);
-      ++set;
-    }
-    if (updn->params & MGS_TIME) {
-      (*set++).i = op_data->sound.time.v * srate;
-    }
-    if (updn->params & MGS_WAVE) {
-      (*set++).i = op_data->wave;
-    }
-    if (updn->params & MGS_FREQ) {
-      (*set++).f = op_data->freq;
-    }
-    if (updn->params & MGS_DYNFREQ) {
-      (*set++).f = op_data->dynfreq;
-    }
-    if (updn->params & MGS_PHASE) {
-      (*set++).i = MGS_Osc_PHASE(op_data->phase);
-    }
-    if (updn->params & MGS_AMP) {
-      (*set++).f = op_data->sound.amp;
-    }
-    if (updn->params & MGS_DYNAMP) {
-      (*set++).f = op_data->sound.dynamp;
-    }
-    if (updn->params & MGS_PAN) {
-      (*set++).f = op_data->sound.pan;
-    }
-    if (updn->params & MGS_ATTR) {
-      (*set++).i = op_data->attr;
-    }
-  }
-}
-
 static void init_for_nodelist(MGS_Generator *o) {
   MGS_RunAlloc ra;
   const MGS_Program *prg = o->prg;
@@ -234,14 +121,26 @@ static void init_for_nodelist(MGS_Generator *o) {
   uint32_t srate = o->srate;
   MGS_init_RunAlloc(&ra, o->prg, o->srate, o->mem);
   for (size_t i = 0; i < prg->node_count; ++i) {
+    void *data = MGS_RunAlloc_for_node(&ra, step);
     RunNode *rn = &o->run_nodes[i];
     uint32_t delay = lrintf(step->delay * srate);
+    rn->node = data;
     rn->pos = -delay;
-    rn->flag |= MGS_FLAG_EXEC;
+    if (step->ref_prev != NULL) {
+      const MGS_ProgramNode *ref = step->ref_prev;
+      rn->flag |= MGS_FLAG_UPDATE;
+      rn->ref_i = ref->id;
+    }
     rn->first_i = step->first_id;
     switch (step->type) {
-    case MGS_TYPE_OP:
-      init_for_opdata(o, step, rn, &ra);
+    case MGS_TYPE_OP: {
+      const MGS_ProgramOpData *op_data = step->data;
+      rn->root_i = op_data->sound.root->first_id;
+      if (rn->first_i == rn->root_i)
+        rn->flag |= MGS_FLAG_EXEC;
+      break; }
+    default:
+      rn->flag |= MGS_FLAG_EXEC;
       break;
     }
     step = step->next;
@@ -255,21 +154,12 @@ static void init_for_nodelist(MGS_Generator *o) {
 MGS_Generator* MGS_create_Generator(const MGS_Program *prg, uint32_t srate) {
   MGS_MemPool *mem;
   MGS_Generator *o;
-  size_t updn_count = 0; // for allocation, not assigned to field
-  const MGS_ProgramNode *step;
-  for (step = prg->node_list; step; step = step->next) {
-    if (!step->ref_prev) continue;
-    MGS_ProgramOpData *op_data = MGS_ProgramNode_get_data(step, MGS_TYPE_OP);
-    if (!op_data) continue;
-    ++updn_count;
-  }
   mem = MGS_create_MemPool(0);
   o = MGS_MemPool_alloc(mem, sizeof(MGS_Generator));
   o->prg = prg;
   o->srate = srate;
   o->runn_end = prg->node_count;
   o->run_nodes = calloc(prg->node_count, sizeof(RunNode));
-  o->update_nodes = calloc(updn_count, sizeof(UpdateNode));
   o->mem = mem;
   init_for_nodelist(o);
   MGS_global_init_Wave();
@@ -290,49 +180,30 @@ static mgsNoinline void adjust_op_time(MGS_Generator *o, MGS_OpNode *n) {
   }
 }
 
-static void MGS_Generator_enter_node(MGS_Generator *o, RunNode *rn) {
-  if (!(rn->flag & MGS_FLAG_UPDATE)) {
-    MGS_SoundNode *sndn = rn->node;
-    if (!sndn) {
-      /* no-op node */
-      rn->flag = MGS_FLAG_ENTERED;
-      return;
-    }
-    if (rn->first_i == rn->root_i)
-      o->need_upsize = true;
-    switch (sndn->type) {
-    case MGS_TYPE_OP:
-      if (rn->first_i == rn->root_i)
-        adjust_op_time(o, (MGS_OpNode*) sndn);
-      break;
-    case MGS_TYPE_ENV:
-      break;
-    }
-    rn->flag |= MGS_FLAG_ENTERED;
-    return;
-  }
-  UpdateNode *updn = rn->node;
-  RunNode *refrn = &o->run_nodes[updn->ref_runn_i];
+static void MGS_Generator_update_node(MGS_Generator *o, RunNode *rn) {
+  RunNode *refrn = &o->run_nodes[rn->ref_i];
   MGS_SoundNode *refsn = refrn->node;
   switch (refsn->type) {
   case MGS_TYPE_OP: {
     MGS_OpNode *refn = (MGS_OpNode*) refsn;
-    RunNode *rootrn = &o->run_nodes[refrn->root_i];
-    MGS_SoundNode *rootsn = rootrn->node;
-    Data *get = updn->data;
+    MGS_OpNode *updn = (MGS_OpNode*) rn->node;
+    MGS_SoundNode *rootsn = o->sound_list[refsn->root_base_i];
     bool adjtime = false;
     /* set state */
-    if (updn->params & MGS_AMODS) {
-      refn->sound.amods_id = (*get++).ui;
+    if (updn->sound.params & MGS_AMODS) {
+      refn->sound.amods_id = updn->sound.amods_id;
+      o->need_upsize = true;
     }
-    if (updn->params & MGS_FMODS) {
-      refn->fmods_id = (*get++).ui;
+    if (updn->sound.params & MGS_FMODS) {
+      refn->fmods_id = updn->fmods_id;
+      o->need_upsize = true;
     }
-    if (updn->params & MGS_PMODS) {
-      refn->pmods_id = (*get++).ui;
+    if (updn->sound.params & MGS_PMODS) {
+      refn->pmods_id = updn->pmods_id;
+      o->need_upsize = true;
     }
-    if (updn->params & MGS_TIME) {
-      refn->sound.time = (*get++).i;
+    if (updn->sound.params & MGS_TIME) {
+      refn->sound.time = updn->sound.time;
       refrn->pos = 0;
       if (refn->sound.time) {
         if (refsn == rootsn)
@@ -341,42 +212,62 @@ static void MGS_Generator_enter_node(MGS_Generator *o, RunNode *rn) {
       } else
         refrn->flag &= ~MGS_FLAG_EXEC;
     }
-    if (updn->params & MGS_WAVE) {
-      uint8_t wave = (*get++).i;
-      refn->osc.lut = MGS_Osc_LUT(wave);
+    if (updn->sound.params & MGS_WAVE) {
+      refn->osc.lut = updn->osc.lut;
     }
-    if (updn->params & MGS_FREQ) {
-      refn->freq = (*get++).f;
+    if (updn->sound.params & MGS_FREQ) {
+      refn->freq = updn->freq;
       adjtime = true;
     }
-    if (updn->params & MGS_DYNFREQ) {
-      refn->dynfreq = (*get++).f;
+    if (updn->sound.params & MGS_DYNFREQ) {
+      refn->dynfreq = updn->dynfreq;
     }
-    if (updn->params & MGS_PHASE) {
-      refn->osc.phase = (uint32_t)(*get++).i;
+    if (updn->sound.params & MGS_PHASE) {
+      refn->osc.phase = updn->osc.phase;
     }
-    if (updn->params & MGS_AMP) {
-      refn->sound.amp = (*get++).f;
+    if (updn->sound.params & MGS_AMP) {
+      refn->sound.amp = updn->sound.amp;
     }
-    if (updn->params & MGS_DYNAMP) {
-      refn->sound.dynamp = (*get++).f;
+    if (updn->sound.params & MGS_DYNAMP) {
+      refn->sound.dynamp = updn->sound.dynamp;
     }
-    if (updn->params & MGS_PAN) {
-      refn->sound.pan = (*get++).f;
+    if (updn->sound.params & MGS_PAN) {
+      refn->sound.pan = updn->sound.pan;
     }
-    if (updn->params & MGS_ATTR) {
-      refn->attr = (uint8_t)(*get++).i;
+    if (updn->sound.params & MGS_ATTR) {
+      refn->attr = updn->attr;
     }
     if (refsn == rootsn) {
       if (adjtime) /* here so new freq also used if set */
         adjust_op_time(o, refn);
     }
-    o->need_upsize = true;
     /* take over place of ref'd node */
     *rn = *refrn;
     refrn->flag &= ~MGS_FLAG_EXEC;
     break; }
   case MGS_TYPE_ENV:
+    break;
+  }
+}
+
+static void MGS_Generator_enter_node(MGS_Generator *o, RunNode *rn) {
+  if (rn->flag & MGS_FLAG_UPDATE) {
+    MGS_Generator_update_node(o, rn);
+    rn->flag |= MGS_FLAG_ENTERED;
+    return;
+  }
+  MGS_SoundNode *sndn = rn->node;
+  if (!sndn) {
+    /* no-op node */
+    rn->flag = MGS_FLAG_ENTERED;
+    return;
+  }
+  if (rn->first_i == rn->root_i)
+    o->need_upsize = true;
+  switch (sndn->type) {
+  case MGS_TYPE_OP:
+    if (rn->first_i == rn->root_i)
+      adjust_op_time(o, (MGS_OpNode*) sndn);
     break;
   }
   rn->flag |= MGS_FLAG_ENTERED;
@@ -387,7 +278,6 @@ void MGS_destroy_Generator(MGS_Generator *o) {
     return;
   free(o->bufs);
   free(o->run_nodes);
-  free(o->update_nodes);
   MGS_destroy_MemPool(o->mem);
 }
 
@@ -395,11 +285,13 @@ void MGS_destroy_Generator(MGS_Generator *o) {
  * node block processing
  */
 
-static void run_block_op_env(MGS_Generator *o, Buf *bufs_from,
-    uint32_t len, MGS_OpNode *n, Buf *parentfreq, bool mul);
+enum {
+  BLOCK_WAVEENV = 1<<0,
+};
 
-static void run_block_op(MGS_Generator *o, Buf *bufs_from,
-    uint32_t len, MGS_OpNode *n, Buf *parentfreq, bool acc) {
+static void run_block_op(MGS_Generator *o, Buf *bufs_from, uint32_t len,
+    MGS_OpNode *n, Buf *parentfreq,
+    uint32_t layer, uint32_t flags) {
   uint32_t i;
   Buf *sbuf = bufs_from++, *freq, *amp, *pm;
   Buf *next_buf = bufs_from;
@@ -415,8 +307,9 @@ static void run_block_op(MGS_Generator *o, Buf *bufs_from,
     MGS_ModList *fmod_list = o->mod_lists[n->fmods_id];
     Buf *fmbuf;
     for (size_t i = 0; i < fmod_list->count; ++i) {
-      run_block_op_env(o, next_buf, len,
-          (MGS_OpNode*) o->sound_list[fmod_list->ids[i]], freq, (i > 0));
+      run_block_op(o, next_buf, len,
+          (MGS_OpNode*) o->sound_list[fmod_list->ids[i]], freq,
+          i, BLOCK_WAVEENV);
     }
     fmbuf = next_buf;
     if (n->attr & MGS_ATTR_FREQRATIO) {
@@ -430,8 +323,9 @@ static void run_block_op(MGS_Generator *o, Buf *bufs_from,
   if (n->sound.amods_id > 0) {
     MGS_ModList *amod_list = o->mod_lists[n->sound.amods_id];
     for (size_t i = 0; i < amod_list->count; ++i) {
-      run_block_op_env(o, next_buf, len,
-          (MGS_OpNode*) o->sound_list[amod_list->ids[i]], freq, (i > 0));
+      run_block_op(o, next_buf, len,
+          (MGS_OpNode*) o->sound_list[amod_list->ids[i]], freq,
+          i, BLOCK_WAVEENV);
     }
     amp = next_buf++;
     float dynampdiff = n->sound.dynamp - n->sound.amp;
@@ -447,54 +341,18 @@ static void run_block_op(MGS_Generator *o, Buf *bufs_from,
     MGS_ModList *pmod_list = o->mod_lists[n->pmods_id];
     for (size_t i = 0; i < pmod_list->count; ++i) {
       run_block_op(o, next_buf, len,
-          (MGS_OpNode*) o->sound_list[pmod_list->ids[i]], freq, (i > 0));
+          (MGS_OpNode*) o->sound_list[pmod_list->ids[i]], freq,
+          i, 0);
     }
     pm = next_buf++;
   }
-  MGS_Osc_run(&n->osc, sbuf->f, len,
-      acc, freq->f, amp->f, (pm != NULL) ? pm->f : NULL);
-}
-
-static void run_block_op_env(MGS_Generator *o, Buf *bufs_from,
-    uint32_t len, MGS_OpNode *n, Buf *parentfreq, bool mul) {
-  uint32_t i;
-  Buf *sbuf = bufs_from++, *freq, *pm;
-  Buf *next_buf = bufs_from;
-  freq = next_buf++;
-  if (n->attr & MGS_ATTR_FREQRATIO) {
-    for (i = 0; i < len; ++i)
-      freq->f[i] = n->freq * parentfreq->f[i];
+  if (flags & BLOCK_WAVEENV) {
+    MGS_Osc_run_env(&n->osc, sbuf->f, len,
+        layer, freq->f, amp->f, (pm != NULL) ? pm->f : NULL);
   } else {
-    for (i = 0; i < len; ++i)
-      freq->f[i] = n->freq;
+    MGS_Osc_run(&n->osc, sbuf->f, len,
+        layer, freq->f, amp->f, (pm != NULL) ? pm->f : NULL);
   }
-  if (n->fmods_id > 0) {
-    MGS_ModList *fmod_list = o->mod_lists[n->fmods_id];
-    Buf *fmbuf;
-    for (size_t i = 0; i < fmod_list->count; ++i) {
-      run_block_op_env(o, next_buf, len,
-          (MGS_OpNode*) o->sound_list[fmod_list->ids[i]], freq, (i > 0));
-    }
-    fmbuf = next_buf;
-    if (n->attr & MGS_ATTR_FREQRATIO) {
-      for (i = 0; i < len; ++i)
-        freq->f[i] += (n->dynfreq * parentfreq->f[i] - freq->f[i]) * fmbuf->f[i];
-    } else {
-      for (i = 0; i < len; ++i)
-        freq->f[i] += (n->dynfreq - freq->f[i]) * fmbuf->f[i];
-    }
-  }
-  pm = NULL;
-  if (n->pmods_id > 0) {
-    MGS_ModList *pmod_list = o->mod_lists[n->pmods_id];
-    for (size_t i = 0; i < pmod_list->count; ++i) {
-      run_block_op(o, next_buf, len,
-          (MGS_OpNode*) o->sound_list[pmod_list->ids[i]], freq, (i > 0));
-    }
-    pm = next_buf++;
-  }
-  MGS_Osc_run_env(&n->osc, sbuf->f, len,
-      mul, freq->f, (pm != NULL) ? pm->f : NULL);
 }
 
 static uint32_t run_sound(MGS_Generator *o,
@@ -511,7 +369,9 @@ static uint32_t run_sound(MGS_Generator *o,
     switch (sndn->type) {
     case MGS_TYPE_OP:
       // only works if all linked nodes have type OP
-      run_block_op(o, o->bufs, len, (MGS_OpNode*) sndn, 0, false);
+      run_block_op(o, o->bufs, len,
+          (MGS_OpNode*) sndn, NULL,
+          0, 0);
       break;
     }
     float pan = (1.f + sndn->pan) * .5f;

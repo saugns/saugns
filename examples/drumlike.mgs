@@ -1,4 +1,4 @@
-#Wsin t2 f244.4 p!{Wsin r(3/2)}
+#Wsin t2 f244.4 p!{Wsin r(2/3)}
 #Q
 Wsin t10 f44.4 f!(44.4*4){
 	Wsaw f(1/.50) p!{

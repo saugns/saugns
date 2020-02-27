@@ -109,4 +109,5 @@ void MGS_Osc_run_env(MGS_Osc *restrict o,
 		float *restrict buf, size_t buf_len,
 		uint32_t layer,
 		const float *restrict freq,
+		const float *restrict amp,
 		const float *restrict pm_f);

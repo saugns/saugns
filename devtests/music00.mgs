@@ -1,10 +1,10 @@
 S a.5
 '0 Wsin f200 p!{
-	Wsin r(3/4)
+	Wsin r(4/3)
 } /.1
 :0 f220 /.2
 '1 Wsin t.3 f500 p!{
-	Wsin r(5/6)
+	Wsin r(6/5)
 }
 :0 t.4 f232 |
 :0 t.2 :1 t.1 |

@@ -52,13 +52,13 @@ common.o: common.c common.h
 help.o: common.h help.c help.h wave.h
 	$(CC) -c $(CFLAGS) help.c
 
-interp/generator.o: common.h interp/generator.c interp/generator.h interp/osc.h math.h mempool.h mgensys.h program.h ptrarr.h wave.h
+interp/generator.o: common.h interp/generator.c interp/osc.h interp/runalloc.h math.h mempool.h mgensys.h program.h ptrarr.h wave.h
 	$(CC) -c $(CFLAGS_FAST) interp/generator.c -o interp/generator.o
 
 interp/osc.o: common.h interp/osc.c interp/osc.h math.h wave.h
 	$(CC) -c $(CFLAGS_FAST) interp/osc.c -o interp/osc.o
 
-interp/runalloc.o: common.h interp/generator.h interp/osc.h interp/runalloc.c math.h mempool.h mgensys.h program.h ptrarr.h wave.h
+interp/runalloc.o: common.h interp/osc.h interp/runalloc.c interp/runalloc.h math.h mempool.h mgensys.h program.h ptrarr.h wave.h
 	$(CC) -c $(CFLAGS_FAST) interp/runalloc.c -o interp/runalloc.o
 
 loader/file.o: common.h loader/file.c loader/file.h

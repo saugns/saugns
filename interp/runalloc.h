@@ -1,5 +1,5 @@
-/* mgensys: Audio generator.
- * Copyright (c) 2011, 2020 Joel K. Pettersson
+/* mgensys: Audio generator data allocator.
+ * Copyright (c) 2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -29,6 +29,7 @@ typedef struct MGS_SoundNode {
 	float amp, dynamp;
 	float pan;
 	uint32_t amods_id;
+	uint32_t params; // for use as update
 	uint32_t root_base_i;
 	uint8_t type;
 } MGS_SoundNode;
@@ -60,4 +61,7 @@ bool MGS_RunAlloc_get_modlist(MGS_RunAlloc *restrict o,
 		uint32_t *restrict id);
 
 MGS_OpNode *MGS_RunAlloc_for_op(MGS_RunAlloc *restrict o,
+		const MGS_ProgramNode *restrict n);
+
+void *MGS_RunAlloc_for_node(MGS_RunAlloc *restrict o,
 		const MGS_ProgramNode *restrict n);

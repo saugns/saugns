@@ -51,8 +51,9 @@ S:
 	c	Default channel mixing value. Starts at 0.0, i.e. C (center).
 		Useful as a main way of setting the parameter value;
 		see "Channel mixing values" for more.
-	f	Default frequency in Hz. Starts at 100.0.
-	r	Default frequency ratio. Starts at 1.0.
+	f	Default carrier frequency in Hz. Starts at 100.0.
+	r	Default carrier-modulator frequency ratio (for modulators),
+		as multiple of the carrier frequency. Starts at 1.0.
 	t	Default time duration in seconds. Starts at 1.0.
 
 Wsin, Wsqr, W...:
@@ -62,14 +63,15 @@ Wsin, Wsqr, W...:
 		depends on context - either scaling to fit the duration of
 		play until the end of the current group of sounds, or the
 		default value if alone.
-	f	Frequency in Hz.
+	f	Frequency in Hz, for carrier or modulator.
 	f!{}	Second frequency in Hz to modulate (FM) to by wave or envelope,
 		and/or a list of modulators given within {} following the
 		number if given.
-	r	Frequency ratio (modulator waves only) of carrier to modulator.
-		Keeps frequency that of that of the carrier divided by the
-		given. Often used in the form r(n/m) to give an n:m ratio.
-	r!{}	Second frequency ratio (modulator waves only) to modulate (FM)
+	r	Frequency as a carrier-modulator ratio, for modulators only.
+		Maintains a frequency which multiplies that of the carrier by
+		the value. For example, r(5/3) for 5/3 (i.e. 3:5) the carrier
+		frequency.
+	r!{}	Second frequency ratio (modulators only) to modulate (FM)
 		to by wave or envelope, and/or a list of modulators given
 		within {} following the number if given.
 	a	Amplitude, where 1.0 gives a level of 0dB, which is the signal

@@ -4,7 +4,7 @@ Wsin t15 f500 f!501{Wsin f1} p!{
 
 |
 Wsin t15 f400 f!500{Wsqr f10} p!{
-	Wsin r(2/1.22) a.5
+	Wsin r(1.22/2) a.5
 	Wsin f244 a.5
 }
 
@@ -16,7 +16,7 @@ Wsin t15 f600 f!666{Wsin f2} p!{
 
 |
 Wsin t15 f222 f!666{Wsin f0.1} p!{
-	Wsin r(1/2)
-	Wsin r(3/4)
-	Wsin r(7/3)
+	Wsin r(2/1)
+	Wsin r(4/3)
+	Wsin r(3/7)
 }
