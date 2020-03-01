@@ -27,6 +27,15 @@ enum {
 	MGS_TYPES,
 };
 
+/* Sound node modulators, all types. */
+enum {
+	MGS_MOD_NONE = 0,
+	MGS_MOD_AM,
+	MGS_MOD_FM,
+	MGS_MOD_PM,
+	MGS_MOD_TYPES
+};
+
 /* Operator attributes. */
 enum {
 	MGS_ATTR_FREQRATIO = 1<<0,
@@ -35,20 +44,16 @@ enum {
 
 /* Operator parameters. */
 enum {
-	MGS_AMODS = 1<<0,
-	MGS_FMODS = 1<<1,
-	MGS_PMODS = 1<<2,
-	MGS_TIME = 1<<3,
-	MGS_WAVE = 1<<4,
-	MGS_FREQ = 1<<5,
-	MGS_DYNFREQ = 1<<6,
-	MGS_PHASE = 1<<7,
-	MGS_AMP = 1<<8,
-	MGS_DYNAMP = 1<<9,
-	MGS_PAN = 1<<10,
-	MGS_ATTR = 1<<11,
-	MGS_MODS_MASK = (1<<3) - 1,
-	MGS_PARAM_MASK = (1<<12) - 1
+	MGS_TIME = 1<<0,
+	MGS_WAVE = 1<<1,
+	MGS_FREQ = 1<<2,
+	MGS_DYNFREQ = 1<<3,
+	MGS_PHASE = 1<<4,
+	MGS_AMP = 1<<5,
+	MGS_DYNAMP = 1<<6,
+	MGS_PAN = 1<<7,
+	MGS_ATTR = 1<<8,
+	MGS_PARAM_MASK = (1<<9) - 1
 };
 
 typedef struct MGS_ProgramNode MGS_ProgramNode;
@@ -105,9 +110,8 @@ struct MGS_ProgramNode {
 	MGS_ProgramNode *ref_prev;
 	float delay;
 	uint8_t type;
-	uint32_t id;
-	uint32_t first_id; // first id, not increasing for reference chains
-	uint32_t base_id;  // per-base-type id, increased for each first id
+	uint32_t base_id; // per-base-type id, not increased for references
+	uint32_t conv_id; // for use by later processing
 	void *data;
 };
 

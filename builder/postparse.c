@@ -16,7 +16,7 @@
 static void time_sound(MGS_ProgramNode *restrict n,
 		MGS_ProgramSoundData *restrict sound) {
 	if (!(sound->time.flags & MGS_TIME_SET)) {
-		if (n->first_id != sound->root->first_id)
+		if (n->base_id != sound->root->base_id)
 			sound->time.flags |= MGS_TIME_SET;
 	}
 	// handle timing for sub-components here
@@ -39,7 +39,7 @@ static void time_durscope(MGS_ProgramDurData *restrict dur) {
 		 * Skip unsupported nodes, and
 		 * exclude nested nodes from duration.
 		 */
-		if (!sound || (step->first_id != sound->root->first_id)) {
+		if (!sound || (step->base_id != sound->root->base_id)) {
 			step = step->next;
 			continue;
 		}
@@ -61,7 +61,7 @@ static void time_durscope(MGS_ProgramDurData *restrict dur) {
 		 * Skip unsupported nodes, and
 		 * exclude nested nodes from duration.
 		 */
-		if (!sound || (step->first_id != sound->root->first_id)) {
+		if (!sound || (step->base_id != sound->root->base_id)) {
 			step = step->next;
 			continue;
 		}

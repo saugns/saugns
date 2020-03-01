@@ -12,23 +12,6 @@
  */
 
 #include "runalloc.h"
-#include <stdio.h>
-#include <stdlib.h>
-
-enum {
-  MGS_FLAG_ENTERED = 1<<0,
-  MGS_FLAG_UPDATE = 1<<1,
-  MGS_FLAG_EXEC = 1<<2
-};
-
-typedef struct RunNode {
-  void *node;
-  int pos; /* negative for delay/time shift */
-  uint8_t flag;
-  uint32_t ref_i;
-  uint32_t first_i;
-  uint32_t root_i;
-} RunNode;
 
 #define BUF_LEN 256
 typedef union Buf {
@@ -41,113 +24,29 @@ struct MGS_Generator {
   const MGS_Program *prg;
   uint32_t srate;
   Buf *bufs;
-  uint32_t bufc;
   int delay_offs;
   int time_flags;
+  uint32_t voice_count;
   MGS_SoundNode **sound_list;
+  MGS_VoiceNode *voice_arr;
   MGS_ModList **mod_lists;
-  uint32_t runn_i, runn_end;
-  RunNode *run_nodes;
-  size_t sndn_count;
+  uint32_t ev_i, ev_count;
+  MGS_EventNode *ev_arr;
   MGS_MemPool *mem;
-  bool need_upsize;
 };
-
-static size_t calc_bufs_op(MGS_Generator *o,
-    size_t count_from, MGS_OpNode *n) {
-  ++count_from;
-  size_t count = count_from;
-  size_t max_count = count;
-  ++count;
-  if (n->fmods_id > 0) {
-    MGS_ModList *fmod_list = o->mod_lists[n->fmods_id];
-    for (size_t i = 0; i < fmod_list->count; ++i) {
-      size_t sub_count = calc_bufs_op(o, count,
-          (MGS_OpNode*) o->sound_list[fmod_list->ids[i]]);
-      if (max_count < sub_count) max_count = sub_count;
-    }
-  }
-  if (n->sound.amods_id > 0) {
-    MGS_ModList *amod_list = o->mod_lists[n->sound.amods_id];
-    for (size_t i = 0; i < amod_list->count; ++i) {
-      size_t sub_count = calc_bufs_op(o, count,
-          (MGS_OpNode*) o->sound_list[amod_list->ids[i]]);
-      if (max_count < sub_count) max_count = sub_count;
-    }
-    ++count;
-  } else {
-    ++count;
-  }
-  if (n->pmods_id > 0) {
-    MGS_ModList *pmod_list = o->mod_lists[n->pmods_id];
-    for (size_t i = 0; i < pmod_list->count; ++i) {
-      size_t sub_count = calc_bufs_op(o, count,
-          (MGS_OpNode*) o->sound_list[pmod_list->ids[i]]);
-      if (max_count < sub_count) max_count = sub_count;
-    }
-    ++count;
-  }
-  if (max_count < count) max_count = count;
-  return max_count;
-}
-
-static void upsize_bufs(MGS_Generator *o) {
-  if (!o->need_upsize)
-    return;
-  size_t max_count = 0;
-  for (size_t i = 0; i < o->sndn_count; ++i) {
-    MGS_SoundNode *sndn = o->sound_list[i];
-    if (i != sndn->root_base_i) continue; /* only traverse from root */
-    size_t count = 0;
-    switch (sndn->type) {
-    case MGS_TYPE_OP:
-      // only works if all linked nodes have type OP
-      count = calc_bufs_op(o, 0, (MGS_OpNode*) sndn);
-      break;
-    }
-    if (max_count < count) max_count = count;
-  }
-  if (max_count > o->bufc) {
-    o->bufs = realloc(o->bufs, sizeof(Buf) * max_count);
-    o->bufc = max_count;
-  }
-  o->need_upsize = false;
-}
 
 static void init_for_nodelist(MGS_Generator *o) {
   MGS_RunAlloc ra;
   const MGS_Program *prg = o->prg;
-  const MGS_ProgramNode *step = prg->node_list;
-  uint32_t srate = o->srate;
-  MGS_init_RunAlloc(&ra, o->prg, o->srate, o->mem);
-  for (size_t i = 0; i < prg->node_count; ++i) {
-    void *data = MGS_RunAlloc_for_node(&ra, step);
-    RunNode *rn = &o->run_nodes[i];
-    uint32_t delay = lrintf(step->delay * srate);
-    rn->node = data;
-    rn->pos = -delay;
-    if (step->ref_prev != NULL) {
-      const MGS_ProgramNode *ref = step->ref_prev;
-      rn->flag |= MGS_FLAG_UPDATE;
-      rn->ref_i = ref->id;
-    }
-    rn->first_i = step->first_id;
-    switch (step->type) {
-    case MGS_TYPE_OP: {
-      const MGS_ProgramOpData *op_data = step->data;
-      rn->root_i = op_data->sound.root->first_id;
-      if (rn->first_i == rn->root_i)
-        rn->flag |= MGS_FLAG_EXEC;
-      break; }
-    default:
-      rn->flag |= MGS_FLAG_EXEC;
-      break;
-    }
-    step = step->next;
-  }
-  o->sndn_count = ra.sound_list.count;
-  MGS_PtrArr_mpmemdup(&ra.sound_list, (void***) &o->sound_list, o->mem);
+  MGS_init_RunAlloc(&ra, prg, o->srate, o->mem);
+  MGS_RunAlloc_for_nodelist(&ra, prg->node_list);
+  o->sound_list = ra.sound_list;
+  o->ev_count = ra.ev_arr.count;
+  o->voice_count = ra.voice_arr.count;
+  MGS_EventArr_mpmemdup(&ra.ev_arr, &o->ev_arr, o->mem);
+  MGS_VoiceArr_mpmemdup(&ra.voice_arr, &o->voice_arr, o->mem);
   MGS_PtrArr_mpmemdup(&ra.mod_lists, (void***) &o->mod_lists, o->mem);
+  o->bufs = MGS_MemPool_alloc(o->mem, ra.max_bufs * sizeof(Buf));
   MGS_fini_RunAlloc(&ra);
 }
 
@@ -158,8 +57,6 @@ MGS_Generator* MGS_create_Generator(const MGS_Program *prg, uint32_t srate) {
   o = MGS_MemPool_alloc(mem, sizeof(MGS_Generator));
   o->prg = prg;
   o->srate = srate;
-  o->runn_end = prg->node_count;
-  o->run_nodes = calloc(prg->node_count, sizeof(RunNode));
   o->mem = mem;
   init_for_nodelist(o);
   MGS_global_init_Wave();
@@ -180,37 +77,29 @@ static mgsNoinline void adjust_op_time(MGS_Generator *o, MGS_OpNode *n) {
   }
 }
 
-static void MGS_Generator_update_node(MGS_Generator *o, RunNode *rn) {
-  RunNode *refrn = &o->run_nodes[rn->ref_i];
-  MGS_SoundNode *refsn = refrn->node;
+static void MGS_Generator_update_node(MGS_Generator *o, MGS_EventNode *ev) {
+  MGS_EventNode *refev = &o->ev_arr[ev->ref_i];
+  MGS_SoundNode *refsn = refev->sndn;
   switch (refsn->type) {
   case MGS_TYPE_OP: {
     MGS_OpNode *refn = (MGS_OpNode*) refsn;
-    MGS_OpNode *updn = (MGS_OpNode*) rn->node;
-    MGS_SoundNode *rootsn = o->sound_list[refsn->root_base_i];
+    MGS_OpNode *updn = (MGS_OpNode*) ev->sndn;
+    MGS_VoiceNode *voice = &o->voice_arr[refsn->voice_id];
+    MGS_SoundNode *rootsn = voice->root;
     bool adjtime = false;
     /* set state */
-    if (updn->sound.params & MGS_AMODS) {
-      refn->sound.amods_id = updn->sound.amods_id;
-      o->need_upsize = true;
-    }
-    if (updn->sound.params & MGS_FMODS) {
-      refn->fmods_id = updn->fmods_id;
-      o->need_upsize = true;
-    }
-    if (updn->sound.params & MGS_PMODS) {
-      refn->pmods_id = updn->pmods_id;
-      o->need_upsize = true;
-    }
+    refn->sound.amods_id = updn->sound.amods_id;
+    refn->fmods_id = updn->fmods_id;
+    refn->pmods_id = updn->pmods_id;
     if (updn->sound.params & MGS_TIME) {
       refn->sound.time = updn->sound.time;
-      refrn->pos = 0;
+      refev->pos = 0;
       if (refn->sound.time) {
         if (refsn == rootsn)
-          refrn->flag |= MGS_FLAG_EXEC;
+          refev->status |= MGS_EV_ACTIVE;
         adjtime = true;
       } else
-        refrn->flag &= ~MGS_FLAG_EXEC;
+        refev->status &= ~MGS_EV_ACTIVE;
     }
     if (updn->sound.params & MGS_WAVE) {
       refn->osc.lut = updn->osc.lut;
@@ -242,42 +131,41 @@ static void MGS_Generator_update_node(MGS_Generator *o, RunNode *rn) {
         adjust_op_time(o, refn);
     }
     /* take over place of ref'd node */
-    *rn = *refrn;
-    refrn->flag &= ~MGS_FLAG_EXEC;
+    *ev = *refev;
+    refev->status &= ~MGS_EV_ACTIVE;
     break; }
   case MGS_TYPE_ENV:
     break;
   }
 }
 
-static void MGS_Generator_enter_node(MGS_Generator *o, RunNode *rn) {
-  if (rn->flag & MGS_FLAG_UPDATE) {
-    MGS_Generator_update_node(o, rn);
-    rn->flag |= MGS_FLAG_ENTERED;
-    return;
+static void MGS_Generator_prepare_node(MGS_Generator *o, MGS_EventNode *ev) {
+  if (ev->status & MGS_EV_UPDATE) {
+    MGS_Generator_update_node(o, ev);
+    goto DONE;
   }
-  MGS_SoundNode *sndn = rn->node;
+  MGS_SoundNode *sndn = ev->sndn;
   if (!sndn) {
     /* no-op node */
-    rn->flag = MGS_FLAG_ENTERED;
-    return;
+    goto DONE;
   }
-  if (rn->first_i == rn->root_i)
-    o->need_upsize = true;
+  MGS_VoiceNode *voice = &o->voice_arr[sndn->voice_id];
+  if (sndn == voice->root) {
+    ev->status |= MGS_EV_ACTIVE;
+  }
   switch (sndn->type) {
   case MGS_TYPE_OP:
-    if (rn->first_i == rn->root_i)
+    if (sndn == voice->root)
       adjust_op_time(o, (MGS_OpNode*) sndn);
     break;
   }
-  rn->flag |= MGS_FLAG_ENTERED;
+DONE:
+  ev->status |= MGS_EV_PREPARED;
 }
 
 void MGS_destroy_Generator(MGS_Generator *o) {
   if (!o)
     return;
-  free(o->bufs);
-  free(o->run_nodes);
   MGS_destroy_MemPool(o->mem);
 }
 
@@ -288,6 +176,10 @@ void MGS_destroy_Generator(MGS_Generator *o) {
 enum {
   BLOCK_WAVEENV = 1<<0,
 };
+
+static void run_block_sub(MGS_Generator *o, Buf *bufs_from, uint32_t len,
+    uint32_t mods_id, Buf *freq,
+    uint32_t flags);
 
 static void run_block_op(MGS_Generator *o, Buf *bufs_from, uint32_t len,
     MGS_OpNode *n, Buf *parentfreq,
@@ -304,14 +196,10 @@ static void run_block_op(MGS_Generator *o, Buf *bufs_from, uint32_t len,
       freq->f[i] = n->freq;
   }
   if (n->fmods_id > 0) {
-    MGS_ModList *fmod_list = o->mod_lists[n->fmods_id];
-    Buf *fmbuf;
-    for (size_t i = 0; i < fmod_list->count; ++i) {
-      run_block_op(o, next_buf, len,
-          (MGS_OpNode*) o->sound_list[fmod_list->ids[i]], freq,
-          i, BLOCK_WAVEENV);
-    }
-    fmbuf = next_buf;
+    run_block_sub(o, next_buf, len,
+        n->fmods_id, freq,
+        BLOCK_WAVEENV);
+    Buf *fmbuf = next_buf;
     if (n->attr & MGS_ATTR_FREQRATIO) {
       for (i = 0; i < len; ++i)
         freq->f[i] += (n->dynfreq * parentfreq->f[i] - freq->f[i]) * fmbuf->f[i];
@@ -321,12 +209,9 @@ static void run_block_op(MGS_Generator *o, Buf *bufs_from, uint32_t len,
     }
   }
   if (n->sound.amods_id > 0) {
-    MGS_ModList *amod_list = o->mod_lists[n->sound.amods_id];
-    for (size_t i = 0; i < amod_list->count; ++i) {
-      run_block_op(o, next_buf, len,
-          (MGS_OpNode*) o->sound_list[amod_list->ids[i]], freq,
-          i, BLOCK_WAVEENV);
-    }
+    run_block_sub(o, next_buf, len,
+        n->sound.amods_id, freq,
+        BLOCK_WAVEENV);
     amp = next_buf++;
     float dynampdiff = n->sound.dynamp - n->sound.amp;
     for (i = 0; i < len; ++i)
@@ -338,12 +223,9 @@ static void run_block_op(MGS_Generator *o, Buf *bufs_from, uint32_t len,
   }
   pm = NULL;
   if (n->pmods_id > 0) {
-    MGS_ModList *pmod_list = o->mod_lists[n->pmods_id];
-    for (size_t i = 0; i < pmod_list->count; ++i) {
-      run_block_op(o, next_buf, len,
-          (MGS_OpNode*) o->sound_list[pmod_list->ids[i]], freq,
-          i, 0);
-    }
+    run_block_sub(o, next_buf, len,
+        n->pmods_id, freq,
+        0);
     pm = next_buf++;
   }
   if (flags & BLOCK_WAVEENV) {
@@ -352,6 +234,22 @@ static void run_block_op(MGS_Generator *o, Buf *bufs_from, uint32_t len,
   } else {
     MGS_Osc_run(&n->osc, sbuf->f, len,
         layer, freq->f, amp->f, (pm != NULL) ? pm->f : NULL);
+  }
+}
+
+static void run_block_sub(MGS_Generator *o, Buf *bufs_from, uint32_t len,
+    uint32_t mods_id, Buf *freq,
+    uint32_t flags) {
+  MGS_ModList *mod_list = o->mod_lists[mods_id];
+  for (size_t i = 0; i < mod_list->count; ++i) {
+    MGS_SoundNode *n = o->sound_list[mod_list->ids[i]];
+    switch (n->type) {
+    case MGS_TYPE_OP:
+      run_block_op(o, bufs_from, len,
+          (MGS_OpNode*) n, freq,
+          i, flags);
+      break;
+    }
   }
 }
 
@@ -368,7 +266,6 @@ static uint32_t run_sound(MGS_Generator *o,
     time -= len;
     switch (sndn->type) {
     case MGS_TYPE_OP:
-      // only works if all linked nodes have type OP
       run_block_op(o, o->bufs, len,
           (MGS_OpNode*) sndn, NULL,
           0, 0);
@@ -403,53 +300,53 @@ bool MGS_Generator_run(MGS_Generator *o, int16_t *buf,
   }
 PROCESS:
   skiplen = 0;
-  for (i = o->runn_i; i < o->runn_end; ++i) {
-    RunNode *rn = &o->run_nodes[i];
-    if (rn->pos < 0) {
-      uint32_t delay = -rn->pos;
+  for (i = o->ev_i; i < o->ev_count; ++i) {
+    MGS_EventNode *ev = &o->ev_arr[i];
+    if (ev->pos < 0) {
+      uint32_t delay = -ev->pos;
       if (o->time_flags & MGS_GEN_TIME_OFFS)
         delay -= o->delay_offs; /* delay change == previous time change */
       if (delay <= len) {
-        /* Split processing so that len is no longer than delay, avoiding
-         * cases where the node prior to a node disabling it plays too
-         * long.
+        /*
+         * Split processing so that len is no longer than delay,
+         * avoiding cases where the node prior to a node disabling it
+         * plays too long.
          */
         skiplen = len - delay;
         len = delay;
       }
       break;
     }
-    if (!(rn->flag & MGS_FLAG_ENTERED))
-      /* After return to PROCESS, ensures disabling node is initialized before
-       * disabled node would otherwise play.
+    if (!(ev->status & MGS_EV_PREPARED)) {
+      /*
+       * Ensures disabling node is initialized
+       * before disabled node would otherwise play.
        */
-      MGS_Generator_enter_node(o, rn);
+      MGS_Generator_prepare_node(o, ev);
+    }
   }
-  upsize_bufs(o);
-  for (i = o->runn_i; i < o->runn_end; ++i) {
-    RunNode *rn = &o->run_nodes[i];
-    if (rn->pos < 0) {
-      uint32_t delay = -rn->pos;
+  for (i = o->ev_i; i < o->ev_count; ++i) {
+    MGS_EventNode *ev = &o->ev_arr[i];
+    if (ev->pos < 0) {
+      uint32_t delay = -ev->pos;
       if (o->time_flags & MGS_GEN_TIME_OFFS) {
-        rn->pos += o->delay_offs; /* delay change == previous time change */
+        ev->pos += o->delay_offs; /* delay change == previous time change */
         o->delay_offs = 0;
         o->time_flags &= ~MGS_GEN_TIME_OFFS;
       }
       if (delay >= len) {
-        rn->pos += len;
+        ev->pos += len;
         break; /* end for now; delays accumulate across nodes */
       }
       buf += delay+delay; /* doubled due to stereo interleaving */
       len -= delay;
-      rn->pos = 0;
-    } else
-    if (!(rn->flag & MGS_FLAG_ENTERED))
-      MGS_Generator_enter_node(o, rn);
-    if (rn->flag & MGS_FLAG_EXEC) {
-      MGS_SoundNode *sndn = rn->node;
-      rn->pos += run_sound(o, sndn, buf, rn->pos, len);
-      if ((uint32_t)rn->pos == sndn->time)
-        rn->flag &= ~MGS_FLAG_EXEC;
+      ev->pos = 0;
+    }
+    if (ev->status & MGS_EV_ACTIVE) {
+      MGS_SoundNode *sndn = ev->sndn;
+      ev->pos += run_sound(o, sndn, buf, ev->pos, len);
+      if ((uint32_t)ev->pos == sndn->time)
+        ev->status &= ~MGS_EV_ACTIVE;
     }
   }
   if (skiplen) {
@@ -459,11 +356,12 @@ PROCESS:
   }
   if (gen_len != NULL) *gen_len = totlen;
   for(;;) {
-    if (o->runn_i == o->runn_end)
+    if (o->ev_i == o->ev_count)
       return false;
-    if (o->run_nodes[o->runn_i].flag & MGS_FLAG_EXEC)
+    uint8_t cur_status = o->ev_arr[o->ev_i].status;
+    if (!(cur_status & MGS_EV_PREPARED) || cur_status & MGS_EV_ACTIVE)
       break;
-    ++o->runn_i;
+    ++o->ev_i;
   }
   return true;
 }

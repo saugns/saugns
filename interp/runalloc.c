@@ -13,6 +13,10 @@
 
 #include "runalloc.h"
 
+enum {
+	RECHECK_BUFS = 1<<0,
+};
+
 static MGS_ModList *create_ModList(const MGS_ProgramArrData *restrict arr_data,
 		MGS_MemPool *restrict mem) {
 	MGS_ModList *o = MGS_MemPool_alloc(mem, sizeof(MGS_ModList) +
@@ -35,6 +39,11 @@ bool MGS_init_RunAlloc(MGS_RunAlloc *restrict o,
 	o->prg = prg;
 	o->srate = srate;
 	o->mem = mem;
+	size_t count = prg->base_counts[MGS_BASETYPE_SOUND];
+	o->sound_list = MGS_MemPool_alloc(mem, count * sizeof(MGS_SoundNode*));
+	if (!o->sound_list)
+		return false;
+	o->sndn_count = count;
 	/*
 	 * Add blank modlist as value 0.
 	 */
@@ -45,11 +54,12 @@ bool MGS_init_RunAlloc(MGS_RunAlloc *restrict o,
 }
 
 void MGS_fini_RunAlloc(MGS_RunAlloc *restrict o) {
-	MGS_PtrArr_clear(&o->sound_list);
+	MGS_EventArr_clear(&o->ev_arr);
+	MGS_VoiceArr_clear(&o->voice_arr);
 	MGS_PtrArr_clear(&o->mod_lists);
 }
 
-/**
+/*
  * Get modulator list ID for \p arr_data, adding the modulator
  * list to the collection.
  *
@@ -59,7 +69,7 @@ void MGS_fini_RunAlloc(MGS_RunAlloc *restrict o) {
  *
  * \return true, or false on allocation failure
  */
-mgsNoinline bool MGS_RunAlloc_get_modlist(MGS_RunAlloc *restrict o,
+static mgsNoinline bool MGS_RunAlloc_make_modlist(MGS_RunAlloc *restrict o,
 		const MGS_ProgramArrData *restrict arr_data,
 		uint32_t *restrict id) {
 	if (!arr_data || !arr_data->count) {
@@ -70,87 +80,249 @@ mgsNoinline bool MGS_RunAlloc_get_modlist(MGS_RunAlloc *restrict o,
 	if (!l || !(MGS_PtrArr_add(&o->mod_lists, l)))
 		return false;
 	*id = o->mod_lists.count - 1;
+	o->flags |= RECHECK_BUFS;
 	return true;
 }
 
 /*
- * Fill in sound node data,
- * adding the node to the list if new (not an update node).
- *
- * Does not handle allocation of the sound node itself.
+ * Check if a new modulator list needs to be assigned.
+ */
+#define NEED_MODLIST(data, prev_data, arr_memb) \
+	((data)->arr_memb != NULL && \
+	 (!(prev_data) || (prev_data)->arr_memb != (data)->arr_memb))
+
+/*
+ * Allocate and initialize an event,
+ * leaving type-specific data blank.
  *
  * \return true, or false on allocation failure
  */
-static bool MGS_RunAlloc_for_sound(MGS_RunAlloc *restrict o,
+static bool MGS_RunAlloc_make_event(MGS_RunAlloc *restrict o,
+		MGS_ProgramNode *restrict n) {
+	MGS_EventNode *ev = MGS_EventArr_add(&o->ev_arr, NULL);
+	if (!ev)
+		return false;
+	o->cur_ev = ev;
+	o->cur_ev_id = o->ev_arr.count - 1;
+	n->conv_id = o->cur_ev_id;
+	uint32_t delay = lrintf(n->delay * o->srate);
+	ev->pos = -delay;
+	if (n->ref_prev != NULL) {
+		const MGS_ProgramNode *ref = n->ref_prev;
+		ev->status |= MGS_EV_UPDATE;
+		ev->ref_i = ref->conv_id;
+	}
+	return true;
+}
+
+/*
+ * Set voice ID for sound node, allocating voice if needed.
+ * Currently allocates one voice per root sound node; to improve.
+ *
+ * \return true, or false on allocation failure
+ */
+static bool MGS_RunAlloc_make_voice(MGS_RunAlloc *restrict o,
 		MGS_SoundNode *restrict sndn,
 		const MGS_ProgramNode *restrict n) {
-	MGS_ProgramSoundData *sound_data;
-	if (!n->ref_prev) {
-		if (!MGS_PtrArr_add(&o->sound_list, sndn))
+	uint32_t voice_id;
+	MGS_ProgramSoundData *sound_data = n->data;
+	if (n->base_id == sound_data->root->base_id) {
+		voice_id = o->voice_arr.count;
+		MGS_VoiceNode *voice = MGS_VoiceArr_add(&o->voice_arr, NULL);
+		if (!voice)
 			return false;
+		voice->root = sndn;
+		voice->delay = lrintf(n->delay * o->srate);
+		o->flags |= RECHECK_BUFS;
+	} else {
+		const MGS_ProgramNode *root_n = sound_data->root;
+		MGS_SoundNode *root_sndn = o->sound_list[root_n->base_id];
+		voice_id = root_sndn->voice_id;
 	}
-	sound_data = n->data;
+	sndn->voice_id = voice_id;
+	return true;
+}
+
+/*
+ * Fill in sound node data, performing voice allocation and
+ * adding the node to the list if new (not an update node).
+ *
+ * To be called to initialize common data for sound nodes.
+ *
+ * \return true, or false on allocation failure
+ */
+static bool MGS_RunAlloc_init_sound(MGS_RunAlloc *restrict o,
+		MGS_SoundNode *restrict sndn,
+		const MGS_ProgramNode *restrict n) {
+	MGS_ProgramSoundData *sound_data = n->data;
+	MGS_ProgramSoundData *prev_sound_data = NULL;
+	if (!n->ref_prev) {
+		o->sound_list[n->base_id] = sndn;
+		if (!MGS_RunAlloc_make_voice(o, sndn, n))
+			return false;
+	} else {
+		prev_sound_data = n->ref_prev->data;
+	}
 	sndn->time = lrintf(sound_data->time.v * o->srate);
 	sndn->amp = sound_data->amp;
 	sndn->dynamp = sound_data->dynamp;
 	sndn->pan = sound_data->pan;
-	if (sound_data->amod != NULL) {
-		if (!MGS_RunAlloc_get_modlist(o, sound_data->amod,
+	if (NEED_MODLIST(sound_data, prev_sound_data, amod)) {
+		if (!MGS_RunAlloc_make_modlist(o, sound_data->amod,
 				&sndn->amods_id))
 			return false;
 	}
 	sndn->params = sound_data->params;
-	sndn->root_base_i = sound_data->root->base_id;
 	sndn->type = n->type;
+	MGS_EventNode *ev = o->cur_ev;
+	ev->sndn = sndn;
 	return true;
 }
 
-/**
+/*
  * Allocate and initialize operator node.
  *
- * \return node, or NULL on allocation failure
+ * \return true, or false on allocation failure
  */
-MGS_OpNode *MGS_RunAlloc_for_op(MGS_RunAlloc *restrict o,
+static bool MGS_RunAlloc_make_op(MGS_RunAlloc *restrict o,
 		const MGS_ProgramNode *restrict n) {
-	MGS_OpNode *opn = MGS_MemPool_alloc(o->mem, sizeof(MGS_OpNode));
-	if (!opn)
-		return NULL;
-	if (!MGS_RunAlloc_for_sound(o, &opn->sound, n))
-		return NULL;
+	MGS_EventNode *ev = o->cur_ev;
+	MGS_OpNode *opn;
 	MGS_ProgramOpData *op_data = n->data;
+	MGS_ProgramOpData *prev_op_data = NULL;
+	if (!(ev->status & MGS_EV_UPDATE)) {
+		opn = MGS_MemPool_alloc(o->mem, sizeof(MGS_OpNode));
+	} else {
+		MGS_EventNode *ref_ev = &o->ev_arr.a[ev->ref_i];
+		opn = MGS_MemPool_memdup(o->mem,
+				ref_ev->sndn, sizeof(MGS_OpNode));
+		prev_op_data = n->ref_prev->data;
+	}
+	if (!opn || !MGS_RunAlloc_init_sound(o, &opn->sound, n))
+		return false;
 	MGS_init_Osc(&opn->osc, o->srate);
 	opn->osc.lut = MGS_Osc_LUT(op_data->wave);
 	opn->osc.phase = MGS_Osc_PHASE(op_data->phase);
 	opn->attr = op_data->attr;
 	opn->freq = op_data->freq;
 	opn->dynfreq = op_data->dynfreq;
-	if (op_data->fmod != NULL) {
-		if (!MGS_RunAlloc_get_modlist(o, op_data->fmod,
+	if (NEED_MODLIST(op_data, prev_op_data, fmod)) {
+		if (!MGS_RunAlloc_make_modlist(o, op_data->fmod,
 				&opn->fmods_id))
-			return NULL;
+			return false;
 	}
-	if (op_data->pmod != NULL) {
-		if (!MGS_RunAlloc_get_modlist(o, op_data->pmod,
+	if (NEED_MODLIST(op_data, prev_op_data, pmod)) {
+		if (!MGS_RunAlloc_make_modlist(o, op_data->pmod,
 				&opn->pmods_id))
-			return NULL;
+			return false;
 	}
-	return opn;
+	return true;
 }
 
-/**
+/*
  * Allocate and initialize type-dependent node.
  *
- * \return node, or NULL on allocation failure or unsupported type
+ * \return index node, or NULL on allocation failure or unsupported type
  */
-void *MGS_RunAlloc_for_node(MGS_RunAlloc *restrict o,
+static bool MGS_RunAlloc_make_sound(MGS_RunAlloc *restrict o,
 		const MGS_ProgramNode *restrict n) {
-	void *data = NULL;
 	switch (n->type) {
 	case MGS_TYPE_OP:
-		data = MGS_RunAlloc_for_op(o, n);
-		if (!data)
-			return NULL;
+		if (!MGS_RunAlloc_make_op(o, n))
+			return false;
 		break;
 	}
-	return data;
+	return true;
+}
+
+static bool MGS_RunAlloc_recheck_bufs(MGS_RunAlloc *restrict o);
+
+/**
+ * Make nodes for an input node list.
+ *
+ * \return true, or false on allocation failure
+ */
+bool MGS_RunAlloc_for_nodelist(MGS_RunAlloc *restrict o,
+		MGS_ProgramNode *restrict first_n) {
+	MGS_ProgramNode *n = first_n;
+	while (n != NULL) {
+		if (n->delay > 0.f) MGS_RunAlloc_recheck_bufs(o);
+		if (!MGS_RunAlloc_make_event(o, n))
+			return false;
+		if (!MGS_RunAlloc_make_sound(o, n))
+			return false;
+		n = n->next;
+	}
+	MGS_RunAlloc_recheck_bufs(o);
+	return true;
+}
+
+static size_t calc_bufs_sub(MGS_RunAlloc *restrict o,
+		size_t count_from, uint32_t mods_id);
+
+/*
+ * Traversal mirroring the function for running an MGS_OpNode.
+ */
+static size_t calc_bufs_op(MGS_RunAlloc *restrict o,
+		size_t count_from, MGS_OpNode *restrict n) {
+	++count_from;
+	size_t count = count_from;
+	size_t max_count = count;
+	++count;
+	if (n->fmods_id > 0) {
+		max_count = calc_bufs_sub(o, count, n->fmods_id);
+	}
+	if (n->sound.amods_id > 0) {
+		max_count = calc_bufs_sub(o, count, n->sound.amods_id);
+		++count;
+	} else {
+		++count;
+	}
+	if (n->pmods_id > 0) {
+		max_count = calc_bufs_sub(o, count, n->pmods_id);
+		++count;
+	}
+	if (max_count < count) max_count = count;
+	return max_count;
+}
+
+static size_t calc_bufs_sub(MGS_RunAlloc *restrict o,
+		size_t count_from, uint32_t mods_id) {
+	MGS_ModList *mod_list = MGS_PtrArr_GET(&o->mod_lists, mods_id);
+	size_t max_count = count_from;
+	for (size_t i = 0; i < mod_list->count; ++i) {
+		MGS_SoundNode *n = o->sound_list[mod_list->ids[i]];
+		size_t sub_count = count_from;
+		switch (n->type) {
+		case MGS_TYPE_OP:
+			sub_count = calc_bufs_op(o,
+					count_from, (MGS_OpNode*) n);
+			break;
+		}
+		if (max_count < sub_count)
+			max_count = sub_count;
+	}
+	return max_count;
+}
+
+/*
+ * Update buffer counts for new node traversals.
+ */
+static bool MGS_RunAlloc_recheck_bufs(MGS_RunAlloc *restrict o) {
+	if (!(o->flags & RECHECK_BUFS))
+		return true;
+	for (size_t i = 0; i < o->voice_arr.count; ++i) {
+		MGS_VoiceNode *voice = &o->voice_arr.a[i];
+		MGS_SoundNode *sndn = voice->root;
+		size_t count = 0;
+		switch (sndn->type) {
+		case MGS_TYPE_OP:
+			count = calc_bufs_op(o, 0, (MGS_OpNode*) sndn);
+			break;
+		}
+		if (o->max_bufs < count)
+			o->max_bufs = count;
+	}
+	o->flags &= ~RECHECK_BUFS;
+	return true;
 }
