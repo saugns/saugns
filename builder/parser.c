@@ -34,9 +34,11 @@ static uint8_t filter_symchar(MGS_File *restrict f mgsMaybeUnused,
 }
 
 bool MGS_init_LangOpt(MGS_LangOpt *restrict o, MGS_SymTab *restrict symt) {
-  o->wave_names = MGS_SymTab_pool_stra(symt, MGS_Wave_names,
-      MGS_WAVE_TYPES);
-  if (!o->wave_names)
+  if (!(o->noise_names =
+        MGS_SymTab_pool_stra(symt, MGS_Noise_names, MGS_NOISE_TYPES)))
+    return false;
+  if (!(o->wave_names =
+        MGS_SymTab_pool_stra(symt, MGS_Wave_names, MGS_WAVE_TYPES)))
     return false;
   return true;
 }
@@ -130,27 +132,27 @@ typedef struct MGS_NodeData {
   float n_delay_next;
 } MGS_NodeData;
 
-static void new_opdata(MGS_NodeData *nd) {
+/*
+ * Allocate sound data and do common initialization.
+ *
+ * References keep the original root and
+ * are never added to nesting lists.
+ * TODO: Implement references which copy
+ * nodes to new locations, and/or move.
+ */
+static void new_sounddata(MGS_NodeData *nd, size_t size) {
   MGS_Parser *o = nd->o;
   MGS_Program *p = o->prg;
   MGS_ProgramNode *n = nd->node;
-  MGS_ProgramOpData *op;
-  /*
-   * Initial operator data.
-   *
-   * References keep the original root and
-   * are never added to nesting lists.
-   * TODO: Implement references which copy
-   * nodes to new locations, and/or move.
-   */
+  MGS_ProgramSoundData *snd;
   if (!n->ref_prev) {
-    op = MGS_MemPool_alloc(p->mem, sizeof(MGS_ProgramOpData));
+    snd = MGS_MemPool_alloc(p->mem, size);
     if (!nd->target) {
-      op->sound.root = n;
+      snd->root = n;
       ++p->root_count;
     } else {
-      MGS_ProgramSoundData *prev_sound = o->cur_sound->data;
-      op->sound.root = prev_sound->root;
+      MGS_ProgramSoundData *prev_snd = o->cur_sound->data;
+      snd->root = prev_snd->root;
       if (!nd->target->scope.first_node)
         nd->target->scope.first_node = n;
       else {
@@ -160,28 +162,42 @@ static void new_opdata(MGS_NodeData *nd) {
       nd->target->scope.last_node = n;
       ++nd->target->count;
     }
-    op->sound.amp = 1.f;
-    op->sound.dynamp = op->sound.amp;
-    op->sound.pan = o->n_pan;
-    if (!nd->target) {
-      op->freq = o->n_freq;
-    } else {
-      op->freq = o->n_ratio;
-      op->attr |= MGS_ATTR_FREQRATIO | MGS_ATTR_DYNFREQRATIO;
-    }
-    op->dynfreq = op->freq;
+    snd->amp = 1.f;
+    snd->dynamp = snd->amp;
+    snd->pan = o->n_pan;
     n->base_id = p->base_counts[MGS_BASETYPE_SOUND]++;
   } else {
     MGS_ProgramNode *ref = n->ref_prev;
-    op = MGS_MemPool_memdup(p->mem, ref->data, sizeof(MGS_ProgramOpData));
-    op->sound.params = 0;
+    snd = MGS_MemPool_memdup(p->mem, ref->data, size);
+    snd->params = 0;
     n->base_id = ref->base_id;
   }
   /* time is not copied across reference */
-  op->sound.time.v = o->n_time;
-  op->sound.time.flags = 0;
-  n->data = op;
+  snd->time.v = o->n_time;
+  snd->time.flags = 0;
+  n->base_type = MGS_BASETYPE_SOUND;
+  n->data = snd;
   o->cur_sound = n;
+}
+
+static void new_noisedata(MGS_NodeData *nd) {
+  new_sounddata(nd, sizeof(MGS_ProgramNoiseData));
+}
+
+static void new_wavedata(MGS_NodeData *nd) {
+  new_sounddata(nd, sizeof(MGS_ProgramWaveData));
+  MGS_Parser *o = nd->o;
+  MGS_ProgramNode *n = nd->node;
+  MGS_ProgramWaveData *wod = n->data;
+  if (!n->ref_prev) {
+    if (!nd->target) {
+      wod->freq = o->n_freq;
+    } else {
+      wod->freq = o->n_ratio;
+      wod->attr |= MGS_ATTR_FREQRATIO | MGS_ATTR_DYNFREQRATIO;
+    }
+    wod->dynfreq = wod->freq;
+  }
 }
 
 static void new_durdata(MGS_NodeData *nd) {
@@ -190,6 +206,7 @@ static void new_durdata(MGS_NodeData *nd) {
   MGS_ProgramNode *n = nd->node;
   MGS_ProgramDurData *dur;
   dur = MGS_MemPool_alloc(p->mem, sizeof(MGS_ProgramDurData));
+  n->base_type = MGS_BASETYPE_SCOPE;
   n->data = dur;
   if (o->cur_dur != NULL) {
     MGS_ProgramDurData *prev_dur = o->cur_dur->data;
@@ -239,8 +256,11 @@ static void new_node(MGS_NodeData *nd,
   nd->n_delay_next = 0.f;
 
   switch (type) {
-  case MGS_TYPE_OP:
-    new_opdata(nd);
+  case MGS_TYPE_NOISE:
+    new_noisedata(nd);
+    break;
+  case MGS_TYPE_WAVE:
+    new_wavedata(nd);
     break;
   case MGS_TYPE_DUR:
     new_durdata(nd);
@@ -248,25 +268,33 @@ static void new_node(MGS_NodeData *nd,
   }
 }
 
-static void end_opdata(MGS_NodeData *nd) {
+/*
+ * Common sound data scope-ending preparation.
+ */
+static void end_sounddata(MGS_NodeData *nd) {
   MGS_Parser *o = nd->o;
   MGS_ProgramNode *n = nd->node;
-  MGS_ProgramOpData *op = n->data;
-  /*
-   * Prepare parsed operator data.
-   */
+  MGS_ProgramSoundData *snd = n->data;
   if (!n->ref_prev) {
     /* first node sets all values */
-    op->sound.params |= MGS_PARAM_MASK;
+    snd->params |= MGS_PARAM_MASK;
   } else {
-    if (op->sound.time.flags & MGS_TIME_SET)
-      op->sound.params |= MGS_TIME;
+    if (snd->time.flags & MGS_TIME_SET)
+      snd->params |= MGS_SOUNDP_TIME;
   }
-  if (op->sound.params & MGS_AMP) {
+  if (snd->params & MGS_SOUNDP_AMP) {
     /* only apply to non-modulators */
-    if (n->base_id == op->sound.root->base_id)
-      op->sound.amp *= o->n_ampmult;
+    if (n->base_id == snd->root->base_id)
+      snd->amp *= o->n_ampmult;
   }
+}
+
+static void end_noisedata(MGS_NodeData *nd) {
+  end_sounddata(nd);
+}
+
+static void end_wavedata(MGS_NodeData *nd) {
+  end_sounddata(nd);
 }
 
 static void end_durdata(MGS_NodeData *nd mgsMaybeUnused) {
@@ -278,8 +306,11 @@ static void end_node(MGS_NodeData *nd) {
     return; /* nothing to do */
 
   switch (n->type) {
-  case MGS_TYPE_OP:
-    end_opdata(nd);
+  case MGS_TYPE_NOISE:
+    end_noisedata(nd);
+    break;
+  case MGS_TYPE_WAVE:
+    end_wavedata(nd);
     break;
   case MGS_TYPE_DUR:
     end_durdata(nd);
@@ -500,6 +531,16 @@ static size_t numsym_channel(MGS_Parser *restrict o, double *restrict val) {
   }
 }
 
+static bool scan_noisetype(MGS_Parser *restrict o,
+    size_t *restrict found_id, char pos_c) {
+  const char *const *names = o->prg->lopt.noise_names;
+  if (scan_symafind(o, names, found_id, pos_c))
+    return true;
+  warning(o, "invalid noise type value; available are:", pos_c);
+  MGS_print_names(names, "\t", stderr);
+  return false;
+}
+
 static bool scan_wavetype(MGS_Parser *restrict o,
     size_t *restrict found_id, char pos_c) {
   const char *const *names = o->prg->lopt.wave_names;
@@ -544,7 +585,7 @@ static bool parse_amp(MGS_Parser *o, MGS_ProgramNode *n) {
     if (!MGS_File_TESTC(o->f, '{')) {
       if (!scan_num(o, NULL, &f)) goto INVALID;
       sound->dynamp = f;
-      sound->params |= MGS_DYNAMP;
+      sound->params |= MGS_SOUNDP_DYNAMP;
     }
     if (MGS_File_TRYC(o->f, '{')) {
       sound->amod = MGS_MemPool_alloc(p->mem, sizeof(MGS_ProgramArrData));
@@ -554,7 +595,7 @@ static bool parse_amp(MGS_Parser *o, MGS_ProgramNode *n) {
   } else {
     if (!scan_num(o, NULL, &f)) goto INVALID;
     sound->amp = f;
-    sound->params |= MGS_AMP;
+    sound->params |= MGS_SOUNDP_AMP;
   }
   return true;
 INVALID:
@@ -574,7 +615,7 @@ static bool parse_channel(MGS_Parser *o, MGS_ProgramNode *n) {
   /* TODO: support modulation */
   if (!scan_num(o, numsym_channel, &f)) goto INVALID;
   sound->pan = f;
-  sound->params |= MGS_PAN;
+  sound->params |= MGS_SOUNDP_PAN;
   return true;
 INVALID:
   return false;
@@ -582,36 +623,48 @@ INVALID:
 
 static bool parse_freq(MGS_Parser *o, MGS_ProgramNode *n, bool ratio) {
   MGS_Program *p = o->prg;
-  MGS_ProgramOpData *op = MGS_ProgramNode_get_data(n, MGS_TYPE_OP);
-  if (!op) goto INVALID;
-  if (ratio && (n->base_id == op->sound.root->base_id)) goto INVALID;
+  MGS_ProgramWaveData *wod = MGS_ProgramNode_get_data(n, MGS_TYPE_WAVE);
+  if (!wod) goto INVALID;
+  if (ratio && (n->base_id == wod->sound.root->base_id)) goto INVALID;
   float f;
   if (MGS_File_TRYC(o->f, '!')) {
     if (!MGS_File_TESTC(o->f, '{')) {
       if (!scan_num(o, NULL, &f)) goto INVALID;
-      op->dynfreq = f;
+      wod->dynfreq = f;
       if (ratio) {
-        op->attr |= MGS_ATTR_DYNFREQRATIO;
+        wod->attr |= MGS_ATTR_DYNFREQRATIO;
       } else {
-        op->attr &= ~MGS_ATTR_DYNFREQRATIO;
+        wod->attr &= ~MGS_ATTR_DYNFREQRATIO;
       }
-      op->sound.params |= MGS_DYNFREQ | MGS_ATTR;
+      wod->sound.params |= MGS_WAVEP_DYNFREQ | MGS_WAVEP_ATTR;
     }
     if (MGS_File_TRYC(o->f, '{')) {
-      op->fmod = MGS_MemPool_alloc(p->mem, sizeof(MGS_ProgramArrData));
-      op->fmod->mod_type = MGS_MOD_FM;
-      parse_level(o, op->fmod);
+      wod->fmod = MGS_MemPool_alloc(p->mem, sizeof(MGS_ProgramArrData));
+      wod->fmod->mod_type = MGS_MOD_FM;
+      parse_level(o, wod->fmod);
     }
   } else {
     if (!scan_num(o, NULL, &f)) goto INVALID;
-    op->freq = f;
+    wod->freq = f;
     if (ratio) {
-      op->attr |= MGS_ATTR_FREQRATIO;
+      wod->attr |= MGS_ATTR_FREQRATIO;
     } else {
-      op->attr &= ~MGS_ATTR_FREQRATIO;
+      wod->attr &= ~MGS_ATTR_FREQRATIO;
     }
-    op->sound.params |= MGS_FREQ | MGS_ATTR;
+    wod->sound.params |= MGS_WAVEP_FREQ | MGS_WAVEP_ATTR;
   }
+  return true;
+INVALID:
+  return false;
+}
+
+static bool parse_noise(MGS_Parser *o, MGS_ProgramNode *n, char pos_c) {
+  MGS_ProgramNoiseData *nod = MGS_ProgramNode_get_data(n, MGS_TYPE_NOISE);
+  if (!nod) goto INVALID;
+  size_t noise;
+  if (!scan_noisetype(o, &noise, pos_c)) goto INVALID;
+  nod->noise = noise;
+  nod->sound.params |= MGS_NOISEP_NOISE;
   return true;
 INVALID:
   return false;
@@ -619,21 +672,21 @@ INVALID:
 
 static bool parse_phase(MGS_Parser *o, MGS_ProgramNode *n) {
   MGS_Program *p = o->prg;
-  MGS_ProgramOpData *op = MGS_ProgramNode_get_data(n, MGS_TYPE_OP);
-  if (!op) goto INVALID;
+  MGS_ProgramWaveData *wod = MGS_ProgramNode_get_data(n, MGS_TYPE_WAVE);
+  if (!wod) goto INVALID;
   float f;
   if (MGS_File_TRYC(o->f, '!')) {
     if (MGS_File_TRYC(o->f, '{')) {
-      op->pmod = MGS_MemPool_alloc(p->mem, sizeof(MGS_ProgramArrData));
-      op->pmod->mod_type = MGS_MOD_PM;
-      parse_level(o, op->pmod);
+      wod->pmod = MGS_MemPool_alloc(p->mem, sizeof(MGS_ProgramArrData));
+      wod->pmod->mod_type = MGS_MOD_PM;
+      parse_level(o, wod->pmod);
     }
   } else {
     if (!scan_num(o, NULL, &f)) goto INVALID;
-    op->phase = fmod(f, 1.f);
-    if (op->phase < 0.f)
-      op->phase += 1.f;
-    op->sound.params |= MGS_PHASE;
+    wod->phase = fmod(f, 1.f);
+    if (wod->phase < 0.f)
+      wod->phase += 1.f;
+    wod->sound.params |= MGS_WAVEP_PHASE;
   }
   return true;
 INVALID:
@@ -654,12 +707,12 @@ INVALID:
 }
 
 static bool parse_wave(MGS_Parser *o, MGS_ProgramNode *n, char pos_c) {
-  MGS_ProgramOpData *op = MGS_ProgramNode_get_data(n, MGS_TYPE_OP);
-  if (!op) goto INVALID;
+  MGS_ProgramWaveData *wod = MGS_ProgramNode_get_data(n, MGS_TYPE_WAVE);
+  if (!wod) goto INVALID;
   size_t wave;
   if (!scan_wavetype(o, &wave, pos_c)) goto INVALID;
-  op->wave = wave;
-  op->sound.params |= MGS_WAVE;
+  wod->wave = wave;
+  wod->sound.params |= MGS_WAVEP_WAVE;
   return true;
 INVALID:
   return false;
@@ -759,6 +812,14 @@ static void parse_level(MGS_Parser *o, MGS_ProgramArrData *chain) {
       new_node(&nd, NULL, MGS_TYPE_ENV);
       o->setnode = o->level + 1;
       break;
+    case 'N': {
+      size_t noise;
+      if (!scan_noisetype(o, &noise, c)) break;
+      new_node(&nd, NULL, MGS_TYPE_NOISE);
+      MGS_ProgramNoiseData *nod = nd.node->data;
+      nod->noise = noise;
+      o->setnode = o->level + 1;
+      break; }
     case 'Q':
       goto FINISH;
     case 'S':
@@ -767,9 +828,9 @@ static void parse_level(MGS_Parser *o, MGS_ProgramArrData *chain) {
     case 'W': {
       size_t wave;
       if (!scan_wavetype(o, &wave, c)) break;
-      new_node(&nd, NULL, MGS_TYPE_OP);
-      MGS_ProgramOpData *op = nd.node->data;
-      op->wave = wave;
+      new_node(&nd, NULL, MGS_TYPE_WAVE);
+      MGS_ProgramWaveData *wod = nd.node->data;
+      wod->wave = wave;
       o->setnode = o->level + 1;
       break; }
     case '|': {
@@ -828,6 +889,11 @@ static void parse_level(MGS_Parser *o, MGS_ProgramArrData *chain) {
       } else if (o->setnode <= 0)
         goto INVALID;
       if (!parse_freq(o, nd.node, false)) goto INVALID;
+      break;
+    case 'n':
+      if (o->setdef > o->setnode || o->setnode <= 0)
+        goto INVALID;
+      if (!parse_noise(o, nd.node, c)) goto INVALID;
       break;
     case 'p':
       if (o->setdef > o->setnode || o->setnode <= 0)

@@ -1,0 +1,6 @@
+# Generate 10 seconds of "engine rumble" using PM
+Wsin f137 t10 p!{
+	Wsin f32 p!{
+		Wsin f42
+	}
+}

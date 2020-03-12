@@ -1,4 +1,4 @@
-/* mgensys: Help data and printout code.
+/* mgensys: Noise module.
  * Copyright (c) 2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -15,30 +15,22 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#pragma once
-#include "common.h"
-#include <stdio.h>
+#include "noise.h"
 
-/**
- * Named help types.
- */
-enum {
-	MGS_HELP_NOISE = 0,
-	MGS_HELP_WAVE,
-	MGS_HELP_TYPES
+uint32_t MGS_Noise_x32state = 0;
+
+const char *const MGS_Noise_names[MGS_NOISE_TYPES + 1] = {
+	//"rd",
+	//"pn",
+	"wh",
+	//"bl",
+	//"vl",
+	NULL
 };
 
-/** Names of help types, with an extra NULL pointer at the end. */
-extern const char *const MGS_Help_names[MGS_HELP_TYPES + 1];
-
-const char *const *MGS_find_help(const char *restrict str);
-
-/*
- * Name array functions of more general use.
+/**
+ * Reset global random number state used for noise generation.
  */
-
-bool MGS_find_name(const char *const *restrict namearr,
-		const char *restrict str, size_t *restrict id);
-bool MGS_print_names(const char *const *restrict namearr,
-		const char *restrict headstr,
-		FILE *restrict out);
+void MGS_global_init_Noise(void) {
+	MGS_Noise_x32state = MGS_XORSHIFT32_SEED;
+}

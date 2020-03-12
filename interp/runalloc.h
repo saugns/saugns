@@ -13,6 +13,7 @@
 
 #pragma once
 #include "../mgensys.h"
+#include "ngen.h"
 #include "osc.h"
 #include "env.h"
 #include "../program.h"
@@ -35,14 +36,19 @@ typedef struct MGS_SoundNode {
 	uint8_t type;
 } MGS_SoundNode;
 
-typedef struct MGS_OpNode {
+typedef struct MGS_NoiseNode {
+	MGS_SoundNode sound;
+	MGS_NGen ngen;
+} MGS_NoiseNode;
+
+typedef struct MGS_WaveNode {
 	MGS_SoundNode sound;
 	MGS_Osc osc;
 	uint8_t attr;
 	float freq, dynfreq;
 	uint32_t fmods_id;
 	uint32_t pmods_id;
-} MGS_OpNode;
+} MGS_WaveNode;
 
 typedef struct MGS_VoiceNode {
 	MGS_SoundNode *root;
@@ -61,6 +67,7 @@ typedef struct MGS_EventNode {
 	MGS_SoundNode *sndn; // update node
 	int32_t pos; // negative for delay, i.e. wait time
 	uint8_t status;
+	uint8_t base_type;
 	uint32_t ref_i;
 } MGS_EventNode;
 
@@ -78,6 +85,7 @@ typedef struct MGS_RunAlloc {
 	MGS_MemPool *mem;
 	MGS_EventNode *cur_ev;
 	uint32_t cur_ev_id;
+	uint32_t next_ev_delay;
 	uint32_t flags;
 } MGS_RunAlloc;
 

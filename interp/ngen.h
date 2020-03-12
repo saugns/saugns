@@ -1,4 +1,4 @@
-/* mgensys: Help data and printout code.
+/* mgensys: Noise generator implementation.
  * Copyright (c) 2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -16,29 +16,25 @@
  */
 
 #pragma once
-#include "common.h"
-#include <stdio.h>
+#include "../noise.h"
+#include "../math.h"
+
+typedef struct MGS_NGen {
+	float coeff;
+} MGS_NGen;
 
 /**
- * Named help types.
+ * Initialize instance for use.
  */
-enum {
-	MGS_HELP_NOISE = 0,
-	MGS_HELP_WAVE,
-	MGS_HELP_TYPES
-};
+static inline void MGS_init_NGen(MGS_NGen *restrict o, uint32_t srate) {
+	o->coeff = 1.f / MGS_MS_IN_SAMPLES(1000, srate);
+}
 
-/** Names of help types, with an extra NULL pointer at the end. */
-extern const char *const MGS_Help_names[MGS_HELP_TYPES + 1];
-
-const char *const *MGS_find_help(const char *restrict str);
-
-/*
- * Name array functions of more general use.
- */
-
-bool MGS_find_name(const char *const *restrict namearr,
-		const char *restrict str, size_t *restrict id);
-bool MGS_print_names(const char *const *restrict namearr,
-		const char *restrict headstr,
-		FILE *restrict out);
+void MGS_NGen_run(MGS_NGen *restrict o,
+		float *restrict buf, size_t buf_len,
+		uint32_t layer,
+		const float *restrict amp);
+void MGS_NGen_run_env(MGS_NGen *restrict o,
+		float *restrict buf, size_t buf_len,
+		uint32_t layer,
+		const float *restrict amp);

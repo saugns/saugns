@@ -33,3 +33,18 @@ typedef unsigned int ui16_16; /* unsigned fixed-point 16.16 */
  */
 #define MGS_MS_IN_SAMPLES(ms, srate) \
 	lrintf(((ms) * .001f) * (srate))
+
+/** Initial seed for MGS_xorshift32(). Other non-zero values can be used. */
+#define MGS_XORSHIFT32_SEED 2463534242UL
+
+/**
+ * Get Marsaglia xorshift32 state from non-zero \p seed.
+ */
+static inline uint32_t MGS_xorshift32(uint32_t seed) {
+	uint32_t x = seed;
+	x ^= x << 13;
+	x ^= x >> 17;
+	x ^= x << 5; /* Marsaglia's version */
+	//x ^= x << 15; /* WebDrake version */
+	return x;
+}

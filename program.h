@@ -12,18 +12,22 @@
  */
 
 #pragma once
+#include "noise.h"
 #include "wave.h"
 
 /* Node types. */
 enum {
-	MGS_BASETYPE_SOUND = 0,
+	MGS_BASETYPE_NONE = 0,
+	MGS_BASETYPE_SOUND,
+	MGS_BASETYPE_ENV,
 	MGS_BASETYPE_SCOPE,
 	MGS_BASETYPES,
-	MGS_TYPE_OP = MGS_BASETYPES,
-	MGS_TYPE_NOISE,
+	MGS_TYPE_NONE = 0,
+	MGS_TYPE_NOISE = MGS_BASETYPES,
+	MGS_TYPE_WAVE,
+	MGS_TYPE_ENV,
 	MGS_TYPE_DUR,
 	MGS_TYPE_ARR,
-	MGS_TYPE_ENV,
 	MGS_TYPES,
 };
 
@@ -36,29 +40,34 @@ enum {
 	MGS_MOD_TYPES
 };
 
-/* Operator attributes. */
+/* Wave attributes. */
 enum {
 	MGS_ATTR_FREQRATIO = 1<<0,
 	MGS_ATTR_DYNFREQRATIO = 1<<1
 };
 
-/* Operator parameters. */
+/* Sound node parameters. */
 enum {
-	MGS_TIME = 1<<0,
-	MGS_WAVE = 1<<1,
-	MGS_FREQ = 1<<2,
-	MGS_DYNFREQ = 1<<3,
-	MGS_PHASE = 1<<4,
-	MGS_AMP = 1<<5,
-	MGS_DYNAMP = 1<<6,
-	MGS_PAN = 1<<7,
-	MGS_ATTR = 1<<8,
-	MGS_PARAM_MASK = (1<<9) - 1
+	MGS_PARAM_MASK = (1<<16) - 1,
+	/* Common object parameters. */
+	MGS_SOUNDP_TIME = 1<<0,
+	MGS_SOUNDP_AMP = 1<<1,
+	MGS_SOUNDP_DYNAMP = 1<<2,
+	MGS_SOUNDP_PAN = 1<<3,
+	/* Noise object parameters. */
+	MGS_NOISEP_NOISE = 1<<8,
+	/* Wave object parameters. */
+	MGS_WAVEP_WAVE = 1<<8,
+	MGS_WAVEP_ATTR = 1<<9,
+	MGS_WAVEP_FREQ = 1<<10,
+	MGS_WAVEP_DYNFREQ = 1<<11,
+	MGS_WAVEP_PHASE = 1<<12,
 };
 
 typedef struct MGS_ProgramNode MGS_ProgramNode;
 typedef struct MGS_ProgramSoundData MGS_ProgramSoundData;
-typedef struct MGS_ProgramOpData MGS_ProgramOpData;
+typedef struct MGS_ProgramNoiseData MGS_ProgramNoiseData;
+typedef struct MGS_ProgramWaveData MGS_ProgramWaveData;
 typedef struct MGS_ProgramScopeData MGS_ProgramScopeData;
 typedef struct MGS_ProgramDurData MGS_ProgramDurData;
 typedef struct MGS_ProgramArrData MGS_ProgramArrData;
@@ -82,7 +91,12 @@ struct MGS_ProgramSoundData {
 	MGS_ProgramNode *nested_next;
 };
 
-struct MGS_ProgramOpData {
+struct MGS_ProgramNoiseData {
+	MGS_ProgramSoundData sound;
+	uint8_t noise;
+};
+
+struct MGS_ProgramWaveData {
 	MGS_ProgramSoundData sound;
 	uint8_t attr, wave;
 	float freq, dynfreq, phase;
@@ -109,30 +123,32 @@ struct MGS_ProgramNode {
 	MGS_ProgramNode *next;
 	MGS_ProgramNode *ref_prev;
 	float delay;
+	uint8_t base_type;
 	uint8_t type;
 	uint32_t base_id; // per-base-type id, not increased for references
 	uint32_t conv_id; // for use by later processing
 	void *data;
 };
 
+static inline bool MGS_ProgramNode_is_type(const MGS_ProgramNode *restrict n,
+		uint8_t type) {
+	if (n->type == type || n->base_type == type)
+		return true;
+	/*switch (type) {
+	}*/
+	return false;
+}
+
 static inline void *MGS_ProgramNode_get_data(const MGS_ProgramNode *restrict n,
 		uint8_t type) {
-	if (n->type == type)
-		return n->data;
-	switch (n->type) {
-	case MGS_TYPE_OP:
-		return (type == MGS_BASETYPE_SOUND) ? n->data : NULL;
-	case MGS_TYPE_DUR:
-		return (type == MGS_BASETYPE_SCOPE) ? n->data : NULL;
-	default:
-		return NULL;
-	}
+	return MGS_ProgramNode_is_type(n, type) ? n->data : NULL;
 }
 
 struct MGS_MemPool;
 struct MGS_SymTab;
 
 typedef struct MGS_LangOpt {
+	const char *const*noise_names;
 	const char *const*wave_names;
 } MGS_LangOpt;
 
