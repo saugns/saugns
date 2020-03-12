@@ -9,9 +9,9 @@ LFLAGS_OSSAUDIO=$(LFLAGS) -lossaudio
 OBJ=loader/file.o loader/symtab.o \
     builder/parser.o builder/postparse.o builder/builder.o \
     renderer/audiodev.o renderer/wavfile.o renderer/renderer.o \
-    interp/generator.o interp/osc.o interp/runalloc.o \
+    interp/generator.o interp/ngen.o interp/osc.o interp/runalloc.o \
     common.o mempool.o ptrarr.o arrtype.o \
-    wave.o help.o \
+    noise.o wave.o help.o \
     mgensys.o
 
 all: mgensys
@@ -43,25 +43,28 @@ arrtype.o: arrtype.c arrtype.h common.h mempool.h
 builder/builder.o: builder/builder.c common.h mgensys.h ptrarr.h
 	$(CC) -c $(CFLAGS) builder/builder.c -o builder/builder.o
 
-builder/parser.o: builder/parser.c builder/parser.h common.h help.h loader/file.h loader/symtab.h mempool.h mgensys.h program.h wave.h
+builder/parser.o: builder/parser.c builder/parser.h common.h help.h loader/file.h loader/symtab.h math.h mempool.h mgensys.h noise.h program.h wave.h
 	$(CC) -c $(CFLAGS) builder/parser.c -o builder/parser.o
 
-builder/postparse.o: builder/parser.h builder/postparse.c common.h help.h loader/file.h loader/symtab.h mempool.h mgensys.h program.h wave.h
+builder/postparse.o: builder/parser.h builder/postparse.c common.h help.h loader/file.h loader/symtab.h math.h mempool.h mgensys.h noise.h program.h wave.h
 	$(CC) -c $(CFLAGS) builder/postparse.c -o builder/postparse.o
 
 common.o: common.c common.h
 	$(CC) -c $(CFLAGS) common.c
 
-help.o: common.h help.c help.h wave.h
+help.o: common.h help.c help.h math.h noise.h wave.h
 	$(CC) -c $(CFLAGS) help.c
 
-interp/generator.o: arrtype.h common.h interp/generator.c interp/osc.h interp/runalloc.h math.h mempool.h mgensys.h program.h ptrarr.h wave.h
+interp/generator.o: arrtype.h common.h interp/generator.c interp/ngen.h interp/osc.h interp/runalloc.h math.h mempool.h mgensys.h noise.h program.h ptrarr.h wave.h
 	$(CC) -c $(CFLAGS_FAST) interp/generator.c -o interp/generator.o
+
+interp/ngen.o: common.h interp/ngen.c interp/ngen.h math.h noise.h
+	$(CC) -c $(CFLAGS_FAST) interp/ngen.c -o interp/ngen.o
 
 interp/osc.o: common.h interp/osc.c interp/osc.h math.h wave.h
 	$(CC) -c $(CFLAGS_FAST) interp/osc.c -o interp/osc.o
 
-interp/runalloc.o: arrtype.h common.h interp/osc.h interp/runalloc.c interp/runalloc.h math.h mempool.h mgensys.h program.h ptrarr.h wave.h
+interp/runalloc.o: arrtype.h common.h interp/ngen.h interp/osc.h interp/runalloc.c interp/runalloc.h math.h mempool.h mgensys.h noise.h program.h ptrarr.h wave.h
 	$(CC) -c $(CFLAGS_FAST) interp/runalloc.c -o interp/runalloc.o
 
 loader/file.o: common.h loader/file.c loader/file.h
@@ -84,6 +87,9 @@ mempool.o: common.h mempool.c mempool.h
 
 mgensys.o: common.h help.h mgensys.c mgensys.h ptrarr.h
 	$(CC) -c $(CFLAGS) mgensys.c
+
+noise.o: common.h math.h noise.c noise.h
+	$(CC) -c $(CFLAGS_FAST) noise.c
 
 ptrarr.o: common.h mempool.h ptrarr.c ptrarr.h
 	$(CC) -c $(CFLAGS) ptrarr.c

@@ -13,8 +13,8 @@
 
 #include "parser.h"
 
-static void time_sound(MGS_ProgramNode *restrict n,
-		MGS_ProgramSoundData *restrict sound) {
+static void time_sound(MGS_ProgramNode *restrict n) {
+	MGS_ProgramSoundData *sound = n->data;
 	if (!(sound->time.flags & MGS_TIME_SET)) {
 		if (n->base_id != sound->root->base_id)
 			sound->time.flags |= MGS_TIME_SET;
@@ -88,9 +88,7 @@ void MGS_adjust_node_list(MGS_ProgramNode *restrict list) {
 			n = n->next;
 			continue;
 		}
-		MGS_ProgramSoundData *sound;
-		sound = MGS_ProgramNode_get_data(n, MGS_BASETYPE_SOUND);
-		if (sound != NULL) time_sound(n, sound);
+		if (n->base_type == MGS_BASETYPE_SOUND) time_sound(n);
 		if (n == dur->scope.last_node) time_durscope(dur);
 		n = n->next;
 	}

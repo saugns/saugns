@@ -56,13 +56,30 @@ S:
 		as multiple of the carrier frequency. Starts at 1.0.
 	t	Default time duration in seconds. Starts at 1.0.
 
-Wsin, Wsqr, W...:
-	Wave oscillator; see "Wave types" for all types.
-	The supported parameters are...
+Sound generator parameters:
+	Named parameters common to N (noise generator) and W (wave oscillator).
 	t	Time duration in seconds. If no t setting given, default time
 		depends on context - either scaling to fit the duration of
 		play until the end of the current group of sounds, or the
 		default value if alone.
+	a	Amplitude, where 1.0 gives a level of 0dB, which is the signal
+		max of the output. For a modulator wave, this however simply
+		adjusts the effect strength.
+	a!{}	Second amplitude to modulate (AM) to by wave or envelope,
+		and/or a list of modulators given within {} following the
+		number if given.
+	c	Channel mixing; see "Channel mixing values".
+	\	Time shift/delay current operation and following ones, time
+		in seconds.
+
+Nwh:
+	Noise generator; "wh" (white noise) is currently the only type.
+	See "Sound generator parameters" for the other named parameters.
+	n	Change noise; "wh" (white noise) is currently the only type.
+
+Wsin, Wsqr, W...:
+	Wave oscillator; see "Wave types" for all types.
+	See "Sound generator parameters" for the other named parameters.
 	f	Frequency in Hz, for carrier or modulator.
 	f!{}	Second frequency in Hz to modulate (FM) to by wave or envelope,
 		and/or a list of modulators given within {} following the
@@ -74,12 +91,6 @@ Wsin, Wsqr, W...:
 	r!{}	Second frequency ratio (modulators only) to modulate (FM)
 		to by wave or envelope, and/or a list of modulators given
 		within {} following the number if given.
-	a	Amplitude, where 1.0 gives a level of 0dB, which is the signal
-		max of the output. For a modulator wave, this however simply
-		adjusts the effect strength.
-	a!{}	Second amplitude to modulate (AM) to by wave or envelope,
-		and/or a list of modulators given within {} following the
-		number if given.
 	p	Set the beginning phase of the wave. For example, p(3/4) will
 		make a sine or triangle wave begin at its "bottom". This is
 		mostly used where wanted for waves used by f!/r! or a!.
@@ -87,9 +98,6 @@ Wsin, Wsqr, W...:
 		per-sample sum of which is used to phase-modulate the carrier,
 		be it the final carrier or in turn another modulator.
 	w	Change wave; see "Wave types" for all types.
-	c	Channel mixing; see "Channel mixing values".
-	\	Time shift/delay current operation and following ones, time
-		in seconds.
 
 Wave types:
 	sin	Sine.
@@ -132,6 +140,7 @@ The following modifiers are supported:
 	to begin at the end of all that preceeds it, though / and \ may
 	further delay it.
 
-Any W instance may be prefixed by "'label " in order to define a label for
-it, where the label is alphanumeric (and/or '_'); thereafter the label may
-be referenced as ":label", allowing future changes to the instance values.
+Any sound generator instance may be prefixed by "'label " in order to define
+a label for it, where the label is alphanumeric (and/or '_'); thereafter the
+label may be referenced as ":label", allowing future changes to the instance
+values.

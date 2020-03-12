@@ -16,10 +16,12 @@
  */
 
 #include "help.h"
+#include "noise.h"
 #include "wave.h"
 #include <string.h>
 
 const char *const MGS_Help_names[MGS_HELP_TYPES + 1] = {
+	"noise",
 	"wave",
 	NULL
 };
@@ -35,9 +37,10 @@ const char *const *MGS_find_help(const char *restrict str) {
 	if (!MGS_find_name(MGS_Help_names, str, &i))
 		return namearr;
 	switch (i) {
+	case MGS_HELP_NOISE:
+		return MGS_Noise_names;
 	case MGS_HELP_WAVE:
-		namearr = MGS_Wave_names;
-		break;
+		return MGS_Wave_names;
 	}
 	return namearr;
 }

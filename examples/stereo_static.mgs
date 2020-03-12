@@ -1,0 +1,3 @@
+# Each noise generator is mono, use two for stereo.
+Nwh t10 cL
+Nwh t10 cR

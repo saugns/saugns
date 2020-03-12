@@ -1,4 +1,4 @@
-/* mgensys: Help data and printout code.
+/* mgensys: Noise module.
  * Copyright (c) 2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -16,29 +16,39 @@
  */
 
 #pragma once
-#include "common.h"
-#include <stdio.h>
+#include "math.h"
 
 /**
- * Named help types.
+ * Noise types.
  */
 enum {
-	MGS_HELP_NOISE = 0,
-	MGS_HELP_WAVE,
-	MGS_HELP_TYPES
+	//MGS_NOISE_RD = 0,
+	//MGS_NOISE_PN = 0,
+	MGS_NOISE_WH = 0,
+	//MGS_NOISE_BL,
+	//MGS_NOISE_VL,
+	MGS_NOISE_TYPES
 };
 
-/** Names of help types, with an extra NULL pointer at the end. */
-extern const char *const MGS_Help_names[MGS_HELP_TYPES + 1];
+/** MGS_xorshift32() state for noise generation. */
+extern uint32_t MGS_Noise_x32state;
 
-const char *const *MGS_find_help(const char *restrict str);
-
-/*
- * Name array functions of more general use.
+/**
+ * Get next random unsigned 32-bit number.
  */
+#define MGS_Noise_NEXT() \
+	(MGS_Noise_x32state = MGS_xorshift32(MGS_Noise_x32state))
 
-bool MGS_find_name(const char *const *restrict namearr,
-		const char *restrict str, size_t *restrict id);
-bool MGS_print_names(const char *const *restrict namearr,
-		const char *restrict headstr,
-		FILE *restrict out);
+/**
+ * Get noise value.
+ *
+ * \return sample
+ */
+static inline float MGS_Noise_get(void) {
+	return (INT32_MIN + MGS_Noise_NEXT()) * (1.f / INT32_MAX);
+}
+
+/** Names of noise types, with an extra NULL pointer at the end. */
+extern const char *const MGS_Noise_names[MGS_NOISE_TYPES + 1];
+
+void MGS_global_init_Noise(void);
