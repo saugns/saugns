@@ -65,11 +65,11 @@ MGS_Generator* MGS_create_Generator(const MGS_Program *prg, uint32_t srate) {
 }
 
 /*
- * Time adjustment for operators.
+ * Time adjustment for wave data.
  *
  * Click reduction: decrease time to make it end at wave cycle's end.
  */
-static mgsNoinline void adjust_op_time(MGS_Generator *o, MGS_OpNode *n) {
+static mgsNoinline void adjust_wave_time(MGS_Generator *o, MGS_WaveNode *n) {
   int pos_offs = MGS_Osc_cycle_offs(&n->osc, n->freq, n->sound.time);
   n->sound.time -= pos_offs;
   if (!(o->time_flags & MGS_GEN_TIME_OFFS) || o->delay_offs > pos_offs) {
@@ -85,9 +85,9 @@ static void MGS_Generator_init_sound(MGS_Generator *o, MGS_EventNode *ev) {
     ev->status |= MGS_EV_ACTIVE;
   }
   switch (sndn->type) {
-  case MGS_TYPE_OP:
+  case MGS_TYPE_WAVE:
     if (sndn == voice->root)
-      adjust_op_time(o, (MGS_OpNode*) sndn);
+      adjust_wave_time(o, (MGS_WaveNode*) sndn);
     break;
   }
 }
@@ -100,7 +100,7 @@ static void MGS_Generator_update_sound(MGS_Generator *o, MGS_EventNode *ev) {
   MGS_SoundNode *rootsn = voice->root;
   bool adjtime = false;
   refsn->amods_id = updsn->amods_id;
-  if (updsn->params & MGS_SNDP_TIME) {
+  if (updsn->params & MGS_SOUNDP_TIME) {
     refsn->time = updsn->time;
     refev->pos = 0;
     if (refsn->time) {
@@ -110,43 +110,43 @@ static void MGS_Generator_update_sound(MGS_Generator *o, MGS_EventNode *ev) {
     } else
       refev->status &= ~MGS_EV_ACTIVE;
   }
-  if (updsn->params & MGS_SNDP_AMP) {
+  if (updsn->params & MGS_SOUNDP_AMP) {
     refsn->amp = updsn->amp;
   }
-  if (updsn->params & MGS_SNDP_DYNAMP) {
+  if (updsn->params & MGS_SOUNDP_DYNAMP) {
     refsn->dynamp = updsn->dynamp;
   }
-  if (updsn->params & MGS_SNDP_PAN) {
+  if (updsn->params & MGS_SOUNDP_PAN) {
     refsn->pan = updsn->pan;
   }
   switch (refsn->type) {
   case MGS_TYPE_NOISE:
     break;
-  case MGS_TYPE_OP: {
-    MGS_OpNode *refn = (MGS_OpNode*) refsn;
-    MGS_OpNode *updn = (MGS_OpNode*) updsn;
+  case MGS_TYPE_WAVE: {
+    MGS_WaveNode *refn = (MGS_WaveNode*) refsn;
+    MGS_WaveNode *updn = (MGS_WaveNode*) updsn;
     /* set state */
     refn->fmods_id = updn->fmods_id;
     refn->pmods_id = updn->pmods_id;
-    if (updn->sound.params & MGS_OPP_WAVE) {
+    if (updn->sound.params & MGS_WAVEP_WAVE) {
       refn->osc.lut = updn->osc.lut;
     }
-    if (updn->sound.params & MGS_OPP_FREQ) {
+    if (updn->sound.params & MGS_WAVEP_FREQ) {
       refn->freq = updn->freq;
       adjtime = true;
     }
-    if (updn->sound.params & MGS_OPP_DYNFREQ) {
+    if (updn->sound.params & MGS_WAVEP_DYNFREQ) {
       refn->dynfreq = updn->dynfreq;
     }
-    if (updn->sound.params & MGS_OPP_PHASE) {
+    if (updn->sound.params & MGS_WAVEP_PHASE) {
       refn->osc.phase = updn->osc.phase;
     }
-    if (updn->sound.params & MGS_OPP_ATTR) {
+    if (updn->sound.params & MGS_WAVEP_ATTR) {
       refn->attr = updn->attr;
     }
     if (refsn == rootsn) {
       if (adjtime) /* here so new freq also used if set */
-        adjust_op_time(o, refn);
+        adjust_wave_time(o, refn);
     }
     break; }
   }
@@ -217,8 +217,8 @@ static void run_block_noise(MGS_Generator *o, Buf *bufs_from, uint32_t len,
   }
 }
 
-static void run_block_op(MGS_Generator *o, Buf *bufs_from, uint32_t len,
-    MGS_OpNode *n, Buf *parentfreq,
+static void run_block_wave(MGS_Generator *o, Buf *bufs_from, uint32_t len,
+    MGS_WaveNode *n, Buf *parentfreq,
     uint32_t layer, uint32_t flags) {
   uint32_t i;
   Buf *sbuf = bufs_from++, *freq, *amp, *pm;
@@ -285,9 +285,9 @@ static void run_block_sub(MGS_Generator *o, Buf *bufs_from, uint32_t len,
           (MGS_NoiseNode*) n,
           i, flags);
       break;
-    case MGS_TYPE_OP:
-      run_block_op(o, bufs_from, len,
-          (MGS_OpNode*) n, freq,
+    case MGS_TYPE_WAVE:
+      run_block_wave(o, bufs_from, len,
+          (MGS_WaveNode*) n, freq,
           i, flags);
       break;
     }
@@ -311,9 +311,9 @@ static uint32_t run_sound(MGS_Generator *o,
           (MGS_NoiseNode*) sndn,
           0, 0);
       break;
-    case MGS_TYPE_OP:
-      run_block_op(o, o->bufs, len,
-          (MGS_OpNode*) sndn, NULL,
+    case MGS_TYPE_WAVE:
+      run_block_wave(o, o->bufs, len,
+          (MGS_WaveNode*) sndn, NULL,
           0, 0);
       break;
     }

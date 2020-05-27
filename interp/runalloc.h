@@ -41,14 +41,14 @@ typedef struct MGS_NoiseNode {
 	MGS_NGen ngen;
 } MGS_NoiseNode;
 
-typedef struct MGS_OpNode {
+typedef struct MGS_WaveNode {
 	MGS_SoundNode sound;
 	MGS_Osc osc;
 	uint8_t attr;
 	float freq, dynfreq;
 	uint32_t fmods_id;
 	uint32_t pmods_id;
-} MGS_OpNode;
+} MGS_WaveNode;
 
 typedef struct MGS_VoiceNode {
 	MGS_SoundNode *root;

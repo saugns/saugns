@@ -190,8 +190,8 @@ static bool MGS_RunAlloc_make_noise(MGS_RunAlloc *restrict o,
 		const MGS_ProgramNode *restrict n) {
 	MGS_EventNode *ev = o->cur_ev;
 	MGS_NoiseNode *non;
-	//MGS_ProgramOpData *nod = n->data;
-	//MGS_ProgramOpData *prev_nod = NULL;
+	//MGS_ProgramWaveData *nod = n->data;
+	//MGS_ProgramWaveData *prev_nod = NULL;
 	if (!(ev->status & MGS_EV_UPDATE)) {
 		non = MGS_MemPool_alloc(o->mem, sizeof(MGS_NoiseNode));
 	} else {
@@ -207,38 +207,38 @@ static bool MGS_RunAlloc_make_noise(MGS_RunAlloc *restrict o,
 }
 
 /*
- * Allocate and initialize operator node.
+ * Allocate and initialize wave node.
  *
  * \return true, or false on allocation failure
  */
-static bool MGS_RunAlloc_make_op(MGS_RunAlloc *restrict o,
+static bool MGS_RunAlloc_make_wave(MGS_RunAlloc *restrict o,
 		const MGS_ProgramNode *restrict n) {
 	MGS_EventNode *ev = o->cur_ev;
-	MGS_OpNode *opn;
-	MGS_ProgramOpData *opd = n->data;
-	MGS_ProgramOpData *prev_opd = NULL;
+	MGS_WaveNode *won;
+	MGS_ProgramWaveData *wod = n->data;
+	MGS_ProgramWaveData *prev_wod = NULL;
 	if (!(ev->status & MGS_EV_UPDATE)) {
-		opn = MGS_MemPool_alloc(o->mem, sizeof(MGS_OpNode));
+		won = MGS_MemPool_alloc(o->mem, sizeof(MGS_WaveNode));
 	} else {
 		MGS_EventNode *ref_ev = &o->ev_arr.a[ev->ref_i];
-		opn = MGS_MemPool_memdup(o->mem,
-				ref_ev->sndn, sizeof(MGS_OpNode));
-		prev_opd = n->ref_prev->data;
+		won = MGS_MemPool_memdup(o->mem,
+				ref_ev->sndn, sizeof(MGS_WaveNode));
+		prev_wod = n->ref_prev->data;
 	}
-	if (!opn || !MGS_RunAlloc_init_sound(o, &opn->sound, n))
+	if (!won || !MGS_RunAlloc_init_sound(o, &won->sound, n))
 		return false;
-	MGS_init_Osc(&opn->osc, o->srate);
-	opn->osc.lut = MGS_Osc_LUT(opd->wave);
-	opn->osc.phase = MGS_Osc_PHASE(opd->phase);
-	opn->attr = opd->attr;
-	opn->freq = opd->freq;
-	opn->dynfreq = opd->dynfreq;
-	if (NEED_MODLIST(opd, prev_opd, fmod)) {
-		if (!MGS_RunAlloc_make_modlist(o, opd->fmod, &opn->fmods_id))
+	MGS_init_Osc(&won->osc, o->srate);
+	won->osc.lut = MGS_Osc_LUT(wod->wave);
+	won->osc.phase = MGS_Osc_PHASE(wod->phase);
+	won->attr = wod->attr;
+	won->freq = wod->freq;
+	won->dynfreq = wod->dynfreq;
+	if (NEED_MODLIST(wod, prev_wod, fmod)) {
+		if (!MGS_RunAlloc_make_modlist(o, wod->fmod, &won->fmods_id))
 			return false;
 	}
-	if (NEED_MODLIST(opd, prev_opd, pmod)) {
-		if (!MGS_RunAlloc_make_modlist(o, opd->pmod, &opn->pmods_id))
+	if (NEED_MODLIST(wod, prev_wod, pmod)) {
+		if (!MGS_RunAlloc_make_modlist(o, wod->pmod, &won->pmods_id))
 			return false;
 	}
 	return true;
@@ -258,8 +258,8 @@ static bool MGS_RunAlloc_make_sound(MGS_RunAlloc *restrict o,
 		if (!MGS_RunAlloc_make_noise(o, n))
 			return false;
 		break;
-	case MGS_TYPE_OP:
-		if (!MGS_RunAlloc_make_op(o, n))
+	case MGS_TYPE_WAVE:
+		if (!MGS_RunAlloc_make_wave(o, n))
 			return false;
 		break;
 	default:
@@ -322,10 +322,10 @@ static size_t calc_bufs_noise(MGS_RunAlloc *restrict o,
 }
 
 /*
- * Traversal mirroring the function for running an MGS_OpNode.
+ * Traversal mirroring the function for running an MGS_WaveNode.
  */
-static size_t calc_bufs_op(MGS_RunAlloc *restrict o,
-		size_t count_from, MGS_OpNode *restrict n) {
+static size_t calc_bufs_wave(MGS_RunAlloc *restrict o,
+		size_t count_from, MGS_WaveNode *restrict n) {
 	++count_from;
 	size_t count = count_from;
 	size_t max_count = count;
@@ -359,9 +359,9 @@ static size_t calc_bufs_sub(MGS_RunAlloc *restrict o,
 			sub_count = calc_bufs_noise(o,
 					count_from, (MGS_NoiseNode*) n);
 			break;
-		case MGS_TYPE_OP:
-			sub_count = calc_bufs_op(o,
-					count_from, (MGS_OpNode*) n);
+		case MGS_TYPE_WAVE:
+			sub_count = calc_bufs_wave(o,
+					count_from, (MGS_WaveNode*) n);
 			break;
 		}
 		if (max_count < sub_count)
@@ -384,8 +384,8 @@ static bool MGS_RunAlloc_recheck_bufs(MGS_RunAlloc *restrict o) {
 		case MGS_TYPE_NOISE:
 			count = calc_bufs_noise(o, 0, (MGS_NoiseNode*) sndn);
 			break;
-		case MGS_TYPE_OP:
-			count = calc_bufs_op(o, 0, (MGS_OpNode*) sndn);
+		case MGS_TYPE_WAVE:
+			count = calc_bufs_wave(o, 0, (MGS_WaveNode*) sndn);
 			break;
 		}
 		if (o->max_bufs < count)
