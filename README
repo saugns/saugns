@@ -56,7 +56,7 @@ S:
 		as multiple of the carrier frequency. Starts at 1.0.
 	t	Default time duration in seconds. Starts at 1.0.
 
-Sound generator parameters:
+Sound operator parameters:
 	Named parameters common to N (noise generator) and W (wave oscillator).
 	t	Time duration in seconds. If no t setting given, default time
 		depends on context - either scaling to fit the duration of
@@ -74,12 +74,12 @@ Sound generator parameters:
 
 Nwh:
 	Noise generator; "wh" (white noise) is currently the only type.
-	See "Sound generator parameters" for the other named parameters.
+	See "Sound operator parameters" for the other named parameters.
 	n	Change noise; "wh" (white noise) is currently the only type.
 
 Wsin, Wsqr, W...:
 	Wave oscillator; see "Wave types" for all types.
-	See "Sound generator parameters" for the other named parameters.
+	See "Sound operator parameters" for the other named parameters.
 	f	Frequency in Hz, for carrier or modulator.
 	f!{}	Second frequency in Hz to modulate (FM) to by wave or envelope,
 		and/or a list of modulators given within {} following the
@@ -140,7 +140,7 @@ The following modifiers are supported:
 	to begin at the end of all that preceeds it, though / and \ may
 	further delay it.
 
-Any sound generator instance may be prefixed by "'label " in order to define
+Any sound operator instance may be prefixed by "'label ", in order to define
 a label for it, where the label is alphanumeric (and/or '_'); thereafter the
 label may be referenced as ":label", allowing future changes to the instance
 values.

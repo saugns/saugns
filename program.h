@@ -18,7 +18,7 @@
 /* Node types. */
 enum {
 	MGS_BASETYPE_NONE = 0,
-	MGS_BASETYPE_SOUND,
+	MGS_BASETYPE_OP,
 	MGS_BASETYPE_ENV,
 	MGS_BASETYPE_SCOPE,
 	MGS_BASETYPES,
@@ -46,14 +46,14 @@ enum {
 	MGS_ATTR_DYNFREQRATIO = 1<<1
 };
 
-/* Sound node parameters. */
+/* Sound operator parameters. */
 enum {
 	MGS_PARAM_MASK = (1<<16) - 1,
 	/* Common object parameters. */
-	MGS_SOUNDP_TIME = 1<<0,
-	MGS_SOUNDP_AMP = 1<<1,
-	MGS_SOUNDP_DYNAMP = 1<<2,
-	MGS_SOUNDP_PAN = 1<<3,
+	MGS_OPP_TIME = 1<<0,
+	MGS_OPP_AMP = 1<<1,
+	MGS_OPP_DYNAMP = 1<<2,
+	MGS_OPP_PAN = 1<<3,
 	/* Noise object parameters. */
 	MGS_NOISEP_NOISE = 1<<8,
 	/* Wave object parameters. */
@@ -65,7 +65,7 @@ enum {
 };
 
 typedef struct MGS_ProgramNode MGS_ProgramNode;
-typedef struct MGS_ProgramSoundData MGS_ProgramSoundData;
+typedef struct MGS_ProgramOpData MGS_ProgramOpData;
 typedef struct MGS_ProgramNoiseData MGS_ProgramNoiseData;
 typedef struct MGS_ProgramWaveData MGS_ProgramWaveData;
 typedef struct MGS_ProgramScopeData MGS_ProgramScopeData;
@@ -82,7 +82,7 @@ typedef struct MGS_TimePar {
 	uint32_t flags;
 } MGS_TimePar;
 
-struct MGS_ProgramSoundData {
+struct MGS_ProgramOpData {
 	MGS_TimePar time;
 	MGS_ProgramNode *root;
 	uint32_t params;
@@ -92,12 +92,12 @@ struct MGS_ProgramSoundData {
 };
 
 struct MGS_ProgramNoiseData {
-	MGS_ProgramSoundData sound;
+	MGS_ProgramOpData op;
 	uint8_t noise;
 };
 
 struct MGS_ProgramWaveData {
-	MGS_ProgramSoundData sound;
+	MGS_ProgramOpData op;
 	uint8_t attr, wave;
 	float freq, dynfreq, phase;
 	MGS_ProgramArrData *pmod, *fmod;
