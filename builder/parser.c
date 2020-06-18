@@ -140,52 +140,52 @@ typedef struct MGS_NodeData {
  * TODO: Implement references which copy
  * nodes to new locations, and/or move.
  */
-static void new_opdata(MGS_NodeData *nd, size_t size) {
+static void new_sndopdata(MGS_NodeData *nd, size_t size) {
   MGS_Parser *o = nd->o;
   MGS_Program *p = o->prg;
   MGS_ProgramNode *n = nd->node;
-  MGS_ProgramOpData *opd;
+  MGS_ProgramSndopData *sopd;
   if (!n->ref_prev) {
-    opd = MGS_MemPool_alloc(p->mem, size);
+    sopd = MGS_MemPool_alloc(p->mem, size);
     if (!nd->target) {
-      opd->root = n;
+      sopd->root = n;
       ++p->root_count;
     } else {
-      MGS_ProgramOpData *prev_opd = o->cur_sop->data;
-      opd->root = prev_opd->root;
+      MGS_ProgramSndopData *prev_sopd = o->cur_sop->data;
+      sopd->root = prev_sopd->root;
       if (!nd->target->scope.first_node)
         nd->target->scope.first_node = n;
       else {
-        MGS_ProgramOpData *link_op = nd->target->scope.last_node->data;
-        link_op->nested_next = n;
+        MGS_ProgramSndopData *link_sopd = nd->target->scope.last_node->data;
+        link_sopd->nested_next = n;
       }
       nd->target->scope.last_node = n;
       ++nd->target->count;
     }
-    opd->amp = 1.f;
-    opd->dynamp = opd->amp;
-    opd->pan = o->n_pan;
-    n->base_id = p->base_counts[MGS_BASETYPE_OP]++;
+    sopd->amp = 1.f;
+    sopd->dynamp = sopd->amp;
+    sopd->pan = o->n_pan;
+    n->base_id = p->base_counts[MGS_BASETYPE_SNDOP]++;
   } else {
     MGS_ProgramNode *ref = n->ref_prev;
-    opd = MGS_MemPool_memdup(p->mem, ref->data, size);
-    opd->params = 0;
+    sopd = MGS_MemPool_memdup(p->mem, ref->data, size);
+    sopd->params = 0;
     n->base_id = ref->base_id;
   }
   /* time is not copied across reference */
-  opd->time.v = o->n_time;
-  opd->time.flags = 0;
-  n->base_type = MGS_BASETYPE_OP;
-  n->data = opd;
+  sopd->time.v = o->n_time;
+  sopd->time.flags = 0;
+  n->base_type = MGS_BASETYPE_SNDOP;
+  n->data = sopd;
   o->cur_sop = n;
 }
 
 static void new_noisedata(MGS_NodeData *nd) {
-  new_opdata(nd, sizeof(MGS_ProgramNoiseData));
+  new_sndopdata(nd, sizeof(MGS_ProgramNoiseData));
 }
 
 static void new_wavedata(MGS_NodeData *nd) {
-  new_opdata(nd, sizeof(MGS_ProgramWaveData));
+  new_sndopdata(nd, sizeof(MGS_ProgramWaveData));
   MGS_Parser *o = nd->o;
   MGS_ProgramNode *n = nd->node;
   MGS_ProgramWaveData *wod = n->data;
@@ -271,30 +271,30 @@ static void new_node(MGS_NodeData *nd,
 /*
  * Common sound operator data scope-ending preparation.
  */
-static void end_opdata(MGS_NodeData *nd) {
+static void end_sndopdata(MGS_NodeData *nd) {
   MGS_Parser *o = nd->o;
   MGS_ProgramNode *n = nd->node;
-  MGS_ProgramOpData *opd = n->data;
+  MGS_ProgramSndopData *sopd = n->data;
   if (!n->ref_prev) {
     /* first node sets all values */
-    opd->params |= MGS_PARAM_MASK;
+    sopd->params |= MGS_PARAM_MASK;
   } else {
-    if (opd->time.flags & MGS_TIME_SET)
-      opd->params |= MGS_OPP_TIME;
+    if (sopd->time.flags & MGS_TIME_SET)
+      sopd->params |= MGS_SNDOPP_TIME;
   }
-  if (opd->params & MGS_OPP_AMP) {
+  if (sopd->params & MGS_SNDOPP_AMP) {
     /* only apply to non-modulators */
-    if (n->base_id == opd->root->base_id)
-      opd->amp *= o->n_ampmult;
+    if (n->base_id == sopd->root->base_id)
+      sopd->amp *= o->n_ampmult;
   }
 }
 
 static void end_noisedata(MGS_NodeData *nd) {
-  end_opdata(nd);
+  end_sndopdata(nd);
 }
 
 static void end_wavedata(MGS_NodeData *nd) {
-  end_opdata(nd);
+  end_sndopdata(nd);
 }
 
 static void end_durdata(MGS_NodeData *nd mgsMaybeUnused) {
@@ -577,25 +577,25 @@ static MGS_Program* parse(MGS_File *f, MGS_Parser *o) {
 
 static bool parse_amp(MGS_Parser *o, MGS_ProgramNode *n) {
   MGS_Program *p = o->prg;
-  MGS_ProgramOpData *opd;
-  opd = MGS_ProgramNode_get_data(n, MGS_BASETYPE_OP);
-  if (!opd) goto INVALID;
+  MGS_ProgramSndopData *sopd;
+  sopd = MGS_ProgramNode_get_data(n, MGS_BASETYPE_SNDOP);
+  if (!sopd) goto INVALID;
   float f;
   if (MGS_File_TRYC(o->f, '!')) {
     if (!MGS_File_TESTC(o->f, '{')) {
       if (!scan_num(o, NULL, &f)) goto INVALID;
-      opd->dynamp = f;
-      opd->params |= MGS_OPP_DYNAMP;
+      sopd->dynamp = f;
+      sopd->params |= MGS_SNDOPP_DYNAMP;
     }
     if (MGS_File_TRYC(o->f, '{')) {
-      opd->amod = MGS_MemPool_alloc(p->mem, sizeof(MGS_ProgramArrData));
-      opd->amod->mod_type = MGS_MOD_AM;
-      parse_level(o, opd->amod);
+      sopd->amod = MGS_MemPool_alloc(p->mem, sizeof(MGS_ProgramArrData));
+      sopd->amod->mod_type = MGS_MOD_AM;
+      parse_level(o, sopd->amod);
     }
   } else {
     if (!scan_num(o, NULL, &f)) goto INVALID;
-    opd->amp = f;
-    opd->params |= MGS_OPP_AMP;
+    sopd->amp = f;
+    sopd->params |= MGS_SNDOPP_AMP;
   }
   return true;
 INVALID:
@@ -603,9 +603,9 @@ INVALID:
 }
 
 static bool parse_channel(MGS_Parser *o, MGS_ProgramNode *n) {
-  MGS_ProgramOpData *opd;
-  opd = MGS_ProgramNode_get_data(n, MGS_BASETYPE_OP);
-  if (!opd) goto INVALID;
+  MGS_ProgramSndopData *sopd;
+  sopd = MGS_ProgramNode_get_data(n, MGS_BASETYPE_SNDOP);
+  if (!sopd) goto INVALID;
   MGS_NodeData *nd = o->cur_nd;
   if (nd->target != NULL) {
     MGS_ProgramArrData *target = nd->target;
@@ -614,8 +614,8 @@ static bool parse_channel(MGS_Parser *o, MGS_ProgramNode *n) {
   float f;
   /* TODO: support modulation */
   if (!scan_num(o, numsym_channel, &f)) goto INVALID;
-  opd->pan = f;
-  opd->params |= MGS_OPP_PAN;
+  sopd->pan = f;
+  sopd->params |= MGS_SNDOPP_PAN;
   return true;
 INVALID:
   return false;
@@ -625,7 +625,7 @@ static bool parse_freq(MGS_Parser *o, MGS_ProgramNode *n, bool ratio) {
   MGS_Program *p = o->prg;
   MGS_ProgramWaveData *wod = MGS_ProgramNode_get_data(n, MGS_TYPE_WAVE);
   if (!wod) goto INVALID;
-  if (ratio && (n->base_id == wod->op.root->base_id)) goto INVALID;
+  if (ratio && (n->base_id == wod->sop.root->base_id)) goto INVALID;
   float f;
   if (MGS_File_TRYC(o->f, '!')) {
     if (!MGS_File_TESTC(o->f, '{')) {
@@ -636,7 +636,7 @@ static bool parse_freq(MGS_Parser *o, MGS_ProgramNode *n, bool ratio) {
       } else {
         wod->attr &= ~MGS_ATTR_DYNFREQRATIO;
       }
-      wod->op.params |= MGS_WAVEP_DYNFREQ | MGS_WAVEP_ATTR;
+      wod->sop.params |= MGS_WAVEP_DYNFREQ | MGS_WAVEP_ATTR;
     }
     if (MGS_File_TRYC(o->f, '{')) {
       wod->fmod = MGS_MemPool_alloc(p->mem, sizeof(MGS_ProgramArrData));
@@ -651,7 +651,7 @@ static bool parse_freq(MGS_Parser *o, MGS_ProgramNode *n, bool ratio) {
     } else {
       wod->attr &= ~MGS_ATTR_FREQRATIO;
     }
-    wod->op.params |= MGS_WAVEP_FREQ | MGS_WAVEP_ATTR;
+    wod->sop.params |= MGS_WAVEP_FREQ | MGS_WAVEP_ATTR;
   }
   return true;
 INVALID:
@@ -664,7 +664,7 @@ static bool parse_noise(MGS_Parser *o, MGS_ProgramNode *n, char pos_c) {
   size_t noise;
   if (!scan_noisetype(o, &noise, pos_c)) goto INVALID;
   nod->noise = noise;
-  nod->op.params |= MGS_NOISEP_NOISE;
+  nod->sop.params |= MGS_NOISEP_NOISE;
   return true;
 INVALID:
   return false;
@@ -686,7 +686,7 @@ static bool parse_phase(MGS_Parser *o, MGS_ProgramNode *n) {
     wod->phase = fmod(f, 1.f);
     if (wod->phase < 0.f)
       wod->phase += 1.f;
-    wod->op.params |= MGS_WAVEP_PHASE;
+    wod->sop.params |= MGS_WAVEP_PHASE;
   }
   return true;
 INVALID:
@@ -694,13 +694,13 @@ INVALID:
 }
 
 static bool parse_time(MGS_Parser *o, MGS_ProgramNode *n) {
-  MGS_ProgramOpData *opd;
-  opd = MGS_ProgramNode_get_data(n, MGS_BASETYPE_OP);
-  if (!opd) goto INVALID;
+  MGS_ProgramSndopData *sopd;
+  sopd = MGS_ProgramNode_get_data(n, MGS_BASETYPE_SNDOP);
+  if (!sopd) goto INVALID;
   float f;
   if (!scan_timeval(o, &f)) goto INVALID;
-  opd->time.v = f;
-  opd->time.flags |= MGS_TIME_SET;
+  sopd->time.v = f;
+  sopd->time.flags |= MGS_TIME_SET;
   return true;
 INVALID:
   return false;
@@ -712,7 +712,7 @@ static bool parse_wave(MGS_Parser *o, MGS_ProgramNode *n, char pos_c) {
   size_t wave;
   if (!scan_wavetype(o, &wave, pos_c)) goto INVALID;
   wod->wave = wave;
-  wod->op.params |= MGS_WAVEP_WAVE;
+  wod->sop.params |= MGS_WAVEP_WAVE;
   return true;
 INVALID:
   return false;

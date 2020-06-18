@@ -26,7 +26,7 @@ typedef struct MGS_ModList {
 	uint32_t ids[];
 } MGS_ModList;
 
-typedef struct MGS_OpNode {
+typedef struct MGS_SndopNode {
 	uint32_t time;
 	float amp, dynamp;
 	float pan;
@@ -34,15 +34,15 @@ typedef struct MGS_OpNode {
 	uint32_t params; // for use as update
 	uint32_t voice_id;
 	uint8_t type;
-} MGS_OpNode;
+} MGS_SndopNode;
 
 typedef struct MGS_NoiseNode {
-	MGS_OpNode op;
+	MGS_SndopNode sop;
 	MGS_NGen ngen;
 } MGS_NoiseNode;
 
 typedef struct MGS_WaveNode {
-	MGS_OpNode op;
+	MGS_SndopNode sop;
 	MGS_Osc osc;
 	uint8_t attr;
 	float freq, dynfreq;
@@ -51,7 +51,7 @@ typedef struct MGS_WaveNode {
 } MGS_WaveNode;
 
 typedef struct MGS_VoiceNode {
-	MGS_OpNode *root;
+	MGS_SndopNode *root;
 	uint32_t delay;
 } MGS_VoiceNode;
 
@@ -64,7 +64,7 @@ enum {
 };
 
 typedef struct MGS_EventNode {
-	MGS_OpNode *opn; // update node
+	MGS_SndopNode *sopn; // update node
 	int32_t pos; // negative for delay, i.e. wait time
 	uint8_t status;
 	uint8_t base_type;
@@ -77,8 +77,8 @@ typedef struct MGS_RunAlloc {
 	MGS_EventArr ev_arr;
 	MGS_VoiceArr voice_arr;
 	MGS_PtrArr mod_lists;
-	MGS_OpNode **op_list;
-	size_t opn_count;
+	MGS_SndopNode **sopn_list;
+	size_t sopn_count;
 	size_t max_bufs;
 	const MGS_Program *prg;
 	uint32_t srate;

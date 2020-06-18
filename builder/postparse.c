@@ -13,11 +13,11 @@
 
 #include "parser.h"
 
-static void time_op(MGS_ProgramNode *restrict n) {
-	MGS_ProgramOpData *opd = n->data;
-	if (!(opd->time.flags & MGS_TIME_SET)) {
-		if (n->base_id != opd->root->base_id)
-			opd->time.flags |= MGS_TIME_SET;
+static void time_sndop(MGS_ProgramNode *restrict n) {
+	MGS_ProgramSndopData *sopd = n->data;
+	if (!(sopd->time.flags & MGS_TIME_SET)) {
+		if (n->base_id != sopd->root->base_id)
+			sopd->time.flags |= MGS_TIME_SET;
 	}
 	// handle timing for sub-components here
 	// handle timing for added silence here
@@ -33,42 +33,42 @@ static void time_durscope(MGS_ProgramDurData *restrict dur) {
 	double delay = 0.f, delaycount = 0.f;
 	MGS_ProgramNode *step;
 	for (step = dur->scope.first_node; step != n_after; ) {
-		MGS_ProgramOpData *opd;
-		opd = MGS_ProgramNode_get_data(step, MGS_BASETYPE_OP);
+		MGS_ProgramSndopData *sopd;
+		sopd = MGS_ProgramNode_get_data(step, MGS_BASETYPE_SNDOP);
 		/*
 		 * Skip unsupported nodes, and
 		 * exclude nested nodes from duration.
 		 */
-		if (!opd || (step->base_id != opd->root->base_id)) {
+		if (!sopd || (step->base_id != sopd->root->base_id)) {
 			step = step->next;
 			continue;
 		}
 		if (step->next == n_after) {
 			/* accept pre-set default time for last node */
-			opd->time.flags |= MGS_TIME_SET;
+			sopd->time.flags |= MGS_TIME_SET;
 		}
-		if (delay < opd->time.v)
-			delay = opd->time.v;
+		if (delay < sopd->time.v)
+			delay = sopd->time.v;
 		step = step->next;
 		if (step != NULL) {
 			delaycount += step->delay;
 		}
 	}
 	for (step = dur->scope.first_node; step != n_after; ) {
-		MGS_ProgramOpData *opd;
-		opd = MGS_ProgramNode_get_data(step, MGS_BASETYPE_OP);
+		MGS_ProgramSndopData *sopd;
+		sopd = MGS_ProgramNode_get_data(step, MGS_BASETYPE_SNDOP);
 		/*
 		 * Skip unsupported nodes, and
 		 * exclude nested nodes from duration.
 		 */
-		if (!opd || (step->base_id != opd->root->base_id)) {
+		if (!sopd || (step->base_id != sopd->root->base_id)) {
 			step = step->next;
 			continue;
 		}
-		if (!(opd->time.flags & MGS_TIME_SET)) {
+		if (!(sopd->time.flags & MGS_TIME_SET)) {
 			/* fill in sensible default time */
-			opd->time.v = delay + delaycount;
-			opd->time.flags |= MGS_TIME_SET;
+			sopd->time.v = delay + delaycount;
+			sopd->time.flags |= MGS_TIME_SET;
 		}
 		step = step->next;
 		if (step != NULL) {
@@ -88,7 +88,7 @@ void MGS_adjust_node_list(MGS_ProgramNode *restrict list) {
 			n = n->next;
 			continue;
 		}
-		if (n->base_type == MGS_BASETYPE_OP) time_op(n);
+		if (n->base_type == MGS_BASETYPE_SNDOP) time_sndop(n);
 		if (n == dur->scope.last_node) time_durscope(dur);
 		n = n->next;
 	}

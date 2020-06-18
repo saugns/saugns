@@ -27,7 +27,7 @@ struct MGS_Generator {
   int delay_offs;
   int time_flags;
   uint32_t voice_count;
-  MGS_OpNode **op_list;
+  MGS_SndopNode **sopn_list;
   MGS_VoiceNode *voice_arr;
   MGS_ModList **mod_lists;
   uint32_t ev_i, ev_count;
@@ -40,7 +40,7 @@ static void init_for_nodelist(MGS_Generator *o) {
   const MGS_Program *prg = o->prg;
   MGS_init_RunAlloc(&ra, prg, o->srate, o->mem);
   MGS_RunAlloc_for_nodelist(&ra, prg->node_list);
-  o->op_list = ra.op_list;
+  o->sopn_list = ra.sopn_list;
   o->ev_count = ra.ev_arr.count;
   o->voice_count = ra.voice_arr.count;
   MGS_EventArr_mpmemdup(&ra.ev_arr, &o->ev_arr, o->mem);
@@ -70,37 +70,37 @@ MGS_Generator* MGS_create_Generator(const MGS_Program *prg, uint32_t srate) {
  * Click reduction: decrease time to make it end at wave cycle's end.
  */
 static mgsNoinline void adjust_wave_time(MGS_Generator *o, MGS_WaveNode *n) {
-  int pos_offs = MGS_Osc_cycle_offs(&n->osc, n->freq, n->op.time);
-  n->op.time -= pos_offs;
+  int pos_offs = MGS_Osc_cycle_offs(&n->osc, n->freq, n->sop.time);
+  n->sop.time -= pos_offs;
   if (!(o->time_flags & MGS_GEN_TIME_OFFS) || o->delay_offs > pos_offs) {
     o->delay_offs = pos_offs;
     o->time_flags |= MGS_GEN_TIME_OFFS;
   }
 }
 
-static void MGS_Generator_init_op(MGS_Generator *o, MGS_EventNode *ev) {
-  MGS_OpNode *opn = ev->opn;
-  MGS_VoiceNode *voice = &o->voice_arr[opn->voice_id];
-  if (opn == voice->root) {
+static void MGS_Generator_init_sndop(MGS_Generator *o, MGS_EventNode *ev) {
+  MGS_SndopNode *sopn = ev->sopn;
+  MGS_VoiceNode *voice = &o->voice_arr[sopn->voice_id];
+  if (sopn == voice->root) {
     ev->status |= MGS_EV_ACTIVE;
   }
-  switch (opn->type) {
+  switch (sopn->type) {
   case MGS_TYPE_WAVE:
-    if (opn == voice->root)
-      adjust_wave_time(o, (MGS_WaveNode*) opn);
+    if (sopn == voice->root)
+      adjust_wave_time(o, (MGS_WaveNode*) sopn);
     break;
   }
 }
 
-static void MGS_Generator_update_op(MGS_Generator *o, MGS_EventNode *ev) {
+static void MGS_Generator_update_sndop(MGS_Generator *o, MGS_EventNode *ev) {
   MGS_EventNode *refev = &o->ev_arr[ev->ref_i];
-  MGS_OpNode *refsn = refev->opn;
-  MGS_OpNode *updsn = ev->opn;
+  MGS_SndopNode *refsn = refev->sopn;
+  MGS_SndopNode *updsn = ev->sopn;
   MGS_VoiceNode *voice = &o->voice_arr[refsn->voice_id];
-  MGS_OpNode *rootsn = voice->root;
+  MGS_SndopNode *rootsn = voice->root;
   bool adjtime = false;
   refsn->amods_id = updsn->amods_id;
-  if (updsn->params & MGS_OPP_TIME) {
+  if (updsn->params & MGS_SNDOPP_TIME) {
     refsn->time = updsn->time;
     refev->pos = 0;
     if (refsn->time) {
@@ -110,13 +110,13 @@ static void MGS_Generator_update_op(MGS_Generator *o, MGS_EventNode *ev) {
     } else
       refev->status &= ~MGS_EV_ACTIVE;
   }
-  if (updsn->params & MGS_OPP_AMP) {
+  if (updsn->params & MGS_SNDOPP_AMP) {
     refsn->amp = updsn->amp;
   }
-  if (updsn->params & MGS_OPP_DYNAMP) {
+  if (updsn->params & MGS_SNDOPP_DYNAMP) {
     refsn->dynamp = updsn->dynamp;
   }
-  if (updsn->params & MGS_OPP_PAN) {
+  if (updsn->params & MGS_SNDOPP_PAN) {
     refsn->pan = updsn->pan;
   }
   switch (refsn->type) {
@@ -128,20 +128,20 @@ static void MGS_Generator_update_op(MGS_Generator *o, MGS_EventNode *ev) {
     /* set state */
     refn->fmods_id = updn->fmods_id;
     refn->pmods_id = updn->pmods_id;
-    if (updn->op.params & MGS_WAVEP_WAVE) {
+    if (updn->sop.params & MGS_WAVEP_WAVE) {
       refn->osc.lut = updn->osc.lut;
     }
-    if (updn->op.params & MGS_WAVEP_FREQ) {
+    if (updn->sop.params & MGS_WAVEP_FREQ) {
       refn->freq = updn->freq;
       adjtime = true;
     }
-    if (updn->op.params & MGS_WAVEP_DYNFREQ) {
+    if (updn->sop.params & MGS_WAVEP_DYNFREQ) {
       refn->dynfreq = updn->dynfreq;
     }
-    if (updn->op.params & MGS_WAVEP_PHASE) {
+    if (updn->sop.params & MGS_WAVEP_PHASE) {
       refn->osc.phase = updn->osc.phase;
     }
-    if (updn->op.params & MGS_WAVEP_ATTR) {
+    if (updn->sop.params & MGS_WAVEP_ATTR) {
       refn->attr = updn->attr;
     }
     if (refsn == rootsn) {
@@ -157,11 +157,11 @@ static void MGS_Generator_update_op(MGS_Generator *o, MGS_EventNode *ev) {
 
 static void MGS_Generator_prepare_node(MGS_Generator *o, MGS_EventNode *ev) {
   switch (ev->base_type) {
-  case MGS_BASETYPE_OP:
+  case MGS_BASETYPE_SNDOP:
     if (!(ev->status & MGS_EV_UPDATE)) {
-      MGS_Generator_init_op(o, ev);
+      MGS_Generator_init_sndop(o, ev);
     } else {
-      MGS_Generator_update_op(o, ev);
+      MGS_Generator_update_sndop(o, ev);
     }
     break;
   default:
@@ -195,18 +195,18 @@ static void run_block_noise(MGS_Generator *o, Buf *bufs_from, uint32_t len,
   uint32_t i;
   Buf *sbuf = bufs_from++, *amp;
   Buf *next_buf = bufs_from;
-  if (n->op.amods_id > 0) {
+  if (n->sop.amods_id > 0) {
     run_block_sub(o, next_buf, len,
-        n->op.amods_id, NULL,
+        n->sop.amods_id, NULL,
         BLOCK_WAVEENV);
     amp = next_buf++;
-    float dynampdiff = n->op.dynamp - n->op.amp;
+    float dynampdiff = n->sop.dynamp - n->sop.amp;
     for (i = 0; i < len; ++i)
-      amp->f[i] = n->op.amp + amp->f[i] * dynampdiff;
+      amp->f[i] = n->sop.amp + amp->f[i] * dynampdiff;
   } else {
     amp = (next_buf++);
     for (i = 0; i < len; ++i)
-      amp->f[i] = n->op.amp;
+      amp->f[i] = n->sop.amp;
   }
   if (flags & BLOCK_WAVEENV) {
     MGS_NGen_run_env(&n->ngen, sbuf->f, len,
@@ -244,18 +244,18 @@ static void run_block_wave(MGS_Generator *o, Buf *bufs_from, uint32_t len,
         freq->f[i] += (n->dynfreq - freq->f[i]) * fmbuf->f[i];
     }
   }
-  if (n->op.amods_id > 0) {
+  if (n->sop.amods_id > 0) {
     run_block_sub(o, next_buf, len,
-        n->op.amods_id, freq,
+        n->sop.amods_id, freq,
         BLOCK_WAVEENV);
     amp = next_buf++;
-    float dynampdiff = n->op.dynamp - n->op.amp;
+    float dynampdiff = n->sop.dynamp - n->sop.amp;
     for (i = 0; i < len; ++i)
-      amp->f[i] = n->op.amp + amp->f[i] * dynampdiff;
+      amp->f[i] = n->sop.amp + amp->f[i] * dynampdiff;
   } else {
     amp = (next_buf++);
     for (i = 0; i < len; ++i)
-      amp->f[i] = n->op.amp;
+      amp->f[i] = n->sop.amp;
   }
   pm = NULL;
   if (n->pmods_id > 0) {
@@ -278,7 +278,7 @@ static void run_block_sub(MGS_Generator *o, Buf *bufs_from, uint32_t len,
     uint32_t flags) {
   MGS_ModList *mod_list = o->mod_lists[mods_id];
   for (size_t i = 0; i < mod_list->count; ++i) {
-    MGS_OpNode *n = o->op_list[mod_list->ids[i]];
+    MGS_SndopNode *n = o->sopn_list[mod_list->ids[i]];
     switch (n->type) {
     case MGS_TYPE_NOISE:
       run_block_noise(o, bufs_from, len,
@@ -294,9 +294,9 @@ static void run_block_sub(MGS_Generator *o, Buf *bufs_from, uint32_t len,
   }
 }
 
-static uint32_t run_op(MGS_Generator *o,
-    MGS_OpNode *opn, short *sp, uint32_t pos, uint32_t len) {
-  uint32_t i, ret, time = opn->time - pos;
+static uint32_t run_sndop(MGS_Generator *o,
+    MGS_SndopNode *sopn, short *sp, uint32_t pos, uint32_t len) {
+  uint32_t i, ret, time = sopn->time - pos;
   if (time > len)
     time = len;
   ret = time;
@@ -305,19 +305,19 @@ static uint32_t run_op(MGS_Generator *o,
     if (len > time)
       len = time;
     time -= len;
-    switch (opn->type) {
+    switch (sopn->type) {
     case MGS_TYPE_NOISE:
       run_block_noise(o, o->bufs, len,
-          (MGS_NoiseNode*) opn,
+          (MGS_NoiseNode*) sopn,
           0, 0);
       break;
     case MGS_TYPE_WAVE:
       run_block_wave(o, o->bufs, len,
-          (MGS_WaveNode*) opn, NULL,
+          (MGS_WaveNode*) sopn, NULL,
           0, 0);
       break;
     }
-    float pan = (1.f + opn->pan) * .5f;
+    float pan = (1.f + sopn->pan) * .5f;
     for (i = 0; i < len; ++i, sp += 2) {
       float s = (*o->bufs).f[i];
       float s_p = s * pan;
@@ -389,9 +389,9 @@ PROCESS:
       ev->pos = 0;
     }
     if (ev->status & MGS_EV_ACTIVE) {
-      MGS_OpNode *opn = ev->opn;
-      ev->pos += run_op(o, opn, buf, ev->pos, len);
-      if ((uint32_t)ev->pos == opn->time)
+      MGS_SndopNode *sopn = ev->sopn;
+      ev->pos += run_sndop(o, sopn, buf, ev->pos, len);
+      if ((uint32_t)ev->pos == sopn->time)
         ev->status &= ~MGS_EV_ACTIVE;
     }
   }
