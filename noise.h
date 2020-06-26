@@ -45,7 +45,8 @@ extern uint32_t MGS_Noise_x32state;
  * \return sample
  */
 static inline float MGS_Noise_get(void) {
-	return (INT32_MIN + MGS_Noise_NEXT()) * (1.f / INT32_MAX);
+	int32_t s_i32 = INT32_MIN + MGS_Noise_NEXT();
+	return s_i32 * (1.f / INT32_MAX);
 }
 
 /** Names of noise types, with an extra NULL pointer at the end. */
