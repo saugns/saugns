@@ -2,17 +2,28 @@
  * Copyright (c) 2014, 2018-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
- * This file and the software of which it is part is distributed under the
- * terms of the GNU Lesser General Public License, either version 3 or (at
- * your option) any later version, WITHOUT ANY WARRANTY, not even of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
  *
- * View the file COPYING for details, or if missing, see
- * <https://www.gnu.org/licenses/>.
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
 #include "mempool.h"
-#include "arrtype.h"
+#ifndef SGS_MEM_DEBUG
+/*
+ * Debug-friendly memory handling? (Slower.)
+ *
+ * Enable to simply calloc every allocation.
+ */
+# define SGS_MEM_DEBUG 0
+#endif
 #include <stdlib.h>
 #include <string.h>
 
@@ -27,11 +38,30 @@
 	(((size) + (ALIGN_BYTES - 1)) & ~(ALIGN_BYTES - 1))
 
 typedef struct BlockEntry {
-	void *mem;
 	size_t free;
+	void *mem;
 } BlockEntry;
 
-SGS_DEF_ArrType(BlockArr, BlockEntry, _)
+typedef struct BlockArr {
+	BlockEntry *a;
+	size_t count, first_i;
+	size_t asize;
+} BlockArr;
+
+/*
+ * Extend memory block array.
+ *
+ * \return true, or false on allocation failure
+ */
+static bool BlockArr_upsize(BlockArr *restrict o) {
+	size_t new_asize = (o->asize > 0) ? (o->asize << 1) : 1;
+	BlockEntry *new_a = realloc(o->a, sizeof(BlockEntry) * new_asize);
+	if (!new_a)
+		return false;
+	o->a = new_a;
+	o->asize = new_asize;
+	return true;
+}
 
 /*
  * Allocate new memory block,
@@ -41,14 +71,23 @@ SGS_DEF_ArrType(BlockArr, BlockEntry, _)
  */
 static void *BlockArr_add(BlockArr *restrict o,
 		size_t size_alloc, size_t size_used) {
-	BlockEntry *b = _BlockArr_add(o, NULL);
-	if (!b)
+	if (o->count == o->asize && !BlockArr_upsize(o))
 		return NULL;
 	void *mem = calloc(1, size_alloc);
 	if (!mem)
 		return NULL;
-	b->mem = mem;
+	BlockEntry *b = &o->a[o->count++];
 	b->free = size_alloc - size_used;
+	b->mem = mem;
+#if !SGS_MEM_DEBUG
+	/*
+	 * Skip fully used blocks in binary searches.
+	 */
+	while (o->first_i < o->count) {
+		if (!o->a[o->first_i].free) ++o->first_i;
+		else break;
+	}
+#endif
 	return mem;
 }
 
@@ -59,9 +98,10 @@ static void BlockArr_clear(BlockArr *restrict o) {
 	for (size_t i = 0; i < o->count; ++i) {
 		free(o->a[i].mem);
 	}
-	_BlockArr_clear(o);
+	free(o->a);
 }
 
+#if !SGS_MEM_DEBUG
 /*
  * Locate the first block with the smallest size into which \p size fits,
  * using binary search. If found, \p id will be set to the id.
@@ -70,8 +110,8 @@ static void BlockArr_clear(BlockArr *restrict o) {
  */
 static bool BlockArr_first_smallest(const BlockArr *restrict o,
 		size_t size, size_t *restrict id) {
-	size_t i = 0;
-	ptrdiff_t min = 0;
+	size_t i;
+	ptrdiff_t min = o->first_i;
 	ptrdiff_t max = o->count - 1;
 	for (;;) {
 		i = ((size_t)(min + max) >> 1);
@@ -113,7 +153,7 @@ static bool BlockArr_first_smallest(const BlockArr *restrict o,
  */
 static void BlockArr_copy_up_one(BlockArr *restrict o,
 		size_t to, size_t from) {
-	if ((from + 1) == to || o->a[from].free == o->a[to - 1].free) {
+	if (from == (to - 1) || o->a[from].free == o->a[to - 1].free) {
 		/*
 		 * Either there are no blocks in-between, or they all have
 		 * the same free space as the first; simply set the last to
@@ -132,6 +172,7 @@ static void BlockArr_copy_up_one(BlockArr *restrict o,
 		o->a[higher_from] = o->a[from];
 	}
 }
+#endif
 
 struct SGS_MemPool {
 	BlockArr blocks;
@@ -178,27 +219,30 @@ void SGS_destroy_MemPool(SGS_MemPool *restrict o) {
  * \return allocated memory, or NULL on allocation failure
  */
 void *SGS_MemPool_alloc(SGS_MemPool *restrict o, size_t size) {
+#if !SGS_MEM_DEBUG
 	size_t i = o->blocks.count;
-	void *ret;
+	void *mem;
 	size = ALIGN_SIZE(size);
 	/*
-	 * Find suitable block using binary search, or use a new if none.
+	 * If blocks exist and the most spacious can hold the size,
+	 * pick least-free-space best fit using binary search.
+	 * Otherwise, use a new block.
 	 */
 	if ((i > 0 && size <= o->blocks.a[i - 1].free) &&
 			BlockArr_first_smallest(&o->blocks, size, &i)) {
 		size_t offset = o->block_size - o->blocks.a[i].free;
-		ret = &((char*)o->blocks.a[i].mem)[offset];
+		mem = &((char*)o->blocks.a[i].mem)[offset];
 		o->blocks.a[i].free -= size;
 	} else {
 		size_t alloc_size = (size > o->block_size) ?
 			size :
 			o->block_size;
-		ret = BlockArr_add(&o->blocks, alloc_size, size);
-		if (!ret)
+		mem = BlockArr_add(&o->blocks, alloc_size, size);
+		if (!mem)
 			return NULL;
 	}
 	/*
-	 * Sort blocks after allocation.
+	 * Sort blocks after allocation so that binary search will work.
 	 */
 	if (i > 0) {
 		/*
@@ -208,7 +252,7 @@ void *SGS_MemPool_alloc(SGS_MemPool *restrict o, size_t size) {
 		size_t j;
 		size_t i_free = o->blocks.a[i].free;
 		o->blocks.a[i].free = o->blocks.a[i - 1].free;
-		if (BlockArr_first_greater(&o->blocks, i_free, &j) && (j < i)) {
+		if (BlockArr_first_greater(&o->blocks, i_free, &j) && j < i) {
 			/*
 			 * Copy blocks upwards, then
 			 * set the one at j to the one originally at i
@@ -222,7 +266,10 @@ void *SGS_MemPool_alloc(SGS_MemPool *restrict o, size_t size) {
 			o->blocks.a[i].free = i_free;
 		}
 	}
-	return ret;
+	return mem;
+#else /* SGS_MEM_DEBUG */
+	return BlockArr_add(&o->blocks, size, size);
+#endif
 }
 
 /**
@@ -234,11 +281,10 @@ void *SGS_MemPool_alloc(SGS_MemPool *restrict o, size_t size) {
  */
 void *SGS_MemPool_memdup(SGS_MemPool *restrict o,
 		const void *restrict src, size_t size) {
-	void *ret = SGS_MemPool_alloc(o, size);
-	if (!ret)
+	void *mem = SGS_MemPool_alloc(o, size);
+	if (!mem)
 		return NULL;
-	if (src != NULL) {
-		memcpy(ret, src, size);
-	}
-	return ret;
+	if (src != NULL)
+		memcpy(mem, src, size);
+	return mem;
 }
