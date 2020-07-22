@@ -1,6 +1,6 @@
 # Produces "drum-like" repeating sound
 
-#Osin t2 f244.4 p+[Osin r(3/2)]
+#Osin t2 f244.4 p+[Osin r(2/3)]
 #Q
 
 # Relies on the decreasing 'saw' slope

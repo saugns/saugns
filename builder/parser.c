@@ -263,17 +263,13 @@ DEFER:
   SGS_File_UNGETC(f);
   return num;
 }
-static bool scan_num(PScanner *restrict o, NumSym_f scan_numsym,
-                     float *restrict var, bool mul_inv) {
+static bool SGS__noinline scan_num(PScanner *restrict o,
+                                   NumSym_f scan_numsym, float *restrict var) {
   NumParser np = {o, scan_numsym, false};
   float num = scan_num_r(&np, 0, 0);
   if (isnan(num))
     return false;
   if (isinf(num)) np.has_infnum = true;
-  if (mul_inv) {
-    num = 1.f / num;
-    if (isinf(num)) np.has_infnum = true;
-  }
   if (np.has_infnum) {
     scan_warning(o, "discarding expression with infinite number");
     return false;
@@ -437,10 +433,10 @@ static bool scan_wavetype(PScanner *restrict o, size_t *restrict found_id) {
 
 static bool scan_ramp_state(PScanner *restrict o,
                             NumSym_f scan_numsym,
-                            SGS_Ramp *restrict ramp, bool ratio) {
-  if (!scan_num(o, scan_numsym, &ramp->v0, ratio))
+                            SGS_Ramp *restrict ramp, bool mult) {
+  if (!scan_num(o, scan_numsym, &ramp->v0))
     return false;
-  if (ratio) {
+  if (mult) {
     ramp->flags |= SGS_RAMPP_STATE_RATIO;
   } else {
     ramp->flags &= ~SGS_RAMPP_STATE_RATIO;
@@ -450,7 +446,7 @@ static bool scan_ramp_state(PScanner *restrict o,
 }
 
 static bool scan_ramp(PScanner *restrict o, NumSym_f scan_numsym,
-                      SGS_Ramp *restrict ramp, bool ratio) {
+                      SGS_Ramp *restrict ramp, bool mult) {
   bool goal = false;
   bool time_set = (ramp->flags & SGS_RAMPP_TIME) != 0;
   float vt;
@@ -458,7 +454,7 @@ static bool scan_ramp(PScanner *restrict o, NumSym_f scan_numsym,
   uint8_t type = ramp->type; // has default
   if ((ramp->flags & SGS_RAMPP_GOAL) != 0) {
     // allow partial change
-    if (((ramp->flags & SGS_RAMPP_GOAL_RATIO) != 0) == ratio) {
+    if (((ramp->flags & SGS_RAMPP_GOAL_RATIO) != 0) == mult) {
       goal = true;
       vt = ramp->vt;
     }
@@ -486,7 +482,7 @@ static bool scan_ramp(PScanner *restrict o, NumSym_f scan_numsym,
       break; }
     case 't': {
       float time;
-      if (scan_num(o, 0, &time, false)) {
+      if (scan_num(o, 0, &time)) {
         if (time < 0.f) {
           scan_warning(o, "ignoring 't' with sub-zero time");
           break;
@@ -496,7 +492,7 @@ static bool scan_ramp(PScanner *restrict o, NumSym_f scan_numsym,
       }
       break; }
     case 'v':
-      if (scan_num(o, scan_numsym, &vt, ratio))
+      if (scan_num(o, scan_numsym, &vt))
         goal = true;
       break;
     case '}':
@@ -517,7 +513,7 @@ RETURN:
   ramp->time_ms = time_ms;
   ramp->type = type;
   ramp->flags |= SGS_RAMPP_GOAL;
-  if (ratio)
+  if (mult)
     ramp->flags |= SGS_RAMPP_GOAL_RATIO;
   else
     ramp->flags &= ~SGS_RAMPP_GOAL_RATIO;
@@ -552,7 +548,7 @@ static const SGS_ScriptOptions def_sopt = {
   .A4_freq = 444.f,
   .def_time_ms = 1000,
   .def_freq = 444.f,
-  .def_ratio = 1.f,
+  .def_relfreq = 1.f,
 };
 
 /*
@@ -582,10 +578,9 @@ static void fini_parser(SGS_Parser *restrict o) {
  * Scope values.
  */
 enum {
-  SCOPE_SAME = 0,
-  SCOPE_TOP = 1,
-  SCOPE_BIND = '@',
-  SCOPE_NEST = '[',
+  SCOPE_TOP = 0,
+  SCOPE_BIND,
+  SCOPE_NEST,
 };
 
 /*
@@ -644,7 +639,7 @@ static bool parse_waittime(ParseLevel *restrict pl) {
   } else {
     float wait;
     uint32_t wait_ms;
-    scan_num(sc, 0, &wait, false);
+    scan_num(sc, 0, &wait);
     if (wait < 0.f) {
       scan_warning(sc, "ignoring '\\' with sub-zero time");
       return false;
@@ -726,14 +721,16 @@ static void end_operator(ParseLevel *restrict pl) {
   SGS_ScriptOpData *pop = op->on_prev;
   if (!pop) {
     /*
-     * Reset remaining operator state for initial event.
+     * Reset all operator state for initial event.
      */
     op->op_params |= SGS_POPP_ADJCS |
                      SGS_POPP_WAVE |
                      SGS_POPP_TIME |
                      SGS_POPP_SILENCE |
+                     SGS_POPP_FREQ |
                      SGS_POPP_DYNFREQ |
                      SGS_POPP_PHASE |
+                     SGS_POPP_AMP |
                      SGS_POPP_DYNAMP;
   } else {
     if (op->wave != pop->wave)
@@ -762,9 +759,10 @@ static void end_event(ParseLevel *restrict pl) {
   SGS_ScriptEvData *pve = e->voice_prev;
   if (!pve) {
     /*
-     * Reset remaining voice state for initial event.
+     * Reset all voice state for initial event.
      */
     e->ev_flags |= SGS_SDEV_NEW_OPGRAPH;
+    e->vo_params |= SGS_PVOP_PAN;
   }
   pl->last_event = e;
   pl->event = NULL;
@@ -876,7 +874,7 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
       op->freq.v0 = o->sl.sopt.def_freq;
     } else {
       op->op_flags |= SGS_SDOP_NESTED;
-      op->freq.v0 = o->sl.sopt.def_ratio;
+      op->freq.v0 = o->sl.sopt.def_relfreq;
       op->freq.flags |= SGS_RAMPP_STATE_RATIO;
     }
     op->freq.flags |= SGS_RAMPP_STATE;
@@ -950,7 +948,7 @@ static void begin_node(ParseLevel *restrict pl,
 static void begin_scope(SGS_Parser *restrict o, ParseLevel *restrict pl,
                         ParseLevel *restrict parent_pl,
                         uint8_t linktype, uint8_t newscope) {
-  memset(pl, 0, sizeof(ParseLevel));
+  *pl = (ParseLevel){0};
   pl->o = o;
   pl->scope = newscope;
   if (parent_pl != NULL) {
@@ -958,8 +956,6 @@ static void begin_scope(SGS_Parser *restrict o, ParseLevel *restrict pl,
     pl->pl_flags = parent_pl->pl_flags &
                    (SDPL_NESTED_SCOPE | SDPL_BIND_MULTIPLE);
     pl->location = parent_pl->location;
-    if (newscope == SCOPE_SAME)
-      pl->scope = parent_pl->scope;
     pl->event = parent_pl->event;
     pl->operator = parent_pl->operator;
     pl->parent_on = parent_pl->parent_on;
@@ -1015,18 +1011,18 @@ static bool parse_settings(ParseLevel *restrict pl) {
     uint8_t c = scan_getc(sc);
     switch (c) {
     case 'a':
-      if (scan_num(sc, NULL, &o->sl.sopt.ampmult, false)) {
+      if (scan_num(sc, NULL, &o->sl.sopt.ampmult)) {
         o->sl.sopt.changed |= SGS_SOPT_AMPMULT;
       }
       break;
     case 'f':
-      if (scan_num(sc, scan_note, &o->sl.sopt.def_freq, false)) {
+      if (scan_num(sc, scan_note, &o->sl.sopt.def_freq)) {
         o->sl.sopt.changed |= SGS_SOPT_DEF_FREQ;
       }
       break;
     case 'n': {
       float freq;
-      if (scan_num(sc, NULL, &freq, false)) {
+      if (scan_num(sc, NULL, &freq)) {
         if (freq < 1.f) {
           scan_warning(sc, "ignoring tuning frequency (Hz) below 1.0");
           break;
@@ -1036,13 +1032,13 @@ static bool parse_settings(ParseLevel *restrict pl) {
       }
       break; }
     case 'r':
-      if (scan_num(sc, NULL, &o->sl.sopt.def_ratio, true)) {
+      if (scan_num(sc, NULL, &o->sl.sopt.def_relfreq)) {
         o->sl.sopt.changed |= SGS_SOPT_DEF_RATIO;
       }
       break;
     case 't': {
       float time;
-      if (scan_num(sc, 0, &time, false)) {
+      if (scan_num(sc, 0, &time)) {
         if (time < 0.f) {
           scan_warning(sc, "ignoring 't' with sub-zero time");
           break;
@@ -1091,7 +1087,7 @@ static bool parse_step(ParseLevel *restrict pl) {
     case 'a':
       if (SGS_File_TRYC(f, '!')) {
         if (!SGS_File_TESTC(f, '[')) {
-          scan_num(sc, NULL, &op->dynamp, false);
+          scan_num(sc, NULL, &op->dynamp);
         }
         if (SGS_File_TRYC(f, '[')) {
           if (op->amods.count > 0) {
@@ -1109,7 +1105,7 @@ static bool parse_step(ParseLevel *restrict pl) {
     case 'f':
       if (SGS_File_TRYC(f, '!')) {
         if (!SGS_File_TESTC(f, '[')) {
-          scan_num(sc, NULL, &op->dynfreq, false);
+          scan_num(sc, NULL, &op->dynfreq);
         }
         if (SGS_File_TRYC(f, '[')) {
           if (op->fmods.count > 0) {
@@ -1134,7 +1130,7 @@ static bool parse_step(ParseLevel *restrict pl) {
           parse_level(o, pl, NL_PMODS, SCOPE_NEST);
         } else
           goto UNKNOWN;
-      } else if (scan_num(sc, NULL, &op->phase, false)) {
+      } else if (scan_num(sc, NULL, &op->phase)) {
         op->phase = fmod(op->phase, 1.f);
         if (op->phase < 0.f)
           op->phase += 1.f;
@@ -1146,7 +1142,7 @@ static bool parse_step(ParseLevel *restrict pl) {
         goto UNKNOWN;
       if (SGS_File_TRYC(f, '!')) {
         if (!SGS_File_TESTC(f, '[')) {
-          scan_num(sc, NULL, &op->dynfreq, true);
+          scan_num(sc, NULL, &op->dynfreq);
         }
         if (SGS_File_TRYC(f, '[')) {
           if (op->fmods.count > 0) {
@@ -1163,7 +1159,7 @@ static bool parse_step(ParseLevel *restrict pl) {
       break;
     case 's': {
       float silence;
-      scan_num(sc, 0, &silence, false);
+      scan_num(sc, 0, &silence);
       if (silence < 0.f) {
         scan_warning(sc, "ignoring 's' with sub-zero time");
         break;
@@ -1183,7 +1179,7 @@ static bool parse_step(ParseLevel *restrict pl) {
         op->time_ms = SGS_TIME_INF;
       } else {
         float time;
-        scan_num(sc, 0, &time, false);
+        scan_num(sc, 0, &time);
         if (time < 0.f) {
           scan_warning(sc, "ignoring 't' with sub-zero time");
           break;
@@ -1252,10 +1248,6 @@ static bool parse_level(SGS_Parser *restrict o,
       pl.set_label = SGS_SymTab_pool_str(o->st, label, label_len);
       break;
     case ';':
-      if (newscope == SCOPE_SAME) {
-        scan_stashc(sc, c);
-        goto RETURN;
-      }
       if (pl.location == SDPL_IN_DEFAULTS || !pl.event)
         goto INVALID;
       begin_node(&pl, pl.operator, NL_REFER, true);
@@ -1330,10 +1322,6 @@ static bool parse_level(SGS_Parser *restrict o,
       if (pl.location == SDPL_IN_DEFAULTS ||
           ((pl.pl_flags & SDPL_NESTED_SCOPE) != 0 && pl.event != NULL))
         goto INVALID;
-      if (newscope == SCOPE_SAME) {
-        scan_stashc(sc, c);
-        goto RETURN;
-      }
       if (!pl.event) {
         scan_warning(sc, "end of sequence before any parts given");
         break;
