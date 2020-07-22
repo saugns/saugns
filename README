@@ -107,7 +107,7 @@ Usage: "S", followed by zero or more parameters, each with a value.
 
 Parameters:
 	f	Set default O "f" (frequency, Hz) value; defaults to 444.
-	r	Set default O "r" (frequency ratio) value; defaults to 1.
+	r	Set default O "r" (relative frequency) value; defaults to 1.
 	t	Set default O "t" (time, seconds) value; defaults to 1.
 	a	Set multiplier for O "a" (amplitude) value, applied when
 		adding a top-level carrier. If used, this disables automatic
@@ -181,12 +181,13 @@ Parameters:
 		its amplitude parameter (defaulting to 1.0).
 			The product of the modulator amplitudes is used to
 		frequency-modulate the carrier(s).
-	r	(For modulator operators only.) Frequency ratio of carrier
-		to modulator. Keeps frequency that of the carrier divided by
-		the given number. May be used in the form r(n/m) for an
-		n:m ratio.
+	r	(For modulator operators only.) Relative frequency, a value
+		which will be multiplied by the carrier frequency to give
+		the frequency to use. For an n:m carrier-modulator frequency
+		ratio, a value of the form (m/n) may be used; e.g., for a
+		3:4 frequency ratio, "r(4/3)".
 			Value ramp also supported; see section.
-	r![]	(For modulator operators only.) A second frequency ratio,
+	r![]	(For modulator operators only.) A second relative frequency,
 		for a range to use with FM by wave or envelope.
 			A list of modulator operators may be specified
 		within "[]"; this list replaces any previous FM modulators
@@ -267,7 +268,7 @@ Value ramp:
 	value directly, the following sub-parameters are specified within
 	"{}" (curly brackets):
 	v	Target value.
-	t	Time to reach target value.
+	t	Time to reach target value (default re-use time duration).
 	c	Ramp curve type (default 'lin'):
 			hold	Hold old value until time.
 			lin	Linear trajectory over time.

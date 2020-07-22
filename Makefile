@@ -16,6 +16,7 @@ OBJ=\
 	loader/file.o \
 	loader/symtab.o \
 	loader/parser.o \
+	loader/voicegraph.o \
 	loader/parseconv.o \
 	loader/loader.o \
 	mempool.o \
@@ -30,7 +31,6 @@ OBJ=\
 	sgensys.o
 TEST1_OBJ=\
 	common.o \
-	arrtype.o \
 	ptrlist.o \
 	loader/file.o \
 	loader/symtab.o \
@@ -87,7 +87,7 @@ loader/file.o: loader/file.c loader/file.h common.h
 loader/lexer.o: loader/lexer.c loader/lexer.h loader/file.h loader/symtab.h math.h common.h
 	$(CC) -c $(CFLAGS) loader/lexer.c -o loader/lexer.o
 
-loader/parseconv.o: loader/parseconv.c program.h ramp.h wave.h math.h script.h ptrlist.h arrtype.h common.h
+loader/parseconv.o: loader/parseconv.c loader/parseconv.h program.h ramp.h wave.h math.h script.h ptrlist.h arrtype.h common.h
 	$(CC) -c $(CFLAGS) loader/parseconv.c -o loader/parseconv.o
 
 loader/parser.o: loader/parser.c loader/file.h loader/symtab.h script.h ptrlist.h program.h ramp.h wave.h math.h common.h
@@ -99,7 +99,10 @@ loader/scanner.o: loader/scanner.c loader/scanner.h loader/file.h loader/symtab.
 loader/symtab.o: loader/symtab.c loader/symtab.h mempool.h common.h
 	$(CC) -c $(CFLAGS) loader/symtab.c -o loader/symtab.o
 
-mempool.o: mempool.c mempool.h arrtype.h common.h
+loader/voicegraph.o: loader/voicegraph.c loader/parseconv.h program.h ramp.h wave.h math.h script.h ptrlist.h arrtype.h common.h
+	$(CC) -c $(CFLAGS) loader/voicegraph.c -o loader/voicegraph.o
+
+mempool.o: mempool.c mempool.h common.h
 	$(CC) -c $(CFLAGS) mempool.c
 
 player/audiodev.o: common.h player/audiodev.c player/audiodev.h player/audiodev/*.c

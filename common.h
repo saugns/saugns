@@ -67,6 +67,9 @@ void *SGS_memdup(const void *restrict src, size_t size) sgsMalloclike;
  * Debugging options.
  */
 
+/* Debug-friendly memory handling? (Slower.) */
+//#define SGS_MEM_DEBUG 1
+
 /* Print hash collision info for symtab. */
 #define SGS_HASHTAB_STATS 0
 /* Make test lexer quiet enough to time it. */
