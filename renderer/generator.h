@@ -18,7 +18,7 @@ struct SGS_Generator;
 typedef struct SGS_Generator SGS_Generator;
 
 SGS_Generator* SGS_create_Generator(const SGS_Program *restrict prg,
-		uint32_t srate) SGS__malloclike;
+		uint32_t srate) sgsMalloclike;
 void SGS_destroy_Generator(SGS_Generator *restrict o);
 
 bool SGS_Generator_run(SGS_Generator *restrict o,
