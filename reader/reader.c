@@ -1,5 +1,5 @@
-/* sgensys: Audio program builder module.
- * Copyright (c) 2011-2013, 2017-2019 Joel K. Pettersson
+/* sgensys: Audio script reader / program builder module.
+ * Copyright (c) 2011-2013, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -11,12 +11,9 @@
  * <https://www.gnu.org/licenses/>.
  */
 
-#include "sgensys.h"
-#include "script.h"
-#include "builder/file.h"
-#include <string.h>
-#include <stdlib.h>
-#include <stdio.h>
+#include "../sgensys.h"
+#include "../script.h"
+#include "file.h"
 
 /*
  * Open file for script arg.
@@ -50,7 +47,7 @@ static SGS_Program *build_program(const char *restrict script_arg,
 	if (!f) return NULL;
 
 	SGS_Program *o = NULL;
-	SGS_Script *sd = SGS_load_Script(f);
+	SGS_Script *sd = SGS_read_Script(f);
 	if (!sd) goto CLOSE;
 	o = SGS_build_Program(sd);
 	SGS_discard_Script(sd);
@@ -60,12 +57,12 @@ CLOSE:
 }
 
 /**
- * Build the listed scripts, adding each result (even if NULL)
- * to the program list.
+ * Load the listed scripts and build inner programs for them,
+ * adding each result (even if NULL) to the program list.
  *
- * \return number of programs successfully built
+ * \return number of items successfully processed
  */
-size_t SGS_build(const SGS_PtrList *restrict script_args, bool are_paths,
+size_t SGS_read(const SGS_PtrList *restrict script_args, bool are_paths,
 		SGS_PtrList *restrict prg_objs) {
 	size_t built = 0;
 	const char **args = (const char**) SGS_PtrList_ITEMS(script_args);

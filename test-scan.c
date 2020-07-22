@@ -1,5 +1,5 @@
-/* sgensys: Test program for experimental builder code.
- * Copyright (c) 2017-2020 Joel K. Pettersson
+/* sgensys: Test program for experimental reader code.
+ * Copyright (c) 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -13,11 +13,11 @@
 
 #include "sgensys.h"
 #if SGS_TEST_SCANNER
-# include "builder/scanner.h"
+# include "reader/scanner.h"
 #else
-# include "builder/lexer.h"
+# include "reader/lexer.h"
 #endif
-#include "builder/file.h"
+#include "reader/file.h"
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,7 +27,7 @@
  */
 static void print_usage(bool by_arg) {
 	fputs(
-"Usage: test-builder [-c] [-p] [-e] <script>...\n"
+"Usage: test-scan [-c] [-p] [-e] <script>...\n"
 "\n"
 "  -e \tEvaluate strings instead of files.\n"
 "  -c \tCheck scripts only, reporting any errors or requested info.\n"
@@ -120,7 +120,7 @@ CLEAR:
 static void discard_programs(SGS_PtrList *restrict prg_objs) {
 	SGS_Program **prgs = (SGS_Program**) SGS_PtrList_ITEMS(prg_objs);
 	for (size_t i = 0; i < prg_objs->count; ++i) {
-		SGS_discard_Program(prgs[i]);
+		free(prgs[i]); // for placeholder
 	}
 	SGS_PtrList_clear(prg_objs);
 }
@@ -167,12 +167,12 @@ CLOSE:
 }
 
 /**
- * Build the listed scripts, adding each result (even if NULL)
- * to the program list.
+ * Load the listed scripts and build inner programs for them,
+ * adding each result (even if NULL) to the program list.
  *
- * \return number of programs successfully built
+ * \return number of items successfully processed
  */
-size_t SGS_build(const SGS_PtrList *restrict script_args, bool are_paths,
+size_t SGS_read(const SGS_PtrList *restrict script_args, bool are_paths,
 		SGS_PtrList *restrict prg_objs) {
 	size_t built = 0;
 	const char **args = (const char**) SGS_PtrList_ITEMS(script_args);
@@ -189,20 +189,20 @@ size_t SGS_build(const SGS_PtrList *restrict script_args, bool are_paths,
  *
  * \return true if at least one script succesfully built
  */
-static bool build(const SGS_PtrList *restrict script_args,
+static bool load(const SGS_PtrList *restrict script_args,
 		SGS_PtrList *restrict prg_objs,
 		uint32_t options) {
 	bool are_paths = !(options & ARG_EVAL_STRING);
-	if (!SGS_build(script_args, are_paths, prg_objs))
+	if (!SGS_read(script_args, are_paths, prg_objs))
 		return false;
-	if ((options & ARG_PRINT_INFO) != 0) {
-		const SGS_Program **prgs =
-			(const SGS_Program**) SGS_PtrList_ITEMS(prg_objs);
-		for (size_t i = 0; i < prg_objs->count; ++i) {
-			const SGS_Program *prg = prgs[i];
-			if (prg != NULL) SGS_Program_print_info(prg);
-		}
-	}
+//	if ((options & ARG_PRINT_INFO) != 0) {
+//		const SGS_Program **prgs =
+//			(const SGS_Program**) SGS_PtrList_ITEMS(prg_objs);
+//		for (size_t i = 0; i < prg_objs->count; ++i) {
+//			const SGS_Program *prg = prgs[i];
+//			if (prg != NULL) SGS_Program_print_info(prg);
+//		}
+//	}
 	if ((options & ARG_ONLY_COMPILE) != 0) {
 		discard_programs(prg_objs);
 	}
@@ -218,7 +218,7 @@ int main(int argc, char **restrict argv) {
 	uint32_t options = 0;
 	if (!parse_args(argc, argv, &options, &script_args))
 		return 0;
-	bool error = !build(&script_args, &prg_objs, options);
+	bool error = !load(&script_args, &prg_objs, options);
 	SGS_PtrList_clear(&script_args);
 	if (error)
 		return 1;

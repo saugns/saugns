@@ -16,8 +16,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define DEFAULT_SRATE 44100
-
 /*
  * Print command line usage instructions.
  */
@@ -30,7 +28,7 @@ static void print_usage(bool by_arg) {
 "\n"
 "  -a \tAudible; always enable audio device output.\n"
 "  -m \tMuted; always disable audio device output.\n"
-"  -r \tSample rate in Hz (default 44100);\n"
+"  -r \tSample rate in Hz (default "SGS_STREXP(SGS_DEFAULT_SRATE)");\n"
 "     \tif unsupported for audio device, warns and prints rate used instead.\n"
 "  -o \tWrite a 16-bit PCM WAV file, always using the sample rate requested;\n"
 "     \tdisables audio device output by default.\n"
@@ -190,11 +188,11 @@ static void discard_programs(SGS_PtrList *restrict prg_objs) {
  *
  * \return true if at least one script succesfully built
  */
-static bool build(const SGS_PtrList *restrict script_args,
+static bool load(const SGS_PtrList *restrict script_args,
 		SGS_PtrList *restrict prg_objs,
 		uint32_t options) {
 	bool are_paths = !(options & ARG_EVAL_STRING);
-	if (!SGS_build(script_args, are_paths, prg_objs))
+	if (!SGS_read(script_args, are_paths, prg_objs))
 		return false;
 	if ((options & ARG_PRINT_INFO) != 0) {
 		const SGS_Program **prgs =
@@ -215,13 +213,13 @@ static bool build(const SGS_PtrList *restrict script_args,
  *
  * \return true unless error occurred
  */
-static bool render(const SGS_PtrList *restrict prg_objs,
+static bool play(const SGS_PtrList *restrict prg_objs,
 		uint32_t srate, uint32_t options,
 		const char *restrict wav_path) {
 	bool use_audiodev = (wav_path != NULL) ?
 		((options & ARG_ENABLE_AUDIO_DEV) != 0) :
 		((options & ARG_DISABLE_AUDIO_DEV) == 0);
-	return SGS_render(prg_objs, srate, use_audiodev, wav_path);
+	return SGS_play(prg_objs, srate, use_audiodev, wav_path);
 }
 
 /**
@@ -232,16 +230,16 @@ int main(int argc, char **restrict argv) {
 	SGS_PtrList prg_objs = (SGS_PtrList){0};
 	const char *wav_path = NULL;
 	uint32_t options = 0;
-	uint32_t srate = DEFAULT_SRATE;
+	uint32_t srate = SGS_DEFAULT_SRATE;
 	if (!parse_args(argc, argv, &options, &script_args, &wav_path,
 			&srate))
 		return 0;
-	bool error = !build(&script_args, &prg_objs, options);
+	bool error = !load(&script_args, &prg_objs, options);
 	SGS_PtrList_clear(&script_args);
 	if (error)
 		return 1;
 	if (prg_objs.count > 0) {
-		error = !render(&prg_objs, srate, options, wav_path);
+		error = !play(&prg_objs, srate, options, wav_path);
 		discard_programs(&prg_objs);
 		if (error)
 			return 1;
