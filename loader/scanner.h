@@ -115,7 +115,7 @@ struct SGS_Scanner {
 	void *data; // for use by user
 };
 
-SGS_Scanner *SGS_create_Scanner(SGS_SymTab *restrict symtab) SGS__malloclike;
+SGS_Scanner *SGS_create_Scanner(SGS_SymTab *restrict symtab) sgsMalloclike;
 void SGS_destroy_Scanner(SGS_Scanner *restrict o);
 
 bool SGS_Scanner_open(SGS_Scanner *restrict o,
@@ -146,6 +146,6 @@ bool SGS_Scanner_getsymstr(SGS_Scanner *restrict o,
 		const void **restrict strp, size_t *restrict lenp);
 
 void SGS_Scanner_warning(SGS_Scanner *restrict o,
-		const char *restrict fmt, ...) SGS__printflike(2, 3);
+		const char *restrict fmt, ...) sgsPrintflike(2, 3);
 void SGS_Scanner_error(SGS_Scanner *restrict o,
-		const char *restrict fmt, ...) SGS__printflike(2, 3);
+		const char *restrict fmt, ...) sgsPrintflike(2, 3);
