@@ -16,6 +16,7 @@ OBJ=\
 	builder/file.o \
 	builder/symtab.o \
 	builder/parser.o \
+	builder/voicegraph.o \
 	builder/parseconv.o \
 	builder.o \
 	mempool.o \
@@ -36,6 +37,7 @@ TEST_OBJ=\
 	builder/symtab.o \
 	builder/scanner.o \
 	builder/lexer.o \
+	builder/voicegraph.o \
 	builder/parseconv.o \
 	mempool.o \
 	test-builder.o
@@ -88,7 +90,7 @@ builder/file.o: builder/file.c builder/file.h common.h
 builder/lexer.o: builder/lexer.c builder/lexer.h builder/file.h builder/symtab.h math.h common.h
 	$(CC) -c $(CFLAGS) builder/lexer.c -o builder/lexer.o
 
-builder/parseconv.o: builder/parseconv.c program.h ramp.h wave.h math.h script.h ptrlist.h arrtype.h common.h
+builder/parseconv.o: builder/parseconv.c builder/parseconv.h program.h ramp.h wave.h math.h script.h ptrlist.h arrtype.h common.h
 	$(CC) -c $(CFLAGS) builder/parseconv.c -o builder/parseconv.o
 
 builder/parser.o: builder/parser.c builder/file.h builder/symtab.h script.h ptrlist.h program.h ramp.h wave.h math.h common.h
@@ -100,7 +102,10 @@ builder/scanner.o: builder/scanner.c builder/scanner.h builder/file.h builder/sy
 builder/symtab.o: builder/symtab.c builder/symtab.h mempool.h common.h
 	$(CC) -c $(CFLAGS) builder/symtab.c -o builder/symtab.o
 
-mempool.o: mempool.c mempool.h arrtype.h common.h
+builder/voicegraph.o: builder/voicegraph.c builder/parseconv.h program.h ramp.h wave.h math.h script.h ptrlist.h arrtype.h common.h
+	$(CC) -c $(CFLAGS) builder/voicegraph.c -o builder/voicegraph.o
+
+mempool.o: mempool.c mempool.h common.h
 	$(CC) -c $(CFLAGS) mempool.c
 
 player/audiodev.o: common.h player/audiodev.c player/audiodev.h player/audiodev/*.c
