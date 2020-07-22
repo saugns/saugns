@@ -1,4 +1,4 @@
-/* sgensys: Math definitions.
+/* sgensys: WAV file writer module.
  * Copyright (c) 2011-2012, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -16,15 +16,14 @@
  */
 
 #pragma once
-#include "common.h"
-#include <math.h>
+#include "../common.h"
 
-#define SGS_PI       3.14159265358979323846
-#define SGS_ASIN_1_2 0.52359877559829887308 // asin(0.5)
-#define SGS_SQRT_1_2 0.70710678118654752440 // sqrt(0.5), 1/sqrt(2)
+struct SGS_WAVFile;
+typedef struct SGS_WAVFile SGS_WAVFile;
 
-/**
- * Convert time in ms to time in samples for a sample rate.
- */
-#define SGS_MS_IN_SAMPLES(ms, srate) \
-	lrintf(((ms) * .001f) * (srate))
+SGS_WAVFile *SGS_create_WAVFile(const char *restrict fpath,
+		uint16_t channels, uint32_t srate) sgsMalloclike;
+int SGS_close_WAVFile(SGS_WAVFile *restrict o);
+
+bool SGS_WAVFile_write(SGS_WAVFile *restrict o,
+		const int16_t *restrict buf, uint32_t samples);
