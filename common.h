@@ -26,16 +26,16 @@
  */
 
 #if defined(__GNUC__) || defined(__clang__)
-# define SGS__malloclike __attribute__((malloc))
-# define SGS__maybe_unused __attribute__((unused))
-# define SGS__noinline __attribute__((noinline))
-# define SGS__printflike(string_index, first_to_check) \
+# define sgsMalloclike __attribute__((malloc))
+# define sgsMaybeUnused __attribute__((unused))
+# define sgsNoinline __attribute__((noinline))
+# define sgsPrintflike(string_index, first_to_check) \
 	__attribute__((format(printf, string_index, first_to_check)))
 #else
-# define SGS__malloclike
-# define SGS__maybe_unused
-# define SGS__noinline
-# define SGS__printflike(string_index, first_to_check)
+# define sgsMalloclike
+# define sgsMaybeUnused
+# define sgsNoinline
+# define sgsPrintflike(string_index, first_to_check)
 #endif
 
 /*
@@ -43,11 +43,11 @@
  */
 
 void SGS_warning(const char *restrict label, const char *restrict fmt, ...)
-	SGS__printflike(2, 3);
+	sgsPrintflike(2, 3);
 void SGS_error(const char *restrict label, const char *restrict fmt, ...)
-	SGS__printflike(2, 3);
+	sgsPrintflike(2, 3);
 
-void *SGS_memdup(const void *restrict src, size_t size) SGS__malloclike;
+void *SGS_memdup(const void *restrict src, size_t size) sgsMalloclike;
 
 /*
  * Debugging options.
