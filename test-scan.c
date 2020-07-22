@@ -27,7 +27,7 @@
  */
 static void print_usage(bool by_arg) {
 	fputs(
-"Usage: test-builder [-c] [-p] [-e] <script>...\n"
+"Usage: test-scan [-c] [-p] [-e] <script>...\n"
 "\n"
 "  -e \tEvaluate strings instead of files.\n"
 "  -c \tCheck scripts only, reporting any errors or requested info.\n"
@@ -120,7 +120,7 @@ CLEAR:
 static void discard_programs(SGS_PtrList *restrict prg_objs) {
 	SGS_Program **prgs = (SGS_Program**) SGS_PtrList_ITEMS(prg_objs);
 	for (size_t i = 0; i < prg_objs->count; ++i) {
-		SGS_discard_Program(prgs[i]);
+		free(prgs[i]); // for placeholder
 	}
 	SGS_PtrList_clear(prg_objs);
 }
@@ -195,14 +195,14 @@ static bool build(const SGS_PtrList *restrict script_args,
 	bool are_paths = !(options & ARG_EVAL_STRING);
 	if (!SGS_build(script_args, are_paths, prg_objs))
 		return false;
-	if ((options & ARG_PRINT_INFO) != 0) {
-		const SGS_Program **prgs =
-			(const SGS_Program**) SGS_PtrList_ITEMS(prg_objs);
-		for (size_t i = 0; i < prg_objs->count; ++i) {
-			const SGS_Program *prg = prgs[i];
-			if (prg != NULL) SGS_Program_print_info(prg);
-		}
-	}
+//	if ((options & ARG_PRINT_INFO) != 0) {
+//		const SGS_Program **prgs =
+//			(const SGS_Program**) SGS_PtrList_ITEMS(prg_objs);
+//		for (size_t i = 0; i < prg_objs->count; ++i) {
+//			const SGS_Program *prg = prgs[i];
+//			if (prg != NULL) SGS_Program_print_info(prg);
+//		}
+//	}
 	if ((options & ARG_ONLY_COMPILE) != 0) {
 		discard_programs(prg_objs);
 	}

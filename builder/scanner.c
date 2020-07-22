@@ -144,7 +144,7 @@ void SGS_Scanner_error(SGS_Scanner *restrict o,
 /* Valid characters in identifiers. */
 #define IS_SYMCHAR(c) (IS_ALNUM(c) || (c) == '_')
 
-static uint8_t filter_symchar(SGS_File *restrict o SGS__maybe_unused,
+static uint8_t filter_symchar(SGS_File *restrict o sgsMaybeUnused,
 		uint8_t c) {
 	return IS_SYMCHAR(c) ? c : 0;
 }
@@ -208,7 +208,7 @@ uint8_t SGS_Scanner_filter_invalid(SGS_Scanner *restrict o, uint8_t c) {
  * \return SGS_SCAN_SPACE
  */
 uint8_t SGS_Scanner_filter_space(SGS_Scanner *restrict o,
-		uint8_t c SGS__maybe_unused) {
+		uint8_t c sgsMaybeUnused) {
 	SGS_File *f = o->f;
 	o->cf.char_num += SGS_File_skipspace(f);
 	return SGS_SCAN_SPACE;
@@ -238,7 +238,7 @@ uint8_t SGS_Scanner_filter_linebreaks(SGS_Scanner *restrict o, uint8_t c) {
  * \return SGS_SCAN_SPACE
  */
 uint8_t SGS_Scanner_filter_linecomment(SGS_Scanner *restrict o,
-		uint8_t c SGS__maybe_unused) {
+		uint8_t c sgsMaybeUnused) {
 	SGS_File *f = o->f;
 	o->cf.char_num += SGS_File_skipline(f);
 	return SGS_SCAN_SPACE;

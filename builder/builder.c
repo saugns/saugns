@@ -11,12 +11,9 @@
  * <https://www.gnu.org/licenses/>.
  */
 
-#include "sgensys.h"
-#include "script.h"
-#include "builder/file.h"
-#include <string.h>
-#include <stdlib.h>
-#include <stdio.h>
+#include "../sgensys.h"
+#include "../script.h"
+#include "file.h"
 
 /*
  * Open file for script arg.
