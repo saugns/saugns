@@ -23,6 +23,7 @@ OBJ=\
 	wave.o \
 	renderer.o \
 	renderer/osc.o \
+	renderer/mixer.o \
 	renderer/generator.o \
 	audiodev.o \
 	wavfile.o \
@@ -102,7 +103,7 @@ builder/scanner.o: builder/scanner.c builder/scanner.h builder/file.h builder/sy
 builder/symtab.o: builder/symtab.c builder/symtab.h mempool.h common.h
 	$(CC) -c $(CFLAGS) builder/symtab.c -o builder/symtab.o
 
-mempool.o: mempool.c mempool.h arrtype.h common.h
+mempool.o: mempool.c mempool.h common.h
 	$(CC) -c $(CFLAGS) mempool.c
 
 ptrlist.o: ptrlist.c ptrlist.h common.h
@@ -114,8 +115,11 @@ ramp.o: ramp.c ramp.h math.h common.h
 renderer.o: renderer.c sgensys.h renderer/generator.h ptrlist.h program.h ramp.h wave.h math.h audiodev.h wavfile.h common.h
 	$(CC) -c $(CFLAGS_FAST) renderer.c
 
-renderer/generator.o: renderer/generator.c renderer/generator.h renderer/osc.h program.h ramp.h wave.h math.h common.h
+renderer/generator.o: renderer/generator.c renderer/generator.h renderer/mixer.h renderer/osc.h program.h ramp.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS_FAST) renderer/generator.c -o renderer/generator.o
+
+renderer/mixer.o: renderer/mixer.c renderer/mixer.h ramp.h math.h common.h
+	$(CC) -c $(CFLAGS_FAST) renderer/mixer.c -o renderer/mixer.o
 
 renderer/osc.o: renderer/osc.c renderer/osc.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS_FAST) renderer/osc.c -o renderer/osc.o
