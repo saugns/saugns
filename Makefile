@@ -13,36 +13,34 @@ OBJ=\
 	common.o \
 	arrtype.o \
 	ptrlist.o \
-	builder/file.o \
-	builder/symtab.o \
-	builder/parser.o \
-	builder/parseconv.o \
-	builder.o \
+	loader/file.o \
+	loader/symtab.o \
+	loader/parser.o \
+	loader/parseconv.o \
+	loader/loader.o \
 	mempool.o \
 	ramp.o \
 	wave.o \
-	renderer.o \
 	renderer/generator.o \
-	audiodev.o \
-	wavfile.o \
+	player/audiodev.o \
+	player/wavfile.o \
+	player/player.o \
 	sgensys.o
-TEST_OBJ=\
+TEST1_OBJ=\
 	common.o \
-	arrtype.o \
 	ptrlist.o \
-	builder/file.o \
-	builder/symtab.o \
-	builder/scanner.o \
-	builder/lexer.o \
-	builder/parseconv.o \
+	loader/file.o \
+	loader/symtab.o \
+	loader/scanner.o \
+	loader/lexer.o \
 	mempool.o \
-	test-builder.o
+	test-scan.o
 
 all: $(BIN)
-test: test-builder
+tests: test-scan
 clean:
 	rm -f $(OBJ) $(BIN)
-	rm -f $(TEST_OBJ) test-builder
+	rm -f $(TEST1_OBJ) test-scan
 install: $(BIN)
 	mkdir -p $(DESTDIR)$(PREFIX)/bin
 	mkdir -p $(DESTDIR)$(PREFIX)/share/$(SHARE)
@@ -68,41 +66,47 @@ $(BIN): $(OBJ)
 		$(CC) $(OBJ) $(LFLAGS) -o $(BIN); \
 	fi
 
-test-builder: $(TEST_OBJ)
-	$(CC) $(TEST_OBJ) $(LFLAGS) -o test-builder
+test-scan: $(TEST1_OBJ)
+	$(CC) $(TEST1_OBJ) $(LFLAGS) -o test-scan
 
 arrtype.o: arrtype.c arrtype.h common.h
 	$(CC) -c $(CFLAGS) arrtype.c
 
-audiodev.o: audiodev.c audiodev/*.c audiodev.h common.h
-	$(CC) -c $(CFLAGS) audiodev.c
-
 common.o: common.c common.h
 	$(CC) -c $(CFLAGS) common.c
 
-builder.o: builder.c sgensys.h script.h ptrlist.h program.h ramp.h wave.h math.h builder/file.h common.h
-	$(CC) -c $(CFLAGS) builder.c
+loader/loader.o: loader/loader.c sgensys.h script.h ptrlist.h program.h ramp.h wave.h math.h loader/file.h common.h
+	$(CC) -c $(CFLAGS) loader/loader.c -o loader/loader.o
 
-builder/file.o: builder/file.c builder/file.h common.h
-	$(CC) -c $(CFLAGS) builder/file.c -o builder/file.o
+loader/file.o: loader/file.c loader/file.h common.h
+	$(CC) -c $(CFLAGS) loader/file.c -o loader/file.o
 
-builder/lexer.o: builder/lexer.c builder/lexer.h builder/file.h builder/symtab.h math.h common.h
-	$(CC) -c $(CFLAGS) builder/lexer.c -o builder/lexer.o
+loader/lexer.o: loader/lexer.c loader/lexer.h loader/file.h loader/symtab.h math.h common.h
+	$(CC) -c $(CFLAGS) loader/lexer.c -o loader/lexer.o
 
-builder/parseconv.o: builder/parseconv.c program.h ramp.h wave.h math.h script.h ptrlist.h arrtype.h common.h
-	$(CC) -c $(CFLAGS) builder/parseconv.c -o builder/parseconv.o
+loader/parseconv.o: loader/parseconv.c program.h ramp.h wave.h math.h script.h ptrlist.h arrtype.h common.h
+	$(CC) -c $(CFLAGS) loader/parseconv.c -o loader/parseconv.o
 
-builder/parser.o: builder/parser.c builder/file.h builder/symtab.h script.h ptrlist.h program.h ramp.h wave.h math.h common.h
-	$(CC) -c $(CFLAGS) builder/parser.c -o builder/parser.o
+loader/parser.o: loader/parser.c loader/file.h loader/symtab.h script.h ptrlist.h program.h ramp.h wave.h math.h common.h
+	$(CC) -c $(CFLAGS) loader/parser.c -o loader/parser.o
 
-builder/scanner.o: builder/scanner.c builder/scanner.h builder/file.h builder/symtab.h math.h common.h
-	$(CC) -c $(CFLAGS) builder/scanner.c -o builder/scanner.o
+loader/scanner.o: loader/scanner.c loader/scanner.h loader/file.h loader/symtab.h math.h common.h
+	$(CC) -c $(CFLAGS) loader/scanner.c -o loader/scanner.o
 
-builder/symtab.o: builder/symtab.c builder/symtab.h mempool.h common.h
-	$(CC) -c $(CFLAGS) builder/symtab.c -o builder/symtab.o
+loader/symtab.o: loader/symtab.c loader/symtab.h mempool.h common.h
+	$(CC) -c $(CFLAGS) loader/symtab.c -o loader/symtab.o
 
 mempool.o: mempool.c mempool.h common.h
 	$(CC) -c $(CFLAGS) mempool.c
+
+player/audiodev.o: common.h player/audiodev.c player/audiodev.h player/audiodev/*.c
+	$(CC) -c $(CFLAGS) player/audiodev.c -o player/audiodev.o
+
+player/player.o: common.h player/audiodev.h player/player.c player/wavfile.h renderer/generator.h math.h program.h ptrlist.h ramp.h sgensys.h wave.h
+	$(CC) -c $(CFLAGS_FAST) player/player.c -o player/player.o
+
+player/wavfile.o: common.h player/wavfile.c player/wavfile.h
+	$(CC) -c $(CFLAGS) player/wavfile.c -o player/wavfile.o
 
 ptrlist.o: ptrlist.c ptrlist.h common.h
 	$(CC) -c $(CFLAGS) ptrlist.c
@@ -110,20 +114,14 @@ ptrlist.o: ptrlist.c ptrlist.h common.h
 ramp.o: ramp.c ramp.h math.h common.h
 	$(CC) -c $(CFLAGS_FAST) ramp.c
 
-renderer.o: renderer.c sgensys.h renderer/generator.h ptrlist.h program.h ramp.h wave.h math.h audiodev.h wavfile.h common.h
-	$(CC) -c $(CFLAGS_FAST) renderer.c
-
 renderer/generator.o: renderer/generator.c renderer/generator.h renderer/osc.h program.h ramp.h wave.h math.h mempool.h common.h
 	$(CC) -c $(CFLAGS_FAST) renderer/generator.c -o renderer/generator.o
 
 sgensys.o: sgensys.c sgensys.h ptrlist.h program.h ramp.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) sgensys.c
 
-test-builder.o: test-builder.c sgensys.h builder/lexer.h builder/scanner.h builder/file.h builder/symtab.h ptrlist.h program.h ramp.h wave.h math.h common.h
-	$(CC) -c $(CFLAGS) test-builder.c
+test-scan.o: test-scan.c sgensys.h loader/lexer.h loader/scanner.h loader/file.h loader/symtab.h ptrlist.h program.h ramp.h wave.h math.h common.h
+	$(CC) -c $(CFLAGS) test-scan.c
 
 wave.o: wave.c wave.h math.h common.h
 	$(CC) -c $(CFLAGS_FAST) wave.c
-
-wavfile.o: wavfile.c wavfile.h common.h
-	$(CC) -c $(CFLAGS) wavfile.c

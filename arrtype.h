@@ -43,19 +43,19 @@ typedef struct Name { \
  * to prefix their names.
  */
 #define SGS_DEF_ArrType_METHODS(Name, ElementType, MethodPrefix) \
-static inline bool SGS__maybe_unused \
+static inline bool sgsMaybeUnused \
 MethodPrefix##Name##_add(Name *restrict o, const ElementType *restrict item) { \
 	return SGS_ArrType_add(o, item, sizeof(ElementType)); \
 } \
-static inline bool SGS__maybe_unused \
+static inline bool sgsMaybeUnused \
 MethodPrefix##Name##_upsize(Name *restrict o, size_t count) { \
 	return SGS_ArrType_upsize(o, count, sizeof(ElementType)); \
 } \
-static inline void SGS__maybe_unused \
+static inline void sgsMaybeUnused \
 MethodPrefix##Name##_clear(Name *restrict o) { \
 	SGS_ArrType_clear(o); \
 } \
-static inline bool SGS__maybe_unused \
+static inline bool sgsMaybeUnused \
 MethodPrefix##Name##_memdup(Name *restrict o, \
 		const ElementType **restrict dst) { \
 	return SGS_ArrType_memdup(o, (const void**) dst, sizeof(ElementType)); \
