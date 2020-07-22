@@ -21,10 +21,10 @@ OBJ=\
 	mempool.o \
 	ramp.o \
 	wave.o \
-	renderer.o \
 	renderer/generator.o \
-	audiodev.o \
-	wavfile.o \
+	player/audiodev.o \
+	player/wavfile.o \
+	player/player.o \
 	sgensys.o
 TEST_OBJ=\
 	common.o \
@@ -74,9 +74,6 @@ test-builder: $(TEST_OBJ)
 arrtype.o: arrtype.c arrtype.h common.h
 	$(CC) -c $(CFLAGS) arrtype.c
 
-audiodev.o: audiodev.c audiodev/*.c audiodev.h common.h
-	$(CC) -c $(CFLAGS) audiodev.c
-
 common.o: common.c common.h
 	$(CC) -c $(CFLAGS) common.c
 
@@ -104,14 +101,20 @@ builder/symtab.o: builder/symtab.c builder/symtab.h mempool.h common.h
 mempool.o: mempool.c mempool.h common.h
 	$(CC) -c $(CFLAGS) mempool.c
 
+player/audiodev.o: common.h player/audiodev.c player/audiodev.h player/audiodev/*.c
+	$(CC) -c $(CFLAGS) player/audiodev.c -o player/audiodev.o
+
+player/wavfile.o: common.h player/wavfile.c player/wavfile.h
+	$(CC) -c $(CFLAGS) player/wavfile.c -o player/wavfile.o
+
 ptrlist.o: ptrlist.c ptrlist.h common.h
 	$(CC) -c $(CFLAGS) ptrlist.c
 
 ramp.o: ramp.c ramp.h math.h common.h
 	$(CC) -c $(CFLAGS_FAST) ramp.c
 
-renderer.o: renderer.c sgensys.h renderer/generator.h ptrlist.h program.h ramp.h wave.h math.h audiodev.h wavfile.h common.h
-	$(CC) -c $(CFLAGS_FAST) renderer.c
+player/player.o: common.h player/audiodev.h player/player.c player/wavfile.h renderer/generator.h math.h program.h ptrlist.h ramp.h sgensys.h wave.h
+	$(CC) -c $(CFLAGS_FAST) player/player.c -o player/player.o
 
 renderer/generator.o: renderer/generator.c renderer/generator.h renderer/osc.h program.h ramp.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS_FAST) renderer/generator.c -o renderer/generator.o
@@ -124,6 +127,3 @@ test-builder.o: test-builder.c sgensys.h builder/lexer.h builder/scanner.h build
 
 wave.o: wave.c wave.h math.h common.h
 	$(CC) -c $(CFLAGS_FAST) wave.c
-
-wavfile.o: wavfile.c wavfile.h common.h
-	$(CC) -c $(CFLAGS) wavfile.c

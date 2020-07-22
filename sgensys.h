@@ -20,5 +20,5 @@
 size_t SGS_build(const SGS_PtrList *restrict script_args, bool are_paths,
 		SGS_PtrList *restrict prg_objs);
 
-bool SGS_render(const SGS_PtrList *restrict prg_objs, uint32_t srate,
+bool SGS_play(const SGS_PtrList *restrict prg_objs, uint32_t srate,
 		bool use_audiodev, const char *restrict wav_path);

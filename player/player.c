@@ -1,4 +1,4 @@
-/* sgensys: Audio program renderer module.
+/* sgensys: Audio program player module.
  * Copyright (c) 2011-2013, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -11,35 +11,35 @@
  * <https://www.gnu.org/licenses/>.
  */
 
-#include "sgensys.h"
-#include "renderer/generator.h"
+#include "../sgensys.h"
+#include "../renderer/generator.h"
 #include "audiodev.h"
 #include "wavfile.h"
-#include "math.h"
+#include "../math.h"
 #include <stdlib.h>
 
 #define BUF_TIME_MS  256
 #define NUM_CHANNELS 2
 
-typedef struct SGS_Renderer {
+typedef struct SGS_Player {
 	SGS_AudioDev *ad;
 	SGS_WAVFile *wf;
 	uint32_t ad_srate;
 	int16_t *buf;
 	size_t buf_len;
 	size_t ch_len;
-} SGS_Renderer;
+} SGS_Player;
 
 /*
  * Set up use of audio device and/or WAV file, and buffer of suitable size.
  *
  * \return true unless error occurred
  */
-static bool SGS_init_Renderer(SGS_Renderer *restrict o, uint32_t srate,
+static bool SGS_init_Player(SGS_Player *restrict o, uint32_t srate,
 		bool use_audiodev, const char *restrict wav_path) {
 	uint32_t ad_srate = srate;
 	uint32_t max_srate = srate;
-	*o = (SGS_Renderer){0};
+	*o = (SGS_Player){0};
 	if (use_audiodev) {
 		o->ad = SGS_open_AudioDev(NUM_CHANNELS, &ad_srate);
 		if (!o->ad)
@@ -67,7 +67,7 @@ static bool SGS_init_Renderer(SGS_Renderer *restrict o, uint32_t srate,
 /*
  * \return true unless error occurred
  */
-static bool SGS_fini_Renderer(SGS_Renderer *restrict o) {
+static bool SGS_fini_Player(SGS_Player *restrict o) {
 	free(o->buf);
 	if (o->ad != NULL) SGS_close_AudioDev(o->ad);
 	if (o->wf != NULL)
@@ -81,7 +81,7 @@ static bool SGS_fini_Renderer(SGS_Renderer *restrict o) {
  *
  * \return true unless error occurred
  */
-static bool SGS_Renderer_run(SGS_Renderer *restrict o,
+static bool SGS_Player_run(SGS_Player *restrict o,
 		const SGS_Program *restrict prg, uint32_t srate,
 		bool use_audiodev, bool use_wavfile) {
 	SGS_Generator *gen = SGS_create_Generator(prg, srate);
@@ -116,14 +116,14 @@ static bool SGS_Renderer_run(SGS_Renderer *restrict o,
  *
  * \return true unless error occurred
  */
-bool SGS_render(const SGS_PtrList *restrict prg_objs, uint32_t srate,
+bool SGS_play(const SGS_PtrList *restrict prg_objs, uint32_t srate,
 		bool use_audiodev, const char *restrict wav_path) {
 	if (!prg_objs->count)
 		return true;
 
-	SGS_Renderer re;
+	SGS_Player re;
 	bool status = true;
-	if (!SGS_init_Renderer(&re, srate, use_audiodev, wav_path)) {
+	if (!SGS_init_Player(&re, srate, use_audiodev, wav_path)) {
 		status = false;
 		goto CLEANUP;
 	}
@@ -135,10 +135,10 @@ bool SGS_render(const SGS_PtrList *restrict prg_objs, uint32_t srate,
 		for (size_t i = 0; i < prg_objs->count; ++i) {
 			const SGS_Program *prg = prgs[i];
 			if (!prg) continue;
-			if (!SGS_Renderer_run(&re, prg, re.ad_srate,
+			if (!SGS_Player_run(&re, prg, re.ad_srate,
 						true, false))
 				status = false;
-			if (!SGS_Renderer_run(&re, prg, srate,
+			if (!SGS_Player_run(&re, prg, srate,
 						false, true))
 				status = false;
 		}
@@ -149,14 +149,14 @@ bool SGS_render(const SGS_PtrList *restrict prg_objs, uint32_t srate,
 		for (size_t i = 0; i < prg_objs->count; ++i) {
 			const SGS_Program *prg = prgs[i];
 			if (!prg) continue;
-			if (!SGS_Renderer_run(&re, prg, srate,
+			if (!SGS_Player_run(&re, prg, srate,
 						true, true))
 				status = false;
 		}
 	}
 
 CLEANUP:
-	if (!SGS_fini_Renderer(&re))
+	if (!SGS_fini_Player(&re))
 		status = false;
 	return status;
 }

@@ -1,5 +1,5 @@
-/* sgensys: System audio output support module.
- * Copyright (c) 2011-2014, 2017-2018 Joel K. Pettersson
+/* sgensys: WAV file writer module.
+ * Copyright (c) 2011-2012, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -12,15 +12,14 @@
  */
 
 #pragma once
-#include "common.h"
+#include "../common.h"
 
-struct SGS_AudioDev;
-typedef struct SGS_AudioDev SGS_AudioDev;
+struct SGS_WAVFile;
+typedef struct SGS_WAVFile SGS_WAVFile;
 
-SGS_AudioDev *SGS_open_AudioDev(uint16_t channels, uint32_t *restrict srate)
-		SGS__malloclike;
-void SGS_close_AudioDev(SGS_AudioDev *restrict o);
+SGS_WAVFile *SGS_create_WAVFile(const char *restrict fpath,
+		uint16_t channels, uint32_t srate) SGS__malloclike;
+int SGS_close_WAVFile(SGS_WAVFile *restrict o);
 
-uint32_t SGS_AudioDev_get_srate(const SGS_AudioDev *restrict o);
-bool SGS_AudioDev_write(SGS_AudioDev *restrict o,
+bool SGS_WAVFile_write(SGS_WAVFile *restrict o,
 		const int16_t *restrict buf, uint32_t samples);
