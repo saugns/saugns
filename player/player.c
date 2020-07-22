@@ -12,7 +12,7 @@
  */
 
 #include "../sgensys.h"
-#include "../renderer/generator.h"
+#include "../interp/generator.h"
 #include "audiodev.h"
 #include "wavfile.h"
 #include "../math.h"
