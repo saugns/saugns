@@ -25,6 +25,7 @@
 enum {
 	SGS_PVOP_OPLIST = 1<<0,
 	SGS_PVOP_PAN = 1<<1,
+	SGS_PVO_PARAMS = (1<<2) - 1,
 };
 
 /**
@@ -40,6 +41,7 @@ enum {
 	SGS_POPP_PHASE = 1<<6,
 	SGS_POPP_AMP = 1<<7,
 	SGS_POPP_AMP2 = 1<<8,
+	SGS_POP_PARAMS = (1<<9) - 1,
 };
 
 /*
