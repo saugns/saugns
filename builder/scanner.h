@@ -1,5 +1,5 @@
 /* saugns: Script scanner module.
- * Copyright (c) 2014, 2017-2019 Joel K. Pettersson
+ * Copyright (c) 2014, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -185,6 +185,13 @@ static inline uint8_t SAU_Scanner_usefilter(SAU_Scanner *restrict o,
 	return c;
 }
 
+/**
+ * Callback type allowing reading of named constants using SAU_Scanner_getd().
+ * Should return non-zero length if number read and \p var set.
+ */
+typedef size_t (*SAU_ScanNumConst_f)(SAU_Scanner *restrict o,
+		double *restrict var);
+
 uint8_t SAU_Scanner_getc(SAU_Scanner *restrict o);
 bool SAU_Scanner_tryc(SAU_Scanner *restrict o, uint8_t testc);
 uint32_t SAU_Scanner_ungetc(SAU_Scanner *restrict o);
@@ -193,7 +200,8 @@ bool SAU_Scanner_geti(SAU_Scanner *restrict o,
 		size_t *restrict str_len);
 bool SAU_Scanner_getd(SAU_Scanner *restrict o,
 		double *restrict var, bool allow_sign,
-		size_t *restrict str_len);
+		size_t *restrict str_len,
+		SAU_ScanNumConst_f numconst_f);
 bool SAU_Scanner_getsymstr(SAU_Scanner *restrict o,
 		const void **restrict strp, size_t *restrict lenp);
 
