@@ -1,5 +1,5 @@
 /* saugns: Script lexer module.
- * Copyright (c) 2014, 2017-2019 Joel K. Pettersson
+ * Copyright (c) 2014, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -131,7 +131,7 @@ static void handle_numeric_value(SAU_Lexer *restrict o,
 	SAU_ScriptToken *t = &o->token;
 	double d;
 	SAU_Scanner_ungetc(sc);
-	SAU_Scanner_getd(sc, &d, false, NULL);
+	SAU_Scanner_getd(sc, &d, false, NULL, NULL);
 	t->type = SAU_T_VAL_REAL;
 	t->data.f = d;
 	//printf("num == %f\n", d);
