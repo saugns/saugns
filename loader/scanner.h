@@ -1,5 +1,5 @@
 /* sgensys: Script scanner module.
- * Copyright (c) 2014, 2017-2019 Joel K. Pettersson
+ * Copyright (c) 2014, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -185,6 +185,13 @@ static inline uint8_t SGS_Scanner_usefilter(SGS_Scanner *restrict o,
 	return c;
 }
 
+/**
+ * Callback type allowing reading of named constants using SGS_Scanner_getd().
+ * Should return non-zero length if number read and \p var set.
+ */
+typedef size_t (*SGS_ScanNumConst_f)(SGS_Scanner *restrict o,
+		double *restrict var);
+
 uint8_t SGS_Scanner_getc(SGS_Scanner *restrict o);
 bool SGS_Scanner_tryc(SGS_Scanner *restrict o, uint8_t testc);
 uint32_t SGS_Scanner_ungetc(SGS_Scanner *restrict o);
@@ -193,7 +200,8 @@ bool SGS_Scanner_geti(SGS_Scanner *restrict o,
 		size_t *restrict str_len);
 bool SGS_Scanner_getd(SGS_Scanner *restrict o,
 		double *restrict var, bool allow_sign,
-		size_t *restrict str_len);
+		size_t *restrict str_len,
+		SGS_ScanNumConst_f numconst_f);
 bool SGS_Scanner_get_symstr(SGS_Scanner *restrict o,
 		SGS_SymStr **restrict symstrp);
 

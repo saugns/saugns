@@ -1,5 +1,5 @@
 /* sgensys: Common definitions.
- * Copyright (c) 2011-2012, 2019-2020 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2019-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -51,6 +51,9 @@
 
 /** Turn \p arg into string literal after macro-expanding it. */
 #define SGS_STREXP(arg) SGS_STRLIT(arg)
+
+/** Is \p c a visible non-whitespace 7-bit ASCII character? */
+#define SGS_IS_ASCIIVISIBLE(c) ((c) >= '!' && (c) <= '~')
 
 /*
  * Utility functions.
