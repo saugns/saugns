@@ -26,6 +26,7 @@
 enum {
 	SAU_PVOP_GRAPH = 1<<0,
 	SAU_PVOP_PAN = 1<<1,
+	SAU_PVO_PARAMS = (1<<2) - 1
 };
 
 /**
@@ -41,6 +42,7 @@ enum {
 	SAU_POPP_PHASE = 1<<6,
 	SAU_POPP_AMP = 1<<7,
 	SAU_POPP_AMP2 = 1<<8,
+	SAU_POP_PARAMS = (1<<9) - 1
 };
 
 /*

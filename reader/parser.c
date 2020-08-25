@@ -47,6 +47,7 @@ static const SAU_ScriptOptions def_sopt = {
 	.def_time_ms = 1000,
 	.def_freq = 444.f,
 	.def_relfreq = 1.f,
+	.def_chanmix = 0.f,
 };
 
 static bool init_ScanLookup(ScanLookup *restrict o, SAU_SymTab *restrict st) {
@@ -97,11 +98,9 @@ static void warn_closing_without_opening(SAU_Scanner *restrict o,
 			close_c, open_c);
 }
 
-typedef float (*NumSym_f)(SAU_Scanner *restrict o);
-
 typedef struct NumParser {
 	SAU_Scanner *sc;
-	NumSym_f numsym_f;
+	SAU_ScanNumConst_f numconst_f;
 	SAU_ScanFrame sf_start;
 	bool has_infnum;
 } NumParser;
@@ -125,16 +124,13 @@ static double scan_num_r(NumParser *restrict o, uint8_t pri, uint32_t level) {
 	}
 	if (c == '(') {
 		num = scan_num_r(o, NUMEXP_SUB, level+1);
-	} else if (o->numsym_f && IS_ALPHA(c)) {
-		SAU_Scanner_ungetc(sc);
-		num = o->numsym_f(sc);
-		if (isnan(num))
-			return NAN;
 	} else {
 		size_t read_len;
 		SAU_Scanner_ungetc(sc);
-		SAU_Scanner_getd(sc, &num, false, &read_len);
+		SAU_Scanner_getd(sc, &num, false, &read_len, o->numconst_f);
 		if (read_len == 0)
+			return NAN;
+		if (isnan(num))
 			return NAN;
 	}
 	if (minus) num = -num;
@@ -185,8 +181,8 @@ DEFER:
 	return num;
 }
 static sauNoinline bool scan_num(SAU_Scanner *restrict o,
-		NumSym_f scan_numsym, float *restrict var) {
-	NumParser np = {o, scan_numsym, o->sf, false};
+		SAU_ScanNumConst_f scan_numconst, float *restrict var) {
+	NumParser np = {o, scan_numconst, o->sf, false};
 	uint8_t ws_level = o->ws_level;
 	float num = scan_num_r(&np, NUMEXP_NUM, 0);
 	SAU_Scanner_setws_level(o, ws_level); // restore if changed
@@ -216,8 +212,28 @@ static sauNoinline bool scan_time_val(SAU_Scanner *restrict o,
 	return true;
 }
 
+static size_t scan_chanmix_const(SAU_Scanner *restrict o,
+		double *restrict val) {
+	char c = SAU_File_GETC(o->f);
+	switch (c) {
+	case 'C':
+		*val = 0.f;
+		return 1;
+	case 'L':
+		*val = -1.f;
+		return 1;
+	case 'R':
+		*val = 1.f;
+		return 1;
+	default:
+		SAU_File_DECP(o->f);
+		return 0;
+	}
+}
+
 #define OCTAVES 11
-static float scan_note(SAU_Scanner *restrict o) {
+static size_t scan_note_const(SAU_Scanner *restrict o,
+		double *restrict val) {
 	static const float octaves[OCTAVES] = {
 		(1.f/16.f),
 		(1.f/8.f),
@@ -263,40 +279,47 @@ static float scan_note(SAU_Scanner *restrict o) {
 			25.f/12.f
 		}
 	};
+	SAU_File *f = o->f;
 	ScanLookup *sl = o->data;
+	size_t len = 0, num_len;
+	uint8_t c;
 	float freq;
-	uint8_t c = SAU_Scanner_getc(o);
 	int32_t octave;
 	int32_t semitone = 1, note;
 	int32_t subnote = -1;
-	size_t read_len;
+	++len;
+	c = SAU_File_GETC(f);
 	if (c >= 'a' && c <= 'g') {
 		subnote = c - 'c';
 		if (subnote < 0) /* a, b */
 			subnote += 7;
-		c = SAU_Scanner_getc(o);
+		++len;
+		c = SAU_File_GETC(f);
 	}
 	if (c < 'A' || c > 'G') {
-		SAU_Scanner_warning(o, NULL,
-"invalid note specified - should be C, D, E, F, G, A or B");
-		return NAN;
+		SAU_File_UNGETN(f, len);
+		return 0;
 	}
 	note = c - 'C';
 	if (note < 0) /* A, B */
 		note += 7;
-	c = SAU_Scanner_getc(o);
+	++len;
+	c = SAU_File_GETC(f);
 	if (c == 's')
 		semitone = 2;
 	else if (c == 'f')
 		semitone = 0;
-	else
-		SAU_Scanner_ungetc(o);
-	SAU_Scanner_geti(o, &octave, false, &read_len);
-	if (read_len == 0)
+	else {
+		SAU_File_DECP(f);
+		--len;
+	}
+	SAU_Scanner_geti(o, &octave, false, &num_len);
+	len += num_len;
+	if (num_len == 0)
 		octave = 4;
 	else if (octave >= OCTAVES) {
 		SAU_Scanner_warning(o, NULL,
-"invalid octave specified for note - valid range 0-10");
+"invalid octave specified for note, using 4 (valid range 0-10)");
 		octave = 4;
 	}
 	freq = sl->sopt.A4_freq * (3.f/5.f); /* get C4 */
@@ -305,7 +328,8 @@ static float scan_note(SAU_Scanner *restrict o) {
 		freq *= 1.f + (notes[semitone][note+1] /
 				notes[semitone][note] - 1.f) *
 			(notes[1][subnote] - 1.f);
-	return freq;
+	*val = (double) freq;
+	return len;
 }
 
 static const char *scan_label(SAU_Scanner *restrict o,
@@ -352,9 +376,10 @@ static bool scan_wavetype(SAU_Scanner *restrict o, size_t *restrict found_id) {
 			found_id, "wave type");
 }
 
-static bool scan_ramp_state(SAU_Scanner *restrict o, NumSym_f scan_numsym,
+static bool scan_ramp_state(SAU_Scanner *restrict o,
+		SAU_ScanNumConst_f scan_numconst,
 		SAU_Ramp *restrict ramp, bool mult) {
-	if (!scan_num(o, scan_numsym, &ramp->v0))
+	if (!scan_num(o, scan_numconst, &ramp->v0))
 		return false;
 	if (mult) {
 		ramp->flags |= SAU_RAMPP_STATE_RATIO;
@@ -365,8 +390,12 @@ static bool scan_ramp_state(SAU_Scanner *restrict o, NumSym_f scan_numsym,
 	return true;
 }
 
-static bool scan_ramp(SAU_Scanner *restrict o, NumSym_f scan_numsym,
+static bool scan_ramp(SAU_Scanner *restrict o,
+		SAU_ScanNumConst_f scan_numconst,
 		SAU_Ramp *restrict ramp, bool mult) {
+	if (!SAU_Scanner_tryc(o, '{')) {
+		return scan_ramp_state(o, scan_numconst, ramp, mult);
+	}
 	ScanLookup *sl = o->data;
 	bool goal = false;
 	bool time_set = (ramp->flags & SAU_RAMPP_TIME) != 0;
@@ -399,7 +428,7 @@ static bool scan_ramp(SAU_Scanner *restrict o, NumSym_f scan_numsym,
 				time_set = true;
 			break;
 		case 'v':
-			if (scan_num(o, scan_numsym, &vt))
+			if (scan_num(o, scan_numconst, &vt))
 				goal = true;
 			break;
 		case '}':
@@ -634,15 +663,7 @@ static void end_operator(ParseLevel *restrict pl) {
 		/*
 		 * Reset all operator state for initial event.
 		 */
-		op->op_params |= SAU_POPP_ADJCS |
-			SAU_POPP_WAVE |
-			SAU_POPP_TIME |
-			SAU_POPP_SILENCE |
-			SAU_POPP_FREQ |
-			SAU_POPP_FREQ2 |
-			SAU_POPP_PHASE |
-			SAU_POPP_AMP |
-			SAU_POPP_AMP2;
+		op->op_params |= SAU_POP_PARAMS;
 	} else {
 		if (op->wave != pop->wave)
 			op->op_params |= SAU_POPP_WAVE;
@@ -669,7 +690,7 @@ static void end_event(ParseLevel *restrict pl) {
 		 * Reset all voice state for initial event.
 		 */
 		e->ev_flags |= SAU_SDEV_NEW_OPGRAPH;
-		e->vo_params |= SAU_PVOP_PAN;
+		e->vo_params |= SAU_PVO_PARAMS & ~SAU_PVOP_GRAPH;
 	}
 	pl->last_event = e;
 	pl->event = NULL;
@@ -678,6 +699,7 @@ static void end_event(ParseLevel *restrict pl) {
 static void begin_event(ParseLevel *restrict pl,
 		bool is_composite) {
 	SAU_Parser *o = pl->o;
+	ScanLookup *sl = &o->sl;
 	SAU_ParseEvData *e;
 	end_event(pl);
 	pl->event = calloc(1, sizeof(SAU_ParseEvData));
@@ -706,7 +728,7 @@ static void begin_event(ParseLevel *restrict pl,
 		/*
 		 * New voice with initial parameter values.
 		 */
-		e->pan.v0 = 0.5f; /* center */
+		e->pan.v0 = sl->sopt.def_chanmix;
 		e->pan.flags |= SAU_RAMPP_STATE;
 	}
 	if (!pl->group_from)
@@ -927,8 +949,13 @@ static bool parse_settings(ParseLevel *restrict pl) {
 			if (scan_num(sc, NULL, &sl->sopt.ampmult))
 				sl->sopt.changed |= SAU_SOPT_AMPMULT;
 			break;
+		case 'c':
+			if (scan_num(sc, scan_chanmix_const,
+						&sl->sopt.def_chanmix))
+				sl->sopt.changed |= SAU_SOPT_DEF_CHANMIX;
+			break;
 		case 'f':
-			if (scan_num(sc, scan_note, &sl->sopt.def_freq))
+			if (scan_num(sc, scan_note_const, &sl->sopt.def_freq))
 				sl->sopt.changed |= SAU_SOPT_DEF_FREQ;
 			break;
 		case 'n': {
@@ -945,7 +972,7 @@ static bool parse_settings(ParseLevel *restrict pl) {
 			break; }
 		case 'r':
 			if (scan_num(sc, NULL, &sl->sopt.def_relfreq))
-				sl->sopt.changed |= SAU_SOPT_DEF_RATIO;
+				sl->sopt.changed |= SAU_SOPT_DEF_RELFREQ;
 			break;
 		case 't':
 			if (scan_time_val(sc, &sl->sopt.def_time_ms))
@@ -969,17 +996,9 @@ static bool parse_ev_amp(ParseLevel *restrict pl) {
 	SAU_Parser *o = pl->o;
 	SAU_Scanner *sc = o->sc;
 	SAU_ParseOpData *op = pl->operator;
-	if (SAU_Scanner_tryc(sc, '{')) {
-		scan_ramp(sc, NULL, &op->amp, false);
-	} else {
-		scan_ramp_state(sc, NULL, &op->amp, false);
-	}
+	scan_ramp(sc, NULL, &op->amp, false);
 	if (SAU_Scanner_tryc(sc, ',')) {
-		if (SAU_Scanner_tryc(sc, '{')) {
-			scan_ramp(sc, NULL, &op->amp2, false);
-		} else {
-			scan_ramp_state(sc, NULL, &op->amp2, false);
-		}
+		scan_ramp(sc, NULL, &op->amp2, false);
 	}
 	if (SAU_Scanner_tryc(sc, '~') && SAU_Scanner_tryc(sc, '[')) {
 		if (op->amods.count > 0) {
@@ -991,24 +1010,27 @@ static bool parse_ev_amp(ParseLevel *restrict pl) {
 	return false;
 }
 
+static bool parse_ev_chanmix(ParseLevel *restrict pl) {
+	SAU_Parser *o = pl->o;
+	SAU_Scanner *sc = o->sc;
+	SAU_ParseEvData *e = pl->event;
+	SAU_ParseOpData *op = pl->operator;
+	if (op->op_flags & SAU_SDOP_NESTED)
+		return true; // reject
+	scan_ramp(sc, scan_chanmix_const, &e->pan, false);
+	return false;
+}
+
 static bool parse_ev_freq(ParseLevel *restrict pl, bool rel_freq) {
 	SAU_Parser *o = pl->o;
 	SAU_Scanner *sc = o->sc;
 	SAU_ParseOpData *op = pl->operator;
 	if (rel_freq && !(op->op_flags & SAU_SDOP_NESTED))
 		return true; // reject
-	NumSym_f numsym_f = rel_freq ? NULL : scan_note;
-	if (SAU_Scanner_tryc(sc, '{')) {
-		scan_ramp(sc, numsym_f, &op->freq, rel_freq);
-	} else {
-		scan_ramp_state(sc, numsym_f, &op->freq, rel_freq);
-	}
+	SAU_ScanNumConst_f numconst_f = rel_freq ? NULL : scan_note_const;
+	scan_ramp(sc, numconst_f, &op->freq, rel_freq);
 	if (SAU_Scanner_tryc(sc, ',')) {
-		if (SAU_Scanner_tryc(sc, '{')) {
-			scan_ramp(sc, numsym_f, &op->freq2, rel_freq);
-		} else {
-			scan_ramp_state(sc, numsym_f, &op->freq2, rel_freq);
-		}
+		scan_ramp(sc, numconst_f, &op->freq2, rel_freq);
 	}
 	if (SAU_Scanner_tryc(sc, '~') && SAU_Scanner_tryc(sc, '[')) {
 		if (op->fmods.count > 0) {
@@ -1043,22 +1065,12 @@ static bool parse_ev_phase(ParseLevel *restrict pl) {
 static bool parse_step(ParseLevel *restrict pl) {
 	SAU_Parser *o = pl->o;
 	SAU_Scanner *sc = o->sc;
-	SAU_ParseEvData *e = pl->event;
 	SAU_ParseOpData *op = pl->operator;
 	pl->location = SDPL_IN_EVENT;
 	for (;;) {
 		uint8_t c = SAU_Scanner_getc(sc);
 		switch (c) {
 		case SAU_SCAN_SPACE:
-			break;
-		case 'P':
-			if ((pl->pl_flags & SDPL_NESTED_SCOPE) != 0)
-				goto UNKNOWN;
-			if (SAU_Scanner_tryc(sc, '{')) {
-				scan_ramp(sc, NULL, &e->pan, false);
-			} else {
-				scan_ramp_state(sc, NULL, &e->pan, false);
-			}
 			break;
 		case '\\':
 			if (parse_waittime(pl)) {
@@ -1067,6 +1079,9 @@ static bool parse_step(ParseLevel *restrict pl) {
 			break;
 		case 'a':
 			if (parse_ev_amp(pl)) goto UNKNOWN;
+			break;
+		case 'c':
+			if (parse_ev_chanmix(pl)) goto UNKNOWN;
 			break;
 		case 'f':
 			if (parse_ev_freq(pl, false)) goto UNKNOWN;

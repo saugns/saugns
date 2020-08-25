@@ -37,7 +37,7 @@ static inline void SAU_Mixer_set_srate(SAU_Mixer *restrict o, uint32_t srate) {
  * Set amplitude scaling.
  */
 static inline void SAU_Mixer_set_scale(SAU_Mixer *restrict o, float scale) {
-	o->scale = scale;
+	o->scale = scale * 0.5f; // half for panning sum
 }
 
 void SAU_Mixer_clear(SAU_Mixer *restrict o);
