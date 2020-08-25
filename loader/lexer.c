@@ -1,5 +1,5 @@
 /* sgensys: Script lexer module.
- * Copyright (c) 2014, 2017-2019 Joel K. Pettersson
+ * Copyright (c) 2014, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -33,9 +33,6 @@
 
 /* Valid characters in identifiers. */
 #define IS_SYMCHAR(c) (IS_ALNUM(c) || (c) == '_')
-
-/* Visible ASCII character. */
-#define IS_VISIBLE(c) ((c) >= '!' && (c) <= '~')
 
 /*
  * Lexer implementation.
@@ -131,7 +128,7 @@ static void handle_numeric_value(SGS_Lexer *restrict o,
 	SGS_ScriptToken *t = &o->token;
 	double d;
 	SGS_Scanner_ungetc(sc);
-	SGS_Scanner_getd(sc, &d, false, NULL);
+	SGS_Scanner_getd(sc, &d, false, NULL, NULL);
 	t->type = SGS_T_VAL_REAL;
 	t->data.f = d;
 	//printf("num == %f\n", d);
@@ -310,7 +307,7 @@ bool SGS_Lexer_get_special(SGS_Lexer *restrict o,
 			handle_eof(o, c);
 			break;
 		}
-		if (IS_VISIBLE(c)) {
+		if (SGS_IS_ASCIIVISIBLE(c)) {
 			handle_special(o, c);
 			break;
 		}
