@@ -100,7 +100,7 @@ static int32_t get_piarg(const char *restrict str) {
  */
 static bool parse_args(int argc, char **restrict argv,
 		uint32_t *restrict flags,
-		SAU_PtrList *restrict script_args,
+		SAU_PtrArr *restrict script_args,
 		const char **restrict wav_path,
 		uint32_t *restrict srate) {
 	struct SAU_opt opt = (struct SAU_opt){0};
@@ -173,7 +173,7 @@ REPARSE:
 		}
 		const char *arg = argv[opt.ind];
 		if (!dashdash && c != -1 && arg[0] == '-') goto REPARSE;
-		SAU_PtrList_add(script_args, (void*) arg);
+		SAU_PtrArr_add(script_args, (void*) arg);
 		++opt.ind;
 		c = 0; /* only goto REPARSE after advancing, to prevent hang */
 	}
@@ -181,7 +181,7 @@ REPARSE:
 USAGE:
 	print_usage(h_arg, h_type);
 ABORT:
-	SAU_PtrList_clear(script_args);
+	SAU_PtrArr_clear(script_args);
 	return false;
 }
 
@@ -189,20 +189,20 @@ ABORT:
  * Discard the programs in the list, ignoring NULL entries,
  * and clearing the list.
  */
-void SAU_discard(SAU_PtrList *restrict prg_objs) {
-	SAU_Program **prgs = (SAU_Program**) SAU_PtrList_ITEMS(prg_objs);
+void SAU_discard(SAU_PtrArr *restrict prg_objs) {
+	SAU_Program **prgs = (SAU_Program**) SAU_PtrArr_ITEMS(prg_objs);
 	for (size_t i = 0; i < prg_objs->count; ++i) {
 		SAU_discard_Program(prgs[i]);
 	}
-	SAU_PtrList_clear(prg_objs);
+	SAU_PtrArr_clear(prg_objs);
 }
 
 /**
  * Main function.
  */
 int main(int argc, char **restrict argv) {
-	SAU_PtrList script_args = (SAU_PtrList){0};
-	SAU_PtrList prg_objs = (SAU_PtrList){0};
+	SAU_PtrArr script_args = (SAU_PtrArr){0};
+	SAU_PtrArr prg_objs = (SAU_PtrArr){0};
 	const char *wav_path = NULL;
 	uint32_t options = 0;
 	uint32_t srate = 0;
@@ -210,7 +210,7 @@ int main(int argc, char **restrict argv) {
 			&srate))
 		return 0;
 	bool error = !SAU_load(&script_args, options, &prg_objs);
-	SAU_PtrList_clear(&script_args);
+	SAU_PtrArr_clear(&script_args);
 	if (error)
 		return 1;
 	if (prg_objs.count > 0) {

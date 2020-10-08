@@ -133,7 +133,7 @@ enum {
  * Main program type. Contains everything needed for interpretation.
  */
 typedef struct SAU_Program {
-	SAU_ProgramEvent *events;
+	SAU_ProgramEvent **events;
 	size_t ev_count;
 	uint16_t mode;
 	uint16_t vo_count;
@@ -141,6 +141,7 @@ typedef struct SAU_Program {
 	uint8_t op_nest_depth;
 	uint32_t duration_ms;
 	const char *name;
+	struct SAU_MemPool *mem; // holds memory for the specific program
 } SAU_Program;
 
 struct SAU_Script;

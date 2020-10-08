@@ -15,6 +15,7 @@
 #include "../script.h"
 #include "../program.h"
 #include "../arrtype.h"
+#include "../mempool.h"
 
 /*
  * Voice allocation state flags.
@@ -28,12 +29,12 @@ enum {
  */
 typedef struct SAU_VoAllocState {
 	SAU_ScriptEvData *last_ev;
-	SAU_ProgramOpList *op_carrs;
+	const SAU_ProgramOpList *op_carrs;
 	uint32_t flags;
 	uint32_t duration_ms;
 } SAU_VoAllocState;
 
-SAU_DEF_ArrType(SAU_VoAlloc, SAU_VoAllocState, _)
+sauArrType(SAU_VoAlloc, SAU_VoAllocState, _)
 
 /*
  * Operator allocation state flags.
@@ -47,14 +48,14 @@ enum {
  */
 typedef struct SAU_OpAllocState {
 	SAU_ScriptOpData *last_pod;
-	SAU_ProgramOpList *fmods, *pmods, *amods;
+	const SAU_ProgramOpList *fmods, *pmods, *amods;
 	uint32_t flags;
 	//uint32_t duration_ms;
 } SAU_OpAllocState;
 
-SAU_DEF_ArrType(SAU_OpAlloc, SAU_OpAllocState, _)
+sauArrType(SAU_OpAlloc, SAU_OpAllocState, _)
 
-SAU_DEF_ArrType(OpRefArr, SAU_ProgramOpRef, )
+sauArrType(OpRefArr, SAU_ProgramOpRef, )
 
 /**
  * Voice data, held during program building and set per event.
@@ -63,16 +64,21 @@ typedef struct SAU_VoiceGraph {
 	OpRefArr vo_graph;
 	SAU_VoAlloc *va;
 	SAU_OpAlloc *oa;
-	uint32_t op_nest_depth;
+	uint32_t op_nest_level, op_nest_max;
+	struct SAU_MemPool *mem;
 } SAU_VoiceGraph;
 
 /**
  * Initialize instance for use.
  */
-static inline void SAU_init_VoiceGraph(SAU_VoiceGraph *restrict o,
-		SAU_VoAlloc *restrict va, SAU_OpAlloc *restrict oa) {
+static inline void
+SAU_init_VoiceGraph(SAU_VoiceGraph *restrict o,
+		SAU_VoAlloc *restrict va,
+		SAU_OpAlloc *restrict oa,
+		struct SAU_MemPool *restrict mem) {
 	o->va = va;
 	o->oa = oa;
+	o->mem = mem;
 }
 
 void SAU_fini_VoiceGraph(SAU_VoiceGraph *restrict o);
