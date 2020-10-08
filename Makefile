@@ -76,7 +76,7 @@ $(BIN): $(OBJ)
 test-builder: $(TEST_OBJ)
 	$(CC) $(TEST_OBJ) $(LFLAGS) -o test-builder
 
-arrtype.o: arrtype.c arrtype.h common.h
+arrtype.o: arrtype.c arrtype.h mempool.h common.h
 	$(CC) -c $(CFLAGS) arrtype.c
 
 audiodev.o: audiodev.c audiodev/*.c audiodev.h common.h
@@ -103,19 +103,19 @@ builder/parser.o: builder/parser.c builder/parser.h builder/file.h builder/symta
 builder/scanner.o: builder/scanner.c builder/scanner.h builder/file.h builder/symtab.h math.h common.h
 	$(CC) -c $(CFLAGS) builder/scanner.c -o builder/scanner.o
 
-builder/scriptconv.o: builder/scriptconv.c builder/scriptconv.h program.h ramp.h wave.h math.h script.h ptrlist.h arrtype.h common.h
+builder/scriptconv.o: builder/scriptconv.c builder/scriptconv.h program.h ramp.h wave.h math.h script.h ptrlist.h arrtype.h mempool.h common.h
 	$(CC) -c $(CFLAGS) builder/scriptconv.c -o builder/scriptconv.o
 
 builder/symtab.o: builder/symtab.c builder/symtab.h mempool.h common.h
 	$(CC) -c $(CFLAGS) builder/symtab.c -o builder/symtab.o
 
-builder/voicegraph.o: builder/voicegraph.c builder/scriptconv.h program.h time.h ramp.h wave.h math.h script.h ptrlist.h arrtype.h common.h
+builder/voicegraph.o: builder/voicegraph.c builder/scriptconv.h program.h time.h ramp.h wave.h math.h script.h ptrlist.h arrtype.h mempool.h common.h
 	$(CC) -c $(CFLAGS) builder/voicegraph.c -o builder/voicegraph.o
 
 mempool.o: mempool.c mempool.h common.h
 	$(CC) -c $(CFLAGS) mempool.c
 
-ptrlist.o: ptrlist.c ptrlist.h common.h
+ptrlist.o: ptrlist.c ptrlist.h mempool.h common.h
 	$(CC) -c $(CFLAGS) ptrlist.c
 
 ramp.o: ramp.c ramp.h time.h math.h common.h
