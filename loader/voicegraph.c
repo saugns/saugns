@@ -13,56 +13,58 @@
 
 #include "parseconv.h"
 
+static bool
+SAU_VoiceGraph_handle_op_node(SAU_VoiceGraph *restrict o,
+		SAU_ProgramOpRef *restrict op_ref);
+
+/*
+ * Traverse operator list, as part of building a graph for the voice.
+ *
+ * \return true, or false on allocation failure
+ */
+static bool
+SAU_VoiceGraph_handle_op_list(SAU_VoiceGraph *restrict o,
+		const SAU_ProgramOpList *restrict op_list, uint8_t mod_use) {
+	if (!op_list)
+		return true;
+	SAU_ProgramOpRef op_ref = {0, mod_use, o->op_nest_level};
+	for (uint32_t i = 0; i < op_list->count; ++i) {
+		op_ref.id = op_list->ids[i];
+		if (!SAU_VoiceGraph_handle_op_node(o, &op_ref))
+			return false;
+	}
+	return true;
+}
+
 /*
  * Traverse parts of voice operator graph reached from operator node,
  * adding reference after traversal of modulator lists.
  *
  * \return true, or false on allocation failure
  */
-static bool SAU_VoiceGraph_traverse_ops(SAU_VoiceGraph *restrict o,
-		SAU_ProgramOpRef *restrict op_ref, uint32_t level) {
+static bool
+SAU_VoiceGraph_handle_op_node(SAU_VoiceGraph *restrict o,
+		SAU_ProgramOpRef *restrict op_ref) {
 	SAU_OpAllocState *oas = &o->oa->a[op_ref->id];
-	SAU_ProgramOpRef mod_op_ref;
-	uint32_t i;
-	if ((oas->flags & SAU_OAS_VISITED) != 0) {
-		SAU_warning("parseconv",
+	if (oas->flags & SAU_OAS_VISITED) {
+		SAU_warning("voicegraph",
 "skipping operator %d; circular references unsupported",
 			op_ref->id);
 		return true;
 	}
-	if (level > o->op_nest_depth) {
-		o->op_nest_depth = level;
+	if (o->op_nest_level > o->op_nest_max) {
+		o->op_nest_max = o->op_nest_level;
 	}
-	op_ref->level = level++;
+	++o->op_nest_level;
 	oas->flags |= SAU_OAS_VISITED;
-	if (oas->fmods != NULL) {
-		for (i = 0; i < oas->fmods->count; ++i) {
-			mod_op_ref.id = oas->fmods->ids[i];
-			mod_op_ref.use = SAU_POP_FMOD;
-//			fprintf(stderr, "visit fmod node %d\n", mod_op_ref.id);
-			if (!SAU_VoiceGraph_traverse_ops(o, &mod_op_ref, level))
-				return false;
-		}
-	}
-	if (oas->pmods != NULL) {
-		for (i = 0; i < oas->pmods->count; ++i) {
-			mod_op_ref.id = oas->pmods->ids[i];
-			mod_op_ref.use = SAU_POP_PMOD;
-//			fprintf(stderr, "visit pmod node %d\n", mod_op_ref.id);
-			if (!SAU_VoiceGraph_traverse_ops(o, &mod_op_ref, level))
-				return false;
-		}
-	}
-	if (oas->amods != NULL) {
-		for (i = 0; i < oas->amods->count; ++i) {
-			mod_op_ref.id = oas->amods->ids[i];
-			mod_op_ref.use = SAU_POP_AMOD;
-//			fprintf(stderr, "visit amod node %d\n", mod_op_ref.id);
-			if (!SAU_VoiceGraph_traverse_ops(o, &mod_op_ref, level))
-				return false;
-		}
-	}
+	if (!SAU_VoiceGraph_handle_op_list(o, oas->fmods, SAU_POP_FMOD))
+		return false;
+	if (!SAU_VoiceGraph_handle_op_list(o, oas->pmods, SAU_POP_PMOD))
+		return false;
+	if (!SAU_VoiceGraph_handle_op_list(o, oas->amods, SAU_POP_AMOD))
+		return false;
 	oas->flags &= ~SAU_OAS_VISITED;
+	--o->op_nest_level;
 	if (!OpRefArr_add(&o->vo_graph, op_ref))
 		return false;
 	return true;
@@ -75,24 +77,19 @@ static bool SAU_VoiceGraph_traverse_ops(SAU_VoiceGraph *restrict o,
  *
  * \return true, or false on allocation failure
  */
-bool SAU_VoiceGraph_set(SAU_VoiceGraph *restrict o,
+bool
+SAU_VoiceGraph_set(SAU_VoiceGraph *restrict o,
 		const SAU_ProgramEvent *restrict ev) {
-	SAU_ProgramOpRef op_ref = {0, SAU_POP_CARR, 0};
 	SAU_VoAllocState *vas = &o->va->a[ev->vo_id];
+	if (!vas->op_carrs || !vas->op_carrs->count) goto DONE;
+	if (!SAU_VoiceGraph_handle_op_list(o, vas->op_carrs, SAU_POP_CARR))
+		return false;
 	SAU_ProgramVoData *vd = (SAU_ProgramVoData*) ev->vo_data;
-	const SAU_ProgramOpList *carrs = vas->op_carrs;
-	uint32_t i;
-	if (!carrs)
-		return true;
-	for (i = 0; i < carrs->count; ++i) {
-		op_ref.id = carrs->ids[i];
-//		fprintf(stderr, "visit node %d\n", op_ref.id);
-		if (!SAU_VoiceGraph_traverse_ops(o, &op_ref, 0))
-			return false;
-	}
-	if (!OpRefArr_memdup(&o->vo_graph, &vd->graph))
+	if (!OpRefArr_mpmemdup(&o->vo_graph,
+				(SAU_ProgramOpRef**) &vd->graph, o->mem))
 		return false;
 	vd->op_count = o->vo_graph.count;
+DONE:
 	o->vo_graph.count = 0; // reuse allocation
 	return true;
 }
@@ -100,6 +97,7 @@ bool SAU_VoiceGraph_set(SAU_VoiceGraph *restrict o,
 /**
  * Destroy data held by instance.
  */
-void SAU_fini_VoiceGraph(SAU_VoiceGraph *restrict o) {
+void
+SAU_fini_VoiceGraph(SAU_VoiceGraph *restrict o) {
 	OpRefArr_clear(&o->vo_graph);
 }
