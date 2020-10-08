@@ -125,7 +125,7 @@ static bool SAU_Output_run(SAU_Output *restrict o,
  *
  * \return true unless error occurred
  */
-bool SAU_play(const SAU_PtrList *restrict prg_objs, uint32_t srate,
+bool SAU_play(const SAU_PtrArr *restrict prg_objs, uint32_t srate,
 		uint32_t options, const char *restrict wav_path) {
 	if (!prg_objs->count)
 		return true;
@@ -146,7 +146,7 @@ bool SAU_play(const SAU_PtrList *restrict prg_objs, uint32_t srate,
 		if (out.ad != NULL) srate = out.ad_srate;
 	}
 	const SAU_Program **prgs =
-		(const SAU_Program**) SAU_PtrList_ITEMS(prg_objs);
+		(const SAU_Program**) SAU_PtrArr_ITEMS(prg_objs);
 	for (size_t i = 0; i < prg_objs->count; ++i) {
 		const SAU_Program *prg = prgs[i];
 		if (!prg) continue;

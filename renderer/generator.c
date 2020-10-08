@@ -141,7 +141,7 @@ static bool convert_program(SAU_Generator *restrict o,
 		on->fmods = on->pmods = on->amods = &blank_oplist;
 	}
 	for (size_t i = 0; i < prg->ev_count; ++i) {
-		const SAU_ProgramEvent *prg_e = &prg->events[i];
+		const SAU_ProgramEvent *prg_e = prg->events[i];
 		EventNode *e = SAU_MemPool_alloc(o->mem, sizeof(EventNode));
 		if (!e)
 			return false;

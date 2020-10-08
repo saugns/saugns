@@ -35,15 +35,15 @@ static SAU_Program *build_program(const char *restrict script_arg,
  *
  * \return number of items successfully processed
  */
-size_t SAU_load(const SAU_PtrList *restrict script_args, uint32_t options,
-		SAU_PtrList *restrict prg_objs) {
+size_t SAU_load(const SAU_PtrArr *restrict script_args, uint32_t options,
+		SAU_PtrArr *restrict prg_objs) {
 	bool are_paths = !(options & SAU_OPT_EVAL_STRING);
 	size_t built = 0;
-	const char **args = (const char**) SAU_PtrList_ITEMS(script_args);
+	const char **args = (const char**) SAU_PtrArr_ITEMS(script_args);
 	for (size_t i = 0; i < script_args->count; ++i) {
 		SAU_Program *prg = build_program(args[i], are_paths);
 		if (prg != NULL) ++built;
-		SAU_PtrList_add(prg_objs, prg);
+		SAU_PtrArr_add(prg_objs, prg);
 	}
 	return built;
 }
