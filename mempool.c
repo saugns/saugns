@@ -191,7 +191,7 @@ void *SGS_MemPool_alloc(SGS_MemPool *o, const void *src, size_t size) {
 		 */
 		i = o->block_count;
 		alloc_size = (size > o->block_size) ? size : o->block_size;
-		ret = malloc(alloc_size);
+		ret = calloc(1, alloc_size);
 		if (ret == NULL)
 			return NULL;
 		o->blocks[i].mem = ret;

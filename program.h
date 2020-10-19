@@ -1,5 +1,5 @@
 /* sgensys: Audio program data and functions.
- * Copyright (c) 2011-2013, 2017-2019 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -18,6 +18,24 @@
 /*
  * Program types and definitions.
  */
+
+/**
+ * Time parameter type.
+ *
+ * Holds data for a generic time parameter.
+ */
+typedef struct SGS_Time {
+	uint32_t v_ms;
+	uint8_t flags;
+} SGS_Time;
+
+/**
+ * Time parameter flags.
+ */
+enum {
+	SGS_TIMEP_SET    = 1<<0, // a \a v_ms value or linked is to be used
+	SGS_TIMEP_LINKED = 1<<1, // a linked/"infinite" value is to be used
+};
 
 /**
  * Voice parameter flags
@@ -47,28 +65,17 @@ enum {
 	SGS_POPP_ATTR = 1<<11,
 };
 
-/**
+/*
  * Voice ID constants
  */
-enum {
-	SGS_PVO_NO_ID = UINT16_MAX, /* voice ID missing */
-	SGS_PVO_MAX_ID = UINT16_MAX - 1, /* error if exceeded */
-};
+#define SGS_PVO_NO_ID  UINT16_MAX       /* voice ID missing */
+#define SGS_PVO_MAX_ID (UINT16_MAX - 1) /* error if exceeded */
 
-/**
+/*
  * Operator ID constants
  */
-enum {
-	SGS_POP_NO_ID = UINT32_MAX, /* operator ID missing */
-	SGS_POP_MAX_ID = UINT32_MAX - 1, /* error if exceeded */
-};
-
-/**
- * Timing special values
- */
-enum {
-	SGS_TIME_INF = UINT32_MAX, /* special handling for nested operators */
-};
+#define SGS_POP_NO_ID  UINT32_MAX       /* operator ID missing */
+#define SGS_POP_MAX_ID (UINT32_MAX - 1) /* error if exceeded */
 
 /**
  * Voice atttributes
@@ -130,9 +137,10 @@ typedef struct SGS_ProgramOpData {
 	const SGS_ProgramOpAdjcs *adjcs;
 	uint32_t id;
 	uint32_t params;
+	SGS_Time time;
+	uint32_t silence_ms;
 	uint8_t attr;
 	uint8_t wave;
-	uint32_t time_ms, silence_ms;
 	float freq, dynfreq, phase, amp, dynamp;
 	SGS_Ramp ramp_freq, ramp_amp;
 } SGS_ProgramOpData;
@@ -167,7 +175,7 @@ typedef struct SGS_Program {
 } SGS_Program;
 
 struct SGS_Script;
-SGS_Program* SGS_build_Program(struct SGS_Script *sd);
+SGS_Program* SGS_build_Program(struct SGS_Script *sd) SGS__malloclike;
 void SGS_discard_Program(SGS_Program *o);
 
 void SGS_Program_print_info(SGS_Program *o);
