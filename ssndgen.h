@@ -15,7 +15,7 @@
 #include "program.h"
 #include "ptrlist.h"
 
-#define SSG_VERSION_STR "ssndgen v0.2-beta"
+#define SSG_VERSION_STR "ssndgen v0.2-dev"
 
 #define SSG_DEFAULT_SRATE 96000
 
