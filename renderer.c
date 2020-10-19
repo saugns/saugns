@@ -15,7 +15,7 @@
 #include "renderer/generator.h"
 #include "audiodev.h"
 #include "wavfile.h"
-#include "math.h"
+#include "time.h"
 #include <stdlib.h>
 
 #define BUF_TIME_MS  256

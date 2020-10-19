@@ -277,6 +277,19 @@ static bool SSG__noinline scan_num(PScanner *restrict o,
 	return true;
 }
 
+static SSG__noinline bool scan_time_val(PScanner *restrict o,
+		uint32_t *restrict val) {
+	float val_s;
+	if (!scan_num(o, NULL, &val_s))
+		return false;
+	if (val_s < 0.f) {
+		scan_warning(o, "discarding negative time value");
+		return false;
+	}
+	*val = lrint(val_s * 1000.f);
+	return true;
+}
+
 #define OCTAVES 11
 static float scan_note(PScanner *restrict o) {
 	static const float octaves[OCTAVES] = {
@@ -485,18 +498,10 @@ static bool scan_ramp(PScanner *restrict o, NumSym_f scan_numsym,
 			}
 			type = id;
 			break; }
-		case 't': {
-			float time;
-			if (scan_num(o, 0, &time)) {
-				if (time < 0.f) {
-					scan_warning(o,
-"ignoring 't' with sub-zero time");
-					break;
-				}
-				time_ms = lrint(time * 1000.f);
+		case 't':
+			if (scan_time_val(o, &time_ms))
 				time_set = true;
-			}
-			break; }
+			break;
 		case 'v':
 			if (scan_num(o, scan_numsym, &vt))
 				goal = true;
@@ -644,14 +649,9 @@ static bool parse_waittime(ParseLevel *restrict pl) {
 		}
 		pl->last_event->ev_flags |= SSG_SDEV_ADD_WAIT_DURATION;
 	} else {
-		float wait;
 		uint32_t wait_ms;
-		scan_num(sc, 0, &wait);
-		if (wait < 0.f) {
-			scan_warning(sc, "ignoring '\\' with sub-zero time");
+		if (!scan_time_val(sc, &wait_ms))
 			return false;
-		}
-		wait_ms = lrint(wait * 1000.f);
 		pl->next_wait_ms += wait_ms;
 	}
 	return true;
@@ -780,10 +780,10 @@ static void end_event(ParseLevel *restrict pl) {
 	pl->event = NULL;
 }
 
-static void begin_event(ParseLevel *restrict pl, uint8_t linktype,
+static void begin_event(ParseLevel *restrict pl,
 		bool is_composite) {
 	SSG_Parser *o = pl->o;
-	SSG_ScriptEvData *e, *pve;
+	SSG_ScriptEvData *e;
 	end_event(pl);
 	pl->event = calloc(1, sizeof(SSG_ScriptEvData));
 	e = pl->event;
@@ -791,9 +791,16 @@ static void begin_event(ParseLevel *restrict pl, uint8_t linktype,
 	pl->next_wait_ms = 0;
 	SSG_Ramp_reset(&e->pan);
 	if (pl->on_prev != NULL) {
-		pve = pl->on_prev->event;
+		SSG_ScriptEvData *pve = pl->on_prev->event;
 		pve->ev_flags |= SSG_SDEV_VOICE_LATER_USED;
-		if (pve->composite != NULL && !is_composite) {
+		if (is_composite) {
+			if (!pl->composite) {
+				pve->composite = e;
+				pl->composite = pve;
+			} else {
+				pve->next = e;
+			}
+		} else if (pve->composite != NULL) {
 			SSG_ScriptEvData *last_ce;
 			for (last_ce = pve->composite; last_ce->next;
 					last_ce = last_ce->next) ;
@@ -809,14 +816,7 @@ static void begin_event(ParseLevel *restrict pl, uint8_t linktype,
 	}
 	if (!pl->group_from)
 		pl->group_from = e;
-	if (is_composite) {
-		if (!pl->composite) {
-			pve->composite = e;
-			pl->composite = pve;
-		} else {
-			pve->next = e;
-		}
-	} else {
+	if (!is_composite) {
 		if (!o->events)
 			o->events = e;
 		else
@@ -845,6 +845,7 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
 	/*
 	 * Initialize node.
 	 */
+	op->time.v_ms = o->sl.sopt.def_time_ms; /* time is not copied */
 	SSG_Ramp_reset(&op->freq);
 	SSG_Ramp_reset(&op->freq2);
 	SSG_Ramp_reset(&op->amp);
@@ -856,10 +857,9 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
 			(SSG_SDOP_NESTED | SSG_SDOP_MULTIPLE);
 		if (is_composite) {
 			pop->op_flags |= SSG_SDOP_HAS_COMPOSITE;
-			op->op_flags |= SSG_SDOP_TIME_DEFAULT;
-			/* default: previous or infinite time */
+		} else {
+			op->time.flags |= SSG_TIMEP_SET;
 		}
-		op->time_ms = pop->time_ms;
 		op->wave = pop->wave;
 		op->phase = pop->phase;
 		SSG_PtrList_soft_copy(&op->fmods, &pop->fmods);
@@ -869,12 +869,12 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
 			SSG_ScriptOpData *mpop = pop;
 			uint32_t max_time = 0;
 			do {
-				if (max_time < mpop->time_ms)
-					max_time = mpop->time_ms;
+				if (max_time < mpop->time.v_ms)
+					max_time = mpop->time.v_ms;
 				SSG_PtrList_add(&mpop->on_next, op);
 			} while ((mpop = mpop->next_bound) != NULL);
 			op->op_flags |= SSG_SDOP_MULTIPLE;
-			op->time_ms = max_time;
+			op->time.v_ms = max_time;
 			pl->pl_flags &= ~SDPL_BIND_MULTIPLE;
 		} else {
 			SSG_PtrList_add(&pop->on_next, op);
@@ -883,9 +883,6 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
 		/*
 		 * New operator with initial parameter values.
 		 */
-		op->op_flags = SSG_SDOP_TIME_DEFAULT;
-		/* default: depends on context */
-		op->time_ms = o->sl.sopt.def_time_ms;
 		if (!(pl->pl_flags & SDPL_NESTED_SCOPE)) {
 			op->freq.v0 = o->sl.sopt.def_freq;
 		} else {
@@ -957,7 +954,7 @@ static void begin_node(ParseLevel *restrict pl,
 			/* previous event implicitly ended */ ||
 			pl->next_wait_ms ||
 			is_composite)
-		begin_event(pl, linktype, is_composite);
+		begin_event(pl, is_composite);
 	begin_operator(pl, linktype, is_composite);
 	pl->last_linktype = linktype; /* FIXME: kludge */
 }
@@ -1056,18 +1053,11 @@ static bool parse_settings(ParseLevel *restrict pl) {
 				o->sl.sopt.changed |= SSG_SOPT_DEF_RATIO;
 			}
 			break;
-		case 't': {
-			float time;
-			if (scan_num(sc, 0, &time)) {
-				if (time < 0.f) {
-					scan_warning(sc,
-"ignoring 't' with sub-zero time");
-					break;
-				}
-				o->sl.sopt.def_time_ms = lrint(time * 1000.f);
+		case 't':
+			if (scan_time_val(sc, &o->sl.sopt.def_time_ms)) {
 				o->sl.sopt.changed |= SSG_SOPT_DEF_TIME;
 			}
-			break; }
+			break;
 		default:
 		/*UNKNOWN:*/
 			scan_stashc(sc, c);
@@ -1195,39 +1185,26 @@ static bool parse_step(ParseLevel *restrict pl) {
 		case 'r':
 			if (parse_ev_freq(pl, true)) goto UNKNOWN;
 			break;
-		case 's': {
-			float silence;
-			scan_num(sc, 0, &silence);
-			if (silence < 0.f) {
-				scan_warning(sc,
-"ignoring 's' with sub-zero time");
-				break;
-			}
-			op->silence_ms = lrint(silence * 1000.f);
-			break; }
+		case 's':
+			scan_time_val(sc, &op->silence_ms);
+			break;
 		case 't':
 			if (SSG_File_TRYC(f, '*')) {
-				op->op_flags |= SSG_SDOP_TIME_DEFAULT;
 				/* later fitted or kept to default */
-				op->time_ms = o->sl.sopt.def_time_ms;
+				op->time.v_ms = o->sl.sopt.def_time_ms;
+				op->time.flags = 0;
 			} else if (SSG_File_TRYC(f, 'i')) {
 				if (!(op->op_flags & SSG_SDOP_NESTED)) {
 					scan_warning(sc,
 "ignoring 'ti' (infinite time) for non-nested operator");
 					break;
 				}
-				op->op_flags &= ~SSG_SDOP_TIME_DEFAULT;
-				op->time_ms = SSG_TIME_INF;
+				op->time.flags |= SSG_TIMEP_SET
+					| SSG_TIMEP_LINKED;
 			} else {
-				float time;
-				scan_num(sc, 0, &time);
-				if (time < 0.f) {
-					scan_warning(sc,
-"ignoring 't' with sub-zero time");
+				if (!scan_time_val(sc, &op->time.v_ms))
 					break;
-				}
-				op->op_flags &= ~SSG_SDOP_TIME_DEFAULT;
-				op->time_ms = lrint(time * 1000.f);
+				op->time.flags = SSG_TIMEP_SET;
 			}
 			op->op_params |= SSG_POPP_TIME;
 			break;
@@ -1360,7 +1337,7 @@ static bool parse_level(SSG_Parser *restrict o,
 		case '\\':
 			if (pl.location == SDPL_IN_DEFAULTS ||
 					((pl.pl_flags & SDPL_NESTED_SCOPE) != 0
-					 && pl.event != NULL))
+					&& pl.event != NULL))
 				goto INVALID;
 			parse_waittime(&pl);
 			break;
@@ -1461,11 +1438,11 @@ static void group_events(SSG_ScriptEvData *restrict to) {
 			SSG_ScriptOpData *op = ops[i];
 			if (e->next == e_after &&
 					i == (e->operators.count - 1) &&
-					(op->op_flags & SSG_SDOP_TIME_DEFAULT) != 0)
+					!(op->time.flags & SSG_TIMEP_SET))
 				/* default for last node in group */
-				op->op_flags &= ~SSG_SDOP_TIME_DEFAULT;
-			if (wait < op->time_ms)
-				wait = op->time_ms;
+				op->time.flags |= SSG_TIMEP_SET;
+			if (wait < op->time.v_ms)
+				wait = op->time.v_ms;
 		}
 		e = e->next;
 		if (e != NULL) {
@@ -1478,10 +1455,10 @@ static void group_events(SSG_ScriptEvData *restrict to) {
 		ops = (SSG_ScriptOpData**) SSG_PtrList_ITEMS(&e->operators);
 		for (i = 0; i < e->operators.count; ++i) {
 			SSG_ScriptOpData *op = ops[i];
-			if ((op->op_flags & SSG_SDOP_TIME_DEFAULT) != 0) {
-				op->op_flags &= ~SSG_SDOP_TIME_DEFAULT;
-				op->time_ms = wait + waitcount;
+			if (!(op->time.flags & SSG_TIMEP_SET)) {
 				/* fill in sensible default time */
+				op->time.v_ms = wait + waitcount;
+				op->time.flags |= SSG_TIMEP_SET;
 			}
 		}
 		e = e->next;
@@ -1502,25 +1479,25 @@ static inline void time_ramp(SSG_Ramp *restrict ramp,
 
 static void time_operator(SSG_ScriptOpData *restrict op) {
 	SSG_ScriptEvData *e = op->event;
-	if ((op->op_flags & (SSG_SDOP_TIME_DEFAULT | SSG_SDOP_NESTED)) ==
-			(SSG_SDOP_TIME_DEFAULT | SSG_SDOP_NESTED)) {
-		op->op_flags &= ~SSG_SDOP_TIME_DEFAULT;
+	if ((op->op_flags & SSG_SDOP_NESTED) != 0 &&
+			!(op->time.flags & SSG_TIMEP_SET)) {
 		if (!(op->op_flags & SSG_SDOP_HAS_COMPOSITE))
-			op->time_ms = SSG_TIME_INF;
+			op->time.flags |= SSG_TIMEP_LINKED;
+		op->time.flags |= SSG_TIMEP_SET;
 	}
-	if (op->time_ms != SSG_TIME_INF) {
-		time_ramp(&op->freq, op->time_ms);
-		time_ramp(&op->freq2, op->time_ms);
-		time_ramp(&op->amp, op->time_ms);
-		time_ramp(&op->amp2, op->time_ms);
+	if (!(op->time.flags & SSG_TIMEP_LINKED)) {
+		time_ramp(&op->freq, op->time.v_ms);
+		time_ramp(&op->freq2, op->time.v_ms);
+		time_ramp(&op->amp, op->time.v_ms);
+		time_ramp(&op->amp2, op->time.v_ms);
 		if (!(op->op_flags & SSG_SDOP_SILENCE_ADDED)) {
-			op->time_ms += op->silence_ms;
+			op->time.v_ms += op->silence_ms;
 			op->op_flags |= SSG_SDOP_SILENCE_ADDED;
 		}
 	}
 	if ((e->ev_flags & SSG_SDEV_ADD_WAIT_DURATION) != 0) {
 		if (e->next != NULL)
-			e->next->wait_ms += op->time_ms;
+			e->next->wait_ms += op->time.v_ms;
 		e->ev_flags &= ~SSG_SDEV_ADD_WAIT_DURATION;
 	}
 	size_t i;
@@ -1560,24 +1537,24 @@ static void time_event(SSG_ScriptEvData *restrict e) {
 		ce_op = (SSG_ScriptOpData*) SSG_PtrList_GET(&ce->operators, 0),
 		ce_op_prev = ce_op->on_prev,
 		e_op = ce_op_prev;
-		if ((e_op->op_flags & SSG_SDOP_TIME_DEFAULT) != 0)
-			e_op->op_flags &= ~SSG_SDOP_TIME_DEFAULT;
+		e_op->time.flags |= SSG_TIMEP_SET; /* always used from now on */
 		for (;;) {
-			ce->wait_ms += ce_op_prev->time_ms;
-			if ((ce_op->op_flags & SSG_SDOP_TIME_DEFAULT) != 0) {
-				ce_op->op_flags &= ~SSG_SDOP_TIME_DEFAULT;
-				if ((ce_op->op_flags & (SSG_SDOP_NESTED | SSG_SDOP_HAS_COMPOSITE)) == SSG_SDOP_NESTED)
-					ce_op->time_ms = SSG_TIME_INF;
+			ce->wait_ms += ce_op_prev->time.v_ms;
+			if (!(ce_op->time.flags & SSG_TIMEP_SET)) {
+				ce_op->time.flags |= SSG_TIMEP_SET;
+				if ((ce_op->op_flags &
+(SSG_SDOP_NESTED | SSG_SDOP_HAS_COMPOSITE)) == SSG_SDOP_NESTED)
+					ce_op->time.flags |= SSG_TIMEP_LINKED;
 				else
-					ce_op->time_ms = ce_op_prev->time_ms
+					ce_op->time.v_ms = ce_op_prev->time.v_ms
 						- ce_op_prev->silence_ms;
 			}
 			time_event(ce);
-			if (ce_op->time_ms == SSG_TIME_INF)
-				e_op->time_ms = SSG_TIME_INF;
-			else if (e_op->time_ms != SSG_TIME_INF)
-				e_op->time_ms += ce_op->time_ms +
-					(ce->wait_ms - ce_op_prev->time_ms);
+			if (ce_op->time.flags & SSG_TIMEP_LINKED)
+				e_op->time.flags |= SSG_TIMEP_LINKED;
+			else if (!(e_op->time.flags & SSG_TIMEP_LINKED))
+				e_op->time.v_ms += ce_op->time.v_ms +
+					(ce->wait_ms - ce_op_prev->time.v_ms);
 			ce_op->op_params &= ~SSG_POPP_TIME;
 			ce_op_prev = ce_op;
 			ce = ce->next;
