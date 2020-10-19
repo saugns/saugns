@@ -77,7 +77,7 @@ static void fill_log(float *buf, uint32_t len,
  */
 bool SGS_Ramp_run(SGS_Ramp *o, uint32_t srate,
 		float *buf, uint32_t buf_len, float s0) {
-	uint32_t time = SGS_ms_in_samples(o->time_ms, srate);
+	uint32_t time = SGS_ms_in_samples(o->time_ms, srate, NULL);
 	uint32_t len, fill_len;
 	double inv_time;
 	inv_time = 1.f / time;
