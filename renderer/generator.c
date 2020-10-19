@@ -25,6 +25,7 @@ typedef float Buf[BUF_LEN];
  */
 enum {
 	ON_VISITED = 1<<0,
+	ON_TIME_INF = 1<<1, /* used for SSG_TIMEP_LINKED */
 };
 
 typedef struct OperatorNode {
@@ -59,6 +60,7 @@ typedef struct VoiceNode {
 typedef union EventValue {
 	int32_t ival;
 	//float fval;
+	const SSG_Time *time;
 	const SSG_Ramp *ramp;
 } EventValue;
 
@@ -228,12 +230,8 @@ static bool convert_program(SSG_Generator *restrict o,
 			}
 			if (params & SSG_POPP_WAVE)
 				(*ev_v++).ival = pod->wave;
-			if (params & SSG_POPP_TIME) {
-				(*ev_v++).ival =
-					(pod->time_ms == SSG_TIME_INF) ?
-					SSG_TIME_INF :
-					SSG_MS_IN_SAMPLES(pod->time_ms, srate);
-			}
+			if (params & SSG_POPP_TIME)
+				(*ev_v++).time = &pod->time;
 			if (params & SSG_POPP_SILENCE)
 				(*ev_v++).ival =
 					SSG_MS_IN_SAMPLES(pod->silence_ms,
@@ -310,7 +308,6 @@ static void set_voice_duration(SSG_Generator *restrict o,
 		const SSG_ProgramOpRef *or = &vn->op_list[i];
 		if (or->use != SSG_POP_CARR) continue;
 		OperatorNode *on = &o->operators[or->id];
-		if (on->time == SSG_TIME_INF) continue;
 		if (on->time > time)
 			time = on->time;
 	}
@@ -318,7 +315,7 @@ static void set_voice_duration(SSG_Generator *restrict o,
 }
 
 /*
- * Process an event update for a timed parameter.
+ * Process an event update for a ramp parameter.
  */
 static const EventValue *handle_ramp_update(SSG_Ramp *restrict ramp,
 		uint32_t *restrict ramp_pos,
@@ -354,8 +351,17 @@ static void handle_event(SSG_Generator *restrict o, EventNode *restrict e) {
 				uint8_t wave = (*val++).ival;
 				on->osc.lut = SSG_Osc_LUT(wave);
 			}
-			if (params & SSG_POPP_TIME)
-				on->time = (*val++).ival;
+			if (params & SSG_POPP_TIME) {
+				const SSG_Time *src = (*val++).time;
+				if (src->flags & SSG_TIMEP_LINKED) {
+					on->time = 0;
+					on->flags |= ON_TIME_INF;
+				} else {
+					on->time = SSG_MS_IN_SAMPLES(src->v_ms,
+							o->srate);
+					on->flags &= ~ON_TIME_INF;
+				}
+			}
 			if (params & SSG_POPP_SILENCE)
 				on->silence = (*val++).ival;
 			if (params & SSG_POPP_FREQ)
@@ -429,7 +435,7 @@ static uint32_t run_block(SSG_Generator *restrict o,
 		if (!acc_ind) for (i = 0; i < zero_len; ++i)
 			s_buf[i] = 0;
 		len -= zero_len;
-		if (n->time != SSG_TIME_INF) n->time -= zero_len;
+		if (!(n->flags & ON_TIME_INF)) n->time -= zero_len;
 		n->silence -= zero_len;
 		if (!len)
 			return zero_len;
@@ -448,7 +454,7 @@ static uint32_t run_block(SSG_Generator *restrict o,
 	 * Limit length to time duration of operator.
 	 */
 	uint32_t skip_len = 0;
-	if (n->time < len && n->time != SSG_TIME_INF) {
+	if (n->time < len && !(n->flags & ON_TIME_INF)) {
 		skip_len = len - n->time;
 		len = n->time;
 	}
@@ -510,7 +516,7 @@ static uint32_t run_block(SSG_Generator *restrict o,
 	/*
 	 * Update time duration left, zero rest of buffer if unfilled.
 	 */
-	if (n->time != SSG_TIME_INF) {
+	if (!(n->flags & ON_TIME_INF)) {
 		if (!acc_ind && skip_len > 0) {
 			s_buf += len;
 			for (i = 0; i < skip_len; ++i)
