@@ -12,6 +12,7 @@
  */
 
 #pragma once
+#include "time.h"
 #include "ramp.h"
 #include "wave.h"
 
@@ -54,11 +55,6 @@ enum {
 #define SSG_POP_NO_ID  UINT32_MAX       /* operator ID missing */
 #define SSG_POP_MAX_ID (UINT32_MAX - 1) /* error if exceeded */
 
-/*
- * Timing special values.
- */
-#define SSG_TIME_INF   UINT32_MAX /* set and checked for nested operator use */
-
 /**
  * Operator use types.
  */
@@ -99,7 +95,8 @@ typedef struct SSG_ProgramOpData {
 	const SSG_ProgramOpAdjcs *adjcs;
 	uint32_t id;
 	uint32_t params;
-	uint32_t time_ms, silence_ms;
+	SSG_Time time;
+	uint32_t silence_ms;
 	uint8_t wave;
 	SSG_Ramp freq, freq2;
 	SSG_Ramp amp, amp2;

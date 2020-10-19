@@ -1,5 +1,5 @@
 /* ssndgen: Script file data and functions.
- * Copyright (c) 2011-2012, 2017-2019 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -22,9 +22,8 @@ enum {
 	SSG_SDOP_LATER_USED = 1<<0,
 	SSG_SDOP_MULTIPLE = 1<<1,
 	SSG_SDOP_NESTED = 1<<2,
-	SSG_SDOP_TIME_DEFAULT = 1<<3,
-	SSG_SDOP_SILENCE_ADDED = 1<<4,
-	SSG_SDOP_HAS_COMPOSITE = 1<<5,
+	SSG_SDOP_SILENCE_ADDED = 1<<3,
+	SSG_SDOP_HAS_COMPOSITE = 1<<4,
 };
 
 /**
@@ -40,7 +39,8 @@ typedef struct SSG_ScriptOpData {
 	/* operator parameters */
 	uint32_t op_id; /* not used by parser; for program module */
 	uint32_t op_params;
-	uint32_t time_ms, silence_ms;
+	SSG_Time time;
+	uint32_t silence_ms;
 	uint8_t wave;
 	SSG_Ramp freq, freq2;
 	SSG_Ramp amp, amp2;

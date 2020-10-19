@@ -84,7 +84,7 @@ audiodev.o: audiodev.c audiodev/*.c audiodev.h common.h
 common.o: common.c common.h
 	$(CC) -c $(CFLAGS) common.c
 
-builder.o: builder.c ssndgen.h script.h ptrlist.h program.h ramp.h wave.h math.h builder/file.h common.h
+builder.o: builder.c ssndgen.h script.h ptrlist.h program.h time.h ramp.h wave.h math.h builder/file.h common.h
 	$(CC) -c $(CFLAGS) builder.c
 
 builder/file.o: builder/file.c builder/file.h common.h
@@ -93,10 +93,10 @@ builder/file.o: builder/file.c builder/file.h common.h
 builder/lexer.o: builder/lexer.c builder/lexer.h builder/file.h builder/symtab.h math.h common.h
 	$(CC) -c $(CFLAGS) builder/lexer.c -o builder/lexer.o
 
-builder/parseconv.o: builder/parseconv.c builder/parseconv.h program.h ramp.h wave.h math.h script.h ptrlist.h arrtype.h common.h
+builder/parseconv.o: builder/parseconv.c builder/parseconv.h program.h time.h ramp.h wave.h math.h script.h ptrlist.h arrtype.h common.h
 	$(CC) -c $(CFLAGS) builder/parseconv.c -o builder/parseconv.o
 
-builder/parser.o: builder/parser.c builder/file.h builder/symtab.h script.h ptrlist.h program.h ramp.h wave.h math.h common.h
+builder/parser.o: builder/parser.c builder/file.h builder/symtab.h script.h ptrlist.h program.h time.h ramp.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) builder/parser.c -o builder/parser.o
 
 builder/scanner.o: builder/scanner.c builder/scanner.h builder/file.h builder/symtab.h math.h common.h
@@ -105,7 +105,7 @@ builder/scanner.o: builder/scanner.c builder/scanner.h builder/file.h builder/sy
 builder/symtab.o: builder/symtab.c builder/symtab.h mempool.h common.h
 	$(CC) -c $(CFLAGS) builder/symtab.c -o builder/symtab.o
 
-builder/voicegraph.o: builder/voicegraph.c builder/parseconv.h program.h ramp.h wave.h math.h script.h ptrlist.h arrtype.h common.h
+builder/voicegraph.o: builder/voicegraph.c builder/parseconv.h program.h time.h ramp.h wave.h math.h script.h ptrlist.h arrtype.h common.h
 	$(CC) -c $(CFLAGS) builder/voicegraph.c -o builder/voicegraph.o
 
 mempool.o: mempool.c mempool.h common.h
@@ -114,13 +114,13 @@ mempool.o: mempool.c mempool.h common.h
 ptrlist.o: ptrlist.c ptrlist.h common.h
 	$(CC) -c $(CFLAGS) ptrlist.c
 
-ramp.o: ramp.c ramp.h math.h common.h
+ramp.o: ramp.c ramp.h time.h math.h common.h
 	$(CC) -c $(CFLAGS_FAST) ramp.c
 
-renderer.o: renderer.c ssndgen.h renderer/generator.h ptrlist.h program.h ramp.h wave.h math.h audiodev.h wavfile.h common.h
+renderer.o: renderer.c ssndgen.h renderer/generator.h ptrlist.h program.h time.h ramp.h wave.h math.h audiodev.h wavfile.h common.h
 	$(CC) -c $(CFLAGS_FAST) renderer.c
 
-renderer/generator.o: renderer/generator.c renderer/generator.h renderer/mixer.h renderer/osc.h program.h ramp.h wave.h math.h common.h
+renderer/generator.o: renderer/generator.c renderer/generator.h renderer/mixer.h renderer/osc.h program.h time.h ramp.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS_FAST) renderer/generator.c -o renderer/generator.o
 
 renderer/mixer.o: renderer/mixer.c renderer/mixer.h ramp.h math.h common.h
@@ -129,10 +129,10 @@ renderer/mixer.o: renderer/mixer.c renderer/mixer.h ramp.h math.h common.h
 renderer/osc.o: renderer/osc.c renderer/osc.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS_FAST) renderer/osc.c -o renderer/osc.o
 
-ssndgen.o: ssndgen.c ssndgen.h ptrlist.h program.h ramp.h wave.h math.h common.h
+ssndgen.o: ssndgen.c ssndgen.h ptrlist.h program.h time.h ramp.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) ssndgen.c
 
-test-builder.o: test-builder.c ssndgen.h builder/lexer.h builder/scanner.h builder/file.h builder/symtab.h ptrlist.h program.h ramp.h wave.h math.h common.h
+test-builder.o: test-builder.c ssndgen.h builder/lexer.h builder/scanner.h builder/file.h builder/symtab.h ptrlist.h program.h time.h ramp.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) test-builder.c
 
 wave.o: wave.c wave.h math.h common.h
