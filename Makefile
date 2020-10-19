@@ -73,7 +73,7 @@ mempool.o: mempool.c mempool.h sgensys.h
 ramp.o: ramp.c ramp.h math.h sgensys.h
 	$(CC) -c $(CFLAGS_FAST) ramp.c
 
-generator.o: generator.c generator.h osc.h program.h ramp.h wave.h math.h sgensys.h
+generator.o: generator.c generator.h osc.h program.h ramp.h wave.h math.h mempool.h sgensys.h
 	$(CC) -c $(CFLAGS_FAST) generator.c
 
 sgensys.o: sgensys.c lexer.h script.h generator.h program.h ramp.h wave.h math.h audiodev.h wavfile.h sgensys.h

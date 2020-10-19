@@ -69,8 +69,8 @@ sgsArrType(VoAlloc, VAState, _)
 static uint32_t voice_duration(SGS_ScriptEvData *ve) {
 	uint32_t duration_ms = 0;
 	for (SGS_ScriptOpData *op = ve->operators.first_on; op; op = op->next) {
-		if (op->time_ms > duration_ms)
-			duration_ms = op->time_ms;
+		if (op->time.v_ms > duration_ms)
+			duration_ms = op->time.v_ms;
 	}
 	return duration_ms;
 }
@@ -198,7 +198,7 @@ static uint32_t OpAlloc_update(OpAlloc *oa, SGS_ScriptOpData *od) {
 	od->op_id = op_id;
 	OAState *oas = &oa->a[op_id];
 	oas->last_pod = od;
-//	oas->duration_ms = od->time_ms;
+//	oas->duration_ms = od->time.v_ms;
 	return op_id;
 }
 
@@ -238,7 +238,7 @@ static void ParseConv_convert_opdata(ParseConv *o,
 	ood->params = op->op_params;
 	ood->attr = op->attr;
 	ood->wave = op->wave;
-	ood->time_ms = op->time_ms;
+	ood->time = op->time;
 	ood->silence_ms = op->silence_ms;
 	ood->freq = op->freq;
 	ood->dynfreq = op->dynfreq;
@@ -559,14 +559,14 @@ void SGS_Program_print_info(SGS_Program *o) {
 		}
 		for (size_t i = 0; i < ev->op_data_count; ++i) {
 			const SGS_ProgramOpData *od = &ev->op_data[i];
-			if (od->time_ms == SGS_TIME_INF)
+			if (od->time.flags & SGS_TIMEP_IMPLICIT)
 				fprintf(stdout,
-					"\n\top %d \tt=INF \tf=%.f",
+					"\n\top %d \tt=IMPL\tf=%.f",
 					od->id, od->freq);
 			else
 				fprintf(stdout,
 					"\n\top %d \tt=%d \tf=%.f",
-					od->id, od->time_ms, od->freq);
+					od->id, od->time.v_ms, od->freq);
 			print_linked("\n\t    aw[", "]", od->amods);
 			print_linked("\n\t    fw[", "]", od->fmods);
 			print_linked("\n\t    p[", "]", od->pmods);
