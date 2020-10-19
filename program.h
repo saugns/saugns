@@ -20,6 +20,24 @@
  */
 
 /**
+ * Time parameter type.
+ *
+ * Holds data for a generic time parameter.
+ */
+typedef struct SAU_Time {
+	uint32_t v_ms;
+	uint8_t flags;
+} SAU_Time;
+
+/**
+ * Time parameter flags.
+ */
+enum {
+	SAU_TIMEP_SET    = 1<<0, // a \a v_ms value or linked is to be used
+	SAU_TIMEP_LINKED = 1<<1, // a linked/"infinite" value is to be used
+};
+
+/**
  * Voice parameter flags.
  */
 enum {
@@ -55,11 +73,6 @@ enum {
 #define SAU_POP_NO_ID  UINT32_MAX       /* operator ID missing */
 #define SAU_POP_MAX_ID (UINT32_MAX - 1) /* error if exceeded */
 
-/*
- * Timing special values.
- */
-#define SAU_TIME_INF   UINT32_MAX /* set and checked for nested operator use */
-
 /**
  * Operator use types.
  */
@@ -92,7 +105,8 @@ typedef struct SAU_ProgramOpData {
 	const SAU_ProgramOpList *fmods, *pmods, *amods;
 	uint32_t id;
 	uint32_t params;
-	uint32_t time_ms, silence_ms;
+	SAU_Time time;
+	uint32_t silence_ms;
 	uint8_t wave;
 	SAU_Ramp freq, freq2;
 	SAU_Ramp amp, amp2;
@@ -130,7 +144,7 @@ typedef struct SAU_Program {
 } SAU_Program;
 
 struct SAU_Script;
-SAU_Program* SAU_build_Program(struct SAU_Script *restrict sd);
+SAU_Program* SAU_build_Program(struct SAU_Script *restrict sd) sauMalloclike;
 void SAU_discard_Program(SAU_Program *restrict o);
 
 void SAU_Program_print_info(const SAU_Program *restrict o);

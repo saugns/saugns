@@ -738,6 +738,7 @@ static void begin_operator(SAU_Parser *restrict o,
 	/*
 	 * Initialize node.
 	 */
+	op->time.v_ms = sl->sopt.def_time_ms; /* time is not copied */
 	SAU_Ramp_reset(&op->freq);
 	SAU_Ramp_reset(&op->freq2);
 	SAU_Ramp_reset(&op->amp);
@@ -750,21 +751,16 @@ static void begin_operator(SAU_Parser *restrict o,
 			(SAU_SDOP_NESTED | SAU_SDOP_MULTIPLE);
 		if (is_composite) {
 			pop->op_flags |= SAU_SDOP_HAS_COMPOSITE;
-			op->op_flags |= SAU_SDOP_TIME_DEFAULT;
-			/* default: previous or infinite time */
+		} else {
+			op->time.flags |= SAU_TIMEP_SET;
 		}
-		op->time_ms = pop->time_ms;
 		op->wave = pop->wave;
 		op->phase = pop->phase;
 		op->obj = pop->obj;
 	} else {
 		/*
 		 * New operator with initial parameter values.
-		 *
-		 * Time default: depends on context.
 		 */
-		op->op_flags = SAU_SDOP_TIME_DEFAULT;
-		op->time_ms = sl->sopt.def_time_ms;
 		op->use_type = pl->use_type;
 		if (op->use_type == SAU_POP_CARR) {
 			op->freq.v0 = sl->sopt.def_freq;
@@ -783,9 +779,9 @@ static void begin_operator(SAU_Parser *restrict o,
 	}
 	op->event = e;
 	/*
-	 * Add new operator to parent(s), ie. either to the
-	 * current event node, or to an operator node (ordinary or multiple)
-	 * in the case of operator linking/nesting.
+	 * Add new operator to parent(s), ie. either the current event node,
+	 * or an operator node (either ordinary or representing multiple
+	 * carriers) in the case of operator linking/nesting.
 	 */
 	if (pop != NULL || !pl->nest_list) {
 		if (!e->op_objs.first_item)
@@ -1088,20 +1084,20 @@ static void parse_in_event(SAU_Parser *restrict o) {
 		case 't':
 			if (SAU_Scanner_tryc(sc, '*')) {
 				/* later fitted or kept to default */
-				op->op_flags |= SAU_SDOP_TIME_DEFAULT;
-				op->time_ms = sl->sopt.def_time_ms;
+				op->time.v_ms = sl->sopt.def_time_ms;
+				op->time.flags = 0;
 			} else if (SAU_Scanner_tryc(sc, 'i')) {
 				if (!(op->op_flags & SAU_SDOP_NESTED)) {
 					SAU_Scanner_warning(sc, NULL,
 "ignoring 'ti' (infinite time) for non-nested operator");
 					break;
 				}
-				op->op_flags &= ~SAU_SDOP_TIME_DEFAULT;
-				op->time_ms = SAU_TIME_INF;
+				op->time.flags |= SAU_TIMEP_SET
+					| SAU_TIMEP_LINKED;
 			} else {
-				if (!scan_time_val(sc, &op->time_ms))
+				if (!scan_time_val(sc, &op->time.v_ms))
 					break;
-				op->op_flags &= ~SAU_SDOP_TIME_DEFAULT;
+				op->time.flags = SAU_TIMEP_SET;
 			}
 			op->params |= SAU_POPP_TIME;
 			break;
@@ -1321,8 +1317,8 @@ static void time_durgroup(SAU_ScriptEvData *restrict e_last) {
 	for (e = e_last->group_backref; e != e_after; ) {
 		for (SAU_ScriptOpData *op = e->op_objs.first_item;
 				op != NULL; op = op->next_item) {
-			if (wait < op->time_ms)
-				wait = op->time_ms;
+			if (wait < op->time.v_ms)
+				wait = op->time.v_ms;
 		}
 		e = e->next;
 		if (e != NULL) {
@@ -1332,10 +1328,10 @@ static void time_durgroup(SAU_ScriptEvData *restrict e_last) {
 	for (e = e_last->group_backref; e != e_after; ) {
 		for (SAU_ScriptOpData *op = e->op_objs.first_item;
 				op != NULL; op = op->next_item) {
-			if ((op->op_flags & SAU_SDOP_TIME_DEFAULT) != 0) {
+			if (!(op->time.flags & SAU_TIMEP_SET)) {
 				/* fill in sensible default time */
-				op->op_flags &= ~SAU_SDOP_TIME_DEFAULT;
-				op->time_ms = wait + waitcount;
+				op->time.v_ms = wait + waitcount;
+				op->time.flags |= SAU_TIMEP_SET;
 			}
 		}
 		e = e->next;
@@ -1356,26 +1352,26 @@ static inline void time_ramp(SAU_Ramp *restrict ramp,
 
 static void time_operator(SAU_ScriptOpData *restrict op) {
 	SAU_ScriptEvData *e = op->event;
-	if ((op->op_flags & (SAU_SDOP_TIME_DEFAULT | SAU_SDOP_NESTED)) ==
-			(SAU_SDOP_TIME_DEFAULT | SAU_SDOP_NESTED)) {
-		op->op_flags &= ~SAU_SDOP_TIME_DEFAULT;
+	if ((op->op_flags & SAU_SDOP_NESTED) != 0 &&
+			!(op->time.flags & SAU_TIMEP_SET)) {
 		if (!(op->op_flags & SAU_SDOP_HAS_COMPOSITE))
-			op->time_ms = SAU_TIME_INF;
+			op->time.flags |= SAU_TIMEP_LINKED;
+		op->time.flags |= SAU_TIMEP_SET;
 	}
-	if (op->time_ms != SAU_TIME_INF) {
-		time_ramp(&op->freq, op->time_ms);
-		time_ramp(&op->freq2, op->time_ms);
-		time_ramp(&op->amp, op->time_ms);
-		time_ramp(&op->amp2, op->time_ms);
+	if (!(op->time.flags & SAU_TIMEP_LINKED)) {
+		time_ramp(&op->freq, op->time.v_ms);
+		time_ramp(&op->freq2, op->time.v_ms);
+		time_ramp(&op->amp, op->time.v_ms);
+		time_ramp(&op->amp2, op->time.v_ms);
 		// op->pan.flags |= SAU_RAMPP_TIME; // TODO: revisit semantics
 		if (!(op->op_flags & SAU_SDOP_SILENCE_ADDED)) {
-			op->time_ms += op->silence_ms;
+			op->time.v_ms += op->silence_ms;
 			op->op_flags |= SAU_SDOP_SILENCE_ADDED;
 		}
 	}
 	if ((e->ev_flags & SAU_SDEV_ADD_WAIT_DURATION) != 0) {
 		if (e->next != NULL)
-			e->next->wait_ms += op->time_ms;
+			e->next->wait_ms += op->time.v_ms;
 		e->ev_flags &= ~SAU_SDEV_ADD_WAIT_DURATION;
 	}
 	for (SAU_ScriptListData *list = op->mods;
@@ -1406,24 +1402,24 @@ static void time_event(SAU_ScriptEvData *restrict e) {
 		ce_op = ce->op_objs.first_item;
 		ce_op_prev = ce_op->on_prev;
 		e_op = ce_op_prev;
-		if ((e_op->op_flags & SAU_SDOP_TIME_DEFAULT) != 0)
-			e_op->op_flags &= ~SAU_SDOP_TIME_DEFAULT;
+		e_op->time.flags |= SAU_TIMEP_SET; /* always used from now on */
 		for (;;) {
-			ce->wait_ms += ce_op_prev->time_ms;
-			if ((ce_op->op_flags & SAU_SDOP_TIME_DEFAULT) != 0) {
-				ce_op->op_flags &= ~SAU_SDOP_TIME_DEFAULT;
-				if ((ce_op->op_flags & (SAU_SDOP_NESTED | SAU_SDOP_HAS_COMPOSITE)) == SAU_SDOP_NESTED)
-					ce_op->time_ms = SAU_TIME_INF;
+			ce->wait_ms += ce_op_prev->time.v_ms;
+			if (!(ce_op->time.flags & SAU_TIMEP_SET)) {
+				ce_op->time.flags |= SAU_TIMEP_SET;
+				if ((ce_op->op_flags &
+(SAU_SDOP_NESTED | SAU_SDOP_HAS_COMPOSITE)) == SAU_SDOP_NESTED)
+					ce_op->time.flags |= SAU_TIMEP_LINKED;
 				else
-					ce_op->time_ms = ce_op_prev->time_ms
+					ce_op->time.v_ms = ce_op_prev->time.v_ms
 						- ce_op_prev->silence_ms;
 			}
 			time_event(ce);
-			if (ce_op->time_ms == SAU_TIME_INF)
-				e_op->time_ms = SAU_TIME_INF;
-			else if (e_op->time_ms != SAU_TIME_INF)
-				e_op->time_ms += ce_op->time_ms +
-					(ce->wait_ms - ce_op_prev->time_ms);
+			if (ce_op->time.flags & SAU_TIMEP_LINKED)
+				e_op->time.flags |= SAU_TIMEP_LINKED;
+			else if (!(e_op->time.flags & SAU_TIMEP_LINKED))
+				e_op->time.v_ms += ce_op->time.v_ms +
+					(ce->wait_ms - ce_op_prev->time.v_ms);
 			ce_op->params &= ~SAU_POPP_TIME;
 			ce_op_prev = ce_op;
 			ce = ce->next;
