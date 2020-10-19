@@ -14,8 +14,8 @@
 #include "generator.h"
 #include "mixer.h"
 #include "osc.h"
+#include "../mempool.h"
 #include <stdio.h>
-#include <stdlib.h>
 
 #define BUF_LEN SAU_MIX_BUFLEN
 typedef float Buf[BUF_LEN];
@@ -25,6 +25,7 @@ typedef float Buf[BUF_LEN];
  */
 enum {
 	ON_VISITED = 1<<0,
+	ON_TIME_INF = 1<<1, /* used for SAU_TIMEP_LINKED */
 };
 
 typedef struct OperatorNode {
@@ -56,31 +57,14 @@ typedef struct VoiceNode {
 	uint32_t pan_pos;
 } VoiceNode;
 
-typedef union EventValue {
-	int32_t ival;
-	//float fval;
-	const SAU_Ramp *ramp;
-} EventValue;
-
-typedef struct EventOpData {
-	uint32_t id;
-	uint32_t params;
-	const SAU_ProgramOpList *fmods, *pmods, *amods;
-} EventOpData;
-
-typedef struct EventVoData {
-	uint16_t id;
-	uint32_t params;
-	const SAU_ProgramOpRef *graph;
-	uint32_t op_count;
-} EventVoData;
-
 typedef struct EventNode {
-	EventVoData vd;
-	EventOpData *od;
-	EventValue *vals;
-	uint32_t waittime;
-	uint32_t od_count;
+	uint32_t wait;
+	uint16_t vo_id;
+	const SAU_ProgramOpRef *graph;
+	const SAU_ProgramOpData *op_data;
+	const SAU_ProgramVoData *vo_data;
+	uint32_t op_count;
+	uint32_t op_data_count;
 } EventNode;
 
 struct SAU_Generator {
@@ -89,41 +73,14 @@ struct SAU_Generator {
 	Buf *bufs;
 	SAU_Mixer *mixer;
 	size_t event, ev_count;
-	EventNode *events;
+	EventNode **events;
 	uint32_t event_pos;
 	uint16_t voice, vo_count;
 	VoiceNode *voices;
 	uint32_t op_count;
 	OperatorNode *operators;
-	EventValue *ev_values;
-	EventOpData *ev_op_data;
-	size_t ev_val_count;
-	size_t ev_op_data_count;
+	SAU_MemPool *mem;
 };
-
-static uint32_t count_flags(uint32_t flags) {
-	uint32_t i, count = 0;
-	for (i = 0; i < (8 * sizeof(uint32_t)); ++i) {
-		count += flags & 1;
-		flags >>= 1;
-	}
-	return count;
-}
-
-static size_t count_ev_values(const SAU_ProgramEvent *restrict e) {
-	size_t count = 0;
-	uint32_t params;
-	if (e->vo_data) {
-		params = e->vo_data->params;
-		params &= ~(SAU_PVOP_GRAPH);
-		count += count_flags(params);
-	}
-	for (size_t i = 0; i < e->op_data_count; ++i) {
-		params = e->op_data[i].params;
-		count += count_flags(params);
-	}
-	return count;
-}
 
 // maximum number of buffers needed for op nesting depth
 #define COUNT_BUFS(op_nest_depth) ((1 + (op_nest_depth)) * 7)
@@ -134,55 +91,34 @@ static bool alloc_for_program(SAU_Generator *restrict o,
 
 	i = prg->ev_count;
 	if (i > 0) {
-		o->events = calloc(i, sizeof(EventNode));
-		if (!o->events)
-			return false;
+		o->events = SAU_MemPool_alloc(o->mem, i * sizeof(EventNode*));
+		if (!o->events) goto ERROR;
 		o->ev_count = i;
-	}
-	size_t ev_val_count = 0, ev_op_data_count = 0;
-	for (size_t i = 0; i < prg->ev_count; ++i) {
-		const SAU_ProgramEvent *ev = &prg->events[i];
-		ev_val_count += count_ev_values(ev);
-		ev_op_data_count += ev->op_data_count;
-	}
-	if (ev_val_count > 0) {
-		o->ev_values = calloc(ev_val_count, sizeof(EventValue));
-		if (!o->ev_values)
-			return false;
-		o->ev_val_count = ev_val_count;
-	}
-	if (ev_op_data_count > 0) {
-		o->ev_op_data = calloc(ev_op_data_count, sizeof(EventOpData));
-		if (!o->ev_op_data)
-			return false;
-		o->ev_op_data_count = ev_op_data_count;
 	}
 	i = prg->vo_count;
 	if (i > 0) {
-		o->voices = calloc(i, sizeof(VoiceNode));
-		if (!o->voices)
-			return false;
+		o->voices = SAU_MemPool_alloc(o->mem, i * sizeof(VoiceNode));
+		if (!o->voices) goto ERROR;
 		o->vo_count = i;
 	}
 	i = prg->op_count;
 	if (i > 0) {
-		o->operators = calloc(i, sizeof(OperatorNode));
-		if (!o->operators)
-			return false;
+		o->operators = SAU_MemPool_alloc(o->mem, i * sizeof(OperatorNode));
+		if (!o->operators) goto ERROR;
 		o->op_count = i;
 	}
 	i = COUNT_BUFS(prg->op_nest_depth);
 	if (i > 0) {
-		o->bufs = calloc(i, sizeof(Buf));
-		if (!o->bufs)
-			return false;
+		o->bufs = SAU_MemPool_alloc(o->mem, i * sizeof(Buf));
+		if (!o->bufs) goto ERROR;
 		o->buf_count = i;
 	}
 	o->mixer = SAU_create_Mixer();
-	if (!o->mixer)
-		return false;
+	if (!o->mixer) goto ERROR;
 
 	return true;
+ERROR:
+	return false;
 }
 
 static const SAU_ProgramOpList blank_oplist = {0};
@@ -192,11 +128,8 @@ static bool convert_program(SAU_Generator *restrict o,
 	if (!alloc_for_program(o, prg))
 		return false;
 
-	EventValue *ev_v = o->ev_values;
-	EventOpData *ev_od = o->ev_op_data;
 	uint32_t vo_wait_time = 0;
 
-	o->srate = srate;
 	float scale = 1.f;
 	if ((prg->mode & SAU_PMODE_AMP_DIV_VOICES) != 0)
 		scale /= o->vo_count;
@@ -209,61 +142,28 @@ static bool convert_program(SAU_Generator *restrict o,
 	}
 	for (size_t i = 0; i < prg->ev_count; ++i) {
 		const SAU_ProgramEvent *prg_e = &prg->events[i];
-		EventNode *e = &o->events[i];
-		uint32_t params;
+		EventNode *e = SAU_MemPool_alloc(o->mem, sizeof(EventNode));
+		if (!e)
+			return false;
 		uint16_t vo_id = prg_e->vo_id;
-		e->vals = ev_v;
-		e->waittime = SAU_MS_IN_SAMPLES(prg_e->wait_ms, srate);
-		vo_wait_time += e->waittime;
-		//e->vd.id = SAU_PVO_NO_ID;
-		e->vd.id = vo_id;
-		e->od = ev_od;
-		e->od_count = prg_e->op_data_count;
-		for (size_t j = 0; j < prg_e->op_data_count; ++j) {
-			const SAU_ProgramOpData *pod = &prg_e->op_data[j];
-			uint32_t op_id = pod->id;
-			params = pod->params;
-			ev_od->id = op_id;
-			ev_od->params = params;
-			ev_od->fmods = pod->fmods;
-			ev_od->pmods = pod->pmods;
-			ev_od->amods = pod->amods;
-			if (params & SAU_POPP_WAVE)
-				(*ev_v++).ival = pod->wave;
-			if (params & SAU_POPP_TIME) {
-				(*ev_v++).ival =
-					(pod->time_ms == SAU_TIME_INF) ?
-					SAU_TIME_INF :
-					SAU_MS_IN_SAMPLES(pod->time_ms, srate);
-			}
-			if (params & SAU_POPP_SILENCE)
-				(*ev_v++).ival =
-					SAU_MS_IN_SAMPLES(pod->silence_ms,
-							srate);
-			if (params & SAU_POPP_FREQ)
-				(*ev_v++).ramp = &pod->freq;
-			if (params & SAU_POPP_FREQ2)
-				(*ev_v++).ramp = &pod->freq2;
-			if (params & SAU_POPP_PHASE)
-				(*ev_v++).ival = SAU_Osc_PHASE(pod->phase);
-			if (params & SAU_POPP_AMP)
-				(*ev_v++).ramp = &pod->amp;
-			if (params & SAU_POPP_AMP2)
-				(*ev_v++).ramp = &pod->amp2;
-			if (params & SAU_POPP_PAN)
-				(*ev_v++).ramp = &pod->pan;
-			++ev_od;
-		}
+		e->wait = SAU_MS_IN_SAMPLES(prg_e->wait_ms, srate);
+		vo_wait_time += e->wait;
+		//e->vo_id = SAU_PVO_NO_ID;
+		e->vo_id = vo_id;
+		e->op_data = prg_e->op_data;
+		e->op_data_count = prg_e->op_data_count;
 		if (prg_e->vo_data) {
 			const SAU_ProgramVoData *pvd = prg_e->vo_data;
-			e->vd.params = pvd->params;
+			// TODO: Move OpRef stuff to pre-alloc
 			if (pvd->graph != NULL) {
-				e->vd.graph = pvd->graph;
-				e->vd.op_count = pvd->op_count;
+				e->graph = pvd->graph;
+				e->op_count = pvd->op_count;
 			}
 			o->voices[vo_id].pos = -vo_wait_time;
 			vo_wait_time = 0;
+			e->vo_data = prg_e->vo_data;
 		}
+		o->events[i] = e;
 	}
 
 	return true;
@@ -274,9 +174,16 @@ static bool convert_program(SAU_Generator *restrict o,
  */
 SAU_Generator* SAU_create_Generator(const SAU_Program *restrict prg,
 		uint32_t srate) {
-	SAU_Generator *o = calloc(1, sizeof(SAU_Generator));
-	if (!o)
+	SAU_MemPool *mem = SAU_create_MemPool(0);
+	if (!mem)
 		return NULL;
+	SAU_Generator *o = SAU_MemPool_alloc(mem, sizeof(SAU_Generator));
+	if (!o) {
+		SAU_destroy_MemPool(mem);
+		return NULL;
+	}
+	o->srate = srate;
+	o->mem = mem;
 	if (!convert_program(o, prg, srate)) {
 		SAU_destroy_Generator(o);
 		return NULL;
@@ -292,13 +199,7 @@ void SAU_destroy_Generator(SAU_Generator *restrict o) {
 	if (!o)
 		return;
 	SAU_destroy_Mixer(o->mixer);
-	free(o->bufs);
-	free(o->events);
-	free(o->voices);
-	free(o->operators);
-	free(o->ev_values);
-	free(o->ev_op_data);
-	free(o);
+	SAU_destroy_MemPool(o->mem);
 }
 
 /*
@@ -311,7 +212,6 @@ static void set_voice_duration(SAU_Generator *restrict o,
 		const SAU_ProgramOpRef *or = &vn->graph[i];
 		if (or->use != SAU_POP_CARR) continue;
 		OperatorNode *on = &o->operators[or->id];
-		if (on->time == SAU_TIME_INF) continue;
 		if (on->time > time)
 			time = on->time;
 	}
@@ -319,17 +219,15 @@ static void set_voice_duration(SAU_Generator *restrict o,
 }
 
 /*
- * Process an event update for a timed parameter.
+ * Process an event update for a ramp parameter.
  */
-static const EventValue *handle_ramp_update(SAU_Ramp *restrict ramp,
+static void handle_ramp_update(SAU_Ramp *restrict ramp,
 		uint32_t *restrict ramp_pos,
-		const EventValue *restrict val) {
-	const SAU_Ramp *src = (*val++).ramp;
-	if ((src->flags & SAU_RAMPP_GOAL) != 0) {
+		const SAU_Ramp *restrict ramp_src) {
+	if ((ramp_src->flags & SAU_RAMPP_GOAL) != 0) {
 		*ramp_pos = 0;
 	}
-	SAU_Ramp_copy(ramp, src);
-	return val;
+	SAU_Ramp_copy(ramp, ramp_src);
 }
 
 /*
@@ -337,8 +235,6 @@ static const EventValue *handle_ramp_update(SAU_Ramp *restrict ramp,
  */
 static void handle_event(SAU_Generator *restrict o, EventNode *restrict e) {
 	if (1) /* more types to be added in the future */ {
-		const EventValue *val = e->vals;
-		uint32_t params;
 		/*
 		 * Set state of operator and/or voice.
 		 *
@@ -346,49 +242,60 @@ static void handle_event(SAU_Generator *restrict o, EventNode *restrict e) {
 		 * updates for their operators.
 		 */
 		VoiceNode *vn = NULL;
-		if (e->vd.id != SAU_PVO_NO_ID)
-			vn = &o->voices[e->vd.id];
-		for (size_t i = 0; i < e->od_count; ++i) {
-			EventOpData *od = &e->od[i];
+		if (e->vo_id != SAU_PVO_NO_ID)
+			vn = &o->voices[e->vo_id];
+		for (size_t i = 0; i < e->op_data_count; ++i) {
+			const SAU_ProgramOpData *od = &e->op_data[i];
 			OperatorNode *on = &o->operators[od->id];
-			params = od->params;
+			uint32_t params = od->params;
 			if (od->fmods != NULL) on->fmods = od->fmods;
 			if (od->pmods != NULL) on->pmods = od->pmods;
 			if (od->amods != NULL) on->amods = od->amods;
 			if (params & SAU_POPP_WAVE)
-				SAU_Osc_set_wave(&on->osc, (*val++).ival);
-			if (params & SAU_POPP_TIME)
-				on->time = (*val++).ival;
+				SAU_Osc_set_wave(&on->osc, od->wave);
+			if (params & SAU_POPP_TIME) {
+				const SAU_Time *src = &od->time;
+				if (src->flags & SAU_TIMEP_LINKED) {
+					on->time = 0;
+					on->flags |= ON_TIME_INF;
+				} else {
+					on->time = SAU_MS_IN_SAMPLES(src->v_ms,
+							o->srate);
+					on->flags &= ~ON_TIME_INF;
+				}
+			}
 			if (params & SAU_POPP_SILENCE)
-				on->silence = (*val++).ival;
+				on->silence = SAU_MS_IN_SAMPLES(od->silence_ms,
+						o->srate);
 			if (params & SAU_POPP_FREQ)
-				val = handle_ramp_update(&on->freq,
-						&on->freq_pos, val);
+				handle_ramp_update(&on->freq,
+						&on->freq_pos, &od->freq);
 			if (params & SAU_POPP_FREQ2)
-				val = handle_ramp_update(&on->freq2,
-						&on->freq2_pos, val);
+				handle_ramp_update(&on->freq2,
+						&on->freq2_pos, &od->freq2);
 			if (params & SAU_POPP_PHASE)
-				SAU_Osc_set_phase(&on->osc, (*val++).ival);
+				SAU_Osc_set_phase(&on->osc,
+						SAU_Osc_PHASE(od->phase));
 			if (params & SAU_POPP_AMP)
-				val = handle_ramp_update(&on->amp,
-						&on->amp_pos, val);
+				handle_ramp_update(&on->amp,
+						&on->amp_pos, &od->amp);
 			if (params & SAU_POPP_AMP2)
-				val = handle_ramp_update(&on->amp2,
-						&on->amp2_pos, val);
+				handle_ramp_update(&on->amp2,
+						&on->amp2_pos, &od->amp2);
 			if (params & SAU_POPP_PAN)
-				val = handle_ramp_update(&vn->pan,
-						&vn->pan_pos, val);
+				handle_ramp_update(&vn->pan,
+						&vn->pan_pos, &od->pan);
 		}
 		if (vn != NULL) {
-			if (e->vd.graph != NULL) {
-				vn->graph = e->vd.graph;
-				vn->op_count = e->vd.op_count;
+			if (e->graph != NULL) {
+				vn->graph = e->graph;
+				vn->op_count = e->op_count;
 			}
 			vn->flags |= VN_INIT;
 			vn->pos = 0;
-			if (o->voice > e->vd.id) {
+			if (o->voice > e->vo_id) {
 				/* go back to re-activated node */
-				o->voice = e->vd.id;
+				o->voice = e->vo_id;
 			}
 			set_voice_duration(o, vn);
 		}
@@ -424,7 +331,7 @@ static uint32_t run_block(SAU_Generator *restrict o,
 		if (!acc_ind) for (i = 0; i < zero_len; ++i)
 			s_buf[i] = 0;
 		len -= zero_len;
-		if (n->time != SAU_TIME_INF) n->time -= zero_len;
+		if (!(n->flags & ON_TIME_INF)) n->time -= zero_len;
 		n->silence -= zero_len;
 		if (!len)
 			return zero_len;
@@ -443,7 +350,7 @@ static uint32_t run_block(SAU_Generator *restrict o,
 	 * Limit length to time duration of operator.
 	 */
 	uint32_t skip_len = 0;
-	if (n->time < len && n->time != SAU_TIME_INF) {
+	if (n->time < len && !(n->flags & ON_TIME_INF)) {
 		skip_len = len - n->time;
 		len = n->time;
 	}
@@ -502,7 +409,7 @@ static uint32_t run_block(SAU_Generator *restrict o,
 	/*
 	 * Update time duration left, zero rest of buffer if unfilled.
 	 */
-	if (n->time != SAU_TIME_INF) {
+	if (!(n->flags & ON_TIME_INF)) {
 		if (!acc_ind && skip_len > 0) {
 			s_buf += len;
 			for (i = 0; i < skip_len; ++i)
@@ -637,18 +544,18 @@ bool SAU_Generator_run(SAU_Generator *restrict o,
 PROCESS:
 	skip_len = 0;
 	while (o->event < o->ev_count) {
-		EventNode *e = &o->events[o->event];
-		if (o->event_pos < e->waittime) {
+		EventNode *e = o->events[o->event];
+		if (o->event_pos < e->wait) {
 			/*
-			 * Limit voice running len to waittime.
+			 * Limit voice running len to wait.
 			 *
 			 * Split processing into two blocks when needed to
 			 * ensure event handling runs before voices.
 			 */
-			uint32_t waittime = e->waittime - o->event_pos;
-			if (waittime < len) {
-				skip_len = len - waittime;
-				len = waittime;
+			uint32_t wait = e->wait - o->event_pos;
+			if (wait < len) {
+				skip_len = len - wait;
+				len = wait;
 			}
 			o->event_pos += len;
 			break;

@@ -169,7 +169,7 @@ ptrlist.o: common.h ptrlist.c ptrlist.h
 ramp.o: common.h math.h ramp.c ramp.h
 	$(CC) -c $(CFLAGS_FASTF) ramp.c
 
-renderer/generator.o: common.h math.h ramp.h renderer/generator.c renderer/generator.h renderer/mixer.h renderer/osc.h program.h wave.h
+renderer/generator.o: common.h math.h mempool.h ramp.h renderer/generator.c renderer/generator.h renderer/mixer.h renderer/osc.h program.h wave.h
 	$(CC) -c $(CFLAGS_FASTF) renderer/generator.c -o renderer/generator.o
 
 renderer/mixer.o: common.h math.h ramp.h renderer/mixer.c renderer/mixer.h

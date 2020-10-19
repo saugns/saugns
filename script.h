@@ -21,9 +21,8 @@ enum {
 	SAU_SDOP_LATER_USED = 1<<0,
 	SAU_SDOP_MULTIPLE = 1<<1,
 	SAU_SDOP_NESTED = 1<<2,
-	SAU_SDOP_TIME_DEFAULT = 1<<3,
-	SAU_SDOP_SILENCE_ADDED = 1<<4,
-	SAU_SDOP_HAS_COMPOSITE = 1<<5,
+	SAU_SDOP_SILENCE_ADDED = 1<<3,
+	SAU_SDOP_HAS_COMPOSITE = 1<<4,
 };
 
 /**
@@ -56,7 +55,8 @@ typedef struct SAU_ScriptOpData {
 	uint32_t op_flags;
 	/* operator parameters */
 	uint32_t params;
-	uint32_t time_ms, silence_ms;
+	SAU_Time time;
+	uint32_t silence_ms;
 	uint8_t wave;
 	uint8_t use_type;
 	SAU_Ramp freq, freq2;
@@ -137,5 +137,6 @@ typedef struct SAU_Script {
 	struct SAU_MemPool *mem; // holds memory for the specific script
 } SAU_Script;
 
-SAU_Script *SAU_load_Script(const char *restrict script_arg, bool is_path);
+SAU_Script *SAU_load_Script(const char *restrict script_arg, bool is_path)
+	sauMalloclike;
 void SAU_discard_Script(SAU_Script *restrict o);
