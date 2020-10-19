@@ -163,7 +163,10 @@ Parameters:
 			For modulator oscillators, default time is however
 		an "implicit" time length (see 'i' below), meaning playing
 		whenever a carrier it is linked to does. (Implicit time is
-		only supported for nested oscillators.)
+		only supported for nested oscillators.) When such a time
+		length is retrieved as part of setting the default time for
+		something else, a definite default time in seconds (e.g. 1
+		second) is however used instead.
 			For a compound step, the first sub-step is however
 		simply given the "S t" default value if no time is set.
 		The following sub-steps in turn each have the time of the
