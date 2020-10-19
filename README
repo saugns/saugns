@@ -161,15 +161,15 @@ Parameters:
 		the surrounding sequence of steps and delays (up to the next
 		'|' time separator, or the end of the script if none).
 			For modulator operators, default time is however
-		infinite (can also be set as "ti"), meaning playing whenever
-		a carrier it is linked to does. (Infinite duration is only
-		supported for nested operators, all scripts having finite
-		duration.)
+		"implicit" (can be set using the literal 'i', as in "ti"),
+		meaning playing whenever a carrier it is linked to does.
+		(Implicit time is only supported for nested operators.)
 			For a compound step, the first sub-step is however
 		simply given the "S t" default value if no time is set.
 		The following sub-steps in turn each have the time of the
 		previous as its default time. The exception is modulators,
-		for which the last sub-step is infinite ("ti") by default.
+		for which the last sub-step has implicit time ('i', "ti")
+		by default, just like normal steps for modulators.
 	f	Frequency in Hz. Can be negative to flip wave shape timewise.
 			Value ramp also supported; see section.
 	f![]	A second frequency in Hz may follow the "!", for a range to

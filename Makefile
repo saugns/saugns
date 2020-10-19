@@ -78,7 +78,7 @@ ramp.o: ramp.c ramp.h math.h common.h
 renderer.o: renderer.c sgensys.h renderer/generator.h program.h ramp.h wave.h math.h audiodev.h wavfile.h common.h
 	$(CC) -c $(CFLAGS_FAST) renderer.c
 
-renderer/generator.o: renderer/generator.c renderer/generator.h renderer/osc.h program.h ramp.h wave.h math.h common.h
+renderer/generator.o: renderer/generator.c renderer/generator.h renderer/osc.h program.h ramp.h wave.h math.h mempool.h common.h
 	$(CC) -c $(CFLAGS_FAST) renderer/generator.c -o renderer/generator.o
 
 sgensys.o: sgensys.c sgensys.h program.h ramp.h wave.h math.h common.h

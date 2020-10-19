@@ -157,7 +157,7 @@ static StrEntry *unique_entry(SGS_SymTab *o,
 	++collision_count;
 #endif
 ADD_ENTRY:
-	entry = SGS_MemPool_alloc(o->malc, NULL, GET_STRING_ENTRY_SIZE(len + 1));
+	entry = SGS_MemPool_alloc(o->malc, GET_STRING_ENTRY_SIZE(len + 1));
 	if (entry == NULL) return NULL;
 	entry->prev = o->strtab[hash];
 	o->strtab[hash] = entry;
