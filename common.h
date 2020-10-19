@@ -51,6 +51,9 @@ void *SGS_memdup(const void *src, size_t size) SGS__malloclike;
  * Debugging options.
  */
 
+/* Debug-friendly memory handling? (Slower.) */
+//#define SGS_MEM_DEBUG 1
+
 /* Disable old parser, run lexer testing instead. */
 #define SGS_TEST_LEXER 0
 

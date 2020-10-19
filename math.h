@@ -1,5 +1,5 @@
 /* sgensys: Math definitions.
- * Copyright (c) 2011-2012, 2017-2018 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -22,5 +22,8 @@
 /**
  * Convert time in ms to time in samples for a sample-rate.
  */
-#define SGS_MS_TO_SRT(ms, srate) \
-	lrintf(((ms) * .001f) * (srate))
+static inline uint32_t SGS_ms_in_samples(uint32_t time_ms, uint32_t srate) {
+	uint64_t time = time_ms * srate;
+	time = (time + 500) / 1000;
+	return time;
+}
