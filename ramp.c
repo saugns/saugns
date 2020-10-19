@@ -17,6 +17,7 @@
 
 #include "ramp.h"
 #include "math.h"
+#include "time.h"
 
 const char *const SSG_Ramp_names[SSG_RAMP_TYPES + 1] = {
 	"hold",
