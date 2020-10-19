@@ -56,8 +56,8 @@ static uint32_t voice_duration(const SGS_ScriptEvData *restrict ve) {
 	uint32_t duration_ms = 0;
 	for (const SGS_ScriptOpData *op = ve->op_objs.first_item;
 			op != NULL; op = op->next_item) {
-		if (op->time_ms > duration_ms)
-			duration_ms = op->time_ms;
+		if (op->time.v_ms > duration_ms)
+			duration_ms = op->time.v_ms;
 	}
 	return duration_ms;
 }
@@ -173,7 +173,7 @@ static uint32_t SGS_OpAlloc_update(SGS_OpAlloc *restrict oa,
 	od->op_id = op_id;
 	SGS_OpAllocState *oas = &oa->a[op_id];
 	oas->last_pod = od;
-//	oas->duration_ms = od->time_ms;
+//	oas->duration_ms = od->time.v_ms;
 	return op_id;
 }
 
@@ -207,7 +207,7 @@ static void ParseConv_convert_opdata(ParseConv *restrict o,
 	ood.id = op_id;
 	ood.params = op->params;
 	/* ...mods */
-	ood.time_ms = op->time_ms;
+	ood.time = op->time;
 	ood.silence_ms = op->silence_ms;
 	ood.wave = op->wave;
 	ood.freq = op->freq;
@@ -488,12 +488,12 @@ static void print_graph(const SGS_ProgramOpRef *restrict graph,
 }
 
 static void print_opline(const SGS_ProgramOpData *restrict od) {
-	if (od->time_ms == SGS_TIME_INF) {
+	if (od->time.flags & SGS_TIMEP_LINKED) {
 		fprintf(stdout,
 			"\n\top %d \tt=INF   \t", od->id);
 	} else {
 		fprintf(stdout,
-			"\n\top %d \tt=%-6d\t", od->id, od->time_ms);
+			"\n\top %d \tt=%-6d\t", od->id, od->time.v_ms);
 	}
 	if ((od->freq.flags & SGS_RAMPP_STATE) != 0) {
 		if ((od->freq.flags & SGS_RAMPP_GOAL) != 0)

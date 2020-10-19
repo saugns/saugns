@@ -20,6 +20,24 @@
  */
 
 /**
+ * Time parameter type.
+ *
+ * Holds data for a generic time parameter.
+ */
+typedef struct SGS_Time {
+	uint32_t v_ms;
+	uint8_t flags;
+} SGS_Time;
+
+/**
+ * Time parameter flags.
+ */
+enum {
+	SGS_TIMEP_SET    = 1<<0, // a \a v_ms value or linked is to be used
+	SGS_TIMEP_LINKED = 1<<1, // a linked/"infinite" value is to be used
+};
+
+/**
  * Voice parameter flags.
  */
 enum {
@@ -55,11 +73,6 @@ enum {
 #define SGS_POP_NO_ID  UINT32_MAX       /* operator ID missing */
 #define SGS_POP_MAX_ID (UINT32_MAX - 1) /* error if exceeded */
 
-/*
- * Timing special values.
- */
-#define SGS_TIME_INF   UINT32_MAX /* set and checked for nested operator use */
-
 /**
  * Operator use types.
  */
@@ -92,7 +105,8 @@ typedef struct SGS_ProgramOpData {
 	const SGS_ProgramOpList *fmods, *pmods, *amods;
 	uint32_t id;
 	uint32_t params;
-	uint32_t time_ms, silence_ms;
+	SGS_Time time;
+	uint32_t silence_ms;
 	uint8_t wave;
 	SGS_Ramp freq, freq2;
 	SGS_Ramp amp, amp2;

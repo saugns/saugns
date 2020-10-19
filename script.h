@@ -21,9 +21,8 @@ enum {
 	SGS_SDOP_LATER_USED = 1<<0,
 	SGS_SDOP_MULTIPLE = 1<<1,
 	SGS_SDOP_NESTED = 1<<2,
-	SGS_SDOP_TIME_DEFAULT = 1<<3,
-	SGS_SDOP_SILENCE_ADDED = 1<<4,
-	SGS_SDOP_HAS_COMPOSITE = 1<<5,
+	SGS_SDOP_SILENCE_ADDED = 1<<3,
+	SGS_SDOP_HAS_COMPOSITE = 1<<4,
 };
 
 /**
@@ -46,7 +45,8 @@ typedef struct SGS_ScriptOpData {
 	uint32_t op_flags;
 	/* operator parameters */
 	uint32_t params;
-	uint32_t time_ms, silence_ms;
+	SGS_Time time;
+	uint32_t silence_ms;
 	uint8_t wave;
 	uint8_t use_type;
 	SGS_Ramp freq, freq2;
