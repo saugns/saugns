@@ -14,8 +14,8 @@
 #include "generator.h"
 #include "mixer.h"
 #include "osc.h"
+#include "../mempool.h"
 #include <stdio.h>
-#include <stdlib.h>
 
 #define BUF_LEN SSG_MIX_BUFLEN
 typedef float Buf[BUF_LEN];
@@ -57,32 +57,14 @@ typedef struct VoiceNode {
 	uint32_t pan_pos;
 } VoiceNode;
 
-typedef union EventValue {
-	int32_t ival;
-	//float fval;
-	const SSG_Time *time;
-	const SSG_Ramp *ramp;
-} EventValue;
-
-typedef struct EventOpData {
-	uint32_t id;
-	uint32_t params;
-	const SSG_ProgramOpAdjcs *adjcs;
-} EventOpData;
-
-typedef struct EventVoData {
-	uint16_t id;
-	uint32_t params;
-	const SSG_ProgramOpRef *op_list;
-	uint32_t op_count;
-} EventVoData;
-
 typedef struct EventNode {
-	EventVoData vd;
-	EventOpData *od;
-	EventValue *vals;
-	uint32_t waittime;
-	uint32_t od_count;
+	uint32_t wait;
+	uint16_t vo_id;
+	const SSG_ProgramOpRef *op_list;
+	const SSG_ProgramOpData *op_data;
+	const SSG_ProgramVoData *vo_data;
+	uint32_t op_count;
+	uint32_t op_data_count;
 } EventNode;
 
 struct SSG_Generator {
@@ -91,42 +73,14 @@ struct SSG_Generator {
 	Buf *bufs;
 	SSG_Mixer *mixer;
 	size_t event, ev_count;
-	EventNode *events;
+	EventNode **events;
 	uint32_t event_pos;
 	uint16_t voice, vo_count;
 	VoiceNode *voices;
 	uint32_t op_count;
 	OperatorNode *operators;
-	EventValue *ev_values;
-	EventOpData *ev_op_data;
-	size_t ev_val_count;
-	size_t ev_op_data_count;
+	SSG_MemPool *mem;
 };
-
-static uint32_t count_flags(uint32_t flags) {
-	uint32_t i, count = 0;
-	for (i = 0; i < (8 * sizeof(uint32_t)); ++i) {
-		count += flags & 1;
-		flags >>= 1;
-	}
-	return count;
-}
-
-static size_t count_ev_values(const SSG_ProgramEvent *restrict e) {
-	size_t count = 0;
-	uint32_t params;
-	if (e->vo_data) {
-		params = e->vo_data->params;
-		params &= ~(SSG_PVOP_OPLIST);
-		count += count_flags(params);
-	}
-	for (size_t i = 0; i < e->op_data_count; ++i) {
-		params = e->op_data[i].params;
-		params &= ~(SSG_POPP_ADJCS);
-		count += count_flags(params);
-	}
-	return count;
-}
 
 // maximum number of buffers needed for op nesting depth
 #define COUNT_BUFS(op_nest_depth) ((1 + (op_nest_depth)) * 7)
@@ -137,55 +91,34 @@ static bool alloc_for_program(SSG_Generator *restrict o,
 
 	i = prg->ev_count;
 	if (i > 0) {
-		o->events = calloc(i, sizeof(EventNode));
-		if (!o->events)
-			return false;
+		o->events = SSG_MemPool_alloc(o->mem, i * sizeof(EventNode*));
+		if (!o->events) goto ERROR;
 		o->ev_count = i;
-	}
-	size_t ev_val_count = 0, ev_op_data_count = 0;
-	for (size_t i = 0; i < prg->ev_count; ++i) {
-		const SSG_ProgramEvent *ev = &prg->events[i];
-		ev_val_count += count_ev_values(ev);
-		ev_op_data_count += ev->op_data_count;
-	}
-	if (ev_val_count > 0) {
-		o->ev_values = calloc(ev_val_count, sizeof(EventValue));
-		if (!o->ev_values)
-			return false;
-		o->ev_val_count = ev_val_count;
-	}
-	if (ev_op_data_count > 0) {
-		o->ev_op_data = calloc(ev_op_data_count, sizeof(EventOpData));
-		if (!o->ev_op_data)
-			return false;
-		o->ev_op_data_count = ev_op_data_count;
 	}
 	i = prg->vo_count;
 	if (i > 0) {
-		o->voices = calloc(i, sizeof(VoiceNode));
-		if (!o->voices)
-			return false;
+		o->voices = SSG_MemPool_alloc(o->mem, i * sizeof(VoiceNode));
+		if (!o->voices) goto ERROR;
 		o->vo_count = i;
 	}
 	i = prg->op_count;
 	if (i > 0) {
-		o->operators = calloc(i, sizeof(OperatorNode));
-		if (!o->operators)
-			return false;
+		o->operators = SSG_MemPool_alloc(o->mem, i * sizeof(OperatorNode));
+		if (!o->operators) goto ERROR;
 		o->op_count = i;
 	}
 	i = COUNT_BUFS(prg->op_nest_depth);
 	if (i > 0) {
-		o->bufs = calloc(i, sizeof(Buf));
-		if (!o->bufs)
-			return false;
+		o->bufs = SSG_MemPool_alloc(o->mem, i * sizeof(Buf));
+		if (!o->bufs) goto ERROR;
 		o->buf_count = i;
 	}
 	o->mixer = SSG_create_Mixer();
-	if (!o->mixer)
-		return false;
+	if (!o->mixer) goto ERROR;
 
 	return true;
+ERROR:
+	return false;
 }
 
 static bool convert_program(SSG_Generator *restrict o,
@@ -193,11 +126,8 @@ static bool convert_program(SSG_Generator *restrict o,
 	if (!alloc_for_program(o, prg))
 		return false;
 
-	EventValue *ev_v = o->ev_values;
-	EventOpData *ev_od = o->ev_op_data;
 	uint32_t vo_wait_time = 0;
 
-	o->srate = srate;
 	float scale = 1.f;
 	if ((prg->mode & SSG_PMODE_AMP_DIV_VOICES) != 0)
 		scale /= o->vo_count;
@@ -209,58 +139,29 @@ static bool convert_program(SSG_Generator *restrict o,
 	}
 	for (size_t i = 0; i < prg->ev_count; ++i) {
 		const SSG_ProgramEvent *prg_e = &prg->events[i];
-		EventNode *e = &o->events[i];
-		uint32_t params;
+		EventNode *e = SSG_MemPool_alloc(o->mem, sizeof(EventNode));
+		if (!e)
+			return false;
 		uint16_t vo_id = prg_e->vo_id;
-		e->vals = ev_v;
-		e->waittime = SSG_MS_IN_SAMPLES(prg_e->wait_ms, srate);
-		vo_wait_time += e->waittime;
-		//e->vd.id = SSG_PVO_NO_ID;
-		e->vd.id = vo_id;
-		e->od = ev_od;
-		e->od_count = prg_e->op_data_count;
-		for (size_t j = 0; j < prg_e->op_data_count; ++j) {
-			const SSG_ProgramOpData *pod = &prg_e->op_data[j];
-			uint32_t op_id = pod->id;
-			params = pod->params;
-			ev_od->id = op_id;
-			ev_od->params = params;
-			if (params & SSG_POPP_ADJCS) {
-				ev_od->adjcs = pod->adjcs;
-			}
-			if (params & SSG_POPP_WAVE)
-				(*ev_v++).ival = pod->wave;
-			if (params & SSG_POPP_TIME)
-				(*ev_v++).time = &pod->time;
-			if (params & SSG_POPP_SILENCE)
-				(*ev_v++).ival =
-					SSG_MS_IN_SAMPLES(pod->silence_ms,
-							srate);
-			if (params & SSG_POPP_FREQ)
-				(*ev_v++).ramp = &pod->freq;
-			if (params & SSG_POPP_FREQ2)
-				(*ev_v++).ramp = &pod->freq2;
-			if (params & SSG_POPP_PHASE)
-				(*ev_v++).ival = SSG_Osc_PHASE(pod->phase);
-			if (params & SSG_POPP_AMP)
-				(*ev_v++).ramp = &pod->amp;
-			if (params & SSG_POPP_AMP2)
-				(*ev_v++).ramp = &pod->amp2;
-			++ev_od;
-		}
+		e->wait = SSG_MS_IN_SAMPLES(prg_e->wait_ms, srate);
+		vo_wait_time += e->wait;
+		//e->vo_id = SSG_PVO_NO_ID;
+		e->vo_id = vo_id;
+		e->op_data = prg_e->op_data;
+		e->op_data_count = prg_e->op_data_count;
 		if (prg_e->vo_data) {
 			const SSG_ProgramVoData *pvd = prg_e->vo_data;
-			params = pvd->params;
-			e->vd.params = params;
+			uint32_t params = pvd->params;
+			// TODO: Move OpRef stuff to pre-alloc
 			if (params & SSG_PVOP_OPLIST) {
-				e->vd.op_list = pvd->op_list;
-				e->vd.op_count = pvd->op_count;
+				e->op_list = pvd->op_list;
+				e->op_count = pvd->op_count;
 			}
-			if (params & SSG_PVOP_PAN)
-				(*ev_v++).ramp = &pvd->pan;
 			o->voices[vo_id].pos = -vo_wait_time;
 			vo_wait_time = 0;
+			e->vo_data = prg_e->vo_data;
 		}
+		o->events[i] = e;
 	}
 
 	return true;
@@ -271,9 +172,16 @@ static bool convert_program(SSG_Generator *restrict o,
  */
 SSG_Generator* SSG_create_Generator(const SSG_Program *restrict prg,
 		uint32_t srate) {
-	SSG_Generator *o = calloc(1, sizeof(SSG_Generator));
-	if (!o)
+	SSG_MemPool *mem = SSG_create_MemPool(0);
+	if (!mem)
 		return NULL;
+	SSG_Generator *o = SSG_MemPool_alloc(mem, sizeof(SSG_Generator));
+	if (!o) {
+		SSG_destroy_MemPool(mem);
+		return NULL;
+	}
+	o->srate = srate;
+	o->mem = mem;
 	if (!convert_program(o, prg, srate)) {
 		SSG_destroy_Generator(o);
 		return NULL;
@@ -289,13 +197,7 @@ void SSG_destroy_Generator(SSG_Generator *restrict o) {
 	if (!o)
 		return;
 	SSG_destroy_Mixer(o->mixer);
-	free(o->bufs);
-	free(o->events);
-	free(o->voices);
-	free(o->operators);
-	free(o->ev_values);
-	free(o->ev_op_data);
-	free(o);
+	SSG_destroy_MemPool(o->mem);
 }
 
 /*
@@ -317,15 +219,13 @@ static void set_voice_duration(SSG_Generator *restrict o,
 /*
  * Process an event update for a ramp parameter.
  */
-static const EventValue *handle_ramp_update(SSG_Ramp *restrict ramp,
+static void handle_ramp_update(SSG_Ramp *restrict ramp,
 		uint32_t *restrict ramp_pos,
-		const EventValue *restrict val) {
-	const SSG_Ramp *src = (*val++).ramp;
-	if ((src->flags & SSG_RAMPP_GOAL) != 0) {
+		const SSG_Ramp *restrict ramp_src) {
+	if ((ramp_src->flags & SSG_RAMPP_GOAL) != 0) {
 		*ramp_pos = 0;
 	}
-	SSG_Ramp_copy(ramp, src);
-	return val;
+	SSG_Ramp_copy(ramp, ramp_src);
 }
 
 /*
@@ -333,26 +233,22 @@ static const EventValue *handle_ramp_update(SSG_Ramp *restrict ramp,
  */
 static void handle_event(SSG_Generator *restrict o, EventNode *restrict e) {
 	if (1) /* more types to be added in the future */ {
-		const EventValue *val = e->vals;
-		uint32_t params;
 		/*
 		 * Set state of operator and/or voice.
 		 *
 		 * Voice updates must be done last, to take into account
 		 * updates for their operators.
 		 */
-		for (size_t i = 0; i < e->od_count; ++i) {
-			EventOpData *od = &e->od[i];
+		for (size_t i = 0; i < e->op_data_count; ++i) {
+			const SSG_ProgramOpData *od = &e->op_data[i];
 			OperatorNode *on = &o->operators[od->id];
-			params = od->params;
+			uint32_t params = od->params;
 			if (params & SSG_POPP_ADJCS)
 				on->adjcs = od->adjcs;
-			if (params & SSG_POPP_WAVE) {
-				uint8_t wave = (*val++).ival;
-				on->osc.lut = SSG_Osc_LUT(wave);
-			}
+			if (params & SSG_POPP_WAVE)
+				on->osc.lut = SSG_Osc_LUT(od->wave);
 			if (params & SSG_POPP_TIME) {
-				const SSG_Time *src = (*val++).time;
+				const SSG_Time *src = &od->time;
 				if (src->flags & SSG_TIMEP_LINKED) {
 					on->time = 0;
 					on->flags |= ON_TIME_INF;
@@ -363,37 +259,39 @@ static void handle_event(SSG_Generator *restrict o, EventNode *restrict e) {
 				}
 			}
 			if (params & SSG_POPP_SILENCE)
-				on->silence = (*val++).ival;
+				on->silence = SSG_MS_IN_SAMPLES(od->silence_ms,
+						o->srate);
 			if (params & SSG_POPP_FREQ)
-				val = handle_ramp_update(&on->freq,
-						&on->freq_pos, val);
+				handle_ramp_update(&on->freq,
+						&on->freq_pos, &od->freq);
 			if (params & SSG_POPP_FREQ2)
-				val = handle_ramp_update(&on->freq2,
-						&on->freq2_pos, val);
+				handle_ramp_update(&on->freq2,
+						&on->freq2_pos, &od->freq2);
 			if (params & SSG_POPP_PHASE)
-				on->osc.phase = (*val++).ival;
+				on->osc.phase = SSG_Osc_PHASE(od->phase);
 			if (params & SSG_POPP_AMP)
-				val = handle_ramp_update(&on->amp,
-						&on->amp_pos, val);
+				handle_ramp_update(&on->amp,
+						&on->amp_pos, &od->amp);
 			if (params & SSG_POPP_AMP2)
-				val = handle_ramp_update(&on->amp2,
-						&on->amp2_pos, val);
+				handle_ramp_update(&on->amp2,
+						&on->amp2_pos, &od->amp2);
 		}
-		if (e->vd.id != SSG_PVO_NO_ID) {
-			VoiceNode *vn = &o->voices[e->vd.id];
-			params = e->vd.params;
-			if (params & SSG_PVOP_OPLIST) {
-				vn->op_list = e->vd.op_list;
-				vn->op_count = e->vd.op_count;
+		if (e->vo_id != SSG_PVO_NO_ID) {
+			const SSG_ProgramVoData *vd = e->vo_data;
+			VoiceNode *vn = &o->voices[e->vo_id];
+			uint32_t params = (vd != NULL) ? vd->params : 0;
+			if (e->op_list != NULL) {
+				vn->op_list = e->op_list;
+				vn->op_count = e->op_count;
 			}
 			if (params & SSG_PVOP_PAN)
-				val = handle_ramp_update(&vn->pan,
-						&vn->pan_pos, val);
+				handle_ramp_update(&vn->pan,
+						&vn->pan_pos, &vd->pan);
 			vn->flags |= VN_INIT;
 			vn->pos = 0;
-			if (o->voice > e->vd.id) {
+			if (o->voice > e->vo_id) {
 				/* go back to re-activated node */
-				o->voice = e->vd.id;
+				o->voice = e->vo_id;
 			}
 			set_voice_duration(o, vn);
 		}
@@ -651,18 +549,18 @@ bool SSG_Generator_run(SSG_Generator *restrict o,
 PROCESS:
 	skip_len = 0;
 	while (o->event < o->ev_count) {
-		EventNode *e = &o->events[o->event];
-		if (o->event_pos < e->waittime) {
+		EventNode *e = o->events[o->event];
+		if (o->event_pos < e->wait) {
 			/*
-			 * Limit voice running len to waittime.
+			 * Limit voice running len to wait.
 			 *
 			 * Split processing into two blocks when needed to
 			 * ensure event handling runs before voices.
 			 */
-			uint32_t waittime = e->waittime - o->event_pos;
-			if (waittime < len) {
-				skip_len = len - waittime;
-				len = waittime;
+			uint32_t wait = e->wait - o->event_pos;
+			if (wait < len) {
+				skip_len = len - wait;
+				len = wait;
 			}
 			o->event_pos += len;
 			break;

@@ -1,5 +1,5 @@
 /* ssndgen: Audio program builder module.
- * Copyright (c) 2011-2013, 2017-2019 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -11,12 +11,9 @@
  * <https://www.gnu.org/licenses/>.
  */
 
-#include "ssndgen.h"
-#include "script.h"
-#include "builder/file.h"
-#include <string.h>
-#include <stdlib.h>
-#include <stdio.h>
+#include "../ssndgen.h"
+#include "../script.h"
+#include "file.h"
 
 /*
  * Open file for script arg.
@@ -65,8 +62,9 @@ CLOSE:
  *
  * \return number of programs successfully built
  */
-size_t SSG_build(const SSG_PtrList *restrict script_args, bool are_paths,
+size_t SSG_build(const SSG_PtrList *restrict script_args, uint32_t options,
 		SSG_PtrList *restrict prg_objs) {
+	bool are_paths = !(options & SSG_ARG_EVAL_STRING);
 	size_t built = 0;
 	const char **args = (const char**) SSG_PtrList_ITEMS(script_args);
 	for (size_t i = 0; i < script_args->count; ++i) {
