@@ -213,13 +213,13 @@ static bool build(const SSG_PtrList *restrict script_args,
  *
  * \return true unless error occurred
  */
-static bool render(const SSG_PtrList *restrict prg_objs,
+static bool play(const SSG_PtrList *restrict prg_objs,
 		uint32_t srate, uint32_t options,
 		const char *restrict wav_path) {
 	bool use_audiodev = (wav_path != NULL) ?
 		((options & ARG_ENABLE_AUDIO_DEV) != 0) :
 		((options & ARG_DISABLE_AUDIO_DEV) == 0);
-	return SSG_render(prg_objs, srate, use_audiodev, wav_path);
+	return SSG_play(prg_objs, srate, use_audiodev, wav_path);
 }
 
 /**
@@ -239,7 +239,7 @@ int main(int argc, char **restrict argv) {
 	if (error)
 		return 1;
 	if (prg_objs.count > 0) {
-		error = !render(&prg_objs, srate, options, wav_path);
+		error = !play(&prg_objs, srate, options, wav_path);
 		discard_programs(&prg_objs);
 		if (error)
 			return 1;

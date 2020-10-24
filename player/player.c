@@ -1,4 +1,4 @@
-/* ssndgen: Audio program renderer module.
+/* ssndgen: Audio program player module.
  * Copyright (c) 2011-2013, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -11,35 +11,35 @@
  * <https://www.gnu.org/licenses/>.
  */
 
-#include "ssndgen.h"
-#include "renderer/generator.h"
+#include "../ssndgen.h"
+#include "../interp/generator.h"
 #include "audiodev.h"
 #include "wavfile.h"
-#include "time.h"
+#include "../time.h"
 #include <stdlib.h>
 
 #define BUF_TIME_MS  256
 #define NUM_CHANNELS 2
 
-typedef struct SSG_Renderer {
+typedef struct SSG_Output {
 	SSG_AudioDev *ad;
 	SSG_WAVFile *wf;
 	uint32_t ad_srate;
 	int16_t *buf;
 	size_t buf_len;
 	size_t ch_len;
-} SSG_Renderer;
+} SSG_Output;
 
 /*
  * Set up use of audio device and/or WAV file, and buffer of suitable size.
  *
  * \return true unless error occurred
  */
-static bool SSG_init_Renderer(SSG_Renderer *restrict o, uint32_t srate,
+static bool SSG_init_Output(SSG_Output *restrict o, uint32_t srate,
 		bool use_audiodev, const char *restrict wav_path) {
 	uint32_t ad_srate = srate;
 	uint32_t max_srate = srate;
-	*o = (SSG_Renderer){0};
+	*o = (SSG_Output){0};
 	if (use_audiodev) {
 		o->ad = SSG_open_AudioDev(NUM_CHANNELS, &ad_srate);
 		if (!o->ad)
@@ -67,7 +67,7 @@ static bool SSG_init_Renderer(SSG_Renderer *restrict o, uint32_t srate,
 /*
  * \return true unless error occurred
  */
-static bool SSG_fini_Renderer(SSG_Renderer *restrict o) {
+static bool SSG_fini_Output(SSG_Output *restrict o) {
 	free(o->buf);
 	if (o->ad != NULL) SSG_close_AudioDev(o->ad);
 	if (o->wf != NULL)
@@ -81,7 +81,7 @@ static bool SSG_fini_Renderer(SSG_Renderer *restrict o) {
  *
  * \return true unless error occurred
  */
-static bool SSG_Renderer_run(SSG_Renderer *restrict o,
+static bool SSG_Output_run(SSG_Output *restrict o,
 		const SSG_Program *restrict prg, uint32_t srate,
 		bool use_audiodev, bool use_wavfile) {
 	SSG_Generator *gen = SSG_create_Generator(prg, srate);
@@ -116,18 +116,18 @@ static bool SSG_Renderer_run(SSG_Renderer *restrict o,
  *
  * \return true unless error occurred
  */
-bool SSG_render(const SSG_PtrList *restrict prg_objs, uint32_t srate,
+bool SSG_play(const SSG_PtrList *restrict prg_objs, uint32_t srate,
 		bool use_audiodev, const char *restrict wav_path) {
 	if (!prg_objs->count)
 		return true;
 
-	SSG_Renderer re;
+	SSG_Output out;
 	bool status = true;
-	if (!SSG_init_Renderer(&re, srate, use_audiodev, wav_path)) {
+	if (!SSG_init_Output(&out, srate, use_audiodev, wav_path)) {
 		status = false;
 		goto CLEANUP;
 	}
-	if (re.ad != NULL && re.wf != NULL && (re.ad_srate != srate)) {
+	if (out.ad != NULL && out.wf != NULL && (out.ad_srate != srate)) {
 		SSG_warning(NULL,
 "generating audio twice, using different sample rates");
 		const SSG_Program **prgs =
@@ -135,28 +135,28 @@ bool SSG_render(const SSG_PtrList *restrict prg_objs, uint32_t srate,
 		for (size_t i = 0; i < prg_objs->count; ++i) {
 			const SSG_Program *prg = prgs[i];
 			if (!prg) continue;
-			if (!SSG_Renderer_run(&re, prg, re.ad_srate,
+			if (!SSG_Output_run(&out, prg, out.ad_srate,
 						true, false))
 				status = false;
-			if (!SSG_Renderer_run(&re, prg, srate,
+			if (!SSG_Output_run(&out, prg, srate,
 						false, true))
 				status = false;
 		}
 	} else {
-		if (re.ad != NULL) srate = re.ad_srate;
+		if (out.ad != NULL) srate = out.ad_srate;
 		const SSG_Program **prgs =
 			(const SSG_Program**) SSG_PtrList_ITEMS(prg_objs);
 		for (size_t i = 0; i < prg_objs->count; ++i) {
 			const SSG_Program *prg = prgs[i];
 			if (!prg) continue;
-			if (!SSG_Renderer_run(&re, prg, srate,
+			if (!SSG_Output_run(&out, prg, srate,
 						true, true))
 				status = false;
 		}
 	}
 
 CLEANUP:
-	if (!SSG_fini_Renderer(&re))
+	if (!SSG_fini_Output(&out))
 		status = false;
 	return status;
 }
