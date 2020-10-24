@@ -22,5 +22,5 @@
 size_t SSG_build(const SSG_PtrList *restrict script_args, bool are_paths,
 		SSG_PtrList *restrict prg_objs);
 
-bool SSG_render(const SSG_PtrList *restrict prg_objs, uint32_t srate,
+bool SSG_play(const SSG_PtrList *restrict prg_objs, uint32_t srate,
 		bool use_audiodev, const char *restrict wav_path);

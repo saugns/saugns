@@ -35,7 +35,7 @@ void SSG_Osc_run(SSG_Osc *restrict o,
 	for (size_t i = 0; i < buf_len; ++i) {
 		int32_t s_pm = 0;
 		if (pm_f != NULL) {
-			s_pm = lrintf(pm_f[i] * INT32_MAX);
+			s_pm = lrintf(pm_f[i] * (float) INT32_MAX);
 		}
 		float s = SSG_Osc_get(o, freq[i], s_pm) * amp[i];
 		if (layer > 0) s += buf[i];
@@ -62,7 +62,7 @@ void SSG_Osc_run_env(SSG_Osc *restrict o,
 	for (size_t i = 0; i < buf_len; ++i) {
 		int32_t s_pm = 0;
 		if (pm_f != NULL) {
-			s_pm = lrintf(pm_f[i] * INT32_MAX);
+			s_pm = lrintf(pm_f[i] * (float) INT32_MAX);
 		}
 		float s = SSG_Osc_get(o, freq[i], s_pm);
 		float s_amp = amp[i] * 0.5f;

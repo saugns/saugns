@@ -18,16 +18,16 @@ OBJ=\
 	builder/parser.o \
 	builder/voicegraph.o \
 	builder/parseconv.o \
-	builder.o \
+	builder/builder.o \
 	mempool.o \
 	ramp.o \
 	wave.o \
-	renderer.o \
-	renderer/osc.o \
-	renderer/mixer.o \
-	renderer/generator.o \
-	audiodev.o \
-	wavfile.o \
+	interp/osc.o \
+	interp/mixer.o \
+	interp/generator.o \
+	player/audiodev.o \
+	player/wavfile.o \
+	player/player.o \
 	ssndgen.o
 TEST_OBJ=\
 	common.o \
@@ -78,14 +78,8 @@ test-builder: $(TEST_OBJ)
 arrtype.o: arrtype.c arrtype.h common.h
 	$(CC) -c $(CFLAGS) arrtype.c
 
-audiodev.o: audiodev.c audiodev/*.c audiodev.h common.h
-	$(CC) -c $(CFLAGS) audiodev.c
-
-common.o: common.c common.h
-	$(CC) -c $(CFLAGS) common.c
-
-builder.o: builder.c ssndgen.h script.h ptrlist.h program.h time.h ramp.h wave.h math.h builder/file.h common.h
-	$(CC) -c $(CFLAGS) builder.c
+builder/builder.o: builder/builder.c builder/file.h common.h math.h program.h ptrlist.h ramp.h script.h ssndgen.h time.h wave.h
+	$(CC) -c $(CFLAGS) builder/builder.c -o builder/builder.o
 
 builder/file.o: builder/file.c builder/file.h common.h
 	$(CC) -c $(CFLAGS) builder/file.c -o builder/file.o
@@ -108,26 +102,35 @@ builder/symtab.o: builder/symtab.c builder/symtab.h mempool.h common.h
 builder/voicegraph.o: builder/voicegraph.c builder/parseconv.h program.h time.h ramp.h wave.h math.h script.h ptrlist.h arrtype.h common.h
 	$(CC) -c $(CFLAGS) builder/voicegraph.c -o builder/voicegraph.o
 
+common.o: common.c common.h
+	$(CC) -c $(CFLAGS) common.c
+
+interp/generator.o: common.h interp/generator.c interp/generator.h interp/mixer.h interp/osc.h math.h mempool.h program.h ramp.h time.h wave.h
+	$(CC) -c $(CFLAGS_FAST) interp/generator.c -o interp/generator.o
+
+interp/mixer.o: common.h interp/mixer.c interp/mixer.h math.h ramp.h
+	$(CC) -c $(CFLAGS_FAST) interp/mixer.c -o interp/mixer.o
+
+interp/osc.o: common.h interp/osc.c interp/osc.h math.h wave.h
+	$(CC) -c $(CFLAGS_FAST) interp/osc.c -o interp/osc.o
+
 mempool.o: mempool.c mempool.h common.h
 	$(CC) -c $(CFLAGS) mempool.c
+
+player/audiodev.o: common.h player/audiodev.c player/audiodev.h player/audiodev/*.c
+	$(CC) -c $(CFLAGS) player/audiodev.c -o player/audiodev.o
+
+player/player.o: common.h interp/generator.h math.h player/audiodev.h player/player.c player/wavfile.h program.h ptrlist.h ramp.h ssndgen.h time.h wave.h
+	$(CC) -c $(CFLAGS_FAST) player/player.c -o player/player.o
+
+player/wavfile.o: common.h player/wavfile.c player/wavfile.h
+	$(CC) -c $(CFLAGS) player/wavfile.c -o player/wavfile.o
 
 ptrlist.o: ptrlist.c ptrlist.h common.h
 	$(CC) -c $(CFLAGS) ptrlist.c
 
 ramp.o: ramp.c ramp.h time.h math.h common.h
 	$(CC) -c $(CFLAGS_FAST) ramp.c
-
-renderer.o: renderer.c ssndgen.h renderer/generator.h ptrlist.h program.h time.h ramp.h wave.h math.h audiodev.h wavfile.h common.h
-	$(CC) -c $(CFLAGS_FAST) renderer.c
-
-renderer/generator.o: renderer/generator.c renderer/generator.h renderer/mixer.h renderer/osc.h program.h time.h ramp.h wave.h math.h common.h
-	$(CC) -c $(CFLAGS_FAST) renderer/generator.c -o renderer/generator.o
-
-renderer/mixer.o: renderer/mixer.c renderer/mixer.h ramp.h math.h common.h
-	$(CC) -c $(CFLAGS_FAST) renderer/mixer.c -o renderer/mixer.o
-
-renderer/osc.o: renderer/osc.c renderer/osc.h wave.h math.h common.h
-	$(CC) -c $(CFLAGS_FAST) renderer/osc.c -o renderer/osc.o
 
 ssndgen.o: ssndgen.c ssndgen.h ptrlist.h program.h time.h ramp.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) ssndgen.c
@@ -137,6 +140,3 @@ test-builder.o: test-builder.c ssndgen.h builder/lexer.h builder/scanner.h build
 
 wave.o: wave.c wave.h math.h common.h
 	$(CC) -c $(CFLAGS_FAST) wave.c
-
-wavfile.o: wavfile.c wavfile.h common.h
-	$(CC) -c $(CFLAGS) wavfile.c
