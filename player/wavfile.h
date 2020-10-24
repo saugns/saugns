@@ -16,7 +16,7 @@
  */
 
 #pragma once
-#include "common.h"
+#include "../common.h"
 
 struct SSG_WAVFile;
 typedef struct SSG_WAVFile SSG_WAVFile;
