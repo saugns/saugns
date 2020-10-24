@@ -11,9 +11,9 @@
  * <https://www.gnu.org/licenses/>.
  */
 
-#include "ssndgen.h"
-#include "script.h"
-#include "builder/file.h"
+#include "../ssndgen.h"
+#include "../script.h"
+#include "file.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>

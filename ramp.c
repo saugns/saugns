@@ -201,13 +201,19 @@ static void fill_state(SSG_Ramp *restrict o, float *restrict buf,
 
 /**
  * Fill \p buf with \p buf_len values for the ramp.
- * If a goal is used, it will be ramped towards; when
- * reached, the goal \a vt will become the new state \a v0.
+ * A value is \a v0 if no goal is set, or a ramping
+ * towards \a vt if a goal is set, unless converted
+ * from a ratio.
  *
- * If the initial and/or target value is a ratio,
- * \p mulbuf is used for a sequence of value multipliers.
+ * If state and/or goal is a ratio, \p mulbuf is
+ * used for value multipliers, to get "absolute"
+ * values. Otherwise \p mulbuf can be NULL.
  *
- * \return true if ramp target not yet reached
+ * When a goal is reached and cleared, its \a vt value becomes
+ * the new \a v0 value. This can be forced at any time, as the
+ * \p pos can alternatively be NULL to skip all values before.
+ *
+ * \return true if ramp goal not yet reached
  */
 bool SSG_Ramp_run(SSG_Ramp *restrict o, uint32_t *restrict pos,
 		float *restrict buf, uint32_t buf_len, uint32_t srate,
@@ -216,7 +222,7 @@ bool SSG_Ramp_run(SSG_Ramp *restrict o, uint32_t *restrict pos,
 		fill_state(o, buf, 0, buf_len, mulbuf);
 		return false;
 	}
-	uint32_t time = SSG_MS_IN_SAMPLES(o->time_ms, srate);
+	uint32_t len = 0;
 	if ((o->flags & SSG_RAMPP_GOAL_RATIO) != 0) {
 		if (!(o->flags & SSG_RAMPP_STATE_RATIO)) {
 			// divide v0 and enable ratio to match vt
@@ -230,7 +236,9 @@ bool SSG_Ramp_run(SSG_Ramp *restrict o, uint32_t *restrict pos,
 			o->flags &= ~SSG_RAMPP_STATE_RATIO;
 		}
 	}
-	uint32_t len = time - *pos;
+	if (!pos) goto REACHED;
+	uint32_t time = SSG_MS_IN_SAMPLES(o->time_ms, srate);
+	len = time - *pos;
 	if (len > buf_len) len = buf_len;
 	SSG_Ramp_fill_funcs[o->type](buf, len, o->v0, o->vt, *pos, time);
 	if ((o->flags & SSG_RAMPP_GOAL_RATIO) != 0) {
@@ -238,7 +246,8 @@ bool SSG_Ramp_run(SSG_Ramp *restrict o, uint32_t *restrict pos,
 			buf[i] *= mulbuf[i];
 	}
 	*pos += len;
-	if (*pos == time) {
+	if (*pos == time)
+	REACHED: {
 		/*
 		 * Goal reached; turn into new initial value.
 		 * Fill any remaining buffer values using it.
@@ -252,22 +261,26 @@ bool SSG_Ramp_run(SSG_Ramp *restrict o, uint32_t *restrict pos,
 }
 
 /**
- * Skip ahead \p skip_len values for the ramp.
- * If a goal is reached, \a vt will become the new state \a v0.
+ * Skip ahead \p skip_len values for the ramp, updating state
+ * and run position without generating values.
  *
- * Use to update ramp and its position without generating samples.
+ * When a goal is reached and cleared, its \a vt value becomes
+ * the new \a v0 value. This can be forced at any time, as the
+ * \p pos can alternatively be NULL to skip all values before.
  *
- * \return true if ramp target not yet reached
+ * \return true if ramp goal not yet reached
  */
 bool SSG_Ramp_skip(SSG_Ramp *restrict o, uint32_t *restrict pos,
 		uint32_t skip_len, uint32_t srate) {
 	if (!(o->flags & SSG_RAMPP_GOAL))
 		return false;
+	if (!pos) goto REACHED;
 	uint32_t time = SSG_MS_IN_SAMPLES(o->time_ms, srate);
 	uint32_t len = time - *pos;
 	if (len > skip_len) len = skip_len;
 	*pos += len;
-	if (*pos == time) {
+	if (*pos == time)
+	REACHED: {
 		/*
 		 * Goal reached; turn into new initial value.
 		 */
