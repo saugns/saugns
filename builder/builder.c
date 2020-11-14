@@ -13,7 +13,7 @@
 
 #include "../ssndgen.h"
 #include "../script.h"
-#include "file.h"
+#include "../reader/file.h"
 
 /*
  * Open file for script arg.
@@ -62,15 +62,15 @@ CLOSE:
  *
  * \return number of programs successfully built
  */
-size_t SSG_build(const SSG_PtrList *restrict script_args, uint32_t options,
-		SSG_PtrList *restrict prg_objs) {
+size_t SSG_build(const SSG_PtrArr *restrict script_args, uint32_t options,
+		SSG_PtrArr *restrict prg_objs) {
 	bool are_paths = !(options & SSG_ARG_EVAL_STRING);
 	size_t built = 0;
-	const char **args = (const char**) SSG_PtrList_ITEMS(script_args);
+	const char **args = (const char**) SSG_PtrArr_ITEMS(script_args);
 	for (size_t i = 0; i < script_args->count; ++i) {
 		SSG_Program *prg = build_program(args[i], are_paths);
 		if (prg != NULL) ++built;
-		SSG_PtrList_add(prg_objs, prg);
+		SSG_PtrArr_add(prg_objs, prg);
 	}
 	return built;
 }

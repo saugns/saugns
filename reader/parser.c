@@ -676,21 +676,21 @@ enum {
 static void destroy_operator(SSG_ParseOpData *restrict op) {
 	size_t i;
 	SSG_ParseOpData **ops;
-	ops = (SSG_ParseOpData**) SSG_PtrList_ITEMS(&op->fmods);
+	ops = (SSG_ParseOpData**) SSG_PtrArr_ITEMS(&op->fmods);
 	for (i = op->fmods.old_count; i < op->fmods.count; ++i) {
 		destroy_operator(ops[i]);
 	}
-	SSG_PtrList_clear(&op->fmods);
-	ops = (SSG_ParseOpData**) SSG_PtrList_ITEMS(&op->pmods);
+	SSG_PtrArr_clear(&op->fmods);
+	ops = (SSG_ParseOpData**) SSG_PtrArr_ITEMS(&op->pmods);
 	for (i = op->pmods.old_count; i < op->pmods.count; ++i) {
 		destroy_operator(ops[i]);
 	}
-	SSG_PtrList_clear(&op->pmods);
-	ops = (SSG_ParseOpData**) SSG_PtrList_ITEMS(&op->amods);
+	SSG_PtrArr_clear(&op->pmods);
+	ops = (SSG_ParseOpData**) SSG_PtrArr_ITEMS(&op->amods);
 	for (i = op->amods.old_count; i < op->amods.count; ++i) {
 		destroy_operator(ops[i]);
 	}
-	SSG_PtrList_clear(&op->amods);
+	SSG_PtrArr_clear(&op->amods);
 	free(op);
 }
 
@@ -700,11 +700,11 @@ static void destroy_operator(SSG_ParseOpData *restrict op) {
 static void destroy_event_node(SSG_ParseEvData *restrict e) {
 	size_t i;
 	SSG_ParseOpData **ops;
-	ops = (SSG_ParseOpData**) SSG_PtrList_ITEMS(&e->operators);
+	ops = (SSG_ParseOpData**) SSG_PtrArr_ITEMS(&e->operators);
 	for (i = e->operators.old_count; i < e->operators.count; ++i) {
 		destroy_operator(ops[i]);
 	}
-	SSG_PtrList_clear(&e->operators);
+	SSG_PtrArr_clear(&e->operators);
 	free(e);
 }
 
@@ -860,9 +860,9 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
 		}
 		op->wave = pop->wave;
 		op->phase = pop->phase;
-		SSG_PtrList_soft_copy(&op->fmods, &pop->fmods);
-		SSG_PtrList_soft_copy(&op->pmods, &pop->pmods);
-		SSG_PtrList_soft_copy(&op->amods, &pop->amods);
+		SSG_PtrArr_soft_copy(&op->fmods, &pop->fmods);
+		SSG_PtrArr_soft_copy(&op->pmods, &pop->pmods);
+		SSG_PtrArr_soft_copy(&op->amods, &pop->amods);
 		if ((pl->pl_flags & SDPL_BIND_MULTIPLE) != 0) {
 			SSG_ParseOpData *mpop = pop;
 			uint32_t max_time = 0;
@@ -897,13 +897,13 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
 	 */
 	if (linktype == NL_REFER ||
 			linktype == NL_GRAPH) {
-		SSG_PtrList_add(&e->operators, op);
+		SSG_PtrArr_add(&e->operators, op);
 		if (linktype == NL_GRAPH) {
 			e->ev_flags |= SSG_SDEV_NEW_OPGRAPH;
 			op->op_flags |= SSG_SDOP_NEW_CARRIER;
 		}
 	} else {
-		SSG_PtrList *list = NULL;
+		SSG_PtrArr *list = NULL;
 		switch (linktype) {
 		case NL_FMODS:
 			list = &pl->parent_op->fmods;
@@ -916,7 +916,7 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
 			break;
 		}
 		pl->parent_op->op_params |= SSG_POPP_ADJCS;
-		SSG_PtrList_add(list, op);
+		SSG_PtrArr_add(list, op);
 	}
 	/*
 	 * Assign label. If no new label but previous node
@@ -1086,7 +1086,7 @@ static bool parse_ev_amp(ParseLevel *restrict pl) {
 	if (SSG_File_TRYC(f, '~') && SSG_File_TRYC(f, '[')) {
 		if (op->amods.count > 0) {
 			op->op_params |= SSG_POPP_ADJCS;
-			SSG_PtrList_clear(&op->amods);
+			SSG_PtrArr_clear(&op->amods);
 		}
 		parse_level(o, pl, NL_AMODS, SCOPE_NEST);
 	}
@@ -1116,7 +1116,7 @@ static bool parse_ev_freq(ParseLevel *restrict pl, bool rel_freq) {
 	if (SSG_File_TRYC(f, '~') && SSG_File_TRYC(f, '[')) {
 		if (op->fmods.count > 0) {
 			op->op_params |= SSG_POPP_ADJCS;
-			SSG_PtrList_clear(&op->fmods);
+			SSG_PtrArr_clear(&op->fmods);
 		}
 		parse_level(o, pl, NL_FMODS, SCOPE_NEST);
 	}
@@ -1137,7 +1137,7 @@ static bool parse_ev_phase(ParseLevel *restrict pl) {
 	if (SSG_File_TRYC(f, '+') && SSG_File_TRYC(f, '[')) {
 		if (op->pmods.count > 0) {
 			op->op_params |= SSG_POPP_ADJCS;
-			SSG_PtrList_clear(&op->pmods);
+			SSG_PtrArr_clear(&op->pmods);
 		}
 		parse_level(o, pl, NL_PMODS, SCOPE_NEST);
 	}
