@@ -16,7 +16,7 @@
 #include "program.h"
 
 #define SAU_CLINAME_STR "saugns"
-#define SAU_VERSION_STR "v0.3-dev"
+#define SAU_VERSION_STR "v0.3.7c"
 
 #define SAU_DEFAULT_SRATE 96000
 
