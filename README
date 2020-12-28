@@ -13,9 +13,9 @@ oscillators can be used.
 The program reads SGS script files and produces audio.
 Output can be to system audio, and/or a 16-bit PCM WAV file.
 
-Supported platforms include x86 and x86-64,
-running DragonFly, FreeBSD, Linux, NetBSD, or OpenBSD.
-Other systems are untested. The following audio systems are expected:
+Tested mainly on x86 and x86-64. Comes with support for
+running on DragonFly, FreeBSD, Linux, NetBSD, and OpenBSD.
+The following audio systems are expected:
 	DragonFly	OSS
 	FreeBSD   	OSS
 	Linux    	ALSA or OSS
@@ -238,8 +238,17 @@ omitted anywhere.
 
 Following a "#", the rest of a line is commented out.
 
-Numerical expressions are allowed within parentheses, allowing numbers
-to be specified using basic arithmetic and freely placed whitespace.
+Numerical expressions:
+	A number can be specified with or without a decimal point;
+	for a number with a decimal point, a leading or a trailing
+	zero can be omitted. Negative numbers require parentheses,
+	within which a sign (+ or -) is allowed for a number, e.g. "(-1)".
+		Within parentheses, infix arithmetic expressions are allowed.
+	The following operations are recognized: +, -, *, /, and ^ (to the
+	power of). Parentheses can be nested, and can be used to multiply,
+	e.g. "2(3)" gives the value "6".
+		Some parameters support named constants specific to that type
+	of value. Such a name can be written instead of a number.
 
 Gradual value adjustment:
 	Some parameters are noted to support this. Instead of typing the

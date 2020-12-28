@@ -1,5 +1,5 @@
 /* sgensys: Script parser module.
- * Copyright (c) 2011-2012, 2017-2019 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -58,7 +58,7 @@ enum {
 
 typedef struct SGSEventNode {
   struct SGSEventNode *next;
-  struct SGSEventNode *groupfrom;
+  struct SGSEventNode *group_backref;
   struct SGSEventNode *composite;
   int32_t wait_ms;
   SGSPtrList operators; /* operators included in event */
