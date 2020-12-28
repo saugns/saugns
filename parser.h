@@ -58,7 +58,7 @@ enum {
 
 typedef struct SGSEventNode {
   struct SGSEventNode *next;
-  struct SGSEventNode *groupfrom;
+  struct SGSEventNode *group_backref;
   struct SGSEventNode *composite;
   int32_t wait_ms;
   SGSPtrList operators; /* operators included in event */
