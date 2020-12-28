@@ -1,5 +1,5 @@
 /* sgensys: Script file parser.
- * Copyright (c) 2011-2012, 2017-2020 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -152,6 +152,7 @@ typedef struct SGS_Parser {
   /* node state */
   SGS_ScriptEvData *events;
   SGS_ScriptEvData *last_event;
+  SGS_ScriptEvData *group_start, *group_end;
 } SGS_Parser;
 
 /*
@@ -232,7 +233,6 @@ typedef struct ParseLevel {
   uint8_t last_linktype; /* FIXME: kludge */
   const char *set_label; /* label assigned to next node */
   /* timing/delay */
-  SGS_ScriptEvData *group_from; /* where to begin for group_events() */
   SGS_ScriptEvData *composite; /* grouping of events for a voice and/or operator */
   uint32_t next_wait_ms; /* added for next event */
 } ParseLevel;
@@ -716,6 +716,7 @@ static void end_event(ParseLevel *pl) {
   if (!(pl->pl_flags & SDPL_ACTIVE_EV))
     return;
   pl->pl_flags &= ~SDPL_ACTIVE_EV;
+  SGS_Parser *o = pl->o;
   SGS_ScriptEvData *e = pl->event;
   SGS_ScriptEvData *pve;
   end_operator(pl);
@@ -733,6 +734,10 @@ static void end_event(ParseLevel *pl) {
                     SGS_PVOP_RAMP_PAN;
   pl->last_event = e;
   pl->event = NULL;
+  SGS_ScriptEvData *group_e = (pl->composite != NULL) ? pl->composite : e;
+  if (!o->group_start)
+    o->group_start = group_e;
+  o->group_end = group_e;
 }
 
 static void begin_event(ParseLevel *pl, uint8_t linktype,
@@ -759,8 +764,6 @@ static void begin_event(ParseLevel *pl, uint8_t linktype,
   } else { /* set defaults */
     e->pan = 0.5f; /* center */
   }
-  if (!pl->group_from)
-    pl->group_from = e;
   if (is_composite) {
     if (!pl->composite) {
       pve->composite = e;
@@ -910,6 +913,13 @@ static void begin_node(ParseLevel *pl, SGS_ScriptOpData *previous,
   pl->last_linktype = linktype; /* FIXME: kludge */
 }
 
+static void flush_durgroup(SGS_Parser *o) {
+  if (o->group_start != NULL) {
+    o->group_end->group_backref = o->group_start;
+    o->group_start = o->group_end = NULL;
+  }
+}
+
 static void begin_scope(SGS_Parser *o, ParseLevel *pl,
                         ParseLevel *parent_pl,
                         uint8_t linktype, uint8_t newscope) {
@@ -926,8 +936,6 @@ static void begin_scope(SGS_Parser *o, ParseLevel *pl,
     pl->event = parent_pl->event;
     pl->operator = parent_pl->operator;
     pl->parent_on = parent_pl->parent_on;
-    if (newscope == SCOPE_BIND)
-      pl->group_from = parent_pl->group_from;
     if (newscope == SCOPE_NEST) {
       pl->pl_flags |= SDPL_NESTED_SCOPE;
       pl->parent_on = parent_pl->operator;
@@ -940,8 +948,6 @@ static void end_scope(ParseLevel *pl) {
   SGS_Parser *o = pl->o;
   end_operator(pl);
   if (pl->scope == SCOPE_BIND) {
-    if (!pl->parent->group_from)
-      pl->parent->group_from = pl->group_from;
     /*
      * Begin multiple-operator node in parent scope for the operator nodes in
      * this scope, provided any are present.
@@ -955,11 +961,8 @@ static void end_scope(ParseLevel *pl) {
      * At end of top scope, ie. at end of script - end last event and adjust
      * timing.
      */
-    SGS_ScriptEvData *group_to;
     end_event(pl);
-    group_to = (pl->composite) ? pl->composite : pl->last_event;
-    if (group_to)
-      group_to->groupfrom = pl->group_from;
+    flush_durgroup(o);
   }
   if (pl->set_label != NULL) {
     warning(o, "ignoring label assignment without operator");
@@ -1046,7 +1049,8 @@ static bool parse_step(ParseLevel *pl) {
       break;
     case '\\':
       if (parse_waittime(pl)) {
-        begin_node(pl, pl->operator, NL_REFER, false);
+        // FIXME: Buggy update node handling for carriers etc. if enabled.
+        //begin_node(pl, pl->operator, NL_REFER, false);
       }
       break;
     case 'a':
@@ -1286,8 +1290,7 @@ static bool parse_level(SGS_Parser *o, ParseLevel *parent_pl,
       flags = parse_settings(&pl) ? (HANDLE_DEFER | DEFERRED_SETTINGS) : 0;
       break;
     case '[':
-      if (parse_level(o, &pl, pl.linktype, SCOPE_NEST))
-        goto RETURN;
+      warning(o, "opening '[' out of place");
       break;
     case '\\':
       if (pl.location == SDPL_IN_DEFAULTS ||
@@ -1307,6 +1310,9 @@ static bool parse_level(SGS_Parser *o, ParseLevel *parent_pl,
       }
       warning(o, "closing ']' without opening '['");
       break;
+    case '{':
+      warning(o, "opening '{' out of place");
+      break;
     case '|':
       if (pl.location == SDPL_IN_DEFAULTS ||
           ((pl.pl_flags & SDPL_NESTED_SCOPE) != 0 && pl.event != NULL))
@@ -1315,18 +1321,12 @@ static bool parse_level(SGS_Parser *o, ParseLevel *parent_pl,
         o->nextc = c;
         goto RETURN;
       }
-      if (!pl.event) {
-        warning(o, "end of sequence before any parts given");
+      end_event(&pl);
+      if (!o->group_start) {
+        warning(o, "no sounds precede time separator");
         break;
       }
-      if (pl.group_from != NULL) {
-        SGS_ScriptEvData *group_to = (pl.composite) ?
-                                     pl.composite :
-                                     pl.event;
-        group_to->groupfrom = pl.group_from;
-        pl.group_from = NULL;
-      }
-      end_event(&pl);
+      flush_durgroup(o);
       pl.location = SDPL_IN_NONE;
       break;
     case '}':
@@ -1379,33 +1379,28 @@ static bool parse_file(SGS_Parser *o, const char *fname) {
 }
 
 /*
- * Adjust timing for event groupings; the script syntax for time grouping is
+ * Adjust timing for a duration group; the script syntax for time grouping is
  * only allowed on the "top" operator level, so the algorithm only deals with
  * this for the events involved.
  */
-static void group_events(SGS_ScriptEvData *to) {
-  SGS_ScriptEvData *e, *e_after = to->next;
+static void time_durgroup(SGS_ScriptEvData *e_last) {
+  SGS_ScriptEvData *e, *e_after = e_last->next;
   size_t i;
   uint32_t wait = 0, waitcount = 0;
-  for (e = to->groupfrom; e != e_after; ) {
+  for (e = e_last->group_backref; e != e_after; ) {
     SGS_ScriptOpData **ops;
     ops = (SGS_ScriptOpData**) SGS_PtrList_ITEMS(&e->operators);
     for (i = 0; i < e->operators.count; ++i) {
       SGS_ScriptOpData *op = ops[i];
-      if (e->next == e_after &&
-          i == (e->operators.count - 1) &&
-          (op->op_flags & SGS_SDOP_TIME_DEFAULT) != 0) /* default for last node in group */
-        op->op_flags &= ~SGS_SDOP_TIME_DEFAULT;
       if (wait < op->time_ms)
         wait = op->time_ms;
     }
     e = e->next;
     if (e != NULL) {
-      /*wait -= e->wait_ms;*/
       waitcount += e->wait_ms;
     }
   }
-  for (e = to->groupfrom; e != e_after; ) {
+  for (e = e_last->group_backref; e != e_after; ) {
     SGS_ScriptOpData **ops;
     ops = (SGS_ScriptOpData**) SGS_PtrList_ITEMS(&e->operators);
     for (i = 0; i < e->operators.count; ++i) {
@@ -1420,7 +1415,7 @@ static void group_events(SGS_ScriptEvData *to) {
       waitcount -= e->wait_ms;
     }
   }
-  to->groupfrom = NULL;
+  e_last->group_backref = NULL;
   if (e_after != NULL)
     e_after->wait_ms += wait;
 }
@@ -1584,7 +1579,7 @@ static void postparse_passes(SGS_Parser *o) {
   SGS_ScriptEvData *e;
   for (e = o->events; e; e = e->next) {
     time_event(e);
-    if (e->groupfrom != NULL) group_events(e);
+    if (e->group_backref != NULL) time_durgroup(e);
   }
   /*
    * Must be separated into pass following timing adjustments for events;

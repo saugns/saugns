@@ -1,5 +1,5 @@
 /* sgensys: Script file data and functions.
- * Copyright (c) 2011-2012, 2017-2019 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -64,7 +64,7 @@ enum {
  */
 typedef struct SGS_ScriptEvData {
 	struct SGS_ScriptEvData *next;
-	struct SGS_ScriptEvData *groupfrom;
+	struct SGS_ScriptEvData *group_backref;
 	struct SGS_ScriptEvData *composite;
 	uint32_t wait_ms;
 	SGS_PtrList operators; /* operators included in event */
