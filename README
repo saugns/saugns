@@ -13,9 +13,9 @@ oscillators can be used.
 The program reads SGS script files and produces audio.
 Output can be to system audio, and/or a 16-bit PCM WAV file.
 
-Supported platforms include x86 and x86-64,
-running DragonFly, FreeBSD, Linux, NetBSD, or OpenBSD.
-Other systems are untested. The following audio systems are expected:
+Tested mainly on x86 and x86-64. Comes with support for
+running on DragonFly, FreeBSD, Linux, NetBSD, and OpenBSD.
+The following audio systems are expected:
 	DragonFly	OSS
 	FreeBSD   	OSS
 	Linux    	ALSA or OSS
@@ -144,24 +144,28 @@ Wave types:
 			A softer alternative to "sqr" (square wave).
 
 Parameters:
-	t	Time duration in seconds. If no t setting is given, the
+	t	Time duration in seconds. If no "t" setting is given, the
 		time set depends on the context.
-			For a single non-nested operator, 1 is used unless
+			For a single non-nested operator, 1.0 is used unless
 		the default value is changed with "S t".
-			When several operators are specified at the same
-		time and time is explicitly set for at least one, the
-		default time is the combined duration of their play.
-		(t* can also be used to specify this explicitly.)
-			For nested operators, i.e. modulators, the default
-		time is infinite (can also be set as "ti"), meaning they
-		play whenever a carrier they are linked to does. Infinite
-		duration is only supported for nested operators, all scripts
-		having finite duration.
-			For a composite event, the first part is given the
-		S default value if none set. The following parts will each
-		in turn be given the value of the preceding part if not
-		explicitly set - with the exception of nested operators for
-		the last part, which will have infinite time (ti) by default.
+			When several operators are specified, the default
+		time is based on the longest remaining (at the current time)
+		duration of play in use for any event at the current level,
+		in considering the surrounding sequence of events and delays
+		(up to the next '|' time separator, or to the end of the
+		script if none).
+			For modulator operators, default time is however an
+		"implicit" time length (see 'i' below), meaning playing
+		whenever a carrier it is linked to does. (Implicit time is
+		only supported for nested operators.)
+			For a composite event, the first sub-event is however
+		simply given the "S t" default value if no time is set.
+		The following sub-events in turn each have the time of the
+		previous as its default time. The exception is modulators,
+		for which the last sub-event has implicit time by default.
+			Special non-number literals can also specify time:
+		d	Definite default time can be set using "td", always.
+		i	Implicit time can be set using "ti", for modulators.
 	f	Frequency in Hz.
 			Gradual value adjustment also supported; see section.
 	f!<>	A second frequency in Hz may follow the "!", for a range to
@@ -238,8 +242,23 @@ omitted anywhere.
 
 Following a "#", the rest of a line is commented out.
 
-Numerical expressions are allowed within parentheses, allowing numbers
-to be specified using basic arithmetic and freely placed whitespace.
+Numerical expressions:
+	A number can be specified with or without a decimal point;
+	for a number with a decimal point, a leading zero can be omitted.
+	Number signs and arithmetic operation symbols can be used in infix
+	expressions. But unless something is written within parentheses,
+	it cannot contain any whitespace, as it ends the expression. For
+	example, "-1" is fine, but "- 1" is a dangling minus followed by
+	a dangling number 1, if not inside parentheses as "(- 1)".
+		The following operations are recognized, and grouped below by
+	priority (nested parentheses can be used to change evaluation order):
+		^	To the power of (right-associative)
+		* / %	Multiplication, division, remainder
+		+ -	Addition, subtraction
+	Parentheses can also be used to multiply when written after something
+	to multiply with, e.g. "2(3)" means "2*(3)" and gives "6".
+		Some parameters support named constants specific to that type
+	of value. Such a name can be written instead of a number.
 
 Gradual value adjustment:
 	To ramp, or sweep, a parameter which supports this towards a
