@@ -132,6 +132,7 @@ typedef struct SGSParser {
   /* node state */
   SGSEventNode *events;
   SGSEventNode *last_event;
+  SGSEventNode *group_start, *group_end;
   /* settings/ops */
   float ampmult;
   int32_t def_time_ms;
@@ -199,7 +200,6 @@ typedef struct NodeScope {
   uint8_t last_linktype; /* FIXME: kludge */
   char *set_label;
   /* timing/delay */
-  SGSEventNode *group_from; /* where to begin for group_events() */
   SGSEventNode *composite; /* grouping of events for a voice and/or operator */
   uint32_t next_wait_ms; /* added for next event */
 } NodeScope;
@@ -248,95 +248,6 @@ static void read_ws(SGSParser *o) {
   } while (c != EOF);
 }
 
-static float read_num_r(SGSParser *o, float (*read_symbol)(SGSParser *o),
-                        char *buf, uint32_t len, uint8_t pri, uint32_t level) {
-  char *p = buf;
-  bool dot = false;
-  float num;
-  char c;
-  c = getc(o->f);
-  if (level > 0) read_ws(o);
-  if (c == '(') {
-    num = read_num_r(o, read_symbol, buf, len, 255, level+1);
-    if (level == 0) return num;
-    goto LOOP;
-  }
-  if (read_symbol &&
-      ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))) {
-    ungetc(c, o->f);
-    num = read_symbol(o);
-    if (num == num) /* not NAN; was recognized */
-      goto LOOP;
-  }
-  if (c == '-') {
-    *p++ = c;
-    c = getc(o->f);
-    if (level > 0) read_ws(o);
-  }
-  while ((c >= '0' && c <= '9') || (!dot && (dot = (c == '.')))) {
-    if ((p+1) == (buf+len)) {
-      break;
-    }
-    *p++ = c;
-    c = getc(o->f);
-  }
-  ungetc(c, o->f);
-  if (p == buf) return NAN;
-  *p = '\0';
-  num = strtod(buf, 0);
-LOOP:
-  if (level > 0) read_ws(o);
-  for (;;) {
-    c = getc(o->f);
-    if (level > 0) read_ws(o);
-    switch (c) {
-    case '(':
-      num *= read_num_r(o, read_symbol, buf, len, 255, level+1);
-      break;
-    case ')':
-      if (pri < 255)
-        ungetc(c, o->f);
-      return num;
-      break;
-    case '^':
-      num = exp(log(num) * read_num_r(o, read_symbol, buf, len, 0, level));
-      break;
-    case '*':
-      num *= read_num_r(o, read_symbol, buf, len, 1, level);
-      break;
-    case '/':
-      num /= read_num_r(o, read_symbol, buf, len, 1, level);
-      break;
-    case '+':
-      if (pri < 2)
-        return num;
-      num += read_num_r(o, read_symbol, buf, len, 2, level);
-      break;
-    case '-':
-      if (pri < 2)
-        return num;
-      num -= read_num_r(o, read_symbol, buf, len, 2, level);
-      break;
-    default:
-      ungetc(c, o->f);
-      return num;
-    }
-    if (num != num) {
-      ungetc(c, o->f);
-      return num;
-    }
-  }
-}
-static bool read_num(SGSParser *o, float (*read_symbol)(SGSParser *o),
-                      float *var) {
-  char buf[64];
-  float num = read_num_r(o, read_symbol, buf, 64, 254, 0);
-  if (num != num)
-    return false;
-  *var = num;
-  return true;
-}
-
 /*
  * Common warning printing function for script errors; requires that o->c
  * is set to the character where the error was detected.
@@ -347,6 +258,112 @@ static void warning(SGSParser *o, const char *str) {
           o->fn, o->line, (o->c == EOF ? "EOF" : buf), str);
 }
 #define WARN_INVALID "invalid character"
+
+typedef float (*ReadSym_f)(SGSParser *o);
+
+typedef struct NumParser {
+  SGSParser *pr;
+  ReadSym_f read_sym_f;
+  char buf[64];
+} NumParser;
+enum {
+  NUMEXP_SUB = 0,
+  NUMEXP_ADT,
+  NUMEXP_MLT,
+  NUMEXP_POW,
+  NUMEXP_NUM,
+};
+static double read_num_r(NumParser *o, uint8_t pri, uint32_t level) {
+  SGSParser *pr = o->pr;
+  bool dot = false;
+  double num;
+  char c;
+  if (level > 0) read_ws(pr);
+  c = getc(pr->f);
+  if (c == '(') {
+    num = read_num_r(o, NUMEXP_SUB, level+1);
+  } else if (c == '+' || c == '-') {
+    num = read_num_r(o, NUMEXP_ADT, level+1);
+    if (num != num) goto DEFER;
+    if (c == '-') num = -num;
+  } else if (o->read_sym_f &&
+      ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))) {
+    ungetc(c, pr->f);
+    num = o->read_sym_f(pr);
+    if (num != num)
+      return NAN;
+  } else {
+    char *p = o->buf;
+    const size_t len = 64;
+    while ((c >= '0' && c <= '9') || (!dot && (dot = (c == '.')))) {
+      if ((p+1) == (o->buf+len)) {
+        break;
+      }
+      *p++ = c;
+      c = getc(pr->f);
+    }
+    ungetc(c, pr->f);
+    if (p == o->buf) return NAN;
+    *p = '\0';
+    num = strtod(o->buf, 0);
+  }
+  if (pri == NUMEXP_NUM)
+    return num; /* defer all */
+  for (;;) {
+    if (level > 0) read_ws(pr);
+    c = getc(pr->f);
+    switch (c) {
+    case '(':
+      if (pri >= NUMEXP_MLT) goto DEFER;
+      num *= read_num_r(o, NUMEXP_SUB, level+1);
+      break;
+    case ')':
+      if (pri != NUMEXP_SUB || level == 0) goto DEFER;
+      return num;
+    case '^':
+      if (pri > NUMEXP_POW) goto DEFER;
+      num = pow(num, read_num_r(o, NUMEXP_POW, level));
+      break;
+    case '*':
+      if (pri >= NUMEXP_MLT) goto DEFER;
+      num *= read_num_r(o, NUMEXP_MLT, level);
+      break;
+    case '/':
+      if (pri >= NUMEXP_MLT) goto DEFER;
+      num /= read_num_r(o, NUMEXP_MLT, level);
+      break;
+    case '%':
+      if (pri >= NUMEXP_MLT) goto DEFER;
+      num = fmod(num, read_num_r(o, NUMEXP_MLT, level));
+      break;
+    case '+':
+      if (pri >= NUMEXP_ADT) goto DEFER;
+      num += read_num_r(o, NUMEXP_ADT, level);
+      break;
+    case '-':
+      if (pri >= NUMEXP_ADT) goto DEFER;
+      num -= read_num_r(o, NUMEXP_ADT, level);
+      break;
+    default:
+      if (pri == NUMEXP_SUB && level > 0) {
+        warning(pr, "numerical expression has '(' without closing ')'");
+      }
+      goto DEFER;
+    }
+    if (num != num) goto DEFER;
+  }
+DEFER:
+  ungetc(c, pr->f);
+  return num;
+}
+static bool read_num(SGSParser *o, ReadSym_f read_symbol, float *var) {
+  NumParser np = {o, read_symbol, {0}};
+  float num = read_num_r(&np, NUMEXP_SUB, 0);
+  if (num != num)
+    return false;
+  *var = num;
+  return true;
+}
 
 #define OCTAVES 11
 static float read_note(SGSParser *o) {
@@ -657,6 +674,7 @@ static void end_operator(NodeScope *ns) {
 }
 
 static void end_event(NodeScope *ns) {
+  SGSParser *o = ns->o;
   SGSEventNode *e = ns->event;
   SGSEventNode *pve;
   if (!e)
@@ -676,6 +694,10 @@ static void end_event(NodeScope *ns) {
                        SGS_P_VALITPANNING;
   ns->last_event = e;
   ns->event = NULL;
+  SGSEventNode *group_e = (ns->composite != NULL) ? ns->composite : e;
+  if (!o->group_start)
+    o->group_start = group_e;
+  o->group_end = group_e;
 }
 
 static void begin_event(NodeScope *ns, uint8_t linktype,
@@ -702,8 +724,6 @@ static void begin_event(NodeScope *ns, uint8_t linktype,
   } else { /* set defaults */
     e->panning = 0.5f; /* center */
   }
-  if (!ns->group_from)
-    ns->group_from = e;
   if (is_composite) {
     if (!ns->composite) {
       pve->composite = e;
@@ -874,6 +894,13 @@ static void begin_node(NodeScope *ns, SGSOperatorNode *previous,
   ns->last_linktype = linktype; /* FIXME: kludge */
 }
 
+static void flush_durgroup(SGSParser *o) {
+  if (o->group_start != NULL) {
+    o->group_end->group_backref = o->group_start;
+    o->group_start = o->group_end = NULL;
+  }
+}
+
 static void begin_scope(SGSParser *o, NodeScope *ns, NodeScope *parent,
                         uint8_t linktype, char newscope) {
   memset(ns, 0, sizeof(NodeScope));
@@ -887,8 +914,6 @@ static void begin_scope(SGSParser *o, NodeScope *ns, NodeScope *parent,
     ns->event = parent->event;
     ns->operator = parent->operator;
     ns->parent_on = parent->parent_on;
-    if (newscope == SCOPE_BIND)
-      ns->group_from = parent->group_from;
     if (newscope == SCOPE_NEST) {
       ns->ns_flags |= NS_NESTED_SCOPE;
       ns->parent_on = parent->operator;
@@ -901,8 +926,6 @@ static void end_scope(NodeScope *ns) {
   SGSParser *o = ns->o;
   end_operator(ns);
   if (ns->scope == SCOPE_BIND) {
-    if (!ns->parent->group_from)
-      ns->parent->group_from = ns->group_from;
     /*
      * Begin multiple-operator node in parent scope for the operator nodes in
      * this scope, provided any are present.
@@ -916,11 +939,8 @@ static void end_scope(NodeScope *ns) {
      * At end of top scope, ie. at end of script - end last event and adjust
      * timing.
      */
-    SGSEventNode *group_to;
     end_event(ns);
-    group_to = (ns->composite) ?  ns->composite : ns->last_event;
-    if (group_to)
-      group_to->groupfrom = ns->group_from;
+    flush_durgroup(o);
   }
   if (ns->set_label != NULL) {
     free((char*)ns->set_label);
@@ -981,12 +1001,12 @@ static bool parse_level(SGSParser *o, NodeScope *parentnd,
 
 static bool parse_step(NodeScope *ns) {
   SGSParser *o = ns->o;
-  SGSEventNode *e = ns->event;
-  SGSOperatorNode *op = ns->operator;
   char c;
   leave_defaults(ns);
   enter_current_node(ns);
   while ((c = read_char(o)) != EOF) {
+    SGSEventNode *e = ns->event;
+    SGSOperatorNode *op = ns->operator;
     switch (c) {
     case 'P':
       if ((ns->ns_flags & NS_NESTED_SCOPE) != 0)
@@ -1002,7 +1022,8 @@ static bool parse_step(NodeScope *ns) {
       break;
     case '\\':
       if (read_waittime(ns)) {
-        begin_node(ns, ns->operator, NL_REFER, false);
+        // FIXME: Buggy update node handling for carriers etc. if enabled.
+        //begin_node(ns, ns->operator, NL_REFER, false);
       }
       break;
     case 'a':
@@ -1118,7 +1139,7 @@ static bool parse_step(NodeScope *ns) {
       op->silence_ms = lrint(silence * 1000.f);
       break; }
     case 't':
-      if (tryc('*', o->f)) {
+      if (tryc('d', o->f)) {
         op->on_flags |= ON_TIME_DEFAULT; /* later fitted or kept to default */
         op->time_ms = o->def_time_ms;
       } else if (tryc('i', o->f)) {
@@ -1284,18 +1305,12 @@ static bool parse_level(SGSParser *o, NodeScope *parentns,
         o->nextc = c;
         goto RETURN;
       }
-      if (!ns.event) {
-        warning(o, "end of sequence before any parts given");
+      end_event(&ns);
+      if (!o->group_start) {
+        warning(o, "no sounds precede time separator");
         break;
       }
-      if (ns.group_from != NULL) {
-        SGSEventNode *group_to = (ns.composite) ?
-                                 ns.composite :
-                                 ns.event;
-        group_to->groupfrom = ns.group_from;
-        ns.group_from = NULL;
-      }
-      end_event(&ns);
+      flush_durgroup(o);
       leave_current_node(&ns);
       break;
     case '}':
@@ -1346,50 +1361,51 @@ static bool parse_file(SGSParser *o, const char *filename) {
 }
 
 /*
- * Adjust timing for event groupings; the script syntax for time grouping is
+ * Adjust timing for a duration group; the script syntax for time grouping is
  * only allowed on the "top" operator level, so the algorithm only deals with
  * this for the events involved.
  */
-static void group_events(SGSEventNode *to) {
-  SGSEventNode *e, *e_after = to->next;
+static void time_durgroup(SGSEventNode *e_last) {
+  SGSEventNode *e, *e_after = e_last->next;
   size_t i;
-  int32_t wait = 0, waitcount = 0;
-  for (e = to->groupfrom; e != e_after; ) {
+  uint32_t cur_longest = 0, wait_sum = 0, wait_after = 0;
+  for (e = e_last->group_backref; e != e_after; ) {
     SGSOperatorNode **ops;
     ops = (SGSOperatorNode**) SGSPtrList_ITEMS(&e->operators);
     for (i = 0; i < e->operators.count; ++i) {
       SGSOperatorNode *op = ops[i];
-      if (e->next == e_after &&
-          i == (e->operators.count - 1) &&
-          op->on_flags & ON_TIME_DEFAULT) /* default for last node in group */
-        op->on_flags &= ~ON_TIME_DEFAULT;
-      if (wait < op->time_ms)
-        wait = op->time_ms;
+      if (cur_longest < op->time_ms)
+        cur_longest = op->time_ms;
     }
+    wait_after = cur_longest;
     e = e->next;
     if (e != NULL) {
-      /*wait -= e->wait_ms;*/
-      waitcount += e->wait_ms;
+      if (cur_longest > e->wait_ms)
+        cur_longest -= e->wait_ms;
+      else
+        cur_longest = 0;
+      wait_sum += e->wait_ms;
     }
   }
-  for (e = to->groupfrom; e != e_after; ) {
+  for (e = e_last->group_backref; e != e_after; ) {
     SGSOperatorNode **ops;
     ops = (SGSOperatorNode**) SGSPtrList_ITEMS(&e->operators);
     for (i = 0; i < e->operators.count; ++i) {
       SGSOperatorNode *op = ops[i];
       if (op->on_flags & ON_TIME_DEFAULT) {
+        /* fill in sensible default time */
+        op->time_ms = cur_longest + wait_sum;
         op->on_flags &= ~ON_TIME_DEFAULT;
-        op->time_ms = wait + waitcount; /* fill in sensible default time */
       }
     }
     e = e->next;
     if (e != NULL) {
-      waitcount -= e->wait_ms;
+      wait_sum -= e->wait_ms;
     }
   }
-  to->groupfrom = NULL;
+  e_last->group_backref = NULL;
   if (e_after != NULL)
-    e_after->wait_ms += wait;
+    e_after->wait_ms += wait_after;
 }
 
 static void time_operator(SGSOperatorNode *op) {
@@ -1546,7 +1562,7 @@ static void postparse_passes(SGSParser *o) {
   SGSEventNode *e;
   for (e = o->events; e; e = e->next) {
     time_event(e);
-    if (e->groupfrom != NULL) group_events(e);
+    if (e->group_backref != NULL) time_durgroup(e);
   }
   /*
    * Must be separated into pass following timing adjustments for events;
