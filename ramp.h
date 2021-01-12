@@ -35,29 +35,30 @@ enum {
 extern const char *const SGS_Ramp_names[SGS_RAMP_TYPES + 1];
 
 typedef void (*SGS_Ramp_fill_f)(float *restrict buf, uint32_t len,
-		float v0, float vt, uint32_t pos, uint32_t time);
+		float v0, float vt, uint32_t pos, uint32_t time,
+		const float *restrict mulbuf);
 
 /** Curve fill functions for ramp types. */
 extern const SGS_Ramp_fill_f SGS_Ramp_fill_funcs[SGS_RAMP_TYPES];
 
 void SGS_Ramp_fill_hold(float *restrict buf, uint32_t len,
-		float v0, float vt,
-		uint32_t pos, uint32_t time);
+		float v0, float vt, uint32_t pos, uint32_t time,
+		const float *restrict mulbuf);
 void SGS_Ramp_fill_lin(float *restrict buf, uint32_t len,
-		float v0, float vt,
-		uint32_t pos, uint32_t time);
+		float v0, float vt, uint32_t pos, uint32_t time,
+		const float *restrict mulbuf);
 void SGS_Ramp_fill_exp(float *restrict buf, uint32_t len,
-		float v0, float vt,
-		uint32_t pos, uint32_t time);
+		float v0, float vt, uint32_t pos, uint32_t time,
+		const float *restrict mulbuf);
 void SGS_Ramp_fill_log(float *restrict buf, uint32_t len,
-		float v0, float vt,
-		uint32_t pos, uint32_t time);
+		float v0, float vt, uint32_t pos, uint32_t time,
+		const float *restrict mulbuf);
 void SGS_Ramp_fill_xpe(float *restrict buf, uint32_t len,
-		float v0, float vt,
-		uint32_t pos, uint32_t time);
+		float v0, float vt, uint32_t pos, uint32_t time,
+		const float *restrict mulbuf);
 void SGS_Ramp_fill_lge(float *restrict buf, uint32_t len,
-		float v0, float vt,
-		uint32_t pos, uint32_t time);
+		float v0, float vt, uint32_t pos, uint32_t time,
+		const float *restrict mulbuf);
 
 /**
  * Ramp parameter flags.
