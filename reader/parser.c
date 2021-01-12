@@ -1,5 +1,5 @@
 /* ssndgen: Script file parser.
- * Copyright (c) 2011-2012, 2017-2020 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -192,7 +192,7 @@ DEFER:
 	SSG_Scanner_ungetc(sc);
 	return num;
 }
-static SSG__noinline bool scan_num(SSG_Scanner *restrict o,
+static bool scan_num(SSG_Scanner *restrict o,
 		SSG_ScanNumConst_f scan_numconst, float *restrict var) {
 	NumParser np = {o, scan_numconst, o->sf, false};
 	float num = scan_num_r(&np, NUMEXP_NUM, 0);
@@ -208,7 +208,7 @@ static SSG__noinline bool scan_num(SSG_Scanner *restrict o,
 	return true;
 }
 
-static SSG__noinline bool scan_time_val(SSG_Scanner *restrict o,
+static bool scan_time_val(SSG_Scanner *restrict o,
 		uint32_t *restrict val) {
 	SSG_ScanFrame sf = o->sf;
 	float val_s;
@@ -601,7 +601,7 @@ static SSG_ParseSublist *create_op_scope(uint8_t use_type,
 	return o;
 }
 
-static SSG__noinline void new_durgroup(ParseLevel *restrict pl) {
+static void new_durgroup(ParseLevel *restrict pl) {
 	SSG_Parser *o = pl->o;
 	SSG_ParseDurGroup *dur = SSG_MemPool_alloc(o->mp,
 			sizeof(SSG_ParseDurGroup));
@@ -610,7 +610,7 @@ static SSG__noinline void new_durgroup(ParseLevel *restrict pl) {
 	o->cur_dur = dur;
 }
 
-static SSG__noinline void end_operator(ParseLevel *restrict pl) {
+static void end_operator(ParseLevel *restrict pl) {
 	if (!(pl->pl_flags & PL_ACTIVE_OP))
 		return;
 	pl->pl_flags &= ~PL_ACTIVE_OP;
@@ -640,7 +640,7 @@ static SSG__noinline void end_operator(ParseLevel *restrict pl) {
 	pl->last_operator = op;
 }
 
-static SSG__noinline void end_event(ParseLevel *restrict pl) {
+static void end_event(ParseLevel *restrict pl) {
 	if (!(pl->pl_flags & PL_ACTIVE_EV))
 		return;
 	pl->pl_flags &= ~PL_ACTIVE_EV;
