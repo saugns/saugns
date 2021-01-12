@@ -1,5 +1,5 @@
 /* ssndgen: Value ramp module.
- * Copyright (c) 2011-2013, 2017-2020 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -35,29 +35,30 @@ enum {
 extern const char *const SSG_Ramp_names[SSG_RAMP_TYPES + 1];
 
 typedef void (*SSG_Ramp_fill_f)(float *restrict buf, uint32_t len,
-		float v0, float vt, uint32_t pos, uint32_t time);
+		float v0, float vt, uint32_t pos, uint32_t time,
+		const float *restrict mulbuf);
 
 /** Curve fill functions for ramp types. */
 extern const SSG_Ramp_fill_f SSG_Ramp_fill_funcs[SSG_RAMP_TYPES];
 
 void SSG_Ramp_fill_hold(float *restrict buf, uint32_t len,
-		float v0, float vt,
-		uint32_t pos, uint32_t time);
+		float v0, float vt, uint32_t pos, uint32_t time,
+		const float *restrict mulbuf);
 void SSG_Ramp_fill_lin(float *restrict buf, uint32_t len,
-		float v0, float vt,
-		uint32_t pos, uint32_t time);
+		float v0, float vt, uint32_t pos, uint32_t time,
+		const float *restrict mulbuf);
 void SSG_Ramp_fill_exp(float *restrict buf, uint32_t len,
-		float v0, float vt,
-		uint32_t pos, uint32_t time);
+		float v0, float vt, uint32_t pos, uint32_t time,
+		const float *restrict mulbuf);
 void SSG_Ramp_fill_log(float *restrict buf, uint32_t len,
-		float v0, float vt,
-		uint32_t pos, uint32_t time);
+		float v0, float vt, uint32_t pos, uint32_t time,
+		const float *restrict mulbuf);
 void SSG_Ramp_fill_esd(float *restrict buf, uint32_t len,
-		float v0, float vt,
-		uint32_t pos, uint32_t time);
+		float v0, float vt, uint32_t pos, uint32_t time,
+		const float *restrict mulbuf);
 void SSG_Ramp_fill_lsd(float *restrict buf, uint32_t len,
-		float v0, float vt,
-		uint32_t pos, uint32_t time);
+		float v0, float vt, uint32_t pos, uint32_t time,
+		const float *restrict mulbuf);
 
 /**
  * Ramp parameter flags.

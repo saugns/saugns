@@ -1,5 +1,5 @@
 /* ssndgen: Value ramp module.
- * Copyright (c) 2011-2013, 2017-2020 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -18,6 +18,7 @@
 #include "ramp.h"
 #include "math.h"
 #include "time.h"
+// the noinline use below works around i386 clang performance issue
 
 const char *const SSG_Ramp_names[SSG_RAMP_TYPES + 1] = {
 	"hold",
@@ -42,12 +43,19 @@ const SSG_Ramp_fill_f SSG_Ramp_fill_funcs[SSG_RAMP_TYPES] = {
  * Fill \p buf with \p len values along a straight horizontal line,
  * i.e. \p len copies of \p v0.
  */
-void SSG_Ramp_fill_hold(float *restrict buf, uint32_t len,
-		float v0, float vt SSG__maybe_unused,
-		uint32_t pos SSG__maybe_unused, uint32_t time SSG__maybe_unused) {
-	uint32_t i;
-	for (i = 0; i < len; ++i)
-		buf[i] = v0;
+SSG__noinline void SSG_Ramp_fill_hold(float *restrict buf, uint32_t len,
+		float v0, float vt, uint32_t pos, uint32_t time,
+		const float *restrict mulbuf) {
+	(void)vt;
+	(void)pos;
+	(void)time;
+	if (!mulbuf) {
+		for (uint32_t i = 0; i < len; ++i)
+			buf[i] = v0;
+	} else {
+		for (uint32_t i = 0; i < len; ++i)
+			buf[i] = v0 * mulbuf[i];
+	}
 }
 
 /**
@@ -56,12 +64,16 @@ void SSG_Ramp_fill_hold(float *restrict buf, uint32_t len,
  * beginning at position \p pos.
  */
 void SSG_Ramp_fill_lin(float *restrict buf, uint32_t len,
-		float v0, float vt,
-		uint32_t pos, uint32_t time) {
+		float v0, float vt, uint32_t pos, uint32_t time,
+		const float *restrict mulbuf) {
 	const float inv_time = 1.f / time;
-	uint32_t i, end;
-	for (i = pos, end = i + len; i < end; ++i) {
-		(*buf++) = v0 + (vt - v0) * (i * inv_time);
+	for (uint32_t i = 0; i < len; ++i) {
+		const uint32_t i_pos = i + pos;
+		float v = v0 + (vt - v0) * (i_pos * inv_time);
+		if (!mulbuf)
+			buf[i] = v;
+		else
+			buf[i] = v * mulbuf[i];
 	}
 }
 
@@ -75,11 +87,11 @@ void SSG_Ramp_fill_lin(float *restrict buf, uint32_t len,
  * the curve rises or falls.)
  */
 void SSG_Ramp_fill_exp(float *restrict buf, uint32_t len,
-		float v0, float vt,
-		uint32_t pos, uint32_t time) {
+		float v0, float vt, uint32_t pos, uint32_t time,
+		const float *restrict mulbuf) {
 	(v0 > vt ?
 		SSG_Ramp_fill_esd :
-		SSG_Ramp_fill_lsd)(buf, len, v0, vt, pos, time);
+		SSG_Ramp_fill_lsd)(buf, len, v0, vt, pos, time, mulbuf);
 }
 
 /**
@@ -92,11 +104,11 @@ void SSG_Ramp_fill_exp(float *restrict buf, uint32_t len,
  * the curve rises or falls.)
  */
 void SSG_Ramp_fill_log(float *restrict buf, uint32_t len,
-		float v0, float vt,
-		uint32_t pos, uint32_t time) {
+		float v0, float vt, uint32_t pos, uint32_t time,
+		const float *restrict mulbuf) {
 	(v0 < vt ?
 		SSG_Ramp_fill_esd :
-		SSG_Ramp_fill_lsd)(buf, len, v0, vt, pos, time);
+		SSG_Ramp_fill_lsd)(buf, len, v0, vt, pos, time, mulbuf);
 }
 
 /**
@@ -109,17 +121,21 @@ void SSG_Ramp_fill_log(float *restrict buf, uint32_t len,
  * and symmetric to the "opposite" 'lsd' type.
  */
 void SSG_Ramp_fill_esd(float *restrict buf, uint32_t len,
-		float v0, float vt,
-		uint32_t pos, uint32_t time) {
+		float v0, float vt, uint32_t pos, uint32_t time,
+		const float *restrict mulbuf) {
 	const float inv_time = 1.f / time;
-	uint32_t i, end;
-	for (i = pos, end = i + len; i < end; ++i) {
-		float mod = 1.f - i * inv_time,
+	for (uint32_t i = 0; i < len; ++i) {
+		const uint32_t i_pos = i + pos;
+		float mod = 1.f - i_pos * inv_time,
 			modp2 = mod * mod,
 			modp3 = modp2 * mod;
 		mod = modp3 + (modp2 * modp3 - modp2) *
 			(mod * (629.f/1792.f) + modp2 * (1163.f/1792.f));
-		(*buf++) = vt + (v0 - vt) * mod;
+		float v = vt + (v0 - vt) * mod;
+		if (!mulbuf)
+			buf[i] = v;
+		else
+			buf[i] = v * mulbuf[i];
 	}
 }
 
@@ -133,17 +149,21 @@ void SSG_Ramp_fill_esd(float *restrict buf, uint32_t len,
  * and symmetric to the "opposite" 'esd' type.
  */
 void SSG_Ramp_fill_lsd(float *restrict buf, uint32_t len,
-		float v0, float vt,
-		uint32_t pos, uint32_t time) {
+		float v0, float vt, uint32_t pos, uint32_t time,
+		const float *restrict mulbuf) {
 	const float inv_time = 1.f / time;
-	uint32_t i, end;
-	for (i = pos, end = i + len; i < end; ++i) {
-		float mod = i * inv_time,
+	for (uint32_t i = 0; i < len; ++i) {
+		const uint32_t i_pos = i + pos;
+		float mod = i_pos * inv_time,
 			modp2 = mod * mod,
 			modp3 = modp2 * mod;
 		mod = modp3 + (modp2 * modp3 - modp2) *
 			(mod * (629.f/1792.f) + modp2 * (1163.f/1792.f));
-		(*buf++) = v0 + (vt - v0) * mod;
+		float v = v0 + (vt - v0) * mod;
+		if (!mulbuf)
+			buf[i] = v;
+		else
+			buf[i] = v * mulbuf[i];
 	}
 }
 
@@ -181,24 +201,6 @@ void SSG_Ramp_copy(SSG_Ramp *restrict o,
 	o->flags |= (src->flags & mask);
 }
 
-/*
- * Fill \p buf from \p from to \p to - 1 with copies of \a v0.
- *
- * If the SSG_RAMPP_STATE_RATIO flag is set, multiply using \p mulbuf
- * for each value.
- */
-static void fill_state(SSG_Ramp *restrict o, float *restrict buf,
-		uint32_t from, uint32_t to,
-		const float *restrict mulbuf) {
-	if ((o->flags & SSG_RAMPP_STATE_RATIO) != 0) {
-		for (uint32_t i = from; i < to; ++i)
-			buf[i] = o->v0 * mulbuf[i];
-	} else {
-		for (uint32_t i = from; i < to; ++i)
-			buf[i] = o->v0;
-	}
-}
-
 /**
  * Fill \p buf with \p buf_len values for the ramp.
  * A value is \a v0 if no goal is set, or a ramping
@@ -207,7 +209,9 @@ static void fill_state(SSG_Ramp *restrict o, float *restrict buf,
  *
  * If state and/or goal is a ratio, \p mulbuf is
  * used for value multipliers, to get "absolute"
- * values. Otherwise \p mulbuf can be NULL.
+ * values. (If \p mulbuf is NULL, it is ignored,
+ * with the same result as if given 1.0 values.)
+ * Otherwise \p mulbuf is ignored.
  *
  * When a goal is reached and cleared, its \a vt value becomes
  * the new \a v0 value. This can be forced at any time, as the
@@ -218,33 +222,31 @@ static void fill_state(SSG_Ramp *restrict o, float *restrict buf,
 bool SSG_Ramp_run(SSG_Ramp *restrict o, uint32_t *restrict pos,
 		float *restrict buf, uint32_t buf_len, uint32_t srate,
 		const float *restrict mulbuf) {
-	if (!(o->flags & SSG_RAMPP_GOAL)) {
-		fill_state(o, buf, 0, buf_len, mulbuf);
-		return false;
-	}
 	uint32_t len = 0;
+	if (!(o->flags & SSG_RAMPP_GOAL)) goto FILL;
+	/*
+	 * If only one of state and goal is a ratio value,
+	 * adjust state value used for state-to-goal fill.
+	 */
 	if ((o->flags & SSG_RAMPP_GOAL_RATIO) != 0) {
 		if (!(o->flags & SSG_RAMPP_STATE_RATIO)) {
-			// divide v0 and enable ratio to match vt
-			o->v0 /= mulbuf[0];
+			if (mulbuf != NULL) o->v0 /= mulbuf[0];
 			o->flags |= SSG_RAMPP_STATE_RATIO;
 		}
+		/* allow a missing mulbuf */
 	} else {
 		if ((o->flags & SSG_RAMPP_STATE_RATIO) != 0) {
-			// multiply v0 and disable ratio to match vt
-			o->v0 *= mulbuf[0];
+			if (mulbuf != NULL) o->v0 *= mulbuf[0];
 			o->flags &= ~SSG_RAMPP_STATE_RATIO;
 		}
+		mulbuf = NULL; /* no ratio handling past first value */
 	}
 	if (!pos) goto REACHED;
 	uint32_t time = SSG_MS_IN_SAMPLES(o->time_ms, srate);
 	len = time - *pos;
 	if (len > buf_len) len = buf_len;
-	SSG_Ramp_fill_funcs[o->type](buf, len, o->v0, o->vt, *pos, time);
-	if ((o->flags & SSG_RAMPP_GOAL_RATIO) != 0) {
-		for (uint32_t i = 0; i < len; ++i)
-			buf[i] *= mulbuf[i];
-	}
+	SSG_Ramp_fill_funcs[o->type](buf, len,
+			o->v0, o->vt, *pos, time, mulbuf);
 	*pos += len;
 	if (*pos == time)
 	REACHED: {
@@ -254,7 +256,13 @@ bool SSG_Ramp_run(SSG_Ramp *restrict o, uint32_t *restrict pos,
 		 */
 		o->v0 = o->vt;
 		o->flags &= ~(SSG_RAMPP_GOAL | SSG_RAMPP_GOAL_RATIO);
-		fill_state(o, buf, len, buf_len, mulbuf);
+	FILL:
+		if (!(o->flags & SSG_RAMPP_STATE_RATIO))
+			mulbuf = NULL;
+		else if (mulbuf != NULL)
+			mulbuf += len;
+		SSG_Ramp_fill_hold(buf + len, buf_len - len,
+				o->v0, o->v0, 0, 0, mulbuf);
 		return false;
 	}
 	return true;

@@ -1,7 +1,10 @@
 .POSIX:
 CC=cc
-CFLAGS=-std=c99 -W -Wall -O2
-CFLAGS_FAST=$(CFLAGS) -ffast-math
+CFLAGS_COMMON=-std=c99 -W -Wall
+CFLAGS=$(CFLAGS_COMMON) -O2
+CFLAGS_FAST=$(CFLAGS_COMMON) -O3
+CFLAGS_FASTF=$(CFLAGS_COMMON) -ffast-math -O3
+CFLAGS_SIZE=$(CFLAGS_COMMON) -Os
 LFLAGS=-s -lm
 LFLAGS_LINUX=$(LFLAGS) -lasound
 LFLAGS_SNDIO=$(LFLAGS) -lsndio
@@ -89,25 +92,25 @@ common.o: common.c common.h
 	$(CC) -c $(CFLAGS) common.c
 
 interp/interp.o: arrtype.h common.h interp/interp.c interp/interp.h interp/mixer.h interp/osc.h interp/prealloc.h math.h mempool.h program.h ramp.h time.h wave.h
-	$(CC) -c $(CFLAGS_FAST) interp/interp.c -o interp/interp.o
+	$(CC) -c $(CFLAGS_FASTF) interp/interp.c -o interp/interp.o
 
 interp/mixer.o: common.h interp/mixer.c interp/mixer.h math.h ramp.h
-	$(CC) -c $(CFLAGS_FAST) interp/mixer.c -o interp/mixer.o
+	$(CC) -c $(CFLAGS_FASTF) interp/mixer.c -o interp/mixer.o
 
 interp/osc.o: common.h interp/osc.c interp/osc.h math.h wave.h
-	$(CC) -c $(CFLAGS_FAST) interp/osc.c -o interp/osc.o
+	$(CC) -c $(CFLAGS_FASTF) interp/osc.c -o interp/osc.o
 
 interp/prealloc.o: arrtype.h common.h interp/interp.h interp/osc.h interp/prealloc.c interp/prealloc.h math.h mempool.h program.h ramp.h time.h wave.h
-	$(CC) -c $(CFLAGS_FAST) interp/prealloc.c -o interp/prealloc.o
+	$(CC) -c $(CFLAGS_FASTF) interp/prealloc.c -o interp/prealloc.o
 
 mempool.o: common.h mempool.c mempool.h
-	$(CC) -c $(CFLAGS) mempool.c
+	$(CC) -c $(CFLAGS_FAST) mempool.c
 
 player/audiodev.o: common.h player/audiodev.c player/audiodev.h player/audiodev/*.c
 	$(CC) -c $(CFLAGS) player/audiodev.c -o player/audiodev.o
 
 player/player.o: common.h interp/interp.h math.h player/audiodev.h player/player.c player/wavfile.h program.h ptrarr.h ramp.h ssndgen.h time.h wave.h
-	$(CC) -c $(CFLAGS_FAST) player/player.c -o player/player.o
+	$(CC) -c $(CFLAGS) player/player.c -o player/player.o
 
 player/wavfile.o: common.h player/wavfile.c player/wavfile.h
 	$(CC) -c $(CFLAGS) player/wavfile.c -o player/wavfile.o
@@ -116,7 +119,7 @@ ptrarr.o: common.h mempool.h ptrarr.c ptrarr.h
 	$(CC) -c $(CFLAGS) ptrarr.c
 
 ramp.o: common.h math.h ramp.c ramp.h time.h
-	$(CC) -c $(CFLAGS_FAST) ramp.c
+	$(CC) -c $(CFLAGS_FASTF) ramp.c
 
 reader/file.o: common.h reader/file.c reader/file.h
 	$(CC) -c $(CFLAGS) reader/file.c -o reader/file.o
@@ -128,13 +131,13 @@ reader/parseconv.o: common.h math.h mempool.h program.h ramp.h reader/parseconv.
 	$(CC) -c $(CFLAGS) reader/parseconv.c -o reader/parseconv.o
 
 reader/parser.o: common.h math.h mempool.h program.h ramp.h reader/file.h reader/parser.c reader/parser.h reader/scanner.h reader/symtab.h reflist.h script.h time.h wave.h
-	$(CC) -c $(CFLAGS) reader/parser.c -o reader/parser.o
+	$(CC) -c $(CFLAGS_SIZE) reader/parser.c -o reader/parser.o
 
 reader/scanner.o: common.h math.h mempool.h reader/file.h reader/scanner.c reader/scanner.h reader/symtab.h
-	$(CC) -c $(CFLAGS) reader/scanner.c -o reader/scanner.o
+	$(CC) -c $(CFLAGS_FAST) reader/scanner.c -o reader/scanner.o
 
 reader/symtab.o: common.h mempool.h reader/symtab.c reader/symtab.h
-	$(CC) -c $(CFLAGS) reader/symtab.c -o reader/symtab.o
+	$(CC) -c $(CFLAGS_FAST) reader/symtab.c -o reader/symtab.o
 
 reflist.o: common.h mempool.h reflist.c reflist.h
 	$(CC) -c $(CFLAGS) reflist.c
@@ -146,4 +149,4 @@ test-scan.o: common.h math.h mempool.h program.h ptrarr.h ramp.h reader/lexer.h 
 	$(CC) -c $(CFLAGS) test-scan.c
 
 wave.o: common.h math.h wave.c wave.h
-	$(CC) -c $(CFLAGS_FAST) wave.c
+	$(CC) -c $(CFLAGS_FASTF) wave.c
