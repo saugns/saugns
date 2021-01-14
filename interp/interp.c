@@ -231,7 +231,6 @@ static float *get_freq_buf(SAU_Interp *restrict o,
 			freq[i] += (freq2[i] - freq[i]) * fm_buf[i];
 	} else {
 		const float freq2_v = n->freq2.v0;
-		SAU_Ramp_skip(&n->freq2, &n->freq2_pos, len, o->srate);
 		for (uint32_t i = 0; i < len; ++i)
 			freq[i] += (freq2_v - freq[i]) * fm_buf[i];
 	}
@@ -252,8 +251,6 @@ static float *get_amp_buf(SAU_Interp *restrict o,
 	if (n->amp.flags & SAU_RAMPP_GOAL) {
 		amp = *(bufs++);
 		SAU_Ramp_run(&n->amp, &n->amp_pos, amp, len, o->srate, NULL);
-	} else {
-		SAU_Ramp_skip(&n->amp, &n->amp_pos, len, o->srate);
 	}
 	if (!n->amods->count) {
 		SAU_Ramp_skip(&n->amp2, &n->amp2_pos, len, o->srate);
@@ -281,7 +278,6 @@ static float *get_amp_buf(SAU_Interp *restrict o,
 		}
 	} else {
 		const float amp2_v = n->amp2.v0;
-		SAU_Ramp_skip(&n->amp2, &n->amp2_pos, len, o->srate);
 		if (!amp) {
 			const float amp_v = n->amp.v0;
 			for (uint32_t i = 0; i < len; ++i) {
