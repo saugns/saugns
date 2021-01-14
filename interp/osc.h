@@ -1,5 +1,5 @@
 /* saugns: Oscillator implementation.
- * Copyright (c) 2011, 2017-2020 Joel K. Pettersson
+ * Copyright (c) 2011, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -23,6 +23,8 @@ typedef struct SAU_Osc {
 	uint32_t phase;
 	float coeff;
 	const float *lut;
+	/* non-dynamic values used when corresponding buffers are NULL */
+	float freq, amp;
 } SAU_Osc;
 
 /**

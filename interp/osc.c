@@ -1,5 +1,5 @@
 /* saugns: Oscillator implementation.
- * Copyright (c) 2011, 2017-2020 Joel K. Pettersson
+ * Copyright (c) 2011, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -24,6 +24,9 @@
  * For \p layer greater than zero, adds
  * the output to \p buf instead of assigning it.
  *
+ * The value buffers \p freq and \p amp, if not NULL, are
+ * used instead of the SAU_Osc fields with the same names.
+ *
  * \p pm_f may be NULL for no PM input.
  */
 void SAU_Osc_run(SAU_Osc *restrict o,
@@ -33,11 +36,16 @@ void SAU_Osc_run(SAU_Osc *restrict o,
 		const float *restrict amp,
 		const float *restrict pm_f) {
 	for (size_t i = 0; i < buf_len; ++i) {
-		int32_t s_pm = 0;
-		if (pm_f != NULL) {
-			s_pm = lrintf(pm_f[i] * (float) INT32_MAX);
-		}
-		float s = SAU_Osc_get(o, freq[i], s_pm) * amp[i];
+		const float s_freq = (freq != NULL) ?
+			freq[i] :
+			o->freq;
+		const float s_amp = (amp != NULL) ?
+			amp[i] :
+			o->amp;
+		const int32_t s_pm = (pm_f != NULL) ?
+			lrintf(pm_f[i] * (float) INT32_MAX) :
+			0;
+		float s = SAU_Osc_get(o, s_freq, s_pm) * s_amp;
 		if (layer > 0) s += buf[i];
 		buf[i] = s;
 	}
@@ -51,6 +59,9 @@ void SAU_Osc_run(SAU_Osc *restrict o,
  * For \p layer greater than zero, multiplies
  * the output into \p buf instead of assigning it.
  *
+ * The value buffers \p freq and \p amp, if not NULL, are
+ * used instead of the SAU_Osc fields with the same names.
+ *
  * \p pm_f may be NULL for no PM input.
  */
 void SAU_Osc_run_env(SAU_Osc *restrict o,
@@ -60,12 +71,16 @@ void SAU_Osc_run_env(SAU_Osc *restrict o,
 		const float *restrict amp,
 		const float *restrict pm_f) {
 	for (size_t i = 0; i < buf_len; ++i) {
-		int32_t s_pm = 0;
-		if (pm_f != NULL) {
-			s_pm = lrintf(pm_f[i] * (float) INT32_MAX);
-		}
-		float s = SAU_Osc_get(o, freq[i], s_pm);
-		float s_amp = amp[i] * 0.5f;
+		const float s_freq = (freq != NULL) ?
+			freq[i] :
+			o->freq;
+		const float s_amp = (amp != NULL) ?
+			(amp[i] * 0.5f) :
+			(o->amp * 0.5f);
+		const int32_t s_pm = (pm_f != NULL) ?
+			lrintf(pm_f[i] * (float) INT32_MAX) :
+			0;
+		float s = SAU_Osc_get(o, s_freq, s_pm);
 		s = (s * s_amp) + fabs(s_amp);
 		if (layer > 0) s *= buf[i];
 		buf[i] = s;
