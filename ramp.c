@@ -243,8 +243,7 @@ bool SAU_Ramp_run(SAU_Ramp *restrict o, uint32_t *restrict pos,
 	if (!(o->flags & SAU_RAMPP_STATE_RATIO))
 		mulbuf = NULL;
 	SAU_Ramp_fill_funcs[o->type](buf, len,
-			o->v0, o->vt, *pos, time,
-			mulbuf);
+			o->v0, o->vt, *pos, time, mulbuf);
 	*pos += len;
 	if (*pos == time)
 	REACHED: {
