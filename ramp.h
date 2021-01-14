@@ -93,6 +93,18 @@ typedef struct SAU_Ramp {
 #define SAU_Ramp_ENABLED(o) \
 	((o)->flags & (SAU_RAMPP_STATE | SAU_RAMPP_GOAL))
 
+/**
+ * Check the state and/or goal flags for whether pending values
+ * generated will be ratio values. Non-zero implies that values
+ * can only be generated correctly if a mulbuf is provided.
+ *
+ * \return true when SAU_Ramp_run() requires a mulbuf for correct result
+ */
+#define SAU_Ramp_RATIO_USED(o) \
+	((((o)->flags & (SAU_RAMPP_GOAL | SAU_RAMPP_GOAL_RATIO)) == \
+	  (SAU_RAMPP_GOAL | SAU_RAMPP_GOAL_RATIO)) || \
+	 (((o)->flags & (SAU_RAMPP_STATE_RATIO)) != 0))
+
 void SAU_Ramp_reset(SAU_Ramp *restrict o);
 void SAU_Ramp_copy(SAU_Ramp *restrict o,
 		const SAU_Ramp *restrict src);
