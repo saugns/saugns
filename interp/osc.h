@@ -29,14 +29,14 @@ typedef struct SAU_Osc {
  * Convert floating point phase value (0.0 = 0 deg., 1.0 = 360 deg.)
  * to 32-bit unsigned int, as used by oscillator.
  */
-#define SAU_Osc_PHASE(p) ((uint32_t) lrint((p) * 4294967296.0))
+#define SAU_Osc_PHASE(p) ((uint32_t) lrintf((p) * (float) UINT32_MAX))
 
 /**
  * Calculate the coefficent, based on the sample rate,
  * used to give the per-sample phase increment
  * by multiplying with the frequency used.
  */
-#define SAU_Osc_COEFF(srate) ((float) 4294967296.0/(srate))
+#define SAU_Osc_COEFF(srate) (((float) UINT32_MAX)/(srate))
 
 /**
  * Get LUT for wave type enum.
@@ -59,7 +59,7 @@ static inline void SAU_init_Osc(SAU_Osc *restrict o, uint32_t srate) {
  * \return number of samples
  */
 static inline uint32_t SAU_Osc_cycle_len(SAU_Osc *restrict o, float freq) {
-	return lrintf(4294967296.0 / (o->coeff * freq));
+	return lrintf(((float) UINT32_MAX) / (o->coeff * freq));
 }
 
 /**
