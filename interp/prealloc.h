@@ -23,6 +23,8 @@
 enum {
 	ON_VISITED = 1<<0,
 	ON_TIME_INF = 1<<1, /* used for SAU_TIMEP_LINKED */
+	ON_AMP_DYN = 1<<2,
+	ON_FREQ_DYN = 1<<3,
 };
 
 typedef struct OperatorNode {

@@ -197,6 +197,114 @@ static void handle_event(SAU_Interp *restrict o, EventNode *restrict e) {
 	}
 }
 
+static uint32_t run_block(SAU_Interp *restrict o,
+		Buf *restrict bufs, uint32_t buf_len,
+		OperatorNode *restrict n,
+		float *restrict parent_freq,
+		bool wave_env, uint32_t acc_ind);
+
+/*
+ * Fill and return a frequency value buffer,
+ * or return NULL if a non-dynamic value should be used.
+ */
+static float *get_freq_buf(SAU_Interp *restrict o,
+		Buf *restrict bufs, uint32_t len,
+		OperatorNode *restrict n,
+		float *restrict parent_freq) {
+	float *freq = *(bufs++);
+	SAU_Ramp_run(&n->freq, &n->freq_pos,
+			freq, len, o->srate, parent_freq);
+	if (!n->fmods->count) {
+		SAU_Ramp_skip(&n->freq2, &n->freq2_pos, len, o->srate);
+		goto RETURN;
+	}
+	const uint32_t *fmods = n->fmods->ids;
+	for (uint32_t i = 0; i < n->fmods->count; ++i)
+		run_block(o, bufs, len, &o->operators[fmods[i]],
+				freq, true, i);
+	float *fm_buf = *(bufs++);
+	if (n->freq2.flags & SAU_RAMPP_GOAL || parent_freq != NULL) {
+		float *freq2 = *(bufs++);
+		SAU_Ramp_run(&n->freq2, &n->freq2_pos,
+				freq2, len, o->srate, parent_freq);
+		for (uint32_t i = 0; i < len; ++i)
+			freq[i] += (freq2[i] - freq[i]) * fm_buf[i];
+	} else {
+		const float freq2_v = n->freq2.v0;
+		SAU_Ramp_skip(&n->freq2, &n->freq2_pos, len, o->srate);
+		for (uint32_t i = 0; i < len; ++i)
+			freq[i] += (freq2_v - freq[i]) * fm_buf[i];
+	}
+RETURN:
+	n->flags |= ON_FREQ_DYN;
+	return freq;
+}
+
+/*
+ * Fill and return an amplitude value buffer,
+ * or return NULL if a non-dynamic value should be used.
+ */
+static float *get_amp_buf(SAU_Interp *restrict o,
+		Buf *restrict bufs, uint32_t len,
+		OperatorNode *restrict n,
+		float *restrict freq) {
+	float *amp = NULL;
+	if (n->amp.flags & SAU_RAMPP_GOAL) {
+		amp = *(bufs++);
+		SAU_Ramp_run(&n->amp, &n->amp_pos, amp, len, o->srate, NULL);
+	} else {
+		SAU_Ramp_skip(&n->amp, &n->amp_pos, len, o->srate);
+	}
+	if (!n->amods->count) {
+		SAU_Ramp_skip(&n->amp2, &n->amp2_pos, len, o->srate);
+		goto RETURN;
+	}
+	const uint32_t *amods = n->amods->ids;
+	for (uint32_t i = 0; i < n->amods->count; ++i)
+		run_block(o, bufs, len, &o->operators[amods[i]],
+				freq, true, i);
+	float *am_buf = *(bufs++);
+	if (n->amp2.flags & SAU_RAMPP_GOAL) {
+		float *amp2 = *(bufs++);
+		SAU_Ramp_run(&n->amp2, &n->amp2_pos, amp2, len, o->srate, NULL);
+		if (!amp) {
+			const float amp_v = n->amp.v0;
+			for (uint32_t i = 0; i < len; ++i) {
+				am_buf[i] = amp_v +
+					(amp2[i] - amp_v) * am_buf[i];
+			}
+			amp = am_buf;
+		} else {
+			for (uint32_t i = 0; i < len; ++i) {
+				amp[i] += (amp2[i] - amp[i]) * am_buf[i];
+			}
+		}
+	} else {
+		const float amp2_v = n->amp2.v0;
+		SAU_Ramp_skip(&n->amp2, &n->amp2_pos, len, o->srate);
+		if (!amp) {
+			const float amp_v = n->amp.v0;
+			for (uint32_t i = 0; i < len; ++i) {
+				am_buf[i] = amp_v +
+					(amp2_v - amp_v) * am_buf[i];
+			}
+			amp = am_buf;
+		} else {
+			for (uint32_t i = 0; i < len; ++i) {
+				amp[i] += (amp2_v - amp[i]) * am_buf[i];
+			}
+		}
+	}
+RETURN:
+	if (amp != NULL) {
+		n->flags |= ON_AMP_DYN;
+	} else {
+		n->osc.amp = n->amp.v0;
+		n->flags &= ~ON_AMP_DYN;
+	}
+	return amp;
+}
+
 /*
  * Generate up to buf_len samples for an operator node,
  * the remainder (if any) zero-filled if acc_ind is zero.
@@ -252,22 +360,8 @@ static uint32_t run_block(SAU_Interp *restrict o,
 	 * Handle frequency, including frequency modulation
 	 * if modulators linked.
 	 */
-	freq = *(bufs++);
-	SAU_Ramp_run(&n->freq, &n->freq_pos, freq, len, o->srate, parent_freq);
-	if (n->fmods->count > 0) {
-		float *freq2 = *(bufs++);
-		SAU_Ramp_run(&n->freq2, &n->freq2_pos,
-				freq2, len, o->srate, parent_freq);
-		const uint32_t *fmods = n->fmods->ids;
-		for (i = 0; i < n->fmods->count; ++i)
-			run_block(o, bufs, len, &o->operators[fmods[i]],
-					freq, true, i);
-		float *fm_buf = *bufs;
-		for (i = 0; i < len; ++i)
-			freq[i] += (freq2[i] - freq[i]) * fm_buf[i];
-	} else {
-		SAU_Ramp_skip(&n->freq2, &n->freq2_pos, len, o->srate);
-	}
+	freq = get_freq_buf(o, bufs, len, n, parent_freq);
+	if (freq != NULL) ++bufs;
 	/*
 	 * If phase modulators linked, get phase offsets for modulation.
 	 */
@@ -283,21 +377,8 @@ static uint32_t run_block(SAU_Interp *restrict o,
 	 * Handle amplitude parameter, including amplitude modulation if
 	 * modulators linked.
 	 */
-	amp = *(bufs++);
-	SAU_Ramp_run(&n->amp, &n->amp_pos, amp, len, o->srate, NULL);
-	if (n->amods->count > 0) {
-		float *amp2 = *(bufs++);
-		SAU_Ramp_run(&n->amp2, &n->amp2_pos, amp2, len, o->srate, NULL);
-		const uint32_t *amods = n->amods->ids;
-		for (i = 0; i < n->amods->count; ++i)
-			run_block(o, bufs, len, &o->operators[amods[i]],
-					freq, true, i);
-		float *am_buf = *bufs;
-		for (i = 0; i < len; ++i)
-			amp[i] += (amp2[i] - amp[i]) * am_buf[i];
-	} else {
-		SAU_Ramp_skip(&n->amp2, &n->amp2_pos, len, o->srate);
-	}
+	amp = get_amp_buf(o, bufs, len, n, freq);
+	if (amp != NULL) ++bufs;
 	if (!wave_env) {
 		SAU_Osc_run(&n->osc, s_buf, len, acc_ind, freq, amp, pm_buf);
 	} else {
