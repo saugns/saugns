@@ -18,7 +18,12 @@
  * Voice graph traverser and data allocator.
  */
 
+struct SAU_traverse_level {
+	OperatorNode *n;
+};
+
 static bool traverse_op_node(SAU_PreAlloc *restrict o,
+		struct SAU_traverse_level *restrict parent,
 		SAU_ProgramOpRef *restrict op_ref);
 
 /*
@@ -27,11 +32,12 @@ static bool traverse_op_node(SAU_PreAlloc *restrict o,
  * \return true, or false on allocation failure
  */
 static bool traverse_op_list(SAU_PreAlloc *restrict o,
+		struct SAU_traverse_level *restrict parent,
 		const SAU_ProgramOpList *restrict op_list, uint8_t mod_use) {
 	SAU_ProgramOpRef op_ref = {0, mod_use, o->vg.nest_level};
 	for (uint32_t i = 0; i < op_list->count; ++i) {
 		op_ref.id = op_list->ids[i];
-		if (!traverse_op_node(o, &op_ref))
+		if (!traverse_op_node(o, parent, &op_ref))
 			return false;
 	}
 	return true;
@@ -44,8 +50,10 @@ static bool traverse_op_list(SAU_PreAlloc *restrict o,
  * \return true, or false on allocation failure
  */
 static bool traverse_op_node(SAU_PreAlloc *restrict o,
+		struct SAU_traverse_level *restrict parent,
 		SAU_ProgramOpRef *restrict op_ref) {
 	OperatorNode *on = &o->operators[op_ref->id];
+	struct SAU_traverse_level cur = {on};
 	if (on->flags & ON_VISITED) {
 		SAU_warning("voicegraph",
 "skipping operator %d; circular references unsupported",
@@ -57,11 +65,11 @@ static bool traverse_op_node(SAU_PreAlloc *restrict o,
 	}
 	++o->vg.nest_level;
 	on->flags |= ON_VISITED;
-	if (!traverse_op_list(o, on->fmods, SAU_POP_FMOD))
+	if (!traverse_op_list(o, &cur, on->fmods, SAU_POP_FMOD))
 		return false;
-	if (!traverse_op_list(o, on->pmods, SAU_POP_PMOD))
+	if (!traverse_op_list(o, &cur, on->pmods, SAU_POP_PMOD))
 		return false;
-	if (!traverse_op_list(o, on->amods, SAU_POP_AMOD))
+	if (!traverse_op_list(o, &cur, on->amods, SAU_POP_AMOD))
 		return false;
 	on->flags &= ~ON_VISITED;
 	--o->vg.nest_level;
@@ -81,7 +89,7 @@ static bool set_voice_graph(SAU_PreAlloc *restrict o,
 		const SAU_ProgramVoData *restrict pvd,
 		EventNode *restrict ev) {
 	if (!pvd->carriers->count) goto DONE;
-	if (!traverse_op_list(o, pvd->carriers, SAU_POP_CARR))
+	if (!traverse_op_list(o, NULL, pvd->carriers, SAU_POP_CARR))
 		return false;
 	if (!SAU_OpRefArr_mpmemdup(&o->vg.vo_graph,
 				(SAU_ProgramOpRef**) &ev->graph, o->mem))

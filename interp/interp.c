@@ -219,11 +219,15 @@ static float *get_freq_buf(SAU_Interp *restrict o,
 		goto RETURN;
 	}
 	const uint32_t *fmods = n->fmods->ids;
-	for (uint32_t i = 0; i < n->fmods->count; ++i)
-		run_block(o, bufs, len, &o->operators[fmods[i]],
-				freq, true, i);
+	for (uint32_t i = 0; i < n->fmods->count; ++i) {
+		OperatorNode *sub_n = &o->operators[fmods[i]];
+		sub_n->osc.freq = n->freq.v0; /* for use as multiplier */
+		run_block(o, bufs, len, sub_n, freq, true, i);
+	}
 	float *fm_buf = *(bufs++);
-	if (n->freq2.flags & SAU_RAMPP_GOAL || parent_freq != NULL) {
+	if ((n->freq2.flags & SAU_RAMPP_GOAL) != 0 ||
+			(SAU_Ramp_RATIO_USED(&n->freq2) &&
+			 parent_freq != NULL)) {
 		float *freq2 = *(bufs++);
 		SAU_Ramp_run(&n->freq2, &n->freq2_pos,
 				freq2, len, o->srate, parent_freq);
@@ -235,7 +239,15 @@ static float *get_freq_buf(SAU_Interp *restrict o,
 			freq[i] += (freq2_v - freq[i]) * fm_buf[i];
 	}
 RETURN:
-	n->flags |= ON_FREQ_DYN;
+	if (freq != NULL) {
+		n->flags |= ON_FREQ_DYN;
+	} else {
+		if (n->freq.flags & SAU_RAMPP_STATE_RATIO)
+			n->osc.freq *= n->freq.v0; /* use pre-set parent freq */
+		else
+			n->osc.freq = n->freq.v0;
+		n->flags &= ~ON_FREQ_DYN;
+	}
 	return freq;
 }
 
