@@ -37,11 +37,19 @@
 # define sauNoinline __attribute__((noinline))
 # define sauPrintflike(string_index, first_to_check) \
 	__attribute__((format(printf, string_index, first_to_check)))
+# ifdef __clang__
+#  define sauAssume(expr) \
+	__builtin_assume(expr)
+# else
+#  define sauAssume(expr) \
+	do {if (!(expr)) __builtin_unreachable();} while (false)
+# endif
 #else
 # define sauMalloclike
 # define sauMaybeUnused
 # define sauNoinline
 # define sauPrintflike(string_index, first_to_check)
+# define sauAssume(expr)
 #endif
 
 /*
