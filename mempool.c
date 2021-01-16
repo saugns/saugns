@@ -164,6 +164,7 @@ static void copy_up_one(SAU_MemPool *restrict o,
 		 */
 		size_t higher_from = 0;
 		first_greater(o, o->a[from].free, &higher_from);
+		sauAssume(higher_from != 0);
 		copy_up_one(o, to, higher_from);
 		o->a[higher_from] = o->a[from];
 	}
