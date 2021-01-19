@@ -65,8 +65,11 @@ struct SAU_AudioDev {
  */
 SAU_AudioDev *SAU_open_AudioDev(uint16_t channels, uint32_t *restrict srate) {
 	SAU_AudioDev *o;
+
+	const char* AUDIODEV = getenv("AUDIODEV");
+
 #ifdef __linux
-	o = open_linux(ALSA_NAME_OUT, OSS_NAME_OUT, O_WRONLY,
+	o = open_linux(AUDIODEV ? AUDIODEV : ALSA_NAME_OUT, OSS_NAME_OUT, O_WRONLY,
 			channels, srate);
 #elif defined(__OpenBSD__)
 	o = open_sndio(SNDIO_NAME_OUT, SIO_PLAY, channels, srate);
