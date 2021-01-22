@@ -1,4 +1,4 @@
-.Dd July 23, 2020
+.Dd January 22, 2021
 .Dt SAUGNS 1
 .Os
 .Sh NAME
@@ -53,9 +53,29 @@ Check scripts only, reporting any errors or requested info.
 .It Fl p
 Print info for scripts after loading.
 .It Fl h
-Print help for topic, or list of topics.
+Print help for topic, or usage information and a list of topics if none.
 .It Fl v
 Print version.
+.El
+.Sh ENVIRONMENT
+.Bl -tag -width OSS_AUDIODEV
+.It Ev AUDIODEV
+Can be set to change the audio device for
+.Nm
+to open when using the system audio API it was built to use. (If set to an
+empty string or to
+.Dq default ,
+then the built-in default name will be used
+unchanged.) Example values are
+.Dq /dev/dsp
+for most OSS variants or
+.Dq default
+for ALSA.
+.It Ev OSS_AUDIODEV
+For compatibility, is checked as a fallback option for OSS only, when
+.Ev AUDIODEV
+is unset, empty, or set to
+.Dq default .
 .El
 .Sh EXIT STATUS
 .Nm

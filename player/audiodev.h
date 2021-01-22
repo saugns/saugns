@@ -1,5 +1,5 @@
 /* saugns: System audio output support module.
- * Copyright (c) 2011-2014, 2017-2020 Joel K. Pettersson
+ * Copyright (c) 2011-2014, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
