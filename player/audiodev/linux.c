@@ -1,5 +1,5 @@
 /* saugns: Linux audio output support.
- * Copyright (c) 2013, 2017-2020 Joel K. Pettersson
+ * Copyright (c) 2013, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -25,27 +25,24 @@
  *
  * \return instance or NULL on failure
  */
-static inline SAU_AudioDev *open_linux(const char *restrict alsa_name,
-		const char *restrict oss_name, int oss_mode,
-		uint16_t channels, uint32_t *restrict srate) {
-	SAU_AudioDev *o;
-	uint32_t tmp;
+static inline bool open_linux(SAU_AudioDev *restrict o,
+		int oss_mode) {
+	const char *dev_name = (o->name != NULL) ? o->name : ALSA_NAME_OUT;
 	int err;
 	snd_pcm_t *handle = NULL;
 	snd_pcm_hw_params_t *params = NULL;
 
-	if ((err = snd_pcm_open(&handle, alsa_name, SND_PCM_STREAM_PLAYBACK,
+	if ((err = snd_pcm_open(&handle, dev_name, SND_PCM_STREAM_PLAYBACK,
 			0)) < 0) {
-		o = open_oss(oss_name, oss_mode, channels, srate);
-		if (o != NULL)
-			return o;
+		if (open_oss(o, oss_mode))
+			return true; /* fallback in use */
 		SAU_error(NULL, "could neither use ALSA nor OSS");
 		goto ERROR;
 	}
 
 	if (snd_pcm_hw_params_malloc(&params) < 0)
 		goto ERROR;
-	tmp = *srate;
+	uint32_t srate = o->srate;
 	if (!params
 			|| (err = snd_pcm_hw_params_any(handle, params)) < 0
 			|| (err = snd_pcm_hw_params_set_access(handle, params,
@@ -53,30 +50,27 @@ static inline SAU_AudioDev *open_linux(const char *restrict alsa_name,
 			|| (err = snd_pcm_hw_params_set_format(handle, params,
 				SND_PCM_FORMAT_S16)) < 0
 			|| (err = snd_pcm_hw_params_set_channels(handle,
-				params, channels)) < 0
+				params, o->channels)) < 0
 			|| (err = snd_pcm_hw_params_set_rate_near(handle,
-				params, &tmp, 0)) < 0
+				params, &srate, 0)) < 0
 			|| (err = snd_pcm_hw_params(handle, params)) < 0)
 		goto ERROR;
-	if (tmp != *srate) {
+	if (srate != o->srate) {
 		SAU_warning("ALSA", "sample rate %d unsupported, using %d",
-				*srate, tmp);
-		*srate = tmp;
+				o->srate, srate);
+		o->srate = srate;
 	}
 
-	o = malloc(sizeof(SAU_AudioDev));
 	o->ref.handle = handle;
+	o->name = dev_name;
 	o->type = TYPE_ALSA;
-	o->channels = channels;
-	o->srate = *srate;
-	return o;
-
+	return true;
 ERROR:
 	SAU_error("ALSA", "%s", snd_strerror(err));
 	if (handle) snd_pcm_close(handle);
 	if (params) snd_pcm_hw_params_free(params);
-	SAU_error("ALSA", "configuration for device \"%s\" failed", alsa_name);
-	return NULL;
+	SAU_error("ALSA", "configuration for device \"%s\" failed", dev_name);
+	return false;
 }
 
 /*
@@ -91,7 +85,6 @@ static inline void close_linux(SAU_AudioDev *restrict o) {
 
 	snd_pcm_drain(o->ref.handle);
 	snd_pcm_close(o->ref.handle);
-	free(o);
 }
 
 /*

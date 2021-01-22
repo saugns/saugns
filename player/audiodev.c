@@ -1,5 +1,5 @@
 /* saugns: System audio output support module.
- * Copyright (c) 2011-2014, 2017-2020 Joel K. Pettersson
+ * Copyright (c) 2011-2014, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -41,6 +41,7 @@ enum {
 
 struct SAU_AudioDev {
 	union DevRef ref;
+	const char *name;
 	uint8_t type;
 	uint16_t channels;
 	uint32_t srate;
@@ -48,6 +49,12 @@ struct SAU_AudioDev {
 
 #define SOUND_BITS 16
 #define SOUND_BYTES (SOUND_BITS / 8)
+
+static const char *getenv_nonblank(const char *restrict env_name) {
+	const char *name = getenv(env_name);
+	if (name != NULL && name[0] == '\0') name = NULL;
+	return name;
+}
 
 #ifdef __linux
 # include "audiodev/linux.c"
@@ -64,26 +71,35 @@ struct SAU_AudioDev {
  * \return instance or NULL on failure
  */
 SAU_AudioDev *SAU_open_AudioDev(uint16_t channels, uint32_t *restrict srate) {
-	SAU_AudioDev *o;
+	SAU_AudioDev *o = calloc(1, sizeof(SAU_AudioDev));
+	if (!o) goto ERROR;
+	/*
+	 * Set generic values before platform-specific handling...
+	 */
+	o->name = getenv_nonblank("AUDIODEV");
+	o->channels = channels;
+	o->srate = *srate; /* requested, ideal rate */
 #ifdef __linux
-	o = open_linux(ALSA_NAME_OUT, OSS_NAME_OUT, O_WRONLY,
-			channels, srate);
+	if (!open_linux(o, O_WRONLY)) goto ERROR;
 #elif defined(__OpenBSD__)
-	o = open_sndio(SNDIO_NAME_OUT, SIO_PLAY, channels, srate);
+	if (!open_sndio(o, SIO_PLAY)) goto ERROR;
 #else
-	o = open_oss(OSS_NAME_OUT, O_WRONLY, channels, srate);
+	if (!open_oss(o, O_WRONLY)) goto ERROR;
 #endif
-	if (!o) {
-		SAU_error(NULL, "couldn't open audio device for output");
-		return NULL;
-	}
+	*srate = o->srate;
 	return o;
+ERROR:
+	SAU_error(NULL, "couldn't open audio device for output");
+	free(o);
+	return NULL;
 }
 
 /**
  * Close the given audio device. Destroys the instance.
  */
 void SAU_close_AudioDev(SAU_AudioDev *restrict o) {
+	if (!o)
+		return;
 #ifdef __linux
 	close_linux(o);
 #elif defined(__OpenBSD__)
@@ -91,10 +107,11 @@ void SAU_close_AudioDev(SAU_AudioDev *restrict o) {
 #else
 	close_oss(o);
 #endif
+	free(o);
 }
 
 /**
- * Return sample rate set for system audio output.
+ * \return sample rate set for system audio output
  */
 uint32_t SAU_AudioDev_get_srate(const SAU_AudioDev *restrict o) {
 	return o->srate;

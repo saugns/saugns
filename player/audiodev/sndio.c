@@ -1,5 +1,5 @@
 /* saugns: sndio audio output support.
- * Copyright (c) 2018-2020 Joel K. Pettersson
+ * Copyright (c) 2018-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -21,10 +21,10 @@
 /*
  * \return instance or NULL on failure
  */
-static inline SAU_AudioDev *open_sndio(const char *restrict name,
-		unsigned mode, uint16_t channels,
-		uint32_t *restrict srate) {
-	struct sio_hdl *hdl = sio_open(name, mode, 0);
+static inline bool open_sndio(SAU_AudioDev *restrict o,
+		unsigned mode) {
+	const char *dev_name = (o->name != NULL) ? o->name : SNDIO_NAME_OUT;
+	struct sio_hdl *hdl = sio_open(dev_name, mode, 0);
 	if (!hdl) goto ERROR;
 
 	struct sio_par par;
@@ -33,31 +33,27 @@ static inline SAU_AudioDev *open_sndio(const char *restrict name,
 	par.bps = SOUND_BYTES;
 	par.sig = 1;
 	par.le = SIO_LE_NATIVE;
-	par.rchan = channels;
-	par.pchan = channels;
-	par.rate = *srate;
+	par.rchan = o->channels;
+	par.pchan = o->channels;
+	par.rate = o->srate;
 	par.xrun = SIO_SYNC;
 	if ((!sio_setpar(hdl, &par)) || (!sio_getpar(hdl, &par)))
 		goto ERROR;
-	if (par.rate != *srate) {
+	if (par.rate != o->srate) {
 		SAU_warning("sndio", "sample rate %d unsupported, using %d",
-			*srate, par.rate);
-		*srate = par.rate;
+			o->srate, par.rate);
+		o->srate = par.rate;
 	}
 
 	if (!sio_start(hdl)) goto ERROR;
 
-	SAU_AudioDev *o = malloc(sizeof(SAU_AudioDev));
 	o->ref.handle = hdl;
+	o->name = dev_name;
 	o->type = TYPE_SNDIO;
-	o->channels = channels;
-	o->srate = *srate;
-	return o;
-
+	return true;
 ERROR:
-	SAU_error("sndio", "configuration for device \"%s\" failed",
-		name);
-	return NULL;
+	SAU_error("sndio", "configuration for device \"%s\" failed", dev_name);
+	return false;
 }
 
 /*
@@ -66,7 +62,6 @@ ERROR:
  */
 static inline void close_sndio(SAU_AudioDev *restrict o) {
 	sio_close(o->ref.handle);
-	free(o);
 }
 
 /*
