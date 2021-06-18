@@ -1,5 +1,5 @@
 /* saugns: Audio mixer module.
- * Copyright (c) 2019-2020 Joel K. Pettersson
+ * Copyright (c) 2019-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -65,9 +65,9 @@ void SAU_Mixer_clear(SAU_Mixer *restrict o) {
  */
 void SAU_Mixer_add(SAU_Mixer *restrict o,
 		float *restrict buf, size_t len,
-		SAU_Ramp *restrict pan, uint32_t *restrict pan_pos) {
+		SAU_Ramp *restrict pan) {
 	if (pan->flags & SAU_RAMPP_GOAL) {
-		SAU_Ramp_run(pan, pan_pos, o->pan_buf, len, o->srate, NULL);
+		SAU_Ramp_run(pan, o->pan_buf, len, o->srate, NULL);
 		for (size_t i = 0; i < len; ++i) {
 			float s = buf[i] * o->scale;
 			float s_r = s * o->pan_buf[i];
