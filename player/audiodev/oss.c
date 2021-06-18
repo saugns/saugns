@@ -29,9 +29,9 @@
 /*
  * \return instance or NULL on failure
  */
-static inline bool open_oss(SAU_AudioDev *restrict o,
+static inline bool open_oss(struct SAU_AudioDevRef *restrict o,
 		int mode) {
-	const char *dev_name = o->name;
+	const char *dev_name = o->info.name;
 	const char *err_name = NULL;
 	int tmp, fd;
 
@@ -53,30 +53,30 @@ static inline bool open_oss(SAU_AudioDev *restrict o,
 		goto ERROR;
 	}
 
-	tmp = o->channels;
+	tmp = o->info.numchan;
 	if (ioctl(fd, SNDCTL_DSP_CHANNELS, &tmp) == -1) {
 		err_name = "SNDCTL_DSP_CHANNELS";
 		goto ERROR;
 	}
-	if (tmp != o->channels) {
+	if (tmp != o->info.numchan) {
 		SAU_error("OSS", "%d channels unsupported",
-			o->channels);
+			o->info.numchan);
 		goto ERROR;
 	}
 
-	tmp = o->srate;
+	tmp = o->info.srate;
 	if (ioctl(fd, SNDCTL_DSP_SPEED, &tmp) == -1) {
 		err_name = "SNDCTL_DSP_SPEED";
 		goto ERROR;
 	}
-	if ((uint32_t) tmp != o->srate) {
+	if ((uint32_t) tmp != o->info.srate) {
 		SAU_warning("OSS", "sample rate %d unsupported, using %d",
-			o->srate, tmp);
-		o->srate = tmp;
+			o->info.srate, tmp);
+		o->info.srate = tmp;
 	}
 
 	o->ref.fd = fd;
-	o->name = dev_name;
+	o->info.name = dev_name;
 	o->type = TYPE_OSS;
 	return true;
 ERROR:
@@ -92,7 +92,7 @@ ERROR:
  * Destroy instance. Close OSS device,
  * ending playback in the process.
  */
-static inline void close_oss(SAU_AudioDev *restrict o) {
+static inline void close_oss(struct SAU_AudioDevRef *restrict o) {
 	close(o->ref.fd);
 }
 
@@ -101,9 +101,9 @@ static inline void close_oss(SAU_AudioDev *restrict o) {
  *
  * \return true if write sucessful, otherwise false
  */
-static inline bool oss_write(SAU_AudioDev *restrict o,
+static inline bool oss_write(struct SAU_AudioDevRef *restrict o,
 		const int16_t *restrict buf, uint32_t samples) {
-	size_t length = samples * o->channels * SOUND_BYTES;
+	size_t length = samples * o->info.numchan * SOUND_BYTES;
 	size_t written = write(o->ref.fd, buf, length);
 
 	return (written == length);

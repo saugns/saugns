@@ -25,9 +25,11 @@
  *
  * \return instance or NULL on failure
  */
-static inline bool open_linux(SAU_AudioDev *restrict o,
+static inline bool open_linux(struct SAU_AudioDevRef *restrict o,
 		int oss_mode) {
-	const char *dev_name = (o->name != NULL) ? o->name : ALSA_NAME_OUT;
+	const char *dev_name = (o->info.name != NULL) ?
+		o->info.name :
+		ALSA_NAME_OUT;
 	int err;
 	snd_pcm_t *handle = NULL;
 	snd_pcm_hw_params_t *params = NULL;
@@ -42,7 +44,7 @@ static inline bool open_linux(SAU_AudioDev *restrict o,
 
 	if (snd_pcm_hw_params_malloc(&params) < 0)
 		goto ERROR;
-	uint32_t srate = o->srate;
+	uint32_t srate = o->info.srate;
 	if (!params
 			|| (err = snd_pcm_hw_params_any(handle, params)) < 0
 			|| (err = snd_pcm_hw_params_set_access(handle, params,
@@ -50,19 +52,19 @@ static inline bool open_linux(SAU_AudioDev *restrict o,
 			|| (err = snd_pcm_hw_params_set_format(handle, params,
 				SND_PCM_FORMAT_S16)) < 0
 			|| (err = snd_pcm_hw_params_set_channels(handle,
-				params, o->channels)) < 0
+				params, o->info.numchan)) < 0
 			|| (err = snd_pcm_hw_params_set_rate_near(handle,
 				params, &srate, 0)) < 0
 			|| (err = snd_pcm_hw_params(handle, params)) < 0)
 		goto ERROR;
-	if (srate != o->srate) {
+	if (srate != o->info.srate) {
 		SAU_warning("ALSA", "sample rate %d unsupported, using %d",
-				o->srate, srate);
-		o->srate = srate;
+				o->info.srate, srate);
+		o->info.srate = srate;
 	}
 
 	o->ref.handle = handle;
-	o->name = dev_name;
+	o->info.name = dev_name;
 	o->type = TYPE_ALSA;
 	return true;
 ERROR:
@@ -77,7 +79,7 @@ ERROR:
  * Destroy instance. Close ALSA or OSS device,
  * ending playback in the process.
  */
-static inline void close_linux(SAU_AudioDev *restrict o) {
+static inline void close_linux(struct SAU_AudioDevRef *restrict o) {
 	if (o->type == TYPE_OSS) {
 		close_oss(o);
 		return;
@@ -92,7 +94,7 @@ static inline void close_linux(SAU_AudioDev *restrict o) {
  *
  * \return true if write sucessful, otherwise false
  */
-static inline bool linux_write(SAU_AudioDev *restrict o,
+static inline bool linux_write(struct SAU_AudioDevRef *restrict o,
 		const int16_t *restrict buf, uint32_t samples) {
 	if (o->type == TYPE_OSS) {
 		return oss_write(o, buf, samples);

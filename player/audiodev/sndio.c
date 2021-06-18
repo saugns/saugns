@@ -21,9 +21,11 @@
 /*
  * \return instance or NULL on failure
  */
-static inline bool open_sndio(SAU_AudioDev *restrict o,
+static inline bool open_sndio(struct SAU_AudioDevRef *restrict o,
 		unsigned mode) {
-	const char *dev_name = (o->name != NULL) ? o->name : SNDIO_NAME_OUT;
+	const char *dev_name = (o->info.name != NULL) ?
+		o->info.name :
+		SNDIO_NAME_OUT;
 	struct sio_hdl *hdl = sio_open(dev_name, mode, 0);
 	if (!hdl) goto ERROR;
 
@@ -33,22 +35,22 @@ static inline bool open_sndio(SAU_AudioDev *restrict o,
 	par.bps = SOUND_BYTES;
 	par.sig = 1;
 	par.le = SIO_LE_NATIVE;
-	par.rchan = o->channels;
-	par.pchan = o->channels;
-	par.rate = o->srate;
+	par.rchan = o->info.numchan;
+	par.pchan = o->info.numchan;
+	par.rate = o->info.srate;
 	par.xrun = SIO_SYNC;
 	if ((!sio_setpar(hdl, &par)) || (!sio_getpar(hdl, &par)))
 		goto ERROR;
-	if (par.rate != o->srate) {
+	if (par.rate != o->info.srate) {
 		SAU_warning("sndio", "sample rate %d unsupported, using %d",
-			o->srate, par.rate);
-		o->srate = par.rate;
+			o->info.srate, par.rate);
+		o->info.srate = par.rate;
 	}
 
 	if (!sio_start(hdl)) goto ERROR;
 
 	o->ref.handle = hdl;
-	o->name = dev_name;
+	o->info.name = dev_name;
 	o->type = TYPE_SNDIO;
 	return true;
 ERROR:
@@ -60,7 +62,7 @@ ERROR:
  * Destroy instance. Close sndio device,
  * ending playback in the process.
  */
-static inline void close_sndio(SAU_AudioDev *restrict o) {
+static inline void close_sndio(struct SAU_AudioDevRef *restrict o) {
 	sio_close(o->ref.handle);
 }
 
@@ -69,9 +71,9 @@ static inline void close_sndio(SAU_AudioDev *restrict o) {
  *
  * \return true if write sucessful, otherwise false
  */
-static inline bool sndio_write(SAU_AudioDev *restrict o,
+static inline bool sndio_write(struct SAU_AudioDevRef *restrict o,
 		const int16_t *restrict buf, uint32_t samples) {
-	size_t bytes = samples * o->channels * SOUND_BYTES;
+	size_t bytes = samples * o->info.numchan * SOUND_BYTES;
 	size_t wlen;
 
 	wlen = sio_write(o->ref.handle, buf, bytes);

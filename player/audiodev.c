@@ -28,23 +28,19 @@
 #include <string.h>
 #include <errno.h>
 
-union DevRef {
-	int fd;
-	void *handle;
-};
-
 enum {
 	TYPE_OSS = 0,
 	TYPE_ALSA,
 	TYPE_SNDIO,
 };
 
-struct SAU_AudioDev {
-	union DevRef ref;
-	const char *name;
+struct SAU_AudioDevRef {
+	SAU_AudioDev info;
 	uint8_t type;
-	uint16_t channels;
-	uint32_t srate;
+	union {
+		int fd;
+		void *handle;
+	} ref;
 };
 
 #define SOUND_BITS 16
@@ -70,15 +66,14 @@ static const char *getenv_nonblank(const char *restrict env_name) {
  *
  * \return instance or NULL on failure
  */
-SAU_AudioDev *SAU_open_AudioDev(uint16_t channels, uint32_t *restrict srate) {
-	SAU_AudioDev *o = calloc(1, sizeof(SAU_AudioDev));
+SAU_AudioDev *SAU_open_AudioDev(const SAU_AudioDev *restrict info) {
+	struct SAU_AudioDevRef *o = calloc(1, sizeof(struct SAU_AudioDevRef));
 	if (!o) goto ERROR;
 	/*
 	 * Set generic values before platform-specific handling...
 	 */
-	o->name = getenv_nonblank("AUDIODEV");
-	o->channels = channels;
-	o->srate = *srate; /* requested, ideal rate */
+	o->info = *info;
+	if (!o->info.name) o->info.name = getenv_nonblank("AUDIODEV");
 #ifdef __linux
 	if (!open_linux(o, O_WRONLY)) goto ERROR;
 #elif defined(__OpenBSD__)
@@ -86,8 +81,7 @@ SAU_AudioDev *SAU_open_AudioDev(uint16_t channels, uint32_t *restrict srate) {
 #else
 	if (!open_oss(o, O_WRONLY)) goto ERROR;
 #endif
-	*srate = o->srate;
-	return o;
+	return &o->info;
 ERROR:
 	SAU_error(NULL, "couldn't open audio device for output");
 	free(o);
@@ -101,20 +95,13 @@ void SAU_close_AudioDev(SAU_AudioDev *restrict o) {
 	if (!o)
 		return;
 #ifdef __linux
-	close_linux(o);
+	close_linux((struct SAU_AudioDevRef*) o);
 #elif defined(__OpenBSD__)
-	close_sndio(o);
+	close_sndio((struct SAU_AudioDevRef*) o);
 #else
-	close_oss(o);
+	close_oss((struct SAU_AudioDevRef*) o);
 #endif
 	free(o);
-}
-
-/**
- * \return sample rate set for system audio output
- */
-uint32_t SAU_AudioDev_get_srate(const SAU_AudioDev *restrict o) {
-	return o->srate;
 }
 
 /**
@@ -128,10 +115,10 @@ uint32_t SAU_AudioDev_get_srate(const SAU_AudioDev *restrict o) {
 bool SAU_AudioDev_write(SAU_AudioDev *restrict o,
 		const int16_t *restrict buf, uint32_t samples) {
 #ifdef __linux
-	return linux_write(o, buf, samples);
+	return linux_write((struct SAU_AudioDevRef*) o, buf, samples);
 #elif defined(__OpenBSD__)
-	return sndio_write(o, buf, samples);
+	return sndio_write((struct SAU_AudioDevRef*) o, buf, samples);
 #else
-	return oss_write(o, buf, samples);
+	return oss_write((struct SAU_AudioDevRef*) o, buf, samples);
 #endif
 }

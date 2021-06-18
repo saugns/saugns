@@ -18,13 +18,16 @@
 #pragma once
 #include "../common.h"
 
-struct SAU_AudioDev;
+struct SAU_AudioDev {
+	uint16_t numchan;
+	uint32_t srate;
+	const char *name; // default if NULL
+};
 typedef struct SAU_AudioDev SAU_AudioDev;
 
-SAU_AudioDev *SAU_open_AudioDev(uint16_t channels, uint32_t *restrict srate)
+SAU_AudioDev *SAU_open_AudioDev(const SAU_AudioDev *restrict info)
 	sauMalloclike;
 void SAU_close_AudioDev(SAU_AudioDev *restrict o);
 
-uint32_t SAU_AudioDev_get_srate(const SAU_AudioDev *restrict o);
 bool SAU_AudioDev_write(SAU_AudioDev *restrict o,
 		const int16_t *restrict buf, uint32_t samples);

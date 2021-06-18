@@ -26,7 +26,6 @@ typedef struct SAU_Output {
 	SAU_AudioDev *ad;
 	SAU_WAVFile *wf;
 	int16_t *buf;
-	uint32_t ad_srate;
 	uint32_t options;
 	size_t buf_len;
 	size_t ch_len;
@@ -53,24 +52,23 @@ static bool SAU_init_Output(SAU_Output *restrict o, uint32_t srate,
 	bool use_audiodev = (wav_path != NULL) ?
 		((options & SAU_ARG_AUDIO_ENABLE) != 0) :
 		((options & SAU_ARG_AUDIO_DISABLE) == 0);
-	uint32_t ad_srate = srate;
 	uint32_t max_srate = srate;
 	*o = (SAU_Output){0};
 	o->options = options;
 	if ((options & SAU_ARG_MODE_CHECK) != 0)
 		return true;
 	if (use_audiodev) {
-		o->ad = SAU_open_AudioDev(NUM_CHANNELS, &ad_srate);
+		SAU_AudioDev info = {.srate = srate, .numchan = NUM_CHANNELS};
+		o->ad = SAU_open_AudioDev(&info);
 		if (!o->ad) goto ERROR;
-		o->ad_srate = ad_srate;
 	}
 	if (wav_path != NULL) {
 		o->wf = SAU_create_WAVFile(wav_path, NUM_CHANNELS, srate);
 		if (!o->wf) goto ERROR;
 	}
-	if (ad_srate != srate) {
-		if (!o->wf || ad_srate > srate)
-			max_srate = ad_srate;
+	if (o->ad && o->ad->srate != srate) {
+		if (!o->wf || o->ad->srate > srate)
+			max_srate = o->ad->srate;
 	}
 	o->ch_len = SAU_MS_IN_SAMPLES(BUF_TIME_MS, max_srate);
 	if (o->ch_len < CH_MIN_LEN)
@@ -92,7 +90,7 @@ ERROR:
 static bool SAU_Output_run(SAU_Output *restrict o,
 		const SAU_Program *restrict prg,
 		bool split_gen, uint32_t other_srate) {
-	uint32_t srate = (o->ad != NULL) ? o->ad_srate : other_srate;
+	uint32_t srate = (o->ad != NULL) ? o->ad->srate : other_srate;
 	SAU_Interp *gen = SAU_create_Interp(prg, srate);
 	if (!gen)
 		return false;
@@ -152,7 +150,7 @@ bool SAU_play(const SAU_PtrArr *restrict prg_objs, uint32_t srate,
 		return false;
 	bool status = true;
 	bool split_gen = false;
-	if (out.ad != NULL && out.wf != NULL && (out.ad_srate != srate)) {
+	if (out.ad != NULL && out.wf != NULL && (out.ad->srate != srate)) {
 		split_gen = true;
 		SAU_warning(NULL,
 "generating audio twice, using different sample rates");
