@@ -54,7 +54,7 @@ static bool init_ScanLookup(struct ScanLookup *restrict o,
 			SAU_Math_names, SAU_MATH_FUNCTIONS)))
 		return false;
 	if (!(o->ramp_names = SAU_SymTab_pool_stra(st,
-			SAU_Ramp_names, SAU_RAMP_TYPES)))
+			SAU_Ramp_names, SAU_RAMP_SHAPES)))
 		return false;
 	if (!(o->wave_names = SAU_SymTab_pool_stra(st,
 			SAU_Wave_names, SAU_WAVE_TYPES)))
@@ -462,7 +462,7 @@ static bool scan_ramp_param(SAU_Scanner *restrict o,
 	bool time_set = (ramp->flags & SAU_RAMPP_TIME) != 0;
 	float vt;
 	uint32_t time_ms = sl->sopt.def_time_ms;
-	uint8_t type = ramp->type; // has default
+	uint8_t shape = ramp->shape; // has default
 	if ((ramp->flags & SAU_RAMPP_GOAL) != 0) {
 		// allow partial change
 		if (((ramp->flags & SAU_RAMPP_GOAL_RATIO) != 0) == ratio) {
@@ -477,20 +477,20 @@ static bool scan_ramp_param(SAU_Scanner *restrict o,
 		case SAU_SCAN_SPACE:
 		case SAU_SCAN_LNBRK:
 			break;
-		case 'c': {
+		case 'g':
+			if (scan_num(o, scan_numconst, &vt))
+				goal = true;
+			break;
+		case 's': {
 			size_t id;
 			if (scan_symafind(o, sl->ramp_names,
-					&id, "ramp type")) {
-				type = id;
+					&id, "ramp shape")) {
+				shape = id;
 			}
 			break; }
 		case 't':
 			if (scan_time_val(o, &time_ms))
 				time_set = true;
-			break;
-		case 'v':
-			if (scan_num(o, scan_numconst, &vt))
-				goal = true;
 			break;
 		case '}':
 			goto RETURN;
@@ -510,7 +510,7 @@ RETURN:
 	}
 	ramp->vt = vt;
 	ramp->time_ms = time_ms;
-	ramp->type = type;
+	ramp->shape = shape;
 	ramp->flags |= SAU_RAMPP_GOAL;
 	if (ratio)
 		ramp->flags |= SAU_RAMPP_GOAL_RATIO;
@@ -639,7 +639,7 @@ static SAU_Ramp *create_ramp(SAU_Parser *restrict o,
 	float v0 = 0.f;
 	if (!ramp)
 		return NULL;
-	ramp->type = SAU_RAMP_LIN; // default if goal enabled
+	ramp->shape = SAU_RAMP_LIN; // default if goal enabled
 	switch (par_flag) {
 	case SAU_PRAMP_PAN:
 		v0 = sl->sopt.def_chanmix;
