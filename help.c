@@ -24,7 +24,7 @@
 const char *const SAU_Help_names[SAU_HELP_TYPES + 1] = {
 	"help",
 	"math",
-	"ramp",
+	"shape",
 	"wave",
 	NULL
 };
