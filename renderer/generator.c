@@ -37,8 +37,6 @@ typedef struct OperatorNode {
 	const SAU_ProgramOpList *amods, *fmods, *pmods, *fpmods;
 	SAU_Ramp amp, freq;
 	SAU_Ramp amp2, freq2;
-	uint32_t amp_pos, freq_pos;
-	uint32_t amp2_pos, freq2_pos;
 } OperatorNode;
 
 /*
@@ -55,7 +53,6 @@ typedef struct VoiceNode {
 	const SAU_ProgramOpRef *graph;
 	uint32_t op_count;
 	SAU_Ramp pan;
-	uint32_t pan_pos;
 } VoiceNode;
 
 typedef struct EventNode {
@@ -225,14 +222,13 @@ static void set_voice_duration(SAU_Generator *restrict o,
  * Process an event update for a timed parameter.
  */
 static void handle_ramp_update(SAU_Ramp *restrict ramp,
-		uint32_t *restrict ramp_pos,
 		const SAU_Ramp *restrict ramp_src) {
 	if (!ramp_src)
 		return;
-	if ((ramp_src->flags & SAU_RAMPP_GOAL) != 0) {
-		*ramp_pos = 0;
-	}
 	SAU_Ramp_copy(ramp, ramp_src);
+	if ((ramp_src->flags & SAU_RAMPP_GOAL) != 0) {
+		ramp->pos = 0;
+	}
 }
 
 /*
@@ -273,16 +269,11 @@ static void handle_event(SAU_Generator *restrict o, EventNode *restrict e) {
 			if (params & SAU_POPP_PHASE)
 				SAU_Osc_set_phase(&on->osc,
 						SAU_Freqor_PHASE(od->phase));
-			handle_ramp_update(&on->freq,
-					&on->freq_pos, od->freq);
-			handle_ramp_update(&on->freq2,
-					&on->freq2_pos, od->freq2);
-			handle_ramp_update(&on->amp,
-					&on->amp_pos, od->amp);
-			handle_ramp_update(&on->amp2,
-					&on->amp2_pos, od->amp2);
-			handle_ramp_update(&vn->pan,
-					&vn->pan_pos, od->pan);
+			handle_ramp_update(&on->freq, od->freq);
+			handle_ramp_update(&on->freq2, od->freq2);
+			handle_ramp_update(&on->amp, od->amp);
+			handle_ramp_update(&on->amp2, od->amp2);
+			handle_ramp_update(&vn->pan, od->pan);
 		}
 		if (vn != NULL) {
 			if (e->graph != NULL) {
@@ -390,11 +381,10 @@ static uint32_t run_block(SAU_Generator *restrict o,
 	 * Handle frequency, including frequency modulation
 	 * if modulators linked.
 	 */
-	SAU_Ramp_run(&n->freq, &n->freq_pos, freq, len, o->srate, parent_freq);
+	SAU_Ramp_run(&n->freq, freq, len, o->srate, parent_freq);
 	if (n->fmods->count > 0) {
 		float *freq2 = *(bufs + 0); // #5
-		SAU_Ramp_run(&n->freq2, &n->freq2_pos,
-				freq2, len, o->srate, parent_freq);
+		SAU_Ramp_run(&n->freq2, freq2, len, o->srate, parent_freq);
 		for (i = 0; i < n->fmods->count; ++i)
 			run_block(o, (bufs + 1), len,
 					&o->operators[n->fmods->ids[i]],
@@ -403,7 +393,7 @@ static uint32_t run_block(SAU_Generator *restrict o,
 		for (i = 0; i < len; ++i)
 			freq[i] += (freq2[i] - freq[i]) * fm_buf[i];
 	} else {
-		SAU_Ramp_skip(&n->freq2, &n->freq2_pos, len, o->srate);
+		SAU_Ramp_skip(&n->freq2, len, o->srate);
 	}
 	/*
 	 * Pre-fill phase buffers.
@@ -433,10 +423,10 @@ static uint32_t run_block(SAU_Generator *restrict o,
 	 * modulators linked.
 	 */
 	amp = *(bufs++); // #5 (++)
-	SAU_Ramp_run(&n->amp, &n->amp_pos, amp, len, o->srate, NULL);
+	SAU_Ramp_run(&n->amp, amp, len, o->srate, NULL);
 	if (n->amods->count > 0) {
 		float *amp2 = *(bufs + 0); // #6
-		SAU_Ramp_run(&n->amp2, &n->amp2_pos, amp2, len, o->srate, NULL);
+		SAU_Ramp_run(&n->amp2, amp2, len, o->srate, NULL);
 		for (i = 0; i < n->amods->count; ++i)
 			run_block(o, (bufs + 1), len,
 					&o->operators[n->amods->ids[i]],
@@ -445,7 +435,7 @@ static uint32_t run_block(SAU_Generator *restrict o,
 		for (i = 0; i < len; ++i)
 			amp[i] += (amp2[i] - amp[i]) * am_buf[i];
 	} else {
-		SAU_Ramp_skip(&n->amp2, &n->amp2_pos, len, o->srate);
+		SAU_Ramp_skip(&n->amp2, len, o->srate);
 	}
 	tmp_buf = (*bufs + 0); // #6
 	SAU_Osc_run(&n->osc, tmp_buf, len, pinc_buf, pofs_buf);
@@ -497,8 +487,7 @@ static uint32_t run_voice(SAU_Generator *restrict o,
 		if (last_len > out_len) out_len = last_len;
 	}
 	if (out_len > 0) {
-		SAU_Mixer_add(o->mixer, o->gen_bufs[0], out_len,
-				&vn->pan, &vn->pan_pos);
+		SAU_Mixer_add(o->mixer, o->gen_bufs[0], out_len, &vn->pan);
 	}
 	vn->duration -= time;
 	vn->pos += time;

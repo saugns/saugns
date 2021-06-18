@@ -43,7 +43,7 @@ static inline void SAU_Mixer_set_scale(SAU_Mixer *restrict o, float scale) {
 void SAU_Mixer_clear(SAU_Mixer *restrict o);
 void SAU_Mixer_add(SAU_Mixer *restrict o,
 		float *restrict buf, size_t len,
-		SAU_Ramp *restrict pan, uint32_t *restrict pan_pos);
+		SAU_Ramp *restrict pan);
 void SAU_Mixer_write(SAU_Mixer *restrict o,
 		int16_t **restrict spp, size_t len);
 void SAU_Mixer_write_stereo(SAU_Mixer *restrict o,
