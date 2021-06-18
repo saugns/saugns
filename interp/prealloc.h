@@ -35,8 +35,6 @@ typedef struct OperatorNode {
 	const SAU_ProgramOpList *amods;
 	SAU_Ramp amp, freq;
 	SAU_Ramp amp2, freq2;
-	uint32_t amp_pos, freq_pos;
-	uint32_t amp2_pos, freq2_pos;
 } OperatorNode;
 
 /*
@@ -53,7 +51,6 @@ typedef struct VoiceNode {
 	const SAU_ProgramOpRef *graph;
 	uint32_t graph_count;
 	SAU_Ramp pan;
-	uint32_t pan_pos;
 } VoiceNode;
 
 typedef struct EventNode {

@@ -214,12 +214,11 @@ void SAU_Ramp_copy(SAU_Ramp *restrict o,
  * Otherwise \p mulbuf is ignored.
  *
  * When a goal is reached and cleared, its \a vt value becomes
- * the new \a v0 value. This can be forced at any time, as the
- * \p pos can alternatively be NULL to skip all values before.
+ * the new \a v0 value.
  *
  * \return true if ramp goal not yet reached
  */
-bool SAU_Ramp_run(SAU_Ramp *restrict o, uint32_t *restrict pos,
+bool SAU_Ramp_run(SAU_Ramp *restrict o,
 		float *restrict buf, uint32_t buf_len, uint32_t srate,
 		const float *restrict mulbuf) {
 	uint32_t len = 0;
@@ -241,21 +240,20 @@ bool SAU_Ramp_run(SAU_Ramp *restrict o, uint32_t *restrict pos,
 		}
 		mulbuf = NULL; /* no ratio handling past first value */
 	}
-	if (!pos) goto REACHED;
 	uint32_t time = SAU_MS_IN_SAMPLES(o->time_ms, srate);
-	len = time - *pos;
+	len = time - o->pos;
 	if (len > buf_len) len = buf_len;
 	SAU_Ramp_fill_funcs[o->type](buf, len,
-			o->v0, o->vt, *pos, time, mulbuf);
-	*pos += len;
-	if (*pos == time)
-	REACHED: {
+			o->v0, o->vt, o->pos, time, mulbuf);
+	o->pos += len;
+	if (o->pos == time) {
 		/*
 		 * Goal reached; turn into new state value,
 		 * filling remaining buffer values with it.
 		 */
 		o->v0 = o->vt;
 		o->flags &= ~(SAU_RAMPP_GOAL | SAU_RAMPP_GOAL_RATIO);
+		o->pos = 0;
 	FILL:
 		if (!(o->flags & SAU_RAMPP_STATE_RATIO))
 			mulbuf = NULL;
@@ -273,22 +271,19 @@ bool SAU_Ramp_run(SAU_Ramp *restrict o, uint32_t *restrict pos,
  * and run position without generating values.
  *
  * When a goal is reached and cleared, its \a vt value becomes
- * the new \a v0 value. This can be forced at any time, as the
- * \p pos can alternatively be NULL to skip all values before.
+ * the new \a v0 value.
  *
  * \return true if ramp goal not yet reached
  */
-bool SAU_Ramp_skip(SAU_Ramp *restrict o, uint32_t *restrict pos,
+bool SAU_Ramp_skip(SAU_Ramp *restrict o,
 		uint32_t skip_len, uint32_t srate) {
 	if (!(o->flags & SAU_RAMPP_GOAL))
 		return false;
-	if (!pos) goto REACHED;
 	uint32_t time = SAU_MS_IN_SAMPLES(o->time_ms, srate);
-	uint32_t len = time - *pos;
+	uint32_t len = time - o->pos;
 	if (len > skip_len) len = skip_len;
-	*pos += len;
-	if (*pos == time)
-	REACHED: {
+	o->pos += len;
+	if (o->pos == time) {
 		/*
 		 * Goal reached; turn into new state value.
 		 */
@@ -299,6 +294,7 @@ bool SAU_Ramp_skip(SAU_Ramp *restrict o, uint32_t *restrict pos,
 			o->flags &= ~SAU_RAMPP_STATE_RATIO;
 		}
 		o->flags &= ~(SAU_RAMPP_GOAL | SAU_RAMPP_GOAL_RATIO);
+		o->pos = 0;
 		return false;
 	}
 	return true;
