@@ -75,6 +75,8 @@ enum {
 	SAU_RAMPP_TIME        = 1<<4, // manually used for tracking changes
 };
 
+#define SAU_RAMPP_POS_MAX UINT32_MAX // will expire any time / jump to goal
+
 /**
  * Ramp parameter type.
  *
@@ -83,7 +85,7 @@ enum {
  */
 typedef struct SAU_Ramp {
 	float v0, vt;
-	uint32_t time_ms;
+	uint32_t time_ms, pos;
 	uint8_t type;
 	uint8_t flags;
 } SAU_Ramp;
@@ -100,8 +102,8 @@ typedef struct SAU_Ramp {
 void SAU_Ramp_copy(SAU_Ramp *restrict o,
 		const SAU_Ramp *restrict src);
 
-bool SAU_Ramp_run(SAU_Ramp *restrict o, uint32_t *restrict pos,
+bool SAU_Ramp_run(SAU_Ramp *restrict o,
 		float *restrict buf, uint32_t buf_len, uint32_t srate,
 		const float *restrict mulbuf);
-bool SAU_Ramp_skip(SAU_Ramp *restrict o, uint32_t *restrict pos,
+bool SAU_Ramp_skip(SAU_Ramp *restrict o,
 		uint32_t skip_len, uint32_t srate);
