@@ -1,4 +1,4 @@
 Osin fD3 t2 p+[
-	Osin r(3/1) a0 a{v1 t0.05 cxpe} t0.05
-	; a{v0 t1 cxpe}
+	Osin r(3/1) a0 a{v1 t0.05 rxpe} t0.05
+	; a{v0 t1 rxpe}
 ]
