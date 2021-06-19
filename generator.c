@@ -52,7 +52,7 @@ enum {
 typedef struct VoiceNode {
 	uint32_t duration;
 	uint8_t flags;
-	const SGS_ProgramIDArr *carrs;
+	uint32_t carr_op_id;
 	SGS_Ramp pan;
 	uint32_t pan_pos;
 } VoiceNode;
@@ -137,7 +137,7 @@ static bool convert_program(SGS_Generator *restrict o,
 	 */
 	int ev_time_carry = 0;
 	o->srate = srate;
-	o->amp_scale = 1.f;
+	o->amp_scale = 0.5f; // half for panning sum
 	if ((prg->mode & SGS_PMODE_AMP_DIV_VOICES) != 0)
 		o->amp_scale /= o->vo_count;
 	for (size_t i = 0; i < prg->op_count; ++i) {
@@ -195,11 +195,9 @@ void SGS_destroy_Generator(SGS_Generator *restrict o) {
 static void set_voice_duration(SGS_Generator *restrict o,
 		VoiceNode *restrict vn) {
 	uint32_t time = 0;
-	for (uint32_t i = 0; i < vn->carrs->count; ++i) {
-		OperatorNode *on = &o->operators[vn->carrs->ids[i]];
-		if (on->time > time)
-			time = on->time;
-	}
+	OperatorNode *on = &o->operators[vn->carr_op_id];
+	if (on->time > time)
+		time = on->time;
 	vn->duration = time;
 }
 
@@ -265,13 +263,12 @@ static void handle_event(SGS_Generator *restrict o, EventNode *restrict e) {
 			if (params & SGS_POPP_AMP2)
 				handle_ramp_update(&on->amp2,
 						&on->amp2_pos, &od->amp2);
+			if (params & SGS_POPP_PAN)
+				handle_ramp_update(&vn->pan,
+						&vn->pan_pos, &od->pan);
 		}
 		if (vd) {
-			uint32_t params = vd->params;
-			if (vd->carrs) vn->carrs = vd->carrs;
-			if (params & SGS_PVOP_PAN)
-				handle_ramp_update(&vn->pan,
-						&vn->pan_pos, &vd->pan);
+			vn->carr_op_id = vd->carr_op_id;
 		}
 		if (vn) {
 			vn->flags |= VN_INIT;
@@ -418,18 +415,16 @@ static void mix_add(SGS_Generator *restrict o,
 		for (uint32_t i = 0; i < len; ++i) {
 			float s = s_buf[i] * o->amp_scale;
 			float s_r = s * pan_buf[i];
-			float s_l = s - s_r;
-			mix_l[i] += s_l;
-			mix_r[i] += s_r;
+			mix_l[i] += s - s_r;
+			mix_r[i] += s + s_r;
 		}
 	} else {
 		SGS_Ramp_skip(&vn->pan, &vn->pan_pos, len, o->srate);
 		for (uint32_t i = 0; i < len; ++i) {
 			float s = s_buf[i] * o->amp_scale;
 			float s_r = s * vn->pan.v0;
-			float s_l = s - s_r;
-			mix_l[i] += s_l;
-			mix_r[i] += s_r;
+			mix_l[i] += s - s_r;
+			mix_r[i] += s + s_r;
 		}
 	}
 	if (o->gen_mix_add_max < len) o->gen_mix_add_max = len;
@@ -483,26 +478,15 @@ static void mix_write_stereo(SGS_Generator *restrict o,
  */
 static uint32_t run_voice(SGS_Generator *restrict o,
 		VoiceNode *restrict vn, uint32_t len) {
-	uint32_t out_len = 0;
-	if (!vn->carrs->count)
-		return 0;
-	uint32_t acc_ind = 0;
-	uint32_t time;
-	uint32_t i;
-	time = vn->duration;
+	OperatorNode *n = &o->operators[vn->carr_op_id];
+	uint32_t time = vn->duration, out_len = 0;
 	if (len > BUF_LEN) len = BUF_LEN;
 	if (time > len) time = len;
-	for (i = 0; i < vn->carrs->count; ++i) {
-		uint32_t last_len;
-		OperatorNode *n = &o->operators[vn->carrs->ids[i]];
-		if (n->time == 0) continue;
-		last_len = run_block(o, o->gen_bufs, time, n,
-				NULL, false, acc_ind++);
-		if (last_len > out_len) out_len = last_len;
-	}
-	if (out_len > 0) {
+	if (n->time > 0)
+		out_len = run_block(o, o->gen_bufs, time, n,
+				NULL, false, false);
+	if (out_len > 0)
 		mix_add(o, vn, out_len);
-	}
 	vn->duration -= time;
 	return out_len;
 }
