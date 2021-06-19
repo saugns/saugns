@@ -1,5 +1,5 @@
 /* saugns: Audio program interpreter module.
- * Copyright (c) 2011-2012, 2017-2020 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -137,6 +137,9 @@ static void handle_event(SAU_Interp *restrict o, EventNode *restrict e) {
 		 * updates for their operators.
 		 */
 		const SAU_ProgramEvent *prg_e = e->prg_e;
+		VoiceNode *vn = NULL;
+		if (prg_e->vo_id != SAU_PVO_NO_ID)
+			vn = &o->voices[prg_e->vo_id];
 		for (size_t i = 0; i < prg_e->op_data_count; ++i) {
 			const SAU_ProgramOpData *od = &prg_e->op_data[i];
 			OperatorNode *on = &o->operators[od->id];
@@ -174,18 +177,15 @@ static void handle_event(SAU_Interp *restrict o, EventNode *restrict e) {
 			if (params & SAU_POPP_AMP2)
 				handle_ramp_update(&on->amp2,
 						&on->amp2_pos, &od->amp2);
+			if (params & SAU_POPP_PAN)
+				handle_ramp_update(&vn->pan,
+						&vn->pan_pos, &od->pan);
 		}
-		if (prg_e->vo_id != SAU_PVO_NO_ID) {
-			const SAU_ProgramVoData *vd = prg_e->vo_data;
-			VoiceNode *vn = &o->voices[prg_e->vo_id];
-			uint32_t params = (vd != NULL) ? vd->params : 0;
+		if (vn != NULL) {
 			if (e->graph != NULL) {
 				vn->graph = e->graph;
 				vn->graph_count = e->graph_count;
 			}
-			if (params & SAU_PVOP_PAN)
-				handle_ramp_update(&vn->pan,
-						&vn->pan_pos, &vd->pan);
 			vn->flags |= VN_INIT;
 			vn->pos = 0;
 			if (o->voice > prg_e->vo_id) {
@@ -532,7 +532,7 @@ void SAU_Interp_print(const SAU_Interp *restrict o) {
 			prg_ev->wait_ms, ev_id, prg_ev->vo_id);
 		if (prg_vd != NULL) {
 			SAU_ProgramEvent_print_voice(prg_ev);
-			if (prg_vd->params & SAU_PVOP_GRAPH)
+			if (ev->graph != NULL)
 				print_graph(ev->graph, ev->graph_count);
 		}
 		SAU_ProgramEvent_print_operators(prg_ev);

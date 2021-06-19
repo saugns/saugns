@@ -1,5 +1,5 @@
 /* saugns: Script file data and functions.
- * Copyright (c) 2011-2012, 2017-2020 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -34,18 +34,20 @@ enum {
  */
 typedef struct SAU_ScriptOpData {
 	struct SAU_ScriptOpData *range_next;
-	struct SAU_ScriptEvData *event;
+	struct SAU_ScriptEvData *event, *root_event;
 	struct SAU_ScriptOpData *next_bound;
 	struct SAU_ScriptOpData *prev_use, *next_use; /* for same op(s) */
 	uint32_t op_flags;
 	/* operator parameters */
 	uint32_t op_id; // for scriptconv
-	uint32_t op_params;
+	uint32_t params;
 	SAU_Time time;
 	uint32_t silence_ms;
 	uint8_t wave;
+	uint8_t use_type;
 	SAU_Ramp freq, freq2;
 	SAU_Ramp amp, amp2;
+	SAU_Ramp pan;
 	float phase;
 	/* new node adjacents in operator linkage graph */
 	SAU_RefList *mod_lists;
@@ -56,6 +58,7 @@ typedef struct SAU_ScriptOpData {
  */
 enum {
 	SAU_SDEV_NEW_OPGRAPH = 1<<0,
+	SAU_SDEV_LATER_USED = 1<<1,
 };
 
 /**
@@ -67,11 +70,9 @@ typedef struct SAU_ScriptEvData {
 	uint32_t wait_ms;
 	uint32_t ev_flags;
 	SAU_NodeRange op_all;
-	/* voice parameters */
+	/* for scriptconv */
 	uint32_t vo_id;
-	uint32_t vo_params;
-	struct SAU_ScriptEvData *prev_vo_use, *next_vo_use; /* for same voice */
-	SAU_Ramp pan;
+	struct SAU_ScriptEvData *root_ev;
 	SAU_RefList *carriers;
 } SAU_ScriptEvData;
 
@@ -95,9 +96,9 @@ enum {
  * The final state is included in the parse result.
  */
 typedef struct SAU_ScriptOptions {
-	uint32_t changed; // flags (SAU_SOPT_*) set upon change by script
-	float ampmult;    // amplitude multiplier for non-modulator operators
-	float A4_freq;    // A4 tuning for frequency as note
+	uint32_t set;  // flags (SAU_SOPT_*) set upon change by script
+	float ampmult; // amplitude multiplier for non-modulator operators
+	float A4_freq; // A4 tuning for frequency as note
 	/* operator parameter default values (use depends on context) */
 	uint32_t def_time_ms;
 	float def_freq,

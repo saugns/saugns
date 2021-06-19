@@ -36,7 +36,7 @@ typedef struct ScanLookup {
  * Default script options, used until changed in a script.
  */
 static const SAU_ScriptOptions def_sopt = {
-	.changed = 0,
+	.set = 0,
 	.ampmult = 1.f,
 	.A4_freq = 444.f,
 	.def_time_ms = 1000,
@@ -395,25 +395,30 @@ static bool scan_wavetype(SAU_Scanner *restrict o, size_t *restrict found_id) {
 			found_id, "wave type");
 }
 
-static bool scan_ramp_state(SAU_Scanner *restrict o,
+static bool scan_fval_param(SAU_Scanner *restrict o,
 		SAU_ScanNumConst_f scan_numconst,
-		SAU_Ramp *restrict ramp, bool mult) {
-	if (!scan_num(o, scan_numconst, &ramp->v0))
+		float *restrict fval,
+		uint32_t *restrict param_attr, uint32_t flag) {
+	if (!scan_num(o, scan_numconst, fval))
 		return false;
-	if (mult) {
-		ramp->flags |= SAU_RAMPP_STATE_RATIO;
-	} else {
-		ramp->flags &= ~SAU_RAMPP_STATE_RATIO;
-	}
-	ramp->flags |= SAU_RAMPP_STATE;
+	*param_attr |= flag;
 	return true;
 }
 
-static bool scan_ramp(SAU_Scanner *restrict o,
+static bool scan_ramp_param(SAU_Scanner *restrict o,
 		SAU_ScanNumConst_f scan_numconst,
-		SAU_Ramp *restrict ramp, bool mult) {
+		SAU_Ramp *restrict ramp, bool rel,
+		uint32_t *restrict param_attr, uint32_t flag) {
 	if (!SAU_Scanner_tryc(o, '{')) {
-		return scan_ramp_state(o, scan_numconst, ramp, mult);
+		if (!scan_fval_param(o, scan_numconst, &ramp->v0,
+					param_attr, flag))
+			return false;
+		ramp->flags |= SAU_RAMPP_STATE;
+		if (rel)
+			ramp->flags |= SAU_RAMPP_STATE_RATIO;
+		else
+			ramp->flags &= ~SAU_RAMPP_STATE_RATIO;
+		return true;
 	}
 	ScanLookup *sl = o->data;
 	bool goal = false;
@@ -423,7 +428,7 @@ static bool scan_ramp(SAU_Scanner *restrict o,
 	uint8_t type = ramp->type; // has default
 	if ((ramp->flags & SAU_RAMPP_GOAL) != 0) {
 		// allow partial change
-		if (((ramp->flags & SAU_RAMPP_GOAL_RATIO) != 0) == mult) {
+		if (((ramp->flags & SAU_RAMPP_GOAL_RATIO) != 0) == rel) {
 			goal = true;
 			vt = ramp->vt;
 		}
@@ -470,7 +475,7 @@ RETURN:
 	ramp->time_ms = time_ms;
 	ramp->type = type;
 	ramp->flags |= SAU_RAMPP_GOAL;
-	if (mult)
+	if (rel)
 		ramp->flags |= SAU_RAMPP_GOAL_RATIO;
 	else
 		ramp->flags &= ~SAU_RAMPP_GOAL_RATIO;
@@ -478,6 +483,7 @@ RETURN:
 		ramp->flags |= SAU_RAMPP_TIME;
 	else
 		ramp->flags &= ~SAU_RAMPP_TIME;
+	*param_attr |= flag;
 	return true;
 }
 
@@ -643,7 +649,7 @@ static void end_operator(SAU_Parser *restrict o) {
 		/*
 		 * Reset all operator state for initial event.
 		 */
-		op->op_params |= SAU_POP_PARAMS;
+		op->params |= SAU_POP_PARAMS;
 	}
 	pl->operator = NULL;
 	pl->last_operator = op;
@@ -656,13 +662,6 @@ static void end_event(SAU_Parser *restrict o) {
 	pl->pl_flags &= ~PL_ACTIVE_EV;
 	SAU_ParseEvData *e = pl->event;
 	end_operator(o);
-	SAU_ParseEvData *pve = e->vo_prev;
-	if (!pve) {
-		/*
-		 * Reset all voice state for initial event.
-		 */
-		e->vo_params |= SAU_PVO_PARAMS & ~SAU_PVOP_GRAPH;
-	}
 	SAU_ParseDurGroup *dur = o->cur_dur;
 	if (!dur->range.first)
 		dur->range.first = e;
@@ -674,31 +673,22 @@ static void end_event(SAU_Parser *restrict o) {
 static void begin_event(SAU_Parser *restrict o,
 		bool is_composite) {
 	struct ParseLevel *pl = o->cur_pl;
-	ScanLookup *sl = &o->sl;
 	end_event(o);
 	SAU_ParseEvData *e = SAU_MemPool_alloc(o->mp, sizeof(SAU_ParseEvData));
 	pl->event = e;
 	e->dur = o->cur_dur;
 	e->wait_ms = pl->next_wait_ms;
 	pl->next_wait_ms = 0;
-	SAU_Ramp_reset(&e->pan);
 	if (pl->op_prev != NULL) {
-		SAU_ParseEvData *pve = pl->op_prev->event;
+		SAU_ParseEvData *pope = pl->op_prev->event;
 		if (is_composite) {
 			if (!pl->composite) {
-				pve->composite = e;
-				pl->composite = pve;
+				pope->composite = e;
+				pl->composite = pope;
 			} else {
-				pve->next = e;
+				pope->next = e;
 			}
 		}
-		e->vo_prev = pve;
-	} else {
-		/*
-		 * New voice with initial parameter values.
-		 */
-		e->pan.v0 = sl->sopt.def_chanmix;
-		e->pan.flags |= SAU_RAMPP_STATE;
 	}
 	if (!is_composite) {
 		if (!o->first_ev)
@@ -735,7 +725,9 @@ static void begin_operator(SAU_Parser *restrict o,
 	SAU_Ramp_reset(&op->freq2);
 	SAU_Ramp_reset(&op->amp);
 	SAU_Ramp_reset(&op->amp2);
+	SAU_Ramp_reset(&op->pan);
 	if (pop != NULL) {
+		op->root_event = pop->root_event; /* refs keep original root */
 		op->use_type = pop->use_type;
 		op->prev = pop;
 		op->op_flags = pop->op_flags &
@@ -760,9 +752,12 @@ static void begin_operator(SAU_Parser *restrict o,
 		/*
 		 * New operator with initial parameter values.
 		 */
+		op->root_event = (pl->parent_op != NULL) ?
+			pl->parent_op->event :
+			e;
 		op->use_type = (pl->op_scope != NULL) ?
-				pl->op_scope->use_type :
-				SAU_POP_CARR;
+			pl->op_scope->use_type :
+			SAU_POP_CARR;
 		if (op->use_type == SAU_POP_CARR) {
 			op->freq.v0 = sl->sopt.def_freq;
 		} else {
@@ -773,6 +768,8 @@ static void begin_operator(SAU_Parser *restrict o,
 		op->freq.flags |= SAU_RAMPP_STATE;
 		op->amp.v0 = 1.0f;
 		op->amp.flags |= SAU_RAMPP_STATE;
+		op->pan.v0 = sl->sopt.def_chanmix;
+		op->pan.flags |= SAU_RAMPP_STATE;
 	}
 	op->event = e;
 	/*
@@ -780,14 +777,16 @@ static void begin_operator(SAU_Parser *restrict o,
 	 * or an operator node (either ordinary or representing multiple
 	 * carriers) in the case of operator linking/nesting.
 	 */
-	SAU_NodeRange *list = &e->operators;
-	if (!pop && pl->op_scope != NULL)
-		list = &pl->op_scope->range;
-	if (!list->first)
-		list->first = op;
-	else
-		((SAU_ParseOpData*) list->last)->range_next = op;
-	list->last = op;
+	if (!pop && pl->op_scope != NULL) {
+		SAU_NodeRange *list = &pl->op_scope->range;
+		if (!list->first)
+			list->first = op;
+		else
+			((SAU_ParseOpData*) list->last)->range_next = op;
+		list->last = op;
+	} else {
+		e->op_data = op;
+	}
 	/*
 	 * Assign label. If no new label but previous node
 	 * (for a non-composite) has one, update label to
@@ -811,13 +810,15 @@ static void begin_operator(SAU_Parser *restrict o,
  * Used instead of directly calling begin_operator() and/or begin_event().
  */
 static void begin_node(SAU_Parser *restrict o,
-		SAU_ParseOpData *restrict previous,
+		SAU_ParseOpData *restrict pop,
 		bool is_composite) {
 	struct ParseLevel *pl = o->cur_pl;
-	pl->op_prev = previous;
+	pl->op_prev = pop;
 	if (!pl->event || /* not in event parse means event now ended */
 			pl->sub_f != parse_in_event ||
 			pl->next_wait_ms ||
+			(!(!pop && pl->op_scope != NULL) &&
+			 pl->event->op_data != NULL) ||
 			is_composite)
 		begin_event(o, is_composite);
 	begin_operator(o, is_composite);
@@ -933,16 +934,16 @@ static void parse_in_settings(SAU_Parser *restrict o) {
 			break;
 		case 'a':
 			if (scan_num(sc, NULL, &sl->sopt.ampmult))
-				sl->sopt.changed |= SAU_SOPT_AMPMULT;
+				sl->sopt.set |= SAU_SOPT_AMPMULT;
 			break;
 		case 'c':
 			if (scan_num(sc, scan_chanmix_const,
 						&sl->sopt.def_chanmix))
-				sl->sopt.changed |= SAU_SOPT_DEF_CHANMIX;
+				sl->sopt.set |= SAU_SOPT_DEF_CHANMIX;
 			break;
 		case 'f':
 			if (scan_num(sc, scan_note_const, &sl->sopt.def_freq))
-				sl->sopt.changed |= SAU_SOPT_DEF_FREQ;
+				sl->sopt.set |= SAU_SOPT_DEF_FREQ;
 			break;
 		case 'n': {
 			float freq;
@@ -953,16 +954,16 @@ static void parse_in_settings(SAU_Parser *restrict o) {
 					break;
 				}
 				sl->sopt.A4_freq = freq;
-				sl->sopt.changed |= SAU_SOPT_A4_FREQ;
+				sl->sopt.set |= SAU_SOPT_A4_FREQ;
 			}
 			break; }
 		case 'r':
 			if (scan_num(sc, NULL, &sl->sopt.def_relfreq))
-				sl->sopt.changed |= SAU_SOPT_DEF_RELFREQ;
+				sl->sopt.set |= SAU_SOPT_DEF_RELFREQ;
 			break;
 		case 't':
 			if (scan_time_val(sc, &sl->sopt.def_time_ms))
-				sl->sopt.changed |= SAU_SOPT_DEF_TIME;
+				sl->sopt.set |= SAU_SOPT_DEF_TIME;
 			break;
 		default:
 			goto DEFER;
@@ -980,11 +981,11 @@ static bool parse_ev_amp(SAU_Parser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
 	SAU_Scanner *sc = o->sc;
 	SAU_ParseOpData *op = pl->operator;
-	if (scan_ramp(sc, NULL, &op->amp, false))
-		op->op_params |= SAU_POPP_AMP;
+	scan_ramp_param(sc, NULL, &op->amp, false,
+			&op->params, SAU_POPP_AMP);
 	if (SAU_Scanner_tryc(sc, ',')) {
-		if (scan_ramp(sc, NULL, &op->amp2, false))
-			op->op_params |= SAU_POPP_AMP2;
+		scan_ramp_param(sc, NULL, &op->amp2, false,
+				&op->params, SAU_POPP_AMP2);
 	}
 	if (SAU_Scanner_tryc(sc, '~') && SAU_Scanner_tryc(sc, '[')) {
 		parse_level(o, SAU_POP_AMOD, SCOPE_NEST);
@@ -995,12 +996,11 @@ static bool parse_ev_amp(SAU_Parser *restrict o) {
 static bool parse_ev_chanmix(SAU_Parser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
 	SAU_Scanner *sc = o->sc;
-	SAU_ParseEvData *e = pl->event;
 	SAU_ParseOpData *op = pl->operator;
 	if (op->op_flags & SAU_PDOP_NESTED)
 		return true; // reject
-	if (scan_ramp(sc, scan_chanmix_const, &e->pan, false))
-		e->vo_params |= SAU_PVOP_PAN;
+	scan_ramp_param(sc, scan_chanmix_const, &op->pan, false,
+			&op->params, SAU_POPP_PAN);
 	return false;
 }
 
@@ -1011,11 +1011,11 @@ static bool parse_ev_freq(SAU_Parser *restrict o, bool rel_freq) {
 	if (rel_freq && !(op->op_flags & SAU_PDOP_NESTED))
 		return true; // reject
 	SAU_ScanNumConst_f numconst_f = rel_freq ? NULL : scan_note_const;
-	if (scan_ramp(sc, numconst_f, &op->freq, rel_freq))
-		op->op_params |= SAU_POPP_FREQ;
+	scan_ramp_param(sc, numconst_f, &op->freq, rel_freq,
+			&op->params, SAU_POPP_FREQ);
 	if (SAU_Scanner_tryc(sc, ',')) {
-		if (scan_ramp(sc, numconst_f, &op->freq2, rel_freq))
-			op->op_params |= SAU_POPP_FREQ2;
+		scan_ramp_param(sc, numconst_f, &op->freq2, rel_freq,
+				&op->params, SAU_POPP_FREQ2);
 	}
 	if (SAU_Scanner_tryc(sc, '~') && SAU_Scanner_tryc(sc, '[')) {
 		parse_level(o, SAU_POP_FMOD, SCOPE_NEST);
@@ -1027,11 +1027,11 @@ static bool parse_ev_phase(SAU_Parser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
 	SAU_Scanner *sc = o->sc;
 	SAU_ParseOpData *op = pl->operator;
-	if (scan_num(sc, NULL, &op->phase)) {
+	if (scan_fval_param(sc, NULL, &op->phase,
+				&op->params, SAU_POPP_PHASE)) {
 		op->phase = fmod(op->phase, 1.f);
 		if (op->phase < 0.f)
 			op->phase += 1.f;
-		op->op_params |= SAU_POPP_PHASE;
 	}
 	if (SAU_Scanner_tryc(sc, '+') && SAU_Scanner_tryc(sc, '[')) {
 		parse_level(o, SAU_POP_PMOD, SCOPE_NEST);
@@ -1056,10 +1056,7 @@ static void parse_in_event(SAU_Parser *restrict o) {
 			break;
 		case '\\':
 			if (parse_waittime(o) && pl->event != NULL) {
-				// FIXME: Replace grouping into and counting
-				// of carriers as voices with reliable count
-				// and handling of carriers for scaling etc.
-				//begin_node(o, pl->operator, false);
+				begin_node(o, pl->operator, false);
 			}
 			break;
 		case 'a':
@@ -1078,8 +1075,8 @@ static void parse_in_event(SAU_Parser *restrict o) {
 			if (parse_ev_freq(o, true)) goto DEFER;
 			break;
 		case 's':
-			scan_time_val(sc, &op->silence_ms);
-			op->op_params |= SAU_POPP_SILENCE;
+			if (scan_time_val(sc, &op->silence_ms))
+				op->params |= SAU_POPP_SILENCE;
 			break;
 		case 't':
 			if (SAU_Scanner_tryc(sc, '*')) {
@@ -1099,14 +1096,14 @@ static void parse_in_event(SAU_Parser *restrict o) {
 					break;
 				op->time.flags = SAU_TIMEP_SET;
 			}
-			op->op_params |= SAU_POPP_TIME;
+			op->params |= SAU_POPP_TIME;
 			break;
 		case 'w': {
 			size_t wave;
 			if (!scan_wavetype(sc, &wave))
 				break;
 			op->wave = wave;
-			op->op_params |= SAU_POPP_WAVE;
+			op->params |= SAU_POPP_WAVE;
 			break; }
 		default:
 			goto DEFER;

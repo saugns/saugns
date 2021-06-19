@@ -1,5 +1,5 @@
 /* saugns: Parser output to script data converter.
- * Copyright (c) 2011-2012, 2017-2020 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -31,8 +31,8 @@ static void time_durgroup(SAU_ParseEvData *restrict e_last) {
 	SAU_ParseEvData *e, *e_after = e_last->next;
 	uint32_t wait = 0, waitcount = 0;
 	for (e = dur->range.first; e != e_after; ) {
-		for (SAU_ParseOpData *op = e->operators.first;
-				op != NULL; op = op->range_next) {
+		SAU_ParseOpData *op = e->op_data;
+		if (op != NULL) {
 			if (wait < op->time.v_ms)
 				wait = op->time.v_ms;
 		}
@@ -42,8 +42,8 @@ static void time_durgroup(SAU_ParseEvData *restrict e_last) {
 		}
 	}
 	for (e = dur->range.first; e != e_after; ) {
-		for (SAU_ParseOpData *op = e->operators.first;
-				op != NULL; op = op->range_next) {
+		SAU_ParseOpData *op = e->op_data;
+		if (op != NULL) {
 			if (!(op->time.flags & SAU_TIMEP_SET)) {
 				/* fill in sensible default time */
 				op->time.v_ms = wait + waitcount;
@@ -104,8 +104,8 @@ static void time_event(SAU_ParseEvData *restrict e) {
 	 */
 	// e->pan.flags |= SAU_RAMPP_TIME; // TODO: revisit semantics
 	SAU_ParseOpData *op;
-	op = e->operators.first;
-	for (; op != NULL; op = op->range_next) {
+	op = e->op_data;
+	if (op != NULL) {
 		time_operator(op);
 	}
 	/*
@@ -114,7 +114,7 @@ static void time_event(SAU_ParseEvData *restrict e) {
 	if (e->composite != NULL) {
 		SAU_ParseEvData *ce = e->composite;
 		SAU_ParseOpData *ce_op, *ce_op_prev, *e_op;
-		ce_op = ce->operators.first;
+		ce_op = ce->op_data;
 		ce_op_prev = ce_op->prev;
 		e_op = ce_op_prev;
 		e_op->time.flags |= SAU_TIMEP_SET; /* always used from now on */
@@ -135,11 +135,11 @@ static void time_event(SAU_ParseEvData *restrict e) {
 			else if (!(e_op->time.flags & SAU_TIMEP_LINKED))
 				e_op->time.v_ms += ce_op->time.v_ms +
 					(ce->wait_ms - ce_op_prev->time.v_ms);
-			ce_op->op_params &= ~SAU_POPP_TIME;
+			ce_op->params &= ~SAU_POPP_TIME;
 			ce_op_prev = ce_op;
 			ce = ce->next;
 			if (!ce) break;
-			ce_op = ce->operators.first;
+			ce_op = ce->op_data;
 		}
 	}
 }
@@ -228,12 +228,12 @@ static OpContext *ParseConv_update_opcontext(ParseConv *restrict o,
 		SAU_ScriptOpData *restrict od,
 		SAU_ParseOpData *restrict pod) {
 	OpContext *oc = NULL;
+	SAU_ScriptEvData *e = o->ev;
 	if (!pod->prev) {
 		oc = SAU_MemPool_alloc(o->tmp, sizeof(OpContext));
 		if (!oc)
 			return NULL;
-		if (pod->use_type == SAU_POP_CARR) {
-			SAU_ScriptEvData *e = o->ev;
+		if (od->use_type == SAU_POP_CARR) {
 			e->ev_flags |= SAU_SDEV_NEW_OPGRAPH;
 			od->op_flags |= SAU_SDOP_ADD_CARRIER;
 		}
@@ -248,24 +248,19 @@ static OpContext *ParseConv_update_opcontext(ParseConv *restrict o,
 			pod->op_flags |= SAU_PDOP_IGNORED;
 			return NULL;
 		}
-		if (pod->use_type == SAU_POP_CARR) {
+		if (od->use_type == SAU_POP_CARR) {
 			od->op_flags |= SAU_SDOP_ADD_CARRIER;
 		}
 		SAU_ScriptOpData *prev_use = oc->last_use->op_conv;
 		od->prev_use = prev_use;
 		prev_use->next_use = od;
+		prev_use->event->ev_flags |= SAU_SDEV_LATER_USED;
+		e->root_ev = od->root_event;
 	}
 	oc->last_use = pod;
 	pod->op_context = oc;
 	return oc;
 }
-
-/*
- * Per-voice data pointed to by all its nodes during conversion.
- */
-typedef struct VoContext {
-	SAU_ParseEvData *last_vo_use;
-} VoContext;
 
 /*
  * Convert data for an operator node to script operator data,
@@ -278,17 +273,20 @@ static bool ParseConv_add_opdata(ParseConv *restrict o,
 	if (!od) goto ERROR;
 	SAU_ScriptEvData *e = o->ev;
 	pod->op_conv = od;
+	od->root_event = pod->root_event->ev_conv;
 	od->event = e;
 	/* next_bound */
 	/* op_flags */
-	od->op_params = pod->op_params;
+	od->params = pod->params;
 	od->time = pod->time;
 	od->silence_ms = pod->silence_ms;
 	od->wave = pod->wave;
+	od->use_type = pod->use_type;
 	od->freq = pod->freq;
 	od->freq2 = pod->freq2;
 	od->amp = pod->amp;
 	od->amp2 = pod->amp2;
+	od->pan = pod->pan;
 	od->phase = pod->phase;
 	if (!ParseConv_update_opcontext(o, od, pod)) goto ERROR;
 	if (!e->op_all.first)
@@ -392,24 +390,10 @@ static bool ParseConv_add_event(ParseConv *restrict o,
 	o->ev = e;
 	e->wait_ms = pe->wait_ms;
 	/* ev_flags */
-	VoContext *vc;
-	if (!pe->vo_prev) {
-		vc = SAU_MemPool_alloc(o->tmp, sizeof(VoContext));
-		if (!vc) goto ERROR;
-		e->ev_flags |= SAU_SDEV_NEW_OPGRAPH;
-	} else {
-		vc = pe->vo_prev->vo_context;
-		SAU_ScriptEvData *prev_vo_use = vc->last_vo_use->ev_conv;
-		e->prev_vo_use = prev_vo_use;
-		prev_vo_use->next_vo_use = e;
-	}
-	vc->last_vo_use = pe;
-	pe->vo_context = vc;
-	e->vo_params = pe->vo_params;
-	e->pan = pe->pan;
-	if (!ParseConv_add_ops(o, &pe->operators)) goto ERROR;
+	const SAU_NodeRange ev_op = {.first = pe->op_data};
+	if (!ParseConv_add_ops(o, &ev_op)) goto ERROR;
 	if (!ParseConv_link_ops(o, &e->carriers,
-				&pe->operators, SAU_POP_CARR)) goto ERROR;
+				&ev_op, SAU_POP_CARR)) goto ERROR;
 	return true;
 ERROR:
 	return false;

@@ -1,5 +1,5 @@
 /* saugns: Audio program data and functions.
- * Copyright (c) 2011-2013, 2017-2020 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -25,23 +25,23 @@
  */
 enum {
 	SAU_PVOP_GRAPH = 1<<0,
-	SAU_PVOP_PAN = 1<<1,
-	SAU_PVO_PARAMS = (1<<2) - 1
+	SAU_PVO_PARAMS = (1<<1) - 1
 };
 
 /**
  * Operator parameter flags.
  */
 enum {
-	SAU_POPP_WAVE = 1<<0,
-	SAU_POPP_TIME = 1<<1,
-	SAU_POPP_SILENCE = 1<<2,
-	SAU_POPP_FREQ = 1<<3,
-	SAU_POPP_FREQ2 = 1<<4,
-	SAU_POPP_PHASE = 1<<5,
-	SAU_POPP_AMP = 1<<6,
-	SAU_POPP_AMP2 = 1<<7,
-	SAU_POP_PARAMS = (1<<8) - 1
+	SAU_POPP_PAN = 1<<0,
+	SAU_POPP_WAVE = 1<<1,
+	SAU_POPP_TIME = 1<<2,
+	SAU_POPP_SILENCE = 1<<3,
+	SAU_POPP_FREQ = 1<<4,
+	SAU_POPP_FREQ2 = 1<<5,
+	SAU_POPP_PHASE = 1<<6,
+	SAU_POPP_AMP = 1<<7,
+	SAU_POPP_AMP2 = 1<<8,
+	SAU_POP_PARAMS = (1<<9) - 1
 };
 
 /*
@@ -81,7 +81,6 @@ typedef struct SAU_ProgramOpList {
 typedef struct SAU_ProgramVoData {
 	const SAU_ProgramOpList *carriers;
 	uint32_t params;
-	SAU_Ramp pan;
 	const struct SAU_ProgramVoData *prev;
 } SAU_ProgramVoData;
 
@@ -96,6 +95,7 @@ typedef struct SAU_ProgramOpData {
 	uint8_t wave;
 	SAU_Ramp freq, freq2;
 	SAU_Ramp amp, amp2;
+	SAU_Ramp pan;
 	float phase;
 	const struct SAU_ProgramOpData *prev;
 } SAU_ProgramOpData;

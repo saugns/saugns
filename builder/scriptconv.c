@@ -1,5 +1,5 @@
 /* saugns: Script data to audio program converter.
- * Copyright (c) 2011-2012, 2017-2020 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -66,15 +66,15 @@ static uint32_t voice_duration(const SAU_ScriptEvData *restrict ve) {
  */
 static bool SAU_VoAlloc_get_id(SAU_VoAlloc *restrict va,
 		const SAU_ScriptEvData *restrict e, uint32_t *restrict vo_id) {
-	if (e->prev_vo_use != NULL) {
-		*vo_id = e->prev_vo_use->vo_id;
+	if (e->root_ev != NULL) {
+		*vo_id = e->root_ev->vo_id;
 		return true;
 	}
 	SAU_VoAllocState *vas;
 	for (size_t id = 0; id < va->count; ++id) {
 		vas = &va->a[id];
-		if (!vas->last_sev->next_vo_use
-			&& vas->duration_ms == 0) {
+		if (!(vas->last_sev->ev_flags & SAU_SDEV_LATER_USED) &&
+				vas->duration_ms == 0) {
 			*vas = (SAU_VoAllocState){0};
 			*vo_id = id;
 			goto INIT;
@@ -218,7 +218,7 @@ static bool OpDataArr_add_for(OpDataArr *restrict o,
 	if (!od)
 		return false;
 	od->id = op_id;
-	od->params = op->op_params;
+	od->params = op->params;
 	od->time = op->time;
 	od->silence_ms = op->silence_ms;
 	od->wave = op->wave;
@@ -226,6 +226,7 @@ static bool OpDataArr_add_for(OpDataArr *restrict o,
 	od->freq2 = op->freq2;
 	od->amp = op->amp;
 	od->amp2 = op->amp2;
+	od->pan = op->pan;
 	od->phase = op->phase;
 	return true;
 }
@@ -320,7 +321,6 @@ MEM_ERR:
 static bool ScriptConv_convert_event(ScriptConv *restrict o,
 		SAU_ScriptEvData *restrict e) {
 	uint32_t vo_id;
-	uint32_t vo_params;
 	if (!SAU_VoAlloc_update(&o->va, e, &vo_id)) goto MEM_ERR;
 	SAU_VoAllocState *vas = &o->va.a[vo_id];
 	SAU_ProgramEvent *out_ev = SAU_MemPool_alloc(o->mem,
@@ -330,17 +330,13 @@ static bool ScriptConv_convert_event(ScriptConv *restrict o,
 	out_ev->vo_id = vo_id;
 	o->ev = out_ev;
 	if (!ScriptConv_convert_ops(o, &e->op_all)) goto MEM_ERR;
-	vo_params = e->vo_params;
 	if (e->ev_flags & SAU_SDEV_NEW_OPGRAPH)
 		vas->flags |= SAU_VAS_GRAPH;
-	if (vas->flags & SAU_VAS_GRAPH)
-		vo_params |= SAU_PVOP_GRAPH;
-	if (vo_params != 0) {
+	if (vas->flags & SAU_VAS_GRAPH) {
 		SAU_ProgramVoData *ovd = SAU_MemPool_alloc(o->mem,
 				sizeof(SAU_ProgramVoData));
 		if (!ovd) goto MEM_ERR;
-		ovd->params = vo_params;
-		ovd->pan = e->pan;
+		ovd->params |= SAU_PVOP_GRAPH;
 		if (e->carriers != NULL) {
 			if (!update_oplist(&vas->carriers, e->carriers,
 						o->mem)) goto MEM_ERR;
@@ -385,7 +381,7 @@ static SAU_Program *ScriptConv_create_program(ScriptConv *restrict o,
 	if (!SAU_PtrArr_mpmemdup(&o->ev_list,
 				(void***) &prg->events, o->mem)) goto MEM_ERR;
 	prg->ev_count = o->ev_list.count;
-	if (!(script->sopt.changed & SAU_SOPT_AMPMULT)) {
+	if (!(script->sopt.set & SAU_SOPT_AMPMULT)) {
 		/*
 		 * Enable amplitude scaling (division) by voice count,
 		 * handled by audio generator.

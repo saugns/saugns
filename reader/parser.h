@@ -53,7 +53,7 @@ enum {
  */
 typedef struct SAU_ParseOpData {
 	struct SAU_ParseOpData *range_next;
-	struct SAU_ParseEvData *event;
+	struct SAU_ParseEvData *event, *root_event;
 	struct SAU_ParseOpData *prev; /* preceding for same op(s) */
 	SAU_ParseSublist *nest_scopes;
 	SAU_ParseSublist *last_nest_scope;
@@ -61,13 +61,14 @@ typedef struct SAU_ParseOpData {
 	SAU_SymStr *label;
 	uint32_t op_flags;
 	/* operator parameters */
-	uint32_t op_params;
+	uint32_t params;
 	SAU_Time time;
 	uint32_t silence_ms;
 	uint8_t wave;
 	uint8_t use_type;
 	SAU_Ramp freq, freq2;
 	SAU_Ramp amp, amp2;
+	SAU_Ramp pan;
 	float phase;
 	/* for parseconv */
 	void *op_conv;
@@ -91,14 +92,9 @@ typedef struct SAU_ParseEvData {
 	SAU_ParseDurGroup *dur;
 	uint32_t wait_ms;
 	uint32_t ev_flags;
-	SAU_NodeRange operators; /* operator nodes directly linked from event */
-	/* voice parameters */
-	uint32_t vo_params;
-	struct SAU_ParseEvData *vo_prev; /* preceding event for same voice */
-	SAU_Ramp pan;
+	SAU_ParseOpData *op_data;
 	/* for parseconv */
 	void *ev_conv;
-	void *vo_context;
 } SAU_ParseEvData;
 
 /**
