@@ -250,18 +250,17 @@ static bool convert_program(SGS_Generator *restrict o,
 				(*ev_v++).ramp = &pod->amp;
 			if (params & SGS_POPP_AMP2)
 				(*ev_v++).ramp = &pod->amp2;
+			if (params & SGS_POPP_PAN)
+				(*ev_v++).ramp = &pod->pan;
 			++ev_od;
 		}
 		if (prg_e->vo_data) {
 			const SGS_ProgramVoData *pvd = prg_e->vo_data;
-			params = pvd->params;
-			e->vd.params = params;
-			if (params & SGS_PVOP_GRAPH) {
+			e->vd.params = pvd->params;
+			if (pvd->graph != NULL) {
 				e->vd.graph = pvd->graph;
 				e->vd.op_count = pvd->op_count;
 			}
-			if (params & SGS_PVOP_PAN)
-				(*ev_v++).ramp = &pvd->pan;
 			o->voices[vo_id].pos = -vo_wait_time;
 			vo_wait_time = 0;
 		}
@@ -346,6 +345,9 @@ static void handle_event(SGS_Generator *restrict o, EventNode *restrict e) {
 		 * Voice updates must be done last, to take into account
 		 * updates for their operators.
 		 */
+		VoiceNode *vn = NULL;
+		if (e->vd.id != SGS_PVO_NO_ID)
+			vn = &o->voices[e->vd.id];
 		for (size_t i = 0; i < e->od_count; ++i) {
 			EventOpData *od = &e->od[i];
 			OperatorNode *on = &o->operators[od->id];
@@ -373,17 +375,15 @@ static void handle_event(SGS_Generator *restrict o, EventNode *restrict e) {
 			if (params & SGS_POPP_AMP2)
 				val = handle_ramp_update(&on->amp2,
 						&on->amp2_pos, val);
+			if (params & SGS_POPP_PAN)
+				val = handle_ramp_update(&vn->pan,
+						&vn->pan_pos, val);
 		}
-		if (e->vd.id != SGS_PVO_NO_ID) {
-			VoiceNode *vn = &o->voices[e->vd.id];
-			params = e->vd.params;
-			if (params & SGS_PVOP_GRAPH) {
+		if (vn != NULL) {
+			if (e->vd.graph != NULL) {
 				vn->graph = e->vd.graph;
 				vn->op_count = e->vd.op_count;
 			}
-			if (params & SGS_PVOP_PAN)
-				val = handle_ramp_update(&vn->pan,
-						&vn->pan_pos, val);
 			vn->flags |= VN_INIT;
 			vn->pos = 0;
 			if (o->voice > e->vd.id) {
