@@ -133,7 +133,7 @@ static bool convert_program(SGS_Generator *restrict o,
 	 */
 	int ev_time_carry = 0;
 	o->srate = srate;
-	o->amp_scale = 1.f;
+	o->amp_scale = 0.5f; // half for panning sum
 	if ((prg->mode & SGS_PMODE_AMP_DIV_VOICES) != 0)
 		o->amp_scale /= o->vo_count;
 	for (size_t i = 0; i < prg->op_count; ++i) {
@@ -239,6 +239,7 @@ static void handle_event(SGS_Generator *restrict o, EventNode *restrict e) {
 			}
 			if (params & SGS_POPP_PHASE)
 				SGS_Osc_set_phase(&on->osc, od->phase);
+			SGS_Ramp_copy(&vn->pan, od->pan, o->srate);
 			SGS_Ramp_copy(&on->amp, od->amp, o->srate);
 			SGS_Ramp_copy(&on->amp2, od->amp2, o->srate);
 			SGS_Ramp_copy(&on->freq, od->freq, o->srate);
@@ -249,7 +250,6 @@ static void handle_event(SGS_Generator *restrict o, EventNode *restrict e) {
 				vn->graph = vd->op_list;
 				vn->op_count = vd->op_count;
 			}
-			SGS_Ramp_copy(&vn->pan, vd->pan, o->srate);
 		}
 		if (vn) {
 			vn->flags |= VN_INIT;
@@ -395,18 +395,16 @@ static void mix_add(SGS_Generator *restrict o,
 		for (uint32_t i = 0; i < len; ++i) {
 			float s = s_buf[i] * o->amp_scale;
 			float s_r = s * pan_buf[i];
-			float s_l = s - s_r;
-			mix_l[i] += s_l;
-			mix_r[i] += s_r;
+			mix_l[i] += s - s_r;
+			mix_r[i] += s + s_r;
 		}
 	} else {
 		SGS_Ramp_skip(&vn->pan, len);
 		for (uint32_t i = 0; i < len; ++i) {
 			float s = s_buf[i] * o->amp_scale;
 			float s_r = s * vn->pan.v0;
-			float s_l = s - s_r;
-			mix_l[i] += s_l;
-			mix_r[i] += s_r;
+			mix_l[i] += s - s_r;
+			mix_r[i] += s + s_r;
 		}
 	}
 	if (o->gen_mix_add_max < len) o->gen_mix_add_max = len;

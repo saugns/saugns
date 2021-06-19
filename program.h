@@ -39,14 +39,6 @@ typedef struct SGS_Time {
 } SGS_Time;
 
 /**
- * Voice parameter flags.
- */
-enum {
-	SGS_PVOP_OPLIST = 1<<0,
-	SGS_PVO_PARAMS = (1<<1) - 1,
-};
-
-/**
  * Ramp use IDs.
  */
 enum {
@@ -104,8 +96,6 @@ typedef struct SGS_ProgramOpRef {
 typedef struct SGS_ProgramVoData {
 	const SGS_ProgramOpRef *op_list;
 	uint32_t op_count;
-	uint32_t params;
-	SGS_Ramp *pan;
 } SGS_ProgramVoData;
 
 typedef struct SGS_ProgramOpData {
@@ -113,6 +103,7 @@ typedef struct SGS_ProgramOpData {
 	uint32_t id;
 	uint32_t params;
 	SGS_Time time;
+	SGS_Ramp *pan;
 	SGS_Ramp *amp, *amp2;
 	SGS_Ramp *freq, *freq2;
 	uint32_t phase;
