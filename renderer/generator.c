@@ -281,13 +281,9 @@ static void handle_event(SGS_Generator *restrict o, EventNode *restrict e) {
 			if (params & SGS_POPP_AMP2)
 				handle_ramp_update(&on->amp2,
 						&on->amp2_pos, &od->amp2);
-		}
-		if (e->vo_data != NULL) {
-			const SGS_ProgramVoData *vd = e->vo_data;
-			uint32_t params = vd->params;
-			if (params & SGS_PVOP_PAN)
+			if (params & SGS_POPP_PAN)
 				handle_ramp_update(&vn->pan,
-						&vn->pan_pos, &vd->pan);
+						&vn->pan_pos, &od->pan);
 		}
 		if (vn != NULL) {
 			if (e->graph != NULL) {

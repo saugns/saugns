@@ -29,7 +29,7 @@ SGS_Mixer *SGS_create_Mixer(void) {
 	if (!o->mix_r) goto ERROR;
 	o->pan_buf = calloc(SGS_MIX_BUFLEN, sizeof(float));
 	if (!o->pan_buf) goto ERROR;
-	o->scale = 1.f;
+	SGS_Mixer_set_scale(o, 1.f);
 	return o;
 
 ERROR:
@@ -71,17 +71,15 @@ void SGS_Mixer_add(SGS_Mixer *restrict o,
 		for (size_t i = 0; i < len; ++i) {
 			float s = buf[i] * o->scale;
 			float s_r = s * o->pan_buf[i];
-			float s_l = s - s_r;
-			o->mix_l[i] += s_l;
-			o->mix_r[i] += s_r;
+			o->mix_l[i] += s - s_r;
+			o->mix_r[i] += s + s_r;
 		}
 	} else {
 		for (size_t i = 0; i < len; ++i) {
 			float s = buf[i] * o->scale;
 			float s_r = s * pan->v0;
-			float s_l = s - s_r;
-			o->mix_l[i] += s_l;
-			o->mix_r[i] += s_r;
+			o->mix_l[i] += s - s_r;
+			o->mix_r[i] += s + s_r;
 		}
 	}
 }
