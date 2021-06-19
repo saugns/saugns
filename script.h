@@ -38,21 +38,23 @@ typedef struct SGS_ScriptListData {
  */
 typedef struct SGS_ScriptOpData {
 	struct SGS_ScriptOpData *next_item;
-	struct SGS_ScriptEvData *event;
+	struct SGS_ScriptEvData *event, *root_event;
 	struct SGS_ScriptOpData *on_prev; /* preceding for same op(s) */
 	struct SGS_SymStr *label;
 	uint32_t op_flags;
 	/* operator parameters */
-	uint32_t op_id; /* not used by parser; for program module */
-	uint32_t op_params;
+	uint32_t params;
 	uint32_t time_ms, silence_ms;
 	uint8_t wave;
 	uint8_t use_type;
 	SGS_Ramp freq, freq2;
 	SGS_Ramp amp, amp2;
+	SGS_Ramp pan;
 	float phase;
 	/* node adjacents in operator linkage graph */
 	SGS_ScriptListData *fmods, *pmods, *amods;
+	/* for conversion */
+	uint32_t op_id;
 } SGS_ScriptOpData;
 
 /**
@@ -61,14 +63,19 @@ typedef struct SGS_ScriptOpData {
 enum {
 	SGS_SDEV_VOICE_LATER_USED = 1<<0,
 	SGS_SDEV_ADD_WAIT_DURATION = 1<<1,
-	SGS_SDEV_NEW_OPGRAPH = 1<<2,
 };
 
 struct SGS_ScriptEvBranch;
 
 /**
- * Node type for event data. Includes any voice and operator data part
- * of the event.
+ * Node type for event data. Events are placed in time per script contents,
+ * in a nested way during parsing and flattened after for later processing.
+ *
+ * The flow of time and nesting in a script end up two different dimensions
+ * of data. Attached objects introduce (sub)trees of script contents, after
+ * which they may also refer back to just parts of them in follow-on nodes.
+ * (E.g. a tree of carriers and modulators in one event, and then an update
+ * node for a modulator in the next event. An update could add a sub-tree.)
  */
 typedef struct SGS_ScriptEvData {
 	struct SGS_ScriptEvData *next;
@@ -77,11 +84,9 @@ typedef struct SGS_ScriptEvData {
 	uint32_t wait_ms;
 	uint32_t ev_flags;
 	SGS_ScriptListData op_objs;
-	/* voice parameters */
-	uint32_t vo_id; /* not used by parser; for program module */
-	uint32_t vo_params;
-	struct SGS_ScriptEvData *voice_prev; /* preceding event for voice */
-	SGS_Ramp pan;
+	/* for conversion */
+	uint32_t vo_id;
+	struct SGS_ScriptEvData *root_ev;
 } SGS_ScriptEvData;
 
 /**
@@ -104,9 +109,9 @@ enum {
  * The final state is included in the parse result.
  */
 typedef struct SGS_ScriptOptions {
-	uint32_t changed; // flags (SGS_SOPT_*) set upon change by script
-	float ampmult;    // amplitude multiplier for non-modulator operators
-	float A4_freq;    // A4 tuning for frequency as note
+	uint32_t set;   // flags (SGS_SOPT_*) set upon change by script
+	float ampmult;  // amplitude multiplier for non-modulator operators
+	float A4_freq;  // A4 tuning for frequency as note
 	/* operator parameter default values (use depends on context) */
 	uint32_t def_time_ms;
 	float def_freq,

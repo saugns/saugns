@@ -256,7 +256,7 @@ Value ramp:
 	target value, the following sub-parameters can be given values
 	within "{}" (curly brackets):
 	v	Target value.
-	t	Time to reach target value (default re-use time duration).
+	t	Time to reach target value (default re-use main "t" duration).
 	c	Ramp curve type (default 'lin'):
 			hold	Hold old value until time.
 			lin	Linear trajectory over time.
