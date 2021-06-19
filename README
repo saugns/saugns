@@ -95,8 +95,6 @@ Each of these keywords is further described in its own section below.
 		nested list scope don't apply outside of it.
 	O	Wave oscillator; the "O" is followed by the (initial)
 		wave type, as in "Osin".
-	P	Panning for the voice at the current location; to be
-		followed by the new value.
 	Q	Quit script; end parsing, commenting out all that follows.
 		Optional. (Commenting more generally uses "#", "//",
 		or "/*...*/" syntax.)
@@ -116,6 +114,9 @@ Parameters:
 		to "a,w" values.) If used at the top level, this disables
 		automatic down-scaling of amplitude per voice by the
 		number of voices, for manual control instead.
+	c	Default channel mixing "c" value. Starts at 0.0,
+		i.e. C (center). Useful as a main way of setting
+		the parameter value.
 	f	Default freqency "f" value, in Hz. Starts at 440.
 		,n	A4 tuning frequency in Hz for "f" values
 			using note syntax. Starts at 440.
@@ -161,6 +162,15 @@ Wave types:
 	ssr	Squared & square root of sine.
 			A little more thin and sharp, it differs from
 			"srs" a little like "srs" differs from "szh".
+
+Channel mixing values:
+	Panning, where 0.0 is centered. Named constants can be used in place
+	of numbers for the three classic channel "modes". Values outside the
+	range of L to R are allowed, amplifying one channel while giving the
+	other a negative amplitude.
+	C	0.0
+	L	(-1.0)
+	R	1.0
 
 Parameters:
 	t	Time duration in seconds. If no "t" setting is given, the
@@ -233,15 +243,9 @@ Parameters:
 			The sum of modulator amplitudes is used to
 		phase-modulate the carrier(s).
 	w	Wave type. See "Wave types" for values.
-
-P: Panning
-----------
-
-Set the panning (left-right "balance") of the voice associated with
-the present oscillator(s), affecting the left and right output levels.
-Value range is 0 (all-left) to 1 (all-right). Default is 0.5 (center).
-Panning not at either extreme end will reduce level.
-		"Value ramp" values are supported; see section.
+	c	(For non-nested operators only.) Channel mixing, (-1.0) to 1.0.
+		See "Channel mixing values" for more.
+			"Value ramp" values are supported; see section.
 
 Q: Quit
 -------

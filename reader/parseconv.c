@@ -74,8 +74,8 @@ sgsArrType(SGS_VoAlloc, SGS_VoAllocState, _)
 static bool
 SGS_VoAlloc_get_id(SGS_VoAlloc *restrict va,
 		const SGS_ScriptEvData *restrict e, uint32_t *restrict vo_id) {
-	if (e->voice_prev != NULL) {
-		*vo_id = e->voice_prev->vo_id;
+	if (e->root_ev != NULL) {
+		*vo_id = e->root_ev->vo_id;
 		return true;
 	}
 	for (size_t id = 0; id < va->count; ++id) {
@@ -290,7 +290,7 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 	SGS_ProgramOpData *od = _OpDataArr_add(&o->ev_op_data, NULL);
 	if (!od) goto MEM_ERR;
 	od->id = op_id;
-	od->params = op->op_params;
+	od->params = op->params;
 	/* ...mods */
 	od->time = op->time;
 	od->wave = op->wave;
@@ -298,6 +298,7 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 	od->freq2 = op->freq2;
 	od->amp = op->amp;
 	od->amp2 = op->amp2;
+	od->pan = op->pan;
 	od->phase = op->phase;
 	SGS_VoAllocState *vas = &o->va.a[o->ev->vo_id];
 	if (op->mods_set & (1<<SGS_POP_FMOD)) {
@@ -454,7 +455,6 @@ static bool
 ParseConv_convert_event(ParseConv *restrict o,
 		SGS_ScriptEvData *restrict e) {
 	uint32_t vo_id;
-	uint32_t vo_params;
 	if (!SGS_VoAlloc_update(&o->va, e, &vo_id)) goto MEM_ERR;
 	SGS_VoAllocState *vas = &o->va.a[vo_id];
 	SGS_ProgramEvent *out_ev = SGS_MemPool_alloc(o->mem,
@@ -471,18 +471,14 @@ ParseConv_convert_event(ParseConv *restrict o,
 		out_ev->op_data_count = o->ev_op_data.count;
 		o->ev_op_data.count = 0; // reuse allocation
 	}
-	vo_params = e->vo_params;
-	if ((e->ev_flags & SGS_SDEV_NEW_OPGRAPH) != 0)
+	if (!e->root_ev)
 		vas->flags |= SGS_VAS_GRAPH;
-	if ((vas->flags & SGS_VAS_GRAPH) != 0)
-		vo_params |= SGS_PVOP_GRAPH;
-	if (vo_params != 0) {
+	if ((vas->flags & SGS_VAS_GRAPH) != 0) {
 		SGS_ProgramVoData *ovd = SGS_MemPool_alloc(o->mem,
 				sizeof(SGS_ProgramVoData));
 		if (!ovd) goto MEM_ERR;
-		ovd->params = vo_params;
-		ovd->pan = e->pan;
-		if ((e->ev_flags & SGS_SDEV_NEW_OPGRAPH) != 0) {
+		ovd->params = SGS_PVOP_GRAPH;
+		if (!e->root_ev) {
 			if (!set_oplist(&vas->op_carrs, &e->op_graph, o->mem))
 				goto MEM_ERR;
 		}

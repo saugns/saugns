@@ -128,7 +128,7 @@ static void handle_numeric_value(SGS_Lexer *restrict o,
 	SGS_ScriptToken *t = &o->token;
 	double d;
 	SGS_Scanner_ungetc(sc);
-	SGS_Scanner_getd(sc, &d, false, NULL);
+	SGS_Scanner_getd(sc, &d, false, NULL, NULL);
 	t->type = SGS_T_VAL_REAL;
 	t->data.f = d;
 	//printf("num == %f\n", d);
