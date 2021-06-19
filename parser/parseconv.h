@@ -69,7 +69,8 @@ SGS_create_ProgramIDArr(SGS_Mempool *restrict mp,
  * Voice allocation state flags.
  */
 enum {
-	SGS_VAS_GRAPH = 1<<0,
+	SGS_VAS_GRAPH    = 1U<<0,
+	SGS_VAS_HAS_CARR = 1U<<1,
 };
 
 /*
@@ -77,9 +78,9 @@ enum {
  */
 typedef struct SGS_VoAllocState {
 	SGS_ScriptEvData *last_ev;
-	const SGS_ProgramIDArr *op_carrs;
-	uint32_t flags;
 	uint32_t duration_ms;
+	uint32_t carr_op_id;
+	uint32_t flags;
 } SGS_VoAllocState;
 
 sgsArrType(SGS_VoAlloc, SGS_VoAllocState, _)
@@ -92,8 +93,8 @@ sgsArrType(SGS_VoAlloc, SGS_VoAllocState, _)
 static bool
 SGS_VoAlloc_get_id(SGS_VoAlloc *restrict va,
 		const SGS_ScriptEvData *restrict e, uint32_t *restrict vo_id) {
-	if (e->voice_prev != NULL) {
-		*vo_id = e->voice_prev->vo_id;
+	if (e->root_ev != NULL) {
+		*vo_id = e->root_ev->vo_id;
 		return true;
 	}
 	for (size_t id = 0; id < va->count; ++id) {
@@ -309,8 +310,9 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 	SGS_ProgramOpData *ood = _OpDataArr_add(&o->ev_op_data, NULL);
 	if (!ood) goto MEM_ERR;
 	ood->id = op_id;
-	ood->params = op->op_params;
+	ood->params = op->params;
 	ood->time = op->time;
+	ood->pan = op->pan;
 	ood->amp = op->amp;
 	ood->amp2 = op->amp2;
 	ood->freq = op->freq;
@@ -441,8 +443,9 @@ SGS_VoiceGraph_set(SGS_VoiceGraph *restrict o,
 		const SGS_ProgramEvent *restrict ev,
 		SGS_Mempool *restrict mp) {
 	SGS_VoAllocState *vas = &o->va->a[ev->vo_id];
-	if (!vas->op_carrs || !vas->op_carrs->count) goto DONE;
-	if (!SGS_VoiceGraph_handle_op_list(o, vas->op_carrs, SGS_POP_CARR))
+	if (!(vas->flags & SGS_VAS_HAS_CARR)) goto DONE;
+	SGS_ProgramOpRef op_ref = {vas->carr_op_id, SGS_POP_CARR, 0};
+	if (!SGS_VoiceGraph_handle_op_node(o, &op_ref))
 		return false;
 	SGS_ProgramVoData *vd = (SGS_ProgramVoData*) ev->vo_data;
 	if (!OpRefArr_mpmemdup(&o->vo_graph,
@@ -474,7 +477,6 @@ static bool
 ParseConv_convert_event(ParseConv *restrict o,
 		SGS_ScriptEvData *restrict e) {
 	uint32_t vo_id;
-	uint32_t vo_params;
 	if (!SGS_VoAlloc_update(&o->va, e, &vo_id)) goto MEM_ERR;
 	SGS_VoAllocState *vas = &o->va.a[vo_id];
 	SGS_ProgramEvent *out_ev = SGS_PEvArr_add(&o->ev_arr, NULL);
@@ -482,7 +484,7 @@ ParseConv_convert_event(ParseConv *restrict o,
 	out_ev->wait_ms = e->wait_ms;
 	out_ev->vo_id = vo_id;
 	o->ev = out_ev;
-	if (!ParseConv_convert_ops(o, &e->operators)) goto MEM_ERR;
+	if (!ParseConv_convert_ops(o, &e->objs)) goto MEM_ERR;
 	if (o->ev_op_data.count > 0) {
 		if (!_OpDataArr_mpmemdup(&o->ev_op_data,
 					(SGS_ProgramOpData**) &out_ev->op_data,
@@ -490,27 +492,19 @@ ParseConv_convert_event(ParseConv *restrict o,
 		out_ev->op_data_count = o->ev_op_data.count;
 		o->ev_op_data.count = 0; // reuse allocation
 	}
-	vo_params = e->vo_params;
-	if ((e->ev_flags & SGS_SDEV_NEW_OPGRAPH) != 0)
-		vas->flags |= SGS_VAS_GRAPH;
-	if ((vas->flags & SGS_VAS_GRAPH) != 0)
-		vo_params |= SGS_PVOP_OPLIST;
-	if (vo_params != 0) {
+	if (!e->root_ev) {
+		SGS_ScriptOpData *op = e->objs.first_item;
+		vas->flags |= SGS_VAS_GRAPH | SGS_VAS_HAS_CARR;
+		vas->carr_op_id = op->info->id;
+	}
+	if ((vas->flags & SGS_VAS_GRAPH) != 0) {
 		SGS_ProgramVoData *ovd =
 			SGS_mpalloc(o->mp, sizeof(SGS_ProgramVoData));
 		if (!ovd) goto MEM_ERR;
-		ovd->params = vo_params;
-		ovd->pan = e->pan;
-		if ((e->ev_flags & SGS_SDEV_NEW_OPGRAPH) != 0) {
-			if (!set_oplist(&vas->op_carrs, &e->op_graph, o->mp))
-				goto MEM_ERR;
-			ovd->carrs = vas->op_carrs;
-		}
+		ovd->carr_op_id = vas->carr_op_id;
 		out_ev->vo_data = ovd;
-		if ((vas->flags & SGS_VAS_GRAPH) != 0) {
-			if (!SGS_VoiceGraph_set(&o->ev_vo_graph, out_ev, o->mp))
-				goto MEM_ERR;
-		}
+		if (!SGS_VoiceGraph_set(&o->ev_vo_graph, out_ev, o->mp))
+			goto MEM_ERR;
 	}
 	return true;
 MEM_ERR:
