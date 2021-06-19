@@ -492,8 +492,9 @@ typedef struct SAU_Parser {
 	SAU_MemPool *mp;
 	uint32_t call_level;
 	/* node state */
-	SAU_ParseEvData *ev, *first_ev;
+	struct ParseLevel *cur_pl;
 	SAU_ParseDurGroup *cur_dur;
+	SAU_ParseEvData *ev, *first_ev;
 } SAU_Parser;
 
 /*
@@ -541,11 +542,10 @@ enum {
 	SCOPE_NEST,
 };
 
-typedef struct ParseLevel ParseLevel;
-typedef void (*ParseLevelSub_f)(ParseLevel *restrict pl);
+typedef void (*ParseLevel_sub_f)(SAU_Parser *restrict o);
 
-static void parse_in_event(ParseLevel *restrict pl);
-static void parse_in_settings(ParseLevel *restrict pl);
+static void parse_in_event(SAU_Parser *restrict o);
+static void parse_in_settings(SAU_Parser *restrict o);
 
 /*
  * Parse level flags.
@@ -561,12 +561,11 @@ enum {
 /*
  * Things that need to be separate for each nested parse_level() go here.
  *
- *
+ * Current instance pointed to by SAU_Parser instance.
  */
 struct ParseLevel {
-	SAU_Parser *o;
 	struct ParseLevel *parent;
-	ParseLevelSub_f sub_f; // identifies "location" and implicit context
+	ParseLevel_sub_f sub_f; // identifies "location" and implicit context
 	uint32_t pl_flags;
 	uint8_t scope;
 	SAU_ParseEvData *event, *last_event;
@@ -579,8 +578,8 @@ struct ParseLevel {
 	uint32_t next_wait_ms; /* added for next event */
 };
 
-static bool parse_waittime(ParseLevel *restrict pl) {
-	SAU_Parser *o = pl->o;
+static bool parse_waittime(SAU_Parser *restrict o) {
+	struct ParseLevel *pl = o->cur_pl;
 	SAU_Scanner *sc = o->sc;
 	/* FIXME: ADD_WAIT_DURATION */
 	if (SAU_Scanner_tryc(sc, 't')) {
@@ -612,8 +611,7 @@ static SAU_ParseSublist *create_op_scope(uint8_t use_type,
 	return o;
 }
 
-static void new_durgroup(ParseLevel *restrict pl) {
-	SAU_Parser *o = pl->o;
+static void new_durgroup(SAU_Parser *restrict o) {
 	SAU_ParseDurGroup *dur = SAU_MemPool_alloc(o->mp,
 			sizeof(SAU_ParseDurGroup));
 	if (o->cur_dur != NULL)
@@ -621,11 +619,11 @@ static void new_durgroup(ParseLevel *restrict pl) {
 	o->cur_dur = dur;
 }
 
-static void end_operator(ParseLevel *restrict pl) {
+static void end_operator(SAU_Parser *restrict o) {
+	struct ParseLevel *pl = o->cur_pl;
 	if (!(pl->pl_flags & PL_ACTIVE_OP))
 		return;
 	pl->pl_flags &= ~PL_ACTIVE_OP;
-	SAU_Parser *o = pl->o;
 	ScanLookup *sl = &o->sl;
 	SAU_ParseOpData *op = pl->operator;
 	if (SAU_Ramp_ENABLED(&op->amp)) {
@@ -651,13 +649,13 @@ static void end_operator(ParseLevel *restrict pl) {
 	pl->last_operator = op;
 }
 
-static void end_event(ParseLevel *restrict pl) {
+static void end_event(SAU_Parser *restrict o) {
+	struct ParseLevel *pl = o->cur_pl;
 	if (!(pl->pl_flags & PL_ACTIVE_EV))
 		return;
 	pl->pl_flags &= ~PL_ACTIVE_EV;
-	SAU_Parser *o = pl->o;
 	SAU_ParseEvData *e = pl->event;
-	end_operator(pl);
+	end_operator(o);
 	SAU_ParseEvData *pve = e->vo_prev;
 	if (!pve) {
 		/*
@@ -673,11 +671,11 @@ static void end_event(ParseLevel *restrict pl) {
 	pl->event = NULL;
 }
 
-static void begin_event(ParseLevel *restrict pl,
+static void begin_event(SAU_Parser *restrict o,
 		bool is_composite) {
-	SAU_Parser *o = pl->o;
+	struct ParseLevel *pl = o->cur_pl;
 	ScanLookup *sl = &o->sl;
-	end_event(pl);
+	end_event(o);
 	SAU_ParseEvData *e = SAU_MemPool_alloc(o->mp, sizeof(SAU_ParseEvData));
 	pl->event = e;
 	e->dur = o->cur_dur;
@@ -713,16 +711,16 @@ static void begin_event(ParseLevel *restrict pl,
 	pl->pl_flags |= PL_ACTIVE_EV;
 }
 
-static void begin_operator(ParseLevel *restrict pl,
+static void begin_operator(SAU_Parser *restrict o,
 		bool is_composite) {
-	SAU_Parser *o = pl->o;
+	struct ParseLevel *pl = o->cur_pl;
 	ScanLookup *sl = &o->sl;
 	SAU_ParseEvData *e = pl->event;
 	SAU_ParseOpData *pop = pl->op_prev;
 	/*
 	 * It is assumed that a valid voice event exists.
 	 */
-	end_operator(pl);
+	end_operator(o);
 	SAU_ParseOpData *op = SAU_MemPool_alloc(o->mp, sizeof(SAU_ParseOpData));
 	pl->operator = op;
 	if (!pl->first_operator)
@@ -812,27 +810,28 @@ static void begin_operator(ParseLevel *restrict pl,
  *
  * Used instead of directly calling begin_operator() and/or begin_event().
  */
-static void begin_node(ParseLevel *restrict pl,
+static void begin_node(SAU_Parser *restrict o,
 		SAU_ParseOpData *restrict previous,
 		bool is_composite) {
+	struct ParseLevel *pl = o->cur_pl;
 	pl->op_prev = previous;
 	if (!pl->event || /* not in event parse means event now ended */
 			pl->sub_f != parse_in_event ||
 			pl->next_wait_ms ||
 			is_composite)
-		begin_event(pl, is_composite);
-	begin_operator(pl, is_composite);
+		begin_event(o, is_composite);
+	begin_operator(o, is_composite);
 }
 
-static void begin_scope(SAU_Parser *restrict o, ParseLevel *restrict pl,
-		ParseLevel *restrict parent_pl,
+static void enter_level(SAU_Parser *restrict o, struct ParseLevel *restrict pl,
 		uint8_t use_type, uint8_t newscope) {
-	*pl = (ParseLevel){0};
-	pl->o = o;
+	struct ParseLevel *parent_pl = o->cur_pl;
+	*pl = (struct ParseLevel){0};
 	pl->scope = newscope;
+	o->cur_pl = pl;
 	if (!parent_pl) {
 		// handle newscope == SCOPE_TOP here
-		if (!o->cur_dur) new_durgroup(pl);
+		if (!o->cur_dur) new_durgroup(o);
 		if (use_type != SAU_POP_CARR) {
 			pl->op_scope = create_op_scope(use_type, o->mp);
 		}
@@ -846,6 +845,8 @@ static void begin_scope(SAU_Parser *restrict o, ParseLevel *restrict pl,
 	pl->operator = parent_pl->operator;
 	pl->parent_op = parent_pl->parent_op;
 	switch (newscope) {
+	case SCOPE_TOP:
+		break; // handled above
 	case SCOPE_BLOCK:
 		pl->op_scope = parent_pl->op_scope;
 		break;
@@ -862,24 +863,27 @@ static void begin_scope(SAU_Parser *restrict o, ParseLevel *restrict pl,
 	}
 }
 
-static void end_scope(ParseLevel *restrict pl) {
-	SAU_Parser *o = pl->o;
-	end_operator(pl);
+static void leave_level(SAU_Parser *restrict o) {
+	struct ParseLevel *pl = o->cur_pl;
+	end_operator(o);
 	if (pl->set_label != NULL) {
 		SAU_Scanner_warning(o->sc, NULL,
 				"ignoring label assignment without operator");
 	}
-	switch (pl->scope) {
-	case SCOPE_TOP:
+	if (!pl->parent) {
 		/*
 		 * At end of top scope, i.e. at end of script,
 		 * end last event and adjust timing.
 		 */
-		end_event(pl);
-		break;
+		end_event(o);
+	}
+	o->cur_pl = pl->parent;
+	switch (pl->scope) {
+	case SCOPE_TOP:
+		break; // handled above
 	case SCOPE_BLOCK:
 		if (pl->pl_flags & PL_ACTIVE_EV) {
-			end_event(pl->parent);
+			end_event(o);
 			pl->parent->pl_flags |= PL_ACTIVE_EV;
 			pl->parent->event = pl->event;
 		}
@@ -894,7 +898,7 @@ static void end_scope(ParseLevel *restrict pl) {
 		 */
 		if (pl->first_operator != NULL) {
 			pl->parent->pl_flags |= PL_BIND_MULTIPLE;
-			begin_node(pl->parent, pl->first_operator, false);
+			begin_node(o, pl->first_operator, false);
 		}
 		break;
 	case SCOPE_NEST: {
@@ -916,8 +920,8 @@ static void end_scope(ParseLevel *restrict pl) {
  * Main parser functions
  */
 
-static void parse_in_settings(ParseLevel *restrict pl) {
-	SAU_Parser *o = pl->o;
+static void parse_in_settings(SAU_Parser *restrict o) {
+	struct ParseLevel *pl = o->cur_pl;
 	ScanLookup *sl = &o->sl;
 	SAU_Scanner *sc = o->sc;
 	pl->sub_f = parse_in_settings;
@@ -970,11 +974,10 @@ DEFER:
 }
 
 static void parse_level(SAU_Parser *restrict o,
-		ParseLevel *restrict parent_pl,
 		uint8_t use_type, uint8_t newscope);
 
-static bool parse_ev_amp(ParseLevel *restrict pl) {
-	SAU_Parser *o = pl->o;
+static bool parse_ev_amp(SAU_Parser *restrict o) {
+	struct ParseLevel *pl = o->cur_pl;
 	SAU_Scanner *sc = o->sc;
 	SAU_ParseOpData *op = pl->operator;
 	if (scan_ramp(sc, NULL, &op->amp, false))
@@ -984,13 +987,13 @@ static bool parse_ev_amp(ParseLevel *restrict pl) {
 			op->op_params |= SAU_POPP_AMP2;
 	}
 	if (SAU_Scanner_tryc(sc, '~') && SAU_Scanner_tryc(sc, '[')) {
-		parse_level(o, pl, SAU_POP_AMOD, SCOPE_NEST);
+		parse_level(o, SAU_POP_AMOD, SCOPE_NEST);
 	}
 	return false;
 }
 
-static bool parse_ev_chanmix(ParseLevel *restrict pl) {
-	SAU_Parser *o = pl->o;
+static bool parse_ev_chanmix(SAU_Parser *restrict o) {
+	struct ParseLevel *pl = o->cur_pl;
 	SAU_Scanner *sc = o->sc;
 	SAU_ParseEvData *e = pl->event;
 	SAU_ParseOpData *op = pl->operator;
@@ -1001,8 +1004,8 @@ static bool parse_ev_chanmix(ParseLevel *restrict pl) {
 	return false;
 }
 
-static bool parse_ev_freq(ParseLevel *restrict pl, bool rel_freq) {
-	SAU_Parser *o = pl->o;
+static bool parse_ev_freq(SAU_Parser *restrict o, bool rel_freq) {
+	struct ParseLevel *pl = o->cur_pl;
 	SAU_Scanner *sc = o->sc;
 	SAU_ParseOpData *op = pl->operator;
 	if (rel_freq && !(op->op_flags & SAU_PDOP_NESTED))
@@ -1015,13 +1018,13 @@ static bool parse_ev_freq(ParseLevel *restrict pl, bool rel_freq) {
 			op->op_params |= SAU_POPP_FREQ2;
 	}
 	if (SAU_Scanner_tryc(sc, '~') && SAU_Scanner_tryc(sc, '[')) {
-		parse_level(o, pl, SAU_POP_FMOD, SCOPE_NEST);
+		parse_level(o, SAU_POP_FMOD, SCOPE_NEST);
 	}
 	return false;
 }
 
-static bool parse_ev_phase(ParseLevel *restrict pl) {
-	SAU_Parser *o = pl->o;
+static bool parse_ev_phase(SAU_Parser *restrict o) {
+	struct ParseLevel *pl = o->cur_pl;
 	SAU_Scanner *sc = o->sc;
 	SAU_ParseOpData *op = pl->operator;
 	if (scan_num(sc, NULL, &op->phase)) {
@@ -1031,13 +1034,13 @@ static bool parse_ev_phase(ParseLevel *restrict pl) {
 		op->op_params |= SAU_POPP_PHASE;
 	}
 	if (SAU_Scanner_tryc(sc, '+') && SAU_Scanner_tryc(sc, '[')) {
-		parse_level(o, pl, SAU_POP_PMOD, SCOPE_NEST);
+		parse_level(o, SAU_POP_PMOD, SCOPE_NEST);
 	}
 	return false;
 }
 
-static void parse_in_event(ParseLevel *restrict pl) {
-	SAU_Parser *o = pl->o;
+static void parse_in_event(SAU_Parser *restrict o) {
+	struct ParseLevel *pl = o->cur_pl;
 	SAU_Scanner *sc = o->sc;
 	SAU_ParseOpData *op = pl->operator;
 	if (!op) {
@@ -1052,27 +1055,27 @@ static void parse_in_event(ParseLevel *restrict pl) {
 		case SAU_SCAN_SPACE:
 			break;
 		case '\\':
-			if (parse_waittime(pl) && pl->event != NULL) {
+			if (parse_waittime(o) && pl->event != NULL) {
 				// FIXME: Replace grouping into and counting
 				// of carriers as voices with reliable count
 				// and handling of carriers for scaling etc.
-				//begin_node(pl, pl->operator, false);
+				//begin_node(o, pl->operator, false);
 			}
 			break;
 		case 'a':
-			if (parse_ev_amp(pl)) goto DEFER;
+			if (parse_ev_amp(o)) goto DEFER;
 			break;
 		case 'c':
-			if (parse_ev_chanmix(pl)) goto DEFER;
+			if (parse_ev_chanmix(o)) goto DEFER;
 			break;
 		case 'f':
-			if (parse_ev_freq(pl, false)) goto DEFER;
+			if (parse_ev_freq(o, false)) goto DEFER;
 			break;
 		case 'p':
-			if (parse_ev_phase(pl)) goto DEFER;
+			if (parse_ev_phase(o)) goto DEFER;
 			break;
 		case 'r':
-			if (parse_ev_freq(pl, true)) goto DEFER;
+			if (parse_ev_freq(o, true)) goto DEFER;
 			break;
 		case 's':
 			scan_time_val(sc, &op->silence_ms);
@@ -1115,11 +1118,10 @@ DEFER:
 }
 
 static void parse_level(SAU_Parser *restrict o,
-		ParseLevel *restrict parent_pl,
 		uint8_t use_type, uint8_t newscope) {
-	ParseLevel pl;
+	struct ParseLevel pl;
 	SAU_SymStr *label;
-	begin_scope(o, &pl, parent_pl, use_type, newscope);
+	enter_level(o, &pl, use_type, newscope);
 	++o->call_level;
 	SAU_Scanner *sc = o->sc;
 	uint8_t c;
@@ -1154,11 +1156,11 @@ static void parse_level(SAU_Parser *restrict o,
 		case ';':
 			if (pl.sub_f == parse_in_settings || !pl.event)
 				goto INVALID;
-			begin_node(&pl, pl.operator, true);
-			parse_in_event(&pl);
+			begin_node(o, pl.operator, true);
+			parse_in_event(o);
 			break;
 		case '<':
-			parse_level(o, &pl, use_type, SCOPE_BLOCK);
+			parse_level(o, use_type, SCOPE_BLOCK);
 			break;
 		case '>':
 			if (pl.scope == SCOPE_BLOCK) {
@@ -1168,12 +1170,12 @@ static void parse_level(SAU_Parser *restrict o,
 			break;
 		case '@':
 			if (SAU_Scanner_tryc(sc, '[')) {
-				end_operator(&pl);
-				parse_level(o, &pl, use_type, SCOPE_BIND);
+				end_operator(o);
+				parse_level(o, use_type, SCOPE_BIND);
 				/*
 				 * Multiple-operator node now open.
 				 */
-				parse_in_event(&pl);
+				parse_in_event(o);
 				break;
 			}
 			/*
@@ -1192,8 +1194,8 @@ static void parse_level(SAU_Parser *restrict o,
 					SAU_Scanner_warning(sc, NULL,
 "ignoring reference to undefined label");
 				else {
-					begin_node(&pl, ref, false);
-					parse_in_event(&pl);
+					begin_node(o, ref, false);
+					parse_in_event(o);
 				}
 			}
 			break;
@@ -1201,12 +1203,12 @@ static void parse_level(SAU_Parser *restrict o,
 			size_t wave;
 			if (!scan_wavetype(sc, &wave))
 				break;
-			begin_node(&pl, NULL, false);
+			begin_node(o, NULL, false);
 			pl.operator->wave = wave;
-			parse_in_event(&pl);
+			parse_in_event(o);
 			break; }
 		case 'S':
-			parse_in_settings(&pl);
+			parse_in_settings(o);
 			break;
 		case '[':
 			warn_opening_disallowed(sc, '[');
@@ -1216,11 +1218,11 @@ static void parse_level(SAU_Parser *restrict o,
 					((pl.pl_flags & PL_NESTED_SCOPE) != 0
 					&& pl.event != NULL))
 				goto INVALID;
-			parse_waittime(&pl);
+			parse_waittime(o);
 			break;
 		case ']':
 			if (pl.scope == SCOPE_NEST) {
-				end_operator(&pl);
+				end_operator(o);
 			}
 			if (pl.scope > SCOPE_BLOCK) {
 				goto RETURN;
@@ -1235,13 +1237,13 @@ static void parse_level(SAU_Parser *restrict o,
 					((pl.pl_flags & PL_NESTED_SCOPE) != 0
 					&& pl.event != NULL))
 				goto INVALID;
-			end_event(&pl);
+			end_event(o);
 			if (!o->cur_dur->range.first) {
 				SAU_Scanner_warning(sc, NULL,
 "no sounds precede time separator");
 				break;
 			}
-			new_durgroup(&pl);
+			new_durgroup(o);
 			pl.sub_f = NULL;
 			break;
 		case '}':
@@ -1256,7 +1258,7 @@ static void parse_level(SAU_Parser *restrict o,
 		 * Return to any sub-parsing routine.
 		 */
 		if (pl.sub_f != NULL && !(pl.pl_flags & PL_DEFERRED_SUB))
-			pl.sub_f(&pl);
+			pl.sub_f(o);
 		pl.pl_flags &= ~PL_DEFERRED_SUB;
 	}
 FINISH:
@@ -1265,7 +1267,7 @@ FINISH:
 	else if (newscope == SCOPE_BLOCK)
 		warn_eof_without_closing(sc, '>');
 RETURN:
-	end_scope(&pl);
+	leave_level(o);
 	--o->call_level;
 }
 
@@ -1280,7 +1282,7 @@ static const char *parse_file(SAU_Parser *restrict o,
 	const char *name;
 	if (!SAU_Scanner_open(sc, script, is_path))
 		return NULL;
-	parse_level(o, NULL, SAU_POP_CARR, SCOPE_TOP);
+	parse_level(o, SAU_POP_CARR, SCOPE_TOP);
 	name = sc->f->path;
 	SAU_Scanner_close(sc);
 	return name;
