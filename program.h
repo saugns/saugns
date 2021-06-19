@@ -43,15 +43,14 @@ typedef struct SGS_Time {
  */
 enum {
 	SGS_PVOP_OPLIST = 1<<0,
-	SGS_PVOP_PAN = 1<<1,
-	SGS_PVO_PARAMS = (1<<2) - 1,
+	SGS_PVO_PARAMS = (1<<1) - 1,
 };
 
 /**
  * Operator parameter flags.
  */
 enum {
-	/* SGS_POPP_ADJCS = 1<<0, */
+	SGS_POPP_PAN = 1<<0,
 	SGS_POPP_WAVE = 1<<1,
 	SGS_POPP_TIME = 1<<2,
 	SGS_POPP_FREQ = 1<<3,
@@ -97,11 +96,9 @@ typedef struct SGS_ProgramOpRef {
 } SGS_ProgramOpRef;
 
 typedef struct SGS_ProgramVoData {
-	const SGS_ProgramIDArr *carrs;
 	const SGS_ProgramOpRef *op_list; // used for printout
 	uint32_t op_count;
-	uint32_t params;
-	SGS_Ramp pan;
+	uint32_t carr_op_id;
 } SGS_ProgramVoData;
 
 typedef struct SGS_ProgramOpData {
@@ -109,6 +106,7 @@ typedef struct SGS_ProgramOpData {
 	uint32_t id;
 	uint32_t params;
 	SGS_Time time;
+	SGS_Ramp pan;
 	SGS_Ramp amp, amp2;
 	SGS_Ramp freq, freq2;
 	uint32_t phase;
