@@ -71,8 +71,8 @@ sgsArrType(SGS_VoAlloc, SGS_VoAllocState, _)
 static bool
 SGS_VoAlloc_get_id(SGS_VoAlloc *restrict va,
 		const SGS_ScriptEvData *restrict e, uint32_t *restrict vo_id) {
-	if (e->voice_prev != NULL) {
-		*vo_id = e->voice_prev->vo_id;
+	if (e->root_ev != NULL) {
+		*vo_id = e->root_ev->vo_id;
 		return true;
 	}
 	for (size_t id = 0; id < va->count; ++id) {
@@ -288,8 +288,9 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 	SGS_ProgramOpData *ood = _OpDataArr_add(&o->ev_op_data, NULL);
 	if (!ood) goto MEM_ERR;
 	ood->id = op_id;
-	ood->params = op->op_params;
+	ood->params = op->params;
 	ood->time = op->time;
+	ood->pan = op->pan;
 	ood->amp = op->amp;
 	ood->amp2 = op->amp2;
 	ood->freq = op->freq;
@@ -447,7 +448,6 @@ static bool
 ParseConv_convert_event(ParseConv *restrict o,
 		SGS_ScriptEvData *restrict e) {
 	uint32_t vo_id;
-	uint32_t vo_params;
 	if (!SGS_VoAlloc_update(&o->va, e, &vo_id)) goto MEM_ERR;
 	SGS_VoAllocState *vas = &o->va.a[vo_id];
 	SGS_ProgramEvent *out_ev = SGS_PEvArr_add(&o->ev_arr, NULL);
@@ -455,7 +455,7 @@ ParseConv_convert_event(ParseConv *restrict o,
 	out_ev->wait_ms = e->wait_ms;
 	out_ev->vo_id = vo_id;
 	o->ev = out_ev;
-	if (!ParseConv_convert_ops(o, &e->operators)) goto MEM_ERR;
+	if (!ParseConv_convert_ops(o, &e->objs)) goto MEM_ERR;
 	if (o->ev_op_data.count > 0) {
 		if (!_OpDataArr_mpmemdup(&o->ev_op_data,
 					(SGS_ProgramOpData**) &out_ev->op_data,
@@ -463,26 +463,19 @@ ParseConv_convert_event(ParseConv *restrict o,
 		out_ev->op_data_count = o->ev_op_data.count;
 		o->ev_op_data.count = 0; // reuse allocation
 	}
-	vo_params = e->vo_params;
-	if ((e->ev_flags & SGS_SDEV_NEW_OPGRAPH) != 0)
+	if (!e->root_ev)
 		vas->flags |= SGS_VAS_GRAPH;
-	if ((vas->flags & SGS_VAS_GRAPH) != 0)
-		vo_params |= SGS_PVOP_OPLIST;
-	if (vo_params != 0 || e->pan) {
+	if ((vas->flags & SGS_VAS_GRAPH) != 0) {
 		SGS_ProgramVoData *ovd =
 			SGS_mpalloc(o->mp, sizeof(SGS_ProgramVoData));
 		if (!ovd) goto MEM_ERR;
-		ovd->params = vo_params;
-		ovd->pan = e->pan;
-		if ((e->ev_flags & SGS_SDEV_NEW_OPGRAPH) != 0) {
-			if (!set_oplist(&vas->op_carrs, &e->op_graph, o->mp))
+		if (!e->root_ev) {
+			if (!set_oplist(&vas->op_carrs, &e->objs, o->mp))
 				goto MEM_ERR;
 		}
 		out_ev->vo_data = ovd;
-		if ((vas->flags & SGS_VAS_GRAPH) != 0) {
-			if (!SGS_VoiceGraph_set(&o->ev_vo_graph, out_ev, o->mp))
-				goto MEM_ERR;
-		}
+		if (!SGS_VoiceGraph_set(&o->ev_vo_graph, out_ev, o->mp))
+			goto MEM_ERR;
 	}
 	return true;
 MEM_ERR:

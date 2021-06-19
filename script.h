@@ -34,20 +34,22 @@ typedef struct SGS_ScriptListData {
  * Node type for operator data.
  */
 typedef struct SGS_ScriptOpData {
-	struct SGS_ScriptEvData *event;
+	struct SGS_ScriptEvData *event, *root_event;
 	struct SGS_ScriptOpData *next; /* next in list, scope, grouping... */
 	struct SGS_ScriptOpData *on_prev; /* preceding for same op(s) */
 	uint32_t op_flags;
 	/* operator parameters */
-	uint32_t op_id; /* not set by parser; for later use (parseconv.c) */
-	uint32_t op_params;
+	uint32_t params;
 	SGS_Time time;
+	SGS_Ramp *pan;
 	SGS_Ramp *amp, *amp2;
 	SGS_Ramp *freq, *freq2;
 	uint32_t phase;
 	uint8_t wave;
 	/* node adjacents in operator linkage graph */
 	SGS_ScriptListData *amods, *fmods, *pmods;
+	/* for conversion */
+	uint32_t op_id;
 } SGS_ScriptOpData;
 
 /**
@@ -59,30 +61,32 @@ enum {
 	SGS_SDEV_IMPLICIT_TIME    = 1<<2,
 	SGS_SDEV_WAIT_PREV_DUR    = 1<<3, // compound step timing
 	SGS_SDEV_FROM_GAPSHIFT    = 1<<4, // gapshift follow-on event
-	SGS_SDEV_NEW_OPGRAPH      = 1<<5,
-	SGS_SDEV_LOCK_DUR_SCOPE   = 1<<6, // nested data can't lengthen dur
+	SGS_SDEV_LOCK_DUR_SCOPE   = 1<<5, // nested data can't lengthen dur
 };
 
 struct SGS_ScriptEvBranch;
 
 /**
- * Node type for event data. Includes any voice and operator data part
- * of the event.
+ * Node type for event data. Events are placed in time per script contents,
+ * in a nested way during parsing and flattened after for later processing.
+ *
+ * The flow of time and nesting in a script end up two different dimensions
+ * of data. Attached objects introduce (sub)trees of script contents, after
+ * which they may also refer back to just parts of them in follow-on nodes.
+ * (E.g. a tree of carriers and modulators in one event, and then an update
+ * node for a modulator in the next event. An update could add a sub-tree.)
  */
 typedef struct SGS_ScriptEvData {
 	struct SGS_ScriptEvData *next;
 	struct SGS_ScriptEvData *group_backref;
 	struct SGS_ScriptEvBranch *forks;
-	SGS_ScriptListData operators; /* operators included in event */
+	SGS_ScriptListData objs;
 	uint32_t ev_flags;
 	uint32_t wait_ms;
 	uint32_t dur_ms;
-	/* voice parameters */
-	uint32_t vo_id; /* not set by parser; for later use (parseconv.c) */
-	uint32_t vo_params;
-	struct SGS_ScriptEvData *voice_prev; /* preceding event for voice */
-	SGS_Ramp *pan;
-	SGS_ScriptListData op_graph;
+	/* for conversion */
+	uint32_t vo_id;
+	struct SGS_ScriptEvData *root_ev;
 } SGS_ScriptEvData;
 
 /**
@@ -96,6 +100,7 @@ enum {
 	SGS_SOPT_DEF_TIME = 1<<2,
 	SGS_SOPT_DEF_FREQ = 1<<3,
 	SGS_SOPT_DEF_RELFREQ = 1<<4,
+	SGS_SOPT_DEF_CHANMIX = 1<<5,
 };
 
 /**
@@ -110,7 +115,8 @@ typedef struct SGS_ScriptOptions {
 	/* operator parameter default values (use depends on context) */
 	uint32_t def_time_ms;
 	float def_freq,
-	      def_relfreq;
+	      def_relfreq,
+	      def_chanmix;
 } SGS_ScriptOptions;
 
 /**
