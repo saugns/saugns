@@ -67,6 +67,11 @@ enum {
 	SAU_POP_USES,
 };
 
+typedef struct SAU_ParamAttr {
+	uint32_t set; /* values included or otherwise used */
+	uint32_t rel; /* values relative or otherwise special */
+} SAU_ParamAttr;
+
 typedef struct SAU_ProgramOpRef {
 	uint32_t id;
 	uint8_t use;
@@ -89,7 +94,7 @@ typedef struct SAU_ProgramOpData {
 	const SAU_ProgramOpList *pmods;
 	const SAU_ProgramOpList *amods;
 	uint32_t id;
-	uint32_t params;
+	SAU_ParamAttr params;
 	SAU_Time time;
 	uint32_t silence_ms;
 	uint8_t wave;

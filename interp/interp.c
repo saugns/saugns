@@ -142,7 +142,7 @@ static void handle_event(SAU_Interp *restrict o, EventNode *restrict e) {
 		for (size_t i = 0; i < prg_e->op_data_count; ++i) {
 			const SAU_ProgramOpData *od = &prg_e->op_data[i];
 			OperatorNode *on = &o->operators[od->id];
-			uint32_t params = od->params;
+			uint32_t params = od->params.set;
 			on->fmods = od->fmods;
 			on->pmods = od->pmods;
 			on->amods = od->amods;

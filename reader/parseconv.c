@@ -135,7 +135,7 @@ static void time_event(SAU_ParseEvData *restrict e) {
 			else if (!(e_op->time.flags & SAU_TIMEP_LINKED))
 				e_op->time.v_ms += ce_op->time.v_ms +
 					(ce->wait_ms - ce_op_prev->time.v_ms);
-			ce_op->params &= ~SAU_POPP_TIME;
+			ce_op->params.set &= ~SAU_POPP_TIME;
 			ce_op_prev = ce_op;
 			ce = ce->next;
 			if (!ce) break;

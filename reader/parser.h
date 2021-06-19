@@ -61,7 +61,7 @@ typedef struct SAU_ParseOpData {
 	SAU_SymStr *label;
 	uint32_t op_flags;
 	/* operator parameters */
-	uint32_t params;
+	SAU_ParamAttr params;
 	SAU_Time time;
 	uint32_t silence_ms;
 	uint8_t wave;

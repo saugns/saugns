@@ -397,27 +397,32 @@ static bool scan_wavetype(SAU_Scanner *restrict o, size_t *restrict found_id) {
 
 static bool scan_fval_param(SAU_Scanner *restrict o,
 		SAU_ScanNumConst_f scan_numconst,
-		float *restrict fval,
-		uint32_t *restrict param_attr, uint32_t flag) {
+		float *restrict fval, bool rel,
+		SAU_ParamAttr *restrict attr, uint32_t flag) {
 	if (!scan_num(o, scan_numconst, fval))
 		return false;
-	*param_attr |= flag;
+	attr->set |= flag;
+	if (rel)
+		attr->rel |= flag;
+	else
+		attr->rel &= ~flag;
 	return true;
 }
 
 static bool scan_ramp_param(SAU_Scanner *restrict o,
 		SAU_ScanNumConst_f scan_numconst,
 		SAU_Ramp *restrict ramp, bool rel,
-		uint32_t *restrict param_attr, uint32_t flag) {
+		SAU_ParamAttr *restrict attr, uint32_t flag) {
 	if (!SAU_Scanner_tryc(o, '{')) {
-		if (!scan_fval_param(o, scan_numconst, &ramp->v0,
-					param_attr, flag))
+		if (!scan_fval_param(o, scan_numconst, &ramp->v0, rel,
+					attr, flag))
 			return false;
-		ramp->flags |= SAU_RAMPP_STATE;
-		if (rel)
+		if (rel) {
 			ramp->flags |= SAU_RAMPP_STATE_RATIO;
-		else
+		} else {
 			ramp->flags &= ~SAU_RAMPP_STATE_RATIO;
+		}
+		ramp->flags |= SAU_RAMPP_STATE;
 		return true;
 	}
 	ScanLookup *sl = o->data;
@@ -483,7 +488,11 @@ RETURN:
 		ramp->flags |= SAU_RAMPP_TIME;
 	else
 		ramp->flags &= ~SAU_RAMPP_TIME;
-	*param_attr |= flag;
+	attr->set |= flag;
+	if (rel)
+		attr->rel |= flag;
+	else
+		attr->rel &= ~flag;
 	return true;
 }
 
@@ -649,7 +658,7 @@ static void end_operator(SAU_Parser *restrict o) {
 		/*
 		 * Reset all operator state for initial event.
 		 */
-		op->params |= SAU_POP_PARAMS;
+		op->params.set |= SAU_POP_PARAMS;
 	}
 	pl->operator = NULL;
 	pl->last_operator = op;
@@ -1027,7 +1036,7 @@ static bool parse_ev_phase(SAU_Parser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
 	SAU_Scanner *sc = o->sc;
 	SAU_ParseOpData *op = pl->operator;
-	if (scan_fval_param(sc, NULL, &op->phase,
+	if (scan_fval_param(sc, NULL, &op->phase, false,
 				&op->params, SAU_POPP_PHASE)) {
 		op->phase = fmod(op->phase, 1.f);
 		if (op->phase < 0.f)
@@ -1076,7 +1085,7 @@ static void parse_in_event(SAU_Parser *restrict o) {
 			break;
 		case 's':
 			if (scan_time_val(sc, &op->silence_ms))
-				op->params |= SAU_POPP_SILENCE;
+				op->params.set |= SAU_POPP_SILENCE;
 			break;
 		case 't':
 			if (SAU_Scanner_tryc(sc, '*')) {
@@ -1096,14 +1105,14 @@ static void parse_in_event(SAU_Parser *restrict o) {
 					break;
 				op->time.flags = SAU_TIMEP_SET;
 			}
-			op->params |= SAU_POPP_TIME;
+			op->params.set |= SAU_POPP_TIME;
 			break;
 		case 'w': {
 			size_t wave;
 			if (!scan_wavetype(sc, &wave))
 				break;
 			op->wave = wave;
-			op->params |= SAU_POPP_WAVE;
+			op->params.set |= SAU_POPP_WAVE;
 			break; }
 		default:
 			goto DEFER;
