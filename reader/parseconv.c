@@ -22,129 +22,6 @@
  */
 
 /*
- * Adjust timing for a duration group; the script syntax for time grouping is
- * only allowed on the "top" operator level, so the algorithm only deals with
- * this for the events involved.
- */
-static void time_durgroup(SAU_ParseEvData *restrict e_last) {
-	SAU_ParseDurGroup *dur = e_last->dur;
-	SAU_ParseEvData *e, *e_after = e_last->next;
-	uint32_t wait = 0, waitcount = 0;
-	for (e = dur->range.first; e != e_after; ) {
-		SAU_ParseOpData *op = e->op_data;
-		if (op != NULL) {
-			if (wait < op->time.v_ms)
-				wait = op->time.v_ms;
-		}
-		e = e->next;
-		if (e != NULL) {
-			waitcount += e->wait_ms;
-		}
-	}
-	for (e = dur->range.first; e != e_after; ) {
-		SAU_ParseOpData *op = e->op_data;
-		if (op != NULL) {
-			if (!(op->time.flags & SAU_TIMEP_SET)) {
-				/* fill in sensible default time */
-				op->time.v_ms = wait + waitcount;
-				op->time.flags |= SAU_TIMEP_SET;
-			}
-		}
-		e = e->next;
-		if (e != NULL) {
-			waitcount -= e->wait_ms;
-		}
-	}
-	if (e_after != NULL)
-		e_after->wait_ms += wait;
-}
-
-static inline void time_ramp(SAU_Ramp *restrict ramp,
-		uint32_t default_time_ms) {
-	if (!(ramp->flags & SAU_RAMPP_TIME))
-		ramp->time_ms = default_time_ms;
-}
-
-static void time_operator(SAU_ParseOpData *restrict op) {
-	SAU_ParseEvData *e = op->event;
-	if ((op->op_flags & SAU_PDOP_NESTED) != 0 &&
-			!(op->time.flags & SAU_TIMEP_SET)) {
-		if (!(op->op_flags & SAU_PDOP_HAS_COMPOSITE))
-			op->time.flags |= SAU_TIMEP_LINKED;
-		op->time.flags |= SAU_TIMEP_SET;
-	}
-	if (!(op->time.flags & SAU_TIMEP_LINKED)) {
-		time_ramp(&op->freq, op->time.v_ms);
-		time_ramp(&op->freq2, op->time.v_ms);
-		time_ramp(&op->amp, op->time.v_ms);
-		time_ramp(&op->amp2, op->time.v_ms);
-		if (!(op->op_flags & SAU_PDOP_SILENCE_ADDED)) {
-			op->time.v_ms += op->silence_ms;
-			op->op_flags |= SAU_PDOP_SILENCE_ADDED;
-		}
-	}
-	if ((e->ev_flags & SAU_PDEV_ADD_WAIT_DURATION) != 0) {
-		if (e->next != NULL)
-			e->next->wait_ms += op->time.v_ms;
-		e->ev_flags &= ~SAU_PDEV_ADD_WAIT_DURATION;
-	}
-	for (SAU_ParseSublist *scope = op->nest_scopes;
-			scope != NULL; scope = scope->next) {
-		SAU_ParseOpData *sub_op = scope->range.first;
-		for (; sub_op != NULL; sub_op = sub_op->range_next) {
-			time_operator(sub_op);
-		}
-	}
-}
-
-static void time_event(SAU_ParseEvData *restrict e) {
-	/*
-	 * Adjust default ramp durations, handle silence as well as the case of
-	 * adding present event duration to wait time of next event.
-	 */
-	// e->pan.flags |= SAU_RAMPP_TIME; // TODO: revisit semantics
-	SAU_ParseOpData *op;
-	op = e->op_data;
-	if (op != NULL) {
-		time_operator(op);
-	}
-	/*
-	 * Timing for composites - done before event list flattened.
-	 */
-	if (e->composite != NULL) {
-		SAU_ParseEvData *ce = e->composite;
-		SAU_ParseOpData *ce_op, *ce_op_prev, *e_op;
-		ce_op = ce->op_data;
-		ce_op_prev = ce_op->prev;
-		e_op = ce_op_prev;
-		e_op->time.flags |= SAU_TIMEP_SET; /* always used from now on */
-		for (;;) {
-			ce->wait_ms += ce_op_prev->time.v_ms;
-			if (!(ce_op->time.flags & SAU_TIMEP_SET)) {
-				ce_op->time.flags |= SAU_TIMEP_SET;
-				if ((ce_op->op_flags &
-(SAU_PDOP_NESTED | SAU_PDOP_HAS_COMPOSITE)) == SAU_PDOP_NESTED)
-					ce_op->time.flags |= SAU_TIMEP_LINKED;
-				else
-					ce_op->time.v_ms = ce_op_prev->time.v_ms
-						- ce_op_prev->silence_ms;
-			}
-			time_event(ce);
-			if (ce_op->time.flags & SAU_TIMEP_LINKED)
-				e_op->time.flags |= SAU_TIMEP_LINKED;
-			else if (!(e_op->time.flags & SAU_TIMEP_LINKED))
-				e_op->time.v_ms += ce_op->time.v_ms +
-					(ce->wait_ms - ce_op_prev->time.v_ms);
-			ce_op->params.set &= ~SAU_POPP_TIME;
-			ce_op_prev = ce_op;
-			ce = ce->next;
-			if (!ce) break;
-			ce_op = ce->op_data;
-		}
-	}
-}
-
-/*
  * Deals with events that are "composite" (attached to a main event as
  * successive "sub-events" rather than part of the big, linear event sequence).
  *
@@ -207,6 +84,27 @@ typedef struct ParseConv {
 	SAU_ScriptEvData *ev, *first_ev;
 	SAU_MemPool *mem, *tmp;
 } ParseConv;
+
+/*
+ * Convert the given event data node and its main data only.
+ */
+static bool ParseConv_add_event(ParseConv *restrict o,
+		SAU_ParseEvData *restrict pe) {
+	SAU_ScriptEvData *e = SAU_MemPool_alloc(o->mem,
+			sizeof(SAU_ScriptEvData));
+	if (!e) goto ERROR;
+	pe->ev_conv = e;
+	if (!o->first_ev)
+		o->first_ev = e;
+	else
+		o->ev->next = e;
+	o->ev = e;
+	e->wait_ms = pe->wait_ms;
+	/* ev_flags */
+	return true;
+ERROR:
+	return false;
+}
 
 /*
  * Per-operator data pointed to by all its nodes during conversion.
@@ -300,15 +198,18 @@ ERROR:
 }
 
 /*
- * Recursively create needed operator data nodes,
- * visiting new operator nodes as they branch out.
+ * Recursively create needed nodes for part of parse.
  */
-static bool ParseConv_add_ops(ParseConv *restrict o,
+static bool ParseConv_add_nodes(ParseConv *restrict o,
 		const SAU_NodeRange *restrict pod_list) {
 	if (!pod_list)
 		return true;
-	SAU_ParseOpData *pod = pod_list->first;
-	for (; pod != NULL; pod = pod->range_next) {
+	SAU_ParseEvData *pe = pod_list->first;
+	SAU_ParseEvData *pe_after = ((SAU_ParseEvData*)pod_list->last)->next;
+	for (; pe != pe_after; pe = pe->next) {
+		//if (!ParseConv_add_event(o, pe)) goto ERROR;
+		SAU_ParseOpData *pod = pe->op_data;
+		if (!pod) continue;
 		// TODO: handle multiple operator nodes
 		if (pod->op_flags & SAU_PDOP_MULTIPLE) {
 			// TODO: handle multiple operator nodes
@@ -321,7 +222,7 @@ static bool ParseConv_add_ops(ParseConv *restrict o,
 		}
 		for (SAU_ParseSublist *scope = pod->nest_scopes;
 				scope != NULL; scope = scope->next) {
-			if (!ParseConv_add_ops(o, &scope->range)) goto ERROR;
+			if (!ParseConv_add_nodes(o, &scope->range)) goto ERROR;
 		}
 	}
 	return true;
@@ -330,36 +231,39 @@ ERROR:
 }
 
 /*
- * Recursively fill in lists for operator node graph,
- * visiting all linked operator nodes as they branch out.
+ * Recursively fill in lists for conversion of part of parse after nodes made.
  */
-static bool ParseConv_link_ops(ParseConv *restrict o,
+static bool ParseConv_link_nodes(ParseConv *restrict o,
 		SAU_RefList *restrict *od_list,
 		const SAU_NodeRange *restrict pod_list,
 		uint8_t list_type) {
 	if (!pod_list)
 		return true;
-	SAU_ScriptEvData *e = o->ev;
-	if (list_type != SAU_POP_CARR ||
-			(e->ev_flags & SAU_SDEV_NEW_OPGRAPH) != 0) {
-		*od_list = SAU_create_RefList(list_type, o->mem);
-		if (!*od_list) goto ERROR;
-	}
-	SAU_ParseOpData *pod = pod_list->first;
-	for (; pod != NULL; pod = pod->range_next) {
+	SAU_ParseEvData *pe = pod_list->first;
+	SAU_ParseEvData *pe_after = ((SAU_ParseEvData*)pod_list->last)->next;
+	for (; pe != pe_after; pe = pe->next) {
+		SAU_ScriptEvData *e = pe->ev_conv;
+		SAU_ParseOpData *pod = pe->op_data;
+		if (!pod) continue;
 		if (pod->op_flags & SAU_PDOP_IGNORED) continue;
 		SAU_ScriptOpData *od = pod->op_conv;
 		if (!od) goto ERROR;
-		if ((list_type != SAU_POP_CARR ||
-				 ((e->ev_flags & SAU_SDEV_NEW_OPGRAPH) &&
-				  (od->op_flags & SAU_SDOP_ADD_CARRIER))) &&
-				!SAU_RefList_add(*od_list, od, 0, o->mem))
-			goto ERROR;
+		if (list_type != SAU_POP_CARR ||
+				((e->ev_flags & SAU_SDEV_NEW_OPGRAPH) &&
+				 (od->op_flags & SAU_SDOP_ADD_CARRIER))) {
+			if (!*od_list) {
+				*od_list = SAU_create_RefList(list_type,
+						o->mem);
+				if (!*od_list) goto ERROR;
+			}
+			if (!SAU_RefList_add(*od_list, od, 0, o->mem))
+				goto ERROR;
+		}
 		SAU_RefList *last_mod_list = NULL;
 		for (SAU_ParseSublist *scope = pod->nest_scopes;
 				scope != NULL; scope = scope->next) {
 			SAU_RefList *next_mod_list = NULL;
-			if (!ParseConv_link_ops(o, &next_mod_list,
+			if (!ParseConv_link_nodes(o, &next_mod_list,
 						&scope->range,
 						scope->use_type)) goto ERROR;
 			if (!od->mod_lists)
@@ -375,31 +279,6 @@ ERROR:
 }
 
 /*
- * Convert the given event data node and all associated operator data nodes.
- */
-static bool ParseConv_add_event(ParseConv *restrict o,
-		SAU_ParseEvData *restrict pe) {
-	SAU_ScriptEvData *e = SAU_MemPool_alloc(o->mem,
-			sizeof(SAU_ScriptEvData));
-	if (!e) goto ERROR;
-	pe->ev_conv = e;
-	if (!o->first_ev)
-		o->first_ev = e;
-	else
-		o->ev->next = e;
-	o->ev = e;
-	e->wait_ms = pe->wait_ms;
-	/* ev_flags */
-	const SAU_NodeRange ev_op = {.first = pe->op_data};
-	if (!ParseConv_add_ops(o, &ev_op)) goto ERROR;
-	if (!ParseConv_link_ops(o, &e->carriers,
-				&ev_op, SAU_POP_CARR)) goto ERROR;
-	return true;
-ERROR:
-	return false;
-}
-
-/*
  * Convert parser output to script data, performing
  * post-parsing passes. Perform timing adjustments,
  * flatten event list.
@@ -409,11 +288,6 @@ ERROR:
  */
 static SAU_Script *ParseConv_convert(ParseConv *restrict o,
 		SAU_Parse *restrict p) {
-	SAU_ParseEvData *pe;
-	for (pe = p->events; pe != NULL; pe = pe->next) {
-		time_event(pe);
-		if (pe == pe->dur->range.last) time_durgroup(pe);
-	}
 	o->mem = SAU_create_MemPool(0);
 	o->tmp = p->mem;
 	if (!o->mem || !o->tmp) goto ERROR;
@@ -427,10 +301,16 @@ static SAU_Script *ParseConv_convert(ParseConv *restrict o,
 	 * Flattening must be done following the timing adjustment pass;
 	 * otherwise, cannot always arrange events in the correct order.
 	 */
-	for (pe = p->events; pe != NULL; pe = pe->next) {
+	for (SAU_ParseEvData *pe = p->events; pe != NULL; pe = pe->next) {
+		const SAU_NodeRange pe_range = {.first = pe, .last = pe};
 		if (!ParseConv_add_event(o, pe)) goto ERROR;
+		if (!ParseConv_add_nodes(o, &pe_range)) goto ERROR;
+		SAU_ScriptEvData *e = pe->ev_conv;
+		if (!ParseConv_link_nodes(o, &e->carriers,
+					&pe_range, SAU_POP_CARR)) goto ERROR;
 		if (pe->composite != NULL) flatten_events(pe);
 	}
+	puts("events converted");
 	s->events = o->first_ev;
 	if (false)
 	ERROR: {
