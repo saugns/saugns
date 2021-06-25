@@ -648,7 +648,7 @@ static void end_ev_opdata(SAU_Parser *restrict o) {
 			op->amp2.vt *= sl->sopt.ampmult;
 		}
 	}
-	SAU_ParseOpData *pop = op->prev;
+	SAU_ParseOpData *pop = op->ref.old;
 	if (!pop) {
 		/*
 		 * Reset all operator state for initial event.
@@ -681,7 +681,7 @@ static void begin_event(SAU_Parser *restrict o,
 	e->wait_ms = pl->next_wait_ms;
 	pl->next_wait_ms = 0;
 	if (pop != NULL) {
-		SAU_ParseEvData *pope = pop->event;
+		SAU_ParseEvData *pope = pop->ref.event;
 		if (is_composite) {
 			if (!pl->composite) {
 				pope->composite = e;
@@ -721,10 +721,12 @@ static void begin_ev_opdata(SAU_Parser *restrict o,
 	SAU_ParseEvData *e = pl->event;
 	SAU_ParseOpData *op = SAU_MemPool_alloc(o->mp, sizeof(SAU_ParseOpData));
 	pl->operator = op;
+//	if (!e->data.first) e->data.first = op;
+//	e->data.last = op;
 	if (!pl->first_operator)
 		pl->first_operator = op;
 	if (!is_composite && pl->last_operator != NULL)
-		pl->last_operator->next_bound = op;
+		pl->last_operator->ref.next_item = op;
 	/*
 	 * Initialize node.
 	 */
@@ -737,7 +739,7 @@ static void begin_ev_opdata(SAU_Parser *restrict o,
 	if (pop != NULL) {
 		op->root_event = pop->root_event; /* refs keep original root */
 		op->use_type = pop->use_type;
-		op->prev = pop;
+		op->ref.old = pop;
 		op->op_flags = pop->op_flags &
 			(SAU_PDOP_NESTED | SAU_PDOP_MULTIPLE);
 		if (is_composite) {
@@ -751,7 +753,7 @@ static void begin_ev_opdata(SAU_Parser *restrict o,
 			do {
 				if (max_time < mpop->time.v_ms)
 					max_time = mpop->time.v_ms;
-			} while ((mpop = mpop->next_bound) != NULL);
+			} while ((mpop = mpop->ref.next_item) != NULL);
 			op->op_flags |= SAU_PDOP_MULTIPLE;
 			op->time.v_ms = max_time;
 			pl->pl_flags &= ~PL_BIND_MULTIPLE;
@@ -761,7 +763,7 @@ static void begin_ev_opdata(SAU_Parser *restrict o,
 		 * New operator with initial parameter values.
 		 */
 		op->root_event = (pl->parent_op != NULL) ?
-			pl->parent_op->event :
+			pl->parent_op->ref.event :
 			e;
 		op->use_type = pl->sublist->use_type;
 		if (op->use_type == SAU_POP_CARR) {
@@ -777,7 +779,7 @@ static void begin_ev_opdata(SAU_Parser *restrict o,
 		op->pan.v0 = sl->sopt.def_chanmix;
 		op->pan.flags |= SAU_RAMPP_STATE;
 	}
-	op->event = e;
+	op->ref.event = e;
 	e->op_data = op;
 	/*
 	 * Assign label. If no new label but previous node
@@ -785,12 +787,12 @@ static void begin_ev_opdata(SAU_Parser *restrict o,
 	 * point to new node, but keep pointer in previous node.
 	 */
 	if (pl->set_label != NULL) {
-		op->label = pl->set_label;
-		op->label->data = op;
+		op->ref.label = pl->set_label;
+		op->ref.label->data = op;
 		pl->set_label = NULL;
-	} else if (!is_composite && pop != NULL && pop->label != NULL) {
-		op->label = pop->label;
-		op->label->data = op;
+	} else if (!is_composite && pop != NULL && pop->ref.label != NULL) {
+		op->ref.label = pop->ref.label;
+		op->ref.label->data = op;
 	}
 	pl->pl_flags |= PL_OWN_DATA;
 }
@@ -1341,7 +1343,7 @@ static inline void time_ramp(SAU_Ramp *restrict ramp,
 }
 
 static void time_opdata(SAU_ParseOpData *restrict op) {
-	SAU_ParseEvData *e = op->event;
+	SAU_ParseEvData *e = op->ref.event;
 	if ((op->op_flags & SAU_PDOP_NESTED) != 0 &&
 			!(op->time.flags & SAU_TIMEP_SET)) {
 		if (!(op->op_flags & SAU_PDOP_HAS_COMPOSITE))
@@ -1391,7 +1393,7 @@ static void time_event(SAU_ParseEvData *restrict e) {
 		SAU_ParseEvData *ce = e->composite;
 		SAU_ParseOpData *ce_op, *ce_op_prev, *e_op;
 		ce_op = ce->op_data;
-		ce_op_prev = ce_op->prev;
+		ce_op_prev = ce_op->ref.old;
 		e_op = ce_op_prev;
 		e_op->time.flags |= SAU_TIMEP_SET; /* always used from now on */
 		for (;;) {

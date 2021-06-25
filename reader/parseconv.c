@@ -126,8 +126,9 @@ static OpContext *ParseConv_update_opcontext(ParseConv *restrict o,
 		SAU_ScriptOpData *restrict od,
 		SAU_ParseOpData *restrict pod) {
 	OpContext *oc = NULL;
+	SAU_ParseOpData *pod_prev = pod->ref.old;
 	SAU_ScriptEvData *e = o->ev;
-	if (!pod->prev) {
+	if (!pod_prev) {
 		oc = SAU_MemPool_alloc(o->tmp, sizeof(OpContext));
 		if (!oc)
 			return NULL;
@@ -136,7 +137,7 @@ static OpContext *ParseConv_update_opcontext(ParseConv *restrict o,
 			od->op_flags |= SAU_SDOP_ADD_CARRIER;
 		}
 	} else {
-		oc = pod->prev->op_context;
+		oc = pod_prev->op_context;
 		if (!oc) {
 			/*
 			 * This can happen if earlier nodes were excluded,
@@ -173,7 +174,7 @@ static bool ParseConv_add_opdata(ParseConv *restrict o,
 	pod->op_conv = od;
 	od->root_event = pod->root_event->ev_conv;
 	od->event = e;
-	/* next_bound */
+	/* ref.next_item */
 	/* op_flags */
 	od->params = pod->params;
 	od->time = pod->time;

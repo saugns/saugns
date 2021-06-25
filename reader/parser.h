@@ -48,16 +48,22 @@ enum {
 	SAU_PDOP_IGNORED = 1<<4, // node skipped by parseconv
 };
 
+typedef struct SAU_ParseData {
+	struct SAU_ParseEvData *event;
+	void *next_item;
+	void *old;
+	uint8_t type;
+	SAU_SymStr *label;
+} SAU_ParseData;
+
 /**
  * Node type for operator data.
  */
 typedef struct SAU_ParseOpData {
-	struct SAU_ParseEvData *event, *root_event;
-	struct SAU_ParseOpData *prev; /* preceding for same op(s) */
+	SAU_ParseData ref;
+	struct SAU_ParseEvData *root_event;
 	SAU_ParseSublist *nest_scopes;
 	SAU_ParseSublist *last_nest_scope;
-	struct SAU_ParseOpData *next_bound;
-	SAU_SymStr *label;
 	uint32_t op_flags;
 	/* operator parameters */
 	SAU_ParamAttr params;
@@ -88,6 +94,7 @@ enum {
 typedef struct SAU_ParseEvData {
 	struct SAU_ParseEvData *next;
 	struct SAU_ParseEvData *composite;
+//	SAU_NodeRange data;
 	SAU_ParseDurGroup *dur;
 	uint32_t wait_ms;
 	uint32_t ev_flags;
