@@ -48,6 +48,9 @@ enum {
 	SAU_PDOP_IGNORED = 1<<4, // node skipped by parseconv
 };
 
+/**
+ * Heading data for parse data types.
+ */
 typedef struct SAU_ParseData {
 	struct SAU_ParseEvData *event;
 	void *next_item;
@@ -87,13 +90,13 @@ enum {
 };
 
 /**
- * Node type for event data. Includes any voice and operator data part
- * of the event.
+ * Node type for event list. Timed list which may branch during parse,
+ * but can be reworked into a flat unified list after parsing is done.
  */
 typedef struct SAU_ParseEvData {
 	struct SAU_ParseEvData *next;
 	struct SAU_ParseEvData *composite;
-//	SAU_NodeRange data;
+	SAU_ParseSublist *sublist;
 	SAU_ParseDurGroup *dur;
 	uint32_t wait_ms;
 	uint32_t ev_flags;
