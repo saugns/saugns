@@ -585,6 +585,7 @@ struct ParseLevel {
 	uint32_t pl_flags;
 	uint8_t scope;
 	SAU_ParseSublist *sublist;
+	SAU_ParseSublist *op_last_nest_scope;
 	SAU_ParseEvData *event, *last_event;
 	SAU_ParseOpData *operator, *first_operator, *last_operator;
 	SAU_ParseOpData *parent_op;
@@ -872,6 +873,8 @@ static void enter_level(SAU_Parser *restrict o, struct ParseLevel *restrict pl,
 		break; // handled above
 	case SCOPE_BLOCK:
 		pl->sublist = parent_pl->sublist;
+		pl->last_event = parent_pl->last_event;
+		pl->op_last_nest_scope = parent_pl->op_last_nest_scope;
 		break;
 	case SCOPE_BIND:
 		begin_sublist(o, use_type);
@@ -904,8 +907,8 @@ static void leave_level(SAU_Parser *restrict o) {
 			pl->parent->pl_flags |= PL_OWN_EVENT;
 			pl->parent->event = pl->event;
 		}
-		if (pl->last_event != NULL)
-			pl->parent->last_event = pl->last_event;
+		pl->parent->last_event = pl->last_event;
+		pl->parent->op_last_nest_scope = pl->op_last_nest_scope;
 		break;
 	case SCOPE_BIND:
 		/*
@@ -925,8 +928,8 @@ static void leave_level(SAU_Parser *restrict o) {
 		if (!parent_op->nest_scopes)
 			parent_op->nest_scopes = pl->sublist;
 		else
-			parent_op->last_nest_scope->next = pl->sublist;
-		parent_op->last_nest_scope = pl->sublist;
+			pl->parent->op_last_nest_scope->next = pl->sublist;
+		pl->parent->op_last_nest_scope = pl->sublist;
 		break; }
 	default:
 		break;
