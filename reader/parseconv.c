@@ -221,7 +221,7 @@ static bool ParseConv_add_nodes(ParseConv *restrict o,
 			if (pod->op_flags & SAU_PDOP_IGNORED) continue;
 			goto ERROR;
 		}
-		for (SAU_ParseSublist *scope = pod->nest_scopes;
+		for (SAU_ParseSublist *scope = pod->ref.nest_scopes;
 				scope != NULL; scope = scope->next) {
 			if (!ParseConv_add_nodes(o, &scope->range)) goto ERROR;
 		}
@@ -261,7 +261,7 @@ static bool ParseConv_link_nodes(ParseConv *restrict o,
 				goto ERROR;
 		}
 		SAU_RefList *last_mod_list = NULL;
-		for (SAU_ParseSublist *scope = pod->nest_scopes;
+		for (SAU_ParseSublist *scope = pod->ref.nest_scopes;
 				scope != NULL; scope = scope->next) {
 			SAU_RefList *next_mod_list = NULL;
 			if (!ParseConv_link_nodes(o, &next_mod_list,

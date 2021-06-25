@@ -925,8 +925,8 @@ static void leave_level(SAU_Parser *restrict o) {
 		if (!pl->parent_op)
 			break;
 		SAU_ParseOpData *parent_op = pl->parent_op;
-		if (!parent_op->nest_scopes)
-			parent_op->nest_scopes = pl->sublist;
+		if (!parent_op->ref.nest_scopes)
+			parent_op->ref.nest_scopes = pl->sublist;
 		else
 			pl->parent->op_last_nest_scope->next = pl->sublist;
 		pl->parent->op_last_nest_scope = pl->sublist;
@@ -1369,7 +1369,7 @@ static void time_opdata(SAU_ParseOpData *restrict op) {
 			e->next->wait_ms += op->time.v_ms;
 		e->ev_flags &= ~SAU_PDEV_ADD_WAIT_DURATION;
 	}
-	for (SAU_ParseSublist *scope = op->nest_scopes;
+	for (SAU_ParseSublist *scope = op->ref.nest_scopes;
 			scope != NULL; scope = scope->next) {
 		SAU_ParseEvData *sub_e = scope->range.first;
 		for (; sub_e != NULL; sub_e = sub_e->next) {
