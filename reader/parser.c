@@ -509,7 +509,7 @@ typedef struct SAU_Parser {
 	/* node state */
 	struct ParseLevel *cur_pl;
 	SAU_ParseDurGroup *cur_dur;
-	SAU_ParseEvData *ev, *first_ev;
+	SAU_ParseSublist *events;
 } SAU_Parser;
 
 /*
@@ -585,9 +585,9 @@ struct ParseLevel {
 	uint32_t pl_flags;
 	uint8_t scope;
 	SAU_ParseSublist *sublist;
-	SAU_ParseSublist *op_last_sublist;
+	SAU_ParseSublist *op_last_nest_scope;
 	SAU_ParseEvData *event, *last_event;
-	SAU_ParseOpData *operator, *last_operator;
+	SAU_ParseOpData *operator, *first_operator, *last_operator;
 	SAU_ParseOpData *parent_op;
 	SAU_SymStr *set_label; /* label assigned to next node */
 	/* timing/delay */
@@ -622,6 +622,14 @@ static bool parse_waittime(SAU_Parser *restrict o) {
 static void time_event(SAU_ParseEvData *restrict e);
 static void time_durgroup(SAU_ParseEvData *restrict e_last);
 
+static void new_durgroup(SAU_Parser *restrict o) {
+	SAU_ParseDurGroup *dur = SAU_MemPool_alloc(o->mp,
+			sizeof(SAU_ParseDurGroup));
+	if (o->cur_dur != NULL)
+		o->cur_dur->next = dur;
+	o->cur_dur = dur;
+}
+
 static void end_ev_opdata(SAU_Parser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
 	if (!(pl->pl_flags & PL_OWN_DATA))
@@ -650,7 +658,6 @@ static void end_ev_opdata(SAU_Parser *restrict o) {
 	}
 	pl->operator = NULL;
 	pl->last_operator = op;
-	static int count = 0; ++count; printf("end_ev_opdata() %d\n", count);
 }
 
 static void end_event(SAU_Parser *restrict o) {
@@ -686,11 +693,15 @@ static void begin_event(SAU_Parser *restrict o,
 		}
 	}
 	if (!is_composite) {
-		if (!o->first_ev)
-			o->first_ev = e;
+		/*
+		 * Append to general list for current parse level.
+		 */
+		SAU_NodeRange *list = &pl->sublist->range;
+		if (!list->first)
+			list->first = e;
 		else
-			o->ev->next = e;
-		o->ev = e;
+			((SAU_ParseEvData*) list->last)->next = e;
+		list->last = e;
 		pl->composite = NULL;
 	}
 	if (!(pl->pl_flags & PL_NESTED_SCOPE)) {
@@ -706,12 +717,17 @@ static void begin_event(SAU_Parser *restrict o,
 static void begin_ev_opdata(SAU_Parser *restrict o,
 		SAU_ParseOpData *restrict pop,
 		bool is_composite) {
-	end_ev_opdata(o);
 	struct ParseLevel *pl = o->cur_pl;
 	ScanLookup *sl = &o->sl;
 	SAU_ParseEvData *e = pl->event;
 	SAU_ParseOpData *op = SAU_MemPool_alloc(o->mp, sizeof(SAU_ParseOpData));
 	pl->operator = op;
+//	if (!e->data.first) e->data.first = op;
+//	e->data.last = op;
+	if (!pl->first_operator)
+		pl->first_operator = op;
+	if (!is_composite && pl->last_operator != NULL)
+		pl->last_operator->ref.next_item = op;
 	/*
 	 * Initialize node.
 	 */
@@ -750,9 +766,7 @@ static void begin_ev_opdata(SAU_Parser *restrict o,
 		op->root_event = (pl->parent_op != NULL) ?
 			pl->parent_op->ref.event :
 			e;
-		op->use_type = (pl->sublist != NULL) ?
-			pl->sublist->use_type :
-			SAU_POP_CARR;
+		op->use_type = pl->sublist->use_type;
 		if (op->use_type == SAU_POP_CARR) {
 			op->freq.v0 = sl->sopt.def_freq;
 		} else {
@@ -767,19 +781,7 @@ static void begin_ev_opdata(SAU_Parser *restrict o,
 		op->pan.flags |= SAU_RAMPP_STATE;
 	}
 	op->ref.event = e;
-	/*
-	 * Append to general list for current parse level.
-	 */
-	if (!pop && pl->sublist != NULL) {
-		SAU_NodeRange *list = &pl->sublist->range;
-		if (!list->first)
-			list->first = op;
-		else
-			((SAU_ParseOpData*) list->last)->ref.next_item = op;
-		list->last = op;
-	} else {
-		e->op_data = op;
-	}
+	e->op_data = op;
 	/*
 	 * Assign label. If no new label but previous node
 	 * (for a non-composite) has one, update label to
@@ -805,12 +807,12 @@ static void begin_ev_opdata(SAU_Parser *restrict o,
 static void begin_node(SAU_Parser *restrict o,
 		SAU_ParseOpData *restrict pop,
 		bool is_composite) {
-	struct ParseLevel *pl = o->cur_pl;
-	if (!pl->event || /* not in event parse means event now ended */
-			pl->sub_f != parse_in_event ||
-			pl->next_wait_ms ||
-			pl->event->op_data != NULL ||
-			is_composite)
+//	struct ParseLevel *pl = o->cur_pl;
+//	if (!pl->event || /* not in event parse means event now ended */
+//			pl->sub_f != parse_in_event ||
+//			pl->next_wait_ms ||
+//			pl->event->op_data != NULL ||
+//			is_composite)
 		begin_event(o, pop, is_composite);
 	begin_ev_opdata(o, pop, is_composite);
 }
@@ -832,35 +834,19 @@ static void end_sublist(SAU_Parser *restrict o) {
 	if (!(pl->pl_flags & PL_OWN_SUBLIST))
 		return;
 	pl->pl_flags &= ~PL_OWN_SUBLIST;
-	end_ev_opdata(o);
-}
-
-static void end_durgroup(SAU_Parser *restrict o) {
-	SAU_ParseDurGroup *dur = o->cur_dur;
-	if (!dur)
-		return;
 	end_event(o);
-	SAU_ParseEvData *e = dur->range.first;
+
+	SAU_ParseSublist *list = pl->sublist;
+	SAU_ParseEvData *e = list->range.first;
 	if (!e)
 		return;
-	puts("?");
-	SAU_ParseEvData *e_after = ((SAU_ParseEvData*)dur->range.last)->next;
+	SAU_ParseEvData *e_after = ((SAU_ParseEvData*)list->range.last)->next;
 	for (; e != e_after; e = e->next) {
 		time_event(e);
 		if (e->dur != NULL && e == e->dur->range.last){
 			time_durgroup(e);
 		}
 	}
-	puts(".");
-}
-
-static void begin_durgroup(SAU_Parser *restrict o) {
-	end_durgroup(o);
-	SAU_ParseDurGroup *dur = SAU_MemPool_alloc(o->mp,
-			sizeof(SAU_ParseDurGroup));
-	if (o->cur_dur != NULL)
-		o->cur_dur->next = dur;
-	o->cur_dur = dur;
 }
 
 static void enter_level(SAU_Parser *restrict o, struct ParseLevel *restrict pl,
@@ -871,7 +857,7 @@ static void enter_level(SAU_Parser *restrict o, struct ParseLevel *restrict pl,
 	o->cur_pl = pl;
 	if (!parent_pl) {
 		// handle newscope == SCOPE_TOP here
-		if (!o->cur_dur) begin_durgroup(o);
+		if (!o->cur_dur) new_durgroup(o);
 		begin_sublist(o, use_type);
 		return;
 	}
@@ -888,7 +874,7 @@ static void enter_level(SAU_Parser *restrict o, struct ParseLevel *restrict pl,
 	case SCOPE_BLOCK:
 		pl->sublist = parent_pl->sublist;
 		pl->last_event = parent_pl->last_event;
-		pl->op_last_sublist = parent_pl->op_last_sublist;
+		pl->op_last_nest_scope = parent_pl->op_last_nest_scope;
 		break;
 	case SCOPE_BIND:
 		begin_sublist(o, use_type);
@@ -910,12 +896,10 @@ static void leave_level(SAU_Parser *restrict o) {
 				"ignoring label assignment without operator");
 	}
 	end_sublist(o);
-	if (!pl->parent) {
-		end_durgroup(o);
-	}
 	o->cur_pl = pl->parent;
 	switch (pl->scope) {
 	case SCOPE_TOP:
+		o->events = pl->sublist;
 		break;
 	case SCOPE_BLOCK:
 		if (pl->pl_flags & PL_OWN_EVENT) {
@@ -924,7 +908,7 @@ static void leave_level(SAU_Parser *restrict o) {
 			pl->parent->event = pl->event;
 		}
 		pl->parent->last_event = pl->last_event;
-		pl->parent->op_last_sublist = pl->op_last_sublist;
+		pl->parent->op_last_nest_scope = pl->op_last_nest_scope;
 		break;
 	case SCOPE_BIND:
 		/*
@@ -932,20 +916,20 @@ static void leave_level(SAU_Parser *restrict o) {
 		 * for the operator nodes in this scope,
 		 * provided any are present.
 		 */
-		if (pl->sublist->range.first != NULL) {
+		if (pl->first_operator != NULL) {
 			pl->parent->pl_flags |= PL_BIND_MULTIPLE;
-			begin_node(o, pl->sublist->range.first, false);
+			begin_node(o, pl->first_operator, false);
 		}
 		break;
 	case SCOPE_NEST: {
 		if (!pl->parent_op)
 			break;
 		SAU_ParseOpData *parent_op = pl->parent_op;
-		if (!parent_op->ref.sublists)
-			parent_op->ref.sublists = pl->sublist;
+		if (!parent_op->ref.nest_scopes)
+			parent_op->ref.nest_scopes = pl->sublist;
 		else
-			pl->parent->op_last_sublist->next = pl->sublist;
-		pl->parent->op_last_sublist = pl->sublist;
+			pl->parent->op_last_nest_scope->next = pl->sublist;
+		pl->parent->op_last_nest_scope = pl->sublist;
 		break; }
 	default:
 		break;
@@ -1171,6 +1155,7 @@ static void parse_level(SAU_Parser *restrict o,
 				if (o->call_level > 1)
 					goto RETURN;
 				pl.sub_f = NULL;
+				pl.first_operator = NULL;
 			}
 			break;
 		case '\'':
@@ -1271,7 +1256,7 @@ static void parse_level(SAU_Parser *restrict o,
 "no sounds precede time separator");
 				break;
 			}
-			begin_durgroup(o);
+			new_durgroup(o);
 			pl.sub_f = NULL;
 			break;
 		case '}':
@@ -1384,19 +1369,17 @@ static void time_opdata(SAU_ParseOpData *restrict op) {
 			e->next->wait_ms += op->time.v_ms;
 		e->ev_flags &= ~SAU_PDEV_ADD_WAIT_DURATION;
 	}
-	puts("time_opdata() ?");
-	for (SAU_ParseSublist *scope = op->ref.sublists;
+	for (SAU_ParseSublist *scope = op->ref.nest_scopes;
 			scope != NULL; scope = scope->next) {
-		SAU_ParseOpData *sub_op = scope->range.first;
-		for (; sub_op != NULL; sub_op = sub_op->ref.next_item) {
+		SAU_ParseEvData *sub_e = scope->range.first;
+		for (; sub_e != NULL; sub_e = sub_e->next) {
+			SAU_ParseOpData *sub_op = sub_e->op_data;
 			time_opdata(sub_op);
 		}
 	}
-	puts("time_opdata() .");
 }
 
 static void time_event(SAU_ParseEvData *restrict e) {
-	puts("time_event() ...");
 	/*
 	 * Adjust default ramp durations, handle silence as well as the case of
 	 * adding present event duration to wait time of next event.
@@ -1458,7 +1441,7 @@ SAU_Parse* SAU_create_Parse(const char *restrict script_arg, bool is_path) {
 	if (!name) goto DONE;
 
 	o = SAU_MemPool_alloc(pr.mp, sizeof(SAU_Parse));
-	o->events = pr.first_ev;
+	o->events = pr.events->range.first;
 	o->name = name;
 	o->sopt = pr.sl.sopt;
 	o->symtab = pr.st;
@@ -1466,7 +1449,6 @@ SAU_Parse* SAU_create_Parse(const char *restrict script_arg, bool is_path) {
 	pr.st = NULL; // keep for result
 	pr.mp = NULL; // keep for result
 DONE:
-	puts("done in parser");
 	fini_Parser(&pr);
 	return o;
 }

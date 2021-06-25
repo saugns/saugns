@@ -205,8 +205,12 @@ static bool ParseConv_add_nodes(ParseConv *restrict o,
 		const SAU_NodeRange *restrict pod_list) {
 	if (!pod_list)
 		return true;
-	SAU_ParseOpData *pod = pod_list->first;
-	for (; pod != NULL; pod = pod->ref.next_item) {
+	SAU_ParseEvData *pe = pod_list->first;
+	SAU_ParseEvData *pe_after = ((SAU_ParseEvData*)pod_list->last)->next;
+	for (; pe != pe_after; pe = pe->next) {
+		//if (!ParseConv_add_event(o, pe)) goto ERROR;
+		SAU_ParseOpData *pod = pe->op_data;
+		if (!pod) continue;
 		// TODO: handle multiple operator nodes
 		if (pod->op_flags & SAU_PDOP_MULTIPLE) {
 			// TODO: handle multiple operator nodes
@@ -217,7 +221,7 @@ static bool ParseConv_add_nodes(ParseConv *restrict o,
 			if (pod->op_flags & SAU_PDOP_IGNORED) continue;
 			goto ERROR;
 		}
-		for (SAU_ParseSublist *scope = pod->ref.sublists;
+		for (SAU_ParseSublist *scope = pod->ref.nest_scopes;
 				scope != NULL; scope = scope->next) {
 			if (!ParseConv_add_nodes(o, &scope->range)) goto ERROR;
 		}
@@ -236,9 +240,12 @@ static bool ParseConv_link_nodes(ParseConv *restrict o,
 		uint8_t list_type) {
 	if (!pod_list)
 		return true;
-	SAU_ParseOpData *pod = pod_list->first;
-	for (; pod != NULL; pod = pod->ref.next_item) {
-		SAU_ScriptEvData *e = pod->ref.event->ev_conv;
+	SAU_ParseEvData *pe = pod_list->first;
+	SAU_ParseEvData *pe_after = ((SAU_ParseEvData*)pod_list->last)->next;
+	for (; pe != pe_after; pe = pe->next) {
+		SAU_ScriptEvData *e = pe->ev_conv;
+		SAU_ParseOpData *pod = pe->op_data;
+		if (!pod) continue;
 		if (pod->op_flags & SAU_PDOP_IGNORED) continue;
 		SAU_ScriptOpData *od = pod->op_conv;
 		if (!od) goto ERROR;
@@ -254,7 +261,7 @@ static bool ParseConv_link_nodes(ParseConv *restrict o,
 				goto ERROR;
 		}
 		SAU_RefList *last_mod_list = NULL;
-		for (SAU_ParseSublist *scope = pod->ref.sublists;
+		for (SAU_ParseSublist *scope = pod->ref.nest_scopes;
 				scope != NULL; scope = scope->next) {
 			SAU_RefList *next_mod_list = NULL;
 			if (!ParseConv_link_nodes(o, &next_mod_list,
@@ -296,7 +303,7 @@ static SAU_Script *ParseConv_convert(ParseConv *restrict o,
 	 * otherwise, cannot always arrange events in the correct order.
 	 */
 	for (SAU_ParseEvData *pe = p->events; pe != NULL; pe = pe->next) {
-		const SAU_NodeRange pe_range = {.first = pe->op_data};
+		const SAU_NodeRange pe_range = {.first = pe, .last = pe};
 		if (!ParseConv_add_event(o, pe)) goto ERROR;
 		if (!ParseConv_add_nodes(o, &pe_range)) goto ERROR;
 		SAU_ScriptEvData *e = pe->ev_conv;

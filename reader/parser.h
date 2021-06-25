@@ -52,7 +52,7 @@ typedef struct SAU_ParseData {
 	struct SAU_ParseEvData *event;
 	void *next_item;
 	void *old;
-	SAU_ParseSublist *sublists;
+	SAU_ParseSublist *nest_scopes;
 	uint8_t type;
 	SAU_SymStr *label;
 } SAU_ParseData;
