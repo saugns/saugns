@@ -1,5 +1,5 @@
 /* sgensys: Oscillator implementation.
- * Copyright (c) 2011, 2017-2020 Joel K. Pettersson
+ * Copyright (c) 2011, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -17,6 +17,14 @@
 
 #include "osc.h"
 
+/*
+ * Use pre-integrated LUTs ("PILUTs")?
+ *
+ * Turn off to use the raw naive LUTs,
+ * kept for testing/"viewing" of them.
+ */
+#define USE_PILUT 1
+
 /**
  * Run for \p buf_len samples, generating output
  * for carrier or PM input.
@@ -32,15 +40,59 @@ void SGS_Osc_run(SGS_Osc *restrict o,
 		const float *restrict freq,
 		const float *restrict amp,
 		const float *restrict pm_f) {
+#if USE_PILUT /* higher-quality audio */
+	const float *const lut = SGS_Wave_piluts[o->wave];
+	if (o->flags & SGS_OSC_RESET_DIFF) {
+		/* Ensure no click accompanies differentiation start. */
+		o->phase_inc = 0;
+		o->flags &= ~SGS_OSC_RESET_DIFF;
+	}
+	float diff_scale = SGS_Wave_DIFFSCALE(o->wave);
+	float diff_offset = SGS_Wave_DIFFOFFSET(o->wave);
+	if (pm_f != NULL) {
+		for (size_t i = 0; i < buf_len; ++i) {
+			int32_t s_pm = SGS_ftoi(pm_f[i] * (float)INT32_MAX);
+			uint32_t phase = o->phase + s_pm;
+			uint32_t prev_phase = phase - o->phase_inc;
+			float prev_s = SGS_Wave_get_lerp(lut, prev_phase);
+			float s = SGS_Wave_get_lerp(lut, phase);
+			float diff_s = SGS_Wave_get_diffv(s, prev_s,
+					diff_scale, o->phase_inc) + diff_offset;
+			o->phase_inc = SGS_ftoi(o->coeff * freq[i]);
+			o->phase += o->phase_inc;
+			s = diff_s * amp[i];
+			if (layer > 0) s += buf[i];
+			buf[i] = s;
+		}
+	} else {
+		float prev_s = SGS_Wave_get_lerp(lut, o->phase - o->phase_inc);
+		for (size_t i = 0; i < buf_len; ++i) {
+			float s = SGS_Wave_get_lerp(lut, o->phase);
+			float diff_s = SGS_Wave_get_diffv(s, prev_s,
+					diff_scale, o->phase_inc) + diff_offset;
+			o->phase_inc = SGS_ftoi(o->coeff * freq[i]);
+			o->phase += o->phase_inc;
+			prev_s = s;
+			s = diff_s * amp[i];
+			if (layer > 0) s += buf[i];
+			buf[i] = s;
+		}
+	}
+#else /* test naive LUT */
+	const float *const lut = SGS_Wave_luts[o->wave];
 	for (size_t i = 0; i < buf_len; ++i) {
 		int32_t s_pm = 0;
 		if (pm_f != NULL) {
 			s_pm = SGS_ftoi(pm_f[i] * (float)INT32_MAX);
 		}
-		float s = SGS_Osc_get(o, freq[i], s_pm) * amp[i];
+		uint32_t phase = o->phase + s_pm;
+		int32_t phase_inc = SGS_ftoi(o->coeff * freq[i]);
+		float s = SGS_Wave_get_lerp(lut, phase) * amp[i];
+		o->phase += phase_inc;
 		if (layer > 0) s += buf[i];
 		buf[i] = s;
 	}
+#endif
 }
 
 /**
@@ -59,15 +111,63 @@ void SGS_Osc_run_env(SGS_Osc *restrict o,
 		const float *restrict freq,
 		const float *restrict amp,
 		const float *restrict pm_f) {
+#if USE_PILUT /* higher-quality audio */
+	const float *const lut = SGS_Wave_piluts[o->wave];
+	if (o->flags & SGS_OSC_RESET_DIFF) {
+		/* Ensure no click accompanies differentiation start. */
+		o->phase_inc = 0;
+		o->flags &= ~SGS_OSC_RESET_DIFF;
+	}
+	float diff_scale = SGS_Wave_DIFFSCALE(o->wave);
+	float diff_offset = SGS_Wave_DIFFOFFSET(o->wave);
+	if (pm_f != NULL) {
+		for (size_t i = 0; i < buf_len; ++i) {
+			int32_t s_pm = SGS_ftoi(pm_f[i] * (float)INT32_MAX);
+			uint32_t phase = o->phase + s_pm;
+			uint32_t prev_phase = phase - o->phase_inc;
+			float prev_s = SGS_Wave_get_lerp(lut, prev_phase);
+			float s = SGS_Wave_get_lerp(lut, phase);
+			float diff_s = SGS_Wave_get_diffv(s, prev_s,
+					diff_scale, o->phase_inc) + diff_offset;
+			o->phase_inc = SGS_ftoi(o->coeff * freq[i]);
+			o->phase += o->phase_inc;
+			s = diff_s;
+			float s_amp = amp[i] * 0.5f;
+			s = (s * s_amp) + fabs(s_amp);
+			if (layer > 0) s *= buf[i];
+			buf[i] = s;
+		}
+	} else {
+		float prev_s = SGS_Wave_get_lerp(lut, o->phase - o->phase_inc);
+		for (size_t i = 0; i < buf_len; ++i) {
+			float s = SGS_Wave_get_lerp(lut, o->phase);
+			float diff_s = SGS_Wave_get_diffv(s, prev_s,
+					diff_scale, o->phase_inc) + diff_offset;
+			o->phase_inc = SGS_ftoi(o->coeff * freq[i]);
+			o->phase += o->phase_inc;
+			prev_s = s;
+			s = diff_s;
+			float s_amp = amp[i] * 0.5f;
+			s = (s * s_amp) + fabs(s_amp);
+			if (layer > 0) s *= buf[i];
+			buf[i] = s;
+		}
+	}
+#else /* test naive LUT */
+	const float *const lut = SGS_Wave_luts[o->wave];
 	for (size_t i = 0; i < buf_len; ++i) {
 		int32_t s_pm = 0;
 		if (pm_f != NULL) {
 			s_pm = SGS_ftoi(pm_f[i] * (float)INT32_MAX);
 		}
-		float s = SGS_Osc_get(o, freq[i], s_pm);
+		uint32_t phase = o->phase + s_pm;
+		int32_t phase_inc = SGS_ftoi(o->coeff * freq[i]);
+		float s = SGS_Wave_get_lerp(lut, phase);
+		o->phase += phase_inc;
 		float s_amp = amp[i] * 0.5f;
 		s = (s * s_amp) + fabs(s_amp);
 		if (layer > 0) s *= buf[i];
 		buf[i] = s;
 	}
+#endif
 }

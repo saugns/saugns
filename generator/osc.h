@@ -1,5 +1,5 @@
 /* sgensys: Oscillator implementation.
- * Copyright (c) 2011, 2017-2020 Joel K. Pettersson
+ * Copyright (c) 2011, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -19,10 +19,14 @@
 #include "../wave.h"
 #include "../math.h"
 
+#define SGS_OSC_RESET_DIFF (1<<0)
+
 typedef struct SGS_Osc {
 	uint32_t phase;
 	float coeff;
-	const float *lut;
+	uint8_t wave;
+	uint8_t flags;
+	int32_t phase_inc;
 } SGS_Osc;
 
 /**
@@ -30,13 +34,7 @@ typedef struct SGS_Osc {
  * used to give the per-sample phase increment
  * by multiplying with the frequency used.
  */
-#define SGS_Osc_COEFF(srate) ((float) 4294967296.0/(srate))
-
-/**
- * Get LUT for wave type enum.
- */
-#define SGS_Osc_LUT(wave) \
-	(SGS_Wave_luts[(wave) < SGS_WAVE_TYPES ? (wave) : SGS_WAVE_SIN])
+#define SGS_Osc_COEFF(srate) (((float) UINT32_MAX)/(srate))
 
 /**
  * Initialize instance for use.
@@ -44,7 +42,19 @@ typedef struct SGS_Osc {
 static inline void SGS_init_Osc(SGS_Osc *restrict o, uint32_t srate) {
 	o->phase = 0;
 	o->coeff = SGS_Osc_COEFF(srate);
-	o->lut = SGS_Osc_LUT(SGS_WAVE_SIN);
+	o->wave = SGS_WAVE_SIN;
+	o->flags = SGS_OSC_RESET_DIFF;
+	o->phase_inc = 0;
+}
+
+static inline void SGS_Osc_set_phase(SGS_Osc *restrict o, uint32_t phase) {
+	o->phase = phase;
+	o->flags |= SGS_OSC_RESET_DIFF;
+}
+
+static inline void SGS_Osc_set_wave(SGS_Osc *restrict o, uint8_t wave) {
+	o->wave = wave;
+	o->flags |= SGS_OSC_RESET_DIFF;
 }
 
 /**
@@ -53,7 +63,7 @@ static inline void SGS_init_Osc(SGS_Osc *restrict o, uint32_t srate) {
  * \return number of samples
  */
 static inline uint32_t SGS_Osc_cycle_len(SGS_Osc *restrict o, float freq) {
-	return SGS_ftoi(4294967296.0 / (o->coeff * freq));
+	return SGS_ftoi(((float) UINT32_MAX) / (o->coeff * freq));
 }
 
 /**
@@ -78,19 +88,6 @@ static inline int32_t SGS_Osc_cycle_offs(SGS_Osc *restrict o,
 	uint32_t inc = SGS_ftoi(o->coeff * freq);
 	uint32_t phs = inc * pos;
 	return (phs - SGS_Wave_SCALE) / inc;
-}
-
-/**
- * Get next sample.
- *
- * \return value from -1.0 to 1.0
- */
-static inline float SGS_Osc_get(SGS_Osc *restrict o,
-		float freq, int32_t pm_s32) {
-	uint32_t phase = o->phase + pm_s32;
-	float s = SGS_Wave_get_lerp(o->lut, phase);
-	o->phase += SGS_ftoi(o->coeff * freq);
-	return s;
 }
 
 void SGS_Osc_run(SGS_Osc *restrict o,
