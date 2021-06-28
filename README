@@ -128,13 +128,11 @@ or more parameters, each with a value.
 Wave types:
 	sin	Sine.
 			For cosine, use (1/4) phase.
-	sqr	Square (anti-aliased cycle).
-			Lacks full "bite" at low frequencies.
-	tri	Triangle (naive).
-	saw	Saw (anti-aliased cycle).
-			Lacks full "bite" at low frequencies.
-			Decreasing slope; use negative amplitude
-			or frequency for increasing slope.
+	sqr	Square.
+	tri	Triangle.
+	saw	Saw.
+			Increasing slope; use negative amplitude
+			or frequency for decreasing slope.
 	ahs	Absolute half-frequency sine (adjusted).
 			Sine-based parabola-like wave.
 			Frequency halved to restore base frequency,
