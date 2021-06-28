@@ -1,5 +1,5 @@
 /* mgensys: Math header.
- * Copyright (c) 2011, 2020 Joel K. Pettersson
+ * Copyright (c) 2011, 2020-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -19,9 +19,10 @@
 #include "common.h"
 #include <math.h>
 
-#define MGS_PI       3.14159265358979323846
-#define MGS_ASIN_1_2 0.52359877559829887308 // asin(0.5)
-#define MGS_SQRT_1_2 0.70710678118654752440 // sqrt(0.5), 1/sqrt(2)
+#define MGS_PI          3.14159265358979323846
+#define MGS_ASIN_1_2    0.52359877559829887308 // asin(0.5)
+#define MGS_SQRT_1_2    0.70710678118654752440 // sqrt(0.5), 1/sqrt(2)
+#define MGS_HUMMID    632.45553203367586639978 // human hearing range geom.mean
 
 #define MGS_DC_OFFSET 1.0E-25
 

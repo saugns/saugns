@@ -1,5 +1,5 @@
 /* mgensys: Oscillator implementation.
- * Copyright (c) 2011, 2017-2020 Joel K. Pettersson
+ * Copyright (c) 2011, 2017-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -17,57 +17,121 @@
 
 #include "osc.h"
 
+#if !USE_PILUT
+# define P(inc, ofs) ofs + o->phase; (o->phase += inc)     /* post-increment */
+#else
+# define P(inc, ofs) ofs + (o->phase += inc)               /* pre-increment */
+#endif
+
 /**
- * Run for \p buf_len samples, generating output
- * for carrier or PM input.
- *
- * For \p layer greater than zero, adds
- * the output to \p buf instead of assigning it.
- *
- * \p pm_f may be NULL for no PM input.
+ * Fill phase-value buffer for use with MGS_Osc_run().
  */
-void MGS_Osc_run(MGS_Osc *restrict o,
-		float *restrict buf, size_t buf_len,
-		uint32_t layer,
-		const float *restrict freq,
-		const float *restrict amp,
-		const float *restrict pm_f) {
-	for (size_t i = 0; i < buf_len; ++i) {
-		int32_t s_pm = 0;
-		if (pm_f != NULL) {
-			s_pm = lrintf(pm_f[i] * INT32_MAX);
+void MGS_Phasor_fill(MGS_Phasor *restrict o,
+		uint32_t *restrict phase_ui32,
+		size_t buf_len,
+		const float *restrict freq_f,
+		const float *restrict pm_f,
+		const float *restrict fpm_f) {
+	const float fpm_scale = 1.f / MGS_HUMMID;
+	if (!pm_f && !fpm_f) {
+		for (size_t i = 0; i < buf_len; ++i) {
+			float s_f = freq_f[i];
+			phase_ui32[i] = P(lrintf(o->coeff * s_f), 0);
 		}
-		float s = MGS_Osc_get(o, freq[i], s_pm) * amp[i];
-		if (layer > 0) s += buf[i];
-		buf[i] = s;
+	} else if (!fpm_f) {
+		for (size_t i = 0; i < buf_len; ++i) {
+			float s_f = freq_f[i];
+			float s_pofs = pm_f[i];
+			phase_ui32[i] = P(lrintf(o->coeff * s_f),
+					lrintf(s_pofs * (float) INT32_MAX));
+		}
+	} else if (!pm_f) {
+		for (size_t i = 0; i < buf_len; ++i) {
+			float s_f = freq_f[i];
+			float s_pofs = fpm_f[i] * fpm_scale * s_f;
+			phase_ui32[i] = P(lrintf(o->coeff * s_f),
+					lrintf(s_pofs * (float) INT32_MAX));
+		}
+	} else {
+		for (size_t i = 0; i < buf_len; ++i) {
+			float s_f = freq_f[i];
+			float s_pofs = pm_f[i] + (fpm_f[i] * fpm_scale * s_f);
+			phase_ui32[i] = P(lrintf(o->coeff * s_f),
+					lrintf(s_pofs * (float) INT32_MAX));
+		}
 	}
 }
 
-/**
- * Run for \p buf_len samples, generating output
- * for FM or AM input (scaled to 0.0 - 1.0 range,
- * multiplied by \p amp).
+#undef P /* done */
+
+#if !USE_PILUT
+/*
+ * Implementation of MGS_Osc_run()
+ * using naive LUTs with linear interpolation.
  *
- * For \p layer greater than zero, multiplies
- * the output into \p buf instead of assigning it.
- *
- * \p pm_f may be NULL for no PM input.
+ * Uses post-incremented phase each sample.
  */
-void MGS_Osc_run_env(MGS_Osc *restrict o,
+static void naive_run(MGS_Osc *restrict o,
 		float *restrict buf, size_t buf_len,
-		uint32_t layer,
-		const float *restrict freq,
-		const float *restrict amp,
-		const float *restrict pm_f) {
+		const uint32_t *restrict phase_buf) {
+	const float *const lut = MGS_Wave_luts[o->wave];
 	for (size_t i = 0; i < buf_len; ++i) {
-		int32_t s_pm = 0;
-		if (pm_f != NULL) {
-			s_pm = lrintf(pm_f[i] * INT32_MAX);
+		buf[i] = MGS_Wave_get_lerp(lut, phase_buf[i]);
+	}
+}
+#endif
+
+#if USE_PILUT
+/* Set up for differentiation (re)start with usable state. */
+static void MGS_Osc_reset(MGS_Osc *restrict o, int32_t phase) {
+	const float *const lut = MGS_Wave_piluts[o->wave];
+	const float diff_scale = MGS_Wave_DVSCALE(o->wave);
+	const float diff_offset = MGS_Wave_DVOFFSET(o->wave);
+	if (o->flags & MGS_OSC_RESET_DIFF) {
+		/* one-LUT-value diff works fine for any freq, 0 Hz included */
+		int32_t phase_diff = MGS_Wave_SLEN;
+		o->prev_Is = MGS_Wave_get_herp(lut, phase - phase_diff);
+		double Is = MGS_Wave_get_herp(lut, phase);
+		double x = (diff_scale / phase_diff);
+		o->prev_diff_s = (Is - o->prev_Is) * x + diff_offset;
+		o->prev_Is = Is;
+		o->prev_phase = phase;
+	}
+	o->flags &= ~MGS_OSC_RESET;
+}
+#endif
+
+/**
+ * Run for \p buf_len samples, generating output.
+ *
+ * Uses pre-incremented phase each sample.
+ */
+void MGS_Osc_run(MGS_Osc *restrict o,
+		float *restrict buf, size_t buf_len,
+		const uint32_t *restrict phase_buf) {
+#if USE_PILUT /* higher-quality audio */
+	const float *const lut = MGS_Wave_piluts[o->wave];
+	const float diff_scale = MGS_Wave_DVSCALE(o->wave);
+	const float diff_offset = MGS_Wave_DVOFFSET(o->wave);
+	if (buf_len > 0 && o->flags & MGS_OSC_RESET)
+		MGS_Osc_reset(o, phase_buf[0]);
+	for (size_t i = 0; i < buf_len; ++i) {
+		float s;
+		uint32_t phase = phase_buf[i];
+		int32_t phase_diff = phase - o->prev_phase;
+		if (phase_diff == 0) {
+			s = o->prev_diff_s;
+		} else {
+			double Is = MGS_Wave_get_herp(lut, phase);
+			double x = (diff_scale / phase_diff);
+			s = (Is - o->prev_Is) * x + diff_offset;
+			o->prev_Is = Is;
+			o->prev_diff_s = s;
+			o->prev_phase = phase;
 		}
-		float s = MGS_Osc_get(o, freq[i], s_pm);
-		float s_amp = amp[i] * 0.5f;
-		s = (s * s_amp) + fabs(s_amp);
-		if (layer > 0) s *= buf[i];
 		buf[i] = s;
 	}
+#else /* test naive LUT */
+	naive_run(o, buf, buf_len, phase_buf);
+#endif
 }

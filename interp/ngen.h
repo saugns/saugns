@@ -1,5 +1,5 @@
 /* mgensys: Noise generator implementation.
- * Copyright (c) 2020 Joel K. Pettersson
+ * Copyright (c) 2020-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -31,10 +31,4 @@ static inline void MGS_init_NGen(MGS_NGen *restrict o, uint32_t srate) {
 }
 
 void MGS_NGen_run(MGS_NGen *restrict o,
-		float *restrict buf, size_t buf_len,
-		uint32_t layer,
-		const float *restrict amp);
-void MGS_NGen_run_env(MGS_NGen *restrict o,
-		float *restrict buf, size_t buf_len,
-		uint32_t layer,
-		const float *restrict amp);
+		float *restrict buf, size_t buf_len);

@@ -228,8 +228,8 @@ static bool MGS_RunAlloc_make_wave(MGS_RunAlloc *restrict o,
 	if (!won || !MGS_RunAlloc_init_sound(o, &won->sound, n))
 		return false;
 	MGS_init_Osc(&won->osc, o->srate);
-	won->osc.lut = MGS_Osc_LUT(wod->wave);
-	won->osc.phase = MGS_Osc_PHASE(wod->phase);
+	won->osc.wave = wod->wave;
+	MGS_Osc_set_phase(&won->osc, wod->phase);
 	won->attr = wod->attr;
 	won->freq = wod->freq;
 	won->dynfreq = wod->dynfreq;
@@ -330,8 +330,13 @@ static size_t calc_bufs_wave(MGS_RunAlloc *restrict o,
 	size_t count = count_from, max_count = count_from;
 	++count;
 	++count;
+	++count;
 	if (n->fmods_id > 0) {
 		size_t sub_count = calc_bufs_sub(o, count, n->fmods_id);
+		if (max_count < sub_count) max_count = sub_count;
+	}
+	if (n->pmods_id > 0) {
+		size_t sub_count = calc_bufs_sub(o, count, n->pmods_id);
 		if (max_count < sub_count) max_count = sub_count;
 	}
 	if (n->sound.amods_id > 0) {
@@ -341,11 +346,7 @@ static size_t calc_bufs_wave(MGS_RunAlloc *restrict o,
 	} else {
 		++count;
 	}
-	if (n->pmods_id > 0) {
-		size_t sub_count = calc_bufs_sub(o, count, n->pmods_id);
-		if (max_count < sub_count) max_count = sub_count;
-		++count;
-	}
+	++count;
 	if (max_count < count) max_count = count;
 	return max_count;
 }

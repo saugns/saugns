@@ -99,7 +99,8 @@ struct MGS_ProgramNoiseData {
 struct MGS_ProgramWaveData {
 	MGS_ProgramSoundData sound;
 	uint8_t attr, wave;
-	float freq, dynfreq, phase;
+	float freq, dynfreq;
+	uint32_t phase;
 	MGS_ProgramArrData *pmod, *fmod;
 };
 

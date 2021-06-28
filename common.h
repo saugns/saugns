@@ -69,3 +69,5 @@ void MGS_error(const char *restrict label, const char *restrict fmt, ...)
 	mgsPrintflike(2, 3);
 
 void *MGS_memdup(const void *restrict src, size_t size) mgsMalloclike;
+
+#define MGS_printf(...) fprintf(stdout, __VA_ARGS__)

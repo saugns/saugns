@@ -1,5 +1,5 @@
 /* mgensys: Noise generator implementation.
- * Copyright (c) 2020 Joel K. Pettersson
+ * Copyright (c) 2020-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -18,40 +18,12 @@
 #include "ngen.h"
 
 /**
- * Run for \p buf_len samples, generating output
- * for carrier or PM input.
- *
- * For \p layer greater than zero, adds
- * the output to \p buf instead of assigning it.
+ * Run for \p buf_len samples, generating output.
  */
 void MGS_NGen_run(MGS_NGen *restrict o mgsMaybeUnused,
-		float *restrict buf, size_t buf_len,
-		uint32_t layer,
-		const float *restrict amp) {
-	for (size_t i = 0; i < buf_len; ++i) {
-		float s = MGS_Noise_get() * amp[i];
-		if (layer > 0) s += buf[i];
-		buf[i] = s;
-	}
-}
-
-/**
- * Run for \p buf_len samples, generating output
- * for FM or AM input (scaled to 0.0 - 1.0 range,
- * multiplied by \p amp).
- *
- * For \p layer greater than zero, multiplies
- * the output into \p buf instead of assigning it.
- */
-void MGS_NGen_run_env(MGS_NGen *restrict o mgsMaybeUnused,
-		float *restrict buf, size_t buf_len,
-		uint32_t layer,
-		const float *restrict amp) {
+		float *restrict buf, size_t buf_len) {
 	for (size_t i = 0; i < buf_len; ++i) {
 		float s = MGS_Noise_get();
-		float s_amp = amp[i] * 0.5f;
-		s = (s * s_amp) + fabs(s_amp);
-		if (layer > 0) s *= buf[i];
 		buf[i] = s;
 	}
 }

@@ -683,9 +683,7 @@ static bool parse_phase(MGS_Parser *o, MGS_ProgramNode *n) {
     }
   } else {
     if (!scan_num(o, NULL, &f)) goto INVALID;
-    wod->phase = fmod(f, 1.f);
-    if (wod->phase < 0.f)
-      wod->phase += 1.f;
+    wod->phase = lrint(f * UINT32_MAX);
     wod->sound.params |= MGS_WAVEP_PHASE;
   }
   return true;

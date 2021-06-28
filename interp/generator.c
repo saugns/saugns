@@ -1,5 +1,5 @@
 /* mgensys: Audio generator.
- * Copyright (c) 2011, 2020 Joel K. Pettersson
+ * Copyright (c) 2011, 2020-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -17,6 +17,7 @@
 typedef union Buf {
   float f[BUF_LEN];
   int32_t i[BUF_LEN];
+  uint32_t u[BUF_LEN];
 } Buf;
 
 #define MGS_GEN_TIME_OFFS (1<<0)
@@ -129,7 +130,7 @@ static void MGS_Generator_update_sound(MGS_Generator *o, MGS_EventNode *ev) {
     refn->fmods_id = updn->fmods_id;
     refn->pmods_id = updn->pmods_id;
     if (updn->sound.params & MGS_WAVEP_WAVE) {
-      refn->osc.lut = updn->osc.lut;
+      refn->osc.wave = updn->osc.wave;
     }
     if (updn->sound.params & MGS_WAVEP_FREQ) {
       refn->freq = updn->freq;
@@ -139,7 +140,7 @@ static void MGS_Generator_update_sound(MGS_Generator *o, MGS_EventNode *ev) {
       refn->dynfreq = updn->dynfreq;
     }
     if (updn->sound.params & MGS_WAVEP_PHASE) {
-      refn->osc.phase = updn->osc.phase;
+      MGS_Osc_set_phase(&refn->osc, updn->osc.phasor.phase);
     }
     if (updn->sound.params & MGS_WAVEP_ATTR) {
       refn->attr = updn->attr;
@@ -185,6 +186,55 @@ enum {
   BLOCK_WAVEENV = 1<<0,
 };
 
+/*
+ * Add audio layer from \p in_buf into \p buf scaled with \p amp.
+ *
+ * Used to generate output for carrier or PM input.
+ */
+static void block_mix_add(float *restrict buf, size_t buf_len,
+    uint32_t layer,
+    const float *restrict in_buf,
+    const float *restrict amp) {
+  if (layer > 0) {
+    for (size_t i = 0; i < buf_len; ++i) {
+      buf[i] += in_buf[i] * amp[i];
+    }
+  } else {
+    for (size_t i = 0; i < buf_len; ++i) {
+      buf[i] = in_buf[i] * amp[i];
+    }
+  }
+}
+
+/*
+ * Multiply audio layer from \p in_buf into \p buf,
+ * after scaling to a 0.0 to 1.0 range multiplied by
+ * the absolute value of \p amp, and with the high and
+ * low ends of the range flipped if \p amp is negative.
+ *
+ * Used to generate output for wave envelope FM or AM input.
+ */
+static void block_mix_mul_waveenv(float *restrict buf, size_t buf_len,
+    uint32_t layer,
+    const float *restrict in_buf,
+    const float *restrict amp) {
+  if (layer > 0) {
+    for (size_t i = 0; i < buf_len; ++i) {
+      float s = in_buf[i];
+      float s_amp = amp[i] * 0.5f;
+      s = (s * s_amp) + fabs(s_amp);
+      buf[i] *= s;
+    }
+  } else {
+    for (size_t i = 0; i < buf_len; ++i) {
+      float s = in_buf[i];
+      float s_amp = amp[i] * 0.5f;
+      s = (s * s_amp) + fabs(s_amp);
+      buf[i] = s;
+    }
+  }
+}
+
 static void run_block_sub(MGS_Generator *o, Buf *bufs_from, uint32_t len,
     uint32_t mods_id, Buf *freq,
     uint32_t flags);
@@ -193,37 +243,36 @@ static void run_block_noise(MGS_Generator *o, Buf *bufs_from, uint32_t len,
     MGS_NoiseNode *n,
     uint32_t layer, uint32_t flags) {
   uint32_t i;
-  Buf *sbuf = bufs_from++, *amp;
-  Buf *next_buf = bufs_from;
+  Buf *mix_buf = bufs_from++;
+  Buf *amp = NULL;
+  Buf *tmp_buf = NULL;
   if (n->sound.amods_id > 0) {
-    run_block_sub(o, next_buf, len,
+    run_block_sub(o, bufs_from, len,
         n->sound.amods_id, NULL,
         BLOCK_WAVEENV);
-    amp = next_buf++;
+    amp = bufs_from++;
     float dynampdiff = n->sound.dynamp - n->sound.amp;
     for (i = 0; i < len; ++i)
       amp->f[i] = n->sound.amp + amp->f[i] * dynampdiff;
   } else {
-    amp = (next_buf++);
+    amp = bufs_from++;
     for (i = 0; i < len; ++i)
       amp->f[i] = n->sound.amp;
   }
-  if (flags & BLOCK_WAVEENV) {
-    MGS_NGen_run_env(&n->ngen, sbuf->f, len,
-        layer, amp->f);
-  } else {
-    MGS_NGen_run(&n->ngen, sbuf->f, len,
-        layer, amp->f);
-  }
+  tmp_buf = bufs_from++;
+  MGS_NGen_run(&n->ngen, tmp_buf->f, len);
+  ((flags & BLOCK_WAVEENV) ?
+   block_mix_mul_waveenv :
+   block_mix_add)(mix_buf->f, len, layer, tmp_buf->f, amp->f);
 }
 
 static void run_block_wave(MGS_Generator *o, Buf *bufs_from, uint32_t len,
     MGS_WaveNode *n, Buf *parentfreq,
     uint32_t layer, uint32_t flags) {
   uint32_t i;
-  Buf *sbuf = bufs_from++, *freq, *amp, *pm;
-  Buf *next_buf = bufs_from;
-  freq = next_buf++;
+  Buf *mix_buf = bufs_from++, *phase_buf = bufs_from++, *pm_buf = NULL;
+  Buf *freq = bufs_from++, *amp = NULL;
+  Buf *tmp_buf = NULL;
   if ((n->attr & MGS_ATTR_FREQRATIO) != 0 && parentfreq != NULL) {
     for (i = 0; i < len; ++i)
       freq->f[i] = n->freq * parentfreq->f[i];
@@ -232,10 +281,10 @@ static void run_block_wave(MGS_Generator *o, Buf *bufs_from, uint32_t len,
       freq->f[i] = n->freq;
   }
   if (n->fmods_id > 0) {
-    run_block_sub(o, next_buf, len,
+    run_block_sub(o, (bufs_from + 0), len,
         n->fmods_id, freq,
         BLOCK_WAVEENV);
-    Buf *fmbuf = next_buf;
+    Buf *fmbuf = (bufs_from + 0);
     if ((n->attr & MGS_ATTR_FREQRATIO) != 0 && parentfreq != NULL) {
       for (i = 0; i < len; ++i)
         freq->f[i] += (n->dynfreq * parentfreq->f[i] - freq->f[i]) * fmbuf->f[i];
@@ -244,33 +293,33 @@ static void run_block_wave(MGS_Generator *o, Buf *bufs_from, uint32_t len,
         freq->f[i] += (n->dynfreq - freq->f[i]) * fmbuf->f[i];
     }
   }
+  pm_buf = NULL;
+  if (n->pmods_id > 0) {
+    run_block_sub(o, (bufs_from + 0), len,
+        n->pmods_id, freq,
+        0);
+    pm_buf = (bufs_from + 0);
+  }
+  MGS_Phasor_fill(&n->osc.phasor, phase_buf->u, len,
+      freq->f, (pm_buf ? pm_buf->f : NULL), NULL);
   if (n->sound.amods_id > 0) {
-    run_block_sub(o, next_buf, len,
+    run_block_sub(o, bufs_from, len,
         n->sound.amods_id, freq,
         BLOCK_WAVEENV);
-    amp = next_buf++;
+    amp = bufs_from++;
     float dynampdiff = n->sound.dynamp - n->sound.amp;
     for (i = 0; i < len; ++i)
       amp->f[i] = n->sound.amp + amp->f[i] * dynampdiff;
   } else {
-    amp = (next_buf++);
+    amp = (bufs_from++);
     for (i = 0; i < len; ++i)
       amp->f[i] = n->sound.amp;
   }
-  pm = NULL;
-  if (n->pmods_id > 0) {
-    run_block_sub(o, next_buf, len,
-        n->pmods_id, freq,
-        0);
-    pm = next_buf++;
-  }
-  if (flags & BLOCK_WAVEENV) {
-    MGS_Osc_run_env(&n->osc, sbuf->f, len,
-        layer, freq->f, amp->f, (pm != NULL) ? pm->f : NULL);
-  } else {
-    MGS_Osc_run(&n->osc, sbuf->f, len,
-        layer, freq->f, amp->f, (pm != NULL) ? pm->f : NULL);
-  }
+  tmp_buf = bufs_from++;
+  MGS_Osc_run(&n->osc, tmp_buf->f, len, phase_buf->u);
+  ((flags & BLOCK_WAVEENV) ?
+   block_mix_mul_waveenv :
+   block_mix_add)(mix_buf->f, len, layer, tmp_buf->f, amp->f);
 }
 
 static void run_block_sub(MGS_Generator *o, Buf *bufs_from, uint32_t len,

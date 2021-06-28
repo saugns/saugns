@@ -1,5 +1,5 @@
 /* mgensys: Oscillator implementation.
- * Copyright (c) 2011, 2017-2020 Joel K. Pettersson
+ * Copyright (c) 2011, 2017-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -19,38 +19,85 @@
 #include "../wave.h"
 #include "../math.h"
 
-typedef struct MGS_Osc {
+/*
+ * Use pre-integrated LUTs ("PILUTs")?
+ *
+ * Turn off to use the raw naive LUTs,
+ * kept for testing/"viewing" of them.
+ */
+#define USE_PILUT 1
+
+/**
+ * Calculate the coefficent, based on the sample rate, used for
+ * the per-sample phase by multiplying with the frequency used.
+ */
+#define MGS_Phasor_COEFF(srate) (((float) UINT32_MAX)/(srate))
+
+typedef struct MGS_Phasor {
 	uint32_t phase;
 	float coeff;
-	const float *lut;
+} MGS_Phasor;
+
+void MGS_Phasor_fill(MGS_Phasor *restrict o,
+		uint32_t *restrict phase_ui32,
+		size_t buf_len,
+		const float *restrict freq_f,
+		const float *restrict pm_f,
+		const float *restrict fpm_f);
+
+#define MGS_OSC_RESET_DIFF  (1<<0)
+#define MGS_OSC_RESET       ((1<<1) - 1)
+
+typedef struct MGS_Osc {
+	MGS_Phasor phasor;
+	uint8_t wave;
+	uint8_t flags;
+#if USE_PILUT
+	uint32_t prev_phase;
+	double prev_Is;
+	float prev_diff_s;
+#endif
 } MGS_Osc;
-
-/**
- * Convert floating point phase value (0.0 = 0 deg., 1.0 = 360 deg.)
- * to 32-bit unsigned int, as used by oscillator.
- */
-#define MGS_Osc_PHASE(p) ((uint32_t) lrint((p) * 4294967296.0))
-
-/**
- * Calculate the coefficent, based on the sample rate,
- * used to give the per-sample phase increment
- * by multiplying with the frequency used.
- */
-#define MGS_Osc_COEFF(srate) ((float) 4294967296.0/(srate))
-
-/**
- * Get LUT for wave type enum.
- */
-#define MGS_Osc_LUT(wave) \
-	(MGS_Wave_luts[(wave) < MGS_WAVE_TYPES ? (wave) : MGS_WAVE_SIN])
 
 /**
  * Initialize instance for use.
  */
 static inline void MGS_init_Osc(MGS_Osc *restrict o, uint32_t srate) {
-	o->phase = 0;
-	o->coeff = MGS_Osc_COEFF(srate);
-	o->lut = MGS_Osc_LUT(MGS_WAVE_SIN);
+	*o = (MGS_Osc){
+#if USE_PILUT
+		.phasor = (MGS_Phasor){
+			.phase = MGS_Wave_picoeffs[MGS_WAVE_SIN].phase_adj,
+			.coeff = MGS_Phasor_COEFF(srate),
+		},
+#else
+		.phasor = (MGS_Phasor){
+			.phase = 0,
+			.coeff = MGS_Phasor_COEFF(srate),
+		},
+#endif
+		.wave = MGS_WAVE_SIN,
+		.flags = MGS_OSC_RESET,
+	};
+}
+
+static inline void MGS_Osc_set_phase(MGS_Osc *restrict o, uint32_t phase) {
+#if USE_PILUT
+	o->phasor.phase = phase + MGS_Wave_picoeffs[o->wave].phase_adj;
+#else
+	o->phasor.phase = phase;
+#endif
+}
+
+static inline void MGS_Osc_set_wave(MGS_Osc *restrict o, uint8_t wave) {
+#if USE_PILUT
+	int32_t old_offset = MGS_Wave_picoeffs[o->wave].phase_adj;
+	int32_t offset = MGS_Wave_picoeffs[wave].phase_adj;
+	o->phasor.phase += offset - old_offset;
+	o->wave = wave;
+	o->flags |= MGS_OSC_RESET_DIFF;
+#else
+	o->wave = wave;
+#endif
 }
 
 /**
@@ -59,7 +106,7 @@ static inline void MGS_init_Osc(MGS_Osc *restrict o, uint32_t srate) {
  * \return number of samples
  */
 static inline uint32_t MGS_Osc_cycle_len(MGS_Osc *restrict o, float freq) {
-	return lrintf(4294967296.0 / (o->coeff * freq));
+	return lrintf(((float) UINT32_MAX) / (o->phasor.coeff * freq));
 }
 
 /**
@@ -69,7 +116,7 @@ static inline uint32_t MGS_Osc_cycle_len(MGS_Osc *restrict o, float freq) {
  */
 static inline uint32_t MGS_Osc_cycle_pos(MGS_Osc *restrict o,
 		float freq, uint32_t pos) {
-	uint32_t inc = lrintf(o->coeff * freq);
+	uint32_t inc = lrintf(o->phasor.coeff * freq);
 	uint32_t phs = inc * pos;
 	return phs / inc;
 }
@@ -81,33 +128,11 @@ static inline uint32_t MGS_Osc_cycle_pos(MGS_Osc *restrict o,
  */
 static inline int32_t MGS_Osc_cycle_offs(MGS_Osc *restrict o,
 		float freq, uint32_t pos) {
-	uint32_t inc = lrintf(o->coeff * freq);
+	uint32_t inc = lrintf(o->phasor.coeff * freq);
 	uint32_t phs = inc * pos;
-	return (phs - MGS_Wave_SCALE) / inc;
-}
-
-/**
- * Get next sample.
- *
- * \return value from -1.0 to 1.0
- */
-static inline float MGS_Osc_get(MGS_Osc *restrict o,
-		float freq, int32_t pm_s32) {
-	uint32_t phase = o->phase + pm_s32;
-	float s = MGS_Wave_get_lerp(o->lut, phase);
-	o->phase += lrintf(o->coeff * freq);
-	return s;
+	return (phs - MGS_Wave_SLEN) / inc;
 }
 
 void MGS_Osc_run(MGS_Osc *restrict o,
 		float *restrict buf, size_t buf_len,
-		uint32_t layer,
-		const float *restrict freq,
-		const float *restrict amp,
-		const float *restrict pm_f);
-void MGS_Osc_run_env(MGS_Osc *restrict o,
-		float *restrict buf, size_t buf_len,
-		uint32_t layer,
-		const float *restrict freq,
-		const float *restrict amp,
-		const float *restrict pm_f);
+		const uint32_t *restrict phase_buf);
