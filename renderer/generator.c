@@ -1,5 +1,5 @@
 /* sgensys: Audio generator module.
- * Copyright (c) 2011-2012, 2017-2020 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -242,7 +242,7 @@ static bool convert_program(SGS_Generator *restrict o,
 			if (params & SGS_POPP_DYNFREQ)
 				(*ev_v++).fval = pod->dynfreq;
 			if (params & SGS_POPP_PHASE)
-				(*ev_v++).ival = SGS_Osc_PHASE(pod->phase);
+				(*ev_v++).fval = pod->phase;
 			if (params & SGS_POPP_AMP)
 				(*ev_v++).ramp = &pod->amp;
 			if (params & SGS_POPP_DYNAMP)
@@ -349,10 +349,8 @@ static void handle_event(SGS_Generator *restrict o, EventNode *restrict e) {
 			params = od->params;
 			if (params & SGS_POPP_ADJCS)
 				on->adjcs = od->adjcs;
-			if (params & SGS_POPP_WAVE) {
-				uint8_t wave = (*val++).ival;
-				on->osc.lut = SGS_Osc_LUT(wave);
-			}
+			if (params & SGS_POPP_WAVE)
+				SGS_Osc_set_wave(&on->osc, (*val++).ival);
 			if (params & SGS_POPP_TIME)
 				on->time = (*val++).ival;
 			if (params & SGS_POPP_SILENCE)
@@ -363,7 +361,7 @@ static void handle_event(SGS_Generator *restrict o, EventNode *restrict e) {
 			if (params & SGS_POPP_DYNFREQ)
 				on->dynfreq = (*val++).fval;
 			if (params & SGS_POPP_PHASE)
-				on->osc.phase = (*val++).ival;
+				SGS_Osc_set_phase(&on->osc, (*val++).fval);
 			if (params & SGS_POPP_AMP)
 				val = handle_ramp_update(&on->amp,
 						&on->amp_pos, val);
