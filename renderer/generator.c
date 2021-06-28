@@ -254,7 +254,7 @@ static void handle_event(SGS_Generator *restrict o, EventNode *restrict e) {
 			if (od->pmods != NULL) on->pmods = od->pmods;
 			if (od->amods != NULL) on->amods = od->amods;
 			if (params & SGS_POPP_WAVE)
-				on->osc.lut = SGS_Osc_LUT(od->wave);
+				SGS_Osc_set_wave(&on->osc, od->wave);
 			if (params & SGS_POPP_TIME) {
 				const SGS_Time *src = &od->time;
 				if (src->flags & SGS_TIMEP_IMPLICIT) {
@@ -275,7 +275,7 @@ static void handle_event(SGS_Generator *restrict o, EventNode *restrict e) {
 			if (params & SGS_POPP_DYNFREQ)
 				on->dynfreq = od->dynfreq;
 			if (params & SGS_POPP_PHASE)
-				on->osc.phase = SGS_Osc_PHASE(od->phase);
+				SGS_Osc_set_phase(&on->osc, od->phase);
 			if (params & SGS_POPP_AMP)
 				handle_ramp_update(&on->amp,
 						&on->amp_pos, &od->amp);
