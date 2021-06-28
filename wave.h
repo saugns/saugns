@@ -45,7 +45,16 @@ enum {
 };
 
 /** LUTs for wave types. */
-extern float SGS_Wave_luts[SGS_WAVE_TYPES][SGS_Wave_LEN];
+extern float *const SGS_Wave_luts[SGS_WAVE_TYPES];
+
+/** Pre-integrated LUTs for wave types. */
+extern float *const SGS_Wave_piluts[SGS_WAVE_TYPES];
+
+/** Differentiation scale factors for wave types. */
+extern const float SGS_Wave_piscale[SGS_WAVE_TYPES];
+
+/** Differentiation result offset values for wave types. */
+extern const float SGS_Wave_pioffset[SGS_WAVE_TYPES];
 
 /** Names of wave types, with an extra NULL pointer at the end. */
 extern const char *const SGS_Wave_names[SGS_WAVE_TYPES + 1];
@@ -68,6 +77,26 @@ static inline float SGS_Wave_get_lerp(const float *restrict lut,
 	s += (lut[(ind + 1) & SGS_Wave_LENMASK] - s) *
 		((phase & SGS_Wave_SCALEMASK) * (1.f / SGS_Wave_SCALE));
 	return s;
+}
+
+/** Get scale constant for SGS_Wave_get_diffv(). */
+#define SGS_Wave_DIFFSCALE(wave) \
+	(SGS_Wave_piscale[wave] * 0.125f * (float) UINT32_MAX)
+
+/** Get offset constant for result of SGS_Wave_get_diffv(). */
+#define SGS_Wave_DIFFOFFSET(wave) \
+	(SGS_Wave_pioffset[wave])
+
+/**
+ * Get value from pre-integrated LUT values using differentiation.
+ *
+ * \return sample
+ */
+static inline float SGS_Wave_get_diffv(float s, float prev_s,
+		float scale, int32_t phase_inc) {
+	if (phase_inc == 0)
+		return 0.f;
+	return (s - prev_s) * scale / (float) phase_inc;
 }
 
 void SGS_global_init_Wave(void);
