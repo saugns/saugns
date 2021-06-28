@@ -20,8 +20,73 @@
 #include <stdio.h>
 
 #define HALFLEN (SGS_Wave_LEN>>1)
+#define QUARTERLEN (SGS_Wave_LEN>>2)
+#define DVSCALE (SGS_Wave_LEN * 0.125f)
+#define IVSCALE (1.f / DVSCALE)
 
-float SGS_Wave_luts[SGS_WAVE_TYPES][SGS_Wave_LEN];
+static float cossin_lut[SGS_Wave_LEN + QUARTERLEN];
+
+static float sqr_lut[SGS_Wave_LEN];
+static float tri_lut[SGS_Wave_LEN];
+static float pitri_lut[SGS_Wave_LEN];
+
+static float saw_lut[SGS_Wave_LEN];
+static float par_lut[SGS_Wave_LEN];
+
+static float ahs_lut[SGS_Wave_LEN];
+static float piahs_lut[SGS_Wave_LEN];
+
+static float hrs_lut[SGS_Wave_LEN];
+static float pihrs_lut[SGS_Wave_LEN];
+
+static float srs_lut[SGS_Wave_LEN];
+static float pisrs_lut[SGS_Wave_LEN];
+static float ssr_lut[SGS_Wave_LEN];
+static float pissr_lut[SGS_Wave_LEN];
+
+float *const SGS_Wave_luts[SGS_WAVE_TYPES] = {
+	cossin_lut + QUARTERLEN,
+	sqr_lut,
+	tri_lut,
+	saw_lut,
+	ahs_lut,
+	hrs_lut,
+	srs_lut,
+	ssr_lut,
+};
+
+float *const SGS_Wave_piluts[SGS_WAVE_TYPES] = {
+	cossin_lut,
+	tri_lut,
+	pitri_lut,
+	par_lut,
+	piahs_lut,
+	pihrs_lut,
+	pisrs_lut,
+	pissr_lut,
+};
+
+const float SGS_Wave_piscale[SGS_WAVE_TYPES] = {
+	1.f / 0.78539693356f,
+	1.f / 0.5f,
+	1.f / 0.99902343750f,
+	1.f / 1.00048828125f,
+	1.f / 0.93224668503f, /* offset 0.f: 1.f / 1.18661737442f */
+	1.f / 0.71259796619f, /* offset 0.f: 1.f / 0.97152161598f */
+	1.f / 0.65553373098f,
+	1.f / 0.79131034491f, /* offset 0.f: 1.f / 0.89525759220f */
+};
+
+const float SGS_Wave_pioffset[SGS_WAVE_TYPES] = {
+	0.f,
+	0.f,
+	0.f,
+	0.f,
+	0.27323962859f - (1.00038196601f - 1.f),
+	-0.36338006155f - (-1.00002840285f + 1.f),
+	0.f,
+	-0.13136863776f - (-1.00000757464 + 1.f),
+};
 
 const char *const SGS_Wave_names[SGS_WAVE_TYPES + 1] = {
 	"sin",
@@ -36,71 +101,25 @@ const char *const SGS_Wave_names[SGS_WAVE_TYPES + 1] = {
 };
 
 /*
- * Replacement tanh-based stEP. Square wave version.
- *
- * Replace value range in \p dst with result of
- * tanh for upscaled values from \p src.
- *
- * For use with a sine wave \p src LUT.
+ * Fill \p lut with integrated version of \p in_lut,
+ * adjusted to have a peak amplitude of +/- \p scale.
+ * The \in_dc DC offset for \p in_lut must be provided.
  */
-static void rep_range_sqr(float *restrict dst, const float *restrict src,
-		size_t from, size_t num) {
-	/*
-	 * Twice the scale factor giving the greatest
-	 * aliasing reduction per number of values.
-	 *
-	 * Used with twice the number of values,
-	 * gives a higher-quality result with
-	 * very similar frequency roll-off.
-	 */
-	const float scale = (float) (SGS_Wave_LEN / num);
-	for (size_t i = from, end = from + num; i < end; ++i) {
-		dst[i] = tanhf(src[i] * scale);
+static void fill_It(float *restrict lut, size_t len, const float scale,
+		const float *restrict in_lut, double in_dc) {
+	double in_sum = 0.f;
+	float lb = 0.f, ub = 0.f;
+	for (size_t i = 0; i < len; ++i) {
+		in_sum += in_lut[i] - in_dc;
+		float x = in_sum * IVSCALE;
+		if (x < lb) lb = x;
+		if (x > ub) ub = x;
+		lut[i] = x;
 	}
-}
-
-/*
- * Replacement tanh-based stEP. Sawtooth wave version.
- *
- * Replace value range in \p dst with result of
- * tanh for upscaled values from \p src.
- *
- * The sample \p skip number reduces the length, and should
- * be chosen to begin filling with the lowest >= 0.f value.
- * This number of samples needs to be zero-filled at the
- * middle of the sawtooth shape in order for the
- * anti-aliasing to properly work.
- *
- * For use with a sine wave \p src LUT.
- */
-static void rep_range_saw(float *restrict dst, const float *restrict src,
-		size_t from, size_t num, size_t skip) {
-	/*
-	 * Twice the scale factor giving the greatest
-	 * aliasing reduction per number of values.
-	 *
-	 * Used with twice the number of values,
-	 * gives a higher-quality result with
-	 * very similar frequency roll-off.
-	 *
-	 * Requires inserting an extra zero value
-	 * at the cycle boundary (e.g. beginning).
-	 */
-	const float scale = (float) (SGS_Wave_LEN / num);
-	for (size_t i = from, end = from + num - skip; i < end; ++i) {
-		float s = tanhf(src[i + skip] * scale);
-		dst[i] = -1.f + s*2.f;
-	}
-}
-
-/*
- * Copy values in reverse direction in \p lut
- * from first value range to second value range.
- */
-static void hmirror_range(float *restrict lut,
-		size_t from, size_t num, size_t offs) {
-	for (size_t i = from, end = from + num; i < end; ++i) {
-		lut[offs - i] = lut[i];
+	float out_scale = scale * 1.f/((ub - lb) * 0.5f);
+	float out_dc = -(ub + lb) * 0.5f;
+	for (size_t i = 0; i < len; ++i) {
+		lut[i] = (lut[i] + out_dc) * out_scale;
 	}
 }
 
@@ -115,110 +134,105 @@ void SGS_global_init_Wave(void) {
 		return;
 	done = true;
 
-	float *const sin_lut = SGS_Wave_luts[SGS_WAVE_SIN];
-	float *const sqr_lut = SGS_Wave_luts[SGS_WAVE_SQR];
-	float *const tri_lut = SGS_Wave_luts[SGS_WAVE_TRI];
-	float *const saw_lut = SGS_Wave_luts[SGS_WAVE_SAW];
-	float *const ahs_lut = SGS_Wave_luts[SGS_WAVE_AHS];
-	float *const hrs_lut = SGS_Wave_luts[SGS_WAVE_HRS];
-	float *const srs_lut = SGS_Wave_luts[SGS_WAVE_SRS];
-	float *const ssr_lut = SGS_Wave_luts[SGS_WAVE_SSR];
 	int i;
-	const double val_scale = SGS_Wave_MAXVAL;
-	const double len_scale = 1.f / HALFLEN;
+	const float val_scale = SGS_Wave_MAXVAL;
 	/*
+	 * Fully fill cossin (sin, It cos).
+	 *
 	 * First half:
-	 *  - sin
-	 *  - sqr (fill only)
-	 *  - tri
-	 *  - srs
-	 *  - ssr
+	 *  - tri, It pitri
+	 *  - saw, It par
+	 *  - srs, It pisrs
+	 *  - ssr, It pissr
 	 */
+	double srs_half_dc = 0.f, ssr_half_dc = 0.f, ssr_dc;
 	for (i = 0; i < HALFLEN; ++i) {
-		const double x = i * len_scale;
-		const double x_rev = (HALFLEN-i) * len_scale;
+		const double x = i * (1.f/HALFLEN);
+		//const double x_rev = (HALFLEN-i) * (1.f/HALFLEN);
 
-		const double sin_x = sin(SGS_PI * x);
-		sin_lut[i] = val_scale * sin_x;
+		const float sin_x = sin(SGS_PI * x);
+		cossin_lut[i + QUARTERLEN] = val_scale * sin_x;
+		cossin_lut[i + HALFLEN + QUARTERLEN] = -val_scale * sin_x;
 
-		sqr_lut[i] = SGS_Wave_MAXVAL;
+		sqr_lut[i] = val_scale;
 
-		if (i < (HALFLEN>>1))
-			tri_lut[i] = val_scale * 2.f * x;
-		else
-			tri_lut[i] = val_scale * 2.f * x_rev;
+		srs_half_dc += srs_lut[i] = val_scale * sqrtf(sin_x);
 
-		srs_lut[i] = val_scale * sqrtf(sin_x);
-
-		ssr_lut[i] = val_scale * (sin_x * sin_x);
+		ssr_half_dc += ssr_lut[i] = val_scale * (sin_x * sin_x);
 	}
-	/*
-	 * Replacement tanh-based stEP. (An experimental example
-	 * of the LUT-value-fiddling approach to anti-aliasing.)
-	 *
-	 * Replace ideal step function with tanh-of-sin values.
-	 * Tuned for nice anti-aliasing at mid frequencies, and
-	 * a "nice", yet not too dull sound at low frequencies.
-	 * (The "saw" version zeroes some values at the center,
-	 * though one zero value is displaced to the beginning.)
-	 *
-	 * REP and first half:
-	 *  - sqr (rep only)
-	 *  - saw
-	 */
-	const int rsqr_len = HALFLEN/32;
-	rep_range_sqr(sqr_lut, sin_lut, 0, rsqr_len);
-	hmirror_range(sqr_lut, 0, rsqr_len, HALFLEN);
-	const int rsaw_len = HALFLEN/16;
-	const double saw_scale = 1.f / (HALFLEN - rsaw_len);
-	const int saw_skip = 6; // Pick to start with lowest >= 0.f amplitude
-	// The skipped saw_lut values are == 0.f
-	rep_range_saw(saw_lut+1, sin_lut, 0, rsaw_len, saw_skip);
-	for (i = rsaw_len; i < HALFLEN; ++i) {
-		const double x = (i - rsaw_len) * saw_scale;
+	srs_half_dc *= (1.f/SGS_Wave_LEN);
+	ssr_half_dc *= (1.f/SGS_Wave_LEN);
+	ssr_dc = ssr_half_dc - srs_half_dc;
+	for (i = 0; i < HALFLEN; ++i) {
+		const double x = i * (1.f/(HALFLEN-1));
+		const double x_rev = ((HALFLEN-1)-i) * (1.f/(HALFLEN-1));
 
-		saw_lut[i+1 - saw_skip] = SGS_Wave_MAXVAL - x;
+		saw_lut[i] = val_scale * (x - 1.f);
+		par_lut[i] = val_scale * ((x_rev * x_rev) * 2.f - 1.f);
+	}
+	for (i = 0; i < QUARTERLEN; ++i) {
+		const double x = i * (1.f/QUARTERLEN);
+		const double x_rev = (QUARTERLEN-i) * (1.f/QUARTERLEN);
+
+		cossin_lut[i] = -cossin_lut[i + HALFLEN];
+
+		tri_lut[i] = val_scale * x;
+		tri_lut[i + QUARTERLEN] = val_scale * x_rev;
+
+		/* pre-integrated triangle shape */
+		pitri_lut[i] = val_scale * ((x * x) - 1.f);
+		pitri_lut[i + QUARTERLEN] = val_scale * (1.f - (x_rev * x_rev));
 	}
 	/* Second half:
-	 *  - sin
-	 *  - sqr
-	 *  - tri
-	 *  - saw
-	 *  - srs
-	 *  - ssr
+	 *  - sqr, It tri
+	 *  - tri, It pitri
+	 *  - saw, It par
+	 *  - srs, It pisrs
+	 *  - ssr, It pissr
 	 */
-	for (; i < SGS_Wave_LEN; ++i) {
-		sin_lut[i] = -sin_lut[i - HALFLEN];
-
+	for (i = HALFLEN; i < SGS_Wave_LEN; ++i) {
 		sqr_lut[i] = -sqr_lut[i - HALFLEN];
-
 		tri_lut[i] = -tri_lut[i - HALFLEN];
+		pitri_lut[i] = -pitri_lut[i - HALFLEN];
 
-		saw_lut[i] = -saw_lut[(SGS_Wave_LEN-1) - (i-1)];
+		saw_lut[i] = -saw_lut[(SGS_Wave_LEN-1) - i];
+		par_lut[i] = par_lut[(SGS_Wave_LEN-1) - i];
 
 		ssr_lut[i] = srs_lut[i] = -srs_lut[i - HALFLEN];
 	}
 	/* Full cycle:
-	 *  - ahs
-	 *  - hrs
+	 *  - ahs, It piahs
+	 *  - hrs, It pihrs
 	 */
+	double ahs_dc = 0.f;
+	double hrs_dc = 0.f;
 	for (i = 0; i < SGS_Wave_LEN; ++i) {
-		const double x = i * len_scale;
+		const double x = i * (1.f/HALFLEN);
 
-		double ahs_x = sin((SGS_PI * x) * 0.5f + SGS_ASIN_1_2);
+		float ahs_x = sin((SGS_PI * x) * 0.5f + SGS_ASIN_1_2);
 		ahs_x = fabs(ahs_x) - 0.5f;
 		ahs_x += ahs_x;
-		ahs_lut[i] = val_scale * ahs_x;
+		ahs_x *= val_scale;
+		ahs_lut[i] = ahs_x;
+		ahs_dc += ahs_x;
 
-		double hrs_x = sin((SGS_PI * x) + SGS_ASIN_1_2);
+		float hrs_x = sin((SGS_PI * x) + SGS_ASIN_1_2);
 		if (hrs_x > 0.f) {
 			hrs_x -= 0.5f;
 			hrs_x += hrs_x;
-			hrs_lut[i] = val_scale * hrs_x;
+			hrs_x *= val_scale;
 		} else {
-			hrs_lut[i] = -SGS_Wave_MAXVAL;
+			hrs_x = -val_scale;
 		}
+		hrs_lut[i] = hrs_x;
+		hrs_dc += hrs_x;
 	}
+	ahs_dc *= (1.f/SGS_Wave_LEN);
+	hrs_dc *= (1.f/SGS_Wave_LEN);
+	fill_It(piahs_lut, SGS_Wave_LEN, val_scale, ahs_lut, ahs_dc);
+	fill_It(pihrs_lut, SGS_Wave_LEN, val_scale, hrs_lut, hrs_dc);
+	fill_It(pisrs_lut, SGS_Wave_LEN, val_scale, srs_lut, 0.f);
+	fill_It(pissr_lut, SGS_Wave_LEN, val_scale, ssr_lut, ssr_dc);
 }
 
 /**
@@ -228,10 +242,51 @@ void SGS_Wave_print(uint8_t id) {
 	if (id >= SGS_WAVE_TYPES)
 		return;
 	const float *lut = SGS_Wave_luts[id];
+	const float *pilut = SGS_Wave_piluts[id];
 	const char *lut_name = SGS_Wave_names[id];
 	fprintf(stdout, "LUT: %s\n", lut_name);
+	double sum = 0.f, sum2 = 0.f, mag_sum = 0.f, mag_sum2 = 0.f;
+	float prev_s = lut[SGS_Wave_LEN - 1], prev_s2 = pilut[SGS_Wave_LEN - 1];
+	float peak_max = 0.f, peak_max2 = 0.f;
+	float slope_min = 0.f, slope_min2 = 0.f;
+	float slope_max = 0.f, slope_max2 = 0.f;
 	for (int i = 0; i < SGS_Wave_LEN; ++i) {
-		float v = lut[i];
-		fprintf(stdout, "[\t%d]: \t%.11f\n", i, v);
+		float s = lut[i], s2 = pilut[i];
+		float abs_s = fabsf(s), abs_s2 = fabsf(s2);
+		float slope_s = (s - prev_s), slope_s2 = (s2 - prev_s2);
+		sum += s; sum2 += s2;
+		mag_sum += abs_s; mag_sum2 += abs_s2;
+		if (peak_max < abs_s) peak_max = abs_s;
+		if (peak_max2 < abs_s2) peak_max2 = abs_s2;
+		if (slope_max < slope_s) slope_max = slope_s;
+		if (slope_max2 < slope_s2) slope_max2 = slope_s2;
+		if (slope_min > slope_s) slope_min = slope_s;
+		if (slope_min2 > slope_s2) slope_min2 = slope_s2;
+		prev_s = s; prev_s2 = s2;
+		fprintf(stdout, "[\t%d]: \t%.11f\tIv %.11f\n", i, s, s2);
 	}
+	float len_scale = (float) SGS_Wave_LEN;
+	float diff_min = slope_min2 * DVSCALE;
+	float diff_max = slope_max2 * DVSCALE;
+	float diff_scale = SGS_Wave_piscale[id];
+	float diff_offset = SGS_Wave_pioffset[id];
+	fprintf(stdout, "\tp.m.avg %.11f\tIt %.11f\n"
+			"\tp.m.max %.11f\tIt %.11f\n"
+			"\tdc.offs %.11f\tIt %.11f\n"
+			"\t+slope  %.11f\tIt %.11f\n"
+			"\t-slope  %.11f\tIt %.11f\n"
+			"It\tdiff.min %.11f\t(adj. to %.11f)\n"
+			"It\tdiff.max %.11f\t(adj. to %.11f)\n",
+			mag_sum / len_scale,
+			mag_sum2 / len_scale,
+			peak_max,
+			peak_max2,
+			sum / len_scale,
+			sum2 / len_scale,
+			slope_max,
+			slope_max2,
+			slope_min,
+			slope_min2,
+			diff_min, diff_min * diff_scale + diff_offset,
+			diff_max, diff_max * diff_scale + diff_offset);
 }
