@@ -27,6 +27,7 @@ typedef struct SGS_Osc {
 	uint8_t wave;
 	uint8_t flags;
 	int32_t phase_inc;
+	float prev_diff_s;
 } SGS_Osc;
 
 /**
@@ -46,19 +47,25 @@ typedef struct SGS_Osc {
  * Initialize instance for use.
  */
 static inline void SGS_init_Osc(SGS_Osc *restrict o, uint32_t srate) {
-	o->phase = 0;
-	o->coeff = SGS_Osc_COEFF(srate);
-	o->wave = SGS_WAVE_SIN;
-	o->flags = SGS_OSC_RESET_DIFF;
-	o->phase_inc = 0;
+	*o = (SGS_Osc){
+		.phase = SGS_Wave_picoeffs[SGS_WAVE_SIN].phase_adj,
+		.coeff = SGS_Osc_COEFF(srate),
+		.wave = SGS_WAVE_SIN,
+		.flags = SGS_OSC_RESET_DIFF,
+	};
 }
 
-static inline void SGS_Osc_set_phase(SGS_Osc *restrict o, float phase) {
-	o->phase = SGS_Osc_PHASE(phase);
-	o->flags |= SGS_OSC_RESET_DIFF;
+static inline void SGS_Osc_set_phase(SGS_Osc *restrict o, uint32_t phase) {
+	int32_t offset = SGS_Wave_picoeffs[o->wave].phase_adj;
+	phase += offset;
+	o->phase_inc += phase - o->phase;
+	o->phase = phase;
 }
 
 static inline void SGS_Osc_set_wave(SGS_Osc *restrict o, uint8_t wave) {
+	int32_t old_offset = SGS_Wave_picoeffs[o->wave].phase_adj;
+	int32_t offset = SGS_Wave_picoeffs[wave].phase_adj;
+	o->phase += offset - old_offset;
 	o->wave = wave;
 	o->flags |= SGS_OSC_RESET_DIFF;
 }
