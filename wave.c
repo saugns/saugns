@@ -1,5 +1,5 @@
 /* sgensys: Wave module.
- * Copyright (c) 2011-2012, 2017-2021 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -24,10 +24,10 @@
 #define DVSCALE (SGS_Wave_LEN * 0.125f)
 #define IVSCALE (1.f / DVSCALE)
 
-static float extsin_lut[SGS_Wave_LEN + QUARTERLEN];
+static float sin_lut[SGS_Wave_LEN];
 
 static float sqr_lut[SGS_Wave_LEN];
-static float exttri_lut[SGS_Wave_LEN + QUARTERLEN];
+static float tri_lut[SGS_Wave_LEN];
 static float pitri_lut[SGS_Wave_LEN];
 
 static float saw_lut[SGS_Wave_LEN];
@@ -45,9 +45,9 @@ static float ssr_lut[SGS_Wave_LEN];
 static float pissr_lut[SGS_Wave_LEN];
 
 float *const SGS_Wave_luts[SGS_WAVE_TYPES] = {
-	extsin_lut + QUARTERLEN,
+	sin_lut,
 	sqr_lut,
-	exttri_lut + QUARTERLEN,
+	tri_lut,
 	saw_lut,
 	ahs_lut,
 	hrs_lut,
@@ -56,8 +56,8 @@ float *const SGS_Wave_luts[SGS_WAVE_TYPES] = {
 };
 
 float *const SGS_Wave_piluts[SGS_WAVE_TYPES] = {
-	extsin_lut,
-	exttri_lut,
+	sin_lut,
+	tri_lut,
 	pitri_lut,
 	par_lut,
 	piahs_lut,
@@ -66,26 +66,40 @@ float *const SGS_Wave_piluts[SGS_WAVE_TYPES] = {
 	pissr_lut,
 };
 
-const float SGS_Wave_piscale[SGS_WAVE_TYPES] = {
-	1.f / 0.78539693356f,
-	1.f / 0.5f,
-	1.f / 0.99902343750f,
-	1.f / 1.00048828125f,
-	1.f / 0.93224668503f, /* offset 0.f: 1.f / 1.18661737442f */
-	1.f / 0.71259796619f, /* offset 0.f: 1.f / 0.97152161598f */
-	1.f / 0.65553373098f,
-	1.f / 0.79131034491f, /* offset 0.f: 1.f / 0.89525759220f */
-};
-
-const float SGS_Wave_pioffset[SGS_WAVE_TYPES] = {
-	0.f,
-	0.f,
-	0.f,
-	0.f,
-	0.27323962859f - (1.00038196601f - 1.f),
-	-0.36338006155f - (-1.00002840285f + 1.f),
-	0.f,
-	-0.13136863776f - (-1.00000757464 + 1.f),
+const struct SGS_WaveCoeffs SGS_Wave_picoeffs[SGS_WAVE_TYPES] = {
+	{
+		.amp_scale = 1.f / 0.78539693356f,
+		.amp_dc    = 0.f,
+		.phase_adj = INT32_MIN/2,
+	},{
+		.amp_scale = 1.f / 0.5f,
+		.amp_dc    = 0.f,
+		.phase_adj = INT32_MIN/2,
+	},{
+		.amp_scale = 1.f / 0.99902343750f,
+		.amp_dc    = 0.f,
+		.phase_adj = 0,
+	},{
+		.amp_scale = 1.f / 1.00048828125f,
+		.amp_dc    = 0.f,
+		.phase_adj = 0,
+	},{
+		.amp_scale = 1.f / 0.93224668503f,
+		.amp_dc    = 0.27323962859f - (1.00038196601f - 1.f),
+		.phase_adj = 0,
+	},{
+		.amp_scale = 1.f / 0.71259796619f,
+		.amp_dc    = -0.36338006155f - (-1.00002840285f + 1.f),
+		.phase_adj = 0,
+	},{
+		.amp_scale = 1.f / 0.65553373098f,
+		.amp_dc    = 0.f,
+		.phase_adj = 0,
+	},{
+		.amp_scale = 1.f / 0.79131034491f,
+		.amp_dc    = -0.13136863776f - (-1.00000757464 + 1.f),
+		.phase_adj = 0,
+	},
 };
 
 const char *const SGS_Wave_names[SGS_WAVE_TYPES + 1] = {
@@ -153,8 +167,8 @@ void SGS_global_init_Wave(void) {
 		//const double x_rev = (HALFLEN-i) * (1.f/HALFLEN);
 
 		const float sin_x = sin(SGS_PI * x);
-		extsin_lut[i + QUARTERLEN] = val_scale * sin_x;
-		extsin_lut[i + HALFLEN + QUARTERLEN] = -val_scale * sin_x;
+		sin_lut[i] = val_scale * sin_x;
+		sin_lut[i + HALFLEN] = -val_scale * sin_x;
 
 		sqr_lut[i] = val_scale;
 
@@ -176,11 +190,8 @@ void SGS_global_init_Wave(void) {
 		const double x = i * (1.f/QUARTERLEN);
 		const double x_rev = (QUARTERLEN-i) * (1.f/QUARTERLEN);
 
-		extsin_lut[i] = -extsin_lut[i + HALFLEN];
-
-		exttri_lut[i] = val_scale * (x - 1.f);
-		exttri_lut[i + QUARTERLEN] = val_scale * x;
-		exttri_lut[i + HALFLEN] = val_scale * x_rev;
+		tri_lut[i] = val_scale * x;
+		tri_lut[i + QUARTERLEN] = val_scale * x_rev;
 
 		/* pre-integrated triangle shape */
 		pitri_lut[i] = val_scale * ((x * x) - 1.f);
@@ -195,7 +206,7 @@ void SGS_global_init_Wave(void) {
 	 */
 	for (i = HALFLEN; i < SGS_Wave_LEN; ++i) {
 		sqr_lut[i] = -sqr_lut[i - HALFLEN];
-		exttri_lut[i + QUARTERLEN] = -exttri_lut[i - QUARTERLEN];
+		tri_lut[i] = -tri_lut[i - HALFLEN];
 		pitri_lut[i] = -pitri_lut[i - HALFLEN];
 
 		saw_lut[i] = -saw_lut[(SGS_Wave_LEN-1) - i];
@@ -271,8 +282,8 @@ void SGS_Wave_print(uint8_t id) {
 	float len_scale = (float) SGS_Wave_LEN;
 	float diff_min = slope_min2 * DVSCALE;
 	float diff_max = slope_max2 * DVSCALE;
-	float diff_scale = SGS_Wave_piscale[id];
-	float diff_offset = SGS_Wave_pioffset[id];
+	float diff_scale = SGS_Wave_picoeffs[id].amp_scale;
+	float diff_offset = SGS_Wave_picoeffs[id].amp_dc;
 	fprintf(stdout, "\tp.m.avg %.11f\tIt %.11f\n"
 			"\tp.m.max %.11f\tIt %.11f\n"
 			"\tdc.offs %.11f\tIt %.11f\n"
