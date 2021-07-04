@@ -272,7 +272,8 @@ static void handle_event(SGS_Generator *restrict o, EventNode *restrict e) {
 			if (params & SGS_POPP_DYNFREQ)
 				on->dynfreq = od->dynfreq;
 			if (params & SGS_POPP_PHASE)
-				SGS_Osc_set_phase(&on->osc, od->phase);
+				SGS_Osc_set_phase(&on->osc,
+						SGS_Osc_PHASE(od->phase));
 			if (params & SGS_POPP_AMP)
 				handle_ramp_update(&on->amp,
 						&on->amp_pos, &od->amp);
