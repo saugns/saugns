@@ -242,7 +242,7 @@ static bool convert_program(SGS_Generator *restrict o,
 			if (params & SGS_POPP_DYNFREQ)
 				(*ev_v++).fval = pod->dynfreq;
 			if (params & SGS_POPP_PHASE)
-				(*ev_v++).fval = pod->phase;
+				(*ev_v++).ival = SGS_Osc_PHASE(pod->phase);
 			if (params & SGS_POPP_AMP)
 				(*ev_v++).ramp = &pod->amp;
 			if (params & SGS_POPP_DYNAMP)
@@ -361,7 +361,7 @@ static void handle_event(SGS_Generator *restrict o, EventNode *restrict e) {
 			if (params & SGS_POPP_DYNFREQ)
 				on->dynfreq = (*val++).fval;
 			if (params & SGS_POPP_PHASE)
-				SGS_Osc_set_phase(&on->osc, (*val++).fval);
+				SGS_Osc_set_phase(&on->osc, (*val++).ival);
 			if (params & SGS_POPP_AMP)
 				val = handle_ramp_update(&on->amp,
 						&on->amp_pos, val);
