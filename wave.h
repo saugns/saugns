@@ -79,25 +79,13 @@ static inline float SGS_Wave_get_lerp(const float *restrict lut,
 	return s;
 }
 
-/** Get scale constant for SGS_Wave_get_diffv(). */
-#define SGS_Wave_DIFFSCALE(wave) \
+/** Get scale constant to differentiate values in a pre-integrated table. */
+#define SGS_Wave_DVSCALE(wave) \
 	(SGS_Wave_piscale[wave] * 0.125f * (float) UINT32_MAX)
 
-/** Get offset constant for result of SGS_Wave_get_diffv(). */
-#define SGS_Wave_DIFFOFFSET(wave) \
+/** Get offset constant to apply to result from using a pre-integrated table. */
+#define SGS_Wave_DVOFFSET(wave) \
 	(SGS_Wave_pioffset[wave])
-
-/**
- * Get value from pre-integrated LUT values using differentiation.
- *
- * \return sample
- */
-static inline float SGS_Wave_get_diffv(float s, float prev_s,
-		float scale, int32_t phase_inc) {
-	if (phase_inc == 0)
-		return 0.f;
-	return (s - prev_s) * scale / (float) phase_inc;
-}
 
 void SGS_global_init_Wave(void);
 

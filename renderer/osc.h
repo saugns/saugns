@@ -27,6 +27,7 @@ typedef struct SGS_Osc {
 	uint8_t wave;
 	uint8_t flags;
 	int32_t phase_inc;
+	float prev_diff_s;
 } SGS_Osc;
 
 /**
@@ -46,11 +47,12 @@ typedef struct SGS_Osc {
  * Initialize instance for use.
  */
 static inline void SGS_init_Osc(SGS_Osc *restrict o, uint32_t srate) {
-	o->phase = 0;
-	o->coeff = SGS_Osc_COEFF(srate);
-	o->wave = SGS_WAVE_SIN;
-	o->flags = SGS_OSC_RESET_DIFF;
-	o->phase_inc = 0;
+	*o = (SGS_Osc){
+		.phase = 0,
+		.coeff = SGS_Osc_COEFF(srate),
+		.wave = SGS_WAVE_SIN,
+		.flags = SGS_OSC_RESET_DIFF,
+	};
 }
 
 static inline void SGS_Osc_set_phase(SGS_Osc *restrict o, float phase) {
