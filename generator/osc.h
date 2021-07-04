@@ -1,5 +1,5 @@
 /* sgensys: Oscillator implementation.
- * Copyright (c) 2011, 2017-2021 Joel K. Pettersson
+ * Copyright (c) 2011, 2017-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -19,14 +19,27 @@
 #include "../wave.h"
 #include "../math.h"
 
-#define SGS_OSC_RESET_DIFF (1<<0)
+/*
+ * Use pre-integrated LUTs ("PILUTs")?
+ *
+ * Turn off to use the raw naive LUTs,
+ * kept for testing/"viewing" of them.
+ */
+#define USE_PILUT 1
+
+#define SGS_OSC_RESET_DIFF  (1<<0)
+#define SGS_OSC_RESET       ((1<<1) - 1)
 
 typedef struct SGS_Osc {
 	uint32_t phase;
 	float coeff;
 	uint8_t wave;
 	uint8_t flags;
-	int32_t phase_inc;
+#if USE_PILUT
+	uint32_t prev_phase;
+	double prev_Is;
+	float prev_diff_s;
+#endif
 } SGS_Osc;
 
 /**
@@ -40,21 +53,36 @@ typedef struct SGS_Osc {
  * Initialize instance for use.
  */
 static inline void SGS_init_Osc(SGS_Osc *restrict o, uint32_t srate) {
-	o->phase = 0;
-	o->coeff = SGS_Osc_COEFF(srate);
-	o->wave = SGS_WAVE_SIN;
-	o->flags = SGS_OSC_RESET_DIFF;
-	o->phase_inc = 0;
+	*o = (SGS_Osc){
+#if USE_PILUT
+		.phase = SGS_Wave_picoeffs[SGS_WAVE_SIN].phase_adj,
+#else
+		.phase = 0,
+#endif
+		.coeff = SGS_Osc_COEFF(srate),
+		.wave = SGS_WAVE_SIN,
+		.flags = SGS_OSC_RESET,
+	};
 }
 
 static inline void SGS_Osc_set_phase(SGS_Osc *restrict o, uint32_t phase) {
+#if USE_PILUT
+	o->phase = phase + SGS_Wave_picoeffs[o->wave].phase_adj;
+#else
 	o->phase = phase;
-	o->flags |= SGS_OSC_RESET_DIFF;
+#endif
 }
 
 static inline void SGS_Osc_set_wave(SGS_Osc *restrict o, uint8_t wave) {
+#if USE_PILUT
+	int32_t old_offset = SGS_Wave_picoeffs[o->wave].phase_adj;
+	int32_t offset = SGS_Wave_picoeffs[wave].phase_adj;
+	o->phase += offset - old_offset;
 	o->wave = wave;
 	o->flags |= SGS_OSC_RESET_DIFF;
+#else
+	o->wave = wave;
+#endif
 }
 
 /**
@@ -87,7 +115,7 @@ static inline int32_t SGS_Osc_cycle_offs(SGS_Osc *restrict o,
 		float freq, uint32_t pos) {
 	uint32_t inc = lrintf(o->coeff * freq);
 	uint32_t phs = inc * pos;
-	return (phs - SGS_Wave_SCALE) / inc;
+	return (phs - SGS_Wave_SLEN) / inc;
 }
 
 void SGS_Osc_run(SGS_Osc *restrict o,
