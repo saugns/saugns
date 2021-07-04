@@ -1,5 +1,5 @@
 /* sgensys: Wave module.
- * Copyright (c) 2011-2012, 2017-2021 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -18,16 +18,19 @@
 #pragma once
 #include "sgensys.h"
 
+/* table length in sample values */
 #define SGS_Wave_LENBITS 11
 #define SGS_Wave_LEN     (1<<SGS_Wave_LENBITS) /* 2048 */
 #define SGS_Wave_LENMASK (SGS_Wave_LEN - 1)
 
+/* sample amplitude range */
 #define SGS_Wave_MAXVAL 1.f
 #define SGS_Wave_MINVAL (-SGS_Wave_MAXVAL)
 
-#define SGS_Wave_SCALEBITS (32-SGS_Wave_LENBITS)
-#define SGS_Wave_SCALE     (1<<SGS_Wave_SCALEBITS)
-#define SGS_Wave_SCALEMASK (SGS_Wave_SCALE - 1)
+/* sample length in integer phase */
+#define SGS_Wave_SLENBITS (32-SGS_Wave_LENBITS)
+#define SGS_Wave_SLEN     (1<<SGS_Wave_SLENBITS)
+#define SGS_Wave_SLENMASK (SGS_Wave_SLEN - 1)
 
 /**
  * Wave types.
@@ -50,11 +53,15 @@ extern float *const SGS_Wave_luts[SGS_WAVE_TYPES];
 /** Pre-integrated LUTs for wave types. */
 extern float *const SGS_Wave_piluts[SGS_WAVE_TYPES];
 
-/** Differentiation scale factors for wave types. */
-extern const float SGS_Wave_piscale[SGS_WAVE_TYPES];
+/** Information about or for use with a wave type. */
+struct SGS_WaveCoeffs {
+	float amp_scale;
+	float amp_dc;
+	int32_t phase_adj;
+};
 
-/** Differentiation result offset values for wave types. */
-extern const float SGS_Wave_pioffset[SGS_WAVE_TYPES];
+/** Extra values for use with PILUTs. */
+extern const struct SGS_WaveCoeffs SGS_Wave_picoeffs[SGS_WAVE_TYPES];
 
 /** Names of wave types, with an extra NULL pointer at the end. */
 extern const char *const SGS_Wave_names[SGS_WAVE_TYPES + 1];
@@ -63,41 +70,50 @@ extern const char *const SGS_Wave_names[SGS_WAVE_TYPES + 1];
  * Turn 32-bit unsigned phase value into LUT index.
  */
 #define SGS_Wave_INDEX(phase) \
-	(((uint32_t)(phase)) >> SGS_Wave_SCALEBITS)
+	(((uint32_t)(phase)) >> SGS_Wave_SLENBITS)
 
 /**
  * Get LUT value for 32-bit unsigned phase using linear interpolation.
  *
  * \return sample
  */
-static inline float SGS_Wave_get_lerp(const float *restrict lut,
+static inline double SGS_Wave_get_lerp(const float *restrict lut,
 		uint32_t phase) {
 	uint32_t ind = SGS_Wave_INDEX(phase);
-	float s = lut[ind];
-	s += (lut[(ind + 1) & SGS_Wave_LENMASK] - s) *
-		((phase & SGS_Wave_SCALEMASK) * (1.f / SGS_Wave_SCALE));
-	return s;
+	float s0 = lut[ind];
+	float s1 = lut[(ind + 1) & SGS_Wave_LENMASK];
+	double x = ((phase & SGS_Wave_SLENMASK) * (1.f / SGS_Wave_SLEN));
+	return s0 + (s1 - s0) * x;
 }
 
-/** Get scale constant for SGS_Wave_get_diffv(). */
-#define SGS_Wave_DIFFSCALE(wave) \
-	(SGS_Wave_piscale[wave] * 0.125f * (float) UINT32_MAX)
-
-/** Get offset constant for result of SGS_Wave_get_diffv(). */
-#define SGS_Wave_DIFFOFFSET(wave) \
-	(SGS_Wave_pioffset[wave])
-
 /**
- * Get value from pre-integrated LUT values using differentiation.
+ * Get LUT value for 32-bit unsigned phase using Hermite interpolation.
  *
  * \return sample
  */
-static inline float SGS_Wave_get_diffv(float s, float prev_s,
-		float scale, int32_t phase_inc) {
-	if (phase_inc == 0)
-		return 0.f;
-	return (s - prev_s) * scale / (float) phase_inc;
+static inline double SGS_Wave_get_herp(const float *restrict lut,
+		uint32_t phase) {
+	uint32_t ind = SGS_Wave_INDEX(phase);
+	float s0 = lut[(ind - 1) & SGS_Wave_LENMASK];
+	float s1 = lut[ind];
+	float s2 = lut[(ind + 1) & SGS_Wave_LENMASK];
+	float s3 = lut[(ind + 2) & SGS_Wave_LENMASK];
+	double x = ((phase & SGS_Wave_SLENMASK) * (1.f / SGS_Wave_SLEN));
+	// 4-point, 3rd-order Hermite (x-form)
+	double c0 = s1;
+	double c1 = 1/2.0*(s2-s0);
+	double c2 = s0 - 5/2.0*s1 + 2*s2 - 1/2.0*s3;
+	double c3 = 1/2.0*(s3-s0) + 3/2.0*(s1-s2);
+	return ((c3*x+c2)*x+c1)*x+c0;
 }
+
+/** Get scale constant to differentiate values in a pre-integrated table. */
+#define SGS_Wave_DVSCALE(wave) \
+	(SGS_Wave_picoeffs[wave].amp_scale * 0.125f * (float) UINT32_MAX)
+
+/** Get offset constant to apply to result from using a pre-integrated table. */
+#define SGS_Wave_DVOFFSET(wave) \
+	(SGS_Wave_picoeffs[wave].amp_dc)
 
 void SGS_global_init_Wave(void);
 
