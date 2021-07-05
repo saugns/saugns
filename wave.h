@@ -18,16 +18,19 @@
 #pragma once
 #include "common.h"
 
+/* table length in sample values */
 #define SGS_Wave_LENBITS 11
 #define SGS_Wave_LEN     (1<<SGS_Wave_LENBITS) /* 2048 */
 #define SGS_Wave_LENMASK (SGS_Wave_LEN - 1)
 
+/* sample amplitude range */
 #define SGS_Wave_MAXVAL 1.f
 #define SGS_Wave_MINVAL (-SGS_Wave_MAXVAL)
 
-#define SGS_Wave_SCALEBITS (32-SGS_Wave_LENBITS)
-#define SGS_Wave_SCALE     (1<<SGS_Wave_SCALEBITS)
-#define SGS_Wave_SCALEMASK (SGS_Wave_SCALE - 1)
+/* sample length in integer phase */
+#define SGS_Wave_SLENBITS (32-SGS_Wave_LENBITS)
+#define SGS_Wave_SLEN     (1<<SGS_Wave_SLENBITS)
+#define SGS_Wave_SLENMASK (SGS_Wave_SLEN - 1)
 
 /**
  * Wave types.
@@ -63,20 +66,20 @@ extern const char *const SGS_Wave_names[SGS_WAVE_TYPES + 1];
  * Turn 32-bit unsigned phase value into LUT index.
  */
 #define SGS_Wave_INDEX(phase) \
-	(((uint32_t)(phase)) >> SGS_Wave_SCALEBITS)
+	(((uint32_t)(phase)) >> SGS_Wave_SLENBITS)
 
 /**
  * Get LUT value for 32-bit unsigned phase using linear interpolation.
  *
  * \return sample
  */
-static inline float SGS_Wave_get_lerp(const float *restrict lut,
+static inline double SGS_Wave_get_lerp(const float *restrict lut,
 		uint32_t phase) {
 	uint32_t ind = SGS_Wave_INDEX(phase);
-	float s = lut[ind];
-	s += (lut[(ind + 1) & SGS_Wave_LENMASK] - s) *
-		((phase & SGS_Wave_SCALEMASK) * (1.f / SGS_Wave_SCALE));
-	return s;
+	float s0 = lut[ind];
+	float s1 = lut[(ind + 1) & SGS_Wave_LENMASK];
+	double x = ((phase & SGS_Wave_SLENMASK) * (1.f / SGS_Wave_SLEN));
+	return s0 + (s1 - s0) * x;
 }
 
 /** Get scale constant to differentiate values in a pre-integrated table. */
