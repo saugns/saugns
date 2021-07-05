@@ -19,14 +19,16 @@
 #include "../wave.h"
 #include "../math.h"
 
-#define SGS_OSC_RESET_DIFF (1<<0)
+#define SGS_OSC_RESET_DIFF  (1<<0)
+#define SGS_OSC_RESET       ((1<<1) - 1)
 
 typedef struct SGS_Osc {
 	uint32_t phase;
 	float coeff;
 	uint8_t wave;
 	uint8_t flags;
-	int32_t phase_inc;
+	int32_t phase_diff;
+	double prev_Is;
 	float prev_diff_s;
 } SGS_Osc;
 
@@ -51,14 +53,14 @@ static inline void SGS_init_Osc(SGS_Osc *restrict o, uint32_t srate) {
 		.phase = SGS_Wave_picoeffs[SGS_WAVE_SIN].phase_adj,
 		.coeff = SGS_Osc_COEFF(srate),
 		.wave = SGS_WAVE_SIN,
-		.flags = SGS_OSC_RESET_DIFF,
+		.flags = SGS_OSC_RESET,
 	};
 }
 
 static inline void SGS_Osc_set_phase(SGS_Osc *restrict o, uint32_t phase) {
 	int32_t offset = SGS_Wave_picoeffs[o->wave].phase_adj;
 	phase += offset;
-	o->phase_inc += phase - o->phase;
+	o->phase_diff += phase - o->phase;
 	o->phase = phase;
 }
 
@@ -100,7 +102,7 @@ static inline int32_t SGS_Osc_cycle_offs(SGS_Osc *restrict o,
 		float freq, uint32_t pos) {
 	uint32_t inc = lrintf(o->coeff * freq);
 	uint32_t phs = inc * pos;
-	return (phs - SGS_Wave_SCALE) / inc;
+	return (phs - SGS_Wave_SLEN) / inc;
 }
 
 void SGS_Osc_run(SGS_Osc *restrict o,
