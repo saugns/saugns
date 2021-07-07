@@ -82,6 +82,55 @@ static inline double SGS_Wave_get_lerp(const float *restrict lut,
 	return s0 + (s1 - s0) * x;
 }
 
+/**
+ * Get LUT value for 32-bit unsigned phase using better interpolation.
+ *
+ * \return sample
+ */
+static inline double SGS_Wave_get_berp(const float *restrict lut,
+		uint32_t phase) {
+	uint32_t ind = SGS_Wave_INDEX(phase);
+	float s0 = lut[(ind - 1) & SGS_Wave_LENMASK];
+	float s1 = lut[ind];
+	float s2 = lut[(ind + 1) & SGS_Wave_LENMASK];
+	float s3 = lut[(ind + 2) & SGS_Wave_LENMASK];
+	double x = ((phase & SGS_Wave_SLENMASK) * (1.f / SGS_Wave_SLEN));
+	// Code adapted from Olli Niemitalo's Polynomial Interpolators paper
+#if 0
+	// 4-point, 3rd-order B-spline (x-form)
+	double s0ps2 = s0+s2;
+	double c0 = 1/6.0*s0ps2 + 2/3.0*s1;
+	double c1 = 1/2.0*(s2-s0);
+	double c2 = 1/2.0*s0ps2 - s1;
+	double c3 = 1/2.0*(s1-s2) + 1/6.0*(s3-s0);
+	return ((c3*x+c2)*x+c1)*x+c0;
+#elif 0
+	// 4-point, 3rd-order Lagrange (x-form)
+	double c0 = s1;
+	double c1 = s2 - 1/3.0*s0 - 1/2.0*s1 - 1/6.0*s3;
+	double c2 = 1/2.0*(s0+s2) - s1;
+	double c3 = 1/6.0*(s3-s0) + 1/2.0*(s1-s2);
+	return ((c3*x+c2)*x+c1)*x+c0;
+#elif 1
+	// 4-point, 3rd-order Hermite (x-form)
+	double c0 = s1;
+	double c1 = 1/2.0*(s2-s0);
+	double c2 = s0 - 5/2.0*s1 + 2*s2 - 1/2.0*s3;
+	double c3 = 1/2.0*(s3-s0) + 3/2.0*(s1-s2);
+	return ((c3*x+c2)*x+c1)*x+c0;
+#elif 0
+	// 4-point, 2nd-order Watte tri-linear (x-form)
+	double s0ps3 = s0+s3;
+	double c0 = s1;
+	double c1 = 3/2.0*s2 - 1/2.0*(s1+s0ps3);
+	double c2 = 1/2.0*(s0ps3-s1-s2);
+	return (c2*x+c1)*x+c0;
+#else
+	// 2-point, linear interpolation
+	return s1 + (s2 - s1) * x;
+#endif
+}
+
 /** Get scale constant to differentiate values in a pre-integrated table. */
 #define SGS_Wave_DVSCALE(wave) \
 	(SGS_Wave_piscale[wave] * 0.125f * (float) UINT32_MAX)
