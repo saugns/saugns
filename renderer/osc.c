@@ -112,6 +112,7 @@ void SGS_Osc_run(SGS_Osc *restrict o,
 #if USE_PILUT /* higher-quality audio */
 	const float *const lut = SGS_Wave_piluts[o->wave];
 	const float diff_scale = SGS_Wave_DVSCALE(o->wave);
+	const float diff_extra = o->freq_coeff / SGS_Wave_piscale[o->wave];
 	const float diff_offset = SGS_Wave_DVOFFSET(o->wave);
 	if (o->flags & SGS_OSC_RESET)
 		SGS_Osc_reset(o);
@@ -133,8 +134,7 @@ void SGS_Osc_run(SGS_Osc *restrict o,
 			int32_t phase_inc = lrintf(o->phase_coeff * freq[i]);
 			o->phase += phase_inc;
 			o->phase_diff = phase_inc - s_pm;
-			float comp_scale = o->freq_coeff * freq[i];
-			s += s * comp_scale;
+			s += s * diff_extra * freq[i];
 			s *= amp[i];
 			if (layer > 0) s += buf[i];
 			buf[i] = s;
@@ -153,8 +153,7 @@ void SGS_Osc_run(SGS_Osc *restrict o,
 			}
 			o->phase_diff = lrintf(o->phase_coeff * freq[i]);
 			o->phase += o->phase_diff;
-			float comp_scale = o->freq_coeff * freq[i];
-			s += s * comp_scale;
+			s += s * diff_extra * freq[i];
 			s *= amp[i];
 			if (layer > 0) s += buf[i];
 			buf[i] = s;
@@ -184,6 +183,7 @@ void SGS_Osc_run_env(SGS_Osc *restrict o,
 #if USE_PILUT /* higher-quality audio */
 	const float *const lut = SGS_Wave_piluts[o->wave];
 	const float diff_scale = SGS_Wave_DVSCALE(o->wave);
+	const float diff_extra = o->freq_coeff / SGS_Wave_piscale[o->wave];
 	const float diff_offset = SGS_Wave_DVOFFSET(o->wave);
 	if (o->flags & SGS_OSC_RESET)
 		SGS_Osc_reset(o);
@@ -205,8 +205,7 @@ void SGS_Osc_run_env(SGS_Osc *restrict o,
 			int32_t phase_inc = lrintf(o->phase_coeff * freq[i]);
 			o->phase += phase_inc;
 			o->phase_diff = phase_inc - s_pm;
-			float comp_scale = o->freq_coeff * freq[i];
-			s += s * comp_scale;
+			s += s * diff_extra * freq[i];
 			float s_amp = amp[i] * 0.5f;
 			s = (s * s_amp) + fabs(s_amp);
 			if (layer > 0) s *= buf[i];
@@ -226,8 +225,8 @@ void SGS_Osc_run_env(SGS_Osc *restrict o,
 			}
 			o->phase_diff = lrintf(o->phase_coeff * freq[i]);
 			o->phase += o->phase_diff;
-			float comp_scale = o->freq_coeff * freq[i];
-			s += s * comp_scale;
+			o->prev_diff_s = s;
+			s += s * diff_extra * freq[i];
 			float s_amp = amp[i] * 0.5f;
 			s = (s * s_amp) + fabs(s_amp);
 			if (layer > 0) s *= buf[i];
