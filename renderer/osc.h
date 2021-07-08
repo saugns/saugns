@@ -24,7 +24,7 @@
 
 typedef struct SGS_Osc {
 	uint32_t phase;
-	float coeff;
+	float phase_coeff, freq_coeff;
 	uint8_t wave;
 	uint8_t flags;
 	int32_t phase_diff;
@@ -51,7 +51,8 @@ typedef struct SGS_Osc {
 static inline void SGS_init_Osc(SGS_Osc *restrict o, uint32_t srate) {
 	*o = (SGS_Osc){
 		.phase = 0,
-		.coeff = SGS_Osc_COEFF(srate),
+		.phase_coeff = SGS_Osc_COEFF(srate),
+		.freq_coeff = (1.f / srate),
 		.wave = SGS_WAVE_SIN,
 		.flags = SGS_OSC_RESET,
 	};
@@ -74,7 +75,7 @@ static inline void SGS_Osc_set_wave(SGS_Osc *restrict o, uint8_t wave) {
  * \return number of samples
  */
 static inline uint32_t SGS_Osc_cycle_len(SGS_Osc *restrict o, float freq) {
-	return lrintf(((float) UINT32_MAX) / (o->coeff * freq));
+	return lrintf(((float) UINT32_MAX) / (o->phase_coeff * freq));
 }
 
 /**
@@ -84,7 +85,7 @@ static inline uint32_t SGS_Osc_cycle_len(SGS_Osc *restrict o, float freq) {
  */
 static inline uint32_t SGS_Osc_cycle_pos(SGS_Osc *restrict o,
 		float freq, uint32_t pos) {
-	uint32_t inc = lrintf(o->coeff * freq);
+	uint32_t inc = lrintf(o->phase_coeff * freq);
 	uint32_t phs = inc * pos;
 	return phs / inc;
 }
@@ -96,7 +97,7 @@ static inline uint32_t SGS_Osc_cycle_pos(SGS_Osc *restrict o,
  */
 static inline int32_t SGS_Osc_cycle_offs(SGS_Osc *restrict o,
 		float freq, uint32_t pos) {
-	uint32_t inc = lrintf(o->coeff * freq);
+	uint32_t inc = lrintf(o->phase_coeff * freq);
 	uint32_t phs = inc * pos;
 	return (phs - SGS_Wave_SLEN) / inc;
 }
