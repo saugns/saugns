@@ -115,46 +115,31 @@ void SGS_Osc_run(SGS_Osc *restrict o,
 	const float diff_offset = SGS_Wave_DVOFFSET(o->wave);
 	if (o->flags & SGS_OSC_RESET)
 		SGS_Osc_reset(o);
-	if (pm_f != NULL) {
-		for (size_t i = 0; i < buf_len; ++i) {
-			int32_t s_pm = lrintf(pm_f[i] * (float) INT32_MAX);
-			uint32_t phase = o->phase + s_pm;
-			int32_t phase_diff = o->phase_diff + s_pm;
-			float s;
-			if (phase_diff == 0) {
-				s = o->prev_diff_s;
-			} else {
-				double Is = SGS_Wave_get_lerp(lut, phase);
-				double x = (diff_scale / phase_diff);
-				s = (Is - o->prev_Is) * x + diff_offset;
-				o->prev_Is = Is;
-				o->prev_diff_s = s;
-			}
-			int32_t phase_inc = lrintf(o->coeff * freq[i]);
-			o->phase += phase_inc;
-			o->phase_diff = phase_inc - s_pm;
-			s *= amp[i];
-			if (layer > 0) s += buf[i];
-			buf[i] = s;
+	for (size_t i = 0; i < buf_len; ++i) {
+		int32_t s_pm = 0;
+		uint32_t phase = o->phase;
+		int32_t phase_diff = o->phase_diff;
+		if (pm_f != NULL) {
+			s_pm = lrintf(pm_f[i] * (float) INT32_MAX);
+			phase += s_pm;
+			phase_diff += s_pm;
 		}
-	} else {
-		for (size_t i = 0; i < buf_len; ++i) {
-			float s;
-			if (o->phase_diff == 0) {
-				s = o->prev_diff_s;
-			} else {
-				double Is = SGS_Wave_get_lerp(lut, o->phase);
-				double x = (diff_scale / o->phase_diff);
-				s = (Is - o->prev_Is) * x + diff_offset;
-				o->prev_Is = Is;
-				o->prev_diff_s = s;
-			}
-			o->phase_diff = lrintf(o->coeff * freq[i]);
-			o->phase += o->phase_diff;
-			s *= amp[i];
-			if (layer > 0) s += buf[i];
-			buf[i] = s;
+		float s;
+		if (phase_diff == 0) {
+			s = o->prev_diff_s;
+		} else {
+			double Is = SGS_Wave_get_lerp(lut, phase);
+			double x = (diff_scale / phase_diff);
+			s = (Is - o->prev_Is) * x + diff_offset;
+			o->prev_Is = Is;
+			o->prev_diff_s = s;
 		}
+		int32_t phase_inc = lrintf(o->coeff * freq[i]);
+		o->phase += phase_inc;
+		o->phase_diff = phase_inc - s_pm;
+		s *= amp[i];
+		if (layer > 0) s += buf[i];
+		buf[i] = s;
 	}
 #else /* test naive LUT */
 	naive_run(o, buf, buf_len, layer, freq, amp, pm_f);
@@ -183,48 +168,32 @@ void SGS_Osc_run_env(SGS_Osc *restrict o,
 	const float diff_offset = SGS_Wave_DVOFFSET(o->wave);
 	if (o->flags & SGS_OSC_RESET)
 		SGS_Osc_reset(o);
-	if (pm_f != NULL) {
-		for (size_t i = 0; i < buf_len; ++i) {
-			int32_t s_pm = lrintf(pm_f[i] * (float) INT32_MAX);
-			uint32_t phase = o->phase + s_pm;
-			int32_t phase_diff = o->phase_diff + s_pm;
-			float s;
-			if (phase_diff == 0) {
-				s = o->prev_diff_s;
-			} else {
-				double Is = SGS_Wave_get_lerp(lut, phase);
-				double x = (diff_scale / phase_diff);
-				s = (Is - o->prev_Is) * x + diff_offset;
-				o->prev_Is = Is;
-				o->prev_diff_s = s;
-			}
-			int32_t phase_inc = lrintf(o->coeff * freq[i]);
-			o->phase += phase_inc;
-			o->phase_diff = phase_inc - s_pm;
-			float s_amp = amp[i] * 0.5f;
-			s = (s * s_amp) + fabs(s_amp);
-			if (layer > 0) s *= buf[i];
-			buf[i] = s;
+	for (size_t i = 0; i < buf_len; ++i) {
+		int32_t s_pm = 0;
+		uint32_t phase = o->phase;
+		int32_t phase_diff = o->phase_diff;
+		if (pm_f != NULL) {
+			s_pm = lrintf(pm_f[i] * (float) INT32_MAX);
+			phase += s_pm;
+			phase_diff += s_pm;
 		}
-	} else {
-		for (size_t i = 0; i < buf_len; ++i) {
-			float s;
-			if (o->phase_diff == 0) {
-				s = o->prev_diff_s;
-			} else {
-				double Is = SGS_Wave_get_lerp(lut, o->phase);
-				double x = (diff_scale / o->phase_diff);
-				s = (Is - o->prev_Is) * x + diff_offset;
-				o->prev_Is = Is;
-				o->prev_diff_s = s;
-			}
-			o->phase_diff = lrintf(o->coeff * freq[i]);
-			o->phase += o->phase_diff;
-			float s_amp = amp[i] * 0.5f;
-			s = (s * s_amp) + fabs(s_amp);
-			if (layer > 0) s *= buf[i];
-			buf[i] = s;
+		float s;
+		if (phase_diff == 0) {
+			s = o->prev_diff_s;
+		} else {
+			double Is = SGS_Wave_get_lerp(lut, phase);
+			double x = (diff_scale / phase_diff);
+			s = (Is - o->prev_Is) * x + diff_offset;
+			o->prev_Is = Is;
+			o->prev_diff_s = s;
 		}
+		int32_t phase_inc = lrintf(o->coeff * freq[i]);
+		o->phase += phase_inc;
+		o->phase_diff = phase_inc - s_pm;
+		float s_amp = amp[i] * 0.5f;
+		s = (s * s_amp) + fabs(s_amp);
+		if (layer > 0) s *= buf[i];
+		buf[i] = s;
 	}
 #else /* test naive LUT */
 	naive_run_env(o, buf, buf_len, layer, freq, amp, pm_f);
