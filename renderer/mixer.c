@@ -16,6 +16,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+static float max, min;
+
 /**
  * Create instance.
  */
@@ -30,6 +32,8 @@ SGS_Mixer *SGS_create_Mixer(void) {
 	o->pan_buf = calloc(SGS_MIX_BUFLEN, sizeof(float));
 	if (!o->pan_buf) goto ERROR;
 	o->scale = 1.f;
+max = 0.f;
+min = 0.f;
 	return o;
 
 ERROR:
@@ -43,6 +47,7 @@ ERROR:
 void SGS_destroy_Mixer(SGS_Mixer *restrict o) {
 	if (!o)
 		return;
+printf("mixer: max==%.11f, min==%.11f\n", max, min);
 	free(o->mix_l);
 	free(o->mix_r);
 	free(o->pan_buf);
@@ -96,6 +101,10 @@ void SGS_Mixer_write(SGS_Mixer *restrict o,
 	for (size_t i = 0; i < len; ++i) {
 		float s_l = o->mix_l[i];
 		float s_r = o->mix_r[i];
+if (max < s_l) max = s_l;
+if (max < s_r) max = s_r;
+if (min > s_l) min = s_l;
+if (min > s_r) min = s_r;
 		if (s_l > 1.f) s_l = 1.f;
 		else if (s_l < -1.f) s_l = -1.f;
 		if (s_r > 1.f) s_r = 1.f;
