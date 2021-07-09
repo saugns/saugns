@@ -52,7 +52,7 @@ static inline void SGS_init_Osc(SGS_Osc *restrict o, uint32_t srate) {
 	*o = (SGS_Osc){
 		.phase = 0,
 		.phase_coeff = SGS_Osc_COEFF(srate),
-		.freq_coeff = 0.f,//(0.92384055016417636564f / srate),
+		.freq_coeff = (1.f / srate),
 		.wave = SGS_WAVE_SIN,
 		.flags = SGS_OSC_RESET,
 	};
