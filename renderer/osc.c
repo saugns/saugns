@@ -113,6 +113,9 @@ void SGS_Osc_run(SGS_Osc *restrict o,
 	const float *const lut = SGS_Wave_piluts[o->wave];
 	const float diff_scale = SGS_Wave_DVSCALE(o->wave);
 	const float diff_offset = SGS_Wave_DVOFFSET(o->wave);
+	const float diff_comp = (1.f / o->srate) /
+		(SGS_Wave_piscale[o->wave] * SGS_Wave_piscale[o->wave]);
+	const float hrate = o->srate * 0.5f;
 	if (o->flags & SGS_OSC_RESET)
 		SGS_Osc_reset(o);
 	if (pm_f != NULL) {
@@ -133,8 +136,10 @@ void SGS_Osc_run(SGS_Osc *restrict o,
 			int32_t phase_inc = lrintf(o->phase_coeff * freq[i]);
 			o->phase += phase_inc;
 			o->phase_diff = phase_inc - s_pm;
-			float comp = s * o->freq_coeff * freq[i];
-			s += comp * fabs(comp);
+			if (freq[i] < hrate) {
+				float comp = s * diff_comp * freq[i];
+				s += comp * fabs(comp);
+			}
 			s *= amp[i];
 			if (layer > 0) s += buf[i];
 			buf[i] = s;
@@ -153,8 +158,10 @@ void SGS_Osc_run(SGS_Osc *restrict o,
 			}
 			o->phase_diff = lrintf(o->phase_coeff * freq[i]);
 			o->phase += o->phase_diff;
-			float comp = s * o->freq_coeff * freq[i];
-			s += comp * fabs(comp);
+			if (freq[i] < hrate) {
+				float comp = s * diff_comp * freq[i];
+				s += comp * fabs(comp);
+			}
 			s *= amp[i];
 			if (layer > 0) s += buf[i];
 			buf[i] = s;
@@ -185,6 +192,9 @@ void SGS_Osc_run_env(SGS_Osc *restrict o,
 	const float *const lut = SGS_Wave_piluts[o->wave];
 	const float diff_scale = SGS_Wave_DVSCALE(o->wave);
 	const float diff_offset = SGS_Wave_DVOFFSET(o->wave);
+	const float diff_comp = (1.f / o->srate) /
+		(SGS_Wave_piscale[o->wave] * SGS_Wave_piscale[o->wave]);
+	const float hrate = o->srate * 0.5f;
 	if (o->flags & SGS_OSC_RESET)
 		SGS_Osc_reset(o);
 	if (pm_f != NULL) {
@@ -205,8 +215,10 @@ void SGS_Osc_run_env(SGS_Osc *restrict o,
 			int32_t phase_inc = lrintf(o->phase_coeff * freq[i]);
 			o->phase += phase_inc;
 			o->phase_diff = phase_inc - s_pm;
-			float comp = s * o->freq_coeff * freq[i];
-			s += comp * fabs(comp);
+			if (freq[i] < hrate) {
+				float comp = s * diff_comp * freq[i];
+				s += comp * fabs(comp);
+			}
 			float s_amp = amp[i] * 0.5f;
 			s = (s * s_amp) + fabs(s_amp);
 			if (layer > 0) s *= buf[i];
@@ -226,8 +238,10 @@ void SGS_Osc_run_env(SGS_Osc *restrict o,
 			}
 			o->phase_diff = lrintf(o->phase_coeff * freq[i]);
 			o->phase += o->phase_diff;
-			float comp = s * o->freq_coeff * freq[i];
-			s += comp * fabs(comp);
+			if (freq[i] < hrate) {
+				float comp = s * diff_comp * freq[i];
+				s += comp * fabs(comp);
+			}
 			float s_amp = amp[i] * 0.5f;
 			s = (s * s_amp) + fabs(s_amp);
 			if (layer > 0) s *= buf[i];
