@@ -28,11 +28,13 @@
 static const SGS_ProgramOpList blank_oplist = {0};
 
 static sgsNoinline const SGS_ProgramOpList*
-create_ProgramOpList(const SGS_PtrArr *restrict arr_in,
+create_ProgramOpList(const SGS_ScriptListData *restrict list_in,
 		SGS_MemPool *restrict mem) {
-	uint32_t count = arr_in->count;
-	const SGS_ScriptOpData **ops;
-	ops = (const SGS_ScriptOpData**) SGS_PtrArr_ITEMS(arr_in);
+	uint32_t count = 0;
+	const SGS_ScriptOpData *op;
+	for (op = list_in->first_item; op != NULL; op = op->next_item) {
+		++count;
+	}
 	if (!count)
 		return &blank_oplist;
 	SGS_ProgramOpList *o = SGS_MemPool_alloc(mem,
@@ -41,8 +43,8 @@ create_ProgramOpList(const SGS_PtrArr *restrict arr_in,
 		return NULL;
 	o->count = count;
 	uint32_t i = 0;
-	for (i = 0; i < count; ++i) {
-		o->ids[i] = ops[i]->op_id;
+	for (op = list_in->first_item; op != NULL; op = op->next_item) {
+		o->ids[i++] = op->op_id;
 	}
 	return o;
 }
@@ -268,7 +270,7 @@ typedef struct ParseConv {
  */
 static inline bool
 set_oplist(const SGS_ProgramOpList **restrict dstp,
-		const SGS_PtrArr *restrict src,
+		const SGS_ScriptListData *restrict src,
 		SGS_MemPool *restrict mem) {
 	const SGS_ProgramOpList *dst = create_ProgramOpList(src, mem);
 	if (!dst)
@@ -301,21 +303,21 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 	od->pan = op->pan;
 	od->phase = op->phase;
 	SGS_VoAllocState *vas = &o->va.a[o->ev->vo_id];
-	if (op->mods_set & (1<<SGS_POP_FMOD)) {
+	if (op->fmods != NULL) {
 		vas->flags |= SGS_VAS_GRAPH;
-		if (!set_oplist(&oas->fmods, &op->fmods, o->mem))
+		if (!set_oplist(&oas->fmods, op->fmods, o->mem))
 			goto MEM_ERR;
 		od->fmods = oas->fmods;
 	}
-	if (op->mods_set & (1<<SGS_POP_PMOD)) {
+	if (op->pmods != NULL) {
 		vas->flags |= SGS_VAS_GRAPH;
-		if (!set_oplist(&oas->pmods, &op->pmods, o->mem))
+		if (!set_oplist(&oas->pmods, op->pmods, o->mem))
 			goto MEM_ERR;
 		od->pmods = oas->pmods;
 	}
-	if (op->mods_set & (1<<SGS_POP_AMOD)) {
+	if (op->amods != NULL) {
 		vas->flags |= SGS_VAS_GRAPH;
-		if (!set_oplist(&oas->amods, &op->amods, o->mem))
+		if (!set_oplist(&oas->amods, op->amods, o->mem))
 			goto MEM_ERR;
 		od->amods = oas->amods;
 	}
@@ -333,20 +335,19 @@ MEM_ERR:
  */
 static bool
 ParseConv_convert_ops(ParseConv *restrict o,
-		SGS_PtrArr *restrict op_arr) {
-	SGS_ScriptOpData **ops;
-	uint32_t i;
-	ops = (SGS_ScriptOpData**) SGS_PtrArr_ITEMS(op_arr);
-	for (i = op_arr->old_count; i < op_arr->count; ++i) {
-		SGS_ScriptOpData *op = ops[i];
+		SGS_ScriptListData *restrict op_list) {
+	if (!op_list)
+		return true;
+	for (SGS_ScriptOpData *op = op_list->first_item;
+			op != NULL; op = op->next_item) {
 		// TODO: handle multiple operator nodes
 		if ((op->op_flags & SGS_SDOP_MULTIPLE) != 0) continue;
 		uint32_t op_id;
 		if (!SGS_OpAlloc_update(&o->oa, op, &op_id))
 			return false;
-		if (!ParseConv_convert_ops(o, &op->fmods) ||
-		    !ParseConv_convert_ops(o, &op->pmods) ||
-		    !ParseConv_convert_ops(o, &op->amods))
+		if (!ParseConv_convert_ops(o, op->fmods) ||
+		    !ParseConv_convert_ops(o, op->pmods) ||
+		    !ParseConv_convert_ops(o, op->amods))
 			return false;
 		if (!ParseConv_convert_opdata(o, op, op_id))
 			return false;
@@ -463,7 +464,7 @@ ParseConv_convert_event(ParseConv *restrict o,
 	out_ev->wait_ms = e->wait_ms;
 	out_ev->vo_id = vo_id;
 	o->ev = out_ev;
-	if (!ParseConv_convert_ops(o, &e->operators)) goto MEM_ERR;
+	if (!ParseConv_convert_ops(o, &e->op_objs)) goto MEM_ERR;
 	if (o->ev_op_data.count > 0) {
 		if (!_OpDataArr_mpmemdup(&o->ev_op_data,
 					(SGS_ProgramOpData**) &out_ev->op_data,
@@ -479,7 +480,7 @@ ParseConv_convert_event(ParseConv *restrict o,
 		if (!ovd) goto MEM_ERR;
 		ovd->params = SGS_PVOP_GRAPH;
 		if (!e->root_ev) {
-			if (!set_oplist(&vas->op_carrs, &e->op_graph, o->mem))
+			if (!set_oplist(&vas->op_carrs, &e->op_objs, o->mem))
 				goto MEM_ERR;
 		}
 		out_ev->vo_data = ovd;
