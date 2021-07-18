@@ -12,7 +12,6 @@
  */
 
 #pragma once
-#include "ptrarr.h"
 #include "program.h"
 
 /**
@@ -25,13 +24,19 @@ enum {
 };
 
 /**
+ * Node type for nested list data.
+ */
+typedef struct SGS_ScriptListData {
+	struct SGS_ScriptOpData *first_item;
+} SGS_ScriptListData;
+
+/**
  * Node type for operator data.
  */
 typedef struct SGS_ScriptOpData {
+	struct SGS_ScriptOpData *next_item;
 	struct SGS_ScriptEvData *event, *root_event;
 	struct SGS_ScriptOpData *on_prev; /* preceding for same op(s) */
-	SGS_PtrArr on_next; /* all immediate forward refs for op(s) */
-	struct SGS_ScriptOpData *next_bound;
 	struct SGS_SymStr *label;
 	uint32_t op_flags;
 	/* operator parameters */
@@ -39,13 +44,13 @@ typedef struct SGS_ScriptOpData {
 	SGS_Time time;
 	uint32_t silence_ms;
 	uint8_t wave;
-	uint8_t mods_set;
+	uint8_t use_type;
 	SGS_Ramp freq, freq2;
 	SGS_Ramp amp, amp2;
 	SGS_Ramp pan;
 	float phase;
 	/* node adjacents in operator linkage graph */
-	SGS_PtrArr fmods, pmods, amods;
+	SGS_ScriptListData *fmods, *pmods, *amods;
 	/* for conversion */
 	uint32_t op_id;
 } SGS_ScriptOpData;
@@ -77,11 +82,10 @@ typedef struct SGS_ScriptEvData {
 	struct SGS_ScriptEvData *next;
 	struct SGS_ScriptEvData *group_backref;
 	struct SGS_ScriptEvBranch *forks;
-	SGS_PtrArr operators; /* operators included in event */
 	uint32_t ev_flags;
 	uint32_t wait_ms;
 	uint32_t dur_ms;
-	SGS_PtrArr op_graph;
+	SGS_ScriptListData op_objs;
 	/* for conversion */
 	uint32_t vo_id;
 	struct SGS_ScriptEvData *root_ev;
@@ -124,6 +128,7 @@ typedef struct SGS_Script {
 	SGS_ScriptEvData *events;
 	const char *name; // currently simply set to the filename
 	SGS_ScriptOptions sopt;
+	struct SGS_MemPool *mem; // holds memory for the specific script
 } SGS_Script;
 
 SGS_Script *SGS_load_Script(const char *restrict script_arg, bool is_path) sgsMalloclike;
