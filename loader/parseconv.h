@@ -1,5 +1,5 @@
 /* sgensys: Parse result to audio program converter.
- * Copyright (c) 2011-2012, 2017-2020 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -28,7 +28,7 @@ enum {
  */
 typedef struct SGS_VoAllocState {
 	SGS_ScriptEvData *last_ev;
-	SGS_ProgramOpGraph *op_graph;
+	SGS_ProgramOpList *op_carrs;
 	uint32_t flags;
 	uint32_t duration_ms;
 } SGS_VoAllocState;
@@ -47,7 +47,7 @@ enum {
  */
 typedef struct SGS_OpAllocState {
 	SGS_ScriptOpData *last_pod;
-	SGS_ProgramOpAdjcs *adjcs;
+	SGS_ProgramOpList *fmods, *pmods, *amods;
 	uint32_t flags;
 	//uint32_t duration_ms;
 } SGS_OpAllocState;
@@ -60,7 +60,7 @@ SGS_DEF_ArrType(OpRefArr, SGS_ProgramOpRef, )
  * Voice data, held during program building and set per event.
  */
 typedef struct SGS_VoiceGraph {
-	OpRefArr op_list;
+	OpRefArr vo_graph;
 	SGS_VoAlloc *va;
 	SGS_OpAlloc *oa;
 	uint32_t op_nest_depth;

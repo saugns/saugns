@@ -34,7 +34,7 @@ typedef struct OperatorNode {
 	uint32_t time;
 	uint32_t silence;
 	uint8_t flags;
-	const SGS_ProgramOpAdjcs *adjcs;
+	const SGS_ProgramOpList *fmods, *pmods, *amods;
 	SGS_Ramp amp, freq;
 	SGS_Ramp amp2, freq2;
 	uint32_t amp_pos, freq_pos;
@@ -123,6 +123,8 @@ ERROR:
 	return false;
 }
 
+static const SGS_ProgramOpList blank_oplist = {0};
+
 static bool convert_program(SGS_Generator *restrict o,
 		const SGS_Program *restrict prg, uint32_t srate) {
 	if (!alloc_for_program(o, prg))
@@ -138,6 +140,7 @@ static bool convert_program(SGS_Generator *restrict o,
 	for (size_t i = 0; i < prg->op_count; ++i) {
 		OperatorNode *on = &o->operators[i];
 		SGS_init_Osc(&on->osc, srate);
+		on->fmods = on->pmods = on->amods = &blank_oplist;
 	}
 	for (size_t i = 0; i < prg->ev_count; ++i) {
 		const SGS_ProgramEvent *prg_e = &prg->events[i];
@@ -155,8 +158,8 @@ static bool convert_program(SGS_Generator *restrict o,
 		if (prg_e->vo_data) {
 			const SGS_ProgramVoData *pvd = prg_e->vo_data;
 			params = pvd->params;
-			if (params & SGS_PVOP_OPLIST) {
-				e->graph = pvd->op_list;
+			if (params & SGS_PVOP_GRAPH) {
+				e->graph = pvd->graph;
 				e->op_count = pvd->op_count;
 			}
 			o->voices[vo_id].pos = -vo_wait_time;
@@ -248,8 +251,9 @@ static void handle_event(SGS_Generator *restrict o, EventNode *restrict e) {
 			const SGS_ProgramOpData *od = &e->op_data[i];
 			OperatorNode *on = &o->operators[od->id];
 			uint32_t params = od->params;
-			if (params & SGS_POPP_ADJCS)
-				on->adjcs = od->adjcs;
+			if (od->fmods != NULL) on->fmods = od->fmods;
+			if (od->pmods != NULL) on->pmods = od->pmods;
+			if (od->amods != NULL) on->amods = od->amods;
 			if (params & SGS_POPP_WAVE)
 				SGS_Osc_set_wave(&on->osc, od->wave);
 			if (params & SGS_POPP_TIME) {
@@ -322,12 +326,6 @@ static uint32_t run_block(SGS_Generator *restrict o,
 	uint32_t i, len;
 	float *s_buf = *(bufs++), *pm_buf;
 	float *freq, *amp;
-	uint32_t fmodc = 0, pmodc = 0, amodc = 0;
-	if (n->adjcs) {
-		fmodc = n->adjcs->fmodc;
-		pmodc = n->adjcs->pmodc;
-		amodc = n->adjcs->amodc;
-	}
 	len = buf_len;
 	/*
 	 * If silence, zero-fill and delay processing for duration.
@@ -369,13 +367,12 @@ static uint32_t run_block(SGS_Generator *restrict o,
 	 */
 	freq = *(bufs++);
 	SGS_Ramp_run(&n->freq, &n->freq_pos, freq, len, o->srate, parent_freq);
-	if (fmodc) {
+	if (n->fmods->count > 0) {
 		float *freq2 = *(bufs++);
 		SGS_Ramp_run(&n->freq2, &n->freq2_pos,
 				freq2, len, o->srate, parent_freq);
-		const uint32_t *fmods = n->adjcs->adjcs;
-		for (i = 0; i < fmodc; ++i)
-			run_block(o, bufs, len, &o->operators[fmods[i]],
+		for (i = 0; i < n->fmods->count; ++i)
+			run_block(o, bufs, len, &o->operators[n->fmods->ids[i]],
 					freq, true, i);
 		float *fm_buf = *bufs;
 		for (i = 0; i < len; ++i)
@@ -387,10 +384,9 @@ static uint32_t run_block(SGS_Generator *restrict o,
 	 * If phase modulators linked, get phase offsets for modulation.
 	 */
 	pm_buf = NULL;
-	if (pmodc) {
-		const uint32_t *pmods = &n->adjcs->adjcs[fmodc];
-		for (i = 0; i < pmodc; ++i)
-			run_block(o, bufs, len, &o->operators[pmods[i]],
+	if (n->pmods->count > 0) {
+		for (i = 0; i < n->pmods->count; ++i)
+			run_block(o, bufs, len, &o->operators[n->pmods->ids[i]],
 					freq, false, i);
 		pm_buf = *(bufs++);
 	}
@@ -400,12 +396,11 @@ static uint32_t run_block(SGS_Generator *restrict o,
 	 */
 	amp = *(bufs++);
 	SGS_Ramp_run(&n->amp, &n->amp_pos, amp, len, o->srate, NULL);
-	if (amodc) {
+	if (n->amods->count > 0) {
 		float *amp2 = *(bufs++);
 		SGS_Ramp_run(&n->amp2, &n->amp2_pos, amp2, len, o->srate, NULL);
-		const uint32_t *amods = &n->adjcs->adjcs[fmodc+pmodc];
-		for (i = 0; i < amodc; ++i)
-			run_block(o, bufs, len, &o->operators[amods[i]],
+		for (i = 0; i < n->amods->count; ++i)
+			run_block(o, bufs, len, &o->operators[n->amods->ids[i]],
 					freq, true, i);
 		float *am_buf = *bufs;
 		for (i = 0; i < len; ++i)
