@@ -140,11 +140,13 @@ typedef struct SGS_Program {
 	uint8_t op_nest_depth;
 	uint32_t duration_ms;
 	const char *name;
+	struct SGS_Script *parse; // parser output, used to build program
 	struct SGS_MemPool *mem; // holds memory for the specific program
 } SGS_Program;
 
 struct SGS_Script;
-SGS_Program* SGS_build_Program(struct SGS_Script *restrict sd) sgsMalloclike;
+SGS_Program* SGS_build_Program(struct SGS_Script *restrict parse,
+		bool keep_parse) sgsMalloclike;
 void SGS_discard_Program(SGS_Program *restrict o);
 
 void SGS_Program_print_info(const SGS_Program *restrict o);

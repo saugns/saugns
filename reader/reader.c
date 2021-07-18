@@ -14,21 +14,6 @@
 #include "../sgensys.h"
 #include "../script.h"
 
-/*
- * Create program for the given script file. Invokes the parser.
- *
- * \return instance or NULL on error
- */
-static SGS_Program *build_program(const char *restrict script_arg,
-		bool is_path) {
-	SGS_Script *sd = SGS_read_Script(script_arg, is_path);
-	if (!sd)
-		return NULL;
-	SGS_Program *o = SGS_build_Program(sd);
-	SGS_discard_Script(sd);
-	return o;
-}
-
 /**
  * Load the listed scripts and build inner programs for them,
  * adding each result (even if NULL) to the program list.
@@ -41,7 +26,8 @@ size_t SGS_read(const SGS_PtrArr *restrict script_args, uint32_t options,
 	size_t built = 0;
 	const char **args = (const char**) SGS_PtrArr_ITEMS(script_args);
 	for (size_t i = 0; i < script_args->count; ++i) {
-		SGS_Program *prg = build_program(args[i], are_paths);
+		SGS_Program *prg = SGS_build_Program(
+				SGS_read_Script(args[i], are_paths), false);
 		if (prg != NULL) ++built;
 		SGS_PtrArr_add(prg_objs, prg);
 	}

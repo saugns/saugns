@@ -12,7 +12,6 @@
  */
 
 #pragma once
-#include "ptrarr.h"
 #include "program.h"
 
 /**
@@ -25,26 +24,32 @@ enum {
 };
 
 /**
+ * Node type for nested list data.
+ */
+typedef struct SGS_ScriptListData {
+	struct SGS_ScriptOpData *first_item;
+} SGS_ScriptListData;
+
+/**
  * Node type for operator data.
  */
 typedef struct SGS_ScriptOpData {
+	struct SGS_ScriptOpData *next_item;
 	struct SGS_ScriptEvData *event, *root_event;
 	struct SGS_ScriptOpData *on_prev; /* preceding for same op(s) */
-	SGS_PtrArr on_next; /* all immediate forward refs for op(s) */
-	struct SGS_ScriptOpData *next_bound;
 	uint32_t op_flags;
 	/* operator parameters */
 	uint32_t params;
 	SGS_Time time;
 	uint32_t silence_ms;
 	uint8_t wave;
-	uint8_t mods_set;
+	uint8_t use_type;
 	SGS_Ramp freq, freq2;
 	SGS_Ramp amp, amp2;
 	SGS_Ramp pan;
 	float phase;
 	/* node adjacents in operator linkage graph */
-	SGS_PtrArr fmods, pmods, amods;
+	SGS_ScriptListData *fmods, *pmods, *amods;
 	/* for conversion */
 	uint32_t op_id;
 } SGS_ScriptOpData;
@@ -76,11 +81,10 @@ typedef struct SGS_ScriptEvData {
 	struct SGS_ScriptEvData *next;
 	struct SGS_ScriptEvData *group_backref;
 	struct SGS_ScriptEvBranch *forks;
-	SGS_PtrArr operators; /* operators included in event */
 	uint32_t ev_flags;
 	uint32_t wait_ms;
 	uint32_t dur_ms;
-	SGS_PtrArr op_graph;
+	SGS_ScriptListData op_objs;
 	/* for conversion */
 	uint32_t vo_id;
 	struct SGS_ScriptEvData *root_ev;
@@ -117,12 +121,17 @@ typedef struct SGS_ScriptOptions {
 } SGS_ScriptOptions;
 
 /**
- * Type returned after processing a file.
+ * Type returned after processing a file. The data is an earlier stage
+ * of building a program; a later SGS_Program may or may not keep info
+ * stored in \a info_mem (all the SGS_Script-specific data), while the
+ * rest of the result can be held in the reserved region, \a code_mem.
  */
 typedef struct SGS_Script {
 	SGS_ScriptEvData *events;
 	const char *name; // currently simply set to the filename
 	SGS_ScriptOptions sopt;
+	struct SGS_SymTab *symtab;
+	struct SGS_MemPool *info_mem, *code_mem; // per-script storage
 } SGS_Script;
 
 SGS_Script *SGS_read_Script(const char *restrict script_arg, bool is_path) sgsMalloclike;

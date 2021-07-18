@@ -118,7 +118,7 @@ reader/reader.o: common.h math.h program.h ptrarr.h ramp.h reader/file.h reader/
 reader/parseconv.o: arrtype.h common.h math.h program.h ptrarr.h ramp.h reader/parseconv.c script.h wave.h
 	$(CC) -c $(CFLAGS) reader/parseconv.c -o reader/parseconv.o
 
-reader/parser.o: common.h math.h mempool.h program.h ptrarr.h ramp.h reader/file.h reader/parser.c reader/scanner.h reader/symtab.h script.h wave.h
+reader/parser.o: common.h math.h mempool.h program.h ramp.h reader/file.h reader/parser.c reader/scanner.h reader/symtab.h script.h wave.h
 	$(CC) -c $(CFLAGS_SIZE) reader/parser.c -o reader/parser.o
 
 reader/scanner.o: common.h math.h mempool.h reader/file.h reader/scanner.c reader/scanner.h reader/symtab.h
