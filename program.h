@@ -1,5 +1,5 @@
 /* sgensys: Audio program data and functions.
- * Copyright (c) 2011-2013, 2017-2020 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -23,7 +23,7 @@
  * Voice parameter flags.
  */
 enum {
-	SGS_PVOP_OPLIST = 1<<0,
+	SGS_PVOP_GRAPH = 1<<0,
 	SGS_PVOP_PAN = 1<<1,
 	SGS_PVO_PARAMS = (1<<2) - 1,
 };
@@ -32,7 +32,7 @@ enum {
  * Operator parameter flags.
  */
 enum {
-	SGS_POPP_ADJCS = 1<<0,
+	/* SGS_POPP_PAN = 1<<0, */
 	SGS_POPP_WAVE = 1<<1,
 	SGS_POPP_TIME = 1<<2,
 	SGS_POPP_SILENCE = 1<<3,
@@ -78,27 +78,20 @@ typedef struct SGS_ProgramOpRef {
 	uint8_t level; /* > 0 if used as a modulator */
 } SGS_ProgramOpRef;
 
-typedef struct SGS_ProgramOpGraph {
-	uint32_t opc;
-	uint32_t ops[];
-} SGS_ProgramOpGraph;
-
-typedef struct SGS_ProgramOpAdjcs {
-	uint32_t fmodc;
-	uint32_t pmodc;
-	uint32_t amodc;
-	uint32_t adjcs[];
-} SGS_ProgramOpAdjcs;
+typedef struct SGS_ProgramOpList {
+	uint32_t count;
+	uint32_t ids[];
+} SGS_ProgramOpList;
 
 typedef struct SGS_ProgramVoData {
-	const SGS_ProgramOpRef *op_list;
+	const SGS_ProgramOpRef *graph;
 	uint32_t op_count;
 	uint32_t params;
 	SGS_Ramp pan;
 } SGS_ProgramVoData;
 
 typedef struct SGS_ProgramOpData {
-	const SGS_ProgramOpAdjcs *adjcs;
+	const SGS_ProgramOpList *fmods, *pmods, *amods;
 	uint32_t id;
 	uint32_t params;
 	uint32_t time_ms, silence_ms;
