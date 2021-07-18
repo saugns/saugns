@@ -100,7 +100,7 @@ loader/loader.o: common.h loader/loader.c math.h program.h ptrarr.h ramp.h scrip
 loader/parseconv.o: arrtype.h common.h help.h loader/parseconv.c math.h program.h ptrarr.h ramp.h script.h wave.h
 	$(CC) -c $(CFLAGS) loader/parseconv.c -o loader/parseconv.o
 
-loader/parser.o: common.h help.h loader/file.h loader/parser.c loader/scanner.h loader/symtab.h math.h mempool.h program.h ptrarr.h ramp.h script.h wave.h
+loader/parser.o: common.h help.h loader/file.h loader/parser.c loader/scanner.h loader/symtab.h math.h mempool.h program.h ramp.h script.h wave.h
 	$(CC) -c $(CFLAGS_SIZE) loader/parser.c -o loader/parser.o
 
 loader/scanner.o: common.h loader/file.h loader/scanner.c loader/scanner.h loader/symtab.h math.h mempool.h
