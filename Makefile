@@ -85,10 +85,10 @@ builder/file.o: builder/file.c builder/file.h common.h
 builder/lexer.o: builder/lexer.c builder/lexer.h builder/file.h builder/symtab.h mempool.h builder/scanner.h math.h common.h
 	$(CC) -c $(CFLAGS) builder/lexer.c -o builder/lexer.o
 
-builder/parseconv.o: builder/parseconv.c builder/parseconv.h program.h ramp.h wave.h math.h script.h ptrlist.h arrtype.h common.h
+builder/parseconv.o: builder/parseconv.c builder/parseconv.h ptrlist.h program.h ramp.h wave.h math.h script.h arrtype.h common.h
 	$(CC) -c $(CFLAGS) builder/parseconv.c -o builder/parseconv.o
 
-builder/parser.o: builder/parser.c builder/scanner.h builder/file.h builder/symtab.h mempool.h script.h ptrlist.h program.h ramp.h wave.h math.h common.h
+builder/parser.o: builder/parser.c builder/scanner.h builder/file.h builder/symtab.h mempool.h script.h program.h ramp.h wave.h math.h common.h
 	$(CC) -c $(CFLAGS) builder/parser.c -o builder/parser.o
 
 builder/scanner.o: builder/scanner.c builder/scanner.h builder/file.h builder/symtab.h mempool.h math.h common.h
@@ -97,7 +97,7 @@ builder/scanner.o: builder/scanner.c builder/scanner.h builder/file.h builder/sy
 builder/symtab.o: builder/symtab.c builder/symtab.h mempool.h common.h
 	$(CC) -c $(CFLAGS) builder/symtab.c -o builder/symtab.o
 
-builder/voicegraph.o: builder/voicegraph.c builder/parseconv.h program.h ramp.h wave.h math.h script.h ptrlist.h arrtype.h common.h
+builder/voicegraph.o: builder/voicegraph.c builder/parseconv.h program.h ramp.h wave.h math.h script.h arrtype.h common.h
 	$(CC) -c $(CFLAGS) builder/voicegraph.c -o builder/voicegraph.o
 
 common.o: common.c common.h

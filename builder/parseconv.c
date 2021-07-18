@@ -1,5 +1,5 @@
 /* sgensys: Parse result to audio program converter.
- * Copyright (c) 2011-2012, 2017-2020 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -12,6 +12,7 @@
  */
 
 #include "parseconv.h"
+#include "../ptrlist.h"
 #include <stdlib.h>
 #include <stdio.h>
 
@@ -21,54 +22,29 @@
  * Allocation of events, voices, operators.
  */
 
-static SGS_ProgramOpGraph
-*create_OpGraph(const SGS_ScriptEvData *restrict vo_in) {
-	uint32_t size;
-	size = vo_in->op_graph.count;
-	if (!size)
-		return NULL;
-	const SGS_ScriptOpData **ops;
-	uint32_t i;
-	ops = (const SGS_ScriptOpData**) SGS_PtrList_ITEMS(&vo_in->op_graph);
-	SGS_ProgramOpGraph *o;
-	o = malloc(sizeof(SGS_ProgramOpGraph) + sizeof(int32_t) * size);
-	if (!o)
-		return NULL;
-	o->opc = size;
-	for (i = 0; i < size; ++i) {
-		o->ops[i] = ops[i]->op_id;
-	}
-	return o;
-}
+static SGS_ProgramOpList blank_oplist = {0};
+#define free_nonblank(mem) do{ \
+	if ((mem) != &blank_oplist) free((mem)); \
+} while(0)
 
-static SGS_ProgramOpAdjcs
-*create_OpAdjcs(const SGS_ScriptOpData *restrict op_in) {
-	uint32_t size;
-	size = op_in->fmods.count +
-		op_in->pmods.count +
-		op_in->amods.count;
-	if (!size)
-		return NULL;
-	const SGS_ScriptOpData **ops;
-	uint32_t i;
-	uint32_t *data;
-	SGS_ProgramOpAdjcs *o;
-	o = malloc(sizeof(SGS_ProgramOpAdjcs) + sizeof(int32_t) * size);
+static sgsNoinline SGS_ProgramOpList
+*create_OpList(const SGS_ScriptListData *restrict list_in) {
+	uint32_t count = 0;
+	const SGS_ScriptOpData *op;
+	for (op = list_in->first_item; op != NULL; op = op->next_item) {
+		++count;
+	}
+	if (!count)
+		return &blank_oplist;
+	SGS_ProgramOpList *o;
+	o = malloc(sizeof(SGS_ProgramOpList) + sizeof(int32_t) * count);
 	if (!o)
 		return NULL;
-	o->fmodc = op_in->fmods.count;
-	o->pmodc = op_in->pmods.count;
-	o->amodc = op_in->amods.count;
-	data = o->adjcs;
-	ops = (const SGS_ScriptOpData**) SGS_PtrList_ITEMS(&op_in->fmods);
-	for (i = 0; i < o->fmodc; ++i)
-		*data++ = ops[i]->op_id;
-	ops = (const SGS_ScriptOpData**) SGS_PtrList_ITEMS(&op_in->pmods);
-	for (i = 0; i < o->pmodc; ++i)
-		*data++ = ops[i]->op_id;
-	ops = (const SGS_ScriptOpData**) SGS_PtrList_ITEMS(&op_in->amods);
-	for (i = 0; i < o->amodc; ++i)
-		*data++ = ops[i]->op_id;
+	o->count = count;
+	uint32_t i = 0;
+	for (op = list_in->first_item; op != NULL; op = op->next_item) {
+		o->ids[i++] = op->op_id;
+	}
 	return o;
 }
 
@@ -77,12 +53,9 @@ static SGS_ProgramOpAdjcs
  * the graph of the voice event.
  */
 static uint32_t voice_duration(const SGS_ScriptEvData *restrict ve) {
-	SGS_ScriptOpData **ops;
 	uint32_t duration_ms = 0;
-	/* FIXME: node list type? */
-	ops = (SGS_ScriptOpData**) SGS_PtrList_ITEMS(&ve->operators);
-	for (size_t i = 0; i < ve->operators.count; ++i) {
-		SGS_ScriptOpData *op = ops[i];
+	for (const SGS_ScriptOpData *op = ve->op_objs.first_item;
+			op != NULL; op = op->next_item) {
 		if (op->time_ms > duration_ms)
 			duration_ms = op->time_ms;
 	}
@@ -104,7 +77,7 @@ static bool SGS_VoAlloc_get_id(SGS_VoAlloc *restrict va,
 		SGS_VoAllocState *vas = &va->a[id];
 		if (!(vas->last_ev->ev_flags & SGS_SDEV_VOICE_LATER_USED)
 			&& vas->duration_ms == 0) {
-			if (vas->op_graph != NULL) free(vas->op_graph);
+			free_nonblank(vas->op_carrs);
 			*vas = (SGS_VoAllocState){0};
 			*vo_id = id;
 			return false;
@@ -146,7 +119,7 @@ static uint32_t SGS_VoAlloc_update(SGS_VoAlloc *restrict va,
 static void SGS_VoAlloc_clear(SGS_VoAlloc *restrict o) {
 	for (size_t i = 0; i < o->count; ++i) {
 		SGS_VoAllocState *vas = &o->a[i];
-		if (vas->op_graph != NULL) free(vas->op_graph);
+		free_nonblank(vas->op_carrs);
 	}
 	_SGS_VoAlloc_clear(o);
 }
@@ -233,7 +206,7 @@ static void ParseConv_convert_opdata(ParseConv *restrict o,
 	SGS_ProgramOpData ood = {0};
 	ood.id = op_id;
 	ood.params = op->op_params;
-	ood.adjcs = NULL;
+	/* ...mods */
 	ood.time_ms = op->time_ms;
 	ood.silence_ms = op->silence_ms;
 	ood.wave = op->wave;
@@ -242,11 +215,21 @@ static void ParseConv_convert_opdata(ParseConv *restrict o,
 	ood.amp = op->amp;
 	ood.amp2 = op->amp2;
 	ood.phase = op->phase;
-	if ((op->op_params & SGS_POPP_ADJCS) != 0) {
-		SGS_VoAllocState *vas = &o->va.a[o->ev->vo_id];
+	SGS_VoAllocState *vas = &o->va.a[o->ev->vo_id];
+	if (op->fmods != NULL) {
 		vas->flags |= SGS_VAS_GRAPH;
-		oas->adjcs = create_OpAdjcs(op);
-		ood.adjcs = oas->adjcs;
+		oas->fmods = create_OpList(op->fmods);
+		ood.fmods = oas->fmods;
+	}
+	if (op->pmods != NULL) {
+		vas->flags |= SGS_VAS_GRAPH;
+		oas->pmods = create_OpList(op->pmods);
+		ood.pmods = oas->pmods;
+	}
+	if (op->amods != NULL) {
+		vas->flags |= SGS_VAS_GRAPH;
+		oas->amods = create_OpList(op->amods);
+		ood.amods = oas->amods;
 	}
 	OpDataArr_add(&o->ev_op_data, &ood);
 }
@@ -257,18 +240,17 @@ static void ParseConv_convert_opdata(ParseConv *restrict o,
  * operator data.
  */
 static void ParseConv_convert_ops(ParseConv *restrict o,
-		SGS_PtrList *restrict op_list) {
-	SGS_ScriptOpData **ops;
-	uint32_t i;
-	ops = (SGS_ScriptOpData**) SGS_PtrList_ITEMS(op_list);
-	for (i = op_list->old_count; i < op_list->count; ++i) {
-		SGS_ScriptOpData *op = ops[i];
+		SGS_ScriptListData *restrict op_list) {
+	if (!op_list)
+		return;
+	for (SGS_ScriptOpData *op = op_list->first_item;
+			op != NULL; op = op->next_item) {
 		// TODO: handle multiple operator nodes
 		if ((op->op_flags & SGS_SDOP_MULTIPLE) != 0) continue;
 		uint32_t op_id = SGS_OpAlloc_update(&o->oa, op);
-		ParseConv_convert_ops(o, &op->fmods);
-		ParseConv_convert_ops(o, &op->pmods);
-		ParseConv_convert_ops(o, &op->amods);
+		ParseConv_convert_ops(o, op->fmods);
+		ParseConv_convert_ops(o, op->pmods);
+		ParseConv_convert_ops(o, op->amods);
 		ParseConv_convert_opdata(o, op, op_id);
 	}
 }
@@ -289,7 +271,7 @@ static void ParseConv_convert_event(ParseConv *restrict o,
 	out_ev->wait_ms = e->wait_ms;
 	out_ev->vo_id = vo_id;
 	o->ev = out_ev;
-	ParseConv_convert_ops(o, &e->operators);
+	ParseConv_convert_ops(o, &e->op_objs);
 	if (o->ev_op_data.count > 0) {
 		OpDataArr_memdup(&o->ev_op_data, &out_ev->op_data);
 		out_ev->op_data_count = o->ev_op_data.count;
@@ -299,14 +281,14 @@ static void ParseConv_convert_event(ParseConv *restrict o,
 	if ((e->ev_flags & SGS_SDEV_NEW_OPGRAPH) != 0)
 		vas->flags |= SGS_VAS_GRAPH;
 	if ((vas->flags & SGS_VAS_GRAPH) != 0)
-		vo_params |= SGS_PVOP_OPLIST;
+		vo_params |= SGS_PVOP_GRAPH;
 	if (vo_params != 0) {
 		SGS_ProgramVoData *ovd = calloc(1, sizeof(SGS_ProgramVoData));
 		ovd->params = vo_params;
 		ovd->pan = e->pan;
 		if ((e->ev_flags & SGS_SDEV_NEW_OPGRAPH) != 0) {
-			if (vas->op_graph != NULL) free(vas->op_graph);
-			vas->op_graph = create_OpGraph(e);
+			free_nonblank(vas->op_carrs);
+			vas->op_carrs = create_OpList(&e->op_objs);
 		}
 		out_ev->vo_data = ovd;
 		if ((vas->flags & SGS_VAS_GRAPH) != 0) {
@@ -435,12 +417,14 @@ SGS_Program* SGS_build_Program(SGS_Script *restrict sd) {
  */
 static void Program_destroy_event_data(SGS_ProgramEvent *restrict e) {
 	if (e->vo_data != NULL) {
-		free((void*)e->vo_data->op_list);
+		free((void*)e->vo_data->graph);
 		free((void*)e->vo_data);
 	}
 	if (e->op_data != NULL) {
 		for (size_t i = 0; i < e->op_data_count; ++i) {
-			free((void*)e->op_data[i].adjcs);
+			free_nonblank((void*)e->op_data[i].fmods);
+			free_nonblank((void*)e->op_data[i].pmods);
+			free_nonblank((void*)e->op_data[i].amods);
 		}
 		free((void*)e->op_data);
 	}
@@ -462,19 +446,18 @@ void SGS_discard_Program(SGS_Program *restrict o) {
 	free(o);
 }
 
-static void print_linked(const char *restrict header,
+static sgsNoinline void print_linked(const char *restrict header,
 		const char *restrict footer,
-		uint32_t count, const uint32_t *restrict nodes) {
-	uint32_t i;
-	if (!count)
+		const SGS_ProgramOpList *restrict list) {
+	if (!list || !list->count)
 		return;
-	fprintf(stdout, "%s%d", header, nodes[0]);
-	for (i = 0; ++i < count; )
-		fprintf(stdout, ", %d", nodes[i]);
+	fprintf(stdout, "%s%d", header, list->ids[0]);
+	for (uint32_t i = 0; ++i < list->count; )
+		fprintf(stdout, ", %d", list->ids[i]);
 	fprintf(stdout, "%s", footer);
 }
 
-static void print_oplist(const SGS_ProgramOpRef *restrict list,
+static void print_graph(const SGS_ProgramOpRef *restrict graph,
 		uint32_t count) {
 	static const char *const uses[SGS_POP_USES] = {
 		"CA",
@@ -482,17 +465,19 @@ static void print_oplist(const SGS_ProgramOpRef *restrict list,
 		"PM",
 		"AM"
 	};
+	if (!graph)
+		return;
 
 	uint32_t i = 0;
 	uint32_t max_indent = 0;
 	fputs("\n\t    [", stdout);
 	for (;;) {
-		const uint32_t indent = list[i].level * 2;
+		const uint32_t indent = graph[i].level * 2;
 		if (indent > max_indent) max_indent = indent;
-		fprintf(stdout, "%6d:  ", list[i].id);
+		fprintf(stdout, "%6d:  ", graph[i].id);
 		for (uint32_t j = indent; j > 0; --j)
 			putc(' ', stdout);
-		fputs(uses[list[i].use], stdout);
+		fputs(uses[graph[i].use], stdout);
 		if (++i == count) break;
 		fputs("\n\t     ", stdout);
 	}
@@ -559,24 +544,16 @@ void SGS_Program_print_info(const SGS_Program *restrict o) {
 			"\\%d \tEV %zd \t(VO %hd)",
 			ev->wait_ms, ev_id, ev->vo_id);
 		if (vd != NULL) {
-			const SGS_ProgramOpRef *ol = vd->op_list;
 			fprintf(stdout,
 				"\n\tvo %d", ev->vo_id);
-			if (ol != NULL)
-				print_oplist(ol, vd->op_count);
+			print_graph(vd->graph, vd->op_count);
 		}
 		for (size_t i = 0; i < ev->op_data_count; ++i) {
 			const SGS_ProgramOpData *od = &ev->op_data[i];
-			const SGS_ProgramOpAdjcs *ga = od->adjcs;
 			print_opline(od);
-			if (ga != NULL) {
-				print_linked("\n\t    f~[", "]", ga->fmodc,
-					ga->adjcs);
-				print_linked("\n\t    p+[", "]", ga->pmodc,
-					&ga->adjcs[ga->fmodc]);
-				print_linked("\n\t    a~[", "]", ga->amodc,
-					&ga->adjcs[ga->fmodc + ga->pmodc]);
-			}
+			print_linked("\n\t    f~[", "]", od->fmods);
+			print_linked("\n\t    p+[", "]", od->pmods);
+			print_linked("\n\t    a~[", "]", od->amods);
 		}
 		putc('\n', stdout);
 	}
