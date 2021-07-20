@@ -29,6 +29,8 @@
 /*
  * Implementation of SGS_Osc_run()
  * using naive LUTs with linear interpolation.
+ *
+ * Post-increments phase each sample.
  */
 static void naive_run(SGS_Osc *restrict o,
 		float *restrict buf, size_t buf_len,
@@ -52,6 +54,8 @@ static void naive_run(SGS_Osc *restrict o,
 /*
  * Implementation of SGS_Osc_run_env()
  * using naive LUTs with linear interpolation.
+ *
+ * Post-increments phase each sample.
  */
 static void naive_run_env(SGS_Osc *restrict o,
 		float *restrict buf, size_t buf_len,
@@ -82,13 +86,14 @@ static void SGS_Osc_reset(SGS_Osc *o) {
 	const float diff_offset = SGS_Wave_DVOFFSET(o->wave);
 	if (o->flags & SGS_OSC_RESET_DIFF) {
 		/* Set up for differentiation start and a valid previous. */
-		o->phase_diff = SGS_Wave_SLEN;
-		uint32_t phase = o->phase - o->phase_diff;
-		o->prev_Is = SGS_Wave_get_lerp(lut, phase - o->phase_diff);
+		int32_t phase_diff = SGS_Wave_SLEN;
+		int32_t phase = o->phase + phase_diff; /* good for 0 Hz case */
+		o->prev_Is = SGS_Wave_get_lerp(lut, phase - phase_diff);
 		double Is = SGS_Wave_get_lerp(lut, phase);
-		double x = (diff_scale / o->phase_diff);
+		double x = (diff_scale / phase_diff);
 		o->prev_diff_s = (Is - o->prev_Is) * x + diff_offset;
 		o->prev_Is = Is;
+		o->prev_phase = phase;
 	}
 	o->flags &= ~SGS_OSC_RESET;
 }
@@ -100,6 +105,8 @@ static void SGS_Osc_reset(SGS_Osc *o) {
  *
  * For \p layer greater than zero, adds
  * the output to \p buf instead of assigning it.
+ *
+ * Pre-increments phase each sample.
  *
  * \p pm_f may be NULL for no PM input.
  */
@@ -117,10 +124,11 @@ void SGS_Osc_run(SGS_Osc *restrict o,
 		SGS_Osc_reset(o);
 	if (pm_f != NULL) {
 		for (size_t i = 0; i < buf_len; ++i) {
-			int32_t s_pm = lrintf(pm_f[i] * (float) INT32_MAX);
-			uint32_t phase = o->phase + s_pm;
-			int32_t phase_diff = o->phase_diff + s_pm;
 			float s;
+			int32_t s_pm = lrintf(pm_f[i] * (float) INT32_MAX);
+			int32_t phase_inc = lrintf(o->coeff * freq[i]);
+			uint32_t phase = (o->phase += phase_inc) + s_pm;
+			int32_t phase_diff = phase - o->prev_phase;
 			if (phase_diff == 0) {
 				s = o->prev_diff_s;
 			} else {
@@ -129,10 +137,8 @@ void SGS_Osc_run(SGS_Osc *restrict o,
 				s = (Is - o->prev_Is) * x + diff_offset;
 				o->prev_Is = Is;
 				o->prev_diff_s = s;
+				o->prev_phase = phase;
 			}
-			int32_t phase_inc = lrintf(o->coeff * freq[i]);
-			o->phase += phase_inc;
-			o->phase_diff = phase_inc - s_pm;
 			s *= amp[i];
 			if (layer > 0) s += buf[i];
 			buf[i] = s;
@@ -140,17 +146,19 @@ void SGS_Osc_run(SGS_Osc *restrict o,
 	} else {
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s;
-			if (o->phase_diff == 0) {
+			int32_t phase_inc = lrintf(o->coeff * freq[i]);
+			uint32_t phase = (o->phase += phase_inc);
+			int32_t phase_diff = phase - o->prev_phase;
+			if (phase_diff == 0) {
 				s = o->prev_diff_s;
 			} else {
-				double Is = SGS_Wave_get_lerp(lut, o->phase);
-				double x = (diff_scale / o->phase_diff);
+				double Is = SGS_Wave_get_lerp(lut, phase);
+				double x = (diff_scale / phase_diff);
 				s = (Is - o->prev_Is) * x + diff_offset;
 				o->prev_Is = Is;
 				o->prev_diff_s = s;
+				o->prev_phase = phase;
 			}
-			o->phase_diff = lrintf(o->coeff * freq[i]);
-			o->phase += o->phase_diff;
 			s *= amp[i];
 			if (layer > 0) s += buf[i];
 			buf[i] = s;
@@ -169,6 +177,8 @@ void SGS_Osc_run(SGS_Osc *restrict o,
  * For \p layer greater than zero, multiplies
  * the output into \p buf instead of assigning it.
  *
+ * Pre-increments phase each sample.
+ *
  * \p pm_f may be NULL for no PM input.
  */
 void SGS_Osc_run_env(SGS_Osc *restrict o,
@@ -185,10 +195,11 @@ void SGS_Osc_run_env(SGS_Osc *restrict o,
 		SGS_Osc_reset(o);
 	if (pm_f != NULL) {
 		for (size_t i = 0; i < buf_len; ++i) {
-			int32_t s_pm = lrintf(pm_f[i] * (float) INT32_MAX);
-			uint32_t phase = o->phase + s_pm;
-			int32_t phase_diff = o->phase_diff + s_pm;
 			float s;
+			int32_t s_pm = lrintf(pm_f[i] * (float) INT32_MAX);
+			int32_t phase_inc = lrintf(o->coeff * freq[i]);
+			uint32_t phase = (o->phase += phase_inc) + s_pm;
+			int32_t phase_diff = phase - o->prev_phase;
 			if (phase_diff == 0) {
 				s = o->prev_diff_s;
 			} else {
@@ -197,10 +208,8 @@ void SGS_Osc_run_env(SGS_Osc *restrict o,
 				s = (Is - o->prev_Is) * x + diff_offset;
 				o->prev_Is = Is;
 				o->prev_diff_s = s;
+				o->prev_phase = phase;
 			}
-			int32_t phase_inc = lrintf(o->coeff * freq[i]);
-			o->phase += phase_inc;
-			o->phase_diff = phase_inc - s_pm;
 			float s_amp = amp[i] * 0.5f;
 			s = (s * s_amp) + fabs(s_amp);
 			if (layer > 0) s *= buf[i];
@@ -209,17 +218,19 @@ void SGS_Osc_run_env(SGS_Osc *restrict o,
 	} else {
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s;
-			if (o->phase_diff == 0) {
+			int32_t phase_inc = lrintf(o->coeff * freq[i]);
+			uint32_t phase = (o->phase += phase_inc);
+			int32_t phase_diff = phase - o->prev_phase;
+			if (phase_diff == 0) {
 				s = o->prev_diff_s;
 			} else {
-				double Is = SGS_Wave_get_lerp(lut, o->phase);
-				double x = (diff_scale / o->phase_diff);
+				double Is = SGS_Wave_get_lerp(lut, phase);
+				double x = (diff_scale / phase_diff);
 				s = (Is - o->prev_Is) * x + diff_offset;
 				o->prev_Is = Is;
 				o->prev_diff_s = s;
+				o->prev_phase = phase;
 			}
-			o->phase_diff = lrintf(o->coeff * freq[i]);
-			o->phase += o->phase_diff;
 			float s_amp = amp[i] * 0.5f;
 			s = (s * s_amp) + fabs(s_amp);
 			if (layer > 0) s *= buf[i];
