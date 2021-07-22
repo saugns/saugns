@@ -23,18 +23,30 @@
 
 static const SGS_ProgramIDArr blank_idarr = {0};
 
-static void copy_list_ids(uint32_t **dst, const SGS_ScriptListData *list_in) {
-	if (list_in->append && list_in->prev)
-		copy_list_ids(dst, list_in->prev);
-	for (SGS_ScriptOpData *op = list_in->first_on; op; op = op->next)
-		*(*dst)++ = op->op_id;
+static uint32_t
+copy_list_ids(uint32_t *dst, const SGS_ScriptListData *list_in) {
+	uint8_t use_type = list_in->use_type;
+	unsigned i = 0;
+COPY:
+	for (SGS_ScriptOpData *op = list_in->first_item; op; op = op->next)
+		dst[i++] = op->info->id;
+	while ((list_in = list_in->next)) {
+		if (list_in->use_type == use_type) {
+			if (!list_in->append) i = 0;
+			goto COPY;
+		}
+	}
+	return i;
 }
 
 static sgsNoinline const SGS_ProgramIDArr *
 SGS_create_ProgramIDArr(SGS_Mempool *restrict mp,
 		const SGS_ScriptListData *restrict list_in,
 		const SGS_ProgramIDArr *restrict copy) {
+	uint8_t use_type = list_in->use_type;
 	uint32_t count = list_in->count;
+	for (SGS_ScriptListData *next = list_in->next; next; next = next->next)
+		if (next->use_type == use_type) count += next->count;
 	if (!list_in->append) copy = NULL;
 	if (!count)
 		return copy ? copy : &blank_idarr;
@@ -43,14 +55,13 @@ SGS_create_ProgramIDArr(SGS_Mempool *restrict mp,
 			sizeof(SGS_ProgramIDArr) + sizeof(uint32_t) * count);
 	if (!idarr)
 		return NULL;
-	idarr->count = count;
 	uint32_t i = 0;
 	if (copy) {
 		memcpy(idarr->ids, copy->ids, sizeof(uint32_t) * copy->count);
 		i = copy->count;
 	}
 	uint32_t *ids = &idarr->ids[i];
-	copy_list_ids(&ids, list_in);
+	idarr->count = copy_list_ids(ids, list_in);
 	return idarr;
 }
 
@@ -166,8 +177,8 @@ sgsArrType(SGS_OpAlloc, SGS_OpAllocState, _)
 static bool
 SGS_OpAlloc_get_id(SGS_OpAlloc *restrict oa,
 		const SGS_ScriptOpData *restrict od, uint32_t *restrict op_id) {
-	if (od->on_prev != NULL) {
-		*op_id = od->on_prev->op_id;
+	if (od->prev_ref != NULL) {
+		*op_id = od->info->id;
 		return true;
 	}
 //	for (uint32_t id = 0; id < oa->count; ++id) {
@@ -182,6 +193,7 @@ SGS_OpAlloc_get_id(SGS_OpAlloc *restrict oa,
 	if (!_SGS_OpAlloc_add(oa, NULL))
 		return false;
 //ASSIGNED:
+	od->info->id = *op_id;
 	return true;
 }
 
@@ -209,7 +221,6 @@ SGS_OpAlloc_update(SGS_OpAlloc *restrict oa,
 //	}
 	if (!SGS_OpAlloc_get_id(oa, od, op_id))
 		return false;
-	od->op_id = *op_id;
 	SGS_OpAllocState *oas = &oa->a[*op_id];
 	oas->last_pod = od;
 //	oas->duration_ms = od->time.v_ms;
@@ -307,21 +318,24 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 	ood->phase = op->phase;
 	ood->wave = op->wave;
 	SGS_VoAllocState *vas = &o->va.a[o->ev->vo_id];
-	if (op->amods) {
+	const SGS_ScriptListData *mods[SGS_POP_USES] = {0};
+	for (SGS_ScriptListData *in_list = op->mods;
+			in_list != NULL; in_list = in_list->next) {
 		vas->flags |= SGS_VAS_GRAPH;
-		if (!set_oplist(&oas->amods, op->amods, o->mp))
+		if (!mods[in_list->use_type]) mods[in_list->use_type] = in_list;
+	}
+	if (mods[SGS_POP_AMOD] != NULL) {
+		if (!set_oplist(&oas->amods, mods[SGS_POP_AMOD], o->mp))
 			goto MEM_ERR;
 		ood->amods = oas->amods;
 	}
-	if (op->fmods) {
-		vas->flags |= SGS_VAS_GRAPH;
-		if (!set_oplist(&oas->fmods, op->fmods, o->mp))
+	if (mods[SGS_POP_FMOD] != NULL) {
+		if (!set_oplist(&oas->fmods, mods[SGS_POP_FMOD], o->mp))
 			goto MEM_ERR;
 		ood->fmods = oas->fmods;
 	}
-	if (op->pmods) {
-		vas->flags |= SGS_VAS_GRAPH;
-		if (!set_oplist(&oas->pmods, op->pmods, o->mp))
+	if (mods[SGS_POP_PMOD] != NULL) {
+		if (!set_oplist(&oas->pmods, mods[SGS_POP_PMOD], o->mp))
 			goto MEM_ERR;
 		ood->pmods = oas->pmods;
 	}
@@ -340,18 +354,19 @@ MEM_ERR:
 static bool
 ParseConv_convert_ops(ParseConv *restrict o,
 		SGS_ScriptListData *restrict op_list) {
-	if (!op_list)
-		return true;
-	if (op_list->append) ParseConv_convert_ops(o, op_list->prev);
-	for (SGS_ScriptOpData *op = op_list->first_on; op; op = op->next) {
+	if (op_list) for (SGS_ScriptOpData *op = op_list->first_item;
+			op; op = op->next) {
 		// TODO: handle multiple operator nodes
 		if ((op->op_flags & SGS_SDOP_MULTIPLE) != 0) continue;
 		uint32_t op_id;
-		if (!SGS_OpAlloc_update(&o->oa, op, &op_id) ||
-		    !ParseConv_convert_ops(o, op->amods) ||
-		    !ParseConv_convert_ops(o, op->fmods) ||
-		    !ParseConv_convert_ops(o, op->pmods) ||
-		    !ParseConv_convert_opdata(o, op, op_id))
+		if (!SGS_OpAlloc_update(&o->oa, op, &op_id))
+			return false;
+		for (SGS_ScriptListData *in_list = op->mods;
+				in_list != NULL; in_list = in_list->next) {
+			if (!ParseConv_convert_ops(o, in_list))
+				return false;
+		}
+		if (!ParseConv_convert_opdata(o, op, op_id))
 			return false;
 	}
 	return true;
