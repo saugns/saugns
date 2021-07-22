@@ -1,5 +1,5 @@
 /* sgensys: Main module / Command-line interface.
- * Copyright (c) 2011-2013, 2017-2023 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2024 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -355,7 +355,7 @@ REPARSE:
 		const char *arg = argv[opt.ind];
 		if (!dashdash && c != -1 && arg[0] == '-') goto REPARSE;
 		struct SGS_ScriptArg entry = {arg};
-		SGS_ScriptArgArr_add(script_args, &entry);
+		SGS_ScriptArgArr_push(script_args, &entry);
 		++opt.ind;
 		c = 0; /* only goto REPARSE after advancing, to prevent hang */
 	}
@@ -396,7 +396,7 @@ static size_t SGS_read(const SGS_ScriptArgArr *restrict script_args,
 		const SGS_Program *prg = build_program(script_args->a[i].str,
 				are_paths);
 		if (prg != NULL) ++built;
-		SGS_ProgramArr_add(prg_objs, &prg);
+		SGS_ProgramArr_push(prg_objs, &prg);
 	}
 	return built;
 }
