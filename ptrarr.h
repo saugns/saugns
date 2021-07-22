@@ -1,5 +1,5 @@
 /* sgensys: Pointer array module.
- * Copyright (c) 2011-2012, 2018-2021 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2018-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any

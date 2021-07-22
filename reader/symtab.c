@@ -133,7 +133,7 @@ static SGS_SymStr *StrTab_unique_node(StrTab *restrict o,
 		++collision_count;
 #endif
 	}
-	sstr = SGS_MemPool_alloc(memp, sizeof(SGS_SymStr) + (len + extra));
+	sstr = SGS_mpalloc(memp, sizeof(SGS_SymStr) + (len + extra));
 	if (!sstr)
 		return NULL;
 	sstr->prev = o->sstra[hash];
@@ -149,6 +149,13 @@ struct SGS_SymTab {
 	StrTab strt;
 };
 
+static void fini_SymTab(SGS_SymTab *restrict o) {
+#if SGS_SYMTAB_STATS
+	fprintf(stderr, "collision count: %zd\n", collision_count);
+#endif
+	fini_StrTab(&o->strt);
+}
+
 /**
  * Create instance. Requires \p mempool to be a valid instance.
  *
@@ -157,24 +164,11 @@ struct SGS_SymTab {
 SGS_SymTab *SGS_create_SymTab(SGS_MemPool *restrict mempool) {
 	if (!mempool)
 		return NULL;
-	SGS_SymTab *o = calloc(1, sizeof(SGS_SymTab));
-	if (!o)
+	SGS_SymTab *o = SGS_mpalloc(mempool, sizeof(SGS_SymTab));
+	if (!SGS_mpregdtor(mempool, (SGS_Dtor_f) fini_SymTab, o))
 		return NULL;
 	o->memp = mempool;
 	return o;
-}
-
-/**
- * Destroy instance.
- */
-void SGS_destroy_SymTab(SGS_SymTab *restrict o) {
-	if (!o)
-		return;
-#if SGS_SYMTAB_STATS
-	fprintf(stderr, "collision count: %zd\n", collision_count);
-#endif
-	fini_StrTab(&o->strt);
-	free(o);
 }
 
 /**
@@ -195,7 +189,7 @@ SGS_SymStr *SGS_SymTab_get_symstr(SGS_SymTab *restrict o,
  */
 SGS_SymItem *SGS_SymTab_add_item(SGS_SymTab *restrict o,
 		SGS_SymStr *restrict symstr, uint32_t sym_type) {
-	SGS_SymItem *item = SGS_MemPool_alloc(o->memp, sizeof(SGS_SymItem));
+	SGS_SymItem *item = SGS_mpalloc(o->memp, sizeof(SGS_SymItem));
 	if (!item)
 		return NULL;
 	item->sym_type = sym_type;

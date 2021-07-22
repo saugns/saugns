@@ -37,7 +37,7 @@ create_ProgramOpList(const SGS_ScriptListData *restrict list_in,
 	}
 	if (!count)
 		return &blank_oplist;
-	SGS_ProgramOpList *o = SGS_MemPool_alloc(mem,
+	SGS_ProgramOpList *o = SGS_mpalloc(mem,
 			sizeof(SGS_ProgramOpList) + sizeof(uint32_t) * count);
 	if (!o)
 		return NULL;
@@ -303,21 +303,24 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 	od->pan = op->pan;
 	od->phase = op->phase;
 	SGS_VoAllocState *vas = &o->va.a[o->ev->vo_id];
-	if (op->fmods != NULL) {
+	const SGS_ScriptListData *mods[SGS_POP_USES] = {0};
+	for (SGS_ScriptListData *in_list = op->mods;
+			in_list != NULL; in_list = in_list->next_list) {
 		vas->flags |= SGS_VAS_GRAPH;
-		if (!set_oplist(&oas->fmods, op->fmods, o->mem))
+		mods[in_list->use_type] = in_list;
+	}
+	if (mods[SGS_POP_FMOD] != NULL) {
+		if (!set_oplist(&oas->fmods, mods[SGS_POP_FMOD], o->mem))
 			goto MEM_ERR;
 		od->fmods = oas->fmods;
 	}
-	if (op->pmods != NULL) {
-		vas->flags |= SGS_VAS_GRAPH;
-		if (!set_oplist(&oas->pmods, op->pmods, o->mem))
+	if (mods[SGS_POP_PMOD] != NULL) {
+		if (!set_oplist(&oas->pmods, mods[SGS_POP_PMOD], o->mem))
 			goto MEM_ERR;
 		od->pmods = oas->pmods;
 	}
-	if (op->amods != NULL) {
-		vas->flags |= SGS_VAS_GRAPH;
-		if (!set_oplist(&oas->amods, op->amods, o->mem))
+	if (mods[SGS_POP_AMOD] != NULL) {
+		if (!set_oplist(&oas->amods, mods[SGS_POP_AMOD], o->mem))
 			goto MEM_ERR;
 		od->amods = oas->amods;
 	}
@@ -345,10 +348,11 @@ ParseConv_convert_ops(ParseConv *restrict o,
 		uint32_t op_id;
 		if (!SGS_OpAlloc_update(&o->oa, op, &op_id))
 			return false;
-		if (!ParseConv_convert_ops(o, op->fmods) ||
-		    !ParseConv_convert_ops(o, op->pmods) ||
-		    !ParseConv_convert_ops(o, op->amods))
-			return false;
+		for (SGS_ScriptListData *in_list = op->mods;
+				in_list != NULL; in_list = in_list->next_list) {
+			if (!ParseConv_convert_ops(o, in_list))
+				return false;
+		}
 		if (!ParseConv_convert_opdata(o, op, op_id))
 			return false;
 	}
@@ -458,7 +462,7 @@ ParseConv_convert_event(ParseConv *restrict o,
 	uint32_t vo_id;
 	if (!SGS_VoAlloc_update(&o->va, e, &vo_id)) goto MEM_ERR;
 	SGS_VoAllocState *vas = &o->va.a[vo_id];
-	SGS_ProgramEvent *out_ev = SGS_MemPool_alloc(o->mem,
+	SGS_ProgramEvent *out_ev = SGS_mpalloc(o->mem,
 			sizeof(SGS_ProgramEvent));
 	if (!out_ev || !SGS_PtrArr_add(&o->ev_list, out_ev)) goto MEM_ERR;
 	out_ev->wait_ms = e->wait_ms;
@@ -475,7 +479,7 @@ ParseConv_convert_event(ParseConv *restrict o,
 	if (!e->root_ev)
 		vas->flags |= SGS_VAS_GRAPH;
 	if ((vas->flags & SGS_VAS_GRAPH) != 0) {
-		SGS_ProgramVoData *ovd = SGS_MemPool_alloc(o->mem,
+		SGS_ProgramVoData *ovd = SGS_mpalloc(o->mem,
 				sizeof(SGS_ProgramVoData));
 		if (!ovd) goto MEM_ERR;
 		ovd->params = SGS_PVOP_GRAPH;
@@ -521,7 +525,7 @@ ParseConv_check_validity(ParseConv *restrict o,
 static SGS_Program*
 ParseConv_create_program(ParseConv *restrict o,
 		SGS_Script *restrict script) {
-	SGS_Program *prg = SGS_MemPool_alloc(o->mem, sizeof(SGS_Program));
+	SGS_Program *prg = SGS_mpalloc(o->mem, sizeof(SGS_Program));
 	if (!prg) goto MEM_ERR;
 	if (!SGS_PtrArr_mpmemdup(&o->ev_list,
 				(void***) &prg->events, o->mem)) goto MEM_ERR;

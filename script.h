@@ -28,6 +28,8 @@ enum {
  */
 typedef struct SGS_ScriptListData {
 	struct SGS_ScriptOpData *first_item;
+	struct SGS_ScriptListData *next_list;
+	uint8_t use_type;
 } SGS_ScriptListData;
 
 /**
@@ -49,7 +51,7 @@ typedef struct SGS_ScriptOpData {
 	SGS_Ramp *pan;
 	float phase;
 	/* node adjacents in operator linkage graph */
-	SGS_ScriptListData *fmods, *pmods, *amods;
+	SGS_ScriptListData *mods;
 	/* for conversion */
 	uint32_t op_id;
 } SGS_ScriptOpData;

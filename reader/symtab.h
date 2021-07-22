@@ -51,7 +51,6 @@ struct SGS_SymTab;
 typedef struct SGS_SymTab SGS_SymTab;
 
 SGS_SymTab *SGS_create_SymTab(SGS_MemPool *restrict mempool) sgsMalloclike;
-void SGS_destroy_SymTab(SGS_SymTab *restrict o);
 
 SGS_SymStr *SGS_SymTab_get_symstr(SGS_SymTab *restrict o,
 		const void *restrict str, size_t len);

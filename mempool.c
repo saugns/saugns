@@ -1,5 +1,5 @@
 /* sgensys: Memory pool module.
- * Copyright (c) 2014, 2018-2021 Joel K. Pettersson
+ * Copyright (c) 2014, 2018-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -37,10 +37,17 @@ typedef struct MemBlock {
 	char *mem;
 } MemBlock;
 
+typedef struct DtorItem {
+	SGS_Dtor_f func;
+	void *arg;
+	struct DtorItem *prev;
+} DtorItem;
+
 struct SGS_MemPool {
 	MemBlock *a;
-	size_t count, first_i, alloc_len;
+	size_t count, first_i, a_len;
 	size_t block_size, skip_size;
+	DtorItem *last_dtor;
 };
 
 /*
@@ -49,16 +56,14 @@ struct SGS_MemPool {
  * \return true, or false on allocation failure
  */
 static bool upsize(SGS_MemPool *restrict o) {
-	size_t new_alloc_len = (o->alloc_len > 0) ?
-		(o->alloc_len << 1) :
-		1;
-	MemBlock *new_a = realloc(o->a, sizeof(MemBlock) * new_alloc_len);
+	size_t new_a_len = (o->a_len > 0) ?  (o->a_len << 1) : 1;
+	MemBlock *new_a = realloc(o->a, sizeof(MemBlock) * new_a_len);
 	if (!new_a)
 		return false;
 	o->a = new_a;
 #if !SGS_MEM_DEBUG
 	o->block_size <<= 1;
-	if (o->first_i < (o->alloc_len * 2) / 3) {
+	if (o->first_i < (o->a_len * 2) / 3) {
 		/*
 		 * If less than 2/3 of blocks are fully used, then
 		 * allocation sizes may be too awkward for the old
@@ -69,7 +74,7 @@ static bool upsize(SGS_MemPool *restrict o) {
 			ALIGN_BYTES;
 	}
 #endif
-	o->alloc_len = new_alloc_len;
+	o->a_len = new_a_len;
 	return true;
 }
 
@@ -80,7 +85,7 @@ static bool upsize(SGS_MemPool *restrict o) {
  * \return allocated memory, or NULL on allocation failure
  */
 static void *add(SGS_MemPool *restrict o, size_t size_used) {
-	if (o->count == o->alloc_len && !upsize(o))
+	if (o->count == o->a_len && !upsize(o))
 		return NULL;
 	size_t block_size = o->block_size;
 	if (block_size < size_used) block_size = size_used;
@@ -200,11 +205,15 @@ SGS_MemPool *SGS_create_MemPool(size_t start_size) {
 /**
  * Destroy instance.
  *
- * Frees all memory blocks.
+ * Frees all memory blocks. Any destructor functions registered
+ * are called beforehand, in the reverse order of registration.
  */
 void SGS_destroy_MemPool(SGS_MemPool *restrict o) {
 	if (!o)
 		return;
+	for (DtorItem *n = o->last_dtor; n; n = n->prev) {
+		n->func(n->arg);
+	}
 	for (size_t i = 0; i < o->count; ++i) {
 		free(o->a[i].mem);
 	}
@@ -218,7 +227,7 @@ void SGS_destroy_MemPool(SGS_MemPool *restrict o) {
  *
  * \return allocated memory, or NULL on allocation failure
  */
-void *SGS_MemPool_alloc(SGS_MemPool *restrict o, size_t size) {
+void *SGS_mpalloc(SGS_MemPool *restrict o, size_t size) {
 #if !SGS_MEM_DEBUG
 	size_t i = o->count;
 	void *mem;
@@ -264,7 +273,7 @@ void *SGS_MemPool_alloc(SGS_MemPool *restrict o, size_t size) {
 	}
 	return mem;
 #else /* SGS_MEM_DEBUG */
-	if (o->count == o->alloc_len && !upsize(o))
+	if (o->count == o->a_len && !upsize(o))
 		return NULL;
 	void *mem = calloc(1, size);
 	if (!mem)
@@ -281,12 +290,32 @@ void *SGS_MemPool_alloc(SGS_MemPool *restrict o, size_t size) {
  *
  * \return allocated memory, or NULL on allocation failure
  */
-void *SGS_MemPool_memdup(SGS_MemPool *restrict o,
+void *SGS_mpmemdup(SGS_MemPool *restrict o,
 		const void *restrict src, size_t size) {
-	void *mem = SGS_MemPool_alloc(o, size);
+	void *mem = SGS_mpalloc(o, size);
 	if (!mem)
 		return NULL;
 	if (src != NULL)
 		memcpy(mem, src, size);
 	return mem;
+}
+
+/**
+ * Register a destructor function for calling upon mempool destruction.
+ * Meant for allocations for which a cleanup call should be associated.
+ *
+ * \return true, or false for NULL func or arg or on allocation failure
+ */
+bool SGS_mpregdtor(SGS_MemPool *restrict o,
+		SGS_Dtor_f func, void *restrict arg) {
+	if (!func || !arg)
+		return false;
+	DtorItem *n = SGS_mpalloc(o, sizeof(DtorItem));
+	if (!n)
+		return false;
+	n->func = func;
+	n->arg = arg;
+	n->prev = o->last_dtor;
+	o->last_dtor = n;
+	return true;
 }

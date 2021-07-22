@@ -491,8 +491,7 @@ typedef struct SGS_Parser {
 	uint32_t call_level;
 	/* node state */
 	struct ParseLevel *cur_pl;
-	SGS_ScriptEvData *events;
-	SGS_ScriptEvData *last_event;
+	SGS_ScriptEvData *events, *last_event;
 	SGS_ScriptEvData *group_start, *group_end;
 } SGS_Parser;
 
@@ -501,7 +500,6 @@ typedef struct SGS_Parser {
  */
 static void fini_Parser(SGS_Parser *restrict o) {
 	SGS_destroy_Scanner(o->sc);
-	SGS_destroy_SymTab(o->st);
 	SGS_destroy_MemPool(o->rmp);
 	SGS_destroy_MemPool(o->smp);
 	SGS_destroy_MemPool(o->tmp);
@@ -574,13 +572,12 @@ struct ParseLevel {
 	uint32_t pl_flags;
 	uint8_t scope;
 	uint8_t use_type;
-	uint8_t last_use_type; /* FIXME: kludge */
 	SGS_ScriptEvData *event;
 	SGS_ScriptListData *nest_list;
 	SGS_ScriptOpData *nest_last_data;
 	SGS_ScriptOpData *ev_first_data, *ev_last_data;
 	SGS_ScriptOpData *operator;
-	SGS_ScriptOpData *on_prev;
+	SGS_ScriptListData *last_mods_list;
 	SGS_SymItem *set_var; /* variable assigned to next node */
 	/* timing/delay */
 	SGS_ScriptEvData *main_ev; /* if events are nested, for grouping... */
@@ -597,7 +594,7 @@ typedef struct SGS_ScriptEvBranch {
 static SGS_Ramp *create_ramp(SGS_Parser *restrict o,
 		bool mult, uint32_t par_flag) {
 	struct ScanLookup *sl = &o->sl;
-	SGS_Ramp *ramp = SGS_MemPool_alloc(o->rmp, sizeof(SGS_Ramp));
+	SGS_Ramp *ramp = SGS_mpalloc(o->rmp, sizeof(SGS_Ramp));
 	float v0 = 0.f;
 	if (!ramp)
 		return NULL;
@@ -697,29 +694,31 @@ static void end_event(SGS_Parser *restrict o) {
 	o->group_end = group_e;
 }
 
-static void begin_event(SGS_Parser *restrict o, bool is_compstep) {
+static void begin_event(SGS_Parser *restrict o,
+		SGS_ScriptOpData *restrict prev_data,
+		bool is_compstep) {
 	struct ParseLevel *pl = o->cur_pl;
 	SGS_ScriptEvData *e, *pve;
 	end_event(o);
-	e = SGS_MemPool_alloc(o->smp, sizeof(SGS_ScriptEvData));
+	e = SGS_mpalloc(o->smp, sizeof(SGS_ScriptEvData));
 	pl->event = e;
 	e->wait_ms = pl->next_wait_ms;
 	pl->next_wait_ms = 0;
-	if (pl->on_prev != NULL) {
+	if (prev_data != NULL) {
 		SGS_ScriptEvBranch *fork;
-		if (pl->on_prev->op_flags & SGS_SDOP_NESTED)
+		if (prev_data->op_flags & SGS_SDOP_NESTED)
 			e->ev_flags |= SGS_SDEV_IMPLICIT_TIME;
-		pve = pl->on_prev->event;
+		pve = prev_data->event;
 		pve->ev_flags |= SGS_SDEV_VOICE_LATER_USED;
 		fork = pve->forks;
-		e->root_ev = pl->on_prev->root_event;
+		e->root_ev = prev_data->root_event;
 		if (is_compstep) {
 			if (pl->pl_flags & PL_NEW_EVENT_FORK) {
 				if (!pl->main_ev)
 					pl->main_ev = pve;
 				else
 					fork = pl->main_ev->forks;
-				pl->main_ev->forks = SGS_MemPool_alloc(o->tmp,
+				pl->main_ev->forks = SGS_mpalloc(o->tmp,
 						sizeof(SGS_ScriptEvBranch));
 				pl->main_ev->forks->events = e;
 				pl->main_ev->forks->prev = fork;
@@ -746,26 +745,28 @@ static void begin_event(SGS_Parser *restrict o, bool is_compstep) {
 	pl->pl_flags |= PL_ACTIVE_EV;
 }
 
-static void begin_operator(SGS_Parser *restrict o, uint8_t use_type,
+static void begin_operator(SGS_Parser *restrict o,
+		SGS_ScriptOpData *restrict pop,
 		bool is_compstep) {
 	struct ParseLevel *pl = o->cur_pl;
 	SGS_ScriptEvData *e = pl->event;
-	SGS_ScriptOpData *op, *pop = pl->on_prev;
+	SGS_ScriptOpData *op;
 	/*
 	 * It is assumed that a valid event exists.
 	 */
 	end_operator(o);
-	op = SGS_MemPool_alloc(o->smp, sizeof(SGS_ScriptOpData));
+	op = SGS_mpalloc(o->smp, sizeof(SGS_ScriptOpData));
 	pl->operator = op;
+	pl->last_mods_list = NULL; /* now track for this node */
 	if (!is_compstep)
 		pl->pl_flags |= PL_NEW_EVENT_FORK;
 	pl->used_ampmult = o->sl.sopt.ampmult;
 	/*
 	 * Initialize node.
 	 */
-	op->use_type = use_type;
 	if (pop != NULL) {
 		op->root_event = pop->root_event; /* refs keep original root */
+		op->use_type = pop->use_type;
 		pop->op_flags |= SGS_SDOP_LATER_USED;
 		op->on_prev = pop;
 		op->op_flags = pop->op_flags &
@@ -779,6 +780,7 @@ static void begin_operator(SGS_Parser *restrict o, uint8_t use_type,
 		 * New operator with initial parameter values.
 		 */
 		op->root_event = e;
+		op->use_type = pl->use_type;
 		op->time = (SGS_Time){o->sl.sopt.def_time_ms, 0};
 		if (op->use_type == SGS_POP_CARR) {
 			op->pan = create_ramp(o, false, SGS_PRAMP_PAN);
@@ -829,20 +831,19 @@ static void begin_operator(SGS_Parser *restrict o, uint8_t use_type,
  */
 static void begin_node(SGS_Parser *restrict o,
 		SGS_ScriptOpData *restrict previous,
-		uint8_t use_type, bool is_compstep) {
+		bool is_compstep) {
 	struct ParseLevel *pl = o->cur_pl;
-	pl->on_prev = previous;
-	if (previous != NULL)
-		use_type = previous->use_type;
+	uint8_t use_type = (previous != NULL) ?
+		previous->use_type :
+		pl->use_type;
 	if (!pl->event || /* not in event means previous implicitly ended */
 			pl->sub_f != parse_in_event ||
 			pl->next_wait_ms ||
 			((previous != NULL || use_type == SGS_POP_CARR)
 			 && pl->event->op_objs.first_item != NULL) ||
 			is_compstep)
-		begin_event(o, is_compstep);
-	begin_operator(o, use_type, is_compstep);
-	pl->last_use_type = use_type; /* FIXME: kludge */
+		begin_event(o, previous, is_compstep);
+	begin_operator(o, previous, is_compstep);
 }
 
 static void flush_durgroup(SGS_Parser *restrict o) {
@@ -874,17 +875,16 @@ static void enter_level(SGS_Parser *restrict o,
 		if (newscope == SCOPE_NEST) {
 			SGS_ScriptOpData *parent_on = parent_pl->operator;
 			pl->pl_flags |= PL_NESTED_SCOPE;
-			switch (use_type) {
-			case SGS_POP_FMOD:
-				pl->nest_list = parent_on->fmods;
-				break;
-			case SGS_POP_PMOD:
-				pl->nest_list = parent_on->pmods;
-				break;
-			case SGS_POP_AMOD:
-				pl->nest_list = parent_on->amods;
-				break;
-			}
+			parent_on = parent_pl->operator;
+			pl->nest_list = SGS_mpalloc(o->smp,
+					sizeof(SGS_ScriptListData));
+			pl->nest_list->use_type = use_type;
+			if (!parent_on->mods)
+				parent_on->mods = pl->nest_list;
+			else
+				parent_pl->last_mods_list->next_list =
+					pl->nest_list;
+			parent_pl->last_mods_list = pl->nest_list;
 			/*
 			 * Push script options, then prepare for new context.
 			 */
@@ -921,8 +921,7 @@ static void leave_level(SGS_Parser *restrict o) {
 		 */
 		if (pl->ev_first_data != NULL) {
 			pl->parent->pl_flags |= PL_BIND_MULTIPLE;
-			begin_node(o, pl->ev_first_data,
-					pl->parent->last_use_type, false);
+			begin_node(o, pl->ev_first_data, false);
 		}
 	} else if (pl->scope == SCOPE_NEST) {
 		/*
@@ -1009,8 +1008,6 @@ static bool parse_ev_amp(SGS_Parser *restrict o) {
 	case 'w':
 		parse_ramp(o, NULL, &op->amp2, false, SGS_PRAMP_AMP2);
 		if (SGS_Scanner_tryc(sc, '[')) {
-			op->amods = SGS_MemPool_alloc(o->smp,
-					sizeof(SGS_ScriptListData));
 			parse_level(o, SGS_POP_AMOD, SCOPE_NEST);
 		}
 		break;
@@ -1043,8 +1040,6 @@ static bool parse_ev_freq(SGS_Parser *restrict o, bool rel_freq) {
 		parse_ramp(o, numconst_f, &op->freq2,
 				rel_freq, SGS_PRAMP_FREQ2);
 		if (SGS_Scanner_tryc(sc, '[')) {
-			op->fmods = SGS_MemPool_alloc(o->smp,
-					sizeof(SGS_ScriptListData));
 			parse_level(o, SGS_POP_FMOD, SCOPE_NEST);
 		}
 		break;
@@ -1067,7 +1062,6 @@ static bool parse_ev_phase(SGS_Parser *restrict o) {
 		op->params |= SGS_POPP_PHASE;
 	}
 	if (SGS_Scanner_tryc(sc, '[')) {
-		op->pmods = SGS_MemPool_alloc(o->smp, sizeof(SGS_ScriptListData));
 		parse_level(o, SGS_POP_PMOD, SCOPE_NEST);
 	}
 	return false;
@@ -1085,12 +1079,12 @@ static void parse_in_event(SGS_Parser *restrict o) {
 			break;
 		case '/':
 			if (parse_waittime(o)) {
-				begin_node(o, pl->operator, 0, false);
+				begin_node(o, pl->operator, false);
 			}
 			break;
 		case '\\':
 			if (parse_waittime(o)) {
-				begin_node(o, pl->operator, 0, true);
+				begin_node(o, pl->operator, true);
 				pl->event->ev_flags |= SGS_SDEV_FROM_GAPSHIFT;
 			}
 			break;
@@ -1210,7 +1204,7 @@ static bool parse_level(SGS_Parser *restrict o,
 			    (SGS_TIMEP_SET|SGS_TIMEP_IMPLICIT))
 				SGS_Scanner_warning(sc, NULL,
 "ignoring 'ti' (implicit time) before ';' separator");
-			begin_node(o, pl.operator, 0, true);
+			begin_node(o, pl.operator, true);
 			pl.event->ev_flags |= SGS_SDEV_WAIT_PREV_DUR;
 			parse_in_event(o);
 			break;
@@ -1243,7 +1237,7 @@ static bool parse_level(SGS_Parser *restrict o,
 			if (var != NULL) {
 				if (var->data_use == SGS_SYM_DATA_OBJ) {
 					SGS_ScriptOpData *ref = var->data.obj;
-					begin_node(o, ref, 0, false);
+					begin_node(o, ref, false);
 					ref = pl.operator;
 					var->data.obj = ref;
 					parse_in_event(o);
@@ -1257,7 +1251,7 @@ static bool parse_level(SGS_Parser *restrict o,
 			size_t wave;
 			if (!scan_wavetype(sc, &wave))
 				break;
-			begin_node(o, 0, pl.use_type, false);
+			begin_node(o, 0, false);
 			pl.operator->wave = wave;
 			parse_in_event(o);
 			break; }
@@ -1414,27 +1408,9 @@ static uint32_t time_operator(SGS_ScriptOpData *restrict op) {
 	} else if (!(op->op_flags & SGS_SDOP_NESTED)) {
 		op->event->ev_flags |= SGS_SDEV_LOCK_DUR_SCOPE;
 	}
-	SGS_ScriptOpData *sub_op;
-	if (op->fmods != NULL) {
-		for (sub_op = op->fmods->first_item;
-				sub_op != NULL; sub_op = sub_op->next_item) {
-			uint32_t sub_dur_ms = time_operator(sub_op);
-			if (dur_ms < sub_dur_ms
-			    && (op->time.flags & SGS_TIMEP_DEFAULT) != 0)
-				dur_ms = sub_dur_ms;
-		}
-	}
-	if (op->pmods != NULL) {
-		for (sub_op = op->pmods->first_item;
-				sub_op != NULL; sub_op = sub_op->next_item) {
-			uint32_t sub_dur_ms = time_operator(sub_op);
-			if (dur_ms < sub_dur_ms
-			    && (op->time.flags & SGS_TIMEP_DEFAULT) != 0)
-				dur_ms = sub_dur_ms;
-		}
-	}
-	if (op->amods != NULL) {
-		for (sub_op = op->amods->first_item;
+	for (SGS_ScriptListData *list = op->mods;
+			list != NULL; list = list->next_list) {
+		for (SGS_ScriptOpData *sub_op = list->first_item;
 				sub_op != NULL; sub_op = sub_op->next_item) {
 			uint32_t sub_dur_ms = time_operator(sub_op);
 			if (dur_ms < sub_dur_ms
@@ -1625,7 +1601,7 @@ SGS_Script* SGS_read_Script(const char *restrict script_arg, bool is_path) {
 	if (!name) goto DONE;
 
 	postparse_passes(&pr);
-	o = SGS_MemPool_alloc(pr.smp, sizeof(SGS_Script));
+	o = SGS_mpalloc(pr.smp, sizeof(SGS_Script));
 	o->events = pr.events;
 	o->name = name;
 	o->sopt = pr.sl.sopt;
@@ -1648,7 +1624,6 @@ void SGS_discard_Script(SGS_Script *restrict o) {
 	if (!o)
 		return;
 	SGS_MemPool *rmp = o->code_mem, *smp = o->info_mem;
-	SGS_destroy_SymTab(o->symtab);
 	SGS_destroy_MemPool(smp);
 	SGS_destroy_MemPool(rmp);
 }

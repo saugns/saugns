@@ -88,19 +88,19 @@ static bool alloc_for_program(SGS_Generator *restrict o,
 
 	i = prg->ev_count;
 	if (i > 0) {
-		o->events = SGS_MemPool_alloc(o->mem, i * sizeof(EventNode*));
+		o->events = SGS_mpalloc(o->mem, i * sizeof(EventNode*));
 		if (!o->events) goto ERROR;
 		o->ev_count = i;
 	}
 	i = prg->vo_count;
 	if (i > 0) {
-		o->voices = SGS_MemPool_alloc(o->mem, i * sizeof(VoiceNode));
+		o->voices = SGS_mpalloc(o->mem, i * sizeof(VoiceNode));
 		if (!o->voices) goto ERROR;
 		o->vo_count = i;
 	}
 	i = prg->op_count;
 	if (i > 0) {
-		o->operators = SGS_MemPool_alloc(o->mem,
+		o->operators = SGS_mpalloc(o->mem,
 				i * sizeof(OperatorNode));
 		if (!o->operators) goto ERROR;
 		o->op_count = i;
@@ -139,7 +139,7 @@ static bool convert_program(SGS_Generator *restrict o,
 	}
 	for (size_t i = 0; i < prg->ev_count; ++i) {
 		const SGS_ProgramEvent *prg_e = prg->events[i];
-		EventNode *e = SGS_MemPool_alloc(o->mem, sizeof(EventNode));
+		EventNode *e = SGS_mpalloc(o->mem, sizeof(EventNode));
 		if (!e)
 			return false;
 		uint32_t params;
@@ -176,7 +176,7 @@ SGS_Generator* SGS_create_Generator(const SGS_Program *restrict prg,
 	SGS_MemPool *mem = SGS_create_MemPool(0);
 	if (!mem)
 		return NULL;
-	SGS_Generator *o = SGS_MemPool_alloc(mem, sizeof(SGS_Generator));
+	SGS_Generator *o = SGS_mpalloc(mem, sizeof(SGS_Generator));
 	if (!o) {
 		SGS_destroy_MemPool(mem);
 		return NULL;
