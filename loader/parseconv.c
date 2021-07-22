@@ -303,21 +303,24 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 	od->pan = op->pan;
 	od->phase = op->phase;
 	SGS_VoAllocState *vas = &o->va.a[o->ev->vo_id];
-	if (op->fmods != NULL) {
+	const SGS_ScriptListData *mods[SGS_POP_USES] = {0};
+	for (SGS_ScriptListData *in_list = op->mods;
+			in_list != NULL; in_list = in_list->next_list) {
 		vas->flags |= SGS_VAS_GRAPH;
-		if (!set_oplist(&oas->fmods, op->fmods, o->mem))
+		mods[in_list->use_type] = in_list;
+	}
+	if (mods[SGS_POP_FMOD] != NULL) {
+		if (!set_oplist(&oas->fmods, mods[SGS_POP_FMOD], o->mem))
 			goto MEM_ERR;
 		od->fmods = oas->fmods;
 	}
-	if (op->pmods != NULL) {
-		vas->flags |= SGS_VAS_GRAPH;
-		if (!set_oplist(&oas->pmods, op->pmods, o->mem))
+	if (mods[SGS_POP_PMOD] != NULL) {
+		if (!set_oplist(&oas->pmods, mods[SGS_POP_PMOD], o->mem))
 			goto MEM_ERR;
 		od->pmods = oas->pmods;
 	}
-	if (op->amods != NULL) {
-		vas->flags |= SGS_VAS_GRAPH;
-		if (!set_oplist(&oas->amods, op->amods, o->mem))
+	if (mods[SGS_POP_AMOD] != NULL) {
+		if (!set_oplist(&oas->amods, mods[SGS_POP_AMOD], o->mem))
 			goto MEM_ERR;
 		od->amods = oas->amods;
 	}
@@ -345,10 +348,11 @@ ParseConv_convert_ops(ParseConv *restrict o,
 		uint32_t op_id;
 		if (!SGS_OpAlloc_update(&o->oa, op, &op_id))
 			return false;
-		if (!ParseConv_convert_ops(o, op->fmods) ||
-		    !ParseConv_convert_ops(o, op->pmods) ||
-		    !ParseConv_convert_ops(o, op->amods))
-			return false;
+		for (SGS_ScriptListData *in_list = op->mods;
+				in_list != NULL; in_list = in_list->next_list) {
+			if (!ParseConv_convert_ops(o, in_list))
+				return false;
+		}
 		if (!ParseConv_convert_opdata(o, op, op_id))
 			return false;
 	}
