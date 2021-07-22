@@ -27,16 +27,25 @@ enum {
  * Container node for linked list, used for nesting.
  */
 typedef struct SGS_ScriptListData {
-	struct SGS_ScriptOpData *first_on;
+	struct SGS_ScriptOpData *first_item;
+	struct SGS_ScriptListData *next_list;
+	uint8_t use_type;
 } SGS_ScriptListData;
+
+/** Info shared by all references to an object. */
+typedef struct SGS_ScriptObjInfo {
+	struct SGS_ScriptOpData *last_ref; // used for iterating references
+	uint32_t id; // for conversion
+} SGS_ScriptObjInfo;
 
 /**
  * Node type for operator data.
  */
 typedef struct SGS_ScriptOpData {
 	struct SGS_ScriptEvData *event;
-	struct SGS_ScriptOpData *next; /* next in list, scope, grouping... */
-	struct SGS_ScriptOpData *on_prev; /* preceding for same op(s) */
+	struct SGS_ScriptOpData *next; // next in list, scope, grouping...
+	struct SGS_ScriptObjInfo *info; // shared by all references
+	struct SGS_ScriptOpData *prev_ref; // preceding for same op(s)
 	uint32_t op_flags;
 	/* operator parameters */
 	uint32_t op_id; /* not set by parser; for later use (parseconv.c) */
@@ -47,7 +56,7 @@ typedef struct SGS_ScriptOpData {
 	uint32_t phase;
 	uint8_t wave;
 	/* node adjacents in operator linkage graph */
-	SGS_ScriptListData *amods, *fmods, *pmods;
+	SGS_ScriptListData *mods;
 } SGS_ScriptOpData;
 
 /**
