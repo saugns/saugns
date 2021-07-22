@@ -87,7 +87,7 @@ static bool parse_args(int argc, char **restrict argv,
 		arg = *argv;
 		if (*arg != '-') {
 			struct SGS_ScriptArg entry = {arg};
-			SGS_ScriptArgArr_add(script_args, &entry);
+			SGS_ScriptArgArr_push(script_args, &entry);
 			continue;
 		}
 NEXT_C:
@@ -235,7 +235,7 @@ static size_t SGS_read(const SGS_ScriptArgArr *restrict script_args,
 		const SGS_Program *prg = build_program(script_args->a[i].str,
 				are_paths);
 		if (prg != NULL) ++built;
-		SGS_ProgramArr_add(prg_objs, &prg);
+		SGS_ProgramArr_push(prg_objs, &prg);
 	}
 	return built;
 }

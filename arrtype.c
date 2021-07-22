@@ -21,7 +21,30 @@
 #include <string.h>
 
 /**
- * Add an item to the given array. The memory is initialized
+ * Add an item to the given array. Its memory is initialized
+ * to zero bytes only if allocating a new portion of memory.
+ *
+ * The address of the item in the array is returned, and can
+ * be used to initialize it. (If allocation fails, the array
+ * will remain unaltered and NULL be returned.) This address
+ * should however be expected to change with array resizing.
+ *
+ * (Generic version of the function, to be used through wrapper.)
+ *
+ * \return item in array, or NULL if allocation failed
+ */
+void *SGS_ArrType_add(void *restrict _o, size_t item_size) {
+	SGS_ByteArr *restrict o = _o;
+	if (!SGS_ArrType_upsize(o, o->count + 1, item_size))
+		return NULL;
+	size_t offs = o->count * item_size;
+	void *mem = o->a + offs;
+	++o->count;
+	return mem;
+}
+
+/**
+ * Add an item to the given array. It is always initialized,
  * with a copy of \p item if not NULL, otherwise zero bytes.
  *
  * The address of the item in the array is returned, and can
@@ -33,7 +56,7 @@
  *
  * \return item in array, or NULL if allocation failed
  */
-void *SGS_ArrType_add(void *restrict _o,
+void *SGS_ArrType_push(void *restrict _o,
 		const void *restrict item, size_t item_size) {
 	SGS_ByteArr *restrict o = _o;
 	if (!SGS_ArrType_upsize(o, o->count + 1, item_size))
@@ -50,7 +73,7 @@ void *SGS_ArrType_add(void *restrict _o,
 
 /**
  * Resize the given array if \p count is greater than the current
- * allocation.
+ * allocation. Initializes a new part of the array to zero bytes.
  *
  * (Generic version of the function, to be used through wrapper.)
  *
@@ -67,6 +90,10 @@ bool SGS_ArrType_upsize(void *restrict _o,
 		void *a = realloc(o->a, asize);
 		if (!a)
 			return false;
+		if (!o->a)
+			memset(a, 0, asize);
+		else
+			memset(a + o->asize, 0, asize - o->asize);
 		o->a = a;
 		o->asize = asize;
 	}
