@@ -50,12 +50,16 @@ typedef struct Name { \
  */
 #define sgsArrTypeMethods(Name, ElementType, MethodPrefix) \
 static inline ElementType sgsMaybeUnused \
-*MethodPrefix##Name##_add(Name *restrict o, \
-		const ElementType *restrict item) { \
-	return SGS_ArrType_add(o, item, sizeof(ElementType)); \
+*MethodPrefix##Name##_add(Name *restrict o) { \
+	return SGS_ArrType_add(o, sizeof(ElementType)); \
 } \
 static inline ElementType sgsMaybeUnused \
-*MethodPrefix##Name##_drop(Name *restrict o) { \
+*MethodPrefix##Name##_push(Name *restrict o, \
+		const ElementType *restrict item) { \
+	return SGS_ArrType_push(o, item, sizeof(ElementType)); \
+} \
+static inline ElementType sgsMaybeUnused \
+*MethodPrefix##Name##_pop(Name *restrict o) { \
 	return (o->count > 0) ? &o->a[--o->count] : NULL; \
 } \
 static inline bool sgsMaybeUnused \
@@ -98,7 +102,8 @@ MethodPrefix##Name##_mpmemdup(Name *restrict o, ElementType **restrict dst, \
 sgsArrTypeStruct(Name, ElementType) \
 sgsArrTypeMethods(Name, ElementType, MethodPrefix)
 
-void *SGS_ArrType_add(void *restrict o,
+void *SGS_ArrType_add(void *restrict o, size_t item_size);
+void *SGS_ArrType_push(void *restrict o,
 		const void *restrict item, size_t item_size);
 bool SGS_ArrType_upsize(void *restrict o,
 		size_t count, size_t item_size);
