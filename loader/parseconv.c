@@ -217,20 +217,24 @@ static void ParseConv_convert_opdata(ParseConv *restrict o,
 	ood.pan = op->pan;
 	ood.phase = op->phase;
 	SGS_VoAllocState *vas = &o->va.a[o->ev->vo_id];
-	if (op->fmods != NULL) {
+	for (SGS_ScriptListData *in_list = op->mods;
+			in_list != NULL; in_list = in_list->next_list) {
 		vas->flags |= SGS_VAS_GRAPH;
-		oas->fmods = create_OpList(op->fmods);
-		ood.fmods = oas->fmods;
-	}
-	if (op->pmods != NULL) {
-		vas->flags |= SGS_VAS_GRAPH;
-		oas->pmods = create_OpList(op->pmods);
-		ood.pmods = oas->pmods;
-	}
-	if (op->amods != NULL) {
-		vas->flags |= SGS_VAS_GRAPH;
-		oas->amods = create_OpList(op->amods);
-		ood.amods = oas->amods;
+		SGS_ProgramOpList *list = create_OpList(in_list);
+		switch (in_list->use_type) {
+		case SGS_POP_FMOD:
+			free_nonblank((void*) ood.fmods);
+			ood.fmods = oas->fmods = list;
+			break;
+		case SGS_POP_PMOD:
+			free_nonblank((void*) ood.pmods);
+			ood.pmods = oas->pmods = list;
+			break;
+		case SGS_POP_AMOD:
+			free_nonblank((void*) ood.amods);
+			ood.amods = oas->amods = list;
+			break;
+		}
 	}
 	OpDataArr_add(&o->ev_op_data, &ood);
 }
@@ -249,9 +253,10 @@ static void ParseConv_convert_ops(ParseConv *restrict o,
 		// TODO: handle multiple operator nodes
 		if ((op->op_flags & SGS_SDOP_MULTIPLE) != 0) continue;
 		uint32_t op_id = SGS_OpAlloc_update(&o->oa, op);
-		ParseConv_convert_ops(o, op->fmods);
-		ParseConv_convert_ops(o, op->pmods);
-		ParseConv_convert_ops(o, op->amods);
+		for (SGS_ScriptListData *in_list = op->mods;
+				in_list != NULL; in_list = in_list->next_list) {
+			ParseConv_convert_ops(o, in_list);
+		}
 		ParseConv_convert_opdata(o, op, op_id);
 	}
 }
