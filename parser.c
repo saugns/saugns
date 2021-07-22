@@ -16,7 +16,6 @@
 #include "help.h"
 #include "math.h"
 #include <string.h>
-#include <stdlib.h>
 #include <stdio.h>
 
 /*
@@ -488,12 +487,11 @@ typedef struct SGS_Parser {
 	struct ScanLookup sl;
 	SGS_Scanner *sc;
 	SGS_Symtab *st;
-	SGS_Mempool *mp, *prg_mp;
+	SGS_Mempool *mp, *tmp_mp, *prg_mp;
 	uint32_t call_level;
 	/* node state */
 	struct ParseLevel *cur_pl;
-	SGS_ScriptEvData *events;
-	SGS_ScriptEvData *last_event;
+	SGS_ScriptEvData *events, *last_event;
 	SGS_ScriptEvData *group_start, *group_end;
 } SGS_Parser;
 
@@ -502,6 +500,7 @@ typedef struct SGS_Parser {
  */
 static void fini_Parser(SGS_Parser *restrict o) {
 	SGS_destroy_Scanner(o->sc);
+	SGS_destroy_Mempool(o->tmp_mp);
 	SGS_destroy_Mempool(o->prg_mp);
 	SGS_destroy_Mempool(o->mp);
 }
@@ -516,6 +515,7 @@ static void fini_Parser(SGS_Parser *restrict o) {
  */
 static bool init_Parser(SGS_Parser *restrict o) {
 	SGS_Mempool *mp = SGS_create_Mempool(0),
+		    *tmp_mp = SGS_create_Mempool(0),
 		    *prg_mp = SGS_create_Mempool(0);
 	SGS_Symtab *st = SGS_create_Symtab(mp);
 	SGS_Scanner *sc = SGS_create_Scanner(st);
@@ -523,8 +523,9 @@ static bool init_Parser(SGS_Parser *restrict o) {
 	o->sc = sc;
 	o->st = st;
 	o->mp = mp;
+	o->tmp_mp = tmp_mp;
 	o->prg_mp = prg_mp;
-	if (!sc || !prg_mp) goto ERROR;
+	if (!sc || !tmp_mp || !prg_mp) goto ERROR;
 	if (!init_ScanLookup(&o->sl, st)) goto ERROR;
 	sc->data = &o->sl;
 	return true;
@@ -572,9 +573,8 @@ struct ParseLevel {
 	uint8_t scope;
 	uint8_t use_type;
 	SGS_ScriptEvData *event;
-	SGS_ScriptListData *nest_list;
+	SGS_ScriptListData *nest_list, *last_mods_list;
 	SGS_ScriptOpData *operator, *scope_first, *ev_last, *nest_last;
-	SGS_ScriptOpData *parent_on, *on_prev;
 	SGS_Symitem *set_var;
 	/* timing/delay */
 	SGS_ScriptEvData *main_ev; /* if events are nested, for grouping... */
@@ -665,7 +665,7 @@ static void end_operator(SGS_Parser *restrict o) {
 		op->amp2->v0 *= pl->used_ampmult;
 		op->amp2->vt *= pl->used_ampmult;
 	}
-	SGS_ScriptOpData *pop = op->on_prev;
+	SGS_ScriptOpData *pop = op->prev_ref;
 	if (!pop) {
 		/*
 		 * Reset all operator state for initial event.
@@ -690,42 +690,34 @@ static void end_event(SGS_Parser *restrict o) {
 	o->group_end = group_e;
 }
 
-static void begin_event(SGS_Parser *restrict o, bool is_compstep) {
+static void begin_event(SGS_Parser *restrict o,
+		SGS_ScriptOpData *restrict prev_data,
+		bool is_compstep) {
 	struct ParseLevel *pl = o->cur_pl;
-	SGS_ScriptEvData *e, *pve;
+	SGS_ScriptEvData *e;
 	end_event(o);
 	pl->event = SGS_mpalloc(o->mp, sizeof(SGS_ScriptEvData));
 	e = pl->event;
 	e->wait_ms = pl->next_wait_ms;
 	pl->next_wait_ms = 0;
-	if (pl->on_prev != NULL) {
-		SGS_ScriptEvBranch *fork;
-		if (pl->on_prev->op_flags & SGS_SDOP_NESTED)
+	if (prev_data != NULL) {
+		SGS_ScriptEvData *pve = prev_data->event;
+		if (prev_data->op_flags & SGS_SDOP_NESTED)
 			e->ev_flags |= SGS_SDEV_IMPLICIT_TIME;
-		pve = pl->on_prev->event;
-		pve->ev_flags |= SGS_SDEV_VOICE_LATER_USED;
-		fork = pve->forks;
-		e->root_ev = pl->on_prev->root_event;
+		e->root_ev = prev_data->info->root_event;
 		if (is_compstep) {
 			if (pl->pl_flags & PL_NEW_EVENT_FORK) {
+				SGS_ScriptEvBranch *fork =
+					SGS_mpalloc(o->tmp_mp, sizeof(*fork));
+				fork->events = e;
 				if (!pl->main_ev)
 					pl->main_ev = pve;
-				else
-					fork = pl->main_ev->forks;
-				pl->main_ev->forks = calloc(1,
-						sizeof(SGS_ScriptEvBranch));
-				pl->main_ev->forks->events = e;
-				pl->main_ev->forks->prev = fork;
+				fork->prev = pl->main_ev->forks;
+				pl->main_ev->forks = fork;
 				pl->pl_flags &= ~PL_NEW_EVENT_FORK;
 			} else {
 				pve->next = e;
 			}
-		} else while (fork != NULL) {
-			SGS_ScriptEvData *last_ce;
-			for (last_ce = fork->events; last_ce->next;
-					last_ce = last_ce->next) ;
-			last_ce->ev_flags |= SGS_SDEV_VOICE_LATER_USED;
-			fork = fork->prev;
 		}
 	}
 	if (!is_compstep) {
@@ -739,16 +731,17 @@ static void begin_event(SGS_Parser *restrict o, bool is_compstep) {
 	pl->pl_flags |= PL_OWN_EV;
 }
 
-static void begin_operator(SGS_Parser *restrict o, bool is_compstep) {
+static void begin_operator(SGS_Parser *restrict o,
+		SGS_ScriptOpData *restrict pop, bool is_compstep) {
 	struct ParseLevel *pl = o->cur_pl;
 	SGS_ScriptEvData *e = pl->event;
-	SGS_ScriptOpData *op, *pop = pl->on_prev;
+	SGS_ScriptOpData *op;
 	/*
 	 * It is assumed that a valid event exists.
 	 */
 	end_operator(o);
-	pl->operator = SGS_mpalloc(o->mp, sizeof(SGS_ScriptOpData));
-	op = pl->operator;
+	pl->operator = op = SGS_mpalloc(o->mp, sizeof(SGS_ScriptOpData));
+	pl->last_mods_list = NULL; /* now track for this node */
 	if (!is_compstep)
 		pl->pl_flags |= PL_NEW_EVENT_FORK;
 	pl->used_ampmult = o->sl.sopt.ampmult;
@@ -756,15 +749,14 @@ static void begin_operator(SGS_Parser *restrict o, bool is_compstep) {
 	 * Initialize node.
 	 */
 	if (pop != NULL) {
-		op->root_event = pop->root_event; /* refs keep original root */
-		pop->op_flags |= SGS_SDOP_LATER_USED;
-		op->on_prev = pop;
+		op->prev_ref = pop;
 		op->op_flags = pop->op_flags &
 			(SGS_SDOP_NESTED | SGS_SDOP_MULTIPLE);
 		op->time = (SGS_Time){pop->time.v_ms,
 			(pop->time.flags & SGS_TIMEP_IMPLICIT)};
 		op->wave = pop->wave;
 		op->phase = pop->phase;
+		op->info = pop->info;
 		if ((pl->pl_flags & PL_BIND_MULTIPLE) != 0) {
 			SGS_ScriptOpData *mpop = pop;
 			uint32_t max_time = 0;
@@ -780,7 +772,6 @@ static void begin_operator(SGS_Parser *restrict o, bool is_compstep) {
 		/*
 		 * New operator with initial parameter values.
 		 */
-		op->root_event = e;
 		op->time = (SGS_Time){o->sl.sopt.def_time_ms, 0};
 		if (pl->use_type == SGS_POP_CARR) {
 			op->pan = create_ramp(o, false, SGS_PRAMP_PAN);
@@ -790,6 +781,8 @@ static void begin_operator(SGS_Parser *restrict o, bool is_compstep) {
 			op->freq = create_ramp(o, true, SGS_PRAMP_FREQ);
 		}
 		op->amp = create_ramp(o, false, SGS_PRAMP_AMP);
+		op->info = SGS_mpalloc(o->mp, sizeof(SGS_ScriptObjInfo));
+		op->info->root_event = e;
 	}
 	op->event = e;
 	/*
@@ -798,14 +791,14 @@ static void begin_operator(SGS_Parser *restrict o, bool is_compstep) {
 	 * carriers) in the case of operator linking/nesting.
 	 */
 	if (pop || !pl->nest_list) {
-		if (!e->objs.first_on)
-			e->objs.first_on = op;
+		if (!e->objs.first_item)
+			e->objs.first_item = op;
 		else
 			pl->ev_last->next = op;
 		pl->ev_last = op;
 	} else {
-		if (!pl->nest_list->first_on)
-			pl->nest_list->first_on = op;
+		if (!pl->nest_list->first_item)
+			pl->nest_list->first_item = op;
 		else
 			pl->nest_last->next = op;
 		pl->nest_last = op;
@@ -832,15 +825,14 @@ static void begin_operator(SGS_Parser *restrict o, bool is_compstep) {
 static void begin_node(SGS_Parser *restrict o,
 		SGS_ScriptOpData *restrict previous, bool is_compstep) {
 	struct ParseLevel *pl = o->cur_pl;
-	pl->on_prev = previous;
 	if (!pl->event || /* not in event means previous implicitly ended */
 			pl->sub_f != parse_in_event ||
 			pl->next_wait_ms ||
 			((previous || pl->use_type == SGS_POP_CARR)
-			 && pl->event->objs.first_on) ||
+			 && pl->event->objs.first_item) ||
 			is_compstep)
-		begin_event(o, is_compstep);
-	begin_operator(o, is_compstep);
+		begin_event(o, previous, is_compstep);
+	begin_operator(o, previous, is_compstep);
 }
 
 static void flush_durgroup(SGS_Parser *restrict o) {
@@ -869,24 +861,19 @@ static void enter_level(SGS_Parser *restrict o,
 			pl->scope = parent_pl->scope;
 		pl->event = parent_pl->event;
 		pl->operator = parent_pl->operator;
-		pl->parent_on = parent_pl->parent_on;
 		if (newscope == SCOPE_NEST) {
 			pl->sub_f = NULL; // don't allow more args for outer
 			pl->pl_flags |= PL_NESTED_SCOPE;
-			pl->parent_on = parent_pl->operator;
+			SGS_ScriptOpData *parent_on = parent_pl->operator;
 			pl->nest_list = SGS_mpalloc(o->mp,
 					sizeof(SGS_ScriptListData));
-			switch (use_type) {
-			case SGS_POP_AMOD:
-				pl->parent_on->amods = pl->nest_list;
-				break;
-			case SGS_POP_FMOD:
-				pl->parent_on->fmods = pl->nest_list;
-				break;
-			case SGS_POP_PMOD:
-				pl->parent_on->pmods = pl->nest_list;
-				break;
-			}
+			pl->nest_list->use_type = use_type;
+			if (!parent_on->mods)
+				parent_on->mods = pl->nest_list;
+			else
+				parent_pl->last_mods_list->next_list =
+					pl->nest_list;
+			parent_pl->last_mods_list = pl->nest_list;
 			/*
 			 * Push script options, then prepare for new context.
 			 */
@@ -1363,7 +1350,7 @@ static void time_durgroup(SGS_ScriptEvData *restrict e_last) {
 		}
 	}
 	for (e = e_last->group_backref; e != e_after; ) {
-		for (SGS_ScriptOpData *op = e->objs.first_on; op;
+		for (SGS_ScriptOpData *op = e->objs.first_item; op;
 				op = op->next) {
 			if (!(op->time.flags & SGS_TIMEP_SET)) {
 				/* fill in sensible default time */
@@ -1406,26 +1393,15 @@ static uint32_t time_operator(SGS_ScriptOpData *restrict op) {
 	} else if (!(op->op_flags & SGS_SDOP_NESTED)) {
 		op->event->ev_flags |= SGS_SDEV_LOCK_DUR_SCOPE;
 	}
-	if (op->amods) for (SGS_ScriptOpData *sub_op = op->amods->first_on;
-			sub_op != NULL; sub_op = sub_op->next) {
-		uint32_t sub_dur_ms = time_operator(sub_op);
-		if (dur_ms < sub_dur_ms
-		    && (op->time.flags & SGS_TIMEP_DEFAULT) != 0)
-			dur_ms = sub_dur_ms;
-	}
-	if (op->fmods) for (SGS_ScriptOpData *sub_op = op->fmods->first_on;
-			sub_op != NULL; sub_op = sub_op->next) {
-		uint32_t sub_dur_ms = time_operator(sub_op);
-		if (dur_ms < sub_dur_ms
-		    && (op->time.flags & SGS_TIMEP_DEFAULT) != 0)
-			dur_ms = sub_dur_ms;
-	}
-	if (op->pmods) for (SGS_ScriptOpData *sub_op = op->pmods->first_on;
-			sub_op != NULL; sub_op = sub_op->next) {
-		uint32_t sub_dur_ms = time_operator(sub_op);
-		if (dur_ms < sub_dur_ms
-		    && (op->time.flags & SGS_TIMEP_DEFAULT) != 0)
-			dur_ms = sub_dur_ms;
+	for (SGS_ScriptListData *list = op->mods;
+			list != NULL; list = list->next_list) {
+		for (SGS_ScriptOpData *sub_op = list->first_item;
+				sub_op != NULL; sub_op = sub_op->next) {
+			uint32_t sub_dur_ms = time_operator(sub_op);
+			if (dur_ms < sub_dur_ms
+			    && (op->time.flags & SGS_TIMEP_DEFAULT) != 0)
+				dur_ms = sub_dur_ms;
+		}
 	}
 	op->time.v_ms = dur_ms;
 	time_op_ramps(op);
@@ -1434,7 +1410,7 @@ static uint32_t time_operator(SGS_ScriptOpData *restrict op) {
 
 static uint32_t time_event(SGS_ScriptEvData *restrict e) {
 	uint32_t dur_ms = 0;
-	for (SGS_ScriptOpData *op = e->objs.first_on; op; op = op->next) {
+	for (SGS_ScriptOpData *op = e->objs.first_item; op; op = op->next) {
 		uint32_t sub_dur_ms = time_operator(op);
 		if (dur_ms < sub_dur_ms)
 			dur_ms = sub_dur_ms;
@@ -1446,8 +1422,8 @@ static uint32_t time_event(SGS_ScriptEvData *restrict e) {
 	while (fork != NULL) {
 		uint32_t nest_dur_ms = 0, wait_sum_ms = 0;
 		SGS_ScriptEvData *ne = fork->events, *ne_prev = e;
-		SGS_ScriptOpData *ne_op = ne->objs.first_on,
-				 *ne_op_prev = ne_op->on_prev,
+		SGS_ScriptOpData *ne_op = ne->objs.first_item,
+				 *ne_op_prev = ne_op->prev_ref,
 				 *e_op = ne_op_prev;
 		uint32_t first_time_ms = e_op->time.v_ms;
 		SGS_Time def_time = {
@@ -1494,7 +1470,7 @@ static uint32_t time_event(SGS_ScriptEvData *restrict e) {
 			ne_prev = ne;
 			ne = ne->next;
 			if (!ne) break;
-			ne_op = ne->objs.first_on;
+			ne_op = ne->objs.first_item;
 		}
 		/*
 		 * Exclude nested operators when setting a longer duration,
@@ -1569,7 +1545,6 @@ static void flatten_events(SGS_ScriptEvData *restrict e) {
 		ne = ne_next;
 	}
 	e->forks = fork->prev;
-	free(fork);
 }
 
 /*
@@ -1592,6 +1567,20 @@ static void postparse_passes(SGS_Parser *restrict o) {
 	 */
 	for (e = o->events; e; e = e->next) {
 		while (e->forks != NULL) flatten_events(e);
+		/*
+		 * Track sequence of references and later use here.
+		 */
+		for (SGS_ScriptOpData *sub_op = e->objs.first_item;
+				sub_op; sub_op = sub_op->next) {
+			SGS_ScriptOpData *prev_ref = sub_op->info->last_ref;
+			if (prev_ref != NULL) {
+				sub_op->prev_ref = prev_ref;
+				prev_ref->op_flags |= SGS_SDOP_LATER_USED;
+				prev_ref->event->ev_flags |=
+					SGS_SDEV_VOICE_LATER_USED;
+			}
+			sub_op->info->last_ref = sub_op;
+		}
 	}
 }
 
