@@ -19,6 +19,8 @@
 #include "../wave.h"
 #include "../math.h"
 
+#define USE_PILUT 1
+
 #define SGS_OSC_RESET_DIFF  (1<<0)
 #define SGS_OSC_RESET       ((1<<1) - 1)
 
@@ -27,9 +29,11 @@ typedef struct SGS_Osc {
 	float coeff;
 	uint8_t wave;
 	uint8_t flags;
+#if USE_PILUT
 	uint32_t prev_phase;
 	double prev_Is;
 	float prev_diff_s;
+#endif
 } SGS_Osc;
 
 /**
@@ -50,7 +54,11 @@ typedef struct SGS_Osc {
  */
 static inline void SGS_init_Osc(SGS_Osc *restrict o, uint32_t srate) {
 	*o = (SGS_Osc){
+#if USE_PILUT
 		.phase = SGS_Wave_picoeffs[SGS_WAVE_SIN].phase_adj,
+#else
+		.phase = 0;
+#endif
 		.coeff = SGS_Osc_COEFF(srate),
 		.wave = SGS_WAVE_SIN,
 		.flags = SGS_OSC_RESET,
@@ -58,15 +66,23 @@ static inline void SGS_init_Osc(SGS_Osc *restrict o, uint32_t srate) {
 }
 
 static inline void SGS_Osc_set_phase(SGS_Osc *restrict o, uint32_t phase) {
+#if USE_PILUT
 	o->phase = phase + SGS_Wave_picoeffs[o->wave].phase_adj;
+#else
+	o->phase = phase;
+#endif
 }
 
 static inline void SGS_Osc_set_wave(SGS_Osc *restrict o, uint8_t wave) {
+#if USE_PILUT
 	int32_t old_offset = SGS_Wave_picoeffs[o->wave].phase_adj;
 	int32_t offset = SGS_Wave_picoeffs[wave].phase_adj;
 	o->phase += offset - old_offset;
 	o->wave = wave;
 	o->flags |= SGS_OSC_RESET_DIFF;
+#else
+	o->wave = wave;
+#endif
 }
 
 /**

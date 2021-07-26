@@ -23,7 +23,9 @@
  * Turn off to use the raw naive LUTs,
  * kept for testing/"viewing" of them.
  */
-#define USE_PILUT 1
+#ifndef USE_PILUT
+# define USE_PILUT 1
+#endif
 
 #if !USE_PILUT
 /*
