@@ -19,7 +19,7 @@
 #include "../wave.h"
 #include "../math.h"
 
-#define USE_PILUT 1
+#define USE_PILUT 0
 
 #define SGS_OSC_RESET_DIFF  (1<<0)
 #define SGS_OSC_RESET       ((1<<1) - 1)
@@ -57,7 +57,7 @@ static inline void SGS_init_Osc(SGS_Osc *restrict o, uint32_t srate) {
 #if USE_PILUT
 		.phase = SGS_Wave_picoeffs[SGS_WAVE_SIN].phase_adj,
 #else
-		.phase = 0;
+		.phase = 0,
 #endif
 		.coeff = SGS_Osc_COEFF(srate),
 		.wave = SGS_WAVE_SIN,
