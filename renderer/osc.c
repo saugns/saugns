@@ -27,6 +27,25 @@
 # define USE_PILUT 1
 #endif
 
+static inline double berp(double s[4]) {
+	double x = 0.5;
+	double s0ps3 = s[0]+s[3];
+	double c0 = s[1];
+	double c1 = 3/2.0*s[2] - 1/2.0*(s[1]+s0ps3);
+	double c2 = 1/2.0*(s0ps3-s[1]-s[2]);
+	return (c2*x+c1)*x+c0;
+
+/*
+	// 4-point, 3rd-order B-spline (x-form)
+	double s0ps2 = s[0]+s[2];
+	double c0 = 1/6.0*s0ps2 + 2/3.0*s[1];
+	double c1 = 1/2.0*(s[2]-s[0]);
+	double c2 = 1/2.0*s0ps2 - s[1];
+	double c3 = 1/2.0*(s[1]-s[2]) + 1/6.0*(s[3]-s[0]);
+	return ((c3*x+c2)*x+c1)*x+c0;
+*/
+}
+
 #if !USE_PILUT
 /*
  * Implementation of SGS_Osc_run()
@@ -41,16 +60,33 @@ static void naive_run(SGS_Osc *restrict o,
 		const float *restrict amp,
 		const float *restrict pm_f) {
 	const float *const lut = SGS_Wave_luts[o->wave];
+	uint32_t phase = 0, prev_phase = o->prev_phase;
+	double m[4];
+	m[2] = o->m[0];
+	m[3] = o->m[1];
 	for (size_t i = 0; i < buf_len; ++i) {
-		uint32_t phase = o->phase;
+		int32_t phase_inc = lrintf(o->coeff * freq[i]);
+		o->phase += phase_inc;
+		phase = o->phase;
+		int32_t s_pm = 0;
 		if (pm_f != NULL) {
-			phase += lrintf(pm_f[i] * (float) INT32_MAX);
+			s_pm = lrintf(pm_f[i] * (float) INT32_MAX);
 		}
-		float s = SGS_Wave_get_lerp(lut, phase) * amp[i];
-		o->phase += lrintf(o->coeff * freq[i]);
+		phase += s_pm;
+		int32_t phase_diff = phase - prev_phase;
+		m[0] = m[2];
+		m[1] = m[3];
+		m[2] = SGS_Wave_get_lerp(lut, phase - (phase_diff >> 1));
+		m[3] = SGS_Wave_get_lerp(lut, phase);
+		float s = berp(m);
+		prev_phase = phase;
+		s *= amp[i];
 		if (layer > 0) s += buf[i];
 		buf[i] = s;
 	}
+	o->m[0] = m[2];
+	o->m[1] = m[3];
+	o->prev_phase = phase;
 }
 
 /*
@@ -66,18 +102,28 @@ static void naive_run_env(SGS_Osc *restrict o,
 		const float *restrict amp,
 		const float *restrict pm_f) {
 	const float *const lut = SGS_Wave_luts[o->wave];
+	uint32_t phase = 0, prev_phase = o->prev_phase;
+//	float ms[4];
 	for (size_t i = 0; i < buf_len; ++i) {
-		uint32_t phase = o->phase;
+		int32_t phase_inc = lrintf(o->coeff * freq[i]);
+		o->phase += phase_inc;
+		phase = o->phase;
+		int32_t s_pm = 0;
 		if (pm_f != NULL) {
-			phase += lrintf(pm_f[i] * (float) INT32_MAX);
+			s_pm = lrintf(pm_f[i] * (float) INT32_MAX);
 		}
-		float s = SGS_Wave_get_lerp(lut, phase);
-		o->phase += lrintf(o->coeff * freq[i]);
+		phase += s_pm;
+		int32_t phase_diff = phase - prev_phase;
+		double s0 = SGS_Wave_get_lerp(lut, phase - (phase_diff >> 1));
+		double s1 = SGS_Wave_get_lerp(lut, phase);
+		float s = (s0 + s1) * 0.5f;
+		prev_phase = phase;
 		float s_amp = amp[i] * 0.5f;
 		s = (s * s_amp) + fabs(s_amp);
 		if (layer > 0) s *= buf[i];
 		buf[i] = s;
 	}
+	o->prev_phase = phase;
 }
 #endif
 
