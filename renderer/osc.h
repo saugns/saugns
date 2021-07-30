@@ -28,7 +28,7 @@ typedef struct SGS_Osc {
 	uint8_t wave;
 	uint8_t flags;
 	uint32_t prev_phase;
-	double prev_Is;
+	double prev_Is, prev_IIs;
 	float prev_diff_s;
 } SGS_Osc;
 

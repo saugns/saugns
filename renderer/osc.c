@@ -88,11 +88,11 @@ static void SGS_Osc_reset(SGS_Osc *o) {
 		/* Set up for differentiation start and a valid previous. */
 		int32_t phase_diff = SGS_Wave_SLEN;
 		int32_t phase = o->phase + phase_diff; /* good for 0 Hz case */
-		o->prev_Is = SGS_Wave_get_lerp(lut, phase - phase_diff);
-		double Is = SGS_Wave_get_lerp(lut, phase);
+		o->prev_IIs = SGS_Wave_get_lerp(lut, phase - phase_diff);
+		double IIs = SGS_Wave_get_lerp(lut, phase);
 		double x = (diff_scale / phase_diff);
-		o->prev_diff_s = (Is - o->prev_Is) * x + diff_offset;
-		o->prev_Is = Is;
+		o->prev_diff_s = (IIs - o->prev_IIs) * x + diff_offset;
+		o->prev_IIs = IIs;
 		o->prev_phase = phase;
 	}
 	o->flags &= ~SGS_OSC_RESET;
@@ -132,9 +132,11 @@ void SGS_Osc_run(SGS_Osc *restrict o,
 			if (phase_diff == 0) {
 				s = o->prev_diff_s;
 			} else {
-				double Is = SGS_Wave_get_lerp(lut, phase);
+				double IIs = SGS_Wave_get_lerp(lut, phase);
 				double x = (diff_scale / phase_diff);
+				double Is = (IIs - o->prev_IIs) * x;
 				s = (Is - o->prev_Is) * x + diff_offset;
+				o->prev_IIs = IIs;
 				o->prev_Is = Is;
 				o->prev_diff_s = s;
 				o->prev_phase = phase;
@@ -152,9 +154,11 @@ void SGS_Osc_run(SGS_Osc *restrict o,
 			if (phase_diff == 0) {
 				s = o->prev_diff_s;
 			} else {
-				double Is = SGS_Wave_get_lerp(lut, phase);
+				double IIs = SGS_Wave_get_lerp(lut, phase);
 				double x = (diff_scale / phase_diff);
+				double Is = (IIs - o->prev_IIs) * x;
 				s = (Is - o->prev_Is) * x + diff_offset;
+				o->prev_IIs = IIs;
 				o->prev_Is = Is;
 				o->prev_diff_s = s;
 				o->prev_phase = phase;
@@ -203,9 +207,11 @@ void SGS_Osc_run_env(SGS_Osc *restrict o,
 			if (phase_diff == 0) {
 				s = o->prev_diff_s;
 			} else {
-				double Is = SGS_Wave_get_lerp(lut, phase);
+				double IIs = SGS_Wave_get_lerp(lut, phase);
 				double x = (diff_scale / phase_diff);
+				double Is = (IIs - o->prev_IIs) * x;
 				s = (Is - o->prev_Is) * x + diff_offset;
+				o->prev_IIs = IIs;
 				o->prev_Is = Is;
 				o->prev_diff_s = s;
 				o->prev_phase = phase;
@@ -224,9 +230,11 @@ void SGS_Osc_run_env(SGS_Osc *restrict o,
 			if (phase_diff == 0) {
 				s = o->prev_diff_s;
 			} else {
-				double Is = SGS_Wave_get_lerp(lut, phase);
+				double IIs = SGS_Wave_get_lerp(lut, phase);
 				double x = (diff_scale / phase_diff);
+				double Is = (IIs - o->prev_IIs) * x;
 				s = (Is - o->prev_Is) * x + diff_offset;
+				o->prev_IIs = IIs;
 				o->prev_Is = Is;
 				o->prev_diff_s = s;
 				o->prev_phase = phase;
