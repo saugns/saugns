@@ -33,9 +33,6 @@ typedef struct SGS_Osc {
 	uint32_t prev_phase;
 	double prev_Is;
 	float prev_diff_s;
-#else
-	uint32_t prev_phase;
-	double m[2];
 #endif
 } SGS_Osc;
 
