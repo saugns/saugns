@@ -30,16 +30,9 @@
 #if !USE_PILUT
 #define SIN_X_SCALE(x) (((int32_t) x) * (float) SGS_PI / INT32_MAX)
 
-const float fact_odd[] = {1.0/6, 1.0/120, 1.0/5040};
-
 static inline float SGS_sin_t7(float x) {
-	if (x > SGS_PI_2) {
-		x = SGS_PI_2 - (x - SGS_PI_2);
-	} else if (x < -SGS_PI_2) {
-		x = -SGS_PI_2 - (x - -SGS_PI_2);
-	}
 	float x2 = x*x, x3 = x * x2;
-	return x - x3*fact_odd[0] + x3*x2*fact_odd[1] - x3*x3*x*fact_odd[2];
+	return x + x3*(-1.f/6 + x2*(1.f/120 + x2*-1.f/5040));
 }
 
 #if 0 // old sine
@@ -75,6 +68,10 @@ static void naive_run(SGS_Osc *restrict o,
 			if (pm_f != NULL) {
 				phase += lrintf(pm_f[i] * (float) INT32_MAX);
 			}
+			if (phase > (uint32_t) -(1<<30))
+				phase = (1<<31) - phase;
+			if (phase > (1<<30))
+				phase = (1<<31) - phase;
 			float sin_x = SIN_X_SCALE(phase);
 			float s = SGS_sin_t7(sin_x) * amp[i];
 			o->phase += lrintf(o->coeff * freq[i]);
