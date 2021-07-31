@@ -30,6 +30,19 @@
 #if !USE_PILUT
 #define SIN_X_SCALE(x) (((int32_t) x) * (float) SGS_PI / INT32_MAX)
 
+const float fact_odd[] = {1.0/6, 1.0/120, 1.0/5040};
+
+static inline float SGS_sin_t7(float x) {
+	if (x > SGS_PI_2) {
+		x = SGS_PI_2 - (x - SGS_PI_2);
+	} else if (x < -SGS_PI_2) {
+		x = -SGS_PI_2 - (x - -SGS_PI_2);
+	}
+	float x2 = x*x, x3 = x * x2;
+	return x - x3*fact_odd[0] + x3*x2*fact_odd[1] - x3*x3*x*fact_odd[2];
+}
+
+#if 0 // old sine
 static inline float SGS_sin_jkp345(float x) {
 	const float a = 0.99535533335807127063;
 	if (x > SGS_PI_2) {
@@ -41,6 +54,7 @@ static inline float SGS_sin_jkp345(float x) {
 	float v2 = v * v, v3 = v2 * v, va = fabs(v);
 	return (x - v3 - v3*va + v3*v2) * a;
 }
+#endif
 
 /*
  * Implementation of SGS_Osc_run()
@@ -62,7 +76,7 @@ static void naive_run(SGS_Osc *restrict o,
 				phase += lrintf(pm_f[i] * (float) INT32_MAX);
 			}
 			float sin_x = SIN_X_SCALE(phase);
-			float s = SGS_sin_jkp345(sin_x) * amp[i];
+			float s = SGS_sin_t7(sin_x) * amp[i];
 			o->phase += lrintf(o->coeff * freq[i]);
 			if (layer > 0) s += buf[i];
 			buf[i] = s;
