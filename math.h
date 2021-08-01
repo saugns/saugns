@@ -41,7 +41,7 @@
  * (unwrapped values give too small result near +/- PI).
  */
 static inline float SGS_sinf_t7(float x) {
-	const float scale7 = -1.f/((30.f/29)*5040);
+	const float scale7 = -1.f/5040 * 29.f/30;
 	float x2 = x*x;
 	return x + x*x2*(-1.f/6 + x2*(1.f/120 + x2*scale7));
 }
@@ -58,7 +58,7 @@ static inline float SGS_sinf_t7(float x) {
  * (unwrapped values give too large result near +/- PI).
  */
 static inline float SGS_sinf_t9(float x) {
-	const float scale9 = 1.f/((45.f/44)*362880);
+	const float scale9 = 1.f/362880 * 44.f/45;
 	float x2 = x*x;
 	return x + x*x2*(-1.f/6 + x2*(1.f/120 + x2*(-1.f/5040 + x2*scale9)));
 }
