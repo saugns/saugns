@@ -39,3 +39,18 @@ static inline float SGS_sinf_t7(float x) {
 	float x2 = x*x;
 	return x + x*x2*(-1.f/6 + x2*(1.f/120 + x2*-1.f/5040));
 }
+
+/**
+ * Taylor polynomial of degree 9 for sinf(x).
+ * Modified with a scale factor for the last term
+ * to keep the result closer to and below +/- 1.0
+ * for -PI/2 <= x <= PI/2.
+ *
+ * For use with pre-wrapped x values, -PI/2 <= x <= PI/2
+ * (unwrapped values give too large result near +/- PI).
+ */
+static inline float SGS_sinf_t9(float x) {
+	float x2 = x*x;
+	const float scale9 = 1.f/((45.f/44)*362880);
+	return x + x*x2*(-1.f/6 + x2*(1.f/120 + x2*(-1.f/5040 + x2*scale9)));
+}
