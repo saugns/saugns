@@ -30,12 +30,12 @@
 	lrintf(((ms) * .001f) * (srate))
 
 /**
- * Taylor polynomial of degree 7 for sin(x).
+ * Taylor polynomial of degree 7 for sinf(x).
  *
  * For use with pre-wrapped x values, -PI/2 <= x <= PI/2
  * (unwrapped values give too small result near +/- PI).
  */
-static inline float SGS_sin_t7(float x) {
+static inline float SGS_sinf_t7(float x) {
 	float x2 = x*x;
 	return x + x*x2*(-1.f/6 + x2*(1.f/120 + x2*-1.f/5040));
 }

@@ -53,7 +53,7 @@ static void naive_run(SGS_Osc *restrict o,
 			if (phase > (1<<30))
 				phase = (1<<31) - phase;
 			float sin_x = SIN_X_SCALE(phase);
-			float s = SGS_sin_t7(sin_x) * amp[i];
+			float s = SGS_sinf_t7(sin_x) * amp[i];
 			o->phase += lrintf(o->coeff * freq[i]);
 			if (layer > 0) s += buf[i];
 			buf[i] = s;
@@ -96,7 +96,7 @@ static void naive_run_env(SGS_Osc *restrict o,
 			if (phase > (1<<30))
 				phase = (1<<31) - phase;
 			float sin_x = SIN_X_SCALE(phase);
-			float s = SGS_sin_t7(sin_x);
+			float s = SGS_sinf_t7(sin_x);
 			o->phase += lrintf(o->coeff * freq[i]);
 			float s_amp = amp[i] * 0.5f;
 			s = (s * s_amp) + fabs(s_amp);
