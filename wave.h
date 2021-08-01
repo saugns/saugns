@@ -101,7 +101,7 @@ static inline double SGS_Wave_get_lerp(const float *restrict lut,
  */
 static inline float SGS_Wave_get_sinf(int32_t phase) {
 	if (phase > (1<<30) || phase < -(1<<30))
-		phase = (1<<31) - phase;
+		phase = INT32_MIN - phase;
 	float x = phase * (float) SGS_PI/INT32_MAX;
 	return SGS_sinf_t7(x);
 }
