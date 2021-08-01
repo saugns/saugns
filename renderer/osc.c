@@ -30,25 +30,6 @@
 #if !USE_PILUT
 #define SIN_X_SCALE(x) (((int32_t) x) * (float) SGS_PI / INT32_MAX)
 
-static inline float SGS_sin_t7(float x) {
-	float x2 = x*x, x3 = x * x2;
-	return x + x3*(-1.f/6 + x2*(1.f/120 + x2*-1.f/5040));
-}
-
-#if 0 // old sine
-static inline float SGS_sin_jkp345(float x) {
-	const float a = 0.99535533335807127063;
-	if (x > SGS_PI_2) {
-		x = SGS_PI_2 - (x - SGS_PI_2);
-	} else if (x < -SGS_PI_2) {
-		x = -SGS_PI_2 - (x - -SGS_PI_2);
-	}
-	float v = x * 0.5f;
-	float v2 = v * v, v3 = v2 * v, va = fabs(v);
-	return (x - v3 - v3*va + v3*v2) * a;
-}
-#endif
-
 /*
  * Implementation of SGS_Osc_run()
  * using naive LUTs with linear interpolation.
@@ -63,7 +44,6 @@ static void naive_run(SGS_Osc *restrict o,
 		const float *restrict pm_f) {
 	if (o->wave == SGS_WAVE_SIN) {
 		for (size_t i = 0; i < buf_len; ++i) {
-			
 			uint32_t phase = o->phase;
 			if (pm_f != NULL) {
 				phase += lrintf(pm_f[i] * (float) INT32_MAX);
@@ -105,6 +85,26 @@ static void naive_run_env(SGS_Osc *restrict o,
 		const float *restrict freq,
 		const float *restrict amp,
 		const float *restrict pm_f) {
+	if (o->wave == SGS_WAVE_SIN) {
+		for (size_t i = 0; i < buf_len; ++i) {
+			uint32_t phase = o->phase;
+			if (pm_f != NULL) {
+				phase += lrintf(pm_f[i] * (float) INT32_MAX);
+			}
+			if (phase > (uint32_t) -(1<<30))
+				phase = (1<<31) - phase;
+			if (phase > (1<<30))
+				phase = (1<<31) - phase;
+			float sin_x = SIN_X_SCALE(phase);
+			float s = SGS_sin_t7(sin_x);
+			o->phase += lrintf(o->coeff * freq[i]);
+			float s_amp = amp[i] * 0.5f;
+			s = (s * s_amp) + fabs(s_amp);
+			if (layer > 0) s *= buf[i];
+			buf[i] = s;
+		}
+		return;
+	}
 	const float *const lut = SGS_Wave_luts[o->wave];
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t phase = o->phase;

@@ -3,8 +3,7 @@
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
+ * purpose with or without fee is hereby granted.
  *
  * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
  * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
@@ -29,3 +28,14 @@
  */
 #define SGS_MS_IN_SAMPLES(ms, srate) \
 	lrintf(((ms) * .001f) * (srate))
+
+/**
+ * Taylor polynomial of degree 7 for sin(x).
+ *
+ * For use with pre-wrapped x values, -PI/2 <= x <= PI/2
+ * (unwrapped values give too small result near +/- PI).
+ */
+static inline float SGS_sin_t7(float x) {
+	float x2 = x*x;
+	return x + x*x2*(-1.f/6 + x2*(1.f/120 + x2*-1.f/5040));
+}
