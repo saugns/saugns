@@ -95,16 +95,14 @@ static inline double SGS_Wave_get_lerp(const float *restrict lut,
 	(SGS_Wave_picoeffs[wave].amp_dc)
 
 /**
- * Get sinf() value for 32-bit unsigned phase using Taylor approximation.
+ * Get sinf() value for 32-bit integer phase using Taylor approximation.
  *
  * \return sample
  */
-static inline float SGS_Wave_get_sinf(uint32_t phase) {
-	if (phase > (uint32_t) -(1<<30))
+static inline float SGS_Wave_get_sinf(int32_t phase) {
+	if (phase > (1<<30) || phase < -(1<<30))
 		phase = (1<<31) - phase;
-	if (phase > (1<<30))
-		phase = (1<<31) - phase;
-	float x = ((int32_t) phase) * (float) SGS_PI/INT32_MAX;
+	float x = phase * (float) SGS_PI/INT32_MAX;
 	return SGS_sinf_t7(x);
 }
 
