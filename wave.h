@@ -16,7 +16,7 @@
  */
 
 #pragma once
-#include "common.h"
+#include "math.h"
 
 /* table length in sample values */
 #define SGS_Wave_LENBITS 11
@@ -93,6 +93,20 @@ static inline double SGS_Wave_get_lerp(const float *restrict lut,
 /** Get offset constant to apply to result from using a pre-integrated table. */
 #define SGS_Wave_DVOFFSET(wave) \
 	(SGS_Wave_picoeffs[wave].amp_dc)
+
+/**
+ * Get sinf() value for 32-bit unsigned phase using Taylor approximation.
+ *
+ * \return sample
+ */
+static inline float SGS_Wave_get_sinf(uint32_t phase) {
+	if (phase > (uint32_t) -(1<<30))
+		phase = (1<<31) - phase;
+	if (phase > (1<<30))
+		phase = (1<<31) - phase;
+	float x = ((int32_t) phase) * (float) SGS_PI/INT32_MAX;
+	return SGS_sinf_t7(x);
+}
 
 void SGS_global_init_Wave(void);
 

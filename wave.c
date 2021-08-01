@@ -16,7 +16,6 @@
  */
 
 #include "wave.h"
-#include "math.h"
 #include <stdio.h>
 
 #define HALFLEN (SGS_Wave_LEN>>1)

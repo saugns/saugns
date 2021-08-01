@@ -28,8 +28,6 @@
 #endif
 
 #if !USE_PILUT
-#define SIN_X_SCALE(x) (((int32_t) x) * (float) SGS_PI / INT32_MAX)
-
 /*
  * Implementation of SGS_Osc_run()
  * using naive LUTs with linear interpolation.
@@ -48,12 +46,7 @@ static void naive_run(SGS_Osc *restrict o,
 			if (pm_f != NULL) {
 				phase += lrintf(pm_f[i] * (float) INT32_MAX);
 			}
-			if (phase > (uint32_t) -(1<<30))
-				phase = (1<<31) - phase;
-			if (phase > (1<<30))
-				phase = (1<<31) - phase;
-			float sin_x = SIN_X_SCALE(phase);
-			float s = SGS_sinf_t7(sin_x) * amp[i];
+			float s = SGS_Wave_get_sinf(phase) * amp[i];
 			o->phase += lrintf(o->coeff * freq[i]);
 			if (layer > 0) s += buf[i];
 			buf[i] = s;
@@ -91,12 +84,7 @@ static void naive_run_env(SGS_Osc *restrict o,
 			if (pm_f != NULL) {
 				phase += lrintf(pm_f[i] * (float) INT32_MAX);
 			}
-			if (phase > (uint32_t) -(1<<30))
-				phase = (1<<31) - phase;
-			if (phase > (1<<30))
-				phase = (1<<31) - phase;
-			float sin_x = SIN_X_SCALE(phase);
-			float s = SGS_sinf_t7(sin_x);
+			float s = SGS_Wave_get_sinf(phase);
 			o->phase += lrintf(o->coeff * freq[i]);
 			float s_amp = amp[i] * 0.5f;
 			s = (s * s_amp) + fabs(s_amp);

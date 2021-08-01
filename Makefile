@@ -107,7 +107,7 @@ builder/voicegraph.o: arrtype.h builder/voicegraph.c builder/parseconv.h common.
 common.o: common.c common.h
 	$(CC) -c $(CFLAGS) common.c
 
-help.o: common.h help.c help.h ramp.h wave.h
+help.o: common.h help.c help.h math.h ramp.h wave.h
 	$(CC) -c $(CFLAGS_SIZE) help.c
 
 mempool.o: common.h mempool.c mempool.h
