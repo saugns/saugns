@@ -31,9 +31,11 @@
 
 /**
  * Taylor polynomial of degree 7 for sinf(x).
+ *
  * Modified with a scale factor for the last term
  * to keep the result closer to yet below +/- 1.0
- * for -PI/2 <= x <= PI/2.
+ * for -PI/2 <= x <= PI/2. More accurate in range
+ * on average, and with less appromixation noise.
  *
  * For use with pre-wrapped x values, -PI/2 <= x <= PI/2
  * (unwrapped values give too small result near +/- PI).
@@ -46,10 +48,11 @@ static inline float SGS_sinf_t7(float x) {
 
 /**
  * Taylor polynomial of degree 9 for sinf(x).
+ *
  * Modified with a scale factor for the last term
  * to keep the result closer to and below +/- 1.0
- * for -PI/2 <= x <= PI/2. (Within intended range
- * amplitude seems perfect for single-precision.)
+ * for -PI/2 <= x <= PI/2. Seems close to perfect
+ * for single-precision values, within the range.
  *
  * For use with pre-wrapped x values, -PI/2 <= x <= PI/2
  * (unwrapped values give too large result near +/- PI).
