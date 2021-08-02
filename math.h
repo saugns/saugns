@@ -38,6 +38,9 @@
  * minimize maximum error for -PI/2 <= x <= PI/2. In
  * that domain, the result is much-reduced error. To
  * compare, less max error than unmodified Taylor 9.
+ *  - 1.568794e-04 (Max error, unmodified Taylor 7.)
+ *  - 3.576279e-06 (Max error, unmodified Taylor 9.)
+ *  - 1.013279e-06 (Max error, this Taylor 7 tweak.)
  */
 static inline float SGS_sinf_t7(float x) {
 	const float scale[3] = {
