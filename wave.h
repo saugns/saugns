@@ -95,7 +95,7 @@ static inline double SGS_Wave_get_lerp(const float *restrict lut,
 	(SGS_Wave_picoeffs[wave].amp_dc)
 
 /**
- * Get sinf() value for 32-bit integer phase using Taylor approximation.
+ * Get sinf() value for 32-bit integer phase using polynomial approximation.
  *
  * \return sample
  */

@@ -51,7 +51,7 @@ static inline float SGS_sinf_t7(float x) {
  *
  * Modified with a scale factor for the last term
  * to keep the result closer to and below +/- 1.0
- * for -PI/2 <= x <= PI/2. Seems close to perfect
+ * for -PI/2 <= x <= PI/2. In practice "perfect",
  * for single-precision values, within the range.
  *
  * For use with pre-wrapped x values, -PI/2 <= x <= PI/2
