@@ -30,20 +30,23 @@
 	lrintf(((ms) * .001f) * (srate))
 
 /**
- * Taylor polynomial of degree 7 for sinf(x).
+ * Modified Taylor polynomial of degree 7 for sinf(x).
  *
- * Modified with a scale factor for the last term
- * to keep the result closer to yet below +/- 1.0
- * for -PI/2 <= x <= PI/2. More accurate in range
- * on average, and with less appromixation noise.
+ * Optimized for -PI/2 <= x <= PI/2; for use with pre-wrapped x values.
  *
- * For use with pre-wrapped x values, -PI/2 <= x <= PI/2
- * (unwrapped values give too small result near +/- PI).
+ * Uses modified scale factors for several terms, to
+ * minimize maximum error for -PI/2 <= x <= PI/2. In
+ * that domain, the result is much-reduced error. To
+ * compare, less max error than unmodified Taylor 9.
  */
 static inline float SGS_sinf_t7(float x) {
-	const float scale7 = -1.f/5040 * 29.f/30;
+	const float scale[3] = {
+		-1.f/6    * 18781.f/18782,
+		+1.f/120  *   417.f/418,
+		-1.f/5040 *    14.f/15,
+	};
 	float x2 = x*x;
-	return x + x*x2*(-1.f/6 + x2*(1.f/120 + x2*scale7));
+	return x + x*x2*(scale[0] + x2*(scale[1] + x2*scale[2]));
 }
 
 /**
