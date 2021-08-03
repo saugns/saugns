@@ -44,9 +44,9 @@
  */
 static inline float SGS_sinf_t7(float x) {
 	const float scale[3] = {
-		-1.f/6    * 17010.f/17011,
-		+1.f/120  *   772.f/773   * 821.f/822,
-		-1.f/5040 *    66.f/67    *  42.f/43  * 31.f/32,
+		-1.f/6    * 9.99940144849e-01,
+		+1.f/120  * 9.97470993155e-01,
+		-1.f/5040 * 9.31884249471e-01,
 	};
 	float x2 = x*x;
 	return x + x*x2*(scale[0] + x2*(scale[1] + x2*scale[2]));
