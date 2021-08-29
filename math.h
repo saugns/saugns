@@ -40,16 +40,17 @@
  * compare, less max error than unmodified Taylor 9.
  *  - 1.568794e-04 (Max error, unmodified Taylor 7.)
  *  - 3.576279e-06 (Max error, unmodified Taylor 9.)
- *  - 8.940697e-07 (Max error, this Taylor 7 tweak.)
+ *  - 5.891312e-07 (Max error, this Taylor 7 tweak.)
  */
 static inline float SGS_sinf_t7(float x) {
-	const float scale[3] = {
-		-1.f/6    * 9.99940144849e-01,
-		+1.f/120  * 9.97470993155e-01,
-		-1.f/5040 * 9.31884249471e-01,
+	const float scale[4] = {
+		+1.f      * 0.99999661599039058046,
+		-1.f/6    * 0.99988967477352019841,
+		+1.f/120  * 0.99675900242704074117,
+		-1.f/5040 * 0.92552840499774902128,
 	};
 	float x2 = x*x;
-	return x + x*x2*(scale[0] + x2*(scale[1] + x2*scale[2]));
+	return x*(scale[0] + x2*(scale[1] + x2*(scale[2] + x2*scale[3])));
 }
 
 /**
