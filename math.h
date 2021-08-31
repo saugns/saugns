@@ -55,8 +55,10 @@ static inline float SGS_sinf_t7(float x) {
 
 /**
  * Like a sine squashed inward so as to more resemble a bell.
- * Polynomial shape similar to sin(x * pi * 1.25) and offset,
- * except its slope approaches zero when output is near zero.
+ *
+ * Polynomial shape like sin(x * pi) except roughly as narrow
+ * as sin(x * pi * 1.25) where value is far enough from zero.
+ * The slope decreases to zero as the output approaches zero.
  * Allows input range of -1 <= x <= 1, with symmetric result.
  */
 static inline float SGS_sinbell_r1(float x) {
@@ -68,6 +70,7 @@ static inline float SGS_sinbell_r1(float x) {
 /**
  * Like a sine morphed to more resemble a bell around the end
  * of a cycle only, looking more like a plain sine elsewhere.
+ *
  * Allows input range of -1 <= x <= 1, with symmetric result.
  */
 static inline float SGS_sintilt_r1(float x) {
