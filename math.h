@@ -95,3 +95,18 @@ static inline float SGS_biqsat_r1(float x, float c) {
 	float xc = c*ca*(1 + xa*(-2 + xa));
 	return x*(4.f + xa*(-6.f + xa*(4.f - xa) - xc));
 }
+
+/*
+ * 1.f/32 softer (less high-frequency content) imitation of
+ * the 'square root of sine' wave.
+ * 1.f/8 soft 'honeycomb wave'.
+ * 1.f/3 rough imitation of 'triangle wave'.
+ * 2.f/3 rough 'sinc function center'-shaped crests and troughs.
+ */
+static inline float SGS_biqpar_r1(float x, float c) {
+	float xa = fabsf(x);
+	const float ca = 124.f*0.99768224233678181108;
+	float xc = c*ca*(1 + 4.f*xa*(-1 + xa));
+	return x*(8.f + xa*(-24.f + xa*(32.f - 16.f*xa) - xc));
+	// * up:  2          4          8      16
+}
