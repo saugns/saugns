@@ -108,7 +108,7 @@ static inline float SGS_Wave_get_sinf(int32_t phase) {
 	//f (x <= 1.f)
 	//	tmp = SGS_sintilt_r1(x);
 	tmp = SGS_sinf_t7(x);
-	tmp = SGS_quadsat_r1(tmp, -2.f/16);
+	tmp = SGS_biqsat_r1(tmp, 1.0f/8);
 	return tmp;
 }
 

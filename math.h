@@ -79,8 +79,19 @@ static inline float SGS_sintilt_r1(float x) {
 	return a*x*(1 - xa*(1 + xa*(1 - xa))); /* a(x^1 - x^2 - x^3 + x^4) */
 }
 
-static inline float SGS_quadsat_r1(float x, float c) {
+/**
+ * Adjustable biquadratic saturation curve. With \p c zero,
+ * it turns a sine wave into a rounded corner square shape.
+ * With \p c one it instead makes the waveform very ripply.
+ *
+ * A value of 1.f/16 gives a rounder shape, and 1.f/8 makes
+ * an angular-looking rough approximation of a square root.
+ *
+ * Allows input range of -1 <= x <= 1, with symmetric result.
+ */
+static inline float SGS_biqsat_r1(float x, float c) {
 	float xa = fabsf(x);
-	float xc = c*16.f*(1 + xa*(-2 + xa));
-	return x*(4.f + xa*(-6.f + xa*(4.f - xa) + xc));
+	const float ca = 31.f*0.99768224233678181108;
+	float xc = c*ca*(1 + xa*(-2 + xa));
+	return x*(4.f + xa*(-6.f + xa*(4.f - xa) - xc));
 }
