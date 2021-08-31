@@ -100,16 +100,23 @@ static inline double SGS_Wave_get_lerp(const float *restrict lut,
  * \return sample
  */
 static inline float SGS_Wave_get_sinf(int32_t phase) {
+	static int32_t oldphase = 0;
+	int32_t phasediff = phase - oldphase;
+	oldphase = phase;
 	if (phase > (1<<30) || phase < -(1<<30))
 		phase = INT32_MIN - phase;
-	//float x = phase * (float) SGS_PI/INT32_MAX;
-	float x = phase * (float) 1.f/(INT32_MAX*1.0);
+	float x = phase * (float) SGS_PI/INT32_MAX;
 	float tmp = 0.f;
 	//f (x <= 1.f)
 	//	tmp = SGS_sintilt_r1(x);
-	//tmp = SGS_sinf_t7(x);
-	//tmp = SGS_biqsat_r1(tmp, 1.0f/8);
+	tmp = SGS_sinf_t7(x);
+	x = phase * (float) 1.f/(INT32_MAX*1.0);
 	tmp = SGS_biqpar_r1(x, 5.f/8);
+	//tmp = x > 0.f ? 1.f : -1.f;
+	float scale = phasediff * (float) 8.f/INT32_MAX * 0.75;
+	static float sum = 0.f;
+	sum += tmp;
+	tmp = sum * scale;
 	return tmp;
 }
 
