@@ -101,7 +101,7 @@ static inline float SGS_biqsat_r1(float x, float c) {
  * the 'square root of sine' wave.
  * 1.f/8 soft 'honeycomb wave'.
  * 1.f/3 rough imitation of 'triangle wave'.
- * 2.f/3 rough 'sinc function center'-shaped crests and troughs.
+ * 5.f/8 rough 'sinc function center'-shaped crests and troughs.
  */
 static inline float SGS_biqpar_r1(float x, float c) {
 	float xa = fabsf(x);
