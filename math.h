@@ -30,7 +30,7 @@
 	lrintf(((ms) * .001f) * (srate))
 
 /**
- * Modified Taylor polynomial of degree 7 for sinf(x).
+ * Minimax-ified Taylor polynomial of degree 7 for sinf(x).
  *
  * Optimized for -PI/2 <= x <= PI/2; for use with pre-wrapped x values.
  *
@@ -43,7 +43,7 @@
  *  - 5.891312e-07 (Max error, this Taylor 7 tweak.)
  */
 static inline float SGS_sinf_t7(float x) {
-	const float scale[4] = {
+	const float scale[] = {
 		+1.f      * 0.99999661599039058046,
 		-1.f/6    * 0.99988967477352019841,
 		+1.f/120  * 0.99675900242704074117,
@@ -54,18 +54,30 @@ static inline float SGS_sinf_t7(float x) {
 }
 
 /**
- * Taylor polynomial of degree 9 for sinf(x).
- *
- * Modified with a scale factor for the last term
- * to keep the result closer to and below +/- 1.0
- * for -PI/2 <= x <= PI/2. In practice "perfect",
- * for single-precision values, within the range.
- *
- * For use with pre-wrapped x values, -PI/2 <= x <= PI/2
- * (unwrapped values give too large result near +/- PI).
+ * Like a sine squashed inward so as to more resemble a bell.
+ * Polynomial shape similar to sin(x * pi * 1.25) and offset,
+ * except its slope approaches zero when output is near zero.
+ * Allows input range of -1 <= x <= 1, with symmetric result.
  */
-static inline float SGS_sinf_t9(float x) {
-	const float scale9 = 1.f/362880 * 44.f/45;
-	float x2 = x*x;
-	return x + x*x2*(-1.f/6 + x2*(1.f/120 + x2*(-1.f/5040 + x2*scale9)));
+static inline float SGS_sinbell_r1(float x) {
+	float xa = fabsf(x);
+	float x2a = x*xa;
+	return 16.f*xa*(x - (x2a+x2a) + xa*x2a); /* 16x^2 - 32x^3 + 16x^4 */
+}
+
+/**
+ * Like a sine morphed to more resemble a bell around the end
+ * of a cycle only, looking more like a plain sine elsewhere.
+ * Allows input range of -1 <= x <= 1, with symmetric result.
+ */
+static inline float SGS_sintilt_r1(float x) {
+	float xa = fabsf(x);
+	const float a = 5.f/1.00857799713379571722;
+	return a*x*(1 - xa*(1 + xa*(1 - xa))); /* a(x^1 - x^2 - x^3 + x^4) */
+}
+
+static inline float SGS_quadsat_r1(float x, float c) {
+	float xa = fabsf(x);
+	float xc = c*16.f*(1 + xa*(-2 + xa));
+	return x*(4.f + xa*(-6.f + xa*(4.f - xa) + xc));
 }

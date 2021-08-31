@@ -103,7 +103,13 @@ static inline float SGS_Wave_get_sinf(int32_t phase) {
 	if (phase > (1<<30) || phase < -(1<<30))
 		phase = INT32_MIN - phase;
 	float x = phase * (float) SGS_PI/INT32_MAX;
-	return SGS_sinf_t7(x);
+	//float x = phase * (float) 1.f/(INT32_MAX*1.0);
+	float tmp = 0.f;
+	//f (x <= 1.f)
+	//	tmp = SGS_sintilt_r1(x);
+	tmp = SGS_sinf_t7(x);
+	tmp = SGS_quadsat_r1(tmp, -2.f/16);
+	return tmp;
 }
 
 void SGS_global_init_Wave(void);
