@@ -95,29 +95,93 @@ static inline double SGS_Wave_get_lerp(const float *restrict lut,
 	(SGS_Wave_picoeffs[wave].amp_dc)
 
 /**
+ * Get value for cosf() with mild even harmonic distortion,
+ * from 32-bit integer phase, using a 4th order polynomial.
+ *
+ * The odd harmonics are as strong
+ * as from SGS_Wave_get_ohdcosf().
+ *
+ * \return sample
+ */
+static inline float SGS_Wave_get_ehdcosf(uint32_t phase) {
+	float x = phase * (float) 1.f/INT32_MAX;
+	return 1.f + x*x*(-8.f + x*(8.f + x*(-2.f)));
+	//float d3 = x + 0.5f*(x - x*x*x);
+	//return 1.f - (d3 + d3)*d3;
+}
+
+static inline float SGS_Wave_get_ehdcosf2(int32_t phase) {
+	float x = phase * (float) 1.f/INT32_MAX;
+	//const float c = 11.19615242275f * 0.125f * (1.f - 0.25f);
+	const float c = 11.19615242275f *
+		(0.125f + 0.875f * (.25f/8));
+	const float scale[] = {
+		+(3.f - c),
+		-(3.f - (c+c)),
+		+(1.f - c),
+	};
+	float xa = fabsf(x);
+	float d3 = x*(scale[0] + xa*(scale[1] + xa*scale[2]));
+	return 1.f - (d3 + d3)*d3;
+}
+
+/**
+ * Get value for sinf() with mild even harmonic distortion,
+ * from 32-bit integer phase, using a 4th order polynomial.
+ *
+ * The odd harmonics are as strong
+ * as from SGS_Wave_get_ohdsinf().
+ *
+ * \return sample
+ */
+static inline float SGS_Wave_get_ehdsinf(int32_t phase) {
+	return SGS_Wave_get_ehdcosf(phase - (1<<30));
+}
+
+static inline float SGS_Wave_get_ohdsinf(int32_t phase);
+
+/**
+ * Get value for sinf() with -38dB odd harmonic distortion,
+ * from 32-bit integer phase, using a 3rd order polynomial.
+ *
+ * \return sample
+ */
+static inline float SGS_Wave_get_ohdsinf(int32_t phase) {
+	if (phase > (1<<30) || phase < -(1<<30))
+		phase = INT32_MIN - phase;
+	float x = phase * (float) 2.f/INT32_MAX;
+	return x + 0.5f*(x - x*x*x);
+}
+
+static inline float SGS_Wave_get_ohdsinf2(int32_t phase) {
+	if (phase > (1<<30) || phase < -(1<<30))
+		phase = INT32_MIN - phase;
+	float x = phase * (float) 2.f/INT32_MAX;
+	const float c = 11.19615242275f * 0.125f * (1.f - 0.25f);
+	//const float c = 11.19615242275f *
+	//	(0.125f + 0.875f * (.25f/8));
+	const float scale[] = {
+		+(3.f - c),
+		-(3.f - (c+c)),
+		+(1.f - c),
+	};
+	float xa = fabsf(x);
+	float d3 = x*(scale[0] + xa*(scale[1] + xa*scale[2]));
+	return d3;
+}
+
+/**
  * Get sinf() value for 32-bit integer phase using polynomial approximation.
  *
  * \return sample
  */
 static inline float SGS_Wave_get_sinf(int32_t phase) {
-	static int32_t oldphase = 0;
-	int32_t phasediff = phase - oldphase;
-	oldphase = phase;
+	return SGS_Wave_get_ehdcosf2(phase - (1<<30));
+	return SGS_Wave_get_ohdsinf2(phase);
 	if (phase > (1<<30) || phase < -(1<<30))
 		phase = INT32_MIN - phase;
 	float x = phase * (float) SGS_PI/INT32_MAX;
-	float tmp = 0.f;
-	//f (x <= 1.f)
-	//	tmp = SGS_sintilt_r1(x);
-	tmp = SGS_sinf_t7(x);
-	x = phase * (float) 1.f/(INT32_MAX*1.0);
-	tmp = SGS_biqpar_r1(x, 5.f/8);
-	//tmp = x > 0.f ? 1.f : -1.f;
-	float scale = phasediff * (float) 8.f/INT32_MAX * 0.75;
-	static float sum = 0.f;
-	sum += tmp;
-	tmp = sum * scale;
-	return tmp;
+	return SGS_sinf_t7(x);
 }
 
 void SGS_global_init_Wave(void);
