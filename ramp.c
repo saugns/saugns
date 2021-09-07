@@ -26,6 +26,7 @@ const char *const SGS_Ramp_names[SGS_RAMP_TYPES + 1] = {
 	"log",
 	"xpe",
 	"lge",
+	"cos",
 	NULL
 };
 
@@ -36,6 +37,7 @@ const SGS_Ramp_fill_f SGS_Ramp_fill_funcs[SGS_RAMP_TYPES] = {
 	SGS_Ramp_fill_log,
 	SGS_Ramp_fill_xpe,
 	SGS_Ramp_fill_lge,
+	SGS_Ramp_fill_cos,
 };
 
 /**
@@ -159,6 +161,30 @@ void SGS_Ramp_fill_lge(float *restrict buf, uint32_t len,
 		mod = modp3 + (modp2 * modp3 - modp2) *
 			(mod * (629.f/1792.f) + modp2 * (1163.f/1792.f));
 		float v = v0 + (vt - v0) * mod;
+		if (!mulbuf)
+			buf[i] = v;
+		else
+			buf[i] = v * mulbuf[i];
+	}
+}
+
+/**
+ * Fill \p buf with \p len values along a sinuous trajectory
+ * from \p v0 (at position 0) to \p vt (at position \p time),
+ * beginning at position \p pos.
+ *
+ * Rises or falls similarly to how cos() moves from trough to
+ * crest and back. Uses the simplest polynomial giving a good
+ * sinuous curve (almost exactly 99% accurate; too "x"-like).
+ */
+void SGS_Ramp_fill_cos(float *restrict buf, uint32_t len,
+		float v0, float vt, uint32_t pos, uint32_t time,
+		const float *restrict mulbuf) {
+	const float inv_time = 1.f / time;
+	for (uint32_t i = 0; i < len; ++i) {
+		const uint32_t i_pos = i + pos;
+		float x = i_pos * inv_time;
+		float v = v0 + (vt - v0) * (3.f - (x+x))*x*x;
 		if (!mulbuf)
 			buf[i] = v;
 		else

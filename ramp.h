@@ -28,6 +28,7 @@ enum {
 	SGS_RAMP_LOG,
 	SGS_RAMP_XPE,
 	SGS_RAMP_LGE,
+	SGS_RAMP_COS,
 	SGS_RAMP_TYPES
 };
 
@@ -57,6 +58,9 @@ void SGS_Ramp_fill_xpe(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf);
 void SGS_Ramp_fill_lge(float *restrict buf, uint32_t len,
+		float v0, float vt, uint32_t pos, uint32_t time,
+		const float *restrict mulbuf);
+void SGS_Ramp_fill_cos(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf);
 
