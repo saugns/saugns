@@ -32,7 +32,7 @@ enum {
 	SGS_OPT_EVAL_STRING   = 1<<5,
 };
 
-size_t SGS_build(const SGS_PtrList *restrict script_args, uint32_t options,
+size_t SGS_load(const SGS_PtrList *restrict script_args, uint32_t options,
 		SGS_PtrList *restrict prg_objs);
 
 bool SGS_play(const SGS_PtrList *restrict prg_objs, uint32_t srate,

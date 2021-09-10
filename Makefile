@@ -17,13 +17,13 @@ OBJ=\
 	help.o \
 	arrtype.o \
 	ptrlist.o \
-	builder/file.o \
-	builder/symtab.o \
-	builder/scanner.o \
-	builder/parser.o \
-	builder/voicegraph.o \
-	builder/parseconv.o \
-	builder/builder.o \
+	loader/file.o \
+	loader/symtab.o \
+	loader/scanner.o \
+	loader/parser.o \
+	loader/voicegraph.o \
+	loader/parseconv.o \
+	loader/loader.o \
 	mempool.o \
 	ramp.o \
 	wave.o \
@@ -37,10 +37,10 @@ OBJ=\
 TEST1_OBJ=\
 	common.o \
 	ptrlist.o \
-	builder/file.o \
-	builder/symtab.o \
-	builder/scanner.o \
-	builder/lexer.o \
+	loader/file.o \
+	loader/symtab.o \
+	loader/scanner.o \
+	loader/lexer.o \
 	mempool.o \
 	test-scan.o
 
@@ -80,29 +80,29 @@ test-scan: $(TEST1_OBJ)
 arrtype.o: arrtype.c arrtype.h common.h
 	$(CC) -c $(CFLAGS) arrtype.c
 
-builder/builder.o: builder/builder.c common.h math.h program.h ptrlist.h ramp.h script.h sgensys.h wave.h
-	$(CC) -c $(CFLAGS) builder/builder.c -o builder/builder.o
+loader/file.o: common.h loader/file.c loader/file.h
+	$(CC) -c $(CFLAGS) loader/file.c -o loader/file.o
 
-builder/file.o: builder/file.c builder/file.h common.h
-	$(CC) -c $(CFLAGS) builder/file.c -o builder/file.o
+loader/lexer.o: common.h loader/file.h loader/lexer.c loader/lexer.h loader/symtab.h loader/scanner.h math.h mempool.h
+	$(CC) -c $(CFLAGS) loader/lexer.c -o loader/lexer.o
 
-builder/lexer.o: builder/file.h builder/lexer.c builder/lexer.h builder/symtab.h builder/scanner.h common.h math.h mempool.h
-	$(CC) -c $(CFLAGS) builder/lexer.c -o builder/lexer.o
+loader/loader.o: common.h loader/loader.c math.h program.h ptrlist.h ramp.h script.h sgensys.h wave.h
+	$(CC) -c $(CFLAGS) loader/loader.c -o loader/loader.o
 
-builder/parseconv.o: arrtype.h builder/parseconv.c builder/parseconv.h common.h math.h program.h ptrlist.h ramp.h script.h wave.h
-	$(CC) -c $(CFLAGS) builder/parseconv.c -o builder/parseconv.o
+loader/parseconv.o: arrtype.h common.h loader/parseconv.c loader/parseconv.h math.h program.h ptrlist.h ramp.h script.h wave.h
+	$(CC) -c $(CFLAGS) loader/parseconv.c -o loader/parseconv.o
 
-builder/parser.o: builder/file.h builder/parser.c builder/scanner.h builder/symtab.h common.h help.h math.h mempool.h program.h ramp.h script.h wave.h
-	$(CC) -c $(CFLAGS_SIZE) builder/parser.c -o builder/parser.o
+loader/parser.o: common.h loader/file.h loader/parser.c loader/scanner.h loader/symtab.h help.h math.h mempool.h program.h ramp.h script.h wave.h
+	$(CC) -c $(CFLAGS_SIZE) loader/parser.c -o loader/parser.o
 
-builder/scanner.o: builder/file.h builder/scanner.c builder/scanner.h builder/symtab.h common.h math.h mempool.h
-	$(CC) -c $(CFLAGS_FAST) builder/scanner.c -o builder/scanner.o
+loader/scanner.o: common.h loader/file.h loader/scanner.c loader/scanner.h loader/symtab.h math.h mempool.h
+	$(CC) -c $(CFLAGS_FAST) loader/scanner.c -o loader/scanner.o
 
-builder/symtab.o: builder/symtab.c builder/symtab.h common.h mempool.h
-	$(CC) -c $(CFLAGS_FAST) builder/symtab.c -o builder/symtab.o
+loader/symtab.o: common.h loader/symtab.c loader/symtab.h mempool.h
+	$(CC) -c $(CFLAGS_FAST) loader/symtab.c -o loader/symtab.o
 
-builder/voicegraph.o: arrtype.h builder/voicegraph.c builder/parseconv.h common.h math.h program.h ramp.h script.h wave.h
-	$(CC) -c $(CFLAGS) builder/voicegraph.c -o builder/voicegraph.o
+loader/voicegraph.o: arrtype.h common.h loader/voicegraph.c loader/parseconv.h math.h program.h ramp.h script.h wave.h
+	$(CC) -c $(CFLAGS) loader/voicegraph.c -o loader/voicegraph.o
 
 common.o: common.c common.h
 	$(CC) -c $(CFLAGS) common.c
@@ -140,7 +140,7 @@ renderer/osc.o: common.h math.h renderer/osc.c renderer/osc.h wave.h
 sgensys.o: common.h help.h math.h program.h ptrlist.h ramp.h sgensys.c sgensys.h wave.h
 	$(CC) -c $(CFLAGS) sgensys.c
 
-test-scan.o: common.h builder/file.h builder/lexer.h builder/scanner.h builder/symtab.h math.h program.h ptrlist.h ramp.h sgensys.h test-scan.c wave.h
+test-scan.o: common.h loader/file.h loader/lexer.h loader/scanner.h loader/symtab.h math.h program.h ptrlist.h ramp.h sgensys.h test-scan.c wave.h
 	$(CC) -c $(CFLAGS) test-scan.c
 
 wave.o: common.h math.h wave.c wave.h

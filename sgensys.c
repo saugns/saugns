@@ -209,7 +209,7 @@ int main(int argc, char **restrict argv) {
 	if (!parse_args(argc, argv, &options, &script_args, &wav_path,
 			&srate))
 		return 0;
-	bool error = !SGS_build(&script_args, options, &prg_objs);
+	bool error = !SGS_load(&script_args, options, &prg_objs);
 	SGS_PtrList_clear(&script_args);
 	if (error)
 		return 1;

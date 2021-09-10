@@ -1,4 +1,4 @@
-/* sgensys: Audio program builder module.
+/* sgensys: Audio script loader / program builder module.
  * Copyright (c) 2011-2013, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -30,12 +30,12 @@ static SGS_Program *build_program(const char *restrict script_arg,
 }
 
 /**
- * Build the listed scripts, adding each result (even if NULL)
- * to the program list.
+ * Load the listed scripts and build inner programs for them,
+ * adding each result (even if NULL) to the program list.
  *
- * \return number of programs successfully built
+ * \return number of items successfully processed
  */
-size_t SGS_build(const SGS_PtrList *restrict script_args, uint32_t options,
+size_t SGS_load(const SGS_PtrList *restrict script_args, uint32_t options,
 		SGS_PtrList *restrict prg_objs) {
 	bool are_paths = !(options & SGS_OPT_EVAL_STRING);
 	size_t built = 0;

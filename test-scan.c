@@ -1,4 +1,4 @@
-/* sgensys: Test program for experimental builder code.
+/* sgensys: Test program for experimental loader code.
  * Copyright (c) 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -13,11 +13,11 @@
 
 #include "sgensys.h"
 #if SGS_TEST_SCANNER
-# include "builder/scanner.h"
+# include "loader/scanner.h"
 #else
-# include "builder/lexer.h"
+# include "loader/lexer.h"
 #endif
-#include "builder/file.h"
+#include "loader/file.h"
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -157,12 +157,12 @@ CLOSE:
 }
 
 /**
- * Build the listed scripts, adding each result (even if NULL)
- * to the program list.
+ * Load the listed scripts and build inner programs for them,
+ * adding each result (even if NULL) to the program list.
  *
- * \return number of programs successfully built
+ * \return number of items successfully processed
  */
-size_t SGS_build(const SGS_PtrList *restrict script_args, uint32_t options,
+size_t SGS_load(const SGS_PtrList *restrict script_args, uint32_t options,
 		SGS_PtrList *restrict prg_objs) {
 	bool are_paths = !(options & SGS_OPT_EVAL_STRING);
 	size_t built = 0;
@@ -184,7 +184,7 @@ int main(int argc, char **restrict argv) {
 	uint32_t options = 0;
 	if (!parse_args(argc, argv, &options, &script_args))
 		return 0;
-	bool error = !SGS_build(&script_args, options, &prg_objs);
+	bool error = !SGS_load(&script_args, options, &prg_objs);
 	SGS_PtrList_clear(&script_args);
 	if (error)
 		return 1;
