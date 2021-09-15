@@ -29,6 +29,13 @@
 #define SGS_MS_IN_SAMPLES(ms, srate) \
 	lrintf(((ms) * .001f) * (srate))
 
+/**
+ * Modified Taylor polynomial of degree 5 for sinf(x).
+ *
+ * Optimized for -PI/2 <= x <= PI/2; for use with pre-wrapped x values.
+ *
+ * Almost clean spectrum, adds a 5th harmonic at slightly below -84 dB.
+ */
 static inline float SGS_sinf_t5(float x) {
 	/*
 	 * Coefficients generated for no end-point error,
@@ -36,33 +43,31 @@ static inline float SGS_sinf_t5(float x) {
 	 * Slightly lower max error than Taylor degree 7.
 	 */
 	const float scale[] = {
-		+1.f/1   * 0.99962909219062263423,
-		-1.f/6   * 0.99397115132058014530,
-		+1.f/120 * 0.90166418540809208418,
+		+1.f/1   * 0.99962909219062180043,
+		-1.f/6   * 0.99397115132056594041,
+		+1.f/120 * 0.90166418540799337956,
 	};
 	float x2 = x*x;
 	return x*(scale[0] + x2*(scale[1] + x2*scale[2]));
 }
 
 /**
- * Minimax-ified Taylor polynomial of degree 7 for sinf(x).
+ * Modified Taylor polynomial of degree 7 for sinf(x).
  *
  * Optimized for -PI/2 <= x <= PI/2; for use with pre-wrapped x values.
- *
- * Uses modified scale factors for several terms, to
- * minimize maximum error for -PI/2 <= x <= PI/2. In
- * that domain, the result is much-reduced error. To
- * compare, less max error than unmodified Taylor 9.
- *  - 1.568794e-04 (Max error, unmodified Taylor 7.)
- *  - 3.576279e-06 (Max error, unmodified Taylor 9.)
- *  - 5.891312e-07 (Max error, this Taylor 7 tweak.)
  */
 static inline float SGS_sinf_t7(float x) {
+	/*
+	 * Coefficients generated for no end-point error,
+	 * on top of minimax, roughly doubling the error.
+	 * Roughly 0.75% the max error of the unmodified,
+	 * and a little below a third of Taylor degree 9.
+	 */
 	const float scale[] = {
-		+1.f      * 0.99999661599039058046,
-		-1.f/6    * 0.99988967477352019841,
-		+1.f/120  * 0.99675900242704074117,
-		-1.f/5040 * 0.92552840499774902128,
+		+1.f/1    * 0.99999720511995643922,
+		-1.f/6    * 0.99989026384029019897,
+		+1.f/120  * 0.99675958965334515949,
+		-1.f/5040 * 0.92552895030047635017,
 	};
 	float x2 = x*x;
 	return x*(scale[0] + x2*(scale[1] + x2*(scale[2] + x2*scale[3])));
