@@ -176,12 +176,12 @@ static inline float SGS_Wave_get_ohdsinf2(int32_t phase) {
  * \return sample
  */
 static inline float SGS_Wave_get_sinf(int32_t phase) {
-	return SGS_Wave_get_ehdcosf2(phase - (1<<30));
-	return SGS_Wave_get_ohdsinf2(phase);
+	//return SGS_Wave_get_ehdcosf2(phase - (1<<30));
+	//return SGS_Wave_get_ohdsinf2(phase);
 	if (phase > (1<<30) || phase < -(1<<30))
 		phase = INT32_MIN - phase;
 	float x = phase * (float) SGS_PI/INT32_MAX;
-	return SGS_sinf_t7(x);
+	return SGS_sinf_t5(x);
 }
 
 void SGS_global_init_Wave(void);

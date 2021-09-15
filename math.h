@@ -29,6 +29,21 @@
 #define SGS_MS_IN_SAMPLES(ms, srate) \
 	lrintf(((ms) * .001f) * (srate))
 
+static inline float SGS_sinf_t5(float x) {
+	/*
+	 * Coefficients generated for no end-point error,
+	 * on top of minimax, roughly doubling the error.
+	 * Slightly lower max error than Taylor degree 7.
+	 */
+	const float scale[] = {
+		+1.f/1   * 0.99962909219062263423,
+		-1.f/6   * 0.99397115132058014530,
+		+1.f/120 * 0.90166418540809208418,
+	};
+	float x2 = x*x;
+	return x*(scale[0] + x2*(scale[1] + x2*scale[2]));
+}
+
 /**
  * Minimax-ified Taylor polynomial of degree 7 for sinf(x).
  *
