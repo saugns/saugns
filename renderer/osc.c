@@ -17,16 +17,6 @@
 
 #include "osc.h"
 
-/*
- * Use pre-integrated LUTs ("PILUTs")?
- *
- * Turn off to use the raw naive LUTs,
- * kept for testing/"viewing" of them.
- */
-#ifndef USE_PILUT
-# define USE_PILUT 1
-#endif
-
 #if !USE_PILUT
 /*
  * Implementation of SGS_Osc_run()

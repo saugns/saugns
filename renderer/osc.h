@@ -19,7 +19,13 @@
 #include "../wave.h"
 #include "../math.h"
 
-#define USE_PILUT 0
+/*
+ * Use pre-integrated LUTs ("PILUTs")?
+ *
+ * Turn off to use the raw naive LUTs,
+ * kept for testing/"viewing" of them.
+ */
+#define USE_PILUT 1
 
 #define SGS_OSC_RESET_DIFF  (1<<0)
 #define SGS_OSC_RESET       ((1<<1) - 1)
