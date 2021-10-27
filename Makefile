@@ -16,6 +16,7 @@ OBJ=\
 	common.o \
 	help.o \
 	arrtype.o \
+	math.o \
 	ptrlist.o \
 	loader/file.o \
 	loader/symtab.o \
@@ -83,7 +84,7 @@ arrtype.o: arrtype.c arrtype.h common.h
 common.o: common.c common.h
 	$(CC) -c $(CFLAGS) common.c
 
-help.o: common.h help.c help.h ramp.h wave.h
+help.o: common.h help.c help.h math.h ramp.h wave.h
 	$(CC) -c $(CFLAGS_SIZE) help.c
 
 loader/file.o: common.h loader/file.c loader/file.h
@@ -109,6 +110,9 @@ loader/symtab.o: common.h loader/symtab.c loader/symtab.h mempool.h
 
 loader/voicegraph.o: arrtype.h common.h loader/voicegraph.c loader/parseconv.h math.h program.h ramp.h script.h wave.h
 	$(CC) -c $(CFLAGS) loader/voicegraph.c -o loader/voicegraph.o
+
+math.o: common.h math.c math.h
+	$(CC) -c $(CFLAGS_FAST) math.c
 
 mempool.o: common.h mempool.c mempool.h
 	$(CC) -c $(CFLAGS_FAST) mempool.c
