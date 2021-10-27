@@ -29,8 +29,9 @@
 
 struct ScanLookup {
 	SGS_ScriptOptions sopt;
-	const char *const*wave_names;
+	const char *const*math_names;
 	const char *const*ramp_names;
+	const char *const*wave_names;
 };
 
 /*
@@ -49,13 +50,14 @@ static const SGS_ScriptOptions def_sopt = {
 static bool init_ScanLookup(struct ScanLookup *restrict o,
 		SGS_SymTab *restrict st) {
 	o->sopt = def_sopt;
-	o->wave_names = SGS_SymTab_pool_stra(st,
-			SGS_Wave_names, SGS_WAVE_TYPES);
-	if (!o->wave_names)
+	if (!(o->math_names = SGS_SymTab_pool_stra(st,
+			SGS_Math_names, SGS_MATH_FUNCTIONS)))
 		return false;
-	o->ramp_names = SGS_SymTab_pool_stra(st,
-			SGS_Ramp_names, SGS_RAMP_TYPES);
-	if (!o->ramp_names)
+	if (!(o->ramp_names = SGS_SymTab_pool_stra(st,
+			SGS_Ramp_names, SGS_RAMP_TYPES)))
+		return false;
+	if (!(o->wave_names = SGS_SymTab_pool_stra(st,
+			SGS_Wave_names, SGS_WAVE_TYPES)))
 		return false;
 	return true;
 }
@@ -104,11 +106,45 @@ static void warn_closing_without_opening(SGS_Scanner *restrict o,
 			close_c, open_c);
 }
 
+static bool scan_symafind(SGS_Scanner *restrict o,
+		const char *const*restrict stra,
+		size_t *restrict found_i, const char *restrict print_type) {
+	SGS_ScanFrame sf_begin = o->sf;
+	SGS_SymStr *s = NULL;
+	SGS_Scanner_get_symstr(o, &s);
+	if (!s) {
+		SGS_Scanner_warning(o, NULL, "%s name missing", print_type);
+		return false;
+	}
+	for (size_t i = 0; stra[i] != NULL; ++i) {
+		if (stra[i] == s->key) {
+			*found_i = i;
+			return true;
+		}
+	}
+	SGS_Scanner_warning(o, &sf_begin,
+			"invalid %s name '%s'; available are:",
+			print_type, s->key);
+	SGS_print_names(stra, "\t", stderr);
+	return false;
+}
+
+static bool scan_mathfunc(SGS_Scanner *restrict o, size_t *restrict found_id) {
+	struct ScanLookup *sl = o->data;
+	if (!scan_symafind(o, sl->math_names, found_id, "math function"))
+		return false;
+	if (SGS_Scanner_tryc(o, '('))
+		return true;
+	SGS_Scanner_warning(o, NULL,
+"expected '(' following math function name '%s'", SGS_Math_names[*found_id]);
+	return false;
+}
+
 struct NumParser {
 	SGS_Scanner *sc;
 	SGS_ScanNumConst_f numconst_f;
 	SGS_ScanFrame sf_start;
-	bool has_infnum;
+	bool has_nannum, has_infnum;
 	bool after_rpar;
 };
 enum {
@@ -134,10 +170,21 @@ static double scan_num_r(struct NumParser *restrict o,
 		if (isnan(num)) goto DEFER;
 		if (c == '-') num = -num;
 	} else {
-		size_t read_len;
+		size_t func_id = 0, read_len = 0;
 		SGS_Scanner_ungetc(sc);
 		SGS_Scanner_getd(sc, &num, false, &read_len, o->numconst_f);
-		if (read_len == 0 || isnan(num)) goto REJECT;
+		if (read_len == 0) {
+			if (IS_ALPHA(c) && scan_mathfunc(sc, &func_id)) {
+				num = scan_num_r(o, NUMEXP_SUB, level+1);
+				num = SGS_Math_val_func[func_id](num);
+			} else {
+				goto REJECT; /* silent NaN (nothing was read) */
+			}
+		}
+		if (isnan(num)) {
+			o->has_nannum = true;
+			goto REJECT;
+		}
 	}
 	if (pri == NUMEXP_NUM) goto ACCEPT; /* defer all operations */
 	for (;;) {
@@ -196,7 +243,10 @@ static double scan_num_r(struct NumParser *restrict o,
 			}
 			goto DEFER;
 		}
-		if (isnan(num)) goto DEFER;
+		if (isnan(num)) {
+			o->has_nannum = true;
+			goto DEFER;
+		}
 	}
 DEFER:
 	SGS_Scanner_ungetc(sc);
@@ -211,9 +261,14 @@ REJECT: {
 }
 static sgsNoinline bool scan_num(SGS_Scanner *restrict o,
 		SGS_ScanNumConst_f scan_numconst, float *restrict var) {
-	struct NumParser np = {o, scan_numconst, o->sf, false, false};
+	struct NumParser np = {o, scan_numconst, o->sf, false, false, false};
 	float num = scan_num_r(&np, NUMEXP_SUB, 0);
-	if (isnan(num))
+	if (np.has_nannum) {
+		SGS_Scanner_warning(o, &np.sf_start,
+				"discarding expression containing NaN value");
+		return false;
+	}
+	if (isnan(num)) /* silent NaN (ignored blank expression) */
 		return false;
 	if (isinf(num)) np.has_infnum = true;
 	if (np.has_infnum) {
@@ -355,6 +410,19 @@ static size_t scan_note_const(SGS_Scanner *restrict o,
 	return len;
 }
 
+static size_t scan_phase_const(SGS_Scanner *restrict o,
+		double *restrict val) {
+	char c = SGS_File_GETC(o->f);
+	switch (c) {
+	case 'G':
+		*val = SGS_GLDA_1_2PI;
+		return 1;
+	default:
+		SGS_File_DECP(o->f);
+		return 0;
+	}
+}
+
 static SGS_SymStr *scan_label(SGS_Scanner *restrict o,
 		char op) {
 	SGS_SymStr *s = NULL;
@@ -364,28 +432,6 @@ static SGS_SymStr *scan_label(SGS_Scanner *restrict o,
 				"ignoring %c without label name", op);
 	}
 	return s;
-}
-
-static bool scan_symafind(SGS_Scanner *restrict o,
-		const char *const*restrict stra,
-		size_t *restrict found_i, const char *restrict print_type) {
-	SGS_ScanFrame sf_begin = o->sf;
-	SGS_SymStr *s = NULL;
-	SGS_Scanner_get_symstr(o, &s);
-	if (!s) {
-		SGS_Scanner_warning(o, NULL, "%s value missing", print_type);
-		return false;
-	}
-	for (size_t i = 0; stra[i] != NULL; ++i) {
-		if (stra[i] == s->key) {
-			*found_i = i;
-			return true;
-		}
-	}
-	SGS_Scanner_warning(o, &sf_begin,
-			"invalid %s value; available are:", print_type);
-	SGS_print_names(stra, "\t", stderr);
-	return false;
 }
 
 static bool scan_wavetype(SGS_Scanner *restrict o, size_t *restrict found_id) {
@@ -998,7 +1044,7 @@ static bool parse_ev_phase(SGS_Parser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
 	SGS_Scanner *sc = o->sc;
 	SGS_ScriptOpData *op = pl->operator;
-	if (scan_num(sc, NULL, &op->phase)) {
+	if (scan_num(sc, scan_phase_const, &op->phase)) {
 		op->phase = fmod(op->phase, 1.f);
 		if (op->phase < 0.f)
 			op->phase += 1.f;

@@ -1,5 +1,5 @@
 /* sgensys: Help data and printout code.
- * Copyright (c) 2020 Joel K. Pettersson
+ * Copyright (c) 2020-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -16,12 +16,14 @@
  */
 
 #include "help.h"
+#include "math.h"
 #include "ramp.h"
 #include "wave.h"
 #include <string.h>
 
 const char *const SGS_Help_names[SGS_HELP_TYPES + 1] = {
 	"help",
+	"math",
 	"ramp",
 	"wave",
 	NULL
@@ -39,6 +41,8 @@ const char *const *SGS_find_help(const char *restrict str) {
 	switch (i) {
 	case SGS_HELP_HELP:
 		return SGS_Help_names;
+	case SGS_HELP_MATH:
+		return SGS_Math_names;
 	case SGS_HELP_RAMP:
 		return SGS_Ramp_names;
 	case SGS_HELP_WAVE:

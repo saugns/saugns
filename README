@@ -168,6 +168,13 @@ Channel mixing values:
 	L	(-1.0)
 	R	1.0
 
+Phase values:
+	Phase offset as a percentage of the wave cycle. Any value will be used
+	modulo 1.0. For example, (1/4) turns sine into cosine. Named constants
+	provide scaled angles which can be used in expressions, e.g. (G*n) for
+	some whole number n makes for the nth leaf-around-a-stem angle.
+	G	0.3819... (golden angle as cycle percentage)
+
 Parameters:
 	t	Time duration in seconds. If no "t" setting is given, the
 		time set depends on the context.
@@ -218,12 +225,9 @@ Parameters:
 			"Value ramp" values are supported; see section.
 			"Modulation with value range" is supported for AM & RM
 		(amplitude and ring modulation); see section.
-	p	Set the phase of the wave, and/or PM (phase modulation)
-		modulators to use.
-			A value modulo 1.0 is used to set phase as a
-		percentage of the wave cycle. For example, p(3/4) will move
-		a sine or triangle wave to its "bottom". This is mostly
-		useful for changing the initial phase.
+	p	Phase in percentage of the wave cycle modulo 1.0. Set to
+		reset the phase, e.g. to change the initial value from 0.0.
+		See "Phase values" for more.
 			After a value or by itself, "[]" (square brackets)
 		can be used to set a list of PM modulator operators specified
 		within the "[]"; the list replaces any previous set, and may
@@ -276,6 +280,18 @@ Numerical expressions:
 	"*" between two parts), e.g. "2(3)" and "(2)3" both give "6".
 		Some parameters support named constants specific to that type
 	of value. Such a name can be written instead of a number.
+		The following mathematical functions can also be used, with
+	the syntax "name(number)" (e.g. "abs(-100)" gives "100"):
+		abs(x)	Absolute value.
+		exp(x)	Base-e exponential value.
+		log(x)	Natural logarithmic value.
+		met(x)	Metallic value, e.g. "met(1)" gives the golden ratio.
+			Positive integers give the series of metallic ratios.
+			Other values are also allowed: fractional, 0 giving 1
+			and negative (gives how much the positive value would
+			be increased, approaching zero further from zero).
+			Note that met(-x) is also equal to (1/met(x)).
+		sqrt(x)	Square root.
 
 Value ramp:
 	To ramp, or sweep, a parameter which supports this towards a
