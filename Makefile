@@ -15,6 +15,7 @@ SHARE=sgensys
 OBJ=\
 	arrtype.o \
 	error.o \
+	math.o \
 	help.o \
 	file.o \
 	symtab.o \
@@ -81,8 +82,11 @@ arrtype.o: arrtype.c arrtype.h mempool.h sgensys.h
 error.o: sgensys.h error.c
 	$(CC) -c $(CFLAGS_SIZE) error.c
 
-help.o: sgensys.h help.c help.h ramp.h wave.h
+help.o: sgensys.h help.c help.h math.h ramp.h wave.h
 	$(CC) -c $(CFLAGS_SIZE) help.c
+
+math.o: sgensys.h math.c math.h
+	$(CC) -c $(CFLAGS_FAST) math.c
 
 mempool.o: sgensys.h mempool.c mempool.h
 	$(CC) -c $(CFLAGS_FAST) mempool.c
