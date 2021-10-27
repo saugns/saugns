@@ -16,6 +16,7 @@ OBJ=\
 	common.o \
 	help.o \
 	arrtype.o \
+	math.o \
 	ptrarr.o \
 	reader/file.o \
 	reader/symtab.o \
@@ -85,8 +86,11 @@ arrtype.o: arrtype.c arrtype.h common.h mempool.h
 common.o: common.c common.h
 	$(CC) -c $(CFLAGS) common.c
 
-help.o: common.h help.c help.h ramp.h wave.h
-	$(CC) -c $(CFLAGS) help.c
+help.o: common.h help.c help.h math.h ramp.h wave.h
+	$(CC) -c $(CFLAGS_SIZE) help.c
+
+math.o: common.h math.c math.h
+	$(CC) -c $(CFLAGS_FAST) math.c
 
 mempool.o: common.h mempool.c mempool.h
 	$(CC) -c $(CFLAGS_FAST) mempool.c

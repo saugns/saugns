@@ -29,7 +29,7 @@ static void print_help(const char *restrict topic,
 		topic = SGS_Help_names[SGS_HELP_HELP];
 		contents = SGS_Help_names;
 	}
-	fprintf(stderr, "\nList of %s types", topic);
+	fprintf(stderr, "\nList of '%s' names", topic);
 	if (description != NULL)
 		fprintf(stderr, " (%s)", description);
 	fputs(":\n", stderr);
