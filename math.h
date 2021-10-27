@@ -1,5 +1,5 @@
 /* sgensys: Math definitions.
- * Copyright (c) 2011-2012, 2017-2020 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -28,3 +28,35 @@
  */
 #define SGS_MS_IN_SAMPLES(ms, srate) \
 	lrintf(((ms) * .001f) * (srate))
+
+/**
+ * Metallic value function. Golden ratio for \p x == 1, silver for x == 2, etc.
+ * Also accepts zero (with the result one), and values in-between the integers.
+ * (Maps negative infinity to 0.0, 0.0 to 1.0, and positive infinity to itself.
+ * Negative values give how much the positive value would have been increased.)
+ *
+ * \return metallic value
+ */
+static inline double SGS_met(double x) {
+	return 0.5f * (x + sqrt(x * x + 4.f));
+}
+
+/**
+ * Math functions.
+ */
+enum {
+	SGS_MATH_ABS = 0,
+	SGS_MATH_EXP,
+	SGS_MATH_LOG,
+	SGS_MATH_SQRT,
+	SGS_MATH_MET,
+	SGS_MATH_FUNCTIONS
+};
+
+typedef double (*SGS_Math_val_f)(double x);
+
+/** Names of math functions. */
+extern const char *const SGS_Math_names[SGS_MATH_FUNCTIONS + 1];
+
+/** Value functions for math functions. */
+extern const SGS_Math_val_f SGS_Math_val_func[SGS_MATH_FUNCTIONS];

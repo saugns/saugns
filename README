@@ -254,6 +254,17 @@ Numerical expressions:
 	e.g. "2(3)" gives the value "6".
 		Some parameters support named constants specific to that type
 	of value. Such a name can be written instead of a number.
+		The following mathematical functions can also be used, with
+	the syntax "name(number)" (e.g. "abs(-100)" gives "100"):
+		abs(x)	Absolute value.
+		exp(x)	Base-e exponential value.
+		log(x)	Natural logarithmic value.
+		sqrt(x)	Square root.
+		met(x)	Metallic value, e.g. "met(1)" gives the golden ratio.
+			Positive integers give the series of metallic ratios.
+			Other values are also allowed: fractional, 0 giving 1
+			and negative (gives how much the positive value would
+			be increased, approaching zero further from zero).
 
 Value ramp:
 	To ramp or "sweep" a parameter which supports this towards a
