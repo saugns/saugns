@@ -569,6 +569,7 @@ ERROR:
 enum {
 	SCOPE_SAME = 0,
 	SCOPE_TOP = 1,
+	SCOPE_GROUP = '<',
 	SCOPE_BIND = '@',
 	SCOPE_NEST = '[',
 };
@@ -584,9 +585,8 @@ static void parse_in_settings(SGS_Parser *restrict o);
 enum {
 	PL_DEFERRED_SUB  = 1<<0, // \a sub_f exited to attempt handling above
 	PL_BIND_MULTIPLE = 1<<1, // previous node interpreted as set of nodes
-	PL_NESTED_SCOPE = 1<<2,
-	PL_ACTIVE_EV = 1<<3,
-	PL_ACTIVE_OP = 1<<4,
+	PL_ACTIVE_EV = 1<<2,
+	PL_ACTIVE_OP = 1<<3,
 };
 
 /*
@@ -694,8 +694,7 @@ static void begin_event(SGS_Parser *restrict o,
 	pl->next_wait_ms = 0;
 	if (pl->on_prev != NULL) {
 		pve = pl->on_prev->event;
-		pve->ev_flags |= SGS_SDEV_VOICE_LATER_USED;
-		e->root_ev = pl->on_prev->root_event;
+		e->root_ev = pl->on_prev->obj->root_event;
 		if (is_composite) {
 			if (!pl->composite) {
 				pve->composite = e;
@@ -703,11 +702,6 @@ static void begin_event(SGS_Parser *restrict o,
 			} else {
 				pve->next = e;
 			}
-		} else if (pve->composite != NULL) {
-			SGS_ScriptEvData *last_ce;
-			for (last_ce = pve->composite; last_ce->next;
-					last_ce = last_ce->next) ;
-			last_ce->ev_flags |= SGS_SDEV_VOICE_LATER_USED;
 		}
 	}
 	if (!is_composite) {
@@ -743,9 +737,7 @@ static void begin_operator(SGS_Parser *restrict o,
 	SGS_Ramp_reset(&op->amp2);
 	SGS_Ramp_reset(&op->pan);
 	if (pop != NULL) {
-		op->root_event = pop->root_event; /* refs keep original root */
 		op->use_type = pop->use_type;
-		pop->op_flags |= SGS_SDOP_LATER_USED;
 		op->on_prev = pop;
 		op->op_flags = pop->op_flags &
 			(SGS_SDOP_NESTED | SGS_SDOP_MULTIPLE);
@@ -757,6 +749,7 @@ static void begin_operator(SGS_Parser *restrict o,
 		op->time_ms = pop->time_ms;
 		op->wave = pop->wave;
 		op->phase = pop->phase;
+		op->obj = pop->obj;
 	} else {
 		/*
 		 * New operator with initial parameter values.
@@ -765,9 +758,6 @@ static void begin_operator(SGS_Parser *restrict o,
 		 */
 		op->op_flags = SGS_SDOP_TIME_DEFAULT;
 		op->time_ms = sl->sopt.def_time_ms;
-		op->root_event = (pl->parent_on != NULL) ?
-			pl->parent_on->root_event :
-			e;
 		op->use_type = pl->use_type;
 		if (op->use_type == SGS_POP_CARR) {
 			op->freq.v0 = sl->sopt.def_freq;
@@ -781,6 +771,8 @@ static void begin_operator(SGS_Parser *restrict o,
 		op->amp.flags |= SGS_RAMPP_STATE;
 		op->pan.v0 = sl->sopt.def_chanmix;
 		op->pan.flags |= SGS_RAMPP_STATE;
+		op->obj = SGS_MemPool_alloc(o->mp, sizeof(SGS_ScriptOpObj));
+		op->obj->root_event = e;
 	}
 	op->event = e;
 	/*
@@ -861,15 +853,18 @@ static void enter_level(SGS_Parser *restrict o,
 	if (parent_pl != NULL) {
 		pl->parent = parent_pl;
 		pl->sub_f = parent_pl->sub_f;
-		pl->pl_flags = parent_pl->pl_flags &
-			(PL_NESTED_SCOPE | PL_BIND_MULTIPLE);
-		if (newscope == SCOPE_SAME)
+		pl->pl_flags = parent_pl->pl_flags & (PL_BIND_MULTIPLE);
+		if (newscope == SCOPE_SAME) {
 			pl->scope = parent_pl->scope;
+			pl->nest_list = parent_pl->nest_list;
+		}
 		pl->event = parent_pl->event;
 		pl->operator = parent_pl->operator;
 		pl->parent_on = parent_pl->parent_on;
+		if (newscope == SCOPE_GROUP) {
+			pl->nest_list = parent_pl->nest_list;
+		}
 		if (newscope == SCOPE_NEST) {
-			pl->pl_flags |= PL_NESTED_SCOPE;
 			pl->parent_on = parent_pl->operator;
 			pl->nest_list = SGS_MemPool_alloc(o->mp,
 					sizeof(SGS_ScriptListData));
@@ -902,6 +897,15 @@ static void leave_level(SGS_Parser *restrict o) {
 	}
 	--o->call_level;
 	o->cur_pl = pl->parent;
+	if (pl->scope == SCOPE_GROUP) {
+		if (pl->pl_flags & PL_ACTIVE_EV) {
+			end_event(o);
+			pl->parent->pl_flags |= PL_ACTIVE_EV;
+			pl->parent->event = pl->event;
+		}
+		if (pl->last_event != NULL)
+			pl->parent->last_event = pl->last_event;
+	}
 	if (pl->scope == SCOPE_BIND) {
 		/*
 		 * Begin multiple-operator node in parent scope
@@ -1040,7 +1044,6 @@ static bool parse_ev_phase(SGS_Parser *restrict o) {
 
 static void parse_in_event(SGS_Parser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
-	struct ScanLookup *sl = &o->sl;
 	SGS_Scanner *sc = o->sc;
 	SGS_ScriptOpData *op = pl->operator;
 	pl->sub_f = parse_in_event;
@@ -1075,11 +1078,7 @@ static void parse_in_event(SGS_Parser *restrict o) {
 				op->params |= SGS_POPP_SILENCE;
 			break;
 		case 't':
-			if (SGS_Scanner_tryc(sc, '*')) {
-				/* later fitted or kept to default */
-				op->op_flags |= SGS_SDOP_TIME_DEFAULT;
-				op->time_ms = sl->sopt.def_time_ms;
-			} else if (SGS_Scanner_tryc(sc, 'i')) {
+			if (SGS_Scanner_tryc(sc, 'i')) {
 				if (!(op->op_flags & SGS_SDOP_NESTED)) {
 					SGS_Scanner_warning(sc, NULL,
 "ignoring 'ti' (infinite time) for non-nested operator");
@@ -1120,6 +1119,17 @@ static bool parse_level(SGS_Parser *restrict o,
 	SGS_Scanner *sc = o->sc;
 	uint8_t c;
 	for (;;) {
+		/*
+		 * Return to any sub-parsing routine.
+		 *
+		 * May happen in a new nested parse_level() call.
+		 */
+		if (pl.sub_f != NULL && !(pl.pl_flags & PL_DEFERRED_SUB))
+			pl.sub_f(o);
+		pl.pl_flags &= ~PL_DEFERRED_SUB;
+		/*
+		 * Parse main tokens.
+		 */
 		c = SGS_Scanner_getc(sc);
 		switch (c) {
 		case SGS_SCAN_SPACE:
@@ -1157,6 +1167,16 @@ static bool parse_level(SGS_Parser *restrict o,
 			begin_node(o, pl.operator, true);
 			parse_in_event(o);
 			break;
+		case '<':
+			if (parse_level(o, pl.use_type, SCOPE_GROUP))
+				goto RETURN;
+			break;
+		case '>':
+			if (pl.scope == SCOPE_GROUP) {
+				goto RETURN;
+			}
+			warn_closing_without_opening(sc, '>', '<');
+			break;
 		case '@':
 			if (SGS_Scanner_tryc(sc, '[')) {
 				end_operator(o);
@@ -1193,7 +1213,7 @@ static bool parse_level(SGS_Parser *restrict o,
 			size_t wave;
 			if (!scan_wavetype(sc, &wave))
 				break;
-			begin_node(o, 0, false);
+			begin_node(o, NULL, false);
 			pl.operator->wave = wave;
 			parse_in_event(o);
 			break; }
@@ -1206,19 +1226,15 @@ static bool parse_level(SGS_Parser *restrict o,
 			warn_opening_disallowed(sc, '[');
 			break;
 		case '\\':
-			if (pl.sub_f == parse_in_settings ||
-					((pl.pl_flags & PL_NESTED_SCOPE) != 0
-					 && pl.event != NULL))
+			if (pl.nest_list != NULL)
 				goto INVALID;
 			parse_waittime(o);
 			break;
 		case ']':
-			if (pl.scope == SCOPE_BIND) {
-				endscope = true;
-				goto RETURN;
-			}
 			if (pl.scope == SCOPE_NEST) {
 				end_operator(o);
+			}
+			if (pl.scope > SCOPE_GROUP) {
 				endscope = true;
 				goto RETURN;
 			}
@@ -1228,9 +1244,7 @@ static bool parse_level(SGS_Parser *restrict o,
 			warn_opening_disallowed(sc, '{');
 			break;
 		case '|':
-			if (pl.sub_f == parse_in_settings ||
-					((pl.pl_flags & PL_NESTED_SCOPE) != 0
-					 && pl.event != NULL))
+			if (pl.nest_list != NULL)
 				goto INVALID;
 			if (newscope == SCOPE_SAME) {
 				SGS_Scanner_ungetc(sc);
@@ -1253,16 +1267,12 @@ static bool parse_level(SGS_Parser *restrict o,
 			if (!handle_unknown_or_eof(sc, c)) goto FINISH;
 			break;
 		}
-		/*
-		 * Return to any sub-parsing routine.
-		 */
-		if (pl.sub_f != NULL && !(pl.pl_flags & PL_DEFERRED_SUB))
-			pl.sub_f(o);
-		pl.pl_flags &= ~PL_DEFERRED_SUB;
 	}
 FINISH:
-	if (newscope == SCOPE_NEST || newscope == SCOPE_BIND)
+	if (newscope > SCOPE_GROUP)
 		warn_eof_without_closing(sc, ']');
+	else if (newscope == SCOPE_GROUP)
+		warn_eof_without_closing(sc, '>');
 RETURN:
 	leave_level(o);
 	/*
@@ -1493,6 +1503,21 @@ static void postparse_passes(SGS_Parser *restrict o) {
 	 */
 	for (e = o->events; e != NULL; e = e->next) {
 		if (e->composite != NULL) flatten_events(e);
+		/*
+		 * Track sequence of references and later use here.
+		 */
+		SGS_ScriptOpData *sub_op;
+		for (sub_op = e->op_objs.first_item;
+				sub_op != NULL; sub_op = sub_op->next_item) {
+			SGS_ScriptOpData *prev_ref = sub_op->obj->last_ref;
+			if (prev_ref != NULL) {
+				sub_op->on_prev = prev_ref;
+				prev_ref->op_flags |= SGS_SDOP_LATER_USED;
+				prev_ref->event->ev_flags |=
+					SGS_SDEV_VOICE_LATER_USED;
+			}
+			sub_op->obj->last_ref = sub_op;
+		}
 	}
 }
 
