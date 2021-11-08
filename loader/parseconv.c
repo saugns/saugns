@@ -44,7 +44,7 @@ create_ProgramOpList(const SGS_ScriptListData *restrict list_in,
 	o->count = count;
 	uint32_t i = 0;
 	for (op = list_in->first_item; op != NULL; op = op->next_item) {
-		o->ids[i++] = op->data->id;
+		o->ids[i++] = op->obj->op_id;
 	}
 	return o;
 }
@@ -162,7 +162,7 @@ static bool
 SGS_OpAlloc_get_id(SGS_OpAlloc *restrict oa,
 		const SGS_ScriptOpRef *restrict od, uint32_t *restrict op_id) {
 	if (od->on_prev != NULL) {
-		*op_id = od->on_prev->data->id;
+		*op_id = od->obj->op_id;
 		return true;
 	}
 //	for (uint32_t id = 0; id < oa->count; ++id) {
@@ -204,7 +204,7 @@ SGS_OpAlloc_update(SGS_OpAlloc *restrict oa,
 //	}
 	if (!SGS_OpAlloc_get_id(oa, od, op_id))
 		return false;
-	od->data->id = *op_id;
+	od->obj->op_id = *op_id;
 	SGS_OpAllocState *oas = &oa->a[*op_id];
 	oas->last_pod = od;
 //	oas->duration_ms = od->time.v_ms;
@@ -289,6 +289,7 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 	SGS_OpAllocState *oas = &o->oa.a[op_id];
 	SGS_ProgramOpData *od = op->data;
 	if (!SGS_PtrArr_add(&o->ev_od_list, od)) goto MEM_ERR;
+	od->id = op_id;
 	/* ...mods */
 	SGS_VoAllocState *vas = &o->va.a[o->ev->vo_id];
 	const SGS_ScriptListData *mods[SGS_POP_USES] = {0};
