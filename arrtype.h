@@ -1,5 +1,5 @@
 /* sgensys: Generic array module.
- * Copyright (c) 2018-2022 Joel K. Pettersson
+ * Copyright (c) 2018-2024 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -50,25 +50,38 @@ typedef struct Name { \
  */
 #define sgsArrTypeMethods(Name, ElementType, MethodPrefix) \
 static inline ElementType SGS__maybe_unused \
-*MethodPrefix##Name##_add(Name *o, \
-		const ElementType *item) { \
+*MethodPrefix##Name##_add(Name *o, const ElementType *item) { \
 	return SGS_ArrType_add(o, item, sizeof(ElementType)); \
+} \
+static inline ElementType SGS__maybe_unused \
+*MethodPrefix##Name##_drop(Name *o) { \
+	return (o->count > 0) ? &o->a[--o->count] : NULL; \
+} \
+static inline bool SGS__maybe_unused \
+MethodPrefix##Name##_upsize(Name *o, size_t count) { \
+	return SGS_ArrType_upsize(o, count, sizeof(ElementType)); \
+} \
+static inline ElementType SGS__maybe_unused \
+*MethodPrefix##Name##_get(Name *o, size_t i) { \
+	return (o->count > i) ? &o->a[i] : NULL; \
+} \
+static inline ElementType SGS__maybe_unused \
+*MethodPrefix##Name##_tip(Name *o) { \
+	return (o->count > 0) ? &o->a[o->count - 1] : NULL; \
 } \
 static inline void SGS__maybe_unused \
 MethodPrefix##Name##_clear(Name *o) { \
 	SGS_ArrType_clear(o); \
 } \
 static inline bool SGS__maybe_unused \
-MethodPrefix##Name##_memdup(Name *o, \
-		ElementType **dst) { \
+MethodPrefix##Name##_memdup(Name *o, ElementType **dst) { \
 	return SGS_ArrType_memdup(o, (void**) dst, sizeof(ElementType)); \
 } \
 static inline bool SGS__maybe_unused \
-MethodPrefix##Name##_mpmemdup(Name *o, \
-		ElementType **dst, \
+MethodPrefix##Name##_mpmemdup(Name *o, ElementType **dst, \
 		struct SGS_Mempool *mempool) { \
-	return SGS_ArrType_mpmemdup(o, (void**) dst, \
-		sizeof(ElementType), mempool); \
+	return SGS_ArrType_mpmemdup(o, (void**) dst, sizeof(ElementType), \
+			mempool); \
 }
 
 /**
@@ -86,6 +99,8 @@ sgsArrTypeMethods(Name, ElementType, MethodPrefix)
 
 void *SGS_ArrType_add(void *o,
 		const void *item, size_t item_size);
+bool SGS_ArrType_upsize(void *o,
+		size_t count, size_t item_size);
 void SGS_ArrType_clear(void *o);
 bool SGS_ArrType_memdup(void *o,
 		void **dst, size_t item_size);
