@@ -1,5 +1,5 @@
 /* sgensys: Generic array module.
- * Copyright (c) 2018-2022 Joel K. Pettersson
+ * Copyright (c) 2018-2024 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -19,9 +19,6 @@
 #include "mempool.h"
 #include <stdlib.h>
 #include <string.h>
-
-static bool SGS_ArrType_upsize(void *_o,
-		size_t count, size_t item_size);
 
 /**
  * Add an item to the given array. The memory is initialized
@@ -59,7 +56,7 @@ void *SGS_ArrType_add(void *_o,
  *
  * \return true unless allocation failed
  */
-static bool SGS_ArrType_upsize(void *_o,
+bool SGS_ArrType_upsize(void *_o,
 		size_t count, size_t item_size) {
 	SGS_ByteArr *o = _o;
 	size_t asize = o->asize;
