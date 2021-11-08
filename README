@@ -183,7 +183,6 @@ Parameters:
 			When several operators are specified at the same
 		time and time is explicitly set for at least one, the
 		default time is the combined duration of their play.
-		(t* can also be used to specify this explicitly.)
 			For nested operators, i.e. modulators, the default
 		time is infinite (can also be set as "ti"), meaning they
 		play whenever a carrier they are linked to does. Infinite
