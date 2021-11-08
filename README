@@ -173,14 +173,13 @@ Phase values:
 	G	0.3819... (golden angle as cycle percentage)
 
 Parameters:
-	t	Time duration in seconds. If no t setting is given, the
+	t	Time duration in seconds. If no "t" setting is given, the
 		time set depends on the context.
 			For a single non-nested operator, 1 is used unless
 		the default value is changed with "S t".
 			When several operators are specified at the same
 		time and time is explicitly set for at least one, the
 		default time is the combined duration of their play.
-		(t* can also be used to specify this explicitly.)
 			For nested operators, i.e. modulators, the default
 		time is infinite (can also be set as "ti"), meaning they
 		play whenever a carrier they are linked to does. Infinite

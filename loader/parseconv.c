@@ -43,7 +43,7 @@ static sgsNoinline SGS_ProgramOpList
 	o->count = count;
 	uint32_t i = 0;
 	for (op = list_in->first_item; op != NULL; op = op->next_item) {
-		o->ids[i++] = op->op_id;
+		o->ids[i++] = op->obj->op_id;
 	}
 	return o;
 }
@@ -134,7 +134,7 @@ static void SGS_VoAlloc_clear(SGS_VoAlloc *restrict o) {
 static bool SGS_OpAlloc_get_id(SGS_OpAlloc *restrict oa,
 		const SGS_ScriptOpData *restrict od, uint32_t *restrict op_id) {
 	if (od->on_prev != NULL) {
-		*op_id = od->on_prev->op_id;
+		*op_id = od->obj->op_id;
 		return true;
 	}
 //	for (uint32_t id = 0; id < oa->count; ++id) {
@@ -170,7 +170,7 @@ static uint32_t SGS_OpAlloc_update(SGS_OpAlloc *restrict oa,
 //			oa->a[op_id].duration_ms -= e->wait_ms;
 //	}
 	SGS_OpAlloc_get_id(oa, od, &op_id);
-	od->op_id = op_id;
+	od->obj->op_id = op_id;
 	SGS_OpAllocState *oas = &oa->a[op_id];
 	oas->last_pod = od;
 //	oas->duration_ms = od->time_ms;
