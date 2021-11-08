@@ -33,11 +33,21 @@ typedef struct SGS_ScriptListData {
 } SGS_ScriptListData;
 
 /**
- * Node type for operator data.
+ * Object type for operator, shared by all references.
+ */
+typedef struct SGS_ScriptOpObj {
+	struct SGS_ScriptOpRef *last_ref;    // updated until timewise last
+	struct SGS_ScriptEvData *root_event; // where object was created
+	uint32_t op_id; /* for conversion */
+} SGS_ScriptOpObj;
+
+/**
+ * Reference type for operator.
  */
 typedef struct SGS_ScriptOpRef {
 	struct SGS_ScriptOpRef *next_item;
-	struct SGS_ScriptEvData *event, *root_event;
+	struct SGS_ScriptEvData *event;
+	struct SGS_ScriptOpObj *obj;     /* shared by all references */
 	struct SGS_ScriptOpRef *on_prev; /* preceding for same op(s) */
 	uint32_t op_flags;
 	/* operator parameters */
@@ -80,7 +90,7 @@ typedef struct SGS_ScriptEvData {
 	SGS_ScriptListData main_refs;
 	/* for conversion */
 	uint32_t vo_id;
-	struct SGS_ScriptEvData *root_ev;
+	struct SGS_ScriptEvData *root_ev; // if main object not created here
 } SGS_ScriptEvData;
 
 /**
