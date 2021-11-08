@@ -622,10 +622,10 @@ ERROR:
  * Scope values.
  */
 enum {
-	SCOPE_SAME = 0,
-	SCOPE_TOP = 1,
-	SCOPE_BIND,
-	SCOPE_NEST,
+	SCOPE_SAME = 0, // specially handled inner copy of parent scope
+	SCOPE_GROUP,    // '<...>' or top scope
+	SCOPE_BIND,     // '@[...]'
+	SCOPE_NEST,     // '[...]'
 };
 
 typedef void (*ParseLevel_sub_f)(sauParser *restrict o);
@@ -944,13 +944,18 @@ static void enter_level(sauParser *restrict o,
 		pl->parent = parent_pl;
 		pl->sub_f = parent_pl->sub_f;
 		pl->pl_flags = parent_pl->pl_flags & PL_BIND_MULTIPLE;
-		if (newscope == SCOPE_SAME)
+		if (newscope == SCOPE_SAME) {
 			pl->scope = parent_pl->scope;
+			pl->nest_list = parent_pl->nest_list;
+		}
 		pl->event = parent_pl->event;
 		pl->operator = parent_pl->operator;
 		pl->op_sweep = parent_pl->op_sweep;
 		pl->numconst_f = parent_pl->numconst_f;
 		pl->num_ratio = parent_pl->num_ratio;
+		if (newscope == SCOPE_GROUP) {
+			pl->nest_list = parent_pl->nest_list;
+		}
 		if (newscope == SCOPE_NEST) {
 			sauScriptOpData *parent_on = parent_pl->operator;
 			pl->sub_f = pl->op_sweep ? parse_in_par_sweep : NULL;
@@ -993,6 +998,13 @@ static void leave_level(sauParser *restrict o) {
 	}
 	--o->call_level;
 	o->cur_pl = pl->parent;
+	if (pl->scope == SCOPE_GROUP) {
+		if (pl->pl_flags & PL_OWN_EV) {
+			end_event(o);
+			pl->parent->pl_flags |= PL_OWN_EV;
+			pl->parent->event = pl->event;
+		}
+	}
 	if (pl->scope == SCOPE_BIND) {
 		/*
 		 * Begin multiple-operator node in parent scope
@@ -1414,6 +1426,10 @@ static bool parse_level(sauParser *restrict o,
 			if (pl.parent && pl.parent->nest_list) goto INVALID;
 			parse_waittime(o);
 			break;
+		case '<':
+			warn_opening_disallowed(sc, '<');
+			pl.pl_flags &= ~PL_WARN_NOSPACE; /* OK around */
+			continue;
 		case '=': {
 			sauSymitem *var = pl.set_var;
 			if (!var) goto INVALID;
@@ -1425,6 +1441,9 @@ static bool parse_level(sauParser *restrict o,
 				sauScanner_warning(sc, NULL,
 "missing right-hand value for \"'%s=\"", var->sstr->key);
 			break; }
+		case '>':
+			warn_closing_without_opening(sc, '>', '<');
+			break;
 		case '@': {
 			if (sauScanner_tryc(sc, '[')) {
 				end_operator(o);
@@ -1484,13 +1503,6 @@ static bool parse_level(sauParser *restrict o,
 			pl.operator->wave = id;
 			pl.sub_f = parse_in_op_step;
 			break; }
-		case '<':
-			warn_opening_disallowed(sc, '<');
-			pl.pl_flags &= ~PL_WARN_NOSPACE; /* OK around */
-			continue;
-		case '>':
-			warn_closing_without_opening(sc, '>', '<');
-			break;
 		case '[':
 			warn_opening_disallowed(sc, '[');
 			pl.pl_flags &= ~PL_WARN_NOSPACE; /* OK around */
@@ -1503,6 +1515,10 @@ static bool parse_level(sauParser *restrict o,
 			}
 			warn_closing_without_opening(sc, ']', '[');
 			break;
+		case '{':
+			if (parse_level(o, pl.use_type, SCOPE_GROUP, '}'))
+				goto RETURN;
+			break;
 		case '|':
 			if (pl.parent && pl.parent->nest_list) goto INVALID;
 			if (newscope == SCOPE_SAME) {
@@ -1514,6 +1530,10 @@ static bool parse_level(sauParser *restrict o,
 			finish_durgroup(o);
 			pl.sub_f = NULL;
 			continue;
+		case '}':
+			if (c == close_c) goto RETURN;
+			warn_closing_without_opening(sc, '}', '{');
+			break;
 		default:
 		INVALID:
 			if (!handle_unknown_or_eof(sc, c)) goto FINISH;
@@ -1546,7 +1566,7 @@ static const char *parse_file(sauParser *restrict o,
 	if (!sauScanner_open(sc, arg->str, arg->is_path)) {
 		return NULL;
 	}
-	parse_level(o, SAU_POP_CARR, SCOPE_TOP, 0);
+	parse_level(o, SAU_POP_CARR, SCOPE_GROUP, 0);
 	name = sc->f->path;
 	sauScanner_close(sc);
 	return name;
