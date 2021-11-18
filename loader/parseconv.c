@@ -31,7 +31,7 @@ static sgsNoinline const SGS_ProgramOpList*
 create_ProgramOpList(const SGS_ScriptListData *restrict list_in,
 		SGS_MemPool *restrict mem) {
 	uint32_t count = 0;
-	const SGS_ScriptOpData *op;
+	const SGS_ScriptOpRef *op;
 	for (op = list_in->first_item; op != NULL; op = op->next_item) {
 		++count;
 	}
@@ -44,7 +44,7 @@ create_ProgramOpList(const SGS_ScriptListData *restrict list_in,
 	o->count = count;
 	uint32_t i = 0;
 	for (op = list_in->first_item; op != NULL; op = op->next_item) {
-		o->ids[i++] = op->op_id;
+		o->ids[i++] = op->data->id;
 	}
 	return o;
 }
@@ -143,7 +143,7 @@ enum {
  * Per-operator state used during program data allocation.
  */
 typedef struct SGS_OpAllocState {
-	SGS_ScriptOpData *last_pod;
+	SGS_ScriptOpRef *last_pod;
 	const SGS_ProgramOpList *amods, *fmods, *pmods, *fpmods;
 	uint32_t flags;
 	//uint32_t duration_ms;
@@ -160,9 +160,9 @@ sgsArrType(SGS_OpAlloc, SGS_OpAllocState, _)
  */
 static bool
 SGS_OpAlloc_get_id(SGS_OpAlloc *restrict oa,
-		const SGS_ScriptOpData *restrict od, uint32_t *restrict op_id) {
+		const SGS_ScriptOpRef *restrict od, uint32_t *restrict op_id) {
 	if (od->on_prev != NULL) {
-		*op_id = od->on_prev->op_id;
+		*op_id = od->on_prev->data->id;
 		return true;
 	}
 //	for (uint32_t id = 0; id < oa->count; ++id) {
@@ -193,7 +193,7 @@ SGS_OpAlloc_get_id(SGS_OpAlloc *restrict oa,
  */
 static bool
 SGS_OpAlloc_update(SGS_OpAlloc *restrict oa,
-		SGS_ScriptOpData *restrict od,
+		SGS_ScriptOpRef *restrict od,
 		uint32_t *restrict op_id) {
 //	SGS_ScriptEvData *e = od->event;
 //	for (uint32_t id = 0; id < oa->count; ++id) {
@@ -204,7 +204,7 @@ SGS_OpAlloc_update(SGS_OpAlloc *restrict oa,
 //	}
 	if (!SGS_OpAlloc_get_id(oa, od, op_id))
 		return false;
-	od->op_id = *op_id;
+	od->data->id = *op_id;
 	SGS_OpAllocState *oas = &oa->a[*op_id];
 	oas->last_pod = od;
 //	oas->duration_ms = od->time.v_ms;
@@ -250,15 +250,13 @@ void SGS_fini_VoiceGraph(SGS_VoiceGraph *restrict o);
 bool SGS_VoiceGraph_set(SGS_VoiceGraph *restrict o,
 		const SGS_ProgramEvent *restrict ev);
 
-sgsArrType(OpDataArr, SGS_ProgramOpData, _)
-
 typedef struct ParseConv {
 	SGS_PtrArr ev_list;
 	SGS_VoAlloc va;
 	SGS_OpAlloc oa;
 	SGS_ProgramEvent *ev;
 	SGS_VoiceGraph ev_vo_graph;
-	OpDataArr ev_op_data;
+	SGS_PtrArr ev_od_list;
 	uint32_t duration_ms;
 	SGS_MemPool *mem;
 } ParseConv;
@@ -287,21 +285,11 @@ set_oplist(const SGS_ProgramOpList **restrict dstp,
  */
 static bool
 ParseConv_convert_opdata(ParseConv *restrict o,
-		const SGS_ScriptOpData *restrict op, uint32_t op_id) {
+		const SGS_ScriptOpRef *restrict op, uint32_t op_id) {
 	SGS_OpAllocState *oas = &o->oa.a[op_id];
-	SGS_ProgramOpData *od = _OpDataArr_add(&o->ev_op_data, NULL);
-	if (!od) goto MEM_ERR;
-	od->id = op_id;
-	od->params = op->params;
+	SGS_ProgramOpData *od = op->data;
+	if (!SGS_PtrArr_add(&o->ev_od_list, od)) goto MEM_ERR;
 	/* ...mods */
-	od->time = op->time;
-	od->wave = op->wave;
-	od->freq = op->freq;
-	od->freq2 = op->freq2;
-	od->amp = op->amp;
-	od->amp2 = op->amp2;
-	od->pan = op->pan;
-	od->phase = op->phase;
 	SGS_VoAllocState *vas = &o->va.a[o->ev->vo_id];
 	const SGS_ScriptListData *mods[SGS_POP_USES] = {0};
 	for (SGS_ScriptListData *in_list = op->mods;
@@ -346,7 +334,7 @@ ParseConv_convert_ops(ParseConv *restrict o,
 		SGS_ScriptListData *restrict op_list) {
 	if (!op_list)
 		return true;
-	for (SGS_ScriptOpData *op = op_list->first_item;
+	for (SGS_ScriptOpRef *op = op_list->first_item;
 			op != NULL; op = op->next_item) {
 		// TODO: handle multiple operator nodes
 		if ((op->op_flags & SGS_SDOP_MULTIPLE) != 0) continue;
@@ -475,13 +463,13 @@ ParseConv_convert_event(ParseConv *restrict o,
 	out_ev->wait_ms = e->wait_ms;
 	out_ev->vo_id = vo_id;
 	o->ev = out_ev;
-	if (!ParseConv_convert_ops(o, &e->op_objs)) goto MEM_ERR;
-	if (o->ev_op_data.count > 0) {
-		if (!_OpDataArr_mpmemdup(&o->ev_op_data,
-					(SGS_ProgramOpData**) &out_ev->op_data,
+	if (!ParseConv_convert_ops(o, &e->main_refs)) goto MEM_ERR;
+	if (o->ev_od_list.count > 0) {
+		if (!SGS_PtrArr_mpmemdup(&o->ev_od_list,
+					(void***) &out_ev->op_data,
 					o->mem)) goto MEM_ERR;
-		out_ev->op_data_count = o->ev_op_data.count;
-		o->ev_op_data.count = 0; // reuse allocation
+		out_ev->op_data_count = o->ev_od_list.count;
+		o->ev_od_list.count = 0; // reuse allocation
 	}
 	if (!e->root_ev)
 		vas->flags |= SGS_VAS_GRAPH;
@@ -491,7 +479,7 @@ ParseConv_convert_event(ParseConv *restrict o,
 		if (!ovd) goto MEM_ERR;
 		ovd->params = SGS_PVOP_GRAPH;
 		if (!e->root_ev) {
-			if (!set_oplist(&vas->op_carrs, &e->op_objs, o->mem))
+			if (!set_oplist(&vas->op_carrs, &e->main_refs, o->mem))
 				goto MEM_ERR;
 		}
 		out_ev->vo_data = ovd;
@@ -549,8 +537,6 @@ ParseConv_create_program(ParseConv *restrict o,
 	prg->op_nest_depth = o->ev_vo_graph.op_nest_max;
 	prg->duration_ms = o->duration_ms;
 	prg->name = script->name;
-	prg->mem = o->mem;
-	o->mem = NULL; // pass on to program
 	return prg;
 MEM_ERR:
 	return NULL;
@@ -563,7 +549,7 @@ static SGS_Program*
 ParseConv_convert(ParseConv *restrict o,
 		SGS_Script *restrict script) {
 	SGS_Program *prg = NULL;
-	o->mem = SGS_create_MemPool(0);
+	o->mem = script->mem;
 	if (!o->mem) goto MEM_ERR;
 	SGS_init_VoiceGraph(&o->ev_vo_graph, &o->va, &o->oa, o->mem);
 
@@ -589,10 +575,9 @@ ParseConv_convert(ParseConv *restrict o,
 	}
 	SGS_OpAlloc_clear(&o->oa);
 	SGS_VoAlloc_clear(&o->va);
-	_OpDataArr_clear(&o->ev_op_data);
+	SGS_PtrArr_clear(&o->ev_od_list);
 	SGS_PtrArr_clear(&o->ev_list);
 	SGS_fini_VoiceGraph(&o->ev_vo_graph);
-	SGS_destroy_MemPool(o->mem);
 	return prg;
 }
 
@@ -601,21 +586,14 @@ ParseConv_convert(ParseConv *restrict o,
  *
  * \return instance or NULL on error
  */
-SGS_Program*
+bool
 SGS_build_Program(SGS_Script *restrict sd) {
 	ParseConv pc = (ParseConv){0};
 	SGS_Program *o = ParseConv_convert(&pc, sd);
-	return o;
-}
-
-/**
- * Destroy instance.
- */
-void
-SGS_discard_Program(SGS_Program *restrict o) {
 	if (!o)
-		return;
-	SGS_destroy_MemPool(o->mem);
+		return false;
+	sd->program = o;
+	return true;
 }
 
 static sgsNoinline void
@@ -661,41 +639,37 @@ print_graph(const SGS_ProgramOpRef *restrict graph,
 	putc(']', stdout);
 }
 
+static sgsNoinline void
+print_ramp(const SGS_Ramp *restrict ramp, char c) {
+	if (!ramp)
+		return;
+	putc('\t', stdout);
+	putc(c, stdout);
+	if ((ramp->flags & SGS_RAMPP_STATE) != 0) {
+		if ((ramp->flags & SGS_RAMPP_GOAL) != 0)
+			fprintf(stdout,
+				"=%-6.2f->%-6.2f", ramp->v0, ramp->vt);
+		else
+			fprintf(stdout,
+				"=%-6.2f\t", ramp->v0);
+	} else {
+		if ((ramp->flags & SGS_RAMPP_GOAL) != 0)
+			fprintf(stdout,
+				"->%-6.2f\t", ramp->vt);
+	}
+}
+
 static void
 print_opline(const SGS_ProgramOpData *restrict od) {
 	if (od->time.flags & SGS_TIMEP_IMPLICIT) {
 		fprintf(stdout,
-			"\n\top %u \tt=IMPL  \t", od->id);
+			"\n\top %u \tt=IMPL  ", od->id);
 	} else {
 		fprintf(stdout,
-			"\n\top %u \tt=%-6u\t", od->id, od->time.v_ms);
+			"\n\top %u \tt=%-6u", od->id, od->time.v_ms);
 	}
-	if ((od->freq.flags & SGS_RAMPP_STATE) != 0) {
-		if ((od->freq.flags & SGS_RAMPP_GOAL) != 0)
-			fprintf(stdout,
-				"f=%-6.2f->%-6.2f", od->freq.v0, od->freq.vt);
-		else
-			fprintf(stdout,
-				"f=%-6.2f\t", od->freq.v0);
-	} else {
-		if ((od->freq.flags & SGS_RAMPP_GOAL) != 0)
-			fprintf(stdout,
-				"f->%-6.2f\t", od->freq.vt);
-		else
-			fprintf(stdout,
-				"\t\t");
-	}
-	if ((od->amp.flags & SGS_RAMPP_STATE) != 0) {
-		if ((od->amp.flags & SGS_RAMPP_GOAL) != 0)
-			fprintf(stdout,
-				"\ta=%-6.2f->%-6.2f", od->amp.v0, od->amp.vt);
-		else
-			fprintf(stdout,
-				"\ta=%-6.2f", od->amp.v0);
-	} else if ((od->amp.flags & SGS_RAMPP_GOAL) != 0) {
-		fprintf(stdout,
-			"\ta->%-6.2f", od->amp.vt);
-	}
+	print_ramp(od->freq, 'f');
+	print_ramp(od->amp, 'a');
 }
 
 /**
@@ -726,7 +700,7 @@ SGS_Program_print_info(const SGS_Program *restrict o) {
 			print_graph(vd->graph, vd->op_count);
 		}
 		for (size_t i = 0; i < ev->op_data_count; ++i) {
-			const SGS_ProgramOpData *od = &ev->op_data[i];
+			const SGS_ProgramOpData *od = ev->op_data[i];
 			print_opline(od);
 			print_linked("\n\t    aw[", "]", od->amods);
 			print_linked("\n\t    fw[", "]", od->fmods);

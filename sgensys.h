@@ -13,6 +13,7 @@
 
 #pragma once
 #include "program.h"
+#include "script.h"
 #include "ptrarr.h"
 
 #define SGS_CLINAME_STR "sgensys"
@@ -33,9 +34,9 @@ enum {
 };
 
 size_t SGS_load(const SGS_PtrArr *restrict script_args, uint32_t options,
-		SGS_PtrArr *restrict prg_objs);
+		SGS_PtrArr *restrict script_objs);
 
-bool SGS_play(const SGS_PtrArr *restrict prg_objs, uint32_t srate,
+bool SGS_play(const SGS_PtrArr *restrict script_objs, uint32_t srate,
 		uint32_t options, const char *restrict wav_path);
 
-void SGS_discard(SGS_PtrArr *restrict prg_objs);
+void SGS_discard(SGS_PtrArr *restrict script_objs);

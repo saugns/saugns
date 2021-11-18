@@ -15,35 +15,34 @@
 #include "../script.h"
 
 /*
- * Create program for the given script file. Invokes the parser.
+ * Load and build for the given script file. Invokes the parser.
  *
  * \return instance or NULL on error
  */
-static SGS_Program *build_program(const char *restrict script_arg,
+static SGS_Script *build_program(const char *restrict script_arg,
 		bool is_path) {
 	SGS_Script *sd = SGS_load_Script(script_arg, is_path);
-	if (!sd)
-		return NULL;
-	SGS_Program *o = SGS_build_Program(sd);
+	if (sd && SGS_build_Program(sd))
+		return sd;
 	SGS_discard_Script(sd);
-	return o;
+	return NULL;
 }
 
 /**
  * Load the listed scripts and build inner programs for them,
- * adding each result (even if NULL) to the program list.
+ * adding each result (even if NULL) to the script list.
  *
  * \return number of items successfully processed
  */
 size_t SGS_load(const SGS_PtrArr *restrict script_args, uint32_t options,
-		SGS_PtrArr *restrict prg_objs) {
+		SGS_PtrArr *restrict script_objs) {
 	bool are_paths = !(options & SGS_OPT_EVAL_STRING);
 	size_t built = 0;
 	const char **args = (const char**) SGS_PtrArr_ITEMS(script_args);
 	for (size_t i = 0; i < script_args->count; ++i) {
-		SGS_Program *prg = build_program(args[i], are_paths);
-		if (prg != NULL) ++built;
-		SGS_PtrArr_add(prg_objs, prg);
+		SGS_Script *script = build_program(args[i], are_paths);
+		if (script != NULL) ++built;
+		SGS_PtrArr_add(script_objs, script);
 	}
 	return built;
 }
