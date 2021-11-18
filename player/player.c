@@ -117,7 +117,7 @@ static bool SGS_Output_run(SGS_Output *restrict o,
 }
 
 /**
- * Run the listed programs through the audio generator until completion,
+ * Run the listed scripts through the audio generator until completion,
  * ignoring NULL entries.
  *
  * The output is sent to either none, one, or both of the audio device
@@ -125,9 +125,9 @@ static bool SGS_Output_run(SGS_Output *restrict o,
  *
  * \return true unless error occurred
  */
-bool SGS_play(const SGS_PtrArr *restrict prg_objs, uint32_t srate,
+bool SGS_play(const SGS_PtrArr *restrict script_objs, uint32_t srate,
 		uint32_t options, const char *restrict wav_path) {
-	if (!prg_objs->count)
+	if (!script_objs->count)
 		return true;
 
 	SGS_Output out;
@@ -145,11 +145,13 @@ bool SGS_play(const SGS_PtrArr *restrict prg_objs, uint32_t srate,
 		split_gen = false;
 		if (out.ad != NULL) srate = out.ad_srate;
 	}
-	const SGS_Program **prgs =
-		(const SGS_Program**) SGS_PtrArr_ITEMS(prg_objs);
-	for (size_t i = 0; i < prg_objs->count; ++i) {
-		const SGS_Program *prg = prgs[i];
-		if (!prg) continue;
+	SGS_Script **scripts = (SGS_Script**) SGS_PtrArr_ITEMS(script_objs);
+	for (size_t i = 0; i < script_objs->count; ++i) {
+		SGS_Script *script = scripts[i];
+		const SGS_Program *prg;
+		if (!script) continue;
+		if (!script->program) SGS_build_Program(script);
+		if (!(prg = script->program)) continue;
 		if ((options & SGS_OPT_PRINT_INFO) != 0)
 			SGS_Program_print_info(prg);
 		if (split_gen) {

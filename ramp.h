@@ -97,7 +97,6 @@ typedef struct SGS_Ramp {
 #define SGS_Ramp_ENABLED(o) \
 	((o)->flags & (SGS_RAMPP_STATE | SGS_RAMPP_GOAL))
 
-void SGS_Ramp_reset(SGS_Ramp *restrict o);
 void SGS_Ramp_copy(SGS_Ramp *restrict o,
 		const SGS_Ramp *restrict src);
 
