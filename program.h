@@ -110,12 +110,14 @@ typedef struct SGS_ProgramVoData {
 
 typedef struct SGS_ProgramOpData {
 	uint32_t params;
-	SGS_Time time;
 	uint8_t wave;
+	uint8_t use_type;
+	SGS_Time time;
 	SGS_Ramp *freq, *freq2;
 	SGS_Ramp *amp, *amp2;
 	SGS_Ramp *pan;
 	uint32_t phase;
+	/* assigned after parsing */
 	uint32_t id;
 	const SGS_ProgramOpList *amods, *fmods, *pmods, *fpmods;
 } SGS_ProgramOpData;
@@ -125,7 +127,7 @@ typedef struct SGS_ProgramEvent {
 	uint16_t vo_id;
 	uint32_t op_data_count;
 	const SGS_ProgramVoData *vo_data;
-	const SGS_ProgramOpData *op_data;
+	const SGS_ProgramOpData **op_data;
 } SGS_ProgramEvent;
 
 /**
@@ -134,6 +136,8 @@ typedef struct SGS_ProgramEvent {
 enum {
 	SGS_PMODE_AMP_DIV_VOICES = 1<<0,
 };
+
+struct SGS_Script;
 
 /**
  * Main program type. Contains everything needed for interpretation.

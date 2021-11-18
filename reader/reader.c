@@ -12,7 +12,7 @@
  */
 
 #include "../sgensys.h"
-#include "../script.h"
+#include "script.h"
 
 /**
  * Load the listed scripts and build inner programs for them,

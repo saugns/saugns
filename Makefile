@@ -116,13 +116,13 @@ reader/file.o: common.h reader/file.c reader/file.h
 reader/lexer.o: common.h math.h mempool.h reader/file.h reader/lexer.c reader/lexer.h reader/scanner.h reader/symtab.h
 	$(CC) -c $(CFLAGS) reader/lexer.c -o reader/lexer.o
 
-reader/reader.o: common.h math.h program.h ptrarr.h ramp.h reader/file.h reader/reader.c reader/scanner.h script.h sgensys.h wave.h
+reader/reader.o: common.h math.h program.h ptrarr.h ramp.h reader/file.h reader/reader.c reader/scanner.h reader/script.h sgensys.h wave.h
 	$(CC) -c $(CFLAGS) reader/reader.c -o reader/reader.o
 
-reader/parseconv.o: arrtype.h common.h math.h program.h ptrarr.h ramp.h reader/parseconv.c script.h wave.h
+reader/parseconv.o: arrtype.h common.h math.h program.h ptrarr.h ramp.h reader/parseconv.c reader/script.h wave.h
 	$(CC) -c $(CFLAGS) reader/parseconv.c -o reader/parseconv.o
 
-reader/parser.o: common.h math.h mempool.h program.h ramp.h reader/file.h reader/parser.c reader/scanner.h reader/symtab.h script.h wave.h
+reader/parser.o: common.h math.h mempool.h program.h ramp.h reader/file.h reader/parser.c reader/scanner.h reader/script.h reader/symtab.h wave.h
 	$(CC) -c $(CFLAGS_SIZE) reader/parser.c -o reader/parser.o
 
 reader/scanner.o: common.h math.h mempool.h reader/file.h reader/scanner.c reader/scanner.h reader/symtab.h
