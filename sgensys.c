@@ -186,15 +186,15 @@ ABORT:
 }
 
 /*
- * Discard the programs in the list, ignoring NULL entries,
+ * Discard the scripts in the list, ignoring NULL entries,
  * and clearing the list.
  */
-void SGS_discard(SGS_PtrArr *restrict prg_objs) {
-	SGS_Program **prgs = (SGS_Program**) SGS_PtrArr_ITEMS(prg_objs);
-	for (size_t i = 0; i < prg_objs->count; ++i) {
-		SGS_discard_Program(prgs[i]);
+void SGS_discard(SGS_PtrArr *restrict script_objs) {
+	SGS_Script **scripts = (SGS_Script**) SGS_PtrArr_ITEMS(script_objs);
+	for (size_t i = 0; i < script_objs->count; ++i) {
+		SGS_discard_Script(scripts[i]);
 	}
-	SGS_PtrArr_clear(prg_objs);
+	SGS_PtrArr_clear(script_objs);
 }
 
 /**
@@ -202,20 +202,20 @@ void SGS_discard(SGS_PtrArr *restrict prg_objs) {
  */
 int main(int argc, char **restrict argv) {
 	SGS_PtrArr script_args = (SGS_PtrArr){0};
-	SGS_PtrArr prg_objs = (SGS_PtrArr){0};
+	SGS_PtrArr script_objs = (SGS_PtrArr){0};
 	const char *wav_path = NULL;
 	uint32_t options = 0;
 	uint32_t srate = 0;
 	if (!parse_args(argc, argv, &options, &script_args, &wav_path,
 			&srate))
 		return 0;
-	bool error = !SGS_load(&script_args, options, &prg_objs);
+	bool error = !SGS_load(&script_args, options, &script_objs);
 	SGS_PtrArr_clear(&script_args);
 	if (error)
 		return 1;
-	if (prg_objs.count > 0) {
-		error = !SGS_play(&prg_objs, srate, options, wav_path);
-		SGS_discard(&prg_objs);
+	if (script_objs.count > 0) {
+		error = !SGS_play(&script_objs, srate, options, wav_path);
+		SGS_discard(&script_objs);
 		if (error)
 			return 1;
 	}
