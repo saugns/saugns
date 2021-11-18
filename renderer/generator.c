@@ -61,7 +61,7 @@ typedef struct EventNode {
 	uint32_t wait;
 	uint16_t vo_id;
 	const SGS_ProgramOpRef *graph;
-	const SGS_ProgramOpData *op_data;
+	const SGS_ProgramOpData **op_data;
 	const SGS_ProgramVoData *vo_data;
 	uint32_t op_count;
 	uint32_t op_data_count;
@@ -226,6 +226,8 @@ static void set_voice_duration(SGS_Generator *restrict o,
 static void handle_ramp_update(SGS_Ramp *restrict ramp,
 		uint32_t *restrict ramp_pos,
 		const SGS_Ramp *restrict ramp_src) {
+	if (!ramp_src)
+		return;
 	if ((ramp_src->flags & SGS_RAMPP_GOAL) != 0) {
 		*ramp_pos = 0;
 	}
@@ -247,7 +249,7 @@ static void handle_event(SGS_Generator *restrict o, EventNode *restrict e) {
 		if (e->vo_id != SGS_PVO_NO_ID)
 			vn = &o->voices[e->vo_id];
 		for (size_t i = 0; i < e->op_data_count; ++i) {
-			const SGS_ProgramOpData *od = &e->op_data[i];
+			const SGS_ProgramOpData *od = e->op_data[i];
 			OperatorNode *on = &o->operators[od->id];
 			uint32_t params = od->params;
 			if (od->amods != NULL) on->amods = od->amods;
@@ -267,24 +269,19 @@ static void handle_event(SGS_Generator *restrict o, EventNode *restrict e) {
 					on->flags &= ~ON_TIME_INF;
 				}
 			}
-			if (params & SGS_POPP_FREQ)
-				handle_ramp_update(&on->freq,
-						&on->freq_pos, &od->freq);
-			if (params & SGS_POPP_FREQ2)
-				handle_ramp_update(&on->freq2,
-						&on->freq2_pos, &od->freq2);
 			if (params & SGS_POPP_PHASE)
 				SGS_Osc_set_phase(&on->osc,
 						SGS_Phasor_PHASE(od->phase));
-			if (params & SGS_POPP_AMP)
-				handle_ramp_update(&on->amp,
-						&on->amp_pos, &od->amp);
-			if (params & SGS_POPP_AMP2)
-				handle_ramp_update(&on->amp2,
-						&on->amp2_pos, &od->amp2);
-			if (params & SGS_POPP_PAN)
-				handle_ramp_update(&vn->pan,
-						&vn->pan_pos, &od->pan);
+			handle_ramp_update(&on->freq,
+					&on->freq_pos, od->freq);
+			handle_ramp_update(&on->freq2,
+					&on->freq2_pos, od->freq2);
+			handle_ramp_update(&on->amp,
+					&on->amp_pos, od->amp);
+			handle_ramp_update(&on->amp2,
+					&on->amp2_pos, od->amp2);
+			handle_ramp_update(&vn->pan,
+					&vn->pan_pos, od->pan);
 		}
 		if (vn != NULL) {
 			if (e->graph != NULL) {
