@@ -117,7 +117,7 @@ static bool SAU_Output_run(SAU_Output *restrict o,
 }
 
 /**
- * Run the listed programs through the audio generator until completion,
+ * Run the listed scripts through the audio generator until completion,
  * ignoring NULL entries.
  *
  * The output is sent to either none, one, or both of the audio device
@@ -125,9 +125,9 @@ static bool SAU_Output_run(SAU_Output *restrict o,
  *
  * \return true unless error occurred
  */
-bool SAU_play(const SAU_PtrArr *restrict prg_objs, uint32_t srate,
+bool SAU_play(const SAU_PtrArr *restrict script_objs, uint32_t srate,
 		uint32_t options, const char *restrict wav_path) {
-	if (!prg_objs->count)
+	if (!script_objs->count)
 		return true;
 
 	SAU_Output out;
@@ -145,11 +145,13 @@ bool SAU_play(const SAU_PtrArr *restrict prg_objs, uint32_t srate,
 		split_gen = false;
 		if (out.ad != NULL) srate = out.ad_srate;
 	}
-	const SAU_Program **prgs =
-		(const SAU_Program**) SAU_PtrArr_ITEMS(prg_objs);
-	for (size_t i = 0; i < prg_objs->count; ++i) {
-		const SAU_Program *prg = prgs[i];
-		if (!prg) continue;
+	SAU_Script **scripts = (SAU_Script**) SAU_PtrArr_ITEMS(script_objs);
+	for (size_t i = 0; i < script_objs->count; ++i) {
+		SAU_Script *script = scripts[i];
+		const SAU_Program *prg;
+		if (!script) continue;
+		if (!script->program) SAU_build_Program(script);
+		if (!(prg = script->program)) continue;
 		if ((options & SAU_OPT_PRINT_INFO) != 0)
 			SAU_Program_print_info(prg);
 		if (split_gen) {

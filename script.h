@@ -29,7 +29,7 @@ enum {
  * Node type for nested list data.
  */
 typedef struct SAU_ScriptListData {
-	struct SAU_ScriptOpData *first_item;
+	struct SAU_ScriptOpRef *first_item;
 	struct SAU_ScriptListData *next_list;
 	uint8_t use_type;
 } SAU_ScriptListData;
@@ -38,34 +38,26 @@ typedef struct SAU_ScriptListData {
  * Object type for operator, shared by all references.
  */
 typedef struct SAU_ScriptOpObj {
-	struct SAU_ScriptOpData *last_ref;   // updated until timewise last
+	struct SAU_ScriptOpRef *last_ref;    // updated until timewise last
 	struct SAU_ScriptEvData *root_event; // where object was created
 	uint32_t op_id; /* for conversion */
 } SAU_ScriptOpObj;
 
 /**
- * Data assignment and reference type for operator.
+ * Reference type for operator.
  */
-typedef struct SAU_ScriptOpData {
-	struct SAU_ScriptOpData *next_item;
+typedef struct SAU_ScriptOpRef {
+	struct SAU_ScriptOpRef *next_item;
 	struct SAU_ScriptEvData *event;
-	struct SAU_ScriptOpObj *obj;      /* shared by all references */
-	struct SAU_ScriptOpData *on_prev; /* preceding for same op(s) */
+	struct SAU_ScriptOpObj *obj;     /* shared by all references */
+	struct SAU_ScriptOpRef *on_prev; /* preceding for same op(s) */
 	struct SAU_SymStr *label;
 	uint32_t op_flags;
 	/* operator parameters */
-	uint32_t params;
-	SAU_Time time;
-	uint32_t silence_ms;
-	uint8_t wave;
-	uint8_t use_type;
-	SAU_Ramp freq, freq2;
-	SAU_Ramp amp, amp2;
-	SAU_Ramp pan;
-	float phase;
+	SAU_ProgramOpData *data;
 	/* node adjacents in operator linkage graph */
 	SAU_ScriptListData *mods;
-} SAU_ScriptOpData;
+} SAU_ScriptOpRef;
 
 /**
  * Script data event flags.
@@ -93,7 +85,7 @@ typedef struct SAU_ScriptEvData {
 	struct SAU_ScriptEvBranch *forks;
 	uint32_t wait_ms;
 	uint32_t ev_flags;
-	SAU_ScriptListData op_objs;
+	SAU_ScriptListData main_refs;
 	/* for conversion */
 	uint32_t vo_id;
 	struct SAU_ScriptEvData *root_ev; // if main object not created here
@@ -137,6 +129,7 @@ typedef struct SAU_Script {
 	const char *name; // currently simply set to the filename
 	SAU_ScriptOptions sopt;
 	struct SAU_MemPool *mem; // holds memory for the specific script
+	SAU_Program *program;    // holds data to run/render after built
 } SAU_Script;
 
 SAU_Script *SAU_load_Script(const char *restrict script_arg, bool is_path) sauMalloclike;

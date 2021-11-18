@@ -186,15 +186,15 @@ ABORT:
 }
 
 /*
- * Discard the programs in the list, ignoring NULL entries,
+ * Discard the scripts in the list, ignoring NULL entries,
  * and clearing the list.
  */
-void SAU_discard(SAU_PtrArr *restrict prg_objs) {
-	SAU_Program **prgs = (SAU_Program**) SAU_PtrArr_ITEMS(prg_objs);
-	for (size_t i = 0; i < prg_objs->count; ++i) {
-		SAU_discard_Program(prgs[i]);
+void SAU_discard(SAU_PtrArr *restrict script_objs) {
+	SAU_Script **scripts = (SAU_Script**) SAU_PtrArr_ITEMS(script_objs);
+	for (size_t i = 0; i < script_objs->count; ++i) {
+		SAU_discard_Script(scripts[i]);
 	}
-	SAU_PtrArr_clear(prg_objs);
+	SAU_PtrArr_clear(script_objs);
 }
 
 /**
@@ -202,20 +202,20 @@ void SAU_discard(SAU_PtrArr *restrict prg_objs) {
  */
 int main(int argc, char **restrict argv) {
 	SAU_PtrArr script_args = (SAU_PtrArr){0};
-	SAU_PtrArr prg_objs = (SAU_PtrArr){0};
+	SAU_PtrArr script_objs = (SAU_PtrArr){0};
 	const char *wav_path = NULL;
 	uint32_t options = 0;
 	uint32_t srate = 0;
 	if (!parse_args(argc, argv, &options, &script_args, &wav_path,
 			&srate))
 		return 0;
-	bool error = !SAU_load(&script_args, options, &prg_objs);
+	bool error = !SAU_load(&script_args, options, &script_objs);
 	SAU_PtrArr_clear(&script_args);
 	if (error)
 		return 1;
-	if (prg_objs.count > 0) {
-		error = !SAU_play(&prg_objs, srate, options, wav_path);
-		SAU_discard(&prg_objs);
+	if (script_objs.count > 0) {
+		error = !SAU_play(&script_objs, srate, options, wav_path);
+		SAU_discard(&script_objs);
 		if (error)
 			return 1;
 	}
