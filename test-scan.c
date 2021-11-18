@@ -101,25 +101,25 @@ ABORT:
 }
 
 /*
- * Discard the programs in the list, ignoring NULL entries,
+ * Discard the scripts in the list, ignoring NULL entries,
  * and clearing the list.
  */
-void SAU_discard(SAU_PtrArr *restrict prg_objs) {
-	SAU_Program **prgs = (SAU_Program**) SAU_PtrArr_ITEMS(prg_objs);
-	for (size_t i = 0; i < prg_objs->count; ++i) {
-		free(prgs[i]); // for placeholder
+void SAU_discard(SAU_PtrArr *restrict script_objs) {
+	SAU_Script **scripts = (SAU_Script**) SAU_PtrArr_ITEMS(script_objs);
+	for (size_t i = 0; i < script_objs->count; ++i) {
+		free(scripts[i]); // for placeholder
 	}
-	SAU_PtrArr_clear(prg_objs);
+	SAU_PtrArr_clear(script_objs);
 }
 
 /*
  * Run script through test code.
  *
- * \return SAU_Program or NULL on error
+ * \return SAU_Script or NULL on error
  */
-static SAU_Program *build_program(const char *restrict script_arg,
+static SAU_Script *build_program(const char *restrict script_arg,
 		bool is_path) {
-	SAU_Program *o = NULL;
+	SAU_Script *o = NULL;
 	SAU_MemPool *mempool = SAU_create_MemPool(0);
 	SAU_SymTab *symtab = SAU_create_SymTab(mempool);
 	if (!symtab)
@@ -136,7 +136,7 @@ static SAU_Program *build_program(const char *restrict script_arg,
 		}
 		putchar(c);
 	}
-	o = (SAU_Program*) calloc(1, sizeof(SAU_Program)); // placeholder
+	o = (SAU_Script*) calloc(1, sizeof(SAU_Script)); // placeholder
 CLOSE:
 	SAU_destroy_Scanner(scanner);
 #else
@@ -147,7 +147,7 @@ CLOSE:
 		SAU_ScriptToken token;
 		if (!SAU_Lexer_get(lexer, &token)) break;
 	}
-	o = (SAU_Program*) calloc(1, sizeof(SAU_Program)); // placeholder
+	o = (SAU_Script*) calloc(1, sizeof(SAU_Script)); // placeholder
 CLOSE:
 	SAU_destroy_Lexer(lexer);
 #endif
@@ -158,19 +158,19 @@ CLOSE:
 
 /**
  * Load the listed scripts and build inner programs for them,
- * adding each result (even if NULL) to the program list.
+ * adding each result (even if NULL) to the script list.
  *
  * \return number of items successfully processed
  */
 size_t SAU_load(const SAU_PtrArr *restrict script_args, uint32_t options,
-		SAU_PtrArr *restrict prg_objs) {
+		SAU_PtrArr *restrict script_objs) {
 	bool are_paths = !(options & SAU_OPT_EVAL_STRING);
 	size_t built = 0;
 	const char **args = (const char**) SAU_PtrArr_ITEMS(script_args);
 	for (size_t i = 0; i < script_args->count; ++i) {
-		SAU_Program *prg = build_program(args[i], are_paths);
-		if (prg != NULL) ++built;
-		SAU_PtrArr_add(prg_objs, prg);
+		SAU_Script *script = build_program(args[i], are_paths);
+		if (script != NULL) ++built;
+		SAU_PtrArr_add(script_objs, script);
 	}
 	return built;
 }
@@ -180,17 +180,17 @@ size_t SAU_load(const SAU_PtrArr *restrict script_args, uint32_t options,
  */
 int main(int argc, char **restrict argv) {
 	SAU_PtrArr script_args = (SAU_PtrArr){0};
-	SAU_PtrArr prg_objs = (SAU_PtrArr){0};
+	SAU_PtrArr script_objs = (SAU_PtrArr){0};
 	uint32_t options = 0;
 	if (!parse_args(argc, argv, &options, &script_args))
 		return 0;
-	bool error = !SAU_load(&script_args, options, &prg_objs);
+	bool error = !SAU_load(&script_args, options, &script_objs);
 	SAU_PtrArr_clear(&script_args);
 	if (error)
 		return 1;
-	if (prg_objs.count > 0) {
+	if (script_objs.count > 0) {
 		// no audio output
-		SAU_discard(&prg_objs);
+		SAU_discard(&script_objs);
 	}
 	return 0;
 }

@@ -61,7 +61,7 @@ typedef struct EventNode {
 	uint32_t wait;
 	uint16_t vo_id;
 	const SAU_ProgramOpRef *graph;
-	const SAU_ProgramOpData *op_data;
+	const SAU_ProgramOpData **op_data;
 	const SAU_ProgramVoData *vo_data;
 	uint32_t op_count;
 	uint32_t op_data_count;
@@ -245,7 +245,7 @@ static void handle_event(SAU_Generator *restrict o, EventNode *restrict e) {
 		if (e->vo_id != SAU_PVO_NO_ID)
 			vn = &o->voices[e->vo_id];
 		for (size_t i = 0; i < e->op_data_count; ++i) {
-			const SAU_ProgramOpData *od = &e->op_data[i];
+			const SAU_ProgramOpData *od = e->op_data[i];
 			OperatorNode *on = &o->operators[od->id];
 			uint32_t params = od->params;
 			if (od->fmods != NULL) on->fmods = od->fmods;
