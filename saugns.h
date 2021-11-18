@@ -13,6 +13,7 @@
 
 #pragma once
 #include "program.h"
+#include "script.h"
 #include "ptrarr.h"
 
 #define SAU_CLINAME_STR "saugns"
@@ -33,9 +34,9 @@ enum {
 };
 
 size_t SAU_load(const SAU_PtrArr *restrict script_args, uint32_t options,
-		SAU_PtrArr *restrict prg_objs);
+		SAU_PtrArr *restrict script_objs);
 
-bool SAU_play(const SAU_PtrArr *restrict prg_objs, uint32_t srate,
+bool SAU_play(const SAU_PtrArr *restrict script_objs, uint32_t srate,
 		uint32_t options, const char *restrict wav_path);
 
-void SAU_discard(SAU_PtrArr *restrict prg_objs);
+void SAU_discard(SAU_PtrArr *restrict script_objs);

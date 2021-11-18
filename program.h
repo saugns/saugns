@@ -102,16 +102,18 @@ typedef struct SAU_ProgramVoData {
 } SAU_ProgramVoData;
 
 typedef struct SAU_ProgramOpData {
-	const SAU_ProgramOpList *fmods, *pmods, *amods;
-	uint32_t id;
 	uint32_t params;
-	SAU_Time time;
 	uint32_t silence_ms;
+	SAU_Time time;
 	uint8_t wave;
+	uint8_t use_type;
 	SAU_Ramp freq, freq2;
 	SAU_Ramp amp, amp2;
 	SAU_Ramp pan;
 	float phase;
+	/* assigned after parsing */
+	uint32_t id;
+	const SAU_ProgramOpList *fmods, *pmods, *amods;
 } SAU_ProgramOpData;
 
 typedef struct SAU_ProgramEvent {
@@ -119,7 +121,7 @@ typedef struct SAU_ProgramEvent {
 	uint16_t vo_id;
 	uint32_t op_data_count;
 	const SAU_ProgramVoData *vo_data;
-	const SAU_ProgramOpData *op_data;
+	const SAU_ProgramOpData **op_data;
 } SAU_ProgramEvent;
 
 /**
@@ -128,6 +130,8 @@ typedef struct SAU_ProgramEvent {
 enum {
 	SAU_PMODE_AMP_DIV_VOICES = 1<<0,
 };
+
+struct SAU_Script;
 
 /**
  * Main program type. Contains everything needed for interpretation.
@@ -141,11 +145,9 @@ typedef struct SAU_Program {
 	uint8_t op_nest_depth;
 	uint32_t duration_ms;
 	const char *name;
-	struct SAU_MemPool *mem; // holds memory for the specific program
 } SAU_Program;
 
 struct SAU_Script;
-SAU_Program* SAU_build_Program(struct SAU_Script *restrict sd) sauMalloclike;
-void SAU_discard_Program(SAU_Program *restrict o);
+bool SAU_build_Program(struct SAU_Script *restrict sd);
 
 void SAU_Program_print_info(const SAU_Program *restrict o);

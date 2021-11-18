@@ -28,7 +28,7 @@ static sauNoinline const SAU_ProgramOpList*
 create_ProgramOpList(const SAU_ScriptListData *restrict list_in,
 		SAU_MemPool *restrict mem) {
 	uint32_t count = 0;
-	const SAU_ScriptOpData *op;
+	const SAU_ScriptOpRef *op;
 	for (op = list_in->first_item; op != NULL; op = op->next_item) {
 		++count;
 	}
@@ -52,10 +52,11 @@ create_ProgramOpList(const SAU_ScriptListData *restrict list_in,
 static uint32_t
 voice_duration(const SAU_ScriptEvData *restrict ve) {
 	uint32_t duration_ms = 0;
-	for (const SAU_ScriptOpData *op = ve->op_objs.first_item;
+	for (const SAU_ScriptOpRef *op = ve->main_refs.first_item;
 			op != NULL; op = op->next_item) {
-		if (op->time.v_ms > duration_ms)
-			duration_ms = op->time.v_ms;
+		const SAU_ProgramOpData *od = op->data;
+		if (od->time.v_ms > duration_ms)
+			duration_ms = od->time.v_ms;
 	}
 	return duration_ms;
 }
@@ -133,7 +134,7 @@ SAU_VoAlloc_clear(SAU_VoAlloc *restrict o) {
  */
 static bool
 SAU_OpAlloc_get_id(SAU_OpAlloc *restrict oa,
-		const SAU_ScriptOpData *restrict od, uint32_t *restrict op_id) {
+		const SAU_ScriptOpRef *restrict od, uint32_t *restrict op_id) {
 	if (od->on_prev != NULL) {
 		*op_id = od->obj->op_id;
 		return true;
@@ -166,7 +167,7 @@ SAU_OpAlloc_get_id(SAU_OpAlloc *restrict oa,
  */
 static bool
 SAU_OpAlloc_update(SAU_OpAlloc *restrict oa,
-		SAU_ScriptOpData *restrict od,
+		SAU_ScriptOpRef *restrict od,
 		uint32_t *restrict op_id) {
 //	SAU_ScriptEvData *e = od->event;
 //	for (uint32_t id = 0; id < oa->count; ++id) {
@@ -192,15 +193,13 @@ SAU_OpAlloc_clear(SAU_OpAlloc *restrict o) {
 	_SAU_OpAlloc_clear(o);
 }
 
-sauArrType(OpDataArr, SAU_ProgramOpData, _)
-
 typedef struct ParseConv {
 	SAU_PtrArr ev_list;
 	SAU_VoAlloc va;
 	SAU_OpAlloc oa;
 	SAU_ProgramEvent *ev;
 	SAU_VoiceGraph ev_vo_graph;
-	OpDataArr ev_op_data;
+	SAU_PtrArr ev_od_list;
 	uint32_t duration_ms;
 	SAU_MemPool *mem;
 } ParseConv;
@@ -229,21 +228,11 @@ set_oplist(const SAU_ProgramOpList **restrict dstp,
  */
 static bool
 ParseConv_convert_opdata(ParseConv *restrict o,
-		const SAU_ScriptOpData *restrict op, uint32_t op_id) {
-	SAU_ProgramOpData *od = _OpDataArr_add(&o->ev_op_data, NULL);
-	if (!od) goto MEM_ERR;
+		const SAU_ScriptOpRef *restrict op, uint32_t op_id) {
+	SAU_ProgramOpData *od = op->data;
+	if (!SAU_PtrArr_add(&o->ev_od_list, od)) goto MEM_ERR;
 	od->id = op_id;
-	od->params = op->params;
 	/* ...mods */
-	od->time = op->time;
-	od->silence_ms = op->silence_ms;
-	od->wave = op->wave;
-	od->freq = op->freq;
-	od->freq2 = op->freq2;
-	od->amp = op->amp;
-	od->amp2 = op->amp2;
-	od->pan = op->pan;
-	od->phase = op->phase;
 
 	SAU_OpAllocState *oas = &o->oa.a[op_id];
 	SAU_VoAllocState *vas = &o->va.a[o->ev->vo_id];
@@ -285,7 +274,7 @@ ParseConv_convert_ops(ParseConv *restrict o,
 		SAU_ScriptListData *restrict op_list) {
 	if (!op_list)
 		return true;
-	for (SAU_ScriptOpData *op = op_list->first_item;
+	for (SAU_ScriptOpRef *op = op_list->first_item;
 			op != NULL; op = op->next_item) {
 		// TODO: handle multiple operator nodes
 		if ((op->op_flags & SAU_SDOP_MULTIPLE) != 0) continue;
@@ -323,13 +312,13 @@ ParseConv_convert_event(ParseConv *restrict o,
 	out_ev->wait_ms = e->wait_ms;
 	out_ev->vo_id = vo_id;
 	o->ev = out_ev;
-	if (!ParseConv_convert_ops(o, &e->op_objs)) goto MEM_ERR;
-	if (o->ev_op_data.count > 0) {
-		if (!_OpDataArr_mpmemdup(&o->ev_op_data,
-					(SAU_ProgramOpData**) &out_ev->op_data,
+	if (!ParseConv_convert_ops(o, &e->main_refs)) goto MEM_ERR;
+	if (o->ev_od_list.count > 0) {
+		if (!SAU_PtrArr_mpmemdup(&o->ev_od_list,
+					(void***) &out_ev->op_data,
 					o->mem)) goto MEM_ERR;
-		out_ev->op_data_count = o->ev_op_data.count;
-		o->ev_op_data.count = 0; // reuse allocation
+		out_ev->op_data_count = o->ev_od_list.count;
+		o->ev_od_list.count = 0; // reuse allocation
 	}
 	if (!e->root_ev)
 		vas->flags |= SAU_VAS_GRAPH;
@@ -339,7 +328,7 @@ ParseConv_convert_event(ParseConv *restrict o,
 		if (!ovd) goto MEM_ERR;
 		ovd->params = SAU_PVOP_GRAPH;
 		if (!e->root_ev) {
-			if (!set_oplist(&vas->op_carrs, &e->op_objs, o->mem))
+			if (!set_oplist(&vas->op_carrs, &e->main_refs, o->mem))
 				goto MEM_ERR;
 		}
 		out_ev->vo_data = ovd;
@@ -397,8 +386,6 @@ ParseConv_create_program(ParseConv *restrict o,
 	prg->op_nest_depth = o->ev_vo_graph.op_nest_max;
 	prg->duration_ms = o->duration_ms;
 	prg->name = script->name;
-	prg->mem = o->mem;
-	o->mem = NULL; // pass on to program
 	return prg;
 MEM_ERR:
 	return NULL;
@@ -411,7 +398,7 @@ static SAU_Program*
 ParseConv_convert(ParseConv *restrict o,
 		SAU_Script *restrict script) {
 	SAU_Program *prg = NULL;
-	o->mem = SAU_create_MemPool(0);
+	o->mem = script->mem;
 	if (!o->mem) goto MEM_ERR;
 	SAU_init_VoiceGraph(&o->ev_vo_graph, &o->va, &o->oa, o->mem);
 
@@ -437,10 +424,9 @@ ParseConv_convert(ParseConv *restrict o,
 	}
 	SAU_OpAlloc_clear(&o->oa);
 	SAU_VoAlloc_clear(&o->va);
-	_OpDataArr_clear(&o->ev_op_data);
+	SAU_PtrArr_clear(&o->ev_od_list);
 	SAU_PtrArr_clear(&o->ev_list);
 	SAU_fini_VoiceGraph(&o->ev_vo_graph);
-	SAU_destroy_MemPool(o->mem);
 	return prg;
 }
 
@@ -449,21 +435,14 @@ ParseConv_convert(ParseConv *restrict o,
  *
  * \return instance or NULL on error
  */
-SAU_Program*
+bool
 SAU_build_Program(SAU_Script *restrict sd) {
 	ParseConv pc = (ParseConv){0};
 	SAU_Program *o = ParseConv_convert(&pc, sd);
-	return o;
-}
-
-/**
- * Destroy instance.
- */
-void
-SAU_discard_Program(SAU_Program *restrict o) {
 	if (!o)
-		return;
-	SAU_destroy_MemPool(o->mem);
+		return false;
+	sd->program = o;
+	return true;
 }
 
 static sauNoinline void
@@ -573,7 +552,7 @@ SAU_Program_print_info(const SAU_Program *restrict o) {
 			print_graph(vd->graph, vd->op_count);
 		}
 		for (size_t i = 0; i < ev->op_data_count; ++i) {
-			const SAU_ProgramOpData *od = &ev->op_data[i];
+			const SAU_ProgramOpData *od = ev->op_data[i];
 			print_opline(od);
 			print_linked("\n\t    f~[", "]", od->fmods);
 			print_linked("\n\t    p+[", "]", od->pmods);
