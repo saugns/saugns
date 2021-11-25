@@ -193,16 +193,6 @@ void SAU_Ramp_fill_cos(float *restrict buf, uint32_t len,
 }
 
 /**
- * Set instance to default values.
- *
- * (This does not include values specific to a particular parameter.)
- */
-void SAU_Ramp_reset(SAU_Ramp *restrict o) {
-	*o = (SAU_Ramp){0};
-	o->type = SAU_RAMP_LIN; // default if goal enabled
-}
-
-/**
  * Copy changes from \p src to the instance,
  * preserving non-overridden parts of state.
  */

@@ -224,6 +224,8 @@ static void set_voice_duration(SAU_Generator *restrict o,
 static void handle_ramp_update(SAU_Ramp *restrict ramp,
 		uint32_t *restrict ramp_pos,
 		const SAU_Ramp *restrict ramp_src) {
+	if (!ramp_src)
+		return;
 	if ((ramp_src->flags & SAU_RAMPP_GOAL) != 0) {
 		*ramp_pos = 0;
 	}
@@ -248,9 +250,9 @@ static void handle_event(SAU_Generator *restrict o, EventNode *restrict e) {
 			const SAU_ProgramOpData *od = e->op_data[i];
 			OperatorNode *on = &o->operators[od->id];
 			uint32_t params = od->params;
+			if (od->amods != NULL) on->amods = od->amods;
 			if (od->fmods != NULL) on->fmods = od->fmods;
 			if (od->pmods != NULL) on->pmods = od->pmods;
-			if (od->amods != NULL) on->amods = od->amods;
 			if (params & SAU_POPP_WAVE)
 				SAU_Osc_set_wave(&on->osc, od->wave);
 			if (params & SAU_POPP_TIME) {
@@ -267,24 +269,19 @@ static void handle_event(SAU_Generator *restrict o, EventNode *restrict e) {
 			if (params & SAU_POPP_SILENCE)
 				on->silence = SAU_MS_IN_SAMPLES(od->silence_ms,
 						o->srate);
-			if (params & SAU_POPP_FREQ)
-				handle_ramp_update(&on->freq,
-						&on->freq_pos, &od->freq);
-			if (params & SAU_POPP_FREQ2)
-				handle_ramp_update(&on->freq2,
-						&on->freq2_pos, &od->freq2);
 			if (params & SAU_POPP_PHASE)
 				SAU_Osc_set_phase(&on->osc,
 						SAU_Osc_PHASE(od->phase));
-			if (params & SAU_POPP_AMP)
-				handle_ramp_update(&on->amp,
-						&on->amp_pos, &od->amp);
-			if (params & SAU_POPP_AMP2)
-				handle_ramp_update(&on->amp2,
-						&on->amp2_pos, &od->amp2);
-			if (params & SAU_POPP_PAN)
-				handle_ramp_update(&vn->pan,
-						&vn->pan_pos, &od->pan);
+			handle_ramp_update(&on->freq,
+					&on->freq_pos, od->freq);
+			handle_ramp_update(&on->freq2,
+					&on->freq2_pos, od->freq2);
+			handle_ramp_update(&on->amp,
+					&on->amp_pos, od->amp);
+			handle_ramp_update(&on->amp2,
+					&on->amp2_pos, od->amp2);
+			handle_ramp_update(&vn->pan,
+					&vn->pan_pos, od->pan);
 		}
 		if (vn != NULL) {
 			if (e->graph != NULL) {

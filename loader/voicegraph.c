@@ -57,11 +57,11 @@ SAU_VoiceGraph_handle_op_node(SAU_VoiceGraph *restrict o,
 	}
 	++o->op_nest_level;
 	oas->flags |= SAU_OAS_VISITED;
+	if (!SAU_VoiceGraph_handle_op_list(o, oas->amods, SAU_POP_AMOD))
+		return false;
 	if (!SAU_VoiceGraph_handle_op_list(o, oas->fmods, SAU_POP_FMOD))
 		return false;
 	if (!SAU_VoiceGraph_handle_op_list(o, oas->pmods, SAU_POP_PMOD))
-		return false;
-	if (!SAU_VoiceGraph_handle_op_list(o, oas->amods, SAU_POP_AMOD))
 		return false;
 	oas->flags &= ~SAU_OAS_VISITED;
 	--o->op_nest_level;
