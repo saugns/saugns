@@ -97,7 +97,6 @@ typedef struct SAU_Ramp {
 #define SAU_Ramp_ENABLED(o) \
 	((o)->flags & (SAU_RAMPP_STATE | SAU_RAMPP_GOAL))
 
-void SAU_Ramp_reset(SAU_Ramp *restrict o);
 void SAU_Ramp_copy(SAU_Ramp *restrict o,
 		const SAU_Ramp *restrict src);
 

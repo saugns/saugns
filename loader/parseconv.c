@@ -242,6 +242,11 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 		vas->flags |= SAU_VAS_GRAPH;
 		mods[in_list->use_type] = in_list;
 	}
+	if (mods[SAU_POP_AMOD] != NULL) {
+		if (!set_oplist(&oas->amods, mods[SAU_POP_AMOD], o->mem))
+			goto MEM_ERR;
+		od->amods = oas->amods;
+	}
 	if (mods[SAU_POP_FMOD] != NULL) {
 		if (!set_oplist(&oas->fmods, mods[SAU_POP_FMOD], o->mem))
 			goto MEM_ERR;
@@ -251,11 +256,6 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 		if (!set_oplist(&oas->pmods, mods[SAU_POP_PMOD], o->mem))
 			goto MEM_ERR;
 		od->pmods = oas->pmods;
-	}
-	if (mods[SAU_POP_AMOD] != NULL) {
-		if (!set_oplist(&oas->amods, mods[SAU_POP_AMOD], o->mem))
-			goto MEM_ERR;
-		od->amods = oas->amods;
 	}
 	return true;
 MEM_ERR:
@@ -462,9 +462,9 @@ print_graph(const SAU_ProgramOpRef *restrict graph,
 		uint32_t count) {
 	static const char *const uses[SAU_POP_USES] = {
 		"CA",
+		"AM",
 		"FM",
 		"PM",
-		"AM"
 	};
 	if (!graph)
 		return;
@@ -487,41 +487,37 @@ print_graph(const SAU_ProgramOpRef *restrict graph,
 	putc(']', stdout);
 }
 
+static sauNoinline void
+print_ramp(const SAU_Ramp *restrict ramp, char c) {
+	if (!ramp)
+		return;
+	putc('\t', stdout);
+	putc(c, stdout);
+	if ((ramp->flags & SAU_RAMPP_STATE) != 0) {
+		if ((ramp->flags & SAU_RAMPP_GOAL) != 0)
+			fprintf(stdout,
+				"=%-6.1f->%-6.1f", ramp->v0, ramp->vt);
+		else
+			fprintf(stdout,
+				"=%-6.1f\t", ramp->v0);
+	} else {
+		if ((ramp->flags & SAU_RAMPP_GOAL) != 0)
+			fprintf(stdout,
+				"->%-6.1f\t", ramp->vt);
+	}
+}
+
 static void
 print_opline(const SAU_ProgramOpData *restrict od) {
 	if (od->time.flags & SAU_TIMEP_LINKED) {
 		fprintf(stdout,
-			"\n\top %d \tt=INF   \t", od->id);
+			"\n\top %d \tt=INF   ", od->id);
 	} else {
 		fprintf(stdout,
-			"\n\top %d \tt=%-6d\t", od->id, od->time.v_ms);
+			"\n\top %d \tt=%-6d", od->id, od->time.v_ms);
 	}
-	if ((od->freq.flags & SAU_RAMPP_STATE) != 0) {
-		if ((od->freq.flags & SAU_RAMPP_GOAL) != 0)
-			fprintf(stdout,
-				"f=%-6.1f->%-6.1f", od->freq.v0, od->freq.vt);
-		else
-			fprintf(stdout,
-				"f=%-6.1f\t", od->freq.v0);
-	} else {
-		if ((od->freq.flags & SAU_RAMPP_GOAL) != 0)
-			fprintf(stdout,
-				"f->%-6.1f\t", od->freq.vt);
-		else
-			fprintf(stdout,
-				"\t\t");
-	}
-	if ((od->amp.flags & SAU_RAMPP_STATE) != 0) {
-		if ((od->amp.flags & SAU_RAMPP_GOAL) != 0)
-			fprintf(stdout,
-				"\ta=%-6.1f->%-6.1f", od->amp.v0, od->amp.vt);
-		else
-			fprintf(stdout,
-				"\ta=%-6.1f", od->amp.v0);
-	} else if ((od->amp.flags & SAU_RAMPP_GOAL) != 0) {
-		fprintf(stdout,
-			"\ta->%-6.1f", od->amp.vt);
-	}
+	print_ramp(od->freq, 'f');
+	print_ramp(od->amp, 'a');
 }
 
 /**
@@ -554,9 +550,9 @@ SAU_Program_print_info(const SAU_Program *restrict o) {
 		for (size_t i = 0; i < ev->op_data_count; ++i) {
 			const SAU_ProgramOpData *od = ev->op_data[i];
 			print_opline(od);
+			print_linked("\n\t    a~[", "]", od->amods);
 			print_linked("\n\t    f~[", "]", od->fmods);
 			print_linked("\n\t    p+[", "]", od->pmods);
-			print_linked("\n\t    a~[", "]", od->amods);
 		}
 		putc('\n', stdout);
 	}

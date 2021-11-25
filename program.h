@@ -46,19 +46,25 @@ enum {
 };
 
 /**
- * Operator parameter flags.
+ * Ramp use IDs.
  */
 enum {
-	SAU_POPP_PAN = 1<<0,
-	SAU_POPP_WAVE = 1<<1,
-	SAU_POPP_TIME = 1<<2,
-	SAU_POPP_SILENCE = 1<<3,
-	SAU_POPP_FREQ = 1<<4,
-	SAU_POPP_FREQ2 = 1<<5,
-	SAU_POPP_PHASE = 1<<6,
-	SAU_POPP_AMP = 1<<7,
-	SAU_POPP_AMP2 = 1<<8,
-	SAU_POP_PARAMS = (1<<9) - 1,
+	SAU_PRAMP_PAN = 0,
+	SAU_PRAMP_AMP,
+	SAU_PRAMP_AMP2,
+	SAU_PRAMP_FREQ,
+	SAU_PRAMP_FREQ2,
+};
+
+/**
+ * Operator parameter flags. For parameters without other tracking only.
+ */
+enum {
+	SAU_POPP_WAVE = 1<<0,
+	SAU_POPP_TIME = 1<<1,
+	SAU_POPP_SILENCE = 1<<2,
+	SAU_POPP_PHASE = 1<<3,
+	SAU_POP_PARAMS = (1<<4) - 1,
 };
 
 /*
@@ -78,9 +84,9 @@ enum {
  */
 enum {
 	SAU_POP_CARR = 0,
+	SAU_POP_AMOD,
 	SAU_POP_FMOD,
 	SAU_POP_PMOD,
-	SAU_POP_AMOD,
 	SAU_POP_USES,
 };
 
@@ -107,9 +113,9 @@ typedef struct SAU_ProgramOpData {
 	SAU_Time time;
 	uint8_t wave;
 	uint8_t use_type;
-	SAU_Ramp freq, freq2;
-	SAU_Ramp amp, amp2;
-	SAU_Ramp pan;
+	SAU_Ramp *freq, *freq2;
+	SAU_Ramp *amp, *amp2;
+	SAU_Ramp *pan;
 	float phase;
 	/* assigned after parsing */
 	uint32_t id;
