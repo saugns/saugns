@@ -442,8 +442,7 @@ static bool scan_wavetype(SAU_Scanner *restrict o, size_t *restrict found_id) {
 
 static bool scan_ramp_state(SAU_Scanner *restrict o,
 		SAU_ScanNumConst_f scan_numconst,
-		SAU_Ramp *restrict ramp, bool mult,
-		uint32_t *restrict params, uint32_t par_flag) {
+		SAU_Ramp *restrict ramp, bool mult) {
 	if (!scan_num(o, scan_numconst, &ramp->v0))
 		return false;
 	if (mult) {
@@ -452,18 +451,14 @@ static bool scan_ramp_state(SAU_Scanner *restrict o,
 		ramp->flags &= ~SAU_RAMPP_STATE_RATIO;
 	}
 	ramp->flags |= SAU_RAMPP_STATE;
-	*params |= par_flag;
 	return true;
 }
 
 static bool scan_ramp_param(SAU_Scanner *restrict o,
 		SAU_ScanNumConst_f scan_numconst,
-		SAU_Ramp *restrict ramp, bool mult,
-		uint32_t *restrict params, uint32_t par_flag) {
-	if (!SAU_Scanner_tryc(o, '{')) {
-		return scan_ramp_state(o, scan_numconst, ramp, mult,
-				params, par_flag);
-	}
+		SAU_Ramp *restrict ramp, bool mult) {
+	if (!SAU_Scanner_tryc(o, '{'))
+		return scan_ramp_state(o, scan_numconst, ramp, mult);
 	struct ScanLookup *sl = o->data;
 	bool goal = false;
 	bool time_set = (ramp->flags & SAU_RAMPP_TIME) != 0;
@@ -527,7 +522,6 @@ RETURN:
 		ramp->flags |= SAU_RAMPP_TIME;
 	else
 		ramp->flags &= ~SAU_RAMPP_TIME;
-	*params |= par_flag;
 	return true;
 }
 
@@ -640,6 +634,54 @@ typedef struct SAU_ScriptEvBranch {
 	struct SAU_ScriptEvBranch *prev;
 } SAU_ScriptEvBranch;
 
+static SAU_Ramp *create_ramp(SAU_Parser *restrict o,
+		bool mult, uint32_t par_flag) {
+	struct ScanLookup *sl = &o->sl;
+	SAU_Ramp *ramp = SAU_MemPool_alloc(o->mem, sizeof(SAU_Ramp));
+	float v0 = 0.f;
+	if (!ramp)
+		return NULL;
+	ramp->type = SAU_RAMP_LIN; // default if goal enabled
+	switch (par_flag) {
+	case SAU_PRAMP_PAN:
+		v0 = sl->sopt.def_chanmix;
+		break;
+	case SAU_PRAMP_AMP:
+		v0 = 1.0f; /* multiplied with sl->sopt.ampmult separately */
+		break;
+	case SAU_PRAMP_AMP2:
+		v0 = 0.f;
+		break;
+	case SAU_PRAMP_FREQ:
+		v0 = mult ?
+			sl->sopt.def_relfreq :
+			sl->sopt.def_freq;
+		break;
+	case SAU_PRAMP_FREQ2:
+		v0 = 0.f;
+		break;
+	default:
+		return NULL;
+	}
+	ramp->v0 = v0;
+	ramp->flags |= SAU_RAMPP_STATE;
+	if (mult) {
+		ramp->flags |= SAU_RAMPP_STATE_RATIO;
+	}
+	return ramp;
+}
+
+static bool parse_ramp(SAU_Parser *restrict o,
+		SAU_ScanNumConst_f scan_numconst,
+		SAU_Ramp **restrict rampp, bool mult,
+		uint32_t ramp_id) {
+	if (!*rampp) {
+		*rampp = create_ramp(o, mult, ramp_id);
+		(*rampp)->flags &= ~SAU_RAMPP_STATE; // only set on parse
+	}
+	return scan_ramp_param(o->sc, scan_numconst, *rampp, mult);
+}
+
 static bool parse_waittime(SAU_Parser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
 	SAU_Scanner *sc = o->sc;
@@ -672,16 +714,16 @@ static void end_operator(SAU_Parser *restrict o) {
 	struct ScanLookup *sl = &o->sl;
 	SAU_ScriptOpRef *op = pl->operator;
 	SAU_ProgramOpData *od = op->data;
-	if (SAU_Ramp_ENABLED(&od->amp)) {
+	if (od->amp) {
 		if (!(op->op_flags & SAU_SDOP_NESTED)) {
-			od->amp.v0 *= sl->sopt.ampmult;
-			od->amp.vt *= sl->sopt.ampmult;
+			od->amp->v0 *= sl->sopt.ampmult;
+			od->amp->vt *= sl->sopt.ampmult;
 		}
 	}
-	if (SAU_Ramp_ENABLED(&od->amp2)) {
+	if (od->amp2) {
 		if (!(op->op_flags & SAU_SDOP_NESTED)) {
-			od->amp2.v0 *= sl->sopt.ampmult;
-			od->amp2.vt *= sl->sopt.ampmult;
+			od->amp2->v0 *= sl->sopt.ampmult;
+			od->amp2->vt *= sl->sopt.ampmult;
 		}
 	}
 	SAU_ScriptOpRef *pop = op->on_prev;
@@ -772,11 +814,6 @@ static void begin_operator(SAU_Parser *restrict o,
 	/*
 	 * Initialize node.
 	 */
-	SAU_Ramp_reset(&od->freq);
-	SAU_Ramp_reset(&od->freq2);
-	SAU_Ramp_reset(&od->amp);
-	SAU_Ramp_reset(&od->amp2);
-	SAU_Ramp_reset(&od->pan);
 	if (pop != NULL) {
 		od->use_type = pod->use_type;
 		op->on_prev = pop;
@@ -798,17 +835,13 @@ static void begin_operator(SAU_Parser *restrict o,
 		od->time.v_ms = o->sl.sopt.def_time_ms;
 		od->use_type = pl->use_type;
 		if (od->use_type == SAU_POP_CARR) {
-			od->freq.v0 = o->sl.sopt.def_freq;
+			od->pan = create_ramp(o, false, SAU_PRAMP_PAN);
+			od->freq = create_ramp(o, false, SAU_PRAMP_FREQ);
 		} else {
 			op->op_flags |= SAU_SDOP_NESTED;
-			od->freq.v0 = o->sl.sopt.def_relfreq;
-			od->freq.flags |= SAU_RAMPP_STATE_RATIO;
+			od->freq = create_ramp(o, true, SAU_PRAMP_FREQ);
 		}
-		od->freq.flags |= SAU_RAMPP_STATE;
-		od->amp.v0 = 1.0f;
-		od->amp.flags |= SAU_RAMPP_STATE;
-		od->pan.v0 = o->sl.sopt.def_chanmix;
-		od->pan.flags |= SAU_RAMPP_STATE;
+		od->amp = create_ramp(o, false, SAU_PRAMP_AMP);
 		op->obj = SAU_MemPool_alloc(o->mem, sizeof(SAU_ScriptOpObj));
 		op->obj->root_event = e;
 	}
@@ -1020,11 +1053,9 @@ static bool parse_ev_amp(SAU_Parser *restrict o) {
 	SAU_Scanner *sc = o->sc;
 	SAU_ScriptOpRef *op = pl->operator;
 	SAU_ProgramOpData *od = op->data;
-	scan_ramp_param(sc, NULL, &od->amp, false,
-			&od->params, SAU_POPP_AMP);
+	parse_ramp(o, NULL, &od->amp, false, SAU_PRAMP_AMP);
 	if (SAU_Scanner_tryc(sc, ',')) {
-		scan_ramp_param(sc, NULL, &od->amp2, false,
-				&od->params, SAU_POPP_AMP2);
+		parse_ramp(o, NULL, &od->amp2, false, SAU_PRAMP_AMP2);
 	}
 	if (SAU_Scanner_tryc(sc, '~') && SAU_Scanner_tryc(sc, '[')) {
 		parse_level(o, SAU_POP_AMOD, SCOPE_NEST);
@@ -1034,13 +1065,11 @@ static bool parse_ev_amp(SAU_Parser *restrict o) {
 
 static bool parse_ev_chanmix(SAU_Parser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
-	SAU_Scanner *sc = o->sc;
 	SAU_ScriptOpRef *op = pl->operator;
 	SAU_ProgramOpData *od = op->data;
 	if (op->op_flags & SAU_SDOP_NESTED)
 		return true; // reject
-	scan_ramp_param(sc, scan_chanmix_const, &od->pan, false,
-			&od->params, SAU_POPP_PAN);
+	parse_ramp(o, scan_chanmix_const, &od->pan, false, SAU_PRAMP_PAN);
 	return false;
 }
 
@@ -1052,11 +1081,10 @@ static bool parse_ev_freq(SAU_Parser *restrict o, bool rel_freq) {
 	if (rel_freq && !(op->op_flags & SAU_SDOP_NESTED))
 		return true; // reject
 	SAU_ScanNumConst_f numconst_f = rel_freq ? NULL : scan_note_const;
-	scan_ramp_param(sc, numconst_f, &od->freq, rel_freq,
-			&od->params, SAU_POPP_FREQ);
+	parse_ramp(o, numconst_f, &od->freq, rel_freq, SAU_PRAMP_FREQ);
 	if (SAU_Scanner_tryc(sc, ',')) {
-		scan_ramp_param(sc, numconst_f, &od->freq2, rel_freq,
-			&od->params, SAU_POPP_FREQ2);
+		parse_ramp(o, numconst_f, &od->freq2,
+				rel_freq, SAU_PRAMP_FREQ2);
 	}
 	if (SAU_Scanner_tryc(sc, '~') && SAU_Scanner_tryc(sc, '[')) {
 		parse_level(o, SAU_POP_FMOD, SCOPE_NEST);
@@ -1380,6 +1408,8 @@ static void time_durgroup(SAU_ScriptEvData *restrict e_last) {
 
 static inline void time_ramp(SAU_Ramp *restrict ramp,
 		uint32_t default_time_ms) {
+	if (!ramp)
+		return;
 	if (!(ramp->flags & SAU_RAMPP_TIME))
 		ramp->time_ms = default_time_ms;
 }
@@ -1394,11 +1424,11 @@ static void time_operator(SAU_ScriptOpRef *restrict op) {
 		od->time.flags |= SAU_TIMEP_SET;
 	}
 	if (!(od->time.flags & SAU_TIMEP_LINKED)) {
-		time_ramp(&od->freq, od->time.v_ms);
-		time_ramp(&od->freq2, od->time.v_ms);
-		time_ramp(&od->amp, od->time.v_ms);
-		time_ramp(&od->amp2, od->time.v_ms);
-		time_ramp(&od->pan, od->time.v_ms);
+		time_ramp(od->freq, od->time.v_ms);
+		time_ramp(od->freq2, od->time.v_ms);
+		time_ramp(od->amp, od->time.v_ms);
+		time_ramp(od->amp2, od->time.v_ms);
+		time_ramp(od->pan, od->time.v_ms);
 		if (!(op->op_flags & SAU_SDOP_SILENCE_ADDED)) {
 			od->time.v_ms += od->silence_ms;
 			op->op_flags |= SAU_SDOP_SILENCE_ADDED;
