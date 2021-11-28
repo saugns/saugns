@@ -1,7 +1,7 @@
 Osin fD3 t0.5 p+[
-'a	Osin r(3/7) a0 a{v2 t0.025 cxpe}
-'b	Osin r(3/2) a0 a{v1 t0.025 cxpe}
+'a	Osin r(3/7) a0 a{g2 t0.025 sxpe}
+'b	Osin r(3/2) a0 a{g1 t0.025 sxpe}
 ]
 \0.025
-@a	a{v0 t0.5 cxpe}
-@b	a{v0 t0.5 cxpe}
+@a	a{g0 t0.5 sxpe}
+@b	a{g0 t0.5 sxpe}
