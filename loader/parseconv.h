@@ -47,7 +47,7 @@ enum {
  * Per-operator state used during program data allocation.
  */
 typedef struct SAU_OpAllocState {
-	SAU_ScriptOpRef *last_pod;
+	SAU_ScriptRef *last_pod;
 	const SAU_ProgramOpList *fmods, *pmods, *amods;
 	uint32_t flags;
 	//uint32_t duration_ms;
