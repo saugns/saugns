@@ -29,7 +29,7 @@ enum {
  * Node type for nested list data.
  */
 typedef struct SAU_ScriptListData {
-	struct SAU_ScriptOpRef *first_item;
+	struct SAU_ScriptRef *first_item;
 	struct SAU_ScriptListData *next_list;
 	uint8_t use_type;
 } SAU_ScriptListData;
@@ -38,27 +38,27 @@ typedef struct SAU_ScriptListData {
  * Object type for all types, an instance of which is shared by all references.
  */
 typedef struct SAU_ScriptObj {
-	struct SAU_ScriptOpRef *last_ref;    // updated until timewise last
+	struct SAU_ScriptRef *last_ref;    // updated until timewise last
 	struct SAU_ScriptEvData *root_event; // where object was created
 	uint32_t obj_type;
 	uint32_t obj_id; /* for conversion */
 } SAU_ScriptObj;
 
 /**
- * Reference type for operator.
+ * Reference type for object.
  */
-typedef struct SAU_ScriptOpRef {
-	struct SAU_ScriptOpRef *next_item;
+typedef struct SAU_ScriptRef {
+	struct SAU_ScriptRef *next_item;
 	struct SAU_ScriptEvData *event;
-	struct SAU_ScriptObj *obj;       /* shared by all references */
-	struct SAU_ScriptOpRef *on_prev; /* preceding for same op(s) */
+	struct SAU_ScriptObj *obj;     /* shared by all references */
+	struct SAU_ScriptRef *on_prev; /* preceding for same op(s) */
 	struct SAU_SymStr *label;
 	uint32_t op_flags;
 	/* operator parameters */
 	SAU_ProgramOpData *data;
-	/* node adjacents in operator linkage graph */
+	/* nested lists of references */
 	SAU_ScriptListData *mods;
-} SAU_ScriptOpRef;
+} SAU_ScriptRef;
 
 /**
  * Script data event flags.
@@ -111,9 +111,9 @@ enum {
  */
 typedef struct SAU_ScriptOptions {
 	uint32_t set;   // flags (SAU_SOPT_*) set upon change by script
-	float ampmult;  // amplitude multiplier for non-modulator operators
+	float ampmult;  // amplitude multiplier for non-nested sound generators
 	float A4_freq;  // A4 tuning for frequency as note
-	/* operator parameter default values (use depends on context) */
+	/* sound generator parameter default values (use depends on context) */
 	uint32_t def_time_ms;
 	float def_freq,
 	      def_relfreq,
