@@ -619,9 +619,9 @@ struct ParseLevel {
 	uint8_t use_type;
 	SAU_ScriptEvData *event, *last_event;
 	SAU_ScriptListData *nest_list;
-	SAU_ScriptOpRef *nest_last_data;
-	SAU_ScriptOpRef *ev_first_data, *ev_last_data;
-	SAU_ScriptOpRef *operator;
+	SAU_ScriptRef *nest_last_data;
+	SAU_ScriptRef *ev_first_data, *ev_last_data;
+	SAU_ScriptRef *operator;
 	SAU_ScriptListData *last_mods_list;
 	SAU_SymStr *set_label; /* label assigned to next node */
 	/* timing/delay */
@@ -712,7 +712,7 @@ static void end_operator(SAU_Parser *restrict o) {
 		return;
 	pl->pl_flags &= ~PL_ACTIVE_OP;
 	struct ScanLookup *sl = &o->sl;
-	SAU_ScriptOpRef *op = pl->operator;
+	SAU_ScriptRef *op = pl->operator;
 	SAU_ProgramOpData *od = op->data;
 	if (od->amp) {
 		if (!(op->op_flags & SAU_SDOP_NESTED)) {
@@ -726,7 +726,7 @@ static void end_operator(SAU_Parser *restrict o) {
 			od->amp2->vt *= sl->sopt.ampmult;
 		}
 	}
-	SAU_ScriptOpRef *pop = op->on_prev;
+	SAU_ScriptRef *pop = op->on_prev;
 	if (!pop) {
 		/*
 		 * Reset all operator state for initial event.
@@ -754,7 +754,7 @@ static void end_event(SAU_Parser *restrict o) {
 }
 
 static void begin_event(SAU_Parser *restrict o,
-		SAU_ScriptOpRef *restrict prev_data,
+		SAU_ScriptRef *restrict prev_data,
 		bool is_compstep) {
 	struct ParseLevel *pl = o->cur_pl;
 	SAU_ScriptEvData *e, *pve;
@@ -794,17 +794,17 @@ static void begin_event(SAU_Parser *restrict o,
 }
 
 static void begin_operator(SAU_Parser *restrict o,
-		SAU_ScriptOpRef *restrict pop,
+		SAU_ScriptRef *restrict pop,
 		bool is_compstep) {
 	struct ParseLevel *pl = o->cur_pl;
 	SAU_ScriptEvData *e = pl->event;
-	SAU_ScriptOpRef *op;
+	SAU_ScriptRef *op;
 	SAU_ProgramOpData *od, *pod = (pop != NULL) ? pop->data : NULL;
 	/*
 	 * It is assumed that a valid event exists.
 	 */
 	end_operator(o);
-	op = SAU_MemPool_alloc(o->mem, sizeof(SAU_ScriptOpRef));
+	op = SAU_MemPool_alloc(o->mem, sizeof(SAU_ScriptRef));
 	od = SAU_MemPool_alloc(o->mem, sizeof(SAU_ProgramOpData));
 	op->data = od;
 	pl->operator = op;
@@ -889,7 +889,7 @@ static void begin_operator(SAU_Parser *restrict o,
  * Used instead of directly calling begin_operator() and/or begin_event().
  */
 static void begin_node(SAU_Parser *restrict o,
-		SAU_ScriptOpRef *restrict previous,
+		SAU_ScriptRef *restrict previous,
 		bool is_compstep) {
 	struct ParseLevel *pl = o->cur_pl;
 	uint8_t use_type = (previous != NULL) ?
@@ -934,7 +934,7 @@ static void enter_level(SAU_Parser *restrict o,
 			pl->nest_list = parent_pl->nest_list;
 		}
 		if (newscope == SCOPE_NEST) {
-			SAU_ScriptOpRef *parent_on = parent_pl->operator;
+			SAU_ScriptRef *parent_on = parent_pl->operator;
 			pl->nest_list = SAU_MemPool_alloc(o->mem,
 					sizeof(SAU_ScriptListData));
 			pl->nest_list->use_type = use_type;
@@ -1051,7 +1051,7 @@ static bool parse_level(SAU_Parser *restrict o,
 static bool parse_ev_amp(SAU_Parser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
 	SAU_Scanner *sc = o->sc;
-	SAU_ScriptOpRef *op = pl->operator;
+	SAU_ScriptRef *op = pl->operator;
 	SAU_ProgramOpData *od = op->data;
 	parse_ramp(o, NULL, &od->amp, false, SAU_PRAMP_AMP);
 	if (SAU_Scanner_tryc(sc, ',')) {
@@ -1065,7 +1065,7 @@ static bool parse_ev_amp(SAU_Parser *restrict o) {
 
 static bool parse_ev_chanmix(SAU_Parser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
-	SAU_ScriptOpRef *op = pl->operator;
+	SAU_ScriptRef *op = pl->operator;
 	SAU_ProgramOpData *od = op->data;
 	if (op->op_flags & SAU_SDOP_NESTED)
 		return true; // reject
@@ -1076,7 +1076,7 @@ static bool parse_ev_chanmix(SAU_Parser *restrict o) {
 static bool parse_ev_freq(SAU_Parser *restrict o, bool rel_freq) {
 	struct ParseLevel *pl = o->cur_pl;
 	SAU_Scanner *sc = o->sc;
-	SAU_ScriptOpRef *op = pl->operator;
+	SAU_ScriptRef *op = pl->operator;
 	SAU_ProgramOpData *od = op->data;
 	if (rel_freq && !(op->op_flags & SAU_SDOP_NESTED))
 		return true; // reject
@@ -1095,7 +1095,7 @@ static bool parse_ev_freq(SAU_Parser *restrict o, bool rel_freq) {
 static bool parse_ev_phase(SAU_Parser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
 	SAU_Scanner *sc = o->sc;
-	SAU_ScriptOpRef *op = pl->operator;
+	SAU_ScriptRef *op = pl->operator;
 	SAU_ProgramOpData *od = op->data;
 	if (scan_num(sc, scan_phase_const, &od->phase)) {
 		od->phase = fmod(od->phase, 1.f);
@@ -1114,7 +1114,7 @@ static void parse_in_event(SAU_Parser *restrict o) {
 	SAU_Scanner *sc = o->sc;
 	pl->sub_f = parse_in_event;
 	for (;;) {
-		SAU_ScriptOpRef *op = pl->operator;
+		SAU_ScriptRef *op = pl->operator;
 		SAU_ProgramOpData *od = op->data;
 		uint8_t c = SAU_Scanner_getc(sc);
 		switch (c) {
@@ -1265,7 +1265,7 @@ static bool parse_level(SAU_Parser *restrict o,
 			pl.sub_f = NULL;
 			label = scan_label(sc, c);
 			if (label != NULL) {
-				SAU_ScriptOpRef *ref = label->data;
+				SAU_ScriptRef *ref = label->data;
 				if (!ref)
 					SAU_Scanner_warning(sc, NULL,
 "ignoring reference to undefined label");
@@ -1375,7 +1375,7 @@ static void time_durgroup(SAU_ScriptEvData *restrict e_last) {
 	SAU_ScriptEvData *e, *e_after = e_last->next;
 	uint32_t wait = 0, waitcount = 0;
 	for (e = e_last->group_backref; e != e_after; ) {
-		for (SAU_ScriptOpRef *op = e->main_refs.first_item;
+		for (SAU_ScriptRef *op = e->main_refs.first_item;
 				op != NULL; op = op->next_item) {
 			SAU_ProgramOpData *od = op->data;
 			if (wait < od->time.v_ms)
@@ -1387,7 +1387,7 @@ static void time_durgroup(SAU_ScriptEvData *restrict e_last) {
 		}
 	}
 	for (e = e_last->group_backref; e != e_after; ) {
-		for (SAU_ScriptOpRef *op = e->main_refs.first_item;
+		for (SAU_ScriptRef *op = e->main_refs.first_item;
 				op != NULL; op = op->next_item) {
 			SAU_ProgramOpData *od = op->data;
 			if (!(od->time.flags & SAU_TIMEP_SET)) {
@@ -1414,7 +1414,7 @@ static inline void time_ramp(SAU_Ramp *restrict ramp,
 		ramp->time_ms = default_time_ms;
 }
 
-static void time_operator(SAU_ScriptOpRef *restrict op) {
+static void time_operator(SAU_ScriptRef *restrict op) {
 	SAU_ScriptEvData *e = op->event;
 	SAU_ProgramOpData *od = op->data;
 	if (!(od->time.flags & SAU_TIMEP_SET) &&
@@ -1441,7 +1441,7 @@ static void time_operator(SAU_ScriptOpRef *restrict op) {
 	}
 	for (SAU_ScriptListData *list = op->mods;
 			list != NULL; list = list->next_list) {
-		for (SAU_ScriptOpRef *sub_op = list->first_item;
+		for (SAU_ScriptRef *sub_op = list->first_item;
 				sub_op != NULL; sub_op = sub_op->next_item) {
 			time_operator(sub_op);
 		}
@@ -1453,7 +1453,7 @@ static void time_event(SAU_ScriptEvData *restrict e) {
 	 * Adjust default ramp durations, handle silence as well as the case of
 	 * adding present event duration to wait time of next event.
 	 */
-	SAU_ScriptOpRef *sub_op;
+	SAU_ScriptRef *sub_op;
 	for (sub_op = e->main_refs.first_item;
 			sub_op != NULL; sub_op = sub_op->next_item) {
 		time_operator(sub_op);
@@ -1464,7 +1464,7 @@ static void time_event(SAU_ScriptEvData *restrict e) {
 	SAU_ScriptEvBranch *fork = e->forks;
 	while (fork != NULL) {
 		SAU_ScriptEvData *ce = fork->events;
-		SAU_ScriptOpRef *ce_op, *ce_op_prev, *e_op;
+		SAU_ScriptRef *ce_op, *ce_op_prev, *e_op;
 		SAU_ProgramOpData *e_od;
 		ce_op = ce->main_refs.first_item;
 		ce_op_prev = ce_op->on_prev;
@@ -1573,10 +1573,10 @@ static void postparse_passes(SAU_Parser *restrict o) {
 		/*
 		 * Track sequence of references and later use here.
 		 */
-		SAU_ScriptOpRef *sub_op;
+		SAU_ScriptRef *sub_op;
 		for (sub_op = e->main_refs.first_item;
 				sub_op != NULL; sub_op = sub_op->next_item) {
-			SAU_ScriptOpRef *prev_ref = sub_op->obj->last_ref;
+			SAU_ScriptRef *prev_ref = sub_op->obj->last_ref;
 			if (prev_ref != NULL) {
 				sub_op->on_prev = prev_ref;
 				prev_ref->op_flags |= SAU_SDOP_LATER_USED;
