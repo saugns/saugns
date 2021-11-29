@@ -825,7 +825,7 @@ static void begin_operator(SAU_Parser *restrict o,
 			od->freq = create_ramp(o, true, SAU_PRAMP_FREQ);
 		}
 		od->amp = create_ramp(o, false, SAU_PRAMP_AMP);
-		op->obj = SAU_MemPool_alloc(o->mem, sizeof(SAU_ScriptOpObj));
+		op->obj = SAU_MemPool_alloc(o->mem, sizeof(SAU_ScriptObj));
 		op->obj->root_event = e;
 	}
 	op->event = e;

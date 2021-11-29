@@ -44,7 +44,7 @@ create_ProgramOpList(const SAU_ScriptListData *restrict list_in,
 	o->count = count;
 	uint32_t i = 0;
 	for (op = list_in->first_item; op != NULL; op = op->next_item) {
-		o->ids[i++] = op->obj->op_id;
+		o->ids[i++] = op->obj->obj_id;
 	}
 	return o;
 }
@@ -162,7 +162,7 @@ static bool
 SAU_OpAlloc_get_id(SAU_OpAlloc *restrict oa,
 		const SAU_ScriptOpRef *restrict od, uint32_t *restrict op_id) {
 	if (od->on_prev != NULL) {
-		*op_id = od->obj->op_id;
+		*op_id = od->obj->obj_id;
 		return true;
 	}
 //	for (uint32_t id = 0; id < oa->count; ++id) {
@@ -204,7 +204,7 @@ SAU_OpAlloc_update(SAU_OpAlloc *restrict oa,
 //	}
 	if (!SAU_OpAlloc_get_id(oa, od, op_id))
 		return false;
-	od->obj->op_id = *op_id;
+	od->obj->obj_id = *op_id;
 	SAU_OpAllocState *oas = &oa->a[*op_id];
 	oas->last_pod = od;
 //	oas->duration_ms = od->time.v_ms;

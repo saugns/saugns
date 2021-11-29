@@ -33,13 +33,14 @@ typedef struct SAU_ScriptListData {
 } SAU_ScriptListData;
 
 /**
- * Object type for operator, shared by all references.
+ * Object type for all types, an instance of which is shared by all references.
  */
-typedef struct SAU_ScriptOpObj {
+typedef struct SAU_ScriptObj {
 	struct SAU_ScriptOpRef *last_ref;    // updated until timewise last
 	struct SAU_ScriptEvData *root_event; // where object was created
-	uint32_t op_id; /* for conversion */
-} SAU_ScriptOpObj;
+	uint32_t obj_type;
+	uint32_t obj_id; /* for conversion */
+} SAU_ScriptObj;
 
 /**
  * Reference type for operator.
@@ -47,7 +48,7 @@ typedef struct SAU_ScriptOpObj {
 typedef struct SAU_ScriptOpRef {
 	struct SAU_ScriptOpRef *next_item;
 	struct SAU_ScriptEvData *event;
-	struct SAU_ScriptOpObj *obj;     /* shared by all references */
+	struct SAU_ScriptObj *obj;       /* shared by all references */
 	struct SAU_ScriptOpRef *on_prev; /* preceding for same op(s) */
 	struct SAU_SymStr *label;
 	uint32_t op_flags;
