@@ -31,7 +31,7 @@ static sauNoinline const SAU_ProgramOpList*
 create_ProgramOpList(const SAU_ScriptListData *restrict list_in,
 		SAU_MemPool *restrict mem) {
 	uint32_t count = 0;
-	const SAU_ScriptOpRef *op;
+	const SAU_ScriptRef *op;
 	for (op = list_in->first_item; op != NULL; op = op->next_item) {
 		++count;
 	}
@@ -143,7 +143,7 @@ enum {
  * Per-operator state used during program data allocation.
  */
 typedef struct SAU_OpAllocState {
-	SAU_ScriptOpRef *last_pod;
+	SAU_ScriptRef *last_pod;
 	const SAU_ProgramOpList *fmods, *pmods, *amods;
 	uint32_t flags;
 	//uint32_t duration_ms;
@@ -160,7 +160,7 @@ sauArrType(SAU_OpAlloc, SAU_OpAllocState, _)
  */
 static bool
 SAU_OpAlloc_get_id(SAU_OpAlloc *restrict oa,
-		const SAU_ScriptOpRef *restrict od, uint32_t *restrict op_id) {
+		const SAU_ScriptRef *restrict od, uint32_t *restrict op_id) {
 	if (od->on_prev != NULL) {
 		*op_id = od->obj->obj_id;
 		return true;
@@ -193,7 +193,7 @@ SAU_OpAlloc_get_id(SAU_OpAlloc *restrict oa,
  */
 static bool
 SAU_OpAlloc_update(SAU_OpAlloc *restrict oa,
-		SAU_ScriptOpRef *restrict od,
+		SAU_ScriptRef *restrict od,
 		uint32_t *restrict op_id) {
 //	SAU_ScriptEvData *e = od->event;
 //	for (uint32_t id = 0; id < oa->count; ++id) {
@@ -285,7 +285,7 @@ set_oplist(const SAU_ProgramOpList **restrict dstp,
  */
 static bool
 ParseConv_convert_opdata(ParseConv *restrict o,
-		const SAU_ScriptOpRef *restrict op, uint32_t op_id) {
+		const SAU_ScriptRef *restrict op, uint32_t op_id) {
 	SAU_OpAllocState *oas = &o->oa.a[op_id];
 	SAU_ProgramOpData *od = op->data;
 	if (!SAU_PtrArr_add(&o->ev_od_list, od)) goto MEM_ERR;
@@ -330,7 +330,7 @@ ParseConv_convert_ops(ParseConv *restrict o,
 		SAU_ScriptListData *restrict op_list) {
 	if (!op_list)
 		return true;
-	for (SAU_ScriptOpRef *op = op_list->first_item;
+	for (SAU_ScriptRef *op = op_list->first_item;
 			op != NULL; op = op->next_item) {
 		// TODO: handle multiple operator nodes
 		if ((op->op_flags & SAU_SDOP_MULTIPLE) != 0) continue;
