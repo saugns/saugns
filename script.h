@@ -21,7 +21,6 @@ enum {
 	SGS_SDOP_LATER_USED = 1<<0,
 	SGS_SDOP_MULTIPLE = 1<<1,
 	SGS_SDOP_NESTED = 1<<2,
-	SGS_SDOP_SILENCE_ADDED = 1<<3,
 };
 
 /**
@@ -43,11 +42,10 @@ typedef struct SGS_ScriptOpData {
 	uint32_t op_id; /* not set by parser; for later use (parseconv.c) */
 	uint32_t op_params;
 	SGS_Time time;
-	uint32_t silence_ms;
-	uint8_t wave;
 	SGS_Ramp freq, amp;
 	float dynfreq, dynamp;
 	uint32_t phase;
+	uint8_t wave;
 	/* node adjacents in operator linkage graph */
 	SGS_ScriptListData *amods, *fmods, *pmods;
 } SGS_ScriptOpData;
@@ -57,10 +55,11 @@ typedef struct SGS_ScriptOpData {
  */
 enum {
 	SGS_SDEV_VOICE_LATER_USED = 1<<0,
-	SGS_SDEV_VOICE_SET_DUR = 1<<1,
-	SGS_SDEV_IMPLICIT_TIME = 1<<2,
-	SGS_SDEV_ADD_WAIT_DURATION = 1<<3,
-	SGS_SDEV_NEW_OPGRAPH = 1<<4,
+	SGS_SDEV_VOICE_SET_DUR    = 1<<1,
+	SGS_SDEV_IMPLICIT_TIME    = 1<<2,
+	SGS_SDEV_WAIT_PREV_DUR    = 1<<3, // compound step timing
+	SGS_SDEV_FROM_GAPSHIFT    = 1<<4, // gapshift follow-on event
+	SGS_SDEV_NEW_OPGRAPH      = 1<<5,
 };
 
 struct SGS_ScriptEvBranch;
@@ -73,9 +72,10 @@ typedef struct SGS_ScriptEvData {
 	struct SGS_ScriptEvData *next;
 	struct SGS_ScriptEvData *group_backref;
 	struct SGS_ScriptEvBranch *forks;
-	uint32_t wait_ms;
 	SGS_ScriptListData operators; /* operators included in event */
 	uint32_t ev_flags;
+	uint32_t wait_ms;
+	uint32_t dur_ms;
 	/* voice parameters */
 	uint32_t vo_id; /* not set by parser; for later use (parseconv.c) */
 	uint32_t vo_params;
