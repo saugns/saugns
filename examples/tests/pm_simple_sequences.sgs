@@ -21,7 +21,7 @@
 	; f450 t.1
 	; f500 t.1
 	; f550 t.1 |
-\2
+/2
 
 	Osin f444 t1 p[Osin r(1/1.23456789)] |
 'a	Osin f444 t1 p[Osin r7.12] |
@@ -43,7 +43,7 @@
 	; f225 t1
 	; f116 t1
 	; f50 t1 |
-\2
+/2
 
 'a	Osin f137 t11 p[
 		Osin f032 t1 p[Osin f42]
