@@ -33,8 +33,9 @@ typedef struct SAU_Time {
  * Time parameter flags.
  */
 enum {
-	SAU_TIMEP_SET    = 1<<0, // a \a v_ms value or linked is to be used
-	SAU_TIMEP_LINKED = 1<<1, // a linked/"infinite" value is to be used
+	SAU_TIMEP_SET     = 1<<0, // a \a v_ms value or linked is to be used
+	SAU_TIMEP_DEFAULT = 1<<1, // the \a v_ms value set was default value
+	SAU_TIMEP_LINKED  = 1<<2, // a linked/"infinite" value is to be used
 };
 
 /**
@@ -62,9 +63,8 @@ enum {
 enum {
 	SAU_POPP_WAVE = 1<<0,
 	SAU_POPP_TIME = 1<<1,
-	SAU_POPP_SILENCE = 1<<2,
-	SAU_POPP_PHASE = 1<<3,
-	SAU_POP_PARAMS = (1<<4) - 1,
+	SAU_POPP_PHASE = 1<<2,
+	SAU_POP_PARAMS = (1<<3) - 1,
 };
 
 /*
@@ -109,10 +109,9 @@ typedef struct SAU_ProgramVoData {
 
 typedef struct SAU_ProgramOpData {
 	uint32_t params;
-	uint32_t silence_ms;
-	SAU_Time time;
 	uint8_t wave;
 	uint8_t use_type;
+	SAU_Time time;
 	SAU_Ramp *freq, *freq2;
 	SAU_Ramp *amp, *amp2;
 	SAU_Ramp *pan;

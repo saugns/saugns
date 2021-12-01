@@ -162,9 +162,6 @@ Parameters:
 		modulators set, and may be empty.
 			The sum of modulator amplitudes is used to
 		phase-modulate the carrier(s).
-	s	Silent time before playing, time in seconds.
-			Works like adding a delay, except it only affects this
-		operator.
 	w	Set the wave type. See list of wave types for values.
 	c	(For non-nested operators only.) Channel mixing, (-1.0) to 1.0.
 		See "Channel mixing values" for more.
@@ -294,17 +291,24 @@ sub-scopes, however, newlines may be placed freely.
 
 Timing modifiers:
 	|	Time separator. Delays what follows by the duration of
-		prior events. This is independent of delay added
-		with "\".
-	\	Delay the next event and all following ones, time in
-		seconds. Alternatively, \t will delay by the time of the
-		last event.
+		prior events. This is independent of delay added with "/".
+	/	Forward shift, time in seconds. Delay the next event
+		and all events placed after.
+	\	Subshift, time in seconds. For a current event only,
+		split out a follow-on event.
 
 Composite events:
-	Writing a ';' (on a new line or the same line) after an event will
-	allow specifying new parameter arguments to apply at the end of the
-	previous duration; this can be repeated.
-		This makes it possible to write a sequence of events as if
-	a single "composite event", not having to insert delays that affect
-	the timing of events later written, thus increasing the flexibility
-	of how changes to operators may be positioned in a script.
+	The ';' sub-event separator can be written (on a new line or the same)
+	to specify new parameter arguments for an object, which apply just
+	after the previous time duration, for a new duration which defaults
+	to the length of the old (see "t" for more). This can be repeated.
+		The time handling is designed to simplify writing a sequence
+	of connected, non-overlapping timed updates for a single object. For
+	example (three frequencies, one a second): "Osin f100 t1; f200; f300".
+		For more flexibility, such as "silent" gaps between parts or
+	overlapping parts, ';' can be combined with the '\' subshift, as in
+	"; \number", which subdivides the part after the ';' into one before
+	the '\' and one after, "number" seconds apart in time. The first has
+	a default time duration of zero, for the second it is normal. For
+	example, to insert "silent" gaps between the use of three values:
+	"Osin f100 t1; \1 f200; \1 f300".

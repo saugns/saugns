@@ -31,7 +31,6 @@ enum {
 typedef struct OperatorNode {
 	SAU_Osc osc;
 	uint32_t time;
-	uint32_t silence;
 	uint8_t flags;
 	const SAU_ProgramOpList *fmods, *pmods, *amods;
 	SAU_Ramp amp, freq;
@@ -262,9 +261,6 @@ static void handle_event(SAU_Generator *restrict o, EventNode *restrict e) {
 					on->flags &= ~ON_TIME_INF;
 				}
 			}
-			if (params & SAU_POPP_SILENCE)
-				on->silence = SAU_MS_IN_SAMPLES(od->silence_ms,
-						o->srate);
 			if (params & SAU_POPP_PHASE)
 				SAU_Osc_set_phase(&on->osc,
 						SAU_Osc_PHASE(od->phase));
@@ -309,29 +305,12 @@ static uint32_t run_block(SAU_Generator *restrict o,
 	float *freq, *amp;
 	len = buf_len;
 	/*
-	 * If silence, zero-fill and delay processing for duration.
-	 */
-	uint32_t zero_len = 0;
-	if (n->silence) {
-		zero_len = n->silence;
-		if (zero_len > len)
-			zero_len = len;
-		if (!acc_ind) for (i = 0; i < zero_len; ++i)
-			s_buf[i] = 0;
-		len -= zero_len;
-		if (!(n->flags & ON_TIME_INF)) n->time -= zero_len;
-		n->silence -= zero_len;
-		if (!len)
-			return zero_len;
-		s_buf += zero_len;
-	}
-	/*
 	 * Guard against circular references.
 	 */
 	if ((n->flags & ON_VISITED) != 0) {
 		for (i = 0; i < len; ++i)
 			s_buf[i] = 0;
-		return zero_len + len;
+		return len;
 	}
 	n->flags |= ON_VISITED;
 	/*
@@ -405,7 +384,7 @@ static uint32_t run_block(SAU_Generator *restrict o,
 		n->time -= len;
 	}
 	n->flags &= ~ON_VISITED;
-	return zero_len + len;
+	return len;
 }
 
 /*
