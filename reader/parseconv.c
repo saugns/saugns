@@ -67,23 +67,6 @@ typedef struct SGS_VoAllocState {
 sgsArrType(SGS_VoAlloc, SGS_VoAllocState, _)
 
 /*
- * Returns the longest operator duration among top-level operators for
- * the graph of the voice event.
- */
-static uint32_t voice_duration(const SGS_ScriptEvData *restrict ve) {
-	SGS_ScriptOpData **ops;
-	uint32_t duration_ms = 0;
-	/* FIXME: node list type? */
-	ops = (SGS_ScriptOpData**) SGS_PtrArr_ITEMS(&ve->operators);
-	for (size_t i = 0; i < ve->operators.count; ++i) {
-		SGS_ScriptOpData *op = ops[i];
-		if (op->time.v_ms > duration_ms)
-			duration_ms = op->time.v_ms;
-	}
-	return duration_ms;
-}
-
-/*
  * Get voice ID for event, setting it to \p vo_id.
  *
  * \return true, or false on allocation failure
@@ -135,7 +118,7 @@ SGS_VoAlloc_update(SGS_VoAlloc *restrict va,
 	vas->last_ev = e;
 	vas->flags &= ~SGS_VAS_GRAPH;
 	if ((e->ev_flags & SGS_SDEV_VOICE_SET_DUR) != 0)
-		vas->duration_ms = voice_duration(e);
+		vas->duration_ms = e->dur_ms;
 	return true;
 }
 
@@ -310,7 +293,6 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 	od->params = op->op_params;
 	/* ...mods */
 	od->time = op->time;
-	od->silence_ms = op->silence_ms;
 	od->wave = op->wave;
 	od->freq = op->freq;
 	od->dynfreq = op->dynfreq;
@@ -727,7 +709,7 @@ SGS_Program_print_info(const SGS_Program *restrict o) {
 		const SGS_ProgramEvent *ev = o->events[ev_id];
 		const SGS_ProgramVoData *vd = ev->vo_data;
 		fprintf(stdout,
-			"\\%u \tEV %zu \t(VO %hu)",
+			"/%u \tEV %zu \t(VO %hu)",
 			ev->wait_ms, ev_id, ev->vo_id);
 		if (vd != NULL) {
 			fprintf(stdout,

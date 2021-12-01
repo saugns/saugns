@@ -24,7 +24,8 @@
  */
 enum {
 	SGS_TIMEP_SET      = 1<<0, // use the \a v_ms value or implicit value
-	SGS_TIMEP_IMPLICIT = 1<<1, // use an implicit value from other source
+	SGS_TIMEP_DEFAULT  = 1<<1, // the \a v_ms value set was default value
+	SGS_TIMEP_IMPLICIT = 1<<2, // use an implicit value from other source
 };
 
 /**
@@ -53,13 +54,12 @@ enum {
 	/* SGS_POPP_PAN = 1<<0, */
 	SGS_POPP_WAVE = 1<<1,
 	SGS_POPP_TIME = 1<<2,
-	SGS_POPP_SILENCE = 1<<3,
-	SGS_POPP_FREQ = 1<<4,
-	SGS_POPP_DYNFREQ = 1<<5,
-	SGS_POPP_PHASE = 1<<6,
-	SGS_POPP_AMP = 1<<7,
-	SGS_POPP_DYNAMP = 1<<8,
-	SGS_POP_PARAMS = (1<<9) - 1,
+	SGS_POPP_FREQ = 1<<3,
+	SGS_POPP_DYNFREQ = 1<<4,
+	SGS_POPP_PHASE = 1<<5,
+	SGS_POPP_AMP = 1<<6,
+	SGS_POPP_DYNAMP = 1<<7,
+	SGS_POP_PARAMS = (1<<8) - 1,
 };
 
 /*
@@ -108,7 +108,6 @@ typedef struct SGS_ProgramOpData {
 	uint32_t id;
 	uint32_t params;
 	SGS_Time time;
-	uint32_t silence_ms;
 	uint8_t wave;
 	float dynfreq, phase, dynamp;
 	SGS_Ramp freq, amp;
