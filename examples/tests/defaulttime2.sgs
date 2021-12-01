@@ -1,3 +1,9 @@
+# The following '/' followed by a '|' cancel out, as a '|'
+# resets delay to add next to the duration of prior steps.
+# (The opposite order would instead delay by 2.5 seconds.)
+
+/2.5 |
+
 # Each tone below has a time duration of 2 seconds, as it,
 # being the longest used, becomes the default. (The '|' is
 # optional, as nothing follows it, but nothing after would
