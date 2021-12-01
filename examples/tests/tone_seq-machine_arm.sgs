@@ -13,7 +13,7 @@ Osin	f220 p[
 ;	f{cxpe v400 t0.15} t0.5
 ;	f{cxpe v350 t0.15} t0.5
 ;	f{cxpe v325 t0.15} t1.5
-;s1	f{cxpe v220 t0.15} t1
+;\1	f{cxpe v220 t0.15} t1
 ;	f{cxpe v440 t0.15} t1.5
 ;	f{cxpe v415 t0.15} t0.5
 ;	f{cxpe v445 t0.15} t0.5
