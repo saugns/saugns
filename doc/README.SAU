@@ -295,9 +295,9 @@ sub-scopes, however, newlines may be placed freely.
 Timing modifiers:
 	|	Time separator. Delays what follows by the duration of
 		prior events. This is independent of delay added
-		with "\".
-	\	Delay the next event and all following ones, time in
-		seconds. Alternatively, \t will delay by the time of the
+		with "/".
+	/	Delay the next event and all following ones, time in
+		seconds. Alternatively, /t will delay by the time of the
 		last event.
 
 Composite events:
