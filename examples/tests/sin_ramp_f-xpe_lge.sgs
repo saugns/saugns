@@ -3,7 +3,7 @@
 
 Osin	f300 f[cxpe t1 v1200] t1
 ;	f[cxpe t1 v300] t2.5
-|\.5
+|/.5
 
 Osin	f300 f[clge t1 v1200] t1
 ;	f[clge t1 v300] t2.5

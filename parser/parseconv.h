@@ -73,20 +73,6 @@ typedef struct SGS_VoAllocState {
 sgsArrType(SGS_VoAlloc, SGS_VoAllocState, _)
 
 /*
- * Returns the longest operator duration among top-level operators for
- * the graph of the voice event.
- */
-static uint32_t
-voice_duration(const SGS_ScriptEvData *restrict ve) {
-	uint32_t duration_ms = 0;
-	for (SGS_ScriptOpData *op = ve->operators.first_on; op; op = op->next) {
-		if (op->time.v_ms > duration_ms)
-			duration_ms = op->time.v_ms;
-	}
-	return duration_ms;
-}
-
-/*
  * Get voice ID for event, setting it to \p vo_id.
  *
  * \return true, or false on allocation failure
@@ -138,7 +124,7 @@ SGS_VoAlloc_update(SGS_VoAlloc *restrict va,
 	vas->last_ev = e;
 	vas->flags &= ~SGS_VAS_GRAPH;
 	if ((e->ev_flags & SGS_SDEV_VOICE_SET_DUR) != 0)
-		vas->duration_ms = voice_duration(e);
+		vas->duration_ms = e->dur_ms;
 	return true;
 }
 
@@ -313,7 +299,6 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 	ood->id = op_id;
 	ood->params = op->op_params;
 	ood->time = op->time;
-	ood->silence_ms = op->silence_ms;
 	ood->amp = op->amp;
 	ood->dynamp = op->dynamp;
 	ood->freq = op->freq;
@@ -727,7 +712,7 @@ SGS_Program_print_info(const SGS_Program *restrict o) {
 		const SGS_ProgramEvent *ev = &o->events[ev_id];
 		const SGS_ProgramVoData *vd = ev->vo_data;
 		SGS_printf(
-			"\\%u \tEV %zu \t(VO %hu)",
+			"/%u \tEV %zu \t(VO %hu)",
 			ev->wait_ms, ev_id, ev->vo_id);
 		if (vd != NULL) {
 			SGS_printf(
