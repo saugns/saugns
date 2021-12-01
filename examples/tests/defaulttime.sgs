@@ -3,12 +3,11 @@
 # 2 for the 1st, to fill the time interval to the '|',
 # as the 2nd is given a 1 second time, after 1 second.
 
-S a.5
-Osin f600 \1 Osin f300 |
+Osin f600 /1 Osin f300 |
 
 # These two tones placed just after also overlap. Here
 # the default time for the 2nd starts out at 2 seconds
 # (because that time was explicitly set for the first)
 # but is reduced by the 1 second time shift to just 1.
 
-Osin f400 t2 \1 Osin f200
+Osin f400 t2 /1 Osin f200

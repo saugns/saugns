@@ -3,7 +3,7 @@
 
 Osin	f300 f[cexp t1 v1200] t1
 ;	f[cexp t1 v300] t2.5
-|\.5
+|/.5
 
 Osin	f300 f[clog t1 v1200] t1
 ;	f[clog t1 v300] t2.5
