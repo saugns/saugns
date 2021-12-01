@@ -162,9 +162,6 @@ Parameters:
 		modulators set, and may be empty.
 			The sum of modulator amplitudes is used to
 		phase-modulate the carrier(s).
-	s	Silent time before playing, time in seconds.
-			Works like adding a delay, except it only affects this
-		operator.
 	w	Set the wave type. See list of wave types for values.
 	c	(For non-nested operators only.) Channel mixing, (-1.0) to 1.0.
 		See "Channel mixing values" for more.
@@ -299,6 +296,7 @@ Timing modifiers:
 	/	Delay the next event and all following ones, time in
 		seconds. Alternatively, /t will delay by the time of the
 		last event.
+	\	Delay the next event only, time in seconds.
 
 Composite events:
 	Writing a ';' (on a new line or the same line) after an event will
