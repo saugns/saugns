@@ -1111,6 +1111,10 @@ static void parse_in_event(SAU_Parser *restrict o) {
 				begin_node(o, pl->operator, false);
 			}
 			break;
+		case '\\':
+			if (scan_time_val(sc, &od->silence_ms))
+				od->params |= SAU_POPP_SILENCE;
+			break;
 		case 'a':
 			if (parse_ev_amp(o)) goto DEFER;
 			break;
@@ -1125,10 +1129,6 @@ static void parse_in_event(SAU_Parser *restrict o) {
 			break;
 		case 'r':
 			if (parse_ev_freq(o, true)) goto DEFER;
-			break;
-		case 's':
-			if (scan_time_val(sc, &od->silence_ms))
-				od->params |= SAU_POPP_SILENCE;
 			break;
 		case 't':
 			if (SAU_Scanner_tryc(sc, 'i')) {
