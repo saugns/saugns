@@ -226,9 +226,6 @@ Parameters:
 		empty.
 			The sum of the modulator amplitudes is used to
 		phase-modulate the carrier(s).
-	s	Silent time before playing, time in seconds.
-			Works like adding a delay, except it only affects this
-		operator.
 	w	Set (change) wave type. See list of wave types for values.
 
 Panning: P
@@ -335,12 +332,27 @@ At the topmost script scope, newlines also terminate steps; within
 sub-scopes, however, newlines may be placed freely.
 
 Timing modifiers:
-	|	Time separator. Delays what follows by the duration of
-		prior steps. This is independent of delay added
-		with "\".
-	\	Delay the next step and all following ones, time in
-		seconds. Alternatively, \t will delay by the time of the
-		last step.
+	|	Time separator. Delays all that follows by the duration of
+		prior steps. This also resets any other delays to be added
+		to later steps using other syntax like '/', so such should
+		be placed after, not before, if it is to take effect.
+	/	Forward shift, time in seconds. Delay the next step and
+		all steps placed after. The next step can be either a
+		split-out continuation of the current step, or new.
+			Does not automatically extend time duration on
+		splitting a step, unlike '\'.
+	\	Subshift, time in seconds. For a current step only,
+		split out a delayed follow-on step, without delaying
+		any independent steps placed after. Depending on usage,
+		may move, alternatively extend, the current sound in time.
+			For ease of adding silent time padding, before the
+		"\number" part (but not after it) the default time duration
+		is changed to 0, so that any time value automatically set
+		there will be 0. After the "\number" part, a time value is
+		always set, from an earlier "t" value or a default if none.
+			Several uses of '\' to separate sub-steps in a row
+		(e.g. no ';' in-between) never zero the default time after
+		the first '\'.
 
 Compound steps:
 	The ';' sub-step separator can be written (on a new line or the same)
@@ -352,3 +364,11 @@ Compound steps:
 		The time handling is designed to simplify writing a sequence
 	of connected, non-overlapping timed updates for a single object. For
 	example (three frequencies, one a second): "Osin f100 t1; f200; f300".
+	Changing "t1" in this example changes time length for all three parts.
+		For more flexibility, such as "silent" gaps between parts or
+	overlapping parts, ';' can be combined with the '\' subshift, as in
+	"; \number", which subdivides the part after the ';' into one before
+	the '\' and one after, "number" seconds apart in time. The first has
+	a default time duration of zero, for the second it is normal. For
+	example, to insert "silent" gaps between the use of three values:
+	"Osin f100 t1; \1 f200; \1 f300".
