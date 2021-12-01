@@ -1,0 +1,8 @@
+# Should have outer delays after 0 ms, hence no gap
+Osin t0; p+[Osin t1;] t0; t1
+
+# Should delay only by above outer duration, not inner (longer, creates gap!)
+|
+
+# Should have default time long enough to fill the gap to the outer delays
+Osin t0; p+[Osin t1;]; t1
