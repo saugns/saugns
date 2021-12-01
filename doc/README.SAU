@@ -164,9 +164,6 @@ Parameters:
 		modulators set, and may be empty.
 			The sum of modulator amplitudes is used to
 		phase-modulate the carrier(s).
-	s	Silent time before playing, time in seconds.
-			Works like adding a delay, except it only affects this
-		operator.
 	w	Set the wave type. See list of wave types for values.
 	c	(For non-nested operators only.) Channel mixing, (-1.0) to 1.0.
 		See "Channel mixing values" for more.
@@ -295,12 +292,15 @@ At the topmost script scope, newlines also terminate steps; within
 sub-scopes, however, newlines may be placed freely.
 
 Timing modifiers:
-	|	Time separator. Delays what follows by the duration of
-		prior steps. This is independent of delay added
-		with "\".
-	\	Delay the next step and all following ones, time in
-		seconds. Alternatively, \t will delay by the time of the
-		last step.
+	|	Time separator. Delays all that follows by the duration of
+		prior steps. This is independent of delay added with "/".
+	/	Forward shift, time in seconds. Delay the next step
+		and all steps placed after. The next step can be a
+		split-out continuation of the current step, or new.
+	\	Subshift, time in seconds. For a current step only, split
+		out a follow-on step. For ease of creating "silent" gaps,
+		before the "\" the default time duration is 0 if "t" isn't
+		set there. Can be used by itself or along with ';'-syntax.
 
 Compound steps:
 	The ';' sub-step separator can be written (on a new line or the same)
@@ -310,3 +310,10 @@ Compound steps:
 		The time handling is designed to simplify writing a sequence
 	of connected, non-overlapping timed updates for a single object. For
 	example (three frequencies, one a second): "Osin f100 t1; f200; f300".
+		For more flexibility, such as "silent" gaps between parts or
+	overlapping parts, ';' can be combined with the '\' subshift, as in
+	"; \number", which subdivides the part after the ';' into one before
+	the '\' and one after, "number" seconds apart in time. The first has
+	a default time duration of zero, for the second it is normal. For
+	example, to insert "silent" gaps between the use of three values:
+	"Osin f100 t1; \1 f200; \1 f300".

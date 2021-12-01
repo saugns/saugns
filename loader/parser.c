@@ -617,7 +617,7 @@ struct ParseLevel {
 	uint32_t pl_flags;
 	uint8_t scope;
 	uint8_t use_type;
-	SAU_ScriptEvData *event, *last_event;
+	SAU_ScriptEvData *event;
 	SAU_ScriptListData *nest_list;
 	SAU_ScriptRef *nest_last_data;
 	SAU_ScriptRef *ev_first_data, *ev_last_data;
@@ -685,20 +685,10 @@ static bool parse_ramp(SAU_Parser *restrict o,
 static bool parse_waittime(SAU_Parser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
 	SAU_Scanner *sc = o->sc;
-	/* FIXME: ADD_WAIT_DURATION */
-	if (SAU_Scanner_tryc(sc, 't')) {
-		if (!pl->ev_last_data) {
-			SAU_Scanner_warning(sc, NULL,
-"add wait for last duration before any parts given");
-			return false;
-		}
-		pl->last_event->ev_flags |= SAU_SDEV_ADD_WAIT_DURATION;
-	} else {
-		uint32_t wait_ms;
-		if (!scan_time_val(sc, &wait_ms))
-			return false;
-		pl->next_wait_ms += wait_ms;
-	}
+	uint32_t wait_ms;
+	if (!scan_time_val(sc, &wait_ms))
+		return false;
+	pl->next_wait_ms += wait_ms;
 	return true;
 }
 
@@ -743,7 +733,6 @@ static void end_event(SAU_Parser *restrict o) {
 	pl->pl_flags &= ~PL_ACTIVE_EV;
 	SAU_ScriptEvData *e = pl->event;
 	end_operator(o);
-	pl->last_event = e;
 	pl->event = NULL;
 	pl->ev_first_data = NULL;
 	pl->ev_last_data = NULL;
@@ -820,9 +809,7 @@ static void begin_operator(SAU_Parser *restrict o,
 		op->op_flags = pop->op_flags &
 			(SAU_SDOP_NESTED | SAU_SDOP_MULTIPLE);
 		if (is_compstep) {
-			pop->op_flags |= SAU_SDOP_HAS_COMPSTEP;
-		} else {
-			od->time.flags |= SAU_TIMEP_SET;
+			pop->op_flags |= SAU_SDOP_HAS_SUBEV;
 		}
 		od->time.v_ms = pod->time.v_ms;
 		od->wave = pod->wave;
@@ -868,7 +855,7 @@ static void begin_operator(SAU_Parser *restrict o,
 		pl->ev_first_data = op;
 	/*
 	 * Assign label. If no new label but previous node
-	 * (for a non-compstep) has one, update label to
+	 * (for a non-sub event) has one, update label to
 	 * point to new node, but keep pointer in previous node.
 	 */
 	if (pl->set_label != NULL) {
@@ -972,8 +959,6 @@ static void leave_level(SAU_Parser *restrict o) {
 			pl->parent->pl_flags |= PL_ACTIVE_EV;
 			pl->parent->event = pl->event;
 		}
-		if (pl->last_event != NULL)
-			pl->parent->last_event = pl->last_event;
 	}
 	if (pl->scope == SCOPE_BIND) {
 		/*
@@ -1120,9 +1105,15 @@ static void parse_in_event(SAU_Parser *restrict o) {
 		switch (c) {
 		case SAU_SCAN_SPACE:
 			break;
+		case '/':
+			if (parse_waittime(o)) {
+				begin_node(o, op, false);
+			}
+			break;
 		case '\\':
 			if (parse_waittime(o)) {
-				begin_node(o, pl->operator, false);
+				begin_node(o, op, true);
+				pl->event->ev_flags |= SAU_SDEV_FROM_GAPSHIFT;
 			}
 			break;
 		case 'a':
@@ -1139,10 +1130,6 @@ static void parse_in_event(SAU_Parser *restrict o) {
 			break;
 		case 'r':
 			if (parse_ev_freq(o, true)) goto DEFER;
-			break;
-		case 's':
-			if (scan_time_val(sc, &od->silence_ms))
-				od->params |= SAU_POPP_SILENCE;
 			break;
 		case 't':
 			if (SAU_Scanner_tryc(sc, 'i')) {
@@ -1223,6 +1210,11 @@ static bool parse_level(SAU_Parser *restrict o,
 			}
 			pl.set_label = label = scan_label(sc, c);
 			break;
+		case '/':
+			if (pl.nest_list != NULL)
+				goto INVALID;
+			parse_waittime(o);
+			break;
 		case ';':
 			if (newscope == SCOPE_SAME) {
 				SAU_Scanner_ungetc(sc);
@@ -1231,6 +1223,7 @@ static bool parse_level(SAU_Parser *restrict o,
 			if (pl.sub_f == parse_in_settings || !pl.event)
 				goto INVALID;
 			begin_node(o, pl.operator, true);
+			pl.event->ev_flags |= SAU_SDEV_WAIT_PREV_DUR;
 			parse_in_event(o);
 			break;
 		case '<':
@@ -1290,11 +1283,6 @@ static bool parse_level(SAU_Parser *restrict o,
 			break;
 		case '[':
 			warn_opening_disallowed(sc, '[');
-			break;
-		case '\\':
-			if (pl.nest_list != NULL)
-				goto INVALID;
-			parse_waittime(o);
 			break;
 		case ']':
 			if (pl.scope == SCOPE_NEST) {
@@ -1375,12 +1363,8 @@ static void time_durgroup(SAU_ScriptEvData *restrict e_last) {
 	SAU_ScriptEvData *e, *e_after = e_last->next;
 	uint32_t wait = 0, waitcount = 0;
 	for (e = e_last->group_backref; e != e_after; ) {
-		for (SAU_ScriptRef *op = e->main_refs.first_item;
-				op != NULL; op = op->next_item) {
-			SAU_ProgramOpData *od = op->data;
-			if (wait < od->time.v_ms)
-				wait = od->time.v_ms;
-		}
+		if (wait < e->dur_ms)
+			wait = e->dur_ms;
 		e = e->next;
 		if (e != NULL) {
 			waitcount += e->wait_ms;
@@ -1394,6 +1378,8 @@ static void time_durgroup(SAU_ScriptEvData *restrict e_last) {
 				/* fill in sensible default time */
 				od->time.v_ms = wait + waitcount;
 				od->time.flags |= SAU_TIMEP_SET;
+				if (e->dur_ms < wait + waitcount)
+					e->dur_ms = wait + waitcount;
 			}
 		}
 		e = e->next;
@@ -1414,30 +1400,24 @@ static inline void time_ramp(SAU_Ramp *restrict ramp,
 		ramp->time_ms = default_time_ms;
 }
 
-static void time_operator(SAU_ScriptRef *restrict op) {
-	SAU_ScriptEvData *e = op->event;
+static uint32_t time_operator(SAU_ScriptRef *restrict op) {
+	uint32_t dur_ms = 0;
 	SAU_ProgramOpData *od = op->data;
-	if (!(od->time.flags & SAU_TIMEP_SET) &&
-			(op->op_flags & SAU_SDOP_NESTED) != 0) {
-		if (!(op->op_flags & SAU_SDOP_HAS_COMPSTEP))
-			od->time.flags |= SAU_TIMEP_LINKED;
-		od->time.flags |= SAU_TIMEP_SET;
-	}
-	if (!(od->time.flags & SAU_TIMEP_LINKED)) {
-		time_ramp(od->freq, od->time.v_ms);
-		time_ramp(od->freq2, od->time.v_ms);
-		time_ramp(od->amp, od->time.v_ms);
-		time_ramp(od->amp2, od->time.v_ms);
-		time_ramp(od->pan, od->time.v_ms);
-		if (!(op->op_flags & SAU_SDOP_SILENCE_ADDED)) {
-			od->time.v_ms += od->silence_ms;
-			op->op_flags |= SAU_SDOP_SILENCE_ADDED;
+	if (!(od->time.flags & SAU_TIMEP_SET)) {
+		od->time.flags |= SAU_TIMEP_DEFAULT;
+		if (op->op_flags & SAU_SDOP_NESTED) {
+			if (!(op->op_flags & SAU_SDOP_HAS_SUBEV))
+				od->time.flags |= SAU_TIMEP_LINKED;
+			od->time.flags |= SAU_TIMEP_SET; /* no durgroup yet */
 		}
 	}
-	if ((e->ev_flags & SAU_SDEV_ADD_WAIT_DURATION) != 0) {
-		if (e->next != NULL)
-			e->next->wait_ms += od->time.v_ms;
-		e->ev_flags &= ~SAU_SDEV_ADD_WAIT_DURATION;
+	if (!(od->time.flags & SAU_TIMEP_LINKED)) {
+		dur_ms = od->time.v_ms;
+		time_ramp(od->freq, dur_ms);
+		time_ramp(od->freq2, dur_ms);
+		time_ramp(od->amp, dur_ms);
+		time_ramp(od->amp2, dur_ms);
+		time_ramp(od->pan, dur_ms);
 	}
 	for (SAU_ScriptListData *list = op->mods;
 			list != NULL; list = list->next_list) {
@@ -1446,58 +1426,67 @@ static void time_operator(SAU_ScriptRef *restrict op) {
 			time_operator(sub_op);
 		}
 	}
+	return dur_ms;
 }
 
-static void time_event(SAU_ScriptEvData *restrict e) {
-	/*
-	 * Adjust default ramp durations, handle silence as well as the case of
-	 * adding present event duration to wait time of next event.
-	 */
+static uint32_t time_event(SAU_ScriptEvData *restrict e) {
+	uint32_t dur_ms = 0;
 	SAU_ScriptRef *sub_op;
 	for (sub_op = e->main_refs.first_item;
 			sub_op != NULL; sub_op = sub_op->next_item) {
-		time_operator(sub_op);
+		uint32_t sub_dur_ms = time_operator(sub_op);
+		if (dur_ms < sub_dur_ms)
+			dur_ms = sub_dur_ms;
 	}
 	/*
 	 * Timing for sub-events - done before event list flattened.
 	 */
 	SAU_ScriptEvBranch *fork = e->forks;
 	while (fork != NULL) {
-		SAU_ScriptEvData *ce = fork->events;
-		SAU_ScriptRef *ce_op, *ce_op_prev, *e_op;
-		SAU_ProgramOpData *e_od;
-		ce_op = ce->main_refs.first_item;
-		ce_op_prev = ce_op->on_prev;
-		e_op = ce_op_prev;
-		e_od = e_op->data;
-		e_od->time.flags |= SAU_TIMEP_SET; /* kept from now on */
+		uint32_t nest_dur_ms = 0, wait_sum_ms = 0;
+		SAU_ScriptEvData *ne = fork->events, *ne_prev = e;
+		SAU_ScriptRef *ne_op = ne->main_refs.first_item,
+			      *ne_op_prev = ne_op->on_prev, *e_op = ne_op_prev;
+		SAU_ProgramOpData *e_od = e_op->data;
+		uint32_t first_time_ms = e_od->time.v_ms;
+		uint32_t def_time_ms = first_time_ms;
+		e->dur_ms = first_time_ms; /* for first value in series */
 		for (;;) {
-			SAU_ProgramOpData *ce_od = ce_op->data;
-			SAU_ProgramOpData *ce_od_prev = ce_op_prev->data;
-			ce->wait_ms += ce_od_prev->time.v_ms;
-			if (!(ce_od->time.flags & SAU_TIMEP_SET)) {
-				ce_od->time.flags |= SAU_TIMEP_SET;
-				if ((ce_op->op_flags &
-(SAU_SDOP_NESTED | SAU_SDOP_HAS_COMPSTEP)) == SAU_SDOP_NESTED)
-					ce_od->time.flags |= SAU_TIMEP_LINKED;
-				else
-					ce_od->time.v_ms = ce_od_prev->time.v_ms
-						- ce_od_prev->silence_ms;
+			SAU_ProgramOpData *ne_od = ne_op->data;
+			SAU_ProgramOpData *ne_od_prev = ne_op_prev->data;
+			wait_sum_ms += ne->wait_ms;
+			if (ne->ev_flags & SAU_SDEV_WAIT_PREV_DUR)
+				ne->wait_ms += ne_prev->dur_ms;
+			if (!(ne_od->time.flags & SAU_TIMEP_SET))
+				ne_od->time.v_ms = def_time_ms;
+			time_event(ne);
+			if (nest_dur_ms < wait_sum_ms + ne->dur_ms)
+				nest_dur_ms = wait_sum_ms + ne->dur_ms;
+			if (!(e_od->time.flags & SAU_TIMEP_LINKED))
+				first_time_ms += ne->dur_ms +
+					(ne->wait_ms - ne_prev->dur_ms);
+			if (ne_od->params & SAU_POPP_TIME)
+				def_time_ms = ne_od->time.v_ms;
+			if (ne->ev_flags & SAU_SDEV_FROM_GAPSHIFT) {
+				if (ne_od_prev->time.flags & SAU_TIMEP_DEFAULT)
+					ne_od_prev->time.v_ms = 0; // gap
+				ne_od_prev->time.flags |= SAU_TIMEP_SET;
 			}
-			time_event(ce);
-			if (ce_od->time.flags & SAU_TIMEP_LINKED)
-				e_od->time.flags |= SAU_TIMEP_LINKED;
-			else if (!(e_od->time.flags & SAU_TIMEP_LINKED))
-				e_od->time.v_ms += ce_od->time.v_ms +
-					(ce->wait_ms - ce_od_prev->time.v_ms);
-			ce_od->params &= ~SAU_POPP_TIME;
-			ce_op_prev = ce_op;
-			ce = ce->next;
-			if (!ce) break;
-			ce_op = ce->main_refs.first_item;
+			ne_od->params |= SAU_POPP_TIME;
+			ne_op_prev = ne_op;
+			ne_prev = ne;
+			ne = ne->next;
+			if (!ne) break;
+			ne_op = ne->main_refs.first_item;
 		}
+		if (nest_dur_ms < first_time_ms)
+			nest_dur_ms = first_time_ms;
+		if (dur_ms < nest_dur_ms)
+			dur_ms = nest_dur_ms;
 		fork = fork->prev;
 	}
+	e->dur_ms = dur_ms; /* unfinished estimate used to adjust timing */
+	return dur_ms;
 }
 
 /*

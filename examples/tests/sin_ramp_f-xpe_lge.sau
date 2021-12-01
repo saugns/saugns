@@ -3,7 +3,7 @@
 
 Osin	f300 f{sxpe t1 g1200} t1
 ;	f{sxpe t1 g300} t2.5
-|\.5
+|/.5
 
 Osin	f300 f{slge t1 g1200} t1
 ;	f{slge t1 g300} t2.5

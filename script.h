@@ -21,8 +21,7 @@ enum {
 	SAU_SDOP_LATER_USED = 1<<0,
 	SAU_SDOP_MULTIPLE = 1<<1,
 	SAU_SDOP_NESTED = 1<<2,
-	SAU_SDOP_SILENCE_ADDED = 1<<3,
-	SAU_SDOP_HAS_COMPSTEP = 1<<4,
+	SAU_SDOP_HAS_SUBEV = 1<<3,
 };
 
 /**
@@ -65,7 +64,8 @@ typedef struct SAU_ScriptRef {
  */
 enum {
 	SAU_SDEV_VOICE_LATER_USED = 1<<0,
-	SAU_SDEV_ADD_WAIT_DURATION = 1<<1,
+	SAU_SDEV_WAIT_PREV_DUR    = 1<<1, // compound step timing
+	SAU_SDEV_FROM_GAPSHIFT    = 1<<2, // gapshift follow-on event
 };
 
 struct SAU_ScriptEvBranch;
@@ -84,9 +84,10 @@ typedef struct SAU_ScriptEvData {
 	struct SAU_ScriptEvData *next;
 	struct SAU_ScriptEvData *group_backref;
 	struct SAU_ScriptEvBranch *forks;
-	uint32_t wait_ms;
-	uint32_t ev_flags;
 	SAU_ScriptListData main_refs;
+	uint32_t ev_flags;
+	uint32_t wait_ms;
+	uint32_t dur_ms;
 	/* for conversion */
 	uint32_t vo_id;
 	struct SAU_ScriptEvData *root_ev; // if main object not created here
