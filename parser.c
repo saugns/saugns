@@ -636,7 +636,7 @@ typedef struct ParseLevel {
   uint8_t location;
   uint8_t scope;
   uint8_t linktype;
-  SGS_ScriptEvData *event, *last_event;
+  SGS_ScriptEvData *event;
   SGS_ScriptListData *nest_list;
   SGS_ScriptOpData *operator, *scope_first, *ev_last, *nest_last;
   SGS_ScriptOpData *parent_on, *on_prev;
@@ -656,25 +656,15 @@ typedef struct SGS_ScriptEvBranch {
 static bool parse_waittime(ParseLevel *restrict pl) {
   SGS_Parser *o = pl->o;
   PScanner *sc = &o->sc;
-  SGS_File *f = sc->f;
-  /* FIXME: ADD_WAIT_DURATION */
-  if (SGS_File_TRYC(f, 't')) {
-    if (!pl->ev_last) {
-      scan_warning(sc, "add wait for last duration before any parts given");
-      return false;
-    }
-    pl->last_event->ev_flags |= SGS_SDEV_ADD_WAIT_DURATION;
-  } else {
-    double wait;
-    uint32_t wait_ms;
-    scan_num(sc, 0, &wait);
-    if (wait < 0.f) {
-      scan_warning(sc, "ignoring '\\' with sub-zero time");
-      return false;
-    }
-    wait_ms = SGS_ui32rint(wait * 1000.f);
-    pl->next_wait_ms += wait_ms;
+  double wait;
+  uint32_t wait_ms;
+  scan_num(sc, 0, &wait);
+  if (wait < 0.f) {
+    scan_warning(sc, "ignoring '\\' with sub-zero time");
+    return false;
   }
+  wait_ms = SGS_ui32rint(wait * 1000.f);
+  pl->next_wait_ms += wait_ms;
   return true;
 }
 
@@ -704,8 +694,6 @@ static void end_operator(ParseLevel *restrict pl) {
     if (op->wave != pop->wave)
       op->op_params |= SGS_POPP_WAVE;
     /* SGS_TIME set when time set */
-    if (op->silence_ms != 0)
-      op->op_params |= SGS_POPP_SILENCE;
     if (op->dynfreq != pop->dynfreq)
       op->op_params |= SGS_POPP_DYNFREQ;
     /* SGS_PHASE set when phase set */
@@ -733,7 +721,6 @@ static void end_event(ParseLevel *restrict pl) {
     e->ev_flags |= SGS_SDEV_NEW_OPGRAPH;
     e->vo_params = SGS_PVO_PARAMS & ~SGS_PVOP_OPLIST;
   }
-  pl->last_event = e;
   pl->event = NULL;
   SGS_ScriptEvData *group_e = (pl->main_ev != NULL) ? pl->main_ev : e;
   if (!o->group_start)
@@ -905,7 +892,9 @@ static void begin_node(ParseLevel *restrict pl,
   begin_operator(pl, is_compstep);
 }
 
-static void flush_durgroup(SGS_Parser *restrict o) {
+static void flush_durgroup(ParseLevel *restrict pl) {
+  SGS_Parser *o = pl->o;
+  pl->next_wait_ms = 0; /* does not cross boundaries */
   if (o->group_start != NULL) {
     o->group_end->group_backref = o->group_start;
     o->group_start = o->group_end = NULL;
@@ -977,7 +966,7 @@ static void end_scope(ParseLevel *restrict pl) {
      * timing.
      */
     end_event(pl);
-    flush_durgroup(o);
+    flush_durgroup(pl);
   }
   if (pl->set_var != NULL) {
     scan_warning(&o->sc, "ignoring variable assignment without object");
@@ -1063,10 +1052,16 @@ static bool parse_step(ParseLevel *restrict pl) {
         goto UNKNOWN;
       scan_ramp(sc, NULL, &e->pan, false);
       break;
-    case '\\':
+    case '/':
       if (parse_waittime(pl)) {
         // FIXME: Buggy update node handling for carriers etc. if enabled.
         //begin_node(pl, pl->operator, false);
+      }
+      break;
+    case '\\':
+      if (parse_waittime(pl)) {
+        begin_node(pl, pl->operator, true);
+        pl->event->ev_flags |= SGS_SDEV_FROM_GAPSHIFT;
       }
       break;
     case 'a':
@@ -1118,14 +1113,6 @@ static bool parse_step(ParseLevel *restrict pl) {
           parse_level(o, pl, SGS_POP_FMOD, SCOPE_NEST);
         }
       }
-      break;
-    case 's':
-      if (!scan_num(sc, 0, &val)) break;
-      if (val < 0.f) {
-        scan_warning(sc, "ignoring 's' with sub-zero time");
-        break;
-      }
-      op->silence_ms = SGS_ui32rint(val * 1000.f);
       break;
     case 't':
       if (SGS_File_TRYC(f, 'd')) {
@@ -1203,6 +1190,12 @@ static bool parse_level(SGS_Parser *restrict o,
       }
       pl.set_var = scan_sym(sc, SGS_SYM_VAR, c);
       break;
+    case '/':
+      if (pl.location == SDPL_IN_DEFAULTS ||
+          ((pl.pl_flags & SDPL_NESTED_SCOPE) != 0 && pl.event != NULL))
+        goto INVALID;
+      parse_waittime(&pl);
+      break;
     case ';':
       if (newscope == SCOPE_SAME) {
         scan_stashc(sc, c);
@@ -1214,6 +1207,7 @@ static bool parse_level(SGS_Parser *restrict o,
           == (SGS_TIMEP_SET|SGS_TIMEP_IMPLICIT))
         scan_warning(sc, "ignoring 'ti' (implicit time) before ';' separator");
       begin_node(&pl, pl.operator, true);
+      pl.event->ev_flags |= SGS_SDEV_WAIT_PREV_DUR;
       flags = parse_step(&pl) ? (HANDLE_DEFER | DEFERRED_STEP) : 0;
       break;
     case '=': {
@@ -1272,12 +1266,6 @@ static bool parse_level(SGS_Parser *restrict o,
     case '[':
       scan_warning(sc, "opening '[' out of place");
       break;
-    case '\\':
-      if (pl.location == SDPL_IN_DEFAULTS ||
-          ((pl.pl_flags & SDPL_NESTED_SCOPE) != 0 && pl.event != NULL))
-        goto INVALID;
-      parse_waittime(&pl);
-      break;
     case ']':
       if (pl.scope == SCOPE_BIND) {
         endscope = true;
@@ -1302,11 +1290,7 @@ static bool parse_level(SGS_Parser *restrict o,
         goto RETURN;
       }
       end_event(&pl);
-      if (!o->group_start) {
-        scan_warning(sc, "no sounds precede time separator");
-        break;
-      }
-      flush_durgroup(o);
+      flush_durgroup(&pl);
       pl.location = SDPL_IN_NONE;
       break;
     case '}':
@@ -1363,10 +1347,9 @@ static void time_durgroup(SGS_ScriptEvData *restrict e_last) {
   SGS_ScriptEvData *e, *e_after = e_last->next;
   uint32_t cur_longest = 0, wait_sum = 0, wait_after = 0;
   for (e = e_last->group_backref; e != e_after; ) {
-    for (SGS_ScriptOpData *op = e->operators.first_on; op; op = op->next) {
-      if (cur_longest < op->time.v_ms)
-        cur_longest = op->time.v_ms;
-    }
+    if ((e->ev_flags & SGS_SDEV_VOICE_SET_DUR) != 0 &&
+        cur_longest < e->dur_ms)
+      cur_longest = e->dur_ms;
     wait_after = cur_longest;
     e = e->next;
     if (e != NULL) {
@@ -1383,6 +1366,8 @@ static void time_durgroup(SGS_ScriptEvData *restrict e_last) {
         /* fill in sensible default time */
         op->time.v_ms = cur_longest + wait_sum;
         op->time.flags |= SGS_TIMEP_SET;
+        if (e->dur_ms < op->time.v_ms)
+          e->dur_ms = op->time.v_ms;
       }
     }
     e = e->next;
@@ -1395,29 +1380,22 @@ static void time_durgroup(SGS_ScriptEvData *restrict e_last) {
     e_after->wait_ms += wait_after;
 }
 
-static void time_operator(SGS_ScriptOpData *restrict op) {
-  SGS_ScriptEvData *e = op->event;
+static uint32_t time_operator(SGS_ScriptOpData *restrict op) {
+  uint32_t dur_ms = op->time.v_ms;
   if (!(op->op_params & SGS_POPP_TIME))
-    e->ev_flags &= ~SGS_SDEV_VOICE_SET_DUR;
-  if (!(op->time.flags & SGS_TIMEP_SET) &&
-      (op->op_flags & SGS_SDOP_NESTED) != 0) {
-    op->time.flags |= SGS_TIMEP_IMPLICIT;
-    op->time.flags |= SGS_TIMEP_SET; /* no durgroup yet */
+    op->event->ev_flags &= ~SGS_SDEV_VOICE_SET_DUR;
+  if (!(op->time.flags & SGS_TIMEP_SET)) {
+    op->time.flags |= SGS_TIMEP_DEFAULT;
+    if (op->op_flags & SGS_SDOP_NESTED) {
+      op->time.flags |= SGS_TIMEP_IMPLICIT;
+      op->time.flags |= SGS_TIMEP_SET; /* no durgroup yet */
+    }
   }
   if (!(op->time.flags & SGS_TIMEP_IMPLICIT)) {
     if (!(op->freq.flags & SGS_RAMPP_TIME))
       op->freq.time_ms = op->time.v_ms;
     if (!(op->amp.flags & SGS_RAMPP_TIME))
       op->amp.time_ms = op->time.v_ms;
-  }
-  if (!(op->op_flags & SGS_SDOP_SILENCE_ADDED)) {
-    op->time.v_ms += op->silence_ms;
-    op->op_flags |= SGS_SDOP_SILENCE_ADDED;
-  }
-  if ((e->ev_flags & SGS_SDEV_ADD_WAIT_DURATION) != 0) {
-    if (e->next != NULL)
-      e->next->wait_ms += op->time.v_ms;
-    e->ev_flags &= ~SGS_SDEV_ADD_WAIT_DURATION;
   }
   if (op->amods) for (SGS_ScriptOpData *subop = op->amods->first_on; subop;
        subop = subop->next) {
@@ -1431,51 +1409,77 @@ static void time_operator(SGS_ScriptOpData *restrict op) {
        subop = subop->next) {
     time_operator(subop);
   }
+  return dur_ms;
 }
 
-static void time_event(SGS_ScriptEvData *restrict e) {
-  /*
-   * Adjust default ramp durations, handle silence as well as the case of
-   * adding present event duration to wait time of next event.
-   */
+static uint32_t time_event(SGS_ScriptEvData *restrict e) {
+  uint32_t dur_ms = 0;
   // e->pan.flags |= SGS_RAMPP_TIME; // TODO: revisit semantics
   for (SGS_ScriptOpData *op = e->operators.first_on; op; op = op->next) {
-    time_operator(op);
+    uint32_t sub_dur_ms = time_operator(op);
+    if (dur_ms < sub_dur_ms)
+      dur_ms = sub_dur_ms;
   }
   /*
    * Timing for sub-events - done before event list flattened.
    */
   SGS_ScriptEvBranch *fork = e->forks;
   while (fork != NULL) {
-    SGS_ScriptEvData *ce = fork->events;
-    SGS_ScriptOpData *ce_op = ce->operators.first_on,
-                    *ce_op_prev = ce_op->on_prev,
-                    *e_op = ce_op_prev;
-    e_op->time.flags |= SGS_TIMEP_SET; /* always used from now on */
+    uint32_t nest_dur_ms = 0, wait_sum_ms = 0;
+    SGS_ScriptEvData *ne = fork->events, *ne_prev = e;
+    SGS_ScriptOpData *ne_op = ne->operators.first_on,
+                    *ne_op_prev = ne_op->on_prev,
+	            *e_op = ne_op_prev;
+    uint32_t first_time_ms = e_op->time.v_ms;
+    SGS_Time def_time = {
+      e_op->time.v_ms, (e_op->time.flags & SGS_TIMEP_IMPLICIT)
+    };
+    e->dur_ms = first_time_ms; /* for first value in series */
     if (!(e->ev_flags & SGS_SDEV_IMPLICIT_TIME))
       e->ev_flags |= SGS_SDEV_VOICE_SET_DUR;
     for (;;) {
-      ce->wait_ms += ce_op_prev->time.v_ms;
-      if (!(ce_op->time.flags & SGS_TIMEP_SET)) {
-        ce_op->time.flags |= SGS_TIMEP_SET;
-        if (ce_op->op_flags & SGS_SDOP_NESTED)
-          ce_op->time.flags |= SGS_TIMEP_IMPLICIT;
-        else
-          ce_op->time.v_ms = ce_op_prev->time.v_ms - ce_op_prev->silence_ms;
+      wait_sum_ms += ne->wait_ms;
+      if (!(ne_op->time.flags & SGS_TIMEP_SET)) {
+        ne_op->time = def_time;
+        if (ne->ev_flags & SGS_SDEV_FROM_GAPSHIFT)
+          ne_op->time.flags |= SGS_TIMEP_SET | SGS_TIMEP_DEFAULT;
       }
-      time_event(ce);
-      if (ce_op->time.flags & SGS_TIMEP_IMPLICIT)
-        e_op->time.flags |= SGS_TIMEP_IMPLICIT;
-      e_op->time.v_ms += ce_op->time.v_ms +
-                         (ce->wait_ms - ce_op_prev->time.v_ms);
-      ce_op->op_params &= ~SGS_POPP_TIME;
-      ce_op_prev = ce_op;
-      ce = ce->next;
-      if (!ce) break;
-      ce_op = ce->operators.first_on;
+      time_event(ne);
+      def_time = (SGS_Time){
+        ne_op->time.v_ms, (ne_op->time.flags & SGS_TIMEP_IMPLICIT)
+      };
+      if (ne->ev_flags & SGS_SDEV_FROM_GAPSHIFT) {
+        if (ne_op_prev->time.flags & SGS_TIMEP_DEFAULT
+            && !(ne_prev->ev_flags & SGS_SDEV_FROM_GAPSHIFT)) {
+          ne_op_prev->time = (SGS_Time){ // gap
+            0, SGS_TIMEP_SET | SGS_TIMEP_DEFAULT
+          };
+        }
+      }
+      if (ne->ev_flags & SGS_SDEV_WAIT_PREV_DUR) {
+        ne->wait_ms += ne_op_prev->time.v_ms;
+        ne_op_prev->time.flags &= ~SGS_TIMEP_IMPLICIT;
+      }
+      if (nest_dur_ms < wait_sum_ms + ne->dur_ms)
+        nest_dur_ms = wait_sum_ms + ne->dur_ms;
+      first_time_ms += ne->dur_ms +
+        (ne->wait_ms - ne_prev->dur_ms);
+      ne_op->time.flags |= SGS_TIMEP_SET;
+      ne_op->op_params |= SGS_POPP_TIME;
+      ne_op_prev = ne_op;
+      ne_prev = ne;
+      ne = ne->next;
+      if (!ne) break;
+      ne_op = ne->operators.first_on;
     }
+    if (dur_ms < first_time_ms)
+      dur_ms = first_time_ms;
+    //if (dur_ms < nest_dur_ms)
+    //  dur_ms = nest_dur_ms;
     fork = fork->prev;
   }
+  e->dur_ms = dur_ms; /* unfinished estimate used to adjust timing */
+  return dur_ms;
 }
 
 /*
