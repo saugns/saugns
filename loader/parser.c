@@ -1106,7 +1106,7 @@ static void parse_in_event(SAU_Parser *restrict o) {
 		switch (c) {
 		case SAU_SCAN_SPACE:
 			break;
-		case '\\':
+		case '/':
 			if (parse_waittime(o)) {
 				begin_node(o, pl->operator, false);
 			}
@@ -1210,6 +1210,11 @@ static bool parse_level(SAU_Parser *restrict o,
 			}
 			pl.set_label = label = scan_label(sc, c);
 			break;
+		case '/':
+			if (pl.nest_list != NULL)
+				goto INVALID;
+			parse_waittime(o);
+			break;
 		case ';':
 			if (newscope == SCOPE_SAME) {
 				SAU_Scanner_ungetc(sc);
@@ -1277,11 +1282,6 @@ static bool parse_level(SAU_Parser *restrict o,
 			break;
 		case '[':
 			warn_opening_disallowed(sc, '[');
-			break;
-		case '\\':
-			if (pl.nest_list != NULL)
-				goto INVALID;
-			parse_waittime(o);
 			break;
 		case ']':
 			if (pl.scope == SCOPE_NEST) {

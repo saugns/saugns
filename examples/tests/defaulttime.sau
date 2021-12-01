@@ -2,5 +2,5 @@
 // time duration changes from 1 second to 2
 // for the first.
 
-Osin f600 \1 Osin f300 |
+Osin f600 /1 Osin f300 |
 Osin f400

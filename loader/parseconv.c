@@ -420,7 +420,7 @@ ParseConv_convert(ParseConv *restrict o,
 
 	if (false)
 	MEM_ERR: {
-		SAU_error("scriptconv", "memory allocation failure");
+		SAU_error("parseconv", "memory allocation failure");
 	}
 	SAU_OpAlloc_clear(&o->oa);
 	SAU_VoAlloc_clear(&o->va);
