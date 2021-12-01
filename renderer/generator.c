@@ -32,7 +32,6 @@ enum {
 typedef struct OperatorNode {
 	SGS_Osc osc;
 	uint32_t time;
-	uint32_t silence;
 	uint8_t flags;
 	const SGS_ProgramOpList *fmods, *pmods, *amods;
 	SGS_Ramp amp, freq;
@@ -266,9 +265,6 @@ static void handle_event(SGS_Generator *restrict o, EventNode *restrict e) {
 					on->flags &= ~ON_TIME_INF;
 				}
 			}
-			if (params & SGS_POPP_SILENCE)
-				on->silence = SGS_ms_in_samples(od->silence_ms,
-						o->srate);
 			if (params & SGS_POPP_FREQ)
 				handle_ramp_update(&on->freq,
 						&on->freq_pos, &od->freq);
@@ -325,29 +321,12 @@ static uint32_t run_block(SGS_Generator *restrict o,
 	float *freq, *amp;
 	len = buf_len;
 	/*
-	 * If silence, zero-fill and delay processing for duration.
-	 */
-	uint32_t zero_len = 0;
-	if (n->silence) {
-		zero_len = n->silence;
-		if (zero_len > len)
-			zero_len = len;
-		if (!acc_ind) for (i = 0; i < zero_len; ++i)
-			s_buf[i] = 0;
-		len -= zero_len;
-		if (!(n->flags & ON_TIME_INF)) n->time -= zero_len;
-		n->silence -= zero_len;
-		if (!len)
-			return zero_len;
-		s_buf += zero_len;
-	}
-	/*
 	 * Guard against circular references.
 	 */
 	if ((n->flags & ON_VISITED) != 0) {
 		for (i = 0; i < len; ++i)
 			s_buf[i] = 0;
-		return zero_len + len;
+		return len;
 	}
 	n->flags |= ON_VISITED;
 	/*
@@ -422,7 +401,7 @@ static uint32_t run_block(SGS_Generator *restrict o,
 		n->time -= len;
 	}
 	n->flags &= ~ON_VISITED;
-	return zero_len + len;
+	return len;
 }
 
 /*
