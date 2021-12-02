@@ -64,8 +64,9 @@ typedef struct SAU_ScriptRef {
  */
 enum {
 	SAU_SDEV_VOICE_LATER_USED = 1<<0,
-	SAU_SDEV_ADD_WAIT_DUR = 1<<1,
-	SAU_SDEV_ADD_WAIT_SUBEV_DUR = 1<<2,
+	SAU_SDEV_FOLD_DUR = 1<<1,
+	SAU_SDEV_ADD_WAIT_DUR = 1<<2,
+	SAU_SDEV_ADD_WAIT_SUBEV_DUR = 1<<3,
 };
 
 /**
@@ -105,9 +106,10 @@ typedef struct SAU_ScriptEvData {
 	struct SAU_ScriptEvData *next;
 	struct SAU_ScriptEvData *group_backref;
 	struct SAU_ScriptSeq *subev_seq;
-	uint32_t wait_ms;
-	uint32_t ev_flags;
 	SAU_ScriptListData main_refs;
+	uint32_t ev_flags;
+	uint32_t wait_ms;
+	uint32_t dur_ms; // set and used as tentative value
 	/* for conversion */
 	uint32_t vo_id;
 	struct SAU_ScriptEvData *root_ev; // if main object not created here

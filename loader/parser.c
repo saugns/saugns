@@ -1495,7 +1495,8 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e) {
 	 * Timing for sub-event - done before event list flattened.
 	 */
 	if (e->subev_seq != NULL && e->subev_seq->first != NULL) {
-		SAU_ScriptEvData *ne = e->subev_seq->first;
+		uint32_t nest_dur_ms = 0, wait_sum_ms = 0;
+		SAU_ScriptEvData *ne = e->subev_seq->first, *ne_prev = e;
 		SAU_ScriptRef *ne_op, *ne_op_prev, *e_op;
 		SAU_ProgramOpData *e_od;
 		ne_op = ne->main_refs.first_item;
@@ -1507,13 +1508,15 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e) {
 			e_od->time.v_ms = 0; /* silence is default */
 		}
 		e_od->time.flags |= SAU_TIMEP_SET; /* kept from now on */
+		e->dur_ms = e_od->time.v_ms; /* use for first value in series */
+		printf("\n!!! %d\n", e->dur_ms);
 		/*
 		 * Composite events timing...
 		 */
 		if (e->subev_seq->pri == SAU_SDSEQ_COMPOSITE) for (;;) {
 			SAU_ProgramOpData *ne_od = ne_op->data;
 			SAU_ProgramOpData *ne_od_prev = ne_op_prev->data;
-			ne->wait_ms += ne_od_prev->time.v_ms;
+			ne->wait_ms += ne_prev->dur_ms;
 			if (!(ne_od->time.flags & SAU_TIMEP_SET)) {
 				ne_od->time.flags |= SAU_TIMEP_SET;
 				if ((ne_op->op_flags &
@@ -1524,14 +1527,16 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e) {
 						ne_od_prev->time.v_ms;
 				}
 			}
+			ne->ev_flags |= SAU_SDEV_FOLD_DUR;
 			time_event(ne);
 			if (ne_od->time.flags & SAU_TIMEP_LINKED)
 				e_od->time.flags |= SAU_TIMEP_LINKED;
 			else if (!(e_od->time.flags & SAU_TIMEP_LINKED))
-				e_od->time.v_ms += ne_od->time.v_ms +
-					(ne->wait_ms - ne_od_prev->time.v_ms);
+				e_od->time.v_ms += ne->dur_ms +
+					(ne->wait_ms - ne_prev->dur_ms);
 			ne_od->params &= ~SAU_POPP_TIME;
 			ne_op_prev = ne_op;
+			ne_prev = ne;
 			ne = ne->next;
 			if (!ne) break;
 			ne_op = ne->main_refs.first_item;
@@ -1540,12 +1545,20 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e) {
 		 * Simple delayed follow-on...
 		 */
 		if (e->subev_seq->pri == SAU_SDSEQ_ONE_EVENT) for (;;) {
+			wait_sum_ms += ne->wait_ms;
 			time_event(ne);
+			if (nest_dur_ms < wait_sum_ms + ne->dur_ms)
+				nest_dur_ms = wait_sum_ms + ne->dur_ms;
 			ne = ne->next;
 			if (!ne) break;
 			ne_op = ne->main_refs.first_item;
 		}
+		if (e->ev_flags & SAU_SDEV_FOLD_DUR) {
+			if (dur_ms < nest_dur_ms)
+				dur_ms = nest_dur_ms;
+		}
 	}
+	e->dur_ms = dur_ms; /* unfinished estimate used to adjust timing */
 	return dur_ms;
 }
 
