@@ -64,9 +64,8 @@ typedef struct SAU_ScriptRef {
  */
 enum {
 	SAU_SDEV_VOICE_LATER_USED = 1<<0,
-	SAU_SDEV_FOLD_DUR = 1<<1,
-	SAU_SDEV_ADD_WAIT_DUR = 1<<2,
-	SAU_SDEV_ADD_WAIT_SUBEV_DUR = 1<<3,
+	SAU_SDEV_ADD_WAIT_DUR = 1<<1,
+	SAU_SDEV_ADD_WAIT_SUBEV_DUR = 1<<2,
 };
 
 /**
