@@ -397,13 +397,15 @@ MEM_ERR:
 static SAU_Program*
 ParseConv_convert(ParseConv *restrict o,
 		SAU_Script *restrict script) {
+	if (!script || !script->events)
+		return NULL;
 	SAU_Program *prg = NULL;
 	o->mem = script->mem;
 	if (!o->mem) goto MEM_ERR;
 	SAU_init_VoiceGraph(&o->ev_vo_graph, &o->va, &o->oa, o->mem);
 
 	uint32_t remaining_ms = 0;
-	for (SAU_ScriptEvData *e = script->events; e; e = e->next) {
+	for (SAU_ScriptEvData *e = script->events->first; e; e = e->next) {
 		if (!ParseConv_convert_event(o, e)) goto MEM_ERR;
 		o->duration_ms += e->wait_ms;
 	}

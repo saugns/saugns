@@ -69,6 +69,14 @@ enum {
 };
 
 /**
+ * Node type for event sequence, used in a nested way.
+ */
+typedef struct SAU_ScriptSeq {
+	struct SAU_ScriptEvData *first;
+	struct SAU_ScriptSeq *sup;      // NULL if not nested
+} SAU_ScriptSeq;
+
+/**
  * Node type for event data. Events are placed in time per script contents,
  * in a nested way during parsing and flattened after for later processing.
  *
@@ -81,7 +89,8 @@ enum {
 typedef struct SAU_ScriptEvData {
 	struct SAU_ScriptEvData *next;
 	struct SAU_ScriptEvData *group_backref;
-	struct SAU_ScriptEvData *sub_ev;
+	//struct SAU_ScriptEvData *sub_ev;
+	struct SAU_ScriptSeq *sub_ev;
 	uint32_t wait_ms;
 	uint32_t ev_flags;
 	SAU_ScriptListData main_refs;
@@ -124,7 +133,7 @@ typedef struct SAU_ScriptOptions {
  * Type returned after processing a file.
  */
 typedef struct SAU_Script {
-	SAU_ScriptEvData *events;
+	SAU_ScriptSeq *events;
 	const char *name; // currently simply set to the filename
 	SAU_ScriptOptions sopt;
 	struct SAU_MemPool *mem; // holds memory for the specific script

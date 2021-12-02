@@ -538,7 +538,8 @@ typedef struct SAU_Parser {
 	uint32_t call_level;
 	/* node state */
 	struct ParseLevel *cur_pl;
-	SAU_ScriptEvData *events, *last_event;
+	struct SAU_ScriptSeq *events;
+	SAU_ScriptEvData *last_event;
 	SAU_ScriptEvData *group_start, *group_end;
 } SAU_Parser;
 
@@ -623,7 +624,8 @@ struct ParseLevel {
 	SAU_ScriptRef *parent_on, *on_prev;
 	SAU_SymStr *set_label; /* label assigned to next node */
 	/* timing/delay */
-	SAU_ScriptEvData *sub_ev; /* grouping of events for an object */
+	SAU_ScriptEvData *main_ev; /* if events are nested, for grouping... */
+	struct SAU_ScriptSeq *sub_ev;
 	uint32_t next_wait_ms; /* added for next event */
 };
 
@@ -740,7 +742,7 @@ static void end_event(SAU_Parser *restrict o) {
 	pl->event = NULL;
 	pl->ev_first_data = NULL;
 	pl->ev_last_data = NULL;
-	SAU_ScriptEvData *group_e = (pl->sub_ev != NULL) ? pl->sub_ev : e;
+	SAU_ScriptEvData *group_e = (pl->main_ev != NULL) ? pl->main_ev : e;
 	if (!o->group_start)
 		o->group_start = group_e;
 	o->group_end = group_e;
@@ -759,21 +761,21 @@ static void begin_event(SAU_Parser *restrict o,
 		pve = pl->on_prev->event;
 		e->root_ev = pl->on_prev->obj->root_event;
 		if (is_sub) {
-			if (!pl->sub_ev) {
+			if (!pl->main_ev) {
 				pve->sub_ev = e;
-				pl->sub_ev = pve;
+				pl->main_ev = pve;
 			} else {
 				pve->next = e;
 			}
 		}
 	}
 	if (!is_sub) {
-		if (!o->events)
-			o->events = e;
+		if (!o->events->first)
+			o->events->first = e;
 		else
 			o->last_event->next = e;
 		o->last_event = e;
-		pl->sub_ev = NULL;
+		pl->main_ev = NULL;
 	}
 	pl->pl_flags |= PL_ACTIVE_EV;
 }
@@ -903,7 +905,10 @@ static void enter_level(SAU_Parser *restrict o,
 	o->cur_pl = pl;
 	*pl = (struct ParseLevel){0};
 	pl->scope = newscope;
-	if (parent_pl != NULL) {
+	if (!parent_pl) {
+		o->events = SAU_MemPool_alloc(o->mp,
+				sizeof(struct SAU_ScriptSeq));
+	} else {
 		pl->parent = parent_pl;
 		pl->sub_f = parent_pl->sub_f;
 		pl->pl_flags = parent_pl->pl_flags & (PL_BIND_MULTIPLE);
@@ -1555,7 +1560,7 @@ static void flatten_events(SAU_ScriptEvData *restrict e) {
  */
 static void postparse_passes(SAU_Parser *restrict o) {
 	SAU_ScriptEvData *e;
-	for (e = o->events; e != NULL; e = e->next) {
+	for (e = o->events->first; e != NULL; e = e->next) {
 		time_event(e);
 		if (e->group_backref != NULL) time_durgroup(e);
 	}
@@ -1563,7 +1568,7 @@ static void postparse_passes(SAU_Parser *restrict o) {
 	 * Flatten in separate pass following timing adjustments for events;
 	 * otherwise, cannot always arrange events in the correct order.
 	 */
-	for (e = o->events; e != NULL; e = e->next) {
+	for (e = o->events->first; e != NULL; e = e->next) {
 		if (e->sub_ev != NULL) flatten_events(e);
 		/*
 		 * Track sequence of references and later use here.
