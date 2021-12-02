@@ -69,11 +69,24 @@ enum {
 };
 
 /**
+ * Sequence priority, for nesting containers of events.
+ *
+ * For each event sequence, its events can have sub-sequences
+ * of greater priority only, unless scope nesting syntax is used.
+ */
+enum {
+	SAU_SDSEQ_FREEFORM = 0,
+	SAU_SDSEQ_COMPOSITE,
+	SAU_SDSEQ_ONE_EVENT,
+};
+
+/**
  * Node type for event sequence, used in a nested way.
  */
 typedef struct SAU_ScriptSeq {
-	struct SAU_ScriptEvData *first;
+	struct SAU_ScriptEvData *first, *last;
 	struct SAU_ScriptSeq *sup;      // NULL if not nested
+	uint8_t pri;
 } SAU_ScriptSeq;
 
 /**
