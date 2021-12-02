@@ -85,7 +85,8 @@ enum {
  */
 typedef struct SAU_ScriptSeq {
 	struct SAU_ScriptEvData *first, *last;
-	struct SAU_ScriptSeq *sup;      // NULL if not nested
+	struct SAU_ScriptEvData *supev; /* for grouping... */
+	struct SAU_ScriptSeq *supev_seq;
 	uint8_t pri;
 } SAU_ScriptSeq;
 
