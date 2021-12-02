@@ -678,14 +678,14 @@ static bool parse_ramp(SAU_Parser *restrict o,
 static bool parse_waittime(SAU_Parser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
 	SAU_Scanner *sc = o->sc;
-	/* FIXME: ADD_WAIT_DURATION */
+	/* FIXME: ADD_WAIT_DUR */
 	if (SAU_Scanner_tryc(sc, 't')) {
 		if (!pl->ev_last_data) {
 			SAU_Scanner_warning(sc, NULL,
 "add wait for last duration before any parts given");
 			return false;
 		}
-		pl->last_event->ev_flags |= SAU_SDEV_ADD_WAIT_DURATION;
+		pl->last_event->ev_flags |= SAU_SDEV_ADD_WAIT_DUR;
 	} else {
 		uint32_t wait_ms;
 		if (!scan_time_val(sc, &wait_ms))
@@ -762,13 +762,13 @@ static void begin_event(SAU_Parser *restrict o, uint8_t seq_pri) {
 	if (pl->on_prev != NULL) {
 		pve = pl->on_prev->event;
 		e->root_ev = pl->on_prev->obj->root_event;
-		if (seq_pri > o->ev_seq->pri) {
+		if (seq_pri != SAU_SDSEQ_ANY && seq_pri > o->ev_seq->pri) {
 			enter_seq(o, seq_pri);
 			pve->subev_seq = o->ev_seq;
 			o->ev_seq->supev = pve;
 		}
 	}
-	if (seq_pri < o->ev_seq->pri) {
+	if (seq_pri != SAU_SDSEQ_ANY && seq_pri < o->ev_seq->pri) {
 		leave_seq(o, seq_pri + 1);
 		o->ev_seq->supev = NULL;
 	}
@@ -1013,7 +1013,7 @@ static void leave_level(SAU_Parser *restrict o) {
 		 */
 		if (pl->ev_first_data != NULL) {
 			pl->parent->pl_flags |= PL_BIND_MULTIPLE;
-			begin_node(o, pl->ev_first_data, 0);
+			begin_node(o, pl->ev_first_data, SAU_SDSEQ_ANY);
 		}
 	}
 }
@@ -1153,9 +1153,10 @@ static void parse_in_event(SAU_Parser *restrict o) {
 		case SAU_SCAN_SPACE:
 			break;
 		case '/':
-			if (parse_waittime(o)) {
-				begin_node(o, pl->operator, 0);
-			}
+			parse_waittime(o);
+//			if (parse_waittime(o)) {
+//				begin_node(o, pl->operator, SAU_SDSEQ_ANY);
+//			}
 			break;
 		case '\\':
 			if (parse_waittime(o)) {
@@ -1163,9 +1164,6 @@ static void parse_in_event(SAU_Parser *restrict o) {
 						SAU_SDSEQ_ONE_EVENT);
 			}
 			break;
-			//if (scan_time_val(sc, &od->silence_ms))
-			//	od->params |= SAU_POPP_SILENCE;
-			//break;
 		case 'a':
 			if (parse_ev_amp(o)) goto DEFER;
 			break;
@@ -1313,7 +1311,7 @@ static bool parse_level(SAU_Parser *restrict o,
 					SAU_Scanner_warning(sc, NULL,
 "ignoring reference to undefined label");
 				else {
-					begin_node(o, ref, 0);
+					begin_node(o, ref, SAU_SDSEQ_ANY);
 					parse_in_event(o);
 				}
 			}
@@ -1323,7 +1321,7 @@ static bool parse_level(SAU_Parser *restrict o,
 			SAU_ProgramOpData *od;
 			if (!scan_wavetype(sc, &wave))
 				break;
-			begin_node(o, NULL, 0);
+			begin_node(o, NULL, SAU_SDSEQ_ANY);
 			od = pl.operator->data;
 			od->wave = wave;
 			parse_in_event(o);
@@ -1452,16 +1450,9 @@ static inline void time_ramp(SAU_Ramp *restrict ramp,
 		ramp->time_ms = default_time_ms;
 }
 
-static void time_operator(SAU_ScriptRef *restrict op) {
-	SAU_ScriptEvData *e = op->event;
+static uint32_t time_operator(SAU_ScriptRef *restrict op) {
+	uint32_t dur_ms = 0;
 	SAU_ProgramOpData *od = op->data;
-//	if (!(od->time.flags & SAU_TIMEP_SET)){puts("?");}
-//	if (e->subev_seq != NULL && e->subev_seq->pri == SAU_SDSEQ_ONE_EVENT) {
-//		puts("EEE");
-//		if (!(od->time.flags & SAU_TIMEP_SET)){puts("?");
-//			od->time.v_ms = 0; /* silence */}
-//		od->time.flags |= SAU_TIMEP_SET;
-//	}
 	if ((op->op_flags & SAU_SDOP_NESTED) != 0 &&
 			!(od->time.flags & SAU_TIMEP_SET)) {
 		if (!(op->op_flags & SAU_SDOP_HAS_SUBEV))
@@ -1469,20 +1460,12 @@ static void time_operator(SAU_ScriptRef *restrict op) {
 		od->time.flags |= SAU_TIMEP_SET;
 	}
 	if (!(od->time.flags & SAU_TIMEP_LINKED)) {
-		time_ramp(od->freq, od->time.v_ms);
-		time_ramp(od->freq2, od->time.v_ms);
-		time_ramp(od->amp, od->time.v_ms);
-		time_ramp(od->amp2, od->time.v_ms);
-		time_ramp(od->pan, od->time.v_ms);
-		if (!(op->op_flags & SAU_SDOP_SILENCE_ADDED)) {
-			od->time.v_ms += od->silence_ms;
-			op->op_flags |= SAU_SDOP_SILENCE_ADDED;
-		}
-	}
-	if ((e->ev_flags & SAU_SDEV_ADD_WAIT_DURATION) != 0) {
-		if (e->next != NULL)
-			e->next->wait_ms += od->time.v_ms;
-		e->ev_flags &= ~SAU_SDEV_ADD_WAIT_DURATION;
+		dur_ms = od->time.v_ms;
+		time_ramp(od->freq, dur_ms);
+		time_ramp(od->freq2, dur_ms);
+		time_ramp(od->amp, dur_ms);
+		time_ramp(od->amp2, dur_ms);
+		time_ramp(od->pan, dur_ms);
 	}
 	for (SAU_ScriptListData *list = op->mods;
 			list != NULL; list = list->next_list) {
@@ -1491,17 +1474,22 @@ static void time_operator(SAU_ScriptRef *restrict op) {
 			time_operator(sub_op);
 		}
 	}
+	return dur_ms;
 }
 
-static void time_event(SAU_ScriptEvData *restrict e) {
-	/*
-	 * Adjust default ramp durations, handle silence as well as the case of
-	 * adding present event duration to wait time of next event.
-	 */
+static uint32_t time_event(SAU_ScriptEvData *restrict e) {
+	uint32_t dur_ms = 0;
 	SAU_ScriptRef *sub_op;
 	for (sub_op = e->main_refs.first_item;
 			sub_op != NULL; sub_op = sub_op->next_item) {
-		time_operator(sub_op);
+		uint32_t sub_dur_ms = time_operator(sub_op);
+		if (dur_ms < sub_dur_ms)
+			dur_ms = sub_dur_ms;
+	}
+	if ((e->ev_flags & SAU_SDEV_ADD_WAIT_DUR) != 0) {
+		if (e->next != NULL)
+			e->next->wait_ms += dur_ms;
+		e->ev_flags &= ~SAU_SDEV_ADD_WAIT_DUR;
 	}
 	/*
 	 * Timing for sub-event - done before event list flattened.
@@ -1558,6 +1546,7 @@ static void time_event(SAU_ScriptEvData *restrict e) {
 			ne_op = ne->main_refs.first_item;
 		}
 	}
+	return dur_ms;
 }
 
 /*

@@ -21,8 +21,7 @@ enum {
 	SAU_SDOP_LATER_USED = 1<<0,
 	SAU_SDOP_MULTIPLE = 1<<1,
 	SAU_SDOP_NESTED = 1<<2,
-	SAU_SDOP_SILENCE_ADDED = 1<<3,
-	SAU_SDOP_HAS_SUBEV = 1<<4,
+	SAU_SDOP_HAS_SUBEV = 1<<3,
 };
 
 /**
@@ -65,7 +64,8 @@ typedef struct SAU_ScriptRef {
  */
 enum {
 	SAU_SDEV_VOICE_LATER_USED = 1<<0,
-	SAU_SDEV_ADD_WAIT_DURATION = 1<<1,
+	SAU_SDEV_ADD_WAIT_DUR = 1<<1,
+	SAU_SDEV_ADD_WAIT_SUBEV_DUR = 1<<2,
 };
 
 /**
@@ -75,7 +75,8 @@ enum {
  * of greater priority only, unless scope nesting syntax is used.
  */
 enum {
-	SAU_SDSEQ_FREEFORM = 0,
+	SAU_SDSEQ_ANY = 0,
+	SAU_SDSEQ_FREEFORM,
 	SAU_SDSEQ_COMPOSITE,
 	SAU_SDSEQ_ONE_EVENT,
 };
