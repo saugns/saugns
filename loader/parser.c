@@ -1495,14 +1495,12 @@ static void time_event(SAU_ScriptEvData *restrict e) {
 
 /*
  * Deals with events that are "sub-events" (attached to a main event as
- * a sequence rather than part of the big, linear event sequence).
+ * nested sequence rather than part of the main linear event sequence).
  *
  * Such events, if attached to the passed event, will be given their place in
  * the ordinary event list.
  */
 static void flatten_events(SAU_ScriptEvData *restrict e) {
-	if (!e->sub_ev)
-		return;
 	SAU_ScriptEvData *ne = e->sub_ev->first;
 	SAU_ScriptEvData *fe = e->next, *fe_prev = e;
 	uint32_t wait_ms = 0;
@@ -1510,14 +1508,14 @@ static void flatten_events(SAU_ScriptEvData *restrict e) {
 	while (ne != NULL) {
 		if (!fe) {
 			/*
-			 * No more events in the ordinary sequence,
+			 * No more events in the flat sequence,
 			 * so append all sub-events.
 			 */
 			fe_prev->next = ne;
 			break;
 		}
 		/*
-		 * If several events should pass in the ordinary sequence
+		 * If several events should pass in the flat sequence
 		 * before the next sub-event is inserted, skip ahead.
 		 */
 		wait_ms += fe->wait_ms;
@@ -1529,7 +1527,7 @@ static void flatten_events(SAU_ScriptEvData *restrict e) {
 		}
 		/*
 		 * Insert next sub-event before or after
-		 * the next event of the ordinary sequence.
+		 * the next event of the flat sequence.
 		 */
 		if (fe->wait_ms >= (ne->wait_ms + added_wait_ms)) {
 			SAU_ScriptEvData *ne_next = ne->next;
