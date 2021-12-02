@@ -1311,7 +1311,7 @@ static bool parse_level(SAU_Parser *restrict o,
 					SAU_Scanner_warning(sc, NULL,
 "ignoring reference to undefined label");
 				else {
-					begin_node(o, ref, SAU_SDSEQ_ANY);
+					begin_node(o, ref, SAU_SDSEQ_FREE_FORM);
 					parse_in_event(o);
 				}
 			}
@@ -1321,7 +1321,7 @@ static bool parse_level(SAU_Parser *restrict o,
 			SAU_ProgramOpData *od;
 			if (!scan_wavetype(sc, &wave))
 				break;
-			begin_node(o, NULL, SAU_SDSEQ_ANY);
+			begin_node(o, NULL, SAU_SDSEQ_FREE_FORM);
 			od = pl.operator->data;
 			od->wave = wave;
 			parse_in_event(o);
