@@ -762,7 +762,10 @@ static void begin_event(SAU_Parser *restrict o,
 		e->root_ev = pl->on_prev->obj->root_event;
 		if (is_sub) {
 			if (!pl->main_ev) {
-				pve->sub_ev = e;
+				pl->sub_ev = SAU_MemPool_alloc(o->mp,
+						sizeof(struct SAU_ScriptSeq));
+				pl->sub_ev->first = e;
+				pve->sub_ev = pl->sub_ev;
 				pl->main_ev = pve;
 			} else {
 				pve->next = e;
@@ -1453,39 +1456,39 @@ static void time_event(SAU_ScriptEvData *restrict e) {
 	/*
 	 * Timing for sub-event - done before event list flattened.
 	 */
-	if (e->sub_ev != NULL) {
-		SAU_ScriptEvData *ce = e->sub_ev;
-		SAU_ScriptRef *ce_op, *ce_op_prev, *e_op;
+	if (e->sub_ev != NULL && e->sub_ev->first != NULL) {
+		SAU_ScriptEvData *ne = e->sub_ev->first;
+		SAU_ScriptRef *ne_op, *ne_op_prev, *e_op;
 		SAU_ProgramOpData *e_od;
-		ce_op = ce->main_refs.first_item;
-		ce_op_prev = ce_op->on_prev;
-		e_op = ce_op_prev;
+		ne_op = ne->main_refs.first_item;
+		ne_op_prev = ne_op->on_prev;
+		e_op = ne_op_prev;
 		e_od = e_op->data;
 		e_od->time.flags |= SAU_TIMEP_SET; /* kept from now on */
 		for (;;) {
-			SAU_ProgramOpData *ce_od = ce_op->data;
-			SAU_ProgramOpData *ce_od_prev = ce_op_prev->data;
-			ce->wait_ms += ce_od_prev->time.v_ms;
-			if (!(ce_od->time.flags & SAU_TIMEP_SET)) {
-				ce_od->time.flags |= SAU_TIMEP_SET;
-				if ((ce_op->op_flags &
+			SAU_ProgramOpData *ne_od = ne_op->data;
+			SAU_ProgramOpData *ne_od_prev = ne_op_prev->data;
+			ne->wait_ms += ne_od_prev->time.v_ms;
+			if (!(ne_od->time.flags & SAU_TIMEP_SET)) {
+				ne_od->time.flags |= SAU_TIMEP_SET;
+				if ((ne_op->op_flags &
 (SAU_SDOP_NESTED | SAU_SDOP_HAS_COMPOSITE)) == SAU_SDOP_NESTED)
-					ce_od->time.flags |= SAU_TIMEP_LINKED;
+					ne_od->time.flags |= SAU_TIMEP_LINKED;
 				else
-					ce_od->time.v_ms = ce_od_prev->time.v_ms
-						- ce_od_prev->silence_ms;
+					ne_od->time.v_ms = ne_od_prev->time.v_ms
+						- ne_od_prev->silence_ms;
 			}
-			time_event(ce);
-			if (ce_od->time.flags & SAU_TIMEP_LINKED)
+			time_event(ne);
+			if (ne_od->time.flags & SAU_TIMEP_LINKED)
 				e_od->time.flags |= SAU_TIMEP_LINKED;
 			else if (!(e_od->time.flags & SAU_TIMEP_LINKED))
-				e_od->time.v_ms += ce_od->time.v_ms +
-					(ce->wait_ms - ce_od_prev->time.v_ms);
-			ce_od->params &= ~SAU_POPP_TIME;
-			ce_op_prev = ce_op;
-			ce = ce->next;
-			if (!ce) break;
-			ce_op = ce->main_refs.first_item;
+				e_od->time.v_ms += ne_od->time.v_ms +
+					(ne->wait_ms - ne_od_prev->time.v_ms);
+			ne_od->params &= ~SAU_POPP_TIME;
+			ne_op_prev = ne_op;
+			ne = ne->next;
+			if (!ne) break;
+			ne_op = ne->main_refs.first_item;
 		}
 	}
 }
@@ -1498,58 +1501,60 @@ static void time_event(SAU_ScriptEvData *restrict e) {
  * the ordinary event list.
  */
 static void flatten_events(SAU_ScriptEvData *restrict e) {
-	SAU_ScriptEvData *ce = e->sub_ev;
-	SAU_ScriptEvData *se = e->next, *se_prev = e;
+	if (!e->sub_ev)
+		return;
+	SAU_ScriptEvData *ne = e->sub_ev->first;
+	SAU_ScriptEvData *fe = e->next, *fe_prev = e;
 	uint32_t wait_ms = 0;
 	uint32_t added_wait_ms = 0;
-	while (ce != NULL) {
-		if (!se) {
+	while (ne != NULL) {
+		if (!fe) {
 			/*
 			 * No more events in the ordinary sequence,
 			 * so append all sub-events.
 			 */
-			se_prev->next = ce;
+			fe_prev->next = ne;
 			break;
 		}
 		/*
 		 * If several events should pass in the ordinary sequence
 		 * before the next sub-event is inserted, skip ahead.
 		 */
-		wait_ms += se->wait_ms;
-		if (se->next && (wait_ms + se->next->wait_ms)
-				<= (ce->wait_ms + added_wait_ms)) {
-			se_prev = se;
-			se = se->next;
+		wait_ms += fe->wait_ms;
+		if (fe->next && (wait_ms + fe->next->wait_ms)
+				<= (ne->wait_ms + added_wait_ms)) {
+			fe_prev = fe;
+			fe = fe->next;
 			continue;
 		}
 		/*
 		 * Insert next sub-event before or after
 		 * the next event of the ordinary sequence.
 		 */
-		if (se->wait_ms >= (ce->wait_ms + added_wait_ms)) {
-			SAU_ScriptEvData *ce_next = ce->next;
-			se->wait_ms -= ce->wait_ms + added_wait_ms;
+		if (fe->wait_ms >= (ne->wait_ms + added_wait_ms)) {
+			SAU_ScriptEvData *ne_next = ne->next;
+			fe->wait_ms -= ne->wait_ms + added_wait_ms;
 			added_wait_ms = 0;
 			wait_ms = 0;
-			se_prev->next = ce;
-			se_prev = ce;
-			se_prev->next = se;
-			ce = ce_next;
+			fe_prev->next = ne;
+			fe_prev = ne;
+			fe_prev->next = fe;
+			ne = ne_next;
 		} else {
-			SAU_ScriptEvData *se_next, *ce_next;
-			se_next = se->next;
-			ce_next = ce->next;
-			ce->wait_ms -= wait_ms;
-			added_wait_ms += ce->wait_ms;
+			SAU_ScriptEvData *fe_next, *ne_next;
+			fe_next = fe->next;
+			ne_next = ne->next;
+			ne->wait_ms -= wait_ms;
+			added_wait_ms += ne->wait_ms;
 			wait_ms = 0;
-			se->next = ce;
-			ce->next = se_next;
-			se_prev = ce;
-			se = se_next;
-			ce = ce_next;
+			fe->next = ne;
+			ne->next = fe_next;
+			fe_prev = ne;
+			fe = fe_next;
+			ne = ne_next;
 		}
 	}
-	e->sub_ev = NULL;
+	e->sub_ev->first = NULL;
 }
 
 /*
