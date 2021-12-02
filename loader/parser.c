@@ -623,7 +623,7 @@ struct ParseLevel {
 	SAU_ScriptRef *parent_on, *on_prev;
 	SAU_SymStr *set_label; /* label assigned to next node */
 	/* timing/delay */
-	SAU_ScriptEvData *composite; /* grouping of events for an object */
+	SAU_ScriptEvData *sub_ev; /* grouping of events for an object */
 	uint32_t next_wait_ms; /* added for next event */
 };
 
@@ -740,14 +740,14 @@ static void end_event(SAU_Parser *restrict o) {
 	pl->event = NULL;
 	pl->ev_first_data = NULL;
 	pl->ev_last_data = NULL;
-	SAU_ScriptEvData *group_e = (pl->composite != NULL) ? pl->composite : e;
+	SAU_ScriptEvData *group_e = (pl->sub_ev != NULL) ? pl->sub_ev : e;
 	if (!o->group_start)
 		o->group_start = group_e;
 	o->group_end = group_e;
 }
 
 static void begin_event(SAU_Parser *restrict o,
-		bool is_composite) {
+		bool is_sub) {
 	struct ParseLevel *pl = o->cur_pl;
 	SAU_ScriptEvData *e, *pve;
 	end_event(o);
@@ -758,28 +758,28 @@ static void begin_event(SAU_Parser *restrict o,
 	if (pl->on_prev != NULL) {
 		pve = pl->on_prev->event;
 		e->root_ev = pl->on_prev->obj->root_event;
-		if (is_composite) {
-			if (!pl->composite) {
-				pve->composite = e;
-				pl->composite = pve;
+		if (is_sub) {
+			if (!pl->sub_ev) {
+				pve->sub_ev = e;
+				pl->sub_ev = pve;
 			} else {
 				pve->next = e;
 			}
 		}
 	}
-	if (!is_composite) {
+	if (!is_sub) {
 		if (!o->events)
 			o->events = e;
 		else
 			o->last_event->next = e;
 		o->last_event = e;
-		pl->composite = NULL;
+		pl->sub_ev = NULL;
 	}
 	pl->pl_flags |= PL_ACTIVE_EV;
 }
 
 static void begin_operator(SAU_Parser *restrict o,
-		bool is_composite) {
+		bool is_sub) {
 	struct ParseLevel *pl = o->cur_pl;
 	struct ScanLookup *sl = &o->sl;
 	SAU_ScriptEvData *e = pl->event;
@@ -803,7 +803,7 @@ static void begin_operator(SAU_Parser *restrict o,
 		op->on_prev = pop;
 		op->op_flags = pop->op_flags &
 			(SAU_SDOP_NESTED | SAU_SDOP_MULTIPLE);
-		if (is_composite) {
+		if (is_sub) {
 			pop->op_flags |= SAU_SDOP_HAS_COMPOSITE;
 		} else {
 			od->time.flags |= SAU_TIMEP_SET;
@@ -850,14 +850,14 @@ static void begin_operator(SAU_Parser *restrict o,
 		pl->ev_first_data = op;
 	/*
 	 * Assign label. If no new label but previous node
-	 * (for a non-composite) has one, update label to
+	 * (for a non-sub event) has one, update label to
 	 * point to new node, but keep pointer in previous node.
 	 */
 	if (pl->set_label != NULL) {
 		op->label = pl->set_label;
 		op->label->data = op;
 		pl->set_label = NULL;
-	} else if (!is_composite && pop != NULL && pop->label != NULL) {
+	} else if (!is_sub && pop != NULL && pop->label != NULL) {
 		op->label = pop->label;
 		op->label->data = op;
 	}
@@ -872,7 +872,7 @@ static void begin_operator(SAU_Parser *restrict o,
  */
 static void begin_node(SAU_Parser *restrict o,
 		SAU_ScriptRef *restrict previous,
-		bool is_composite) {
+		bool is_sub) {
 	struct ParseLevel *pl = o->cur_pl;
 	pl->on_prev = previous;
 	uint8_t use_type = (previous != NULL) ?
@@ -883,9 +883,9 @@ static void begin_node(SAU_Parser *restrict o,
 			pl->next_wait_ms ||
 			((previous != NULL || use_type == SAU_POP_CARR)
 			 && pl->event->main_refs.first_item != NULL) ||
-			is_composite)
-		begin_event(o, is_composite);
-	begin_operator(o, is_composite);
+			is_sub)
+		begin_event(o, is_sub);
+	begin_operator(o, is_sub);
 }
 
 static void flush_durgroup(SAU_Parser *restrict o) {
@@ -1446,10 +1446,10 @@ static void time_event(SAU_ScriptEvData *restrict e) {
 		time_operator(sub_op);
 	}
 	/*
-	 * Timing for composites - done before event list flattened.
+	 * Timing for sub-event - done before event list flattened.
 	 */
-	if (e->composite != NULL) {
-		SAU_ScriptEvData *ce = e->composite;
+	if (e->sub_ev != NULL) {
+		SAU_ScriptEvData *ce = e->sub_ev;
 		SAU_ScriptRef *ce_op, *ce_op_prev, *e_op;
 		SAU_ProgramOpData *e_od;
 		ce_op = ce->main_refs.first_item;
@@ -1486,14 +1486,14 @@ static void time_event(SAU_ScriptEvData *restrict e) {
 }
 
 /*
- * Deals with events that are "composite" (attached to a main event as
- * successive "sub-events" rather than part of the big, linear event sequence).
+ * Deals with events that are "sub-events" (attached to a main event as
+ * a sequence rather than part of the big, linear event sequence).
  *
  * Such events, if attached to the passed event, will be given their place in
  * the ordinary event list.
  */
 static void flatten_events(SAU_ScriptEvData *restrict e) {
-	SAU_ScriptEvData *ce = e->composite;
+	SAU_ScriptEvData *ce = e->sub_ev;
 	SAU_ScriptEvData *se = e->next, *se_prev = e;
 	uint32_t wait_ms = 0;
 	uint32_t added_wait_ms = 0;
@@ -1501,14 +1501,14 @@ static void flatten_events(SAU_ScriptEvData *restrict e) {
 		if (!se) {
 			/*
 			 * No more events in the ordinary sequence,
-			 * so append all composites.
+			 * so append all sub-events.
 			 */
 			se_prev->next = ce;
 			break;
 		}
 		/*
 		 * If several events should pass in the ordinary sequence
-		 * before the next composite is inserted, skip ahead.
+		 * before the next sub-event is inserted, skip ahead.
 		 */
 		wait_ms += se->wait_ms;
 		if (se->next && (wait_ms + se->next->wait_ms)
@@ -1518,7 +1518,7 @@ static void flatten_events(SAU_ScriptEvData *restrict e) {
 			continue;
 		}
 		/*
-		 * Insert next composite before or after
+		 * Insert next sub-event before or after
 		 * the next event of the ordinary sequence.
 		 */
 		if (se->wait_ms >= (ce->wait_ms + added_wait_ms)) {
@@ -1544,7 +1544,7 @@ static void flatten_events(SAU_ScriptEvData *restrict e) {
 			ce = ce_next;
 		}
 	}
-	e->composite = NULL;
+	e->sub_ev = NULL;
 }
 
 /*
@@ -1564,7 +1564,7 @@ static void postparse_passes(SAU_Parser *restrict o) {
 	 * otherwise, cannot always arrange events in the correct order.
 	 */
 	for (e = o->events; e != NULL; e = e->next) {
-		if (e->composite != NULL) flatten_events(e);
+		if (e->sub_ev != NULL) flatten_events(e);
 		/*
 		 * Track sequence of references and later use here.
 		 */

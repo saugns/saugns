@@ -81,7 +81,7 @@ enum {
 typedef struct SAU_ScriptEvData {
 	struct SAU_ScriptEvData *next;
 	struct SAU_ScriptEvData *group_backref;
-	struct SAU_ScriptEvData *composite;
+	struct SAU_ScriptEvData *sub_ev;
 	uint32_t wait_ms;
 	uint32_t ev_flags;
 	SAU_ScriptListData main_refs;
