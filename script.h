@@ -22,7 +22,7 @@ enum {
 	SAU_SDOP_MULTIPLE = 1<<1,
 	SAU_SDOP_NESTED = 1<<2,
 	SAU_SDOP_SILENCE_ADDED = 1<<3,
-	SAU_SDOP_HAS_COMPOSITE = 1<<4,
+	SAU_SDOP_HAS_SUBEV = 1<<4,
 };
 
 /**
@@ -89,8 +89,7 @@ typedef struct SAU_ScriptSeq {
 typedef struct SAU_ScriptEvData {
 	struct SAU_ScriptEvData *next;
 	struct SAU_ScriptEvData *group_backref;
-	//struct SAU_ScriptEvData *sub_ev;
-	struct SAU_ScriptSeq *sub_ev;
+	struct SAU_ScriptSeq *subev_seq;
 	uint32_t wait_ms;
 	uint32_t ev_flags;
 	SAU_ScriptListData main_refs;
@@ -133,7 +132,7 @@ typedef struct SAU_ScriptOptions {
  * Type returned after processing a file.
  */
 typedef struct SAU_Script {
-	SAU_ScriptSeq *events;
+	SAU_ScriptSeq *ev_seq;
 	const char *name; // currently simply set to the filename
 	SAU_ScriptOptions sopt;
 	struct SAU_MemPool *mem; // holds memory for the specific script
