@@ -614,7 +614,7 @@ struct ParseLevel {
 	uint32_t pl_flags;
 	uint8_t scope;
 	uint8_t use_type;
-	SAU_ScriptEvData *event, *last_event;
+	SAU_ScriptEvData *event;
 	SAU_ScriptListData *nest_list;
 	SAU_ScriptRef *nest_last_data;
 	SAU_ScriptRef *ev_first_data, *ev_last_data;
@@ -623,7 +623,7 @@ struct ParseLevel {
 	SAU_ScriptRef *parent_on, *on_prev;
 	SAU_SymStr *set_label; /* label assigned to next node */
 	/* timing/delay */
-	SAU_ScriptEvData *main_ev; /* if events are nested, for grouping... */
+	//SAU_ScriptEvData *main_ev; /* if events are nested, for grouping... */
 	struct SAU_ScriptSeq *scope_ev_seq;
 	uint32_t next_wait_ms; /* added for next event */
 };
@@ -679,20 +679,10 @@ static bool parse_ramp(SAU_Parser *restrict o,
 static bool parse_waittime(SAU_Parser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
 	SAU_Scanner *sc = o->sc;
-	/* FIXME: ADD_WAIT_DUR */
-	if (SAU_Scanner_tryc(sc, 't')) {
-		if (!pl->ev_last_data) {
-			SAU_Scanner_warning(sc, NULL,
-"add wait for last duration before any parts given");
-			return false;
-		}
-		pl->last_event->ev_flags |= SAU_SDEV_ADD_WAIT_DUR;
-	} else {
-		uint32_t wait_ms;
-		if (!scan_time_val(sc, &wait_ms))
-			return false;
-		pl->next_wait_ms += wait_ms;
-	}
+	uint32_t wait_ms;
+	if (!scan_time_val(sc, &wait_ms))
+		return false;
+	pl->next_wait_ms += wait_ms;
 	return true;
 }
 
@@ -740,7 +730,6 @@ static void end_event(SAU_Parser *restrict o) {
 	pl->pl_flags &= ~PL_ACTIVE_EV;
 	SAU_ScriptEvData *e = pl->event;
 	end_operator(o);
-	pl->last_event = e;
 	pl->event = NULL;
 	pl->ev_first_data = NULL;
 	pl->ev_last_data = NULL;
@@ -918,7 +907,7 @@ static void enter_seq(SAU_Parser *restrict o, uint8_t pri) {
 		printf("enter '%c'\n",
 				(pri == SAU_SDSEQ_FREE_FORM ? ' ' :
 				 pri == SAU_SDSEQ_COMPOSITE ? ';' :
-				 pri == SAU_SDSEQ_FWD_SHIFT ? '\\' :
+				 pri == SAU_SDSEQ_SUB_SHIFT ? '\\' :
 				 '?'));
 }
 
@@ -931,7 +920,7 @@ static void leave_seq(SAU_Parser *restrict o, uint8_t pri) {
 		printf("leave '%c'\n",
 				(seq->pri == SAU_SDSEQ_FREE_FORM ? ' ' :
 				 seq->pri == SAU_SDSEQ_COMPOSITE ? ';' :
-				 seq->pri == SAU_SDSEQ_FWD_SHIFT ? '\\' :
+				 seq->pri == SAU_SDSEQ_SUB_SHIFT ? '\\' :
 				 '?'));
 		o->ev_seq = seq->supev_seq;
 		if (seq == pl->scope_ev_seq)
@@ -1003,8 +992,6 @@ static void leave_level(SAU_Parser *restrict o) {
 			pl->parent->pl_flags |= PL_ACTIVE_EV;
 			pl->parent->event = pl->event;
 		}
-		if (pl->last_event != NULL)
-			pl->parent->last_event = pl->last_event;
 	}
 	if (pl->scope == SCOPE_BIND) {
 		/*
@@ -1162,7 +1149,7 @@ static void parse_in_event(SAU_Parser *restrict o) {
 		case '\\':
 			if (parse_waittime(o)) {
 				begin_node(o, pl->operator,
-						SAU_SDSEQ_FWD_SHIFT);
+						SAU_SDSEQ_SUB_SHIFT);
 			}
 			break;
 		case 'a':
@@ -1490,11 +1477,6 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e, uint32_t flags) {
 		if (dur_ms < sub_dur_ms)
 			dur_ms = sub_dur_ms;
 	}
-	if ((e->ev_flags & SAU_SDEV_ADD_WAIT_DUR) != 0) {
-		if (e->next != NULL)
-			e->next->wait_ms += dur_ms;
-		e->ev_flags &= ~SAU_SDEV_ADD_WAIT_DUR;
-	}
 	/*
 	 * Timing for sub-event - done before event list flattened.
 	 */
@@ -1512,7 +1494,7 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e, uint32_t flags) {
 			 * Composite events timing...
 			 */
 			flags |= TIME_IN_COMPOSITE;
-		} else if (e->subev_seq->pri == SAU_SDSEQ_FWD_SHIFT) {
+		} else if (e->subev_seq->pri == SAU_SDSEQ_SUB_SHIFT) {
 			/*
 			 * Simple delayed follow-on(s)...
 			 *
@@ -1527,7 +1509,7 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e, uint32_t flags) {
 			SAU_ProgramOpData *ne_od = ne_op->data;
 			if (e->subev_seq->pri == SAU_SDSEQ_COMPOSITE) {
 				ne->wait_ms += ne_prev->dur_ms;
-			} else if (e->subev_seq->pri == SAU_SDSEQ_FWD_SHIFT) {
+			} else if (e->subev_seq->pri == SAU_SDSEQ_SUB_SHIFT) {
 				wait_sum_ms += ne->wait_ms;
 			}
 			if (!(ne_od->time.flags & SAU_TIMEP_SET)) {
@@ -1546,7 +1528,7 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e, uint32_t flags) {
 				else if (!(e_od->time.flags & SAU_TIMEP_LINKED))
 					e_od->time.v_ms += ne->dur_ms +
 						(ne->wait_ms - ne_prev->dur_ms);
-			} else if (e->subev_seq->pri == SAU_SDSEQ_FWD_SHIFT) {
+			} else if (e->subev_seq->pri == SAU_SDSEQ_SUB_SHIFT) {
 				if (nest_dur_ms < wait_sum_ms + ne->dur_ms)
 					nest_dur_ms = wait_sum_ms + ne->dur_ms;
 			}
