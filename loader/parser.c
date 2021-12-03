@@ -886,7 +886,7 @@ static void begin_node(SAU_Parser *restrict o,
 			pl->next_wait_ms ||
 			((previous != NULL || use_type == SAU_POP_CARR)
 			 && pl->event->main_refs.first_item != NULL) ||
-			seq_pri)
+			seq_pri > SAU_SDSEQ_FREE_FORM)
 		begin_event(o, seq_pri);
 	begin_operator(o, seq_pri);
 }
