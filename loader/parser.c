@@ -1525,9 +1525,9 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e) {
 			if (ne_od->time.flags & SAU_TIMEP_LINKED)
 				e_od->time.flags |= SAU_TIMEP_LINKED;
 			else if (!(e_od->time.flags & SAU_TIMEP_LINKED))
-				e_od->time.v_ms += ne_od->time.v_ms +
-					(ne->wait_ms - ne_od_prev->time.v_ms);
-			//ne_od->params &= ~SAU_POPP_TIME;
+				e_od->time.v_ms += ne->dur_ms +
+					(ne->wait_ms - ne_prev->dur_ms);
+			ne_od->params |= SAU_POPP_TIME;
 			ne_op_prev = ne_op;
 			ne_prev = ne;
 			ne = ne->next;
