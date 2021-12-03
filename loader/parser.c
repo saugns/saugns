@@ -623,6 +623,7 @@ struct ParseLevel {
 	SAU_ScriptRef *parent_on, *on_prev;
 	SAU_SymStr *set_label; /* label assigned to next node */
 	/* timing/delay */
+	SAU_ScriptEvData *main_ev; /* if events are nested, for grouping... */
 	struct SAU_ScriptSeq *scope_ev_seq;
 	uint32_t next_wait_ms; /* added for next event */
 };
@@ -743,12 +744,14 @@ static void end_event(SAU_Parser *restrict o) {
 	pl->event = NULL;
 	pl->ev_first_data = NULL;
 	pl->ev_last_data = NULL;
+	//SAU_ScriptEvData *group_e = (pl->main_ev != NULL) ? pl->main_ev : e;
 	SAU_ScriptEvData *group_e = (o->ev_seq->supev != NULL) ?
 		o->ev_seq->supev :
 		e;
 	if (!o->group_start)
 		o->group_start = group_e;
 	o->group_end = group_e;
+	// TODO: Alternative, leave \ seq using "one event" logic...
 }
 
 static void begin_event(SAU_Parser *restrict o, uint8_t seq_pri) {
@@ -804,10 +807,8 @@ static void begin_operator(SAU_Parser *restrict o, uint8_t seq_pri) {
 		op->on_prev = pop;
 		op->op_flags = pop->op_flags &
 			(SAU_SDOP_NESTED | SAU_SDOP_MULTIPLE);
-		if (seq_pri > 0) {
+		if (seq_pri > SAU_SDSEQ_FREE_FORM) {
 			pop->op_flags |= SAU_SDOP_HAS_SUBEV;
-			//if (!(pod->params & SAU_POPP_TIME))
-			//	pod->time.flags &= ~SAU_TIMEP_SET;
 		} else {
 			od->time.flags |= SAU_TIMEP_SET;
 		}
@@ -860,7 +861,7 @@ static void begin_operator(SAU_Parser *restrict o, uint8_t seq_pri) {
 		op->label = pl->set_label;
 		op->label->data = op;
 		pl->set_label = NULL;
-	} else if (seq_pri == 0 && pop != NULL && pop->label != NULL) {
+	} else if (seq_pri == SAU_SDSEQ_FREE_FORM && pop && pop->label) {
 		op->label = pop->label;
 		op->label->data = op;
 	}
@@ -1498,6 +1499,7 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e, uint32_t flags) {
 	 * Timing for sub-event - done before event list flattened.
 	 */
 	if (e->subev_seq != NULL && e->subev_seq->first != NULL) {
+		uint32_t nest_dur_ms = 0, wait_sum_ms = 0;
 		SAU_ScriptEvData *ne = e->subev_seq->first, *ne_prev = e;
 		SAU_ScriptRef *ne_op = ne->main_refs.first_item,
 			      *ne_op_prev = ne_op->on_prev, *e_op = ne_op_prev;
@@ -1505,75 +1507,61 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e, uint32_t flags) {
 		uint32_t def_time_ms = e_od->time.v_ms;
 		e_od->time.flags |= SAU_TIMEP_SET; /* kept after this call */
 		e->dur_ms = e_od->time.v_ms; /* for first value in series */
-		/*
-		 * Composite events timing...
-		 */
 		if (e->subev_seq->pri == SAU_SDSEQ_COMPOSITE) {
-			for (;;) {
-				SAU_ProgramOpData *ne_od = ne_op->data;
+			/*
+			 * Composite events timing...
+			 */
+			flags |= TIME_IN_COMPOSITE;
+		} else if (e->subev_seq->pri == SAU_SDSEQ_FWD_SHIFT) {
+			/*
+			 * Simple delayed follow-on(s)...
+			 *
+			 * If inserted within a composite event,
+			 * subdivides the current part of it one
+			 * more step, useful for adding silence.
+			 */
+			if (!(e_od->params & SAU_POPP_TIME))
+				e_od->time.v_ms = 0; /* empty/silence/pause */
+		}
+		for (;;) {
+			SAU_ProgramOpData *ne_od = ne_op->data;
+			if (e->subev_seq->pri == SAU_SDSEQ_COMPOSITE) {
 				ne->wait_ms += ne_prev->dur_ms;
-				if (!(ne_od->time.flags & SAU_TIMEP_SET)) {
-					ne_od->time.flags |= SAU_TIMEP_SET;
-					if ((ne_op->op_flags &
+			} else if (e->subev_seq->pri == SAU_SDSEQ_FWD_SHIFT) {
+				wait_sum_ms += ne->wait_ms;
+			}
+			if (!(ne_od->time.flags & SAU_TIMEP_SET)) {
+				ne_od->time.flags |= SAU_TIMEP_SET;
+				if ((ne_op->op_flags &
 (SAU_SDOP_NESTED | SAU_SDOP_HAS_SUBEV)) == SAU_SDOP_NESTED)
-						ne_od->time.flags |=
-							SAU_TIMEP_LINKED;
-					else
-						ne_od->time.v_ms = def_time_ms;
-				}
-				time_event(ne, (flags | TIME_IN_COMPOSITE));
+					ne_od->time.flags |=
+						SAU_TIMEP_LINKED;
+				else
+					ne_od->time.v_ms = def_time_ms;
+			}
+			time_event(ne, flags);
+			if (e->subev_seq->pri == SAU_SDSEQ_COMPOSITE) {
 				if (ne_od->time.flags & SAU_TIMEP_LINKED)
 					e_od->time.flags |= SAU_TIMEP_LINKED;
 				else if (!(e_od->time.flags & SAU_TIMEP_LINKED))
 					e_od->time.v_ms += ne->dur_ms +
 						(ne->wait_ms - ne_prev->dur_ms);
-				if (ne_od->params & SAU_POPP_TIME)
-					def_time_ms = ne_od->time.v_ms;
-				ne_od->params |= SAU_POPP_TIME;
-				ne_op_prev = ne_op;
-				ne_prev = ne;
-				ne = ne->next;
-				if (!ne) break;
-				ne_op = ne->main_refs.first_item;
-			}
-		}
-		/*
-		 * Simple delayed follow-on(s)...
-		 *
-		 * If inserted within a composite event,
-		 * subdivides the current part of it one
-		 * more step, useful for adding silence.
-		 */
-		if (e->subev_seq->pri == SAU_SDSEQ_FWD_SHIFT) {
-			uint32_t nest_dur_ms = 0, wait_sum_ms = 0;
-			if (!(e_od->params & SAU_POPP_TIME))
-				e_od->time.v_ms = 0; /* empty/silence/pause */
-			for (;;) {
-				SAU_ProgramOpData *ne_od = ne_op->data;
-				if (!(ne_od->time.flags & SAU_TIMEP_SET)) {
-					ne_od->time.flags |= SAU_TIMEP_SET;
-					if ((ne_op->op_flags &
-(SAU_SDOP_NESTED | SAU_SDOP_HAS_SUBEV)) == SAU_SDOP_NESTED)
-						ne_od->time.flags |=
-							SAU_TIMEP_LINKED;
-					else
-						ne_od->time.v_ms = def_time_ms;
-				}
-				wait_sum_ms += ne->wait_ms;
-				time_event(ne, flags);
+			} else if (e->subev_seq->pri == SAU_SDSEQ_FWD_SHIFT) {
 				if (nest_dur_ms < wait_sum_ms + ne->dur_ms)
 					nest_dur_ms = wait_sum_ms + ne->dur_ms;
-				if (ne_od->params & SAU_POPP_TIME)
-					def_time_ms = ne_od->time.v_ms;
-				if (flags & TIME_IN_COMPOSITE)
-					ne_od->params |= SAU_POPP_TIME;
-				ne = ne->next;
-				if (!ne) break;
-				ne_op = ne->main_refs.first_item;
 			}
-			if (dur_ms < nest_dur_ms)
-				dur_ms = nest_dur_ms;
+			if (ne_od->params & SAU_POPP_TIME)
+				def_time_ms = ne_od->time.v_ms;
+			if (flags & TIME_IN_COMPOSITE)
+				ne_od->params |= SAU_POPP_TIME;
+			ne_op_prev = ne_op;
+			ne_prev = ne;
+			ne = ne->next;
+			if (!ne) break;
+			ne_op = ne->main_refs.first_item;
 		}
+		if (dur_ms < nest_dur_ms)
+			dur_ms = nest_dur_ms;
 	}
 	e->dur_ms = dur_ms; /* unfinished estimate used to adjust timing */
 	return dur_ms;
