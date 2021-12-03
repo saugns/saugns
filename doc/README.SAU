@@ -297,12 +297,18 @@ Timing modifiers:
 		seconds. Alternatively, /t will delay by the time of the
 		last event.
 	\	Delay the next event only, time in seconds.
+		Can be used to split out part of the current event into
+		a delayed part, once or repeatedly.
 
 Composite events:
-	Writing a ';' (on a new line or the same line) after an event will
-	allow specifying new parameter arguments to apply at the end of the
-	previous duration; this can be repeated.
-		This makes it possible to write a sequence of events as if
-	a single "composite event", not having to insert delays that affect
-	the timing of events later written, thus increasing the flexibility
-	of how changes to operators may be positioned in a script.
+	Writing a ';' (on a new line or the same line) after an event allows
+	specifying new parameter arguments to apply after the previous time
+	duration, extending the time duration with a new one, defaulting to
+	the same length as the old; this can be repeated.
+		This makes it simpler to write a sequence of events for the
+	same object like a single "composite event", not having to insert
+	delays that affect the timing of events later written, increasing
+	the flexibility of how changes can be positioned in a script.
+		Can be combined with '\', as in "; \number", to insert a
+	gap a number of seconds long between two sub-steps, for example to
+	create a bit of silence (inactive time for an object) in a sequence.
