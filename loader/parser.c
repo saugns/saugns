@@ -1496,12 +1496,10 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e) {
 	 */
 	if (e->subev_seq != NULL && e->subev_seq->first != NULL) {
 		SAU_ScriptEvData *ne = e->subev_seq->first, *ne_prev = e;
-		SAU_ScriptRef *ne_op, *ne_op_prev, *e_op;
-		SAU_ProgramOpData *e_od;
-		ne_op = ne->main_refs.first_item;
-		ne_op_prev = ne_op->on_prev;
-		e_op = ne_op_prev;
-		e_od = e_op->data;
+		SAU_ScriptRef *ne_op = ne->main_refs.first_item,
+			      *ne_op_prev = ne_op->on_prev, *e_op = ne_op_prev;
+		SAU_ProgramOpData *e_od = e_op->data;
+		uint32_t def_time_ms = e_od->time.v_ms;
 		e_od->time.flags |= SAU_TIMEP_SET; /* kept after this call */
 		e->dur_ms = e_od->time.v_ms; /* for first value in series */
 		/*
@@ -1509,7 +1507,6 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e) {
 		 */
 		if (e->subev_seq->pri == SAU_SDSEQ_COMPOSITE) for (;;) {
 			SAU_ProgramOpData *ne_od = ne_op->data;
-			SAU_ProgramOpData *ne_od_prev = ne_op_prev->data;
 			ne->wait_ms += ne_prev->dur_ms;
 			if (!(ne_od->time.flags & SAU_TIMEP_SET)) {
 				ne_od->time.flags |= SAU_TIMEP_SET;
@@ -1517,8 +1514,7 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e) {
 (SAU_SDOP_NESTED | SAU_SDOP_HAS_SUBEV)) == SAU_SDOP_NESTED)
 					ne_od->time.flags |= SAU_TIMEP_LINKED;
 				else {
-					ne_od->time.v_ms =
-						ne_od_prev->time.v_ms;
+					ne_od->time.v_ms = def_time_ms;
 				}
 			}
 			time_event(ne);
@@ -1527,6 +1523,8 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e) {
 			else if (!(e_od->time.flags & SAU_TIMEP_LINKED))
 				e_od->time.v_ms += ne->dur_ms +
 					(ne->wait_ms - ne_prev->dur_ms);
+			if (ne_od->params & SAU_POPP_TIME)
+				def_time_ms = ne_od->time.v_ms;
 			ne_od->params |= SAU_POPP_TIME;
 			ne_op_prev = ne_op;
 			ne_prev = ne;

@@ -5,7 +5,7 @@ Osin	fB3 t.3 p+[Osin r(4/3) Osin r(1/9)]
 ;	fGs5
 ;	fB3
 ;	fGs5 t.2
-;	fGs5 \.1 t.4
+;	\.1 fGs5 t.4
 |/.5
 
 Osin	fB3 t.3 p+[Osin r(4/3) Osin r(2/9)]
@@ -15,7 +15,7 @@ Osin	fB3 t.3 p+[Osin r(4/3) Osin r(2/9)]
 ;	fGs5
 ;	fB3
 ;	fGs5 t.2
-;	fGs5 \.1 t.4
+;	\.1 fGs5 t.4
 |/.5
 
 Osin	fB3 t.3 p+[Osin r(4/3) Osin r(3/9)]
@@ -25,7 +25,7 @@ Osin	fB3 t.3 p+[Osin r(4/3) Osin r(3/9)]
 ;	fGs5
 ;	fB3
 ;	fGs5 t.2
-;	fGs5 \.1 t.4
+;	\.1 fGs5 t.4
 |/.5
 
 Osin	fB3 t.3 p+[Osin r(4/3) Osin r(4/9)]
@@ -35,7 +35,7 @@ Osin	fB3 t.3 p+[Osin r(4/3) Osin r(4/9)]
 ;	fGs5
 ;	fB3
 ;	fGs5 t.2
-;	fGs5 \.1 t.4
+;	\.1 fGs5 t.4
 |/.5
 
 Osin	fB3 t.3 p+[Osin r(4/3) Osin r(5/9)]
@@ -45,7 +45,7 @@ Osin	fB3 t.3 p+[Osin r(4/3) Osin r(5/9)]
 ;	fGs5
 ;	fB3
 ;	fGs5 t.2
-;	fGs5 \.1 t.4
+;	\.1 fGs5 t.4
 |/.5
 
 Osin	fB3 t.3 p+[Osin r(4/3) Osin r(6/9)]
@@ -55,7 +55,7 @@ Osin	fB3 t.3 p+[Osin r(4/3) Osin r(6/9)]
 ;	fGs5
 ;	fB3
 ;	fGs5 t.2
-;	fGs5 \.1 t.4
+;	\.1 fGs5 t.4
 |/.5
 
 Osin	fB3 t.3 p+[Osin r(4/3) Osin r(7/9)]
@@ -65,7 +65,7 @@ Osin	fB3 t.3 p+[Osin r(4/3) Osin r(7/9)]
 ;	fGs5
 ;	fB3
 ;	fGs5 t.2
-;	fGs5 \.1 t.4
+;	\.1 fGs5 t.4
 |/.5
 
 Osin	fB3 t.3 p+[Osin r(4/3) Osin r(8/9)]
@@ -75,4 +75,4 @@ Osin	fB3 t.3 p+[Osin r(4/3) Osin r(8/9)]
 ;	fGs5
 ;	fB3
 ;	fGs5 t.2
-;	fGs5 \.1 t.4
+;	\.1 fGs5 t.4
