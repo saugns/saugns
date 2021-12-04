@@ -47,21 +47,6 @@ create_ProgramOpList(const SAU_ScriptListData *restrict list_in,
 }
 
 /*
- * Returns the longest carrier duration for the voice event.
- */
-static uint32_t
-voice_duration(const SAU_ScriptEvData *restrict ve) {
-	uint32_t duration_ms = 0;
-	for (const SAU_ScriptRef *op = ve->main_refs.first_item;
-			op != NULL; op = op->next_item) {
-		const SAU_ProgramOpData *od = op->data;
-		if (od->time.v_ms > duration_ms)
-			duration_ms = od->time.v_ms;
-	}
-	return duration_ms;
-}
-
-/*
  * Get voice ID for event, setting it to \p vo_id.
  *
  * \return true, or false on allocation failure
@@ -113,7 +98,7 @@ SAU_VoAlloc_update(SAU_VoAlloc *restrict va,
 	vas->last_ev = e;
 	vas->flags &= ~SAU_VAS_GRAPH;
 	if (!e->root_ev)
-		vas->duration_ms = voice_duration(e);
+		vas->duration_ms = e->dur_ms;
 	return true;
 }
 

@@ -625,7 +625,8 @@ struct ParseLevel {
 	/* timing/delay */
 	//SAU_ScriptEvData *main_ev; /* if events are nested, for grouping... */
 	struct SAU_ScriptSeq *scope_ev_seq;
-	uint32_t next_wait_ms; /* added for next event */
+	uint32_t fwd_wait_ms; /* added for next event */
+	//uint32_t sub_wait_ms; /* added for next event */
 };
 
 static SAU_Ramp *create_ramp(SAU_Parser *restrict o,
@@ -682,7 +683,7 @@ static bool parse_waittime(SAU_Parser *restrict o) {
 	uint32_t wait_ms;
 	if (!scan_time_val(sc, &wait_ms))
 		return false;
-	pl->next_wait_ms += wait_ms;
+	pl->fwd_wait_ms += wait_ms;
 	return true;
 }
 
@@ -751,8 +752,8 @@ static void begin_event(SAU_Parser *restrict o,
 	end_event(o);
 	e = SAU_MemPool_alloc(o->mp, sizeof(SAU_ScriptEvData));
 	pl->event = e;
-	e->wait_ms = pl->next_wait_ms;
-	pl->next_wait_ms = 0;
+	e->wait_ms = pl->fwd_wait_ms;
+	pl->fwd_wait_ms = 0;
 	if (prev_ref != NULL) {
 		pve = prev_ref->event;
 		e->root_ev = prev_ref->obj->root_event;
@@ -876,7 +877,7 @@ static void begin_node(SAU_Parser *restrict o,
 		pl->use_type;
 	if (!pl->event || /* not in event means previous implicitly ended */
 			pl->sub_f != parse_in_event ||
-			pl->next_wait_ms ||
+			pl->fwd_wait_ms ||
 			((prev_ref != NULL || use_type == SAU_POP_CARR)
 			 && pl->event->main_refs.first_item != NULL) ||
 			seq_pri > SAU_SDSEQ_FREE_FORM)
@@ -1402,12 +1403,8 @@ static void time_durgroup(SAU_ScriptEvData *restrict e_last) {
 	SAU_ScriptEvData *e, *e_after = e_last->next;
 	uint32_t wait = 0, waitcount = 0;
 	for (e = e_last->group_backref; e != e_after; ) {
-		for (SAU_ScriptRef *op = e->main_refs.first_item;
-				op != NULL; op = op->next_item) {
-			SAU_ProgramOpData *od = op->data;
-			if (wait < od->time.v_ms)
-				wait = od->time.v_ms;
-		}
+		if (wait < e->dur_ms)
+			wait = e->dur_ms;
 		e = e->next;
 		if (e != NULL) {
 			waitcount += e->wait_ms;
@@ -1421,6 +1418,8 @@ static void time_durgroup(SAU_ScriptEvData *restrict e_last) {
 				/* fill in sensible default time */
 				od->time.v_ms = wait + waitcount;
 				od->time.flags |= SAU_TIMEP_SET;
+				if (e->dur_ms < wait + waitcount)
+					e->dur_ms = wait + waitcount;
 			}
 		}
 		e = e->next;
@@ -1491,9 +1490,10 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e, uint32_t flags) {
 		SAU_ScriptRef *ne_op = ne->main_refs.first_item,
 			      *ne_op_prev = ne_op->on_prev, *e_op = ne_op_prev;
 		SAU_ProgramOpData *e_od = e_op->data;
-		uint32_t def_time_ms = e_od->time.v_ms;
+		uint32_t first_time_ms = e_od->time.v_ms;
+		uint32_t def_time_ms = first_time_ms;
+		e->dur_ms = first_time_ms; /* for first value in series */
 		e_od->time.flags |= SAU_TIMEP_SET; /* kept after this call */
-		e->dur_ms = e_od->time.v_ms; /* for first value in series */
 		if (e->subev_seq->pri == SAU_SDSEQ_COMPOSITE) {
 	puts(";");
 			/*
@@ -1510,14 +1510,14 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e, uint32_t flags) {
 			 * more step, useful for adding silence.
 			 */
 			if (!(e_od->params & SAU_POPP_TIME))
-				e_od->time.v_ms = 0; /* empty/silence/pause */
+				first_time_ms = 0; /* empty/silence/pause */
 		}
 		for (;;) {
 			SAU_ProgramOpData *ne_od = ne_op->data;
+			wait_sum_ms += ne->wait_ms;
 			if (e->subev_seq->pri == SAU_SDSEQ_COMPOSITE) {
 				ne->wait_ms += ne_prev->dur_ms;
 			} else if (e->subev_seq->pri == SAU_SDSEQ_SUB_SHIFT) {
-				wait_sum_ms += ne->wait_ms;
 			}
 			if (!(ne_od->time.flags & SAU_TIMEP_SET)) {
 				ne_od->time.flags |= SAU_TIMEP_SET;
@@ -1529,15 +1529,15 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e, uint32_t flags) {
 					ne_od->time.v_ms = def_time_ms;
 			}
 			time_event(ne, flags);
+			if (nest_dur_ms < wait_sum_ms + ne->dur_ms)
+				nest_dur_ms = wait_sum_ms + ne->dur_ms;
 			if (e->subev_seq->pri == SAU_SDSEQ_COMPOSITE) {
 				if (ne_od->time.flags & SAU_TIMEP_LINKED)
 					e_od->time.flags |= SAU_TIMEP_LINKED;
 				else if (!(e_od->time.flags & SAU_TIMEP_LINKED))
-					e_od->time.v_ms += ne->dur_ms +
+					first_time_ms += ne->dur_ms +
 						(ne->wait_ms - ne_prev->dur_ms);
 			} else if (e->subev_seq->pri == SAU_SDSEQ_SUB_SHIFT) {
-				if (nest_dur_ms < wait_sum_ms + ne->dur_ms)
-					nest_dur_ms = wait_sum_ms + ne->dur_ms;
 			}
 			if (ne_od->params & SAU_POPP_TIME)
 				def_time_ms = ne_od->time.v_ms;
@@ -1549,8 +1549,12 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e, uint32_t flags) {
 			if (!ne) break;
 			ne_op = ne->main_refs.first_item;
 		}
+		if (nest_dur_ms < first_time_ms)
+			nest_dur_ms = first_time_ms;
 		if (dur_ms < nest_dur_ms)
 			dur_ms = nest_dur_ms;
+		if (!(e_od->params & SAU_POPP_TIME))
+			e_od->time.v_ms = first_time_ms;
 	}
 	e->dur_ms = dur_ms; /* unfinished estimate used to adjust timing */
 	return dur_ms;
