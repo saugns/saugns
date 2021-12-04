@@ -874,8 +874,6 @@ static void begin_node(SAU_Parser *restrict o,
 	uint8_t use_type = (prev_ref != NULL) ?
 		prev_ref->data->use_type :
 		pl->use_type;
-	if (seq_pri == SAU_SDSEQ_ANY)
-		seq_pri = o->ev_seq->pri;
 	if (!pl->event || /* not in event means previous implicitly ended */
 			pl->sub_f != parse_in_event ||
 			pl->next_wait_ms ||
@@ -1006,7 +1004,7 @@ static void leave_level(SAU_Parser *restrict o) {
 		 */
 		if (pl->ev_first_data != NULL) {
 			pl->parent->pl_flags |= PL_BIND_MULTIPLE;
-			begin_node(o, pl->ev_first_data, SAU_SDSEQ_ANY);
+			begin_node(o, pl->ev_first_data, SAU_SDSEQ_FREE_FORM);
 		}
 	}
 }
