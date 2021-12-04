@@ -64,6 +64,7 @@ typedef struct SAU_ScriptRef {
  */
 enum {
 	SAU_SDEV_VOICE_LATER_USED = 1<<0,
+	SAU_SDEV_SUB_SEQ = 1<<1,
 };
 
 /**
@@ -73,7 +74,7 @@ enum {
  * of greater priority only, unless scope nesting syntax is used.
  */
 enum {
-	SAU_SDSEQ_ANY = 0,
+	SAU_SDSEQ_ANY_FIRST = 0,
 	SAU_SDSEQ_FREE_FORM,
 	SAU_SDSEQ_COMPOSITE,
 	SAU_SDSEQ_SUB_SHIFT,
