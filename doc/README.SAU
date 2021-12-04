@@ -291,13 +291,11 @@ sub-scopes, however, newlines may be placed freely.
 
 Timing modifiers:
 	|	Time separator. Delays what follows by the duration of
-		prior events. This is independent of delay added
-		with "/".
-	/	Forward shift, time in seconds. Delay the next event and
-		all events placed after.
-	\	Subshift, time in seconds. Delay only the next event;
-		can be used to split out part of the current event into
-		a delayed part, once or repeatedly.
+		prior events. This is independent of delay added with "/".
+	/	Forward shift, time in seconds. Delay the next event
+		and all events placed after.
+	\	Subshift, time in seconds. For a current event only,
+		split out a follow-on event.
 
 Composite events:
 	The ';' sub-event separator can be written (on a new line or the same)

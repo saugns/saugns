@@ -74,10 +74,10 @@ enum {
  * of greater priority only, unless scope nesting syntax is used.
  */
 enum {
-	SAU_SDSEQ_ANY_FIRST = 0,
-	SAU_SDSEQ_FREE_FORM,
+	SAU_SDSEQ_FREE_FORM = 0,
 	SAU_SDSEQ_COMPOSITE,
 	SAU_SDSEQ_SUB_SHIFT,
+	SAU_SDSEQ_ANY,
 };
 
 /**

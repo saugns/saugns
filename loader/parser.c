@@ -756,17 +756,13 @@ static void begin_event(SAU_Parser *restrict o,
 	if (prev_ref != NULL) {
 		pve = prev_ref->event;
 		e->root_ev = prev_ref->obj->root_event;
-		if (seq_pri > SAU_SDSEQ_ANY_FIRST && seq_pri > o->ev_seq->pri) {
+		if (seq_pri > o->ev_seq->pri) {
 			enter_seq(o, seq_pri);
 			pve->subev_seq = o->ev_seq;
 			o->ev_seq->supev = pve;
 		}
-	} else {
-		if (seq_pri > SAU_SDSEQ_ANY_FIRST && seq_pri > o->ev_seq->pri) {
-			enter_seq(o, seq_pri);
-		}
 	}
-	if (seq_pri > SAU_SDSEQ_ANY_FIRST && seq_pri < o->ev_seq->pri) {
+	if (seq_pri < o->ev_seq->pri) {
 		leave_seq(o, seq_pri + 1);
 		o->ev_seq->supev = NULL;
 	}
@@ -878,6 +874,8 @@ static void begin_node(SAU_Parser *restrict o,
 	uint8_t use_type = (prev_ref != NULL) ?
 		prev_ref->data->use_type :
 		pl->use_type;
+	if (seq_pri == SAU_SDSEQ_ANY)
+		seq_pri = o->ev_seq->pri;
 	if (!pl->event || /* not in event means previous implicitly ended */
 			pl->sub_f != parse_in_event ||
 			pl->next_wait_ms ||
@@ -1008,7 +1006,7 @@ static void leave_level(SAU_Parser *restrict o) {
 		 */
 		if (pl->ev_first_data != NULL) {
 			pl->parent->pl_flags |= PL_BIND_MULTIPLE;
-			begin_node(o, pl->ev_first_data, SAU_SDSEQ_ANY_FIRST);
+			begin_node(o, pl->ev_first_data, SAU_SDSEQ_ANY);
 		}
 	}
 }
@@ -1147,12 +1145,12 @@ static void parse_in_event(SAU_Parser *restrict o) {
 		switch (c) {
 		case SAU_SCAN_SPACE:
 			break;
-		case '/':
-			parse_waittime(o);
-//			if (parse_waittime(o)) {
-//				begin_node(o, pl->operator, SAU_SDSEQ_ANY_FIRST);
-//			}
-			break;
+		//case '/':
+		//	if (parse_waittime(o)) {
+		//		begin_node(o, pl->operator,
+		//				SAU_SDSEQ_FREE_FORM);
+		//	}
+		//	break;
 		case '\\':
 			if (parse_waittime(o)) {
 				begin_node(o, pl->operator,
@@ -1327,15 +1325,6 @@ static bool parse_level(SAU_Parser *restrict o,
 		case '[':
 			warn_opening_disallowed(sc, '[');
 			break;
-		case '\\': {
-			if (pl.nest_list != NULL)
-				goto INVALID;
-			uint32_t wait_ms;
-			if (!scan_time_val(sc, &wait_ms))
-				break;
-			begin_event(o, NULL, SAU_SDSEQ_SUB_SHIFT); // container
-			pl.next_wait_ms += wait_ms;
-			break; }
 		case ']':
 			if (pl.scope == SCOPE_NEST) {
 				end_operator(o);
@@ -1492,7 +1481,7 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e, uint32_t flags) {
 		uint32_t sub_dur_ms = time_operator(sub_op);
 		if (dur_ms < sub_dur_ms)
 			dur_ms = sub_dur_ms;
-	printf("\t%f\n", sub_op->data->freq->v0);
+	if (sub_op->data->freq) printf("\t%f\n", sub_op->data->freq->v0);
 	}
 	puts("ee");
 	/*
