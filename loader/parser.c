@@ -908,11 +908,7 @@ static void enter_seq(SAU_Parser *restrict o, uint8_t pri) {
 	if (!pl->scope_ev_seq)
 		pl->scope_ev_seq = seq;
 	o->ev_seq = seq;
-		printf("enter '%c'\n",
-				(pri == SAU_SDSEQ_FREE_FORM ? ' ' :
-				 pri == SAU_SDSEQ_COMPOSITE ? ';' :
-				 pri == SAU_SDSEQ_SUB_SHIFT ? '\\' :
-				 '?'));
+		printf("enter pri %d\n", pri);
 }
 
 static void leave_seq(SAU_Parser *restrict o, uint8_t pri) {
@@ -921,11 +917,7 @@ static void leave_seq(SAU_Parser *restrict o, uint8_t pri) {
 		struct SAU_ScriptSeq *seq = o->ev_seq;
 		if (!seq->supev_seq)
 			break;
-		printf("leave '%c'\n",
-				(seq->pri == SAU_SDSEQ_FREE_FORM ? ' ' :
-				 seq->pri == SAU_SDSEQ_COMPOSITE ? ';' :
-				 seq->pri == SAU_SDSEQ_SUB_SHIFT ? '\\' :
-				 '?'));
+		printf("leave pri %d\n", seq->pri);
 		o->ev_seq = seq->supev_seq;
 		if (seq == pl->scope_ev_seq)
 			break; // mind scope nesting boundary
@@ -1138,6 +1130,7 @@ static void parse_in_event(SAU_Parser *restrict o) {
 	pl->sub_f = parse_in_event;
 	uint8_t c;
 	for (;;) {
+		SAU_ScriptEvData *e = pl->event;
 		SAU_ScriptRef *op = pl->operator;
 		SAU_ProgramOpData *od = op->data;
 		c = SAU_Scanner_getc(sc);
@@ -1146,14 +1139,14 @@ static void parse_in_event(SAU_Parser *restrict o) {
 			break;
 		//case '/':
 		//	if (parse_waittime(o)) {
-		//		begin_node(o, pl->operator,
-		//				SAU_SDSEQ_FREE_FORM);
+		//		e->ev_flags |= SAU_SDEV_SPLIT_FOR_WAIT;
+		//		begin_node(o, op, SAU_SDSEQ_FREE_FORM);
 		//	}
 		//	break;
 		case '\\':
 			if (parse_waittime(o)) {
-				begin_node(o, pl->operator,
-						SAU_SDSEQ_SUB_SHIFT);
+				e->ev_flags |= SAU_SDEV_SPLIT_FOR_WAIT;
+				begin_node(o, op, SAU_SDSEQ_COMPOSITE);
 			}
 			break;
 		case 'a':
@@ -1478,9 +1471,7 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e, uint32_t flags) {
 		uint32_t sub_dur_ms = time_operator(sub_op);
 		if (dur_ms < sub_dur_ms)
 			dur_ms = sub_dur_ms;
-	if (sub_op->data->freq) printf("\t%f\n", sub_op->data->freq->v0);
 	}
-	puts("ee");
 	/*
 	 * Timing for sub-event - done before event list flattened.
 	 */
@@ -1495,13 +1486,6 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e, uint32_t flags) {
 		e->dur_ms = first_time_ms; /* for first value in series */
 		e_od->time.flags |= SAU_TIMEP_SET; /* kept after this call */
 		if (e->subev_seq->pri == SAU_SDSEQ_COMPOSITE) {
-	puts(";");
-			/*
-			 * Composite events timing...
-			 */
-			flags |= TIME_IN_COMPOSITE;
-		} else if (e->subev_seq->pri == SAU_SDSEQ_SUB_SHIFT) {
-	puts("\\");
 			/*
 			 * Simple delayed follow-on(s)...
 			 *
@@ -1509,15 +1493,20 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e, uint32_t flags) {
 			 * subdivides the current part of it one
 			 * more step, useful for adding silence.
 			 */
-			if (!(e_od->params & SAU_POPP_TIME))
-				first_time_ms = 0; /* empty/silence/pause */
+			if (e->ev_flags & SAU_SDEV_SPLIT_FOR_WAIT) {
+				if (!(e_od->params & SAU_POPP_TIME))
+					e_od->time.v_ms = 0; // gap
+			}
 		}
 		for (;;) {
 			SAU_ProgramOpData *ne_od = ne_op->data;
 			wait_sum_ms += ne->wait_ms;
-			if (e->subev_seq->pri == SAU_SDSEQ_COMPOSITE) {
+			if (e->subev_seq->pri == SAU_SDSEQ_COMPOSITE &&
+			    !(ne_prev->ev_flags & SAU_SDEV_SPLIT_FOR_WAIT)) {
+				/*
+				 * Composite events timing...
+				 */
 				ne->wait_ms += ne_prev->dur_ms;
-			} else if (e->subev_seq->pri == SAU_SDSEQ_SUB_SHIFT) {
 			}
 			if (!(ne_od->time.flags & SAU_TIMEP_SET)) {
 				ne_od->time.flags |= SAU_TIMEP_SET;
@@ -1531,18 +1520,23 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e, uint32_t flags) {
 			time_event(ne, flags);
 			if (nest_dur_ms < wait_sum_ms + ne->dur_ms)
 				nest_dur_ms = wait_sum_ms + ne->dur_ms;
-			if (e->subev_seq->pri == SAU_SDSEQ_COMPOSITE) {
+			if (e->subev_seq->pri == SAU_SDSEQ_COMPOSITE &&
+			    !(ne_prev->ev_flags & SAU_SDEV_SPLIT_FOR_WAIT)) {
 				if (ne_od->time.flags & SAU_TIMEP_LINKED)
 					e_od->time.flags |= SAU_TIMEP_LINKED;
 				else if (!(e_od->time.flags & SAU_TIMEP_LINKED))
 					first_time_ms += ne->dur_ms +
 						(ne->wait_ms - ne_prev->dur_ms);
-			} else if (e->subev_seq->pri == SAU_SDSEQ_SUB_SHIFT) {
 			}
 			if (ne_od->params & SAU_POPP_TIME)
 				def_time_ms = ne_od->time.v_ms;
-			if (flags & TIME_IN_COMPOSITE)
+			if (e->subev_seq->pri == SAU_SDSEQ_COMPOSITE) {
+				if (ne->ev_flags & SAU_SDEV_SPLIT_FOR_WAIT) {
+					if (!(ne_od->params & SAU_POPP_TIME))
+						ne_od->time.v_ms = 0; // gap
+				}
 				ne_od->params |= SAU_POPP_TIME;
+			}
 			ne_op_prev = ne_op;
 			ne_prev = ne;
 			ne = ne->next;
@@ -1553,8 +1547,6 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e, uint32_t flags) {
 			nest_dur_ms = first_time_ms;
 		if (dur_ms < nest_dur_ms)
 			dur_ms = nest_dur_ms;
-		if (!(e_od->params & SAU_POPP_TIME))
-			e_od->time.v_ms = first_time_ms;
 	}
 	e->dur_ms = dur_ms; /* unfinished estimate used to adjust timing */
 	return dur_ms;
