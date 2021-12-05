@@ -11,9 +11,9 @@ S a(1/3)
 /.7
 
 Osin t15 f400 p+[
-	\2 Osin r(4/3)
-	\4 Osin r(5/3)
-	\6 Osin r(6/3)
-	\8 Osin r(7/3)
-	\10 Osin r(8/3)
+	Osin t0 \2 r(4/3) ti
+	Osin t0 \4 r(5/3) ti
+	Osin t0 \6 r(6/3) ti
+	Osin t0 \8 r(7/3) ti
+	Osin t0 \10 r(8/3) ti
 ]
