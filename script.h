@@ -68,27 +68,6 @@ enum {
 };
 
 /**
- * Sequence priority, for nesting containers of events.
- *
- * For each event sequence, its events can have sub-sequences
- * of greater priority only, unless scope nesting syntax is used.
- */
-enum {
-	SAU_SDSEQ_FREE_FORM = 0,
-	SAU_SDSEQ_COMPOSITE,
-};
-
-/**
- * Node type for event sequence, used in a nested way.
- */
-typedef struct SAU_ScriptSeq {
-	struct SAU_ScriptEvData *first, *last;
-	struct SAU_ScriptEvData *supev; /* for grouping... */
-	struct SAU_ScriptSeq *supev_seq;
-	uint8_t pri;
-} SAU_ScriptSeq;
-
-/**
  * Node type for event data. Events are placed in time per script contents,
  * in a nested way during parsing and flattened after for later processing.
  *
@@ -101,11 +80,11 @@ typedef struct SAU_ScriptSeq {
 typedef struct SAU_ScriptEvData {
 	struct SAU_ScriptEvData *next;
 	struct SAU_ScriptEvData *group_backref;
-	struct SAU_ScriptSeq *subev_seq;
+	struct SAU_ScriptEvData *sub_seq;
 	SAU_ScriptListData main_refs;
 	uint32_t ev_flags;
 	uint32_t wait_ms;
-	uint32_t dur_ms; // set and used as tentative value
+	uint32_t dur_ms;
 	/* for conversion */
 	uint32_t vo_id;
 	struct SAU_ScriptEvData *root_ev; // if main object not created here
@@ -145,7 +124,7 @@ typedef struct SAU_ScriptOptions {
  * Type returned after processing a file.
  */
 typedef struct SAU_Script {
-	SAU_ScriptSeq *ev_seq;
+	SAU_ScriptEvData *events;
 	const char *name; // currently simply set to the filename
 	SAU_ScriptOptions sopt;
 	struct SAU_MemPool *mem; // holds memory for the specific script

@@ -538,7 +538,7 @@ typedef struct SAU_Parser {
 	uint32_t call_level;
 	/* node state */
 	struct ParseLevel *cur_pl;
-	struct SAU_ScriptSeq *ev_seq;
+	SAU_ScriptEvData *events, *last_event;
 	SAU_ScriptEvData *group_start, *group_end;
 } SAU_Parser;
 
@@ -623,10 +623,8 @@ struct ParseLevel {
 	SAU_ScriptRef *parent_on;
 	SAU_SymStr *set_label; /* label assigned to next node */
 	/* timing/delay */
-	//SAU_ScriptEvData *main_ev; /* if events are nested, for grouping... */
-	struct SAU_ScriptSeq *scope_ev_seq;
-	uint32_t fwd_wait_ms; /* added for next event */
-	//uint32_t sub_wait_ms; /* added for next event */
+	SAU_ScriptEvData *main_ev; /* if events are nested, for grouping... */
+	uint32_t next_wait_ms; /* added for next event */
 };
 
 static SAU_Ramp *create_ramp(SAU_Parser *restrict o,
@@ -683,16 +681,13 @@ static bool parse_waittime(SAU_Parser *restrict o) {
 	uint32_t wait_ms;
 	if (!scan_time_val(sc, &wait_ms))
 		return false;
-	pl->fwd_wait_ms += wait_ms;
+	pl->next_wait_ms += wait_ms;
 	return true;
 }
 
 /*
  * Node- and scope-handling functions
  */
-
-static void enter_seq(SAU_Parser *restrict o, uint8_t pri);
-static void leave_seq(SAU_Parser *restrict o, uint8_t pri);
 
 static void end_operator(SAU_Parser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
@@ -734,50 +729,48 @@ static void end_event(SAU_Parser *restrict o) {
 	pl->event = NULL;
 	pl->ev_first_data = NULL;
 	pl->ev_last_data = NULL;
-	//SAU_ScriptEvData *group_e = (pl->main_ev != NULL) ? pl->main_ev : e;
-	SAU_ScriptEvData *group_e = (o->ev_seq->supev != NULL) ?
-		o->ev_seq->supev :
-		e;
+	SAU_ScriptEvData *group_e = (pl->main_ev != NULL) ? pl->main_ev : e;
 	if (!o->group_start)
 		o->group_start = group_e;
 	o->group_end = group_e;
-	// TODO: Alternative, leave \ seq using "one event" logic...
 }
 
 static void begin_event(SAU_Parser *restrict o,
 		SAU_ScriptRef *restrict prev_ref,
-		uint8_t seq_pri) {
+		bool is_composite) {
 	struct ParseLevel *pl = o->cur_pl;
 	SAU_ScriptEvData *e, *pve;
 	end_event(o);
 	e = SAU_MemPool_alloc(o->mp, sizeof(SAU_ScriptEvData));
 	pl->event = e;
-	e->wait_ms = pl->fwd_wait_ms;
-	pl->fwd_wait_ms = 0;
+	e->wait_ms = pl->next_wait_ms;
+	pl->next_wait_ms = 0;
 	if (prev_ref != NULL) {
 		pve = prev_ref->event;
 		e->root_ev = prev_ref->obj->root_event;
-		if (seq_pri > o->ev_seq->pri) {
-			enter_seq(o, seq_pri);
-			pve->subev_seq = o->ev_seq;
-			o->ev_seq->supev = pve;
+		if (is_composite) {
+			if (!pl->main_ev) {
+				pve->sub_seq = e;
+				pl->main_ev = pve;
+			} else {
+				pve->next = e;
+			}
 		}
 	}
-	if (seq_pri < o->ev_seq->pri) {
-		leave_seq(o, seq_pri + 1);
-		o->ev_seq->supev = NULL;
+	if (!is_composite) {
+		if (!o->events)
+			o->events = e;
+		else
+			o->last_event->next = e;
+		o->last_event = e;
+		pl->main_ev = NULL;
 	}
-	if (!o->ev_seq->first)
-		o->ev_seq->first = e;
-	else
-		o->ev_seq->last->next = e;
-	o->ev_seq->last = e;
 	pl->pl_flags |= PL_ACTIVE_EV;
 }
 
 static void begin_operator(SAU_Parser *restrict o,
 		SAU_ScriptRef *restrict prev_ref,
-		uint8_t seq_pri) {
+		bool is_composite) {
 	struct ParseLevel *pl = o->cur_pl;
 	struct ScanLookup *sl = &o->sl;
 	SAU_ScriptEvData *e = pl->event;
@@ -801,7 +794,7 @@ static void begin_operator(SAU_Parser *restrict o,
 		op->on_prev = pop;
 		op->op_flags = pop->op_flags &
 			(SAU_SDOP_NESTED | SAU_SDOP_MULTIPLE);
-		if (seq_pri > SAU_SDSEQ_FREE_FORM) {
+		if (is_composite) {
 			pop->op_flags |= SAU_SDOP_HAS_SUBEV;
 		} else {
 			od->time.flags |= SAU_TIMEP_SET;
@@ -855,7 +848,7 @@ static void begin_operator(SAU_Parser *restrict o,
 		op->label = pl->set_label;
 		op->label->data = op;
 		pl->set_label = NULL;
-	} else if (seq_pri == SAU_SDSEQ_FREE_FORM && pop && pop->label) {
+	} else if (!is_composite && pop != NULL && pop->label != NULL) {
 		op->label = pop->label;
 		op->label->data = op;
 	}
@@ -870,57 +863,25 @@ static void begin_operator(SAU_Parser *restrict o,
  */
 static void begin_node(SAU_Parser *restrict o,
 		SAU_ScriptRef *restrict prev_ref,
-		uint8_t seq_pri) {
+		bool is_composite) {
 	struct ParseLevel *pl = o->cur_pl;
 	uint8_t use_type = (prev_ref != NULL) ?
 		prev_ref->data->use_type :
 		pl->use_type;
 	if (!pl->event || /* not in event means previous implicitly ended */
 			pl->sub_f != parse_in_event ||
-			pl->fwd_wait_ms ||
+			pl->next_wait_ms ||
 			((prev_ref != NULL || use_type == SAU_POP_CARR)
 			 && pl->event->main_refs.first_item != NULL) ||
-			seq_pri > SAU_SDSEQ_FREE_FORM)
-		begin_event(o, prev_ref, seq_pri);
-	begin_operator(o, prev_ref, seq_pri);
+			is_composite)
+		begin_event(o, prev_ref, is_composite);
+	begin_operator(o, prev_ref, is_composite);
 }
 
 static void flush_durgroup(SAU_Parser *restrict o) {
 	if (o->group_start != NULL) {
 		o->group_end->group_backref = o->group_start;
 		o->group_start = o->group_end = NULL;
-	}
-}
-
-static void enter_seq(SAU_Parser *restrict o, uint8_t pri) {
-	struct ParseLevel *pl = o->cur_pl;
-	struct SAU_ScriptSeq *seq = o->ev_seq, *supev_seq;
-	if (seq != NULL && seq->pri > pri) {
-		leave_seq(o, seq->pri);
-		seq = o->ev_seq;
-	}
-	if (pl->scope_ev_seq != NULL && pl->scope_ev_seq->pri == pri)
-		return;
-	supev_seq = seq;
-	seq = SAU_MemPool_alloc(o->mp, sizeof(struct SAU_ScriptSeq));
-	seq->supev_seq = supev_seq;
-	seq->pri = pri;
-	if (!pl->scope_ev_seq)
-		pl->scope_ev_seq = seq;
-	o->ev_seq = seq;
-		printf("enter pri %d\n", pri);
-}
-
-static void leave_seq(SAU_Parser *restrict o, uint8_t pri) {
-	struct ParseLevel *pl = o->cur_pl;
-	while (o->ev_seq != NULL && o->ev_seq->pri >= pri) {
-		struct SAU_ScriptSeq *seq = o->ev_seq;
-		if (!seq->supev_seq)
-			break;
-		printf("leave pri %d\n", seq->pri);
-		o->ev_seq = seq->supev_seq;
-		if (seq == pl->scope_ev_seq)
-			break; // mind scope nesting boundary
 	}
 }
 
@@ -932,9 +893,7 @@ static void enter_level(SAU_Parser *restrict o,
 	o->cur_pl = pl;
 	*pl = (struct ParseLevel){0};
 	pl->scope = newscope;
-	if (!parent_pl) {
-		enter_seq(o, SAU_SDSEQ_FREE_FORM);
-	} else {
+	if (parent_pl != NULL) {
 		pl->parent = parent_pl;
 		pl->sub_f = parent_pl->sub_f;
 		pl->pl_flags = parent_pl->pl_flags & (PL_BIND_MULTIPLE);
@@ -977,7 +936,6 @@ static void leave_level(SAU_Parser *restrict o) {
 		 * end last event and adjust timing.
 		 */
 		end_event(o);
-		leave_seq(o, SAU_SDSEQ_FREE_FORM);
 		flush_durgroup(o);
 	}
 	--o->call_level;
@@ -997,7 +955,7 @@ static void leave_level(SAU_Parser *restrict o) {
 		 */
 		if (pl->ev_first_data != NULL) {
 			pl->parent->pl_flags |= PL_BIND_MULTIPLE;
-			begin_node(o, pl->ev_first_data, SAU_SDSEQ_FREE_FORM);
+			begin_node(o, pl->ev_first_data, false);
 		}
 	}
 }
@@ -1140,13 +1098,13 @@ static void parse_in_event(SAU_Parser *restrict o) {
 		//case '/':
 		//	if (parse_waittime(o)) {
 		//		e->ev_flags |= SAU_SDEV_SPLIT_FOR_WAIT;
-		//		begin_node(o, op, SAU_SDSEQ_FREE_FORM);
+		//		begin_node(o, op, false);
 		//	}
 		//	break;
 		case '\\':
 			if (parse_waittime(o)) {
 				e->ev_flags |= SAU_SDEV_SPLIT_FOR_WAIT;
-				begin_node(o, op, SAU_SDSEQ_COMPOSITE);
+				begin_node(o, op, true);
 			}
 			break;
 		case 'a':
@@ -1256,7 +1214,7 @@ static bool parse_level(SAU_Parser *restrict o,
 			}
 			if (pl.sub_f == parse_in_settings || !pl.event)
 				goto INVALID;
-			begin_node(o, pl.operator, SAU_SDSEQ_COMPOSITE);
+			begin_node(o, pl.operator, true);
 			parse_in_event(o);
 			break;
 		case '<':
@@ -1296,7 +1254,7 @@ static bool parse_level(SAU_Parser *restrict o,
 					SAU_Scanner_warning(sc, NULL,
 "ignoring reference to undefined label");
 				else {
-					begin_node(o, ref, SAU_SDSEQ_FREE_FORM);
+					begin_node(o, ref, false);
 					parse_in_event(o);
 				}
 			}
@@ -1306,7 +1264,7 @@ static bool parse_level(SAU_Parser *restrict o,
 			SAU_ProgramOpData *od;
 			if (!scan_wavetype(sc, &wave))
 				break;
-			begin_node(o, NULL, SAU_SDSEQ_FREE_FORM);
+			begin_node(o, NULL, false);
 			od = pl.operator->data;
 			od->wave = wave;
 			parse_in_event(o);
@@ -1460,10 +1418,7 @@ static uint32_t time_operator(SAU_ScriptRef *restrict op) {
 	return dur_ms;
 }
 
-enum {
-	TIME_IN_COMPOSITE = 1<<0,
-};
-static uint32_t time_event(SAU_ScriptEvData *restrict e, uint32_t flags) {
+static uint32_t time_event(SAU_ScriptEvData *restrict e) {
 	uint32_t dur_ms = 0;
 	SAU_ScriptRef *sub_op;
 	for (sub_op = e->main_refs.first_item;
@@ -1475,9 +1430,9 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e, uint32_t flags) {
 	/*
 	 * Timing for sub-event - done before event list flattened.
 	 */
-	if (e->subev_seq != NULL && e->subev_seq->first != NULL) {
+	if (e->sub_seq != NULL) {
 		uint32_t nest_dur_ms = 0, wait_sum_ms = 0;
-		SAU_ScriptEvData *ne = e->subev_seq->first, *ne_prev = e;
+		SAU_ScriptEvData *ne = e->sub_seq, *ne_prev = e;
 		SAU_ScriptRef *ne_op = ne->main_refs.first_item,
 			      *ne_op_prev = ne_op->on_prev, *e_op = ne_op_prev;
 		SAU_ProgramOpData *e_od = e_op->data;
@@ -1485,7 +1440,7 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e, uint32_t flags) {
 		uint32_t def_time_ms = first_time_ms;
 		e->dur_ms = first_time_ms; /* for first value in series */
 		e_od->time.flags |= SAU_TIMEP_SET; /* kept after this call */
-		if (e->subev_seq->pri == SAU_SDSEQ_COMPOSITE) {
+		if (e->ev_flags & SAU_SDEV_SPLIT_FOR_WAIT) {
 			/*
 			 * Simple delayed follow-on(s)...
 			 *
@@ -1493,19 +1448,13 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e, uint32_t flags) {
 			 * subdivides the current part of it one
 			 * more step, useful for adding silence.
 			 */
-			if (e->ev_flags & SAU_SDEV_SPLIT_FOR_WAIT) {
-				if (!(e_od->params & SAU_POPP_TIME))
-					e_od->time.v_ms = 0; // gap
-			}
+			if (!(e_od->params & SAU_POPP_TIME))
+				e_od->time.v_ms = 0; // gap
 		}
 		for (;;) {
 			SAU_ProgramOpData *ne_od = ne_op->data;
 			wait_sum_ms += ne->wait_ms;
-			if (e->subev_seq->pri == SAU_SDSEQ_COMPOSITE &&
-			    !(ne_prev->ev_flags & SAU_SDEV_SPLIT_FOR_WAIT)) {
-				/*
-				 * Composite events timing...
-				 */
+			if (!(ne_prev->ev_flags & SAU_SDEV_SPLIT_FOR_WAIT)) {
 				ne->wait_ms += ne_prev->dur_ms;
 			}
 			if (!(ne_od->time.flags & SAU_TIMEP_SET)) {
@@ -1517,11 +1466,10 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e, uint32_t flags) {
 				else
 					ne_od->time.v_ms = def_time_ms;
 			}
-			time_event(ne, flags);
+			time_event(ne);
 			if (nest_dur_ms < wait_sum_ms + ne->dur_ms)
 				nest_dur_ms = wait_sum_ms + ne->dur_ms;
-			if (e->subev_seq->pri == SAU_SDSEQ_COMPOSITE &&
-			    !(ne_prev->ev_flags & SAU_SDEV_SPLIT_FOR_WAIT)) {
+			if (!(ne_prev->ev_flags & SAU_SDEV_SPLIT_FOR_WAIT)) {
 				if (ne_od->time.flags & SAU_TIMEP_LINKED)
 					e_od->time.flags |= SAU_TIMEP_LINKED;
 				else if (!(e_od->time.flags & SAU_TIMEP_LINKED))
@@ -1530,13 +1478,11 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e, uint32_t flags) {
 			}
 			if (ne_od->params & SAU_POPP_TIME)
 				def_time_ms = ne_od->time.v_ms;
-			if (e->subev_seq->pri == SAU_SDSEQ_COMPOSITE) {
-				if (ne->ev_flags & SAU_SDEV_SPLIT_FOR_WAIT) {
-					if (!(ne_od->params & SAU_POPP_TIME))
-						ne_od->time.v_ms = 0; // gap
-				}
-				ne_od->params |= SAU_POPP_TIME;
+			if (ne->ev_flags & SAU_SDEV_SPLIT_FOR_WAIT) {
+				if (!(ne_od->params & SAU_POPP_TIME))
+					ne_od->time.v_ms = 0; // gap
 			}
+			ne_od->params |= SAU_POPP_TIME;
 			ne_op_prev = ne_op;
 			ne_prev = ne;
 			ne = ne->next;
@@ -1560,7 +1506,7 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e, uint32_t flags) {
  * the ordinary event list.
  */
 static void flatten_events(SAU_ScriptEvData *restrict e) {
-	SAU_ScriptEvData *ne = e->subev_seq->first;
+	SAU_ScriptEvData *ne = e->sub_seq;
 	SAU_ScriptEvData *fe = e->next, *fe_prev = e;
 	uint32_t wait_ms = 0;
 	uint32_t added_wait_ms = 0;
@@ -1611,7 +1557,7 @@ static void flatten_events(SAU_ScriptEvData *restrict e) {
 			ne = ne_next;
 		}
 	}
-	e->subev_seq->first = NULL;
+	e->sub_seq = NULL;
 }
 
 /*
@@ -1622,17 +1568,16 @@ static void flatten_events(SAU_ScriptEvData *restrict e) {
  */
 static void postparse_passes(SAU_Parser *restrict o) {
 	SAU_ScriptEvData *e;
-	for (e = o->ev_seq->first; e != NULL; e = e->next) {
-		puts("..");
-		time_event(e, 0);
+	for (e = o->events; e != NULL; e = e->next) {
+		time_event(e);
 		if (e->group_backref != NULL) time_durgroup(e);
 	}
 	/*
 	 * Flatten in separate pass following timing adjustments for events;
 	 * otherwise, cannot always arrange events in the correct order.
 	 */
-	for (e = o->ev_seq->first; e != NULL; e = e->next) {
-		if (e->subev_seq != NULL) flatten_events(e);
+	for (e = o->events; e != NULL; e = e->next) {
+		if (e->sub_seq != NULL) flatten_events(e);
 		/*
 		 * Track sequence of references and later use here.
 		 */
@@ -1667,7 +1612,7 @@ SAU_Script* SAU_load_Script(const char *restrict script_arg, bool is_path) {
 
 	postparse_passes(&pr);
 	o = SAU_MemPool_alloc(pr.mp, sizeof(SAU_Script));
-	o->ev_seq = pr.ev_seq;
+	o->events = pr.events;
 	o->name = name;
 	o->sopt = pr.sl.sopt;
 	o->mem = pr.mp;
