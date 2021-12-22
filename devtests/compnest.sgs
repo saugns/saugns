@@ -1,0 +1,7 @@
+Osin t12 f400 p[
+	Osin a0 f0 t2; a1 r(4/3)
+	Osin a0 f0 t4; a1 r(5/3)
+	Osin a0 f0 t6; a1 r(6/3)
+	Osin a0 f0 t8; a1 r(7/3)
+	Osin a0 f0 t10; a1 r(8/3)
+] ; t4 f800

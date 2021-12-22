@@ -180,7 +180,8 @@ enum {
   NS_IN_DEFAULTS = 1<<0, /* adjusting default values */
   NS_IN_NODE = 1<<1,     /* adjusting operator and/or voice */
   NS_NESTED_SCOPE = 1<<2,
-  NS_BIND_MULTIPLE = 1<<3, /* previous node interpreted as set of nodes */
+  NS_NEW_EVENT_FORK = 1<<3,
+  NS_BIND_MULTIPLE = 1<<4, /* previous node interpreted as set of nodes */
 };
 
 /*
@@ -200,9 +201,14 @@ typedef struct NodeScope {
   uint8_t last_linktype; /* FIXME: kludge */
   char *set_label;
   /* timing/delay */
-  SGSEventNode *composite; /* grouping of events for a voice and/or operator */
+  SGSEventNode *main_event; /* grouping of events for a voice and/or operator */
   uint32_t next_wait_ms; /* added for next event */
 } NodeScope;
+
+typedef struct SGSEventBranch {
+  SGSEventNode *events;
+  struct SGSEventBranch *prev;
+} SGSEventBranch;
 
 #define NEWLINE '\n'
 static char read_char(SGSParser *o) {
@@ -694,14 +700,14 @@ static void end_event(NodeScope *ns) {
                        SGS_P_VALITPANNING;
   ns->last_event = e;
   ns->event = NULL;
-  SGSEventNode *group_e = (ns->composite != NULL) ? ns->composite : e;
+  SGSEventNode *group_e = (ns->main_event != NULL) ? ns->main_event : e;
   if (!o->group_start)
     o->group_start = group_e;
   o->group_end = group_e;
 }
 
 static void begin_event(NodeScope *ns, uint8_t linktype,
-                        bool is_composite) {
+                        bool is_compstep) {
   SGSParser *o = ns->o;
   SGSEventNode *e, *pve;
   end_event(ns);
@@ -710,12 +716,28 @@ static void begin_event(NodeScope *ns, uint8_t linktype,
   e->wait_ms = ns->next_wait_ms;
   ns->next_wait_ms = 0;
   if (ns->on_prev != NULL) {
+    SGSEventBranch *fork;
     pve = ns->on_prev->event;
     pve->en_flags |= EN_VOICE_LATER_USED;
-    if (pve->composite != NULL && !is_composite) {
+    fork = pve->forks;
+    if (is_compstep) {
+      if (ns->ns_flags & NS_NEW_EVENT_FORK) {
+        if (!ns->main_event)
+          ns->main_event = pve;
+        else
+          fork = ns->main_event->forks;
+        ns->main_event->forks = calloc(1, sizeof(SGSEventBranch));
+        ns->main_event->forks->events = e;
+        ns->main_event->forks->prev = fork;
+        ns->ns_flags &= ~NS_NEW_EVENT_FORK;
+      } else {
+        pve->next = e;
+      }
+    } else while (fork != NULL) {
       SGSEventNode *last_ce;
-      for (last_ce = pve->composite; last_ce->next; last_ce = last_ce->next) ;
+      for (last_ce = fork->events; last_ce->next; last_ce = last_ce->next) ;
       last_ce->en_flags |= EN_VOICE_LATER_USED;
+      fork = fork->prev;
     }
     e->voice_prev = pve;
     e->voice_attr = pve->voice_attr;
@@ -724,25 +746,18 @@ static void begin_event(NodeScope *ns, uint8_t linktype,
   } else { /* set defaults */
     e->panning = 0.5f; /* center */
   }
-  if (is_composite) {
-    if (!ns->composite) {
-      pve->composite = e;
-      ns->composite = pve;
-    } else {
-      pve->next = e;
-    }
-  } else {
+  if (!is_compstep) {
     if (!o->events)
       o->events = e;
     else
       o->last_event->next = e;
     o->last_event = e;
-    ns->composite = NULL;
+    ns->main_event = NULL;
   }
 }
 
 static void begin_operator(NodeScope *ns, uint8_t linktype,
-                           bool is_composite) {
+                           bool is_compstep) {
   SGSParser *o = ns->o;
   SGSEventNode *e = ns->event;
   SGSOperatorNode *op, *pop = ns->on_prev;
@@ -754,8 +769,10 @@ static void begin_operator(NodeScope *ns, uint8_t linktype,
   op = ns->operator;
   if (!ns->first_operator)
     ns->first_operator = op;
-  if (!is_composite && ns->last_operator != NULL)
+  if (!is_compstep && ns->last_operator != NULL)
     ns->last_operator->next_bound = op;
+  if (!is_compstep)
+    ns->ns_flags |= NS_NEW_EVENT_FORK;
   /*
    * Initialize node.
    */
@@ -764,8 +781,8 @@ static void begin_operator(NodeScope *ns, uint8_t linktype,
     op->on_prev = pop;
     op->on_flags = pop->on_flags & (ON_OPERATOR_NESTED |
                                     ON_MULTIPLE_OPERATORS);
-    if (is_composite) {
-      pop->on_flags |= ON_HAS_COMPOSITE;
+    if (is_compstep) {
+      pop->on_flags |= ON_HAS_COMPSTEP;
       op->on_flags |= ON_TIME_DEFAULT; /* default: previous or infinite time */
     }
     op->attr = pop->attr;
@@ -839,7 +856,7 @@ static void begin_operator(NodeScope *ns, uint8_t linktype,
     SGSPtrList_add(list, op);
   }
   /*
-   * Assign label. If no new label but previous node (for a non-composite)
+   * Assign label. If no new label but previous node (for a non-compstep)
    * has one, update label to point32_t to new node, but keep pointer (and flag
    * exclusively for safe deallocation) in previous node.
    */
@@ -848,7 +865,7 @@ static void begin_operator(NodeScope *ns, uint8_t linktype,
     op->on_flags |= ON_LABEL_ALLOC;
     op->label = ns->set_label;
     ns->set_label = NULL;
-  } else if (!is_composite && pop != NULL && pop->label != NULL) {
+  } else if (!is_compstep && pop != NULL && pop->label != NULL) {
     SGS_symtab_set(o->st, pop->label, op);
     op->label = pop->label;
   }
@@ -883,14 +900,14 @@ static void label_next_node(NodeScope *ns, const char *label) {
  * Used instead of directly calling begin_operator() and/or begin_event().
  */
 static void begin_node(NodeScope *ns, SGSOperatorNode *previous,
-                       uint8_t linktype, bool is_composite) {
+                       uint8_t linktype, bool is_compstep) {
   ns->on_prev = previous;
   if (!ns->event ||
       !in_current_node(ns) /* previous event implicitly ended */ ||
       ns->next_wait_ms ||
-      is_composite)
-    begin_event(ns, linktype, is_composite);
-  begin_operator(ns, linktype, is_composite);
+      is_compstep)
+    begin_event(ns, linktype, is_compstep);
+  begin_operator(ns, linktype, is_compstep);
   ns->last_linktype = linktype; /* FIXME: kludge */
 }
 
@@ -1417,7 +1434,7 @@ static void time_operator(SGSOperatorNode *op) {
   if ((op->on_flags & (ON_TIME_DEFAULT | ON_OPERATOR_NESTED)) ==
                       (ON_TIME_DEFAULT | ON_OPERATOR_NESTED)) {
     op->on_flags &= ~ON_TIME_DEFAULT;
-    if (!(op->on_flags & ON_HAS_COMPOSITE))
+    if (!(op->on_flags & ON_HAS_COMPSTEP))
       op->time_ms = SGS_TIME_INF;
   }
   if (op->time_ms >= 0 && !(op->on_flags & ON_SILENCE_ADDED)) {
@@ -1459,10 +1476,11 @@ static void time_event(SGSEventNode *e) {
     time_operator(ops[i]);
   }
   /*
-   * Timing for composites - done before event list flattened.
+   * Timing for sub-events - done before event list flattened.
    */
-  if (e->composite != NULL) {
-    SGSEventNode *ce = e->composite;
+  SGSEventBranch *fork = e->forks;
+  while (fork != NULL) {
+    SGSEventNode *ce = fork->events;
     SGSOperatorNode *ce_op = (SGSOperatorNode*) SGSPtrList_GET(&ce->operators, 0),
                     *ce_op_prev = ce_op->on_prev,
                     *e_op = ce_op_prev;
@@ -1488,68 +1506,62 @@ static void time_event(SGSEventNode *e) {
       if (!ce) break;
       ce_op = (SGSOperatorNode*) SGSPtrList_GET(&ce->operators, 0);
     }
+    fork = fork->prev;
   }
 }
 
 /*
- * Deals with events that are "composite" (attached to a main event as
- * successive "sub-events" rather than part of the big, linear event sequence).
+ * Deals with events that are "sub-events" (attached to a main event as
+ * nested sequence rather than part of the main linear event sequence).
  *
  * Such events, if attached to the passed event, will be given their place in
  * the ordinary event list.
  */
 static void flatten_events(SGSEventNode *e) {
-  SGSEventNode *ce = e->composite;
-  SGSEventNode *se = e->next, *se_prev = e;
-  int32_t wait_ms = 0;
-  int32_t added_wait_ms = 0;
-  while (ce != NULL) {
-    if (!se) {
+  SGSEventBranch *fork = e->forks;
+  SGSEventNode *ne = fork->events;
+  SGSEventNode *fe = e->next, *fe_prev = e;
+  while (ne != NULL) {
+    if (!fe) {
       /*
-       * No more events in the ordinary sequence, so append all composites.
+       * No more events in the flat sequence,
+       * so append all sub-events.
        */
-      se_prev->next = ce;
+      fe_prev->next = fe = ne;
       break;
     }
     /*
-     * If several events should pass in the ordinary sequence before the next
-     * composite is inserted, skip ahead.
+     * Insert next sub-event before or after
+     * the next events of the flat sequence.
      */
-    wait_ms += se->wait_ms;
-    if (se->next &&
-        (wait_ms + se->next->wait_ms) <= (ce->wait_ms + added_wait_ms)) {
-      se_prev = se;
-      se = se->next;
-      continue;
-    }
-    /*
-     * Insert next composite before or after the next event of the ordinary
-     * sequence.
-     */
-    if (se->wait_ms >= (ce->wait_ms + added_wait_ms)) {
-      SGSEventNode *ce_next = ce->next;
-      se->wait_ms -= ce->wait_ms + added_wait_ms;
-      added_wait_ms = 0;
-      wait_ms = 0;
-      se_prev->next = ce;
-      se_prev = ce;
-      se_prev->next = se;
-      ce = ce_next;
+    SGSEventNode *ne_next = ne->next;
+    if (fe->wait_ms >= ne->wait_ms) {
+      fe->wait_ms -= ne->wait_ms;
+      fe_prev->next = ne;
+      ne->next = fe;
     } else {
-      SGSEventNode *se_next, *ce_next;
-      se_next = se->next;
-      ce_next = ce->next;
-      ce->wait_ms -= wait_ms;
-      added_wait_ms += ce->wait_ms;
-      wait_ms = 0;
-      se->next = ce;
-      ce->next = se_next;
-      se_prev = ce;
-      se = se_next;
-      ce = ce_next;
+      ne->wait_ms -= fe->wait_ms;
+      /*
+       * If several events should pass in the flat sequence
+       * before the next sub-event is inserted, skip ahead.
+       */
+      while (fe->next && fe->next->wait_ms <= ne->wait_ms) {
+        fe_prev = fe;
+        fe = fe->next;
+        ne->wait_ms -= fe->wait_ms;
+      }
+      SGSEventNode *fe_next = fe->next;
+      fe->next = ne;
+      ne->next = fe_next;
+      fe = fe_next;
+      if (fe)
+        fe->wait_ms -= ne->wait_ms;
     }
+    fe_prev = ne;
+    ne = ne_next;
   }
-  e->composite = NULL;
+  e->forks = fork->prev;
+  free(fork);
 }
 
 /*
@@ -1570,7 +1582,7 @@ static void postparse_passes(SGSParser *o) {
    * in some cases.
    */
   for (e = o->events; e; e = e->next) {
-    if (e->composite != NULL) flatten_events(e);
+    while (e->forks != NULL) flatten_events(e);
   }
 }
 
