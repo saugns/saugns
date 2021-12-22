@@ -55,20 +55,23 @@ Script syntax overview
 General description
 -------------------
 
+The core idea of the language is that of time-ordered steps for
+configuring audio generation: add an oscillator, then later,
+change a parameter and extend play duration, etc. A script is
+basically a list of such timed instructions. Language constructs
+also offer more flexible arrangement of steps to take than a
+bare flat list of instructions and forward time movement.
+
 The current syntax uses keywords followed by zero or more
 parameters with arguments. Each main keyword provides an action,
 either at run time (like a function call in other languages),
 or at parse time (like a global script setting).
 
 The most important keyword, "O" followed by a wavetype, adds an
-operator. Operators are oscillators with parameters, and may be
-connected as carriers and modulators. They, and the timing of their
-running, make the core features of the scripting language.
-
-Events and timing are central; each addition of an operator, or
-later change to operator or voice parameters, is an event. Timing
-modifiers may be used quite freely in the script to change the
-relative time placement of events.
+operator (FM synth terminology for oscillator with a certain
+configurability). They may be connected as carriers and modulators.
+They, and the timing of their running, make the core features of
+the scripting language.
 
 Keyword parameters may either be set (named, followed by writing
 their argument(s)), or left out to use the previous value or a
@@ -77,7 +80,7 @@ default value. Some default values can be changed using the "S"
 
 Modifiers are similar to keywords, but simpler and more flexible
 in how they may be used. They may or may not be followed by an
-argument (e.g.  a delay time).
+argument (e.g. a delay time).
 
 Keywords
 --------
@@ -150,19 +153,19 @@ Parameters:
 		the default value is changed with "S t".
 			When several operators are specified, the default
 		time is based on the longest remaining (at the current time)
-		duration of play in use for any event at the current level,
-		in considering the surrounding sequence of events and delays
+		duration of play in use for any step at the current level,
+		in considering the surrounding sequence of steps and delays
 		(up to the next '|' time separator, or to the end of the
 		script if none).
 			For modulator operators, default time is however an
 		"implicit" time length (see 'i' below), meaning playing
 		whenever a carrier it is linked to does. (Implicit time is
 		only supported for nested operators.)
-			For a composite event, the first sub-event is however
+			For a compound step, the first sub-step is however
 		simply given the "S t" default value if no time is set.
-		The following sub-events in turn each have the time of the
+		The following sub-steps in turn each have the time of the
 		previous as its default time. The exception is modulators,
-		for which the last sub-event has implicit time by default.
+		for which the last sub-step has implicit time by default.
 			Special non-number literals can also specify time:
 		d	Definite default time can be set using "td", always.
 		i	Implicit time can be set using "ti", for modulators.
@@ -300,25 +303,27 @@ Frequencies as notes:
 Timing
 ------
 
-A new event terminates the previous one, but they will have the same
+A new step terminates the previous one, but they will have the same
 placement in time unless a delay is added.
 
-At the topmost script scope, newlines also terminate events; within
+At the topmost script scope, newlines also terminate steps; within
 sub-scopes, however, newlines may be placed freely.
 
 Timing modifiers:
 	|	Time separator. Delays what follows by the duration of
-		prior events. This is independent of delay added
+		prior steps. This is independent of delay added
 		with "\".
-	\	Delay the next event and all following ones, time in
+	\	Delay the next step and all following ones, time in
 		seconds. Alternatively, \t will delay by the time of the
-		last event.
+		last step.
 
-Composite events:
-	Writing a ';' (on a new line or the same line) after an event will
-	allow specifying new parameter arguments to apply at the end of the
-	previous duration; this can be repeated.
-		This makes it possible to write a sequence of events as if
-	a single "composite event", not having to insert delays that affect
-	the timing of events later written, thus increasing the flexibility
-	of how changes to operators may be positioned in a script.
+Compound steps:
+	The ';' sub-step separator can be written (on a new line or the same)
+	after a step to specify new parameter arguments for an object, which
+	apply just after the previous time duration, for a new duration which
+	defaults to the length of the previous. (For the default time of the
+	first sub-step, and about special handling for the last, see "t" under
+	each "Parameters" for more). The use of ';' can be repeated.
+		The time handling is designed to simplify writing a sequence
+	of connected, non-overlapping timed updates for a single object. For
+	example (three frequencies, one a second): "Osin f100 t1; f200; f300".

@@ -28,7 +28,7 @@ enum {
   ON_LABEL_ALLOC = 1<<3,
   ON_TIME_DEFAULT = 1<<4,
   ON_SILENCE_ADDED = 1<<5,
-  ON_HAS_COMPOSITE = 1<<6,
+  ON_HAS_COMPSTEP = 1<<6,
 };
 
 typedef struct SGSOperatorNode {
@@ -57,10 +57,12 @@ enum {
   EN_ADD_WAIT_DURATION = 1<<1,
 };
 
+struct SGSEventBranch;
+
 typedef struct SGSEventNode {
   struct SGSEventNode *next;
   struct SGSEventNode *group_backref;
-  struct SGSEventNode *composite;
+  struct SGSEventBranch *forks;
   int32_t wait_ms;
   SGSPtrList operators; /* operators included in event */
   uint32_t en_flags;
