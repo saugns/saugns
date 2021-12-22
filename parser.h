@@ -56,10 +56,12 @@ enum {
   EN_ADD_WAIT_DURATION = 1<<1,
 };
 
+struct SGSEventBranch;
+
 typedef struct SGSEventNode {
   struct SGSEventNode *next;
   struct SGSEventNode *group_backref;
-  struct SGSEventNode *composite;
+  struct SGSEventBranch *forks;
   int32_t wait_ms;
   SGSPtrList operators; /* operators included in event */
   uint32_t en_flags;
