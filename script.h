@@ -64,7 +64,8 @@ typedef struct SAU_ScriptRef {
  */
 enum {
 	SAU_SDEV_VOICE_LATER_USED = 1<<0,
-	SAU_SDEV_SPLIT_FOR_WAIT   = 1<<1, // set for follow-on event
+	SAU_SDEV_WAIT_PREV_DUR    = 1<<1, // composite event timing
+	SAU_SDEV_FROM_GAPSHIFT    = 1<<2, // gapshift follow-on event
 };
 
 struct SAU_ScriptEvBranch;

@@ -1110,13 +1110,13 @@ static void parse_in_event(SAU_Parser *restrict o) {
 		//case '/':
 		//	if (parse_waittime(o)) {
 		//		begin_node(o, op, false);
-		//		pl->event->ev_flags |= SAU_SDEV_SPLIT_FOR_WAIT;
+		//		pl->event->ev_flags |= SAU_SDEV_FROM_GAPSHIFT;
 		//	}
 		//	break;
 		case '\\':
 			if (parse_waittime(o)) {
 				begin_node(o, op, true);
-				pl->event->ev_flags |= SAU_SDEV_SPLIT_FOR_WAIT;
+				pl->event->ev_flags |= SAU_SDEV_FROM_GAPSHIFT;
 			}
 			break;
 		case 'a':
@@ -1226,6 +1226,7 @@ static bool parse_level(SAU_Parser *restrict o,
 			if (pl.sub_f == parse_in_settings || !pl.event)
 				goto INVALID;
 			begin_node(o, pl.operator, true);
+			pl.event->ev_flags |= SAU_SDEV_WAIT_PREV_DUR;
 			parse_in_event(o);
 			break;
 		case '<':
@@ -1458,12 +1459,12 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e) {
 			SAU_ProgramOpData *ne_od = ne_op->data;
 			SAU_ProgramOpData *ne_od_prev = ne_op_prev->data;
 			wait_sum_ms += ne->wait_ms;
-			if (!(ne->ev_flags & SAU_SDEV_SPLIT_FOR_WAIT)) {
-			printf("\tev_i %zu\n", ne->ev_id);
+			if (ne->ev_flags & SAU_SDEV_WAIT_PREV_DUR) {
+			printf("\tev_i %zu (;)\n", ne->ev_id);
 				ne->wait_ms += ne_prev->dur_ms;
 			}
 			else
-			printf("\tev_i %zu (S)\n", ne->ev_id);
+			printf("\tev_i %zu (\\)\n", ne->ev_id);
 			if (!(ne_od->time.flags & SAU_TIMEP_SET))
 				ne_od->time.v_ms = def_time_ms;
 			time_event(ne);
@@ -1474,14 +1475,7 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e) {
 					(ne->wait_ms - ne_prev->dur_ms);
 			if (ne_od->params & SAU_POPP_TIME)
 				def_time_ms = ne_od->time.v_ms;
-			if (ne->ev_flags & SAU_SDEV_SPLIT_FOR_WAIT) {
-				/*
-				 * Simple delayed follow-on(s)...
-				 *
-				 * If inserted within a composite event,
-				 * subdivides the current part of it one
-				 * more step, useful for adding silence.
-				 */
+			if (ne->ev_flags & SAU_SDEV_FROM_GAPSHIFT) {
 				if (ne_od_prev->time.flags & SAU_TIMEP_DEFAULT)
 					ne_od_prev->time.v_ms = 0; // gap
 				ne_od_prev->time.flags |= SAU_TIMEP_SET;
@@ -1574,10 +1568,7 @@ static void flatten_events(SAU_ScriptEvData *restrict e) {
 static void postparse_passes(SAU_Parser *restrict o) {
 	SAU_ScriptEvData *e;
 	for (e = o->events; e != NULL; e = e->next) {
-		if (!(e->ev_flags & SAU_SDEV_SPLIT_FOR_WAIT)) {
 		printf("ev_id %zu\n", e->ev_id);
-		}else
-		printf("ev_id %zu (S)\n", e->ev_id);
 		time_event(e);
 		if (e->group_backref != NULL) time_durgroup(e);
 	}
