@@ -539,7 +539,6 @@ typedef struct SAU_Parser {
 	struct ParseLevel *cur_pl;
 	SAU_ScriptEvData *events, *last_event;
 	SAU_ScriptEvData *group_start, *group_end;
-	size_t ev_i;
 } SAU_Parser;
 
 /*
@@ -750,7 +749,6 @@ static void begin_event(SAU_Parser *restrict o,
 	SAU_ScriptEvData *e, *pve;
 	end_event(o);
 	e = SAU_MemPool_alloc(o->mem, sizeof(SAU_ScriptEvData));
-	e->ev_id = o->ev_i++;
 	pl->event = e;
 	e->wait_ms = pl->next_wait_ms;
 	pl->next_wait_ms = 0;
@@ -1561,10 +1559,7 @@ static void postparse_passes(SAU_Parser *restrict o) {
 	 * Flatten in separate pass following timing adjustments for events;
 	 * otherwise, cannot always arrange events in the correct order.
 	 */
-	uint32_t wait_ms = 0;
 	for (e = o->events; e != NULL; e = e->next) {
-		wait_ms += e->wait_ms;
-		printf("S /%u\n", wait_ms);
 		while (e->forks != NULL) flatten_events(e);
 		/*
 		 * Track sequence of references and later use here.
