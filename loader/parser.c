@@ -1460,11 +1460,11 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e) {
 			SAU_ProgramOpData *ne_od_prev = ne_op_prev->data;
 			wait_sum_ms += ne->wait_ms;
 			if (ne->ev_flags & SAU_SDEV_WAIT_PREV_DUR) {
-			printf("\tev_i %zu (;)\n", ne->ev_id);
 				ne->wait_ms += ne_prev->dur_ms;
+			printf("\tev_i %zu /%u (;)\n", ne->ev_id, ne->wait_ms);
 			}
 			else
-			printf("\tev_i %zu (\\)\n", ne->ev_id);
+			printf("\tev_i %zu /%u (\\)\n", ne->ev_id, ne->wait_ms);
 			if (!(ne_od->time.flags & SAU_TIMEP_SET))
 				ne_od->time.v_ms = def_time_ms;
 			time_event(ne);
@@ -1509,8 +1509,10 @@ static void flatten_events(SAU_ScriptEvData *restrict e) {
 	SAU_ScriptEvData *fe = e->next, *fe_prev = e;
 	uint32_t wait_ms = 0;
 	uint32_t added_wait_ms = 0;
+	puts("flatten:");
 	while (ne != NULL) {
 		if (!fe) {
+			puts("!!!");
 			/*
 			 * No more events in the flat sequence,
 			 * so append all sub-events.
@@ -1518,6 +1520,20 @@ static void flatten_events(SAU_ScriptEvData *restrict e) {
 			fe_prev->next = ne;
 			break;
 		}
+		printf("%u (%zu)\t< %u (%zu),\t%u (%zu) >\n",
+				fe_prev->wait_ms, fe_prev->ev_id,
+				fe->wait_ms, fe->ev_id,
+				ne->wait_ms, ne->ev_id);
+		if (fe->next && ne->next)
+		printf("\t[< %u (%zu),\t%u (%zu) >]\n",
+				fe->next->wait_ms, fe->next->ev_id,
+				ne->next->wait_ms, ne->next->ev_id);
+		else if (fe->next)
+		printf("\t[< %u (%zu), NULL >]\n",
+				fe->next->wait_ms, fe->next->ev_id);
+		else if (ne->next)
+		printf("\t[< NULL, %u (%zu) >]\n",
+				ne->next->wait_ms, ne->next->ev_id);
 		/*
 		 * If several events should pass in the flat sequence
 		 * before the next sub-event is inserted, skip ahead.
@@ -1525,6 +1541,7 @@ static void flatten_events(SAU_ScriptEvData *restrict e) {
 		wait_ms += fe->wait_ms;
 		if (fe->next && (wait_ms + fe->next->wait_ms)
 				<= (ne->wait_ms + added_wait_ms)) {
+			printf("? w %u l.t. %u\n", fe->next->wait_ms + wait_ms, ne->wait_ms);
 			fe_prev = fe;
 			fe = fe->next;
 			continue;
@@ -1533,19 +1550,16 @@ static void flatten_events(SAU_ScriptEvData *restrict e) {
 		 * Insert next sub-event before or after
 		 * the next event of the flat sequence.
 		 */
+		SAU_ScriptEvData *ne_next = ne->next;
 		if (fe->wait_ms >= (ne->wait_ms + added_wait_ms)) {
-			SAU_ScriptEvData *ne_next = ne->next;
 			fe->wait_ms -= ne->wait_ms + added_wait_ms;
 			added_wait_ms = 0;
 			wait_ms = 0;
 			fe_prev->next = ne;
 			fe_prev = ne;
-			fe_prev->next = fe;
-			ne = ne_next;
+			ne->next = fe;
 		} else {
-			SAU_ScriptEvData *fe_next, *ne_next;
-			fe_next = fe->next;
-			ne_next = ne->next;
+			SAU_ScriptEvData *fe_next = fe->next;
 			ne->wait_ms -= wait_ms;
 			added_wait_ms += ne->wait_ms;
 			wait_ms = 0;
@@ -1553,8 +1567,10 @@ static void flatten_events(SAU_ScriptEvData *restrict e) {
 			ne->next = fe_next;
 			fe_prev = ne;
 			fe = fe_next;
-			ne = ne_next;
 		}
+		ne = ne_next;
+		printf("->\t%u (%zu)\n",
+				fe_prev->wait_ms, fe_prev->ev_id);
 	}
 	e->forks = e->forks->prev;
 }
