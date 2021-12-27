@@ -91,7 +91,6 @@ typedef struct SAU_ScriptEvData {
 	/* for conversion */
 	uint32_t vo_id;
 	struct SAU_ScriptEvData *root_ev; // if main object not created here
-	size_t ev_id;
 } SAU_ScriptEvData;
 
 /**
