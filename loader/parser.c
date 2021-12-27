@@ -1446,7 +1446,6 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e) {
 	 */
 	SAU_ScriptEvBranch *fork = e->forks;
 	while (fork != NULL) {
-		printf("F\n");
 		uint32_t nest_dur_ms = 0, wait_sum_ms = 0;
 		SAU_ScriptEvData *ne = fork->events, *ne_prev = e;
 		SAU_ScriptRef *ne_op = ne->main_refs.first_item,
@@ -1459,12 +1458,8 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e) {
 			SAU_ProgramOpData *ne_od = ne_op->data;
 			SAU_ProgramOpData *ne_od_prev = ne_op_prev->data;
 			wait_sum_ms += ne->wait_ms;
-			if (ne->ev_flags & SAU_SDEV_WAIT_PREV_DUR) {
+			if (ne->ev_flags & SAU_SDEV_WAIT_PREV_DUR)
 				ne->wait_ms += ne_prev->dur_ms;
-			printf("\tev_i %zu /%u (;)\n", ne->ev_id, ne->wait_ms);
-			}
-			else
-			printf("\tev_i %zu /%u (\\)\n", ne->ev_id, ne->wait_ms);
 			if (!(ne_od->time.flags & SAU_TIMEP_SET))
 				ne_od->time.v_ms = def_time_ms;
 			time_event(ne);
@@ -1509,31 +1504,21 @@ static void flatten_events(SAU_ScriptEvData *restrict e) {
 	SAU_ScriptEvData *fe = e->next, *fe_prev = e;
 	uint32_t wait_ms = 0;
 	uint32_t added_wait_ms = 0;
-	puts("flatten:");
+	printf("flatten %6zu\t/%u\n", e->ev_id, e->wait_ms);
 	while (ne != NULL) {
+		printf("\t@ %4zu\t/%u\t<- %3zu\t/%u\n",
+				ne->ev_id, ne->wait_ms,
+				fe_prev->ev_id, fe_prev->wait_ms);
 		if (!fe) {
-			puts("!!!");
 			/*
 			 * No more events in the flat sequence,
 			 * so append all sub-events.
 			 */
-			fe_prev->next = ne;
+			fe_prev->next = fe = ne;
 			break;
 		}
-		printf("%u (%zu)\t< %u (%zu),\t%u (%zu) >\n",
-				fe_prev->wait_ms, fe_prev->ev_id,
-				fe->wait_ms, fe->ev_id,
-				ne->wait_ms, ne->ev_id);
-		if (fe->next && ne->next)
-		printf("\t[< %u (%zu),\t%u (%zu) >]\n",
-				fe->next->wait_ms, fe->next->ev_id,
-				ne->next->wait_ms, ne->next->ev_id);
-		else if (fe->next)
-		printf("\t[< %u (%zu), NULL >]\n",
-				fe->next->wait_ms, fe->next->ev_id);
-		else if (ne->next)
-		printf("\t[< NULL, %u (%zu) >]\n",
-				ne->next->wait_ms, ne->next->ev_id);
+		printf("\t ,%4zu\t/%u\n",
+				fe->ev_id, fe->wait_ms);
 		/*
 		 * If several events should pass in the flat sequence
 		 * before the next sub-event is inserted, skip ahead.
@@ -1541,7 +1526,7 @@ static void flatten_events(SAU_ScriptEvData *restrict e) {
 		wait_ms += fe->wait_ms;
 		if (fe->next && (wait_ms + fe->next->wait_ms)
 				<= (ne->wait_ms + added_wait_ms)) {
-			printf("? w %u l.t. %u\n", fe->next->wait_ms + wait_ms, ne->wait_ms);
+			printf("\t? w %u l.t. %u\n", fe->next->wait_ms + wait_ms, ne->wait_ms);
 			fe_prev = fe;
 			fe = fe->next;
 			continue;
@@ -1556,7 +1541,6 @@ static void flatten_events(SAU_ScriptEvData *restrict e) {
 			added_wait_ms = 0;
 			wait_ms = 0;
 			fe_prev->next = ne;
-			fe_prev = ne;
 			ne->next = fe;
 		} else {
 			SAU_ScriptEvData *fe_next = fe->next;
@@ -1565,13 +1549,16 @@ static void flatten_events(SAU_ScriptEvData *restrict e) {
 			wait_ms = 0;
 			fe->next = ne;
 			ne->next = fe_next;
-			fe_prev = ne;
 			fe = fe_next;
 		}
+		fe_prev = ne;
 		ne = ne_next;
-		printf("->\t%u (%zu)\n",
-				fe_prev->wait_ms, fe_prev->ev_id);
 	}
+	printf("\t..%4zu\t/%u\t\n",
+			fe_prev->ev_id, fe_prev->wait_ms);
+	if (fe)
+	printf("\t->%4zu\t/%u\t\n",
+			fe->ev_id, fe->wait_ms);
 	e->forks = e->forks->prev;
 }
 
@@ -1584,7 +1571,6 @@ static void flatten_events(SAU_ScriptEvData *restrict e) {
 static void postparse_passes(SAU_Parser *restrict o) {
 	SAU_ScriptEvData *e;
 	for (e = o->events; e != NULL; e = e->next) {
-		printf("ev_id %zu\n", e->ev_id);
 		time_event(e);
 		if (e->group_backref != NULL) time_durgroup(e);
 	}
