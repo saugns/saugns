@@ -527,7 +527,7 @@ SAU_Program_print_info(const SAU_Program *restrict o) {
 		const SAU_ProgramEvent *ev = o->events[ev_id];
 		const SAU_ProgramVoData *vd = ev->vo_data;
 		fprintf(stdout,
-			"\\%u \tEV %zu \t(VO %hu)",
+			"/%u \tEV %zu \t(VO %hu)",
 			ev->wait_ms, ev_id, ev->vo_id);
 		if (vd != NULL) {
 			fprintf(stdout,
