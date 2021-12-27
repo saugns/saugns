@@ -1446,6 +1446,7 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e) {
 	 */
 	SAU_ScriptEvBranch *fork = e->forks;
 	while (fork != NULL) {
+		printf("F\n");
 		uint32_t nest_dur_ms = 0, wait_sum_ms = 0;
 		SAU_ScriptEvData *ne = fork->events, *ne_prev = e;
 		SAU_ScriptRef *ne_op = ne->main_refs.first_item,
@@ -1460,6 +1461,7 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e) {
 			wait_sum_ms += ne->wait_ms;
 			if (ne->ev_flags & SAU_SDEV_WAIT_PREV_DUR)
 				ne->wait_ms += ne_prev->dur_ms;
+			printf("\tev_i %zu /%u\n", ne->ev_id, ne->wait_ms);
 			if (!(ne_od->time.flags & SAU_TIMEP_SET))
 				ne_od->time.v_ms = def_time_ms;
 			time_event(ne);
@@ -1551,7 +1553,9 @@ static void flatten_events(SAU_ScriptEvData *restrict e) {
 static void postparse_passes(SAU_Parser *restrict o) {
 	SAU_ScriptEvData *e;
 	for (e = o->events; e != NULL; e = e->next) {
+		printf("ev_i %zu /%u\n", e->ev_id, e->wait_ms);
 		time_event(e);
+		printf("\tdur %u\n", e->dur_ms);
 		if (e->group_backref != NULL) time_durgroup(e);
 	}
 	/*
