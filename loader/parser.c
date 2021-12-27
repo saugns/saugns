@@ -1502,12 +1502,7 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e) {
 static void flatten_events(SAU_ScriptEvData *restrict e) {
 	SAU_ScriptEvData *ne = e->forks->events;
 	SAU_ScriptEvData *fe = e->next, *fe_prev = e;
-	printf("flatten %6zu\t/%u\n", e->ev_id, e->wait_ms);
 	while (ne != NULL) {
-		uint32_t wait_ms = 0;
-		printf("\t@ %4zu\t/%u\t<- %3zu\t/%u\n",
-				ne->ev_id, ne->wait_ms,
-				fe_prev->ev_id, fe_prev->wait_ms);
 		if (!fe) {
 			/*
 			 * No more events in the flat sequence,
@@ -1516,21 +1511,9 @@ static void flatten_events(SAU_ScriptEvData *restrict e) {
 			fe_prev->next = fe = ne;
 			break;
 		}
-		printf("\t ,%4zu\t/%u\n",
-				fe->ev_id, fe->wait_ms);
-		/*
-		 * If several events should pass in the flat sequence
-		 * before the next sub-event is inserted, skip ahead.
-		 */
-		while (fe->next && (wait_ms + fe->wait_ms + fe->next->wait_ms)
-				<= ne->wait_ms) {
-			wait_ms += fe->wait_ms;
-			fe_prev = fe;
-			fe = fe->next;
-		}
 		/*
 		 * Insert next sub-event before or after
-		 * the next event of the flat sequence.
+		 * the next events of the flat sequence.
 		 */
 		SAU_ScriptEvData *ne_next = ne->next;
 		if (fe->wait_ms >= ne->wait_ms) {
@@ -1538,8 +1521,17 @@ static void flatten_events(SAU_ScriptEvData *restrict e) {
 			fe_prev->next = ne;
 			ne->next = fe;
 		} else {
+			ne->wait_ms -= fe->wait_ms;
+			/*
+			 * If several events should pass in the flat sequence
+			 * before the next sub-event is inserted, skip ahead.
+			 */
+			while (fe->next && fe->next->wait_ms <= ne->wait_ms) {
+				fe_prev = fe;
+				fe = fe->next;
+				ne->wait_ms -= fe->wait_ms;
+			}
 			SAU_ScriptEvData *fe_next = fe->next;
-			ne->wait_ms -= wait_ms;
 			fe->next = ne;
 			ne->next = fe_next;
 			fe = fe_next;
@@ -1547,11 +1539,6 @@ static void flatten_events(SAU_ScriptEvData *restrict e) {
 		fe_prev = ne;
 		ne = ne_next;
 	}
-	printf("\t..%4zu\t/%u\t\n",
-			fe_prev->ev_id, fe_prev->wait_ms);
-	if (fe)
-	printf("\t->%4zu\t/%u\t\n",
-			fe->ev_id, fe->wait_ms);
 	e->forks = e->forks->prev;
 }
 
