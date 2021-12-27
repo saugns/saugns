@@ -1447,7 +1447,6 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e) {
 	 */
 	SAU_ScriptEvBranch *fork = e->forks;
 	while (fork != NULL) {
-		printf("F\n");
 		uint32_t nest_dur_ms = 0, wait_sum_ms = 0;
 		SAU_ScriptEvData *ne = fork->events, *ne_prev = e;
 		SAU_ScriptRef *ne_op = ne->main_refs.first_item,
@@ -1462,7 +1461,6 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e) {
 			wait_sum_ms += ne->wait_ms;
 			if (ne->ev_flags & SAU_SDEV_WAIT_PREV_DUR)
 				ne->wait_ms += ne_prev->dur_ms;
-			printf("\tev_i %zu /%u\n", ne->ev_id, ne->wait_ms);
 			if (!(ne_od->time.flags & SAU_TIMEP_SET))
 				ne_od->time.v_ms = def_time_ms;
 			time_event(ne);
@@ -1505,7 +1503,11 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e) {
 static void flatten_events(SAU_ScriptEvData *restrict e) {
 	SAU_ScriptEvData *ne = e->forks->events;
 	SAU_ScriptEvData *fe = e->next, *fe_prev = e;
+	printf("flatten %6zu\t/%u\tt%u\n", e->ev_id, e->wait_ms, e->dur_ms);
 	while (ne != NULL) {
+		printf("\t@ %4zu\t/%u\t<- %3zu\t/%u\n",
+				ne->ev_id, ne->wait_ms,
+				fe_prev->ev_id, fe_prev->wait_ms);
 		if (!fe) {
 			/*
 			 * No more events in the flat sequence,
@@ -1514,6 +1516,8 @@ static void flatten_events(SAU_ScriptEvData *restrict e) {
 			fe_prev->next = fe = ne;
 			break;
 		}
+		printf("\t ,%4zu\t/%u\n",
+				fe->ev_id, fe->wait_ms);
 		/*
 		 * Insert next sub-event before or after
 		 * the next events of the flat sequence.
@@ -1542,6 +1546,11 @@ static void flatten_events(SAU_ScriptEvData *restrict e) {
 		fe_prev = ne;
 		ne = ne_next;
 	}
+	printf("\t..%4zu\t/%u\t\n",
+			fe_prev->ev_id, fe_prev->wait_ms);
+	if (fe)
+	printf("\t->%4zu\t/%u\t\n",
+			fe->ev_id, fe->wait_ms);
 	e->forks = e->forks->prev;
 }
 
@@ -1554,16 +1563,17 @@ static void flatten_events(SAU_ScriptEvData *restrict e) {
 static void postparse_passes(SAU_Parser *restrict o) {
 	SAU_ScriptEvData *e;
 	for (e = o->events; e != NULL; e = e->next) {
-		printf("ev_i %zu /%u\n", e->ev_id, e->wait_ms);
 		time_event(e);
-		printf("\tdur %u\n", e->dur_ms);
 		if (e->group_backref != NULL) time_durgroup(e);
 	}
 	/*
 	 * Flatten in separate pass following timing adjustments for events;
 	 * otherwise, cannot always arrange events in the correct order.
 	 */
+	uint32_t wait_ms = 0;
 	for (e = o->events; e != NULL; e = e->next) {
+		wait_ms += e->wait_ms;
+		printf("S /%u\n", wait_ms);
 		while (e->forks != NULL) flatten_events(e);
 		/*
 		 * Track sequence of references and later use here.
