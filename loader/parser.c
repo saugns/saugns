@@ -539,6 +539,7 @@ typedef struct SAU_Parser {
 	struct ParseLevel *cur_pl;
 	SAU_ScriptEvData *events, *last_event;
 	SAU_ScriptEvData *group_start, *group_end;
+	size_t ev_i;
 } SAU_Parser;
 
 /*
@@ -749,6 +750,7 @@ static void begin_event(SAU_Parser *restrict o,
 	SAU_ScriptEvData *e, *pve;
 	end_event(o);
 	e = SAU_MemPool_alloc(o->mem, sizeof(SAU_ScriptEvData));
+	e->ev_id = o->ev_i++;
 	pl->event = e;
 	e->wait_ms = pl->next_wait_ms;
 	pl->next_wait_ms = 0;
@@ -1500,7 +1502,12 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e) {
 static void flatten_events(SAU_ScriptEvData *restrict e) {
 	SAU_ScriptEvData *ne = e->forks->events;
 	SAU_ScriptEvData *fe = e->next, *fe_prev = e;
+	printf("flatten %6zu\t/%u\n", e->ev_id, e->wait_ms);
 	while (ne != NULL) {
+		uint32_t wait_ms = 0;
+		printf("\t@ %4zu\t/%u\t<- %3zu\t/%u\n",
+				ne->ev_id, ne->wait_ms,
+				fe_prev->ev_id, fe_prev->wait_ms);
 		if (!fe) {
 			/*
 			 * No more events in the flat sequence,
@@ -1509,13 +1516,15 @@ static void flatten_events(SAU_ScriptEvData *restrict e) {
 			fe_prev->next = fe = ne;
 			break;
 		}
+		printf("\t ,%4zu\t/%u\n",
+				fe->ev_id, fe->wait_ms);
 		/*
 		 * If several events should pass in the flat sequence
 		 * before the next sub-event is inserted, skip ahead.
 		 */
-		for (uint32_t wait_ms = fe->wait_ms;
-				fe->next && (wait_ms += fe->next->wait_ms)
-				<= ne->wait_ms; ) {
+		while (fe->next && (wait_ms + fe->wait_ms + fe->next->wait_ms)
+				<= ne->wait_ms) {
+			wait_ms += fe->wait_ms;
 			fe_prev = fe;
 			fe = fe->next;
 		}
@@ -1530,7 +1539,7 @@ static void flatten_events(SAU_ScriptEvData *restrict e) {
 			ne->next = fe;
 		} else {
 			SAU_ScriptEvData *fe_next = fe->next;
-			ne->wait_ms -= fe->wait_ms;
+			ne->wait_ms -= wait_ms;
 			fe->next = ne;
 			ne->next = fe_next;
 			fe = fe_next;
@@ -1538,6 +1547,11 @@ static void flatten_events(SAU_ScriptEvData *restrict e) {
 		fe_prev = ne;
 		ne = ne_next;
 	}
+	printf("\t..%4zu\t/%u\t\n",
+			fe_prev->ev_id, fe_prev->wait_ms);
+	if (fe)
+	printf("\t->%4zu\t/%u\t\n",
+			fe->ev_id, fe->wait_ms);
 	e->forks = e->forks->prev;
 }
 
