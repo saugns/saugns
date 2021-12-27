@@ -806,7 +806,7 @@ static void begin_operator(SAU_Parser *restrict o,
 	/*
 	 * Initialize node.
 	 */
-	od->time.v_ms = sl->sopt.def_time_ms; /* time is not copied */
+	od->time.v_ms = sl->sopt.def_time_ms;
 	if (pop != NULL) {
 		od->use_type = pod->use_type;
 		op->on_prev = pop;
@@ -815,6 +815,7 @@ static void begin_operator(SAU_Parser *restrict o,
 		if (is_composite) {
 			pop->op_flags |= SAU_SDOP_HAS_SUBEV;
 		}
+		od->time.v_ms = pod->time.v_ms;
 		od->wave = pod->wave;
 		od->phase = pod->phase;
 		op->obj = pop->obj;
