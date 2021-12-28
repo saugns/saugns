@@ -1107,7 +1107,7 @@ static void parse_in_event(SAU_Parser *restrict o) {
 			break;
 		case '/':
 			if (parse_waittime(o)) {
-				begin_node(o, op, false);
+				begin_node(o, op, (pl->main_ev != NULL));
 			}
 			break;
 		case '\\':
