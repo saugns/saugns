@@ -119,21 +119,23 @@ Phase values:
 Parameters:
 	t	Time duration in seconds. If no "t" setting is given, the
 		time set depends on the context.
-			For a single non-nested operator, 1 is used unless
+			For a single non-nested operator, 1.0 is used unless
 		the default value is changed with "S t".
-			When several operators are specified at the same
-		time and time is explicitly set for at least one, the
-		default time is the combined duration of their play.
-			For nested operators, i.e. modulators, the default
-		time is infinite (can also be set as "ti"), meaning they
-		play whenever a carrier they are linked to does. Infinite
-		duration is only supported for nested operators, all scripts
-		having finite duration.
-			For a compound step, the first sub-step is given the
-		S default value if none set. The following parts will each
-		in turn be given the value of the preceding part if not
-		explicitly set - with the exception of nested operators for
-		the last part, which will have infinite time (ti) by default.
+			When several operators are specified, the default
+		time normally changes to the longest (at the current time
+		remaining) duration of play in use for a step, in considering
+		the surrounding sequence of steps and delays (up to the next
+		'|' time separator, or the end of the script if none).
+			For modulator operators, default time is however
+		infinite (can also be set as "ti"), meaning playing whenever
+		a carrier it is linked to does. (Infinite duration is only
+		supported for nested operators, all scripts having finite
+		duration.)
+			For a compound step, the first sub-step is however
+		simply given the "S t" default value if no time is set.
+		The following sub-steps in turn each have the time of the
+		previous as its default time. The exception is modulators,
+		for which the last sub-step is infinite ("ti") by default.
 	f	Frequency in Hz. Can be negative to flip wave shape timewise.
 			"Value ramp" values are supported; see section.
 			"Modulation with value range" is supported for FM
@@ -299,17 +301,20 @@ Timing modifiers:
 		split-out continuation of the current step, or new.
 	\	Subshift, time in seconds. For a current step only, split
 		out a follow-on step. For ease of creating "silent" gaps,
-		before the "\" the default time duration is 0 if "t" isn't
+		before the '\' the default time duration is 0 if "t" isn't
 		set there. Can be used by itself or along with ';'-syntax.
 
 Compound steps:
 	The ';' sub-step separator can be written (on a new line or the same)
-	to specify new parameter arguments for an object, which apply just
-	after the previous time duration, for a new duration which defaults
-	to the length of the old (see "t" for more). This can be repeated.
+	after a step to specify new parameter arguments for an object, which
+	apply just after the previous time duration, for a new duration which
+	defaults to the length of the previous. (For the default time of the
+	first sub-step, and about special handling for the last, see "t" under
+	each "Parameters" for more). The use of ';' can be repeated.
 		The time handling is designed to simplify writing a sequence
 	of connected, non-overlapping timed updates for a single object. For
 	example (three frequencies, one a second): "Osin f100 t1; f200; f300".
+	Changing "t1" in this example changes time length for all three parts.
 		For more flexibility, such as "silent" gaps between parts or
 	overlapping parts, ';' can be combined with the '\' subshift, as in
 	"; \number", which subdivides the part after the ';' into one before
