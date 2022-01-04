@@ -1106,9 +1106,10 @@ static void parse_in_event(SAU_Parser *restrict o) {
 		case SAU_SCAN_SPACE:
 			break;
 		case '/':
-			if (parse_waittime(o)) {
-				begin_node(o, op, (pl->main_ev != NULL));
-			}
+			goto DEFER;
+		//	if (parse_waittime(o)) {
+		//		begin_node(o, op, (pl->main_ev != NULL));
+		//	}
 			break;
 		case '\\':
 			if (parse_waittime(o)) {
@@ -1361,13 +1362,19 @@ static const char *parse_file(SAU_Parser *restrict o,
  */
 static void time_durgroup(SAU_ScriptEvData *restrict e_last) {
 	SAU_ScriptEvData *e, *e_after = e_last->next;
-	uint32_t wait = 0, waitcount = 0;
+	uint32_t cur_longest = 0, wait_sum = 0, wait_after = 0;
 	for (e = e_last->group_backref; e != e_after; ) {
-		if (wait < e->dur_ms)
-			wait = e->dur_ms;
+		if (cur_longest < e->dur_ms) {
+			cur_longest = e->dur_ms;
+		}
+		wait_after = cur_longest;
 		e = e->next;
 		if (e != NULL) {
-			waitcount += e->wait_ms;
+			if (cur_longest > e->wait_ms)
+				cur_longest -= e->wait_ms;
+			else
+				cur_longest = 0;
+			wait_sum += e->wait_ms;
 		}
 	}
 	for (e = e_last->group_backref; e != e_after; ) {
@@ -1376,20 +1383,20 @@ static void time_durgroup(SAU_ScriptEvData *restrict e_last) {
 			SAU_ProgramOpData *od = op->data;
 			if (!(od->time.flags & SAU_TIMEP_SET)) {
 				/* fill in sensible default time */
-				od->time.v_ms = wait + waitcount;
+				od->time.v_ms = cur_longest + wait_sum;
 				od->time.flags |= SAU_TIMEP_SET;
-				if (e->dur_ms < wait + waitcount)
-					e->dur_ms = wait + waitcount;
+				if (e->dur_ms < cur_longest + wait_sum)
+					e->dur_ms = cur_longest + wait_sum;
 			}
 		}
 		e = e->next;
 		if (e != NULL) {
-			waitcount -= e->wait_ms;
+			wait_sum -= e->wait_ms;
 		}
 	}
 	e_last->group_backref = NULL;
 	if (e_after != NULL)
-		e_after->wait_ms += wait;
+		e_after->wait_ms += wait_after;
 }
 
 static inline void time_ramp(SAU_Ramp *restrict ramp,
