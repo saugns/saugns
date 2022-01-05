@@ -1,0 +1,4 @@
+// Times should be: 5 s, 5 s, 4 s (the last may display as 3, 3 or as 4, 3).
+// Compound steps have the last part only auto-sized to fill available time.
+
+Osin f250 t5 Osin f60 /1 Osin f50 ;
