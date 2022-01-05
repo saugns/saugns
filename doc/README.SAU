@@ -131,11 +131,11 @@ Parameters:
 		a carrier it is linked to does. (Infinite duration is only
 		supported for nested operators, all scripts having finite
 		duration.)
-			For a compound step, the first sub-step is however
-		simply given the "S t" default value if no time is set.
-		The following sub-steps in turn each have the time of the
-		previous as its default time. The exception is modulators,
-		for which the last sub-step is infinite ("ti") by default.
+			For a compound step, the first sub-step has a normal
+		default time. The following sub-steps in turn each have the
+		time of the previous as its default time. The exception is
+		modulators, for which the last sub-step is infinite ("ti")
+		by default.
 	f	Frequency in Hz. Can be negative to flip wave shape timewise.
 			"Value ramp" values are supported; see section.
 			"Modulation with value range" is supported for FM
