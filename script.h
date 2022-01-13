@@ -66,7 +66,8 @@ enum {
 	SAU_SDEV_VOICE_SET_DUR    = 1<<1,
 	SAU_SDEV_IMPLICIT_TIME    = 1<<2,
 	SAU_SDEV_WAIT_PREV_DUR    = 1<<3, // compound step timing
-	SAU_SDEV_FROM_GAPSHIFT    = 1<<4, // gapshift follow-on event
+	SAU_SDEV_FROM_FWDSHIFT    = 1<<4, // follow-on event for forward shift
+	SAU_SDEV_FROM_GAPSHIFT    = 1<<5, // follow-on event for gapshift
 };
 
 struct SAU_ScriptEvBranch;

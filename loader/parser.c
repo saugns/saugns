@@ -1105,7 +1105,8 @@ static void parse_in_event(SAU_Parser *restrict o) {
 			break;
 		case '/':
 			if (parse_waittime(o)) {
-				begin_node(o, pl->operator, false);
+				begin_node(o, pl->operator, true);
+				pl->event->ev_flags |= SAU_SDEV_FROM_FWDSHIFT;
 			}
 			break;
 		case '\\':
@@ -1435,7 +1436,7 @@ static uint32_t time_operator(SAU_ScriptRef *restrict op) {
 }
 
 static uint32_t time_event(SAU_ScriptEvData *restrict e) {
-	uint32_t dur_ms = 0;
+	uint32_t dur_ms = 0, carry_ms = 0;
 	SAU_ScriptRef *sub_op;
 	for (sub_op = e->main_refs.first_item;
 			sub_op != NULL; sub_op = sub_op->next_item) {
@@ -1448,7 +1449,7 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e) {
 	 */
 	SAU_ScriptEvBranch *fork = e->forks;
 	while (fork != NULL) {
-		uint32_t nest_dur_ms = 0, wait_sum_ms = 0;
+		uint32_t nest_dur_ms = 0, wait_sum_ms = 0, sub_carry_ms = 0;
 		SAU_ScriptEvData *ne = fork->events, *ne_prev = e;
 		SAU_ScriptRef *ne_op = ne->main_refs.first_item,
 			      *ne_op_prev = ne_op->on_prev, *e_op = ne_op_prev;
@@ -1478,6 +1479,9 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e) {
 					(ne_od->time.flags & SAU_TIMEP_IMPLICIT)
 				};
 			}
+			if (ne->ev_flags & SAU_SDEV_FROM_FWDSHIFT) {
+				sub_carry_ms += ne->wait_ms;
+			}
 			if (ne->ev_flags & SAU_SDEV_FROM_GAPSHIFT) {
 				if (ne_od_prev->time.flags & SAU_TIMEP_DEFAULT
 				    && !(ne_prev->ev_flags &
@@ -1489,15 +1493,20 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e) {
 				}
 			}
 			if (ne->ev_flags & SAU_SDEV_WAIT_PREV_DUR) {
+				if (ne_prev->ev_flags &
+						SAU_SDEV_FROM_FWDSHIFT)
+					ne_od_prev->params |= SAU_POPP_TIME;
 				ne->wait_ms += ne_prev->dur_ms;
 				ne_od_prev->time.flags &= ~SAU_TIMEP_IMPLICIT;
+				sub_carry_ms = 0; // the separator cancels it
 			}
 			if (nest_dur_ms < wait_sum_ms + ne->dur_ms)
 				nest_dur_ms = wait_sum_ms + ne->dur_ms;
 			first_time_ms += ne->dur_ms +
 				(ne->wait_ms - ne_prev->dur_ms);
 			ne_od->time.flags |= SAU_TIMEP_SET;
-			ne_od->params |= SAU_POPP_TIME;
+			if (!(ne->ev_flags & SAU_SDEV_FROM_FWDSHIFT))
+				ne_od->params |= SAU_POPP_TIME;
 			ne_op_prev = ne_op;
 			ne_prev = ne;
 			ne = ne->next;
@@ -1506,12 +1515,20 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e) {
 		}
 		if (nest_dur_ms < first_time_ms)
 			nest_dur_ms = first_time_ms;
-		if (dur_ms < nest_dur_ms)
-			dur_ms = nest_dur_ms;
+		if (dur_ms < nest_dur_ms - sub_carry_ms)
+			dur_ms = nest_dur_ms - sub_carry_ms;
+		carry_ms += sub_carry_ms;
 		fork = fork->prev;
 	}
-	e->dur_ms = dur_ms; /* unfinished estimate used to adjust timing */
-	return dur_ms;
+	/*
+	 * Set unfinished estimate used in final timing adjustments.
+	 * The carry value for wait time corresponds to any dangling
+	 * forward time shifts, and is thus added to the next event.
+	 */
+	e->dur_ms = dur_ms;
+	if (e->next != NULL)
+		e->next->wait_ms += carry_ms;
+	return carry_ms;
 }
 
 /*
