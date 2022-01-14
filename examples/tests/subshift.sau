@@ -1,0 +1,26 @@
+/* A label reference does not automatically
+ * set (update) the time for what it refers to.
+ *
+ * Subshifts only force time to be updated after each
+ * '\' (while changing default time, used or not,
+ * before the first '\').
+ *
+ * The '\'s for "@a" below won't set a zero'd time
+ * for the first part.
+ */
+
+'a Osin f400 t1.5
+@a \1 f500 \1 f600
+
+// The following would have played the same:
+// Osin f400 t1.5 \1 f500 \1 f600
+
+/* Continuing...
+ *
+ * The "\0" extends the time when "@a" alone does not,
+ * by setting time after the "\0" (and re-using the
+ * old value 1.5 in the absence of a new one).
+ */
+
+/5
+@a \0
