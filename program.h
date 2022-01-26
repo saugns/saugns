@@ -134,6 +134,8 @@ typedef struct SAU_ProgramEvent {
  */
 enum {
 	SAU_PMODE_AMP_DIV_VOICES = 1<<0,
+	SAU_PMODE_VOICE_FADE_IN  = 1<<1,
+	SAU_PMODE_VOICE_FADE_OUT = 1<<2,
 };
 
 struct SAU_Script;
