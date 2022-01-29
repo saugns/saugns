@@ -13,7 +13,7 @@
 
 #pragma once
 #include "program.h"
-#include "ptrlist.h"
+#include "ptrarr.h"
 
 #define SGS_CLINAME_STR "sgensys"
 #define SGS_VERSION_STR "v0.2-beta"
@@ -32,10 +32,10 @@ enum {
 	SGS_OPT_EVAL_STRING   = 1<<5,
 };
 
-size_t SGS_load(const SGS_PtrList *restrict script_args, uint32_t options,
-		SGS_PtrList *restrict prg_objs);
+size_t SGS_load(const SGS_PtrArr *restrict script_args, uint32_t options,
+		SGS_PtrArr *restrict prg_objs);
 
-bool SGS_play(const SGS_PtrList *restrict prg_objs, uint32_t srate,
+bool SGS_play(const SGS_PtrArr *restrict prg_objs, uint32_t srate,
 		uint32_t options, const char *restrict wav_path);
 
-void SGS_discard(SGS_PtrList *restrict prg_objs);
+void SGS_discard(SGS_PtrArr *restrict prg_objs);
