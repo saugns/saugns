@@ -62,15 +62,15 @@ CLOSE:
  *
  * \return number of items successfully processed
  */
-size_t SGS_load(const SGS_PtrList *restrict script_args, uint32_t options,
-		SGS_PtrList *restrict prg_objs) {
+size_t SGS_load(const SGS_PtrArr *restrict script_args, uint32_t options,
+		SGS_PtrArr *restrict prg_objs) {
 	bool are_paths = !(options & SGS_OPT_EVAL_STRING);
 	size_t built = 0;
-	const char **args = (const char**) SGS_PtrList_ITEMS(script_args);
+	const char **args = (const char**) SGS_PtrArr_ITEMS(script_args);
 	for (size_t i = 0; i < script_args->count; ++i) {
 		SGS_Program *prg = build_program(args[i], are_paths);
 		if (prg != NULL) ++built;
-		SGS_PtrList_add(prg_objs, prg);
+		SGS_PtrArr_add(prg_objs, prg);
 	}
 	return built;
 }

@@ -54,7 +54,7 @@ static void print_version(void) {
  */
 static bool parse_args(int argc, char **restrict argv,
 		uint32_t *restrict flags,
-		SGS_PtrList *restrict script_args) {
+		SGS_PtrArr *restrict script_args) {
 	for (;;) {
 		const char *arg;
 		--argc;
@@ -65,7 +65,7 @@ static bool parse_args(int argc, char **restrict argv,
 		}
 		arg = *argv;
 		if (*arg != '-') {
-			SGS_PtrList_add(script_args, (void*) arg);
+			SGS_PtrArr_add(script_args, (void*) arg);
 			continue;
 		}
 NEXT_C:
@@ -96,7 +96,7 @@ NEXT_C:
 USAGE:
 	print_usage();
 ABORT:
-	SGS_PtrList_clear(script_args);
+	SGS_PtrArr_clear(script_args);
 	return false;
 }
 
@@ -104,12 +104,12 @@ ABORT:
  * Discard the programs in the list, ignoring NULL entries,
  * and clearing the list.
  */
-void SGS_discard(SGS_PtrList *restrict prg_objs) {
-	SGS_Program **prgs = (SGS_Program**) SGS_PtrList_ITEMS(prg_objs);
+void SGS_discard(SGS_PtrArr *restrict prg_objs) {
+	SGS_Program **prgs = (SGS_Program**) SGS_PtrArr_ITEMS(prg_objs);
 	for (size_t i = 0; i < prg_objs->count; ++i) {
 		free(prgs[i]); // for placeholder
 	}
-	SGS_PtrList_clear(prg_objs);
+	SGS_PtrArr_clear(prg_objs);
 }
 
 /*
@@ -162,15 +162,15 @@ CLOSE:
  *
  * \return number of items successfully processed
  */
-size_t SGS_load(const SGS_PtrList *restrict script_args, uint32_t options,
-		SGS_PtrList *restrict prg_objs) {
+size_t SGS_load(const SGS_PtrArr *restrict script_args, uint32_t options,
+		SGS_PtrArr *restrict prg_objs) {
 	bool are_paths = !(options & SGS_OPT_EVAL_STRING);
 	size_t built = 0;
-	const char **args = (const char**) SGS_PtrList_ITEMS(script_args);
+	const char **args = (const char**) SGS_PtrArr_ITEMS(script_args);
 	for (size_t i = 0; i < script_args->count; ++i) {
 		SGS_Program *prg = build_program(args[i], are_paths);
 		if (prg != NULL) ++built;
-		SGS_PtrList_add(prg_objs, prg);
+		SGS_PtrArr_add(prg_objs, prg);
 	}
 	return built;
 }
@@ -179,13 +179,13 @@ size_t SGS_load(const SGS_PtrList *restrict script_args, uint32_t options,
  * Main function.
  */
 int main(int argc, char **restrict argv) {
-	SGS_PtrList script_args = (SGS_PtrList){0};
-	SGS_PtrList prg_objs = (SGS_PtrList){0};
+	SGS_PtrArr script_args = (SGS_PtrArr){0};
+	SGS_PtrArr prg_objs = (SGS_PtrArr){0};
 	uint32_t options = 0;
 	if (!parse_args(argc, argv, &options, &script_args))
 		return 0;
 	bool error = !SGS_load(&script_args, options, &prg_objs);
-	SGS_PtrList_clear(&script_args);
+	SGS_PtrArr_clear(&script_args);
 	if (error)
 		return 1;
 	if (prg_objs.count > 0) {
