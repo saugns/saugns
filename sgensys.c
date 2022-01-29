@@ -100,7 +100,7 @@ static int32_t get_piarg(const char *restrict str) {
  */
 static bool parse_args(int argc, char **restrict argv,
 		uint32_t *restrict flags,
-		SGS_PtrList *restrict script_args,
+		SGS_PtrArr *restrict script_args,
 		const char **restrict wav_path,
 		uint32_t *restrict srate) {
 	struct SGS_opt opt = (struct SGS_opt){0};
@@ -173,7 +173,7 @@ REPARSE:
 		}
 		const char *arg = argv[opt.ind];
 		if (!dashdash && c != -1 && arg[0] == '-') goto REPARSE;
-		SGS_PtrList_add(script_args, (void*) arg);
+		SGS_PtrArr_add(script_args, (void*) arg);
 		++opt.ind;
 		c = 0; /* only goto REPARSE after advancing, to prevent hang */
 	}
@@ -181,7 +181,7 @@ REPARSE:
 USAGE:
 	print_usage(h_arg, h_type);
 ABORT:
-	SGS_PtrList_clear(script_args);
+	SGS_PtrArr_clear(script_args);
 	return false;
 }
 
@@ -189,20 +189,20 @@ ABORT:
  * Discard the programs in the list, ignoring NULL entries,
  * and clearing the list.
  */
-void SGS_discard(SGS_PtrList *restrict prg_objs) {
-	SGS_Program **prgs = (SGS_Program**) SGS_PtrList_ITEMS(prg_objs);
+void SGS_discard(SGS_PtrArr *restrict prg_objs) {
+	SGS_Program **prgs = (SGS_Program**) SGS_PtrArr_ITEMS(prg_objs);
 	for (size_t i = 0; i < prg_objs->count; ++i) {
 		SGS_discard_Program(prgs[i]);
 	}
-	SGS_PtrList_clear(prg_objs);
+	SGS_PtrArr_clear(prg_objs);
 }
 
 /**
  * Main function.
  */
 int main(int argc, char **restrict argv) {
-	SGS_PtrList script_args = (SGS_PtrList){0};
-	SGS_PtrList prg_objs = (SGS_PtrList){0};
+	SGS_PtrArr script_args = (SGS_PtrArr){0};
+	SGS_PtrArr prg_objs = (SGS_PtrArr){0};
 	const char *wav_path = NULL;
 	uint32_t options = 0;
 	uint32_t srate = 0;
@@ -210,7 +210,7 @@ int main(int argc, char **restrict argv) {
 			&srate))
 		return 0;
 	bool error = !SGS_read(&script_args, options, &prg_objs);
-	SGS_PtrList_clear(&script_args);
+	SGS_PtrArr_clear(&script_args);
 	if (error)
 		return 1;
 	if (prg_objs.count > 0) {
