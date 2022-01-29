@@ -125,7 +125,7 @@ static bool SGS_Output_run(SGS_Output *restrict o,
  *
  * \return true unless error occurred
  */
-bool SGS_play(const SGS_PtrList *restrict prg_objs, uint32_t srate,
+bool SGS_play(const SGS_PtrArr *restrict prg_objs, uint32_t srate,
 		uint32_t options, const char *restrict wav_path) {
 	if (!prg_objs->count)
 		return true;
@@ -146,7 +146,7 @@ bool SGS_play(const SGS_PtrList *restrict prg_objs, uint32_t srate,
 		if (out.ad != NULL) srate = out.ad_srate;
 	}
 	const SGS_Program **prgs =
-		(const SGS_Program**) SGS_PtrList_ITEMS(prg_objs);
+		(const SGS_Program**) SGS_PtrArr_ITEMS(prg_objs);
 	for (size_t i = 0; i < prg_objs->count; ++i) {
 		const SGS_Program *prg = prgs[i];
 		if (!prg) continue;
