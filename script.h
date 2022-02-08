@@ -88,7 +88,6 @@ struct SGS_ScriptEvBranch;
  */
 typedef struct SGS_ScriptEvData {
 	struct SGS_ScriptEvData *next;
-	struct SGS_ScriptEvData *group_backref;
 	struct SGS_ScriptEvBranch *forks;
 	SGS_ScriptListData objs;
 	uint32_t ev_flags;
