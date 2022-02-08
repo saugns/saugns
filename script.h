@@ -74,6 +74,11 @@ enum {
 
 struct SGS_ScriptEvBranch;
 
+typedef struct SGS_ScriptDurGroup {
+	struct SGS_ScriptEvData *first;
+	struct SGS_ScriptDurGroup *next_group;
+} SGS_ScriptDurGroup;
+
 /**
  * Node type for event data. Events are placed in time per script contents,
  * in a nested way during parsing and flattened after for later processing.
@@ -86,7 +91,6 @@ struct SGS_ScriptEvBranch;
  */
 typedef struct SGS_ScriptEvData {
 	struct SGS_ScriptEvData *next;
-	struct SGS_ScriptEvData *group_backref;
 	struct SGS_ScriptEvBranch *forks;
 	SGS_ScriptListData objs;
 	uint32_t ev_flags;
