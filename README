@@ -484,10 +484,10 @@ At the topmost script scope, newlines also terminate steps; within
 sub-scopes, however, newlines may be placed freely.
 
 Timing modifiers:
-	|	Time separator. Delays all that follows by the duration of
-		prior steps. This also resets any other delays to be added
-		to later steps using other syntax like '/', so such should
-		be placed after, not before, if it is to take effect.
+	|	Time separator. Adjusts delay added to everything after, to
+		ensure it is as long as the remaining duration (play time)
+		of what comes before, increasing it otherwise. Does not
+		decrease added delay.
 	/	Forward shift, time in seconds. Delay the next step and
 		all steps placed after. The next step can be either a
 		split-out continuation of the current step, or new.
