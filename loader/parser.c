@@ -538,7 +538,7 @@ typedef struct SAU_Parser {
 	/* node state */
 	struct ParseLevel *cur_pl;
 	SAU_ScriptEvData *events, *last_event;
-	SAU_ScriptEvData *group_start, *group_end;
+	SAU_ScriptDurGroup *groups, *cur_group;
 } SAU_Parser;
 
 /*
@@ -734,9 +734,9 @@ static void end_event(SAU_Parser *restrict o) {
 	pl->ev_first_data = NULL;
 	pl->ev_last_data = NULL;
 	SAU_ScriptEvData *group_e = (pl->main_ev != NULL) ? pl->main_ev : e;
-	if (!o->group_start)
-		o->group_start = group_e;
-	o->group_end = group_e;
+	if (!o->cur_group->first)
+		o->cur_group->first = group_e;
+	o->cur_group->last = group_e;
 }
 
 static void begin_event(SAU_Parser *restrict o,
@@ -889,14 +889,23 @@ static void begin_node(SAU_Parser *restrict o,
 	begin_operator(o, previous, is_compstep);
 }
 
-static void flush_durgroup(SAU_Parser *restrict o) {
+static bool new_durgroup(SAU_Parser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
 	pl->next_wait_ms = 0; /* does not cross boundaries */
-	if (o->group_start != NULL) {
-		o->group_end->group_backref = o->group_start;
-		o->group_start = o->group_end = NULL;
-	}
+	if (o->cur_group != NULL && !o->cur_group->first)
+		return true; /* nothing to do */
+	SAU_ScriptDurGroup *group = SAU_MemPool_alloc(o->tmp, sizeof(*group));
+	if (!group)
+		return false;
+	if (!o->groups)
+		o->groups = group;
+	else
+		o->cur_group->next_group = group;
+	o->cur_group = group;
+	return true;
 }
+
+static void time_durgroup(SAU_ScriptDurGroup *restrict g);
 
 static void enter_level(SAU_Parser *restrict o,
 		struct ParseLevel *restrict pl,
@@ -906,7 +915,9 @@ static void enter_level(SAU_Parser *restrict o,
 	o->cur_pl = pl;
 	*pl = (struct ParseLevel){0};
 	pl->scope = newscope;
-	if (parent_pl != NULL) {
+	if (!parent_pl) {
+		new_durgroup(o);
+	} else {
 		pl->parent = parent_pl;
 		pl->sub_f = parent_pl->sub_f;
 		pl->pl_flags = parent_pl->pl_flags & (PL_BIND_MULTIPLE);
@@ -948,7 +959,9 @@ static void leave_level(SAU_Parser *restrict o) {
 		 * end last event and adjust timing.
 		 */
 		end_event(o);
-		flush_durgroup(o);
+		for (SAU_ScriptDurGroup *g = o->groups;
+				g != NULL; g = g->next_group)
+			time_durgroup(g);
 	}
 	--o->call_level;
 	o->cur_pl = pl->parent;
@@ -1315,7 +1328,7 @@ static bool parse_level(SAU_Parser *restrict o,
 				goto RETURN;
 			}
 			end_event(o);
-			flush_durgroup(o);
+			new_durgroup(o);
 			pl.sub_f = NULL;
 			break;
 		case '}':
@@ -1359,15 +1372,20 @@ static const char *parse_file(SAU_Parser *restrict o,
 	return name;
 }
 
+static uint32_t time_event(SAU_ScriptEvData *restrict e);
+
 /*
  * Adjust timing for a duration group; the script syntax for time grouping is
  * only allowed on the "top" operator level, so the algorithm only deals with
  * this for the events involved.
  */
-static void time_durgroup(SAU_ScriptEvData *restrict e_last) {
-	SAU_ScriptEvData *e, *e_after = e_last->next;
+static void time_durgroup(SAU_ScriptDurGroup *restrict g) {
+	SAU_ScriptEvData *e, *e_after = (g->last ? g->last->next : NULL);
 	uint32_t cur_longest = 0, wait_sum = 0, wait_after = 0;
-	for (e = e_last->group_backref; e != e_after; ) {
+	for (e = g->first; e != e_after; ) {
+		if (!(e->ev_flags & SAU_SDEV_IMPLICIT_TIME))
+			e->ev_flags |= SAU_SDEV_VOICE_SET_DUR;
+		time_event(e);
 		if ((e->ev_flags & SAU_SDEV_VOICE_SET_DUR) != 0 &&
 		    cur_longest < e->dur_ms)
 			cur_longest = e->dur_ms;
@@ -1381,7 +1399,7 @@ static void time_durgroup(SAU_ScriptEvData *restrict e_last) {
 			wait_sum += e->wait_ms;
 		}
 	}
-	for (e = e_last->group_backref; e != e_after; ) {
+	for (e = g->first; e != e_after; ) {
 		for (SAU_ScriptOpRef *op = e->main_refs.first_item;
 				op != NULL; op = op->next_item) {
 			SAU_ProgramOpData *od = op->data;
@@ -1398,7 +1416,6 @@ static void time_durgroup(SAU_ScriptEvData *restrict e_last) {
 			wait_sum -= e->wait_ms;
 		}
 	}
-	e_last->group_backref = NULL;
 	if (e_after != NULL)
 		e_after->wait_ms += wait_after;
 }
@@ -1577,18 +1594,11 @@ static void flatten_events(SAU_ScriptEvData *restrict e) {
  * instead being done when creating the sound generation program.
  */
 static void postparse_passes(SAU_Parser *restrict o) {
-	SAU_ScriptEvData *e;
-	for (e = o->events; e != NULL; e = e->next) {
-		if (!(e->ev_flags & SAU_SDEV_IMPLICIT_TIME))
-			e->ev_flags |= SAU_SDEV_VOICE_SET_DUR;
-		time_event(e);
-		if (e->group_backref != NULL) time_durgroup(e);
-	}
 	/*
 	 * Flatten in separate pass following timing adjustments for events;
 	 * otherwise, cannot always arrange events in the correct order.
 	 */
-	for (e = o->events; e != NULL; e = e->next) {
+	for (SAU_ScriptEvData *e = o->events; e != NULL; e = e->next) {
 		while (e->forks != NULL) flatten_events(e);
 		/*
 		 * Track sequence of references and later use here.

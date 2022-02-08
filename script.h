@@ -70,6 +70,11 @@ enum {
 
 struct SAU_ScriptEvBranch;
 
+typedef struct SAU_ScriptDurGroup {
+	struct SAU_ScriptEvData *first, *last;
+	struct SAU_ScriptDurGroup *next_group;
+} SAU_ScriptDurGroup;
+
 /**
  * Node type for event data. Events are placed in time per script contents,
  * in a nested way during parsing and flattened after for later processing.
@@ -82,7 +87,6 @@ struct SAU_ScriptEvBranch;
  */
 typedef struct SAU_ScriptEvData {
 	struct SAU_ScriptEvData *next;
-	struct SAU_ScriptEvData *group_backref;
 	struct SAU_ScriptEvBranch *forks;
 	uint32_t ev_flags;
 	uint32_t wait_ms;
