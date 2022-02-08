@@ -1,5 +1,5 @@
 /* sgensys: Script file data and functions.
- * Copyright (c) 2011-2012, 2017-2022 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2023 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -86,7 +86,6 @@ struct SGS_ScriptEvBranch;
  */
 typedef struct SGS_ScriptEvData {
 	struct SGS_ScriptEvData *next;
-	struct SGS_ScriptEvData *group_backref;
 	struct SGS_ScriptEvBranch *forks;
 	SGS_ScriptListData objs;
 	uint32_t ev_flags;

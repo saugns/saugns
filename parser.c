@@ -1,5 +1,5 @@
 /* sgensys: Script parser module.
- * Copyright (c) 2011-2012, 2017-2022 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2023 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -584,8 +584,7 @@ typedef struct SGS_Parser {
 	uint32_t call_level;
 	/* node state */
 	struct ParseLevel *cur_pl;
-	SGS_ScriptEvData *events, *last_event;
-	SGS_ScriptEvData *group_start, *group_end;
+	SGS_ScriptEvData *events, *last_event, *group_event;
 } SGS_Parser;
 
 /*
@@ -672,7 +671,7 @@ struct ParseLevel {
 	SGS_Symitem *set_var;
 	/* timing/delay */
 	SGS_ScriptEvData *main_ev; /* if events are nested, for grouping... */
-	uint32_t next_wait_ms; /* added for next event */
+	uint32_t add_wait_ms, carry_wait_ms; /* added for next event */
 	float used_ampmult; /* update on node creation */
 	SGS_ScriptOptions sopt_save; /* save/restore on nesting */
 };
@@ -737,7 +736,7 @@ static bool parse_waittime(SGS_Parser *restrict o) {
 	uint32_t wait_ms;
 	if (!scan_time_val(o->sc, &wait_ms))
 		return false;
-	pl->next_wait_ms += wait_ms;
+	pl->add_wait_ms += wait_ms;
 	return true;
 }
 
@@ -778,10 +777,8 @@ static void end_event(SGS_Parser *restrict o) {
 	end_operator(o);
 	pl->scope_first = pl->ev_last = NULL;
 	pl->event = NULL;
-	SGS_ScriptEvData *group_e = (pl->main_ev != NULL) ? pl->main_ev : e;
-	if (!o->group_start)
-		o->group_start = group_e;
-	o->group_end = group_e;
+	if (!o->group_event)
+		o->group_event = (pl->main_ev != NULL) ? pl->main_ev : e;
 }
 
 static void begin_event(SGS_Parser *restrict o,
@@ -792,8 +789,8 @@ static void begin_event(SGS_Parser *restrict o,
 	end_event(o);
 	pl->event = SGS_mpalloc(o->mp, sizeof(SGS_ScriptEvData));
 	e = pl->event;
-	e->wait_ms = pl->next_wait_ms;
-	pl->next_wait_ms = 0;
+	e->wait_ms = pl->add_wait_ms + pl->carry_wait_ms;
+	pl->add_wait_ms = pl->carry_wait_ms = 0;
 	if (prev_data != NULL) {
 		SGS_ScriptEvData *pve = prev_data->event;
 		if (prev_data->op_flags & SGS_SDOP_NESTED)
@@ -919,7 +916,7 @@ static void begin_operator(SGS_Parser *restrict o,
 static void begin_node(SGS_Parser *restrict o,
 		SGS_ScriptOpData *restrict previous, bool is_compstep) {
 	struct ParseLevel *pl = o->cur_pl;
-	if (!pl->event || pl->next_wait_ms > 0 ||
+	if (!pl->event || pl->add_wait_ms > 0 ||
 			((previous || pl->use_type == SGS_POP_CARR)
 			 && pl->event->objs.first_item) ||
 			is_compstep)
@@ -927,13 +924,16 @@ static void begin_node(SGS_Parser *restrict o,
 	begin_operator(o, previous, is_compstep);
 }
 
-static void flush_durgroup(SGS_Parser *restrict o) {
+static SGS_ScriptEvData *time_durgroup(SGS_ScriptEvData *restrict e_from,
+		uint32_t *restrict wait_after);
+
+static void finish_durgroup(SGS_Parser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
-	pl->next_wait_ms = 0; /* does not cross boundaries */
-	if (o->group_start != NULL) {
-		o->group_end->group_backref = o->group_start;
-		o->group_start = o->group_end = NULL;
-	}
+	pl->add_wait_ms = 0; /* reset by each '|' boundary */
+	if (!o->group_event)
+		return; /* nothing to do */
+	o->last_event = time_durgroup(o->group_event, &pl->carry_wait_ms);
+	o->group_event = NULL;
 }
 
 static void enter_level(SGS_Parser *restrict o,
@@ -992,7 +992,7 @@ static void leave_level(SGS_Parser *restrict o) {
 		 * end last event and adjust timing.
 		 */
 		end_event(o);
-		flush_durgroup(o);
+		finish_durgroup(o);
 	}
 	--o->call_level;
 	o->cur_pl = pl->parent;
@@ -1377,7 +1377,7 @@ static bool parse_level(SGS_Parser *restrict o,
 			}
 			pl.pl_flags &= ~PL_WARN_NOSPACE; /* OK around */
 			end_event(o);
-			flush_durgroup(o);
+			finish_durgroup(o);
 			pl.sub_f = NULL;
 			continue;
 		case '}':
@@ -1433,30 +1433,46 @@ static inline void time_ramp(SGS_Ramp *restrict ramp,
 }
 
 static void time_op_ramps(SGS_ScriptOpData *restrict op);
+static uint32_t time_event(SGS_ScriptEvData *restrict e);
+static void flatten_events(SGS_ScriptEvData *restrict e);
 
 /*
  * Adjust timing for a duration group; the script syntax for time grouping is
  * only allowed on the "top" operator level, so the algorithm only deals with
  * this for the events involved.
  */
-static void time_durgroup(SGS_ScriptEvData *restrict e_last) {
-	SGS_ScriptEvData *e, *e_after = e_last->next;
-	uint32_t cur_longest = 0, wait_sum = 0, wait_after = 0;
-	for (e = e_last->group_backref; e != e_after; ) {
+static SGS_ScriptEvData *time_durgroup(SGS_ScriptEvData *restrict e_from,
+		uint32_t *restrict wait_after) {
+	SGS_ScriptEvData *e, *e_subtract_after = e_from;
+	uint32_t cur_longest = 0, wait_sum = 0, group_carry = 0;
+	bool subtract = false;
+	for (e = e_from; e; ) {
+		if (!(e->ev_flags & SGS_SDEV_IMPLICIT_TIME))
+			e->ev_flags |= SGS_SDEV_VOICE_SET_DUR;
+		time_event(e);
 		if ((e->ev_flags & SGS_SDEV_VOICE_SET_DUR) != 0 &&
-		    cur_longest < e->dur_ms)
+		    cur_longest < e->dur_ms) {
 			cur_longest = e->dur_ms;
-		wait_after = cur_longest;
-		e = e->next;
-		if (e != NULL) {
-			if (cur_longest > e->wait_ms)
-				cur_longest -= e->wait_ms;
-			else
-				cur_longest = 0;
-			wait_sum += e->wait_ms;
+			group_carry = cur_longest;
+			e_subtract_after = e;
 		}
+		if (!e->next) break;
+		e = e->next;
+		if (cur_longest > e->wait_ms)
+			cur_longest -= e->wait_ms;
+		else
+			cur_longest = 0;
+		wait_sum += e->wait_ms;
 	}
-	for (e = e_last->group_backref; e != e_after; ) {
+	/*
+	 * Flatten event forks in loop following the timing adjustments
+	 * depending on composite step event structure, complete times.
+	 */
+	for (e = e_from; e; ) {
+		while (e->forks != NULL) flatten_events(e);
+		/*
+		 * Track sequence of references and later use here.
+		 */
 		for (SGS_ScriptOpData *op = e->objs.first_item; op;
 				op = op->next) {
 			if (!(op->time.flags & SGS_TIMEP_SET)) {
@@ -1467,15 +1483,28 @@ static void time_durgroup(SGS_ScriptEvData *restrict e_last) {
 					e->dur_ms = op->time.v_ms;
 				time_op_ramps(op);
 			}
+			SGS_ScriptOpData *prev_ref = op->info->last_ref;
+			if (prev_ref != NULL) {
+				op->prev_ref = prev_ref;
+				prev_ref->op_flags |= SGS_SDOP_LATER_USED;
+				prev_ref->event->ev_flags |=
+					SGS_SDEV_VOICE_LATER_USED;
+			}
+			op->info->last_ref = op;
 		}
+		if (!e->next) break;
+		if (e == e_subtract_after) subtract = true;
 		e = e->next;
-		if (e != NULL) {
-			wait_sum -= e->wait_ms;
+		wait_sum -= e->wait_ms;
+		if (subtract) {
+			if (group_carry >= e->wait_ms)
+				group_carry -= e->wait_ms;
+			else
+				group_carry = 0;
 		}
 	}
-	e_last->group_backref = NULL;
-	if (e_after != NULL)
-		e_after->wait_ms += wait_after;
+	if (wait_after) *wait_after += group_carry;
+	return e;
 }
 
 static void time_op_ramps(SGS_ScriptOpData *restrict op) {
@@ -1654,43 +1683,6 @@ static void flatten_events(SGS_ScriptEvData *restrict e) {
 	e->forks = fork->prev;
 }
 
-/*
- * Post-parsing passes - perform timing adjustments, flatten event list.
- *
- * Ideally, this function wouldn't exist, all post-parse processing
- * instead being done when creating the sound generation program.
- */
-static void postparse_passes(SGS_Parser *restrict o) {
-	SGS_ScriptEvData *e;
-	for (e = o->events; e; e = e->next) {
-		if (!(e->ev_flags & SGS_SDEV_IMPLICIT_TIME))
-			e->ev_flags |= SGS_SDEV_VOICE_SET_DUR;
-		time_event(e);
-		if (e->group_backref != NULL) time_durgroup(e);
-	}
-	/*
-	 * Flatten in separate pass following timing adjustments for events;
-	 * otherwise, cannot always arrange events in the correct order.
-	 */
-	for (e = o->events; e; e = e->next) {
-		while (e->forks != NULL) flatten_events(e);
-		/*
-		 * Track sequence of references and later use here.
-		 */
-		for (SGS_ScriptOpData *sub_op = e->objs.first_item;
-				sub_op; sub_op = sub_op->next) {
-			SGS_ScriptOpData *prev_ref = sub_op->info->last_ref;
-			if (prev_ref != NULL) {
-				sub_op->prev_ref = prev_ref;
-				prev_ref->op_flags |= SGS_SDOP_LATER_USED;
-				prev_ref->event->ev_flags |=
-					SGS_SDEV_VOICE_LATER_USED;
-			}
-			sub_op->info->last_ref = sub_op;
-		}
-	}
-}
-
 /**
  * Parse a file and return script data.
  *
@@ -1704,7 +1696,6 @@ SGS_Script* SGS_read_Script(const SGS_ScriptArg *restrict arg) {
 	init_Parser(&pr, arg);
 	const char *name = parse_file(&pr, arg);
 	if (!name) goto DONE;
-	postparse_passes(&pr);
 	o = SGS_mpalloc(pr.mp, sizeof(SGS_Script));
 	o->mp = pr.mp;
 	o->prg_mp = pr.prg_mp;
