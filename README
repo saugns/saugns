@@ -235,18 +235,23 @@ Parameters:
 			"Modulation with value range" is supported for AM & RM
 		(amplitude and ring modulation); see section.
 	p	Set the phase of the wave, and/or PM (phase modulation)
-		modulators to use.
-			A value modulo 1.0 is used to set phase as a
-		percentage of the wave cycle. For example, p(3/4) will move
-		a sine or triangle wave to its "bottom". This is mostly
-		useful for changing the initial phase.
+		modulators to use. A value modulo 1.0 is used to set phase as
+		a percentage of the wave cycle. This is mostly useful for
+		changing the initial phase.
 			"Modulator list" values are supported for PM (phase
-                modulation); see section.
-			The sum of modulator amplitudes is used to
-		phase-modulate the carrier(s).
+		modulation); see section. A phase percentage value can be set
+		together with a list in one go, the value then going first
+		after the 'p', for example "p0.25[...]". A subparameter can
+		be used instead or in addition for another kind of PM.
+		,f	Frequency-amplified PM modulators can be set in a
+			separate list, as in "p,f[...]". See "Modulator list".
+		The sum of all PM modulator amplitudes will phase-modulate
+		the carrier(s). For frequency-amplified PM modulators, first
+		the amplitudes are multiplied by the carrier frequency divided
+		by 632.45... Hz (the geometric mean of 20 and 20000 Hz).
 	w	Wave type. See "Wave types" for values.
-	c	(For non-nested operators only.) Channel mixing, (-1.0) to 1.0.
-		See "Channel mixing values" for more.
+	c	(For non-nested oscillators only.) Channel mixing, mainly
+		(-1.0) to 1.0. See "Channel mixing values" for more.
 			"Value sweep" values are supported; see section.
 
 Q: Quit

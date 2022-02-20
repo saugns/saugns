@@ -63,7 +63,7 @@ static bool init_ScanLookup(struct ScanLookup *restrict o,
 	o->sopt = def_sopt;
 	if (!SGS_Symtab_add_stra(st, SGS_Ramp_names, SGS_RAMP_NAMED,
 			SGS_SYM_RAMP_ID) ||
-	    !SGS_Symtab_add_stra(st, SGS_Wave_names, SGS_WAVE_TYPES,
+	    !SGS_Symtab_add_stra(st, SGS_Wave_names, SGS_WAVE_NAMED,
 			SGS_SYM_WAVE_ID))
 		return false;
 	return true;
@@ -991,25 +991,22 @@ static bool prepare_sweep(SGS_Parser *restrict o,
 	return true;
 }
 
-static bool parse_par_list(SGS_Parser *restrict o,
+static void parse_par_list(SGS_Parser *restrict o,
 		SGS_ScanNumConst_f numconst_f,
 		SGS_Ramp **restrict op_sweep, bool ratio,
 		uint8_t sweep_id, uint8_t mod_type) {
 	struct ParseLevel *pl = o->cur_pl;
-	bool clear = SGS_Scanner_tryc(o->sc, '-');
-	bool empty = true;
 	prepare_sweep(o, numconst_f, op_sweep, ratio, sweep_id);
 	if (op_sweep)
 		scan_ramp_state(o->sc, numconst_f, *op_sweep, ratio);
+	bool clear = SGS_Scanner_tryc(o->sc, '-');
 	while (SGS_Scanner_tryc(o->sc, '[')) {
-		empty = false;
 		pl->nest_list = SGS_mpalloc(o->mp, sizeof(*pl->nest_list));
 		parse_level(o, mod_type, SCOPE_NEST, ']');
 		if (clear) clear = false;
 		else pl->nest_list->append = true;
 	}
 	pl->op_sweep = NULL;
-	return empty;
 }
 
 static bool parse_op_amp(SGS_Parser *restrict o) {
@@ -1063,6 +1060,13 @@ static bool parse_op_phase(SGS_Parser *restrict o) {
 		op->params |= SGS_POPP_PHASE;
 	}
 	parse_par_list(o, NULL, NULL, false, 0, SGS_POP_PMOD);
+	if (SGS_Scanner_tryc(o->sc, ',')) switch (SGS_Scanner_getc(o->sc)) {
+	case 'f':
+		parse_par_list(o, NULL, NULL, false, 0, SGS_POP_FPMOD);
+		break;
+	default:
+		return true;
+	}
 	return false;
 }
 

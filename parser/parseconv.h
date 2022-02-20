@@ -161,7 +161,7 @@ enum {
  */
 typedef struct SGS_OpAllocState {
 	SGS_ScriptOpData *last_pod;
-	const SGS_ProgramIDArr *amods, *fmods, *pmods;
+	const SGS_ProgramIDArr *amods, *fmods, *pmods, *fpmods;
 	uint32_t flags;
 	//uint32_t duration_ms;
 } SGS_OpAllocState;
@@ -341,6 +341,11 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 			goto MEM_ERR;
 		ood->pmods = oas->pmods;
 	}
+	if (mods[SGS_POP_FPMOD] != NULL) {
+		if (!set_oplist(&oas->fpmods, mods[SGS_POP_FPMOD], o->mp))
+			goto MEM_ERR;
+		ood->fpmods = oas->fpmods;
+	}
 	return true;
 MEM_ERR:
 	return false;
@@ -423,6 +428,8 @@ SGS_VoiceGraph_handle_op_node(SGS_VoiceGraph *restrict o,
 	if (!SGS_VoiceGraph_handle_op_list(o, oas->fmods, SGS_POP_FMOD))
 		return false;
 	if (!SGS_VoiceGraph_handle_op_list(o, oas->pmods, SGS_POP_PMOD))
+		return false;
+	if (!SGS_VoiceGraph_handle_op_list(o, oas->fpmods, SGS_POP_FPMOD))
 		return false;
 	oas->flags &= ~SGS_OAS_VISITED;
 	--o->op_nest_level;
@@ -655,17 +662,18 @@ print_oplist(const SGS_ProgramOpRef *restrict list,
 		return;
 	FILE *out = SGS_print_stream();
 	static const char *const uses[SGS_POP_USES] = {
-		"CA",
-		"AM",
-		"FM",
-		"PM",
+		" CA",
+		" AM",
+		" FM",
+		" PM",
+		"fPM",
 	};
 
 	uint32_t i = 0;
 	uint32_t max_indent = 0;
 	fputs("\n\t    [", out);
 	for (;;) {
-		const uint32_t indent = list[i].level * 2;
+		const uint32_t indent = list[i].level * 3;
 		if (indent > max_indent) max_indent = indent;
 		fprintf(out, "%6u:  ", list[i].id);
 		for (uint32_t j = indent; j > 0; --j)
@@ -739,6 +747,7 @@ SGS_Program_print_info(const SGS_Program *restrict o) {
 			print_linked("\n\t    a,w", od->amods);
 			print_linked("\n\t    f,w", od->fmods);
 			print_linked("\n\t    p", od->pmods);
+			print_linked("\n\t    p,f", od->fpmods);
 		}
 		SGS_printf("\n");
 	}
