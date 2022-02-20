@@ -84,9 +84,10 @@ enum {
  */
 enum {
 	SGS_POP_CARR = 0,
+	SGS_POP_AMOD,
 	SGS_POP_FMOD,
 	SGS_POP_PMOD,
-	SGS_POP_AMOD,
+	SGS_POP_FPMOD,
 	SGS_POP_USES,
 };
 
@@ -108,15 +109,15 @@ typedef struct SGS_ProgramVoData {
 } SGS_ProgramVoData;
 
 typedef struct SGS_ProgramOpData {
-	const SGS_ProgramOpList *fmods, *pmods, *amods;
-	uint32_t id;
 	uint32_t params;
 	SGS_Time time;
 	uint8_t wave;
 	SGS_Ramp *freq, *freq2;
 	SGS_Ramp *amp, *amp2;
 	SGS_Ramp *pan;
-	float phase;
+	uint32_t phase;
+	uint32_t id;
+	const SGS_ProgramOpList *amods, *fmods, *pmods, *fpmods;
 } SGS_ProgramOpData;
 
 typedef struct SGS_ProgramEvent {

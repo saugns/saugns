@@ -144,7 +144,7 @@ enum {
  */
 typedef struct SGS_OpAllocState {
 	SGS_ScriptOpData *last_pod;
-	const SGS_ProgramOpList *fmods, *pmods, *amods;
+	const SGS_ProgramOpList *amods, *fmods, *pmods, *fpmods;
 	uint32_t flags;
 	//uint32_t duration_ms;
 } SGS_OpAllocState;
@@ -309,6 +309,11 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 		vas->flags |= SGS_VAS_GRAPH;
 		mods[in_list->use_type] = in_list;
 	}
+	if (mods[SGS_POP_AMOD] != NULL) {
+		if (!set_oplist(&oas->amods, mods[SGS_POP_AMOD], o->mem))
+			goto MEM_ERR;
+		od->amods = oas->amods;
+	}
 	if (mods[SGS_POP_FMOD] != NULL) {
 		if (!set_oplist(&oas->fmods, mods[SGS_POP_FMOD], o->mem))
 			goto MEM_ERR;
@@ -319,10 +324,10 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 			goto MEM_ERR;
 		od->pmods = oas->pmods;
 	}
-	if (mods[SGS_POP_AMOD] != NULL) {
-		if (!set_oplist(&oas->amods, mods[SGS_POP_AMOD], o->mem))
+	if (mods[SGS_POP_FPMOD] != NULL) {
+		if (!set_oplist(&oas->fpmods, mods[SGS_POP_FPMOD], o->mem))
 			goto MEM_ERR;
-		od->amods = oas->amods;
+		od->fpmods = oas->fpmods;
 	}
 	return true;
 MEM_ERR:
@@ -403,11 +408,13 @@ SGS_VoiceGraph_handle_op_node(SGS_VoiceGraph *restrict o,
 	}
 	++o->op_nest_level;
 	oas->flags |= SGS_OAS_VISITED;
+	if (!SGS_VoiceGraph_handle_op_list(o, oas->amods, SGS_POP_AMOD))
+		return false;
 	if (!SGS_VoiceGraph_handle_op_list(o, oas->fmods, SGS_POP_FMOD))
 		return false;
 	if (!SGS_VoiceGraph_handle_op_list(o, oas->pmods, SGS_POP_PMOD))
 		return false;
-	if (!SGS_VoiceGraph_handle_op_list(o, oas->amods, SGS_POP_AMOD))
+	if (!SGS_VoiceGraph_handle_op_list(o, oas->fpmods, SGS_POP_FPMOD))
 		return false;
 	oas->flags &= ~SGS_OAS_VISITED;
 	--o->op_nest_level;
@@ -637,10 +644,11 @@ static void
 print_graph(const SGS_ProgramOpRef *restrict graph,
 		uint32_t count) {
 	static const char *const uses[SGS_POP_USES] = {
-		"CA",
-		"FM",
-		"PM",
-		"AM"
+		" CA",
+		" AM",
+		" FM",
+		" PM",
+		"fPM",
 	};
 	if (!graph)
 		return;
@@ -649,7 +657,7 @@ print_graph(const SGS_ProgramOpRef *restrict graph,
 	uint32_t max_indent = 0;
 	fputs("\n\t    [", stdout);
 	for (;;) {
-		const uint32_t indent = graph[i].level * 2;
+		const uint32_t indent = graph[i].level * 3;
 		if (indent > max_indent) max_indent = indent;
 		fprintf(stdout, "%6u:  ", graph[i].id);
 		for (uint32_t j = indent; j > 0; --j)
@@ -721,9 +729,10 @@ SGS_Program_print_info(const SGS_Program *restrict o) {
 		for (size_t i = 0; i < ev->op_data_count; ++i) {
 			const SGS_ProgramOpData *od = &ev->op_data[i];
 			print_opline(od);
+			print_linked("\n\t    aw[", "]", od->amods);
 			print_linked("\n\t    fw[", "]", od->fmods);
 			print_linked("\n\t    p[", "]", od->pmods);
-			print_linked("\n\t    aw[", "]", od->amods);
+			print_linked("\n\t    pf[", "]", od->fpmods);
 		}
 		putc('\n', stdout);
 	}

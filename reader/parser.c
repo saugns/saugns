@@ -1055,14 +1055,16 @@ static bool parse_ev_phase(SGS_Parser *restrict o) {
 	SGS_ScriptOpData *op = pl->operator;
 	double val;
 	if (scan_num(sc, NULL, &val)) {
-		val = fmod(val, 1.f);
-		if (val < 0.f)
-			val += 1.f;
-		op->phase = val;
+		op->phase = lrint(remainder(val, 1.f) * 2.f * (float)INT32_MAX);
 		op->params |= SGS_POPP_PHASE;
 	}
 	if (SGS_Scanner_tryc(sc, '[')) {
 		parse_level(o, SGS_POP_PMOD, SCOPE_NEST);
+	}
+	if (SGS_Scanner_tryc(sc, ',')) {
+		if (SGS_Scanner_tryc(sc, 'f') && SGS_Scanner_tryc(sc, '[')) {
+			parse_level(o, SGS_POP_FPMOD, SCOPE_NEST);
+		}
 	}
 	return false;
 }

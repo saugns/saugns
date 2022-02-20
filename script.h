@@ -49,7 +49,7 @@ typedef struct SGS_ScriptOpData {
 	SGS_Ramp *freq, *freq2;
 	SGS_Ramp *amp, *amp2;
 	SGS_Ramp *pan;
-	float phase;
+	uint32_t phase;
 	/* node adjacents in operator linkage graph */
 	SGS_ScriptListData *mods;
 	/* for conversion */
