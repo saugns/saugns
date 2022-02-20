@@ -17,6 +17,49 @@
 
 #include "osc.h"
 
+/**
+ * Fill phase-increment and (optionally) phase-offset buffer
+ * for use with SGS_Osc_run() or SGS_Osc_run_env().
+ */
+void SGS_Phasor_fill(SGS_Phasor *restrict o,
+		int32_t *restrict pinc_i32,
+		int32_t *restrict pofs_i32,
+		size_t buf_len,
+		const float *restrict freq_f,
+		const float *restrict pm_f,
+		const float *restrict fpm_f) {
+	const float fpm_scale = 1.f / SGS_HUMMID;
+	if (!pofs_i32 || (!pm_f && !fpm_f)) {
+		for (size_t i = 0; i < buf_len; ++i) {
+			float s_f = freq_f[i];
+			pinc_i32[i] = lrintf(o->coeff * s_f);
+			if (pofs_i32 != NULL)
+				pofs_i32[i] = 0;
+		}
+	} else if (!fpm_f) {
+		for (size_t i = 0; i < buf_len; ++i) {
+			float s_f = freq_f[i];
+			float s_pofs = pm_f[i];
+			pinc_i32[i] = lrintf(o->coeff * s_f);
+			pofs_i32[i] = lrintf(s_pofs * (float) INT32_MAX);
+		}
+	} else if (!pm_f) {
+		for (size_t i = 0; i < buf_len; ++i) {
+			float s_f = freq_f[i];
+			float s_pofs = fpm_f[i] * fpm_scale * s_f;
+			pinc_i32[i] = lrintf(o->coeff * s_f);
+			pofs_i32[i] = lrintf(s_pofs * (float) INT32_MAX);
+		}
+	} else {
+		for (size_t i = 0; i < buf_len; ++i) {
+			float s_f = freq_f[i];
+			float s_pofs = pm_f[i] + (fpm_f[i] * fpm_scale * s_f);
+			pinc_i32[i] = lrintf(o->coeff * s_f);
+			pofs_i32[i] = lrintf(s_pofs * (float) INT32_MAX);
+		}
+	}
+}
+
 #if !USE_PILUT
 /*
  * Implementation of SGS_Osc_run()
@@ -27,17 +70,17 @@
 static void naive_run(SGS_Osc *restrict o,
 		float *restrict buf, size_t buf_len,
 		uint32_t layer,
-		const float *restrict freq,
-		const float *restrict amp,
-		const float *restrict pm_f) {
+		const int32_t *restrict pinc_buf,
+		const int32_t *restrict pofs_buf,
+		const float *restrict amp) {
 	const float *const lut = SGS_Wave_luts[o->wave];
 	for (size_t i = 0; i < buf_len; ++i) {
-		uint32_t phase = o->phase;
-		if (pm_f != NULL) {
-			phase += lrintf(pm_f[i] * (float) INT32_MAX);
+		uint32_t phase = o->phasor.phase;
+		if (pofs_buf != NULL) {
+			phase += pofs_buf[i];
 		}
 		float s = SGS_Wave_get_lerp(lut, phase) * amp[i];
-		o->phase += lrintf(o->coeff * freq[i]);
+		o->phasor.phase += pinc_buf[i];
 		if (layer > 0) s += buf[i];
 		buf[i] = s;
 	}
@@ -52,17 +95,17 @@ static void naive_run(SGS_Osc *restrict o,
 static void naive_run_env(SGS_Osc *restrict o,
 		float *restrict buf, size_t buf_len,
 		uint32_t layer,
-		const float *restrict freq,
-		const float *restrict amp,
-		const float *restrict pm_f) {
+		const int32_t *restrict pinc_buf,
+		const int32_t *restrict pofs_buf,
+		const float *restrict amp) {
 	const float *const lut = SGS_Wave_luts[o->wave];
 	for (size_t i = 0; i < buf_len; ++i) {
-		uint32_t phase = o->phase;
-		if (pm_f != NULL) {
-			phase += lrintf(pm_f[i] * (float) INT32_MAX);
+		uint32_t phase = o->phasor.phase;
+		if (pofs_buf != NULL) {
+			phase += pofs_buf[i];
 		}
 		float s = SGS_Wave_get_lerp(lut, phase);
-		o->phase += lrintf(o->coeff * freq[i]);
+		o->phasor.phase += pinc_buf[i];
 		float s_amp = amp[i] * 0.5f;
 		s = (s * s_amp) + fabs(s_amp);
 		if (layer > 0) s *= buf[i];
@@ -72,14 +115,15 @@ static void naive_run_env(SGS_Osc *restrict o,
 #endif
 
 #if USE_PILUT
+/* Set up for differentiation (re)start with usable state. */
 static void SGS_Osc_reset(SGS_Osc *o) {
 	const float *const lut = SGS_Wave_piluts[o->wave];
 	const float diff_scale = SGS_Wave_DVSCALE(o->wave);
 	const float diff_offset = SGS_Wave_DVOFFSET(o->wave);
 	if (o->flags & SGS_OSC_RESET_DIFF) {
-		/* Set up for differentiation start and a valid previous. */
+		/* one-LUT-value diff works fine for any freq, 0 Hz included */
 		int32_t phase_diff = SGS_Wave_SLEN;
-		int32_t phase = o->phase + phase_diff; /* good for 0 Hz case */
+		int32_t phase = o->phasor.phase + phase_diff;
 		o->prev_Is = SGS_Wave_get_herp(lut, phase - phase_diff);
 		double Is = SGS_Wave_get_herp(lut, phase);
 		double x = (diff_scale / phase_diff);
@@ -100,26 +144,25 @@ static void SGS_Osc_reset(SGS_Osc *o) {
  *
  * Pre-increments phase each sample.
  *
- * \p pm_f may be NULL for no PM input.
+ * \p pofs_buf may be NULL for no PM input.
  */
 void SGS_Osc_run(SGS_Osc *restrict o,
 		float *restrict buf, size_t buf_len,
 		uint32_t layer,
-		const float *restrict freq,
-		const float *restrict amp,
-		const float *restrict pm_f) {
+		const int32_t *restrict pinc_buf,
+		const int32_t *restrict pofs_buf,
+		const float *restrict amp) {
 #if USE_PILUT /* higher-quality audio */
 	const float *const lut = SGS_Wave_piluts[o->wave];
 	const float diff_scale = SGS_Wave_DVSCALE(o->wave);
 	const float diff_offset = SGS_Wave_DVOFFSET(o->wave);
 	if (o->flags & SGS_OSC_RESET)
 		SGS_Osc_reset(o);
-	if (pm_f != NULL) {
+	if (pofs_buf != NULL) {
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s;
-			int32_t s_pm = lrintf(pm_f[i] * (float) INT32_MAX);
-			int32_t phase_inc = lrintf(o->coeff * freq[i]);
-			uint32_t phase = (o->phase += phase_inc) + s_pm;
+			int32_t s_pm = pofs_buf[i];
+			uint32_t phase = (o->phasor.phase += pinc_buf[i]) + s_pm;
 			int32_t phase_diff = phase - o->prev_phase;
 			if (phase_diff == 0) {
 				s = o->prev_diff_s;
@@ -138,8 +181,7 @@ void SGS_Osc_run(SGS_Osc *restrict o,
 	} else {
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s;
-			int32_t phase_inc = lrintf(o->coeff * freq[i]);
-			uint32_t phase = (o->phase += phase_inc);
+			uint32_t phase = (o->phasor.phase += pinc_buf[i]);
 			int32_t phase_diff = phase - o->prev_phase;
 			if (phase_diff == 0) {
 				s = o->prev_diff_s;
@@ -157,7 +199,7 @@ void SGS_Osc_run(SGS_Osc *restrict o,
 		}
 	}
 #else /* test naive LUT */
-	naive_run(o, buf, buf_len, layer, freq, amp, pm_f);
+	naive_run(o, buf, buf_len, layer, pinc_buf, pofs_buf, amp);
 #endif
 }
 
@@ -171,26 +213,25 @@ void SGS_Osc_run(SGS_Osc *restrict o,
  *
  * Pre-increments phase each sample.
  *
- * \p pm_f may be NULL for no PM input.
+ * \p pofs_buf may be NULL for no PM input.
  */
 void SGS_Osc_run_env(SGS_Osc *restrict o,
 		float *restrict buf, size_t buf_len,
 		uint32_t layer,
-		const float *restrict freq,
-		const float *restrict amp,
-		const float *restrict pm_f) {
+		const int32_t *restrict pinc_buf,
+		const int32_t *restrict pofs_buf,
+		const float *restrict amp) {
 #if USE_PILUT /* higher-quality audio */
 	const float *const lut = SGS_Wave_piluts[o->wave];
 	const float diff_scale = SGS_Wave_DVSCALE(o->wave);
 	const float diff_offset = SGS_Wave_DVOFFSET(o->wave);
 	if (o->flags & SGS_OSC_RESET)
 		SGS_Osc_reset(o);
-	if (pm_f != NULL) {
+	if (pofs_buf != NULL) {
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s;
-			int32_t s_pm = lrintf(pm_f[i] * (float) INT32_MAX);
-			int32_t phase_inc = lrintf(o->coeff * freq[i]);
-			uint32_t phase = (o->phase += phase_inc) + s_pm;
+			int32_t s_pm = pofs_buf[i];
+			uint32_t phase = (o->phasor.phase += pinc_buf[i]) + s_pm;
 			int32_t phase_diff = phase - o->prev_phase;
 			if (phase_diff == 0) {
 				s = o->prev_diff_s;
@@ -210,8 +251,7 @@ void SGS_Osc_run_env(SGS_Osc *restrict o,
 	} else {
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s;
-			int32_t phase_inc = lrintf(o->coeff * freq[i]);
-			uint32_t phase = (o->phase += phase_inc);
+			uint32_t phase = (o->phasor.phase += pinc_buf[i]);
 			int32_t phase_diff = phase - o->prev_phase;
 			if (phase_diff == 0) {
 				s = o->prev_diff_s;
@@ -230,6 +270,6 @@ void SGS_Osc_run_env(SGS_Osc *restrict o,
 		}
 	}
 #else /* test naive LUT */
-	naive_run_env(o, buf, buf_len, layer, freq, amp, pm_f);
+	naive_run_env(o, buf, buf_len, layer, pinc_buf, pofs_buf, amp);
 #endif
 }
