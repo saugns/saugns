@@ -62,7 +62,7 @@ static bool init_ScanLookup(struct ScanLookup *restrict o,
 	o->sopt = def_sopt;
 	if (!SGS_Symtab_add_stra(st, SGS_Ramp_names, SGS_RAMP_NAMED,
 			SGS_SYM_RAMP_ID) ||
-	    !SGS_Symtab_add_stra(st, SGS_Wave_names, SGS_WAVE_TYPES,
+	    !SGS_Symtab_add_stra(st, SGS_Wave_names, SGS_WAVE_NAMED,
 			SGS_SYM_WAVE_ID))
 		return false;
 	return true;
@@ -1048,6 +1048,11 @@ static bool parse_ev_phase(SGS_Parser *restrict o) {
 	}
 	if (SGS_Scanner_tryc(sc, '[')) {
 		parse_level(o, SGS_POP_PMOD, SCOPE_NEST);
+	}
+	if (SGS_Scanner_tryc(sc, ',')) {
+		if (SGS_Scanner_tryc(sc, 'f') && SGS_Scanner_tryc(sc, '[')) {
+			parse_level(o, SGS_POP_FPMOD, SCOPE_NEST);
+		}
 	}
 	return false;
 }
