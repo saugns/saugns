@@ -1,78 +1,78 @@
-Osin	fB3 t.3 p[Osin r(4/3) Osin r(1/9)]
+Osin	fB3 t.2 p,f[Osin r(4/3) Osin a2 r(1/9)]
 ;	fA4
-;	fGs5
-;	\.3 fB3
+;	fGs5 t.4
+;	\.3 fB3 t.2
 ;	fGs5
 ;	fB3
-;	fGs5 t.2
+;	fGs5 t.1
 ;	\.1 fGs5 t.4
-|/.5
+|/.4
 
-Osin	fB3 t.3 p[Osin r(4/3) Osin r(2/9)]
+Osin	fB3 t.2 p,f[Osin r(4/3) Osin a2 r(2/9)]
 ;	fA4
-;	fGs5
-;	\.3 fB3
+;	fGs5 t.4
+;	\.3 fB3 t.2
 ;	fGs5
 ;	fB3
-;	fGs5 t.2
+;	fGs5 t.1
 ;	\.1 fGs5 t.4
-|/.5
+|/.4
 
-Osin	fB3 t.3 p[Osin r(4/3) Osin r(3/9)]
+Osin	fB3 t.2 p,f[Osin r(4/3) Osin a2 r(3/9)]
 ;	fA4
-;	fGs5
-;	\.3 fB3
+;	fGs5 t.4
+;	\.3 fB3 t.2
 ;	fGs5
 ;	fB3
-;	fGs5 t.2
+;	fGs5 t.1
 ;	\.1 fGs5 t.4
-|/.5
+|/.4
 
-Osin	fB3 t.3 p[Osin r(4/3) Osin r(4/9)]
+Osin	fB3 t.2 p,f[Osin r(4/3) Osin a2 r(4/9)]
 ;	fA4
-;	fGs5
-;	\.3 fB3
+;	fGs5 t.4
+;	\.3 fB3 t.2
 ;	fGs5
 ;	fB3
-;	fGs5 t.2
+;	fGs5 t.1
 ;	\.1 fGs5 t.4
-|/.5
+|/.4
 
-Osin	fB3 t.3 p[Osin r(4/3) Osin r(5/9)]
+Osin	fB3 t.2 p,f[Osin r(4/3) Osin a2 r(5/9)]
 ;	fA4
-;	fGs5
-;	\.3 fB3
+;	fGs5 t.4
+;	\.3 fB3 t.2
 ;	fGs5
 ;	fB3
-;	fGs5 t.2
+;	fGs5 t.1
 ;	\.1 fGs5 t.4
-|/.5
+|/.4
 
-Osin	fB3 t.3 p[Osin r(4/3) Osin r(6/9)]
+Osin	fB3 t.2 p,f[Osin r(4/3) Osin a2 r(6/9)]
 ;	fA4
-;	fGs5
-;	\.3 fB3
+;	fGs5 t.4
+;	\.3 fB3 t.2
 ;	fGs5
 ;	fB3
-;	fGs5 t.2
+;	fGs5 t.1
 ;	\.1 fGs5 t.4
-|/.5
+|/.4
 
-Osin	fB3 t.3 p[Osin r(4/3) Osin r(7/9)]
+Osin	fB3 t.2 p,f[Osin r(4/3) Osin a2 r(7/9)]
 ;	fA4
-;	fGs5
-;	\.3 fB3
+;	fGs5 t.4
+;	\.3 fB3 t.2
 ;	fGs5
 ;	fB3
-;	fGs5 t.2
+;	fGs5 t.1
 ;	\.1 fGs5 t.4
-|/.5
+|/.4
 
-Osin	fB3 t.3 p[Osin r(4/3) Osin r(8/9)]
+Osin	fB3 t.2 p,f[Osin r(4/3) Osin a2 r(8/9)]
 ;	fA4
-;	fGs5
-;	\.3 fB3
+;	fGs5 t.4
+;	\.3 fB3 t.2
 ;	fGs5
 ;	fB3
-;	fGs5 t.2
+;	fGs5 t.1
 ;	\.1 fGs5 t.4
