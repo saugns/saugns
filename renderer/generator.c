@@ -33,7 +33,7 @@ typedef struct OperatorNode {
 	SGS_Osc osc;
 	uint32_t time;
 	uint8_t flags;
-	const SGS_ProgramOpList *fmods, *pmods, *amods;
+	const SGS_ProgramOpList *amods, *fmods, *pmods, *fpmods;
 	SGS_Ramp amp, freq;
 	SGS_Ramp amp2, freq2;
 	uint32_t amp_pos, freq_pos;
@@ -139,7 +139,7 @@ static bool convert_program(SGS_Generator *restrict o,
 	for (size_t i = 0; i < prg->op_count; ++i) {
 		OperatorNode *on = &o->operators[i];
 		SGS_init_Osc(&on->osc, srate);
-		on->fmods = on->pmods = on->amods = &blank_oplist;
+		on->amods = on->fmods = on->pmods = on->fpmods = &blank_oplist;
 	}
 	for (size_t i = 0; i < prg->ev_count; ++i) {
 		const SGS_ProgramEvent *prg_e = prg->events[i];
@@ -250,9 +250,10 @@ static void handle_event(SGS_Generator *restrict o, EventNode *restrict e) {
 			const SGS_ProgramOpData *od = &e->op_data[i];
 			OperatorNode *on = &o->operators[od->id];
 			uint32_t params = od->params;
+			if (od->amods != NULL) on->amods = od->amods;
 			if (od->fmods != NULL) on->fmods = od->fmods;
 			if (od->pmods != NULL) on->pmods = od->pmods;
-			if (od->amods != NULL) on->amods = od->amods;
+			if (od->fpmods != NULL) on->fpmods = od->fpmods;
 			if (params & SGS_POPP_WAVE)
 				SGS_Osc_set_wave(&on->osc, od->wave);
 			if (params & SGS_POPP_TIME) {
@@ -274,7 +275,7 @@ static void handle_event(SGS_Generator *restrict o, EventNode *restrict e) {
 						&on->freq2_pos, &od->freq2);
 			if (params & SGS_POPP_PHASE)
 				SGS_Osc_set_phase(&on->osc,
-						SGS_Osc_PHASE(od->phase));
+						SGS_Phasor_PHASE(od->phase));
 			if (params & SGS_POPP_AMP)
 				handle_ramp_update(&on->amp,
 						&on->amp_pos, &od->amp);
@@ -316,8 +317,9 @@ static uint32_t run_block(SGS_Generator *restrict o,
 		float *restrict parent_freq,
 		bool wave_env, uint32_t acc_ind) {
 	uint32_t i, len;
-	float *s_buf = *(bufs++), *pm_buf;
-	float *freq, *amp;
+	float *s_buf = *(bufs++), *pm_buf = NULL, *fpm_buf = NULL;
+	void *pinc_buf = *(bufs++), *pofs_buf = *(bufs++);
+	float *freq = *(bufs++), *amp = NULL;
 	len = buf_len;
 	/*
 	 * Guard against circular references.
@@ -340,31 +342,44 @@ static uint32_t run_block(SGS_Generator *restrict o,
 	 * Handle frequency, including frequency modulation
 	 * if modulators linked.
 	 */
-	freq = *(bufs++);
 	SGS_Ramp_run(&n->freq, &n->freq_pos, freq, len, o->srate, parent_freq);
 	if (n->fmods->count > 0) {
-		float *freq2 = *(bufs++);
+		float *freq2 = *(bufs + 0); // #5
 		SGS_Ramp_run(&n->freq2, &n->freq2_pos,
 				freq2, len, o->srate, parent_freq);
 		for (i = 0; i < n->fmods->count; ++i)
-			run_block(o, bufs, len, &o->operators[n->fmods->ids[i]],
+			run_block(o, (bufs + 1), len,
+					&o->operators[n->fmods->ids[i]],
 					freq, true, i);
-		float *fm_buf = *bufs;
+		float *fm_buf = *(bufs + 1); // #6
 		for (i = 0; i < len; ++i)
 			freq[i] += (freq2[i] - freq[i]) * fm_buf[i];
 	} else {
 		SGS_Ramp_skip(&n->freq2, &n->freq2_pos, len, o->srate);
 	}
 	/*
+	 * Pre-fill phase buffers.
+	 *
 	 * If phase modulators linked, get phase offsets for modulation.
 	 */
-	pm_buf = NULL;
 	if (n->pmods->count > 0) {
 		for (i = 0; i < n->pmods->count; ++i)
-			run_block(o, bufs, len, &o->operators[n->pmods->ids[i]],
+			run_block(o, (bufs + 0), len,
+					&o->operators[n->pmods->ids[i]],
 					freq, false, i);
-		pm_buf = *(bufs++);
+		pm_buf = *(bufs + 0); // #5
 	}
+	if (n->fpmods->count > 0) {
+		for (i = 0; i < n->fpmods->count; ++i)
+			run_block(o, (bufs + 1), len,
+					&o->operators[n->fpmods->ids[i]],
+					freq, false, i);
+		fpm_buf = *(bufs + 1); // #6
+	}
+	if (!pm_buf && !fpm_buf)
+		pofs_buf = NULL; /* run code without it */
+	SGS_Phasor_fill(&n->osc.phasor, pinc_buf, pofs_buf, len,
+			freq, pm_buf, fpm_buf);
 	/*
 	 * Handle amplitude parameter, including amplitude modulation if
 	 * modulators linked.
@@ -372,21 +387,24 @@ static uint32_t run_block(SGS_Generator *restrict o,
 	amp = *(bufs++);
 	SGS_Ramp_run(&n->amp, &n->amp_pos, amp, len, o->srate, NULL);
 	if (n->amods->count > 0) {
-		float *amp2 = *(bufs++);
+		float *amp2 = *(bufs + 0); // #6
 		SGS_Ramp_run(&n->amp2, &n->amp2_pos, amp2, len, o->srate, NULL);
 		for (i = 0; i < n->amods->count; ++i)
-			run_block(o, bufs, len, &o->operators[n->amods->ids[i]],
+			run_block(o, (bufs + 1), len,
+					&o->operators[n->amods->ids[i]],
 					freq, true, i);
-		float *am_buf = *bufs;
+		float *am_buf = *(bufs + 1); // #7
 		for (i = 0; i < len; ++i)
 			amp[i] += (amp2[i] - amp[i]) * am_buf[i];
 	} else {
 		SGS_Ramp_skip(&n->amp2, &n->amp2_pos, len, o->srate);
 	}
 	if (!wave_env) {
-		SGS_Osc_run(&n->osc, s_buf, len, acc_ind, freq, amp, pm_buf);
+		SGS_Osc_run(&n->osc, s_buf, len, acc_ind,
+				pinc_buf, pofs_buf, amp);
 	} else {
-		SGS_Osc_run_env(&n->osc, s_buf, len, acc_ind, freq, amp, pm_buf);
+		SGS_Osc_run_env(&n->osc, s_buf, len, acc_ind,
+				pinc_buf, pofs_buf, amp);
 	}
 	/*
 	 * Update time duration left, zero rest of buffer if unfilled.
