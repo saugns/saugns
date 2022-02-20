@@ -979,8 +979,13 @@ static bool parse_ev_phase(SGS_Parser *restrict o) {
 			op->phase += 1.f;
 		op->params |= SGS_POPP_PHASE;
 	}
-	if (SGS_Scanner_tryc(sc, '+') && SGS_Scanner_tryc(sc, '[')) {
-		parse_level(o, SGS_POP_PMOD, SCOPE_NEST);
+	if (SGS_Scanner_tryc(sc, '+')) {
+		if (SGS_Scanner_tryc(sc, '[')) {
+			parse_level(o, SGS_POP_PMOD, SCOPE_NEST);
+		}
+		if (SGS_Scanner_tryc(sc, 'f') && SGS_Scanner_tryc(sc, '[')) {
+			parse_level(o, SGS_POP_FPMOD, SCOPE_NEST);
+		}
 	}
 	return false;
 }

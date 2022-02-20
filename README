@@ -219,11 +219,15 @@ Parameters:
 		a sine or triangle wave to its "bottom". This is mostly
 		useful for changing the initial phase.
 			After a value or by itself, "+[]" (plus and square
-		brackets) can be used to set a list of modulator operators
-		specified within the "[]"; the list replaces any previous
-		modulators set, and may be empty.
-			The sum of modulator amplitudes is used to
-		phase-modulate the carrier(s).
+		brackets) can be used to set a list of PM modulator operators
+		specified within the "[]". The list replaces any previous set,
+		and may be empty. Also, after the "+" and optionally a list
+		for normal PM, "f[]" ("f" and square brackets) can likewise
+		set a list of amplitude-scaled frequency-linked PM modulators.
+			The sum of modulator amplitudes will phase-modulate
+		the carrier(s). For frequency-linked PM modulators, first the
+		amplitudes are multiplied by the carrier frequency divided
+		by 632.45... Hz (the geometric mean of 20 and 20000 Hz).
 	w	Wave type. See "Wave types" for values.
 	c	(For non-nested operators only.) Channel mixing, (-1.0) to 1.0.
 		See "Channel mixing values" for more.
