@@ -19,9 +19,10 @@
 #include "common.h"
 #include <math.h>
 
-#define SGS_PI       3.14159265358979323846
-#define SGS_ASIN_1_2 0.52359877559829887308 // asin(0.5)
-#define SGS_SQRT_1_2 0.70710678118654752440 // sqrt(0.5), 1/sqrt(2)
+#define SGS_PI          3.14159265358979323846
+#define SGS_ASIN_1_2    0.52359877559829887308 // asin(0.5)
+#define SGS_SQRT_1_2    0.70710678118654752440 // sqrt(0.5), 1/sqrt(2)
+#define SGS_HUMMID    632.45553203367586639978 // human hearing range geom.mean
 
 /**
  * Convert time in ms to time in samples for a sample rate.
