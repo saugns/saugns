@@ -62,6 +62,21 @@ It's recommended before installing a new version, for a consistent file set.
 After installation, `man saugns` should give basic usage information and
 point to the share/ files. Without installing, try `man man/saugns.1`.
 
+Tweaking the build
+------------------
+
+As of v0.3.9, an anti-aliasing oscillator with 6dB aliasing reduction per
+octave is used. v0.3.10b fixed the problem of it audibly producing jagged
+(somewhat bitcrush-looking) waveforms when higher PM amplitudes are used.
+But there could be other reasons to use a simpler alternative.
+
+The `USE_PILUT` option in `renderer/osc.h` defaults to `1` (on) but can be
+set to `0` before (re-)running `make` to switch to using the pre-v0.3.9 naive
+oscillator instead. While the naive oscillator is bad for square and sawtooth
+waves especially, it's fine for use with sine wave-based PM.
+
+This may all be replaced in later versions.
+
 Licensing
 =========
 
