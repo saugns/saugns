@@ -17,7 +17,7 @@
 #include "ptrarr.h"
 
 #define SAU_CLINAME_STR "saugns"
-#define SAU_VERSION_STR "v0.3-dev"
+#define SAU_VERSION_STR "v0.3.10b"
 
 #define SAU_DEFAULT_SRATE 96000
 
