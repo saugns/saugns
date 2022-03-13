@@ -135,6 +135,11 @@ static void SAU_Osc_reset(SAU_Osc *o) {
 }
 #endif
 
+static inline int32_t warp(uint32_t phase) {
+	uint32_t s = phase;
+	return INT32_MIN + s;
+}
+
 /**
  * Run for \p buf_len samples, generating output
  * for carrier or PM input.
@@ -152,7 +157,42 @@ void SAU_Osc_run(SAU_Osc *restrict o,
 		const int32_t *restrict pinc_buf,
 		const int32_t *restrict pofs_buf,
 		const float *restrict amp) {
-#if USE_PILUT /* higher-quality audio */
+#if 1 // TEST NOISE GEN
+	if (pofs_buf != NULL) {
+		for (size_t i = 0; i < buf_len; ++i) {
+			float s;
+			int32_t s_pm = pofs_buf[i];
+			uint32_t phase = (o->phasor.phase += pinc_buf[i]) + s_pm;
+			int32_t phase_diff = phase - o->prev_phase;
+			if (phase_diff == 0) {
+				s = o->prev_diff_s;
+			} else {
+				s = warp(phase) * 1.f/INT32_MAX;
+				o->prev_diff_s = s;
+				o->prev_phase = phase;
+			}
+			s *= amp[i];
+			if (layer > 0) s += buf[i];
+			buf[i] = s;
+		}
+	} else {
+		for (size_t i = 0; i < buf_len; ++i) {
+			float s;
+			uint32_t phase = (o->phasor.phase += pinc_buf[i]);
+			int32_t phase_diff = phase - o->prev_phase;
+			if (phase_diff == 0) {
+				s = o->prev_diff_s;
+			} else {
+				s = warp(phase) * 1.f/INT32_MAX;
+				o->prev_diff_s = s;
+				o->prev_phase = phase;
+			}
+			s *= amp[i];
+			if (layer > 0) s += buf[i];
+			buf[i] = s;
+		}
+	}
+#elif USE_PILUT /* higher-quality audio */
 	const float *const lut = SAU_Wave_piluts[o->wave];
 	const float diff_scale = SAU_Wave_DVSCALE(o->wave);
 	const float diff_offset = SAU_Wave_DVOFFSET(o->wave);
@@ -221,7 +261,44 @@ void SAU_Osc_run_env(SAU_Osc *restrict o,
 		const int32_t *restrict pinc_buf,
 		const int32_t *restrict pofs_buf,
 		const float *restrict amp) {
-#if USE_PILUT /* higher-quality audio */
+#if 1 // TEST NOISE GEN
+	if (pofs_buf != NULL) {
+		for (size_t i = 0; i < buf_len; ++i) {
+			float s;
+			int32_t s_pm = pofs_buf[i];
+			uint32_t phase = (o->phasor.phase += pinc_buf[i]) + s_pm;
+			int32_t phase_diff = phase - o->prev_phase;
+			if (phase_diff == 0) {
+				s = o->prev_diff_s;
+			} else {
+				s = warp(phase) * 1.f/INT32_MAX;
+				o->prev_diff_s = s;
+				o->prev_phase = phase;
+			}
+			float s_amp = amp[i] * 0.5f;
+			s = (s * s_amp) + fabs(s_amp);
+			if (layer > 0) s *= buf[i];
+			buf[i] = s;
+		}
+	} else {
+		for (size_t i = 0; i < buf_len; ++i) {
+			float s;
+			uint32_t phase = (o->phasor.phase += pinc_buf[i]);
+			int32_t phase_diff = phase - o->prev_phase;
+			if (phase_diff == 0) {
+				s = o->prev_diff_s;
+			} else {
+				s = warp(phase) * 1.f/INT32_MAX;
+				o->prev_diff_s = s;
+				o->prev_phase = phase;
+			}
+			float s_amp = amp[i] * 0.5f;
+			s = (s * s_amp) + fabs(s_amp);
+			if (layer > 0) s *= buf[i];
+			buf[i] = s;
+		}
+	}
+#elif USE_PILUT /* higher-quality audio */
 	const float *const lut = SAU_Wave_piluts[o->wave];
 	const float diff_scale = SAU_Wave_DVSCALE(o->wave);
 	const float diff_offset = SAU_Wave_DVOFFSET(o->wave);
