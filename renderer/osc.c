@@ -137,7 +137,6 @@ static void SAU_Osc_reset(SAU_Osc *o) {
 
 #define SAU_FIBH32 2654435769UL // 32-bit Fibonnaci hashing constant
 static inline int32_t warp(uint32_t phase) {
-	printf("%d\n", phase);
 	uint32_t s = phase * SAU_FIBH32;
 	return INT32_MIN + s;
 }
