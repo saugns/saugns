@@ -139,7 +139,7 @@ static inline uint32_t rotr32(uint32_t x, uint32_t r) {
 	return x >> r | x << (-r & 31);
 }
 
-#define SAU_FIBH32 2654435769UL // 32-bit Fibonnaci hashing constant
+#define SAU_FIBH32 2654435769UL // 32-bit Fibonacci hashing constant
 #define SAU_FIBH32_ALT2 1779033703UL
 #define SAU_FIBH32_ALT3 1300411462UL
 static inline int32_t warp(uint32_t phase) {
@@ -149,7 +149,7 @@ static inline int32_t warp(uint32_t phase) {
 //	s = rotr32(s, s >> 27);
 //	s ^= (s << (s & 15));
 //	s ^= (s >> 8);
-	return INT32_MIN + s;
+	return s;
 }
 
 /**
