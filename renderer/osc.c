@@ -137,6 +137,7 @@ static void SAU_Osc_reset(SAU_Osc *o) {
 
 #define SAU_FIBH32 2654435769UL // 32-bit Fibonnaci hashing constant
 static inline int32_t warp(uint32_t phase) {
+	printf("%d\n", phase);
 	uint32_t s = phase * SAU_FIBH32;
 	return INT32_MIN + s;
 }
@@ -163,15 +164,10 @@ void SAU_Osc_run(SAU_Osc *restrict o,
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s;
 			int32_t s_pm = pofs_buf[i];
-			uint32_t phase = (o->phasor.phase += pinc_buf[i]) + s_pm;
-			int32_t phase_diff = phase - o->prev_phase;
-			if (phase_diff == 0) {
-				s = o->prev_diff_s;
-			} else {
-				s = warp(phase) * 1.f/INT32_MAX;
-				o->prev_diff_s = s;
-				o->prev_phase = phase;
-			}
+			uint64_t nstate = (o->nstate += pinc_buf[i]) + s_pm;
+			uint32_t nval = nstate >> 32;
+			uint32_t phase = nstate << 32;
+			s = warp(o->testcount++) * 1.f/INT32_MAX;
 			s *= amp[i];
 			if (layer > 0) s += buf[i];
 			buf[i] = s;
@@ -179,15 +175,10 @@ void SAU_Osc_run(SAU_Osc *restrict o,
 	} else {
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s;
-			uint32_t phase = (o->phasor.phase += pinc_buf[i]);
-			int32_t phase_diff = phase - o->prev_phase;
-			if (phase_diff == 0) {
-				s = o->prev_diff_s;
-			} else {
-				s = warp(phase) * 1.f/INT32_MAX;
-				o->prev_diff_s = s;
-				o->prev_phase = phase;
-			}
+			uint64_t nstate = (o->nstate += pinc_buf[i]);
+			uint32_t nval = nstate >> 32;
+			uint32_t phase = nstate << 32;
+			s = warp(o->testcount++) * 1.f/INT32_MAX;
 			s *= amp[i];
 			if (layer > 0) s += buf[i];
 			buf[i] = s;
@@ -267,15 +258,10 @@ void SAU_Osc_run_env(SAU_Osc *restrict o,
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s;
 			int32_t s_pm = pofs_buf[i];
-			uint32_t phase = (o->phasor.phase += pinc_buf[i]) + s_pm;
-			int32_t phase_diff = phase - o->prev_phase;
-			if (phase_diff == 0) {
-				s = o->prev_diff_s;
-			} else {
-				s = warp(phase) * 1.f/INT32_MAX;
-				o->prev_diff_s = s;
-				o->prev_phase = phase;
-			}
+			uint64_t nstate = (o->nstate += pinc_buf[i]) + s_pm;
+			uint32_t nval = nstate >> 32;
+			uint32_t phase = nstate << 32;
+			s = warp(o->testcount++) * 1.f/INT32_MAX;
 			float s_amp = amp[i] * 0.5f;
 			s = (s * s_amp) + fabs(s_amp);
 			if (layer > 0) s *= buf[i];
@@ -284,15 +270,10 @@ void SAU_Osc_run_env(SAU_Osc *restrict o,
 	} else {
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s;
-			uint32_t phase = (o->phasor.phase += pinc_buf[i]);
-			int32_t phase_diff = phase - o->prev_phase;
-			if (phase_diff == 0) {
-				s = o->prev_diff_s;
-			} else {
-				s = warp(phase) * 1.f/INT32_MAX;
-				o->prev_diff_s = s;
-				o->prev_phase = phase;
-			}
+			uint64_t nstate = (o->nstate += pinc_buf[i]);
+			uint32_t nval = nstate >> 32;
+			uint32_t phase = nstate << 32;
+			s = warp(o->testcount++) * 1.f/INT32_MAX;
 			float s_amp = amp[i] * 0.5f;
 			s = (s * s_amp) + fabs(s_amp);
 			if (layer > 0) s *= buf[i];

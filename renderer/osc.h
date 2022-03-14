@@ -58,6 +58,8 @@ void SAU_Phasor_fill(SAU_Phasor *restrict o,
 
 typedef struct SAU_Osc {
 	SAU_Phasor phasor;
+	uint64_t nstate;
+	uint32_t testcount;
 	uint8_t wave;
 	uint8_t flags;
 #if USE_PILUT
