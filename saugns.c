@@ -1,5 +1,5 @@
 /* saugns: Main module / Command-line interface.
- * Copyright (c) 2011-2013, 2017-2021 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -17,6 +17,12 @@
 #include <stdlib.h>
 #include <string.h>
 #define NAME SAU_CLINAME_STR
+#if SAU_ADD_TESTOPT
+# define TESTOPT "?:"
+int SAU_testopt = 0;
+#else
+# define TESTOPT
+#endif
 
 /*
  * Print help list for \p topic,
@@ -77,18 +83,17 @@ static void print_version(void) {
 }
 
 /*
- * Read a positive integer from the given string.
+ * Read an integer from the given string.
  *
- * \return positive value or -1 if invalid
+ * \return true, or false on error
  */
-static int32_t get_piarg(const char *restrict str) {
+static bool get_iarg(const char *restrict str, int32_t *i) {
 	char *endp;
-	int32_t i;
 	errno = 0;
-	i = strtol(str, &endp, 10);
-	if (errno || i <= 0 || endp == str || *endp)
-		return -1;
-	return i;
+	*i = strtol(str, &endp, 10);
+	if (errno || endp == str || *endp)
+		return false;
+	return true;
 }
 
 /*
@@ -112,8 +117,14 @@ static bool parse_args(int argc, char **restrict argv,
 	*srate = SAU_DEFAULT_SRATE;
 	opt.err = 1;
 REPARSE:
-	while ((c = SAU_getopt(argc, argv, "amr:o:ecphv", &opt)) != -1) {
+	while ((c = SAU_getopt(argc, argv, "amr:o:ecphv"TESTOPT, &opt)) != -1) {
 		switch (c) {
+#if SAU_ADD_TESTOPT
+		case '?':
+			if (!get_iarg(opt.arg, &i)) goto USAGE;
+			SAU_testopt = i;
+			continue;
+#endif
 		case 'a':
 			if ((*flags & (SAU_OPT_AUDIO_DISABLE |
 					SAU_OPT_MODE_CHECK)) != 0)
@@ -153,8 +164,7 @@ REPARSE:
 			if ((*flags & SAU_OPT_MODE_CHECK) != 0)
 				goto USAGE;
 			*flags |= SAU_OPT_MODE_FULL;
-			i = get_piarg(opt.arg);
-			if (i < 0) goto USAGE;
+			if (!get_iarg(opt.arg, &i) || (i <= 0)) goto USAGE;
 			*srate = i;
 			continue;
 		case 'v':

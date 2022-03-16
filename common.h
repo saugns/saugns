@@ -86,6 +86,9 @@ int SAU_getopt(int argc, char *const*restrict argv,
 /* Print hash collision info for symtab. */
 //#define SAU_SYMTAB_STATS 0
 
+/* Add int SAU_testopt and "-? <number>" cli option for it? */
+//#define SAU_ADD_TESTOPT 1
+
 /* Run scanner instead of lexer in 'test-scan' program. */
 #define SAU_TEST_SCANNER 0
 
