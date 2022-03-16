@@ -1,5 +1,5 @@
 /* saugns: Main module / Command-line interface.
- * Copyright (c) 2011-2013, 2017-2021 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -17,6 +17,12 @@
 #include <stdlib.h>
 #include <string.h>
 #define NAME SAU_CLINAME_STR
+#if SAU_ADD_TESTOPT
+# define TESTOPT "?:"
+int SAU_testopt = 0;
+#else
+# define TESTOPT
+#endif
 
 /*
  * Print help list for \p topic,
@@ -112,8 +118,15 @@ static bool parse_args(int argc, char **restrict argv,
 	*srate = SAU_DEFAULT_SRATE;
 	opt.err = 1;
 REPARSE:
-	while ((c = SAU_getopt(argc, argv, "amr:o:ecphv", &opt)) != -1) {
+	while ((c = SAU_getopt(argc, argv, "amr:o:ecphv"TESTOPT, &opt)) != -1) {
 		switch (c) {
+#if SAU_ADD_TESTOPT
+		case '?':
+			i = get_piarg(opt.arg);
+			if (i < 0) goto USAGE;
+			SAU_testopt = i;
+			continue;
+#endif
 		case 'a':
 			if ((*flags & (SAU_OPT_AUDIO_DISABLE |
 					SAU_OPT_MODE_CHECK)) != 0)
