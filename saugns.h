@@ -1,5 +1,5 @@
 /* saugns: Main functions and project definitions.
- * Copyright (c) 2011-2013, 2017-2021 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -31,6 +31,10 @@ enum {
 	SAU_OPT_PRINT_INFO    = 1<<4,
 	SAU_OPT_EVAL_STRING   = 1<<5,
 };
+
+#if SAU_ADD_TESTOPT
+extern int SAU_testopt; /* defaults to 0, set using debug option "-?" */
+#endif
 
 size_t SAU_read(const SAU_PtrArr *restrict script_args, uint32_t options,
 		SAU_PtrArr *restrict prg_objs);
