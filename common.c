@@ -81,6 +81,8 @@ void *SAU_memdup(const void *restrict src, size_t size) {
 /**
  * Command-line argument parser similar to POSIX getopt(),
  * but replacing opt* global variables with \p opt fields.
+ * For unrecognized options, will return 1 instead of '?',
+ * freeing up '?' for possible use as another option name.
  *
  * The \a arg field is always set for each valid option, so as to be
  * available for reading as an unspecified optional option argument.
@@ -108,7 +110,7 @@ int SAU_getopt(int argc, char *const*restrict argv,
 		if (opt->err != 0 && *optstring != ':')
 			fprintf(stderr, "%s: invalid option '%c'\n",
 					argv[0], opt->opt);
-		return '?';
+		return 1;
 	}
 	if (subs[1] == ':') {
 		if (arg[opt->pos + 1] != '\0') {
@@ -127,7 +129,7 @@ int SAU_getopt(int argc, char *const*restrict argv,
 			fprintf(stderr,
 "%s: option '%c' requires an argument\n",
 					argv[0], opt->opt);
-		return (*optstring == ':') ? ':' : '?';
+		return (*optstring == ':') ? ':' : 1;
 	}
 	if (arg[++opt->pos] == '\0') {
 		++opt->ind;
