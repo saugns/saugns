@@ -16,12 +16,6 @@
  */
 
 #include "osc.h"
-#if SAU_ADD_TESTOPT
-# include "../saugns.h"
-# define TEST() SAU_testopt
-#else
-# define TEST() 0
-#endif
 
 /**
  * Fill phase-increment and (optionally) phase-offset buffer
@@ -148,8 +142,7 @@ static void SAU_Osc_reset(SAU_Osc *o) {
 	((uint32_t)(x) >> ((r) & 31) | ((uint32_t)(x) << (32-((r) & 31))))
 static inline int32_t noiseshape(uint32_t phase) {
 	uint32_t s = phase * SAU_FIBH32;
-//	s ^= SAU_ROR32(s, 16);
-	s *= SAU_ROR32(s, s + /*11*/TEST());
+	s *= SAU_ROR32(s, s + 16);
 	return s;
 }
 
