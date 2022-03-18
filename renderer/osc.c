@@ -16,6 +16,12 @@
  */
 
 #include "osc.h"
+#if SAU_ADD_TESTOPT
+# include "../saugns.h"
+# define TEST() SAU_testopt
+#else
+# define TEST() 0
+#endif
 
 /**
  * Fill phase-increment and (optionally) phase-offset buffer
