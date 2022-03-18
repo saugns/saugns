@@ -83,18 +83,17 @@ static void print_version(void) {
 }
 
 /*
- * Read a positive integer from the given string.
+ * Read an integer from the given string.
  *
- * \return positive value or -1 if invalid
+ * \return true, or false on error
  */
-static int32_t get_piarg(const char *restrict str) {
+static bool get_iarg(const char *restrict str, int32_t *i) {
 	char *endp;
-	int32_t i;
 	errno = 0;
-	i = strtol(str, &endp, 10);
-	if (errno || i <= 0 || endp == str || *endp)
-		return -1;
-	return i;
+	*i = strtol(str, &endp, 10);
+	if (errno || endp == str || *endp)
+		return false;
+	return true;
 }
 
 /*
@@ -122,8 +121,7 @@ REPARSE:
 		switch (c) {
 #if SAU_ADD_TESTOPT
 		case '?':
-			i = get_piarg(opt.arg);
-			if (i < 0) goto USAGE;
+			if (!get_iarg(opt.arg, &i)) goto USAGE;
 			SAU_testopt = i;
 			continue;
 #endif
@@ -166,8 +164,7 @@ REPARSE:
 			if ((*flags & SAU_OPT_MODE_CHECK) != 0)
 				goto USAGE;
 			*flags |= SAU_OPT_MODE_FULL;
-			i = get_piarg(opt.arg);
-			if (i < 0) goto USAGE;
+			if (!get_iarg(opt.arg, &i) || (i <= 0)) goto USAGE;
 			*srate = i;
 			continue;
 		case 'v':
