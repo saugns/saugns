@@ -142,7 +142,7 @@ static void SAU_Osc_reset(SAU_Osc *o) {
 	((uint32_t)(x) >> ((r) & 31) | ((uint32_t)(x) << (32-((r) & 31))))
 static inline int32_t noiseshape(uint32_t phase) {
 	uint32_t s = phase * SAU_FIBH32;
-	s *= SAU_ROR32(s, s + 16);
+	s *= (SAU_ROR32(s, s + 16) + SAU_ROL32(s, (s >> 27) + 16));
 	return s;
 }
 
