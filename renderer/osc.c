@@ -141,17 +141,6 @@ static void SAU_Osc_reset(SAU_Osc *o) {
 }
 #endif
 
-#define SAU_FIBH32 2654435769UL // 32-bit Fibonacci hashing constant
-#define SAU_ROL32(x, r) \
-	((uint32_t)(x) << ((r) & 31) | ((uint32_t)(x) >> (32-((r) & 31))))
-#define SAU_ROR32(x, r) \
-	((uint32_t)(x) >> ((r) & 31) | ((uint32_t)(x) << (32-((r) & 31))))
-static inline int32_t noiseshape(uint32_t phase) {
-	uint32_t s = phase * SAU_FIBH32;
-	s *= (SAU_ROR32(s, s + 16) + SAU_ROL32(s, (s >> 27) + 16));
-	return s;
-}
-
 /**
  * Run for \p buf_len samples, generating output
  * for carrier or PM input.
@@ -177,7 +166,7 @@ void SAU_Osc_run(SAU_Osc *restrict o,
 			uint64_t nstate = (o->nstate += pinc_buf[i]) + s_pm;
 			uint32_t nval = nstate >> 32;
 			uint32_t phase = nstate;
-			s = noiseshape(o->testcount++) * 1.f/INT32_MAX;
+			s = SAU_ranoise(o->testcount++) * 1.f/INT32_MAX;
 			s *= amp[i];
 			if (layer > 0) s += buf[i];
 			buf[i] = s;
@@ -188,7 +177,7 @@ void SAU_Osc_run(SAU_Osc *restrict o,
 			uint64_t nstate = (o->nstate += pinc_buf[i]);
 			uint32_t nval = nstate >> 32;
 			uint32_t phase = nstate;
-			s = noiseshape(o->testcount++) * 1.f/INT32_MAX;
+			s = SAU_ranoise(o->testcount++) * 1.f/INT32_MAX;
 			s *= amp[i];
 			if (layer > 0) s += buf[i];
 			buf[i] = s;
@@ -271,7 +260,7 @@ void SAU_Osc_run_env(SAU_Osc *restrict o,
 			uint64_t nstate = (o->nstate += pinc_buf[i]) + s_pm;
 			uint32_t nval = nstate >> 32;
 			uint32_t phase = nstate;
-			s = noiseshape(o->testcount++) * 1.f/INT32_MAX;
+			s = SAU_ranoise(o->testcount++) * 1.f/INT32_MAX;
 			float s_amp = amp[i] * 0.5f;
 			s = (s * s_amp) + fabs(s_amp);
 			if (layer > 0) s *= buf[i];
@@ -283,7 +272,7 @@ void SAU_Osc_run_env(SAU_Osc *restrict o,
 			uint64_t nstate = (o->nstate += pinc_buf[i]);
 			uint32_t nval = nstate >> 32;
 			uint32_t phase = nstate;
-			s = noiseshape(o->testcount++) * 1.f/INT32_MAX;
+			s = SAU_ranoise(o->testcount++) * 1.f/INT32_MAX;
 			float s_amp = amp[i] * 0.5f;
 			s = (s * s_amp) + fabs(s_amp);
 			if (layer > 0) s *= buf[i];

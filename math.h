@@ -25,6 +25,15 @@
 #define SAU_HUMMID    632.45553203367586639978 // human hearing range geom.mean
 #define SAU_GLDA        2.39996322972865332223 // golden angle 2*PI*(2.0 - phi)
 #define SAU_GLDA_1_2PI  0.38196601125010515180 // (in cycle %) 2.0 - phi
+#define SAU_FIBH32                2654435769UL // 32-bit Fibonacci hash number
+
+/** Rotate bits left, for 32-bit unsigned \p x, \p r positions. */
+#define SAU_ROL32(x, r) \
+	((uint32_t)(x) << ((r) & 31) | ((uint32_t)(x) >> (32-((r) & 31))))
+
+/** Rotate bits right, for 32-bit unsigned \p x, \p r positions. */
+#define SAU_ROR32(x, r) \
+	((uint32_t)(x) >> ((r) & 31) | ((uint32_t)(x) << (32-((r) & 31))))
 
 /**
  * Convert time in ms to time in samples for a sample rate.
@@ -45,6 +54,31 @@ static inline uint32_t SAU_ms_in_samples(uint32_t time_ms, uint32_t srate) {
  */
 static inline double SAU_met(double x) {
 	return 0.5f * (x + sqrt(x * x + 4.f));
+}
+
+/**
+ * Random access noise. Chaotic waveshaper which turns evenly spaced, and other
+ * simple, number sequences into something similar to white noise. Returns zero
+ * for zero. The frequency spectrum when used with a counter is flat. Only some
+ * of the other properties of proper pseudo-random numbers also result, such as
+ * fairness if used for dice throws and properties of sums of numbers. Can't be
+ * used to generate things like properly distributed bit sequences, bit-by-bit.
+ *
+ * This function is mainly an alternative to using buffers of noise, for random
+ * access. The index \p n can be used as a counter or varied for random access.
+ *
+ * \return pseudo-random number for index \p n
+ */
+static inline int32_t SAU_ranoise(uint32_t n) {
+	uint32_t s = n * SAU_FIBH32;
+	/*
+	 * 16 below appears a good offset number. For a high-quality result, it
+	 * may be best to use a number in the range 8-23 inclusive. Statistical
+	 * testing shows 5-27 as the maximal range beyond which Diehard Squeeze
+	 * fails. Subtle audio qualities vary with the number; 16 seems smooth.
+	 */
+	s *= SAU_ROR32(s, s + 16);
+	return s;
 }
 
 /**
