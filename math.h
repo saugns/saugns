@@ -82,6 +82,20 @@ static inline int32_t SAU_ranoise(uint32_t n) {
 }
 
 /**
+ * Random access approximation of velvet noise. The thresholds are selected for
+ * a similar loudness to normal random noise; values used affect pulse density.
+ *
+ * \return ternary signed value for index \p n
+ */
+static inline int32_t SAU_ravelvet(uint32_t n) {
+	uint32_t s = n * SAU_FIBH32, s0, s1;
+	s0 = s * SAU_ROR32(s, s + 16);
+	s1 = s * SAU_ROR32(s, s + 16 + 9);
+	return (s0 > (uint32_t)(1<<31) + (1<<30)) -
+	       (s1 > (uint32_t)(1<<31) + (1<<30));
+}
+
+/**
  * Math functions.
  */
 enum {
