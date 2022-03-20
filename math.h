@@ -89,10 +89,10 @@ static inline int32_t SAU_ranoise(uint32_t n) {
  */
 static inline int32_t SAU_ravelvet(uint32_t n) {
 	uint32_t s = n * SAU_FIBH32, s0, s1;
-	s0 = s * SAU_ROR32(s, s + 16);
-	s1 = s * SAU_ROR32(s, s + 16 + 9);
-	return (s0 > (uint32_t)(1<<31) + (1<<30)) -
-	       (s1 > (uint32_t)(1<<31) + (1<<30));
+	s0 = s * SAU_ROR32(s, s + 11);
+	s1 = s * SAU_ROR32(s, s + 20);
+	return (s0 >= (uint32_t)(1<<31) + (1<<30)) -
+	       (s1 >= (uint32_t)(1<<31) + (1<<30));
 }
 
 /**
