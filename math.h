@@ -38,7 +38,7 @@
 /**
  * Convert time in ms to time in samples for a sample rate.
  */
-static inline uint32_t SAU_ms_in_samples(uint32_t time_ms, uint32_t srate) {
+static inline uint32_t SAU_ms_in_samples(uint64_t time_ms, uint64_t srate) {
 	uint64_t time = time_ms * srate;
 	time = (time + 500) / 1000;
 	return time;
