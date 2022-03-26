@@ -77,10 +77,10 @@ static inline int32_t SAU_ranoise32(uint32_t n) {
 	 * 14 below appears a good offset number. For a high-quality result, it
 	 * may be best to use a number around 16 in 8-25 inclusive. Statistical
 	 * testing shows 5-27 as the maximal range beyond which Diehard Squeeze
-	 * fails. Subtle audio qualities vary with the number; 16 seems smooth.
+	 * fails. Subtle audio qualities vary with the number; 14 seems smooth.
 	 */
 	s *= SAU_ROR32(s, s + 14);
-	s ^= (s >> 6) ^ (s >> 15); // improve worse lower bits with higher bits
+	s ^= (s >> 7) ^ (s >> 16); // improve worse lower bits with higher bits
 	return s;
 }
 
