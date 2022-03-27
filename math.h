@@ -85,6 +85,27 @@ static inline int32_t SAU_ranoise32(uint32_t n) {
 }
 
 /**
+ * Random access noise. Chaotic waveshaper which turns evenly spaced, and other
+ * simple, number sequences into white noise. Returns zero for zero. This is an
+ * improved version of SAU_ranoise32(), which passes more statistical tests and
+ * with small overhead is more suitable for general non-cryptographic purposes.
+ *
+ * This function is mainly an alternative to using buffers of noise, for random
+ * access. The index \p n can be used as a counter or varied for random access.
+ *
+ * \return pseudo-random number for index \p n
+ */
+static inline int32_t SAU_ranoise32b(uint32_t n) {
+	uint32_t s = n * SAU_FIBH32;
+	/*
+	 * 14 as offset number and other constants seem to work well here, too.
+	 */
+	s = (s | 1) * SAU_ROR32(s, s + 14);
+	s ^= (s >> 7) ^ (s >> 16); // improve worse lower bits with higher bits
+	return s;
+}
+
+/**
  * Random access approximation of velvet noise. The thresholds are selected for
  * a similar loudness to normal random noise; values used affect pulse density.
  *
