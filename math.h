@@ -97,10 +97,8 @@ static inline int32_t SAU_ranoise32(uint32_t n) {
  */
 static inline int32_t SAU_ranoise32b(uint32_t n) {
 	uint32_t s = n * SAU_FIBH32;
-	/*
-	 * 14 as offset number and other constants seem to work well here, too.
-	 */
-	s = (s | 1) * SAU_ROR32(s, s + 14);
+	// use the 5 highest bits to maximize sensitivity to large n increments
+	s = (s | 1) * SAU_ROR32(s, s >> 27);
 	s ^= (s >> 7) ^ (s >> 16); // improve worse lower bits with higher bits
 	return s;
 }
