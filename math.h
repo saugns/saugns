@@ -35,6 +35,11 @@
 #define SAU_ROR32(x, r) \
 	((uint32_t)(x) >> ((r) & 31) | ((uint32_t)(x) << (32-((r) & 31))))
 
+/** Multiplicatively mix bits using varying right-rotation,
+    for 32-bit unsigned \p x value, \p r position offset. */
+#define SAU_MUVAROR32(x, r) \
+	(((uint32_t)(x) | ((1<<((r) & 31))|1)) * SAU_ROR32((x), ((x)>>27)+(r)))
+
 /**
  * Convert time in ms to time in samples for a sample rate.
  */
@@ -97,9 +102,9 @@ static inline int32_t SAU_ranoise32(uint32_t n) {
  */
 static inline int32_t SAU_ranoise32b(uint32_t n) {
 	uint32_t s = n * SAU_FIBH32;
-	// use the 5 highest bits to maximize sensitivity to large n increments
-	s = (s | 65537) * SAU_ROR32(s, (s >> 27) + 16);
-	s ^= (s >> 7) ^ (s >> 16); // improve worse lower bits with higher bits
+	s ^= s >> 14; // 8 to 15
+	s = (s | 1) * SAU_ROR32(s, s);
+	s ^= s >> 12; // 10 to 14 (10 above 13, 11 above 12, 12 above 8)
 	return s;
 }
 
