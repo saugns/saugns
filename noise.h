@@ -1,5 +1,5 @@
 /* mgensys: Noise module.
- * Copyright (c) 2020 Joel K. Pettersson
+ * Copyright (c) 2020, 2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -30,23 +30,22 @@ enum {
 	MGS_NOISE_TYPES
 };
 
-/** MGS_xorshift32() state for noise generation. */
-extern uint32_t MGS_Noise_x32state;
-
 /**
- * Get next random unsigned 32-bit number.
- */
-#define MGS_Noise_NEXT() \
-	(MGS_Noise_x32state = MGS_xorshift32(MGS_Noise_x32state))
-
-/**
- * Get noise value.
+ * Get next noise sample for and update current position \p pos.
  *
  * \return sample
  */
-static inline float MGS_Noise_get(void) {
-	int32_t s_i32 = INT32_MIN + MGS_Noise_NEXT();
-	return s_i32 * (1.f / INT32_MAX);
+static inline float MGS_Noise_next(uint32_t *restrict pos) {
+	return MGS_ranoise32_next(pos) * (1.f/(float)INT32_MAX);
+}
+
+/**
+ * Get noise value at arbitrary position \p n from 0 to 32-bit max.
+ *
+ * \return sample
+ */
+static inline float MGS_Noise_get(uint32_t n) {
+	return MGS_ranoise32(n) * (1.f/(float)INT32_MAX);
 }
 
 /** Names of noise types, with an extra NULL pointer at the end. */

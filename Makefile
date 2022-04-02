@@ -1,6 +1,6 @@
 .POSIX:
 CC=cc
-CFLAGS=-std=c99 -W -Wall -O2
+CFLAGS=-std=c99 -W -Wall -O3
 CFLAGS_FAST=$(CFLAGS) -ffast-math
 LFLAGS=-s -lm
 LFLAGS_LINUX=$(LFLAGS) -lasound

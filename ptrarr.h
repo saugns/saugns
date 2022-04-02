@@ -1,5 +1,5 @@
 /* mgensys: Pointer array module.
- * Copyright (c) 2011-2012, 2018-2020 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2018-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -39,7 +39,7 @@ typedef struct MGS_PtrArr {
  * if only 1 item is held.
  */
 #define MGS_PtrArr_ITEMS(o) \
-	((o)->count > 1 ? \
+	((o)->asize > 1 ? \
 		((void**) (o)->items) : \
 		((void**) &(o)->items))
 

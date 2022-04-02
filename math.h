@@ -23,17 +23,63 @@
 #define MGS_ASIN_1_2    0.52359877559829887308 // asin(0.5)
 #define MGS_SQRT_1_2    0.70710678118654752440 // sqrt(0.5), 1/sqrt(2)
 #define MGS_HUMMID    632.45553203367586639978 // human hearing range geom.mean
+#define MGS_FIBH32      2654435769UL           // 32-bit Fibonacci hash constant
 
-#define MGS_DC_OFFSET 1.0E-25
+/** Rotate bits right, for 32-bit unsigned \p x, \p r positions. */
+#define MGS_ROR32(x, r) \
+	((uint32_t)(x) >> ((r) & 31) | (uint32_t)(x) << ((32-(r)) & 31))
 
-typedef int i16_16; /* fixed-point 16.16 */
-typedef unsigned int ui16_16; /* unsigned fixed-point 16.16 */
+/** Multiplicatively mix bits using varying right-rotation,
+    for 32-bit unsigned \p x value, \p r rotation, \p ro rotation offset. */
+#define MGS_MUVAROR32(x, r, ro) \
+	(((uint32_t)(x) | ((1<<((ro) & 31))|1)) * MGS_ROR32((x), (r)+(ro)))
+
+/*
+ * Format conversions
+ */
 
 /**
  * Convert time in ms to time in samples for a sample rate.
  */
-#define MGS_MS_IN_SAMPLES(ms, srate) \
-	lrintf(((ms) * .001f) * (srate))
+static inline uint64_t MGS_ms_in_samples(uint64_t time_ms, uint64_t srate) {
+	uint64_t time = time_ms * srate;
+	time = (time + 500) / 1000;
+	return time;
+}
+
+/*
+ * Simple PRNGs
+ */
+
+/**
+ * Random access noise, minimal lower-quality version. Chaotic waveshaper which
+ * turns sawtooth-ish number sequences into white noise. Returns zero for zero.
+ *
+ * This function is mainly an alternative to using buffers of noise, for random
+ * access. The index \p n can be used as a counter or varied for random access.
+ *
+ * \return pseudo-random number for index \p n
+ */
+static inline int32_t MGS_ranoise32(uint32_t n) {
+	uint32_t s = n * MGS_FIBH32;
+	s = MGS_MUVAROR32(s, s >> 27, 0);
+	return s;
+}
+
+/**
+ * Random access noise, minimal lower-quality version. Chaotic waveshaper which
+ * turns sawtooth-ish number sequences into white noise. Returns zero for zero.
+ *
+ * This "next" function returns a new value each time, corresponding to a state
+ * \p pos, which is increased. It may be initialized with any seed (0 is fine).
+ *
+ * \return pseudo-random number for state \p pos
+ */
+static inline int32_t MGS_ranoise32_next(uint32_t *restrict pos) {
+	uint32_t s = *pos += MGS_FIBH32;
+	s = MGS_MUVAROR32(s, s >> 27, 0);
+	return s;
+}
 
 /** Initial seed for MGS_xorshift32(). Other non-zero values can be used. */
 #define MGS_XORSHIFT32_SEED 2463534242UL
@@ -45,7 +91,7 @@ static inline uint32_t MGS_xorshift32(uint32_t seed) {
 	uint32_t x = seed;
 	x ^= x << 13;
 	x ^= x >> 17;
-	x ^= x << 5; /* Marsaglia's version */
-	//x ^= x << 15; /* WebDrake version */
+	x ^= x << 5; // Marsaglia's version (most common, better in dieharder)
+	//x ^= x << 15; // WebDrake's version (also valid, worse in dieharder)
 	return x;
 }

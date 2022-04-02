@@ -17,13 +17,24 @@
 
 #include "ngen.h"
 
+#if 0
+static inline uint32_t lcg32_next(uint32_t x) {
+	return (x * 0x915f77f5) + 5;
+}
+
+static float lcg32_fnext(uint32_t *x) {
+	*x = lcg32_next(*x);
+	return (INT32_MIN + (int32_t)*x) * (1.f/INT32_MAX);
+}
+#endif
+
 /**
  * Run for \p buf_len samples, generating output.
  */
 void MGS_NGen_run(MGS_NGen *restrict o mgsMaybeUnused,
 		float *restrict buf, size_t buf_len) {
 	for (size_t i = 0; i < buf_len; ++i) {
-		float s = MGS_Noise_get();
+		float s = MGS_Noise_next(&o->pos);
 		buf[i] = s;
 	}
 }

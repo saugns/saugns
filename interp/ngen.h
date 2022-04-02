@@ -20,14 +20,14 @@
 #include "../math.h"
 
 typedef struct MGS_NGen {
-	float coeff;
+	uint32_t pos;
 } MGS_NGen;
 
 /**
  * Initialize instance for use.
  */
-static inline void MGS_init_NGen(MGS_NGen *restrict o, uint32_t srate) {
-	o->coeff = 1.f / MGS_MS_IN_SAMPLES(1000, srate);
+static inline void MGS_init_NGen(MGS_NGen *restrict o, uint32_t pos) {
+	o->pos = pos;
 }
 
 void MGS_NGen_run(MGS_NGen *restrict o,

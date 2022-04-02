@@ -1,5 +1,5 @@
 /* mgensys: Pointer array module.
- * Copyright (c) 2011-2012, 2018-2020 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2018-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -73,7 +73,7 @@ bool MGS_PtrArr_add(MGS_PtrArr *restrict o, void *restrict item) {
  * Clear the given array.
  */
 void MGS_PtrArr_clear(MGS_PtrArr *restrict o) {
-	if (o->count > o->old_count && o->asize > 0) {
+	if ((o->old_count == 0 || o->count > o->old_count) && o->asize > 0) {
 		free(o->items);
 	}
 	o->items = 0;

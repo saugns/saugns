@@ -87,6 +87,7 @@ typedef struct MGS_RunAlloc {
 	uint32_t cur_ev_id;
 	uint32_t next_ev_delay;
 	uint32_t flags;
+	uint32_t seed;
 } MGS_RunAlloc;
 
 bool MGS_init_RunAlloc(MGS_RunAlloc *restrict o,

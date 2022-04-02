@@ -1,5 +1,5 @@
 /* mgensys: Noise module.
- * Copyright (c) 2020 Joel K. Pettersson
+ * Copyright (c) 2020, 2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -17,8 +17,6 @@
 
 #include "noise.h"
 
-uint32_t MGS_Noise_x32state = 0;
-
 const char *const MGS_Noise_names[MGS_NOISE_TYPES + 1] = {
 	//"rd",
 	//"pn",
@@ -32,5 +30,4 @@ const char *const MGS_Noise_names[MGS_NOISE_TYPES + 1] = {
  * Reset global random number state used for noise generation.
  */
 void MGS_global_init_Noise(void) {
-	MGS_Noise_x32state = MGS_XORSHIFT32_SEED;
 }

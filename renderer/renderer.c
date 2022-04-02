@@ -59,7 +59,7 @@ static bool MGS_init_Renderer(MGS_Renderer *restrict o, uint32_t srate,
 			max_srate = ad_srate;
 	}
 
-	o->ch_len = MGS_MS_IN_SAMPLES(BUF_TIME_MS, max_srate);
+	o->ch_len = MGS_ms_in_samples(BUF_TIME_MS, max_srate);
 	o->buf_len = o->ch_len * NUM_CHANNELS;
 	o->buf = calloc(o->buf_len, sizeof(int16_t));
 	if (!o->buf)

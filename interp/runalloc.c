@@ -17,6 +17,14 @@ enum {
 	RECHECK_BUFS = 1<<0,
 };
 
+static uint32_t random_next(uint32_t *seed) {
+	return *seed = MGS_xorshift32(*seed);
+}
+
+//static uint32_t spread_next(uint32_t *seed) {
+//	return *seed += MGS_FIBH32;
+//}
+
 static MGS_ModList *create_ModList(const MGS_ProgramArrData *restrict arr_data,
 		MGS_MemPool *restrict mem) {
 	MGS_ModList *o = MGS_MemPool_alloc(mem, sizeof(MGS_ModList) +
@@ -44,6 +52,7 @@ bool MGS_init_RunAlloc(MGS_RunAlloc *restrict o,
 	if (!o->sound_list)
 		return false;
 	o->sndn_count = count;
+	o->seed = MGS_XORSHIFT32_SEED;
 	/*
 	 * Add blank modlist as value 0.
 	 */
@@ -202,7 +211,7 @@ static bool MGS_RunAlloc_make_noise(MGS_RunAlloc *restrict o,
 	}
 	if (!non || !MGS_RunAlloc_init_sound(o, &non->sound, n))
 		return false;
-	MGS_init_NGen(&non->ngen, o->srate);
+	MGS_init_NGen(&non->ngen, random_next(&o->seed));
 	return true;
 }
 
