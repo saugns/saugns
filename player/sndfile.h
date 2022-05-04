@@ -1,5 +1,5 @@
-/* sgensys: WAV file writer module.
- * Copyright (c) 2011-2012, 2017-2020 Joel K. Pettersson
+/* sgensys: Sound file writer module.
+ * Copyright (c) 2011-2012, 2017-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -18,12 +18,21 @@
 #pragma once
 #include "../sgensys.h"
 
-struct SGS_WAVFile;
-typedef struct SGS_WAVFile SGS_WAVFile;
+enum {
+	SGS_SNDFILE_RAW = 0,
+	SGS_SNDFILE_AU,
+	SGS_SNDFILE_WAV,
+	SGS_SNDFILE_FORMATS
+};
 
-SGS_WAVFile *SGS_create_WAVFile(const char *restrict fpath,
+struct SGS_SndFile;
+typedef struct SGS_SndFile SGS_SndFile;
+
+SGS_SndFile *SGS_create_SndFile(const char *restrict fpath, unsigned format,
 		uint16_t channels, uint32_t srate) sgsMalloclike;
-int SGS_close_WAVFile(SGS_WAVFile *restrict o);
+int SGS_close_SndFile(SGS_SndFile *restrict o);
 
-bool SGS_WAVFile_write(SGS_WAVFile *restrict o,
-		const int16_t *restrict buf, uint32_t samples);
+bool SGS_SndFile_write(SGS_SndFile *restrict o,
+		int16_t *restrict buf, uint32_t samples);
+
+extern const char *const SGS_SndFile_formats[SGS_SNDFILE_FORMATS];

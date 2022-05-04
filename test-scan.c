@@ -30,8 +30,8 @@
  */
 enum {
 	SGS_OPT_MODE_FULL     = 1<<0,
-	SGS_OPT_AUDIO_ENABLE  = 1<<1,
-	SGS_OPT_AUDIO_DISABLE = 1<<2,
+	SGS_OPT_SYSAU_ENABLE  = 1<<1,
+	SGS_OPT_SYSAU_DISABLE = 1<<2,
 	SGS_OPT_MODE_CHECK    = 1<<3,
 	SGS_OPT_PRINT_INFO    = 1<<4,
 	SGS_OPT_EVAL_STRING   = 1<<5,
@@ -54,7 +54,7 @@ static void print_usage(void) {
 "  -c \tCheck scripts only, reporting any errors or requested info.\n"
 "  -p \tPrint info for scripts after loading.\n"
 "  -h \tPrint this message.\n"
-"  -v \tPrint version.\n",
+"  -V \tPrint version.\n",
 		stderr);
 }
 
@@ -62,7 +62,7 @@ static void print_usage(void) {
  * Print version.
  */
 static void print_version(void) {
-	puts(NAME" ("SGS_CLINAME_STR") "SGS_VERSION_STR);
+	fputs(NAME" ("SGS_CLINAME_STR") "SGS_VERSION_STR, stderr);
 }
 
 /*
@@ -92,6 +92,9 @@ static bool parse_args(int argc, char **restrict argv,
 NEXT_C:
 		if (!*++arg) continue;
 		switch (*arg) {
+		case 'V':
+			print_version();
+			goto ABORT;
 		case 'c':
 			if ((*flags & SGS_OPT_MODE_FULL) != 0)
 				goto USAGE;
@@ -105,9 +108,6 @@ NEXT_C:
 		case 'p':
 			*flags |= SGS_OPT_PRINT_INFO;
 			break;
-		case 'v':
-			print_version();
-			goto ABORT;
 		default:
 			goto USAGE;
 		}
@@ -125,7 +125,7 @@ ABORT:
  * Discard the programs in the list, ignoring NULL entries,
  * and clearing the list.
  */
-void SGS_discard(SGS_ProgramArr *restrict prg_objs) {
+static void SGS_discard(SGS_ProgramArr *restrict prg_objs) {
 	for (size_t i = 0; i < prg_objs->count; ++i) {
 		free(prg_objs->a[i]); // for placeholder
 	}
@@ -181,8 +181,8 @@ CLOSE:
  *
  * \return number of items successfully processed
  */
-size_t SGS_read(const SGS_ScriptArgArr *restrict script_args, uint32_t options,
-		SGS_ProgramArr *restrict prg_objs) {
+static size_t SGS_read(const SGS_ScriptArgArr *restrict script_args,
+		uint32_t options, SGS_ProgramArr *restrict prg_objs) {
 	bool are_paths = !(options & SGS_OPT_EVAL_STRING);
 	size_t built = 0;
 	for (size_t i = 0; i < script_args->count; ++i) {
