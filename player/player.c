@@ -1,5 +1,5 @@
 /* saugns: Audio program player module.
- * Copyright (c) 2011-2013, 2017-2021 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -20,7 +20,6 @@
 
 #define BUF_TIME_MS  256
 #define CH_MIN_LEN   1
-#define NUM_CHANNELS 2
 
 typedef struct SAU_Output {
 	SAU_AudioDev *ad;
@@ -28,7 +27,7 @@ typedef struct SAU_Output {
 	int16_t *buf;
 	uint32_t ad_srate;
 	uint32_t options;
-	size_t buf_len;
+	size_t ch_count;
 	size_t ch_len;
 } SAU_Output;
 
@@ -46,16 +45,17 @@ static bool SAU_init_Output(SAU_Output *restrict o, uint32_t srate,
 	uint32_t max_srate = srate;
 	*o = (SAU_Output){0};
 	o->options = options;
+	o->ch_count = (options & SAU_OPT_AUDIO_MONO) ? 1 : 2;
 	if ((options & SAU_OPT_MODE_CHECK) != 0)
 		return true;
 	if (use_audiodev) {
-		o->ad = SAU_open_AudioDev(NUM_CHANNELS, &ad_srate);
+		o->ad = SAU_open_AudioDev(o->ch_count, &ad_srate);
 		if (!o->ad)
 			return false;
 		o->ad_srate = ad_srate;
 	}
 	if (wav_path != NULL) {
-		o->wf = SAU_create_WAVFile(wav_path, NUM_CHANNELS, srate);
+		o->wf = SAU_create_WAVFile(wav_path, o->ch_count, srate);
 		if (!o->wf)
 			return false;
 	}
@@ -66,8 +66,7 @@ static bool SAU_init_Output(SAU_Output *restrict o, uint32_t srate,
 
 	o->ch_len = SAU_ms_in_samples(BUF_TIME_MS, max_srate);
 	if (o->ch_len < CH_MIN_LEN) o->ch_len = CH_MIN_LEN;
-	o->buf_len = o->ch_len * NUM_CHANNELS;
-	o->buf = calloc(o->buf_len, sizeof(int16_t));
+	o->buf = calloc(o->ch_len * o->ch_count, sizeof(int16_t));
 	if (!o->buf)
 		return false;
 	return true;
@@ -102,7 +101,8 @@ static bool SAU_Output_run(SAU_Output *restrict o,
 	use_audiodev = use_audiodev && (o->ad != NULL);
 	use_wavfile = use_wavfile && (o->wf != NULL);
 	while (run) {
-		run = SAU_Generator_run(gen, o->buf, o->ch_len, &len);
+		run = SAU_Generator_run(gen, o->buf, o->ch_len,
+				!(o->options & SAU_OPT_AUDIO_MONO), &len);
 		if (use_audiodev && !SAU_AudioDev_write(o->ad, o->buf, len)) {
 			error = true;
 			SAU_error(NULL, "audio device write failed");

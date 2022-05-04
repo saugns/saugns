@@ -22,5 +22,5 @@ SAU_Generator* SAU_create_Generator(const SAU_Program *restrict prg,
 void SAU_destroy_Generator(SAU_Generator *restrict o);
 
 bool SAU_Generator_run(SAU_Generator *restrict o,
-		int16_t *restrict buf, size_t buf_len,
+		int16_t *restrict buf, size_t buf_len, bool stereo,
 		size_t *restrict out_len);
