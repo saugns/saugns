@@ -18,6 +18,21 @@
 #include <stdio.h>
 #include <stdarg.h>
 
+int SGS_stdout_busy = 0; /* enable if stdout is given other uses! */
+
+/**
+ * Wrapper for vfprintf(), which prints to either stdout or stderr
+ * depending on \ref SGS_print_stream().
+ */
+int SGS_printf(const char *restrict fmt, ...) {
+	int ret;
+	va_list ap;
+	va_start(ap, fmt);
+	ret = vfprintf(SGS_print_stream(), fmt, ap);
+	va_end(ap);
+	return ret;
+}
+
 /*
  * Print to stderr. message, optionally including a descriptive label.
  *  - \p msg_type may be e.g. "warning", "error"
