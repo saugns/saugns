@@ -17,6 +17,7 @@
 #include "wavfile.h"
 #include "../math.h"
 #include <stdlib.h>
+#include <stdio.h>
 
 #define BUF_TIME_MS  256
 #define CH_MIN_LEN   1
@@ -32,15 +33,17 @@ typedef struct SAU_Output {
 } SAU_Output;
 
 /*
- * Set up use of audio device and/or WAV file, and buffer of suitable size.
+ * Set up use of system audio device, raw audio to stdout,
+ * and/or WAV file, and buffer of suitable size.
  *
  * \return true unless error occurred
  */
 static bool SAU_init_Output(SAU_Output *restrict o, uint32_t srate,
 		uint32_t options, const char *restrict wav_path) {
-	bool use_audiodev = (wav_path != NULL) ?
+	bool use_audiodev = (wav_path) ?
 		((options & SAU_OPT_SYSAU_ENABLE) != 0) :
 		((options & SAU_OPT_SYSAU_DISABLE) == 0);
+	bool use_stdout = (options & SAU_OPT_AUDIO_STDOUT);
 	uint32_t ad_srate = srate;
 	uint32_t max_srate = srate;
 	*o = (SAU_Output){0};
@@ -54,13 +57,13 @@ static bool SAU_init_Output(SAU_Output *restrict o, uint32_t srate,
 			return false;
 		o->ad_srate = ad_srate;
 	}
-	if (wav_path != NULL) {
+	if (wav_path) {
 		o->wf = SAU_create_WAVFile(wav_path, o->ch_count, srate);
 		if (!o->wf)
 			return false;
 	}
 	if (ad_srate != srate) {
-		if (!o->wf || ad_srate > srate)
+		if ((!use_stdout && !o->wf) || ad_srate > srate)
 			max_srate = ad_srate;
 	}
 
@@ -83,6 +86,23 @@ static bool SAU_fini_Output(SAU_Output *restrict o) {
 	return true;
 }
 
+#define SOUND_BITS 16
+#define SOUND_BYTES (SOUND_BITS / 8)
+
+/*
+ * Write \p samples from \p buf to raw file. Channels are assumed
+ * to be interleaved in the buffer, and the buffer of length
+ * (channels * samples).
+ *
+ * \return true if write successful
+ */
+static bool raw_audio_write(FILE *restrict f, uint32_t channels,
+		const int16_t *restrict buf, uint32_t samples) {
+	uint32_t written;
+	written = fwrite(buf, channels * SOUND_BYTES, samples, f);
+	return (written == samples);
+}
+
 /*
  * Produce audio for program \p prg, optionally sending it
  * to the audio device and/or WAV file.
@@ -91,25 +111,32 @@ static bool SAU_fini_Output(SAU_Output *restrict o) {
  */
 static bool SAU_Output_run(SAU_Output *restrict o,
 		const SAU_Program *restrict prg, uint32_t srate,
-		bool use_audiodev, bool use_wavfile) {
+		bool use_audiodev, bool use_outfiles) {
+	bool use_stdout = (o->options & SAU_OPT_AUDIO_STDOUT);
 	SAU_Generator *gen = SAU_create_Generator(prg, srate);
 	if (!gen)
 		return false;
 	size_t len;
 	bool error = false;
 	bool run = !(o->options & SAU_OPT_MODE_CHECK);
-	use_audiodev = use_audiodev && (o->ad != NULL);
-	use_wavfile = use_wavfile && (o->wf != NULL);
 	while (run) {
 		run = SAU_Generator_run(gen, o->buf, o->ch_len,
 				!(o->options & SAU_OPT_AUDIO_MONO), &len);
-		if (use_audiodev && !SAU_AudioDev_write(o->ad, o->buf, len)) {
+		if (use_audiodev && o->ad &&
+				!SAU_AudioDev_write(o->ad, o->buf, len)) {
 			error = true;
 			SAU_error(NULL, "audio device write failed");
 		}
-		if (use_wavfile && !SAU_WAVFile_write(o->wf, o->buf, len)) {
-			error = true;
-			SAU_error(NULL, "WAV file write failed");
+		if (use_outfiles) {
+			if (use_stdout && !raw_audio_write(stdout,
+						o->ch_count, o->buf, len)) {
+				error = true;
+				SAU_error(NULL, "stdout audio write failed");
+			}
+			if (o->wf && !SAU_WAVFile_write(o->wf, o->buf, len)) {
+				error = true;
+				SAU_error(NULL, "WAV file write failed");
+			}
 		}
 	}
 	SAU_destroy_Generator(gen);
@@ -137,13 +164,14 @@ bool SAU_play(const SAU_PtrArr *restrict script_objs, uint32_t srate,
 		goto CLEANUP;
 	}
 	bool split_gen;
-	if (out.ad != NULL && out.wf != NULL && (out.ad_srate != srate)) {
+	if (out.ad && ((options & SAU_OPT_AUDIO_STDOUT) != 0 || out.wf)
+			&& (out.ad_srate != srate)) {
 		split_gen = true;
 		SAU_warning(NULL,
 "generating audio twice, using different sample rates");
 	} else {
 		split_gen = false;
-		if (out.ad != NULL) srate = out.ad_srate;
+		if (out.ad) srate = out.ad_srate;
 	}
 	SAU_Script **scripts = (SAU_Script**) SAU_PtrArr_ITEMS(script_objs);
 	for (size_t i = 0; i < script_objs->count; ++i) {
