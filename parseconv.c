@@ -623,10 +623,10 @@ print_linked(const char *restrict header,
 		const SGS_ProgramIDArr *restrict idarr) {
 	if (!idarr || !idarr->count)
 		return;
-	fprintf(stdout, "%s%u", header, idarr->ids[0]);
+	SGS_printf("%s%u", header, idarr->ids[0]);
 	for (uint32_t i = 0; ++i < idarr->count; )
-		fprintf(stdout, ", %u", idarr->ids[i]);
-	fprintf(stdout, "%s", footer);
+		SGS_printf(", %u", idarr->ids[i]);
+	SGS_printf("%s", footer);
 }
 
 static void
@@ -634,6 +634,7 @@ print_oplist(const SGS_ProgramOpRef *restrict list,
 		uint32_t count) {
 	if (!list)
 		return;
+	FILE *out = SGS_print_stream();
 	static const char *const uses[SGS_POP_USES] = {
 		"CA",
 		"AM",
@@ -643,55 +644,55 @@ print_oplist(const SGS_ProgramOpRef *restrict list,
 
 	uint32_t i = 0;
 	uint32_t max_indent = 0;
-	fputs("\n\t    [", stdout);
+	fputs("\n\t    [", out);
 	for (;;) {
 		const uint32_t indent = list[i].level * 2;
 		if (indent > max_indent) max_indent = indent;
-		fprintf(stdout, "%6u:  ", list[i].id);
+		fprintf(out, "%6u:  ", list[i].id);
 		for (uint32_t j = indent; j > 0; --j)
-			putc(' ', stdout);
-		fputs(uses[list[i].use], stdout);
+			putc(' ', out);
+		fputs(uses[list[i].use], out);
 		if (++i == count) break;
-		fputs("\n\t     ", stdout);
+		fputs("\n\t     ", out);
 	}
 	for (uint32_t j = max_indent; j > 0; --j)
-		putc(' ', stdout);
-	putc(']', stdout);
+		putc(' ', out);
+	putc(']', out);
 }
 
 static void
 print_opline(const SGS_ProgramOpData *restrict od) {
 	if (od->time.flags & SGS_TIMEP_IMPLICIT) {
-		fprintf(stdout,
+		SGS_printf(
 			"\n\top %u \tt=IMPL  \t", od->id);
 	} else {
-		fprintf(stdout,
+		SGS_printf(
 			"\n\top %u \tt=%-6u\t", od->id, od->time.v_ms);
 	}
 	if ((od->freq.flags & SGS_RAMPP_STATE) != 0) {
 		if ((od->freq.flags & SGS_RAMPP_GOAL) != 0)
-			fprintf(stdout,
+			SGS_printf(
 				"f=%-6.2f->%-6.2f", od->freq.v0, od->freq.vt);
 		else
-			fprintf(stdout,
+			SGS_printf(
 				"f=%-6.2f\t", od->freq.v0);
 	} else {
 		if ((od->freq.flags & SGS_RAMPP_GOAL) != 0)
-			fprintf(stdout,
+			SGS_printf(
 				"f->%-6.2f\t", od->freq.vt);
 		else
-			fprintf(stdout,
+			SGS_printf(
 				"\t\t");
 	}
 	if ((od->amp.flags & SGS_RAMPP_STATE) != 0) {
 		if ((od->amp.flags & SGS_RAMPP_GOAL) != 0)
-			fprintf(stdout,
+			SGS_printf(
 				"\ta=%-6.2f->%-6.2f", od->amp.v0, od->amp.vt);
 		else
-			fprintf(stdout,
+			SGS_printf(
 				"\ta=%-6.2f", od->amp.v0);
 	} else if ((od->amp.flags & SGS_RAMPP_GOAL) != 0) {
-		fprintf(stdout,
+		SGS_printf(
 			"\ta->%-6.2f", od->amp.vt);
 	}
 }
@@ -701,13 +702,12 @@ print_opline(const SGS_ProgramOpData *restrict od) {
  */
 void
 SGS_Program_print_info(const SGS_Program *restrict o) {
-	fprintf(stdout,
-		"Program: \"%s\"\n", o->name);
-	fprintf(stdout,
+	SGS_printf("Program: \"%s\"\n"
 		"\tDuration: \t%u ms\n"
 		"\tEvents:   \t%zu\n"
 		"\tVoices:   \t%hu\n"
 		"\tOperators:\t%u\n",
+		o->name,
 		o->duration_ms,
 		o->ev_count,
 		o->vo_count,
@@ -715,11 +715,11 @@ SGS_Program_print_info(const SGS_Program *restrict o) {
 	for (size_t ev_id = 0; ev_id < o->ev_count; ++ev_id) {
 		const SGS_ProgramEvent *ev = &o->events[ev_id];
 		const SGS_ProgramVoData *vd = ev->vo_data;
-		fprintf(stdout,
+		SGS_printf(
 			"\\%u \tEV %zu \t(VO %hu)",
 			ev->wait_ms, ev_id, ev->vo_id);
 		if (vd != NULL) {
-			fprintf(stdout,
+			SGS_printf(
 				"\n\tvo %u", ev->vo_id);
 			print_oplist(vd->op_list, vd->op_count);
 		}
@@ -730,6 +730,6 @@ SGS_Program_print_info(const SGS_Program *restrict o) {
 			print_linked("\n\t    fw[", "]", od->fmods);
 			print_linked("\n\t    p[", "]", od->pmods);
 		}
-		putc('\n', stdout);
+		SGS_printf("\n");
 	}
 }

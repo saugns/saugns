@@ -229,9 +229,9 @@ void SGS_Wave_print(uint8_t id) {
 		return;
 	const float *lut = SGS_Wave_luts[id];
 	const char *lut_name = SGS_Wave_names[id];
-	fprintf(stdout, "LUT: %s\n", lut_name);
+	SGS_printf("LUT: %s\n", lut_name);
 	for (int i = 0; i < SGS_Wave_LEN; ++i) {
 		float v = lut[i];
-		fprintf(stdout, "[\t%d]: \t%.11f\n", i, v);
+		SGS_printf("[\t%d]: \t%.11f\n", i, v);
 	}
 }

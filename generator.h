@@ -22,5 +22,5 @@ SGS_Generator* SGS_create_Generator(const SGS_Program *restrict prg,
 void SGS_destroy_Generator(SGS_Generator *restrict o);
 
 bool SGS_Generator_run(SGS_Generator *restrict o,
-		int16_t *restrict buf, size_t buf_len,
+		int16_t *restrict buf, size_t buf_len, bool stereo,
 		size_t *restrict out_len);
