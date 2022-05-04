@@ -24,7 +24,7 @@ OBJ=\
 	wave.o \
 	generator.o \
 	player/audiodev.o \
-	player/wavfile.o \
+	player/sndfile.o \
 	sgensys.o
 TEST1_OBJ=\
 	arrtype.o \
@@ -88,8 +88,8 @@ mempool.o: sgensys.h mempool.c mempool.h
 player/audiodev.o: sgensys.h player/audiodev.c player/audiodev.h player/audiodev/*.c
 	$(CC) -c $(CFLAGS_SIZE) player/audiodev.c -o player/audiodev.o
 
-player/wavfile.o: sgensys.h player/wavfile.c player/wavfile.h
-	$(CC) -c $(CFLAGS) player/wavfile.c -o player/wavfile.o
+player/sndfile.o: sgensys.h player/sndfile.c player/sndfile.h
+	$(CC) -c $(CFLAGS) player/sndfile.c -o player/sndfile.o
 
 ramp.o: sgensys.h math.h ramp.c ramp.h
 	$(CC) -c $(CFLAGS_FASTF) ramp.c
@@ -112,7 +112,7 @@ symtab.o: sgensys.h mempool.h symtab.c symtab.h
 generator.o: sgensys.h math.h mempool.h program.h ramp.h generator.c generator.h generator/osc.c generator/osc.h wave.h
 	$(CC) -c $(CFLAGS_FASTF) generator.c
 
-sgensys.o: sgensys.c help.h generator.h script.h arrtype.h program.h ramp.h wave.h math.h file.h player/audiodev.h player/wavfile.h sgensys.h
+sgensys.o: sgensys.c help.h generator.h script.h arrtype.h program.h ramp.h wave.h math.h file.h player/audiodev.h player/sndfile.h sgensys.h
 	$(CC) -c $(CFLAGS_SIZE) sgensys.c
 
 test-scan.o: sgensys.h math.h program.h ramp.h file.h lexer.h scanner.h symtab.h test-scan.c wave.h
