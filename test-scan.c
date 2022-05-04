@@ -42,7 +42,7 @@ static void print_usage(void) {
  * Print version.
  */
 static void print_version(void) {
-	puts(NAME" ("SAU_CLINAME_STR") "SAU_VERSION_STR);
+	fputs(NAME" ("SAU_CLINAME_STR") "SAU_VERSION_STR"\n", stderr);
 }
 
 /*

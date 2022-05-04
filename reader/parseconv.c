@@ -622,15 +622,16 @@ print_linked(const char *restrict header,
 		const SAU_ProgramOpList *restrict list) {
 	if (!list || !list->count)
 		return;
-	fprintf(stdout, "%s%u", header, list->ids[0]);
+	SAU_printf("%s%u", header, list->ids[0]);
 	for (uint32_t i = 0; ++i < list->count; )
-		fprintf(stdout, ", %u", list->ids[i]);
-	fprintf(stdout, "%s", footer);
+		SAU_printf(", %u", list->ids[i]);
+	SAU_printf("%s", footer);
 }
 
 static void
 print_graph(const SAU_ProgramOpRef *restrict graph,
 		uint32_t count) {
+	FILE *out = SAU_print_stream();
 	static const char *const uses[SAU_POP_USES] = {
 		" CA",
 		" AM",
@@ -643,20 +644,20 @@ print_graph(const SAU_ProgramOpRef *restrict graph,
 
 	uint32_t i = 0;
 	uint32_t max_indent = 0;
-	fputs("\n\t    [", stdout);
+	fputs("\n\t    [", out);
 	for (;;) {
 		const uint32_t indent = graph[i].level * 3;
 		if (indent > max_indent) max_indent = indent;
-		fprintf(stdout, "%6u:  ", graph[i].id);
+		fprintf(out, "%6u:  ", graph[i].id);
 		for (uint32_t j = indent; j > 0; --j)
-			putc(' ', stdout);
-		fputs(uses[graph[i].use], stdout);
+			putc(' ', out);
+		fputs(uses[graph[i].use], out);
 		if (++i == count) break;
-		fputs("\n\t     ", stdout);
+		fputs("\n\t     ", out);
 	}
 	for (uint32_t j = max_indent; j > 0; --j)
-		putc(' ', stdout);
-	putc(']', stdout);
+		putc(' ', out);
+	putc(']', out);
 }
 
 static sauNoinline void
@@ -665,23 +666,23 @@ print_ramp(const SAU_Ramp *restrict ramp, char c) {
 		return;
 	if ((ramp->flags & SAU_RAMPP_STATE) != 0) {
 		if ((ramp->flags & SAU_RAMPP_GOAL) != 0)
-			fprintf(stdout, "\t%c=%-6.2f->%-6.2f", c, ramp->v0, ramp->vt);
+			SAU_printf("\t%c=%-6.2f->%-6.2f", c, ramp->v0, ramp->vt);
 		else
-			fprintf(stdout, "\t%c=%-6.2f\t", c, ramp->v0);
+			SAU_printf("\t%c=%-6.2f\t", c, ramp->v0);
 	} else {
 		if ((ramp->flags & SAU_RAMPP_GOAL) != 0)
-			fprintf(stdout, "\t%c->%-6.2f\t", c, ramp->vt);
+			SAU_printf("\t%c->%-6.2f\t", c, ramp->vt);
 		else
-			fprintf(stdout, "\t%c", c);
+			SAU_printf("\t%c", c);
 	}
 }
 
 static void
 print_opline(const SAU_ProgramOpData *restrict od) {
 	if (od->time.flags & SAU_TIMEP_IMPLICIT) {
-		fprintf(stdout, "\n\top %u \tt=IMPL  ", od->id);
+		SAU_printf("\n\top %u \tt=IMPL  ", od->id);
 	} else {
-		fprintf(stdout, "\n\top %u \tt=%-6u", od->id, od->time.v_ms);
+		SAU_printf("\n\top %u \tt=%-6u", od->id, od->time.v_ms);
 	}
 	print_ramp(od->freq, 'f');
 	print_ramp(od->amp, 'a');
@@ -692,13 +693,12 @@ print_opline(const SAU_ProgramOpData *restrict od) {
  */
 void
 SAU_Program_print_info(const SAU_Program *restrict o) {
-	fprintf(stdout,
-		"Program: \"%s\"\n", o->name);
-	fprintf(stdout,
+	SAU_printf("Program: \"%s\"\n"
 		"\tDuration: \t%u ms\n"
 		"\tEvents:   \t%zu\n"
 		"\tVoices:   \t%hu\n"
 		"\tOperators:\t%u\n",
+		o->name,
 		o->duration_ms,
 		o->ev_count,
 		o->vo_count,
@@ -706,12 +706,10 @@ SAU_Program_print_info(const SAU_Program *restrict o) {
 	for (size_t ev_id = 0; ev_id < o->ev_count; ++ev_id) {
 		const SAU_ProgramEvent *ev = o->events[ev_id];
 		const SAU_ProgramVoData *vd = ev->vo_data;
-		fprintf(stdout,
-			"/%u \tEV %zu \t(VO %hu)",
+		SAU_printf("/%u \tEV %zu \t(VO %hu)",
 			ev->wait_ms, ev_id, ev->vo_id);
 		if (vd != NULL) {
-			fprintf(stdout,
-				"\n\tvo %u", ev->vo_id);
+			SAU_printf("\n\tvo %u", ev->vo_id);
 			print_graph(vd->graph, vd->op_count);
 		}
 		for (size_t i = 0; i < ev->op_data_count; ++i) {
@@ -722,6 +720,6 @@ SAU_Program_print_info(const SAU_Program *restrict o) {
 			print_linked("\n\t    p[", "]", od->pmods);
 			print_linked("\n\t    pf[", "]", od->fpmods);
 		}
-		putc('\n', stdout);
+		SAU_printf("\n");
 	}
 }

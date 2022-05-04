@@ -258,7 +258,7 @@ void SAU_Wave_print(uint8_t id) {
 	const float *lut = SAU_Wave_luts[id];
 	const float *pilut = SAU_Wave_piluts[id];
 	const char *lut_name = SAU_Wave_names[id];
-	fprintf(stdout, "LUT: %s\n", lut_name);
+	SAU_printf("LUT: %s\n", lut_name);
 	double sum = 0.f, sum2 = 0.f, mag_sum = 0.f, mag_sum2 = 0.f;
 	float prev_s = lut[SAU_Wave_LEN - 1], prev_s2 = pilut[SAU_Wave_LEN - 1];
 	float peak_max = 0.f, peak_max2 = 0.f;
@@ -277,14 +277,14 @@ void SAU_Wave_print(uint8_t id) {
 		if (slope_min > slope_s) slope_min = slope_s;
 		if (slope_min2 > slope_s2) slope_min2 = slope_s2;
 		prev_s = s; prev_s2 = s2;
-		fprintf(stdout, "[\t%d]: \t%.11f\tIv %.11f\n", i, s, s2);
+		SAU_printf("[\t%d]: \t%.11f\tIv %.11f\n", i, s, s2);
 	}
 	float len_scale = (float) SAU_Wave_LEN;
 	float diff_min = slope_min2 * DVSCALE;
 	float diff_max = slope_max2 * DVSCALE;
 	float diff_scale = SAU_Wave_picoeffs[id].amp_scale;
 	float diff_offset = SAU_Wave_picoeffs[id].amp_dc;
-	fprintf(stdout, "\tp.m.avg %.11f\tIt %.11f\n"
+	SAU_printf("\tp.m.avg %.11f\tIt %.11f\n"
 			"\tp.m.max %.11f\tIt %.11f\n"
 			"\tdc.offs %.11f\tIt %.11f\n"
 			"\t+slope  %.11f\tIt %.11f\n"

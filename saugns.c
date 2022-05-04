@@ -47,23 +47,27 @@ static void print_help(const char *restrict topic,
  */
 static void print_usage(bool h_arg, const char *restrict h_type) {
 	fputs(
-"Usage: "NAME" [-a|-m] [-r <srate>] [-p] [-o <wavfile>] [-e] <script>...\n"
-"       "NAME" [-c] [-p] [-e] <script>...\n",
+"Usage: "NAME" [-a | -m] [-r <srate>] [--mono] [-o <wavfile>] [--stdout]\n"
+"              [-p] [-e] <script>...\n"
+"       "NAME" -c [-p] [-e] <script>...\n",
 		stderr);
 	if (!h_type)
 		fputs(
 "\n"
-"By default, audio device output is enabled.\n"
-"\n"
-"  -a \tAudible; always enable audio device output.\n"
-"  -m \tMuted; always disable audio device output.\n"
+"Audio output options (by default, system audio output is enabled):\n"
+"  -a \tAudible; always enable system audio output.\n"
+"  -m \tMuted; always disable system audio output.\n"
 "  -r \tSample rate in Hz (default "SAU_STREXP(SAU_DEFAULT_SRATE)");\n"
-"     \tif unsupported for audio device, warns and prints rate used instead.\n"
+"     \tif unsupported for system audio, warns and prints rate used instead.\n"
 "  -o \tWrite a 16-bit PCM WAV file, always using the sample rate requested;\n"
-"     \tdisables audio device output by default.\n"
-"  -e \tEvaluate strings instead of files.\n"
+"     \tdisables system audio output by default.\n"
+"  --mono \tDownmix and output audio as mono; this applies to all outputs.\n"
+"  --stdout \tSend 16-bit audio output to stdout with sample rate requested.\n"
+"\n"
+"Other options:\n"
 "  -c \tCheck scripts only, reporting any errors or requested info.\n"
 "  -p \tPrint info for scripts after loading.\n"
+"  -e \tEvaluate strings instead of files.\n"
 "  -h \tPrint this and list help topics, or print help for '-h <topic>'.\n"
 "  -v \tPrint version.\n",
 			stderr);
@@ -79,7 +83,7 @@ static void print_usage(bool h_arg, const char *restrict h_type) {
  * Print version.
  */
 static void print_version(void) {
-	puts(NAME" "SAU_VERSION_STR);
+	fputs(NAME" "SAU_VERSION_STR"\n", stderr);
 }
 
 /*
@@ -117,8 +121,27 @@ static bool parse_args(int argc, char **restrict argv,
 	*srate = SAU_DEFAULT_SRATE;
 	opt.err = 1;
 REPARSE:
-	while ((c = SAU_getopt(argc, argv, "amr:o:ecphv"TESTOPT, &opt)) != -1) {
+	while ((c = SAU_getopt(argc, argv,
+	                       "amr:o:ecphv"TESTOPT
+			       "-mono-stdout", &opt)) != -1) {
 		switch (c) {
+		case '-':
+			if (!strcmp(opt.arg, "mono")) {
+				if ((*flags & SAU_OPT_MODE_CHECK) != 0)
+					goto USAGE;
+				*flags |= SAU_OPT_MODE_FULL |
+					SAU_OPT_AUDIO_MONO;
+			}
+			else if (!strcmp(opt.arg, "stdout")) {
+				if ((*flags & SAU_OPT_MODE_CHECK) != 0)
+					goto USAGE;
+				*flags |= SAU_OPT_MODE_FULL |
+					SAU_OPT_AUDIO_STDOUT;
+				SAU_stdout_busy = 1; /* required for audio */
+			} else {
+				goto USAGE;
+			}
+			break;
 #if SAU_ADD_TESTOPT
 		case '?':
 			if (!get_iarg(opt.arg, &i)) goto USAGE;
@@ -126,11 +149,11 @@ REPARSE:
 			continue;
 #endif
 		case 'a':
-			if ((*flags & (SAU_OPT_AUDIO_DISABLE |
+			if ((*flags & (SAU_OPT_SYSAU_DISABLE |
 					SAU_OPT_MODE_CHECK)) != 0)
 				goto USAGE;
 			*flags |= SAU_OPT_MODE_FULL |
-				SAU_OPT_AUDIO_ENABLE;
+				SAU_OPT_SYSAU_ENABLE;
 			break;
 		case 'c':
 			if ((*flags & SAU_OPT_MODE_FULL) != 0)
@@ -145,11 +168,11 @@ REPARSE:
 			h_type = opt.arg; /* optional argument for -h */
 			goto USAGE;
 		case 'm':
-			if ((*flags & (SAU_OPT_AUDIO_ENABLE |
+			if ((*flags & (SAU_OPT_SYSAU_ENABLE |
 					SAU_OPT_MODE_CHECK)) != 0)
 				goto USAGE;
 			*flags |= SAU_OPT_MODE_FULL |
-				SAU_OPT_AUDIO_DISABLE;
+				SAU_OPT_SYSAU_DISABLE;
 			break;
 		case 'o':
 			if ((*flags & SAU_OPT_MODE_CHECK) != 0)
