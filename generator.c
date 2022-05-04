@@ -16,6 +16,7 @@
 #include "generator/osc.c"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define BUF_LEN 1024
 typedef float Buf[BUF_LEN];
@@ -59,9 +60,17 @@ typedef struct EventNode {
 	const SGS_ProgramEvent *prg_event;
 } EventNode;
 
+/*
+ * Generator flags.
+ */
+enum {
+	GEN_OUT_CLEAR = 1<<0,
+};
+
 struct SGS_Generator {
 	uint32_t srate;
-	uint32_t gen_buf_count;
+	uint16_t gen_flags;
+	uint16_t gen_mix_add_max;
 	Buf *gen_bufs, *mix_bufs;
 	size_t event, ev_count;
 	EventNode *events;
@@ -104,7 +113,6 @@ static bool alloc_for_program(SGS_Generator *restrict o,
 	if (i > 0) {
 		o->gen_bufs = calloc(i, sizeof(Buf));
 		if (!o->gen_bufs) goto ERROR;
-		o->gen_buf_count = i;
 	}
 	o->mix_bufs = calloc(2, sizeof(Buf));
 	if (!o->mix_bufs) goto ERROR;
@@ -401,12 +409,11 @@ static uint32_t run_block(SGS_Generator *restrict o,
  * Clear the mix buffers. To be called before adding voice outputs.
  */
 static void mix_clear(SGS_Generator *restrict o) {
-	float *mix_l = o->mix_bufs[0];
-	float *mix_r = o->mix_bufs[1];
-	for (uint32_t i = 0; i < BUF_LEN; ++i) {
-		mix_l[i] = 0;
-		mix_r[i] = 0;
-	}
+	if (o->gen_mix_add_max == 0)
+		return;
+	memset(o->mix_bufs[0], 0, sizeof(float) * o->gen_mix_add_max);
+	memset(o->mix_bufs[1], 0, sizeof(float) * o->gen_mix_add_max);
+	o->gen_mix_add_max = 0;
 }
 
 /*
@@ -440,6 +447,25 @@ static void mix_add(SGS_Generator *restrict o,
 			mix_r[i] += s_r;
 		}
 	}
+	if (o->gen_mix_add_max < len) o->gen_mix_add_max = len;
+}
+
+/**
+ * Write the final output from the mix buffers (0 = left, 1 = right)
+ * downmixed to mono into a 16-bit buffer
+ * pointed to by \p spp. Advances \p spp.
+ */
+static void mix_write_mono(SGS_Generator *restrict o,
+		int16_t **restrict spp, uint32_t len) {
+	float *mix_l = o->mix_bufs[0];
+	float *mix_r = o->mix_bufs[1];
+	o->gen_flags &= ~GEN_OUT_CLEAR;
+	for (uint32_t i = 0; i < len; ++i) {
+		float s_m = (mix_l[i] + mix_r[i]) * 0.5f;
+		if (s_m > 1.f) s_m = 1.f;
+		else if (s_m < -1.f) s_m = -1.f;
+		*(*spp)++ += lrintf(s_m * (float) INT16_MAX);
+	}
 }
 
 /*
@@ -447,10 +473,11 @@ static void mix_add(SGS_Generator *restrict o,
  * into the 16-bit stereo (interleaved) buffer pointed to by \p spp.
  * Advances \p spp.
  */
-static void mix_write(SGS_Generator *restrict o,
+static void mix_write_stereo(SGS_Generator *restrict o,
 		int16_t **restrict spp, uint32_t len) {
 	float *mix_l = o->mix_bufs[0];
 	float *mix_r = o->mix_bufs[1];
+	o->gen_flags &= ~GEN_OUT_CLEAR;
 	for (uint32_t i = 0; i < len; ++i) {
 		float s_l = mix_l[i];
 		float s_r = mix_r[i];
@@ -497,12 +524,12 @@ static uint32_t run_voice(SGS_Generator *restrict o,
 
 /*
  * Run voices for \p time, repeatedly generating up to BUF_LEN samples
- * and writing them into the 16-bit stereo (interleaved) buffer \p buf.
+ * and writing them into the 16-bit interleaved channels buffer \p buf.
  *
  * \return number of samples generated
  */
 static uint32_t run_for_time(SGS_Generator *restrict o,
-		uint32_t time, int16_t *restrict buf) {
+		uint32_t time, int16_t *restrict buf, bool stereo) {
 	int16_t *sp = buf;
 	uint32_t gen_len = 0;
 	while (time > 0) {
@@ -519,7 +546,9 @@ static uint32_t run_for_time(SGS_Generator *restrict o,
 		}
 		if (last_len > 0) {
 			gen_len += last_len;
-			mix_write(o, &sp, last_len);
+			(stereo ?
+			 mix_write_stereo :
+			 mix_write_mono)(o, &sp, last_len);
 		}
 	}
 	return gen_len;
@@ -540,25 +569,26 @@ static void check_final_state(SGS_Generator *restrict o) {
 
 /**
  * Main audio generation/processing function. Call repeatedly to write
- * buf_len new samples into the interleaved stereo buffer buf. Any values
+ * buf_len new samples into the interleaved channels buffer buf. Any values
  * after the end of the signal will be zero'd.
  *
  * If supplied, out_len will be set to the precise length generated
  * for this call, which is buf_len unless the signal ended earlier.
  *
+ * Note that \p buf_len * channels is assumed not to increase between calls.
+ *
  * \return true unless the signal has ended
  */
 bool SGS_Generator_run(SGS_Generator *restrict o,
-		int16_t *restrict buf, size_t buf_len,
+		int16_t *restrict buf, size_t buf_len, bool stereo,
 		size_t *restrict out_len) {
 	int16_t *sp = buf;
-	uint32_t i, len = buf_len;
-	for (i = len; i--; sp += 2) {
-		sp[0] = 0;
-		sp[1] = 0;
-	}
-	sp = buf;
+	uint32_t len = buf_len;
 	uint32_t skip_len, last_len, gen_len = 0;
+	if (!(o->gen_flags & GEN_OUT_CLEAR)) {
+		o->gen_flags |= GEN_OUT_CLEAR;
+		memset(buf, 0, sizeof(int16_t) * (stereo ? len * 2 : len));
+	}
 PROCESS:
 	skip_len = 0;
 	while (o->event < o->ev_count) {
@@ -582,10 +612,13 @@ PROCESS:
 		++o->event;
 		o->event_pos = 0;
 	}
-	last_len = run_for_time(o, len, sp);
+	last_len = run_for_time(o, len, sp, stereo);
 	if (skip_len > 0) {
 		gen_len += len;
-		sp += len+len; /* stereo double */
+		if (stereo)
+			sp += len * 2;
+		else
+			sp += len;
 		len = skip_len;
 		goto PROCESS;
 	} else {

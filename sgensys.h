@@ -67,6 +67,13 @@
  * Utility functions.
  */
 
+extern int SGS_stdout_busy;
+
+/** Return stream to use for printing when stdout is preferred. */
+#define SGS_print_stream() (SGS_stdout_busy ? stderr : stdout)
+
+int SGS_printf(const char *restrict fmt, ...)
+	sgsPrintflike(1, 2);
 void SGS_warning(const char *restrict label, const char *restrict fmt, ...)
 	sgsPrintflike(2, 3);
 void SGS_error(const char *restrict label, const char *restrict fmt, ...)
@@ -82,8 +89,15 @@ void SGS_error(const char *restrict label, const char *restrict fmt, ...)
 /* Print hash collision info for symtab. */
 //#define SGS_SYMTAB_STATS 0
 
+/* Add int SGS_testopt and "-? <number>" cli option for it? */
+//#define SGS_ADD_TESTOPT 1
+
 /* Run scanner instead of lexer in 'test-scan' program. */
 #define SGS_TEST_SCANNER 0
 
 /* Make test lexer quiet enough to time it. */
 #define SGS_LEXER_QUIET 1
+
+#if SGS_ADD_TESTOPT
+extern int SGS_testopt; /* defaults to 0, set using debug option "-?" */
+#endif
