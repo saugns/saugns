@@ -112,14 +112,14 @@ static void handle_eof(SAU_Lexer *restrict o,
 	SAU_ScriptToken *t = &o->token;
 	t->type = SAU_T_INVALID;
 	t->data.b = SAU_File_STATUS(sc->f);
-	//puts("EOF");
+	//fputs("EOF", stderr);
 }
 
 static void handle_special(SAU_Lexer *restrict o, uint8_t c) {
 	SAU_ScriptToken *t = &o->token;
 	t->type = SAU_T_SPECIAL;
 	t->data.c = c;
-	//putchar(c);
+	//putc(c, stderr);
 }
 
 static void handle_numeric_value(SAU_Lexer *restrict o,
@@ -131,7 +131,7 @@ static void handle_numeric_value(SAU_Lexer *restrict o,
 	SAU_Scanner_getd(sc, &d, false, NULL, NULL);
 	t->type = SAU_T_VAL_REAL;
 	t->data.f = d;
-	//printf("num == %f\n", d);
+	//fprintf(stderr, "num == %f\n", d);
 }
 
 static void handle_identifier(SAU_Lexer *restrict o,
@@ -143,7 +143,7 @@ static void handle_identifier(SAU_Lexer *restrict o,
 	SAU_Scanner_get_symstr(sc, &symstr);
 	t->type = SAU_T_ID_STR;
 	t->data.id = symstr ? symstr->key : NULL;
-	//printf("str == %s\n", str);
+	//fprintf(stderr, "str == %s\n", str);
 }
 
 /**

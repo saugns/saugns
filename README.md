@@ -16,7 +16,8 @@ as AM/RM, FM, and PM (the "FM" of most commercial synthesizers).
 An arbitrary number of oscillators can be used.
 
 The program reads SAU (Scriptable AUdio) files or strings,
-and can output to system audio and/or a 16-bit PCM WAV file.
+and can output to system audio, a 16-bit PCM WAV file,
+and/or stdout (for interfacing with other programs).
 Basic usage information is provided with the -h option. More
 can be found in the man page and on the website,
 <https://saugns.github.io/>.

@@ -20,6 +20,21 @@
 #include <stdlib.h>
 #include <string.h>
 
+int SAU_stdout_busy = 0; /* enable if stdout is given other uses! */
+
+/**
+ * Wrapper for vfprintf(), which prints to either stdout or stderr
+ * depending on \ref SAU_print_stream().
+ */
+int SAU_printf(const char *restrict fmt, ...) {
+	int ret;
+	va_list ap;
+	va_start(ap, fmt);
+	ret = vfprintf(SAU_print_stream(), fmt, ap);
+	va_end(ap);
+	return ret;
+}
+
 /*
  * Print to stderr. message, optionally including a descriptive label.
  *  - \p msg_type may be e.g. "warning", "error"
@@ -78,17 +93,36 @@ void *SAU_memdup(const void *restrict src, size_t size) {
 	return dst;
 }
 
+/*
+ * Compare to name substring, which may be terminated either
+ * with a NULL byte, or with a '-' character (which precedes
+ * a next substring).
+ */
+static bool streq_longname(const char *restrict arg,
+		const char *restrict name) {
+	size_t i;
+	for (i = 0; arg[i] != '\0' && arg[i] == name[i]; ++i) ;
+	return arg[i] == '\0' &&
+		(name[i] == '\0' || name[i] == '-');
+}
+
 /**
  * Command-line argument parser similar to POSIX getopt(),
  * but replacing opt* global variables with \p opt fields.
+ *
  * For unrecognized options, will return 1 instead of '?',
  * freeing up '?' for possible use as another option name.
+ * Allows only a limited form of "--long" option use, with
+ * the '-' regarded as the option and "long" its argument.
+ * A '-' in \p optstring must be after short options, each
+ * '-' followed by a string to recognize as the long name.
  *
  * The \a arg field is always set for each valid option, so as to be
  * available for reading as an unspecified optional option argument.
  *
  * In large part based on the public domain
  * getopt() version by Christopher Wellons.
+ * Not the nonstandard extensions, however.
  */
 int SAU_getopt(int argc, char *const*restrict argv,
 		const char *restrict optstring, struct SAU_opt *restrict opt) {
@@ -97,17 +131,35 @@ int SAU_getopt(int argc, char *const*restrict argv,
 		opt->ind = 1;
 		opt->pos = 1;
 	}
-	const char *arg = argv[opt->ind];
+	const char *arg = argv[opt->ind], *subs;
 	if (!arg || arg[0] != '-' || !SAU_IS_ASCIIVISIBLE(arg[1]))
 		return -1;
-	if (!strcmp(arg, "--")) {
-		++opt->ind;
-		return -1;
+	const char *shortend = strchr(optstring, '-');
+	if (arg[1] == '-') {
+		if (arg[2] == '\0') {
+			++opt->ind;
+			return -1;
+		}
+		subs = shortend;
+		while (subs) {
+			if (streq_longname(arg + 2, subs + 1)) {
+				opt->opt = '-';
+				opt->arg = arg + 2;
+				++opt->ind;
+				opt->pos = 1;
+				return opt->opt;
+			}
+			subs = strchr(subs + 1, '-');
+		}
+		if (opt->err)
+			fprintf(stderr, "%s: invalid option \"%s\"\n",
+					argv[0], arg);
+		return 1;
 	}
 	opt->opt = arg[opt->pos];
-	const char *subs = strchr(optstring, opt->opt);
-	if (opt->opt == ':' || !subs) {
-		if (opt->err != 0 && *optstring != ':')
+	subs = strchr(optstring, opt->opt);
+	if (opt->opt == ':' || !subs || (shortend && subs >= shortend)) {
+		if (opt->err && *optstring != ':')
 			fprintf(stderr, "%s: invalid option '%c'\n",
 					argv[0], opt->opt);
 		return 1;
@@ -125,7 +177,7 @@ int SAU_getopt(int argc, char *const*restrict argv,
 			opt->pos = 1;
 			return opt->opt;
 		}
-		if (opt->err != 0 && *optstring != ':')
+		if (opt->err && *optstring != ':')
 			fprintf(stderr,
 "%s: option '%c' requires an argument\n",
 					argv[0], opt->opt);

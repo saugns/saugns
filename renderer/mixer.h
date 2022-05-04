@@ -1,5 +1,5 @@
 /* saugns: Audio mixer module.
- * Copyright (c) 2019-2020 Joel K. Pettersson
+ * Copyright (c) 2019-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -45,4 +45,6 @@ void SAU_Mixer_add(SAU_Mixer *restrict o,
 		float *restrict buf, size_t len,
 		SAU_Ramp *restrict pan, uint32_t *restrict pan_pos);
 void SAU_Mixer_write(SAU_Mixer *restrict o,
+		int16_t **restrict spp, size_t len);
+void SAU_Mixer_write_stereo(SAU_Mixer *restrict o,
 		int16_t **restrict spp, size_t len);

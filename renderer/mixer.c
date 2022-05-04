@@ -1,5 +1,5 @@
 /* saugns: Audio mixer module.
- * Copyright (c) 2019-2020 Joel K. Pettersson
+ * Copyright (c) 2019-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -86,10 +86,25 @@ void SAU_Mixer_add(SAU_Mixer *restrict o,
 
 /**
  * Write \p len samples from the mix buffers
- * into a 16-bit stereo (interleaved) buffer
+ * downmixed to mono into a 16-bit buffer
  * pointed to by \p spp. Advances \p spp.
  */
 void SAU_Mixer_write(SAU_Mixer *restrict o,
+		int16_t **restrict spp, size_t len) {
+	for (size_t i = 0; i < len; ++i) {
+		float s_m = (o->mix_l[i] + o->mix_r[i]) * 0.5f;
+		if (s_m > 1.f) s_m = 1.f;
+		else if (s_m < -1.f) s_m = -1.f;
+		*(*spp)++ += lrintf(s_m * (float) INT16_MAX);
+	}
+}
+
+/**
+ * Write \p len samples from the mix buffers
+ * into a 16-bit stereo (interleaved) buffer
+ * pointed to by \p spp. Advances \p spp.
+ */
+void SAU_Mixer_write_stereo(SAU_Mixer *restrict o,
 		int16_t **restrict spp, size_t len) {
 	for (size_t i = 0; i < len; ++i) {
 		float s_l = o->mix_l[i];

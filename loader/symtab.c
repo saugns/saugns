@@ -171,7 +171,7 @@ void SAU_destroy_SymTab(SAU_SymTab *restrict o) {
 	if (!o)
 		return;
 #if SAU_SYMTAB_STATS
-	printf("collision count: %zd\n", collision_count);
+	fprintf(stderr, "collision count: %zd\n", collision_count);
 #endif
 	fini_StrTab(&o->strtab);
 }
