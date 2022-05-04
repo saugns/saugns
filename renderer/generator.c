@@ -17,6 +17,7 @@
 #include "../mempool.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define BUF_LEN SAU_MIX_BUFLEN
 typedef float Buf[BUF_LEN];
@@ -458,12 +459,12 @@ static uint32_t run_voice(SAU_Generator *restrict o,
 
 /*
  * Run voices for \p time, repeatedly generating up to BUF_LEN samples
- * and writing them into the 16-bit stereo (interleaved) buffer \p buf.
+ * and writing them into the 16-bit interleaved channels buffer \p buf.
  *
  * \return number of samples generated
  */
 static uint32_t run_for_time(SAU_Generator *restrict o,
-		uint32_t time, int16_t *restrict buf) {
+		uint32_t time, int16_t *restrict buf, bool stereo) {
 	int16_t *sp = buf;
 	uint32_t gen_len = 0;
 	while (time > 0) {
@@ -485,7 +486,10 @@ static uint32_t run_for_time(SAU_Generator *restrict o,
 					vn->pos += len;
 					break;
 				}
-				sp += wait_time+wait_time; /* stereo double */
+				if (stereo)
+					sp += wait_time * 2;
+				else
+					sp += wait_time;
 				len -= wait_time;
 				gen_len += wait_time;
 				vn->pos = 0;
@@ -498,7 +502,9 @@ static uint32_t run_for_time(SAU_Generator *restrict o,
 		time -= len;
 		if (last_len > 0) {
 			gen_len += last_len;
-			SAU_Mixer_write(o->mixer, &sp, last_len);
+			(stereo ?
+			 SAU_Mixer_write_stereo :
+			 SAU_Mixer_write)(o->mixer, &sp, last_len);
 		}
 	}
 	return gen_len;
@@ -519,7 +525,7 @@ static void check_final_state(SAU_Generator *restrict o) {
 
 /**
  * Main audio generation/processing function. Call repeatedly to write
- * buf_len new samples into the interleaved stereo buffer buf. Any values
+ * buf_len new samples into the interleaved channels buffer buf. Any values
  * after the end of the signal will be zero'd.
  *
  * If supplied, out_len will be set to the precise length generated
@@ -528,16 +534,12 @@ static void check_final_state(SAU_Generator *restrict o) {
  * \return true unless the signal has ended
  */
 bool SAU_Generator_run(SAU_Generator *restrict o,
-		int16_t *restrict buf, size_t buf_len,
+		int16_t *restrict buf, size_t buf_len, bool stereo,
 		size_t *restrict out_len) {
 	int16_t *sp = buf;
-	uint32_t i, len = buf_len;
-	for (i = len; i--; sp += 2) {
-		sp[0] = 0;
-		sp[1] = 0;
-	}
-	sp = buf;
+	uint32_t len = buf_len;
 	uint32_t skip_len, last_len, gen_len = 0;
+	memset(buf, 0, sizeof(int16_t) * (stereo ? len * 2 : len));
 PROCESS:
 	skip_len = 0;
 	while (o->event < o->ev_count) {
@@ -561,10 +563,13 @@ PROCESS:
 		++o->event;
 		o->event_pos = 0;
 	}
-	last_len = run_for_time(o, len, sp);
+	last_len = run_for_time(o, len, sp, stereo);
 	if (skip_len > 0) {
 		gen_len += len;
-		sp += len+len; /* stereo double */
+		if (stereo)
+			sp += len * 2;
+		else
+			sp += len;
 		len = skip_len;
 		goto PROCESS;
 	} else {

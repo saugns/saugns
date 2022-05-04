@@ -61,7 +61,7 @@ void SAU_destroy_Scanner(SAU_Scanner *restrict o) {
 	if (!o)
 		return;
 #if SAU_SCANNER_STATS
-	printf("hits: %zd\nmisses: %zd\n", hits, misses);
+	fprintf(stderr, "hits: %zd\nmisses: %zd\n", hits, misses);
 #endif
 	SAU_destroy_File(o->f);
 	free(o->strbuf);
