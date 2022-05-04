@@ -8,12 +8,14 @@
 .Nm saugns
 .Op Fl a | m
 .Op Fl r Ar srate
-.Op Fl p
+.Op Fl \-mono
 .Op Fl o Ar wavfile
+.Op Fl \-stdout
+.Op Fl p
 .Op Fl e
 .Ar script ...
 .Nm saugns
-.Op Fl c
+.Fl c
 .Op Fl p
 .Op Fl e
 .Ar script ...
@@ -28,7 +30,8 @@ or passed strings if the
 .Fl e
 option is used.
 Output is by default to system audio, but may instead be muted and/or
-written to a 16-bit PCM WAV file.
+written to a 16-bit PCM WAV file; it is also possible to stream audio
+data to stdout.
 .Pp
 Scripts can use an arbitrary number of oscillators,
 each with one of various wave forms.
@@ -36,24 +39,33 @@ Synthesis techniques supported include PM, FM, and AM.
 Duration and some other attributes can be calculated for each script
 without generating audio; the scripting language is not Turing complete.
 .Sh OPTIONS
-By default, audio device output is enabled.
+By default, system audio output is enabled.
 .Bl -tag -width Ds
 .It Fl a
-Audible; always enable audio device output.
+Audible; always enable system audio output.
 .It Fl m
-Muted; always disable audio device output.
+Muted; always disable system audio output.
 .It Fl r
 Sample rate in Hz (default 96000);
-if unsupported for audio device, warns and prints rate used instead.
+if unsupported for system audio, warns and prints rate used instead.
 .It Fl o
 Write a 16-bit PCM WAV file, always using the sample rate requested;
-disables audio device output by default.
-.It Fl e
-Evaluate strings instead of files.
+disables system audio output by default.
+.It Fl \-mono
+Downmix and output audio as mono; this applies to all outputs.
+.It Fl \-stdout
+Send 16-bit audio output to stdout, always using the sample rate requested.
+Reserves stdout for audio; all text printing will be to stderr.
+This does not disable any other audio output.
 .It Fl c
 Check scripts only, reporting any errors or requested info.
 .It Fl p
 Print info for scripts after loading.
+It will be printed to stdout unlike errors and warnings, unless
+.Fl \-stdout
+reserves it for audio, in which case all printing is to stderr.
+.It Fl e
+Evaluate strings instead of files.
 .It Fl h
 Print help for topic, or usage information and a list of topics if none.
 .It Fl v
@@ -62,7 +74,7 @@ Print version.
 .Sh ENVIRONMENT
 .Bl -tag -width OSS_AUDIODEV
 .It Ev AUDIODEV
-Can be set to change the audio device for
+Can be set to change the system audio device for
 .Nm
 to open when using the system audio API it was built to use. (If set to an
 empty string or to
