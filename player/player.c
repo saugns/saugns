@@ -40,8 +40,8 @@ typedef struct SAU_Output {
 static bool SAU_init_Output(SAU_Output *restrict o, uint32_t srate,
 		uint32_t options, const char *restrict wav_path) {
 	bool use_audiodev = (wav_path != NULL) ?
-		((options & SAU_OPT_AUDIO_ENABLE) != 0) :
-		((options & SAU_OPT_AUDIO_DISABLE) == 0);
+		((options & SAU_OPT_SYSAU_ENABLE) != 0) :
+		((options & SAU_OPT_SYSAU_DISABLE) == 0);
 	uint32_t ad_srate = srate;
 	uint32_t max_srate = srate;
 	*o = (SAU_Output){0};
