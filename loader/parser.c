@@ -40,9 +40,9 @@ struct ScanLookup {
 static const SAU_ScriptOptions def_sopt = {
 	.set = 0,
 	.ampmult = 1.f,
-	.A4_freq = 444.f,
+	.A4_freq = 440.f,
 	.def_time_ms = 1000,
-	.def_freq = 444.f,
+	.def_freq = 440.f,
 	.def_relfreq = 1.f,
 	.def_chanmix = 0.f,
 };
