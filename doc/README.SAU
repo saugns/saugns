@@ -217,7 +217,8 @@ Numerical expressions:
 	A number can be specified with or without a decimal point;
 	for a number with a decimal point, a leading zero can be omitted.
 	Number signs and arithmetic operation symbols can be used in infix
-	expressions. But unless something is written within parentheses,
+	expressions, together with numbers and named constants, variables,
+	and functions. But unless something is written within parentheses,
 	it cannot contain any whitespace, as it ends the expression. For
 	example, "-1" is fine, but "- 1" is a dangling minus followed by
 	a dangling number 1, if not inside parentheses as "(- 1)".
@@ -229,10 +230,13 @@ Numerical expressions:
 	Parentheses also allow shorthand multiplication (leaving out a
 	"*" between two parts), e.g. "2(3)" and "(2)3" both give "6".
 		Some parameters support named constants specific to that type
-	of value. Such a name can be written instead of a number.
-		The following mathematical functions can also be used, with
-	the syntax "name(number)" (e.g. "abs(-100)" gives "100"):
+	of value; such a name can be written instead of a number.
+		The following universal mathematical symbols (functions and
+	constants) can also be used in any numerical expression; functions
+	require parentheses after the name (and most often require a value
+	inside), while constants are simply written as names:
 		abs(x)	Absolute value.
+		cos(x)	Cosine of value.
 		exp(x)	Base-e exponential value.
 		log(x)	Natural logarithmic value.
 		met(x)	Metallic value, e.g. "met(1)" gives the golden ratio.
@@ -241,7 +245,21 @@ Numerical expressions:
 			and negative (gives how much the positive value would
 			be increased, approaching zero further from zero).
 			Note that met(-x) is also equal to (1/met(x)).
+		mf	632.45... (Geometric mean of 20 and 20000.)
+		pi	3.1415...
+		rand()	Pseudo-random number in range 0-1. The value sequence
+			from a series of calls restarts each new script unit.
+		rint(x)	Round value to the nearest integer. Halfway cases are
+			rounded to the nearest even integer.
+		seed(x)	Reset the rand() value sequence with a passed number.
+			(Every bit counts; different expressions for the same
+			number, with e.g. rounding may give different seeds.)
+			Returns 0 so that e.g. "/seed(100)" will only reseed.
+		sin(x)	Sine of value.
 		sqrt(x)	Square root.
+		time()	Get a system timestamp number changed each second.
+			It can be used for seeding in a randomized script.
+			(Note that the exact value is platform-dependent.)
 
 Value ramp:
 	To ramp, or sweep, a parameter which supports this towards a

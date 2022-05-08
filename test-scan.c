@@ -136,6 +136,7 @@ static inline void scan_with_undo(SAU_Scanner *o) {
 		uint8_t c;
 		bool end = false;
 		for (i = 0; ++i <= max; ) {
+			c = SAU_Scanner_retc(o);
 			c = SAU_Scanner_getc(o);
 			if (!c) {
 				end = true;
@@ -148,6 +149,7 @@ static inline void scan_with_undo(SAU_Scanner *o) {
 			SAU_Scanner_ungetc(o);
 		}
 		for (i = 0; ++i <= max; ) {
+			c = SAU_Scanner_retc(o);
 			c = SAU_Scanner_getc(o);
 			putchar(c);
 //			putchar('\n'); // for scanner.c test/debug printouts

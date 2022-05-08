@@ -548,7 +548,7 @@ static void set_usedc(SAU_Scanner *restrict o, uint8_t c) {
  * Perform updates after reading a sequence of characters,
  * e.g. a string or number. Prepares a temporary post-get scan frame.
  */
-static void advance_frame(SAU_Scanner *o, size_t strlen, uint8_t c) {
+static void advance_frame(SAU_Scanner *restrict o, size_t strlen, uint8_t c) {
 	if (strlen == 0)
 		return;
 	uint32_t reget_count = (strlen > o->undo_ungets) ?
@@ -567,9 +567,61 @@ static void advance_frame(SAU_Scanner *o, size_t strlen, uint8_t c) {
 	o->s_flags |= SAU_SCAN_S_DISCARD;
 }
 
+/*
+ * Filter character, read more if needed until a character can be returned.
+ *
+ * \return character or 0 upon end of file
+ */
+uint8_t SAU_Scanner_filterc(SAU_Scanner *restrict o, uint8_t c,
+		SAU_ScanFilter_f filter_f) {
+	SAU_File_INCP(o->f);
+	prepare_frame(o);
+	for (;;) {
+		++o->sf.char_num;
+		o->match_c = 0;
+		c = filter_f(o, c);
+		if (c != 0) {
+			if (c == SAU_SCAN_EOF)
+				return 0;
+			set_usedc(o, c);
+			break;
+		}
+		c = SAU_File_GETC(o->f);
+		filter_f = SAU_Scanner_getfilter(o, c);
+		if (!filter_f) {
+			++o->sf.char_num;
+			o->sf.c = c;
+			break;
+		}
+	}
+	return c;
+}
+
 /**
- * Get next character. Filter functions will be used with
- * \a match_c set to 0.
+ * Get current character, without advancing the position.
+ * Filter functions will be used with \a match_c set to 0.
+ * This function does the work necessary to check what the
+ * filtered character will be. Call SAU_Scanner_getc() for
+ * the purpose of then moving past the character as such.
+ *
+ * Upon end of file, 0 will be returned. A 0 value in the
+ * input is otherwise moved past, printing a warning.
+ *
+ * \return character or 0 upon end of file
+ */
+uint8_t SAU_Scanner_retc(SAU_Scanner *restrict o) {
+	uint8_t c = SAU_File_RETC(o->f);
+	SAU_ScanFilter_f filter_f = SAU_Scanner_getfilter(o, c);
+	if (filter_f) {
+		c = SAU_Scanner_filterc(o, c, filter_f);
+		SAU_Scanner_ungetc(o);
+	}
+	return c;
+}
+
+/**
+ * Get current character, advancing the position afterwards.
+ * Filter functions will be used with \a match_c set to 0.
  *
  * Upon end of file, 0 will be returned. A 0 value in the
  * input is otherwise moved past, printing a warning.
@@ -577,23 +629,31 @@ static void advance_frame(SAU_Scanner *o, size_t strlen, uint8_t c) {
  * \return character or 0 upon end of file
  */
 uint8_t SAU_Scanner_getc(SAU_Scanner *restrict o) {
-	SAU_File *f = o->f;
 	uint8_t c;
+	SAU_ScanFilter_f filter_f;
 	prepare_frame(o);
 	for (;;) {
+		c = SAU_File_GETC(o->f);
+		filter_f = SAU_Scanner_getfilter(o, c);
 		++o->sf.char_num;
-		c = SAU_File_GETC(f);
-		c = SAU_Scanner_usefilter(o, c, 0);
-		if (c != 0) break;
+		if (!filter_f) {
+			o->sf.c = c;
+			break;
+		}
+		o->match_c = 0;
+		c = filter_f(o, c);
+		if (c != 0) {
+			if (c == SAU_SCAN_EOF)
+				return 0;
+			set_usedc(o, c);
+			break;
+		}
 	}
-	if (c == SAU_SCAN_EOF)
-		return 0;
-	set_usedc(o, c);
 	return c;
 }
 
 /**
- * Get next character if it matches \p testc.
+ * Advance the position past the current character if it matches \p testc.
  * Note that characters removed by filters cannot be tested successfully.
  *
  * For filtered characters, does a get followed by SAU_Scanner_ungetc()
@@ -603,22 +663,23 @@ uint8_t SAU_Scanner_getc(SAU_Scanner *restrict o) {
  * \return true if character matched \p testc
  */
 bool SAU_Scanner_tryc(SAU_Scanner *restrict o, uint8_t testc) {
-	uint8_t c = SAU_File_RETC(o->f);
+	SAU_File *f = o->f;
+	uint8_t c = SAU_File_RETC(f);
+	SAU_ScanFilter_f filter_f = SAU_Scanner_getfilter(o, c);
 	/*
 	 * Use quick handling for unfiltered characters.
 	 */
-	if (!SAU_Scanner_getfilter(o, c)) {
+	if (!filter_f) {
 		if (c != testc)
 			return false;
 		prepare_frame(o);
 		++o->sf.char_num;
-		SAU_File_INCP(o->f);
+		SAU_File_INCP(f);
 		o->sf.c = c;
 		return true;
 	}
-	c = SAU_Scanner_getc(o);
+	c = SAU_Scanner_filterc(o, c, filter_f);
 	if (c != testc) {
-		o->s_flags |= SAU_SCAN_S_DISCARD;
 		SAU_Scanner_ungetc(o);
 		return false;
 	}
@@ -644,6 +705,7 @@ uint32_t SAU_Scanner_ungetc(SAU_Scanner *restrict o) {
 		return o->undo_ungets;
 	}
 	++o->undo_ungets;
+	o->s_flags &= ~SAU_SCAN_S_DISCARD;
 	char safe_c = o->undo[o->undo_pos].c;
 	change_frame(o, -1);
 	SAU_File_DECP(o->f);
@@ -776,6 +838,25 @@ bool SAU_Scanner_get_symstr(SAU_Scanner *restrict o,
 	}
 	*symstrp = symstr;
 	return !truncated;
+}
+
+/**
+ * Skip whitespace before next character retrieved, as
+ * if the filtering uses SAU_Scanner_filter_ws_none().
+ *
+ * Calling this before another get or return function is
+ * an alternative to using the \a SAU_SCAN_WS_NONE level
+ * of filtering, and does nothing if that level is used.
+ *
+ * \return character up next after filtering
+ */
+uint8_t SAU_Scanner_skipws(SAU_Scanner *restrict o) {
+	uint8_t c = SAU_Scanner_retc(o);
+	if (c == SAU_SCAN_SPACE || c == SAU_SCAN_LNBRK) {
+		c = SAU_Scanner_filterc(o, c, SAU_Scanner_filter_ws_none);
+		SAU_Scanner_ungetc(o);
+	}
+	return c;
 }
 
 static void print_stderr(const SAU_Scanner *restrict o,
