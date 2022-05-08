@@ -549,7 +549,7 @@ static void set_usedc(SGS_Scanner *restrict o, uint8_t c) {
  * Perform updates after reading a sequence of characters,
  * e.g. a string or number. Prepares a temporary post-get scan frame.
  */
-static void advance_frame(SGS_Scanner *o, size_t strlen, uint8_t c) {
+static void advance_frame(SGS_Scanner *restrict o, size_t strlen, uint8_t c) {
 	if (strlen == 0)
 		return;
 	uint32_t reget_count = (strlen > o->undo_ungets) ?
@@ -568,9 +568,61 @@ static void advance_frame(SGS_Scanner *o, size_t strlen, uint8_t c) {
 	o->s_flags |= SGS_SCAN_S_DISCARD;
 }
 
+/*
+ * Filter character, read more if needed until a character can be returned.
+ *
+ * \return character or 0 upon end of file
+ */
+uint8_t SGS_Scanner_filterc(SGS_Scanner *restrict o, uint8_t c,
+		SGS_ScanFilter_f filter_f) {
+	SGS_File_INCP(o->f);
+	prepare_frame(o);
+	for (;;) {
+		++o->sf.char_num;
+		o->match_c = 0;
+		c = filter_f(o, c);
+		if (c != 0) {
+			if (c == SGS_SCAN_EOF)
+				return 0;
+			set_usedc(o, c);
+			break;
+		}
+		c = SGS_File_GETC(o->f);
+		filter_f = SGS_Scanner_getfilter(o, c);
+		if (!filter_f) {
+			++o->sf.char_num;
+			o->sf.c = c;
+			break;
+		}
+	}
+	return c;
+}
+
 /**
- * Get next character. Filter functions will be used with
- * \a match_c set to 0.
+ * Get current character, without advancing the position.
+ * Filter functions will be used with \a match_c set to 0.
+ * This function does the work necessary to check what the
+ * filtered character will be. Call SGS_Scanner_getc() for
+ * the purpose of then moving past the character as such.
+ *
+ * Upon end of file, 0 will be returned. A 0 value in the
+ * input is otherwise moved past, printing a warning.
+ *
+ * \return character or 0 upon end of file
+ */
+uint8_t SGS_Scanner_retc(SGS_Scanner *restrict o) {
+	uint8_t c = SGS_File_RETC(o->f);
+	SGS_ScanFilter_f filter_f = SGS_Scanner_getfilter(o, c);
+	if (filter_f) {
+		c = SGS_Scanner_filterc(o, c, filter_f);
+		SGS_Scanner_ungetc(o);
+	}
+	return c;
+}
+
+/**
+ * Get current character, advancing the position afterwards.
+ * Filter functions will be used with \a match_c set to 0.
  *
  * Upon end of file, 0 will be returned. A 0 value in the
  * input is otherwise moved past, printing a warning.
@@ -578,23 +630,31 @@ static void advance_frame(SGS_Scanner *o, size_t strlen, uint8_t c) {
  * \return character or 0 upon end of file
  */
 uint8_t SGS_Scanner_getc(SGS_Scanner *restrict o) {
-	SGS_File *f = o->f;
 	uint8_t c;
+	SGS_ScanFilter_f filter_f;
 	prepare_frame(o);
 	for (;;) {
+		c = SGS_File_GETC(o->f);
+		filter_f = SGS_Scanner_getfilter(o, c);
 		++o->sf.char_num;
-		c = SGS_File_GETC(f);
-		c = SGS_Scanner_usefilter(o, c, 0);
-		if (c != 0) break;
+		if (!filter_f) {
+			o->sf.c = c;
+			break;
+		}
+		o->match_c = 0;
+		c = filter_f(o, c);
+		if (c != 0) {
+			if (c == SGS_SCAN_EOF)
+				return 0;
+			set_usedc(o, c);
+			break;
+		}
 	}
-	if (c == SGS_SCAN_EOF)
-		return 0;
-	set_usedc(o, c);
 	return c;
 }
 
 /**
- * Get next character if it matches \p testc.
+ * Advance the position past the current character if it matches \p testc.
  * Note that characters removed by filters cannot be tested successfully.
  *
  * For filtered characters, does a get followed by SGS_Scanner_ungetc()
@@ -604,22 +664,23 @@ uint8_t SGS_Scanner_getc(SGS_Scanner *restrict o) {
  * \return true if character matched \p testc
  */
 bool SGS_Scanner_tryc(SGS_Scanner *restrict o, uint8_t testc) {
-	uint8_t c = SGS_File_RETC(o->f);
+	SGS_File *f = o->f;
+	uint8_t c = SGS_File_RETC(f);
+	SGS_ScanFilter_f filter_f = SGS_Scanner_getfilter(o, c);
 	/*
 	 * Use quick handling for unfiltered characters.
 	 */
-	if (!SGS_Scanner_getfilter(o, c)) {
+	if (!filter_f) {
 		if (c != testc)
 			return false;
 		prepare_frame(o);
 		++o->sf.char_num;
-		SGS_File_INCP(o->f);
+		SGS_File_INCP(f);
 		o->sf.c = c;
 		return true;
 	}
-	c = SGS_Scanner_getc(o);
+	c = SGS_Scanner_filterc(o, c, filter_f);
 	if (c != testc) {
-		o->s_flags |= SGS_SCAN_S_DISCARD;
 		SGS_Scanner_ungetc(o);
 		return false;
 	}
@@ -645,6 +706,7 @@ uint32_t SGS_Scanner_ungetc(SGS_Scanner *restrict o) {
 		return o->undo_ungets;
 	}
 	++o->undo_ungets;
+	o->s_flags &= ~SGS_SCAN_S_DISCARD;
 	char safe_c = o->undo[o->undo_pos].c;
 	change_frame(o, -1);
 	SGS_File_DECP(o->f);
@@ -777,6 +839,25 @@ bool SGS_Scanner_get_symstr(SGS_Scanner *restrict o,
 	}
 	*symstrp = symstr;
 	return !truncated;
+}
+
+/**
+ * Skip whitespace before next character retrieved, as
+ * if the filtering uses SGS_Scanner_filter_ws_none().
+ *
+ * Calling this before another get or return function is
+ * an alternative to using the \a SGS_SCAN_WS_NONE level
+ * of filtering, and does nothing if that level is used.
+ *
+ * \return character up next after filtering
+ */
+uint8_t SGS_Scanner_skipws(SGS_Scanner *restrict o) {
+	uint8_t c = SGS_Scanner_retc(o);
+	if (c == SGS_SCAN_SPACE || c == SGS_SCAN_LNBRK) {
+		c = SGS_Scanner_filterc(o, c, SGS_Scanner_filter_ws_none);
+		SGS_Scanner_ungetc(o);
+	}
+	return c;
 }
 
 static void print_stderr(const SGS_Scanner *restrict o,
