@@ -197,9 +197,12 @@ Numerical expressions:
 	zero can be omitted. Negative numbers require parentheses,
 	within which a sign (+ or -) is allowed for a number, e.g. "(-1)".
 		Within parentheses, infix arithmetic expressions are allowed.
-	The following operations are recognized: +, -, *, /, and ^ (to the
-	power of). Parentheses can be nested, and can be used to multiply,
-	e.g. "2(3)" gives the value "6".
+	The following operations are recognized, and below are grouped by
+	priority (nested parentheses can be used to change evaluation order):
+		^	To the power of (right-associative)
+		* / %	Multiplication, division, remainder
+		+ -	Addition, subtraction
+	Parentheses can also be used to multiply, e.g. "2(3)" gives "6".
 		Some parameters support named constants specific to that type
 	of value. Such a name can be written instead of a number.
 		The following mathematical functions can also be used, with

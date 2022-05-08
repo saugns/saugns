@@ -218,7 +218,7 @@ static double scan_num_r(struct NumParser *restrict o,
 			if (pri != NUMEXP_SUB) goto DEFER;
 			return num;
 		case '^':
-			if (pri >= NUMEXP_POW) goto DEFER;
+			if (pri > NUMEXP_POW) goto DEFER;
 			num = pow(num, scan_num_r(o, NUMEXP_POW, level));
 			break;
 		case '*':
@@ -228,6 +228,10 @@ static double scan_num_r(struct NumParser *restrict o,
 		case '/':
 			if (pri >= NUMEXP_MLT) goto DEFER;
 			num /= scan_num_r(o, NUMEXP_MLT, level);
+			break;
+		case '%':
+			if (pri >= NUMEXP_MLT) goto DEFER;
+			num = fmod(num, scan_num_r(o, NUMEXP_MLT, level));
 			break;
 		case '+':
 			if (pri >= NUMEXP_ADT) goto DEFER;
