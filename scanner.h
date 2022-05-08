@@ -192,7 +192,10 @@ static inline uint8_t SGS_Scanner_usefilter(SGS_Scanner *restrict o,
 typedef size_t (*SGS_ScanNumConst_f)(SGS_Scanner *restrict o,
 		double *restrict var);
 
+uint8_t SGS_Scanner_retc(SGS_Scanner *restrict o);
 uint8_t SGS_Scanner_getc(SGS_Scanner *restrict o);
+uint8_t SGS_Scanner_filterc(SGS_Scanner *restrict o, uint8_t c,
+		SGS_ScanFilter_f filter_f);
 bool SGS_Scanner_tryc(SGS_Scanner *restrict o, uint8_t testc);
 uint32_t SGS_Scanner_ungetc(SGS_Scanner *restrict o);
 bool SGS_Scanner_geti(SGS_Scanner *restrict o,
@@ -204,6 +207,7 @@ bool SGS_Scanner_getd(SGS_Scanner *restrict o,
 		SGS_ScanNumConst_f numconst_f);
 bool SGS_Scanner_get_symstr(SGS_Scanner *restrict o,
 		SGS_Symstr **restrict symstrp);
+uint8_t SGS_Scanner_skipws(SGS_Scanner *restrict o);
 
 void SGS_Scanner_warning(const SGS_Scanner *restrict o,
 		const SGS_ScanFrame *restrict sf,

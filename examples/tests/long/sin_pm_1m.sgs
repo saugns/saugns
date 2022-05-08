@@ -1,4 +1,4 @@
 // Amplifying phase modulation over time creates a
 // lively and somewhat spooky morphing soundscape,
 // but noise grows in parallel with sound texture.
-Osin p[Osin r0.25*3.3 a0 a[g256*2 rexp] t60]
+Osin fmf p[Osin r0.25*pi a0 a[g256 rexp] t60]
