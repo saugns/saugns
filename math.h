@@ -71,6 +71,13 @@ static inline uint32_t SGS_cyclepos_dtoui32(double x) {
 }
 
 /**
+ * Convert an unsigned 64-bit integer to 0.0 to 1.0 value.
+ */
+static inline double SGS_d01_from_ui64(uint64_t x) {
+	return (x >> 11) * 0x1.0p-53;
+}
+
+/**
  * Metallic value function. Golden ratio for \p x == 1, silver for x == 2, etc.
  * Also accepts zero (with the result one), and values in-between the integers.
  * (Maps negative infinity to 0.0, 0.0 to 1.0, and positive infinity to itself.
@@ -82,22 +89,79 @@ static inline double SGS_met(double x) {
 	return 0.5f * (x + sqrt(x * x + 4.f));
 }
 
+/* Macro used to declare and define math symbol sets of items. */
+#define SGS_MATH__ITEMS(X) \
+	X(abs,       VAL_F, {.val = fabs}) \
+	X(cos,       VAL_F, {.val = cos}) \
+	X(exp,       VAL_F, {.val = exp}) \
+	X(log,       VAL_F, {.val = log}) \
+	X(met,       VAL_F, {.val = SGS_met}) \
+	X(mf,      NOARG_F, {.noarg = mf_const}) \
+	X(pi,      NOARG_F, {.noarg = pi_const}) \
+	X(rand,    STATE_F, {.state = SGS_rand}) \
+	X(rint,      VAL_F, {.val = rint}) \
+	X(seed, STATEVAL_F, {.stateval = SGS_seed}) \
+	X(sin,       VAL_F, {.val = sin}) \
+	X(sqrt,      VAL_F, {.val = sqrt}) \
+	X(time,    STATE_F, {.state = SGS_time}) \
+	//
+#define SGS_MATH__X_ID(NAME, PARAMS, SYM_F) SGS_MATH_N_##NAME,
+#define SGS_MATH__X_NAME(NAME, PARAMS, SYM_F) #NAME,
+#define SGS_MATH__X_PARAMS(NAME, PARAMS, SYM_F) SGS_MATH_##PARAMS,
+#define SGS_MATH__X_SYM_F(NAME, PARAMS, SYM_F) SYM_F,
+
 /**
- * Math functions.
+ * Math symbol ids for functions and named constants.
  */
 enum {
-	SGS_MATH_ABS = 0,
-	SGS_MATH_EXP,
-	SGS_MATH_LOG,
-	SGS_MATH_MET,
-	SGS_MATH_SQRT,
-	SGS_MATH_FUNCTIONS
+	SGS_MATH__ITEMS(SGS_MATH__X_ID)
+	SGS_MATH_NAMED
 };
 
-typedef double (*SGS_Math_val_f)(double x);
+struct SGS_Math_state;
 
-/** Names of math functions. */
-extern const char *const SGS_Math_names[SGS_MATH_FUNCTIONS + 1];
+/** State for math functions for each parsing and interpretation unit. */
+struct SGS_Math_state {
+	uint64_t seed;
+	bool no_time;
+};
 
-/** Value functions for math functions. */
-extern const SGS_Math_val_f SGS_Math_val_func[SGS_MATH_FUNCTIONS];
+/** Math function parameter type values. */
+enum {
+	SGS_MATH_VAL_F = 0,
+	SGS_MATH_STATE_F,
+	SGS_MATH_STATEVAL_F,
+	SGS_MATH_NOARG_F
+};
+/** Math function pointer types. */
+union SGS_Math_sym_f {
+	double (*val)(double x);
+	double (*state)(struct SGS_Math_state *o);
+	double (*stateval)(struct SGS_Math_state *o, double x);
+	double (*noarg)(void);
+};
+
+/** Names of math functions, with an extra NULL pointer at the end. */
+extern const char *const SGS_Math_names[SGS_MATH_NAMED + 1];
+
+/** Parameter types for math functions. */
+extern const uint8_t SGS_Math_params[SGS_MATH_NAMED];
+
+/** Function addresses for math functions. */
+extern const union SGS_Math_sym_f SGS_Math_symbols[SGS_MATH_NAMED];
+
+/*
+ * Simple PRNGs
+ */
+
+/**
+ * Fixed-increment SplitMix64, based on C version provided by Vigna.
+ *
+ * \return next pseudo-random value
+ */
+static inline uint64_t SGS_splitmix64_next(uint64_t *restrict pos) {
+	uint64_t z = (*pos += 0x9e3779b97f4a7c15);
+	z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9;
+	z = (z ^ (z >> 27)) * 0x94d049bb133111eb;
+	return z ^ (z >> 31);
+}

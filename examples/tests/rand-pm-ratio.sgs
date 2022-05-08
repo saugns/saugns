@@ -1,0 +1,3 @@
+// Seed with time() for a different result each run, unless ran with '-d'.
+/seed(2*pi + time())
+Osin p[Osin rrand(); rrand(); rrand(); rrand(); rrand(); rrand(); rrand()]
