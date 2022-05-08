@@ -1,5 +1,5 @@
 /* saugns: Help data and printout code.
- * Copyright (c) 2020-2021 Joel K. Pettersson
+ * Copyright (c) 2020-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -85,12 +85,15 @@ bool SAU_print_names(const char *const *restrict namearr,
 		FILE *restrict out) {
 	if (!namearr[0])
 		return false;
-	size_t i = 0;
+	size_t i = 0, len = 0;
 	if (!headstr)
 		headstr = "";
-	fprintf(out, "%s%s", headstr, namearr[i++]);
-	while (namearr[i] != NULL) {
-		fprintf(out, ", %s", namearr[i++]);
+	for (const char *name; (name = namearr[i]) != NULL; ++i) {
+		if (len > 0 && len < 56)
+			len += fprintf(out, ", %s", name);
+		else
+			len = fprintf(out, (i > 0) ? ",\n%s%s" : "%s%s",
+					headstr, name);
 	}
 	putc('\n', out);
 	return true;

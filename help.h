@@ -1,5 +1,5 @@
 /* saugns: Help data and printout code.
- * Copyright (c) 2020-2021 Joel K. Pettersson
+ * Copyright (c) 2020-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any

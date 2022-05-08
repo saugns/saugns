@@ -192,7 +192,10 @@ static inline uint8_t SAU_Scanner_usefilter(SAU_Scanner *restrict o,
 typedef size_t (*SAU_ScanNumConst_f)(SAU_Scanner *restrict o,
 		double *restrict var);
 
+uint8_t SAU_Scanner_retc(SAU_Scanner *restrict o);
 uint8_t SAU_Scanner_getc(SAU_Scanner *restrict o);
+uint8_t SAU_Scanner_filterc(SAU_Scanner *restrict o, uint8_t c,
+		SAU_ScanFilter_f filter_f);
 bool SAU_Scanner_tryc(SAU_Scanner *restrict o, uint8_t testc);
 uint32_t SAU_Scanner_ungetc(SAU_Scanner *restrict o);
 bool SAU_Scanner_geti(SAU_Scanner *restrict o,
@@ -204,6 +207,7 @@ bool SAU_Scanner_getd(SAU_Scanner *restrict o,
 		SAU_ScanNumConst_f numconst_f);
 bool SAU_Scanner_get_symstr(SAU_Scanner *restrict o,
 		SAU_SymStr **restrict symstrp);
+uint8_t SAU_Scanner_skipws(SAU_Scanner *restrict o);
 
 void SAU_Scanner_warning(const SAU_Scanner *restrict o,
 		const SAU_ScanFrame *restrict sf,
