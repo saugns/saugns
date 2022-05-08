@@ -37,13 +37,14 @@ enum {
 
 static const char *const scan_sym_labels[SGS_SYM_TYPES] = {
 	"variable",
-	"math function",
+	"math symbol",
 	"ramp fill shape",
 	"wave type",
 };
 
 struct ScanLookup {
 	SGS_ScriptOptions sopt;
+	struct SGS_Math_state math_state;
 };
 
 /*
@@ -60,15 +61,17 @@ static const SGS_ScriptOptions def_sopt = {
 };
 
 static bool init_ScanLookup(struct ScanLookup *restrict o,
+		const SGS_ScriptArg *restrict arg,
 		SGS_Symtab *restrict st) {
 	o->sopt = def_sopt;
-	if (!SGS_Symtab_add_stra(st, SGS_Math_names, SGS_MATH_FUNCTIONS,
+	if (!SGS_Symtab_add_stra(st, SGS_Math_names, SGS_MATH_NAMED,
 			SGS_SYM_MATH_ID) ||
 	    !SGS_Symtab_add_stra(st, SGS_Ramp_names, SGS_RAMP_NAMED,
 			SGS_SYM_RAMP_ID) ||
 	    !SGS_Symtab_add_stra(st, SGS_Wave_names, SGS_WAVE_NAMED,
 			SGS_SYM_WAVE_ID))
 		return false;
+	o->math_state.no_time = arg->no_time;
 	return true;
 }
 
@@ -144,7 +147,8 @@ static bool scan_mathfunc(SGS_Scanner *restrict o, size_t *restrict found_id) {
 	SGS_Symitem *sym = scan_sym(o, SGS_SYM_MATH_ID, SGS_Math_names);
 	if (!sym)
 		return false;
-	if (SGS_Scanner_tryc(o, '(')) {
+	if (SGS_Math_params[sym->data.id] == SGS_MATH_NOARG_F // no parentheses
+	    || SGS_Scanner_tryc(o, '(')) {
 		*found_id = sym->data.id;
 		return true;
 	}
@@ -170,6 +174,7 @@ enum {
 static double scan_num_r(struct NumParser *restrict o,
 		uint8_t pri, uint32_t level) {
 	SGS_Scanner *sc = o->sc;
+	struct ScanLookup *sl = sc->data;
 	uint8_t ws_level = sc->ws_level;
 	double num;
 	uint8_t c;
@@ -196,11 +201,36 @@ static double scan_num_r(struct NumParser *restrict o,
 		SGS_Scanner_ungetc(sc);
 		SGS_Scanner_getd(sc, &num, false, &read_len, o->numconst_f);
 		if (read_len == 0) {
-			if (IS_ALPHA(c) && scan_mathfunc(sc, &func_id)) {
-				num = scan_num_r(o, NUMEXP_SUB, level+1);
-				num = SGS_Math_val_func[func_id](num);
-			} else {
+			if (!IS_ALPHA(c) || !scan_mathfunc(sc, &func_id))
 				goto REJECT; /* silent NaN (nothing was read) */
+			switch (SGS_Math_params[func_id]) {
+			case SGS_MATH_VAL_F:
+				num = scan_num_r(o, NUMEXP_SUB, level+1);
+				num = SGS_Math_symbols[func_id].val(num);
+				break;
+			case SGS_MATH_STATE_F:
+				SGS_Scanner_skipws(sc);
+				if (!SGS_Scanner_tryc(sc, ')')) {
+					SGS_Scanner_warning(sc, NULL,
+"math function '%s()' takes no arguments", SGS_Math_names[func_id]);
+					goto REJECT;
+				}
+				num = SGS_Math_symbols[func_id]
+					.state(&sl->math_state);
+				break;
+			case SGS_MATH_STATEVAL_F:
+				num = scan_num_r(o, NUMEXP_SUB, level+1);
+				num = SGS_Math_symbols[func_id]
+					.stateval(&sl->math_state, num);
+				break;
+			case SGS_MATH_NOARG_F:
+				num = SGS_Math_symbols[func_id].noarg();
+				break;
+			default:
+				SGS_error("scan_num_r",
+"math function '%s' has unimplemented parameter type",
+						SGS_Math_names[func_id]);
+				goto REJECT;
 			}
 		}
 		if (isnan(num)) {
@@ -562,7 +592,8 @@ static void fini_Parser(SGS_Parser *restrict o) {
  *
  * \return true, or false on allocation failure
  */
-static bool init_Parser(SGS_Parser *restrict o) {
+static bool init_Parser(SGS_Parser *restrict o,
+		const SGS_ScriptArg *restrict script_arg) {
 	SGS_Mempool *mp = SGS_create_Mempool(0),
 		    *tmp_mp = SGS_create_Mempool(0),
 		    *prg_mp = SGS_create_Mempool(0);
@@ -575,7 +606,7 @@ static bool init_Parser(SGS_Parser *restrict o) {
 	o->tmp_mp = tmp_mp;
 	o->prg_mp = prg_mp;
 	if (!sc || !tmp_mp || !prg_mp) goto ERROR;
-	if (!init_ScanLookup(&o->sl, st)) goto ERROR;
+	if (!init_ScanLookup(&o->sl, script_arg, st)) goto ERROR;
 	sc->data = &o->sl;
 	return true;
 ERROR:
@@ -1336,10 +1367,10 @@ RETURN:
  * \return name of script, or NULL on error preventing parse
  */
 static const char *parse_file(SGS_Parser *restrict o,
-		const char *restrict script, bool is_path) {
+		const SGS_ScriptArg *restrict arg) {
 	SGS_Scanner *sc = o->sc;
 	const char *name;
-	if (!SGS_Scanner_open(sc, script, is_path)) {
+	if (!SGS_Scanner_open(sc, arg->str, arg->is_path)) {
 		return NULL;
 	}
 	parse_level(o, SGS_POP_CARR, SCOPE_TOP);
@@ -1622,13 +1653,13 @@ static void postparse_passes(SGS_Parser *restrict o) {
  *
  * \return instance or NULL on error preventing parse
  */
-SGS_Script* SGS_read_Script(const char *restrict script_arg, bool is_path) {
-	if (!script_arg)
+SGS_Script* SGS_read_Script(const SGS_ScriptArg *restrict arg) {
+	if (!arg)
 		return NULL;
 	SGS_Parser pr;
 	SGS_Script *o = NULL;
-	init_Parser(&pr);
-	const char *name = parse_file(&pr, script_arg, is_path);
+	init_Parser(&pr, arg);
+	const char *name = parse_file(&pr, arg);
 	if (!name) goto DONE;
 	postparse_passes(&pr);
 	o = SGS_mpalloc(pr.mp, sizeof(SGS_Script));

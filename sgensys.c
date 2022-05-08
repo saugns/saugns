@@ -43,7 +43,8 @@ enum {
 	SGS_OPT_MODE_CHECK    = 1<<6,
 	SGS_OPT_PRINT_INFO    = 1<<7,
 	SGS_OPT_EVAL_STRING   = 1<<8,
-	SGS_OPT_PRINT_VERBOSE = 1<<9,
+	SGS_OPT_DETERMINISTIC = 1<<9,
+	SGS_OPT_PRINT_VERBOSE = 1<<10,
 };
 
 /*
@@ -54,7 +55,7 @@ static void print_help(const char *restrict topic,
 		const char *restrict description) {
 	const char *const *contents = SGS_find_help(topic);
 	if (!contents || /* silence warning */ !topic) {
-		topic = SGS_Help_names[SGS_HELP_HELP];
+		topic = SGS_Help_names[SGS_HELP_N_help];
 		contents = SGS_Help_names;
 	}
 	fprintf(stdout, "\nList of '%s' names", topic);
@@ -64,10 +65,7 @@ static void print_help(const char *restrict topic,
 	SGS_print_names(contents, "\t", stdout);
 }
 
-struct SGS_ScriptArg {
-	const char *str;
-};
-sgsArrType(SGS_ScriptArgArr, struct SGS_ScriptArg, )
+sgsArrType(SGS_ScriptArgArr, SGS_ScriptArg, )
 sgsArrType(SGS_ProgramArr, SGS_Program*, )
 
 /*
@@ -75,9 +73,9 @@ sgsArrType(SGS_ProgramArr, SGS_Program*, )
  */
 static void print_usage(bool h_arg, const char *restrict h_type) {
 	fputs(
-"Usage: "NAME" [-a | -m] [-r <srate>] [--mono] [-o <wavfile>] [--stdout]\n"
-"              [-p] [-e] <script>...\n"
-"       "NAME" -c [-p] [-e] <script>...\n",
+"Usage: "NAME" [-a | -m] [-r <srate>] [--mono] [-o <file>] [--stdout]\n"
+"              [-d] [-p] [-e] <script>...\n"
+"       "NAME" -c [-d] [-p] [-e] <script>...\n",
 		h_arg ? stdout : stderr);
 	if (!h_type)
 		fputs(
@@ -93,8 +91,9 @@ static void print_usage(bool h_arg, const char *restrict h_type) {
 "  --stdout \tSend a raw 16-bit output to stdout, -r or default sample rate.\n"
 "\n"
 "Other options:\n"
-"  -c \tCheck scripts only, reporting any errors or requested info.\n"
-"  -p \tPrint info for scripts after loading.\n"
+"  -c \tCheck scripts only; parse, handle -p, but don't interpret unlike -m.\n"
+"  -d \tDeterministic mode; ensures unvarying script output from same input.\n"
+"  -p \tPrint info for scripts read.\n"
 "  -e \tEvaluate strings instead of files.\n"
 "  -h \tPrint this and list help topics, or print help for '-h <topic>'.\n"
 "  -v \tBe verbose.\n"
@@ -260,7 +259,7 @@ static bool parse_args(int argc, char **restrict argv,
 	opt.err = 1;
 REPARSE:
 	while ((c = SGS_getopt(argc, argv,
-	                       "Vamr:o:ecphv"TESTOPT
+	                       "Vamr:o:ecdphv"TESTOPT
 			       "-mono-stdout", &opt)) != -1) {
 		switch (c) {
 		case '-':
@@ -269,8 +268,7 @@ REPARSE:
 					goto USAGE;
 				*flags |= SGS_OPT_MODE_FULL |
 					SGS_OPT_AUDIO_MONO;
-			}
-			else if (!strcmp(opt.arg, "stdout")) {
+			} else if (!strcmp(opt.arg, "stdout")) {
 				if (*flags & (SGS_OPT_MODE_CHECK |
 				              SGS_OPT_AUFILE_STDOUT))
 					goto USAGE;
@@ -301,6 +299,9 @@ REPARSE:
 			if (*flags & SGS_OPT_MODE_FULL)
 				goto USAGE;
 			*flags |= SGS_OPT_MODE_CHECK;
+			break;
+		case 'd':
+			*flags |= SGS_OPT_DETERMINISTIC;
 			break;
 		case 'e':
 			*flags |= SGS_OPT_EVAL_STRING;
@@ -352,12 +353,18 @@ REPARSE:
 			if (!script_args->count) goto USAGE;
 			break;
 		}
-		const char *arg = argv[opt.ind];
-		if (!dashdash && c != -1 && arg[0] == '-') goto REPARSE;
-		struct SGS_ScriptArg entry = {arg};
-		SGS_ScriptArgArr_add(script_args, &entry);
+		const char *str = argv[opt.ind];
+		if (!dashdash && c != -1 && str[0] == '-') goto REPARSE;
+		SGS_ScriptArg *arg = SGS_ScriptArgArr_add(script_args, NULL);
+		if (!arg) goto ABORT;
+		arg->str = str;
 		++opt.ind;
 		c = 0; /* only goto REPARSE after advancing, to prevent hang */
+	}
+	for (size_t i = 0; i < script_args->count; ++i) {
+		SGS_ScriptArg *arg = &script_args->a[i];
+		arg->is_path = !(*flags & SGS_OPT_EVAL_STRING);
+		arg->no_time = *flags & SGS_OPT_DETERMINISTIC;
 	}
 	return true;
 USAGE:
@@ -374,14 +381,12 @@ ABORT:
  * \return number of items successfully processed
  */
 static size_t SGS_read(const SGS_ScriptArgArr *restrict script_args,
-		uint32_t options, SGS_ProgramArr *restrict prg_objs) {
-	bool are_paths = !(options & SGS_OPT_EVAL_STRING);
+		SGS_ProgramArr *restrict prg_objs) {
 	size_t built = 0;
 	for (size_t i = 0; i < script_args->count; ++i) {
 		const SGS_Program *prg =
-			SGS_build_Program(
-					SGS_read_Script(script_args->a[i].str,
-						are_paths), false);
+			SGS_build_Program(SGS_read_Script(&script_args->a[i]),
+					false);
 		if (prg != NULL) ++built;
 		SGS_ProgramArr_add(prg_objs, &prg);
 	}
@@ -607,7 +612,7 @@ int main(int argc, char **restrict argv) {
 	if (!parse_args(argc, argv, &options, &script_args, &wav_path,
 			&srate))
 		return 0;
-	bool error = !SGS_read(&script_args, options, &prg_objs);
+	bool error = !SGS_read(&script_args, &prg_objs);
 	SGS_ScriptArgArr_clear(&script_args);
 	if (error)
 		return 1;

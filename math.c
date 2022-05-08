@@ -16,20 +16,43 @@
  */
 
 #include "math.h"
+#include <time.h>
 
-const char *const SGS_Math_names[SGS_MATH_FUNCTIONS + 1] = {
-	"abs",
-	"exp",
-	"log",
-	"met",
-	"sqrt",
+const char *const SGS_Math_names[SGS_MATH_NAMED + 1] = {
+	SGS_MATH__ITEMS(SGS_MATH__X_NAME)
 	NULL
 };
 
-const SGS_Math_val_f SGS_Math_val_func[SGS_MATH_FUNCTIONS] = {
-	fabs,
-	exp,
-	log,
-	SGS_met,
-	sqrt,
+const uint8_t SGS_Math_params[SGS_MATH_NAMED] = {
+	SGS_MATH__ITEMS(SGS_MATH__X_PARAMS)
+};
+
+static double mf_const(void) { return SGS_HUMMID; }
+static double pi_const(void) { return SGS_PI; }
+
+static double SGS_rand(struct SGS_Math_state *restrict o) {
+	return SGS_d01_from_ui64(SGS_splitmix64_next(&o->seed));
+}
+
+static double SGS_seed(struct SGS_Math_state *restrict o, double x) {
+	union { double d; uint64_t ui64; } v;
+	v.d = x;
+	o->seed = v.ui64;
+	return 0.f;
+}
+
+static double SGS_time(struct SGS_Math_state *restrict o) {
+	if (o->no_time)
+		return 0.0;
+	/*
+	 * Before converting time value to double,
+	 * ensure it's not too large to preserve a
+	 * difference from one second to the next.
+	 * (Priority is usefulness as seed value.)
+	 */
+	return (double) (((int64_t) time(NULL)) & ((INT64_C(1)<<53) - 1));
+}
+
+const union SGS_Math_sym_f SGS_Math_symbols[SGS_MATH_NAMED] = {
+	SGS_MATH__ITEMS(SGS_MATH__X_SYM_F)
 };
