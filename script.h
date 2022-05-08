@@ -111,6 +111,13 @@ enum {
 	SGS_SOPT_DEF_CHANMIX = 1<<5,
 };
 
+/** Specifies a script to parse (and possibly process further). */
+typedef struct SGS_ScriptArg {
+	const char *str;
+	bool is_path : 1;
+	bool no_time : 1;
+} SGS_ScriptArg;
+
 /**
  * Options set for a script, affecting parsing.
  *
@@ -134,11 +141,11 @@ typedef struct SGS_ScriptOptions {
  */
 typedef struct SGS_Script {
 	SGS_ScriptEvData *events;
-	const char *name; // currently simply set to the filename
 	SGS_ScriptOptions sopt;
+	const char *name; // currently simply set to the filename
 	struct SGS_Mempool *mp, *prg_mp;
 	struct SGS_Symtab *st;
 } SGS_Script;
 
-SGS_Script *SGS_read_Script(const char *restrict script_arg, bool is_path) sgsMalloclike;
+SGS_Script *SGS_read_Script(const SGS_ScriptArg *restrict arg) sgsMalloclike;
 void SGS_discard_Script(SGS_Script *restrict o);
