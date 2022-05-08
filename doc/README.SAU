@@ -54,7 +54,7 @@ Parameters:
 	c	Default O "c" (channel mixing) value. Starts at 0.0,
 		i.e. C (center). See "Channel mixing values" for more.
 		Useful as a main way of setting the parameter value.
-	f	Default O "f" (frequency, Hz) value. Starts at 444.
+	f	Default O "f" (frequency, Hz) value. Starts at 440.
 	r	Default O "r" (relative frequency) value. Starts at 1.
 	t	Default O "t" (time, seconds) value. Starts at 1.
 	a	Multiplier for O "a" (amplitude) value, applied when
@@ -62,7 +62,7 @@ Parameters:
 		down-scaling of amplitude by the number of voices, for
 		manual control instead.
 	n	A4 tuning (Hz) for O "f" (frequency, Hz) value using
-		note syntax. Starts at 444.
+		note syntax. Starts at 440.
 
 O: Operator
 -----------
@@ -294,7 +294,7 @@ Labels and referencing:
 Frequencies as notes:
 	Frequency values may be specified as notes. Currently, justly
 	intoned C-major scale is supported; "S n" sets the A4 tuning
-	(default 444 Hz).
+	(default 440 Hz).
 		The value consists of the note (C, D, E, F, G, A or B),
 	optionally given a prefix and/or suffix. The prefix is an optional
 	subnote (c, d, e, f, g, a or b) inside an inner octave (between
