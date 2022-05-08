@@ -41,9 +41,9 @@ TEST1_OBJ=\
 
 all: $(BIN)
 check: $(BIN)
-	./$(BIN) -c $(ARGS) */*.sgs examples/*/*.sgs examples/*/*/*.sgs
+	./$(BIN) -cd $(ARGS) */*.sgs examples/*/*.sgs examples/*/*/*.sgs
 fullcheck: $(BIN)
-	./$(BIN) -m $(ARGS) */*.sgs examples/*/*.sgs examples/*/*/*.sgs
+	./$(BIN) -md $(ARGS) */*.sgs examples/*/*.sgs examples/*/*/*.sgs
 tests: test-scan
 clean:
 	rm -f $(OBJ) $(BIN)
