@@ -1,5 +1,5 @@
 /* sgensys: Help data and printout code.
- * Copyright (c) 2020-2021 Joel K. Pettersson
+ * Copyright (c) 2020-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -19,19 +19,27 @@
 #include "sgensys.h"
 #include <stdio.h>
 
+/* Macro used to declare and define help sets of items. */
+#define SGS_HELP__ITEMS(X) \
+	X(help, Help) \
+	X(math, Math) \
+	X(ramp, Ramp) \
+	X(wave, Wave) \
+	//
+#define SGS_HELP__X_ID(NAME, ARRAY) SGS_HELP_N_##NAME,
+#define SGS_HELP__X_NAME(NAME, ARRAY) #NAME,
+#define SGS_HELP__X_ARRAY(NAME, ARRAY) SGS_##ARRAY##_names
+
 /**
  * Named help types.
  */
 enum {
-	SGS_HELP_HELP = 0,
-	SGS_HELP_MATH,
-	SGS_HELP_RAMP,
-	SGS_HELP_WAVE,
-	SGS_HELP_TYPES
+	SGS_HELP__ITEMS(SGS_HELP__X_ID)
+	SGS_HELP_NAMED
 };
 
 /** Names of help types, with an extra NULL pointer at the end. */
-extern const char *const SGS_Help_names[SGS_HELP_TYPES + 1];
+extern const char *const SGS_Help_names[SGS_HELP_NAMED + 1];
 
 const char *const *SGS_find_help(const char *restrict str);
 
