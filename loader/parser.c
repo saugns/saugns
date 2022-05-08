@@ -32,6 +32,7 @@ struct ScanLookup {
 	const char *const*math_names;
 	const char *const*ramp_names;
 	const char *const*wave_names;
+	struct SAU_Math_state math_state;
 };
 
 /*
@@ -51,7 +52,7 @@ static bool init_ScanLookup(struct ScanLookup *restrict o,
 		SAU_SymTab *restrict st) {
 	o->sopt = def_sopt;
 	if (!(o->math_names = SAU_SymTab_pool_stra(st,
-			SAU_Math_names, SAU_MATH_FUNCTIONS)))
+			SAU_Math_names, SAU_MATH_SYMBOLS)))
 		return false;
 	if (!(o->ramp_names = SAU_SymTab_pool_stra(st,
 			SAU_Ramp_names, SAU_RAMP_FILLS)))
@@ -150,8 +151,10 @@ static bool scan_symafind(SAU_Scanner *restrict o,
 
 static bool scan_mathfunc(SAU_Scanner *restrict o, size_t *restrict found_id) {
 	struct ScanLookup *sl = o->data;
-	if (!scan_symafind(o, sl->math_names, found_id, "math function"))
+	if (!scan_symafind(o, sl->math_names, found_id, "math symbol"))
 		return false;
+	if (SAU_Math_params[*found_id] == SAU_MATH_NOARG_F)
+		return true; // no param list, no parentheses
 	uint8_t c;
 	c = SAU_Scanner_getc(o);
 	if (c == '(')
@@ -178,6 +181,7 @@ enum {
 static double scan_num_r(struct NumParser *restrict o,
 		uint8_t pri, uint32_t level) {
 	SAU_Scanner *sc = o->sc;
+	struct ScanLookup *sl = sc->data;
 	double num;
 	uint8_t c;
 	if (level == 1) SAU_Scanner_setws_level(sc, SAU_SCAN_WS_NONE);
@@ -193,11 +197,38 @@ static double scan_num_r(struct NumParser *restrict o,
 		SAU_Scanner_ungetc(sc);
 		SAU_Scanner_getd(sc, &num, false, &read_len, o->numconst_f);
 		if (read_len == 0) {
-			if (IS_ALPHA(c) && scan_mathfunc(sc, &func_id)) {
-				num = scan_num_r(o, NUMEXP_SUB, level+1);
-				num = SAU_Math_val_func[func_id](num);
-			} else {
+			if (!IS_ALPHA(c) || !scan_mathfunc(sc, &func_id))
 				return NAN; /* silent NaN (nothing was read) */
+			switch (SAU_Math_params[func_id]) {
+			case SAU_MATH_VAL_F:
+				num = scan_num_r(o, NUMEXP_SUB, level+1);
+				num = SAU_Math_symbols[func_id].val(num);
+				break;
+			case SAU_MATH_STATE_F:
+				if (level == 0)
+					SAU_Scanner_setws_level(sc,
+							SAU_SCAN_WS_NONE);
+				if (!SAU_Scanner_tryc(sc, ')')) {
+					SAU_Scanner_warning(sc, NULL,
+"math function '%s()' takes no arguments", sl->math_names[func_id]);
+					return NAN;
+				}
+				num = SAU_Math_symbols[func_id]
+					.state(&sl->math_state);
+				break;
+			case SAU_MATH_STATEVAL_F:
+				num = scan_num_r(o, NUMEXP_SUB, level+1);
+				num = SAU_Math_symbols[func_id]
+					.stateval(&sl->math_state, num);
+				break;
+			case SAU_MATH_NOARG_F:
+				num = SAU_Math_symbols[func_id].noarg();
+				break;
+			default:
+				SAU_error("scan_num_r",
+"math function '%s' has unimplemented parameter type",
+						sl->math_names[func_id]);
+				return NAN;
 			}
 		}
 		if (isnan(num)) {
