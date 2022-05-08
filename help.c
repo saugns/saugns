@@ -1,5 +1,5 @@
 /* sgensys: Help data and printout code.
- * Copyright (c) 2020-2021 Joel K. Pettersson
+ * Copyright (c) 2020-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -21,13 +21,13 @@
 #include "wave.h"
 #include <string.h>
 
-const char *const SGS_Help_names[SGS_HELP_TYPES + 1] = {
-	"help",
-	"math",
-	"ramp",
-	"wave",
+const char *const SGS_Help_names[SGS_HELP_NAMED + 1] = {
+	SGS_HELP__ITEMS(SGS_HELP__X_NAME)
 	NULL
 };
+
+#define SGS_HELP__X_CASE(NAME, ARRAY) \
+	case SGS_HELP_N_##NAME: return SGS_HELP__X_ARRAY(NAME, ARRAY);
 
 /**
  * Get name array for \p str help category.
@@ -39,14 +39,7 @@ const char *const *SGS_find_help(const char *restrict str) {
 	if (!SGS_find_name(SGS_Help_names, str, &i))
 		return NULL;
 	switch (i) {
-	case SGS_HELP_HELP:
-		return SGS_Help_names;
-	case SGS_HELP_MATH:
-		return SGS_Math_names;
-	case SGS_HELP_RAMP:
-		return SGS_Ramp_names;
-	case SGS_HELP_WAVE:
-		return SGS_Wave_names;
+	SGS_HELP__ITEMS(SGS_HELP__X_CASE)
 	}
 	return NULL;
 }
@@ -85,12 +78,15 @@ bool SGS_print_names(const char *const *restrict namearr,
 		FILE *restrict out) {
 	if (!namearr[0])
 		return false;
-	size_t i = 0;
+	size_t i = 0, len = 0;
 	if (!headstr)
 		headstr = "";
-	fprintf(out, "%s%s", headstr, namearr[i++]);
-	while (namearr[i] != NULL) {
-		fprintf(out, ", %s", namearr[i++]);
+	for (const char *name; (name = namearr[i]) != NULL; ++i) {
+		if (len > 0 && len < 56)
+			len += fprintf(out, ", %s", name);
+		else
+			len = fprintf(out, (i > 0) ? ",\n%s%s" : "%s%s",
+					headstr, name);
 	}
 	putc('\n', out);
 	return true;
