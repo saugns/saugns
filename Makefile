@@ -32,7 +32,7 @@ OBJ=\
 	renderer/osc.o \
 	renderer/generator.o \
 	player/audiodev.o \
-	player/wavfile.o \
+	player/sndfile.o \
 	player/player.o \
 	saugns.o
 TEST1_OBJ=\
@@ -134,11 +134,11 @@ mempool.o: common.h mempool.c mempool.h
 player/audiodev.o: common.h player/audiodev.c player/audiodev.h player/audiodev/*.c
 	$(CC) -c $(CFLAGS_SIZE) player/audiodev.c -o player/audiodev.o
 
-player/player.o: common.h player/audiodev.h player/player.c player/wavfile.h renderer/generator.h math.h program.h ptrarr.h ramp.h saugns.h wave.h
+player/player.o: common.h player/audiodev.h player/sndfile.h player/player.c renderer/generator.h math.h program.h ptrarr.h ramp.h saugns.h wave.h
 	$(CC) -c $(CFLAGS) player/player.c -o player/player.o
 
-player/wavfile.o: common.h player/wavfile.c player/wavfile.h
-	$(CC) -c $(CFLAGS) player/wavfile.c -o player/wavfile.o
+player/sndfile.o: common.h player/sndfile.c player/sndfile.h
+	$(CC) -c $(CFLAGS) player/sndfile.c -o player/sndfile.o
 
 ptrarr.o: common.h mempool.h ptrarr.c ptrarr.h
 	$(CC) -c $(CFLAGS) ptrarr.c

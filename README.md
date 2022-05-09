@@ -1,12 +1,12 @@
 saugns is the Scriptable AUdio GeNeration System,
 the implementation of the SAU (Scriptable AUdio) language.
+[The project website](https://sau.frama.io/) has more on them.
 
 SAU is a simple language for mathematical audio synthesis,
-without support for the use of pre-recorded samples.
-See [doc/README.SAU](doc/README.SAU) for a concise SAU language reference,
-or the more how-to [web page on it](https://sau.frama.io/language.html).
-Example scripts in examples/ use the main features of
-the language.
+without support for using pre-recorded samples.
+See [doc/README.SAU](doc/README.SAU) for the details in the present version,
+or a [more how-to web page](https://sau.frama.io/language.html) covering
+the main features. Example scripts under `examples/` also use most features.
 
 While the language is still primitive relative to the
 goal (a useful language for writing electronic music),
@@ -17,10 +17,10 @@ An arbitrary number of oscillators can be used.
 
 The program reads SAU (Scriptable AUdio) files or strings,
 and can output to system audio, a 16-bit PCM WAV file,
-and/or stdout (for interfacing with other programs).
-Basic usage information is provided with the -h option. More
-can be found in the man page and on the website,
-<https://sau.frama.io/>.
+and/or stdout (raw or AU, for interfacing with other programs).
+Basic usage information is provided with the `-h` option. More
+can be found in the man page and on the
+[usage web page](https://sau.frama.io/usage.html).
 
 Tested mainly on x86 and x86-64. Comes with support for
 running on DragonFly, FreeBSD, Linux, NetBSD, and OpenBSD.
@@ -37,19 +37,19 @@ The following audio systems are expected:
 Building and installing
 =======================
 
-Building requires a C99 compiler toolchain and
-running `make` (GNU or BSD). (There is no "configure" step.)
+Building requires a C99 compiler toolchain, running `make`,
+and having some GNU or BSD tools. There is no "configure" step.
 
-On Linux systems, the ALSA library (libasound2) or a '-dev' package
-for it may possibly need to be installed for building to work.
+On Linux distributions, the ALSA library (libasound2) or a '-dev' package
+or similar for it may possibly need to be installed for building to work.
 In the cases of the 4 major BSDs, the base systems have it all.
 
 A simple test after building is the following, which should
 play a sine wave at 440 Hz for 1 second: `./saugns -e "Osin"`.
 
-Running `make install` will by default copy 'saugns' to '/usr/local/bin/',
-and the contents of 'doc/' and 'examples/' to
-directories under '/usr/local/share/'.
+Running `make install` will by default copy `saugns` to `/usr/local/bin/`,
+and the contents of `doc/` and `examples/` to
+directories under `/usr/local/share/`.
 
 | Files under share/    | Description               |
 | -                     | -                         |
@@ -61,7 +61,7 @@ A `make uninstall` removes the added saugns binary and share/ subdirectories.
 It's recommended before installing a new version, for a consistent file set.
 
 After installation, `man saugns` should give basic usage information and
-point to the share/ files. Without installing, try `man man/saugns.1`.
+point to the share/ files. Without installing, try `man ./man/saugns.1`.
 
 Tweaking the build
 ------------------
@@ -84,7 +84,7 @@ Licensing
 saugns is Copyright (c) 2011-2014, 2017-2022 Joel K. Pettersson.
 As a whole it is distributed under the terms of the GNU Lesser General
 Public License (LGPL), version 3 or later. See the file [COPYING](COPYING)
-for details, or <https://www.gnu.org/licenses/>.
+for details, or <https://www.gnu.org/licenses/lgpl-3.0.en.html>.
 
 Some files are licensed under more permissive terms, such as
 the ISC license (2-clause-BSD-equivalent), or
@@ -116,4 +116,4 @@ General feedback, ideas, and proposed changes are also welcome. I'm
 open to extending and reworking the SAU language, though features will
 always be limited. Most valuable are those things that may provide the
 most with the least. I'm looking to increase flexibility and elegance,
-before or after adding new components.
+with a smaller number of added things.
