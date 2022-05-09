@@ -1,5 +1,5 @@
-/* saugns: WAV file writer module.
- * Copyright (c) 2011-2012, 2017-2020 Joel K. Pettersson
+/* saugns: Sound file writer module.
+ * Copyright (c) 2011-2012, 2017-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -18,12 +18,21 @@
 #pragma once
 #include "../common.h"
 
-struct SAU_WAVFile;
-typedef struct SAU_WAVFile SAU_WAVFile;
+enum {
+	SAU_SNDFILE_RAW = 0,
+	SAU_SNDFILE_AU,
+	SAU_SNDFILE_WAV,
+	SAU_SNDFILE_FORMATS
+};
 
-SAU_WAVFile *SAU_create_WAVFile(const char *restrict fpath,
+struct SAU_SndFile;
+typedef struct SAU_SndFile SAU_SndFile;
+
+SAU_SndFile *SAU_create_SndFile(const char *restrict fpath, unsigned format,
 		uint16_t channels, uint32_t srate) sauMalloclike;
-int SAU_close_WAVFile(SAU_WAVFile *restrict o);
+int SAU_close_SndFile(SAU_SndFile *restrict o);
 
-bool SAU_WAVFile_write(SAU_WAVFile *restrict o,
-		const int16_t *restrict buf, uint32_t samples);
+bool SAU_SndFile_write(SAU_SndFile *restrict o,
+		int16_t *restrict buf, uint32_t samples);
+
+extern const char *const SAU_SndFile_formats[SAU_SNDFILE_FORMATS];
