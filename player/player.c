@@ -14,7 +14,7 @@
 #include "../saugns.h"
 #include "../renderer/generator.h"
 #include "audiodev.h"
-#include "wavfile.h"
+#include "sndfile.h"
 #include "../math.h"
 #include <stdlib.h>
 #include <stdio.h>
@@ -24,7 +24,7 @@
 
 typedef struct SAU_Output {
 	SAU_AudioDev *ad;
-	SAU_WAVFile *wf;
+	SAU_SndFile *sf;
 	int16_t *buf, *ad_buf;
 	uint32_t srate, ad_srate;
 	uint32_t options;
@@ -57,12 +57,17 @@ static bool SAU_init_Output(SAU_Output *restrict o, uint32_t srate,
 			return false;
 	}
 	if (wav_path) {
-		o->wf = SAU_create_WAVFile(wav_path, o->ch_count, srate);
-		if (!o->wf)
+		if (options & SAU_OPT_AUFILE_STDOUT)
+			o->sf = SAU_create_SndFile(NULL, SAU_SNDFILE_AU,
+					o->ch_count, srate);
+		else
+			o->sf = SAU_create_SndFile(wav_path, SAU_SNDFILE_WAV,
+					o->ch_count, srate);
+		if (!o->sf)
 			return false;
 	}
 	if (ad_srate != srate) {
-		if (use_stdout || o->wf)
+		if (use_stdout || o->sf)
 			split_gen = true;
 		else
 			srate = ad_srate;
@@ -95,8 +100,8 @@ static bool SAU_fini_Output(SAU_Output *restrict o) {
 	free(o->buf);
 	free(o->ad_buf);
 	if (o->ad != NULL) SAU_close_AudioDev(o->ad);
-	if (o->wf != NULL)
-		return (SAU_close_WAVFile(o->wf) == 0);
+	if (o->sf != NULL)
+		return (SAU_close_SndFile(o->sf) == 0);
 	return true;
 }
 
@@ -109,7 +114,7 @@ static bool SAU_fini_Output(SAU_Output *restrict o) {
  */
 static bool raw_audio_write(FILE *restrict f, uint32_t channels,
 		const int16_t *restrict buf, uint32_t samples) {
-	return fwrite(buf, channels * sizeof(int16_t), samples, f) == samples;
+	return samples == fwrite(buf, channels * sizeof(int16_t), samples, f);
 }
 
 /*
@@ -132,46 +137,34 @@ static bool SAU_Output_run(SAU_Output *restrict o,
 		error = true;
 		goto ERROR;
 	}
-	if (!split_gen) {
-		while (run) {
-			size_t len;
-			run = SAU_Generator_run(gen, o->buf,
-					o->ch_len, use_stereo, &len);
-			if (o->ad && !SAU_AudioDev_write(o->ad, o->buf, len)) {
-				error = true;
-				SAU_error(NULL, "system audio write failed");
-			}
-			if (use_stdout && !raw_audio_write(stdout,
-						o->ch_count, o->buf, len)) {
-				error = true;
-				SAU_error(NULL, "audio to stdout write failed");
-			}
-			if (o->wf && !SAU_WAVFile_write(o->wf, o->buf, len)) {
-				error = true;
-				SAU_error(NULL, "WAV file write failed");
-			}
+	while (run) {
+		int16_t *buf = o->buf, *ad_buf = NULL;
+		size_t len, ad_len;
+		run = SAU_Generator_run(gen, buf, o->ch_len, use_stereo, &len);
+		if (split_gen) {
+			ad_buf = o->ad_buf;
+			run |= SAU_Generator_run(ad_gen, ad_buf, o->ad_ch_len,
+					use_stereo, &ad_len);
+		} else {
+			ad_buf = o->buf;
+			ad_len = len;
 		}
-	} else {
-		bool ad_run = run;
-		while (run || ad_run) {
-			size_t len, ad_len;
-			run = SAU_Generator_run(gen, o->buf,
-					o->ch_len, use_stereo, &len);
-			ad_run = SAU_Generator_run(ad_gen, o->ad_buf,
-					o->ad_ch_len, use_stereo, &ad_len);
-			if (!SAU_AudioDev_write(o->ad, o->ad_buf, ad_len)) {
-				error = true;
-				SAU_error(NULL, "system audio write failed");
-			}
-			if (use_stdout && !raw_audio_write(stdout,
-						o->ch_count, o->buf, len)) {
-				error = true;
-				SAU_error(NULL, "audio to stdout write failed");
-			}
-			if (o->wf && !SAU_WAVFile_write(o->wf, o->buf, len)) {
-				error = true;
-				SAU_error(NULL, "WAV file write failed");
-			}
+		if (o->ad && !SAU_AudioDev_write(o->ad, ad_buf, ad_len)) {
+			SAU_error(NULL, "system audio write failed");
+			error = true;
+		}
+		if (use_stdout && !raw_audio_write(stdout,
+					o->ch_count, buf, len)) {
+			SAU_error(NULL, "raw audio stdout write failed");
+			error = true;
+		}
+		if (o->sf && !SAU_SndFile_write(o->sf, buf, len)) {
+			SAU_error(NULL, "%s file write failed",
+					SAU_SndFile_formats[
+					(o->options & SAU_OPT_AUFILE_STDOUT) ?
+					SAU_SNDFILE_AU :
+					SAU_SNDFILE_WAV]);
+			error = true;
 		}
 	}
 ERROR:
