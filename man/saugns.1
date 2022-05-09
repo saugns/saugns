@@ -1,4 +1,4 @@
-.Dd May 6, 2022
+.Dd June 1, 2022
 .Dt SAUGNS 1
 .Os
 .Sh NAME
@@ -31,7 +31,7 @@ or passed strings if the
 option is used.
 Output is by default to system audio, but may instead be muted and/or
 written to a 16-bit PCM WAV file; it is also possible to stream audio
-data to stdout.
+data to stdout, either raw (--stdout) or AU (-o -).
 .Pp
 Scripts can use an arbitrary number of oscillators,
 each with one of various wave forms.
@@ -49,20 +49,23 @@ Muted; always disable system audio output.
 Sample rate in Hz (default 96000);
 if unsupported for system audio, warns and prints rate used instead.
 .It Fl o
-Write a 16-bit PCM WAV file, always using the sample rate requested;
-disables system audio output by default.
+Write a 16-bit PCM WAV file, always using the sample rate requested.
+Or for AU over stdout, "-". Disables system audio output by default.
+(WAV can't portably be used over stdout due to a format limitation.)
 .It Fl \-mono
 Downmix and output audio as mono; this applies to all outputs.
 .It Fl \-stdout
-Send 16-bit audio output to stdout, always using the sample rate requested.
+Send a raw 16-bit output to stdout, always using the sample rate requested.
 Reserves stdout for audio; all text printing will be to stderr.
-This does not disable any other audio output.
+Can't be used together with \-o \-. Doesn't disable any other audio output.
 .It Fl c
 Check scripts only, reporting any errors or requested info.
 .It Fl p
 Print info for scripts after loading.
 It will be printed to stdout unlike errors and warnings, unless
 .Fl \-stdout
+or
+.Fl o\-
 reserves it for audio, in which case all printing is to stderr.
 .It Fl e
 Evaluate strings instead of files.

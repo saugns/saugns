@@ -59,10 +59,10 @@ static void print_usage(bool h_arg, const char *restrict h_type) {
 "  -m \tMuted; always disable system audio output.\n"
 "  -r \tSample rate in Hz (default "SAU_STREXP(SAU_DEFAULT_SRATE)");\n"
 "     \tif unsupported for system audio, warns and prints rate used instead.\n"
-"  -o \tWrite a 16-bit PCM WAV file, always using the sample rate requested;\n"
-"     \tdisables system audio output by default.\n"
+"  -o \tWrite a 16-bit PCM WAV file, always using the sample rate requested.\n"
+"     \tOr for AU over stdout, \"-\". Disables system audio output by default.\n"
 "  --mono \tDownmix and output audio as mono; this applies to all outputs.\n"
-"  --stdout \tSend 16-bit audio output to stdout with sample rate requested.\n"
+"  --stdout \tSend a raw 16-bit output to stdout, -r or default sample rate.\n"
 "\n"
 "Other options:\n"
 "  -c \tCheck scripts only, reporting any errors or requested info.\n"
@@ -127,13 +127,14 @@ REPARSE:
 		switch (c) {
 		case '-':
 			if (!strcmp(opt.arg, "mono")) {
-				if ((*flags & SAU_OPT_MODE_CHECK) != 0)
+				if (*flags & SAU_OPT_MODE_CHECK)
 					goto USAGE;
 				*flags |= SAU_OPT_MODE_FULL |
 					SAU_OPT_AUDIO_MONO;
 			}
 			else if (!strcmp(opt.arg, "stdout")) {
-				if ((*flags & SAU_OPT_MODE_CHECK) != 0)
+				if (*flags & (SAU_OPT_MODE_CHECK |
+				              SAU_OPT_AUFILE_STDOUT))
 					goto USAGE;
 				*flags |= SAU_OPT_MODE_FULL |
 					SAU_OPT_AUDIO_STDOUT;
@@ -149,14 +150,14 @@ REPARSE:
 			continue;
 #endif
 		case 'a':
-			if ((*flags & (SAU_OPT_SYSAU_DISABLE |
-					SAU_OPT_MODE_CHECK)) != 0)
+			if (*flags & (SAU_OPT_SYSAU_DISABLE |
+			              SAU_OPT_MODE_CHECK))
 				goto USAGE;
 			*flags |= SAU_OPT_MODE_FULL |
 				SAU_OPT_SYSAU_ENABLE;
 			break;
 		case 'c':
-			if ((*flags & SAU_OPT_MODE_FULL) != 0)
+			if (*flags & SAU_OPT_MODE_FULL)
 				goto USAGE;
 			*flags |= SAU_OPT_MODE_CHECK;
 			break;
@@ -168,15 +169,21 @@ REPARSE:
 			h_type = opt.arg; /* optional argument for -h */
 			goto USAGE;
 		case 'm':
-			if ((*flags & (SAU_OPT_SYSAU_ENABLE |
-					SAU_OPT_MODE_CHECK)) != 0)
+			if (*flags & (SAU_OPT_SYSAU_ENABLE |
+			              SAU_OPT_MODE_CHECK))
 				goto USAGE;
 			*flags |= SAU_OPT_MODE_FULL |
 				SAU_OPT_SYSAU_DISABLE;
 			break;
 		case 'o':
-			if ((*flags & SAU_OPT_MODE_CHECK) != 0)
+			if (*flags & SAU_OPT_MODE_CHECK)
 				goto USAGE;
+			if (!strcmp(opt.arg, "-")) {
+				if (*flags & SAU_OPT_AUDIO_STDOUT)
+					goto USAGE;
+				*flags |= SAU_OPT_AUFILE_STDOUT;
+				SAU_stdout_busy = 1; /* required for AU file */
+			}
 			*flags |= SAU_OPT_MODE_FULL;
 			*wav_path = opt.arg;
 			continue;
@@ -184,7 +191,7 @@ REPARSE:
 			*flags |= SAU_OPT_PRINT_INFO;
 			break;
 		case 'r':
-			if ((*flags & SAU_OPT_MODE_CHECK) != 0)
+			if (*flags & SAU_OPT_MODE_CHECK)
 				goto USAGE;
 			*flags |= SAU_OPT_MODE_FULL;
 			if (!get_iarg(opt.arg, &i) || (i <= 0)) goto USAGE;
