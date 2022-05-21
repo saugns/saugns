@@ -268,11 +268,11 @@ Modulation with value range:
 	modulation has one of the bounds set to zero.)
 		Following the letter specifying the parameter, and optionally
 	the normal value, the second value used for the bounds of the range
-	can be specified after a "," (comma). The second value defaults to 0.0
+	can be specified after a "-" (minus). The second value defaults to 0.0
 	if not set for the object.
-		After value(s) or by itself, "~[]" (tilde and square brackets)
-	can be used to set a list of modulator operators specified within the
-	"[]"; the list replaces any previous modulators set, and may be empty.
+		After "-" and optionally value(s), "[]" (tilde and square
+	brackets) can be used to set a list of modulator operators specified
+	within the "[]"; the list replaces any previous set, and may be empty.
 		Each modulator in the list will produce a result in the range
 	of 0.0 to 1.0, i.e. a positive signal, multiplied by its amplitude
 	parameter (defaulting to 1.0), negative amplitude multipliers having

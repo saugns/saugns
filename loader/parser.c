@@ -1081,11 +1081,11 @@ static bool parse_ev_amp(SAU_Parser *restrict o) {
 	SAU_ScriptOpRef *op = pl->operator;
 	SAU_ProgramOpData *od = op->data;
 	parse_ramp(o, NULL, &od->amp, false, SAU_PRAMP_AMP);
-	if (SAU_Scanner_tryc(sc, ',')) {
+	if (SAU_Scanner_tryc(sc, '-')) {
 		parse_ramp(o, NULL, &od->amp2, false, SAU_PRAMP_AMP2);
-	}
-	if (SAU_Scanner_tryc(sc, '~') && SAU_Scanner_tryc(sc, '[')) {
-		parse_level(o, SAU_POP_AMOD, SCOPE_NEST);
+		if (SAU_Scanner_tryc(sc, '[')) {
+			parse_level(o, SAU_POP_AMOD, SCOPE_NEST);
+		}
 	}
 	return false;
 }
@@ -1109,12 +1109,12 @@ static bool parse_ev_freq(SAU_Parser *restrict o, bool rel_freq) {
 		return true; // reject
 	SAU_ScanNumConst_f numconst_f = rel_freq ? NULL : scan_note_const;
 	parse_ramp(o, numconst_f, &od->freq, rel_freq, SAU_PRAMP_FREQ);
-	if (SAU_Scanner_tryc(sc, ',')) {
+	if (SAU_Scanner_tryc(sc, '-')) {
 		parse_ramp(o, numconst_f, &od->freq2,
 				rel_freq, SAU_PRAMP_FREQ2);
-	}
-	if (SAU_Scanner_tryc(sc, '~') && SAU_Scanner_tryc(sc, '[')) {
-		parse_level(o, SAU_POP_FMOD, SCOPE_NEST);
+		if (SAU_Scanner_tryc(sc, '[')) {
+			parse_level(o, SAU_POP_FMOD, SCOPE_NEST);
+		}
 	}
 	return false;
 }
