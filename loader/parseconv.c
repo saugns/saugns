@@ -696,10 +696,10 @@ SAU_Program_print_info(const SAU_Program *restrict o) {
 		for (size_t i = 0; i < ev->op_data_count; ++i) {
 			const SAU_ProgramOpData *od = ev->op_data[i];
 			print_opline(od);
-			print_linked("\n\t    a~[", "]", od->amods);
-			print_linked("\n\t    f~[", "]", od->fmods);
-			print_linked("\n\t    p+[", "]", od->pmods);
-			print_linked("\n\t    p+f[", "]", od->fpmods);
+			print_linked("\n\t    aw[", "]", od->amods);
+			print_linked("\n\t    fw[", "]", od->fmods);
+			print_linked("\n\t    p[", "]", od->pmods);
+			print_linked("\n\t    pf[", "]", od->fpmods);
 		}
 		SAU_printf("\n");
 	}

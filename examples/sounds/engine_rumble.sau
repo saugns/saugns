@@ -1,6 +1,6 @@
 // Generate 10 seconds of "engine rumble" using PM
-Osin f137 t10 p+[
-	Osin f32 p+[
+Osin f137 t10 p[
+	Osin f32 p[
 		Osin f42
 	]
 ]

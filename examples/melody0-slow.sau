@@ -1,11 +1,11 @@
 S a(1/3)
 
-'0 Osin	f250 t.1 p+[Osin r(6/5)]
+'0 Osin	f250 t.1 p[Osin r(6/5)]
 /.1
 @0	\.1 t.2 ; \.1 t.2
 |
 
-'1 Osin	f200 t.1 p+[Osin r(4/3)] ; f220 t.2
+'1 Osin	f200 t.1 p[Osin r(4/3)] ; f220 t.2
 |
 
 @0	\.1 f200 t.2 ; \.1 t.2
