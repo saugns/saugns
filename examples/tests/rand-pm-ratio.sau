@@ -1,4 +1,4 @@
 // This version uses a fixed seed for a reproducible result,
 // whereas "/seed(time())" would change on each new playing.
 /seed(2*pi)
-Osin p+[Osin rrand(); rrand(); rrand(); rrand(); rrand(); rrand(); rrand()]
+Osin p[Osin rrand(); rrand(); rrand(); rrand(); rrand(); rrand(); rrand()]

@@ -185,7 +185,7 @@ static double scan_num_r(struct NumParser *restrict o,
 	c = SAU_Scanner_getc(sc);
 	if (c == '(') {
 		num = scan_num_r(o, NUMEXP_SUB, level+1);
-	} else if ((level > 0) && (c == '+' || c == '-')) {
+	} else if (c == '+' || c == '-') {
 		num = scan_num_r(o, NUMEXP_ADT, level+1);
 		if (isnan(num)) goto DEFER;
 		if (c == '-') num = -num;
@@ -231,7 +231,7 @@ static double scan_num_r(struct NumParser *restrict o,
 			return NAN;
 		}
 	}
-	if (level == 0 || pri == NUMEXP_NUM)
+	if (pri == NUMEXP_NUM)
 		return num; /* defer all */
 	for (;;) {
 		if (isinf(num)) o->has_infnum = true;
@@ -269,7 +269,7 @@ static double scan_num_r(struct NumParser *restrict o,
 			num -= scan_num_r(o, NUMEXP_ADT, level);
 			break;
 		default:
-			if (pri == NUMEXP_SUB) {
+			if (pri == NUMEXP_SUB && level > 0) {
 				SAU_Scanner_warning(sc, &o->sf_start,
 "numerical expression has '(' without closing ')'");
 			}
@@ -288,7 +288,7 @@ static sauNoinline bool scan_num(SAU_Scanner *restrict o,
 		SAU_ScanNumConst_f scan_numconst, float *restrict var) {
 	struct NumParser np = {o, scan_numconst, o->sf, false, false};
 	uint8_t ws_level = o->ws_level;
-	float num = scan_num_r(&np, NUMEXP_NUM, 0);
+	float num = scan_num_r(&np, NUMEXP_SUB, 0);
 	SAU_Scanner_setws_level(o, ws_level); // restore if changed
 	if (np.has_nannum) {
 		SAU_Scanner_warning(o, &np.sf_start,
@@ -1076,12 +1076,25 @@ static bool parse_ev_amp(SAU_Parser *restrict o) {
 	SAU_Scanner *sc = o->sc;
 	SAU_ScriptOpRef *op = pl->operator;
 	SAU_ProgramOpData *od = op->data;
-	parse_ramp(o, NULL, &od->amp, false, SAU_PRAMP_AMP);
-	if (SAU_Scanner_tryc(sc, ',')) {
-		parse_ramp(o, NULL, &od->amp2, false, SAU_PRAMP_AMP2);
-	}
-	if (SAU_Scanner_tryc(sc, '~') && SAU_Scanner_tryc(sc, '[')) {
-		parse_level(o, SAU_POP_AMOD, SCOPE_NEST);
+	uint8_t suffc;
+	bool main_arg = false;
+SUB_ARGS:
+	suffc = SAU_Scanner_get_suffc(sc);
+	switch (suffc) {
+	case 'w':
+		if (SAU_Scanner_tryc(sc, ',')) {
+			parse_ramp(o, NULL, &od->amp2, false, SAU_PRAMP_AMP2);
+		}
+		if (SAU_Scanner_tryc(sc, '[')) {
+			parse_level(o, SAU_POP_AMOD, SCOPE_NEST);
+		}
+		break;
+	default:
+		if (suffc) SAU_Scanner_ungetc(sc);
+		if (main_arg) break;
+		parse_ramp(o, NULL, &od->amp, false, SAU_PRAMP_AMP);
+		main_arg = true;
+		goto SUB_ARGS;
 	}
 	return false;
 }
@@ -1104,13 +1117,26 @@ static bool parse_ev_freq(SAU_Parser *restrict o, bool rel_freq) {
 	if (rel_freq && !(op->op_flags & SAU_SDOP_NESTED))
 		return true; // reject
 	SAU_ScanNumConst_f numconst_f = rel_freq ? NULL : scan_note_const;
-	parse_ramp(o, numconst_f, &od->freq, rel_freq, SAU_PRAMP_FREQ);
-	if (SAU_Scanner_tryc(sc, ',')) {
-		parse_ramp(o, numconst_f, &od->freq2,
-				rel_freq, SAU_PRAMP_FREQ2);
-	}
-	if (SAU_Scanner_tryc(sc, '~') && SAU_Scanner_tryc(sc, '[')) {
-		parse_level(o, SAU_POP_FMOD, SCOPE_NEST);
+	uint8_t suffc;
+	bool main_arg = false;
+SUB_ARGS:
+	suffc = SAU_Scanner_get_suffc(sc);
+	switch (suffc) {
+	case 'w':
+		if (SAU_Scanner_tryc(sc, ',')) {
+			parse_ramp(o, numconst_f, &od->freq2,
+					rel_freq, SAU_PRAMP_FREQ2);
+		}
+		if (SAU_Scanner_tryc(sc, '[')) {
+			parse_level(o, SAU_POP_FMOD, SCOPE_NEST);
+		}
+		break;
+	default:
+		if (suffc) SAU_Scanner_ungetc(sc);
+		if (main_arg) break;
+		parse_ramp(o, numconst_f, &od->freq, rel_freq, SAU_PRAMP_FREQ);
+		main_arg = true;
+		goto SUB_ARGS;
 	}
 	return false;
 }
@@ -1120,19 +1146,30 @@ static bool parse_ev_phase(SAU_Parser *restrict o) {
 	SAU_Scanner *sc = o->sc;
 	SAU_ScriptOpRef *op = pl->operator;
 	SAU_ProgramOpData *od = op->data;
-	if (scan_num(sc, scan_phase_const, &od->phase)) {
-		od->phase = fmod(od->phase, 1.f);
-		if (od->phase < 0.f)
-			od->phase += 1.f;
-		od->params |= SAU_POPP_PHASE;
-	}
-	if (SAU_Scanner_tryc(sc, '+')) {
+	uint8_t suffc;
+	bool main_arg = false;
+SUB_ARGS:
+	suffc = SAU_Scanner_get_suffc(sc);
+	switch (suffc) {
+	case 'f':
+		if (SAU_Scanner_tryc(sc, '[')) {
+			parse_level(o, SAU_POP_FPMOD, SCOPE_NEST);
+		}
+		break;
+	default:
+		if (suffc) SAU_Scanner_ungetc(sc);
+		if (main_arg) break;
+		if (scan_num(sc, scan_phase_const, &od->phase)) {
+			od->phase = fmod(od->phase, 1.f);
+			if (od->phase < 0.f)
+				od->phase += 1.f;
+			od->params |= SAU_POPP_PHASE;
+		}
 		if (SAU_Scanner_tryc(sc, '[')) {
 			parse_level(o, SAU_POP_PMOD, SCOPE_NEST);
 		}
-		if (SAU_Scanner_tryc(sc, 'f') && SAU_Scanner_tryc(sc, '[')) {
-			parse_level(o, SAU_POP_FPMOD, SCOPE_NEST);
-		}
+		main_arg = true;
+		goto SUB_ARGS;
 	}
 	return false;
 }
@@ -1174,8 +1211,9 @@ static void parse_in_event(SAU_Parser *restrict o) {
 		case 'r':
 			if (parse_ev_freq(o, true)) goto DEFER;
 			break;
-		case 't':
-			if (SAU_Scanner_tryc(sc, 'i')) {
+		case 't': {
+			uint8_t suffc = SAU_Scanner_get_suffc(sc);
+			if (suffc == 'i') {
 				if (!(op->op_flags & SAU_SDOP_NESTED)) {
 					SAU_Scanner_warning(sc, NULL,
 "ignoring 'ti' (implicit time) for non-nested operator");
@@ -1184,13 +1222,15 @@ static void parse_in_event(SAU_Parser *restrict o) {
 				od->time = (SAU_Time){o->sl.sopt.def_time_ms,
 					SAU_TIMEP_SET | SAU_TIMEP_IMPLICIT};
 			} else {
+				if (suffc)
+					SAU_Scanner_ungetc(sc);
 				uint32_t time_ms;
 				if (!scan_time_val(sc, &time_ms))
 					break;
 				od->time = (SAU_Time){time_ms, SAU_TIMEP_SET};
 			}
 			od->params |= SAU_POPP_TIME;
-			break;
+			break; }
 		case 'w': {
 			size_t wave;
 			if (!scan_wavetype(sc, &wave))
