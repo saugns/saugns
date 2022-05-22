@@ -669,11 +669,10 @@ static void parse_in_settings(SAU_Parser *restrict o);
 enum {
 	PL_DEFERRED_SUB   = 1<<0, // \a sub_f exited to attempt handling above
 	PL_BIND_MULTIPLE  = 1<<1, // previous node interpreted as set of nodes
-	PL_NESTED_SCOPE   = 1<<2,
-	PL_NEW_EVENT_FORK = 1<<3,
-	PL_OWN_EV         = 1<<4,
-	PL_OWN_OP         = 1<<5,
-	PL_WARN_NOSPACE   = 1<<6,
+	PL_NEW_EVENT_FORK = 1<<2,
+	PL_OWN_EV         = 1<<3,
+	PL_OWN_OP         = 1<<4,
+	PL_WARN_NOSPACE   = 1<<5,
 };
 
 /*
@@ -939,9 +938,7 @@ static void begin_operator(SAU_Parser *restrict o,
 static void begin_node(SAU_Parser *restrict o,
 		SAU_ScriptOpData *restrict previous, bool is_compstep) {
 	struct ParseLevel *pl = o->cur_pl;
-	if (!pl->event || /* not in event means previous implicitly ended */
-			pl->sub_f != parse_in_event ||
-			pl->next_wait_ms ||
+	if (!pl->event || pl->next_wait_ms > 0 ||
 			((previous || pl->use_type == SAU_POP_CARR)
 			 && pl->event->objs.first_item) ||
 			is_compstep)
@@ -980,19 +977,17 @@ static void enter_level(SAU_Parser *restrict o,
 	} else {
 		pl->parent = parent_pl;
 		pl->sub_f = parent_pl->sub_f;
-		pl->pl_flags = parent_pl->pl_flags &
-			(PL_NESTED_SCOPE | PL_BIND_MULTIPLE);
+		pl->pl_flags = parent_pl->pl_flags & PL_BIND_MULTIPLE;
 		if (newscope == SCOPE_SAME)
 			pl->scope = parent_pl->scope;
 		pl->event = parent_pl->event;
 		pl->operator = parent_pl->operator;
 		if (newscope == SCOPE_NEST) {
 			pl->sub_f = NULL; // don't allow more args for outer
-			pl->pl_flags |= PL_NESTED_SCOPE;
-			SAU_ScriptOpData *parent_on = parent_pl->operator;
 			pl->nest_list = SAU_mpalloc(o->mp,
 					sizeof(SAU_ScriptListData));
 			pl->nest_list->use_type = use_type;
+			SAU_ScriptOpData *parent_on = parent_pl->operator;
 			if (!parent_on->mods)
 				parent_on->mods = pl->nest_list;
 			else
@@ -1214,11 +1209,19 @@ static void parse_in_event(SAU_Parser *restrict o) {
 				begin_node(o, pl->operator, false);
 			}
 			break;
-		case '\\':
+		case ';':
 			pl->pl_flags &= ~PL_WARN_NOSPACE; /* OK before */
 			if (parse_waittime(o)) {
 				begin_node(o, pl->operator, true);
 				pl->event->ev_flags |= SAU_SDEV_FROM_GAPSHIFT;
+			} else {
+				if ((op->time.flags &
+				     (SAU_TIMEP_SET|SAU_TIMEP_IMPLICIT)) ==
+				    (SAU_TIMEP_SET|SAU_TIMEP_IMPLICIT))
+					SAU_Scanner_warning(sc, NULL,
+"ignoring 'ti' (implicit time) before ';' without number");
+				begin_node(o, pl->operator, true);
+				pl->event->ev_flags |= SAU_SDEV_WAIT_PREV_DUR;
 			}
 			break;
 		case 'a':
@@ -1298,19 +1301,8 @@ static bool parse_level(SAU_Parser *restrict o,
 		SAU_ScanFrame sf_first = sc->sf;
 		switch (c) {
 		case SAU_SCAN_SPACE:
-			pl.pl_flags &= ~PL_WARN_NOSPACE;
-			continue;
 		case SAU_SCAN_LNBRK:
 			pl.pl_flags &= ~PL_WARN_NOSPACE;
-			if (pl.scope == SCOPE_TOP) {
-				/*
-				 * On top level of script,
-				 * each line has a new "subscope".
-				 */
-				if (o->call_level > 1)
-					goto RETURN;
-				pl.sub_f = NULL;
-			}
 			continue;
 		case '\'':
 			/*
@@ -1324,28 +1316,8 @@ static bool parse_level(SAU_Parser *restrict o,
 			pl.set_var = scan_sym(sc, SAU_SYM_VAR, NULL);
 			break;
 		case '/':
-			if (pl.sub_f == parse_in_settings ||
-					((pl.pl_flags & PL_NESTED_SCOPE) != 0
-					 && pl.event != NULL))
-				goto INVALID;
+			if (pl.nest_list) goto INVALID;
 			parse_waittime(o);
-			break;
-		case ';':
-			if (newscope == SCOPE_SAME) {
-				SAU_Scanner_ungetc(sc);
-				goto RETURN;
-			}
-			if (pl.sub_f == parse_in_settings || !pl.event)
-				goto INVALID;
-			pl.pl_flags &= ~PL_WARN_NOSPACE; /* OK before */
-			if ((pl.operator->time.flags &
-			     (SAU_TIMEP_SET|SAU_TIMEP_IMPLICIT)) ==
-			    (SAU_TIMEP_SET|SAU_TIMEP_IMPLICIT))
-				SAU_Scanner_warning(sc, NULL,
-"ignoring 'ti' (implicit time) before ';' separator");
-			begin_node(o, pl.operator, true);
-			pl.event->ev_flags |= SAU_SDEV_WAIT_PREV_DUR;
-			pl.sub_f = parse_in_event;
 			break;
 		case '=': {
 			SAU_Symitem *var = pl.set_var;
@@ -1419,10 +1391,7 @@ static bool parse_level(SAU_Parser *restrict o,
 			pl.pl_flags &= ~PL_WARN_NOSPACE; /* OK around */
 			continue;
 		case '|':
-			if (pl.sub_f == parse_in_settings ||
-					((pl.pl_flags & PL_NESTED_SCOPE) != 0
-					 && pl.event != NULL))
-				goto INVALID;
+			if (pl.nest_list) goto INVALID;
 			if (newscope == SCOPE_SAME) {
 				SAU_Scanner_ungetc(sc);
 				goto RETURN;
