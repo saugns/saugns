@@ -1198,11 +1198,19 @@ static void parse_in_op_step(SAU_Parser *restrict o) {
 				begin_node(o, pl->operator, false);
 			}
 			break;
-		case '\\':
+		case ';':
 			pl->pl_flags &= ~PL_WARN_NOSPACE; /* OK before */
 			if (parse_waittime(o)) {
 				begin_node(o, pl->operator, true);
 				pl->event->ev_flags |= SAU_SDEV_FROM_GAPSHIFT;
+			} else {
+				if ((op->time.flags &
+				     (SAU_TIMEP_SET|SAU_TIMEP_IMPLICIT)) ==
+				    (SAU_TIMEP_SET|SAU_TIMEP_IMPLICIT))
+					SAU_Scanner_warning(sc, NULL,
+"ignoring 'ti' (implicit time) before ';' without number");
+				begin_node(o, pl->operator, true);
+				pl->event->ev_flags |= SAU_SDEV_WAIT_PREV_DUR;
 			}
 			break;
 		case 'a':
@@ -1284,23 +1292,6 @@ static bool parse_level(SAU_Parser *restrict o,
 		case '/':
 			if (pl.parent && pl.parent->nest_list) goto INVALID;
 			parse_waittime(o);
-			break;
-		case ';':
-			if (newscope == SCOPE_SAME) {
-				SAU_Scanner_ungetc(sc);
-				goto RETURN;
-			}
-			if (pl.sub_f == parse_in_settings || !pl.event)
-				goto INVALID;
-			pl.pl_flags &= ~PL_WARN_NOSPACE; /* OK before */
-			if ((pl.operator->time.flags &
-			     (SAU_TIMEP_SET|SAU_TIMEP_IMPLICIT)) ==
-			    (SAU_TIMEP_SET|SAU_TIMEP_IMPLICIT))
-				SAU_Scanner_warning(sc, NULL,
-"ignoring 'ti' (implicit time) before ';' separator");
-			begin_node(o, pl.operator, true);
-			pl.event->ev_flags |= SAU_SDEV_WAIT_PREV_DUR;
-			pl.sub_f = parse_in_op_step;
 			break;
 		case '=': {
 			SAU_Symitem *var = pl.set_var;
