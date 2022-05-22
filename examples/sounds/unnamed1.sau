@@ -1,4 +1,5 @@
 Osin fD3 t2 p[
 	Osin r(3/1) a0 a[g1 t0.05 rxpe] t0.05
 	; a[g0 t1 rxpe]
+	Osin f(1000/3) a[g0 t2 rxpe]
 ]
