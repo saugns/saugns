@@ -1,9 +1,9 @@
 // Increase and decrease frequency smoothly,
 // using slope types 'xpe' and 'lge'.
 
-Osin	f300 f{rxpe t1 v1200} t1
-;	f{rxpe t1 v300} t2.5
+Osin	f300 f{rxpe t1 v1200} t1,
+	f{rxpe t1 v300} t2.5;
 |/.5
 
-Osin	f300 f{rlge t1 v1200} t1
-;	f{rlge t1 v300} t2.5
+Osin	f300 f{rlge t1 v1200} t1,
+	f{rlge t1 v300} t2.5;

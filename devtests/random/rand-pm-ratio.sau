@@ -1,2 +1,2 @@
 /seed(time())
-Osin p+[Osin rrand(); rrand(); rrand(); rrand(); rrand(); rrand(); rrand()]
+Osin p+[Osin rrand(), rrand(), rrand(), rrand(), rrand(), rrand(), rrand()]

@@ -3,10 +3,10 @@
 // pitches.
 
 Osin	fB3 t.2 p+[Osin r(4/3)]f[Osin a1.25 f17]
-;	fA4
-;	fG5
-;\.3	fA4 t.3
-;	fG5 t.1
-;\.1	fA4 t.2
-;	fG5 t.1
-;\.1	fG5 t.3
+,	fA4
+,	fG5
+, \.3	fA4 t.3
+,	fG5 t.1
+, \.1	fA4 t.2
+,	fG5 t.1
+, \.1	fG5 t.3

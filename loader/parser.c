@@ -909,9 +909,7 @@ static void begin_node(SAU_Parser *restrict o,
 	uint8_t use_type = (previous != NULL) ?
 		previous->data->use_type :
 		pl->use_type;
-	if (!pl->event || /* not in event means previous implicitly ended */
-			pl->sub_f != parse_in_event ||
-			pl->next_wait_ms ||
+	if (!pl->event || pl->next_wait_ms > 0 ||
 			((previous != NULL || use_type == SAU_POP_CARR)
 			 && pl->event->main_refs.first_item != NULL) ||
 			is_compstep)
@@ -1152,6 +1150,15 @@ static void parse_in_event(SAU_Parser *restrict o) {
 		switch (c) {
 		case SAU_SCAN_SPACE:
 			break;
+		case ',':
+			if ((od->time.flags &
+			     (SAU_TIMEP_SET|SAU_TIMEP_IMPLICIT)) ==
+			    (SAU_TIMEP_SET|SAU_TIMEP_IMPLICIT))
+				SAU_Scanner_warning(sc, NULL,
+"ignoring 'ti' (implicit time) before ',' separator");
+			begin_node(o, pl->operator, true);
+			pl->event->ev_flags |= SAU_SDEV_WAIT_PREV_DUR;
+			break;
 		case '/':
 			if (parse_waittime(o)) {
 				begin_node(o, pl->operator, false);
@@ -1234,18 +1241,7 @@ static bool parse_level(SAU_Parser *restrict o,
 		uint8_t c = SAU_Scanner_getc(sc);
 		switch (c) {
 		case SAU_SCAN_SPACE:
-			break;
 		case SAU_SCAN_LNBRK:
-			if (!pl.parent) {
-				/*
-				 * On top level of script,
-				 * each line has a new "subscope".
-				 */
-				if (o->call_level > 1)
-					goto RETURN;
-				pl.sub_f = NULL;
-				pl.ev_first_data = NULL;
-			}
 			break;
 		case '\'':
 			/*
@@ -1268,16 +1264,10 @@ static bool parse_level(SAU_Parser *restrict o,
 				SAU_Scanner_ungetc(sc);
 				goto RETURN;
 			}
-			if (pl.sub_f == parse_in_settings || !pl.event)
+			if (!pl.sub_f)
 				goto INVALID;
-			if ((pl.operator->data->time.flags & // TODO: tidy...
-			     (SAU_TIMEP_SET|SAU_TIMEP_IMPLICIT)) ==
-			    (SAU_TIMEP_SET|SAU_TIMEP_IMPLICIT))
-				SAU_Scanner_warning(sc, NULL,
-"ignoring 'ti' (implicit time) before ';' separator");
-			begin_node(o, pl.operator, true);
-			pl.event->ev_flags |= SAU_SDEV_WAIT_PREV_DUR;
-			parse_in_event(o);
+			end_operator(o);
+			pl.sub_f = NULL;
 			break;
 		case '<':
 			if (parse_level(o, pl.use_type, SCOPE_GROUP))

@@ -31,6 +31,25 @@ Modifiers are similar to keywords, but simpler and more flexible
 in how they may be used. They may or may not be followed by an
 argument (e.g. a delay time).
 
+Scopes
+------
+
+The flow of time and the nesting of scopes are like two dimensions
+in which things are arranged. For altering the time-arrangement,
+see 'Timing'; that includes sub-steps, which are considered part
+of the same larger step involving the same reference to an object.
+
+Beginning a new step, by introducing a new object or new reference
+to an object, terminates the previous when done in the same scope.
+Optionally, each step can be terminated explicitly by writing ';',
+which disallows a continuation of the same reference to an object.
+
+The global level of a script is a top scope containing objects and
+steps for them. Each list ("[...]") is a similar subscope. What is
+written for an object inside a list is a step in the inner scope,
+with timing connected to the outer scope. Termination of an inner
+step does not terminate any outer it is related to (i.e. nesting).
+
 Keywords
 --------
 
@@ -41,8 +60,6 @@ Each of these keywords is further described in its own section below.
 		a carrier and/or modulator which produces sound
 		for a duration; the "O" is followed by the (initial)
 		wave type, as in "Osin".
-
-See the section 'Timing' for modifiers.
 
 S: Set option
 -------------
@@ -321,12 +338,6 @@ Frequencies as notes:
 Timing
 ------
 
-A new step terminates the previous one, but they will have the same
-placement in time unless a delay is added.
-
-At the topmost script scope, newlines also terminate steps; within
-sub-scopes, however, newlines may be placed freely.
-
 Timing modifiers:
 	|	Time separator. Delays all that follows by the duration of
 		prior steps. This also resets any other delays to be added
@@ -347,24 +358,26 @@ Timing modifiers:
 		there will be 0. After the "\number" part, a time value is
 		always set, the last "t" or default (before zeroing) value.
 			Several uses of '\' to separate sub-steps in a row
-		(e.g. no ';' in-between) never zero the default time after
+		(e.g. no ',' in-between) never zero the default time after
 		the first '\'.
 
 Compound steps:
-	The ';' sub-step separator can be written (on a new line or the same)
+	The ',' sub-step separator can be written (on a new line or the same)
 	after a step to specify new parameter arguments for an object, which
 	apply just after the previous time duration, for a new duration which
 	defaults to the length of the previous. (For the default time of the
 	first sub-step, and about special handling for the last, see "t" under
-	each "Parameters" for more). The use of ';' can be repeated.
+	each "Parameters" for more). The use of ',' can be repeated.
 		The time handling is designed to simplify writing a sequence
 	of connected, non-overlapping timed updates for a single object. For
-	example (three frequencies, one a second): "Osin f100 t1; f200; f300".
+	example (three frequencies, one a second): "Osin f100 t1, f200, f300".
 	Changing "t1" in this example changes time length for all three parts.
 		For more flexibility, such as "silent" gaps between parts or
-	overlapping parts, ';' can be combined with the '\' subshift, as in
-	"; \number", which subdivides the part after the ';' into one before
+	overlapping parts, ',' can be combined with the '\' subshift, as in
+	", \number", which subdivides the part after the ',' into one before
 	the '\' and one after, "number" seconds apart in time. The first has
 	a default time duration of zero, for the second it is normal. For
 	example, to insert "silent" gaps between the use of three values:
-	"Osin f100 t1; \1 f200; \1 f300".
+	"Osin f100 t1, \1 f200, \1 f300".
+		Optionally, a series of sub-steps can be terminated with ';',
+	which disallows a continuation of the same reference to an object.
