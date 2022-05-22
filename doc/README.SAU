@@ -30,6 +30,23 @@ Modifiers are similar to keywords, but simpler and more flexible
 in how they may be used. They may or may not be followed by an
 argument (e.g. a delay time).
 
+Scopes
+------
+
+The flow of time and the nesting of scopes are like two dimensions
+in which things are arranged. For altering the time-arrangement,
+see 'Timing'; that includes sub-steps, which are considered part
+of the same larger step involving the same reference to an object.
+
+Beginning a new step, by introducing a new object or new reference
+to an object, terminates the previous when done in the same scope.
+
+The global level of a script is a top scope containing objects and
+steps for them. Each list ("[...]") is a similar subscope. What is
+written for an object inside a list is a step in the inner scope,
+with timing connected to the outer scope. Termination of an inner
+step does not terminate any outer it is related to (i.e. nesting).
+
 Keywords
 --------
 
@@ -39,8 +56,6 @@ Each of these keywords is further described in its own section below.
 		nested list scope don't apply outside of it.
 	O	Wave oscillator; the "O" is followed by the (initial)
 		wave type, as in "Osin".
-
-See the section 'Timing' for modifiers.
 
 S: Script options
 -----------------
@@ -370,50 +385,52 @@ Frequencies as notes:
 Timing
 ------
 
-A new step terminates the previous one, but they will have the same
-placement in time unless a delay is added.
-
-At the topmost script scope, newlines also terminate steps; within
-sub-scopes, however, newlines may be placed freely.
-
 Timing modifiers:
 	|	Time separator. Delays all that follows by the duration of
 		prior steps. This also resets any other delays to be added
 		to later steps using other syntax like '/', so such should
 		be placed after, not before, if it is to take effect.
-	/	Forward shift, time in seconds. Delay the next step and
+	/number	Forward shift, time in seconds. Delay the next step and
 		all steps placed after. The next step can be either a
 		split-out continuation of the current step, or new.
 			Does not automatically extend time duration on
-		splitting a step, unlike '\'.
-	\	Subshift, time in seconds. For a current step only,
-		split out a delayed follow-on step, without delaying
-		any independent steps placed after. Depending on usage,
-		may move, alternatively extend, the current sound in time.
-			For ease of adding silent time padding, before the
-		"\number" part (but not after it) the default time duration
-		is changed to 0, so that any time value automatically set
-		there will be 0. After the "\number" part, a time value is
-		always set, the last "t" or default (before zeroing) value.
-			Several uses of '\' to separate sub-steps in a row
-		(e.g. no ';' in-between) never zero the default time after
-		the first '\'.
+		splitting a step, unlike ';'.
 
 Compound steps:
-	The ';' sub-step separator can be written (on a new line or the same)
-	after a step to specify new parameter arguments for an object, which
-	apply just after the previous time duration, for a new duration which
-	defaults to the length of the previous. (For the default time of the
-	first sub-step, and about special handling for the last, see "t" under
-	each "Parameters" for more). The use of ';' can be repeated.
-		The time handling is designed to simplify writing a sequence
-	of connected, non-overlapping timed updates for a single object. For
-	example (three frequencies, one a second): "Osin f100 t1; f200; f300".
-	Changing "t1" in this example changes time length for all three parts.
-		For more flexibility, such as "silent" gaps between parts or
-	overlapping parts, ';' can be combined with the '\' subshift, as in
-	"; \number", which subdivides the part after the ';' into one before
-	the '\' and one after, "number" seconds apart in time. The first has
-	a default time duration of zero, for the second it is normal. For
-	example, to insert "silent" gaps between the use of three values:
-	"Osin f100 t1; \1 f200; \1 f300".
+	For a step written for some object, timing can be changed locally,
+	within only the step and for lists nested under it. Two varieties
+	of the ';' sub-step separator allow this. Their use can be repeated.
+	;	The numberless ';' step split can be written after a step for
+		an object (on a new line or the same), to specify a new time
+		duration and new parameter arguments which apply just after
+		the previous time duration. The new duration generally has
+		the length of the previous by default. (For the default time
+		of the first sub-step, and special handling for the last, see
+		"t" under each "Parameters" for more).
+			The time handling is designed to simplify writing a
+		sequence of connected, non-overlapping timed updates for a
+		single object. For example (three frequencies, one a second):
+		"Osin f100 t1; f200; f300". Changing "t1" in this example
+		changes the time length for all three parts.
+			For more flexibility, especially for adding "silent"
+		gaps between parts, the numberless ';' can be combined with,
+		or replaced by, the ';number' gapshift. Combination is easy,
+		as "; ;number" will subdivide and shift the second sub-step
+		by "number" of seconds, and move the active time duration for
+		the second sub-step past the second split, creating a gap
+		"number" of seconds long. For example (1 second of silence
+		between frequency changes): "Osin f100 t1;;1 f200;;1 f300".
+	;number	Gapshift, time in seconds. When a number immediately follows
+		the ';', then the new sub-step is placed in time that number
+		of seconds after the previous, instead of after the duration
+		of the previous. Depending on usage, may move, alternatively
+		extend, the current sound in time.
+			For ease of adding silent time padding, before the
+		";number" part (but not after it) the default time duration
+		is changed to 0, so that any time value automatically set
+		there will be 0. After the ";number" part, a time value is
+		always set, the last "t" or default (before zeroing) value.
+			Several uses of ';number' to separate sub-steps in
+		a row (no numberless ';' in-between!) will never zero the
+		default time after the first ';number', allowing a way to
+		always extend rather than move by adding a leading ';0'.
