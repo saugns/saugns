@@ -17,7 +17,7 @@ Osin	f220 p[
 ;	f[rxpe g400 t$rt] t0.5
 ;	f[rxpe g350 t$rt] t0.5
 ;	f[rxpe g325 t$rt] t1.5
-;\1	f[rxpe g220 t$rt] t1
+;;1	f[rxpe g220 t$rt] t1
 ;	f[rxpe g440 t$rt] t1.5
 ;	f[rxpe g415 t$rt] t0.5
 ;	f[rxpe g445 t$rt] t0.5
