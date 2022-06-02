@@ -77,14 +77,34 @@ void SAU_Ramp_fill_lin(float *restrict buf, uint32_t len,
 	}
 }
 
+/*
+ * Scaled and shifted sine ramp, using degree 5 polynomial
+ * with no error at ends and double the minimax max error.
+ *
+ * If used for oscillator, would have a roughly -84 dB 5th
+ * harmonic distortion but nothing else above 16-bit noise
+ * floor. http://joelkp.frama.io/blog/modified-taylor.html
+ */
+static inline float sinramp(float x) {
+	const float scale[] = {
+		/* constants calculated with 80-bit "long double" use */
+		+1.5702137061703461473139223358864L,
+		-2.568278787380814155456160152724L,
+		+1.1496958507977182668618673644367L,
+	};
+	float x2;
+	x -= 0.5f;
+	x2 = x*x;
+	return 0.5f + x*(scale[0] + x2*(scale[1] + x2*scale[2]));
+}
+
 /**
  * Fill \p buf with \p len values along a sinuous trajectory
  * from \p v0 (at position 0) to \p vt (at position \p time),
  * beginning at position \p pos.
  *
  * Rises or falls similarly to how sin() moves from trough to
- * crest and back. Uses the simplest polynomial giving a good
- * sinuous curve (almost exactly 99.0% accurate; too linear).
+ * crest and back. Uses a ~99.993% accurate polynomial curve.
  */
 void SAU_Ramp_fill_sin(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
@@ -93,7 +113,7 @@ void SAU_Ramp_fill_sin(float *restrict buf, uint32_t len,
 	for (uint32_t i = 0; i < len; ++i) {
 		const uint32_t i_pos = i + pos;
 		float x = i_pos * inv_time;
-		float v = v0 + (vt - v0) * (3.f - (x+x))*x*x;
+		float v = v0 + (vt - v0) * sinramp(x);
 		if (!mulbuf)
 			buf[i] = v;
 		else
