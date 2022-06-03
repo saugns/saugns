@@ -1488,7 +1488,7 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e) {
 				}
 			}
 			if (ne->ev_flags & SAU_SDEV_WAIT_PREV_DUR) {
-				ne->wait_ms += ne_prev->dur_ms;
+				ne->wait_ms += ne_od_prev->time.v_ms;
 				ne_od_prev->time.flags &= ~SAU_TIMEP_IMPLICIT;
 			}
 			if (nest_dur_ms < wait_sum_ms + ne->dur_ms)
@@ -1503,10 +1503,10 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e) {
 			if (!ne) break;
 			ne_op = ne->main_refs.first_item;
 		}
-		if (nest_dur_ms < first_time_ms)
-			nest_dur_ms = first_time_ms;
-		if (dur_ms < nest_dur_ms)
-			dur_ms = nest_dur_ms;
+		if (dur_ms < first_time_ms)
+			dur_ms = first_time_ms;
+//		if (dur_ms < nest_dur_ms)
+//			dur_ms = nest_dur_ms;
 		fork = fork->prev;
 	}
 	e->dur_ms = dur_ms; /* unfinished estimate used to adjust timing */
