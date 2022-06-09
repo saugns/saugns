@@ -137,20 +137,26 @@ Parameters:
 			For a single non-nested operator, 1.0 is used unless
 		the default value is changed with "S t".
 			When several operators are specified, the default
-		time normally changes to the longest (at the current time
-		remaining) duration of play in use for a step, in considering
-		the surrounding sequence of steps and delays (up to the next
-		'|' time separator, or the end of the script if none).
-			For modulator operators, default time is however
-		"implicit" (can be set using the literal 'i', as in "ti"),
-		meaning playing whenever a carrier it is linked to does.
-		(Implicit time is only supported for nested operators.)
+		time is based on the longest remaining (at the current time)
+		duration of play in use for any step at the current level,
+		in considering the surrounding sequence of steps and delays
+		(up to the next '|' time separator, or to the end of the
+		script if none).
+			The default time lengthens further when modulators
+		with longer definite times are specified for the current step.
+			For modulator operators, default time is however an
+		"implicit" time length (can be set using the literal 'i', as
+		in "ti"), meaning playing whenever a carrier it is linked to
+		does. (Implicit time is only supported for nested operators.)
+		When such a time length is retrieved as part of setting the
+		default time for something else, a definite default time in
+		seconds (e.g. 1 second) is however used instead.
 			For a compound step, the first sub-step is however
 		simply given the "S t" default value if no time is set.
 		The following sub-steps in turn each have the time of the
 		previous as its default time. The exception is modulators,
 		for which the last sub-step has implicit time ('i', "ti")
-		by default, just like normal steps for modulators.
+		by default, just like for undivided steps for modulators.
 	f	Frequency in Hz. Can be negative to flip wave shape timewise.
 			"Value ramp" values are supported; see section.
 			"Modulation with value range" is supported for FM

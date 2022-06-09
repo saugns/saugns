@@ -66,6 +66,7 @@ enum {
 	SAU_SDEV_IMPLICIT_TIME    = 1<<2,
 	SAU_SDEV_WAIT_PREV_DUR    = 1<<3, // compound step timing
 	SAU_SDEV_FROM_GAPSHIFT    = 1<<4, // gapshift follow-on event
+	SAU_SDEV_LOCK_DUR_SCOPE   = 1<<5, // nested data can't lengthen dur
 };
 
 struct SAU_ScriptEvBranch;
