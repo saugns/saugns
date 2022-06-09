@@ -1411,6 +1411,7 @@ static const char *parse_file(SAU_Parser *restrict o,
 }
 
 static uint32_t time_event(SAU_ScriptEvData *restrict e);
+static void time_op_ramps(SAU_ScriptOpRef *restrict op);
 
 /*
  * Adjust timing for a duration group; the script syntax for time grouping is
@@ -1447,6 +1448,7 @@ static void time_durgroup(SAU_ScriptDurGroup *restrict g) {
 				od->time.flags |= SAU_TIMEP_SET;
 				if (e->dur_ms < od->time.v_ms)
 					e->dur_ms = od->time.v_ms;
+				time_op_ramps(op);
 			}
 		}
 		e = e->next;
@@ -1468,6 +1470,16 @@ static inline void time_ramp(SAU_Ramp *restrict ramp,
 	}
 }
 
+static void time_op_ramps(SAU_ScriptOpRef *restrict op) {
+	SAU_ProgramOpData *od = op->data;
+	uint32_t dur_ms = od->time.v_ms;
+	time_ramp(od->freq, dur_ms);
+	time_ramp(od->freq2, dur_ms);
+	time_ramp(od->amp, dur_ms);
+	time_ramp(od->amp2, dur_ms);
+	time_ramp(od->pan, dur_ms);
+}
+
 static uint32_t time_operator(SAU_ScriptOpRef *restrict op) {
 	SAU_ProgramOpData *od = op->data;
 	uint32_t dur_ms = od->time.v_ms;
@@ -1479,21 +1491,21 @@ static uint32_t time_operator(SAU_ScriptOpRef *restrict op) {
 			od->time.flags |= SAU_TIMEP_IMPLICIT;
 			od->time.flags |= SAU_TIMEP_SET; /* no durgroup yet */
 		}
-	}
-	if (!(od->time.flags & SAU_TIMEP_IMPLICIT)) {
-		time_ramp(od->freq, dur_ms);
-		time_ramp(od->freq2, dur_ms);
-		time_ramp(od->amp, dur_ms);
-		time_ramp(od->amp2, dur_ms);
-		time_ramp(od->pan, dur_ms);
+	} else if (!(op->op_flags & SAU_SDOP_NESTED)) {
+		op->event->ev_flags |= SAU_SDEV_LOCK_DUR_SCOPE;
 	}
 	for (SAU_ScriptListData *list = op->mods;
 			list != NULL; list = list->next_list) {
 		for (SAU_ScriptOpRef *sub_op = list->first_item;
 				sub_op != NULL; sub_op = sub_op->next_item) {
-			time_operator(sub_op);
+			uint32_t sub_dur_ms = time_operator(sub_op);
+			if (dur_ms < sub_dur_ms
+			    && (od->time.flags & SAU_TIMEP_DEFAULT) != 0)
+				dur_ms = sub_dur_ms;
 		}
 	}
+	od->time.v_ms = dur_ms;
+	time_op_ramps(op);
 	return dur_ms;
 }
 
@@ -1565,10 +1577,22 @@ static uint32_t time_event(SAU_ScriptEvData *restrict e) {
 			if (!ne) break;
 			ne_op = ne->main_refs.first_item;
 		}
-		if (dur_ms < first_time_ms)
-			dur_ms = first_time_ms;
-//		if (dur_ms < nest_dur_ms)
-//			dur_ms = nest_dur_ms;
+		/*
+		 * Exclude nested operators when setting a longer duration,
+		 * if time has already been explicitly set for any carriers
+		 * (otherwise the duration can be misreported as too long).
+		 *
+		 * TODO: Replace with design that gives nodes at each level
+		 * their own event. Merge event and data nodes (always make
+		 * new events for everything), or event and durgroup nodes?
+		 */
+		if (!(e->ev_flags & SAU_SDEV_LOCK_DUR_SCOPE)
+		    || !(e_op->op_flags & SAU_SDOP_NESTED)) {
+			if (dur_ms < first_time_ms)
+				dur_ms = first_time_ms;
+//			if (dur_ms < nest_dur_ms)
+//				dur_ms = nest_dur_ms;
+		}
 		fork = fork->prev;
 	}
 	e->dur_ms = dur_ms; /* unfinished estimate used to adjust timing */

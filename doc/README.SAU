@@ -127,6 +127,8 @@ Parameters:
 		in considering the surrounding sequence of steps and delays
 		(up to the next '|' time separator, or to the end of the
 		script if none).
+			The default time lengthens further when modulators
+		with longer definite times are specified for the current step.
 			For modulator operators, default time is however an
 		"implicit" time length (see 'i' below), meaning playing
 		whenever a carrier it is linked to does. (Implicit time is
@@ -138,7 +140,8 @@ Parameters:
 		simply given the "S t" default value if no time is set.
 		The following sub-steps in turn each have the time of the
 		previous as its default time. The exception is modulators,
-		for which the last sub-step has implicit time by default.
+		for which the last sub-step has implicit time ('i', "ti")
+		by default, just like for undivided steps for modulators.
 			Special non-number literals can also specify time:
 		d	Definite default time can be set using "td", always.
 		i	Implicit time can be set using "ti", for modulators.
