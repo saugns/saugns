@@ -1184,7 +1184,7 @@ static bool parse_so_freq(sauParser *restrict o, bool rel_freq) {
 		}
 		break;
 	case 's':
-		switch ((c = sauScanner_getc(sc))) {
+		switch ((c = sauScanner_get_suffc(sc))) {
 		case 'e':
 			o->sl.sopt.key_ji = false;
 			o->sl.sopt.set |= SAU_SOPT_NOTE_SCALE;
@@ -1194,10 +1194,10 @@ static bool parse_so_freq(sauParser *restrict o, bool rel_freq) {
 			o->sl.sopt.set |= SAU_SOPT_NOTE_SCALE;
 			break;
 		default:
-			if (!SAU_IS_ASCIIVISIBLE(c))
-				return true;
+			if (!c)
+				return false;
 			sauScanner_warning(sc, NULL,
- "unknown scale; valid are 'e' (12-ET), 'j' (SAU justly intoned)");
+"unknown scale; valid are 'e' (12-ET), 'j' (SAU justly intoned)");
 			break;
 		}
 		break;
@@ -1453,11 +1453,13 @@ static void parse_in_event(sauParser *restrict o) {
 		case 'r':
 			if (parse_ev_freq(o, true)) goto DEFER;
 			break;
-		case 't':
-			if (sauScanner_tryc(sc, 'd')) {
-				op->time = (sauTime){o->sl.sopt.def_time_ms,
-					0};
-			} else if (sauScanner_tryc(sc, 'i')) {
+		case 't': {
+			uint8_t suffc = sauScanner_get_suffc(sc);
+			switch (suffc) {
+			case 'd':
+				op->time = (sauTime){o->sl.sopt.def_time_ms,0};
+				break;
+			case 'i':
 				if (!(op->op_flags & SAU_SDOP_NESTED)) {
 					sauScanner_warning(sc, NULL,
 "ignoring 'ti' (implicit time) for non-nested operator");
@@ -1465,14 +1467,18 @@ static void parse_in_event(sauParser *restrict o) {
 				}
 				op->time = (sauTime){o->sl.sopt.def_time_ms,
 					SAU_TIMEP_SET | SAU_TIMEP_IMPLICIT};
-			} else {
+				break;
+			default:
+				if (suffc)
+					sauScanner_ungetc(sc);
 				uint32_t time_ms;
 				if (!scan_time_val(sc, &time_ms))
 					break;
 				op->time = (sauTime){time_ms, SAU_TIMEP_SET};
+				break;
 			}
 			op->params |= SAU_POPP_TIME;
-			break;
+			break; }
 		case 'w': {
 			if (op->info->type != SAU_POPT_WAVE) goto DEFER;
 			size_t id;
@@ -1540,11 +1546,20 @@ static bool parse_level(sauParser *restrict o,
 				goto RETURN;
 			break;
 		case '=': {
+			uint8_t suffc;
+			sauScanNumConst_f numconst_f = NULL;
 			sauSymitem *var = pl.set_var;
 			if (!var) goto INVALID;
 			pl.pl_flags &= ~PL_WARN_NOSPACE; /* OK before */
 			pl.set_var = NULL; // used here
-			if (scan_num(sc, NULL, &var->data.num))
+			switch ((suffc = sauScanner_get_suffc(sc))) {
+			case 'c': numconst_f = scan_chanmix_const; break;
+			case 'f': numconst_f = scan_note_const; break;
+			case 'p': numconst_f = scan_phase_const; break;
+			default: if (suffc) sauScanner_ungetc(sc); break;
+			}
+			if (numconst_f) sauScanner_skipws(sc);
+			if (scan_num(sc, numconst_f, &var->data.num))
 				var->data_use = SAU_SYM_DATA_NUM;
 			else
 				sauScanner_warning(sc, NULL,
