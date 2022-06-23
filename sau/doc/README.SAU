@@ -390,7 +390,8 @@ Numerical expressions:
 	Parentheses also allow shorthand multiplication (leaving out a
 	"*" between two parts), e.g. "2(3)" and "(2)3" both give "6".
 		Some parameters support named constants specific to that type
-	of value; such a name can be written instead of a number.
+	of value, like "Frequencies as notes", "Channel mixing values", and
+	others. Such a name can be written instead of a number.
 		The following universal mathematical symbols (functions and
 	constants) can also be used in any numerical expression; functions
 	require parentheses after the name (and most often require a value
@@ -539,8 +540,18 @@ Variables:
 	or made to point to an object as a label for it.
 		To assign a number, "'name=" can be written just before a
 	numerical expression. Once it holds a number, it can be used in any
-	numerical expression using "$name". (It's possible to use such a
-	variable value as part of redefining its value.)
+	numerical expression using "$name". (It's possible to retrieve such
+	a variable value as part of redefining its value.) Whitespace is
+	allowed both before and after the '='.
+		Numerical expressions for some named parameters can use
+	context-sensitive constants; to also allow their use when assigning a
+	variable, one of the below parameter namespace names can be added
+	after the '='. Between it and any number or mathematical name after
+	must be whitespace and/or a mathematical symbol, to keep names apart.
+	For example, "'freq=f A4" has the frequency value of the note "A4".
+	c	Channel mixing values
+	f	Frequencies as notes
+	p	Phase values
 		To point a variable to an object, "'name " can be written
 	just before an object is added or referenced. The name can then be
 	used to refer back to the object as "@name", to start a new step for
