@@ -1075,8 +1075,9 @@ static void parse_in_settings(SAU_Parser *restrict o) {
 				o->sl.sopt.def_freq = val;
 				o->sl.sopt.set |= SAU_SOPT_DEF_FREQ;
 			}
-			if (SAU_Scanner_tryc(sc, ',') &&
-			    SAU_Scanner_tryc(sc, 'n')) {
+			if (SAU_Scanner_tryc(sc, ','))
+			switch ((c = SAU_Scanner_getc(sc))) {
+			case 'n':
 				if (scan_num(sc, NULL, &val)) {
 					if (val < 1.f) {
 						SAU_Scanner_warning(sc, NULL,
@@ -1086,6 +1087,9 @@ static void parse_in_settings(SAU_Parser *restrict o) {
 					o->sl.sopt.A4_freq = val;
 					o->sl.sopt.set |= SAU_SOPT_A4_FREQ;
 				}
+				break;
+			default:
+				goto DEFER;
 			}
 			break;
 		case 'r':
@@ -1170,6 +1174,7 @@ static bool parse_ev_phase(SAU_Parser *restrict o) {
 	SAU_Scanner *sc = o->sc;
 	SAU_ScriptOpRef *op = pl->operator;
 	SAU_ProgramOpData *od = op->data;
+	uint8_t c;
 	double val;
 	if (scan_num(sc, scan_phase_const, &val)) {
 		od->phase = lrint(remainder(val, 1.f) * 2.f * (float)INT32_MAX);
@@ -1178,10 +1183,14 @@ static bool parse_ev_phase(SAU_Parser *restrict o) {
 	if (SAU_Scanner_tryc(sc, '[')) {
 		parse_level(o, SAU_POP_PMOD, SCOPE_NEST);
 	}
-	if (SAU_Scanner_tryc(sc, ',')) {
-		if (SAU_Scanner_tryc(sc, 'f') && SAU_Scanner_tryc(sc, '[')) {
+	if (SAU_Scanner_tryc(sc, ',')) switch ((c = SAU_Scanner_getc(sc))) {
+	case 'f':
+		if (SAU_Scanner_tryc(sc, '[')) {
 			parse_level(o, SAU_POP_FPMOD, SCOPE_NEST);
 		}
+		break;
+	default:
+		return true;
 	}
 	return false;
 }
@@ -1223,11 +1232,13 @@ static void parse_in_event(SAU_Parser *restrict o) {
 		case 'r':
 			if (parse_ev_freq(o, true)) goto DEFER;
 			break;
-		case 't':
-			if (SAU_Scanner_tryc(sc, 'd')) {
-				od->time = (SAU_Time){o->sl.sopt.def_time_ms,
-					0};
-			} else if (SAU_Scanner_tryc(sc, 'i')) {
+		case 't': {
+			uint8_t suffc = SAU_Scanner_get_suffc(sc);
+			switch (suffc) {
+			case 'd':
+				od->time = (SAU_Time){o->sl.sopt.def_time_ms,0};
+				break;
+			case 'i':
 				if (!(op->op_flags & SAU_SDOP_NESTED)) {
 					SAU_Scanner_warning(sc, NULL,
 "ignoring 'ti' (implicit time) for non-nested operator");
@@ -1235,14 +1246,18 @@ static void parse_in_event(SAU_Parser *restrict o) {
 				}
 				od->time = (SAU_Time){o->sl.sopt.def_time_ms,
 					SAU_TIMEP_SET | SAU_TIMEP_IMPLICIT};
-			} else {
+				break;
+			default:
+				if (suffc)
+					SAU_Scanner_ungetc(sc);
 				uint32_t time_ms;
 				if (!scan_time_val(sc, &time_ms))
 					break;
 				od->time = (SAU_Time){time_ms, SAU_TIMEP_SET};
+				break;
 			}
 			od->params |= SAU_POPP_TIME;
-			break;
+			break; }
 		case 'w': {
 			size_t wave;
 			if (!scan_wavetype(sc, &wave))
