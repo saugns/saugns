@@ -841,6 +841,43 @@ bool SAU_Scanner_get_symstr(SAU_Scanner *restrict o,
 }
 
 /**
+ * Get character if alphabetic and not followed by an identifier character.
+ *
+ * \return character or 0 if not got
+ */
+uint8_t SAU_Scanner_get_suffc(SAU_Scanner *restrict o) {
+	SAU_File *f = o->f;
+	uint8_t c = SAU_File_RETC(f), next_c;
+	SAU_ScanFilter_f filter_f = SAU_Scanner_getfilter(o, c);
+	/*
+	 * Use quick handling for unfiltered characters.
+	 */
+	if (!filter_f) {
+		if (!IS_ALPHA(c))
+			return 0;
+		SAU_File_INCP(f);
+		next_c = SAU_Scanner_retc(o);
+		if (IS_SYMCHAR(next_c)) {
+			SAU_File_DECP(f);
+			return 0;
+		}
+		prepare_frame(o);
+		++o->sf.char_num;
+		o->sf.c = c;
+		return c;
+	}
+	c = SAU_Scanner_filterc(o, c, filter_f);
+	if (!IS_ALPHA(c)) goto UNGET_C;
+	next_c = SAU_Scanner_retc(o);
+	if (IS_SYMCHAR(next_c)) goto UNGET_C;
+	return c;
+
+UNGET_C:
+	SAU_Scanner_ungetc(o);
+	return 0;
+}
+
+/**
  * Skip whitespace before next character retrieved, as
  * if the filtering uses SAU_Scanner_filter_ws_none().
  *

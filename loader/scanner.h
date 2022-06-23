@@ -207,6 +207,7 @@ bool SAU_Scanner_getd(SAU_Scanner *restrict o,
 		SAU_ScanNumConst_f numconst_f);
 bool SAU_Scanner_get_symstr(SAU_Scanner *restrict o,
 		SAU_SymStr **restrict symstrp);
+uint8_t SAU_Scanner_get_suffc(SAU_Scanner *restrict o);
 uint8_t SAU_Scanner_skipws(SAU_Scanner *restrict o);
 
 void SAU_Scanner_warning(const SAU_Scanner *restrict o,
