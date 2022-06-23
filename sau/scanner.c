@@ -803,6 +803,43 @@ bool sauScanner_getd(sauScanner *restrict o,
 }
 
 /**
+ * Get character if alphabetic and not followed by an identifier character.
+ *
+ * \return character or 0 if not got
+ */
+uint8_t sauScanner_get_suffc(sauScanner *restrict o) {
+	sauFile *f = o->f;
+	uint8_t c = sauFile_RETC(f), next_c;
+	sauScanFilter_f filter_f = sauScanner_getfilter(o, c);
+	/*
+	 * Use quick handling for unfiltered characters.
+	 */
+	if (!filter_f) {
+		if (!IS_ALPHA(c))
+			return 0;
+		sauFile_INCP(f);
+		next_c = sauScanner_retc(o);
+		if (IS_SYMCHAR(next_c)) {
+			sauFile_DECP(f);
+			return 0;
+		}
+		prepare_frame(o);
+		++o->sf.char_num;
+		o->sf.c = c;
+		return c;
+	}
+	c = sauScanner_filterc(o, c, filter_f);
+	if (!IS_ALPHA(c)) goto UNGET_C;
+	next_c = sauScanner_retc(o);
+	if (IS_SYMCHAR(next_c)) goto UNGET_C;
+	return c;
+
+UNGET_C:
+	sauScanner_ungetc(o);
+	return 0;
+}
+
+/**
  * Get identifier string. If a valid symbol string was read,
  * then \a symstr will be set to the unique item
  * stored in the symbol table, otherwise to NULL.

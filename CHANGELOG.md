@@ -9,6 +9,11 @@ Pre-release
 
 [rebase in progress]
 
+Language changes:
+ * Variable syntax. Relax rules for use of numerical
+   variable `=`, allow whitespace after `=`, and not
+   only before it. This behavior is less surprising.
+
 v0.4.2d (2023-12-31)
 --------------------
 

@@ -205,6 +205,7 @@ bool sauScanner_getd(sauScanner *restrict o,
 		double *restrict var, bool allow_sign,
 		size_t *restrict str_len,
 		sauScanNumConst_f numconst_f);
+uint8_t sauScanner_get_suffc(sauScanner *restrict o);
 bool sauScanner_get_symstr(sauScanner *restrict o,
 		sauSymstr **restrict symstrp);
 uint8_t sauScanner_skipws(sauScanner *restrict o);
