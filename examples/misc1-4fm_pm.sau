@@ -1,21 +1,21 @@
-Osin t15 f500w,501[Osin f1] p[
-	Osin f400w,800[
-		Osqr f1w,10[Osin f5000]
-		Otri f0.1w,10.0[Osin f0.2]
+Osin t15 f500,w501[Osin f1] p[
+	Osin f400,w800[
+		Osqr f1,w10[Osin f5000]
+		Otri f0.1,w10.0[Osin f0.2]
 	]
 ] |
 
-Osin t15 f400w,500[Osqr f10] p[
+Osin t15 f400,w500[Osqr f10] p[
 	Osin r1.22/2 a.5
 	Osin f244 a.5
 ] |
 
-Osin t15 f600w,666[Osin f2] p[
+Osin t15 f600,w666[Osin f2] p[
 	Osin f400
-	Osin f400w,500[Osin f.1]
+	Osin f400,w500[Osin f.1]
 ] |
 
-Osin t15 f222w,666[Osin f0.1] p[
+Osin t15 f222,w666[Osin f0.1] p[
 	Osin r2/1
 	Osin r4/3
 	Osin r3/7

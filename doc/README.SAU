@@ -166,10 +166,10 @@ Parameters:
 			After a value or by itself, "[]" (square brackets)
 		can be used to set a list of PM modulator operators specified
 		within the "[]"; the list replaces any previous set, and may
-		be empty. Also, after such or by itself, "f[]" ("f" and square
-		brackets) can likewise set a list of frequency-amplified
-		PM modulators. This whole larger argument cannot contain
-		any whitespace outside parentheses or brackets.
+		be empty. Also, after these or by itself, ",f[]" (",f" and
+		square brackets) can likewise set a list of
+		frequency-amplified PM modulators. This whole larger argument
+		cannot contain any whitespace outside parentheses or brackets.
 			The sum of modulator amplitudes will phase-modulate
 		the carrier(s). For frequency-amplified PM modulators, first
 		the amplitudes are multiplied by the carrier frequency divided
@@ -201,16 +201,13 @@ Numerical expressions:
 	any whitespace, as it ends the expression. For example, "-1" is fine,
 	but "- 1" is a dangling minus followed by a dangling number 1, if not
 	inside parentheses as "(- 1)".
-		Expressions used to assign different values may be separated
-	by a letter and a special character; a named constant can't be written
-	directly before such a letter. Parentheses can be added to solve this.
 		The following operations are recognized, and grouped below by
 	priority (nested parentheses can be used to change evaluation order):
 		^	To the power of (right-associative)
 		* / %	Multiplication, division, remainder
 		+ -	Addition, subtraction
-	Parentheses can also be used to multiply when written after something
-	to multiply with, e.g. "2(3)" means "2*(3)" and gives "6".
+	Parentheses also allow shorthand multiplication (leaving out a
+	"*" between two parts), e.g. "2(3)" and "(2)3" both give "6".
 		Some parameters support named constants specific to that type
 	of value; such a name can be written instead of a number.
 		The following universal mathematical symbols (functions and
@@ -277,16 +274,14 @@ Modulation with value range:
 	lower bound, but with differing sign, while classic amplitude
 	modulation has one of the bounds set to zero.)
 		Following the letter specifying the parameter, and optionally
-	the normal value, the second value used for the bounds of the range
-	and/or a list of modulator operators can follow after "w," (where the
-	"w" is short for wave envelope). The "," is needed only if the second
-	value is included. These parts of the larger argument are ordered and
-	cannot contain any whitespace outside parentheses or brackets. The
-	second value defaults to 0.0 if not set for the object.
-		After "w", or "w," and optionally a value, "[]" (tilde and
-	square brackets) can be used to set a list of modulator operators
-	specified within the "[]"; the list replaces any previous set, and
-	may be empty.
+	the main value, the second value used for the bounds of the range,
+	and/or a list of modulator operators, can follow after ",w" (where the
+	"w" is short for wave envelope). These parts of the larger argument
+	are ordered and cannot contain any whitespace outside parentheses or
+	brackets. The second value defaults to 0.0 if not set for the object.
+		After ",w" and optionally a value, "[]" (square brackets) can
+	be used to set a list of modulator operators specified within the
+	"[]"; the list replaces any previous set, and may be empty.
 		Each modulator in the list will produce a result in the range
 	of 0.0 to 1.0, i.e. a positive signal, multiplied by its amplitude
 	parameter (defaulting to 1.0), negative amplitude multipliers having
@@ -295,8 +290,8 @@ Modulation with value range:
 	the range when the absolute value is not 1.0, but this is allowed
 	for the sake of flexibility.
 		The product of modulator amplitudes is mapped to the value
-	range; 0.0 means the normal value and 1.0 means the second value.
-	This adds a bias towards the normal value with more modulators used.
+	range; 0.0 means the main value and 1.0 means the second value.
+	This adds a bias towards the main value with more modulators used.
 
 Parameters and operator binding:
 	When specifying or referencing operators within "@[...]", any
