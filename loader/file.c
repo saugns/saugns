@@ -391,7 +391,8 @@ bool SAU_File_getd(SAU_File *restrict o,
 		double *restrict var, bool allow_sign,
 		size_t *restrict lenp) {
 	uint8_t c;
-	long double num = 0.f, pos_mul = 1.f;
+	double num_a = 0.f, pos_div = 1.f;
+	int64_t num_b = 0;
 	double res;
 	bool minus = false;
 	bool truncate = false;
@@ -410,13 +411,14 @@ bool SAU_File_getd(SAU_File *restrict o,
 			return true;
 		}
 		do {
-			num = num * 10.f + (c - '0');
+			num_a = num_a * 10.f + (c - '0');
 			c = SAU_File_GETC(o);
 			++len;
 		} while (IS_DIGIT(c));
 		if (c != '.') goto DONE;
 		c = SAU_File_GETC(o);
 		++len;
+		if (!IS_DIGIT(c)) goto DONE;
 	} else {
 		c = SAU_File_GETC(o);
 		++len;
@@ -427,13 +429,17 @@ bool SAU_File_getd(SAU_File *restrict o,
 		}
 	}
 	while (IS_DIGIT(c)) {
-		pos_mul *= 0.1f;
-		num += (c - '0') * pos_mul;
+		int64_t b = num_b * 10 + (c - '0');
+		if (num_b <= b) {
+			num_b = b;
+			pos_div *= 10.f; // may become inf
+		}
 		c = SAU_File_GETC(o);
 		++len;
 	}
+	num_a += num_b / pos_div; // importantly, num_b is never inf
 DONE:
-	res = (double) num;
+	res = (double) num_a;
 	if (isinf(res)) truncate = true;
 	if (minus) res = -res;
 	*var = res;
