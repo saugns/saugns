@@ -49,8 +49,6 @@ static bool SAU_init_Output(SAU_Output *restrict o, uint32_t srate,
 	*o = (SAU_Output){0};
 	o->options = options;
 	o->ch_count = (options & SAU_OPT_AUDIO_MONO) ? 1 : 2;
-	if ((options & SAU_OPT_MODE_CHECK) != 0)
-		return true;
 	if (use_audiodev) {
 		o->ad = SAU_open_AudioDev(o->ch_count, &ad_srate);
 		if (!o->ad)
@@ -128,7 +126,7 @@ static bool SAU_Output_run(SAU_Output *restrict o,
 	bool use_stereo = !(o->options & SAU_OPT_AUDIO_MONO);
 	bool use_stdout = (o->options & SAU_OPT_AUDIO_STDOUT);
 	bool split_gen = o->ad_buf;
-	bool run = !(o->options & SAU_OPT_MODE_CHECK);
+	bool run = true;
 	bool error = false;
 	SAU_Generator *gen = NULL, *ad_gen = NULL;
 	if (!(gen = SAU_create_Generator(prg, o->srate)))
@@ -184,7 +182,7 @@ ERROR:
  */
 bool SAU_play(const SAU_PtrArr *restrict script_objs, uint32_t srate,
 		uint32_t options, const char *restrict wav_path) {
-	if (!script_objs->count)
+	if (!script_objs->count || (options & SAU_OPT_MODE_CHECK) != 0)
 		return true;
 
 	SAU_Output out;
@@ -205,6 +203,8 @@ bool SAU_play(const SAU_PtrArr *restrict script_objs, uint32_t srate,
 		if (!(prg = script->program)) continue;
 		if ((options & SAU_OPT_PRINT_INFO) != 0)
 			SAU_Program_print_info(prg);
+		if ((options & SAU_OPT_PRINT_VERBOSE) != 0)
+			SAU_printf("Playing \"%s\".\n", prg->name);
 		if (!SAU_Output_run(&out, prg))
 			status = false;
 	}

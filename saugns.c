@@ -69,7 +69,8 @@ static void print_usage(bool h_arg, const char *restrict h_type) {
 "  -p \tPrint info for scripts after loading.\n"
 "  -e \tEvaluate strings instead of files.\n"
 "  -h \tPrint this and list help topics, or print help for '-h <topic>'.\n"
-"  -v \tPrint version.\n",
+"  -v \tBe verbose.\n"
+"  -V \tPrint version.\n",
 			stderr);
 	if (h_arg) {
 		const char *description = (h_type != NULL) ?
@@ -122,7 +123,7 @@ static bool parse_args(int argc, char **restrict argv,
 	opt.err = 1;
 REPARSE:
 	while ((c = SAU_getopt(argc, argv,
-	                       "amr:o:ecphv"TESTOPT
+	                       "Vamr:o:ecphv"TESTOPT
 			       "-mono-stdout", &opt)) != -1) {
 		switch (c) {
 		case '-':
@@ -149,6 +150,9 @@ REPARSE:
 			SAU_testopt = i;
 			continue;
 #endif
+		case 'V':
+			print_version();
+			goto ABORT;
 		case 'a':
 			if (*flags & (SAU_OPT_SYSAU_DISABLE |
 			              SAU_OPT_MODE_CHECK))
@@ -198,8 +202,8 @@ REPARSE:
 			*srate = i;
 			continue;
 		case 'v':
-			print_version();
-			goto ABORT;
+			*flags |= SAU_OPT_PRINT_VERBOSE;
+			break;
 		default:
 			fputs("Pass -h for general usage help.\n", stderr);
 			goto ABORT;

@@ -34,7 +34,7 @@ static void print_usage(void) {
 "  -c \tCheck scripts only, reporting any errors or requested info.\n"
 "  -p \tPrint info for scripts after loading.\n"
 "  -h \tPrint this message.\n"
-"  -v \tPrint version.\n",
+"  -V \tPrint version.\n",
 		stderr);
 }
 
@@ -71,6 +71,9 @@ static bool parse_args(int argc, char **restrict argv,
 NEXT_C:
 		if (!*++arg) continue;
 		switch (*arg) {
+		case 'V':
+			print_version();
+			goto ABORT;
 		case 'c':
 			if ((*flags & SAU_OPT_MODE_FULL) != 0)
 				goto USAGE;
@@ -84,9 +87,6 @@ NEXT_C:
 		case 'p':
 			*flags |= SAU_OPT_PRINT_INFO;
 			break;
-		case 'v':
-			print_version();
-			goto ABORT;
 		default:
 			goto USAGE;
 		}
