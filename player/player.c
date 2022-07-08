@@ -203,6 +203,10 @@ bool SAU_play(const SAU_PtrArr *restrict prg_objs, uint32_t srate,
 		if (!prg) continue;
 		if ((options & SAU_OPT_PRINT_INFO) != 0)
 			SAU_Program_print_info(prg);
+		if ((options & SAU_OPT_PRINT_VERBOSE) != 0)
+			SAU_printf((options & SAU_OPT_MODE_CHECK) != 0 ?
+					"Checked \"%s\".\n" :
+					"Playing \"%s\".\n", prg->name);
 		if (!SAU_Output_run(&out, prg))
 			status = false;
 	}
