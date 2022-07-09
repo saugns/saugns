@@ -13,7 +13,7 @@ Otri f100 p[
 	// The normal modulator, the amplitude of which is the modulation
 	// index, goes here... An amplitude of 1 correponds to I(t)=pi in
 	// the explanation and graph from Casio's 1992 US patent 5164530.
-	Osin r1 a0 a{v5 t3}
+	Osin r1 a0 a{g5 t3}
 ] t3
 
 | /1
@@ -22,7 +22,7 @@ Otri f100 p[
  * For comparison, plain PM done with a somewhat higher modulation index.
  */
 Osin f100 p[
-	Osin r1 a0 a{v(5*(5/4)) t3}
+	Osin r1 a0 a{g(5*(5/4)) t3}
 ] t3
 
 #Q

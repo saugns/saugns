@@ -11,14 +11,14 @@ Osin	f220 p[
 		Osin r(7/2) a0.5
 		Osin r(7/5) a0.5 p[Osin r(10/7) a(1/2)]
 	] t1.0
-;	f{cxpe v440 t0.15} t1.5
-;	f{cxpe v400 t0.15} t0.5
-;	f{cxpe v350 t0.15} t0.5
-;	f{cxpe v325 t0.15} t1.5
-;\1	f{cxpe v220 t0.15} t1
-;	f{cxpe v440 t0.15} t1.5
-;	f{cxpe v415 t0.15} t0.5
-;	f{cxpe v445 t0.15} t0.5
-;	f{cxpe v490 t0.15} t1.0
-;	f{cxpe v420 t0.15} t1.0
-;	f{cxpe v440 t0.15} t1.5
+;	f{rxpe g440 t0.15} t1.5
+;	f{rxpe g400 t0.15} t0.5
+;	f{rxpe g350 t0.15} t0.5
+;	f{rxpe g325 t0.15} t1.5
+;\1	f{rxpe g220 t0.15} t1
+;	f{rxpe g440 t0.15} t1.5
+;	f{rxpe g415 t0.15} t0.5
+;	f{rxpe g445 t0.15} t0.5
+;	f{rxpe g490 t0.15} t1.0
+;	f{rxpe g420 t0.15} t1.0
+;	f{rxpe g440 t0.15} t1.5

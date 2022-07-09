@@ -1,5 +1,5 @@
 /* saugns: Value ramp module.
- * Copyright (c) 2011-2013, 2017-2021 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -16,36 +16,39 @@
  */
 
 #pragma once
-#include "common.h"
+#include "math.h"
 
 /**
- * Ramp types.
+ * Ramp fill types.
  */
 enum {
 	SAU_RAMP_HOLD = 0,
 	SAU_RAMP_LIN,
+	SAU_RAMP_SIN,
 	SAU_RAMP_EXP,
 	SAU_RAMP_LOG,
 	SAU_RAMP_XPE,
 	SAU_RAMP_LGE,
-	SAU_RAMP_COS,
-	SAU_RAMP_TYPES
+	SAU_RAMP_FILLS
 };
 
-/** Names of ramp types, with an extra NULL pointer at the end. */
-extern const char *const SAU_Ramp_names[SAU_RAMP_TYPES + 1];
+/** Names of ramp fill types, with an extra NULL pointer at the end. */
+extern const char *const SAU_Ramp_names[SAU_RAMP_FILLS + 1];
 
 typedef void (*SAU_Ramp_fill_f)(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf);
 
-/** Curve fill functions for ramp types. */
-extern const SAU_Ramp_fill_f SAU_Ramp_fill_funcs[SAU_RAMP_TYPES];
+/** Fill functions for ramp fill types. */
+extern const SAU_Ramp_fill_f SAU_Ramp_fill_funcs[SAU_RAMP_FILLS];
 
 void SAU_Ramp_fill_hold(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf);
 void SAU_Ramp_fill_lin(float *restrict buf, uint32_t len,
+		float v0, float vt, uint32_t pos, uint32_t time,
+		const float *restrict mulbuf);
+void SAU_Ramp_fill_sin(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf);
 void SAU_Ramp_fill_exp(float *restrict buf, uint32_t len,
@@ -58,9 +61,6 @@ void SAU_Ramp_fill_xpe(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf);
 void SAU_Ramp_fill_lge(float *restrict buf, uint32_t len,
-		float v0, float vt, uint32_t pos, uint32_t time,
-		const float *restrict mulbuf);
-void SAU_Ramp_fill_cos(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf);
 
@@ -83,8 +83,9 @@ enum {
  */
 typedef struct SAU_Ramp {
 	float v0, vt;
+	uint32_t pos, end;
 	uint32_t time_ms;
-	uint8_t type;
+	uint8_t fill_type;
 	uint8_t flags;
 } SAU_Ramp;
 
@@ -97,11 +98,18 @@ typedef struct SAU_Ramp {
 #define SAU_Ramp_ENABLED(o) \
 	((o)->flags & (SAU_RAMPP_STATE | SAU_RAMPP_GOAL))
 
+/** Needed before get, run, or skip when a ramp is not copy-initialized. */
+static inline void SAU_Ramp_setup(SAU_Ramp *restrict o, uint32_t srate) {
+	o->end = SAU_ms_in_samples(o->time_ms, srate);
+}
 void SAU_Ramp_copy(SAU_Ramp *restrict o,
-		const SAU_Ramp *restrict src);
+		const SAU_Ramp *restrict src,
+		uint32_t srate);
 
-bool SAU_Ramp_run(SAU_Ramp *restrict o, uint32_t *restrict pos,
-		float *restrict buf, uint32_t buf_len, uint32_t srate,
+uint32_t SAU_Ramp_get(SAU_Ramp *restrict o,
+		float *restrict buf, uint32_t buf_len,
 		const float *restrict mulbuf);
-bool SAU_Ramp_skip(SAU_Ramp *restrict o, uint32_t *restrict pos,
-		uint32_t skip_len, uint32_t srate);
+bool SAU_Ramp_run(SAU_Ramp *restrict o,
+		float *restrict buf, uint32_t buf_len,
+		const float *restrict mulbuf);
+bool SAU_Ramp_skip(SAU_Ramp *restrict o, uint32_t skip_len);

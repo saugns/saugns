@@ -233,22 +233,30 @@ Value ramp:
 	goal value -- the ordinary value being the start for a trajectory --
 	following the ordinary value or by itself, the following value ramp
 	subparameters can be given values within "{}" (curly brackets):
-	v	Goal value.
-	t	Time to reach goal (default is the external "t" duration).
-	c	Ramp curve type (default 'lin'):
+	g	Goal (go-to) value, assigned to the parameter after time.
+		This value has no default and must be provided. If changed
+		again before the full time, the current point reached on the
+		previous trajectory will be used to change the start value.
+	r	Ramp fill shape (default 'lin'):
 			hold	Hold old value until time.
 			lin	Linear trajectory over time.
-			exp	Exponential-like increase or decrease.
-			log	"log(1 + x)"-like increase or decrease.
-			xpe	Exponential-like envelope (saturate or decay).
-			lge	"log(1 + x)"-like envelope (saturate or decay).
-			cos	A "cos(x)"-like falling or rising trajectory.
-		(The 'xpe' and 'lge' types use ear-tuned polynomial
+			sin	Sine-like smooth ends trajectory over time.
+			exp	Steep "exp(x)-1"-like increase or decrease.
+			log	Steep "log(x+1)"-like increase or decrease.
+			xpe	Exponential envelope shape (saturate or decay).
+			lge	Logarithmic envelope shape (saturate or decay).
+		(The 'exp' and 'log' shapes use ear-tuned polynomial
 		approximations with definite beginnings and ends,
-		designed to sound natural, and symmetric one to another.
-		The 'xpe' increases like 'log' and decreases like 'exp',
-		like a capacitor, natural-sounding for envelope-like use.
-		The 'lge' increases like 'exp' and decreases like 'log'.)
+		designed to sound natural for frequency sweeping,
+		and symmetric one to the other. The 'xpe' shape increases
+		like 'log' and decreases like 'exp', much like a capacitor
+		charges and discharges, natural-sounding for an envelope;
+		and 'lge' increases like 'exp' and decreases like 'log'.
+		The 'sin' shape sounds similar to 'lin', except it has a
+		smoothly curved start and stop, and a steeper middle.)
+	t	Time to reach goal (default is the external "t" duration).
+		If longer than the active time for the object which has the
+		ramped parameter, the trajectory will be left unfinished.
 
 Modulation with value range:
 	Amplitude and frequency (and relative frequency) parameters support
