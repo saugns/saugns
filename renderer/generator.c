@@ -471,6 +471,7 @@ static void mix_add(SAU_Generator *restrict o,
 			mix_r[i] += s + s_r;
 		}
 	} else {
+		SAU_Ramp_skip(&vn->pan, len);
 		for (uint32_t i = 0; i < len; ++i) {
 			float s = s_buf[i] * o->amp_scale;
 			float s_r = s * vn->pan.v0;

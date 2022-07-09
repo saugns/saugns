@@ -70,9 +70,11 @@ void SAU_Ramp_fill_lge(float *restrict buf, uint32_t len,
 enum {
 	SAU_RAMPP_STATE       = 1<<0, // v0 set
 	SAU_RAMPP_STATE_RATIO = 1<<1,
-	SAU_RAMPP_GOAL        = 1<<2, // vt and time_ms set
+	SAU_RAMPP_GOAL        = 1<<2, // vt set -- and timed fill will be done
 	SAU_RAMPP_GOAL_RATIO  = 1<<3,
-	SAU_RAMPP_TIME        = 1<<4, // manually used for tracking changes
+	SAU_RAMPP_FILL_TYPE   = 1<<4, // fill_type set
+	SAU_RAMPP_TIME        = 1<<5, // time_ms set -- cleared on time expiry
+	SAU_RAMPP_TIME_IF_NEW = 1<<6, // time_ms to be kept if currently set
 };
 
 /**

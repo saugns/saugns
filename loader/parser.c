@@ -463,12 +463,11 @@ static bool scan_ramp_state(SAU_Scanner *restrict o,
 		SAU_Ramp *restrict ramp, bool ratio) {
 	if (!scan_num(o, scan_numconst, &ramp->v0))
 		return false;
-	if (ratio) {
-		ramp->flags |= SAU_RAMPP_STATE_RATIO;
-	} else {
-		ramp->flags &= ~SAU_RAMPP_STATE_RATIO;
-	}
 	ramp->flags |= SAU_RAMPP_STATE;
+	if (ratio)
+		ramp->flags |= SAU_RAMPP_STATE_RATIO;
+	else
+		ramp->flags &= ~SAU_RAMPP_STATE_RATIO;
 	return true;
 }
 
@@ -479,19 +478,9 @@ static bool scan_ramp_param(SAU_Scanner *restrict o,
 	if (!SAU_Scanner_tryc(o, '{'))
 		return state;
 	struct ScanLookup *sl = o->data;
-	bool goal = false;
-	bool time_set = (ramp->flags & SAU_RAMPP_TIME) != 0;
-	float vt;
-	uint32_t time_ms = sl->sopt.def_time_ms;
-	uint8_t fill_type = ramp->fill_type; // has default
-	if ((ramp->flags & SAU_RAMPP_GOAL) != 0) {
-		// allow partial change
-		if (((ramp->flags & SAU_RAMPP_GOAL_RATIO) != 0) == ratio) {
-			goal = true;
-			vt = ramp->vt;
-		}
-		time_ms = ramp->time_ms;
-	}
+	uint32_t time_ms = (ramp->flags & SAU_RAMPP_TIME) != 0 ?
+		ramp->time_ms :
+		sl->sopt.def_time_ms;
 	for (;;) {
 		uint8_t c = SAU_Scanner_getc(o);
 		switch (c) {
@@ -499,19 +488,25 @@ static bool scan_ramp_param(SAU_Scanner *restrict o,
 		case SAU_SCAN_LNBRK:
 			break;
 		case 'g':
-			if (scan_num(o, scan_numconst, &vt))
-				goal = true;
+			if (scan_num(o, scan_numconst, &ramp->vt)) {
+				ramp->flags |= SAU_RAMPP_GOAL;
+				if (ratio)
+					ramp->flags |= SAU_RAMPP_GOAL_RATIO;
+				else
+					ramp->flags &= ~SAU_RAMPP_GOAL_RATIO;
+			}
 			break;
 		case 'r': {
 			size_t id;
 			if (scan_symafind(o, sl->ramp_names,
 					&id, "ramp fill shape")) {
-				fill_type = id;
+				ramp->fill_type = id;
+				ramp->flags |= SAU_RAMPP_FILL_TYPE;
 			}
 			break; }
 		case 't':
 			if (scan_time_val(o, &time_ms))
-				time_set = true;
+				ramp->flags &= ~SAU_RAMPP_TIME_IF_NEW;
 			break;
 		case '}':
 			goto RETURN;
@@ -524,23 +519,8 @@ static bool scan_ramp_param(SAU_Scanner *restrict o,
 		}
 	}
 RETURN:
-	if (!goal) {
-		SAU_Scanner_warning(o, NULL,
-				"ignoring value ramp with no target value");
-		return false;
-	}
-	ramp->vt = vt;
 	ramp->time_ms = time_ms;
-	ramp->fill_type = fill_type;
-	ramp->flags |= SAU_RAMPP_GOAL;
-	if (ratio)
-		ramp->flags |= SAU_RAMPP_GOAL_RATIO;
-	else
-		ramp->flags &= ~SAU_RAMPP_GOAL_RATIO;
-	if (time_set)
-		ramp->flags |= SAU_RAMPP_TIME;
-	else
-		ramp->flags &= ~SAU_RAMPP_TIME;
+	ramp->flags |= SAU_RAMPP_TIME;
 	return true;
 }
 
@@ -682,7 +662,9 @@ static SAU_Ramp *create_ramp(SAU_Parser *restrict o,
 		return NULL;
 	}
 	ramp->v0 = v0;
-	ramp->flags |= SAU_RAMPP_STATE;
+	ramp->flags |= SAU_RAMPP_STATE |
+		SAU_RAMPP_FILL_TYPE |
+		SAU_RAMPP_TIME_IF_NEW; /* don't set main SAU_RAMPP_TIME here */
 	if (mult) {
 		ramp->flags |= SAU_RAMPP_STATE_RATIO;
 	}
@@ -693,9 +675,9 @@ static bool parse_ramp(SAU_Parser *restrict o,
 		SAU_ScanNumConst_f scan_numconst,
 		SAU_Ramp **restrict rampp, bool mult,
 		uint32_t ramp_id) {
-	if (!*rampp) {
+	if (!*rampp) { /* create for updating, unparsed values kept unset */
 		*rampp = create_ramp(o, mult, ramp_id);
-		(*rampp)->flags &= ~SAU_RAMPP_STATE; // only set on parse
+		(*rampp)->flags &= ~(SAU_RAMPP_STATE | SAU_RAMPP_FILL_TYPE);
 	}
 	return scan_ramp_param(o->sc, scan_numconst, *rampp, mult);
 }
@@ -1446,8 +1428,10 @@ static inline void time_ramp(SAU_Ramp *restrict ramp,
 		uint32_t default_time_ms) {
 	if (!ramp)
 		return;
-	if (!(ramp->flags & SAU_RAMPP_TIME))
+	if (ramp->flags & SAU_RAMPP_TIME_IF_NEW) { /* update fallback value */
 		ramp->time_ms = default_time_ms;
+		ramp->flags |= SAU_RAMPP_TIME;
+	}
 }
 
 static uint32_t time_operator(SAU_ScriptOpRef *restrict op) {

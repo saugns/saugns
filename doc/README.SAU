@@ -237,7 +237,7 @@ Value ramp:
 		This value has no default and must be provided. If changed
 		again before the full time, the current point reached on the
 		previous trajectory will be used to change the start value.
-	r	Ramp fill shape (default 'lin'):
+	r	Ramp fill shape (default 'lin', or the previous shape if any):
 			hold	Hold old value until time.
 			lin	Linear trajectory over time.
 			sin	Sine-like smooth ends trajectory over time.
@@ -254,7 +254,8 @@ Value ramp:
 		and 'lge' increases like 'exp' and decreases like 'log'.
 		The 'sin' shape sounds similar to 'lin', except it has a
 		smoothly curved start and stop, and a steeper middle.)
-	t	Time to reach goal (default is the external "t" duration).
+	t	Time to reach goal (default is the external "t" duration,
+		or the remaining previous time, if any, for this parameter).
 		If longer than the active time for the object which has the
 		ramped parameter, the trajectory will be left unfinished.
 

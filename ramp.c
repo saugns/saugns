@@ -217,13 +217,26 @@ void SAU_Ramp_copy(SAU_Ramp *restrict o,
 	}
 	if ((src->flags & SAU_RAMPP_GOAL) != 0) {
 		o->vt = src->vt;
+		if (src->flags & SAU_RAMPP_TIME_IF_NEW)
+			o->end -= o->pos;
 		o->pos = 0;
-		o->end = SAU_ms_in_samples(src->time_ms, srate);
-		o->time_ms = src->time_ms;
-		o->fill_type = src->fill_type;
 		mask |= SAU_RAMPP_GOAL
-			| SAU_RAMPP_GOAL_RATIO
-			| SAU_RAMPP_TIME;
+			| SAU_RAMPP_GOAL_RATIO;
+	}
+	if ((src->flags & SAU_RAMPP_FILL_TYPE) != 0) {
+		o->fill_type = src->fill_type;
+		mask |= SAU_RAMPP_FILL_TYPE;
+	}
+	if (!(o->flags & SAU_RAMPP_TIME) ||
+	    !(src->flags & SAU_RAMPP_TIME_IF_NEW)) {
+		/*
+		 * Time overridden.
+		 */
+		if ((src->flags & SAU_RAMPP_TIME) != 0) {
+			o->end = SAU_ms_in_samples(src->time_ms, srate);
+			o->time_ms = src->time_ms;
+			mask |= SAU_RAMPP_TIME;
+		}
 	}
 	o->flags &= ~mask;
 	o->flags |= (src->flags & mask);
@@ -275,6 +288,26 @@ sauNoinline uint32_t SAU_Ramp_get(SAU_Ramp *restrict o,
 	return len;
 }
 
+/*
+ * Move time position up to \p buf_len samples for the ramp towards the end.
+ *
+ * \return true unless time has expired
+ */
+static bool advance_len(SAU_Ramp *restrict o, uint32_t buf_len) {
+	uint32_t len = 0;
+	if (o->pos < o->end) {
+		len = o->end - o->pos;
+		if (len > buf_len) len = buf_len;
+		o->pos += len;
+	}
+	if (o->pos >= o->end) {
+		o->pos = 0;
+		o->flags &= ~SAU_RAMPP_TIME;
+		return false;
+	}
+	return true;
+}
+
 /**
  * Fill \p buf with \p buf_len values for the ramp.
  * A value is \a v0 if no goal is set, or a ramping
@@ -296,7 +329,10 @@ bool SAU_Ramp_run(SAU_Ramp *restrict o,
 		float *restrict buf, uint32_t buf_len,
 		const float *restrict mulbuf) {
 	uint32_t len = 0;
-	if (!(o->flags & SAU_RAMPP_GOAL)) goto FILL;
+	if (!(o->flags & SAU_RAMPP_GOAL)) {
+		advance_len(o, buf_len);
+		goto FILL;
+	}
 	len = SAU_Ramp_get(o, buf, buf_len, mulbuf);
 	o->pos += len;
 	if (o->pos >= o->end) {
@@ -305,8 +341,8 @@ bool SAU_Ramp_run(SAU_Ramp *restrict o,
 		 * filling remaining buffer values with it.
 		 */
 		o->v0 = o->vt;
-		o->flags &= ~(SAU_RAMPP_GOAL | SAU_RAMPP_GOAL_RATIO);
 		o->pos = 0;
+		o->flags&=~(SAU_RAMPP_GOAL|SAU_RAMPP_GOAL_RATIO|SAU_RAMPP_TIME);
 	FILL:
 		if (!(o->flags & SAU_RAMPP_STATE_RATIO))
 			mulbuf = NULL;
@@ -329,15 +365,9 @@ bool SAU_Ramp_run(SAU_Ramp *restrict o,
  * \return true if ramp goal not yet reached
  */
 bool SAU_Ramp_skip(SAU_Ramp *restrict o, uint32_t skip_len) {
-	uint32_t len = 0;
-	if (!(o->flags & SAU_RAMPP_GOAL))
-		return false;
-	if (o->pos >= o->end) goto REACHED;
-	len = o->end - o->pos;
-	if (len > skip_len) len = skip_len;
-	o->pos += len;
-	if (o->pos >= o->end)
-	REACHED: {
+	if (!advance_len(o, skip_len)) {
+		if (!(o->flags & SAU_RAMPP_GOAL))
+			return false;
 		/*
 		 * Goal reached; turn into new state value.
 		 */
@@ -348,8 +378,7 @@ bool SAU_Ramp_skip(SAU_Ramp *restrict o, uint32_t skip_len) {
 			o->flags &= ~SAU_RAMPP_STATE_RATIO;
 		}
 		o->flags &= ~(SAU_RAMPP_GOAL | SAU_RAMPP_GOAL_RATIO);
-		o->pos = 0;
 		return false;
 	}
-	return true;
+	return (o->flags & SAU_RAMPP_GOAL) != 0;
 }
