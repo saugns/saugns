@@ -508,9 +508,14 @@ static bool scan_ramp_param(SAU_Scanner *restrict o,
 			if (scan_time_val(o, &time_ms))
 				ramp->flags &= ~SAU_RAMPP_TIME_IF_NEW;
 			break;
+		case 'v':
+			if (state) goto REJECT;
+			scan_ramp_state(o, scan_numconst, ramp, ratio);
+			break;
 		case '}':
 			goto RETURN;
 		default:
+		REJECT:
 			if (!handle_unknown_or_eof(o, c)) {
 				warn_eof_without_closing(o, '}');
 				goto RETURN;

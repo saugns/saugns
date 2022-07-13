@@ -258,6 +258,9 @@ Value ramp:
 		or the remaining previous time, if any, for this parameter).
 		If longer than the active time for the object which has the
 		ramped parameter, the trajectory will be left unfinished.
+	v	Start (state) value, the ordinary parameter value.
+		It can alternatively be set here after a 'v',
+		if not set before the enclosing "{}".
 
 Modulation with value range:
 	Amplitude and frequency (and relative frequency) parameters support
