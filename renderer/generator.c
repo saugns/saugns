@@ -64,9 +64,17 @@ typedef struct EventNode {
 	uint32_t op_data_count;
 } EventNode;
 
+/*
+ * Generator flags.
+ */
+enum {
+	GEN_OUT_CLEAR = 1<<0,
+};
+
 struct SAU_Generator {
 	uint32_t srate;
-	uint32_t gen_buf_count;
+	uint16_t gen_flags;
+	uint16_t gen_mix_add_max;
 	Buf *gen_bufs, *mix_bufs;
 	size_t event, ev_count;
 	EventNode **events;
@@ -109,7 +117,6 @@ static bool alloc_for_program(SAU_Generator *restrict o,
 	if (i > 0) {
 		o->gen_bufs = calloc(i, sizeof(Buf));
 		if (!o->gen_bufs) goto ERROR;
-		o->gen_buf_count = i;
 	}
 	o->mix_bufs = calloc(2, sizeof(Buf));
 	if (!o->mix_bufs) goto ERROR;
@@ -445,8 +452,11 @@ static uint32_t run_block(SAU_Generator *restrict o,
  * Clear the mix buffers. To be called before adding voice outputs.
  */
 static void mix_clear(SAU_Generator *restrict o) {
-	memset(o->mix_bufs[0], 0, sizeof(float) * BUF_LEN);
-	memset(o->mix_bufs[1], 0, sizeof(float) * BUF_LEN);
+	if (o->gen_mix_add_max == 0)
+		return;
+	memset(o->mix_bufs[0], 0, sizeof(float) * o->gen_mix_add_max);
+	memset(o->mix_bufs[1], 0, sizeof(float) * o->gen_mix_add_max);
+	o->gen_mix_add_max = 0;
 }
 
 /*
@@ -479,6 +489,7 @@ static void mix_add(SAU_Generator *restrict o,
 			mix_r[i] += s + s_r;
 		}
 	}
+	if (o->gen_mix_add_max < len) o->gen_mix_add_max = len;
 }
 
 /**
@@ -490,6 +501,7 @@ static void mix_write_mono(SAU_Generator *restrict o,
 		int16_t **restrict spp, uint32_t len) {
 	float *mix_l = o->mix_bufs[0];
 	float *mix_r = o->mix_bufs[1];
+	o->gen_flags &= ~GEN_OUT_CLEAR;
 	for (uint32_t i = 0; i < len; ++i) {
 		float s_m = (mix_l[i] + mix_r[i]) * 0.5f;
 		if (s_m > 1.f) s_m = 1.f;
@@ -507,6 +519,7 @@ static void mix_write_stereo(SAU_Generator *restrict o,
 		int16_t **restrict spp, uint32_t len) {
 	float *mix_l = o->mix_bufs[0];
 	float *mix_r = o->mix_bufs[1];
+	o->gen_flags &= ~GEN_OUT_CLEAR;
 	for (uint32_t i = 0; i < len; ++i) {
 		float s_l = mix_l[i];
 		float s_r = mix_r[i];
@@ -638,7 +651,10 @@ bool SAU_Generator_run(SAU_Generator *restrict o,
 	int16_t *sp = buf;
 	uint32_t len = buf_len;
 	uint32_t skip_len, last_len, gen_len = 0;
-	memset(buf, 0, sizeof(int16_t) * (stereo ? len * 2 : len));
+	if (!(o->gen_flags & GEN_OUT_CLEAR)) {
+		o->gen_flags |= GEN_OUT_CLEAR;
+		memset(buf, 0, sizeof(int16_t) * (stereo ? len * 2 : len));
+	}
 PROCESS:
 	skip_len = 0;
 	while (o->event < o->ev_count) {
