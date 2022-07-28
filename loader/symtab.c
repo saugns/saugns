@@ -1,5 +1,5 @@
 /* saugns: Symbol table module.
- * Copyright (c) 2011-2012, 2014, 2017-2020 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2014, 2017-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -12,6 +12,7 @@
  */
 
 #include "symtab.h"
+#include "../arrtype.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -28,14 +29,16 @@ static size_t collision_count = 0;
 #include <stdio.h>
 #endif
 
+sauArrType(ItemTab, SAU_SymItem, );
+
 typedef struct StrTab {
-	SAU_SymStr **items;
+	SAU_SymStr **sstra;
 	size_t count;
 	size_t alloc;
 } StrTab;
 
 static inline void fini_StrTab(StrTab *restrict o) {
-	free(o->items);
+	free(o->sstra);
 }
 
 /*
@@ -66,46 +69,46 @@ static size_t StrTab_hash_key(StrTab *restrict o,
  * \return true, or false on allocation failure
  */
 static bool StrTab_upsize(StrTab *restrict o) {
-	SAU_SymStr **items, **old_items = o->items;
+	SAU_SymStr **sstra, **old_sstra = o->sstra;
 	size_t alloc, old_alloc = o->alloc;
 	size_t i;
 	alloc = (old_alloc > 0) ?
 		(old_alloc << 1) :
 		STRTAB_ALLOC_INITIAL;
-	items = calloc(alloc, sizeof(SAU_SymStr*));
-	if (!items)
+	sstra = calloc(alloc, sizeof(SAU_SymStr*));
+	if (!sstra)
 		return false;
 	o->alloc = alloc;
-	o->items = items;
+	o->sstra = sstra;
 
 	/*
 	 * Rehash entries
 	 */
 	for (i = 0; i < old_alloc; ++i) {
-		SAU_SymStr *item = old_items[i];
-		while (item != NULL) {
-			SAU_SymStr *prev_item;
+		SAU_SymStr *node = old_sstra[i];
+		while (node != NULL) {
+			SAU_SymStr *prev_node;
 			size_t hash;
-			hash = StrTab_hash_key(o, item->key, item->key_len);
+			hash = StrTab_hash_key(o, node->key, node->key_len);
 			/*
 			 * Before adding the entry to the new table, set
-			 * item->prev to the previous (if any) item with
+			 * node->prev to the previous (if any) node with
 			 * the same hash in the new table. Done repeatedly,
 			 * the links are rebuilt, though not necessarily in
 			 * the same order.
 			 */
-			prev_item = item->prev;
-			item->prev = o->items[hash];
-			o->items[hash] = item;
-			item = prev_item;
+			prev_node = node->prev;
+			node->prev = o->sstra[hash];
+			o->sstra[hash] = node;
+			node = prev_node;
 		}
 	}
-	free(old_items);
+	free(old_sstra);
 	return true;
 }
 
 /*
- * Get unique item for key in hash table, adding it if missing.
+ * Get unique node for key in hash table, adding it if missing.
  * If allocated, \p extra is added to the size of the node; use
  * 1 to add a NULL-byte for a string key.
  *
@@ -113,7 +116,7 @@ static bool StrTab_upsize(StrTab *restrict o) {
  *
  * \return SAU_SymStr, or NULL on allocation failure
  */
-static SAU_SymStr *StrTab_unique_item(StrTab *restrict o,
+static SAU_SymStr *StrTab_unique_node(StrTab *restrict o,
 		SAU_MemPool *restrict memp,
 		const void *restrict key, size_t len, size_t extra) {
 	if (!key || len == 0)
@@ -124,29 +127,30 @@ static SAU_SymStr *StrTab_unique_item(StrTab *restrict o,
 	}
 
 	size_t hash = StrTab_hash_key(o, key, len);
-	SAU_SymStr *item = o->items[hash];
-	while (item != NULL) {
-		if (item->key_len == len &&
-			!memcmp(item->key, key, len)) return item;
-		item = item->prev;
+	SAU_SymStr *sstr = o->sstra[hash];
+	while (sstr != NULL) {
+		if (sstr->key_len == len &&
+			!memcmp(sstr->key, key, len)) return sstr;
+		sstr = sstr->prev;
 #if SAU_SYMTAB_STATS
 		++collision_count;
 #endif
 	}
-	item = SAU_MemPool_alloc(memp, sizeof(SAU_SymStr) + (len + extra));
-	if (!item)
+	sstr = SAU_MemPool_alloc(memp, sizeof(SAU_SymStr) + (len + extra));
+	if (!sstr)
 		return NULL;
-	item->prev = o->items[hash];
-	o->items[hash] = item;
-	item->key_len = len;
-	memcpy(item->key, key, len);
+	sstr->prev = o->sstra[hash];
+	o->sstra[hash] = sstr;
+	sstr->key_len = len;
+	memcpy(sstr->key, key, len);
 	++o->count;
-	return item;
+	return sstr;
 }
 
 struct SAU_SymTab {
 	SAU_MemPool *memp;
-	StrTab strtab;
+	StrTab strt;
+	ItemTab itemt;
 };
 
 /**
@@ -161,6 +165,7 @@ SAU_SymTab *SAU_create_SymTab(SAU_MemPool *restrict mempool) {
 	if (!o)
 		return NULL;
 	o->memp = mempool;
+	o->itemt.asize = sizeof(SAU_SymItem) * 256; /* larger initial alloc */
 	return o;
 }
 
@@ -173,44 +178,76 @@ void SAU_destroy_SymTab(SAU_SymTab *restrict o) {
 #if SAU_SYMTAB_STATS
 	fprintf(stderr, "collision count: %zd\n", collision_count);
 #endif
-	fini_StrTab(&o->strtab);
+	fini_StrTab(&o->strt);
+	ItemTab_clear(&o->itemt);
 }
 
 /**
- * Get the unique item held for \p str in the symbol table,
+ * Get the unique node held for \p str in the symbol table,
  * adding \p str to the string pool unless already present.
  *
- * \return unique item for \p str, or NULL on allocation failure
+ * \return unique node for \p str, or NULL on allocation failure
  */
 SAU_SymStr *SAU_SymTab_get_symstr(SAU_SymTab *restrict o,
 		const void *restrict str, size_t len) {
-	return StrTab_unique_item(&o->strtab, o->memp, str, len, 1);
+	return StrTab_unique_node(&o->strt, o->memp, str, len, 1);
+}
+
+/**
+ * Add an item for the string \p symstr.
+ *
+ * \return item, or NULL if none
+ */
+SAU_SymItem *SAU_SymTab_add_item(SAU_SymTab *restrict o,
+		SAU_SymStr *restrict symstr, uint32_t type_id) {
+	SAU_SymItem *item = ItemTab_add(&o->itemt, NULL);
+	if (!item)
+		return NULL;
+	item->type_id = type_id;
+	item->prev = symstr->item_i;
+	item->sstr = symstr;
+	symstr->item_i = o->itemt.count; /* offset by +1 */
+	return item;
+}
+
+/**
+ * Look for an item for the string \p symstr matching \p type_id.
+ *
+ * \return item, or NULL if none
+ */
+SAU_SymItem *SAU_SymTab_find_item(SAU_SymTab *restrict o,
+		SAU_SymStr *restrict symstr, uint32_t type_id) {
+	uint32_t i = symstr->item_i;
+	while (i > 0) {
+		SAU_SymItem *item = &o->itemt.a[i - 1];
+		if (item->type_id == type_id)
+			return item;
+		i = item->prev;
+	}
+	return NULL;
 }
 
 /**
  * Add the first \p n strings from \p stra to the string pool of the
- * symbol table, except any already present. An array of pointers to
- * the unique string pool copies of all \p stra strings, followed by
- * an extra NULL pointer, is allocated and returned; it is stored in
- * the memory pool used by the symbol table.
+ * symbol table. For each, an item will be prepared according to the
+ * \p type_id, and the current string index from 0 to n will be used
+ * for its id; the data field will be set to \p stra.
  *
  * All strings in \p stra need to be null-terminated.
  *
- * \return array of pointers to unique strings, or NULL on allocation failure
+ * \return true, or false on allocation failure
  */
-const char **SAU_SymTab_pool_stra(SAU_SymTab *restrict o,
-		const char *const*restrict stra,
-		size_t n) {
-	const char **res_stra;
-	res_stra = SAU_MemPool_alloc(o->memp, sizeof(const char*) * (n + 1));
-	if (!res_stra)
-		return NULL;
+bool SAU_SymTab_add_stra(SAU_SymTab *restrict o,
+		const char *const*restrict stra, size_t n,
+		uint32_t type_id) {
 	for (size_t i = 0; i < n; ++i) {
-		const char *str = SAU_SymTab_pool_str(o,
+		SAU_SymItem *item;
+		SAU_SymStr *s = SAU_SymTab_get_symstr(o,
 				stra[i], strlen(stra[i]));
-		if (!str)
-			return NULL;
-		res_stra[i] = str;
+		if (!s || !(item = SAU_SymTab_add_item(o, s, type_id)))
+			return false;
+		item->id = i;
+		item->data = (void*) stra;
 	}
-	return res_stra;
+	return true;
 }

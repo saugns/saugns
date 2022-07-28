@@ -35,6 +35,7 @@ OBJ=\
 	player/player.o \
 	saugns.o
 TEST1_OBJ=\
+	arrtype.o \
 	common.o \
 	ptrarr.o \
 	loader/file.o \
@@ -142,7 +143,7 @@ loader/parser.o: common.h help.h loader/file.h loader/parser.c loader/scanner.h 
 loader/scanner.o: common.h loader/file.h loader/scanner.c loader/scanner.h loader/symtab.h math.h mempool.h
 	$(CC) -c $(CFLAGS_FAST) loader/scanner.c -o loader/scanner.o
 
-loader/symtab.o: common.h loader/symtab.c loader/symtab.h mempool.h
+loader/symtab.o: arrtype.h common.h loader/symtab.c loader/symtab.h mempool.h
 	$(CC) -c $(CFLAGS_FAST) loader/symtab.c -o loader/symtab.o
 
 math.o: common.h math.c math.h

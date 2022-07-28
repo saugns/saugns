@@ -27,11 +27,23 @@
 #define IS_UPPER(c) ((c) >= 'A' && (c) <= 'Z')
 #define IS_ALPHA(c) (IS_LOWER(c) || IS_UPPER(c))
 
+enum {
+	SAU_SYM_VAR = 0,
+	SAU_SYM_MATH_ID,
+	SAU_SYM_RAMP_ID,
+	SAU_SYM_WAVE_ID,
+	SAU_SYM_TYPES
+};
+
+static const char *const scan_name_labels[SAU_SYM_TYPES] = {
+	"label",
+	"math symbol",
+	"ramp fill shape",
+	"wave type",
+};
+
 struct ScanLookup {
 	SAU_ScriptOptions sopt;
-	const char *const*math_names;
-	const char *const*ramp_names;
-	const char *const*wave_names;
 	struct SAU_Math_state math_state;
 };
 
@@ -51,14 +63,12 @@ static const SAU_ScriptOptions def_sopt = {
 static bool init_ScanLookup(struct ScanLookup *restrict o,
 		SAU_SymTab *restrict st) {
 	o->sopt = def_sopt;
-	if (!(o->math_names = SAU_SymTab_pool_stra(st,
-			SAU_Math_names, SAU_MATH_SYMBOLS)))
-		return false;
-	if (!(o->ramp_names = SAU_SymTab_pool_stra(st,
-			SAU_Ramp_names, SAU_RAMP_FILLS)))
-		return false;
-	if (!(o->wave_names = SAU_SymTab_pool_stra(st,
-			SAU_Wave_names, SAU_WAVE_TYPES)))
+	if (!SAU_SymTab_add_stra(st, SAU_Math_names, SAU_MATH_SYMBOLS,
+			SAU_SYM_MATH_ID) ||
+	    !SAU_SymTab_add_stra(st, SAU_Ramp_names, SAU_RAMP_FILLS,
+			SAU_SYM_RAMP_ID) ||
+	    !SAU_SymTab_add_stra(st, SAU_Wave_names, SAU_WAVE_TYPES,
+			SAU_SYM_WAVE_ID))
 		return false;
 	return true;
 }
@@ -126,39 +136,40 @@ static uint8_t scan_filter_hashcommands(SAU_Scanner *restrict o, uint8_t c) {
 	return c;
 }
 
-static bool scan_symafind(SAU_Scanner *restrict o,
-		const char *const*restrict stra,
-		size_t *restrict found_i, const char *restrict print_type) {
+static SAU_SymItem *scan_name(SAU_Scanner *restrict o, uint32_t type_id,
+		const char *const*restrict help_stra) {
+	const char *type_label = scan_name_labels[type_id];
 	SAU_ScanFrame sf_begin = o->sf;
 	SAU_SymStr *s = NULL;
 	SAU_Scanner_get_symstr(o, &s);
 	if (!s) {
-		SAU_Scanner_warning(o, NULL, "%s name missing", print_type);
-		return false;
+		SAU_Scanner_warning(o, NULL, "%s name missing", type_label);
+		return NULL;
 	}
-	for (size_t i = 0; stra[i] != NULL; ++i) {
-		if (stra[i] == s->key) {
-			*found_i = i;
-			return true;
-		}
+	SAU_SymItem *item = SAU_SymTab_find_item(o->symtab, s, type_id);
+	if (!item && type_id == SAU_SYM_VAR)
+		item = SAU_SymTab_add_item(o->symtab, s, SAU_SYM_VAR);
+	if (!item && help_stra != NULL) {
+		SAU_Scanner_warning(o, &sf_begin,
+				"invalid %s name '%s'; available are:",
+				type_label, s->key);
+		SAU_print_names(help_stra, "\t", stderr);
+		return NULL;
 	}
-	SAU_Scanner_warning(o, &sf_begin,
-			"invalid %s name '%s'; available are:",
-			print_type, s->key);
-	SAU_print_names(stra, "\t", stderr);
-	return false;
+	return item;
 }
 
 static bool scan_mathfunc(SAU_Scanner *restrict o, size_t *restrict found_id) {
-	struct ScanLookup *sl = o->data;
-	if (!scan_symafind(o, sl->math_names, found_id, "math symbol"))
+	SAU_SymItem *sym = scan_name(o, SAU_SYM_MATH_ID, SAU_Math_names);
+	if (!sym)
 		return false;
-	if (SAU_Math_params[*found_id] == SAU_MATH_NOARG_F)
+	*found_id = sym->id;
+	if (SAU_Math_params[sym->id] == SAU_MATH_NOARG_F)
 		return true; // no param list, no parentheses
 	if (SAU_Scanner_tryc(o, '('))
 		return true;
 	SAU_Scanner_warning(o, NULL,
-"expected '(' following math function name '%s'", SAU_Math_names[*found_id]);
+"expected '(' following math function name '%s'", SAU_Math_names[sym->id]);
 	return false;
 }
 
@@ -208,7 +219,7 @@ static double scan_num_r(struct NumParser *restrict o,
 				SAU_Scanner_skipws(sc);
 				if (!SAU_Scanner_tryc(sc, ')')) {
 					SAU_Scanner_warning(sc, NULL,
-"math function '%s()' takes no arguments", sl->math_names[func_id]);
+"math function '%s()' takes no arguments", SAU_Math_names[func_id]);
 					goto REJECT;
 				}
 				num = SAU_Math_symbols[func_id]
@@ -225,7 +236,7 @@ static double scan_num_r(struct NumParser *restrict o,
 			default:
 				SAU_error("scan_num_r",
 "math function '%s' has unimplemented parameter type",
-						sl->math_names[func_id]);
+						SAU_Math_names[func_id]);
 				goto REJECT;
 			}
 		}
@@ -471,20 +482,12 @@ static size_t scan_phase_const(SAU_Scanner *restrict o,
 	}
 }
 
-static SAU_SymStr *scan_label(SAU_Scanner *restrict o,
-		char op) {
-	SAU_SymStr *s = NULL;
-	SAU_Scanner_get_symstr(o, &s);
-	if (!s) {
-		SAU_Scanner_warning(o, NULL,
-				"ignoring %c without label name", op);
-	}
-	return s;
-}
-
 static bool scan_wavetype(SAU_Scanner *restrict o, size_t *restrict found_id) {
-	struct ScanLookup *sl = o->data;
-	return scan_symafind(o, sl->wave_names, found_id, "wave type");
+	SAU_SymItem *sym = scan_name(o, SAU_SYM_WAVE_ID, SAU_Wave_names);
+	if (!sym)
+		return false;
+	*found_id = sym->id;
+	return true;
 }
 
 static bool scan_ramp_state(SAU_Scanner *restrict o,
@@ -526,10 +529,10 @@ static bool scan_ramp_param(SAU_Scanner *restrict o,
 			}
 			break;
 		case 'r': {
-			size_t id;
-			if (scan_symafind(o, sl->ramp_names,
-					&id, "ramp fill shape")) {
-				ramp->fill_type = id;
+			SAU_SymItem *sym = scan_name(o, SAU_SYM_RAMP_ID,
+					SAU_Ramp_names);
+			if (sym) {
+				ramp->fill_type = sym->id;
 				ramp->flags |= SAU_RAMPP_FILL_TYPE;
 			}
 			break; }
@@ -655,7 +658,7 @@ struct ParseLevel {
 	SAU_ScriptOpRef *ev_first_data, *ev_last_data;
 	SAU_ScriptOpRef *operator;
 	SAU_ScriptListData *last_mods_list;
-	SAU_SymStr *set_label; /* label assigned to next node */
+	SAU_SymItem *set_label; /* label assigned to next node */
 	/* timing/delay */
 	SAU_ScriptEvData *main_ev; /* if events are nested, for grouping... */
 	uint32_t next_wait_ms; /* added for next event */
@@ -892,7 +895,7 @@ static void begin_operator(SAU_Parser *restrict o,
 	 */
 	if (pl->set_label != NULL) {
 		op->label = pl->set_label;
-		op->label->data = op;
+		pl->set_label->data = op;
 		pl->set_label = NULL;
 	} else if (!is_compstep && pop != NULL && pop->label != NULL) {
 		op->label = pop->label;
@@ -1250,7 +1253,6 @@ DEFER:
 static bool parse_level(SAU_Parser *restrict o,
 		uint8_t use_type, uint8_t newscope) {
 	struct ParseLevel pl;
-	SAU_SymStr *label;
 	bool endscope = false;
 	enter_level(o, &pl, use_type, newscope);
 	SAU_Scanner *sc = o->sc;
@@ -1280,7 +1282,7 @@ static bool parse_level(SAU_Parser *restrict o,
 "ignoring label assignment to label assignment");
 				break;
 			}
-			pl.set_label = label = scan_label(sc, c);
+			pl.set_label = scan_name(sc, SAU_SYM_VAR, NULL);
 			break;
 		case '/':
 			if (pl.nest_list != NULL)
@@ -1297,7 +1299,7 @@ static bool parse_level(SAU_Parser *restrict o,
 			}
 			warn_closing_without_opening(sc, '>', '<');
 			break;
-		case '@':
+		case '@': {
 			if (SAU_Scanner_tryc(sc, '[')) {
 				end_operator(o);
 				if (parse_level(o, pl.use_type, SCOPE_BIND))
@@ -1317,7 +1319,7 @@ static bool parse_level(SAU_Parser *restrict o,
 				pl.set_label = NULL;
 			}
 			pl.sub_f = NULL;
-			label = scan_label(sc, c);
+			SAU_SymItem *label = scan_name(sc, SAU_SYM_VAR, NULL);
 			if (label != NULL) {
 				SAU_ScriptOpRef *ref = label->data;
 				if (!ref)
@@ -1328,7 +1330,7 @@ static bool parse_level(SAU_Parser *restrict o,
 					parse_in_event(o);
 				}
 			}
-			break;
+			break; }
 		case 'O': {
 			size_t wave;
 			SAU_ProgramOpData *od;

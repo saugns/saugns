@@ -1,5 +1,5 @@
 /* saugns: Symbol table module.
- * Copyright (c) 2011-2012, 2014, 2017-2020 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2014, 2017-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -15,14 +15,25 @@
 #include "../mempool.h"
 
 /**
- * Item stored for each unique string associated with the symbol table.
+ * Node stored for each unique string associated with the symbol table.
  */
 typedef struct SAU_SymStr {
 	struct SAU_SymStr *prev;
-	void *data;
-	size_t key_len;
+	uint32_t item_i; // the last item with this string
+	uint32_t key_len;
 	char key[];
 } SAU_SymStr;
+
+/**
+ * Item with type, string, and data.
+ */
+typedef struct SAU_SymItem {
+	uint32_t type_id;
+	uint32_t id;
+	uint32_t prev; // the previous item with this string
+	void *data;
+	SAU_SymStr *sstr;
+} SAU_SymItem;
 
 struct SAU_SymTab;
 typedef struct SAU_SymTab SAU_SymTab;
@@ -33,17 +44,11 @@ void SAU_destroy_SymTab(SAU_SymTab *restrict o);
 SAU_SymStr *SAU_SymTab_get_symstr(SAU_SymTab *restrict o,
 		const void *restrict str, size_t len);
 
-/**
- * Get the unique copy of \p str held in the symbol table,
- * adding \p str to the string pool unless already present.
- *
- * \return unique copy of \p str, or NULL on allocation failure
- */
-static inline const void *SAU_SymTab_pool_str(SAU_SymTab *restrict o,
-		const void *restrict str, size_t len) {
-	SAU_SymStr *item = SAU_SymTab_get_symstr(o, str, len);
-	return (item != NULL) ? item->key : NULL;
-}
-const char **SAU_SymTab_pool_stra(SAU_SymTab *restrict o,
-		const char *const* restrict stra,
-		size_t n);
+SAU_SymItem *SAU_SymTab_add_item(SAU_SymTab *restrict o,
+		SAU_SymStr *restrict symstr, uint32_t type_id);
+SAU_SymItem *SAU_SymTab_find_item(SAU_SymTab *restrict o,
+		SAU_SymStr *restrict symstr, uint32_t type_id);
+
+bool SAU_SymTab_add_stra(SAU_SymTab *restrict o,
+		const char *const*restrict stra, size_t n,
+		uint32_t type_id);

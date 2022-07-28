@@ -49,7 +49,7 @@ typedef struct SAU_ScriptOpRef {
 	struct SAU_ScriptEvData *event;
 	struct SAU_ScriptOpObj *obj;     /* shared by all references */
 	struct SAU_ScriptOpRef *on_prev; /* preceding for same op(s) */
-	struct SAU_SymStr *label;
+	struct SAU_SymItem *label;
 	uint32_t op_flags;
 	/* operator parameters */
 	SAU_ProgramOpData *data;
