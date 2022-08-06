@@ -171,7 +171,6 @@ CLOSE:
 CLOSE:
 	SGS_destroy_Lexer(lexer);
 #endif
-	SGS_destroy_Symtab(symtab);
 	SGS_destroy_Mempool(mempool);
 	return o;
 }
