@@ -2,21 +2,23 @@
 # originally called "crashtofix.sgs". The script
 # remained after debugging was done, producing its
 # "machine arm" version of the original tone sequence.
+# Further edited to allow more easily varying the sound.
 #
 # Tests nested PM and gradual value changes with
 # compound step syntax.
+'rt=0.15
 Osin	f220 p[
-		Osin r(7/2) a0.5
-		Osin r(7/5) a0.5 p[Osin r(10/7) a(1/2)]
+		Osin r7/2 a0.5
+		Osin r7/5 a0.5 p[Osin r10/7 a1/2]
 	] t1.0
-;	f{cexp v440 t0.15} t1.5
-;	f{cexp v400 t0.15} t0.5
-;	f{cexp v350 t0.15} t0.5
-;	f{cexp v325 t0.15} t1.5
-;s1	f{cexp v220 t0.15} t1
-;	f{cexp v440 t0.15} t1.5
-;	f{cexp v415 t0.15} t0.5
-;	f{cexp v445 t0.15} t0.5
-;	f{cexp v490 t0.15} t1.0
-;	f{cexp v420 t0.15} t1.0
-;	f{cexp v440 t0.15} t1.5
+;	f{cexp v440 t$rt} t1.5
+;	f{cexp v400 t$rt} t0.5
+;	f{cexp v350 t$rt} t0.5
+;	f{cexp v325 t$rt} t1.5
+;s1	f{cexp v220 t$rt} t1
+;	f{cexp v440 t$rt} t1.5
+;	f{cexp v415 t$rt} t0.5
+;	f{cexp v445 t$rt} t0.5
+;	f{cexp v490 t$rt} t1.0
+;	f{cexp v420 t$rt} t1.0
+;	f{cexp v440 t$rt} t1.5

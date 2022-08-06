@@ -1,5 +1,5 @@
 /* sgensys: Memory pool module.
- * Copyright (c) 2014, 2018-2020 Joel K. Pettersson
+ * Copyright (c) 2014, 2018-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -21,9 +21,12 @@
 struct SGS_Mempool;
 typedef struct SGS_Mempool SGS_Mempool;
 
-SGS_Mempool *SGS_create_Mempool(size_t block_size) sgsMalloclike;
+SGS_Mempool *SGS_create_Mempool(size_t start_size) sgsMalloclike;
 void SGS_destroy_Mempool(SGS_Mempool *restrict o);
 
-void *SGS_Mempool_alloc(SGS_Mempool *restrict o, size_t size) sgsMalloclike;
-void *SGS_Mempool_memdup(SGS_Mempool *restrict o,
+void *SGS_mpalloc(SGS_Mempool *restrict o, size_t size) sgsMalloclike;
+void *SGS_mpmemdup(SGS_Mempool *restrict o,
 		const void *restrict src, size_t size) sgsMalloclike;
+typedef void (*SGS_Dtor_f)(void *o);
+bool SGS_mpregdtor(SGS_Mempool *restrict o,
+		SGS_Dtor_f func, void *restrict arg);

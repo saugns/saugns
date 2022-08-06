@@ -1,5 +1,5 @@
 /* sgensys: Symbol table module.
- * Copyright (c) 2011-2012, 2014, 2017-2020 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2014, 2017-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -30,13 +30,13 @@ static size_t collision_count = 0;
 #endif
 
 typedef struct StrTab {
-	SGS_Symstr **items;
+	SGS_Symstr **sstra;
 	size_t count;
 	size_t alloc;
 } StrTab;
 
 static inline void fini_StrTab(StrTab *restrict o) {
-	free(o->items);
+	free(o->sstra);
 }
 
 /*
@@ -67,46 +67,46 @@ static size_t StrTab_hash_key(StrTab *restrict o,
  * \return true, or false on allocation failure
  */
 static bool StrTab_upsize(StrTab *restrict o) {
-	SGS_Symstr **items, **old_items = o->items;
+	SGS_Symstr **sstra, **old_sstra = o->sstra;
 	size_t alloc, old_alloc = o->alloc;
 	size_t i;
 	alloc = (old_alloc > 0) ?
 		(old_alloc << 1) :
 		STRTAB_ALLOC_INITIAL;
-	items = calloc(alloc, sizeof(SGS_Symstr*));
-	if (!items)
+	sstra = calloc(alloc, sizeof(SGS_Symstr*));
+	if (!sstra)
 		return false;
 	o->alloc = alloc;
-	o->items = items;
+	o->sstra = sstra;
 
 	/*
 	 * Rehash entries
 	 */
 	for (i = 0; i < old_alloc; ++i) {
-		SGS_Symstr *item = old_items[i];
-		while (item != NULL) {
-			SGS_Symstr *prev_item;
+		SGS_Symstr *node = old_sstra[i];
+		while (node != NULL) {
+			SGS_Symstr *prev_node;
 			size_t hash;
-			hash = StrTab_hash_key(o, item->key, item->key_len);
+			hash = StrTab_hash_key(o, node->key, node->key_len);
 			/*
 			 * Before adding the entry to the new table, set
-			 * item->prev to the previous (if any) item with
+			 * node->prev to the previous (if any) node with
 			 * the same hash in the new table. Done repeatedly,
 			 * the links are rebuilt, though not necessarily in
 			 * the same order.
 			 */
-			prev_item = item->prev;
-			item->prev = o->items[hash];
-			o->items[hash] = item;
-			item = prev_item;
+			prev_node = node->prev;
+			node->prev = o->sstra[hash];
+			o->sstra[hash] = node;
+			node = prev_node;
 		}
 	}
-	free(old_items);
+	free(old_sstra);
 	return true;
 }
 
 /*
- * Get unique item for key in hash table, adding it if missing.
+ * Get unique node for key in hash table, adding it if missing.
  * If allocated, \p extra is added to the size of the node; use
  * 1 to add a NULL-byte for a string key.
  *
@@ -114,7 +114,7 @@ static bool StrTab_upsize(StrTab *restrict o) {
  *
  * \return SGS_Symstr, or NULL on allocation failure
  */
-static SGS_Symstr *StrTab_unique_item(StrTab *restrict o,
+static SGS_Symstr *StrTab_unique_node(StrTab *restrict o,
 		SGS_Mempool *restrict memp,
 		const void *restrict key, size_t len, size_t extra) {
 	if (!key || len == 0)
@@ -125,30 +125,37 @@ static SGS_Symstr *StrTab_unique_item(StrTab *restrict o,
 	}
 
 	size_t hash = StrTab_hash_key(o, key, len);
-	SGS_Symstr *item = o->items[hash];
-	while (item != NULL) {
-		if (item->key_len == len &&
-			!memcmp(item->key, key, len)) return item;
-		item = item->prev;
+	SGS_Symstr *sstr = o->sstra[hash];
+	while (sstr != NULL) {
+		if (sstr->key_len == len &&
+			!memcmp(sstr->key, key, len)) return sstr;
+		sstr = sstr->prev;
 #if SGS_SYMTAB_STATS
 		++collision_count;
 #endif
 	}
-	item = SGS_Mempool_alloc(memp, sizeof(SGS_Symstr) + (len + extra));
-	if (!item)
+	sstr = SGS_mpalloc(memp, sizeof(SGS_Symstr) + (len + extra));
+	if (!sstr)
 		return NULL;
-	item->prev = o->items[hash];
-	o->items[hash] = item;
-	item->key_len = len;
-	memcpy(item->key, key, len);
+	sstr->prev = o->sstra[hash];
+	o->sstra[hash] = sstr;
+	sstr->key_len = len;
+	memcpy(sstr->key, key, len);
 	++o->count;
-	return item;
+	return sstr;
 }
 
 struct SGS_Symtab {
 	SGS_Mempool *memp;
-	StrTab strtab;
+	StrTab strt;
 };
+
+static void fini_Symtab(SGS_Symtab *restrict o) {
+#if SGS_SYMTAB_STATS
+	fprintf(stderr, "collision count: %zd\n", collision_count);
+#endif
+	fini_StrTab(&o->strt);
+}
 
 /**
  * Create instance. Requires \p mempool to be a valid instance.
@@ -158,61 +165,78 @@ struct SGS_Symtab {
 SGS_Symtab *SGS_create_Symtab(SGS_Mempool *restrict mempool) {
 	if (!mempool)
 		return NULL;
-	SGS_Symtab *o = calloc(1, sizeof(SGS_Symtab));
-	if (!o)
+	SGS_Symtab *o = SGS_mpalloc(mempool, sizeof(SGS_Symtab));
+	if (!SGS_mpregdtor(mempool, (SGS_Dtor_f) fini_Symtab, o))
 		return NULL;
 	o->memp = mempool;
 	return o;
 }
 
 /**
- * Destroy instance.
- */
-void SGS_destroy_Symtab(SGS_Symtab *restrict o) {
-	if (!o)
-		return;
-#if SGS_SYMTAB_STATS
-	printf("collision count: %zd\n", collision_count);
-#endif
-	fini_StrTab(&o->strtab);
-	free(o);
-}
-
-/**
- * Get the unique item held for \p str in the symbol table,
+ * Get the unique node held for \p str in the symbol table,
  * adding \p str to the string pool unless already present.
  *
- * \return unique item for \p str, or NULL on allocation failure
+ * \return unique node for \p str, or NULL on allocation failure
  */
 SGS_Symstr *SGS_Symtab_get_symstr(SGS_Symtab *restrict o,
 		const void *restrict str, size_t len) {
-	return StrTab_unique_item(&o->strtab, o->memp, str, len, 1);
+	return StrTab_unique_node(&o->strt, o->memp, str, len, 1);
+}
+
+/**
+ * Add an item for the string \p symstr.
+ *
+ * \return item, or NULL if none
+ */
+SGS_Symitem *SGS_Symtab_add_item(SGS_Symtab *restrict o,
+		SGS_Symstr *restrict symstr, uint32_t sym_type) {
+	SGS_Symitem *item = SGS_mpalloc(o->memp, sizeof(SGS_Symitem));
+	if (!item)
+		return NULL;
+	item->sym_type = sym_type;
+	item->prev = symstr->item;
+	item->sstr = symstr;
+	symstr->item = item;
+	return item;
+}
+
+/**
+ * Look for an item for the string \p symstr matching \p sym_type.
+ *
+ * \return item, or NULL if none
+ */
+SGS_Symitem *SGS_Symtab_find_item(SGS_Symtab *restrict o sgsMaybeUnused,
+		SGS_Symstr *restrict symstr, uint32_t sym_type) {
+	SGS_Symitem *item = symstr->item;
+	while (item) {
+		if (item->sym_type == sym_type)
+			return item;
+		item = item->prev;
+	}
+	return NULL;
 }
 
 /**
  * Add the first \p n strings from \p stra to the string pool of the
- * symbol table, except any already present. An array of pointers to
- * the unique string pool copies of all \p stra strings, followed by
- * an extra NULL pointer, is allocated and returned; it is stored in
- * the memory pool used by the symbol table.
+ * symbol table. For each, an item will be prepared according to the
+ * \p sym_type (with the type used assumed to store ID data) and the
+ * current string index from 0 to n will be set for SGS_SYM_DATA_ID.
  *
  * All strings in \p stra need to be null-terminated.
  *
- * \return array of pointers to unique strings, or NULL on allocation failure
+ * \return true, or false on allocation failure
  */
-const char **SGS_Symtab_pool_stra(SGS_Symtab *restrict o,
-		const char *const*restrict stra,
-		size_t n) {
-	const char **res_stra;
-	res_stra = SGS_Mempool_alloc(o->memp, sizeof(const char*) * (n + 1));
-	if (!res_stra)
-		return NULL;
+bool SGS_Symtab_add_stra(SGS_Symtab *restrict o,
+		const char *const*restrict stra, size_t n,
+		uint32_t sym_type) {
 	for (size_t i = 0; i < n; ++i) {
-		const char *str = SGS_Symtab_pool_str(o,
+		SGS_Symitem *item;
+		SGS_Symstr *s = SGS_Symtab_get_symstr(o,
 				stra[i], strlen(stra[i]));
-		if (!str)
-			return NULL;
-		res_stra[i] = str;
+		if (!s || !(item = SGS_Symtab_add_item(o, s, sym_type)))
+			return false;
+		item->data_use = SGS_SYM_DATA_ID;
+		item->data.id = i;
 	}
-	return res_stra;
+	return true;
 }
