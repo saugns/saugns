@@ -38,7 +38,7 @@ SGS_create_ProgramIDArr(SGS_Mempool *restrict mp,
 	if (!count)
 		return copy ? NULL : &blank_idarr; // NULL if !count, non-update
 	if (copy) count += copy->count;
-	SGS_ProgramIDArr *idarr = SGS_Mempool_alloc(mp,
+	SGS_ProgramIDArr *idarr = SGS_mpalloc(mp,
 			sizeof(SGS_ProgramIDArr) + sizeof(uint32_t) * count);
 	if (!idarr)
 		return NULL;
@@ -391,7 +391,7 @@ static void ParseConv_convert_event(ParseConv *restrict o,
 		vo_params |= SGS_PVOP_OPLIST;
 	if (vo_params != 0) {
 		SGS_ProgramVoData *ovd =
-			SGS_Mempool_alloc(o->mp, sizeof(SGS_ProgramVoData));
+			SGS_mpalloc(o->mp, sizeof(SGS_ProgramVoData));
 		ovd->params = vo_params;
 		ovd->attr = e->vo_attr;
 		ovd->pan = e->pan;
@@ -409,7 +409,7 @@ static void ParseConv_convert_event(ParseConv *restrict o,
 
 static SGS_Program *_ParseConv_copy_out(ParseConv *restrict o,
 		SGS_Script *restrict parse) {
-	SGS_Program *prg = SGS_Mempool_alloc(o->mp, sizeof(SGS_Program));
+	SGS_Program *prg = SGS_mpalloc(o->mp, sizeof(SGS_Program));
 	if (!prg) goto ERROR;
 	if (!SGS_PEvArr_mpmemdup(&o->ev_arr,
 				(SGS_ProgramEvent**) &prg->events, o->mp))
