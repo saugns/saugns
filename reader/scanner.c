@@ -662,13 +662,12 @@ bool SGS_Scanner_getsymstr(SGS_Scanner *restrict o,
 "limiting identifier to %d characters", (STRBUF_LEN - 1));
 		o->cf.char_num += SGS_File_skipstr(f, filter_symchar);
 	}
-	const char *pool_str;
-	pool_str = SGS_SymTab_pool_str(o->symtab, o->strbuf, len);
-	if (pool_str == NULL) {
+	SGS_SymStr *s = SGS_SymTab_get_symstr(o->symtab, o->strbuf, len);
+	if (s == NULL) {
 		SGS_Scanner_error(o, "failed to register string '%s'",
 				o->strbuf);
 	}
-	*strp = pool_str;
+	*strp = s->key;
 	if (lenp) *lenp = len;
 	return !truncated;
 }
