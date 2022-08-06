@@ -1,5 +1,5 @@
 /* sgensys: Script lexer module.
- * Copyright (c) 2014, 2017-2022 Joel K. Pettersson
+ * Copyright (c) 2014, 2017-2023 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -28,7 +28,7 @@ enum {
 typedef struct SGS_ScriptToken {
 	uint32_t type;
 	union {
-		const char *id;
+		const uint8_t *id;
 		int32_t i;
 		float f;
 		uint8_t b;

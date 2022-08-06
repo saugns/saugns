@@ -91,7 +91,8 @@ Keywords
 
 Each of these keywords is further described in its own section below.
 	S	Script options (parameter default value or other);
-		runs during parsing.
+		runs during parsing. Changes made inside a
+		nested list scope don't apply outside of it.
 	O	Wave oscillator; the "O" is followed by the (initial)
 		wave type, as in "Osin".
 	P	Panning for the voice at the current location; to be
@@ -105,18 +106,22 @@ S: Script options
 -----------------
 
 Set parameter default value or other option; runs during parsing.
+Changes made inside a nested list scope don't apply outside of it.
 Usage: "S", followed by zero or more parameters, each with a value.
 
 Parameters:
-	a	Set multiplier for O "a" (amplitude) value, applied when
-		adding a top-level carrier. If used, this disables automatic
-		down-scaling of amplitude by the number of voices, for
-		manual control instead.
-	f	Set default O "f" (frequency, Hz) value; defaults to 440.
-		,n	Set A4 tuning (Hz) for O "f" (frequency, Hz)
-			value using note syntax; defaults to 440.
-	r	Set default O "r" (relative frequency) value; defaults to 1.
-	t	Set default O "t" (time, seconds) value; defaults to 1.
+	a	Multiplier for amplitude "a" values, for the current
+		level of list nesting only. If used at the top level,
+		this disables automatic down-scaling of amplitude per
+		voice by the number of voices, for manual control instead.
+	f	Default frequency "f" value, in Hz. Starts at 440.
+		,n	A4 tuning frequency in Hz for "f" values
+			using note syntax. Starts at 440.
+	r	Default relative frequency "r" value, a
+		modulator:carrier ratio. Starts at 1 (1/1, a "1:1" ratio).
+	t	Default short definite time "t" value, in seconds.
+		Default times may be longer (and occasionally shorter)
+		depending on the context. Starts at 1.0.
 
 O: Wave oscillator
 ------------------
@@ -324,13 +329,21 @@ Parameters and object binding:
 	the []) to be linked to the same modulator(s), whether for FM, PM,
 	or AM. (Note: Support for this is experimental and incomplete.)
 
-Labels and referencing:
-	An object can be assigned a label by inserting "'name " in front of
-	adding the object, where the "name" is a case-sensitive string with
-	alphanumeric characters and/or '_'. The label can then be used to
-	refer back to the object as "@name", to start a new step for the
-	object anywhere later in the script.
-		Such a new "@name" step does not automatically set a new
+Variables:
+	A named variable can be assigned by writing an expression beginning
+	with "'name", where the "name" is a case-sensitive string with
+	alphanumeric characters and/or '_'. Variables are dynamically typed,
+	can be assigned several times, and can either be assigned to a number
+	or made to point to an object as a label for it.
+		To assign a number, "'name=' can be written just before a
+	numerical expression. Once it holds a number, it can be used in any
+	numerical expression using "$name". (It's possible to use such a
+	variable value as part of redefining its value.)
+		To point a variable to an object, "'name " can be written
+	just before an object is added or referenced. The name can then be
+	used to refer back to the object as "@name", to start a new step for
+	the object anywhere later in the script.
+		A new "@name" step differs in not automatically setting a new
 	time duration for the object, so "t" (see "Parameters") or other
 	time-altering syntax (see "Timing") must be used in order for the
 	old time duration value to be changed.
