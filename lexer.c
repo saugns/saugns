@@ -1,5 +1,5 @@
 /* sgensys: Script lexer module.
- * Copyright (c) 2014, 2017-2022 Joel K. Pettersson
+ * Copyright (c) 2014, 2017-2023 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -278,14 +278,13 @@ static uint8_t handle_identifier(SGS_Lexer *restrict o,
 "identifier length limited to %d characters", (STRBUF_LEN - 1));
 		o->char_num += SGS_File_skipstr(f, filter_symchar);
 	}
-	const char *pool_str;
-	pool_str = SGS_Symtab_pool_str(o->symtab, o->strbuf, len);
-	if (pool_str == NULL) {
+	SGS_Symstr *s = SGS_Symtab_get_symstr(o->symtab, o->strbuf, len);
+	if (s == NULL) {
 		SGS_Lexer_error(o, "failed to register string '%s'", o->strbuf);
 	}
 	o->char_num += len - 1;
 	t->type = SGS_T_ID_STR;
-	t->data.id = pool_str;
+	t->data.id = s->key;
 	return 0;
 }
 
