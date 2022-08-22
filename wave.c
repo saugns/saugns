@@ -76,7 +76,7 @@ void SGS_global_init_Wave(void) {
 		else
 			tri_lut[i] = lrint(val_scale * 2.f * x_rev);
 
-		saw_lut[i] = lrint(val_scale * x_rev);
+		saw_lut[i] = SGSWave_MINVAL + lrint(val_scale * x);
 
 		ssr_lut[i] = lrint(val_scale * sqrt(sin_x));
 	}
