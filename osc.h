@@ -1,5 +1,5 @@
 /* sgensys: Oscillator module.
- * Copyright (c) 2011-2012, 2017-2018 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -81,7 +81,7 @@ typedef struct SGSOsc {
 }while(0)
 
 /**
- * Produce floating point output in the 0.0 to 1.0 range.
+ * Produce floating point output in the -1.0 to 1.0 range.
  */
 #define SGSOsc_RUN_SF(o, lut, coeff, freq, pm_s16, sf_out) do{ \
 	uint32_t SGSOsc__phs = (o)->phase + ((pm_s16) << 16); \
@@ -93,8 +93,7 @@ typedef struct SGSOsc {
 		             SGSOsc__s16)) * \
 		    (((float)(SGSOsc__phs & SGSWave_SCALEMASK)) * \
 		     (1.f / SGSWave_SCALE))) * \
-	           (1.f / ((float) SGSWave_MAXVAL * 2)) + \
-	           .5f; \
+	           (1.f / ((float) SGSWave_MAXVAL)); \
 	/* update phase */ \
 	uint32_t SGSOsc__inc = lrint((coeff)*(freq)); \
 	(o)->phase += SGSOsc__inc; \

@@ -1,5 +1,5 @@
 /* sgensys: Parsing data to audio program translator module.
- * Copyright (c) 2011-2013, 2017-2019 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -107,11 +107,19 @@ typedef struct SGSProgramEvent {
 	const SGSProgramOperatorData *operator;
 } SGSProgramEvent;
 
+/**
+ * Program flags affecting interpretation.
+ */
+enum {
+	SGS_PROG_AMP_DIV_VOICES = 1<<0,
+};
+
 typedef struct SGSProgram {
 	const SGSProgramEvent *events;
 	size_t eventc;
 	uint32_t operatorc;
-	uint32_t voicec;
+	uint16_t voicec;
+	uint16_t flags;
 } SGSProgram;
 
 SGSProgram* SGS_open_program(const char *filename);

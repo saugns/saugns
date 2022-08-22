@@ -384,6 +384,13 @@ static SGSProgram* build_program(SGSParserResult *pr) {
     program_convert_enode(&pa, e);
   }
   program_alloc_fini(&pa, prg);
+  if (!(pr->sopt.set & SGS_SOPT_AMPMULT)) {
+    /*
+     * Enable amplitude scaling (division) by voice count,
+     * handled by sound generator.
+     */
+    prg->flags |= SGS_PROG_AMP_DIV_VOICES;
+  }
   //puts("/build_program()");
 #if 1
   /*
@@ -412,9 +419,9 @@ static SGSProgram* build_program(SGSParserResult *pr) {
       else
         printf("\n\top %d \tt=%d \tf=%.f", oop->operator_id, oop->time_ms, oop->freq);
       if (ga != NULL) {
-        print_linked("\n\t    f!<", ">", ga->fmodc, ga->adjcs);
+        print_linked("\n\t    fw<", ">", ga->fmodc, ga->adjcs);
         print_linked("\n\t    p<", ">", ga->pmodc, &ga->adjcs[ga->fmodc]);
-        print_linked("\n\t    a!<", ">", ga->amodc, &ga->adjcs[ga->fmodc +
+        print_linked("\n\t    aw<", ">", ga->amodc, &ga->adjcs[ga->fmodc +
                                                                ga->pmodc]);
       }
     }

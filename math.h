@@ -1,5 +1,5 @@
 /* sgensys: Math definitions.
- * Copyright (c) 2011-2012, 2017-2018 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -12,10 +12,17 @@
  */
 
 #pragma once
-#include "sgensys.h"
-
 #include <math.h>
 
 #define SGS_PI       3.14159265358979323846
 #define SGS_ASIN_1_2 0.52359877559829887308 // asin(0.5)
 #define SGS_SQRT_1_2 0.70710678118654752440 // sqrt(0.5), 1/sqrt(2)
+
+/**
+ * Convert time in ms to time in samples for a sample-rate.
+ */
+static inline uint64_t SGS_ms_in_samples(uint64_t time_ms, uint64_t srate) {
+	uint64_t time = time_ms * srate;
+	time = (time + 500) / 1000;
+	return time;
+}
