@@ -1,5 +1,5 @@
 /* sgensys: Audio generator module.
- * Copyright (c) 2011-2012, 2017-2018 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -91,7 +91,8 @@ struct SGSGenerator {
   size_t event, eventc;
   uint32_t eventpos;
   EventNode *events;
-  uint32_t voice, voicec;
+  uint16_t voice, voicec;
+  float amp_scale;
   VoiceNode *voices;
   OperatorNode operators[1]; /* sized to number of nodes */
 };
@@ -166,12 +167,15 @@ SGSGenerator* SGS_create_generator(SGSProgram *prg, uint32_t srate) {
   if (!o) return NULL;
   o->srate = srate;
   o->osc_coeff = SGSOsc_SRATE_COEFF(srate);
+  o->amp_scale = 1.f;
   o->eventc = prg->eventc;
   o->events = (void*)(((uint8_t*)o) + size + operatorssize);
   o->voicec = prg->voicec;
   o->voices = (void*)(((uint8_t*)o) + size + operatorssize + eventssize);
   data      = (void*)(((uint8_t*)o) + size + operatorssize + eventssize + voicessize);
   SGS_global_init_Wave();
+  if (prg->flags & SGS_PROG_AMP_DIV_VOICES && o->voicec)
+    o->amp_scale /= o->voicec;
   /*
    * Fill in events according to the SGSProgram, ie. copy timed state
    * changes for voices and operators.
@@ -186,7 +190,7 @@ SGSGenerator* SGS_create_generator(SGSProgram *prg, uint32_t srate) {
     s = data;
     set = s->data;
     e->node = s;
-    e->waittime = ((float)step->wait_ms) * srate * .001f;
+    e->waittime = SGS_ms_in_samples(step->wait_ms, srate);
     indexwaittime += e->waittime;
     s->voice_id = -1;
     s->operator_id = -1;
@@ -204,14 +208,14 @@ SGSGenerator* SGS_create_generator(SGSProgram *prg, uint32_t srate) {
       if (s->params & SGS_P_TIME) {
         (*set++).i = (od->time_ms == SGS_TIME_INF) ?
                      SGS_TIME_INF :
-                     (int32_t) ((float)od->time_ms) * srate * .001f;
+                     (int32_t)SGS_ms_in_samples(od->time_ms, srate);
       }
       if (s->params & SGS_P_SILENCE)
-        (*set++).i = ((float)od->silence_ms) * srate * .001f;
+        (*set++).i = SGS_ms_in_samples(od->silence_ms, srate);
       if (s->params & SGS_P_FREQ)
         (*set++).f = od->freq;
       if (s->params & SGS_P_VALITFREQ) {
-        (*set++).i = ((float)od->valitfreq.time_ms) * srate * .001f;
+        (*set++).i = SGS_ms_in_samples(od->valitfreq.time_ms, srate);
         (*set++).f = od->valitfreq.goal;
         (*set++).i = od->valitfreq.type;
       }
@@ -222,7 +226,7 @@ SGSGenerator* SGS_create_generator(SGSProgram *prg, uint32_t srate) {
       if (s->params & SGS_P_AMP)
         (*set++).f = od->amp;
       if (s->params & SGS_P_VALITAMP) {
-        (*set++).i = ((float)od->valitamp.time_ms) * srate * .001f;
+        (*set++).i = SGS_ms_in_samples(od->valitamp.time_ms, srate);
         (*set++).f = od->valitamp.goal;
         (*set++).i = od->valitamp.type;
       }
@@ -239,7 +243,7 @@ SGSGenerator* SGS_create_generator(SGSProgram *prg, uint32_t srate) {
       if (s->params & SGS_P_PANNING)
         (*set++).f = vd->panning;
       if (s->params & SGS_P_VALITPANNING) {
-        (*set++).i = ((float)vd->valitpanning.time_ms) * srate * .001f;
+        (*set++).i = SGS_ms_in_samples(vd->valitpanning.time_ms, srate);
         (*set++).f = vd->valitpanning.goal;
         (*set++).i = vd->valitpanning.type;
       }
@@ -522,25 +526,25 @@ static uint32_t run_block(SGSGenerator *o, Buf *bufs, uint32_t buf_len,
       run_block(o, nextbuf, len, &o->operators[pmods[i]], freq, false, i);
     pm = *(nextbuf++);
   }
+  /*
+   * Handle amplitude parameter, including amplitude modulation if
+   * modulators linked.
+   */
+  if (amodc) {
+    const int32_t *amods = &n->adjcs->adjcs[fmodc+pmodc];
+    float dynampdiff = n->dynamp - n->amp;
+    for (i = 0; i < amodc; ++i)
+      run_block(o, nextbuf, len, &o->operators[amods[i]], freq, true, i);
+    amp = *(nextbuf++);
+    for (i = 0; i < len; ++i)
+      amp[i].f = n->amp + amp[i].f * dynampdiff;
+  } else {
+    amp = *(nextbuf++);
+    vi = (n->attr & SGS_ATTR_VALITAMP) ? &n->valitamp : 0;
+    if (run_param(amp, len, vi, &n->amp, 0))
+      n->attr &= ~SGS_ATTR_VALITAMP;
+  }
   if (!wave_env) {
-    /*
-     * Handle amplitude parameter, including amplitude modulation if
-     * modulators linked.
-     */
-    if (amodc) {
-      const int32_t *amods = &n->adjcs->adjcs[fmodc+pmodc];
-      float dynampdiff = n->dynamp - n->amp;
-      for (i = 0; i < amodc; ++i)
-        run_block(o, nextbuf, len, &o->operators[amods[i]], freq, true, i);
-      amp = *(nextbuf++);
-      for (i = 0; i < len; ++i)
-        amp[i].f = n->amp + amp[i].f * dynampdiff;
-    } else {
-      amp = *(nextbuf++);
-      vi = (n->attr & SGS_ATTR_VALITAMP) ? &n->valitamp : 0;
-      if (run_param(amp, len, vi, &n->amp, 0))
-        n->attr &= ~SGS_ATTR_VALITAMP;
-    }
     /*
      * Generate integer output - either for voice output or phase modulation
      * input.
@@ -548,7 +552,8 @@ static uint32_t run_block(SGSGenerator *o, Buf *bufs, uint32_t buf_len,
     const int16_t *lut = SGSWave_luts[n->wave];
     for (i = 0; i < len; ++i) {
       int32_t s, spm = 0;
-      float sfreq = freq[i].f, samp = amp[i].f;
+      float sfreq = freq[i].f;
+      float samp = amp[i].f;
       if (pm) spm = pm[i].i;
       SGSOsc_RUN_S16(&n->osc, lut, o->osc_coeff, sfreq, spm, samp, s);
       if (acc_ind) s += sbuf[i].i;
@@ -561,10 +566,13 @@ static uint32_t run_block(SGSGenerator *o, Buf *bufs, uint32_t buf_len,
      */
     const int16_t *lut = SGSWave_luts[n->wave];
     for (i = 0; i < len; ++i) {
-      float s, sfreq = freq[i].f;
+      float s;
+      float sfreq = freq[i].f;
+      float samp = amp[i].f * 0.5f;
       int32_t spm = 0;
       if (pm) spm = pm[i].i;
       SGSOsc_RUN_SF(&n->osc, lut, o->osc_coeff, sfreq, spm, s);
+      s = (s * samp) + fabs(samp);
       if (acc_ind) s *= sbuf[i].f;
       sbuf[i].f = s;
     }
@@ -621,19 +629,20 @@ static uint32_t run_voice(SGSGenerator *o, VoiceNode *vn, int16_t *out,
       if (last_len > gen_len) gen_len = last_len;
     }
     if (!gen_len) goto RETURN;
+    float scale = o->amp_scale;
     if (vn->attr & SGS_ATTR_VALITPANNING) {
-      BufData *buf = o->bufs[1];
-      if (run_param(buf, gen_len, &vn->valitpanning, &vn->panning, 0))
+      BufData *pan_buf = o->bufs[1];
+      if (run_param(pan_buf, gen_len, &vn->valitpanning, &vn->panning, 0))
         vn->attr &= ~SGS_ATTR_VALITPANNING;
       for (i = 0; i < gen_len; ++i) {
-        int32_t s = (*o->bufs)[i].i;
-        int32_t p = lrintf(s * buf[i].f);
+        int32_t s = lrintf((*o->bufs)[i].i * scale);
+        int32_t p = lrintf(s * pan_buf[i].f);
         *sp++ += s - p;
         *sp++ += p;
       }
     } else {
       for (i = 0; i < gen_len; ++i) {
-        int32_t s = (*o->bufs)[i].i;
+        int32_t s = lrintf((*o->bufs)[i].i * scale);
         int32_t p = lrintf(s * vn->panning);
         *sp++ += s - p;
         *sp++ += p;
