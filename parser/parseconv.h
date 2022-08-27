@@ -160,7 +160,9 @@ enum {
  */
 typedef struct SGS_OpAllocState {
 	SGS_ScriptOpData *last_pod;
-	const SGS_ProgramIDArr *amods, *fmods, *pmods, *fpmods;
+	const SGS_ProgramIDArr *amods, *ramods;
+	const SGS_ProgramIDArr *fmods, *rfmods;
+	const SGS_ProgramIDArr *pmods, *fpmods;
 	uint32_t flags;
 	//uint32_t duration_ms;
 } SGS_OpAllocState;
@@ -330,10 +332,20 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 			goto MEM_ERR;
 		ood->amods = oas->amods;
 	}
+	if (mods[SGS_POP_RAMOD] != NULL) {
+		if (!set_oplist(&oas->ramods, mods[SGS_POP_RAMOD], o->mp))
+			goto MEM_ERR;
+		ood->ramods = oas->ramods;
+	}
 	if (mods[SGS_POP_FMOD] != NULL) {
 		if (!set_oplist(&oas->fmods, mods[SGS_POP_FMOD], o->mp))
 			goto MEM_ERR;
 		ood->fmods = oas->fmods;
+	}
+	if (mods[SGS_POP_RFMOD] != NULL) {
+		if (!set_oplist(&oas->rfmods, mods[SGS_POP_RFMOD], o->mp))
+			goto MEM_ERR;
+		ood->rfmods = oas->rfmods;
 	}
 	if (mods[SGS_POP_PMOD] != NULL) {
 		if (!set_oplist(&oas->pmods, mods[SGS_POP_PMOD], o->mp))
@@ -424,7 +436,11 @@ SGS_VoiceGraph_handle_op_node(SGS_VoiceGraph *restrict o,
 	oas->flags |= SGS_OAS_VISITED;
 	if (!SGS_VoiceGraph_handle_op_list(o, oas->amods, SGS_POP_AMOD))
 		return false;
+	if (!SGS_VoiceGraph_handle_op_list(o, oas->ramods, SGS_POP_RAMOD))
+		return false;
 	if (!SGS_VoiceGraph_handle_op_list(o, oas->fmods, SGS_POP_FMOD))
+		return false;
+	if (!SGS_VoiceGraph_handle_op_list(o, oas->rfmods, SGS_POP_RFMOD))
 		return false;
 	if (!SGS_VoiceGraph_handle_op_list(o, oas->pmods, SGS_POP_PMOD))
 		return false;
@@ -663,7 +679,9 @@ print_oplist(const SGS_ProgramOpRef *restrict list,
 	static const char *const uses[SGS_POP_USES] = {
 		" CA",
 		" AM",
+		"rAM",
 		" FM",
+		"rFM",
 		" PM",
 		"fPM",
 	};
@@ -743,10 +761,12 @@ SGS_Program_print_info(const SGS_Program *restrict o) {
 		for (size_t i = 0; i < ev->op_data_count; ++i) {
 			const SGS_ProgramOpData *od = &ev->op_data[i];
 			print_opline(od);
-			print_linked("\n\t    a,w", od->amods);
-			print_linked("\n\t    f,w", od->fmods);
+			print_linked("\n\t    a", od->amods);
+			print_linked("\n\t    a.r", od->ramods);
+			print_linked("\n\t    f", od->fmods);
+			print_linked("\n\t    f.r", od->rfmods);
 			print_linked("\n\t    p", od->pmods);
-			print_linked("\n\t    p,f", od->fpmods);
+			print_linked("\n\t    p.f", od->fpmods);
 		}
 		SGS_printf("\n");
 	}
