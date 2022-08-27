@@ -1,0 +1,13 @@
+'c Ohrs a1[
+	'm1 Osin r1/2 a0[g1 t2]
+] t2; a[g0 t2]; t1/2 |
+@m1 a[g0 t1]; a1[g0]; a1[g0]; a1[g0] /* "soft square wave" beeps */
+; a[g1 t1/2] r0[g2 t3] t3
+@c t(4+3)
+|/1/2
+
+// Nest inside PM
+Osin p[
+	Ohrs r0[g100/1 rexp] a0[Osin r1/2] t2; r[g0];
+	r0[g1/2 rlog] t1; r[g0]
+]
