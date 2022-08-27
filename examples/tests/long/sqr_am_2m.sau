@@ -1,3 +1,3 @@
 // Square amplitude modulation with another square varying in frequency.
 // The phase offset can be tweaked to tune the two heard turning points.
-Osqr f200 a1,w0[Osqr r1,w2[Osin f0.01 p0.75] p0] t120
+Osqr f200 a1.w0[Osqr r1.w2[Osin f0.01 p0.75] p0] t120

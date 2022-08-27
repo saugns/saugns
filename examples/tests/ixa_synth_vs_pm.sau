@@ -8,8 +8,8 @@
  */
 Otri f100 p[
 	// Create the triangle-to-sine wave shape phase modulation input.
-	Osin a-1/2,w+1/2[Osqr p(1/4)]
-	Otri a+1/2,w-1/2[Osqr p(1/4)]
+	Osin a-1/2.w+1/2[Osqr p(1/4)]
+	Otri a+1/2.w-1/2[Osqr p(1/4)]
 	// The normal modulator, the amplitude of which is the modulation
 	// index, goes here... An amplitude of 1 correponds to I(t)=pi in
 	// the explanation and graph from Casio's 1992 US patent 5164530.

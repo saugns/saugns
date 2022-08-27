@@ -67,14 +67,14 @@ Usage: "S", followed by zero or more parameters, each with a value.
 Parameters:
 	a	Multiplier for amplitude "a" values, for the current
 		level of list nesting only. (The multiplier also applies
-		to "a,w" values.) If used at the top level, this disables
+		to "a.w" values.) If used at the top level, this disables
 		automatic down-scaling of amplitude per voice by the
 		number of voices, for manual control instead.
 	c	Default channel mixing "c" value. Starts at 0.0,
 		i.e. C (center). Useful as a main way of setting
 		the parameter value.
 	f	Default freqency "f" value, in Hz. Starts at 440.
-		,n	A4 tuning frequency in Hz for "f" values
+		.n	A4 tuning frequency in Hz for "f" values
 			using note syntax. Starts at 440.
 	r	Default relative frequency "r" value, a
 		modulator:carrier ratio. Starts at 1 (1/1, a "1:1" ratio).
@@ -178,7 +178,7 @@ Parameters:
 			When using "r" the same values are changed as when
 		using "f", the difference simply being whether multiplication
 		by carrier frequency is switched on or off. Specific values
-		like the main value or the ",w" second value can be set again
+		like the main value or the ".w" second value can be set again
 		under "f" or "r" to toggle just that value.
 			"Value ramp" values are supported; see section.
 			"Modulation with value range" is supported for FM
@@ -202,7 +202,7 @@ Parameters:
 			After a value or by itself, "[]" (square brackets)
 		can be used to set a list of PM modulator oscillators specified
 		within the "[]"; the list replaces any previous set, and may
-		be empty. Also, after these or by itself, ",f[]" (",f" and
+		be empty. Also, after these or by itself, ".f[]" (".f" and
 		square brackets) can likewise set a list of
 		frequency-amplified PM modulators. This whole larger argument
 		cannot contain any whitespace outside parentheses or brackets.
@@ -320,12 +320,12 @@ Modulation with value range:
 	modulation has one of the bounds set to zero.)
 		Following the letter specifying the parameter, and optionally
 	the main value, the second value used for the bounds of the range,
-	and/or a list of modulator objects, can follow after ",w" (where
+	and/or a list of modulator objects, can follow after ".w" (where
 	the "w" is short for wave envelope). These parts of the larger argument
 	are ordered and cannot contain any whitespace outside parentheses or
 	brackets. The second value defaults to 0.0 if not set for the object.
 	"Value ramp" is supported for the second value whenever for the main.
-		After ",w" and optionally a value, "[]" (square brackets) can
+		After ".w" and optionally a value, "[]" (square brackets) can
 	be used to set a list of modulator objects specified within the
 	"[]"; the list replaces any previous set, and may be empty.
 		Each modulator in the list will produce a result in the range

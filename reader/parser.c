@@ -1073,7 +1073,7 @@ static void parse_in_settings(SAU_Parser *restrict o) {
 				o->sl.sopt.def_freq = val;
 				o->sl.sopt.set |= SAU_SOPT_DEF_FREQ;
 			}
-			if (SAU_Scanner_tryc(sc, ','))
+			if (SAU_Scanner_tryc(sc, '.'))
 			switch ((c = SAU_Scanner_getc(sc))) {
 			case 'n':
 				if (scan_num(sc, NULL, &val)) {
@@ -1120,7 +1120,7 @@ static bool parse_ev_amp(SAU_Parser *restrict o) {
 	SAU_ProgramOpData *od = op->data;
 	uint8_t c;
 	parse_ramp(o, NULL, &od->amp, false, SAU_PRAMP_AMP);
-	if (SAU_Scanner_tryc(sc, ',')) switch ((c = SAU_Scanner_getc(sc))) {
+	if (SAU_Scanner_tryc(sc, '.')) switch ((c = SAU_Scanner_getc(sc))) {
 	case 'w':
 		parse_ramp(o, NULL, &od->amp2, false, SAU_PRAMP_AMP2);
 		if (SAU_Scanner_tryc(sc, '[')) {
@@ -1153,7 +1153,7 @@ static bool parse_ev_freq(SAU_Parser *restrict o, bool rel_freq) {
 	SAU_ScanNumConst_f numconst_f = rel_freq ? NULL : scan_note_const;
 	uint8_t c;
 	parse_ramp(o, numconst_f, &od->freq, rel_freq, SAU_PRAMP_FREQ);
-	if (SAU_Scanner_tryc(sc, ',')) switch ((c = SAU_Scanner_getc(sc))) {
+	if (SAU_Scanner_tryc(sc, '.')) switch ((c = SAU_Scanner_getc(sc))) {
 	case 'w':
 		parse_ramp(o, numconst_f, &od->freq2,
 				rel_freq, SAU_PRAMP_FREQ2);
@@ -1181,7 +1181,7 @@ static bool parse_ev_phase(SAU_Parser *restrict o) {
 	if (SAU_Scanner_tryc(sc, '[')) {
 		parse_level(o, SAU_POP_PMOD, SCOPE_NEST);
 	}
-	if (SAU_Scanner_tryc(sc, ',')) switch ((c = SAU_Scanner_getc(sc))) {
+	if (SAU_Scanner_tryc(sc, '.')) switch ((c = SAU_Scanner_getc(sc))) {
 	case 'f':
 		if (SAU_Scanner_tryc(sc, '[')) {
 			parse_level(o, SAU_POP_FPMOD, SCOPE_NEST);
