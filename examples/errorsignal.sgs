@@ -1,2 +1,2 @@
-Osin f444 p,f[Osin a2 r3/1] t0.5
-; f,w200[Osin r4/3] t1.0
+Osin f444 p.f[Osin a2 r3/1] t0.5
+; f.r200[Osin r4/3] t1.0
