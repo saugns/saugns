@@ -1,0 +1,7 @@
+Osin f0[
+	Osin f0{gmf*pi} a10^pi
+	; f{gmf/pi rexp} a{g10^((3+pi)/2) rcos}
+	; f{g50 t1} a{g10^met(3) rcos t3} t2
+	; f{g440*pi rlog}
+	; f{g50}
+]
