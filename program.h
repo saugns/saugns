@@ -82,7 +82,9 @@ typedef struct SGS_ProgramIDArr {
 enum {
 	SGS_POP_CARR = 0,
 	SGS_POP_AMOD,
+	SGS_POP_RAMOD,
 	SGS_POP_FMOD,
+	SGS_POP_RFMOD,
 	SGS_POP_PMOD,
 	SGS_POP_FPMOD,
 	SGS_POP_USES,
@@ -108,7 +110,9 @@ typedef struct SGS_ProgramOpData {
 	SGS_Ramp *freq, *freq2;
 	uint32_t phase;
 	uint8_t wave;
-	const SGS_ProgramIDArr *amods, *fmods, *pmods, *fpmods;
+	const SGS_ProgramIDArr *amods, *ramods;
+	const SGS_ProgramIDArr *fmods, *rfmods;
+	const SGS_ProgramIDArr *pmods, *fpmods;
 } SGS_ProgramOpData;
 
 typedef struct SGS_ProgramEvent {
