@@ -118,7 +118,7 @@ scanner.o: sgensys.h math.h mempool.h file.h scanner.c scanner.h symtab.h
 symtab.o: sgensys.h mempool.h symtab.c symtab.h
 	$(CC) -c $(CFLAGS_FAST) symtab.c
 
-generator.o: sgensys.h math.h mempool.h program.h ramp.h generator.c generator.h generator/osc.c generator/osc.h wave.h
+generator.o: sgensys.h math.h mempool.h program.h ramp.h generator.c generator.h generator/osc.h wave.h
 	$(CC) -c $(CFLAGS_FASTF) generator.c
 
 sgensys.o: sgensys.c help.h generator.h script.h arrtype.h program.h ramp.h wave.h math.h file.h player/audiodev.h player/sndfile.h scanner.h symtab.h sgensys.h

@@ -120,6 +120,14 @@ static void warn_closing_without_opening(SGS_Scanner *restrict o,
 			close_c, open_c);
 }
 
+/*
+ * Print warning for missing whitespace before character.
+ */
+static void warn_missing_whitespace(SGS_Scanner *restrict o,
+		SGS_ScanFrame *sf, uint8_t next_c) {
+	SGS_Scanner_warning(o, sf, "missing whitespace before '%c'", next_c);
+}
+
 static SGS_Symitem *scan_sym(SGS_Scanner *restrict o, uint32_t type_id,
 		const char *const*restrict help_stra) {
 	const char *type_label = scan_sym_labels[type_id];
@@ -505,16 +513,19 @@ static bool scan_ramp_param(SGS_Scanner *restrict o,
 	if (!SGS_Scanner_tryc(o, '{'))
 		return state;
 	struct ScanLookup *sl = o->data;
+	bool warn_nospace = false;
 	double vt;
 	uint32_t time_ms = (ramp->flags & SGS_RAMPP_TIME) != 0 ?
 		ramp->time_ms :
 		sl->sopt.def_time_ms;
 	for (;;) {
 		uint8_t c = SGS_Scanner_getc(o);
+		SGS_ScanFrame sf_first = o->sf;
 		switch (c) {
 		case SGS_SCAN_SPACE:
 		case SGS_SCAN_LNBRK:
-			break;
+			warn_nospace = false;
+			continue;
 		case 'g':
 			if (scan_num(o, scan_numconst, &vt)) {
 				ramp->vt = vt;
@@ -549,8 +560,11 @@ static bool scan_ramp_param(SGS_Scanner *restrict o,
 				warn_eof_without_closing(o, '}');
 				goto RETURN;
 			}
-			break;
+			continue;
 		}
+		if (warn_nospace)
+			warn_missing_whitespace(o, &sf_first, c);
+		warn_nospace = true;
 	}
 RETURN:
 	ramp->time_ms = time_ms;
@@ -639,6 +653,7 @@ enum {
 	PL_NEW_EVENT_FORK = 1<<3,
 	PL_OWN_EV         = 1<<4,
 	PL_OWN_OP         = 1<<5,
+	PL_WARN_NOSPACE   = 1<<6,
 };
 
 /*
@@ -954,11 +969,15 @@ static void enter_level(SGS_Parser *restrict o,
 					pl->nest_list;
 			parent_pl->last_mods_list = pl->nest_list;
 			/*
-			 * Push script options, then prepare for new context.
+			 * Push script options, and prepare for a new context.
+			 *
+			 * The amplitude multiplier is reset each list, unless
+			 * an AMOD list (where the value builds on the outer).
 			 */
 			parent_pl->sopt_save = o->sl.sopt;
 			o->sl.sopt.set = 0;
-			o->sl.sopt.ampmult = def_sopt.ampmult; // new each list
+			if (use_type != SGS_POP_AMOD)
+				o->sl.sopt.ampmult = def_sopt.ampmult;
 		}
 	}
 	pl->use_type = use_type;
@@ -1009,12 +1028,14 @@ static void parse_in_settings(SGS_Parser *restrict o) {
 	pl->sub_f = parse_in_settings;
 	for (;;) {
 		uint8_t c = SGS_Scanner_getc(sc);
+		SGS_ScanFrame sf_first = sc->sf;
 		double val;
 		switch (c) {
-		case SGS_SCAN_SPACE:
-			break;
 		case 'a':
 			if (scan_num(sc, NULL, &val)) {
+				// AMOD lists inherit outer value
+				if (pl->use_type == SGS_POP_AMOD)
+					val *= pl->parent->sopt_save.ampmult;
 				o->sl.sopt.ampmult = val;
 				o->sl.sopt.set |= SGS_SOPT_AMPMULT;
 			}
@@ -1030,7 +1051,7 @@ static void parse_in_settings(SGS_Parser *restrict o) {
 				o->sl.sopt.def_freq = val;
 				o->sl.sopt.set |= SGS_SOPT_DEF_FREQ;
 			}
-			if (SGS_Scanner_tryc(sc, ',') &&
+			if (SGS_Scanner_tryc(sc, '.') &&
 			    SGS_Scanner_tryc(sc, 'n')) {
 				if (scan_num(sc, NULL, &val)) {
 					if (val < 1.f) {
@@ -1056,6 +1077,9 @@ static void parse_in_settings(SGS_Parser *restrict o) {
 		default:
 			goto DEFER;
 		}
+		if (pl->pl_flags & PL_WARN_NOSPACE)
+			warn_missing_whitespace(sc, &sf_first, c);
+		pl->pl_flags |= PL_WARN_NOSPACE;
 	}
 	return;
 DEFER:
@@ -1072,11 +1096,14 @@ static bool parse_ev_amp(SGS_Parser *restrict o) {
 	SGS_ScriptOpData *op = pl->operator;
 	uint8_t c;
 	parse_ramp(o, NULL, &op->amp, false, SGS_PRAMP_AMP);
-	if (SGS_Scanner_tryc(sc, ',')) switch ((c = SGS_Scanner_getc(sc))) {
-	case 'w':
+	if (SGS_Scanner_tryc(sc, '[')) {
+		parse_level(o, SGS_POP_AMOD, SCOPE_NEST);
+	}
+	if (SGS_Scanner_tryc(sc, '.')) switch ((c = SGS_Scanner_getc(sc))) {
+	case 'r':
 		parse_ramp(o, NULL, &op->amp2, false, SGS_PRAMP_AMP2);
 		if (SGS_Scanner_tryc(sc, '[')) {
-			parse_level(o, SGS_POP_AMOD, SCOPE_NEST);
+			parse_level(o, SGS_POP_RAMOD, SCOPE_NEST);
 		}
 		break;
 	default:
@@ -1103,12 +1130,15 @@ static bool parse_ev_freq(SGS_Parser *restrict o, bool rel_freq) {
 	SGS_ScanNumConst_f numconst_f = rel_freq ? NULL : scan_note_const;
 	uint8_t c;
 	parse_ramp(o, numconst_f, &op->freq, rel_freq, SGS_PRAMP_FREQ);
-	if (SGS_Scanner_tryc(sc, ',')) switch ((c = SGS_Scanner_getc(sc))) {
-	case 'w':
+	if (SGS_Scanner_tryc(sc, '[')) {
+		parse_level(o, SGS_POP_FMOD, SCOPE_NEST);
+	}
+	if (SGS_Scanner_tryc(sc, '.')) switch ((c = SGS_Scanner_getc(sc))) {
+	case 'r':
 		parse_ramp(o, numconst_f, &op->freq2,
 				rel_freq, SGS_PRAMP_FREQ2);
 		if (SGS_Scanner_tryc(sc, '[')) {
-			parse_level(o, SGS_POP_FMOD, SCOPE_NEST);
+			parse_level(o, SGS_POP_RFMOD, SCOPE_NEST);
 		}
 		break;
 	default:
@@ -1129,7 +1159,7 @@ static bool parse_ev_phase(SGS_Parser *restrict o) {
 	if (SGS_Scanner_tryc(sc, '[')) {
 		parse_level(o, SGS_POP_PMOD, SCOPE_NEST);
 	}
-	if (SGS_Scanner_tryc(sc, ',')) {
+	if (SGS_Scanner_tryc(sc, '.')) {
 		if (SGS_Scanner_tryc(sc, 'f') && SGS_Scanner_tryc(sc, '[')) {
 			parse_level(o, SGS_POP_FPMOD, SCOPE_NEST);
 		}
@@ -1144,15 +1174,15 @@ static void parse_in_event(SGS_Parser *restrict o) {
 	for (;;) {
 		SGS_ScriptOpData *op = pl->operator;
 		uint8_t c = SGS_Scanner_getc(sc);
+		SGS_ScanFrame sf_first = sc->sf;
 		switch (c) {
-		case SGS_SCAN_SPACE:
-			break;
 		case '/':
 			if (parse_waittime(o)) {
 				begin_node(o, pl->operator, false);
 			}
 			break;
 		case '\\':
+			pl->pl_flags &= ~PL_WARN_NOSPACE; /* OK before */
 			if (parse_waittime(o)) {
 				begin_node(o, pl->operator, true);
 				pl->event->ev_flags |= SGS_SDEV_FROM_GAPSHIFT;
@@ -1203,6 +1233,9 @@ static void parse_in_event(SGS_Parser *restrict o) {
 		default:
 			goto DEFER;
 		}
+		if (pl->pl_flags & PL_WARN_NOSPACE)
+			warn_missing_whitespace(sc, &sf_first, c);
+		pl->pl_flags |= PL_WARN_NOSPACE;
 	}
 	return;
 DEFER:
@@ -1229,10 +1262,13 @@ static bool parse_level(SGS_Parser *restrict o,
 		 * Parse main tokens.
 		 */
 		uint8_t c = SGS_Scanner_getc(sc);
+		SGS_ScanFrame sf_first = sc->sf;
 		switch (c) {
 		case SGS_SCAN_SPACE:
-			break;
+			pl.pl_flags &= ~PL_WARN_NOSPACE;
+			continue;
 		case SGS_SCAN_LNBRK:
+			pl.pl_flags &= ~PL_WARN_NOSPACE;
 			if (pl.scope == SCOPE_TOP) {
 				/*
 				 * On top level of script,
@@ -1242,7 +1278,7 @@ static bool parse_level(SGS_Parser *restrict o,
 					goto RETURN;
 				pl.sub_f = NULL;
 			}
-			break;
+			continue;
 		case '\'':
 			/*
 			 * Variable assignment, part 1; set to what follows.
@@ -1268,6 +1304,7 @@ static bool parse_level(SGS_Parser *restrict o,
 			}
 			if (pl.sub_f == parse_in_settings || !pl.event)
 				goto INVALID;
+			pl.pl_flags &= ~PL_WARN_NOSPACE; /* OK before */
 			if ((pl.operator->time.flags &
 			     (SGS_TIMEP_SET|SGS_TIMEP_IMPLICIT)) ==
 			    (SGS_TIMEP_SET|SGS_TIMEP_IMPLICIT))
@@ -1275,11 +1312,12 @@ static bool parse_level(SGS_Parser *restrict o,
 "ignoring 'ti' (implicit time) before ';' separator");
 			begin_node(o, pl.operator, true);
 			pl.event->ev_flags |= SGS_SDEV_WAIT_PREV_DUR;
-			parse_in_event(o);
+			pl.sub_f = parse_in_event;
 			break;
 		case '=': {
 			SGS_Symitem *var = pl.set_var;
 			if (!var) goto INVALID;
+			pl.pl_flags &= ~PL_WARN_NOSPACE; /* OK before */
 			pl.set_var = NULL; // used here
 			if (scan_num(sc, NULL, &var->data.num))
 				var->data_use = SGS_SYM_DATA_NUM;
@@ -1295,7 +1333,7 @@ static bool parse_level(SGS_Parser *restrict o,
 				/*
 				 * Multiple-operator node now open.
 				 */
-				parse_in_event(o);
+				pl.sub_f = parse_in_event;
 				break;
 			}
 			/*
@@ -1309,7 +1347,7 @@ static bool parse_level(SGS_Parser *restrict o,
 					begin_node(o, ref, false);
 					ref = pl.operator;
 					var->data.obj = ref; /* update */
-					parse_in_event(o);
+					pl.sub_f = parse_in_event;
 				} else {
 					SGS_Scanner_warning(sc, NULL,
 "reference '@%s' doesn't point to an object", var->sstr->key);
@@ -1320,14 +1358,14 @@ static bool parse_level(SGS_Parser *restrict o,
 			size_t wave;
 			if (!scan_wavetype(sc, &wave))
 				break;
-			begin_node(o, 0, false);
+			begin_node(o, NULL, false);
 			pl.operator->wave = wave;
-			parse_in_event(o);
+			pl.sub_f = parse_in_event;
 			break; }
 		case 'Q':
 			goto FINISH;
 		case 'S':
-			parse_in_settings(o);
+			pl.sub_f = parse_in_settings;
 			break;
 		case '[':
 			warn_opening_disallowed(sc, '[');
@@ -1356,18 +1394,22 @@ static bool parse_level(SGS_Parser *restrict o,
 				SGS_Scanner_ungetc(sc);
 				goto RETURN;
 			}
+			pl.pl_flags &= ~PL_WARN_NOSPACE; /* OK around */
 			end_event(o);
 			flush_durgroup(o);
 			pl.sub_f = NULL;
-			break;
+			continue;
 		case '}':
 			warn_closing_without_opening(sc, '}', '{');
 			break;
 		default:
 		INVALID:
 			if (!handle_unknown_or_eof(sc, c)) goto FINISH;
-			break;
+			continue;
 		}
+		if (pl.pl_flags & PL_WARN_NOSPACE)
+			warn_missing_whitespace(sc, &sf_first, c);
+		pl.pl_flags |= PL_WARN_NOSPACE;
 	}
 FINISH:
 	if (newscope == SCOPE_NEST || newscope == SCOPE_BIND)
