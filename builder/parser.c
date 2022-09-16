@@ -1,5 +1,5 @@
 /* mgensys: Script parser.
- * Copyright (c) 2011, 2019-2020 Joel K. Pettersson
+ * Copyright (c) 2011, 2019-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -34,6 +34,9 @@ static uint8_t filter_symchar(MGS_File *restrict f mgsMaybeUnused,
 }
 
 bool MGS_init_LangOpt(MGS_LangOpt *restrict o, MGS_SymTab *restrict symt) {
+  if (!(o->line_names =
+        MGS_SymTab_pool_stra(symt, MGS_Line_names, MGS_LINE_FILLS)))
+    return false;
   if (!(o->noise_names =
         MGS_SymTab_pool_stra(symt, MGS_Noise_names, MGS_NOISE_TYPES)))
     return false;
@@ -180,6 +183,17 @@ static void new_sounddata(MGS_NodeData *nd, size_t size) {
   o->cur_sound = n;
 }
 
+static void new_linedata(MGS_NodeData *nd) {
+  new_sounddata(nd, sizeof(MGS_ProgramLineData));
+  MGS_ProgramNode *n = nd->node;
+  MGS_ProgramLineData *lod = n->data;
+  lod->line.time_ms = lrint(lod->sound.time.v * 1000.f);
+  lod->line.fill_type = MGS_LINE_LIN;
+  lod->line.flags |= MGS_LINEP_STATE
+                  | MGS_LINEP_FILL_TYPE
+                  | MGS_LINEP_TIME_IF_NEW;
+}
+
 static void new_noisedata(MGS_NodeData *nd) {
   new_sounddata(nd, sizeof(MGS_ProgramNoiseData));
 }
@@ -256,6 +270,9 @@ static void new_node(MGS_NodeData *nd,
   nd->n_delay_next = 0.f;
 
   switch (type) {
+  case MGS_TYPE_LINE:
+    new_linedata(nd);
+    break;
   case MGS_TYPE_NOISE:
     new_noisedata(nd);
     break;
@@ -289,6 +306,10 @@ static void end_sounddata(MGS_NodeData *nd) {
   }
 }
 
+static void end_linedata(MGS_NodeData *nd) {
+  end_sounddata(nd);
+}
+
 static void end_noisedata(MGS_NodeData *nd) {
   end_sounddata(nd);
 }
@@ -306,6 +327,9 @@ static void end_node(MGS_NodeData *nd) {
     return; /* nothing to do */
 
   switch (n->type) {
+  case MGS_TYPE_LINE:
+    end_linedata(nd);
+    break;
   case MGS_TYPE_NOISE:
     end_noisedata(nd);
     break;
@@ -531,6 +555,16 @@ static size_t numsym_channel(MGS_Parser *restrict o, double *restrict val) {
   }
 }
 
+static bool scan_linetype(MGS_Parser *restrict o,
+    size_t *restrict found_id, char pos_c) {
+  const char *const *names = o->prg->lopt.line_names;
+  if (scan_symafind(o, names, found_id, pos_c))
+    return true;
+  warning(o, "invalid line type value; available are:", pos_c);
+  MGS_print_names(names, "\t", stderr);
+  return false;
+}
+
 static bool scan_noisetype(MGS_Parser *restrict o,
     size_t *restrict found_id, char pos_c) {
   const char *const *names = o->prg->lopt.noise_names;
@@ -658,6 +692,30 @@ INVALID:
   return false;
 }
 
+static bool parse_goal(MGS_Parser *o, MGS_ProgramNode *n) {
+  MGS_ProgramLineData *lod = MGS_ProgramNode_get_data(n, MGS_TYPE_LINE);
+  if (!lod) goto INVALID;
+  float f;
+  if (!scan_num(o, NULL, &f)) goto INVALID;
+  lod->line.vt = f;
+  lod->line.flags |= MGS_LINEP_GOAL;
+  return true;
+INVALID:
+  return false;
+}
+
+static bool parse_line(MGS_Parser *o, MGS_ProgramNode *n, char pos_c) {
+  MGS_ProgramLineData *lod = MGS_ProgramNode_get_data(n, MGS_TYPE_LINE);
+  if (!lod) goto INVALID;
+  size_t line;
+  if (!scan_linetype(o, &line, pos_c)) goto INVALID;
+  lod->line.fill_type = line;
+  lod->line.flags |= MGS_LINEP_FILL_TYPE;
+  return true;
+INVALID:
+  return false;
+}
+
 static bool parse_noise(MGS_Parser *o, MGS_ProgramNode *n, char pos_c) {
   MGS_ProgramNoiseData *nod = MGS_ProgramNode_get_data(n, MGS_TYPE_NOISE);
   if (!nod) goto INVALID;
@@ -692,13 +750,30 @@ INVALID:
 }
 
 static bool parse_time(MGS_Parser *o, MGS_ProgramNode *n) {
-  MGS_ProgramSoundData *sound;
-  sound = MGS_ProgramNode_get_data(n, MGS_BASETYPE_SOUND);
+  MGS_ProgramSoundData *sound = MGS_ProgramNode_get_data(n, MGS_BASETYPE_SOUND);
   if (!sound) goto INVALID;
   float f;
   if (!scan_timeval(o, &f)) goto INVALID;
   sound->time.v = f;
   sound->time.flags |= MGS_TIME_SET;
+  MGS_ProgramLineData *lod = MGS_ProgramNode_get_data(n, MGS_TYPE_LINE);
+  if (lod != NULL) {
+    lod->line.time_ms = lrint(f * 1000.f);
+    lod->line.flags |= MGS_LINEP_TIME;
+    lod->line.flags &= ~MGS_LINEP_TIME_IF_NEW;
+  }
+  return true;
+INVALID:
+  return false;
+}
+
+static bool parse_value(MGS_Parser *o, MGS_ProgramNode *n) {
+  MGS_ProgramLineData *lod = MGS_ProgramNode_get_data(n, MGS_TYPE_LINE);
+  if (!lod) goto INVALID;
+  float f;
+  if (!scan_num(o, NULL, &f)) goto INVALID;
+  lod->line.v0 = f;
+  lod->line.flags |= MGS_LINEP_STATE;
   return true;
 INVALID:
   return false;
@@ -810,6 +885,14 @@ static void parse_level(MGS_Parser *o, MGS_ProgramArrData *chain) {
       new_node(&nd, NULL, MGS_TYPE_ENV);
       o->setnode = o->level + 1;
       break;
+    case 'L':
+      if (!scan_num(o, NULL, &f)) break;
+      new_node(&nd, NULL, MGS_TYPE_LINE);
+      MGS_ProgramLineData *lod = nd.node->data;
+      lod->line.v0 = f;
+      lod->line.flags |= MGS_LINEP_STATE;
+      o->setnode = o->level + 1;
+      break;
     case 'N': {
       size_t noise;
       if (!scan_noisetype(o, &noise, c)) break;
@@ -888,6 +971,16 @@ static void parse_level(MGS_Parser *o, MGS_ProgramArrData *chain) {
         goto INVALID;
       if (!parse_freq(o, nd.node, false)) goto INVALID;
       break;
+    case 'g':
+      if (o->setdef > o->setnode || o->setnode <= 0)
+        goto INVALID;
+      if (!parse_goal(o, nd.node)) goto INVALID;
+      break;
+    case 'l':
+      if (o->setdef > o->setnode || o->setnode <= 0)
+        goto INVALID;
+      if (!parse_line(o, nd.node, c)) goto INVALID;
+      break;
     case 'n':
       if (o->setdef > o->setnode || o->setnode <= 0)
         goto INVALID;
@@ -915,6 +1008,11 @@ static void parse_level(MGS_Parser *o, MGS_ProgramArrData *chain) {
       } else if (o->setnode <= 0)
         goto INVALID;
       if (!parse_time(o, nd.node)) goto INVALID;
+      break;
+    case 'v':
+      if (o->setdef > o->setnode || o->setnode <= 0)
+        goto INVALID;
+      if (!parse_value(o, nd.node)) goto INVALID;
       break;
     case 'w':
       if (o->setdef > o->setnode || o->setnode <= 0)

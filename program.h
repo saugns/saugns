@@ -1,5 +1,5 @@
 /* mgensys: Audio program data.
- * Copyright (c) 2011, 2020 Joel K. Pettersson
+ * Copyright (c) 2011, 2020-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -12,6 +12,7 @@
  */
 
 #pragma once
+#include "line.h"
 #include "noise.h"
 #include "wave.h"
 
@@ -23,7 +24,8 @@ enum {
 	MGS_BASETYPE_SCOPE,
 	MGS_BASETYPES,
 	MGS_TYPE_NONE = 0,
-	MGS_TYPE_NOISE = MGS_BASETYPES,
+	MGS_TYPE_LINE = MGS_BASETYPES,
+	MGS_TYPE_NOISE,
 	MGS_TYPE_WAVE,
 	MGS_TYPE_ENV,
 	MGS_TYPE_DUR,
@@ -54,6 +56,10 @@ enum {
 	MGS_SOUNDP_AMP = 1<<1,
 	MGS_SOUNDP_DYNAMP = 1<<2,
 	MGS_SOUNDP_PAN = 1<<3,
+	/* Line object parameters. */
+	MGS_LINEP_LINE = 1<<8,
+	//MGS_LINEP_VALUE = 1<<9,
+	//MGS_LINEP_GOAL = 1<<10,
 	/* Noise object parameters. */
 	MGS_NOISEP_NOISE = 1<<8,
 	/* Wave object parameters. */
@@ -66,6 +72,7 @@ enum {
 
 typedef struct MGS_ProgramNode MGS_ProgramNode;
 typedef struct MGS_ProgramSoundData MGS_ProgramSoundData;
+typedef struct MGS_ProgramLineData MGS_ProgramLineData;
 typedef struct MGS_ProgramNoiseData MGS_ProgramNoiseData;
 typedef struct MGS_ProgramWaveData MGS_ProgramWaveData;
 typedef struct MGS_ProgramScopeData MGS_ProgramScopeData;
@@ -89,6 +96,11 @@ struct MGS_ProgramSoundData {
 	float amp, dynamp, pan;
 	MGS_ProgramArrData *amod;
 	MGS_ProgramNode *nested_next;
+};
+
+struct MGS_ProgramLineData {
+	MGS_ProgramSoundData sound;
+	MGS_Line line;
 };
 
 struct MGS_ProgramNoiseData {
@@ -149,6 +161,7 @@ struct MGS_MemPool;
 struct MGS_SymTab;
 
 typedef struct MGS_LangOpt {
+	const char *const*line_names;
 	const char *const*noise_names;
 	const char *const*wave_names;
 } MGS_LangOpt;

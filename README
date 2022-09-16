@@ -72,14 +72,41 @@ Sound generator parameters:
 	\	Time shift/delay current operation and following ones, time
 		in seconds.
 
+L:
+	Line generator; following the L, a start value is expected, which
+	is repeated to make a flat line if the goal parameter isn't used.
+	See "Sound generator parameters" for other, common named parameters.
+	g	Goal (go-to) value, assigned to the parameter after time.
+		This value has no default and must be provided. If changed
+		again before the full time, the current point reached on the
+		previous trajectory will be used to change the start value.
+	l	Line shape (default 'lin', or the previous shape if any):
+			hor	Horizontal line with old value held until time.
+			lin	Linear trajectory over time.
+			sin	Sine-like smooth ends trajectory over time.
+			exp	Steep "exp(x)-1"-like increase or decrease.
+			log	Steep "log(x+1)"-like increase or decrease.
+			xpe	Exponential envelope shape (saturate or decay).
+			lge	Logarithmic envelope shape (saturate or decay).
+		(The 'exp' and 'log' shapes use ear-tuned polynomial
+		approximations with definite beginnings and ends,
+		designed to sound natural for frequency sweeping,
+		and symmetric one to the other. The 'xpe' shape increases
+		like 'log' and decreases like 'exp', much like a capacitor
+		charges and discharges, natural-sounding for an envelope;
+		and 'lge' increases like 'exp' and decreases like 'log'.
+		The 'sin' shape sounds similar to 'lin', except it has a
+		smoothly curved start and stop, and a steeper middle.)
+	v	Start (state) value. It can also be set after a 'v'.
+
 Nwh:
 	Noise generator; "wh" (white noise) is currently the only type.
-	See "Sound generator parameters" for the other named parameters.
+	See "Sound generator parameters" for other, common named parameters.
 	n	Change noise; "wh" (white noise) is currently the only type.
 
 Wsin, Wsqr, W...:
 	Wave oscillator; see "Wave types" for all types.
-	See "Sound generator parameters" for the other named parameters.
+	See "Sound generator parameters" for other, common named parameters.
 	f	Frequency in Hz, for carrier or modulator.
 	f!{}	Second frequency in Hz to modulate (FM) to by wave or envelope,
 		and/or a list of modulators given within {} following the

@@ -1,5 +1,5 @@
 /* mgensys: Audio generator data allocator.
- * Copyright (c) 2020 Joel K. Pettersson
+ * Copyright (c) 2020-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -35,6 +35,11 @@ typedef struct MGS_SoundNode {
 	uint32_t voice_id;
 	uint8_t type;
 } MGS_SoundNode;
+
+typedef struct MGS_LineNode {
+	MGS_SoundNode sound;
+	MGS_Line line;
+} MGS_LineNode;
 
 typedef struct MGS_NoiseNode {
 	MGS_SoundNode sound;

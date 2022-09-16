@@ -11,7 +11,7 @@ OBJ=loader/file.o loader/symtab.o \
     renderer/audiodev.o renderer/wavfile.o renderer/renderer.o \
     interp/generator.o interp/ngen.o interp/osc.o interp/runalloc.o \
     common.o mempool.o ptrarr.o arrtype.o \
-    noise.o wave.o help.o \
+    line.o noise.o wave.o help.o \
     mgensys.o
 
 all: mgensys
@@ -52,7 +52,7 @@ builder/postparse.o: builder/parser.h builder/postparse.c common.h help.h loader
 common.o: common.c common.h
 	$(CC) -c $(CFLAGS) common.c
 
-help.o: common.h help.c help.h math.h noise.h wave.h
+help.o: common.h help.c help.h line.h math.h noise.h wave.h
 	$(CC) -c $(CFLAGS) help.c
 
 interp/generator.o: arrtype.h common.h interp/generator.c interp/ngen.h interp/osc.h interp/runalloc.h math.h mempool.h mgensys.h noise.h program.h ptrarr.h wave.h
@@ -66,6 +66,9 @@ interp/osc.o: common.h interp/osc.c interp/osc.h math.h wave.h
 
 interp/runalloc.o: arrtype.h common.h interp/ngen.h interp/osc.h interp/runalloc.c interp/runalloc.h math.h mempool.h mgensys.h noise.h program.h ptrarr.h wave.h
 	$(CC) -c $(CFLAGS_FAST) interp/runalloc.c -o interp/runalloc.o
+
+line.o: common.h line.c line.h math.h
+	$(CC) -c $(CFLAGS_FAST) line.c
 
 loader/file.o: common.h loader/file.c loader/file.h
 	$(CC) -c $(CFLAGS) loader/file.c -o loader/file.o

@@ -121,6 +121,11 @@ static void MGS_Generator_update_sound(MGS_Generator *o, MGS_EventNode *ev) {
     refsn->pan = updsn->pan;
   }
   switch (refsn->type) {
+  case MGS_TYPE_LINE: {
+    MGS_LineNode *refn = (MGS_LineNode*) refsn;
+    MGS_LineNode *updn = (MGS_LineNode*) updsn;
+    MGS_Line_copy(&refn->line, &updn->line, o->srate);
+    break; }
   case MGS_TYPE_NOISE:
     break;
   case MGS_TYPE_WAVE: {
@@ -239,6 +244,33 @@ static void run_block_sub(MGS_Generator *o, Buf *bufs_from, uint32_t len,
     uint32_t mods_id, Buf *freq,
     uint32_t flags);
 
+static void run_block_line(MGS_Generator *o, Buf *bufs_from, uint32_t len,
+    MGS_LineNode *n,
+    uint32_t layer, uint32_t flags) {
+  uint32_t i;
+  Buf *mix_buf = bufs_from++;
+  Buf *amp = NULL;
+  Buf *tmp_buf = NULL;
+  if (n->sound.amods_id > 0) {
+    run_block_sub(o, bufs_from, len,
+        n->sound.amods_id, NULL,
+        BLOCK_WAVEENV);
+    amp = bufs_from++;
+    float dynampdiff = n->sound.dynamp - n->sound.amp;
+    for (i = 0; i < len; ++i)
+      amp->f[i] = n->sound.amp + amp->f[i] * dynampdiff;
+  } else {
+    amp = bufs_from++;
+    for (i = 0; i < len; ++i)
+      amp->f[i] = n->sound.amp;
+  }
+  tmp_buf = bufs_from++;
+  MGS_Line_run(&n->line, tmp_buf->f, len, NULL);
+  ((flags & BLOCK_WAVEENV) ?
+   block_mix_mul_waveenv :
+   block_mix_add)(mix_buf->f, len, layer, tmp_buf->f, amp->f);
+}
+
 static void run_block_noise(MGS_Generator *o, Buf *bufs_from, uint32_t len,
     MGS_NoiseNode *n,
     uint32_t layer, uint32_t flags) {
@@ -329,6 +361,11 @@ static void run_block_sub(MGS_Generator *o, Buf *bufs_from, uint32_t len,
   for (size_t i = 0; i < mod_list->count; ++i) {
     MGS_SoundNode *n = o->sound_list[mod_list->ids[i]];
     switch (n->type) {
+    case MGS_TYPE_LINE:
+      run_block_line(o, bufs_from, len,
+          (MGS_LineNode*) n,
+          i, flags);
+      break;
     case MGS_TYPE_NOISE:
       run_block_noise(o, bufs_from, len,
           (MGS_NoiseNode*) n,
@@ -355,6 +392,11 @@ static uint32_t run_sound(MGS_Generator *o,
       len = time;
     time -= len;
     switch (sndn->type) {
+    case MGS_TYPE_LINE:
+      run_block_line(o, o->bufs, len,
+          (MGS_LineNode*) sndn,
+          0, 0);
+      break;
     case MGS_TYPE_NOISE:
       run_block_noise(o, o->bufs, len,
           (MGS_NoiseNode*) sndn,

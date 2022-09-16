@@ -23,7 +23,8 @@
  * Named help types.
  */
 enum {
-	MGS_HELP_NOISE = 0,
+	MGS_HELP_LINE = 0,
+	MGS_HELP_NOISE,
 	MGS_HELP_WAVE,
 	MGS_HELP_TYPES
 };

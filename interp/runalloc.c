@@ -1,5 +1,5 @@
 /* mgensys: Audio generator data allocator.
- * Copyright (c) 2020 Joel K. Pettersson
+ * Copyright (c) 2020-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -191,6 +191,34 @@ static bool MGS_RunAlloc_init_sound(MGS_RunAlloc *restrict o,
 }
 
 /*
+ * Allocate and initialize line node.
+ *
+ * \return true, or false on allocation failure
+ */
+static bool MGS_RunAlloc_make_line(MGS_RunAlloc *restrict o,
+		const MGS_ProgramNode *restrict n) {
+	MGS_EventNode *ev = o->cur_ev;
+	MGS_LineNode *lon;
+	MGS_ProgramLineData *lod = n->data;
+	MGS_ProgramLineData *prev_lod = NULL;
+	if (!(ev->status & MGS_EV_UPDATE)) {
+		lon = MGS_MemPool_alloc(o->mem, sizeof(MGS_LineNode));
+	} else {
+		MGS_EventNode *ref_ev = &o->ev_arr.a[ev->ref_i];
+		lon = MGS_MemPool_memdup(o->mem,
+				ref_ev->sndn, sizeof(MGS_LineNode));
+		prev_lod = n->ref_prev->data;
+	}
+	if (!lon || !MGS_RunAlloc_init_sound(o, &lon->sound, n))
+		return false;
+	lon->line = lod->line;
+	if (!prev_lod)
+		MGS_Line_setup(&lon->line, o->srate);
+	//MGS_Line_copy(&lon->line, &lod->line, o->srate);
+	return true;
+}
+
+/*
  * Allocate and initialize noise node.
  *
  * \return true, or false on allocation failure
@@ -199,8 +227,8 @@ static bool MGS_RunAlloc_make_noise(MGS_RunAlloc *restrict o,
 		const MGS_ProgramNode *restrict n) {
 	MGS_EventNode *ev = o->cur_ev;
 	MGS_NoiseNode *non;
-	//MGS_ProgramWaveData *nod = n->data;
-	//MGS_ProgramWaveData *prev_nod = NULL;
+	//MGS_ProgramNoiseData *nod = n->data;
+	//MGS_ProgramNoiseData *prev_nod = NULL;
 	if (!(ev->status & MGS_EV_UPDATE)) {
 		non = MGS_MemPool_alloc(o->mem, sizeof(MGS_NoiseNode));
 	} else {
@@ -263,6 +291,10 @@ static bool MGS_RunAlloc_make_sound(MGS_RunAlloc *restrict o,
 	if (!MGS_RunAlloc_make_event(o, n))
 		return false;
 	switch (n->type) {
+	case MGS_TYPE_LINE:
+		if (!MGS_RunAlloc_make_line(o, n))
+			return false;
+		break;
 	case MGS_TYPE_NOISE:
 		if (!MGS_RunAlloc_make_noise(o, n))
 			return false;
@@ -311,6 +343,25 @@ bool MGS_RunAlloc_for_nodelist(MGS_RunAlloc *restrict o,
 
 static size_t calc_bufs_sub(MGS_RunAlloc *restrict o,
 		size_t count_from, uint32_t mods_id);
+
+/*
+ * Traversal mirroring the function for running an MGS_LineNode.
+ */
+static size_t calc_bufs_line(MGS_RunAlloc *restrict o,
+		size_t count_from, MGS_NoiseNode *restrict n) {
+	size_t count = count_from, max_count = count_from;
+	++count;
+	if (n->sound.amods_id > 0) {
+		size_t sub_count = calc_bufs_sub(o, count, n->sound.amods_id);
+		if (max_count < sub_count) max_count = sub_count;
+		++count;
+	} else {
+		++count;
+	}
+	++count;
+	if (max_count < count) max_count = count;
+	return max_count;
+}
 
 /*
  * Traversal mirroring the function for running an MGS_NoiseNode.
@@ -368,6 +419,10 @@ static size_t calc_bufs_sub(MGS_RunAlloc *restrict o,
 		MGS_SoundNode *n = o->sound_list[mod_list->ids[i]];
 		size_t sub_count = count_from;
 		switch (n->type) {
+		case MGS_TYPE_LINE:
+			sub_count = calc_bufs_line(o,
+					count_from, (MGS_NoiseNode*) n);
+			break;
 		case MGS_TYPE_NOISE:
 			sub_count = calc_bufs_noise(o,
 					count_from, (MGS_NoiseNode*) n);
@@ -394,6 +449,9 @@ static bool MGS_RunAlloc_recheck_bufs(MGS_RunAlloc *restrict o) {
 		MGS_SoundNode *sndn = voice->root;
 		size_t count = 0;
 		switch (sndn->type) {
+		case MGS_TYPE_LINE:
+			count = calc_bufs_line(o, 0, (MGS_NoiseNode*) sndn);
+			break;
 		case MGS_TYPE_NOISE:
 			count = calc_bufs_noise(o, 0, (MGS_NoiseNode*) sndn);
 			break;
