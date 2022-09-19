@@ -47,18 +47,24 @@ enum {
 };
 
 /**
- * Operator parameter flags.
+ * Ramp use IDs.
  */
 enum {
-	SGS_POPP_PAN = 1<<0,
-	SGS_POPP_WAVE = 1<<1,
-	SGS_POPP_TIME = 1<<2,
-	SGS_POPP_FREQ = 1<<3,
-	SGS_POPP_FREQ2 = 1<<4,
-	SGS_POPP_PHASE = 1<<5,
-	SGS_POPP_AMP = 1<<6,
-	SGS_POPP_AMP2 = 1<<7,
-	SGS_POP_PARAMS = (1<<8) - 1,
+	SGS_PRAMP_PAN = 0,
+	SGS_PRAMP_AMP,
+	SGS_PRAMP_AMP2,
+	SGS_PRAMP_FREQ,
+	SGS_PRAMP_FREQ2,
+};
+
+/**
+ * Operator parameter flags. For parameters without other tracking only.
+ */
+enum {
+	SGS_POPP_WAVE = 1<<0,
+	SGS_POPP_TIME = 1<<1,
+	SGS_POPP_PHASE = 1<<2,
+	SGS_POP_PARAMS = (1<<3) - 1,
 };
 
 /*
@@ -107,9 +113,9 @@ typedef struct SGS_ProgramOpData {
 	uint32_t params;
 	SGS_Time time;
 	uint8_t wave;
-	SGS_Ramp freq, freq2;
-	SGS_Ramp amp, amp2;
-	SGS_Ramp pan;
+	SGS_Ramp *freq, *freq2;
+	SGS_Ramp *amp, *amp2;
+	SGS_Ramp *pan;
 	float phase;
 } SGS_ProgramOpData;
 

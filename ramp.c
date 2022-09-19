@@ -1,5 +1,5 @@
 /* sgensys: Value ramp module.
- * Copyright (c) 2011-2013, 2017-2021 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -16,30 +16,29 @@
  */
 
 #include "ramp.h"
-#include "math.h"
-// the noinline use below works around i386 clang performance issue
 
-const char *const SGS_Ramp_names[SGS_RAMP_TYPES + 1] = {
+const char *const SGS_Ramp_names[SGS_RAMP_FILLS + 1] = {
 	"hold",
 	"lin",
+	"sin",
 	"exp",
 	"log",
 	"xpe",
 	"lge",
-	"cos",
 	NULL
 };
 
-const SGS_Ramp_fill_f SGS_Ramp_fill_funcs[SGS_RAMP_TYPES] = {
+const SGS_Ramp_fill_f SGS_Ramp_fill_funcs[SGS_RAMP_FILLS] = {
 	SGS_Ramp_fill_hold,
 	SGS_Ramp_fill_lin,
+	SGS_Ramp_fill_sin,
 	SGS_Ramp_fill_exp,
 	SGS_Ramp_fill_log,
 	SGS_Ramp_fill_xpe,
 	SGS_Ramp_fill_lge,
-	SGS_Ramp_fill_cos,
 };
 
+// the noinline use below works around i386 clang performance issue
 /**
  * Fill \p buf with \p len values along a straight horizontal line,
  * i.e. \p len copies of \p v0.
@@ -71,6 +70,50 @@ void SGS_Ramp_fill_lin(float *restrict buf, uint32_t len,
 	for (uint32_t i = 0; i < len; ++i) {
 		const uint32_t i_pos = i + pos;
 		float v = v0 + (vt - v0) * (i_pos * inv_time);
+		if (!mulbuf)
+			buf[i] = v;
+		else
+			buf[i] = v * mulbuf[i];
+	}
+}
+
+/*
+ * Scaled and shifted sine ramp, using degree 5 polynomial
+ * with no error at ends and double the minimax max error.
+ *
+ * If used for oscillator, would have a roughly -84 dB 5th
+ * harmonic distortion but nothing else above 16-bit noise
+ * floor. http://joelkp.frama.io/blog/modified-taylor.html
+ */
+static inline float sinramp(float x) {
+	const float scale[] = {
+		/* constants calculated with 80-bit "long double" use */
+		+1.5702137061703461473139223358864L,
+		-2.568278787380814155456160152724L,
+		+1.1496958507977182668618673644367L,
+	};
+	float x2;
+	x -= 0.5f;
+	x2 = x*x;
+	return 0.5f + x*(scale[0] + x2*(scale[1] + x2*scale[2]));
+}
+
+/**
+ * Fill \p buf with \p len values along a sinuous trajectory
+ * from \p v0 (at position 0) to \p vt (at position \p time),
+ * beginning at position \p pos.
+ *
+ * Rises or falls similarly to how sin() moves from trough to
+ * crest and back. Uses a ~99.993% accurate polynomial curve.
+ */
+void SGS_Ramp_fill_sin(float *restrict buf, uint32_t len,
+		float v0, float vt, uint32_t pos, uint32_t time,
+		const float *restrict mulbuf) {
+	const float inv_time = 1.f / time;
+	for (uint32_t i = 0; i < len; ++i) {
+		const uint32_t i_pos = i + pos;
+		float x = i_pos * inv_time;
+		float v = v0 + (vt - v0) * sinramp(x);
 		if (!mulbuf)
 			buf[i] = v;
 		else
@@ -119,7 +162,7 @@ void SGS_Ramp_fill_log(float *restrict buf, uint32_t len,
  * beginning at position \p pos.
  *
  * Uses an ear-tuned polynomial, designed to sound natural,
- * and symmetric to the "opposite" 'lge' type.
+ * and symmetric to the "opposite" 'lge' fill type.
  */
 void SGS_Ramp_fill_xpe(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
@@ -147,7 +190,7 @@ void SGS_Ramp_fill_xpe(float *restrict buf, uint32_t len,
  * beginning at position \p pos.
  *
  * Uses an ear-tuned polynomial, designed to sound natural,
- * and symmetric to the "opposite" 'xpe' type.
+ * and symmetric to the "opposite" 'xpe' fill type.
  */
 void SGS_Ramp_fill_lge(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
@@ -169,68 +212,62 @@ void SGS_Ramp_fill_lge(float *restrict buf, uint32_t len,
 }
 
 /**
- * Fill \p buf with \p len values along a sinuous trajectory
- * from \p v0 (at position 0) to \p vt (at position \p time),
- * beginning at position \p pos.
- *
- * Rises or falls similarly to how cos() moves from trough to
- * crest and back. Uses the simplest polynomial giving a good
- * sinuous curve (almost exactly 99% accurate; too "x"-like).
- */
-void SGS_Ramp_fill_cos(float *restrict buf, uint32_t len,
-		float v0, float vt, uint32_t pos, uint32_t time,
-		const float *restrict mulbuf) {
-	const float inv_time = 1.f / time;
-	for (uint32_t i = 0; i < len; ++i) {
-		const uint32_t i_pos = i + pos;
-		float x = i_pos * inv_time;
-		float v = v0 + (vt - v0) * (3.f - (x+x))*x*x;
-		if (!mulbuf)
-			buf[i] = v;
-		else
-			buf[i] = v * mulbuf[i];
-	}
-}
-
-/**
- * Set instance to default values.
- *
- * (This does not include values specific to a particular parameter.)
- */
-void SGS_Ramp_reset(SGS_Ramp *restrict o) {
-	*o = (SGS_Ramp){0};
-	o->type = SGS_RAMP_LIN; // default if goal enabled
-}
-
-/**
  * Copy changes from \p src to the instance,
  * preserving non-overridden parts of state.
  */
 void SGS_Ramp_copy(SGS_Ramp *restrict o,
-		const SGS_Ramp *restrict src) {
+		const SGS_Ramp *restrict src,
+		uint32_t srate) {
+	if (!src)
+		return;
 	uint8_t mask = 0;
 	if ((src->flags & SGS_RAMPP_STATE) != 0) {
 		o->v0 = src->v0;
 		mask |= SGS_RAMPP_STATE
 			| SGS_RAMPP_STATE_RATIO;
+	} else if ((o->flags & SGS_RAMPP_GOAL) != 0) {
+		/*
+		 * If old goal not reached, pick value at its current position.
+		 */
+		if ((src->flags & SGS_RAMPP_GOAL) != 0) {
+			float f;
+			SGS_Ramp_get(o, &f, 1, NULL);
+			o->v0 = f;
+		}
 	}
 	if ((src->flags & SGS_RAMPP_GOAL) != 0) {
 		o->vt = src->vt;
-		o->time_ms = src->time_ms;
-		o->type = src->type;
+		if (src->flags & SGS_RAMPP_TIME_IF_NEW)
+			o->end -= o->pos;
+		o->pos = 0;
 		mask |= SGS_RAMPP_GOAL
-			| SGS_RAMPP_GOAL_RATIO
-			| SGS_RAMPP_TIME;
+			| SGS_RAMPP_GOAL_RATIO;
+	}
+	if ((src->flags & SGS_RAMPP_FILL_TYPE) != 0) {
+		o->fill_type = src->fill_type;
+		mask |= SGS_RAMPP_FILL_TYPE;
+	}
+	if (!(o->flags & SGS_RAMPP_TIME) ||
+	    !(src->flags & SGS_RAMPP_TIME_IF_NEW)) {
+		/*
+		 * Time overridden.
+		 */
+		if ((src->flags & SGS_RAMPP_TIME) != 0) {
+			o->end = SGS_ms_in_samples(src->time_ms, srate, NULL);
+			o->time_ms = src->time_ms;
+			mask |= SGS_RAMPP_TIME;
+		}
 	}
 	o->flags &= ~mask;
 	o->flags |= (src->flags & mask);
 }
 
 /**
- * Fill \p buf with \p buf_len values for the ramp.
- * A value is \a v0 if no goal is set, or a ramping
- * towards \a vt if a goal is set, unless converted
- * from a ratio.
+ * Fill \p buf with up to \p buf_len values for the ramp.
+ * Only fills values for an active (remaining) goal, none
+ * if there's none. Will fill less than \p buf_len values
+ * if the goal is reached first. Does not advance current
+ * position for the ramp.
  *
  * If state and/or goal is a ratio, \p mulbuf is
  * used for value multipliers, to get "absolute"
@@ -238,17 +275,13 @@ void SGS_Ramp_copy(SGS_Ramp *restrict o,
  * with the same result as if given 1.0 values.)
  * Otherwise \p mulbuf is ignored.
  *
- * When a goal is reached and cleared, its \a vt value becomes
- * the new \a v0 value. This can be forced at any time, as the
- * \p pos can alternatively be NULL to skip all values before.
- *
- * \return true if ramp goal not yet reached
+ * \return number of next values got
  */
-bool SGS_Ramp_run(SGS_Ramp *restrict o, uint32_t *restrict pos,
-		float *restrict buf, uint32_t buf_len, uint32_t srate,
+sgsNoinline uint32_t SGS_Ramp_get(SGS_Ramp *restrict o,
+		float *restrict buf, uint32_t buf_len,
 		const float *restrict mulbuf) {
-	uint32_t len = 0;
-	if (!(o->flags & SGS_RAMPP_GOAL)) goto FILL;
+	if (!(o->flags & SGS_RAMPP_GOAL))
+		return 0;
 	/*
 	 * If only one of state and goal is a ratio value,
 	 * adjust state value used for state-to-goal fill.
@@ -266,21 +299,70 @@ bool SGS_Ramp_run(SGS_Ramp *restrict o, uint32_t *restrict pos,
 		}
 		mulbuf = NULL; /* no ratio handling past first value */
 	}
-	if (!pos) goto REACHED;
-	uint32_t time = SGS_ms_in_samples(o->time_ms, srate, NULL);
-	len = time - *pos;
+	if (o->pos >= o->end)
+		return 0;
+	uint32_t len = o->end - o->pos;
 	if (len > buf_len) len = buf_len;
-	SGS_Ramp_fill_funcs[o->type](buf, len,
-			o->v0, o->vt, *pos, time, mulbuf);
-	*pos += len;
-	if (*pos == time)
-	REACHED: {
+	SGS_Ramp_fill_funcs[o->fill_type](buf, len,
+			o->v0, o->vt, o->pos, o->end, mulbuf);
+	return len;
+}
+
+/*
+ * Move time position up to \p buf_len samples for the ramp towards the end.
+ *
+ * \return true unless time has expired
+ */
+static bool advance_len(SGS_Ramp *restrict o, uint32_t buf_len) {
+	uint32_t len = 0;
+	if (o->pos < o->end) {
+		len = o->end - o->pos;
+		if (len > buf_len) len = buf_len;
+		o->pos += len;
+	}
+	if (o->pos >= o->end) {
+		o->pos = 0;
+		o->flags &= ~SGS_RAMPP_TIME;
+		return false;
+	}
+	return true;
+}
+
+/**
+ * Fill \p buf with \p buf_len values for the ramp.
+ * A value is \a v0 if no goal is set, or a ramping
+ * towards \a vt if a goal is set, unless converted
+ * from a ratio.
+ *
+ * If state and/or goal is a ratio, \p mulbuf is
+ * used for value multipliers, to get "absolute"
+ * values. (If \p mulbuf is NULL, it is ignored,
+ * with the same result as if given 1.0 values.)
+ * Otherwise \p mulbuf is ignored.
+ *
+ * When a goal is reached and cleared, its \a vt value becomes
+ * the new \a v0 value.
+ *
+ * \return true if ramp goal not yet reached
+ */
+bool SGS_Ramp_run(SGS_Ramp *restrict o,
+		float *restrict buf, uint32_t buf_len,
+		const float *restrict mulbuf) {
+	uint32_t len = 0;
+	if (!(o->flags & SGS_RAMPP_GOAL)) {
+		advance_len(o, buf_len);
+		goto FILL;
+	}
+	len = SGS_Ramp_get(o, buf, buf_len, mulbuf);
+	o->pos += len;
+	if (o->pos >= o->end) {
 		/*
 		 * Goal reached; turn into new state value,
 		 * filling remaining buffer values with it.
 		 */
 		o->v0 = o->vt;
-		o->flags &= ~(SGS_RAMPP_GOAL | SGS_RAMPP_GOAL_RATIO);
+		o->pos = 0;
+		o->flags&=~(SGS_RAMPP_GOAL|SGS_RAMPP_GOAL_RATIO|SGS_RAMPP_TIME);
 	FILL:
 		if (!(o->flags & SGS_RAMPP_STATE_RATIO))
 			mulbuf = NULL;
@@ -298,22 +380,14 @@ bool SGS_Ramp_run(SGS_Ramp *restrict o, uint32_t *restrict pos,
  * and run position without generating values.
  *
  * When a goal is reached and cleared, its \a vt value becomes
- * the new \a v0 value. This can be forced at any time, as the
- * \p pos can alternatively be NULL to skip all values before.
+ * the new \a v0 value.
  *
  * \return true if ramp goal not yet reached
  */
-bool SGS_Ramp_skip(SGS_Ramp *restrict o, uint32_t *restrict pos,
-		uint32_t skip_len, uint32_t srate) {
-	if (!(o->flags & SGS_RAMPP_GOAL))
-		return false;
-	if (!pos) goto REACHED;
-	uint32_t time = SGS_ms_in_samples(o->time_ms, srate, NULL);
-	uint32_t len = time - *pos;
-	if (len > skip_len) len = skip_len;
-	*pos += len;
-	if (*pos == time)
-	REACHED: {
+bool SGS_Ramp_skip(SGS_Ramp *restrict o, uint32_t skip_len) {
+	if (!advance_len(o, skip_len)) {
+		if (!(o->flags & SGS_RAMPP_GOAL))
+			return false;
 		/*
 		 * Goal reached; turn into new state value.
 		 */
@@ -326,5 +400,5 @@ bool SGS_Ramp_skip(SGS_Ramp *restrict o, uint32_t *restrict pos,
 		o->flags &= ~(SGS_RAMPP_GOAL | SGS_RAMPP_GOAL_RATIO);
 		return false;
 	}
-	return true;
+	return (o->flags & SGS_RAMPP_GOAL) != 0;
 }

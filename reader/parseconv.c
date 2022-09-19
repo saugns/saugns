@@ -659,41 +659,32 @@ print_graph(const SGS_ProgramOpRef *restrict graph,
 	putc(']', stdout);
 }
 
+static sgsNoinline void
+print_ramp(const SGS_Ramp *restrict ramp, char c) {
+	if (!ramp)
+		return;
+	if ((ramp->flags & SGS_RAMPP_STATE) != 0) {
+		if ((ramp->flags & SGS_RAMPP_GOAL) != 0)
+			fprintf(stdout, "\t%c=%-6.2f->%-6.2f", c, ramp->v0, ramp->vt);
+		else
+			fprintf(stdout, "\t%c=%-6.2f\t", c, ramp->v0);
+	} else {
+		if ((ramp->flags & SGS_RAMPP_GOAL) != 0)
+			fprintf(stdout, "\t%c->%-6.2f\t", c, ramp->vt);
+		else
+			fprintf(stdout, "\t%c", c);
+	}
+}
+
 static void
 print_opline(const SGS_ProgramOpData *restrict od) {
 	if (od->time.flags & SGS_TIMEP_IMPLICIT) {
-		fprintf(stdout,
-			"\n\top %u \tt=IMPL  \t", od->id);
+		fprintf(stdout, "\n\top %u \tt=IMPL  ", od->id);
 	} else {
-		fprintf(stdout,
-			"\n\top %u \tt=%-6u\t", od->id, od->time.v_ms);
+		fprintf(stdout, "\n\top %u \tt=%-6u", od->id, od->time.v_ms);
 	}
-	if ((od->freq.flags & SGS_RAMPP_STATE) != 0) {
-		if ((od->freq.flags & SGS_RAMPP_GOAL) != 0)
-			fprintf(stdout,
-				"f=%-6.2f->%-6.2f", od->freq.v0, od->freq.vt);
-		else
-			fprintf(stdout,
-				"f=%-6.2f\t", od->freq.v0);
-	} else {
-		if ((od->freq.flags & SGS_RAMPP_GOAL) != 0)
-			fprintf(stdout,
-				"f->%-6.2f\t", od->freq.vt);
-		else
-			fprintf(stdout,
-				"\t\t");
-	}
-	if ((od->amp.flags & SGS_RAMPP_STATE) != 0) {
-		if ((od->amp.flags & SGS_RAMPP_GOAL) != 0)
-			fprintf(stdout,
-				"\ta=%-6.2f->%-6.2f", od->amp.v0, od->amp.vt);
-		else
-			fprintf(stdout,
-				"\ta=%-6.2f", od->amp.v0);
-	} else if ((od->amp.flags & SGS_RAMPP_GOAL) != 0) {
-		fprintf(stdout,
-			"\ta->%-6.2f", od->amp.vt);
-	}
+	print_ramp(od->freq, 'f');
+	print_ramp(od->amp, 'a');
 }
 
 /**

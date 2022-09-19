@@ -183,8 +183,10 @@ Parameters:
 		in considering the surrounding sequence of steps and delays
 		(up to the next '|' time separator, or to the end of the
 		script if none).
-			For modulator oscillators, default time is however
-		an "implicit" time length (see 'i' below), meaning playing
+			The default time lengthens further when modulators
+		with longer definite times are specified for the current step.
+			For modulator oscillators, default time is however an
+		"implicit" time length (see 'i' below), meaning playing
 		whenever a carrier it is linked to does. (Implicit time is
 		only supported for nested oscillators.) When such a time
 		length is retrieved as part of setting the default time for
@@ -194,7 +196,8 @@ Parameters:
 		simply given the "S t" default value if no time is set.
 		The following sub-steps in turn each have the time of the
 		previous as its default time. The exception is modulators,
-		for which the last sub-step has implicit time by default.
+		for which the last sub-step has implicit time ('i', "ti")
+		by default, just like for undivided steps for modulators.
 			Special non-number literals can also specify time:
 		d	Definite default time can be set using "td", always.
 		i	Implicit time can be set using "ti", for modulators.
@@ -289,22 +292,34 @@ Value ramp:
 	goal value -- the ordinary value being the start for a trajectory --
 	following the ordinary value or by itself, the following value ramp
 	subparameters can be given values within "{}" (curly brackets):
-	v	Goal value.
-	t	Time to reach goal (default is the external "t" duration).
-	c	Ramp curve type (default 'lin'):
+	g	Goal (go-to) value, assigned to the parameter after time.
+		This value has no default and must be provided. If changed
+		again before the full time, the current point reached on the
+		previous trajectory will be used to change the start value.
+	r	Ramp fill shape (default 'lin', or the previous shape if any):
 			hold	Hold old value until time.
 			lin	Linear trajectory over time.
-			exp	Exponential-like increase or decrease.
-			log	"log(1 + x)"-like increase or decrease.
-			xpe	Exponential-like envelope (saturate or decay).
-			lge	"log(1 + x)"-like envelope (saturate or decay).
-			cos	A "cos(x)"-like falling or rising trajectory.
-		(The 'xpe' and 'lge' types use ear-tuned polynomial
+			sin	Sine-like smooth ends trajectory over time.
+			exp	Steep "exp(x)-1"-like increase or decrease.
+			log	Steep "log(x+1)"-like increase or decrease.
+			xpe	Exponential envelope shape (saturate or decay).
+			lge	Logarithmic envelope shape (saturate or decay).
+		(The 'exp' and 'log' shapes use ear-tuned polynomial
 		approximations with definite beginnings and ends,
-		designed to sound natural, and symmetric one to another.
-		The 'xpe' increases like 'log' and decreases like 'exp',
-		like a capacitor, natural-sounding for envelope-like use.
-		The 'lge' increases like 'exp' and decreases like 'log'.)
+		designed to sound natural for frequency sweeping,
+		and symmetric one to the other. The 'xpe' shape increases
+		like 'log' and decreases like 'exp', much like a capacitor
+		charges and discharges, natural-sounding for an envelope;
+		and 'lge' increases like 'exp' and decreases like 'log'.
+		The 'sin' shape sounds similar to 'lin', except it has a
+		smoothly curved start and stop, and a steeper middle.)
+	t	Time to reach goal (default is the external "t" duration,
+		or the remaining previous time, if any, for this parameter).
+		If longer than the active time for the object which has the
+		ramped parameter, the trajectory will be left unfinished.
+	v	Start (state) value, the ordinary parameter value.
+		It can alternatively be set here after a 'v',
+		if not set before the enclosing "{}".
 
 Modulation with value range:
 	Amplitude and frequency (and relative frequency) parameters support

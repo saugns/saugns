@@ -44,9 +44,9 @@ typedef struct SGS_ScriptOpData {
 	uint32_t silence_ms;
 	uint8_t wave;
 	uint8_t use_type;
-	SGS_Ramp freq, freq2;
-	SGS_Ramp amp, amp2;
-	SGS_Ramp pan;
+	SGS_Ramp *freq, *freq2;
+	SGS_Ramp *amp, *amp2;
+	SGS_Ramp *pan;
 	float phase;
 	/* node adjacents in operator linkage graph */
 	SGS_ScriptListData *fmods, *pmods, *amods;
@@ -63,6 +63,7 @@ enum {
 	SGS_SDEV_IMPLICIT_TIME    = 1<<2,
 	SGS_SDEV_WAIT_PREV_DUR    = 1<<3, // compound step timing
 	SGS_SDEV_FROM_GAPSHIFT    = 1<<4, // gapshift follow-on event
+	SGS_SDEV_LOCK_DUR_SCOPE   = 1<<5, // nested data can't lengthen dur
 };
 
 struct SGS_ScriptEvBranch;
