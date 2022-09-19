@@ -38,8 +38,6 @@ typedef struct OperatorNode {
 	const SGS_ProgramIDArr *amods, *fmods, *pmods;
 	SGS_Ramp amp, freq;
 	SGS_Ramp amp2, freq2;
-	uint32_t amp_pos, freq_pos;
-	uint32_t amp2_pos, freq2_pos;
 } OperatorNode;
 
 /*
@@ -54,7 +52,6 @@ typedef struct VoiceNode {
 	uint8_t flags;
 	uint32_t carr_op_id;
 	SGS_Ramp pan;
-	uint32_t pan_pos;
 } VoiceNode;
 
 typedef struct EventNode {
@@ -202,18 +199,6 @@ static void set_voice_duration(SGS_Generator *restrict o,
 }
 
 /*
- * Process an event update for a timed parameter.
- */
-static void handle_ramp_update(SGS_Ramp *restrict ramp,
-		uint32_t *restrict ramp_pos,
-		const SGS_Ramp *restrict ramp_src) {
-	if ((ramp_src->flags & SGS_RAMPP_GOAL) != 0) {
-		*ramp_pos = 0;
-	}
-	SGS_Ramp_copy(ramp, ramp_src);
-}
-
-/*
  * Process one event; to be called for the event when its time comes.
  */
 static void handle_event(SGS_Generator *restrict o, EventNode *restrict e) {
@@ -249,23 +234,13 @@ static void handle_event(SGS_Generator *restrict o, EventNode *restrict e) {
 					on->flags &= ~ON_TIME_INF;
 				}
 			}
-			if (params & SGS_POPP_FREQ)
-				handle_ramp_update(&on->freq,
-						&on->freq_pos, &od->freq);
-			if (params & SGS_POPP_FREQ2)
-				handle_ramp_update(&on->freq2,
-						&on->freq2_pos, &od->freq2);
 			if (params & SGS_POPP_PHASE)
 				SGS_Osc_set_phase(&on->osc, od->phase);
-			if (params & SGS_POPP_AMP)
-				handle_ramp_update(&on->amp,
-						&on->amp_pos, &od->amp);
-			if (params & SGS_POPP_AMP2)
-				handle_ramp_update(&on->amp2,
-						&on->amp2_pos, &od->amp2);
-			if (params & SGS_POPP_PAN)
-				handle_ramp_update(&vn->pan,
-						&vn->pan_pos, &od->pan);
+			SGS_Ramp_copy(&vn->pan, od->pan, o->srate);
+			SGS_Ramp_copy(&on->amp, od->amp, o->srate);
+			SGS_Ramp_copy(&on->amp2, od->amp2, o->srate);
+			SGS_Ramp_copy(&on->freq, od->freq, o->srate);
+			SGS_Ramp_copy(&on->freq2, od->freq2, o->srate);
 		}
 		if (vd) {
 			vn->carr_op_id = vd->carr_op_id;
@@ -321,12 +296,11 @@ static uint32_t run_block(SGS_Generator *restrict o,
 	 * including frequency modulation if modulators linked.
 	 */
 	freq = *(bufs++);
-	SGS_Ramp_run(&n->freq, &n->freq_pos, freq, len, o->srate, parent_freq);
+	SGS_Ramp_run(&n->freq, freq, len, parent_freq);
 	if (n->fmods->count) {
 		const uint32_t *fmods = n->fmods->ids;
 		float *freq2 = *(bufs++);
-		SGS_Ramp_run(&n->freq2, &n->freq2_pos,
-				freq2, len, o->srate, parent_freq);
+		SGS_Ramp_run(&n->freq2, freq2, len, parent_freq);
 		for (i = 0; i < n->fmods->count; ++i)
 			run_block(o, bufs, len, &o->operators[fmods[i]],
 					freq, true, i);
@@ -334,7 +308,7 @@ static uint32_t run_block(SGS_Generator *restrict o,
 		for (i = 0; i < len; ++i)
 			freq[i] += (freq2[i] - freq[i]) * fm_buf[i];
 	} else {
-		SGS_Ramp_skip(&n->freq2, &n->freq2_pos, len, o->srate);
+		SGS_Ramp_skip(&n->freq2, len);
 	}
 	/*
 	 * If phase modulators linked, get phase offsets for modulation.
@@ -352,11 +326,11 @@ static uint32_t run_block(SGS_Generator *restrict o,
 	 * modulators linked.
 	 */
 	amp = *(bufs++);
-	SGS_Ramp_run(&n->amp, &n->amp_pos, amp, len, o->srate, NULL);
+	SGS_Ramp_run(&n->amp, amp, len, NULL);
 	if (n->amods->count) {
 		const uint32_t *amods = n->amods->ids;
 		float *amp2 = *(bufs++);
-		SGS_Ramp_run(&n->amp2, &n->amp2_pos, amp2, len, o->srate, NULL);
+		SGS_Ramp_run(&n->amp2, amp2, len, NULL);
 		for (i = 0; i < n->amods->count; ++i)
 			run_block(o, bufs, len, &o->operators[amods[i]],
 					freq, true, i);
@@ -364,7 +338,7 @@ static uint32_t run_block(SGS_Generator *restrict o,
 		for (i = 0; i < len; ++i)
 			amp[i] += (amp2[i] - amp[i]) * am_buf[i];
 	} else {
-		SGS_Ramp_skip(&n->amp2, &n->amp2_pos, len, o->srate);
+		SGS_Ramp_skip(&n->amp2, len);
 	}
 	if (!wave_env) {
 		SGS_Osc_run(&n->osc, s_buf, len, acc_ind, freq, amp, pm_buf);
@@ -411,7 +385,7 @@ static void mix_add(SGS_Generator *restrict o,
 	float *mix_r = o->mix_bufs[1];
 	if (vn->pan.flags & SGS_RAMPP_GOAL) {
 		float *pan_buf = o->gen_bufs[1];
-		SGS_Ramp_run(&vn->pan, &vn->pan_pos, pan_buf, len, o->srate, NULL);
+		SGS_Ramp_run(&vn->pan, pan_buf, len, NULL);
 		for (uint32_t i = 0; i < len; ++i) {
 			float s = s_buf[i] * o->amp_scale;
 			float s_r = s * pan_buf[i];
@@ -419,7 +393,7 @@ static void mix_add(SGS_Generator *restrict o,
 			mix_r[i] += s + s_r;
 		}
 	} else {
-		SGS_Ramp_skip(&vn->pan, &vn->pan_pos, len, o->srate);
+		SGS_Ramp_skip(&vn->pan, len);
 		for (uint32_t i = 0; i < len; ++i) {
 			float s = s_buf[i] * o->amp_scale;
 			float s_r = s * vn->pan.v0;
