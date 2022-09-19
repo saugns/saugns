@@ -42,8 +42,8 @@ typedef struct SGS_ScriptOpData {
 	uint32_t op_id; /* not set by parser; for later use (parseconv.c) */
 	uint32_t op_params;
 	SGS_Time time;
-	SGS_Ramp amp, amp2;
-	SGS_Ramp freq, freq2;
+	SGS_Ramp *amp, *amp2;
+	SGS_Ramp *freq, *freq2;
 	uint32_t phase;
 	uint8_t wave;
 	/* node adjacents in operator linkage graph */
@@ -60,6 +60,7 @@ enum {
 	SGS_SDEV_WAIT_PREV_DUR    = 1<<3, // compound step timing
 	SGS_SDEV_FROM_GAPSHIFT    = 1<<4, // gapshift follow-on event
 	SGS_SDEV_NEW_OPGRAPH      = 1<<5,
+	SGS_SDEV_LOCK_DUR_SCOPE   = 1<<6, // nested data can't lengthen dur
 };
 
 struct SGS_ScriptEvBranch;
@@ -80,7 +81,7 @@ typedef struct SGS_ScriptEvData {
 	uint32_t vo_id; /* not set by parser; for later use (parseconv.c) */
 	uint32_t vo_params;
 	struct SGS_ScriptEvData *voice_prev; /* preceding event for voice */
-	SGS_Ramp pan;
+	SGS_Ramp *pan;
 	SGS_ScriptListData op_graph;
 } SGS_ScriptEvData;
 
@@ -113,13 +114,15 @@ typedef struct SGS_ScriptOptions {
 } SGS_ScriptOptions;
 
 /**
- * Type returned after processing a file.
+ * Type returned after processing a file. The data is divided into
+ * two mempools, one specific to the parse and one shared with any
+ * later program data (SGS_Program), if built from the same parse.
  */
 typedef struct SGS_Script {
 	SGS_ScriptEvData *events;
 	const char *name; // currently simply set to the filename
 	SGS_ScriptOptions sopt;
-	struct SGS_Mempool *mp;
+	struct SGS_Mempool *mp, *prg_mp;
 	struct SGS_Symtab *st;
 } SGS_Script;
 
