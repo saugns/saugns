@@ -368,21 +368,6 @@ ABORT:
 }
 
 /*
- * Create program for the given script file. Invokes the parser.
- *
- * \return instance or NULL on error
- */
-static SGS_Program *build_program(const char *restrict script_arg,
-		bool is_path) {
-	SGS_Script *sd = SGS_read_Script(script_arg, is_path);
-	if (!sd)
-		return NULL;
-	SGS_Program *o = SGS_build_Program(sd);
-	SGS_discard_Script(sd);
-	return o;
-}
-
-/*
  * Load the listed scripts and build inner programs for them,
  * adding each result (even if NULL) to the program list.
  *
@@ -393,8 +378,10 @@ static size_t SGS_read(const SGS_ScriptArgArr *restrict script_args,
 	bool are_paths = !(options & SGS_OPT_EVAL_STRING);
 	size_t built = 0;
 	for (size_t i = 0; i < script_args->count; ++i) {
-		const SGS_Program *prg = build_program(script_args->a[i].str,
-				are_paths);
+		const SGS_Program *prg =
+			SGS_build_Program(
+					SGS_read_Script(script_args->a[i].str,
+						are_paths), false);
 		if (prg != NULL) ++built;
 		SGS_ProgramArr_add(prg_objs, &prg);
 	}

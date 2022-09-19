@@ -39,26 +39,24 @@ typedef struct SGS_Time {
 } SGS_Time;
 
 /**
- * Voice parameter flags.
+ * Ramp use IDs.
  */
 enum {
-	SGS_PVOP_OPLIST = 1<<0,
-	SGS_PVO_PARAMS = (1<<1) - 1,
+	SGS_PRAMP_PAN = 0,
+	SGS_PRAMP_AMP,
+	SGS_PRAMP_AMP2,
+	SGS_PRAMP_FREQ,
+	SGS_PRAMP_FREQ2,
 };
 
 /**
- * Operator parameter flags.
+ * Operator parameter flags. For parameters without other tracking only.
  */
 enum {
-	SGS_POPP_PAN = 1<<0,
-	SGS_POPP_WAVE = 1<<1,
-	SGS_POPP_TIME = 1<<2,
-	SGS_POPP_FREQ = 1<<3,
-	SGS_POPP_FREQ2 = 1<<4,
-	SGS_POPP_PHASE = 1<<5,
-	SGS_POPP_AMP = 1<<6,
-	SGS_POPP_AMP2 = 1<<7,
-	SGS_POP_PARAMS = (1<<8) - 1,
+	SGS_POPP_TIME = 1<<0,
+	SGS_POPP_PHASE = 1<<1,
+	SGS_POPP_WAVE = 1<<2,
+	SGS_POP_PARAMS = (1<<3) - 1,
 };
 
 /*
@@ -106,9 +104,9 @@ typedef struct SGS_ProgramOpData {
 	uint32_t id;
 	uint32_t params;
 	SGS_Time time;
-	SGS_Ramp pan;
-	SGS_Ramp amp, amp2;
-	SGS_Ramp freq, freq2;
+	SGS_Ramp *pan;
+	SGS_Ramp *amp, *amp2;
+	SGS_Ramp *freq, *freq2;
 	uint32_t phase;
 	uint8_t wave;
 } SGS_ProgramOpData;
@@ -140,11 +138,13 @@ typedef struct SGS_Program {
 	uint8_t op_nest_depth;
 	uint32_t duration_ms;
 	const char *name;
-	struct SGS_Mempool *mp;
+	struct SGS_Mempool *mp; // holds memory for the specific program
+	struct SGS_Script *parse; // parser output used to build program
 } SGS_Program;
 
 struct SGS_Script;
-SGS_Program* SGS_build_Program(struct SGS_Script *restrict sd) sgsMalloclike;
+SGS_Program* SGS_build_Program(struct SGS_Script *restrict parse,
+		bool keep_parse) sgsMalloclike;
 void SGS_discard_Program(SGS_Program *restrict o);
 
 void SGS_Program_print_info(const SGS_Program *restrict o);

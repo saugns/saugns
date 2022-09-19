@@ -557,6 +557,7 @@ ParseConv_create_program(ParseConv *restrict o,
 	prg->duration_ms = o->duration_ms;
 	prg->name = parse->name;
 	prg->mp = o->mp;
+	prg->parse = parse;
 	o->mp = NULL; // don't destroy
 	return prg;
 MEM_ERR:
@@ -570,8 +571,7 @@ static SGS_Program *
 ParseConv_convert(ParseConv *restrict o,
 		SGS_Script *restrict parse) {
 	SGS_Program *prg = NULL;
-	o->mp = SGS_create_Mempool(0);
-	if (!o->mp) goto MEM_ERR;
+	o->mp = parse->prg_mp;
 	SGS_init_VoiceGraph(&o->ev_vo_graph, &o->va, &o->oa);
 	uint32_t remaining_ms = 0;
 	for (SGS_ScriptEvData *e = parse->events; e; e = e->next) {
@@ -598,29 +598,42 @@ ParseConv_convert(ParseConv *restrict o,
 	SGS_OpAlloc_clear(&o->oa);
 	SGS_VoAlloc_clear(&o->va);
 	SGS_PEvArr_clear(&o->ev_arr);
-	SGS_destroy_Mempool(o->mp); // NULL'd if kept for result
 	return prg;
 }
 
 /**
- * Create program for the given parser output.
+ * Create internal program for the given script data. Includes a pointer
+ * to \p parse as \a parse, unless \p keep_parse is false, in which case
+ * the parse is destroyed after the conversion regardless of the result.
  *
  * \return instance or NULL on error
  */
 SGS_Program *
-SGS_build_Program(SGS_Script *restrict sd) {
+SGS_build_Program(SGS_Script *restrict parse, bool keep_parse) {
+	if (!parse)
+		return NULL;
 	ParseConv pc = (ParseConv){0};
-	SGS_Program *o = ParseConv_convert(&pc, sd);
+	SGS_Program *o = ParseConv_convert(&pc, parse);
+	if (!keep_parse) {
+		if (o) {
+			parse->prg_mp = NULL;
+			o->parse = NULL;
+		}
+		SGS_discard_Script(parse);
+	}
 	return o;
 }
 
 /**
- * Destroy instance.
+ * Destroy instance. Also free parse data if held.
  */
 void
 SGS_discard_Program(SGS_Program *restrict o) {
 	if (!o)
 		return;
+	if (o->parse && o->parse->prg_mp == o->mp) // avoid double-destroy
+		o->parse->prg_mp = NULL;
+	SGS_discard_Script(o->parse);
 	SGS_destroy_Mempool(o->mp);
 }
 
@@ -666,41 +679,32 @@ print_oplist(const SGS_ProgramOpRef *restrict list,
 	putc(']', out);
 }
 
+static sgsNoinline void
+print_ramp(const SGS_Ramp *restrict ramp, char c) {
+	if (!ramp)
+		return;
+	if ((ramp->flags & SGS_RAMPP_STATE) != 0) {
+		if ((ramp->flags & SGS_RAMPP_GOAL) != 0)
+			SGS_printf("\t%c=%-6.2f->%-6.2f", c, ramp->v0, ramp->vt);
+		else
+			SGS_printf("\t%c=%-6.2f\t", c, ramp->v0);
+	} else {
+		if ((ramp->flags & SGS_RAMPP_GOAL) != 0)
+			SGS_printf("\t%c->%-6.2f\t", c, ramp->vt);
+		else
+			SGS_printf("\t%c", c);
+	}
+}
+
 static void
 print_opline(const SGS_ProgramOpData *restrict od) {
 	if (od->time.flags & SGS_TIMEP_IMPLICIT) {
-		SGS_printf(
-			"\n\top %u \tt=IMPL  \t", od->id);
+		SGS_printf("\n\top %u \tt=IMPL  ", od->id);
 	} else {
-		SGS_printf(
-			"\n\top %u \tt=%-6u\t", od->id, od->time.v_ms);
+		SGS_printf("\n\top %u \tt=%-6u", od->id, od->time.v_ms);
 	}
-	if ((od->freq.flags & SGS_RAMPP_STATE) != 0) {
-		if ((od->freq.flags & SGS_RAMPP_GOAL) != 0)
-			SGS_printf(
-				"f=%-6.2f->%-6.2f", od->freq.v0, od->freq.vt);
-		else
-			SGS_printf(
-				"f=%-6.2f\t", od->freq.v0);
-	} else {
-		if ((od->freq.flags & SGS_RAMPP_GOAL) != 0)
-			SGS_printf(
-				"f->%-6.2f\t", od->freq.vt);
-		else
-			SGS_printf(
-				"\t\t");
-	}
-	if ((od->amp.flags & SGS_RAMPP_STATE) != 0) {
-		if ((od->amp.flags & SGS_RAMPP_GOAL) != 0)
-			SGS_printf(
-				"\ta=%-6.2f->%-6.2f", od->amp.v0, od->amp.vt);
-		else
-			SGS_printf(
-				"\ta=%-6.2f", od->amp.v0);
-	} else if ((od->amp.flags & SGS_RAMPP_GOAL) != 0) {
-		SGS_printf(
-			"\ta->%-6.2f", od->amp.vt);
-	}
+	print_ramp(od->freq, 'f');
+	print_ramp(od->amp, 'a');
 }
 
 /**
