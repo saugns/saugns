@@ -184,8 +184,10 @@ Parameters:
 		in considering the surrounding sequence of steps and delays
 		(up to the next '|' time separator, or to the end of the
 		script if none).
-			For modulator oscillators, default time is however
-		an "implicit" time length (see 'i' below), meaning playing
+			The default time lengthens further when modulators
+		with longer definite times are specified for the current step.
+			For modulator oscillators, default time is however an
+		"implicit" time length (see 'i' below), meaning playing
 		whenever a carrier it is linked to does. (Implicit time is
 		only supported for nested oscillators.) When such a time
 		length is retrieved as part of setting the default time for
@@ -195,7 +197,8 @@ Parameters:
 		simply given the "S t" default value if no time is set.
 		The following sub-steps in turn each have the time of the
 		previous as its default time. The exception is modulators,
-		for which the last sub-step has implicit time by default.
+		for which the last sub-step has implicit time ('i', "ti")
+		by default, just like for undivided steps for modulators.
 			Special non-number literals can also specify time:
 		d	Definite default time can be set using "td", always.
 		i	Implicit time can be set using "ti", for modulators.
@@ -288,9 +291,11 @@ Value sweep:
 	goal value -- the ordinary value being the start for a trajectory --
 	following the ordinary value or by itself, the following value ramp
 	subparameters can be given values within "[]" (square brackets):
-	v	Goal value.
-	t	Time to reach goal (default is the external "t" duration).
-	c	Ramp curve type (default 'lin'):
+	g	Goal (go-to) value, assigned to the parameter after time.
+		This value has no default and must be provided. If changed
+		again before the full time, the current point reached on the
+		previous trajectory will be used to change the start value.
+	r	Ramp fill shape (default 'lin', or the previous shape if any):
 			sah	Sample and hold until time (then jump to goal).
 			lin	Linear trajectory over time.
 			cos	Half cosine (S-curve) trajectory over time.
@@ -307,6 +312,13 @@ Value sweep:
 		and 'lge' increases like 'exp' and decreases like 'log'.
 		The 'cos' shape sounds similar to 'lin', except it has a
 		smoothly curved start and stop, and a steeper middle.)
+	t	Time to reach goal (default is the external "t" duration,
+		or the remaining previous time, if any, for this parameter).
+		If longer than the active time for the object which has the
+		ramped parameter, the trajectory will be left unfinished.
+	v	Start (state) value, the ordinary parameter value.
+		It can alternatively be set here after a 'v',
+		if not set before the enclosing "[]".
 
 Modulator list:
 	Within "[]", written after the name of a parameter that supports it,
