@@ -119,6 +119,14 @@ static void warn_closing_without_opening(SAU_Scanner *restrict o,
 }
 
 /*
+ * Print warning for missing whitespace before character.
+ */
+static void warn_missing_whitespace(SAU_Scanner *restrict o,
+		SAU_ScanFrame *sf, uint8_t next_c) {
+	SAU_Scanner_warning(o, sf, "missing whitespace before '%c'", next_c);
+}
+
+/*
  * Handle '#'-commands.
  */
 static uint8_t scan_filter_hashcommands(SAU_Scanner *restrict o, uint8_t c) {
@@ -522,16 +530,19 @@ static bool scan_ramp_param(SAU_Scanner *restrict o,
 	if (!SAU_Scanner_tryc(o, '{'))
 		return state;
 	struct ScanLookup *sl = o->data;
+	bool warn_nospace = false;
 	double vt;
 	uint32_t time_ms = (ramp->flags & SAU_RAMPP_TIME) != 0 ?
 		ramp->time_ms :
 		sl->sopt.def_time_ms;
 	for (;;) {
 		uint8_t c = SAU_Scanner_getc(o);
+		SAU_ScanFrame sf_first = o->sf;
 		switch (c) {
 		case SAU_SCAN_SPACE:
 		case SAU_SCAN_LNBRK:
-			break;
+			warn_nospace = false;
+			continue;
 		case 'g':
 			if (scan_num(o, scan_numconst, &vt)) {
 				ramp->vt = vt;
@@ -566,8 +577,11 @@ static bool scan_ramp_param(SAU_Scanner *restrict o,
 				warn_eof_without_closing(o, '}');
 				goto RETURN;
 			}
-			break;
+			continue;
 		}
+		if (warn_nospace)
+			warn_missing_whitespace(o, &sf_first, c);
+		warn_nospace = true;
 	}
 RETURN:
 	ramp->time_ms = time_ms;
@@ -655,6 +669,7 @@ enum {
 	PL_NEW_EVENT_FORK = 1<<2,
 	PL_ACTIVE_EV      = 1<<3,
 	PL_ACTIVE_OP      = 1<<4,
+	PL_WARN_NOSPACE   = 1<<5,
 };
 
 /*
@@ -1052,10 +1067,9 @@ static void parse_in_settings(SAU_Parser *restrict o) {
 	pl->sub_f = parse_in_settings;
 	for (;;) {
 		uint8_t c = SAU_Scanner_getc(sc);
+		SAU_ScanFrame sf_first = sc->sf;
 		double val;
 		switch (c) {
-		case SAU_SCAN_SPACE:
-			break;
 		case 'a':
 			if (scan_num(sc, NULL, &val)) {
 				o->sl.sopt.ampmult = val;
@@ -1103,6 +1117,9 @@ static void parse_in_settings(SAU_Parser *restrict o) {
 		default:
 			goto DEFER;
 		}
+		if (pl->pl_flags & PL_WARN_NOSPACE)
+			warn_missing_whitespace(sc, &sf_first, c);
+		pl->pl_flags |= PL_WARN_NOSPACE;
 	}
 	return;
 DEFER:
@@ -1201,15 +1218,15 @@ static void parse_in_event(SAU_Parser *restrict o) {
 		SAU_ScriptOpRef *op = pl->operator;
 		SAU_ProgramOpData *od = op->data;
 		uint8_t c = SAU_Scanner_getc(sc);
+		SAU_ScanFrame sf_first = sc->sf;
 		switch (c) {
-		case SAU_SCAN_SPACE:
-			break;
 		case '/':
 			if (parse_waittime(o)) {
 				begin_node(o, pl->operator, false);
 			}
 			break;
 		case ';':
+			pl->pl_flags &= ~PL_WARN_NOSPACE; /* OK before */
 			if (parse_waittime(o)) {
 				begin_node(o, pl->operator, true);
 				pl->event->ev_flags |= SAU_SDEV_FROM_GAPSHIFT;
@@ -1274,6 +1291,9 @@ static void parse_in_event(SAU_Parser *restrict o) {
 		default:
 			goto DEFER;
 		}
+		if (pl->pl_flags & PL_WARN_NOSPACE)
+			warn_missing_whitespace(sc, &sf_first, c);
+		pl->pl_flags |= PL_WARN_NOSPACE;
 	}
 	return;
 DEFER:
@@ -1300,10 +1320,12 @@ static bool parse_level(SAU_Parser *restrict o,
 		 * Parse main tokens.
 		 */
 		uint8_t c = SAU_Scanner_getc(sc);
+		SAU_ScanFrame sf_first = sc->sf;
 		switch (c) {
 		case SAU_SCAN_SPACE:
 		case SAU_SCAN_LNBRK:
-			break;
+			pl.pl_flags &= ~PL_WARN_NOSPACE;
+			continue;
 		case '\'':
 			/*
 			 * Variable assignment, part 1; set to what follows.
@@ -1327,6 +1349,7 @@ static bool parse_level(SAU_Parser *restrict o,
 		case '=': {
 			SAU_SymItem *var = pl.set_var;
 			if (!var) goto INVALID;
+			pl.pl_flags &= ~PL_WARN_NOSPACE; /* OK before */
 			pl.set_var = NULL; // used here
 			if (scan_num(sc, NULL, &var->data.num))
 				var->data_use = SAU_SYM_DATA_NUM;
@@ -1348,7 +1371,7 @@ static bool parse_level(SAU_Parser *restrict o,
 				/*
 				 * Multiple-operator node now open.
 				 */
-				parse_in_event(o);
+				pl.sub_f = parse_in_event;
 				break;
 			}
 			/*
@@ -1362,7 +1385,7 @@ static bool parse_level(SAU_Parser *restrict o,
 					begin_node(o, ref, false);
 					ref = pl.operator;
 					var->data.obj = ref;
-					parse_in_event(o);
+					pl.sub_f = parse_in_event;
 				} else {
 					SAU_Scanner_warning(sc, NULL,
 "reference '@%s' doesn't point to an object", var->sstr->key);
@@ -1377,10 +1400,10 @@ static bool parse_level(SAU_Parser *restrict o,
 			begin_node(o, NULL, false);
 			od = pl.operator->data;
 			od->wave = wave;
-			parse_in_event(o);
+			pl.sub_f = parse_in_event;
 			break; }
 		case 'S':
-			parse_in_settings(o);
+			pl.sub_f = parse_in_settings;
 			break;
 		case '[':
 			warn_opening_disallowed(sc, '[');
@@ -1405,18 +1428,22 @@ static bool parse_level(SAU_Parser *restrict o,
 				SAU_Scanner_ungetc(sc);
 				goto RETURN;
 			}
+			pl.pl_flags &= ~PL_WARN_NOSPACE; /* OK around */
 			end_event(o);
 			new_durgroup(o);
 			pl.sub_f = NULL;
-			break;
+			continue;
 		case '}':
 			warn_closing_without_opening(sc, '}', '{');
 			break;
 		default:
 		INVALID:
 			if (!handle_unknown_or_eof(sc, c)) goto FINISH;
-			break;
+			continue;
 		}
+		if (pl.pl_flags & PL_WARN_NOSPACE)
+			warn_missing_whitespace(sc, &sf_first, c);
+		pl.pl_flags |= PL_WARN_NOSPACE;
 	}
 FINISH:
 	if (newscope > SCOPE_GROUP)
