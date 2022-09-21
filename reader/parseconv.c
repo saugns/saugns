@@ -143,7 +143,9 @@ enum {
  */
 typedef struct SAU_OpAllocState {
 	SAU_ScriptOpRef *last_pod;
-	const SAU_ProgramOpList *amods, *fmods, *pmods, *fpmods;
+	const SAU_ProgramOpList *amods, *ramods;
+	const SAU_ProgramOpList *fmods, *rfmods;
+	const SAU_ProgramOpList *pmods, *fpmods;
 	uint32_t flags;
 	//uint32_t duration_ms;
 } SAU_OpAllocState;
@@ -302,10 +304,20 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 			goto MEM_ERR;
 		od->amods = oas->amods;
 	}
+	if (mods[SAU_POP_RAMOD] != NULL) {
+		if (!set_oplist(&oas->ramods, mods[SAU_POP_RAMOD], o->mem))
+			goto MEM_ERR;
+		od->ramods = oas->ramods;
+	}
 	if (mods[SAU_POP_FMOD] != NULL) {
 		if (!set_oplist(&oas->fmods, mods[SAU_POP_FMOD], o->mem))
 			goto MEM_ERR;
 		od->fmods = oas->fmods;
+	}
+	if (mods[SAU_POP_RFMOD] != NULL) {
+		if (!set_oplist(&oas->rfmods, mods[SAU_POP_RFMOD], o->mem))
+			goto MEM_ERR;
+		od->rfmods = oas->rfmods;
 	}
 	if (mods[SAU_POP_PMOD] != NULL) {
 		if (!set_oplist(&oas->pmods, mods[SAU_POP_PMOD], o->mem))
@@ -398,7 +410,11 @@ SAU_VoiceGraph_handle_op_node(SAU_VoiceGraph *restrict o,
 	oas->flags |= SAU_OAS_VISITED;
 	if (!SAU_VoiceGraph_handle_op_list(o, oas->amods, SAU_POP_AMOD))
 		return false;
+	if (!SAU_VoiceGraph_handle_op_list(o, oas->ramods, SAU_POP_RAMOD))
+		return false;
 	if (!SAU_VoiceGraph_handle_op_list(o, oas->fmods, SAU_POP_FMOD))
+		return false;
+	if (!SAU_VoiceGraph_handle_op_list(o, oas->rfmods, SAU_POP_RFMOD))
 		return false;
 	if (!SAU_VoiceGraph_handle_op_list(o, oas->pmods, SAU_POP_PMOD))
 		return false;
@@ -635,7 +651,9 @@ print_graph(const SAU_ProgramOpRef *restrict graph,
 	static const char *const uses[SAU_POP_USES] = {
 		" CA",
 		" AM",
+		"rAM",
 		" FM",
+		"rFM",
 		" PM",
 		"fPM",
 	};
@@ -715,8 +733,10 @@ SAU_Program_print_info(const SAU_Program *restrict o) {
 		for (size_t i = 0; i < ev->op_data_count; ++i) {
 			const SAU_ProgramOpData *od = ev->op_data[i];
 			print_opline(od);
-			print_linked("\n\t    aw[", "]", od->amods);
-			print_linked("\n\t    fw[", "]", od->fmods);
+			print_linked("\n\t    a[", "]", od->amods);
+			print_linked("\n\t    ar[", "]", od->ramods);
+			print_linked("\n\t    f[", "]", od->fmods);
+			print_linked("\n\t    fr[", "]", od->rfmods);
 			print_linked("\n\t    p[", "]", od->pmods);
 			print_linked("\n\t    pf[", "]", od->fpmods);
 		}

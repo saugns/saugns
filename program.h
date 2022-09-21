@@ -85,7 +85,9 @@ enum {
 enum {
 	SAU_POP_CARR = 0,
 	SAU_POP_AMOD,
+	SAU_POP_RAMOD,
 	SAU_POP_FMOD,
+	SAU_POP_RFMOD,
 	SAU_POP_PMOD,
 	SAU_POP_FPMOD,
 	SAU_POP_USES,
@@ -119,7 +121,9 @@ typedef struct SAU_ProgramOpData {
 	uint32_t phase;
 	/* assigned after parsing */
 	uint32_t id;
-	const SAU_ProgramOpList *amods, *fmods, *pmods, *fpmods;
+	const SAU_ProgramOpList *amods, *ramods;
+	const SAU_ProgramOpList *fmods, *rfmods;
+	const SAU_ProgramOpList *pmods, *fpmods;
 } SAU_ProgramOpData;
 
 typedef struct SAU_ProgramEvent {

@@ -1003,11 +1003,15 @@ static void enter_level(SAU_Parser *restrict o,
 					pl->nest_list;
 			parent_pl->last_mods_list = pl->nest_list;
 			/*
-			 * Push script options, then prepare for new context.
+			 * Push script options, and prepare for a new context.
+			 *
+			 * The amplitude multiplier is reset each list, unless
+			 * an AMOD list (where the value builds on the outer).
 			 */
 			parent_pl->sopt_save = o->sl.sopt;
 			o->sl.sopt.set = 0;
-			o->sl.sopt.ampmult = def_sopt.ampmult; // new each list
+			if (use_type != SAU_POP_AMOD)
+				o->sl.sopt.ampmult = def_sopt.ampmult;
 		}
 	}
 	pl->use_type = use_type;
@@ -1072,6 +1076,9 @@ static void parse_in_settings(SAU_Parser *restrict o) {
 		switch (c) {
 		case 'a':
 			if (scan_num(sc, NULL, &val)) {
+				// AMOD lists inherit outer value
+				if (pl->use_type == SAU_POP_AMOD)
+					val *= pl->parent->sopt_save.ampmult;
 				o->sl.sopt.ampmult = val;
 				o->sl.sopt.set |= SAU_SOPT_AMPMULT;
 			}
@@ -1137,11 +1144,14 @@ static bool parse_ev_amp(SAU_Parser *restrict o) {
 	SAU_ProgramOpData *od = op->data;
 	uint8_t c;
 	parse_ramp(o, NULL, &od->amp, false, SAU_PRAMP_AMP);
+	if (SAU_Scanner_tryc(sc, '[')) {
+		parse_level(o, SAU_POP_AMOD, SCOPE_NEST);
+	}
 	if (SAU_Scanner_tryc(sc, '.')) switch ((c = SAU_Scanner_getc(sc))) {
-	case 'w':
+	case 'r':
 		parse_ramp(o, NULL, &od->amp2, false, SAU_PRAMP_AMP2);
 		if (SAU_Scanner_tryc(sc, '[')) {
-			parse_level(o, SAU_POP_AMOD, SCOPE_NEST);
+			parse_level(o, SAU_POP_RAMOD, SCOPE_NEST);
 		}
 		break;
 	default:
@@ -1170,12 +1180,15 @@ static bool parse_ev_freq(SAU_Parser *restrict o, bool rel_freq) {
 	SAU_ScanNumConst_f numconst_f = rel_freq ? NULL : scan_note_const;
 	uint8_t c;
 	parse_ramp(o, numconst_f, &od->freq, rel_freq, SAU_PRAMP_FREQ);
+	if (SAU_Scanner_tryc(sc, '[')) {
+		parse_level(o, SAU_POP_FMOD, SCOPE_NEST);
+	}
 	if (SAU_Scanner_tryc(sc, '.')) switch ((c = SAU_Scanner_getc(sc))) {
-	case 'w':
+	case 'r':
 		parse_ramp(o, numconst_f, &od->freq2,
 				rel_freq, SAU_PRAMP_FREQ2);
 		if (SAU_Scanner_tryc(sc, '[')) {
-			parse_level(o, SAU_POP_FMOD, SCOPE_NEST);
+			parse_level(o, SAU_POP_RFMOD, SCOPE_NEST);
 		}
 		break;
 	default:
