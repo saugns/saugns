@@ -21,13 +21,13 @@
 #include "wave.h"
 #include <string.h>
 
-const char *const SAU_Help_names[SAU_HELP_TYPES + 1] = {
-	"help",
-	"math",
-	"ramp",
-	"wave",
+const char *const SAU_Help_names[SAU_HELP_NAMED + 1] = {
+	SAU_HELP__ITEMS(SAU_HELP__X_NAME)
 	NULL
 };
+
+#define SAU_HELP__X_CASE(NAME, ARRAY) \
+	case SAU_HELP_N_##NAME: return SAU_HELP__X_ARRAY(NAME, ARRAY);
 
 /**
  * Get name array for \p str help category.
@@ -39,14 +39,7 @@ const char *const *SAU_find_help(const char *restrict str) {
 	if (!SAU_find_name(SAU_Help_names, str, &i))
 		return NULL;
 	switch (i) {
-	case SAU_HELP_HELP:
-		return SAU_Help_names;
-	case SAU_HELP_MATH:
-		return SAU_Math_names;
-	case SAU_HELP_RAMP:
-		return SAU_Ramp_names;
-	case SAU_HELP_WAVE:
-		return SAU_Wave_names;
+	SAU_HELP__ITEMS(SAU_HELP__X_CASE)
 	}
 	return NULL;
 }

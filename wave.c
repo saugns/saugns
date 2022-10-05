@@ -44,18 +44,13 @@ static float pisrs_lut[SAU_Wave_LEN];
 static float ssr_lut[SAU_Wave_LEN];
 static float pissr_lut[SAU_Wave_LEN];
 
-float *const SAU_Wave_luts[SAU_WAVE_TYPES] = {
-	sin_lut,
-	sqr_lut,
-	tri_lut,
-	saw_lut,
-	ahs_lut,
-	hrs_lut,
-	srs_lut,
-	ssr_lut,
+#define SAU_WAVE__X_LUT_NAME(NAME) NAME##_lut,
+
+float *const SAU_Wave_luts[SAU_WAVE_NAMED] = {
+	SAU_WAVE__ITEMS(SAU_WAVE__X_LUT_NAME)
 };
 
-float *const SAU_Wave_piluts[SAU_WAVE_TYPES] = {
+float *const SAU_Wave_piluts[SAU_WAVE_NAMED] = {
 	sin_lut,
 	tri_lut,
 	pitri_lut,
@@ -66,7 +61,7 @@ float *const SAU_Wave_piluts[SAU_WAVE_TYPES] = {
 	pissr_lut,
 };
 
-const struct SAU_WaveCoeffs SAU_Wave_picoeffs[SAU_WAVE_TYPES] = {
+const struct SAU_WaveCoeffs SAU_Wave_picoeffs[SAU_WAVE_NAMED] = {
 	{
 		.amp_scale = 1.f / 0.78539693356f,
 		.amp_dc    = 0.f,
@@ -102,15 +97,8 @@ const struct SAU_WaveCoeffs SAU_Wave_picoeffs[SAU_WAVE_TYPES] = {
 	},
 };
 
-const char *const SAU_Wave_names[SAU_WAVE_TYPES + 1] = {
-	"sin",
-	"sqr",
-	"tri",
-	"saw",
-	"ahs",
-	"hrs",
-	"srs",
-	"ssr",
+const char *const SAU_Wave_names[SAU_WAVE_NAMED + 1] = {
+	SAU_WAVE__ITEMS(SAU_WAVE__X_NAME)
 	NULL
 };
 
@@ -253,7 +241,7 @@ void SAU_global_init_Wave(void) {
  * Print an index-value table for a LUT.
  */
 void SAU_Wave_print(uint8_t id) {
-	if (id >= SAU_WAVE_TYPES)
+	if (id >= SAU_WAVE_NAMED)
 		return;
 	const float *lut = SAU_Wave_luts[id];
 	const float *pilut = SAU_Wave_piluts[id];

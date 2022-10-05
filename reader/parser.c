@@ -63,11 +63,11 @@ static const SAU_ScriptOptions def_sopt = {
 static bool init_ScanLookup(struct ScanLookup *restrict o,
 		SAU_SymTab *restrict st) {
 	o->sopt = def_sopt;
-	if (!SAU_SymTab_add_stra(st, SAU_Math_names, SAU_MATH_SYMBOLS,
+	if (!SAU_SymTab_add_stra(st, SAU_Math_names, SAU_MATH_NAMED,
 			SAU_SYM_MATH_ID) ||
-	    !SAU_SymTab_add_stra(st, SAU_Ramp_names, SAU_RAMP_FILLS,
+	    !SAU_SymTab_add_stra(st, SAU_Ramp_names, SAU_RAMP_NAMED,
 			SAU_SYM_RAMP_ID) ||
-	    !SAU_SymTab_add_stra(st, SAU_Wave_names, SAU_WAVE_TYPES,
+	    !SAU_SymTab_add_stra(st, SAU_Wave_names, SAU_WAVE_NAMED,
 			SAU_SYM_WAVE_ID))
 		return false;
 	return true;
@@ -709,7 +709,7 @@ static SAU_Ramp *create_ramp(SAU_Parser *restrict o,
 	float v0 = 0.f;
 	if (!ramp)
 		return NULL;
-	ramp->fill_type = SAU_RAMP_LIN; // default if goal enabled
+	ramp->fill_type = SAU_RAMP_N_lin; // default if goal enabled
 	switch (par_flag) {
 	case SAU_PRAMP_PAN:
 		v0 = sl->sopt.def_chanmix;

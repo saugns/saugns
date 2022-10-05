@@ -18,51 +18,43 @@
 #pragma once
 #include "math.h"
 
+/* Macro used to declare and define ramp fill sets of items. */
+#define SAU_RAMP__ITEMS(X) \
+	X(hold) \
+	X(lin) \
+	X(sin) \
+	X(exp) \
+	X(log) \
+	X(xpe) \
+	X(lge) \
+	//
+#define SAU_RAMP__X_ID(NAME) SAU_RAMP_N_##NAME,
+#define SAU_RAMP__X_NAME(NAME) #NAME,
+#define SAU_RAMP__X_PROTOTYPE(NAME) \
+void SAU_Ramp_fill_##NAME(float *restrict buf, uint32_t len, \
+		float v0, float vt, uint32_t pos, uint32_t time, \
+		const float *restrict mulbuf);
+#define SAU_RAMP__X_ADDRESS(NAME) SAU_Ramp_fill_##NAME,
+
 /**
  * Ramp fill types.
  */
 enum {
-	SAU_RAMP_HOLD = 0,
-	SAU_RAMP_LIN,
-	SAU_RAMP_SIN,
-	SAU_RAMP_EXP,
-	SAU_RAMP_LOG,
-	SAU_RAMP_XPE,
-	SAU_RAMP_LGE,
-	SAU_RAMP_FILLS
+	SAU_RAMP__ITEMS(SAU_RAMP__X_ID)
+	SAU_RAMP_NAMED
 };
 
+SAU_RAMP__ITEMS(SAU_RAMP__X_PROTOTYPE)
+
 /** Names of ramp fill types, with an extra NULL pointer at the end. */
-extern const char *const SAU_Ramp_names[SAU_RAMP_FILLS + 1];
+extern const char *const SAU_Ramp_names[SAU_RAMP_NAMED + 1];
 
 typedef void (*SAU_Ramp_fill_f)(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf);
 
 /** Fill functions for ramp fill types. */
-extern const SAU_Ramp_fill_f SAU_Ramp_fill_funcs[SAU_RAMP_FILLS];
-
-void SAU_Ramp_fill_hold(float *restrict buf, uint32_t len,
-		float v0, float vt, uint32_t pos, uint32_t time,
-		const float *restrict mulbuf);
-void SAU_Ramp_fill_lin(float *restrict buf, uint32_t len,
-		float v0, float vt, uint32_t pos, uint32_t time,
-		const float *restrict mulbuf);
-void SAU_Ramp_fill_sin(float *restrict buf, uint32_t len,
-		float v0, float vt, uint32_t pos, uint32_t time,
-		const float *restrict mulbuf);
-void SAU_Ramp_fill_exp(float *restrict buf, uint32_t len,
-		float v0, float vt, uint32_t pos, uint32_t time,
-		const float *restrict mulbuf);
-void SAU_Ramp_fill_log(float *restrict buf, uint32_t len,
-		float v0, float vt, uint32_t pos, uint32_t time,
-		const float *restrict mulbuf);
-void SAU_Ramp_fill_xpe(float *restrict buf, uint32_t len,
-		float v0, float vt, uint32_t pos, uint32_t time,
-		const float *restrict mulbuf);
-void SAU_Ramp_fill_lge(float *restrict buf, uint32_t len,
-		float v0, float vt, uint32_t pos, uint32_t time,
-		const float *restrict mulbuf);
+extern const SAU_Ramp_fill_f SAU_Ramp_fill_funcs[SAU_RAMP_NAMED];
 
 /**
  * Ramp parameter flags.

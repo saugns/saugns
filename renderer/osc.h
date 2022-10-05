@@ -66,7 +66,7 @@ static inline void SAU_init_Osc(SAU_Osc *restrict o, uint32_t srate) {
 	*o = (SAU_Osc){
 #if USE_PILUT
 		.phasor = (SAU_Phasor){
-			.phase = SAU_Wave_picoeffs[SAU_WAVE_SIN].phase_adj,
+			.phase = SAU_Wave_picoeffs[SAU_WAVE_N_sin].phase_adj,
 			.coeff = SAU_Phasor_COEFF(srate),
 		},
 #else
@@ -75,7 +75,7 @@ static inline void SAU_init_Osc(SAU_Osc *restrict o, uint32_t srate) {
 			.coeff = SAU_Phasor_COEFF(srate),
 		},
 #endif
-		.wave = SAU_WAVE_SIN,
+		.wave = SAU_WAVE_N_sin,
 		.flags = SAU_OSC_RESET,
 	};
 }

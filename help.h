@@ -19,19 +19,27 @@
 #include "common.h"
 #include <stdio.h>
 
+/* Macro used to declare and define help sets of items. */
+#define SAU_HELP__ITEMS(X) \
+	X(help, Help) \
+	X(math, Math) \
+	X(ramp, Ramp) \
+	X(wave, Wave) \
+	//
+#define SAU_HELP__X_ID(NAME, ARRAY) SAU_HELP_N_##NAME,
+#define SAU_HELP__X_NAME(NAME, ARRAY) #NAME,
+#define SAU_HELP__X_ARRAY(NAME, ARRAY) SAU_##ARRAY##_names
+
 /**
  * Named help types.
  */
 enum {
-	SAU_HELP_HELP = 0,
-	SAU_HELP_MATH,
-	SAU_HELP_RAMP,
-	SAU_HELP_WAVE,
-	SAU_HELP_TYPES
+	SAU_HELP__ITEMS(SAU_HELP__X_ID)
+	SAU_HELP_NAMED
 };
 
 /** Names of help types, with an extra NULL pointer at the end. */
-extern const char *const SAU_Help_names[SAU_HELP_TYPES + 1];
+extern const char *const SAU_Help_names[SAU_HELP_NAMED + 1];
 
 const char *const *SAU_find_help(const char *restrict str);
 

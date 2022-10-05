@@ -17,25 +17,13 @@
 
 #include "ramp.h"
 
-const char *const SAU_Ramp_names[SAU_RAMP_FILLS + 1] = {
-	"hold",
-	"lin",
-	"sin",
-	"exp",
-	"log",
-	"xpe",
-	"lge",
+const char *const SAU_Ramp_names[SAU_RAMP_NAMED + 1] = {
+	SAU_RAMP__ITEMS(SAU_RAMP__X_NAME)
 	NULL
 };
 
-const SAU_Ramp_fill_f SAU_Ramp_fill_funcs[SAU_RAMP_FILLS] = {
-	SAU_Ramp_fill_hold,
-	SAU_Ramp_fill_lin,
-	SAU_Ramp_fill_sin,
-	SAU_Ramp_fill_exp,
-	SAU_Ramp_fill_log,
-	SAU_Ramp_fill_xpe,
-	SAU_Ramp_fill_lge,
+const SAU_Ramp_fill_f SAU_Ramp_fill_funcs[SAU_RAMP_NAMED] = {
+	SAU_RAMP__ITEMS(SAU_RAMP__X_ADDRESS)
 };
 
 // the noinline use below works around i386 clang performance issue

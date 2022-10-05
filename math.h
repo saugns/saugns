@@ -61,24 +61,33 @@ static inline double SAU_met(double x) {
 	return 0.5f * (x + sqrt(x * x + 4.f));
 }
 
+/* Macro used to declare and define math symbol sets of items. */
+#define SAU_MATH__ITEMS(X) \
+	X(abs,       VAL_F, {.val = fabs}) \
+	X(cos,       VAL_F, {.val = cos}) \
+	X(exp,       VAL_F, {.val = exp}) \
+	X(log,       VAL_F, {.val = log}) \
+	X(met,       VAL_F, {.val = SAU_met}) \
+	X(mf,      NOARG_F, {.noarg = mf_const}) \
+	X(pi,      NOARG_F, {.noarg = pi_const}) \
+	X(rand,    STATE_F, {.state = SAU_rand}) \
+	X(rint,      VAL_F, {.val = rint}) \
+	X(seed, STATEVAL_F, {.stateval = SAU_seed}) \
+	X(sin,       VAL_F, {.val = sin}) \
+	X(sqrt,      VAL_F, {.val = sqrt}) \
+	X(time,    STATE_F, {.state = SAU_time}) \
+	//
+#define SAU_MATH__X_ID(NAME, PARAMS, SYM_F) SAU_MATH_N_##NAME,
+#define SAU_MATH__X_NAME(NAME, PARAMS, SYM_F) #NAME,
+#define SAU_MATH__X_PARAMS(NAME, PARAMS, SYM_F) SAU_MATH_##PARAMS,
+#define SAU_MATH__X_SYM_F(NAME, PARAMS, SYM_F) SYM_F,
+
 /**
  * Math symbol ids for functions and named constants.
  */
 enum {
-	SAU_MATH_ABS = 0,
-	SAU_MATH_COS,
-	SAU_MATH_EXP,
-	SAU_MATH_LOG,
-	SAU_MATH_MET,
-	SAU_MATH_MF,
-	SAU_MATH_PI,
-	SAU_MATH_RAND,
-	SAU_MATH_RINT,
-	SAU_MATH_SEED,
-	SAU_MATH_SIN,
-	SAU_MATH_SQRT,
-	SAU_MATH_TIME,
-	SAU_MATH_SYMBOLS
+	SAU_MATH__ITEMS(SAU_MATH__X_ID)
+	SAU_MATH_NAMED
 };
 
 struct SAU_Math_state;
@@ -104,13 +113,13 @@ union SAU_Math_sym_f {
 };
 
 /** Names of math functions, with an extra NULL pointer at the end. */
-extern const char *const SAU_Math_names[SAU_MATH_SYMBOLS + 1];
+extern const char *const SAU_Math_names[SAU_MATH_NAMED + 1];
 
 /** Parameter types for math functions. */
-extern const uint8_t SAU_Math_params[SAU_MATH_SYMBOLS];
+extern const uint8_t SAU_Math_params[SAU_MATH_NAMED];
 
 /** Function addresses for math functions. */
-extern const union SAU_Math_sym_f SAU_Math_symbols[SAU_MATH_SYMBOLS];
+extern const union SAU_Math_sym_f SAU_Math_symbols[SAU_MATH_NAMED];
 
 /*
  * Simple PRNGs

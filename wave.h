@@ -32,26 +32,34 @@
 #define SAU_Wave_SLEN     (1<<SAU_Wave_SLENBITS)
 #define SAU_Wave_SLENMASK (SAU_Wave_SLEN - 1)
 
+/* Macro used to declare and define wave type sets of items.
+   Note that the extra "PILUT" data isn't all fit into this. */
+#define SAU_WAVE__ITEMS(X) \
+	X(sin) \
+	X(sqr) \
+	X(tri) \
+	X(saw) \
+	X(ahs) \
+	X(hrs) \
+	X(srs) \
+	X(ssr) \
+	//
+#define SAU_WAVE__X_ID(NAME) SAU_WAVE_N_##NAME,
+#define SAU_WAVE__X_NAME(NAME) #NAME,
+
 /**
  * Wave types.
  */
 enum {
-	SAU_WAVE_SIN = 0,
-	SAU_WAVE_SQR,
-	SAU_WAVE_TRI,
-	SAU_WAVE_SAW,
-	SAU_WAVE_AHS,
-	SAU_WAVE_HRS,
-	SAU_WAVE_SRS,
-	SAU_WAVE_SSR,
-	SAU_WAVE_TYPES
+	SAU_WAVE__ITEMS(SAU_WAVE__X_ID)
+	SAU_WAVE_NAMED
 };
 
 /** LUTs for wave types. */
-extern float *const SAU_Wave_luts[SAU_WAVE_TYPES];
+extern float *const SAU_Wave_luts[SAU_WAVE_NAMED];
 
 /** Pre-integrated LUTs for wave types. */
-extern float *const SAU_Wave_piluts[SAU_WAVE_TYPES];
+extern float *const SAU_Wave_piluts[SAU_WAVE_NAMED];
 
 /** Information about or for use with a wave type. */
 struct SAU_WaveCoeffs {
@@ -61,10 +69,10 @@ struct SAU_WaveCoeffs {
 };
 
 /** Extra values for use with PILUTs. */
-extern const struct SAU_WaveCoeffs SAU_Wave_picoeffs[SAU_WAVE_TYPES];
+extern const struct SAU_WaveCoeffs SAU_Wave_picoeffs[SAU_WAVE_NAMED];
 
 /** Names of wave types, with an extra NULL pointer at the end. */
-extern const char *const SAU_Wave_names[SAU_WAVE_TYPES + 1];
+extern const char *const SAU_Wave_names[SAU_WAVE_NAMED + 1];
 
 /**
  * Turn 32-bit unsigned phase value into LUT index.

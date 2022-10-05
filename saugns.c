@@ -32,7 +32,7 @@ static void print_help(const char *restrict topic,
 		const char *restrict description) {
 	const char *const *contents = SAU_find_help(topic);
 	if (!contents || /* silence warning */ !topic) {
-		topic = SAU_Help_names[SAU_HELP_HELP];
+		topic = SAU_Help_names[SAU_HELP_N_help];
 		contents = SAU_Help_names;
 	}
 	fprintf(stderr, "\nList of '%s' names", topic);
