@@ -1,5 +1,5 @@
 /* mgensys: Help data and printout code.
- * Copyright (c) 2020 Joel K. Pettersson
+ * Copyright (c) 2020-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -21,12 +21,13 @@
 #include "wave.h"
 #include <string.h>
 
-const char *const MGS_Help_names[MGS_HELP_TYPES + 1] = {
-	"line",
-	"noise",
-	"wave",
+const char *const MGS_Help_names[MGS_HELP_NAMED + 1] = {
+	MGS_HELP__ITEMS(MGS_HELP__X_NAME)
 	NULL
 };
+
+#define MGS_HELP__X_CASE(NAME, ARRAY) \
+	case MGS_HELP_N_##NAME: return MGS_HELP__X_ARRAY(NAME, ARRAY);
 
 /**
  * Get name array for \p str help category.
@@ -34,19 +35,13 @@ const char *const MGS_Help_names[MGS_HELP_TYPES + 1] = {
  * \return predefined array or NULL if none
  */
 const char *const *MGS_find_help(const char *restrict str) {
-	const char *const *namearr = NULL;
 	size_t i;
 	if (!MGS_find_name(MGS_Help_names, str, &i))
-		return namearr;
+		return NULL;
 	switch (i) {
-	case MGS_HELP_LINE:
-		return MGS_Line_names;
-	case MGS_HELP_NOISE:
-		return MGS_Noise_names;
-	case MGS_HELP_WAVE:
-		return MGS_Wave_names;
+	MGS_HELP__ITEMS(MGS_HELP__X_CASE)
 	}
-	return namearr;
+	return NULL;
 }
 
 /**
@@ -68,7 +63,6 @@ bool MGS_find_name(const char *const *restrict namearr,
 	return false;
 }
 
-
 /**
  * Print strings from \p namearr until a NULL entry is reached.
  *
@@ -84,12 +78,15 @@ bool MGS_print_names(const char *const *restrict namearr,
 		FILE *restrict out) {
 	if (!namearr[0])
 		return false;
-	size_t i = 0;
+	size_t i = 0, len = 0;
 	if (!headstr)
 		headstr = "";
-	fprintf(out, "%s%s", headstr, namearr[i++]);
-	while (namearr[i] != NULL) {
-		fprintf(out, ", %s", namearr[i++]);
+	for (const char *name; (name = namearr[i]) != NULL; ++i) {
+		if (len > 0 && len < 56)
+			len += fprintf(out, ", %s", name);
+		else
+			len = fprintf(out, (i > 0) ? ",\n%s%s" : "%s%s",
+					headstr, name);
 	}
 	putc('\n', out);
 	return true;

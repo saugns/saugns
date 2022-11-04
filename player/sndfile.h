@@ -1,5 +1,5 @@
-/* mgensys: System audio output support module.
- * Copyright (c) 2011-2014, 2017-2020 Joel K. Pettersson
+/* mgensys: Sound file writer module.
+ * Copyright (c) 2011-2012, 2017-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -18,13 +18,21 @@
 #pragma once
 #include "../common.h"
 
-struct MGS_AudioDev;
-typedef struct MGS_AudioDev MGS_AudioDev;
+enum {
+	MGS_SNDFILE_RAW = 0,
+	MGS_SNDFILE_AU,
+	MGS_SNDFILE_WAV,
+	MGS_SNDFILE_FORMATS
+};
 
-MGS_AudioDev *MGS_open_AudioDev(uint16_t channels, uint32_t *restrict srate)
-	mgsMalloclike;
-void MGS_close_AudioDev(MGS_AudioDev *restrict o);
+struct MGS_SndFile;
+typedef struct MGS_SndFile MGS_SndFile;
 
-uint32_t MGS_AudioDev_get_srate(const MGS_AudioDev *restrict o);
-bool MGS_AudioDev_write(MGS_AudioDev *restrict o,
-		const int16_t *restrict buf, uint32_t samples);
+MGS_SndFile *MGS_create_SndFile(const char *restrict fpath, unsigned format,
+		uint16_t channels, uint32_t srate) mgsMalloclike;
+int MGS_close_SndFile(MGS_SndFile *restrict o);
+
+bool MGS_SndFile_write(MGS_SndFile *restrict o,
+		int16_t *restrict buf, uint32_t samples);
+
+extern const char *const MGS_SndFile_formats[MGS_SNDFILE_FORMATS];

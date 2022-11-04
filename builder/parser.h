@@ -16,8 +16,8 @@
 #include "../program.h"
 #include "../math.h"
 #include "../help.h"
-#include "../loader/file.h"
+#include "../reader/file.h"
 #include "../mempool.h"
-#include "../loader/symtab.h"
+#include "../reader/symtab.h"
 
 void MGS_adjust_node_list(MGS_ProgramNode *restrict list);

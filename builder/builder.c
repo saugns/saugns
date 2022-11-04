@@ -1,5 +1,5 @@
 /* mgensys: Audio program builder module.
- * Copyright (c) 2011-2013, 2017-2020 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -39,17 +39,19 @@ static MGS_Program *build_program(const char *restrict script_arg,
  *
  * \return number of failures for non-NULL scripts
  */
-size_t MGS_build(const MGS_PtrArr *restrict script_args, bool are_paths,
-		MGS_PtrArr *restrict prg_objs, bool print_info) {
+size_t MGS_build(const MGS_PtrArr *restrict script_args, uint32_t options,
+		MGS_PtrArr *restrict prg_objs) {
 	size_t fails = 0;
 	const char **args = (const char**) MGS_PtrArr_ITEMS(script_args);
+	bool are_paths = !(options & MGS_OPT_EVAL_STRING);
+	bool print_info = (options & MGS_OPT_PRINT_INFO) != 0;
 	for (size_t i = 0; i < script_args->count; ++i) {
 		if (!args[i]) continue;
 		MGS_Program *prg = build_program(args[i], are_paths);
 		if (!prg)
 			++fails;
 		else if (print_info)
-			; // MGS_Program_print_info(prg);
+			(void)0; // MGS_Program_print_info(prg);
 		MGS_PtrArr_add(prg_objs, prg);
 	}
 	return fails;

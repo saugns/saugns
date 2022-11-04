@@ -26,9 +26,6 @@
 /* Valid characters in identifiers. */
 #define IS_SYMCHAR(c) (IS_ALNUM(c) || (c) == '_')
 
-/* Sensible to print, for ASCII only. */
-#define IS_VISIBLE(c) ((c) >= '!' && (c) <= '~')
-
 static uint8_t filter_symchar(MGS_File *restrict f mgsMaybeUnused,
                               uint8_t c) {
   return IS_SYMCHAR(c) ? c : 0;
@@ -43,11 +40,11 @@ enum {
 };
 
 bool MGS_init_LangOpt(MGS_LangOpt *restrict o, MGS_SymTab *restrict symt) {
-  if (!MGS_SymTab_add_stra(symt, MGS_Line_names, MGS_LINE_TYPES,
+  if (!MGS_SymTab_add_stra(symt, MGS_Line_names, MGS_LINE_NAMED,
                           MGS_SYM_LINE_ID) ||
-      !MGS_SymTab_add_stra(symt, MGS_Noise_names, MGS_NOISE_TYPES,
+      !MGS_SymTab_add_stra(symt, MGS_Noise_names, MGS_NOISE_NAMED,
                           MGS_SYM_NOISE_ID) ||
-      !MGS_SymTab_add_stra(symt, MGS_Wave_names, MGS_WAVE_TYPES,
+      !MGS_SymTab_add_stra(symt, MGS_Wave_names, MGS_WAVE_NAMED,
                           MGS_SYM_WAVE_ID))
     return false;
   return true;
@@ -76,7 +73,7 @@ typedef struct MGS_Parser {
 
 static mgsNoinline void warning(MGS_Parser *o, const char *s, char c) {
   MGS_File *f = o->f;
-  if (IS_VISIBLE(c)) {
+  if (MGS_IS_ASCIIVISIBLE(c)) {
     fprintf(stderr, "warning: %s [line %d, at '%c'] - %s\n",
             f->path, o->line, c, s);
   } else if (c > MGS_FILE_MARKER) {
@@ -194,7 +191,7 @@ static void new_linedata(MGS_NodeData *nd) {
   MGS_ProgramNode *n = nd->node;
   MGS_ProgramLineData *lod = n->data;
   lod->line.time_ms = lrint(lod->sound.time.v * 1000.f);
-  lod->line.fill_type = MGS_LINE_LIN;
+  lod->line.fill_type = MGS_LINE_N_lin;
   lod->line.flags |= MGS_LINEP_STATE
                   | MGS_LINEP_FILL_TYPE
                   | MGS_LINEP_TIME_IF_NEW;

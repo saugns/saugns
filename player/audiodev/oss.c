@@ -1,5 +1,5 @@
 /* mgensys: OSS audio output support.
- * Copyright (c) 2011-2014, 2017-2020 Joel K. Pettersson
+ * Copyright (c) 2011-2014, 2017-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -18,9 +18,9 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
-#if defined(__OpenBSD__) || defined(__NetBSD__)
+#ifdef __NetBSD__
 # include <soundcard.h>
-# define OSS_NAME_OUT "/dev/sound"
+# define OSS_NAME_OUT "/dev/audio"
 #else
 # include <sys/soundcard.h>
 # define OSS_NAME_OUT "/dev/dsp"
@@ -29,13 +29,17 @@
 /*
  * \return instance or NULL on failure
  */
-static inline MGS_AudioDev *open_oss(const char *restrict name, int mode,
-		uint16_t channels, uint32_t *restrict srate) {
+static inline bool open_oss(MGS_AudioDev *restrict o,
+		int mode) {
+	const char *dev_name = o->name;
 	const char *err_name = NULL;
 	int tmp, fd;
 
-	if ((fd = open(name, mode, 0)) == -1) {
-		err_name = name;
+	if (dev_name != NULL && !strcmp(dev_name, "default")) dev_name = NULL;
+	if (!dev_name) dev_name = getenv_nonblank("OSS_AUDIODEV");
+	if (!dev_name) dev_name = OSS_NAME_OUT;
+	if ((fd = open(dev_name, mode, 0)) == -1) {
+		err_name = dev_name;
 		goto ERROR;
 	}
 
@@ -49,43 +53,39 @@ static inline MGS_AudioDev *open_oss(const char *restrict name, int mode,
 		goto ERROR;
 	}
 
-	tmp = channels;
+	tmp = o->channels;
 	if (ioctl(fd, SNDCTL_DSP_CHANNELS, &tmp) == -1) {
 		err_name = "SNDCTL_DSP_CHANNELS";
 		goto ERROR;
 	}
-	if (tmp != channels) {
+	if (tmp != o->channels) {
 		MGS_error("OSS", "%d channels unsupported",
-			channels);
+			o->channels);
 		goto ERROR;
 	}
 
-	tmp = *srate;
+	tmp = o->srate;
 	if (ioctl(fd, SNDCTL_DSP_SPEED, &tmp) == -1) {
 		err_name = "SNDCTL_DSP_SPEED";
 		goto ERROR;
 	}
-	if ((uint32_t) tmp != *srate) {
+	if ((uint32_t) tmp != o->srate) {
 		MGS_warning("OSS", "sample rate %d unsupported, using %d",
-			*srate, tmp);
-		*srate = tmp;
+			o->srate, tmp);
+		o->srate = tmp;
 	}
 
-	MGS_AudioDev *o = malloc(sizeof(MGS_AudioDev));
 	o->ref.fd = fd;
+	o->name = dev_name;
 	o->type = TYPE_OSS;
-	o->channels = channels;
-	o->srate = *srate;
-	return o;
-
+	return true;
 ERROR:
 	if (err_name)
 		MGS_error("OSS", "%s: %s", err_name, strerror(errno));
 	if (fd != -1)
 		close(fd);
-	MGS_error("OSS", "configuration for device \"%s\" failed",
-		name);
-	return NULL;
+	MGS_error("OSS", "configuration for device \"%s\" failed", dev_name);
+	return false;
 }
 
 /*
@@ -94,7 +94,6 @@ ERROR:
  */
 static inline void close_oss(MGS_AudioDev *restrict o) {
 	close(o->ref.fd);
-	free(o);
 }
 
 /*

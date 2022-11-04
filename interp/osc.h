@@ -66,7 +66,7 @@ static inline void MGS_init_Osc(MGS_Osc *restrict o, uint32_t srate) {
 	*o = (MGS_Osc){
 #if USE_PILUT
 		.phasor = (MGS_Phasor){
-			.phase = MGS_Wave_picoeffs[MGS_WAVE_SIN].phase_adj,
+			.phase = MGS_Wave_picoeffs[MGS_WAVE_N_sin].phase_adj,
 			.coeff = MGS_Phasor_COEFF(srate),
 		},
 #else
@@ -75,7 +75,7 @@ static inline void MGS_init_Osc(MGS_Osc *restrict o, uint32_t srate) {
 			.coeff = MGS_Phasor_COEFF(srate),
 		},
 #endif
-		.wave = MGS_WAVE_SIN,
+		.wave = MGS_WAVE_N_sin,
 		.flags = MGS_OSC_RESET,
 	};
 }

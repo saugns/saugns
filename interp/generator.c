@@ -12,6 +12,7 @@
  */
 
 #include "runalloc.h"
+#include <string.h>
 
 #define BUF_LEN 256
 typedef union Buf {
@@ -381,7 +382,7 @@ static void run_block_sub(MGS_Generator *o, Buf *bufs_from, uint32_t len,
 }
 
 static uint32_t run_sound(MGS_Generator *o,
-    MGS_SoundNode *sndn, short *sp, uint32_t pos, uint32_t len) {
+    MGS_SoundNode *sndn, short *sp, uint32_t pos, bool stereo, uint32_t len) {
   uint32_t i, ret, time = sndn->time - pos;
   if (time > len)
     time = len;
@@ -409,13 +410,23 @@ static uint32_t run_sound(MGS_Generator *o,
       break;
     }
     float pan = (1.f + sndn->pan) * .5f;
-    for (i = 0; i < len; ++i, sp += 2) {
-      float s = (*o->bufs).f[i];
-      float s_p = s * pan;
-      float s_l = s - s_p;
-      float s_r = s_p;
-      sp[0] += lrintf(s_l * INT16_MAX);
-      sp[1] += lrintf(s_r * INT16_MAX);
+    if (stereo) {
+      for (i = 0; i < len; ++i, sp += 2) {
+        float s = (*o->bufs).f[i];
+        float s_p = s * pan;
+        float s_l = s - s_p;
+        float s_r = s_p;
+        sp[0] += lrintf(s_l * INT16_MAX);
+        sp[1] += lrintf(s_r * INT16_MAX);
+      }
+    } else {
+      for (i = 0; i < len; ++i, ++sp) {
+        float s = (*o->bufs).f[i];
+        float s_p = s * pan;
+        float s_l = s - s_p;
+        float s_r = s_p;
+        sp[0] += lrintf((s_l + s_r) * 0.5f * INT16_MAX);
+      }
     }
   } while (time);
   return ret;
@@ -425,16 +436,11 @@ static uint32_t run_sound(MGS_Generator *o,
  * main run-function
  */
 
-bool MGS_Generator_run(MGS_Generator *o, int16_t *buf,
-    uint32_t len, uint32_t *gen_len) {
-  int16_t *sp;
+bool MGS_Generator_run(MGS_Generator *o, int16_t *buf, uint32_t len,
+    bool stereo, uint32_t *gen_len) {
   uint32_t i, skiplen, totlen;
   totlen = len;
-  sp = buf;
-  for (i = len; i--; sp += 2) {
-    sp[0] = 0;
-    sp[1] = 0;
-  }
+  memset(buf, 0, sizeof(int16_t) * (stereo ? len * 2 : len));
 PROCESS:
   skiplen = 0;
   for (i = o->ev_i; i < o->ev_count; ++i) {
@@ -475,19 +481,19 @@ PROCESS:
         ev->pos += len;
         break; /* end for now; delays accumulate across nodes */
       }
-      buf += delay+delay; /* doubled due to stereo interleaving */
+      buf += (stereo ? delay * 2 : delay);
       len -= delay;
       ev->pos = 0;
     }
     if (ev->status & MGS_EV_ACTIVE) {
       MGS_SoundNode *sndn = ev->sndn;
-      ev->pos += run_sound(o, sndn, buf, ev->pos, len);
+      ev->pos += run_sound(o, sndn, buf, ev->pos, stereo, len);
       if ((uint32_t)ev->pos == sndn->time)
         ev->status &= ~MGS_EV_ACTIVE;
     }
   }
   if (skiplen) {
-    buf += len+len; /* doubled due to stereo interleaving */
+    buf += (stereo ? len * 2 : len);
     len = skiplen;
     goto PROCESS;
   }

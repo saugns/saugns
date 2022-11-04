@@ -17,12 +17,8 @@
 
 #include "noise.h"
 
-const char *const MGS_Noise_names[MGS_NOISE_TYPES + 1] = {
-	//"rd",
-	//"pn",
-	"wh",
-	//"bl",
-	//"vl",
+const char *const MGS_Noise_names[MGS_NOISE_NAMED + 1] = {
+	MGS_NOISE__ITEMS(MGS_NOISE__X_NAME)
 	NULL
 };
 

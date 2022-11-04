@@ -18,51 +18,43 @@
 #pragma once
 #include "math.h"
 
+/* Macro used to declare and define line fill sets of items. */
+#define MGS_LINE__ITEMS(X) \
+	X(hor) \
+	X(lin) \
+	X(sin) \
+	X(exp) \
+	X(log) \
+	X(xpe) \
+	X(lge) \
+	//
+#define MGS_LINE__X_ID(NAME) MGS_LINE_N_##NAME,
+#define MGS_LINE__X_NAME(NAME) #NAME,
+#define MGS_LINE__X_PROTOTYPE(NAME) \
+void MGS_Line_fill_##NAME(float *restrict buf, uint32_t len, \
+		float v0, float vt, uint32_t pos, uint32_t time, \
+		const float *restrict mulbuf);
+#define MGS_LINE__X_ADDRESS(NAME) MGS_Line_fill_##NAME,
+
 /**
  * Line fill types.
  */
 enum {
-	MGS_LINE_HOR = 0,
-	MGS_LINE_LIN,
-	MGS_LINE_SIN,
-	MGS_LINE_EXP,
-	MGS_LINE_LOG,
-	MGS_LINE_XPE,
-	MGS_LINE_LGE,
-	MGS_LINE_TYPES
+	MGS_LINE__ITEMS(MGS_LINE__X_ID)
+	MGS_LINE_NAMED
 };
 
+MGS_LINE__ITEMS(MGS_LINE__X_PROTOTYPE)
+
 /** Names of line fill types, with an extra NULL pointer at the end. */
-extern const char *const MGS_Line_names[MGS_LINE_TYPES + 1];
+extern const char *const MGS_Line_names[MGS_LINE_NAMED + 1];
 
 typedef void (*MGS_Line_fill_f)(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf);
 
-/** Fill functions for line types. */
-extern const MGS_Line_fill_f MGS_Line_fill_funcs[MGS_LINE_TYPES];
-
-void MGS_Line_fill_hor(float *restrict buf, uint32_t len,
-		float v0, float vt, uint32_t pos, uint32_t time,
-		const float *restrict mulbuf);
-void MGS_Line_fill_lin(float *restrict buf, uint32_t len,
-		float v0, float vt, uint32_t pos, uint32_t time,
-		const float *restrict mulbuf);
-void MGS_Line_fill_sin(float *restrict buf, uint32_t len,
-		float v0, float vt, uint32_t pos, uint32_t time,
-		const float *restrict mulbuf);
-void MGS_Line_fill_exp(float *restrict buf, uint32_t len,
-		float v0, float vt, uint32_t pos, uint32_t time,
-		const float *restrict mulbuf);
-void MGS_Line_fill_log(float *restrict buf, uint32_t len,
-		float v0, float vt, uint32_t pos, uint32_t time,
-		const float *restrict mulbuf);
-void MGS_Line_fill_xpe(float *restrict buf, uint32_t len,
-		float v0, float vt, uint32_t pos, uint32_t time,
-		const float *restrict mulbuf);
-void MGS_Line_fill_lge(float *restrict buf, uint32_t len,
-		float v0, float vt, uint32_t pos, uint32_t time,
-		const float *restrict mulbuf);
+/** Fill functions for line fill types. */
+extern const MGS_Line_fill_f MGS_Line_fill_funcs[MGS_LINE_NAMED];
 
 /**
  * Line parameter flags.

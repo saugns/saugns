@@ -6,9 +6,9 @@ LFLAGS=-s -lm
 LFLAGS_LINUX=$(LFLAGS) -lasound
 LFLAGS_SNDIO=$(LFLAGS) -lsndio
 LFLAGS_OSSAUDIO=$(LFLAGS) -lossaudio
-OBJ=loader/file.o loader/symtab.o \
+OBJ=reader/file.o reader/symtab.o \
     builder/parser.o builder/postparse.o builder/builder.o \
-    renderer/audiodev.o renderer/wavfile.o renderer/renderer.o \
+    player/audiodev.o player/sndfile.o player/player.o \
     interp/generator.o interp/ngen.o interp/osc.o interp/runalloc.o \
     common.o mempool.o ptrarr.o arrtype.o \
     line.o noise.o wave.o help.o \
@@ -43,10 +43,10 @@ arrtype.o: arrtype.c arrtype.h common.h mempool.h
 builder/builder.o: builder/builder.c common.h mgensys.h ptrarr.h
 	$(CC) -c $(CFLAGS) builder/builder.c -o builder/builder.o
 
-builder/parser.o: builder/parser.c builder/parser.h common.h help.h loader/file.h loader/symtab.h math.h mempool.h mgensys.h noise.h program.h wave.h
+builder/parser.o: builder/parser.c builder/parser.h common.h help.h reader/file.h reader/symtab.h math.h mempool.h mgensys.h noise.h program.h wave.h
 	$(CC) -c $(CFLAGS) builder/parser.c -o builder/parser.o
 
-builder/postparse.o: builder/parser.h builder/postparse.c common.h help.h loader/file.h loader/symtab.h math.h mempool.h mgensys.h noise.h program.h wave.h
+builder/postparse.o: builder/parser.h builder/postparse.c common.h help.h reader/file.h reader/symtab.h math.h mempool.h mgensys.h noise.h program.h wave.h
 	$(CC) -c $(CFLAGS) builder/postparse.c -o builder/postparse.o
 
 common.o: common.c common.h
@@ -70,21 +70,6 @@ interp/runalloc.o: arrtype.h common.h interp/ngen.h interp/osc.h interp/runalloc
 line.o: common.h line.c line.h math.h
 	$(CC) -c $(CFLAGS_FAST) line.c
 
-loader/file.o: common.h loader/file.c loader/file.h
-	$(CC) -c $(CFLAGS) loader/file.c -o loader/file.o
-
-loader/symtab.o: common.h loader/symtab.c loader/symtab.h mempool.h mgensys.h
-	$(CC) -c $(CFLAGS) loader/symtab.c -o loader/symtab.o
-
-renderer/audiodev.o: common.h renderer/audiodev.c renderer/audiodev.h renderer/audiodev/*.c
-	$(CC) -c $(CFLAGS) renderer/audiodev.c -o renderer/audiodev.o
-
-renderer/renderer.o: common.h renderer/audiodev.h renderer/renderer.c renderer/wavfile.h math.h mgensys.h ptrarr.h
-	$(CC) -c $(CFLAGS_FAST) renderer/renderer.c -o renderer/renderer.o
-
-renderer/wavfile.o: common.h renderer/wavfile.c renderer/wavfile.h
-	$(CC) -c $(CFLAGS) renderer/wavfile.c -o renderer/wavfile.o
-
 mempool.o: common.h mempool.c mempool.h
 	$(CC) -c $(CFLAGS) mempool.c
 
@@ -96,6 +81,21 @@ noise.o: common.h math.h noise.c noise.h
 
 ptrarr.o: common.h mempool.h ptrarr.c ptrarr.h
 	$(CC) -c $(CFLAGS) ptrarr.c
+
+reader/file.o: common.h reader/file.c reader/file.h
+	$(CC) -c $(CFLAGS) reader/file.c -o reader/file.o
+
+reader/symtab.o: common.h mempool.h mgensys.h reader/symtab.c reader/symtab.h
+	$(CC) -c $(CFLAGS) reader/symtab.c -o reader/symtab.o
+
+player/audiodev.o: common.h player/audiodev.c player/audiodev.h player/audiodev/*.c
+	$(CC) -c $(CFLAGS) player/audiodev.c -o player/audiodev.o
+
+player/player.o: common.h math.h mgensys.h player/audiodev.h player/player.c player/sndfile.h program.h ptrarr.h
+	$(CC) -c $(CFLAGS_FAST) player/player.c -o player/player.o
+
+player/sndfile.o: common.h player/sndfile.c player/sndfile.h
+	$(CC) -c $(CFLAGS) player/sndfile.c -o player/sndfile.o
 
 wave.o: common.h math.h wave.c wave.h
 	$(CC) -c $(CFLAGS_FAST) wave.c

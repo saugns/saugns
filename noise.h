@@ -18,16 +18,23 @@
 #pragma once
 #include "math.h"
 
+/* Macro used to declare and define noise type sets of items. */
+#define MGS_NOISE__ITEMS(X) \
+	/* X(rd) */ \
+	/* X(pn) */ \
+	X(wh) \
+	/* X(bl) */ \
+	/* X(vl) */ \
+	//
+#define MGS_NOISE__X_ID(NAME) MGS_NOISE_N_##NAME,
+#define MGS_NOISE__X_NAME(NAME) #NAME,
+
 /**
  * Noise types.
  */
 enum {
-	//MGS_NOISE_RD = 0,
-	//MGS_NOISE_PN = 0,
-	MGS_NOISE_WH = 0,
-	//MGS_NOISE_BL,
-	//MGS_NOISE_VL,
-	MGS_NOISE_TYPES
+	MGS_NOISE__ITEMS(MGS_NOISE__X_ID)
+	MGS_NOISE_NAMED
 };
 
 /**
@@ -49,6 +56,6 @@ static inline float MGS_Noise_get(uint32_t n) {
 }
 
 /** Names of noise types, with an extra NULL pointer at the end. */
-extern const char *const MGS_Noise_names[MGS_NOISE_TYPES + 1];
+extern const char *const MGS_Noise_names[MGS_NOISE_NAMED + 1];
 
 void MGS_global_init_Noise(void);

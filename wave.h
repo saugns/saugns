@@ -32,26 +32,34 @@
 #define MGS_Wave_SLEN     (1<<MGS_Wave_SLENBITS)
 #define MGS_Wave_SLENMASK (MGS_Wave_SLEN - 1)
 
+/* Macro used to declare and define wave type sets of items.
+   Note that the extra "PILUT" data isn't all fit into this. */
+#define MGS_WAVE__ITEMS(X) \
+	X(sin) \
+	X(sqr) \
+	X(tri) \
+	X(saw) \
+	X(ahs) \
+	X(hrs) \
+	X(srs) \
+	X(ssr) \
+	//
+#define MGS_WAVE__X_ID(NAME) MGS_WAVE_N_##NAME,
+#define MGS_WAVE__X_NAME(NAME) #NAME,
+
 /**
  * Wave types.
  */
 enum {
-	MGS_WAVE_SIN = 0,
-	MGS_WAVE_SQR,
-	MGS_WAVE_TRI,
-	MGS_WAVE_SAW,
-	MGS_WAVE_AHS,
-	MGS_WAVE_HRS,
-	MGS_WAVE_SRS,
-	MGS_WAVE_SSR,
-	MGS_WAVE_TYPES
+	MGS_WAVE__ITEMS(MGS_WAVE__X_ID)
+	MGS_WAVE_NAMED
 };
 
 /** LUTs for wave types. */
-extern float *const MGS_Wave_luts[MGS_WAVE_TYPES];
+extern float *const MGS_Wave_luts[MGS_WAVE_NAMED];
 
 /** Pre-integrated LUTs for wave types. */
-extern float *const MGS_Wave_piluts[MGS_WAVE_TYPES];
+extern float *const MGS_Wave_piluts[MGS_WAVE_NAMED];
 
 /** Information about or for use with a wave type. */
 struct MGS_WaveCoeffs {
@@ -61,10 +69,10 @@ struct MGS_WaveCoeffs {
 };
 
 /** Extra values for use with PILUTs. */
-extern const struct MGS_WaveCoeffs MGS_Wave_picoeffs[MGS_WAVE_TYPES];
+extern const struct MGS_WaveCoeffs MGS_Wave_picoeffs[MGS_WAVE_NAMED];
 
 /** Names of wave types, with an extra NULL pointer at the end. */
-extern const char *const MGS_Wave_names[MGS_WAVE_TYPES + 1];
+extern const char *const MGS_Wave_names[MGS_WAVE_NAMED + 1];
 
 /**
  * Turn 32-bit unsigned phase value into LUT index.

@@ -17,25 +17,13 @@
 
 #include "line.h"
 
-const char *const MGS_Line_names[MGS_LINE_TYPES + 1] = {
-	"hor",
-	"lin",
-	"sin",
-	"exp",
-	"log",
-	"xpe",
-	"lge",
+const char *const MGS_Line_names[MGS_LINE_NAMED + 1] = {
+	MGS_LINE__ITEMS(MGS_LINE__X_NAME)
 	NULL
 };
 
-const MGS_Line_fill_f MGS_Line_fill_funcs[MGS_LINE_TYPES] = {
-	MGS_Line_fill_hor,
-	MGS_Line_fill_lin,
-	MGS_Line_fill_sin,
-	MGS_Line_fill_exp,
-	MGS_Line_fill_log,
-	MGS_Line_fill_xpe,
-	MGS_Line_fill_lge,
+const MGS_Line_fill_f MGS_Line_fill_funcs[MGS_LINE_NAMED] = {
+	MGS_LINE__ITEMS(MGS_LINE__X_ADDRESS)
 };
 
 // the noinline use below works around i386 clang performance issue

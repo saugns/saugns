@@ -1,5 +1,5 @@
 /* mgensys: Help data and printout code.
- * Copyright (c) 2020 Joel K. Pettersson
+ * Copyright (c) 2020-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -19,18 +19,27 @@
 #include "common.h"
 #include <stdio.h>
 
+/* Macro used to declare and define help sets of items. */
+#define MGS_HELP__ITEMS(X) \
+	X(help, Help) \
+	X(line, Line) \
+	X(noise, Noise) \
+	X(wave, Wave) \
+	//
+#define MGS_HELP__X_ID(NAME, ARRAY) MGS_HELP_N_##NAME,
+#define MGS_HELP__X_NAME(NAME, ARRAY) #NAME,
+#define MGS_HELP__X_ARRAY(NAME, ARRAY) MGS_##ARRAY##_names
+
 /**
  * Named help types.
  */
 enum {
-	MGS_HELP_LINE = 0,
-	MGS_HELP_NOISE,
-	MGS_HELP_WAVE,
-	MGS_HELP_TYPES
+	MGS_HELP__ITEMS(MGS_HELP__X_ID)
+	MGS_HELP_NAMED
 };
 
 /** Names of help types, with an extra NULL pointer at the end. */
-extern const char *const MGS_Help_names[MGS_HELP_TYPES + 1];
+extern const char *const MGS_Help_names[MGS_HELP_NAMED + 1];
 
 const char *const *MGS_find_help(const char *restrict str);
 

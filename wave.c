@@ -44,18 +44,13 @@ static float pisrs_lut[MGS_Wave_LEN];
 static float ssr_lut[MGS_Wave_LEN];
 static float pissr_lut[MGS_Wave_LEN];
 
-float *const MGS_Wave_luts[MGS_WAVE_TYPES] = {
-	sin_lut,
-	sqr_lut,
-	tri_lut,
-	saw_lut,
-	ahs_lut,
-	hrs_lut,
-	srs_lut,
-	ssr_lut,
+#define MGS_WAVE__X_LUT_NAME(NAME) NAME##_lut,
+
+float *const MGS_Wave_luts[MGS_WAVE_NAMED] = {
+	MGS_WAVE__ITEMS(MGS_WAVE__X_LUT_NAME)
 };
 
-float *const MGS_Wave_piluts[MGS_WAVE_TYPES] = {
+float *const MGS_Wave_piluts[MGS_WAVE_NAMED] = {
 	sin_lut,
 	tri_lut,
 	pitri_lut,
@@ -66,7 +61,7 @@ float *const MGS_Wave_piluts[MGS_WAVE_TYPES] = {
 	pissr_lut,
 };
 
-const struct MGS_WaveCoeffs MGS_Wave_picoeffs[MGS_WAVE_TYPES] = {
+const struct MGS_WaveCoeffs MGS_Wave_picoeffs[MGS_WAVE_NAMED] = {
 	{
 		.amp_scale = 1.f / 0.78539693356f,
 		.amp_dc    = 0.f,
@@ -102,15 +97,8 @@ const struct MGS_WaveCoeffs MGS_Wave_picoeffs[MGS_WAVE_TYPES] = {
 	},
 };
 
-const char *const MGS_Wave_names[MGS_WAVE_TYPES + 1] = {
-	"sin",
-	"sqr",
-	"tri",
-	"saw",
-	"ahs",
-	"hrs",
-	"srs",
-	"ssr",
+const char *const MGS_Wave_names[MGS_WAVE_NAMED + 1] = {
+	MGS_WAVE__ITEMS(MGS_WAVE__X_NAME)
 	NULL
 };
 
@@ -253,7 +241,7 @@ void MGS_global_init_Wave(void) {
  * Print an index-value table for a LUT.
  */
 void MGS_Wave_print(uint8_t id) {
-	if (id >= MGS_WAVE_TYPES)
+	if (id >= MGS_WAVE_NAMED)
 		return;
 	const float *lut = MGS_Wave_luts[id];
 	const float *pilut = MGS_Wave_piluts[id];

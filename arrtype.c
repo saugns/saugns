@@ -1,5 +1,5 @@
 /* mgensys: Generic array module.
- * Copyright (c) 2018-2020 Joel K. Pettersson
+ * Copyright (c) 2018-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -19,6 +19,9 @@
 #include "mempool.h"
 #include <stdlib.h>
 #include <string.h>
+
+static bool MGS_ArrType_upsize(void *restrict _o,
+		size_t count, size_t item_size);
 
 /**
  * Add an item to the given array. The memory is initialized
@@ -56,13 +59,12 @@ void *MGS_ArrType_add(void *restrict _o,
  *
  * \return true unless allocation failed
  */
-bool MGS_ArrType_upsize(void *restrict _o,
+static bool MGS_ArrType_upsize(void *restrict _o,
 		size_t count, size_t item_size) {
 	MGS_ByteArr *restrict o = _o;
 	size_t asize = o->asize;
-	if (!o->a) asize = 0;
 	size_t min_asize = count * item_size;
-	if (asize < min_asize) {
+	if (!o->a || asize < min_asize) {
 		if (!asize) asize = item_size;
 		while (asize < min_asize) asize <<= 1;
 		void *a = realloc(o->a, asize);

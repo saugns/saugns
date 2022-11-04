@@ -1,5 +1,5 @@
 /* mgensys: Common header / Command-line interface.
- * Copyright (c) 2011, 2020 Joel K. Pettersson
+ * Copyright (c) 2011, 2020-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -27,18 +27,35 @@
 
 #define MGS_DEFAULT_SRATE 96000
 
-/* Print symtab test statistics? */
-#define MGS_SYMTAB_STATS 0
+/**
+ * Command line options flags.
+ */
+enum {
+	MGS_OPT_MODE_FULL     = 1<<0,
+	MGS_OPT_SYMGS_ENABLE  = 1<<1,
+	MGS_OPT_SYMGS_DISABLE = 1<<2,
+	MGS_OPT_AUDIO_MONO    = 1<<3,
+	MGS_OPT_AUDIO_STDOUT  = 1<<4,
+	MGS_OPT_AUFILE_STDOUT = 1<<5,
+	MGS_OPT_MODE_CHECK    = 1<<6,
+	MGS_OPT_PRINT_INFO    = 1<<7,
+	MGS_OPT_EVAL_STRING   = 1<<8,
+	MGS_OPT_PRINT_VERBOSE = 1<<9,
+};
+
+#if MGS_ADD_TESTOPT
+extern int MGS_testopt; /* defaults to 0, set using debug option "-?" */
+#endif
 
 /*
  * Command-line interface functions.
  */
 
-size_t MGS_build(const MGS_PtrArr *restrict script_args, bool are_paths,
-		MGS_PtrArr *restrict prg_objs, bool print_info);
+size_t MGS_build(const MGS_PtrArr *restrict script_args, uint32_t options,
+		MGS_PtrArr *restrict prg_objs);
 
-bool MGS_render(const MGS_PtrArr *restrict prg_objs, uint32_t srate,
-		bool use_audiodev, const char *restrict wav_path);
+bool MGS_play(const MGS_PtrArr *restrict prg_objs, uint32_t srate,
+		uint32_t options, const char *restrict wav_path);
 
 void MGS_discard(MGS_PtrArr *restrict prg_objs);
 
@@ -62,4 +79,4 @@ typedef struct MGS_Generator MGS_Generator;
 MGS_Generator* MGS_create_Generator(const MGS_Program *prg, uint32_t srate);
 void MGS_destroy_Generator(MGS_Generator *o);
 bool MGS_Generator_run(MGS_Generator *o, int16_t *buf, uint32_t len,
-		uint32_t *gen_len);
+		bool stereo, uint32_t *gen_len);

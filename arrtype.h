@@ -1,5 +1,5 @@
 /* mgensys: Generic array module.
- * Copyright (c) 2018-2020 Joel K. Pettersson
+ * Copyright (c) 2018-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -54,10 +54,6 @@ static inline ElementType mgsMaybeUnused \
 		const ElementType *restrict item) { \
 	return MGS_ArrType_add(o, item, sizeof(ElementType)); \
 } \
-static inline bool mgsMaybeUnused \
-MethodPrefix##Name##_upsize(Name *restrict o, size_t count) { \
-	return MGS_ArrType_upsize(o, count, sizeof(ElementType)); \
-} \
 static inline void mgsMaybeUnused \
 MethodPrefix##Name##_clear(Name *restrict o) { \
 	MGS_ArrType_clear(o); \
@@ -90,8 +86,6 @@ mgsArrTypeMethods(Name, ElementType, MethodPrefix)
 
 void *MGS_ArrType_add(void *restrict o,
 		const void *restrict item, size_t item_size);
-bool MGS_ArrType_upsize(void *restrict o,
-		size_t count, size_t item_size);
 void MGS_ArrType_clear(void *restrict o);
 bool MGS_ArrType_memdup(void *restrict o,
 		void **restrict dst, size_t item_size);
