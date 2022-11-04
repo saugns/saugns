@@ -21,6 +21,7 @@
 #define IS_DIGIT(c) ((c) >= '0' && (c) <= '9')
 #define IS_ALNUM(c) (IS_ALPHA(c) || IS_DIGIT(c))
 #define IS_SPACE(c) ((c) == ' ' || (c) == '\t')
+#define IS_LNBRK(c) ((c) == '\n' || (c) == '\r')
 
 /* Valid characters in identifiers. */
 #define IS_SYMCHAR(c) (IS_ALNUM(c) || (c) == '_')
@@ -33,15 +34,21 @@ static uint8_t filter_symchar(MGS_File *restrict f mgsMaybeUnused,
   return IS_SYMCHAR(c) ? c : 0;
 }
 
+enum {
+  MGS_SYM_VAR = 0,
+  MGS_SYM_LINE_ID,
+  MGS_SYM_NOISE_ID,
+  MGS_SYM_WAVE_ID,
+  MGS_SYM_TYPES
+};
+
 bool MGS_init_LangOpt(MGS_LangOpt *restrict o, MGS_SymTab *restrict symt) {
-  if (!(o->line_names =
-        MGS_SymTab_pool_stra(symt, MGS_Line_names, MGS_LINE_FILLS)))
-    return false;
-  if (!(o->noise_names =
-        MGS_SymTab_pool_stra(symt, MGS_Noise_names, MGS_NOISE_TYPES)))
-    return false;
-  if (!(o->wave_names =
-        MGS_SymTab_pool_stra(symt, MGS_Wave_names, MGS_WAVE_TYPES)))
+  if (!MGS_SymTab_add_stra(symt, MGS_Line_names, MGS_LINE_TYPES,
+                          MGS_SYM_LINE_ID) ||
+      !MGS_SymTab_add_stra(symt, MGS_Noise_names, MGS_NOISE_TYPES,
+                          MGS_SYM_NOISE_ID) ||
+      !MGS_SymTab_add_stra(symt, MGS_Wave_names, MGS_WAVE_TYPES,
+                          MGS_SYM_WAVE_ID))
     return false;
   return true;
 }
@@ -60,7 +67,6 @@ typedef struct MGS_Parser {
   MGS_ProgramNode *cur_dur;
   MGS_ProgramNode *cur_sound;
   struct MGS_NodeData *cur_nd;
-  MGS_SymStr *next_setsym;
   /* settings/ops */
   float n_pan;
   float n_ampmult;
@@ -128,7 +134,7 @@ typedef struct MGS_NodeData {
   struct MGS_NodeData *up;
   MGS_ProgramNode *node; /* state for tentative node until end_node() */
   MGS_ProgramArrData *target;
-  MGS_SymStr *cur_setsym;
+  MGS_SymItem *set_var; /* assign variable to next node? */
   uint32_t flags;
   /* timing/delay */
   uint8_t n_time_delay; // TODO: implement
@@ -240,10 +246,6 @@ static void new_node(MGS_NodeData *nd,
   MGS_ProgramNode *n;
   n = MGS_MemPool_alloc(p->mem, sizeof(MGS_ProgramNode));
   nd->node = n;
-  if (o->next_setsym != NULL) {
-    nd->cur_setsym = o->next_setsym;
-    o->next_setsym = NULL;
-  }
   nd->flags |= ND_OWN_NODE;
   n->ref_prev = ref_prev;
   n->type = type;
@@ -282,6 +284,15 @@ static void new_node(MGS_NodeData *nd,
   case MGS_TYPE_DUR:
     new_durdata(nd);
     break;
+  }
+
+  /*
+   * Make a variable point to this?
+   */
+  if (nd->set_var) {
+    nd->set_var->data_use = MGS_SYM_DATA_OBJ;
+    nd->set_var->data.obj = n;
+    nd->set_var = NULL;
   }
 }
 
@@ -341,10 +352,6 @@ static void end_node(MGS_NodeData *nd) {
     break;
   }
 
-  if (nd->cur_setsym) {
-    nd->cur_setsym->data = n;
-    nd->cur_setsym = NULL;
-  }
   nd->node = NULL;
   nd->flags &= ~ND_OWN_NODE;
 }
@@ -373,6 +380,8 @@ static void MGS_fini_NodeData(MGS_NodeData *nd) {
   o->cur_nd = nd->up;
 }
 
+static MGS_SymItem *scan_sym(MGS_Parser *o, uint32_t type_id, char pos_c);
+
 /* \return length if number read and \p val set */
 typedef size_t (*NumSym_f)(MGS_Parser *restrict o, double *restrict val);
 
@@ -380,6 +389,7 @@ typedef struct NumParser {
   MGS_Parser *pr;
   NumSym_f numsym_f;
   bool has_infnum;
+  bool after_rpar;
 } NumParser;
 enum {
   NUMEXP_SUB = 0,
@@ -391,52 +401,61 @@ enum {
 static double scan_num_r(NumParser *restrict o, uint8_t pri, uint32_t level) {
   MGS_Parser *pr = o->pr;
   double num;
-  bool minus = false;
   uint8_t c;
   if (level > 0) skip_ws(pr);
   c = MGS_File_GETC(pr->f);
-  if ((level > 0) && (c == '+' || c == '-')) {
-    if (c == '-') minus = true;
-    skip_ws(pr);
-    c = MGS_File_GETC(pr->f);
-  }
   if (c == '(') {
     num = scan_num_r(o, NUMEXP_SUB, level+1);
+  } else if (c == '+' || c == '-') {
+    num = scan_num_r(o, NUMEXP_ADT, level+1);
+    if (isnan(num)) goto DEFER;
+    if (c == '-') num = -num;
+  } else if (c == '$') {
+    MGS_SymItem *var = scan_sym(pr, MGS_SYM_VAR, c);
+    if (!var) goto REJECT;
+    if (var->data_use != MGS_SYM_DATA_NUM) {
+      warning(pr,
+"variable used in numerical expression doesn't hold a number", c);
+      goto REJECT;
+    }
+    num = var->data.num;
   } else if (o->numsym_f && IS_ALPHA(c)) {
     MGS_File_DECP(pr->f);
     size_t read_len = o->numsym_f(pr, &num);
-    if (read_len == 0)
-      return NAN;
+    if (read_len == 0) goto REJECT;
     c = MGS_File_RETC(pr->f);
     if (IS_SYMCHAR(c)) {
       MGS_File_UNGETN(pr->f, read_len);
-      return NAN;
+      goto REJECT;
     }
   } else {
     MGS_File_DECP(pr->f);
     size_t read_len;
     MGS_File_getd(pr->f, &num, false, &read_len);
-    if (read_len == 0)
-      return NAN;
+    if (read_len == 0) goto REJECT;
   }
-  if (minus) num = -num;
-  if (level == 0 || pri == NUMEXP_NUM)
-    return num; /* defer all */
+  if (pri == NUMEXP_NUM) goto ACCEPT; /* defer all operations */
   for (;;) {
+    bool rpar_mlt = false;
     if (isinf(num)) o->has_infnum = true;
     if (level > 0) skip_ws(pr);
     c = MGS_File_GETC(pr->f);
+    if (pri < NUMEXP_MLT) {
+      rpar_mlt = o->after_rpar;
+      o->after_rpar = false;
+    }
     switch (c) {
     case '(':
       if (pri >= NUMEXP_MLT) goto DEFER;
       num *= scan_num_r(o, NUMEXP_SUB, level+1);
       break;
     case ')':
-      if (pri != NUMEXP_SUB) goto DEFER;
-      return num;
+      if (pri != NUMEXP_SUB || level == 0) goto DEFER;
+      o->after_rpar = true;
+      goto ACCEPT;
     case '^':
-      if (pri >= NUMEXP_POW) goto DEFER;
-      num = exp(log(num) * scan_num_r(o, NUMEXP_POW, level));
+      if (pri > NUMEXP_POW) goto DEFER;
+      num = pow(num, scan_num_r(o, NUMEXP_POW, level));
       break;
     case '*':
       if (pri >= NUMEXP_MLT) goto DEFER;
@@ -445,6 +464,10 @@ static double scan_num_r(NumParser *restrict o, uint8_t pri, uint32_t level) {
     case '/':
       if (pri >= NUMEXP_MLT) goto DEFER;
       num /= scan_num_r(o, NUMEXP_MLT, level);
+      break;
+    case '%':
+      if (pri >= NUMEXP_MLT) goto DEFER;
+      num = fmod(num, scan_num_r(o, NUMEXP_MLT, level));
       break;
     case '+':
       if (pri >= NUMEXP_ADT) goto DEFER;
@@ -455,7 +478,14 @@ static double scan_num_r(NumParser *restrict o, uint8_t pri, uint32_t level) {
       num -= scan_num_r(o, NUMEXP_ADT, level);
       break;
     default:
-      if (pri == NUMEXP_SUB) {
+      if (rpar_mlt && !(IS_SPACE(c) || IS_LNBRK(c))) {
+        MGS_File_DECP(pr->f);
+        double rval = scan_num_r(o, NUMEXP_MLT, level);
+        if (isnan(rval)) goto ACCEPT;
+        num *= rval;
+        break;
+      }
+      if (pri == NUMEXP_SUB && level > 0) {
         warning(pr, "numerical expression has '(' without closing ')'", c);
       }
       goto DEFER;
@@ -464,12 +494,17 @@ static double scan_num_r(NumParser *restrict o, uint8_t pri, uint32_t level) {
   }
 DEFER:
   MGS_File_DECP(pr->f);
+ACCEPT:
+  if (0)
+REJECT: {
+    num = NAN;
+  }
   return num;
 }
 static mgsNoinline bool scan_num(MGS_Parser *restrict o,
-    NumSym_f scan_numsym, float *restrict var) {
-  NumParser np = {o, scan_numsym, false};
-  float num = scan_num_r(&np, NUMEXP_NUM, 0);
+    NumSym_f scan_numsym, double *restrict var) {
+  NumParser np = {o, scan_numsym, false, false};
+  double num = scan_num_r(&np, NUMEXP_SUB, 0);
   if (isnan(num))
     return false;
   if (isinf(num)) np.has_infnum = true;
@@ -482,8 +517,8 @@ static mgsNoinline bool scan_num(MGS_Parser *restrict o,
 }
 
 static mgsNoinline bool scan_timeval(MGS_Parser *restrict o,
-    float *restrict val) {
-  float tval;
+    double *restrict val) {
+  double tval;
   if (!scan_num(o, NULL, &tval))
     return false;
   if (tval < 0) {
@@ -496,45 +531,25 @@ static mgsNoinline bool scan_timeval(MGS_Parser *restrict o,
 
 #define SYMKEY_MAXLEN 79
 #define SYMKEY_MAXLEN_A "79"
-static bool scan_sym(MGS_Parser *o, MGS_SymStr **sym, char pos_c) {
+static MGS_SymItem *scan_sym(MGS_Parser *o, uint32_t type_id, char pos_c) {
+  MGS_SymTab *st = o->prg->symt;
   size_t len = 0;
   bool truncated;
   truncated = !MGS_File_getstr(o->f, o->symbuf, SYMKEY_MAXLEN + 1,
       &len, filter_symchar);
   if (len == 0) {
     warning(o, "symbol name missing", pos_c);
-    return false;
+    return NULL;
   }
-  *sym = MGS_SymTab_get_symstr(o->prg->symt, o->symbuf, len);
   if (truncated) {
     warning(o, "limiting symbol name to "SYMKEY_MAXLEN_A" characters", pos_c);
     len += MGS_File_skipstr(o->f, filter_symchar);
   }
-  return true;
-}
-
-static bool scan_symafind(MGS_Parser *restrict o,
-                          const char *const*restrict stra,
-                          size_t *restrict found_i, char pos_c) {
-  size_t len = 0;
-  bool truncated = !MGS_File_getstr(o->f, o->symbuf, SYMKEY_MAXLEN + 1,
-      &len, filter_symchar);
-  if (len == 0) {
-    warning(o, "named value missing", pos_c);
-    return false;
-  }
-  const char *key = MGS_SymTab_pool_str(o->prg->symt, o->symbuf, len);
-  if (truncated) {
-    warning(o, "limiting named value to "SYMKEY_MAXLEN_A" characters", pos_c);
-    len += MGS_File_skipstr(o->f, filter_symchar);
-  }
-  for (size_t i = 0; stra[i] != NULL; ++i) {
-    if (stra[i] == key) {
-      *found_i = i;
-      return true;
-    }
-  }
-  return false;
+  MGS_SymStr *s = MGS_SymTab_get_symstr(st, o->symbuf, len);
+  MGS_SymItem *item = MGS_SymTab_find_item(st, s, type_id);
+  if (!item && type_id == MGS_SYM_VAR)
+    item = MGS_SymTab_add_item(st, s, MGS_SYM_VAR);
+  return item;
 }
 
 static size_t numsym_channel(MGS_Parser *restrict o, double *restrict val) {
@@ -557,30 +572,39 @@ static size_t numsym_channel(MGS_Parser *restrict o, double *restrict val) {
 
 static bool scan_linetype(MGS_Parser *restrict o,
     size_t *restrict found_id, char pos_c) {
-  const char *const *names = o->prg->lopt.line_names;
-  if (scan_symafind(o, names, found_id, pos_c))
+  MGS_SymItem *item = scan_sym(o, MGS_SYM_LINE_ID, pos_c);
+  if (item) {
+    *found_id = item->data.id;
     return true;
-  warning(o, "invalid line type value; available are:", pos_c);
+  }
+  const char *const *names = MGS_Line_names;
+  warning(o, "invalid line type; available are:", pos_c);
   MGS_print_names(names, "\t", stderr);
   return false;
 }
 
 static bool scan_noisetype(MGS_Parser *restrict o,
     size_t *restrict found_id, char pos_c) {
-  const char *const *names = o->prg->lopt.noise_names;
-  if (scan_symafind(o, names, found_id, pos_c))
+  MGS_SymItem *item = scan_sym(o, MGS_SYM_NOISE_ID, pos_c);
+  if (item) {
+    *found_id = item->data.id;
     return true;
-  warning(o, "invalid noise type value; available are:", pos_c);
+  }
+  const char *const *names = MGS_Noise_names;
+  warning(o, "invalid noise type; available are:", pos_c);
   MGS_print_names(names, "\t", stderr);
   return false;
 }
 
 static bool scan_wavetype(MGS_Parser *restrict o,
     size_t *restrict found_id, char pos_c) {
-  const char *const *names = o->prg->lopt.wave_names;
-  if (scan_symafind(o, names, found_id, pos_c))
+  MGS_SymItem *item = scan_sym(o, MGS_SYM_WAVE_ID, pos_c);
+  if (item) {
+    *found_id = item->data.id;
     return true;
-  warning(o, "invalid wave type value; available are:", pos_c);
+  }
+  const char *const *names = MGS_Wave_names;
+  warning(o, "invalid wave type; available are:", pos_c);
   MGS_print_names(names, "\t", stderr);
   return false;
 }
@@ -614,7 +638,7 @@ static bool parse_amp(MGS_Parser *o, MGS_ProgramNode *n) {
   MGS_ProgramSoundData *sound;
   sound = MGS_ProgramNode_get_data(n, MGS_BASETYPE_SOUND);
   if (!sound) goto INVALID;
-  float f;
+  double f;
   if (MGS_File_TRYC(o->f, '!')) {
     if (!MGS_File_TESTC(o->f, '{')) {
       if (!scan_num(o, NULL, &f)) goto INVALID;
@@ -645,7 +669,7 @@ static bool parse_channel(MGS_Parser *o, MGS_ProgramNode *n) {
     MGS_ProgramArrData *target = nd->target;
     if (target->mod_type != 0) goto INVALID;
   }
-  float f;
+  double f;
   /* TODO: support modulation */
   if (!scan_num(o, numsym_channel, &f)) goto INVALID;
   sound->pan = f;
@@ -660,7 +684,7 @@ static bool parse_freq(MGS_Parser *o, MGS_ProgramNode *n, bool ratio) {
   MGS_ProgramWaveData *wod = MGS_ProgramNode_get_data(n, MGS_TYPE_WAVE);
   if (!wod) goto INVALID;
   if (ratio && (n->base_id == wod->sound.root->base_id)) goto INVALID;
-  float f;
+  double f;
   if (MGS_File_TRYC(o->f, '!')) {
     if (!MGS_File_TESTC(o->f, '{')) {
       if (!scan_num(o, NULL, &f)) goto INVALID;
@@ -695,7 +719,7 @@ INVALID:
 static bool parse_goal(MGS_Parser *o, MGS_ProgramNode *n) {
   MGS_ProgramLineData *lod = MGS_ProgramNode_get_data(n, MGS_TYPE_LINE);
   if (!lod) goto INVALID;
-  float f;
+  double f;
   if (!scan_num(o, NULL, &f)) goto INVALID;
   lod->line.vt = f;
   lod->line.flags |= MGS_LINEP_GOAL;
@@ -732,7 +756,7 @@ static bool parse_phase(MGS_Parser *o, MGS_ProgramNode *n) {
   MGS_Program *p = o->prg;
   MGS_ProgramWaveData *wod = MGS_ProgramNode_get_data(n, MGS_TYPE_WAVE);
   if (!wod) goto INVALID;
-  float f;
+  double f;
   if (MGS_File_TRYC(o->f, '!')) {
     if (MGS_File_TRYC(o->f, '{')) {
       wod->pmod = MGS_MemPool_alloc(p->mem, sizeof(MGS_ProgramArrData));
@@ -752,7 +776,7 @@ INVALID:
 static bool parse_time(MGS_Parser *o, MGS_ProgramNode *n) {
   MGS_ProgramSoundData *sound = MGS_ProgramNode_get_data(n, MGS_BASETYPE_SOUND);
   if (!sound) goto INVALID;
-  float f;
+  double f;
   if (!scan_timeval(o, &f)) goto INVALID;
   sound->time.v = f;
   sound->time.flags |= MGS_TIME_SET;
@@ -770,7 +794,7 @@ INVALID:
 static bool parse_value(MGS_Parser *o, MGS_ProgramNode *n) {
   MGS_ProgramLineData *lod = MGS_ProgramNode_get_data(n, MGS_TYPE_LINE);
   if (!lod) goto INVALID;
-  float f;
+  double f;
   if (!scan_num(o, NULL, &f)) goto INVALID;
   lod->line.v0 = f;
   lod->line.flags |= MGS_LINEP_STATE;
@@ -795,25 +819,23 @@ static bool parse_ref(MGS_Parser *o, char pos_c) {
   MGS_NodeData *nd = o->cur_nd;
   if (nd->target != NULL)
     return false;
-  MGS_SymStr *sym = NULL;
-  if (!scan_sym(o, &sym, ':'))
+  MGS_SymItem *sym = scan_sym(o, MGS_SYM_VAR, ':');
+  if (!sym)
     return false;
-  if (sym != NULL) {
-    MGS_ProgramNode *ref = sym->data;
-    if (!ref) {
-      warning(o, "ignoring reference to undefined label", pos_c);
-      return true;
-    }
-    o->next_setsym = sym;
+  if (sym->data_use == MGS_SYM_DATA_OBJ) {
+    MGS_ProgramNode *ref = sym->data.obj;
     new_node(nd, ref, ref->type);
+    sym->data.obj = o->cur_node;
     o->setnode = o->level + 1;
+  } else {
+    warning(o, "reference doesn't point to an object", pos_c);
   }
   return true;
 }
 
 static void parse_level(MGS_Parser *o, MGS_ProgramArrData *chain) {
   char c;
-  float f;
+  double f;
   MGS_NodeData nd;
   uint32_t entrylevel = o->level;
   ++o->reclevel;
@@ -930,18 +952,25 @@ static void parse_level(MGS_Parser *o, MGS_ProgramArrData *chain) {
       break;
     case '\'':
       end_node(&nd);
-      if (o->next_setsym != NULL) {
-        warning(o, "ignoring label assignment to label assignment", c);
+      if (nd.set_var != NULL) {
+        warning(o, "ignoring variable assignment to variable assignment", c);
         break;
       }
-      if (!scan_sym(o, &o->next_setsym, '\'')) goto INVALID;
+      if (!(nd.set_var = scan_sym(o, MGS_SYM_VAR, '\''))) goto INVALID;
       break;
-    case ':':
-      end_node(&nd);
-      if (o->next_setsym != NULL) {
-        warning(o, "ignoring label assignment to label reference", c);
-        // continue parsing reference use
+    case '=': {
+      MGS_SymItem *var = nd.set_var;
+      if (!var) {
+        warning(o, "ignoring dangling '='", c);
+        break;
       }
+      nd.set_var = NULL; // used here
+      if (scan_num(o, NULL, &var->data.num))
+        var->data_use = MGS_SYM_DATA_NUM;
+      else
+        warning(o, "missing right-hand value for variable '='", c);
+      break; }
+    case ':':
       if (!parse_ref(o, c)) goto INVALID;
       break;
     case 'a':

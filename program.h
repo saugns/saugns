@@ -161,9 +161,6 @@ struct MGS_MemPool;
 struct MGS_SymTab;
 
 typedef struct MGS_LangOpt {
-	const char *const*line_names;
-	const char *const*noise_names;
-	const char *const*wave_names;
 } MGS_LangOpt;
 
 bool MGS_init_LangOpt(MGS_LangOpt *restrict o,

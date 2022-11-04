@@ -17,7 +17,7 @@
 
 #include "line.h"
 
-const char *const MGS_Line_names[MGS_LINE_FILLS + 1] = {
+const char *const MGS_Line_names[MGS_LINE_TYPES + 1] = {
 	"hor",
 	"lin",
 	"sin",
@@ -28,7 +28,7 @@ const char *const MGS_Line_names[MGS_LINE_FILLS + 1] = {
 	NULL
 };
 
-const MGS_Line_fill_f MGS_Line_fill_funcs[MGS_LINE_FILLS] = {
+const MGS_Line_fill_f MGS_Line_fill_funcs[MGS_LINE_TYPES] = {
 	MGS_Line_fill_hor,
 	MGS_Line_fill_lin,
 	MGS_Line_fill_sin,

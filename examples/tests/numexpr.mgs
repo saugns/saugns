@@ -1,7 +1,8 @@
 # Several oscillators with the same frequency
-S a(1/5)
+S a1/6
 Wsin f400 t1
 Wsin f(400 + 22 - 1*10 - 10 - 1 - 1) t1
 Wsin f(400 + 8^1*2 - 4^2*1 + 2^1(0)) t1
 Wsin f(2*100 + 1 + 100*2 - 2^(1(0))) t1
 Wsin f(+(-(1)) + 2(200) + 1 + (16 - 2^4)*9) t1
+Wsin f2(2^3^4)2/2417851639229258349412352*100 t1

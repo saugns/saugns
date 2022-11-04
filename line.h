@@ -29,18 +29,18 @@ enum {
 	MGS_LINE_LOG,
 	MGS_LINE_XPE,
 	MGS_LINE_LGE,
-	MGS_LINE_FILLS
+	MGS_LINE_TYPES
 };
 
 /** Names of line fill types, with an extra NULL pointer at the end. */
-extern const char *const MGS_Line_names[MGS_LINE_FILLS + 1];
+extern const char *const MGS_Line_names[MGS_LINE_TYPES + 1];
 
 typedef void (*MGS_Line_fill_f)(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf);
 
-/** Fill functions for line fill types. */
-extern const MGS_Line_fill_f MGS_Line_fill_funcs[MGS_LINE_FILLS];
+/** Fill functions for line types. */
+extern const MGS_Line_fill_f MGS_Line_fill_funcs[MGS_LINE_TYPES];
 
 void MGS_Line_fill_hor(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,

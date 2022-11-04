@@ -13,15 +13,27 @@ Script syntax
 -------------
 
 Values can be of several main types, each with its own syntax:
- * Numbers.
- * Objects.
+ * Numbers; Numerical expressions.
+ * Objects; Types S, L, N, W.
  * Arrays.
 
-Non-negative numbers can be written directly. Within parentheses, conventional
-infix expressions can be used, allowing the signs + and -, and arithmetic with
-+, -, *, /, and ^ (to the power of). Parentheses can be nested, and multiplied
-in the conventional way, e.g. (1 + 2(5)) makes 11. Numbers can be written with
-or without a decimal point, and leading zeroes can freely be added or removed.
+Numerical expressions:
+	A number can be specified with or without a decimal point;
+	for a number with a decimal point, a leading zero can be omitted.
+	Number signs and arithmetic operation symbols can be used in infix
+	expressions. But unless something is written within parentheses,
+	it cannot contain any whitespace, as it ends the expression. For
+	example, "-1" is fine, but "- 1" is a dangling minus followed by
+	a dangling number 1, if not inside parentheses as "(- 1)".
+		The following operations are recognized, and grouped below by
+	priority (nested parentheses can be used to change evaluation order):
+		^	To the power of (right-associative)
+		* / %	Multiplication, division, remainder
+		+ -	Addition, subtraction
+	Parentheses also allow shorthand multiplication (leaving out a
+	"*" between two parts), e.g. "2(3)" and "(2)3" both give "6".
+		Some parameters support named constants specific to that type
+	of value. Such a name can be written instead of a number.
 
 Object types, e.g. "W" (Wave oscillator), have one-letter uppercase names. To
 create an instance, the letter is written, followed by any required argument.
@@ -42,9 +54,7 @@ the < was given.
 Each object instance and value assignment has a time position, beginning at
 0 seconds. Time delay modifiers advance the time position.
 
-The following objects are supported:
-
-S:
+S -- Script options
 	Set default value or other global option in the script.
 	a	Amplitude multiplier for all carrier waves. Starts at 1.0.
 		Effectively a global volume control.
@@ -56,8 +66,8 @@ S:
 		as multiple of the carrier frequency. Starts at 1.0.
 	t	Default time duration in seconds. Starts at 1.0.
 
-Sound generator parameters:
-	Named parameters common to N (noise generator) and W (wave oscillator).
+Signal generator common parameters
+	Named parameters common to types L, N, and W.
 	t	Time duration in seconds. If no t setting given, default time
 		depends on context - either scaling to fit the duration of
 		play until the end of the current group of sounds, or the
@@ -72,10 +82,10 @@ Sound generator parameters:
 	\	Time shift/delay current operation and following ones, time
 		in seconds.
 
-L:
-	Line generator; following the L, a start value is expected, which
-	is repeated to make a flat line if the goal parameter isn't used.
-	See "Sound generator parameters" for other, common named parameters.
+L -- Line generator
+	Expects a start value following the L; the start value is repeated
+	to make a flat line if the goal parameter isn't used.
+	See "Signal generator common parameters" for other named parameters.
 	g	Goal (go-to) value, assigned to the parameter after time.
 		This value has no default and must be provided. If changed
 		again before the full time, the current point reached on the
@@ -97,16 +107,16 @@ L:
 		and 'lge' increases like 'exp' and decreases like 'log'.
 		The 'sin' shape sounds similar to 'lin', except it has a
 		smoothly curved start and stop, and a steeper middle.)
-	v	Start (state) value. It can also be set after a 'v'.
+	v	Start (state) value. It can also be set in this way.
 
-Nwh:
+N -- Noise generator
 	Noise generator; "wh" (white noise) is currently the only type.
-	See "Sound generator parameters" for other, common named parameters.
-	n	Change noise; "wh" (white noise) is currently the only type.
+	See "Signal generator common parameters" for other named parameters.
+	n	Noise type; "wh" (white noise) is currently the only type.
 
-Wsin, Wsqr, W...:
+W -- Wave oscillator
 	Wave oscillator; see "Wave types" for all types.
-	See "Sound generator parameters" for other, common named parameters.
+	See "Signal generator common parameters" for other named parameters.
 	f	Frequency in Hz, for carrier or modulator.
 	f!{}	Second frequency in Hz to modulate (FM) to by wave or envelope,
 		and/or a list of modulators given within {} following the
@@ -124,7 +134,7 @@ Wsin, Wsqr, W...:
 	p!{}	A list of modulator (PM) waves is given within the {}, the
 		per-sample sum of which is used to phase-modulate the carrier,
 		be it the final carrier or in turn another modulator.
-	w	Change wave; see "Wave types" for all types.
+	w	Wave type; see "Wave types" for all types.
 
 Wave types:
 	sin	Sine.
@@ -169,7 +179,26 @@ The following modifiers are supported:
 	to begin at the end of all that preceeds it, though / and \ may
 	further delay it.
 
-Any sound generator instance may be prefixed by "'label " in order to define
-a label for it, where the label is alphanumeric (and/or '_'); thereafter the
-label may be referenced as ":label", allowing future changes to the instance
-values.
+Variables:
+	A named variable can be assigned by writing an expression beginning
+	with "'name", where the "name" is a case-sensitive string with
+	alphanumeric characters and/or '_'. Variables are dynamically typed,
+	can be assigned several times, and can either be assigned to a number
+	or made to point to an object as a label for it.
+		To assign a number, "'name=' can be written just before a
+	numerical expression. Once it holds a number, it can be used in any
+	numerical expression using "$name". (It's possible to use such a
+	variable value as part of redefining its value.)
+		To point a variable to an object, "'name " can be written
+	just before an object is added or referenced. The name can then be
+	used to refer back to the object as ":name", to start a new step for
+	the object anywhere later in the script.
+		A new ":name" step differs in not automatically setting a new
+	time duration for the object, so "t" (see "Parameters") or other
+	time-altering syntax (see "Timing") must be used in order for the
+	old time duration value to be changed.
+		Note that a ":name" reference placed in a nesting scope
+	different from the original (e.g. outside a list, or in a new list)
+	does not move the object into the new nesting scope. It will not be
+	added to, nor removed from, any list by being referenced anywhere.
+	The time scope is however new and of the reference.
