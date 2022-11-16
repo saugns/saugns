@@ -138,7 +138,7 @@ bool MGS_ArrType_mpmemdup(void *restrict _o,
 		return true;
 	}
 	size_t size = o->count * item_size;
-	void *a = MGS_MemPool_memdup(mempool, o->a, size);
+	void *a = MGS_mpmemdup(mempool, o->a, size);
 	if (!a)
 		return false;
 	*dst = a;

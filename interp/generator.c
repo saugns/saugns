@@ -48,7 +48,7 @@ static void init_for_nodelist(MGS_Generator *o) {
   MGS_EventArr_mpmemdup(&ra.ev_arr, &o->ev_arr, o->mem);
   MGS_VoiceArr_mpmemdup(&ra.voice_arr, &o->voice_arr, o->mem);
   MGS_PtrArr_mpmemdup(&ra.mod_lists, (void***) &o->mod_lists, o->mem);
-  o->bufs = MGS_MemPool_alloc(o->mem, ra.max_bufs * sizeof(Buf));
+  o->bufs = MGS_mpalloc(o->mem, ra.max_bufs * sizeof(Buf));
   MGS_fini_RunAlloc(&ra);
 }
 
@@ -56,7 +56,7 @@ MGS_Generator* MGS_create_Generator(const MGS_Program *prg, uint32_t srate) {
   MGS_MemPool *mem;
   MGS_Generator *o;
   mem = MGS_create_MemPool(0);
-  o = MGS_MemPool_alloc(mem, sizeof(MGS_Generator));
+  o = MGS_mpalloc(mem, sizeof(MGS_Generator));
   o->prg = prg;
   o->srate = srate;
   o->mem = mem;

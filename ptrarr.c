@@ -1,5 +1,5 @@
 /* mgensys: Pointer array module.
- * Copyright (c) 2011-2012, 2018-2021 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2018-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -125,7 +125,7 @@ bool MGS_PtrArr_mpmemdup(MGS_PtrArr *restrict o, void ***restrict dst,
 	}
 	size_t size = o->count * sizeof(void*);
 	void **src = MGS_PtrArr_ITEMS(o);
-	void **a = MGS_MemPool_memdup(mempool, src, size);
+	void **a = MGS_mpmemdup(mempool, src, size);
 	if (!a)
 		return false;
 	*dst = a;

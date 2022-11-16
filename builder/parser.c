@@ -152,7 +152,7 @@ static void new_sounddata(MGS_NodeData *nd, size_t size) {
   MGS_ProgramNode *n = nd->node;
   MGS_ProgramSoundData *snd;
   if (!n->ref_prev) {
-    snd = MGS_MemPool_alloc(p->mem, size);
+    snd = MGS_mpalloc(p->mem, size);
     if (!nd->target) {
       snd->root = n;
       ++p->root_count;
@@ -174,7 +174,7 @@ static void new_sounddata(MGS_NodeData *nd, size_t size) {
     n->base_id = p->base_counts[MGS_BASETYPE_SOUND]++;
   } else {
     MGS_ProgramNode *ref = n->ref_prev;
-    snd = MGS_MemPool_memdup(p->mem, ref->data, size);
+    snd = MGS_mpmemdup(p->mem, ref->data, size);
     snd->params = 0;
     n->base_id = ref->base_id;
   }
@@ -222,7 +222,7 @@ static void new_durdata(MGS_NodeData *nd) {
   MGS_Program *p = o->prg;
   MGS_ProgramNode *n = nd->node;
   MGS_ProgramDurData *dur;
-  dur = MGS_MemPool_alloc(p->mem, sizeof(MGS_ProgramDurData));
+  dur = MGS_mpalloc(p->mem, sizeof(MGS_ProgramDurData));
   n->base_type = MGS_BASETYPE_SCOPE;
   n->data = dur;
   if (o->cur_dur != NULL) {
@@ -241,7 +241,7 @@ static void new_node(MGS_NodeData *nd,
   end_node(nd);
 
   MGS_ProgramNode *n;
-  n = MGS_MemPool_alloc(p->mem, sizeof(MGS_ProgramNode));
+  n = MGS_mpalloc(p->mem, sizeof(MGS_ProgramNode));
   nd->node = n;
   nd->flags |= ND_OWN_NODE;
   n->ref_prev = ref_prev;
@@ -613,7 +613,7 @@ static MGS_Program* parse(MGS_File *f, MGS_Parser *o) {
   o->f = f;
   MGS_MemPool *mem = MGS_create_MemPool(0);
   MGS_SymTab *symt = MGS_create_SymTab(mem);
-  o->prg = MGS_MemPool_alloc(mem, sizeof(MGS_Program));
+  o->prg = MGS_mpalloc(mem, sizeof(MGS_Program));
   o->prg->mem = mem;
   o->prg->symt = symt;
   o->prg->name = f->path;
@@ -643,7 +643,7 @@ static bool parse_amp(MGS_Parser *o, MGS_ProgramNode *n) {
       sound->params |= MGS_SOUNDP_DYNAMP;
     }
     if (MGS_File_TRYC(o->f, '{')) {
-      sound->amod = MGS_MemPool_alloc(p->mem, sizeof(MGS_ProgramArrData));
+      sound->amod = MGS_mpalloc(p->mem, sizeof(MGS_ProgramArrData));
       sound->amod->mod_type = MGS_MOD_AM;
       parse_level(o, sound->amod);
     }
@@ -694,7 +694,7 @@ static bool parse_freq(MGS_Parser *o, MGS_ProgramNode *n, bool ratio) {
       wod->sound.params |= MGS_WAVEP_DYNFREQ | MGS_WAVEP_ATTR;
     }
     if (MGS_File_TRYC(o->f, '{')) {
-      wod->fmod = MGS_MemPool_alloc(p->mem, sizeof(MGS_ProgramArrData));
+      wod->fmod = MGS_mpalloc(p->mem, sizeof(MGS_ProgramArrData));
       wod->fmod->mod_type = MGS_MOD_FM;
       parse_level(o, wod->fmod);
     }
@@ -756,7 +756,7 @@ static bool parse_phase(MGS_Parser *o, MGS_ProgramNode *n) {
   double f;
   if (MGS_File_TRYC(o->f, '!')) {
     if (MGS_File_TRYC(o->f, '{')) {
-      wod->pmod = MGS_MemPool_alloc(p->mem, sizeof(MGS_ProgramArrData));
+      wod->pmod = MGS_mpalloc(p->mem, sizeof(MGS_ProgramArrData));
       wod->pmod->mod_type = MGS_MOD_PM;
       parse_level(o, wod->pmod);
     }
@@ -1086,6 +1086,5 @@ ERROR:
 void MGS_destroy_Program(MGS_Program *o) {
   if (!o)
     return;
-  MGS_destroy_SymTab(o->symt);
   MGS_destroy_MemPool(o->mem);
 }

@@ -27,7 +27,7 @@ static uint32_t random_next(uint32_t *seed) {
 
 static MGS_ModList *create_ModList(const MGS_ProgramArrData *restrict arr_data,
 		MGS_MemPool *restrict mem) {
-	MGS_ModList *o = MGS_MemPool_alloc(mem, sizeof(MGS_ModList) +
+	MGS_ModList *o = MGS_mpalloc(mem, sizeof(MGS_ModList) +
 			arr_data->count * sizeof(uint32_t));
 	MGS_ProgramNode *n = arr_data->scope.first_node;
 	size_t i = 0;
@@ -48,7 +48,7 @@ bool MGS_init_RunAlloc(MGS_RunAlloc *restrict o,
 	o->srate = srate;
 	o->mem = mem;
 	size_t count = prg->base_counts[MGS_BASETYPE_SOUND];
-	o->sound_list = MGS_MemPool_alloc(mem, count * sizeof(MGS_SoundNode*));
+	o->sound_list = MGS_mpalloc(mem, count * sizeof(MGS_SoundNode*));
 	if (!o->sound_list)
 		return false;
 	o->sndn_count = count;
@@ -56,7 +56,7 @@ bool MGS_init_RunAlloc(MGS_RunAlloc *restrict o,
 	/*
 	 * Add blank modlist as value 0.
 	 */
-	MGS_ModList *l = MGS_MemPool_alloc(mem, sizeof(MGS_ModList));
+	MGS_ModList *l = MGS_mpalloc(mem, sizeof(MGS_ModList));
 	if (!l || !MGS_PtrArr_add(&o->mod_lists, l))
 		return false;
 	return true;
@@ -202,10 +202,10 @@ static bool MGS_RunAlloc_make_line(MGS_RunAlloc *restrict o,
 	MGS_ProgramLineData *lod = n->data;
 	MGS_ProgramLineData *prev_lod = NULL;
 	if (!(ev->status & MGS_EV_UPDATE)) {
-		lon = MGS_MemPool_alloc(o->mem, sizeof(MGS_LineNode));
+		lon = MGS_mpalloc(o->mem, sizeof(MGS_LineNode));
 	} else {
 		MGS_EventNode *ref_ev = &o->ev_arr.a[ev->ref_i];
-		lon = MGS_MemPool_memdup(o->mem,
+		lon = MGS_mpmemdup(o->mem,
 				ref_ev->sndn, sizeof(MGS_LineNode));
 		prev_lod = n->ref_prev->data;
 	}
@@ -230,10 +230,10 @@ static bool MGS_RunAlloc_make_noise(MGS_RunAlloc *restrict o,
 	//MGS_ProgramNoiseData *nod = n->data;
 	//MGS_ProgramNoiseData *prev_nod = NULL;
 	if (!(ev->status & MGS_EV_UPDATE)) {
-		non = MGS_MemPool_alloc(o->mem, sizeof(MGS_NoiseNode));
+		non = MGS_mpalloc(o->mem, sizeof(MGS_NoiseNode));
 	} else {
 		MGS_EventNode *ref_ev = &o->ev_arr.a[ev->ref_i];
-		non = MGS_MemPool_memdup(o->mem,
+		non = MGS_mpmemdup(o->mem,
 				ref_ev->sndn, sizeof(MGS_NoiseNode));
 		//prev_nod = n->ref_prev->data;
 	}
@@ -255,10 +255,10 @@ static bool MGS_RunAlloc_make_wave(MGS_RunAlloc *restrict o,
 	MGS_ProgramWaveData *wod = n->data;
 	MGS_ProgramWaveData *prev_wod = NULL;
 	if (!(ev->status & MGS_EV_UPDATE)) {
-		won = MGS_MemPool_alloc(o->mem, sizeof(MGS_WaveNode));
+		won = MGS_mpalloc(o->mem, sizeof(MGS_WaveNode));
 	} else {
 		MGS_EventNode *ref_ev = &o->ev_arr.a[ev->ref_i];
-		won = MGS_MemPool_memdup(o->mem,
+		won = MGS_mpmemdup(o->mem,
 				ref_ev->sndn, sizeof(MGS_WaveNode));
 		prev_wod = n->ref_prev->data;
 	}

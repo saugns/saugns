@@ -1,5 +1,5 @@
 /* mgensys: Memory pool module.
- * Copyright (c) 2014, 2018-2020 Joel K. Pettersson
+ * Copyright (c) 2014, 2018-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -21,9 +21,12 @@
 struct MGS_MemPool;
 typedef struct MGS_MemPool MGS_MemPool;
 
-MGS_MemPool *MGS_create_MemPool(size_t block_size) mgsMalloclike;
+MGS_MemPool *MGS_create_MemPool(size_t start_size) mgsMalloclike;
 void MGS_destroy_MemPool(MGS_MemPool *restrict o);
 
-void *MGS_MemPool_alloc(MGS_MemPool *restrict o, size_t size) mgsMalloclike;
-void *MGS_MemPool_memdup(MGS_MemPool *restrict o,
+void *MGS_mpalloc(MGS_MemPool *restrict o, size_t size) mgsMalloclike;
+void *MGS_mpmemdup(MGS_MemPool *restrict o,
 		const void *restrict src, size_t size) mgsMalloclike;
+typedef void (*MGS_Dtor_f)(void *o);
+bool MGS_mpregdtor(MGS_MemPool *restrict o,
+		MGS_Dtor_f func, void *restrict arg);

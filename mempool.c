@@ -1,5 +1,5 @@
 /* mgensys: Memory pool module.
- * Copyright (c) 2014, 2018-2020 Joel K. Pettersson
+ * Copyright (c) 2014, 2018-2022 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -27,88 +27,89 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Not important enough to query page size for; use large-enough default. */
-#define DEFAULT_BLOCK_SIZE \
-	(4096 * 2)
+#define DEFAULT_START_SIZE 512
 
-#define ALIGN_BYTES \
-	sizeof(void*)
+#define ALIGN_BYTES      sizeof(void*)
+#define ALIGN_SIZE(size) (((size) + (ALIGN_BYTES - 1)) & ~(ALIGN_BYTES - 1))
 
-#define ALIGN_SIZE(size) \
-	(((size) + (ALIGN_BYTES - 1)) & ~(ALIGN_BYTES - 1))
-
-typedef struct BlockEntry {
+typedef struct MemBlock {
 	size_t free;
-	void *mem;
-} BlockEntry;
+	char *mem;
+} MemBlock;
 
-typedef struct BlockArr {
-	BlockEntry *a;
-	size_t count, first_i;
-	size_t asize;
-} BlockArr;
+typedef struct DtorItem {
+	MGS_Dtor_f func;
+	void *arg;
+	struct DtorItem *prev;
+} DtorItem;
+
+struct MGS_MemPool {
+	MemBlock *a;
+	size_t count, first_i, a_len;
+	size_t block_size, skip_size;
+	DtorItem *last_dtor;
+};
 
 /*
  * Extend memory block array.
  *
  * \return true, or false on allocation failure
  */
-static bool BlockArr_upsize(BlockArr *restrict o) {
-	size_t new_asize = (o->asize > 0) ? (o->asize << 1) : 1;
-	BlockEntry *new_a = realloc(o->a, sizeof(BlockEntry) * new_asize);
+static bool upsize(MGS_MemPool *restrict o) {
+	size_t new_a_len = (o->a_len > 0) ?  (o->a_len << 1) : 1;
+	MemBlock *new_a = realloc(o->a, sizeof(MemBlock) * new_a_len);
 	if (!new_a)
 		return false;
 	o->a = new_a;
-	o->asize = new_asize;
+#if !MGS_MEM_DEBUG
+	o->block_size <<= 1;
+	if (o->first_i < (o->a_len * 2) / 3) {
+		/*
+		 * If less than 2/3 of blocks are fully used, then
+		 * allocation sizes may be too awkward for the old
+		 * full-usage threshold.
+		 */
+		o->skip_size = (o->skip_size > 0) ?
+			(o->skip_size << 1) :
+			ALIGN_BYTES;
+	}
+#endif
+	o->a_len = new_a_len;
 	return true;
 }
 
+#if !MGS_MEM_DEBUG
 /*
- * Allocate new memory block,
- * initialized to zero bytes.
+ * Allocate new memory block, initialized to zero bytes.
  *
  * \return allocated memory, or NULL on allocation failure
  */
-static void *BlockArr_add(BlockArr *restrict o,
-		size_t size_alloc, size_t size_used) {
-	if (o->count == o->asize && !BlockArr_upsize(o))
+static void *add(MGS_MemPool *restrict o, size_t size_used) {
+	if (o->count == o->a_len && !upsize(o))
 		return NULL;
-	void *mem = calloc(1, size_alloc);
+	size_t block_size = o->block_size;
+	if (block_size < size_used) block_size = size_used;
+	char *mem = calloc(1, block_size);
 	if (!mem)
 		return NULL;
-	BlockEntry *b = &o->a[o->count++];
-	b->free = size_alloc - size_used;
-	b->mem = mem;
-#if !MGS_MEM_DEBUG
+	size_t i = o->count++;
+	o->a[i].free = block_size - size_used;
+	o->a[i].mem = mem;
 	/*
 	 * Skip fully used blocks in binary searches.
 	 */
-	while (o->first_i < o->count) {
-		if (!o->a[o->first_i].free) ++o->first_i;
-		else break;
-	}
-#endif
-	return mem;
+	while (o->first_i < o->count && o->a[o->first_i].free <= o->skip_size)
+		++o->first_i;
+	return mem + o->a[i].free;
 }
 
-/*
- * Free all memory blocks.
- */
-static void BlockArr_clear(BlockArr *restrict o) {
-	for (size_t i = 0; i < o->count; ++i) {
-		free(o->a[i].mem);
-	}
-	free(o->a);
-}
-
-#if !MGS_MEM_DEBUG
 /*
  * Locate the first block with the smallest size into which \p size fits,
  * using binary search. If found, \p id will be set to the id.
  *
  * \return true if found, false if not
  */
-static bool BlockArr_first_smallest(const BlockArr *restrict o,
+static bool first_smallest(const MGS_MemPool *restrict o,
 		size_t size, size_t *restrict id) {
 	size_t i;
 	ptrdiff_t min = o->first_i;
@@ -141,8 +142,8 @@ static bool BlockArr_first_smallest(const BlockArr *restrict o,
  *
  * \return true if found, false if not
  */
-#define BlockArr_first_greater(o, size, id) \
-	BlockArr_first_smallest((o), (size) + 1, (id))
+#define first_greater(o, size, id) \
+	first_smallest((o), (size) + 1, (id))
 
 /*
  * Copy the blocks from \p from to \p to upwards one step.
@@ -151,7 +152,7 @@ static bool BlockArr_first_smallest(const BlockArr *restrict o,
  * by the previous such block, until finally the last such block overwrites
  * the block at \p to.
  */
-static void BlockArr_copy_up_one(BlockArr *restrict o,
+static void copy_up_one(MGS_MemPool *restrict o,
 		size_t to, size_t from) {
 	if (from == (to - 1) || o->a[from].free == o->a[to - 1].free) {
 		/*
@@ -166,49 +167,57 @@ static void BlockArr_copy_up_one(BlockArr *restrict o,
 		 * Afterwards that block is overwritten by the original
 		 * first block of this call.
 		 */
-		size_t higher_from;
-		BlockArr_first_greater(o, o->a[from].free, &higher_from);
-		BlockArr_copy_up_one(o, to, higher_from);
+		size_t higher_from = 0;
+		first_greater(o, o->a[from].free, &higher_from);
+		copy_up_one(o, to, higher_from);
 		o->a[higher_from] = o->a[from];
 	}
 }
 #endif
 
-struct MGS_MemPool {
-	BlockArr blocks;
-	size_t block_size;
-};
-
 /**
  * Create instance.
  *
- * \p block_size specifies the requested size of each memory block managed by
- * the memory pool. If 0 is passed, the default is used: 8KB, meant to take
- * up at least one memory page on the system. Performance measurement is
- * advised if a custom size is used.
+ * \p start_size specifies the normal size of the first internal memory block
+ * made; 0 can be passed to use a default value of 512. The second block made
+ * will be twice as large, and after that, the size will double each time the
+ * block count rises above a power of two.
  *
- * Allocations larger than the requested block size can still be made;
- * these are given individual blocks sized according to need.
+ * For an allocation with a size larger than the current block size, a single
+ * block sized according to need will be made while the block count increases
+ * by one and normal block sizing continues as if the block had been normally
+ * sized. Some such outliers early on will be accommodated gracefully, but if
+ * there are many over time, a larger \p start_size value may perform better.
  *
  * \return instance, or NULL on allocation failure
  */
-MGS_MemPool *MGS_create_MemPool(size_t block_size) {
+MGS_MemPool *MGS_create_MemPool(size_t start_size) {
 	MGS_MemPool *o = calloc(1, sizeof(MGS_MemPool));
 	if (!o)
 		return NULL;
-	o->block_size = (block_size > 0) ?
-		ALIGN_SIZE(block_size) :
-		DEFAULT_BLOCK_SIZE;
+	o->block_size = (start_size > 0) ?
+		ALIGN_SIZE(start_size) :
+		DEFAULT_START_SIZE;
+	o->block_size >>= 1;
 	return o;
 }
 
 /**
  * Destroy instance.
+ *
+ * Frees all memory blocks. Any destructor functions registered
+ * are called beforehand, in the reverse order of registration.
  */
 void MGS_destroy_MemPool(MGS_MemPool *restrict o) {
 	if (!o)
 		return;
-	BlockArr_clear(&o->blocks);
+	for (DtorItem *n = o->last_dtor; n; n = n->prev) {
+		n->func(n->arg);
+	}
+	for (size_t i = 0; i < o->count; ++i) {
+		free(o->a[i].mem);
+	}
+	free(o->a);
 	free(o);
 }
 
@@ -218,9 +227,9 @@ void MGS_destroy_MemPool(MGS_MemPool *restrict o) {
  *
  * \return allocated memory, or NULL on allocation failure
  */
-void *MGS_MemPool_alloc(MGS_MemPool *restrict o, size_t size) {
+void *MGS_mpalloc(MGS_MemPool *restrict o, size_t size) {
 #if !MGS_MEM_DEBUG
-	size_t i = o->blocks.count;
+	size_t i = o->count;
 	void *mem;
 	size = ALIGN_SIZE(size);
 	/*
@@ -228,16 +237,12 @@ void *MGS_MemPool_alloc(MGS_MemPool *restrict o, size_t size) {
 	 * pick least-free-space best fit using binary search.
 	 * Otherwise, use a new block.
 	 */
-	if ((i > 0 && size <= o->blocks.a[i - 1].free) &&
-			BlockArr_first_smallest(&o->blocks, size, &i)) {
-		size_t offset = o->block_size - o->blocks.a[i].free;
-		mem = &((char*)o->blocks.a[i].mem)[offset];
-		o->blocks.a[i].free -= size;
+	if ((i > 0 && size <= o->a[i - 1].free) &&
+			first_smallest(o, size, &i)) {
+		o->a[i].free -= size;
+		mem = o->a[i].mem + o->a[i].free;
 	} else {
-		size_t alloc_size = (size > o->block_size) ?
-			size :
-			o->block_size;
-		mem = BlockArr_add(&o->blocks, alloc_size, size);
+		mem = add(o, size);
 		if (!mem)
 			return NULL;
 	}
@@ -250,25 +255,31 @@ void *MGS_MemPool_alloc(MGS_MemPool *restrict o, size_t size) {
 		 * fudged in order for binary search to work reliably.
 		 */
 		size_t j;
-		size_t i_free = o->blocks.a[i].free;
-		o->blocks.a[i].free = o->blocks.a[i - 1].free;
-		if (BlockArr_first_greater(&o->blocks, i_free, &j) && j < i) {
+		size_t i_free = o->a[i].free;
+		o->a[i].free = o->a[i - 1].free;
+		if (first_greater(o, i_free, &j) && j < i) {
 			/*
 			 * Copy blocks upwards, then
 			 * set the one at j to the one originally at i
 			 * (and give it the restored free space value).
 			 */
-			BlockEntry tmp = o->blocks.a[i];
+			MemBlock tmp = o->a[i];
 			tmp.free = i_free;
-			BlockArr_copy_up_one(&o->blocks, i, j);
-			o->blocks.a[j] = tmp;
+			copy_up_one(o, i, j);
+			o->a[j] = tmp;
 		} else {
-			o->blocks.a[i].free = i_free;
+			o->a[i].free = i_free;
 		}
 	}
 	return mem;
 #else /* MGS_MEM_DEBUG */
-	return BlockArr_add(&o->blocks, size, size);
+	if (o->count == o->a_len && !upsize(o))
+		return NULL;
+	void *mem = calloc(1, size);
+	if (!mem)
+		return NULL;
+	o->a[o->count++].mem = mem;
+	return mem;
 #endif
 }
 
@@ -279,12 +290,32 @@ void *MGS_MemPool_alloc(MGS_MemPool *restrict o, size_t size) {
  *
  * \return allocated memory, or NULL on allocation failure
  */
-void *MGS_MemPool_memdup(MGS_MemPool *restrict o,
+void *MGS_mpmemdup(MGS_MemPool *restrict o,
 		const void *restrict src, size_t size) {
-	void *mem = MGS_MemPool_alloc(o, size);
+	void *mem = MGS_mpalloc(o, size);
 	if (!mem)
 		return NULL;
 	if (src != NULL)
 		memcpy(mem, src, size);
 	return mem;
+}
+
+/**
+ * Register a destructor function for calling upon mempool destruction.
+ * Meant for allocations for which a cleanup call should be associated.
+ *
+ * \return true, or false for NULL func or arg or on allocation failure
+ */
+bool MGS_mpregdtor(MGS_MemPool *restrict o,
+		MGS_Dtor_f func, void *restrict arg) {
+	if (!func || !arg)
+		return false;
+	DtorItem *n = MGS_mpalloc(o, sizeof(DtorItem));
+	if (!n)
+		return false;
+	n->func = func;
+	n->arg = arg;
+	n->prev = o->last_dtor;
+	o->last_dtor = n;
+	return true;
 }
