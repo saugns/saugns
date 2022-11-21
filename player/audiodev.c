@@ -39,7 +39,7 @@ enum {
 	TYPE_SNDIO,
 };
 
-struct MGS_AudioDev {
+struct mgsAudioDev {
 	union DevRef ref;
 	const char *name;
 	uint8_t type;
@@ -68,12 +68,12 @@ static const char *getenv_nonblank(const char *restrict env_name) {
 
 /**
  * Open audio device for 16-bit sound output. Sound data may thereafter be
- * written any number of times using MGS_AudioDev_write().
+ * written any number of times using mgsAudioDev_write().
  *
  * \return instance or NULL on failure
  */
-MGS_AudioDev *MGS_open_AudioDev(uint16_t channels, uint32_t *restrict srate) {
-	MGS_AudioDev *o = calloc(1, sizeof(MGS_AudioDev));
+mgsAudioDev *mgs_open_AudioDev(uint16_t channels, uint32_t *restrict srate) {
+	mgsAudioDev *o = calloc(1, sizeof(mgsAudioDev));
 	if (!o) goto ERROR;
 	/*
 	 * Set generic values before platform-specific handling...
@@ -91,7 +91,7 @@ MGS_AudioDev *MGS_open_AudioDev(uint16_t channels, uint32_t *restrict srate) {
 	*srate = o->srate;
 	return o;
 ERROR:
-	MGS_error(NULL, "couldn't open audio device for output");
+	mgs_error(NULL, "couldn't open audio device for output");
 	free(o);
 	return NULL;
 }
@@ -99,7 +99,7 @@ ERROR:
 /**
  * Close the given audio device. Destroys the instance.
  */
-void MGS_close_AudioDev(MGS_AudioDev *restrict o) {
+void mgs_close_AudioDev(mgsAudioDev *restrict o) {
 	if (!o)
 		return;
 #ifdef __linux
@@ -115,7 +115,7 @@ void MGS_close_AudioDev(MGS_AudioDev *restrict o) {
 /**
  * \return sample rate set for system audio output
  */
-uint32_t MGS_AudioDev_get_srate(const MGS_AudioDev *restrict o) {
+uint32_t mgsAudioDev_get_srate(const mgsAudioDev *restrict o) {
 	return o->srate;
 }
 
@@ -127,7 +127,7 @@ uint32_t MGS_AudioDev_get_srate(const MGS_AudioDev *restrict o) {
  *
  * \return true upon suceessful write, otherwise false
  */
-bool MGS_AudioDev_write(MGS_AudioDev *restrict o,
+bool mgsAudioDev_write(mgsAudioDev *restrict o,
 		const int16_t *restrict buf, uint32_t samples) {
 #ifdef __linux
 	return linux_write(o, buf, samples);

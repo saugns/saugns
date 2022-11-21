@@ -28,7 +28,7 @@
 	//
 #define MGS_HELP__X_ID(NAME, ARRAY) MGS_HELP_N_##NAME,
 #define MGS_HELP__X_NAME(NAME, ARRAY) #NAME,
-#define MGS_HELP__X_ARRAY(NAME, ARRAY) MGS_##ARRAY##_names
+#define MGS_HELP__X_ARRAY(NAME, ARRAY) mgs##ARRAY##_names
 
 /**
  * Named help types.
@@ -39,16 +39,16 @@ enum {
 };
 
 /** Names of help types, with an extra NULL pointer at the end. */
-extern const char *const MGS_Help_names[MGS_HELP_NAMED + 1];
+extern const char *const mgsHelp_names[MGS_HELP_NAMED + 1];
 
-const char *const *MGS_find_help(const char *restrict str);
+const char *const *mgs_find_help(const char *restrict str);
 
 /*
  * Name array functions of more general use.
  */
 
-bool MGS_find_name(const char *const *restrict namearr,
+bool mgs_find_name(const char *const *restrict namearr,
 		const char *restrict str, size_t *restrict id);
-bool MGS_print_names(const char *const *restrict namearr,
+bool mgs_print_names(const char *const *restrict namearr,
 		const char *restrict headstr,
 		FILE *restrict out);

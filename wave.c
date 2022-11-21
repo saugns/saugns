@@ -19,38 +19,38 @@
 #include "math.h"
 #include <stdio.h>
 
-#define HALFLEN (MGS_Wave_LEN>>1)
-#define QUARTERLEN (MGS_Wave_LEN>>2)
-#define DVSCALE (MGS_Wave_LEN * 0.125f)
+#define HALFLEN (mgsWave_LEN>>1)
+#define QUARTERLEN (mgsWave_LEN>>2)
+#define DVSCALE (mgsWave_LEN * 0.125f)
 #define IVSCALE (1.f / DVSCALE)
 
-static float sin_lut[MGS_Wave_LEN];
+static float sin_lut[mgsWave_LEN];
 
-static float sqr_lut[MGS_Wave_LEN];
-static float tri_lut[MGS_Wave_LEN];
-static float pitri_lut[MGS_Wave_LEN];
+static float sqr_lut[mgsWave_LEN];
+static float tri_lut[mgsWave_LEN];
+static float pitri_lut[mgsWave_LEN];
 
-static float saw_lut[MGS_Wave_LEN];
-static float par_lut[MGS_Wave_LEN];
+static float saw_lut[mgsWave_LEN];
+static float par_lut[mgsWave_LEN];
 
-static float ahs_lut[MGS_Wave_LEN];
-static float piahs_lut[MGS_Wave_LEN];
+static float ahs_lut[mgsWave_LEN];
+static float piahs_lut[mgsWave_LEN];
 
-static float hrs_lut[MGS_Wave_LEN];
-static float pihrs_lut[MGS_Wave_LEN];
+static float hrs_lut[mgsWave_LEN];
+static float pihrs_lut[mgsWave_LEN];
 
-static float srs_lut[MGS_Wave_LEN];
-static float pisrs_lut[MGS_Wave_LEN];
-static float ssr_lut[MGS_Wave_LEN];
-static float pissr_lut[MGS_Wave_LEN];
+static float srs_lut[mgsWave_LEN];
+static float pisrs_lut[mgsWave_LEN];
+static float ssr_lut[mgsWave_LEN];
+static float pissr_lut[mgsWave_LEN];
 
 #define MGS_WAVE__X_LUT_NAME(NAME) NAME##_lut,
 
-float *const MGS_Wave_luts[MGS_WAVE_NAMED] = {
+float *const mgsWave_luts[MGS_WAVE_NAMED] = {
 	MGS_WAVE__ITEMS(MGS_WAVE__X_LUT_NAME)
 };
 
-float *const MGS_Wave_piluts[MGS_WAVE_NAMED] = {
+float *const mgsWave_piluts[MGS_WAVE_NAMED] = {
 	sin_lut,
 	tri_lut,
 	pitri_lut,
@@ -61,7 +61,7 @@ float *const MGS_Wave_piluts[MGS_WAVE_NAMED] = {
 	pissr_lut,
 };
 
-const struct MGS_WaveCoeffs MGS_Wave_picoeffs[MGS_WAVE_NAMED] = {
+const struct mgsWaveCoeffs mgsWave_picoeffs[MGS_WAVE_NAMED] = {
 	{
 		.amp_scale = 1.f / 0.78539693356f,
 		.amp_dc    = 0.f,
@@ -97,7 +97,7 @@ const struct MGS_WaveCoeffs MGS_Wave_picoeffs[MGS_WAVE_NAMED] = {
 	},
 };
 
-const char *const MGS_Wave_names[MGS_WAVE_NAMED + 1] = {
+const char *const mgsWave_names[MGS_WAVE_NAMED + 1] = {
 	MGS_WAVE__ITEMS(MGS_WAVE__X_NAME)
 	NULL
 };
@@ -130,14 +130,14 @@ static void fill_It(float *restrict lut, size_t len, const float scale,
  *
  * If already initialized, return without doing anything.
  */
-void MGS_global_init_Wave(void) {
+void mgs_global_init_Wave(void) {
 	static bool done = false;
 	if (done)
 		return;
 	done = true;
 
 	int i;
-	const float val_scale = MGS_Wave_MAXVAL;
+	const float val_scale = mgsWave_MAXVAL;
 	/*
 	 * Fully fill:
 	 *  - sin, It -cosin
@@ -164,8 +164,8 @@ void MGS_global_init_Wave(void) {
 
 		ssr_half_dc += ssr_lut[i] = val_scale * (sin_x * sin_x);
 	}
-	srs_half_dc *= (1.f/MGS_Wave_LEN);
-	ssr_half_dc *= (1.f/MGS_Wave_LEN);
+	srs_half_dc *= (1.f/mgsWave_LEN);
+	ssr_half_dc *= (1.f/mgsWave_LEN);
 	ssr_dc = ssr_half_dc - srs_half_dc;
 	for (i = 0; i < HALFLEN; ++i) {
 		const double x = i * (1.f/(HALFLEN-1));
@@ -192,13 +192,13 @@ void MGS_global_init_Wave(void) {
 	 *  - srs, It pisrs
 	 *  - ssr, It pissr
 	 */
-	for (i = HALFLEN; i < MGS_Wave_LEN; ++i) {
+	for (i = HALFLEN; i < mgsWave_LEN; ++i) {
 		sqr_lut[i] = -sqr_lut[i - HALFLEN];
 		tri_lut[i] = -tri_lut[i - HALFLEN];
 		pitri_lut[i] = -pitri_lut[i - HALFLEN];
 
-		saw_lut[i] = -saw_lut[(MGS_Wave_LEN-1) - i];
-		par_lut[i] = par_lut[(MGS_Wave_LEN-1) - i];
+		saw_lut[i] = -saw_lut[(mgsWave_LEN-1) - i];
+		par_lut[i] = par_lut[(mgsWave_LEN-1) - i];
 
 		ssr_lut[i] = srs_lut[i] = -srs_lut[i - HALFLEN];
 	}
@@ -208,7 +208,7 @@ void MGS_global_init_Wave(void) {
 	 */
 	double ahs_dc = 0.f;
 	double hrs_dc = 0.f;
-	for (i = 0; i < MGS_Wave_LEN; ++i) {
+	for (i = 0; i < mgsWave_LEN; ++i) {
 		const double x = i * (1.f/HALFLEN);
 
 		float ahs_x = sin((MGS_PI * x) * 0.5f + MGS_ASIN_1_2);
@@ -229,30 +229,30 @@ void MGS_global_init_Wave(void) {
 		hrs_lut[i] = hrs_x;
 		hrs_dc += hrs_x;
 	}
-	ahs_dc *= (1.f/MGS_Wave_LEN);
-	hrs_dc *= (1.f/MGS_Wave_LEN);
-	fill_It(piahs_lut, MGS_Wave_LEN, val_scale, ahs_lut, ahs_dc);
-	fill_It(pihrs_lut, MGS_Wave_LEN, val_scale, hrs_lut, hrs_dc);
-	fill_It(pisrs_lut, MGS_Wave_LEN, val_scale, srs_lut, 0.f);
-	fill_It(pissr_lut, MGS_Wave_LEN, val_scale, ssr_lut, ssr_dc);
+	ahs_dc *= (1.f/mgsWave_LEN);
+	hrs_dc *= (1.f/mgsWave_LEN);
+	fill_It(piahs_lut, mgsWave_LEN, val_scale, ahs_lut, ahs_dc);
+	fill_It(pihrs_lut, mgsWave_LEN, val_scale, hrs_lut, hrs_dc);
+	fill_It(pisrs_lut, mgsWave_LEN, val_scale, srs_lut, 0.f);
+	fill_It(pissr_lut, mgsWave_LEN, val_scale, ssr_lut, ssr_dc);
 }
 
 /**
  * Print an index-value table for a LUT.
  */
-void MGS_Wave_print(uint8_t id) {
+void mgsWave_print(uint8_t id) {
 	if (id >= MGS_WAVE_NAMED)
 		return;
-	const float *lut = MGS_Wave_luts[id];
-	const float *pilut = MGS_Wave_piluts[id];
-	const char *lut_name = MGS_Wave_names[id];
-	MGS_printf("LUT: %s\n", lut_name);
+	const float *lut = mgsWave_luts[id];
+	const float *pilut = mgsWave_piluts[id];
+	const char *lut_name = mgsWave_names[id];
+	mgs_printf("LUT: %s\n", lut_name);
 	double sum = 0.f, sum2 = 0.f, mag_sum = 0.f, mag_sum2 = 0.f;
-	float prev_s = lut[MGS_Wave_LEN - 1], prev_s2 = pilut[MGS_Wave_LEN - 1];
+	float prev_s = lut[mgsWave_LEN - 1], prev_s2 = pilut[mgsWave_LEN - 1];
 	float peak_max = 0.f, peak_max2 = 0.f;
 	float slope_min = 0.f, slope_min2 = 0.f;
 	float slope_max = 0.f, slope_max2 = 0.f;
-	for (int i = 0; i < MGS_Wave_LEN; ++i) {
+	for (int i = 0; i < mgsWave_LEN; ++i) {
 		float s = lut[i], s2 = pilut[i];
 		float abs_s = fabsf(s), abs_s2 = fabsf(s2);
 		float slope_s = (s - prev_s), slope_s2 = (s2 - prev_s2);
@@ -265,14 +265,14 @@ void MGS_Wave_print(uint8_t id) {
 		if (slope_min > slope_s) slope_min = slope_s;
 		if (slope_min2 > slope_s2) slope_min2 = slope_s2;
 		prev_s = s; prev_s2 = s2;
-		MGS_printf("[\t%d]: \t%.11f\tIv %.11f\n", i, s, s2);
+		mgs_printf("[\t%d]: \t%.11f\tIv %.11f\n", i, s, s2);
 	}
-	float len_scale = (float) MGS_Wave_LEN;
+	float len_scale = (float) mgsWave_LEN;
 	float diff_min = slope_min2 * DVSCALE;
 	float diff_max = slope_max2 * DVSCALE;
-	float diff_scale = MGS_Wave_picoeffs[id].amp_scale;
-	float diff_offset = MGS_Wave_picoeffs[id].amp_dc;
-	MGS_printf("\tp.m.avg %.11f\tIt %.11f\n"
+	float diff_scale = mgsWave_picoeffs[id].amp_scale;
+	float diff_offset = mgsWave_picoeffs[id].amp_dc;
+	mgs_printf("\tp.m.avg %.11f\tIt %.11f\n"
 			"\tp.m.max %.11f\tIt %.11f\n"
 			"\tdc.offs %.11f\tIt %.11f\n"
 			"\t+slope  %.11f\tIt %.11f\n"

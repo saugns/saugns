@@ -29,7 +29,7 @@
 /*
  * \return instance or NULL on failure
  */
-static inline bool open_oss(MGS_AudioDev *restrict o,
+static inline bool open_oss(mgsAudioDev *restrict o,
 		int mode) {
 	const char *dev_name = o->name;
 	const char *err_name = NULL;
@@ -49,7 +49,7 @@ static inline bool open_oss(MGS_AudioDev *restrict o,
 		goto ERROR;
 	}
 	if (tmp != AFMT_S16_NE) {
-		MGS_error("OSS", "16-bit signed integer native endian format unsupported");
+		mgs_error("OSS", "16-bit signed integer native endian format unsupported");
 		goto ERROR;
 	}
 
@@ -59,7 +59,7 @@ static inline bool open_oss(MGS_AudioDev *restrict o,
 		goto ERROR;
 	}
 	if (tmp != o->channels) {
-		MGS_error("OSS", "%d channels unsupported",
+		mgs_error("OSS", "%d channels unsupported",
 			o->channels);
 		goto ERROR;
 	}
@@ -70,7 +70,7 @@ static inline bool open_oss(MGS_AudioDev *restrict o,
 		goto ERROR;
 	}
 	if ((uint32_t) tmp != o->srate) {
-		MGS_warning("OSS", "sample rate %d unsupported, using %d",
+		mgs_warning("OSS", "sample rate %d unsupported, using %d",
 			o->srate, tmp);
 		o->srate = tmp;
 	}
@@ -81,10 +81,10 @@ static inline bool open_oss(MGS_AudioDev *restrict o,
 	return true;
 ERROR:
 	if (err_name)
-		MGS_error("OSS", "%s: %s", err_name, strerror(errno));
+		mgs_error("OSS", "%s: %s", err_name, strerror(errno));
 	if (fd != -1)
 		close(fd);
-	MGS_error("OSS", "configuration for device \"%s\" failed", dev_name);
+	mgs_error("OSS", "configuration for device \"%s\" failed", dev_name);
 	return false;
 }
 
@@ -92,7 +92,7 @@ ERROR:
  * Destroy instance. Close OSS device,
  * ending playback in the process.
  */
-static inline void close_oss(MGS_AudioDev *restrict o) {
+static inline void close_oss(mgsAudioDev *restrict o) {
 	close(o->ref.fd);
 }
 
@@ -101,7 +101,7 @@ static inline void close_oss(MGS_AudioDev *restrict o) {
  *
  * \return true if write sucessful, otherwise false
  */
-static inline bool oss_write(MGS_AudioDev *restrict o,
+static inline bool oss_write(mgsAudioDev *restrict o,
 		const int16_t *restrict buf, uint32_t samples) {
 	size_t length = samples * o->channels * SOUND_BYTES;
 	size_t written = write(o->ref.fd, buf, length);

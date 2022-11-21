@@ -25,7 +25,7 @@
  *
  * \return instance or NULL on failure
  */
-static inline bool open_linux(MGS_AudioDev *restrict o,
+static inline bool open_linux(mgsAudioDev *restrict o,
 		int oss_mode) {
 	const char *dev_name = (o->name != NULL) ? o->name : ALSA_NAME_OUT;
 	int err;
@@ -36,7 +36,7 @@ static inline bool open_linux(MGS_AudioDev *restrict o,
 			0)) < 0) {
 		if (open_oss(o, oss_mode))
 			return true; /* fallback in use */
-		MGS_error(NULL, "could neither use ALSA nor OSS");
+		mgs_error(NULL, "could neither use ALSA nor OSS");
 		goto ERROR;
 	}
 
@@ -56,7 +56,7 @@ static inline bool open_linux(MGS_AudioDev *restrict o,
 			|| (err = snd_pcm_hw_params(handle, params)) < 0)
 		goto ERROR;
 	if (srate != o->srate) {
-		MGS_warning("ALSA", "sample rate %d unsupported, using %d",
+		mgs_warning("ALSA", "sample rate %d unsupported, using %d",
 				o->srate, srate);
 		o->srate = srate;
 	}
@@ -66,10 +66,10 @@ static inline bool open_linux(MGS_AudioDev *restrict o,
 	o->type = TYPE_ALSA;
 	return true;
 ERROR:
-	MGS_error("ALSA", "%s", snd_strerror(err));
+	mgs_error("ALSA", "%s", snd_strerror(err));
 	if (handle) snd_pcm_close(handle);
 	if (params) snd_pcm_hw_params_free(params);
-	MGS_error("ALSA", "configuration for device \"%s\" failed", dev_name);
+	mgs_error("ALSA", "configuration for device \"%s\" failed", dev_name);
 	return false;
 }
 
@@ -77,7 +77,7 @@ ERROR:
  * Destroy instance. Close ALSA or OSS device,
  * ending playback in the process.
  */
-static inline void close_linux(MGS_AudioDev *restrict o) {
+static inline void close_linux(mgsAudioDev *restrict o) {
 	if (o->type == TYPE_OSS) {
 		close_oss(o);
 		return;
@@ -92,7 +92,7 @@ static inline void close_linux(MGS_AudioDev *restrict o) {
  *
  * \return true if write sucessful, otherwise false
  */
-static inline bool linux_write(MGS_AudioDev *restrict o,
+static inline bool linux_write(mgsAudioDev *restrict o,
 		const int16_t *restrict buf, uint32_t samples) {
 	if (o->type == TYPE_OSS) {
 		return oss_write(o, buf, samples);
@@ -101,10 +101,10 @@ static inline bool linux_write(MGS_AudioDev *restrict o,
 	snd_pcm_sframes_t written;
 	while ((written = snd_pcm_writei(o->ref.handle, buf, samples)) < 0) {
 		if (written == -EPIPE) {
-			MGS_warning("ALSA", "audio device buffer underrun");
+			mgs_warning("ALSA", "audio device buffer underrun");
 			snd_pcm_prepare(o->ref.handle);
 		} else {
-			MGS_warning("ALSA", "%s", snd_strerror(written));
+			mgs_warning("ALSA", "%s", snd_strerror(written));
 			break;
 		}
 	}

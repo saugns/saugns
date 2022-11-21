@@ -1,3 +1,4 @@
+Object.o: Object.c Object.h common.h mempool.h
 arrtype.o: arrtype.c arrtype.h common.h mempool.h
 common.o: common.c common.h
 help.o: help.c help.h common.h line.h math.h noise.h wave.h

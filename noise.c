@@ -17,7 +17,7 @@
 
 #include "noise.h"
 
-const char *const MGS_Noise_names[MGS_NOISE_NAMED + 1] = {
+const char *const mgsNoise_names[MGS_NOISE_NAMED + 1] = {
 	MGS_NOISE__ITEMS(MGS_NOISE__X_NAME)
 	NULL
 };
@@ -25,5 +25,5 @@ const char *const MGS_Noise_names[MGS_NOISE_NAMED + 1] = {
 /**
  * Reset global random number state used for noise generation.
  */
-void MGS_global_init_Noise(void) {
+void mgs_global_init_Noise(void) {
 }

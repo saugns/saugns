@@ -19,18 +19,18 @@
 #include "common.h"
 
 /* table length in sample values */
-#define MGS_Wave_LENBITS 11
-#define MGS_Wave_LEN     (1<<MGS_Wave_LENBITS) /* 2048 */
-#define MGS_Wave_LENMASK (MGS_Wave_LEN - 1)
+#define mgsWave_LENBITS 11
+#define mgsWave_LEN     (1<<mgsWave_LENBITS) /* 2048 */
+#define mgsWave_LENMASK (mgsWave_LEN - 1)
 
 /* sample amplitude range */
-#define MGS_Wave_MAXVAL 1.f
-#define MGS_Wave_MINVAL (-MGS_Wave_MAXVAL)
+#define mgsWave_MAXVAL 1.f
+#define mgsWave_MINVAL (-mgsWave_MAXVAL)
 
 /* sample length in integer phase */
-#define MGS_Wave_SLENBITS (32-MGS_Wave_LENBITS)
-#define MGS_Wave_SLEN     (1<<MGS_Wave_SLENBITS)
-#define MGS_Wave_SLENMASK (MGS_Wave_SLEN - 1)
+#define mgsWave_SLENBITS (32-mgsWave_LENBITS)
+#define mgsWave_SLEN     (1<<mgsWave_SLENBITS)
+#define mgsWave_SLENMASK (mgsWave_SLEN - 1)
 
 /* Macro used to declare and define wave type sets of items.
    Note that the extra "PILUT" data isn't all fit into this. */
@@ -56,41 +56,41 @@ enum {
 };
 
 /** LUTs for wave types. */
-extern float *const MGS_Wave_luts[MGS_WAVE_NAMED];
+extern float *const mgsWave_luts[MGS_WAVE_NAMED];
 
 /** Pre-integrated LUTs for wave types. */
-extern float *const MGS_Wave_piluts[MGS_WAVE_NAMED];
+extern float *const mgsWave_piluts[MGS_WAVE_NAMED];
 
 /** Information about or for use with a wave type. */
-struct MGS_WaveCoeffs {
+struct mgsWaveCoeffs {
 	float amp_scale;
 	float amp_dc;
 	int32_t phase_adj;
 };
 
 /** Extra values for use with PILUTs. */
-extern const struct MGS_WaveCoeffs MGS_Wave_picoeffs[MGS_WAVE_NAMED];
+extern const struct mgsWaveCoeffs mgsWave_picoeffs[MGS_WAVE_NAMED];
 
 /** Names of wave types, with an extra NULL pointer at the end. */
-extern const char *const MGS_Wave_names[MGS_WAVE_NAMED + 1];
+extern const char *const mgsWave_names[MGS_WAVE_NAMED + 1];
 
 /**
  * Turn 32-bit unsigned phase value into LUT index.
  */
-#define MGS_Wave_INDEX(phase) \
-	(((uint32_t)(phase)) >> MGS_Wave_SLENBITS)
+#define mgsWave_INDEX(phase) \
+	(((uint32_t)(phase)) >> mgsWave_SLENBITS)
 
 /**
  * Get LUT value for 32-bit unsigned phase using linear interpolation.
  *
  * \return sample
  */
-static inline double MGS_Wave_get_lerp(const float *restrict lut,
+static inline double mgsWave_get_lerp(const float *restrict lut,
 		uint32_t phase) {
-	uint32_t ind = MGS_Wave_INDEX(phase);
+	uint32_t ind = mgsWave_INDEX(phase);
 	float s0 = lut[ind];
-	float s1 = lut[(ind + 1) & MGS_Wave_LENMASK];
-	double x = ((phase & MGS_Wave_SLENMASK) * (1.f / MGS_Wave_SLEN));
+	float s1 = lut[(ind + 1) & mgsWave_LENMASK];
+	double x = ((phase & mgsWave_SLENMASK) * (1.f / mgsWave_SLEN));
 	return s0 + (s1 - s0) * x;
 }
 
@@ -99,14 +99,14 @@ static inline double MGS_Wave_get_lerp(const float *restrict lut,
  *
  * \return sample
  */
-static inline double MGS_Wave_get_herp(const float *restrict lut,
+static inline double mgsWave_get_herp(const float *restrict lut,
 		uint32_t phase) {
-	uint32_t ind = MGS_Wave_INDEX(phase);
-	float s0 = lut[(ind - 1) & MGS_Wave_LENMASK];
+	uint32_t ind = mgsWave_INDEX(phase);
+	float s0 = lut[(ind - 1) & mgsWave_LENMASK];
 	float s1 = lut[ind];
-	float s2 = lut[(ind + 1) & MGS_Wave_LENMASK];
-	float s3 = lut[(ind + 2) & MGS_Wave_LENMASK];
-	double x = ((phase & MGS_Wave_SLENMASK) * (1.f / MGS_Wave_SLEN));
+	float s2 = lut[(ind + 1) & mgsWave_LENMASK];
+	float s3 = lut[(ind + 2) & mgsWave_LENMASK];
+	double x = ((phase & mgsWave_SLENMASK) * (1.f / mgsWave_SLEN));
 	// 4-point, 3rd-order Hermite (x-form)
 	double c0 = s1;
 	double c1 = 1/2.0*(s2-s0);
@@ -116,13 +116,13 @@ static inline double MGS_Wave_get_herp(const float *restrict lut,
 }
 
 /** Get scale constant to differentiate values in a pre-integrated table. */
-#define MGS_Wave_DVSCALE(wave) \
-	(MGS_Wave_picoeffs[wave].amp_scale * 0.125f * (float) UINT32_MAX)
+#define mgsWave_DVSCALE(wave) \
+	(mgsWave_picoeffs[wave].amp_scale * 0.125f * (float) UINT32_MAX)
 
 /** Get offset constant to apply to result from using a pre-integrated table. */
-#define MGS_Wave_DVOFFSET(wave) \
-	(MGS_Wave_picoeffs[wave].amp_dc)
+#define mgsWave_DVOFFSET(wave) \
+	(mgsWave_picoeffs[wave].amp_dc)
 
-void MGS_global_init_Wave(void);
+void mgs_global_init_Wave(void);
 
-void MGS_Wave_print(uint8_t id);
+void mgsWave_print(uint8_t id);

@@ -21,7 +21,7 @@
 #include "wave.h"
 #include <string.h>
 
-const char *const MGS_Help_names[MGS_HELP_NAMED + 1] = {
+const char *const mgsHelp_names[MGS_HELP_NAMED + 1] = {
 	MGS_HELP__ITEMS(MGS_HELP__X_NAME)
 	NULL
 };
@@ -34,9 +34,9 @@ const char *const MGS_Help_names[MGS_HELP_NAMED + 1] = {
  *
  * \return predefined array or NULL if none
  */
-const char *const *MGS_find_help(const char *restrict str) {
+const char *const *mgs_find_help(const char *restrict str) {
 	size_t i;
-	if (!MGS_find_name(MGS_Help_names, str, &i))
+	if (!mgs_find_name(mgsHelp_names, str, &i))
 		return NULL;
 	switch (i) {
 	MGS_HELP__ITEMS(MGS_HELP__X_CASE)
@@ -50,7 +50,7 @@ const char *const *MGS_find_help(const char *restrict str) {
  *
  * \return true if found
  */
-bool MGS_find_name(const char *const *restrict namearr,
+bool mgs_find_name(const char *const *restrict namearr,
 		const char *restrict str, size_t *restrict id) {
 	if (!str)
 		return false;
@@ -73,7 +73,7 @@ bool MGS_find_name(const char *const *restrict namearr,
  *
  * \return true if any items printed
  */
-bool MGS_print_names(const char *const *restrict namearr,
+bool mgs_print_names(const char *const *restrict namearr,
 		const char *restrict headstr,
 		FILE *restrict out) {
 	if (!namearr[0])

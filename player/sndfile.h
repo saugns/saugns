@@ -25,14 +25,14 @@ enum {
 	MGS_SNDFILE_FORMATS
 };
 
-struct MGS_SndFile;
-typedef struct MGS_SndFile MGS_SndFile;
+struct mgsSndFile;
+typedef struct mgsSndFile mgsSndFile;
 
-MGS_SndFile *MGS_create_SndFile(const char *restrict fpath, unsigned format,
+mgsSndFile *mgs_create_SndFile(const char *restrict fpath, unsigned format,
 		uint16_t channels, uint32_t srate) mgsMalloclike;
-int MGS_close_SndFile(MGS_SndFile *restrict o);
+int mgs_close_SndFile(mgsSndFile *restrict o);
 
-bool MGS_SndFile_write(MGS_SndFile *restrict o,
+bool mgsSndFile_write(mgsSndFile *restrict o,
 		int16_t *restrict buf, uint32_t samples);
 
-extern const char *const MGS_SndFile_formats[MGS_SNDFILE_FORMATS];
+extern const char *const mgsSndFile_formats[MGS_SNDFILE_FORMATS];

@@ -18,15 +18,18 @@
 #pragma once
 #include "common.h"
 
-struct MGS_MemPool;
-typedef struct MGS_MemPool MGS_MemPool;
+struct mgsMemPool;
+typedef struct mgsMemPool mgsMemPool;
 
-MGS_MemPool *MGS_create_MemPool(size_t start_size) mgsMalloclike;
-void MGS_destroy_MemPool(MGS_MemPool *restrict o);
+mgsMemPool *mgs_create_MemPool(size_t start_size) mgsMalloclike;
+void mgs_destroy_MemPool(mgsMemPool *restrict o);
 
-void *MGS_mpalloc(MGS_MemPool *restrict o, size_t size) mgsMalloclike;
-void *MGS_mpmemdup(MGS_MemPool *restrict o,
+void *mgs_mpalloc(mgsMemPool *restrict o, size_t size) mgsMalloclike;
+void *mgs_mpmemdup(mgsMemPool *restrict o,
 		const void *restrict src, size_t size) mgsMalloclike;
-typedef void (*MGS_Dtor_f)(void *o);
-bool MGS_mpregdtor(MGS_MemPool *restrict o,
-		MGS_Dtor_f func, void *restrict arg);
+#ifndef MGS__DTOR_F_DEFINED
+# define MGS__DTOR_F_DEFINED
+typedef void (*mgsDtor_f)(void *o);
+#endif
+bool mgs_mpregdtor(mgsMemPool *restrict o,
+		mgsDtor_f func, void *restrict arg);

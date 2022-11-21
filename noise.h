@@ -42,8 +42,8 @@ enum {
  *
  * \return sample
  */
-static inline float MGS_Noise_next(uint32_t *restrict pos) {
-	return MGS_ranoise32_next(pos) * (1.f/(float)INT32_MAX);
+static inline float mgsNoise_next(uint32_t *restrict pos) {
+	return mgs_ranoise32_next(pos) * (1.f/(float)INT32_MAX);
 }
 
 /**
@@ -51,11 +51,11 @@ static inline float MGS_Noise_next(uint32_t *restrict pos) {
  *
  * \return sample
  */
-static inline float MGS_Noise_get(uint32_t n) {
-	return MGS_ranoise32(n) * (1.f/(float)INT32_MAX);
+static inline float mgsNoise_get(uint32_t n) {
+	return mgs_ranoise32(n) * (1.f/(float)INT32_MAX);
 }
 
 /** Names of noise types, with an extra NULL pointer at the end. */
-extern const char *const MGS_Noise_names[MGS_NOISE_NAMED + 1];
+extern const char *const mgsNoise_names[MGS_NOISE_NAMED + 1];
 
-void MGS_global_init_Noise(void);
+void mgs_global_init_Noise(void);

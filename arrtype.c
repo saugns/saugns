@@ -20,7 +20,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static bool MGS_ArrType_upsize(void *restrict _o,
+static bool mgsArrType_upsize(void *restrict _o,
 		size_t count, size_t item_size);
 
 /**
@@ -36,10 +36,10 @@ static bool MGS_ArrType_upsize(void *restrict _o,
  *
  * \return item in array, or NULL if allocation failed
  */
-void *MGS_ArrType_add(void *restrict _o,
+void *mgsArrType_add(void *restrict _o,
 		const void *restrict item, size_t item_size) {
-	MGS_ByteArr *restrict o = _o;
-	if (!MGS_ArrType_upsize(o, o->count + 1, item_size))
+	mgsByteArr *restrict o = _o;
+	if (!mgsArrType_upsize(o, o->count + 1, item_size))
 		return NULL;
 	size_t offs = o->count * item_size;
 	void *mem = o->a + offs;
@@ -59,9 +59,9 @@ void *MGS_ArrType_add(void *restrict _o,
  *
  * \return true unless allocation failed
  */
-static bool MGS_ArrType_upsize(void *restrict _o,
+static bool mgsArrType_upsize(void *restrict _o,
 		size_t count, size_t item_size) {
-	MGS_ByteArr *restrict o = _o;
+	mgsByteArr *restrict o = _o;
 	size_t asize = o->asize;
 	size_t min_asize = count * item_size;
 	if (!o->a || asize < min_asize) {
@@ -81,8 +81,8 @@ static bool MGS_ArrType_upsize(void *restrict _o,
  *
  * (Generic version of the function, to be used through wrapper.)
  */
-void MGS_ArrType_clear(void *restrict _o) {
-	MGS_ByteArr *restrict o = _o;
+void mgsArrType_clear(void *restrict _o) {
+	mgsByteArr *restrict o = _o;
 	free(o->a);
 	o->a = NULL;
 	o->count = 0;
@@ -101,15 +101,15 @@ void MGS_ArrType_clear(void *restrict _o) {
  *
  * \return true unless allocation failed
  */
-bool MGS_ArrType_memdup(void *restrict _o,
+bool mgsArrType_memdup(void *restrict _o,
 		void **restrict dst, size_t item_size) {
-	MGS_ByteArr *restrict o = _o;
+	mgsByteArr *restrict o = _o;
 	if (!o->count) {
 		*dst = NULL;
 		return true;
 	}
 	size_t size = o->count * item_size;
-	void *a = MGS_memdup(o->a, size);
+	void *a = mgs_memdup(o->a, size);
 	if (!a)
 		return false;
 	*dst = a;
@@ -129,16 +129,16 @@ bool MGS_ArrType_memdup(void *restrict _o,
  *
  * \return true unless allocation failed
  */
-bool MGS_ArrType_mpmemdup(void *restrict _o,
+bool mgsArrType_mpmemdup(void *restrict _o,
 		void **restrict dst, size_t item_size,
-		MGS_MemPool *restrict mempool) {
-	MGS_ByteArr *restrict o = _o;
+		mgsMemPool *restrict mempool) {
+	mgsByteArr *restrict o = _o;
 	if (!o->count) {
 		*dst = NULL;
 		return true;
 	}
 	size_t size = o->count * item_size;
-	void *a = MGS_mpmemdup(mempool, o->a, size);
+	void *a = mgs_mpmemdup(mempool, o->a, size);
 	if (!a)
 		return false;
 	*dst = a;

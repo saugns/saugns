@@ -22,15 +22,15 @@
 #define BUF_TIME_MS  256
 #define CH_MIN_LEN   1
 
-typedef struct MGS_Output {
-	MGS_AudioDev *ad;
-	MGS_SndFile *sf;
+typedef struct mgsOutput {
+	mgsAudioDev *ad;
+	mgsSndFile *sf;
 	int16_t *buf, *ad_buf;
 	uint32_t srate, ad_srate;
 	uint32_t options;
 	uint32_t ch_count;
 	uint32_t ch_len, ad_ch_len;
-} MGS_Output;
+} mgsOutput;
 
 /*
  * Set up use of system audio device, raw audio to stdout,
@@ -38,7 +38,7 @@ typedef struct MGS_Output {
  *
  * \return true unless error occurred
  */
-static bool MGS_init_Output(MGS_Output *restrict o, uint32_t srate,
+static bool mgs_init_Output(mgsOutput *restrict o, uint32_t srate,
 		uint32_t options, const char *restrict wav_path) {
 	bool split_gen = false;
 	bool use_audiodev = (wav_path) ?
@@ -46,22 +46,22 @@ static bool MGS_init_Output(MGS_Output *restrict o, uint32_t srate,
 		((options & MGS_OPT_SYMGS_DISABLE) == 0);
 	bool use_stdout = (options & MGS_OPT_AUDIO_STDOUT);
 	uint32_t ad_srate = srate;
-	*o = (MGS_Output){0};
+	*o = (mgsOutput){0};
 	o->options = options;
 	o->ch_count = (options & MGS_OPT_AUDIO_MONO) ? 1 : 2;
 	if ((options & MGS_OPT_MODE_CHECK) != 0)
 		return true;
 	if (use_audiodev) {
-		o->ad = MGS_open_AudioDev(o->ch_count, &ad_srate);
+		o->ad = mgs_open_AudioDev(o->ch_count, &ad_srate);
 		if (!o->ad)
 			return false;
 	}
 	if (wav_path) {
 		if (options & MGS_OPT_AUFILE_STDOUT)
-			o->sf = MGS_create_SndFile(NULL, MGS_SNDFILE_AU,
+			o->sf = mgs_create_SndFile(NULL, MGS_SNDFILE_AU,
 					o->ch_count, srate);
 		else
-			o->sf = MGS_create_SndFile(wav_path, MGS_SNDFILE_WAV,
+			o->sf = mgs_create_SndFile(wav_path, MGS_SNDFILE_WAV,
 					o->ch_count, srate);
 		if (!o->sf)
 			return false;
@@ -74,7 +74,7 @@ static bool MGS_init_Output(MGS_Output *restrict o, uint32_t srate,
 	}
 
 	o->srate = srate;
-	o->ch_len = MGS_ms_in_samples(BUF_TIME_MS, srate);
+	o->ch_len = mgs_ms_in_samples(BUF_TIME_MS, srate);
 	if (o->ch_len < CH_MIN_LEN) o->ch_len = CH_MIN_LEN;
 	o->buf = calloc(o->ch_len * o->ch_count, sizeof(int16_t));
 	if (!o->buf)
@@ -84,7 +84,7 @@ static bool MGS_init_Output(MGS_Output *restrict o, uint32_t srate,
 		 * For alternating buffered generation with non-ad_* version.
 		 */
 		o->ad_srate = ad_srate;
-		o->ad_ch_len = MGS_ms_in_samples(BUF_TIME_MS, ad_srate);
+		o->ad_ch_len = mgs_ms_in_samples(BUF_TIME_MS, ad_srate);
 		if (o->ad_ch_len < CH_MIN_LEN) o->ad_ch_len = CH_MIN_LEN;
 		o->ad_buf = calloc(o->ad_ch_len * o->ch_count, sizeof(int16_t));
 		if (!o->ad_buf)
@@ -96,12 +96,12 @@ static bool MGS_init_Output(MGS_Output *restrict o, uint32_t srate,
 /*
  * \return true unless error occurred
  */
-static bool MGS_fini_Output(MGS_Output *restrict o) {
+static bool mgs_fini_Output(mgsOutput *restrict o) {
 	free(o->buf);
 	free(o->ad_buf);
-	if (o->ad != NULL) MGS_close_AudioDev(o->ad);
+	if (o->ad != NULL) mgs_close_AudioDev(o->ad);
 	if (o->sf != NULL)
-		return (MGS_close_SndFile(o->sf) == 0);
+		return (mgs_close_SndFile(o->sf) == 0);
 	return true;
 }
 
@@ -123,44 +123,44 @@ static bool raw_audio_write(FILE *restrict f, uint32_t channels,
  *
  * \return true unless error occurred
  */
-static bool MGS_Output_run(MGS_Output *restrict o,
-		const MGS_Program *restrict prg) {
+static bool mgsOutput_run(mgsOutput *restrict o,
+		const mgsProgram *restrict prg) {
 	bool use_stereo = !(o->options & MGS_OPT_AUDIO_MONO);
 	bool use_stdout = (o->options & MGS_OPT_AUDIO_STDOUT);
 	bool split_gen = o->ad_buf;
 	bool run = !(o->options & MGS_OPT_MODE_CHECK);
 	bool error = false;
-	MGS_Generator *gen = NULL, *ad_gen = NULL;
-	if (!(gen = MGS_create_Generator(prg, o->srate)))
+	mgsGenerator *gen = NULL, *ad_gen = NULL;
+	if (!(gen = mgs_create_Generator(prg, o->srate)))
 		return false;
-	if (split_gen && !(ad_gen = MGS_create_Generator(prg, o->ad_srate))) {
+	if (split_gen && !(ad_gen = mgs_create_Generator(prg, o->ad_srate))) {
 		error = true;
 		goto ERROR;
 	}
 	while (run) {
 		int16_t *buf = o->buf, *ad_buf = NULL;
 		uint32_t len, ad_len;
-		run = MGS_Generator_run(gen, buf, o->ch_len, use_stereo, &len);
+		run = mgsGenerator_run(gen, buf, o->ch_len, use_stereo, &len);
 		if (split_gen) {
 			ad_buf = o->ad_buf;
-			run |= MGS_Generator_run(ad_gen, ad_buf, o->ad_ch_len,
+			run |= mgsGenerator_run(ad_gen, ad_buf, o->ad_ch_len,
 					use_stereo, &ad_len);
 		} else {
 			ad_buf = o->buf;
 			ad_len = len;
 		}
-		if (o->ad && !MGS_AudioDev_write(o->ad, ad_buf, ad_len)) {
-			MGS_error(NULL, "system audio write failed");
+		if (o->ad && !mgsAudioDev_write(o->ad, ad_buf, ad_len)) {
+			mgs_error(NULL, "system audio write failed");
 			error = true;
 		}
 		if (use_stdout && !raw_audio_write(stdout,
 					o->ch_count, buf, len)) {
-			MGS_error(NULL, "raw audio stdout write failed");
+			mgs_error(NULL, "raw audio stdout write failed");
 			error = true;
 		}
-		if (o->sf && !MGS_SndFile_write(o->sf, buf, len)) {
-			MGS_error(NULL, "%s file write failed",
-					MGS_SndFile_formats[
+		if (o->sf && !mgsSndFile_write(o->sf, buf, len)) {
+			mgs_error(NULL, "%s file write failed",
+					mgsSndFile_formats[
 					(o->options & MGS_OPT_AUFILE_STDOUT) ?
 					MGS_SNDFILE_AU :
 					MGS_SNDFILE_WAV]);
@@ -168,8 +168,8 @@ static bool MGS_Output_run(MGS_Output *restrict o,
 		}
 	}
 ERROR:
-	MGS_destroy_Generator(gen);
-	MGS_destroy_Generator(ad_gen);
+	mgs_destroy_Generator(gen);
+	mgs_destroy_Generator(ad_gen);
 	return !error;
 }
 
@@ -182,37 +182,37 @@ ERROR:
  *
  * \return true unless error occurred
  */
-bool MGS_play(const MGS_PtrArr *restrict prg_objs, uint32_t srate,
+bool mgs_play(const mgsPtrArr *restrict prg_objs, uint32_t srate,
 		uint32_t options, const char *restrict wav_path) {
 	if (!prg_objs->count)
 		return true;
 
-	MGS_Output out;
+	mgsOutput out;
 	bool status = true;
-	if (!MGS_init_Output(&out, srate, options, wav_path)) {
+	if (!mgs_init_Output(&out, srate, options, wav_path)) {
 		status = false;
 		goto CLEANUP;
 	}
 	bool split_gen = out.ad_buf;
-	if (split_gen) MGS_warning(NULL,
+	if (split_gen) mgs_warning(NULL,
 			"generating audio twice, using different sample rates");
-	const MGS_Program **prgs =
-		(const MGS_Program**) MGS_PtrArr_ITEMS(prg_objs);
+	const mgsProgram **prgs =
+		(const mgsProgram**) mgsPtrArr_ITEMS(prg_objs);
 	for (size_t i = 0; i < prg_objs->count; ++i) {
-		const MGS_Program *prg = prgs[i];
+		const mgsProgram *prg = prgs[i];
 		if (!prg) continue;
 		if ((options & MGS_OPT_PRINT_INFO) != 0)
-			(void)0; //MGS_Program_print_info(prg);
+			(void)0; //mgsProgram_print_info(prg);
 		if ((options & MGS_OPT_PRINT_VERBOSE) != 0)
-			MGS_printf((options & MGS_OPT_MODE_CHECK) != 0 ?
+			mgs_printf((options & MGS_OPT_MODE_CHECK) != 0 ?
 					"Checked \"%s\".\n" :
 					"Playing \"%s\".\n", prg->name);
-		if (!MGS_Output_run(&out, prg))
+		if (!mgsOutput_run(&out, prg))
 			status = false;
 	}
 
 CLEANUP:
-	if (!MGS_fini_Output(&out))
+	if (!mgs_fini_Output(&out))
 		status = false;
 	return status;
 }

@@ -10,7 +10,7 @@ OBJ=reader/file.o reader/symtab.o \
     builder/parser.o builder/postparse.o builder/builder.o \
     player/audiodev.o player/sndfile.o player/player.o \
     interp/generator.o interp/ngen.o interp/osc.o interp/runalloc.o \
-    common.o mempool.o ptrarr.o arrtype.o \
+    common.o Object.o mempool.o ptrarr.o arrtype.o \
     line.o noise.o wave.o help.o \
     mgensys.o
 
@@ -87,6 +87,9 @@ mempool.o:
 
 mgensys.o:
 	$(CC) -c $(CFLAGS) mgensys.c
+
+Object.o:
+	$(CC) -c $(CFLAGS) Object.c
 
 noise.o:
 	$(CC) -c $(CFLAGS_FAST) noise.c

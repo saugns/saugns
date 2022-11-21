@@ -22,47 +22,47 @@ typedef union Buf {
 } Buf;
 
 #define MGS_GEN_TIME_OFFS (1<<0)
-struct MGS_Generator {
-  const MGS_Program *prg;
+struct mgsGenerator {
+  const mgsProgram *prg;
   uint32_t srate;
   Buf *bufs;
   int delay_offs;
   int time_flags;
   uint32_t voice_count;
-  MGS_SoundNode **sound_list;
-  MGS_VoiceNode *voice_arr;
-  MGS_ModList **mod_lists;
+  mgsSoundNode **sound_list;
+  mgsVoiceNode *voice_arr;
+  mgsModList **mod_lists;
   uint32_t ev_i, ev_count;
-  MGS_EventNode *ev_arr;
-  MGS_MemPool *mem;
+  mgsEventNode *ev_arr;
+  mgsMemPool *mem;
 };
 
-static void init_for_nodelist(MGS_Generator *o) {
-  MGS_RunAlloc ra;
-  const MGS_Program *prg = o->prg;
-  MGS_init_RunAlloc(&ra, prg, o->srate, o->mem);
-  MGS_RunAlloc_for_nodelist(&ra, prg->node_list);
+static void init_for_nodelist(mgsGenerator *o) {
+  mgsRunAlloc ra;
+  const mgsProgram *prg = o->prg;
+  mgs_init_RunAlloc(&ra, prg, o->srate, o->mem);
+  mgsRunAlloc_for_nodelist(&ra, prg->node_list);
   o->sound_list = ra.sound_list;
   o->ev_count = ra.ev_arr.count;
   o->voice_count = ra.voice_arr.count;
-  MGS_EventArr_mpmemdup(&ra.ev_arr, &o->ev_arr, o->mem);
-  MGS_VoiceArr_mpmemdup(&ra.voice_arr, &o->voice_arr, o->mem);
-  MGS_PtrArr_mpmemdup(&ra.mod_lists, (void***) &o->mod_lists, o->mem);
-  o->bufs = MGS_mpalloc(o->mem, ra.max_bufs * sizeof(Buf));
-  MGS_fini_RunAlloc(&ra);
+  mgsEventArr_mpmemdup(&ra.ev_arr, &o->ev_arr, o->mem);
+  mgsVoiceArr_mpmemdup(&ra.voice_arr, &o->voice_arr, o->mem);
+  mgsPtrArr_mpmemdup(&ra.mod_lists, (void***) &o->mod_lists, o->mem);
+  o->bufs = mgs_mpalloc(o->mem, ra.max_bufs * sizeof(Buf));
+  mgs_fini_RunAlloc(&ra);
 }
 
-MGS_Generator* MGS_create_Generator(const MGS_Program *prg, uint32_t srate) {
-  MGS_MemPool *mem;
-  MGS_Generator *o;
-  mem = MGS_create_MemPool(0);
-  o = MGS_mpalloc(mem, sizeof(MGS_Generator));
+mgsGenerator* mgs_create_Generator(const mgsProgram *prg, uint32_t srate) {
+  mgsMemPool *mem;
+  mgsGenerator *o;
+  mem = mgs_create_MemPool(0);
+  o = mgs_mpalloc(mem, sizeof(mgsGenerator));
   o->prg = prg;
   o->srate = srate;
   o->mem = mem;
   init_for_nodelist(o);
-  MGS_global_init_Noise();
-  MGS_global_init_Wave();
+  mgs_global_init_Noise();
+  mgs_global_init_Wave();
   return o;
 }
 
@@ -71,8 +71,8 @@ MGS_Generator* MGS_create_Generator(const MGS_Program *prg, uint32_t srate) {
  *
  * Click reduction: decrease time to make it end at wave cycle's end.
  */
-static mgsNoinline void adjust_wave_time(MGS_Generator *o, MGS_WaveNode *n) {
-  int pos_offs = MGS_Osc_cycle_offs(&n->osc, n->freq, n->sound.time);
+static mgsNoinline void adjust_wave_time(mgsGenerator *o, mgsWaveNode *n) {
+  int pos_offs = mgsOsc_cycle_offs(&n->osc, n->freq, n->sound.time);
   n->sound.time -= pos_offs;
   if (!(o->time_flags & MGS_GEN_TIME_OFFS) || o->delay_offs > pos_offs) {
     o->delay_offs = pos_offs;
@@ -80,26 +80,26 @@ static mgsNoinline void adjust_wave_time(MGS_Generator *o, MGS_WaveNode *n) {
   }
 }
 
-static void MGS_Generator_init_sound(MGS_Generator *o, MGS_EventNode *ev) {
-  MGS_SoundNode *sndn = ev->sndn;
-  MGS_VoiceNode *voice = &o->voice_arr[sndn->voice_id];
+static void mgsGenerator_init_sound(mgsGenerator *o, mgsEventNode *ev) {
+  mgsSoundNode *sndn = ev->sndn;
+  mgsVoiceNode *voice = &o->voice_arr[sndn->voice_id];
   if (sndn == voice->root) {
     ev->status |= MGS_EV_ACTIVE;
   }
   switch (sndn->type) {
   case MGS_TYPE_WAVE:
     if (sndn == voice->root)
-      adjust_wave_time(o, (MGS_WaveNode*) sndn);
+      adjust_wave_time(o, (mgsWaveNode*) sndn);
     break;
   }
 }
 
-static void MGS_Generator_update_sound(MGS_Generator *o, MGS_EventNode *ev) {
-  MGS_EventNode *refev = &o->ev_arr[ev->ref_i];
-  MGS_SoundNode *refsn = refev->sndn;
-  MGS_SoundNode *updsn = ev->sndn;
-  MGS_VoiceNode *voice = &o->voice_arr[refsn->voice_id];
-  MGS_SoundNode *rootsn = voice->root;
+static void mgsGenerator_update_sound(mgsGenerator *o, mgsEventNode *ev) {
+  mgsEventNode *refev = &o->ev_arr[ev->ref_i];
+  mgsSoundNode *refsn = refev->sndn;
+  mgsSoundNode *updsn = ev->sndn;
+  mgsVoiceNode *voice = &o->voice_arr[refsn->voice_id];
+  mgsSoundNode *rootsn = voice->root;
   bool adjtime = false;
   refsn->amods_id = updsn->amods_id;
   if (updsn->params & MGS_SOUNDP_TIME) {
@@ -123,15 +123,15 @@ static void MGS_Generator_update_sound(MGS_Generator *o, MGS_EventNode *ev) {
   }
   switch (refsn->type) {
   case MGS_TYPE_LINE: {
-    MGS_LineNode *refn = (MGS_LineNode*) refsn;
-    MGS_LineNode *updn = (MGS_LineNode*) updsn;
-    MGS_Line_copy(&refn->line, &updn->line, o->srate);
+    mgsLineNode *refn = (mgsLineNode*) refsn;
+    mgsLineNode *updn = (mgsLineNode*) updsn;
+    mgsLine_copy(&refn->line, &updn->line, o->srate);
     break; }
   case MGS_TYPE_NOISE:
     break;
   case MGS_TYPE_WAVE: {
-    MGS_WaveNode *refn = (MGS_WaveNode*) refsn;
-    MGS_WaveNode *updn = (MGS_WaveNode*) updsn;
+    mgsWaveNode *refn = (mgsWaveNode*) refsn;
+    mgsWaveNode *updn = (mgsWaveNode*) updsn;
     /* set state */
     refn->fmods_id = updn->fmods_id;
     refn->pmods_id = updn->pmods_id;
@@ -146,7 +146,7 @@ static void MGS_Generator_update_sound(MGS_Generator *o, MGS_EventNode *ev) {
       refn->dynfreq = updn->dynfreq;
     }
     if (updn->sound.params & MGS_WAVEP_PHASE) {
-      MGS_Osc_set_phase(&refn->osc, updn->osc.phasor.phase);
+      mgsOsc_set_phase(&refn->osc, updn->osc.phasor.phase);
     }
     if (updn->sound.params & MGS_WAVEP_ATTR) {
       refn->attr = updn->attr;
@@ -162,13 +162,13 @@ static void MGS_Generator_update_sound(MGS_Generator *o, MGS_EventNode *ev) {
   refev->status &= ~MGS_EV_ACTIVE;
 }
 
-static void MGS_Generator_prepare_node(MGS_Generator *o, MGS_EventNode *ev) {
+static void mgsGenerator_prepare_node(mgsGenerator *o, mgsEventNode *ev) {
   switch (ev->base_type) {
   case MGS_BASETYPE_SOUND:
     if (!(ev->status & MGS_EV_UPDATE)) {
-      MGS_Generator_init_sound(o, ev);
+      mgsGenerator_init_sound(o, ev);
     } else {
-      MGS_Generator_update_sound(o, ev);
+      mgsGenerator_update_sound(o, ev);
     }
     break;
   default:
@@ -178,10 +178,10 @@ static void MGS_Generator_prepare_node(MGS_Generator *o, MGS_EventNode *ev) {
   ev->status |= MGS_EV_PREPARED;
 }
 
-void MGS_destroy_Generator(MGS_Generator *o) {
+void mgs_destroy_Generator(mgsGenerator *o) {
   if (!o)
     return;
-  MGS_destroy_MemPool(o->mem);
+  mgs_destroy_MemPool(o->mem);
 }
 
 /*
@@ -241,12 +241,12 @@ static void block_mix_mul_waveenv(float *restrict buf, size_t buf_len,
   }
 }
 
-static void run_block_sub(MGS_Generator *o, Buf *bufs_from, uint32_t len,
+static void run_block_sub(mgsGenerator *o, Buf *bufs_from, uint32_t len,
     uint32_t mods_id, Buf *freq,
     uint32_t flags);
 
-static void run_block_line(MGS_Generator *o, Buf *bufs_from, uint32_t len,
-    MGS_LineNode *n,
+static void run_block_line(mgsGenerator *o, Buf *bufs_from, uint32_t len,
+    mgsLineNode *n,
     uint32_t layer, uint32_t flags) {
   uint32_t i;
   Buf *mix_buf = bufs_from++;
@@ -266,14 +266,14 @@ static void run_block_line(MGS_Generator *o, Buf *bufs_from, uint32_t len,
       amp->f[i] = n->sound.amp;
   }
   tmp_buf = bufs_from++;
-  MGS_Line_run(&n->line, tmp_buf->f, len, NULL);
+  mgsLine_run(&n->line, tmp_buf->f, len, NULL);
   ((flags & BLOCK_WAVEENV) ?
    block_mix_mul_waveenv :
    block_mix_add)(mix_buf->f, len, layer, tmp_buf->f, amp->f);
 }
 
-static void run_block_noise(MGS_Generator *o, Buf *bufs_from, uint32_t len,
-    MGS_NoiseNode *n,
+static void run_block_noise(mgsGenerator *o, Buf *bufs_from, uint32_t len,
+    mgsNoiseNode *n,
     uint32_t layer, uint32_t flags) {
   uint32_t i;
   Buf *mix_buf = bufs_from++;
@@ -293,14 +293,14 @@ static void run_block_noise(MGS_Generator *o, Buf *bufs_from, uint32_t len,
       amp->f[i] = n->sound.amp;
   }
   tmp_buf = bufs_from++;
-  MGS_NGen_run(&n->ngen, tmp_buf->f, len);
+  mgsNGen_run(&n->ngen, tmp_buf->f, len);
   ((flags & BLOCK_WAVEENV) ?
    block_mix_mul_waveenv :
    block_mix_add)(mix_buf->f, len, layer, tmp_buf->f, amp->f);
 }
 
-static void run_block_wave(MGS_Generator *o, Buf *bufs_from, uint32_t len,
-    MGS_WaveNode *n, Buf *parentfreq,
+static void run_block_wave(mgsGenerator *o, Buf *bufs_from, uint32_t len,
+    mgsWaveNode *n, Buf *parentfreq,
     uint32_t layer, uint32_t flags) {
   uint32_t i;
   Buf *mix_buf = bufs_from++, *phase_buf = bufs_from++, *pm_buf = NULL;
@@ -333,7 +333,7 @@ static void run_block_wave(MGS_Generator *o, Buf *bufs_from, uint32_t len,
         0);
     pm_buf = (bufs_from + 0);
   }
-  MGS_Phasor_fill(&n->osc.phasor, phase_buf->u, len,
+  mgsPhasor_fill(&n->osc.phasor, phase_buf->u, len,
       freq->f, (pm_buf ? pm_buf->f : NULL), NULL);
   if (n->sound.amods_id > 0) {
     run_block_sub(o, bufs_from, len,
@@ -349,40 +349,40 @@ static void run_block_wave(MGS_Generator *o, Buf *bufs_from, uint32_t len,
       amp->f[i] = n->sound.amp;
   }
   tmp_buf = bufs_from++;
-  MGS_Osc_run(&n->osc, tmp_buf->f, len, phase_buf->u);
+  mgsOsc_run(&n->osc, tmp_buf->f, len, phase_buf->u);
   ((flags & BLOCK_WAVEENV) ?
    block_mix_mul_waveenv :
    block_mix_add)(mix_buf->f, len, layer, tmp_buf->f, amp->f);
 }
 
-static void run_block_sub(MGS_Generator *o, Buf *bufs_from, uint32_t len,
+static void run_block_sub(mgsGenerator *o, Buf *bufs_from, uint32_t len,
     uint32_t mods_id, Buf *freq,
     uint32_t flags) {
-  MGS_ModList *mod_list = o->mod_lists[mods_id];
+  mgsModList *mod_list = o->mod_lists[mods_id];
   for (size_t i = 0; i < mod_list->count; ++i) {
-    MGS_SoundNode *n = o->sound_list[mod_list->ids[i]];
+    mgsSoundNode *n = o->sound_list[mod_list->ids[i]];
     switch (n->type) {
     case MGS_TYPE_LINE:
       run_block_line(o, bufs_from, len,
-          (MGS_LineNode*) n,
+          (mgsLineNode*) n,
           i, flags);
       break;
     case MGS_TYPE_NOISE:
       run_block_noise(o, bufs_from, len,
-          (MGS_NoiseNode*) n,
+          (mgsNoiseNode*) n,
           i, flags);
       break;
     case MGS_TYPE_WAVE:
       run_block_wave(o, bufs_from, len,
-          (MGS_WaveNode*) n, freq,
+          (mgsWaveNode*) n, freq,
           i, flags);
       break;
     }
   }
 }
 
-static uint32_t run_sound(MGS_Generator *o,
-    MGS_SoundNode *sndn, short *sp, uint32_t pos, bool stereo, uint32_t len) {
+static uint32_t run_sound(mgsGenerator *o,
+    mgsSoundNode *sndn, short *sp, uint32_t pos, bool stereo, uint32_t len) {
   uint32_t i, ret, time = sndn->time - pos;
   if (time > len)
     time = len;
@@ -395,17 +395,17 @@ static uint32_t run_sound(MGS_Generator *o,
     switch (sndn->type) {
     case MGS_TYPE_LINE:
       run_block_line(o, o->bufs, len,
-          (MGS_LineNode*) sndn,
+          (mgsLineNode*) sndn,
           0, 0);
       break;
     case MGS_TYPE_NOISE:
       run_block_noise(o, o->bufs, len,
-          (MGS_NoiseNode*) sndn,
+          (mgsNoiseNode*) sndn,
           0, 0);
       break;
     case MGS_TYPE_WAVE:
       run_block_wave(o, o->bufs, len,
-          (MGS_WaveNode*) sndn, NULL,
+          (mgsWaveNode*) sndn, NULL,
           0, 0);
       break;
     }
@@ -436,7 +436,7 @@ static uint32_t run_sound(MGS_Generator *o,
  * main run-function
  */
 
-bool MGS_Generator_run(MGS_Generator *o, int16_t *buf, uint32_t len,
+bool mgsGenerator_run(mgsGenerator *o, int16_t *buf, uint32_t len,
     bool stereo, uint32_t *gen_len) {
   uint32_t i, skiplen, totlen;
   totlen = len;
@@ -444,7 +444,7 @@ bool MGS_Generator_run(MGS_Generator *o, int16_t *buf, uint32_t len,
 PROCESS:
   skiplen = 0;
   for (i = o->ev_i; i < o->ev_count; ++i) {
-    MGS_EventNode *ev = &o->ev_arr[i];
+    mgsEventNode *ev = &o->ev_arr[i];
     if (ev->pos < 0) {
       uint32_t delay = -ev->pos;
       if (o->time_flags & MGS_GEN_TIME_OFFS)
@@ -465,11 +465,11 @@ PROCESS:
        * Ensures disabling node is initialized
        * before disabled node would otherwise play.
        */
-      MGS_Generator_prepare_node(o, ev);
+      mgsGenerator_prepare_node(o, ev);
     }
   }
   for (i = o->ev_i; i < o->ev_count; ++i) {
-    MGS_EventNode *ev = &o->ev_arr[i];
+    mgsEventNode *ev = &o->ev_arr[i];
     if (ev->pos < 0) {
       uint32_t delay = -ev->pos;
       if (o->time_flags & MGS_GEN_TIME_OFFS) {
@@ -486,7 +486,7 @@ PROCESS:
       ev->pos = 0;
     }
     if (ev->status & MGS_EV_ACTIVE) {
-      MGS_SoundNode *sndn = ev->sndn;
+      mgsSoundNode *sndn = ev->sndn;
       ev->pos += run_sound(o, sndn, buf, ev->pos, stereo, len);
       if ((uint32_t)ev->pos == sndn->time)
         ev->status &= ~MGS_EV_ACTIVE;

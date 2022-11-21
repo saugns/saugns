@@ -19,16 +19,16 @@
 #include "../noise.h"
 #include "../math.h"
 
-typedef struct MGS_NGen {
+typedef struct mgsNGen {
 	uint32_t pos;
-} MGS_NGen;
+} mgsNGen;
 
 /**
  * Initialize instance for use.
  */
-static inline void MGS_init_NGen(MGS_NGen *restrict o, uint32_t pos) {
+static inline void mgs_init_NGen(mgsNGen *restrict o, uint32_t pos) {
 	o->pos = pos;
 }
 
-void MGS_NGen_run(MGS_NGen *restrict o,
+void mgsNGen_run(mgsNGen *restrict o,
 		float *restrict buf, size_t buf_len);

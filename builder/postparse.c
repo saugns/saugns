@@ -13,8 +13,8 @@
 
 #include "parser.h"
 
-static void time_sound(MGS_ProgramNode *restrict n) {
-	MGS_ProgramSoundData *sound = n->data;
+static void time_sound(mgsProgramNode *restrict n) {
+	mgsProgramSoundData *sound = n->data;
 	if (!(sound->time.flags & MGS_TIME_SET)) {
 		if (n->base_id != sound->root->base_id)
 			sound->time.flags |= MGS_TIME_SET;
@@ -28,13 +28,13 @@ static void time_sound(MGS_ProgramNode *restrict n) {
  * only allowed on the top scope, so the algorithm only deals with this for
  * the nodes involved.
  */
-static void time_durscope(MGS_ProgramDurData *restrict dur) {
-	MGS_ProgramNode *n_after = dur->scope.last_node->next;
+static void time_durscope(mgsProgramDurData *restrict dur) {
+	mgsProgramNode *n_after = dur->scope.last_node->next;
 	double delay = 0.f, delaycount = 0.f;
-	MGS_ProgramNode *step;
+	mgsProgramNode *step;
 	for (step = dur->scope.first_node; step != n_after; ) {
-		MGS_ProgramSoundData *sound;
-		sound = MGS_ProgramNode_get_data(step, MGS_BASETYPE_SOUND);
+		mgsProgramSoundData *sound;
+		sound = mgsProgramNode_get_data(step, MGS_BASETYPE_SOUND);
 		/*
 		 * Skip unsupported nodes, and
 		 * exclude nested nodes from duration.
@@ -55,8 +55,8 @@ static void time_durscope(MGS_ProgramDurData *restrict dur) {
 		}
 	}
 	for (step = dur->scope.first_node; step != n_after; ) {
-		MGS_ProgramSoundData *sound;
-		sound = MGS_ProgramNode_get_data(step, MGS_BASETYPE_SOUND);
+		mgsProgramSoundData *sound;
+		sound = mgsProgramNode_get_data(step, MGS_BASETYPE_SOUND);
 		/*
 		 * Skip unsupported nodes, and
 		 * exclude nested nodes from duration.
@@ -79,9 +79,9 @@ static void time_durscope(MGS_ProgramDurData *restrict dur) {
 		n_after->delay += delay;
 }
 
-void MGS_adjust_node_list(MGS_ProgramNode *restrict list) {
-	MGS_ProgramNode *n = list;
-	MGS_ProgramDurData *dur = NULL;
+void mgs_adjust_node_list(mgsProgramNode *restrict list) {
+	mgsProgramNode *n = list;
+	mgsProgramDurData *dur = NULL;
 	while (n != NULL) {
 		if (n->type == MGS_TYPE_DUR) {
 			dur = n->data;

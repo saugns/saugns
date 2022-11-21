@@ -70,71 +70,71 @@ enum {
 	MGS_WAVEP_PHASE = 1<<12,
 };
 
-typedef struct MGS_ProgramNode MGS_ProgramNode;
-typedef struct MGS_ProgramSoundData MGS_ProgramSoundData;
-typedef struct MGS_ProgramLineData MGS_ProgramLineData;
-typedef struct MGS_ProgramNoiseData MGS_ProgramNoiseData;
-typedef struct MGS_ProgramWaveData MGS_ProgramWaveData;
-typedef struct MGS_ProgramScopeData MGS_ProgramScopeData;
-typedef struct MGS_ProgramDurData MGS_ProgramDurData;
-typedef struct MGS_ProgramArrData MGS_ProgramArrData;
+typedef struct mgsProgramNode mgsProgramNode;
+typedef struct mgsProgramSoundData mgsProgramSoundData;
+typedef struct mgsProgramLineData mgsProgramLineData;
+typedef struct mgsProgramNoiseData mgsProgramNoiseData;
+typedef struct mgsProgramWaveData mgsProgramWaveData;
+typedef struct mgsProgramScopeData mgsProgramScopeData;
+typedef struct mgsProgramDurData mgsProgramDurData;
+typedef struct mgsProgramArrData mgsProgramArrData;
 
 /* Time parameter flags. */
 enum {
 	MGS_TIME_SET = 1<<0,
 };
 
-typedef struct MGS_TimePar {
+typedef struct mgsTimePar {
 	float v;
 	uint32_t flags;
-} MGS_TimePar;
+} mgsTimePar;
 
-struct MGS_ProgramSoundData {
-	MGS_TimePar time;
-	MGS_ProgramNode *root;
+struct mgsProgramSoundData {
+	mgsTimePar time;
+	mgsProgramNode *root;
 	uint32_t params;
 	float amp, dynamp, pan;
-	MGS_ProgramArrData *amod;
-	MGS_ProgramNode *nested_next;
+	mgsProgramArrData *amod;
+	mgsProgramNode *nested_next;
 };
 
-struct MGS_ProgramLineData {
-	MGS_ProgramSoundData sound;
-	MGS_Line line;
+struct mgsProgramLineData {
+	mgsProgramSoundData sound;
+	mgsLine line;
 };
 
-struct MGS_ProgramNoiseData {
-	MGS_ProgramSoundData sound;
+struct mgsProgramNoiseData {
+	mgsProgramSoundData sound;
 	uint8_t noise;
 };
 
-struct MGS_ProgramWaveData {
-	MGS_ProgramSoundData sound;
+struct mgsProgramWaveData {
+	mgsProgramSoundData sound;
 	uint8_t attr, wave;
 	float freq, dynfreq;
 	uint32_t phase;
-	MGS_ProgramArrData *pmod, *fmod;
+	mgsProgramArrData *pmod, *fmod;
 };
 
-struct MGS_ProgramScopeData {
-	MGS_ProgramNode *first_node;
-	MGS_ProgramNode *last_node;
+struct mgsProgramScopeData {
+	mgsProgramNode *first_node;
+	mgsProgramNode *last_node;
 };
 
-struct MGS_ProgramDurData {
-	MGS_ProgramScopeData scope;
-	MGS_ProgramNode *next;
+struct mgsProgramDurData {
+	mgsProgramScopeData scope;
+	mgsProgramNode *next;
 };
 
-struct MGS_ProgramArrData {
-	MGS_ProgramScopeData scope;
+struct mgsProgramArrData {
+	mgsProgramScopeData scope;
 	uint32_t count;
 	uint8_t mod_type;
 };
 
-struct MGS_ProgramNode {
-	MGS_ProgramNode *next;
-	MGS_ProgramNode *ref_prev;
+struct mgsProgramNode {
+	mgsProgramNode *next;
+	mgsProgramNode *ref_prev;
 	float delay;
 	uint8_t base_type;
 	uint8_t type;
@@ -143,7 +143,7 @@ struct MGS_ProgramNode {
 	void *data;
 };
 
-static inline bool MGS_ProgramNode_is_type(const MGS_ProgramNode *restrict n,
+static inline bool mgsProgramNode_is_type(const mgsProgramNode *restrict n,
 		uint8_t type) {
 	if (n->type == type || n->base_type == type)
 		return true;
@@ -152,27 +152,27 @@ static inline bool MGS_ProgramNode_is_type(const MGS_ProgramNode *restrict n,
 	return false;
 }
 
-static inline void *MGS_ProgramNode_get_data(const MGS_ProgramNode *restrict n,
+static inline void *mgsProgramNode_get_data(const mgsProgramNode *restrict n,
 		uint8_t type) {
-	return MGS_ProgramNode_is_type(n, type) ? n->data : NULL;
+	return mgsProgramNode_is_type(n, type) ? n->data : NULL;
 }
 
-struct MGS_MemPool;
-struct MGS_SymTab;
+struct mgsMemPool;
+struct mgsSymTab;
 
-typedef struct MGS_LangOpt {
-} MGS_LangOpt;
+typedef struct mgsLangOpt {
+} mgsLangOpt;
 
-bool MGS_init_LangOpt(MGS_LangOpt *restrict o,
-		struct MGS_SymTab *restrict symtab);
+bool mgs_init_LangOpt(mgsLangOpt *restrict o,
+		struct mgsSymTab *restrict symtab);
 
-struct MGS_Program {
-	MGS_ProgramNode *node_list;
+struct mgsProgram {
+	mgsProgramNode *node_list;
 	uint32_t node_count;
 	uint32_t root_count;
 	uint32_t base_counts[MGS_BASETYPES];
-	struct MGS_MemPool *mem;
-	struct MGS_SymTab *symt;
+	struct mgsMemPool *mem;
+	struct mgsSymTab *symt;
 	const char *name;
-	MGS_LangOpt lopt;
+	mgsLangOpt lopt;
 };

@@ -19,7 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-const char *const MGS_SndFile_formats[MGS_SNDFILE_FORMATS] = {
+const char *const mgsSndFile_formats[MGS_SNDFILE_FORMATS] = {
 	"raw",
 	"AU",
 	"WAV"
@@ -52,7 +52,7 @@ static void fputl_be(uint32_t i32, FILE *restrict stream) {
 #define SOUND_BITS 16
 #define SOUND_BYTES (SOUND_BITS / 8)
 
-struct MGS_SndFile {
+struct mgsSndFile {
 	FILE *f;
 	unsigned format;
 	uint16_t channels;
@@ -60,7 +60,7 @@ struct MGS_SndFile {
 	bool is_subfile, needs_conv;
 };
 
-static void write_au_header(MGS_SndFile *restrict o, uint32_t srate) {
+static void write_au_header(mgsSndFile *restrict o, uint32_t srate) {
 	FILE *f = o->f;
 	fputs(".snd", f);
 	fputl_be(28, f);
@@ -71,7 +71,7 @@ static void write_au_header(MGS_SndFile *restrict o, uint32_t srate) {
 	fputl_be(0, f);
 }
 
-static void update_au_header(MGS_SndFile *restrict o) {
+static void update_au_header(mgsSndFile *restrict o) {
 	FILE *f = o->f;
 	if (o->samples >= UINT32_MAX)
 		return;
@@ -79,7 +79,7 @@ static void update_au_header(MGS_SndFile *restrict o) {
 	fputl_be(o->samples, f);
 }
 
-static void write_wav_header(MGS_SndFile *restrict o, uint32_t srate) {
+static void write_wav_header(mgsSndFile *restrict o, uint32_t srate) {
 	FILE *f = o->f;
 	fputs("RIFF", f);
 	fputl(36 /* update adding audio data size later */, f);
@@ -98,7 +98,7 @@ static void write_wav_header(MGS_SndFile *restrict o, uint32_t srate) {
 	fputl(0 /* updated with data size later */, f); /* fmt-chunk size */
 }
 
-static void update_wav_header(MGS_SndFile *restrict o) {
+static void update_wav_header(mgsSndFile *restrict o) {
 	FILE *f = o->f;
 	uint32_t bytes = o->channels * o->samples * SOUND_BYTES;
 	fseek(f, 4 /* after "RIFF" */, SEEK_SET);
@@ -108,7 +108,7 @@ static void update_wav_header(MGS_SndFile *restrict o) {
 	fputl(bytes, f); /* fmt-chunk size */
 }
 
-static void cleanup(MGS_SndFile *restrict o) {
+static void cleanup(mgsSndFile *restrict o) {
 	if (!o)
 		return;
 	if (!o->is_subfile)
@@ -118,20 +118,20 @@ static void cleanup(MGS_SndFile *restrict o) {
 
 /**
  * Create 16-bit sound file for output. Sound data may thereafter be
- * written any number of times using MGS_SndFile_write().
+ * written any number of times using mgsSndFile_write().
  *
  * \return instance or NULL on error
  */
-MGS_SndFile *MGS_create_SndFile(const char *restrict fpath, unsigned format,
+mgsSndFile *mgs_create_SndFile(const char *restrict fpath, unsigned format,
 		uint16_t channels, uint32_t srate) {
 	bool is_subfile = !fpath;
 	FILE *f = stdout;
 	if (!is_subfile && !(f = fopen(fpath, "wb"))) {
-		MGS_error(NULL, "couldn't open %s file \"%s\" for writing",
-			MGS_SndFile_formats[format], fpath);
+		mgs_error(NULL, "couldn't open %s file \"%s\" for writing",
+			mgsSndFile_formats[format], fpath);
 		return NULL;
 	}
-	MGS_SndFile *o = malloc(sizeof(*o));
+	mgsSndFile *o = malloc(sizeof(*o));
 	if (!o) goto ERROR;
 	o->f = f;
 	o->format = format;
@@ -157,7 +157,7 @@ ERROR:
 	return NULL;
 }
 
-static void convert_endian(MGS_SndFile *restrict o,
+static void convert_endian(mgsSndFile *restrict o,
 		int16_t *restrict buf, uint32_t samples) {
 	uint32_t i, maxlen = o->channels * samples;
 	for (i = 0; i < maxlen; ++i) {
@@ -176,7 +176,7 @@ static void convert_endian(MGS_SndFile *restrict o,
  *
  * \return true if write successful
  */
-bool MGS_SndFile_write(MGS_SndFile *restrict o,
+bool mgsSndFile_write(mgsSndFile *restrict o,
 		int16_t *restrict buf, uint32_t samples) {
 	uint32_t written;
 	if (o->needs_conv)
@@ -195,7 +195,7 @@ bool MGS_SndFile_write(MGS_SndFile *restrict o,
  *
  * \return value of ferror, checked before closing file
  */
-int MGS_close_SndFile(MGS_SndFile *restrict o) {
+int mgs_close_SndFile(mgsSndFile *restrict o) {
 	int err;
 
 	if (!o->is_subfile) switch (o->format) {

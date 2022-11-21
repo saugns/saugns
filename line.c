@@ -17,12 +17,12 @@
 
 #include "line.h"
 
-const char *const MGS_Line_names[MGS_LINE_NAMED + 1] = {
+const char *const mgsLine_names[MGS_LINE_NAMED + 1] = {
 	MGS_LINE__ITEMS(MGS_LINE__X_NAME)
 	NULL
 };
 
-const MGS_Line_fill_f MGS_Line_fill_funcs[MGS_LINE_NAMED] = {
+const mgsLine_fill_f mgsLine_fill_funcs[MGS_LINE_NAMED] = {
 	MGS_LINE__ITEMS(MGS_LINE__X_ADDRESS)
 };
 
@@ -31,7 +31,7 @@ const MGS_Line_fill_f MGS_Line_fill_funcs[MGS_LINE_NAMED] = {
  * Fill \p buf with \p len values along a straight horizontal line,
  * i.e. \p len copies of \p v0.
  */
-mgsNoinline void MGS_Line_fill_hor(float *restrict buf, uint32_t len,
+mgsNoinline void mgsLine_fill_hor(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf) {
 	(void)vt;
@@ -51,7 +51,7 @@ mgsNoinline void MGS_Line_fill_hor(float *restrict buf, uint32_t len,
  * from \p v0 (at position 0) to \p vt (at position \p time),
  * beginning at position \p pos.
  */
-void MGS_Line_fill_lin(float *restrict buf, uint32_t len,
+void mgsLine_fill_lin(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf) {
 	const float inv_time = 1.f / time;
@@ -94,7 +94,7 @@ static inline float sinramp(float x) {
  * Rises or falls similarly to how sin() moves from trough to
  * crest and back. Uses a ~99.993% accurate polynomial curve.
  */
-void MGS_Line_fill_sin(float *restrict buf, uint32_t len,
+void mgsLine_fill_sin(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf) {
 	const float inv_time = 1.f / time;
@@ -118,12 +118,12 @@ void MGS_Line_fill_sin(float *restrict buf, uint32_t len,
  * and end. (Uses one of 'xpe' or 'lge', depending on whether
  * the curve rises or falls.)
  */
-void MGS_Line_fill_exp(float *restrict buf, uint32_t len,
+void mgsLine_fill_exp(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf) {
 	(v0 > vt ?
-		MGS_Line_fill_xpe :
-		MGS_Line_fill_lge)(buf, len, v0, vt, pos, time, mulbuf);
+		mgsLine_fill_xpe :
+		mgsLine_fill_lge)(buf, len, v0, vt, pos, time, mulbuf);
 }
 
 /**
@@ -135,12 +135,12 @@ void MGS_Line_fill_exp(float *restrict buf, uint32_t len,
  * and end. (Uses one of 'xpe' or 'lge', depending on whether
  * the curve rises or falls.)
  */
-void MGS_Line_fill_log(float *restrict buf, uint32_t len,
+void mgsLine_fill_log(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf) {
 	(v0 < vt ?
-		MGS_Line_fill_xpe :
-		MGS_Line_fill_lge)(buf, len, v0, vt, pos, time, mulbuf);
+		mgsLine_fill_xpe :
+		mgsLine_fill_lge)(buf, len, v0, vt, pos, time, mulbuf);
 }
 
 /**
@@ -152,7 +152,7 @@ void MGS_Line_fill_log(float *restrict buf, uint32_t len,
  * Uses an ear-tuned polynomial, designed to sound natural,
  * and symmetric to the "opposite" 'lge' fill type.
  */
-void MGS_Line_fill_xpe(float *restrict buf, uint32_t len,
+void mgsLine_fill_xpe(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf) {
 	const float inv_time = 1.f / time;
@@ -180,7 +180,7 @@ void MGS_Line_fill_xpe(float *restrict buf, uint32_t len,
  * Uses an ear-tuned polynomial, designed to sound natural,
  * and symmetric to the "opposite" 'xpe' fill type.
  */
-void MGS_Line_fill_lge(float *restrict buf, uint32_t len,
+void mgsLine_fill_lge(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf) {
 	const float inv_time = 1.f / time;
@@ -203,8 +203,8 @@ void MGS_Line_fill_lge(float *restrict buf, uint32_t len,
  * Copy changes from \p src to the instance,
  * preserving non-overridden parts of state.
  */
-void MGS_Line_copy(MGS_Line *restrict o,
-		const MGS_Line *restrict src,
+void mgsLine_copy(mgsLine *restrict o,
+		const mgsLine *restrict src,
 		uint32_t srate) {
 	if (!src)
 		return;
@@ -219,7 +219,7 @@ void MGS_Line_copy(MGS_Line *restrict o,
 		 */
 		if ((src->flags & MGS_LINEP_GOAL) != 0) {
 			float f;
-			MGS_Line_get(o, &f, 1, NULL);
+			mgsLine_get(o, &f, 1, NULL);
 			o->v0 = f;
 		}
 	}
@@ -241,7 +241,7 @@ void MGS_Line_copy(MGS_Line *restrict o,
 		 * Time overridden.
 		 */
 		if ((src->flags & MGS_LINEP_TIME) != 0) {
-			o->end = MGS_ms_in_samples(src->time_ms, srate);
+			o->end = mgs_ms_in_samples(src->time_ms, srate);
 			o->time_ms = src->time_ms;
 			mask |= MGS_LINEP_TIME;
 		}
@@ -265,7 +265,7 @@ void MGS_Line_copy(MGS_Line *restrict o,
  *
  * \return number of next values got
  */
-mgsNoinline uint32_t MGS_Line_get(MGS_Line *restrict o,
+mgsNoinline uint32_t mgsLine_get(mgsLine *restrict o,
 		float *restrict buf, uint32_t buf_len,
 		const float *restrict mulbuf) {
 	if (!(o->flags & MGS_LINEP_GOAL))
@@ -291,7 +291,7 @@ mgsNoinline uint32_t MGS_Line_get(MGS_Line *restrict o,
 		return 0;
 	uint32_t len = o->end - o->pos;
 	if (len > buf_len) len = buf_len;
-	MGS_Line_fill_funcs[o->fill_type](buf, len,
+	mgsLine_fill_funcs[o->fill_type](buf, len,
 			o->v0, o->vt, o->pos, o->end, mulbuf);
 	return len;
 }
@@ -301,7 +301,7 @@ mgsNoinline uint32_t MGS_Line_get(MGS_Line *restrict o,
  *
  * \return true unless time has expired
  */
-static bool advance_len(MGS_Line *restrict o, uint32_t buf_len) {
+static bool advance_len(mgsLine *restrict o, uint32_t buf_len) {
 	uint32_t len = 0;
 	if (o->pos < o->end) {
 		len = o->end - o->pos;
@@ -333,7 +333,7 @@ static bool advance_len(MGS_Line *restrict o, uint32_t buf_len) {
  *
  * \return true if line goal not yet reached
  */
-bool MGS_Line_run(MGS_Line *restrict o,
+bool mgsLine_run(mgsLine *restrict o,
 		float *restrict buf, uint32_t buf_len,
 		const float *restrict mulbuf) {
 	uint32_t len = 0;
@@ -341,7 +341,7 @@ bool MGS_Line_run(MGS_Line *restrict o,
 		advance_len(o, buf_len);
 		goto FILL;
 	}
-	len = MGS_Line_get(o, buf, buf_len, mulbuf);
+	len = mgsLine_get(o, buf, buf_len, mulbuf);
 	o->pos += len;
 	if (o->pos >= o->end) {
 		/*
@@ -356,7 +356,7 @@ bool MGS_Line_run(MGS_Line *restrict o,
 			mulbuf = NULL;
 		else if (mulbuf != NULL)
 			mulbuf += len;
-		MGS_Line_fill_hor(buf + len, buf_len - len,
+		mgsLine_fill_hor(buf + len, buf_len - len,
 				o->v0, o->v0, 0, 0, mulbuf);
 		return false;
 	}
@@ -372,7 +372,7 @@ bool MGS_Line_run(MGS_Line *restrict o,
  *
  * \return true if line goal not yet reached
  */
-bool MGS_Line_skip(MGS_Line *restrict o, uint32_t skip_len) {
+bool mgsLine_skip(mgsLine *restrict o, uint32_t skip_len) {
 	if (!advance_len(o, skip_len)) {
 		if (!(o->flags & MGS_LINEP_GOAL))
 			return false;

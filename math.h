@@ -41,7 +41,7 @@
 /**
  * Convert time in ms to time in samples for a sample rate.
  */
-static inline uint64_t MGS_ms_in_samples(uint64_t time_ms, uint64_t srate) {
+static inline uint64_t mgs_ms_in_samples(uint64_t time_ms, uint64_t srate) {
 	uint64_t time = time_ms * srate;
 	time = (time + 500) / 1000;
 	return time;
@@ -60,7 +60,7 @@ static inline uint64_t MGS_ms_in_samples(uint64_t time_ms, uint64_t srate) {
  *
  * \return pseudo-random number for index \p n
  */
-static inline int32_t MGS_ranoise32(uint32_t n) {
+static inline int32_t mgs_ranoise32(uint32_t n) {
 	uint32_t s = n * MGS_FIBH32;
 	s = MGS_MUVAROR32(s, s >> 27, 0);
 	return s;
@@ -75,19 +75,19 @@ static inline int32_t MGS_ranoise32(uint32_t n) {
  *
  * \return pseudo-random number for state \p pos
  */
-static inline int32_t MGS_ranoise32_next(uint32_t *restrict pos) {
+static inline int32_t mgs_ranoise32_next(uint32_t *restrict pos) {
 	uint32_t s = *pos += MGS_FIBH32;
 	s = MGS_MUVAROR32(s, s >> 27, 0);
 	return s;
 }
 
-/** Initial seed for MGS_xorshift32(). Other non-zero values can be used. */
+/** Initial seed for mgs_xorshift32(). Other non-zero values can be used. */
 #define MGS_XORSHIFT32_SEED 2463534242UL
 
 /**
  * Get Marsaglia xorshift32 state from non-zero \p seed.
  */
-static inline uint32_t MGS_xorshift32(uint32_t seed) {
+static inline uint32_t mgs_xorshift32(uint32_t seed) {
 	uint32_t x = seed;
 	x ^= x << 13;
 	x ^= x >> 17;

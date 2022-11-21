@@ -24,9 +24,9 @@
 #endif
 
 /**
- * Fill phase-value buffer for use with MGS_Osc_run().
+ * Fill phase-value buffer for use with mgsOsc_run().
  */
-void MGS_Phasor_fill(MGS_Phasor *restrict o,
+void mgsPhasor_fill(mgsPhasor *restrict o,
 		uint32_t *restrict phase_ui32,
 		size_t buf_len,
 		const float *restrict freq_f,
@@ -66,32 +66,32 @@ void MGS_Phasor_fill(MGS_Phasor *restrict o,
 
 #if !USE_PILUT
 /*
- * Implementation of MGS_Osc_run()
+ * Implementation of mgsOsc_run()
  * using naive LUTs with linear interpolation.
  *
  * Uses post-incremented phase each sample.
  */
-static void naive_run(MGS_Osc *restrict o,
+static void naive_run(mgsOsc *restrict o,
 		float *restrict buf, size_t buf_len,
 		const uint32_t *restrict phase_buf) {
-	const float *const lut = MGS_Wave_luts[o->wave];
+	const float *const lut = mgsWave_luts[o->wave];
 	for (size_t i = 0; i < buf_len; ++i) {
-		buf[i] = MGS_Wave_get_lerp(lut, phase_buf[i]);
+		buf[i] = mgsWave_get_lerp(lut, phase_buf[i]);
 	}
 }
 #endif
 
 #if USE_PILUT
 /* Set up for differentiation (re)start with usable state. */
-static void MGS_Osc_reset(MGS_Osc *restrict o, int32_t phase) {
-	const float *const lut = MGS_Wave_piluts[o->wave];
-	const float diff_scale = MGS_Wave_DVSCALE(o->wave);
-	const float diff_offset = MGS_Wave_DVOFFSET(o->wave);
+static void mgsOsc_reset(mgsOsc *restrict o, int32_t phase) {
+	const float *const lut = mgsWave_piluts[o->wave];
+	const float diff_scale = mgsWave_DVSCALE(o->wave);
+	const float diff_offset = mgsWave_DVOFFSET(o->wave);
 	if (o->flags & MGS_OSC_RESET_DIFF) {
 		/* one-LUT-value diff works fine for any freq, 0 Hz included */
-		int32_t phase_diff = MGS_Wave_SLEN;
-		o->prev_Is = MGS_Wave_get_herp(lut, phase - phase_diff);
-		double Is = MGS_Wave_get_herp(lut, phase);
+		int32_t phase_diff = mgsWave_SLEN;
+		o->prev_Is = mgsWave_get_herp(lut, phase - phase_diff);
+		double Is = mgsWave_get_herp(lut, phase);
 		double x = (diff_scale / phase_diff);
 		o->prev_diff_s = (Is - o->prev_Is) * x + diff_offset;
 		o->prev_Is = Is;
@@ -106,15 +106,15 @@ static void MGS_Osc_reset(MGS_Osc *restrict o, int32_t phase) {
  *
  * Uses pre-incremented phase each sample.
  */
-void MGS_Osc_run(MGS_Osc *restrict o,
+void mgsOsc_run(mgsOsc *restrict o,
 		float *restrict buf, size_t buf_len,
 		const uint32_t *restrict phase_buf) {
 #if USE_PILUT /* higher-quality audio */
-	const float *const lut = MGS_Wave_piluts[o->wave];
-	const float diff_scale = MGS_Wave_DVSCALE(o->wave);
-	const float diff_offset = MGS_Wave_DVOFFSET(o->wave);
+	const float *const lut = mgsWave_piluts[o->wave];
+	const float diff_scale = mgsWave_DVSCALE(o->wave);
+	const float diff_offset = mgsWave_DVOFFSET(o->wave);
 	if (buf_len > 0 && o->flags & MGS_OSC_RESET)
-		MGS_Osc_reset(o, phase_buf[0]);
+		mgsOsc_reset(o, phase_buf[0]);
 	for (size_t i = 0; i < buf_len; ++i) {
 		float s;
 		uint32_t phase = phase_buf[i];
@@ -122,7 +122,7 @@ void MGS_Osc_run(MGS_Osc *restrict o,
 		if (phase_diff == 0) {
 			s = o->prev_diff_s;
 		} else {
-			double Is = MGS_Wave_get_herp(lut, phase);
+			double Is = mgsWave_get_herp(lut, phase);
 			double x = (diff_scale / phase_diff);
 			s = (Is - o->prev_Is) * x + diff_offset;
 			o->prev_Is = Is;

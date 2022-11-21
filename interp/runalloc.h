@@ -21,12 +21,12 @@
 #include "../arrtype.h"
 #include "../ptrarr.h"
 
-typedef struct MGS_ModList {
+typedef struct mgsModList {
 	uint32_t count;
 	uint32_t ids[];
-} MGS_ModList;
+} mgsModList;
 
-typedef struct MGS_SoundNode {
+typedef struct mgsSoundNode {
 	uint32_t time;
 	float amp, dynamp;
 	float pan;
@@ -34,33 +34,33 @@ typedef struct MGS_SoundNode {
 	uint32_t params; // for use as update
 	uint32_t voice_id;
 	uint8_t type;
-} MGS_SoundNode;
+} mgsSoundNode;
 
-typedef struct MGS_LineNode {
-	MGS_SoundNode sound;
-	MGS_Line line;
-} MGS_LineNode;
+typedef struct mgsLineNode {
+	mgsSoundNode sound;
+	mgsLine line;
+} mgsLineNode;
 
-typedef struct MGS_NoiseNode {
-	MGS_SoundNode sound;
-	MGS_NGen ngen;
-} MGS_NoiseNode;
+typedef struct mgsNoiseNode {
+	mgsSoundNode sound;
+	mgsNGen ngen;
+} mgsNoiseNode;
 
-typedef struct MGS_WaveNode {
-	MGS_SoundNode sound;
-	MGS_Osc osc;
+typedef struct mgsWaveNode {
+	mgsSoundNode sound;
+	mgsOsc osc;
 	uint8_t attr;
 	float freq, dynfreq;
 	uint32_t fmods_id;
 	uint32_t pmods_id;
-} MGS_WaveNode;
+} mgsWaveNode;
 
-typedef struct MGS_VoiceNode {
-	MGS_SoundNode *root;
+typedef struct mgsVoiceNode {
+	mgsSoundNode *root;
 	uint32_t delay;
-} MGS_VoiceNode;
+} mgsVoiceNode;
 
-mgsArrType(MGS_VoiceArr, MGS_VoiceNode, );
+mgsArrType(mgsVoiceArr, mgsVoiceNode, );
 
 enum {
 	MGS_EV_PREPARED = 1<<0,
@@ -68,37 +68,37 @@ enum {
 	MGS_EV_ACTIVE = 1<<2
 };
 
-typedef struct MGS_EventNode {
-	MGS_SoundNode *sndn; // update node
+typedef struct mgsEventNode {
+	mgsSoundNode *sndn; // update node
 	int32_t pos; // negative for delay, i.e. wait time
 	uint8_t status;
 	uint8_t base_type;
 	uint32_t ref_i;
-} MGS_EventNode;
+} mgsEventNode;
 
-mgsArrType(MGS_EventArr, MGS_EventNode, );
+mgsArrType(mgsEventArr, mgsEventNode, );
 
-typedef struct MGS_RunAlloc {
-	MGS_EventArr ev_arr;
-	MGS_VoiceArr voice_arr;
-	MGS_PtrArr mod_lists;
-	MGS_SoundNode **sound_list;
+typedef struct mgsRunAlloc {
+	mgsEventArr ev_arr;
+	mgsVoiceArr voice_arr;
+	mgsPtrArr mod_lists;
+	mgsSoundNode **sound_list;
 	size_t sndn_count;
 	size_t max_bufs;
-	const MGS_Program *prg;
+	const mgsProgram *prg;
 	uint32_t srate;
-	MGS_MemPool *mem;
-	MGS_EventNode *cur_ev;
+	mgsMemPool *mem;
+	mgsEventNode *cur_ev;
 	uint32_t cur_ev_id;
 	uint32_t next_ev_delay;
 	uint32_t flags;
 	uint32_t seed;
-} MGS_RunAlloc;
+} mgsRunAlloc;
 
-bool MGS_init_RunAlloc(MGS_RunAlloc *restrict o,
-		const MGS_Program *restrict prg, uint32_t srate,
-		MGS_MemPool *restrict mem);
-void MGS_fini_RunAlloc(MGS_RunAlloc *restrict o);
+bool mgs_init_RunAlloc(mgsRunAlloc *restrict o,
+		const mgsProgram *restrict prg, uint32_t srate,
+		mgsMemPool *restrict mem);
+void mgs_fini_RunAlloc(mgsRunAlloc *restrict o);
 
-bool MGS_RunAlloc_for_nodelist(MGS_RunAlloc *restrict o,
-		MGS_ProgramNode *restrict first_n);
+bool mgsRunAlloc_for_nodelist(mgsRunAlloc *restrict o,
+		mgsProgramNode *restrict first_n);

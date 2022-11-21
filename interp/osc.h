@@ -31,14 +31,14 @@
  * Calculate the coefficent, based on the sample rate, used for
  * the per-sample phase by multiplying with the frequency used.
  */
-#define MGS_Phasor_COEFF(srate) (((float) UINT32_MAX)/(srate))
+#define mgsPhasor_COEFF(srate) (((float) UINT32_MAX)/(srate))
 
-typedef struct MGS_Phasor {
+typedef struct mgsPhasor {
 	uint32_t phase;
 	float coeff;
-} MGS_Phasor;
+} mgsPhasor;
 
-void MGS_Phasor_fill(MGS_Phasor *restrict o,
+void mgsPhasor_fill(mgsPhasor *restrict o,
 		uint32_t *restrict phase_ui32,
 		size_t buf_len,
 		const float *restrict freq_f,
@@ -48,8 +48,8 @@ void MGS_Phasor_fill(MGS_Phasor *restrict o,
 #define MGS_OSC_RESET_DIFF  (1<<0)
 #define MGS_OSC_RESET       ((1<<1) - 1)
 
-typedef struct MGS_Osc {
-	MGS_Phasor phasor;
+typedef struct mgsOsc {
+	mgsPhasor phasor;
 	uint8_t wave;
 	uint8_t flags;
 #if USE_PILUT
@@ -57,22 +57,22 @@ typedef struct MGS_Osc {
 	double prev_Is;
 	float prev_diff_s;
 #endif
-} MGS_Osc;
+} mgsOsc;
 
 /**
  * Initialize instance for use.
  */
-static inline void MGS_init_Osc(MGS_Osc *restrict o, uint32_t srate) {
-	*o = (MGS_Osc){
+static inline void mgs_init_Osc(mgsOsc *restrict o, uint32_t srate) {
+	*o = (mgsOsc){
 #if USE_PILUT
-		.phasor = (MGS_Phasor){
-			.phase = MGS_Wave_picoeffs[MGS_WAVE_N_sin].phase_adj,
-			.coeff = MGS_Phasor_COEFF(srate),
+		.phasor = (mgsPhasor){
+			.phase = mgsWave_picoeffs[MGS_WAVE_N_sin].phase_adj,
+			.coeff = mgsPhasor_COEFF(srate),
 		},
 #else
-		.phasor = (MGS_Phasor){
+		.phasor = (mgsPhasor){
 			.phase = 0,
-			.coeff = MGS_Phasor_COEFF(srate),
+			.coeff = mgsPhasor_COEFF(srate),
 		},
 #endif
 		.wave = MGS_WAVE_N_sin,
@@ -80,18 +80,18 @@ static inline void MGS_init_Osc(MGS_Osc *restrict o, uint32_t srate) {
 	};
 }
 
-static inline void MGS_Osc_set_phase(MGS_Osc *restrict o, uint32_t phase) {
+static inline void mgsOsc_set_phase(mgsOsc *restrict o, uint32_t phase) {
 #if USE_PILUT
-	o->phasor.phase = phase + MGS_Wave_picoeffs[o->wave].phase_adj;
+	o->phasor.phase = phase + mgsWave_picoeffs[o->wave].phase_adj;
 #else
 	o->phasor.phase = phase;
 #endif
 }
 
-static inline void MGS_Osc_set_wave(MGS_Osc *restrict o, uint8_t wave) {
+static inline void mgsOsc_set_wave(mgsOsc *restrict o, uint8_t wave) {
 #if USE_PILUT
-	int32_t old_offset = MGS_Wave_picoeffs[o->wave].phase_adj;
-	int32_t offset = MGS_Wave_picoeffs[wave].phase_adj;
+	int32_t old_offset = mgsWave_picoeffs[o->wave].phase_adj;
+	int32_t offset = mgsWave_picoeffs[wave].phase_adj;
 	o->phasor.phase += offset - old_offset;
 	o->wave = wave;
 	o->flags |= MGS_OSC_RESET_DIFF;
@@ -105,7 +105,7 @@ static inline void MGS_Osc_set_wave(MGS_Osc *restrict o, uint8_t wave) {
  *
  * \return number of samples
  */
-static inline uint32_t MGS_Osc_cycle_len(MGS_Osc *restrict o, float freq) {
+static inline uint32_t mgsOsc_cycle_len(mgsOsc *restrict o, float freq) {
 	return lrintf(((float) UINT32_MAX) / (o->phasor.coeff * freq));
 }
 
@@ -114,7 +114,7 @@ static inline uint32_t MGS_Osc_cycle_len(MGS_Osc *restrict o, float freq) {
  *
  * \return number of samples
  */
-static inline uint32_t MGS_Osc_cycle_pos(MGS_Osc *restrict o,
+static inline uint32_t mgsOsc_cycle_pos(mgsOsc *restrict o,
 		float freq, uint32_t pos) {
 	uint32_t inc = lrintf(o->phasor.coeff * freq);
 	uint32_t phs = inc * pos;
@@ -126,13 +126,13 @@ static inline uint32_t MGS_Osc_cycle_pos(MGS_Osc *restrict o,
  *
  * Can be used to reduce time length to something rounder and reduce clicks.
  */
-static inline int32_t MGS_Osc_cycle_offs(MGS_Osc *restrict o,
+static inline int32_t mgsOsc_cycle_offs(mgsOsc *restrict o,
 		float freq, uint32_t pos) {
 	uint32_t inc = lrintf(o->phasor.coeff * freq);
 	uint32_t phs = inc * pos;
-	return (phs - MGS_Wave_SLEN) / inc;
+	return (phs - mgsWave_SLEN) / inc;
 }
 
-void MGS_Osc_run(MGS_Osc *restrict o,
+void mgsOsc_run(mgsOsc *restrict o,
 		float *restrict buf, size_t buf_len,
 		const uint32_t *restrict phase_buf);

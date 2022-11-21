@@ -20,4 +20,4 @@
 #include "../mempool.h"
 #include "../reader/symtab.h"
 
-void MGS_adjust_node_list(MGS_ProgramNode *restrict list);
+void mgs_adjust_node_list(mgsProgramNode *restrict list);

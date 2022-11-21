@@ -18,13 +18,13 @@
 #pragma once
 #include "../common.h"
 
-struct MGS_AudioDev;
-typedef struct MGS_AudioDev MGS_AudioDev;
+struct mgsAudioDev;
+typedef struct mgsAudioDev mgsAudioDev;
 
-MGS_AudioDev *MGS_open_AudioDev(uint16_t channels, uint32_t *restrict srate)
+mgsAudioDev *mgs_open_AudioDev(uint16_t channels, uint32_t *restrict srate)
 	mgsMalloclike;
-void MGS_close_AudioDev(MGS_AudioDev *restrict o);
+void mgs_close_AudioDev(mgsAudioDev *restrict o);
 
-uint32_t MGS_AudioDev_get_srate(const MGS_AudioDev *restrict o);
-bool MGS_AudioDev_write(MGS_AudioDev *restrict o,
+uint32_t mgsAudioDev_get_srate(const mgsAudioDev *restrict o);
+bool mgsAudioDev_write(mgsAudioDev *restrict o,
 		const int16_t *restrict buf, uint32_t samples);

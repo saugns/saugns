@@ -22,14 +22,14 @@
  *
  * \return instance or NULL on error
  */
-static MGS_Program *build_program(const char *restrict script_arg,
+static mgsProgram *build_program(const char *restrict script_arg,
 		bool is_path) {
-	return MGS_create_Program(script_arg, is_path);
-//	MGS_Script *sd = MGS_load_Script(script_arg, is_path);
+	return mgs_create_Program(script_arg, is_path);
+//	mgsScript *sd = mgs_load_Script(script_arg, is_path);
 //	if (!sd)
 //		return NULL;
-//	MGS_Program *o = MGS_build_Program(sd);
-//	MGS_discard_Script(sd);
+//	mgsProgram *o = mgs_build_Program(sd);
+//	mgs_discard_Script(sd);
 //	return o;
 }
 
@@ -39,20 +39,20 @@ static MGS_Program *build_program(const char *restrict script_arg,
  *
  * \return number of failures for non-NULL scripts
  */
-size_t MGS_build(const MGS_PtrArr *restrict script_args, uint32_t options,
-		MGS_PtrArr *restrict prg_objs) {
+size_t mgs_build(const mgsPtrArr *restrict script_args, uint32_t options,
+		mgsPtrArr *restrict prg_objs) {
 	size_t fails = 0;
-	const char **args = (const char**) MGS_PtrArr_ITEMS(script_args);
+	const char **args = (const char**) mgsPtrArr_ITEMS(script_args);
 	bool are_paths = !(options & MGS_OPT_EVAL_STRING);
 	bool print_info = (options & MGS_OPT_PRINT_INFO) != 0;
 	for (size_t i = 0; i < script_args->count; ++i) {
 		if (!args[i]) continue;
-		MGS_Program *prg = build_program(args[i], are_paths);
+		mgsProgram *prg = build_program(args[i], are_paths);
 		if (!prg)
 			++fails;
 		else if (print_info)
-			(void)0; // MGS_Program_print_info(prg);
-		MGS_PtrArr_add(prg_objs, prg);
+			(void)0; // mgsProgram_print_info(prg);
+		mgsPtrArr_add(prg_objs, prg);
 	}
 	return fails;
 }
@@ -61,10 +61,10 @@ size_t MGS_build(const MGS_PtrArr *restrict script_args, uint32_t options,
  * Discard the programs in the list, and clear the list.
  * NULL pointer entries are ignored.
  */
-void MGS_discard(MGS_PtrArr *restrict prg_objs) {
-	MGS_Program **prgs = (MGS_Program**) MGS_PtrArr_ITEMS(prg_objs);
+void mgs_discard(mgsPtrArr *restrict prg_objs) {
+	mgsProgram **prgs = (mgsProgram**) mgsPtrArr_ITEMS(prg_objs);
 	for (size_t i = 0; i < prg_objs->count; ++i) {
-		MGS_destroy_Program(prgs[i]);
+		mgs_destroy_Program(prgs[i]);
 	}
-	MGS_PtrArr_clear(prg_objs);
+	mgsPtrArr_clear(prg_objs);
 }

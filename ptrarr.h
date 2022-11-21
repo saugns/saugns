@@ -21,16 +21,16 @@
 /**
  * Dynamically sized pointer array. Only supports appending.
  *
- * A soft copy (MGS_PtrArr_soft_copy()) references
+ * A soft copy (mgsPtrArr_soft_copy()) references
  * the original items instead of duplicating them,
  * unless/until the array is added to.
  */
-typedef struct MGS_PtrArr {
+typedef struct mgsPtrArr {
 	void **items;
 	size_t count;
 	size_t old_count;
 	size_t asize;
-} MGS_PtrArr;
+} mgsPtrArr;
 
 /**
  * Get the underlying array holding items.
@@ -38,7 +38,7 @@ typedef struct MGS_PtrArr {
  * The array pointer is used in place of an allocation
  * if only 1 item is held.
  */
-#define MGS_PtrArr_ITEMS(o) \
+#define mgsPtrArr_ITEMS(o) \
 	((o)->asize > 1 ? \
 		((void**) (o)->items) : \
 		((void**) &(o)->items))
@@ -46,15 +46,15 @@ typedef struct MGS_PtrArr {
 /**
  * Get the item \p i.
  */
-#define MGS_PtrArr_GET(o, i) \
-	((void*) MGS_PtrArr_ITEMS(o)[i])
+#define mgsPtrArr_GET(o, i) \
+	((void*) mgsPtrArr_ITEMS(o)[i])
 
-struct MGS_MemPool;
+struct mgsMemPool;
 
-bool MGS_PtrArr_add(MGS_PtrArr *restrict o, void *restrict item);
-void MGS_PtrArr_clear(MGS_PtrArr *restrict o);
-bool MGS_PtrArr_memdup(MGS_PtrArr *restrict o, void ***restrict dst);
-bool MGS_PtrArr_mpmemdup(MGS_PtrArr *restrict o, void ***restrict dst,
-		struct MGS_MemPool *restrict mempool);
-void MGS_PtrArr_soft_copy(MGS_PtrArr *restrict dst,
-		const MGS_PtrArr *restrict src);
+bool mgsPtrArr_add(mgsPtrArr *restrict o, void *restrict item);
+void mgsPtrArr_clear(mgsPtrArr *restrict o);
+bool mgsPtrArr_memdup(mgsPtrArr *restrict o, void ***restrict dst);
+bool mgsPtrArr_mpmemdup(mgsPtrArr *restrict o, void ***restrict dst,
+		struct mgsMemPool *restrict mempool);
+void mgsPtrArr_soft_copy(mgsPtrArr *restrict dst,
+		const mgsPtrArr *restrict src);

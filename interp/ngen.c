@@ -31,10 +31,10 @@ static float lcg32_fnext(uint32_t *x) {
 /**
  * Run for \p buf_len samples, generating output.
  */
-void MGS_NGen_run(MGS_NGen *restrict o mgsMaybeUnused,
+void mgsNGen_run(mgsNGen *restrict o mgsMaybeUnused,
 		float *restrict buf, size_t buf_len) {
 	for (size_t i = 0; i < buf_len; ++i) {
-		float s = MGS_Noise_next(&o->pos);
+		float s = mgsNoise_next(&o->pos);
 		buf[i] = s;
 	}
 }

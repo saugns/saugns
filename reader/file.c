@@ -30,15 +30,15 @@
  * of the next buffer area, wrapping it to within the
  * buffer boundary.
  *
- * If set, instead calls MGS_File_end(), writing out the
+ * If set, instead calls mgsFile_end(), writing out the
  * end marker to the current character in the buffer and
  * increasing the wrapped position by one.
  *
  * \return call position difference in clear case, or 0
  */
-size_t MGS_File_action_wrap(MGS_File *restrict o) {
+size_t mgsFile_action_wrap(mgsFile *restrict o) {
 	if (o->status & MGS_FILE_END) {
-		MGS_File_end(o, 0, false); // repeat end marker
+		mgsFile_end(o, 0, false); // repeat end marker
 		return 0;
 	}
 	size_t skip_len = o->call_pos - (o->call_pos & ~(MGS_FILE_ALEN - 1));
@@ -51,9 +51,9 @@ size_t MGS_File_action_wrap(MGS_File *restrict o) {
  * Reset all state other than buffer contents.
  * Used for opening and closing.
  */
-void MGS_File_init(MGS_File *restrict o,
-		MGS_FileAction_f call_f, void *restrict ref,
-		const char *path, MGS_FileClose_f close_f) {
+void mgsFile_init(mgsFile *restrict o,
+		mgsFileAction_f call_f, void *restrict ref,
+		const char *path, mgsFileClose_f close_f) {
 	if (o->close_f != NULL) o->close_f(o);
 
 	o->pos = 0;
@@ -69,21 +69,21 @@ void MGS_File_init(MGS_File *restrict o,
 /**
  * Create instance. Sets the default callback.
  */
-MGS_File *MGS_create_File(void) {
-	MGS_File *o = calloc(1, sizeof(MGS_File));
+mgsFile *mgs_create_File(void) {
+	mgsFile *o = calloc(1, sizeof(mgsFile));
 	if (!o)
 		return NULL;
-	MGS_File_init(o, MGS_File_action_wrap, NULL, NULL, NULL);
+	mgsFile_init(o, mgsFile_action_wrap, NULL, NULL, NULL);
 	return o;
 }
 
 /**
  * Create instance with parent. Sets the default callback.
  */
-MGS_File *MGS_create_sub_File(MGS_File *restrict parent) {
+mgsFile *mgs_create_sub_File(mgsFile *restrict parent) {
 	if (!parent)
 		return NULL;
-	MGS_File *o = MGS_create_File();
+	mgsFile *o = mgs_create_File();
 	if (!o)
 		return NULL;
 	o->parent = parent;
@@ -95,20 +95,20 @@ MGS_File *MGS_create_sub_File(MGS_File *restrict parent) {
  *
  * \return parent instance or NULL
  */
-MGS_File *MGS_destroy_File(MGS_File *restrict o) {
+mgsFile *mgs_destroy_File(mgsFile *restrict o) {
 	if (!o)
 		return NULL;
 
 	if (o->close_f != NULL) o->close_f(o);
-	MGS_File *parent = o->parent;
+	mgsFile *parent = o->parent;
 	free(o);
 	return parent;
 }
 
-static size_t mode_fread(MGS_File *restrict o);
-static size_t mode_strread(MGS_File *restrict o);
+static size_t mode_fread(mgsFile *restrict o);
+static size_t mode_strread(mgsFile *restrict o);
 
-static void ref_fclose(MGS_File *restrict o);
+static void ref_fclose(mgsFile *restrict o);
 
 /**
  * Open stdio file for reading.
@@ -116,17 +116,17 @@ static void ref_fclose(MGS_File *restrict o);
  *
  * The file is automatically closed when EOF or a read error occurs,
  * but \a path is only cleared with a new open call or a call
- * to MGS_File_reset(), so as to remain available for printing.
+ * to mgsFile_reset(), so as to remain available for printing.
  *
  * \return true on success
  */
-bool MGS_File_fopenrb(MGS_File *restrict o, const char *restrict path) {
+bool mgsFile_fopenrb(mgsFile *restrict o, const char *restrict path) {
 	if (!path)
 		return false;
 	FILE *f = fopen(path, "rb");
 	if (!f)
 		return false;
-	MGS_File_init(o, mode_fread, f, path, ref_fclose);
+	mgsFile_init(o, mode_fread, f, path, ref_fclose);
 	return true;
 }
 
@@ -137,29 +137,29 @@ bool MGS_File_fopenrb(MGS_File *restrict o, const char *restrict path) {
  *
  * The file is automatically closed upon a NULL byte,
  * but \a path is only cleared with a new open call or a call
- * to MGS_File_reset(), so as to remain available for printing.
+ * to mgsFile_reset(), so as to remain available for printing.
  *
  * \return true on success
  */
-bool MGS_File_stropenrb(MGS_File *restrict o,
+bool mgsFile_stropenrb(mgsFile *restrict o,
 		const char *restrict path, const char *restrict str) {
 	if (!str)
 		return false;
-	MGS_File_init(o, mode_strread, (void*) str, path, NULL);
+	mgsFile_init(o, mode_strread, (void*) str, path, NULL);
 	return true;
 }
 
 /**
  * Close and clear internal reference if open. Sets MGS_FILE_END status
- * and restores the callback to MGS_File_action_wrap(). If there is a
+ * and restores the callback to mgsFile_action_wrap(). If there is a
  * parent file instance, will set MGS_FILE_CHANGE status.
  *
  * Leaves buffer contents and remaining parts of state untouched.
  *
- * Automatically used by MGS_File_end().
+ * Automatically used by mgsFile_end().
  * Re-opening also automatically closes.
  */
-void MGS_File_close(MGS_File *restrict o) {
+void mgsFile_close(mgsFile *restrict o) {
 	if (o->status & MGS_FILE_END)
 		return;
 	o->status |= MGS_FILE_END;
@@ -171,15 +171,15 @@ void MGS_File_close(MGS_File *restrict o) {
 	}
 	o->ref = NULL;
 	o->call_pos = (o->pos + 1) & (MGS_FILE_BUFSIZ - 1);
-	o->call_f = MGS_File_action_wrap;
+	o->call_f = mgsFile_action_wrap;
 }
 
 /**
  * Reset state. Closes if open, clears file status (to MGS_FILE_OK),
  * and zeroes the buffer.
  */
-void MGS_File_reset(MGS_File *restrict o) {
-	MGS_File_init(o, MGS_File_action_wrap, NULL, NULL, NULL);
+void mgsFile_reset(mgsFile *restrict o) {
+	mgsFile_init(o, mgsFile_action_wrap, NULL, NULL, NULL);
 	memset(o->buf, 0, MGS_FILE_BUFSIZ);
 }
 
@@ -189,7 +189,7 @@ void MGS_File_reset(MGS_File *restrict o) {
  * follows the current buffer contents.
  *
  * The first time this is called for an open file, will call
- * MGS_File_close(), which will close the internal reference
+ * mgsFile_close(), which will close the internal reference
  * and reset the callback. If \p error is true, will
  * additionally set MGS_FILE_ERROR status beforehand.
  *
@@ -197,8 +197,8 @@ void MGS_File_reset(MGS_File *restrict o) {
  * after the current position in the buffer. The callback call
  * position is set to the position after the marker.
  */
-void MGS_File_end(MGS_File *restrict o, size_t keep_len, bool error) {
-	MGS_File_close(o);
+void mgsFile_end(mgsFile *restrict o, size_t keep_len, bool error) {
+	mgsFile_close(o);
 	if (error)
 		o->status |= MGS_FILE_ERROR;
 	o->end_pos = (o->pos + keep_len) & (MGS_FILE_BUFSIZ - 1);
@@ -210,21 +210,21 @@ void MGS_File_end(MGS_File *restrict o, size_t keep_len, bool error) {
  * Read up to a buffer area of data from a stdio file.
  * Closes file upon EOF or read error.
  *
- * Upon short read, inserts MGS_File_STATUS() value
+ * Upon short read, inserts mgsFile_STATUS() value
  * not counted in return length as an end marker.
  * If the file is closed, further calls will reset the
  * reading position and write the end marker again.
  *
  * \return number of characters successfully read
  */
-static size_t mode_fread(MGS_File *restrict o) {
+static size_t mode_fread(mgsFile *restrict o) {
 	FILE *f = o->ref;
 	size_t len;
 	// Move to and fill at the first character of the buffer area.
 	o->pos &= (MGS_FILE_BUFSIZ - 1) & ~(MGS_FILE_ALEN - 1);
 	len = fread(&o->buf[o->pos], 1, MGS_FILE_ALEN, f);
 	o->call_pos = (o->pos + len) & (MGS_FILE_BUFSIZ - 1);
-	if (len < MGS_FILE_ALEN) MGS_File_end(o, len, ferror(f) != 0);
+	if (len < MGS_FILE_ALEN) mgsFile_end(o, len, ferror(f) != 0);
 	return len;
 }
 
@@ -233,14 +233,14 @@ static size_t mode_fread(MGS_File *restrict o) {
  * the pointer, unless the string is NULL. Closes file
  * (setting the string to NULL) upon NULL byte.
  *
- * Upon short read, inserts MGS_File_STATUS() value
+ * Upon short read, inserts mgsFile_STATUS() value
  * not counted in return length as an end marker.
  * If the file is closed, further calls will reset the
  * reading position and write the end marker again.
  *
  * \return number of characters successfully read
  */
-static size_t mode_strread(MGS_File *restrict o) {
+static size_t mode_strread(mgsFile *restrict o) {
 	const char *str = o->ref;
 	size_t len;
 	// Move to and fill at the first character of the buffer area.
@@ -251,7 +251,7 @@ static size_t mode_strread(MGS_File *restrict o) {
 		o->ref = &((char*)o->ref)[len];
 		o->call_pos = (o->pos + len) & (MGS_FILE_BUFSIZ - 1);
 	} else {
-		MGS_File_end(o, len, false);
+		mgsFile_end(o, len, false);
 	}
 	memcpy(&o->buf[o->pos], str, len);
 	return len;
@@ -260,7 +260,7 @@ static size_t mode_strread(MGS_File *restrict o) {
 /*
  * Close stdio file without clearing state.
  */
-static void ref_fclose(MGS_File *restrict o) {
+static void ref_fclose(mgsFile *restrict o) {
 	if (o->ref != NULL) {
 		fclose(o->ref);
 		o->ref = NULL;
@@ -282,9 +282,9 @@ static void ref_fclose(MGS_File *restrict o) {
  *
  * \return true if the string fit into the buffer, false if truncated
  */
-bool MGS_File_getstr(MGS_File *restrict o,
+bool mgsFile_getstr(mgsFile *restrict o,
 		void *restrict buf, size_t buf_len,
-		size_t *restrict lenp, MGS_FileFilter_f filter_f) {
+		size_t *restrict lenp, mgsFileFilter_f filter_f) {
 	uint8_t *dst = buf;
 	size_t i = 0;
 	size_t max_len = buf_len - 1;
@@ -294,9 +294,9 @@ bool MGS_File_getstr(MGS_File *restrict o,
 			truncate = true;
 			break;
 		}
-		uint8_t c = filter_f(o, MGS_File_GETC(o));
+		uint8_t c = filter_f(o, mgsFile_GETC(o));
 		if (c == '\0') {
-			MGS_File_DECP(o);
+			mgsFile_DECP(o);
 			break;
 		}
 		dst[i++] = c;
@@ -305,9 +305,9 @@ bool MGS_File_getstr(MGS_File *restrict o,
 			truncate = true;
 			break;
 		}
-		uint8_t c = MGS_File_GETC(o);
-		if (c <= MGS_FILE_MARKER && MGS_File_AFTER_EOF(o)) {
-			MGS_File_DECP(o);
+		uint8_t c = mgsFile_GETC(o);
+		if (c <= MGS_FILE_MARKER && mgsFile_AFTER_EOF(o)) {
+			mgsFile_DECP(o);
 			break;
 		}
 		dst[i++] = c;
@@ -329,7 +329,7 @@ bool MGS_File_getstr(MGS_File *restrict o,
  *
  * \return true unless number too large and result truncated
  */
-bool MGS_File_geti(MGS_File *restrict o,
+bool mgsFile_geti(mgsFile *restrict o,
 		int32_t *restrict var, bool allow_sign,
 		size_t *restrict lenp) {
 	uint8_t c;
@@ -337,15 +337,15 @@ bool MGS_File_geti(MGS_File *restrict o,
 	bool minus = false;
 	bool truncate = false;
 	size_t len = 0;
-	c = MGS_File_GETC(o);
+	c = mgsFile_GETC(o);
 	++len;
 	if (allow_sign && (c == '+' || c == '-')) {
 		if (c == '-') minus = true;
-		c = MGS_File_GETC(o);
+		c = mgsFile_GETC(o);
 		++len;
 	}
 	if (!IS_DIGIT(c)) {
-		MGS_File_UNGETN(o, len);
+		mgsFile_UNGETN(o, len);
 		if (lenp) *lenp = 0;
 		return true;
 	}
@@ -354,7 +354,7 @@ bool MGS_File_geti(MGS_File *restrict o,
 			int32_t new_num = num * 10 - (c - '0');
 			if (new_num > num) truncate = true;
 			else num = new_num;
-			c = MGS_File_GETC(o);
+			c = mgsFile_GETC(o);
 			++len;
 		} while (IS_DIGIT(c));
 		if (truncate) num = INT32_MIN;
@@ -363,13 +363,13 @@ bool MGS_File_geti(MGS_File *restrict o,
 			int32_t new_num = num * 10 + (c - '0');
 			if (new_num < num) truncate = true;
 			else num = new_num;
-			c = MGS_File_GETC(o);
+			c = mgsFile_GETC(o);
 			++len;
 		} while (IS_DIGIT(c));
 		if (truncate) num = INT32_MAX;
 	}
 	*var = num;
-	MGS_File_DECP(o);
+	mgsFile_DECP(o);
 	--len;
 	if (lenp) *lenp = len;
 	return !truncate;
@@ -387,7 +387,7 @@ bool MGS_File_geti(MGS_File *restrict o,
  *
  * \return true unless number too large and result truncated
  */
-bool MGS_File_getd(MGS_File *restrict o,
+bool mgsFile_getd(mgsFile *restrict o,
 		double *restrict var, bool allow_sign,
 		size_t *restrict lenp) {
 	uint8_t c;
@@ -396,32 +396,32 @@ bool MGS_File_getd(MGS_File *restrict o,
 	bool minus = false;
 	bool truncate = false;
 	size_t len = 0;
-	c = MGS_File_GETC(o);
+	c = mgsFile_GETC(o);
 	++len;
 	if (allow_sign && (c == '+' || c == '-')) {
 		if (c == '-') minus = true;
-		c = MGS_File_GETC(o);
+		c = mgsFile_GETC(o);
 		++len;
 	}
 	if (c != '.') {
 		if (!IS_DIGIT(c)) {
-			MGS_File_UNGETN(o, len);
+			mgsFile_UNGETN(o, len);
 			if (lenp) *lenp = 0;
 			return true;
 		}
 		do {
 			num = num * 10.f + (c - '0');
-			c = MGS_File_GETC(o);
+			c = mgsFile_GETC(o);
 			++len;
 		} while (IS_DIGIT(c));
 		if (c != '.') goto DONE;
-		c = MGS_File_GETC(o);
+		c = mgsFile_GETC(o);
 		++len;
 	} else {
-		c = MGS_File_GETC(o);
+		c = mgsFile_GETC(o);
 		++len;
 		if (!IS_DIGIT(c)) {
-			MGS_File_UNGETN(o, len);
+			mgsFile_UNGETN(o, len);
 			if (lenp) *lenp = 0;
 			return true;
 		}
@@ -429,7 +429,7 @@ bool MGS_File_getd(MGS_File *restrict o,
 	while (IS_DIGIT(c)) {
 		pos_mul *= 0.1f;
 		num += (c - '0') * pos_mul;
-		c = MGS_File_GETC(o);
+		c = mgsFile_GETC(o);
 		++len;
 	}
 DONE:
@@ -437,7 +437,7 @@ DONE:
 	if (isinf(res)) truncate = true;
 	if (minus) res = -res;
 	*var = res;
-	MGS_File_DECP(o);
+	mgsFile_DECP(o);
 	--len;
 	if (lenp) *lenp = len;
 	return !truncate;
@@ -448,14 +448,14 @@ DONE:
  *
  * \return number of characters skipped
  */
-size_t MGS_File_skipstr(MGS_File *restrict o, MGS_FileFilter_f filter_f) {
+size_t mgsFile_skipstr(mgsFile *restrict o, mgsFileFilter_f filter_f) {
 	size_t i = 0;
 	for (;;) {
-		uint8_t c = filter_f(o, MGS_File_GETC(o));
+		uint8_t c = filter_f(o, mgsFile_GETC(o));
 		if (c == '\0') break;
 		++i;
 	}
-	MGS_File_DECP(o);
+	mgsFile_DECP(o);
 	return i;
 }
 
@@ -464,14 +464,14 @@ size_t MGS_File_skipstr(MGS_File *restrict o, MGS_FileFilter_f filter_f) {
  *
  * \return number of characters skipped
  */
-size_t MGS_File_skipspace(MGS_File *restrict o) {
+size_t mgsFile_skipspace(mgsFile *restrict o) {
 	size_t i = 0;
 	for (;;) {
-		uint8_t c = MGS_File_GETC(o);
+		uint8_t c = mgsFile_GETC(o);
 		if (!IS_SPACE(c)) break;
 		++i;
 	}
-	MGS_File_DECP(o);
+	mgsFile_DECP(o);
 	return i;
 }
 
@@ -480,14 +480,14 @@ size_t MGS_File_skipspace(MGS_File *restrict o) {
  *
  * \return number of characters skipped
  */
-size_t MGS_File_skipline(MGS_File *restrict o) {
+size_t mgsFile_skipline(mgsFile *restrict o) {
 	size_t i = 0;
 	for (;;) {
-		uint8_t c = MGS_File_GETC(o);
+		uint8_t c = mgsFile_GETC(o);
 		if (IS_LNBRK(c) ||
-			(c <= MGS_FILE_MARKER && MGS_File_AFTER_EOF(o))) break;
+			(c <= MGS_FILE_MARKER && mgsFile_AFTER_EOF(o))) break;
 		++i;
 	}
-	MGS_File_DECP(o);
+	mgsFile_DECP(o);
 	return i;
 }

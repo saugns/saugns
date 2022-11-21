@@ -20,17 +20,17 @@
 #include <stdlib.h>
 #include <string.h>
 
-int MGS_stdout_busy = 0; /* enable if stdout is given other uses! */
+int mgs_stdout_busy = 0; /* enable if stdout is given other uses! */
 
 /**
  * Wrapper for vfprintf(), which prints to either stdout or stderr
- * depending on \ref MGS_print_stream().
+ * depending on \ref mgs_print_stream().
  */
-int MGS_printf(const char *restrict fmt, ...) {
+int mgs_printf(const char *restrict fmt, ...) {
 	int ret;
 	va_list ap;
 	va_start(ap, fmt);
-	ret = vfprintf(MGS_print_stream(), fmt, ap);
+	ret = vfprintf(mgs_print_stream(), fmt, ap);
 	va_end(ap);
 	return ret;
 }
@@ -56,7 +56,7 @@ static void print_stderr(const char *restrict msg_type,
  * Print warning message. If \p label is not NULL, it will be
  * added after "warning" within square brackets.
  */
-void MGS_warning(const char *restrict label, const char *restrict fmt, ...) {
+void mgs_warning(const char *restrict label, const char *restrict fmt, ...) {
 	va_list ap;
 	va_start(ap, fmt);
 	print_stderr("warning", label, fmt, ap);
@@ -67,11 +67,23 @@ void MGS_warning(const char *restrict label, const char *restrict fmt, ...) {
  * Print error message. If \p label is not NULL, it will be
  * added after "error" within square brackets.
  */
-void MGS_error(const char *restrict label, const char *restrict fmt, ...) {
+void mgs_error(const char *restrict label, const char *restrict fmt, ...) {
 	va_list ap;
 	va_start(ap, fmt);
 	print_stderr("error", label, fmt, ap);
 	va_end(ap);
+}
+
+/**
+ * Print error message. If \p label is not NULL, it will be
+ * added after "error" within square brackets.
+ */
+void mgs_fatal(const char *restrict label, const char *restrict fmt, ...) {
+	va_list ap;
+	va_start(ap, fmt);
+	print_stderr("error", label, fmt, ap);
+	va_end(ap);
+	exit(EXIT_FAILURE);
 }
 
 /**
@@ -81,7 +93,7 @@ void MGS_error(const char *restrict label, const char *restrict fmt, ...) {
  *
  * \return new allocation or NULL on failure
  */
-void *MGS_memdup(const void *restrict src, size_t size) {
+void *mgs_memdup(const void *restrict src, size_t size) {
 	if (!size)
 		return NULL;
 	if (!src)
@@ -124,8 +136,8 @@ static bool streq_longname(const char *restrict arg,
  * getopt() version by Christopher Wellons.
  * Not the nonstandard extensions, however.
  */
-int MGS_getopt(int argc, char *const*restrict argv,
-		const char *restrict optstring, struct MGS_opt *restrict opt) {
+int mgs_getopt(int argc, char *const*restrict argv,
+		const char *restrict optstring, struct mgsOpt *restrict opt) {
 	(void)argc;
 	if (opt->ind == 0) {
 		opt->ind = 1;

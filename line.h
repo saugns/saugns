@@ -31,10 +31,10 @@
 #define MGS_LINE__X_ID(NAME) MGS_LINE_N_##NAME,
 #define MGS_LINE__X_NAME(NAME) #NAME,
 #define MGS_LINE__X_PROTOTYPE(NAME) \
-void MGS_Line_fill_##NAME(float *restrict buf, uint32_t len, \
+void mgsLine_fill_##NAME(float *restrict buf, uint32_t len, \
 		float v0, float vt, uint32_t pos, uint32_t time, \
 		const float *restrict mulbuf);
-#define MGS_LINE__X_ADDRESS(NAME) MGS_Line_fill_##NAME,
+#define MGS_LINE__X_ADDRESS(NAME) mgsLine_fill_##NAME,
 
 /**
  * Line fill types.
@@ -47,14 +47,14 @@ enum {
 MGS_LINE__ITEMS(MGS_LINE__X_PROTOTYPE)
 
 /** Names of line fill types, with an extra NULL pointer at the end. */
-extern const char *const MGS_Line_names[MGS_LINE_NAMED + 1];
+extern const char *const mgsLine_names[MGS_LINE_NAMED + 1];
 
-typedef void (*MGS_Line_fill_f)(float *restrict buf, uint32_t len,
+typedef void (*mgsLine_fill_f)(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf);
 
 /** Fill functions for line fill types. */
-extern const MGS_Line_fill_f MGS_Line_fill_funcs[MGS_LINE_NAMED];
+extern const mgsLine_fill_f mgsLine_fill_funcs[MGS_LINE_NAMED];
 
 /**
  * Line parameter flags.
@@ -75,13 +75,13 @@ enum {
  * Holds data for parameters with support for gradual change,
  * both during script processing and audio rendering.
  */
-typedef struct MGS_Line {
+typedef struct mgsLine {
 	float v0, vt;
 	uint32_t pos, end;
 	uint32_t time_ms;
 	uint8_t fill_type;
 	uint8_t flags;
-} MGS_Line;
+} mgsLine;
 
 /**
  * Get the main flags showing whether state and/or goal are enabled.
@@ -89,21 +89,21 @@ typedef struct MGS_Line {
  *
  * \return flag values
  */
-#define MGS_Line_ENABLED(o) \
+#define mgsLine_ENABLED(o) \
 	((o)->flags & (MGS_LINEP_STATE | MGS_LINEP_GOAL))
 
 /** Needed before get, run, or skip when a line is not copy-initialized. */
-static inline void MGS_Line_setup(MGS_Line *restrict o, uint32_t srate) {
-	o->end = MGS_ms_in_samples(o->time_ms, srate);
+static inline void mgsLine_setup(mgsLine *restrict o, uint32_t srate) {
+	o->end = mgs_ms_in_samples(o->time_ms, srate);
 }
-void MGS_Line_copy(MGS_Line *restrict o,
-		const MGS_Line *restrict src,
+void mgsLine_copy(mgsLine *restrict o,
+		const mgsLine *restrict src,
 		uint32_t srate);
 
-uint32_t MGS_Line_get(MGS_Line *restrict o,
+uint32_t mgsLine_get(mgsLine *restrict o,
 		float *restrict buf, uint32_t buf_len,
 		const float *restrict mulbuf);
-bool MGS_Line_run(MGS_Line *restrict o,
+bool mgsLine_run(mgsLine *restrict o,
 		float *restrict buf, uint32_t buf_len,
 		const float *restrict mulbuf);
-bool MGS_Line_skip(MGS_Line *restrict o, uint32_t skip_len);
+bool mgsLine_skip(mgsLine *restrict o, uint32_t skip_len);

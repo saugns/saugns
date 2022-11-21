@@ -17,12 +17,12 @@
 /**
  * Node stored for each unique string associated with the symbol table.
  */
-typedef struct MGS_SymStr {
-	struct MGS_SymStr *prev;
-	struct MGS_SymItem *item; // the last item with this string
+typedef struct mgsSymStr {
+	struct mgsSymStr *prev;
+	struct mgsSymItem *item; // the last item with this string
 	uint32_t key_len;
 	char key[];
-} MGS_SymStr;
+} mgsSymStr;
 
 /** Data type used in a symbol item. */
 enum {
@@ -35,31 +35,31 @@ enum {
 /**
  * Item with type, string, and data.
  */
-typedef struct MGS_SymItem {
+typedef struct mgsSymItem {
 	uint32_t sym_type;
 	uint32_t data_use;
-	struct MGS_SymItem *prev; // the previous item with this string
-	MGS_SymStr *sstr;
+	struct mgsSymItem *prev; // the previous item with this string
+	mgsSymStr *sstr;
 	union {
 		uint32_t id;
 		double num;
 		void *obj;
 	} data;
-} MGS_SymItem;
+} mgsSymItem;
 
-struct MGS_SymTab;
-typedef struct MGS_SymTab MGS_SymTab;
+struct mgsSymTab;
+typedef struct mgsSymTab mgsSymTab;
 
-MGS_SymTab *MGS_create_SymTab(MGS_MemPool *restrict mempool) mgsMalloclike;
+mgsSymTab *mgs_create_SymTab(mgsMemPool *restrict mempool) mgsMalloclike;
 
-MGS_SymStr *MGS_SymTab_get_symstr(MGS_SymTab *restrict o,
+mgsSymStr *mgsSymTab_get_symstr(mgsSymTab *restrict o,
 		const void *restrict str, size_t len);
 
-MGS_SymItem *MGS_SymTab_add_item(MGS_SymTab *restrict o,
-		MGS_SymStr *restrict symstr, uint32_t type_id);
-MGS_SymItem *MGS_SymTab_find_item(MGS_SymTab *restrict o,
-		MGS_SymStr *restrict symstr, uint32_t type_id);
+mgsSymItem *mgsSymTab_add_item(mgsSymTab *restrict o,
+		mgsSymStr *restrict symstr, uint32_t type_id);
+mgsSymItem *mgsSymTab_find_item(mgsSymTab *restrict o,
+		mgsSymStr *restrict symstr, uint32_t type_id);
 
-bool MGS_SymTab_add_stra(MGS_SymTab *restrict o,
+bool mgsSymTab_add_stra(mgsSymTab *restrict o,
 		const char *const*restrict stra, size_t n,
 		uint32_t type_id);

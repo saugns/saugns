@@ -38,12 +38,12 @@ typedef struct MemBlock {
 } MemBlock;
 
 typedef struct DtorItem {
-	MGS_Dtor_f func;
+	mgsDtor_f func;
 	void *arg;
 	struct DtorItem *prev;
 } DtorItem;
 
-struct MGS_MemPool {
+struct mgsMemPool {
 	MemBlock *a;
 	size_t count, first_i, a_len;
 	size_t block_size, skip_size;
@@ -55,7 +55,7 @@ struct MGS_MemPool {
  *
  * \return true, or false on allocation failure
  */
-static bool upsize(MGS_MemPool *restrict o) {
+static bool upsize(mgsMemPool *restrict o) {
 	size_t new_a_len = (o->a_len > 0) ?  (o->a_len << 1) : 1;
 	MemBlock *new_a = realloc(o->a, sizeof(MemBlock) * new_a_len);
 	if (!new_a)
@@ -84,7 +84,7 @@ static bool upsize(MGS_MemPool *restrict o) {
  *
  * \return allocated memory, or NULL on allocation failure
  */
-static void *add(MGS_MemPool *restrict o, size_t size_used) {
+static void *add(mgsMemPool *restrict o, size_t size_used) {
 	if (o->count == o->a_len && !upsize(o))
 		return NULL;
 	size_t block_size = o->block_size;
@@ -109,7 +109,7 @@ static void *add(MGS_MemPool *restrict o, size_t size_used) {
  *
  * \return true if found, false if not
  */
-static bool first_smallest(const MGS_MemPool *restrict o,
+static bool first_smallest(const mgsMemPool *restrict o,
 		size_t size, size_t *restrict id) {
 	size_t i;
 	ptrdiff_t min = o->first_i;
@@ -152,7 +152,7 @@ static bool first_smallest(const MGS_MemPool *restrict o,
  * by the previous such block, until finally the last such block overwrites
  * the block at \p to.
  */
-static void copy_up_one(MGS_MemPool *restrict o,
+static void copy_up_one(mgsMemPool *restrict o,
 		size_t to, size_t from) {
 	if (from == (to - 1) || o->a[from].free == o->a[to - 1].free) {
 		/*
@@ -191,8 +191,8 @@ static void copy_up_one(MGS_MemPool *restrict o,
  *
  * \return instance, or NULL on allocation failure
  */
-MGS_MemPool *MGS_create_MemPool(size_t start_size) {
-	MGS_MemPool *o = calloc(1, sizeof(MGS_MemPool));
+mgsMemPool *mgs_create_MemPool(size_t start_size) {
+	mgsMemPool *o = calloc(1, sizeof(mgsMemPool));
 	if (!o)
 		return NULL;
 	o->block_size = (start_size > 0) ?
@@ -208,7 +208,7 @@ MGS_MemPool *MGS_create_MemPool(size_t start_size) {
  * Frees all memory blocks. Any destructor functions registered
  * are called beforehand, in the reverse order of registration.
  */
-void MGS_destroy_MemPool(MGS_MemPool *restrict o) {
+void mgs_destroy_MemPool(mgsMemPool *restrict o) {
 	if (!o)
 		return;
 	for (DtorItem *n = o->last_dtor; n; n = n->prev) {
@@ -227,7 +227,7 @@ void MGS_destroy_MemPool(MGS_MemPool *restrict o) {
  *
  * \return allocated memory, or NULL on allocation failure
  */
-void *MGS_mpalloc(MGS_MemPool *restrict o, size_t size) {
+void *mgs_mpalloc(mgsMemPool *restrict o, size_t size) {
 #if !MGS_MEM_DEBUG
 	size_t i = o->count;
 	void *mem;
@@ -290,9 +290,9 @@ void *MGS_mpalloc(MGS_MemPool *restrict o, size_t size) {
  *
  * \return allocated memory, or NULL on allocation failure
  */
-void *MGS_mpmemdup(MGS_MemPool *restrict o,
+void *mgs_mpmemdup(mgsMemPool *restrict o,
 		const void *restrict src, size_t size) {
-	void *mem = MGS_mpalloc(o, size);
+	void *mem = mgs_mpalloc(o, size);
 	if (!mem)
 		return NULL;
 	if (src != NULL)
@@ -306,11 +306,11 @@ void *MGS_mpmemdup(MGS_MemPool *restrict o,
  *
  * \return true, or false for NULL func or arg or on allocation failure
  */
-bool MGS_mpregdtor(MGS_MemPool *restrict o,
-		MGS_Dtor_f func, void *restrict arg) {
+bool mgs_mpregdtor(mgsMemPool *restrict o,
+		mgsDtor_f func, void *restrict arg) {
 	if (!func || !arg)
 		return false;
-	DtorItem *n = MGS_mpalloc(o, sizeof(DtorItem));
+	DtorItem *n = mgs_mpalloc(o, sizeof(DtorItem));
 	if (!n)
 		return false;
 	n->func = func;

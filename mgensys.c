@@ -19,7 +19,7 @@
 #define NAME MGS_CLINAME_STR
 #if MGS_ADD_TESTOPT
 # define TESTOPT "?:"
-int MGS_testopt = 0;
+int mgs_testopt = 0;
 #else
 # define TESTOPT
 #endif
@@ -30,16 +30,16 @@ int MGS_testopt = 0;
  */
 static void print_help(const char *restrict topic,
 		const char *restrict description) {
-	const char *const *contents = MGS_find_help(topic);
+	const char *const *contents = mgs_find_help(topic);
 	if (!contents || /* silence warning */ !topic) {
-		topic = MGS_Help_names[MGS_HELP_N_help];
-		contents = MGS_Help_names;
+		topic = mgsHelp_names[MGS_HELP_N_help];
+		contents = mgsHelp_names;
 	}
 	fprintf(stderr, "\nList of '%s' names", topic);
 	if (description != NULL)
 		fprintf(stderr, " (%s)", description);
 	fputs(":\n", stderr);
-	MGS_print_names(contents, "\t", stderr);
+	mgs_print_names(contents, "\t", stderr);
 }
 
 /*
@@ -110,10 +110,10 @@ static bool get_iarg(const char *restrict str, int32_t *i) {
  */
 static bool parse_args(int argc, char **restrict argv,
 		uint32_t *restrict flags,
-		MGS_PtrArr *restrict script_args,
+		mgsPtrArr *restrict script_args,
 		const char **restrict wav_path,
 		uint32_t *restrict srate) {
-	struct MGS_opt opt = (struct MGS_opt){0};
+	struct mgsOpt opt = (struct mgsOpt){0};
 	int c;
 	int32_t i;
 	bool dashdash = false;
@@ -122,7 +122,7 @@ static bool parse_args(int argc, char **restrict argv,
 	*srate = MGS_DEFAULT_SRATE;
 	opt.err = 1;
 REPARSE:
-	while ((c = MGS_getopt(argc, argv,
+	while ((c = mgs_getopt(argc, argv,
 	                       "Vamr:o:ecphv"TESTOPT
 			       "-mono-stdout", &opt)) != -1) {
 		switch (c) {
@@ -139,7 +139,7 @@ REPARSE:
 					goto USAGE;
 				*flags |= MGS_OPT_MODE_FULL |
 					MGS_OPT_AUDIO_STDOUT;
-				MGS_stdout_busy = 1; /* required for audio */
+				mgs_stdout_busy = 1; /* required for audio */
 			} else {
 				goto USAGE;
 			}
@@ -147,7 +147,7 @@ REPARSE:
 #if MGS_ADD_TESTOPT
 		case '?':
 			if (!get_iarg(opt.arg, &i)) goto USAGE;
-			MGS_testopt = i;
+			mgs_testopt = i;
 			continue;
 #endif
 		case 'V':
@@ -186,7 +186,7 @@ REPARSE:
 				if (*flags & MGS_OPT_AUDIO_STDOUT)
 					goto USAGE;
 				*flags |= MGS_OPT_AUFILE_STDOUT;
-				MGS_stdout_busy = 1; /* required for AU file */
+				mgs_stdout_busy = 1; /* required for AU file */
 			}
 			*flags |= MGS_OPT_MODE_FULL;
 			*wav_path = opt.arg;
@@ -217,7 +217,7 @@ REPARSE:
 		}
 		const char *arg = argv[opt.ind];
 		if (!dashdash && c != -1 && arg[0] == '-') goto REPARSE;
-		MGS_PtrArr_add(script_args, (void*) arg);
+		mgsPtrArr_add(script_args, (void*) arg);
 		++opt.ind;
 		c = 0; /* only goto REPARSE after advancing, to prevent hang */
 	}
@@ -225,7 +225,7 @@ REPARSE:
 USAGE:
 	print_usage(h_arg, h_type);
 ABORT:
-	MGS_PtrArr_clear(script_args);
+	mgsPtrArr_clear(script_args);
 	return false;
 }
 
@@ -233,21 +233,21 @@ ABORT:
  * Main function.
  */
 int main(int argc, char **restrict argv) {
-	MGS_PtrArr script_args = (MGS_PtrArr){0};
-	MGS_PtrArr prg_objs = (MGS_PtrArr){0};
+	mgsPtrArr script_args = (mgsPtrArr){0};
+	mgsPtrArr prg_objs = (mgsPtrArr){0};
 	const char *wav_path = NULL;
 	uint32_t options = 0;
 	uint32_t srate = 0;
 	if (!parse_args(argc, argv, &options, &script_args, &wav_path,
 			&srate))
 		return 0;
-	bool error = !!MGS_build(&script_args, options, &prg_objs);
-	MGS_PtrArr_clear(&script_args);
+	bool error = !!mgs_build(&script_args, options, &prg_objs);
+	mgsPtrArr_clear(&script_args);
 	if (error)
 		return 1;
 	if (prg_objs.count > 0) {
-		error = !MGS_play(&prg_objs, srate, options, wav_path);
-		MGS_discard(&prg_objs);
+		error = !mgs_play(&prg_objs, srate, options, wav_path);
+		mgs_discard(&prg_objs);
 		if (error)
 			return 1;
 	}

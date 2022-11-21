@@ -25,7 +25,7 @@
  * Each concrete type uses inline wrappers around generic methods.
  */
 
-struct MGS_MemPool;
+struct mgsMemPool;
 
 /**
  * Declare array type using \p Name, with \p ElementType.
@@ -52,22 +52,22 @@ typedef struct Name { \
 static inline ElementType mgsMaybeUnused \
 *MethodPrefix##Name##_add(Name *restrict o, \
 		const ElementType *restrict item) { \
-	return MGS_ArrType_add(o, item, sizeof(ElementType)); \
+	return mgsArrType_add(o, item, sizeof(ElementType)); \
 } \
 static inline void mgsMaybeUnused \
 MethodPrefix##Name##_clear(Name *restrict o) { \
-	MGS_ArrType_clear(o); \
+	mgsArrType_clear(o); \
 } \
 static inline bool mgsMaybeUnused \
 MethodPrefix##Name##_memdup(Name *restrict o, \
 		ElementType **restrict dst) { \
-	return MGS_ArrType_memdup(o, (void**) dst, sizeof(ElementType)); \
+	return mgsArrType_memdup(o, (void**) dst, sizeof(ElementType)); \
 } \
 static inline bool mgsMaybeUnused \
 MethodPrefix##Name##_mpmemdup(Name *restrict o, \
 		ElementType **restrict dst, \
-		struct MGS_MemPool *restrict mempool) { \
-	return MGS_ArrType_mpmemdup(o, (void**) dst, \
+		struct mgsMemPool *restrict mempool) { \
+	return mgsArrType_mpmemdup(o, (void**) dst, \
 		sizeof(ElementType), mempool); \
 }
 
@@ -84,14 +84,14 @@ MethodPrefix##Name##_mpmemdup(Name *restrict o, \
 mgsArrTypeStruct(Name, ElementType) \
 mgsArrTypeMethods(Name, ElementType, MethodPrefix)
 
-void *MGS_ArrType_add(void *restrict o,
+void *mgsArrType_add(void *restrict o,
 		const void *restrict item, size_t item_size);
-void MGS_ArrType_clear(void *restrict o);
-bool MGS_ArrType_memdup(void *restrict o,
+void mgsArrType_clear(void *restrict o);
+bool mgsArrType_memdup(void *restrict o,
 		void **restrict dst, size_t item_size);
-bool MGS_ArrType_mpmemdup(void *restrict o,
+bool mgsArrType_mpmemdup(void *restrict o,
 		void **restrict dst, size_t item_size,
-		struct MGS_MemPool *mempool);
+		struct mgsMemPool *mempool);
 
 /** Byte (uint8_t) array type. */
-mgsArrType(MGS_ByteArr, uint8_t, )
+mgsArrType(mgsByteArr, uint8_t, )

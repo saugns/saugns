@@ -44,39 +44,39 @@ enum {
 };
 
 #if MGS_ADD_TESTOPT
-extern int MGS_testopt; /* defaults to 0, set using debug option "-?" */
+extern int mgs_testopt; /* defaults to 0, set using debug option "-?" */
 #endif
 
 /*
  * Command-line interface functions.
  */
 
-size_t MGS_build(const MGS_PtrArr *restrict script_args, uint32_t options,
-		MGS_PtrArr *restrict prg_objs);
+size_t mgs_build(const mgsPtrArr *restrict script_args, uint32_t options,
+		mgsPtrArr *restrict prg_objs);
 
-bool MGS_play(const MGS_PtrArr *restrict prg_objs, uint32_t srate,
+bool mgs_play(const mgsPtrArr *restrict prg_objs, uint32_t srate,
 		uint32_t options, const char *restrict wav_path);
 
-void MGS_discard(MGS_PtrArr *restrict prg_objs);
+void mgs_discard(mgsPtrArr *restrict prg_objs);
 
 /*
- * MGS_Program
+ * mgsProgram
  */
 
-struct MGS_Program;
-typedef struct MGS_Program MGS_Program;
+struct mgsProgram;
+typedef struct mgsProgram mgsProgram;
 
-MGS_Program* MGS_create_Program(const char *file, bool is_path);
-void MGS_destroy_Program(MGS_Program *o);
+mgsProgram* mgs_create_Program(const char *file, bool is_path);
+void mgs_destroy_Program(mgsProgram *o);
 
 /*
- * MGS_Generator
+ * mgsGenerator
  */
 
-struct MGS_Generator;
-typedef struct MGS_Generator MGS_Generator;
+struct mgsGenerator;
+typedef struct mgsGenerator mgsGenerator;
 
-MGS_Generator* MGS_create_Generator(const MGS_Program *prg, uint32_t srate);
-void MGS_destroy_Generator(MGS_Generator *o);
-bool MGS_Generator_run(MGS_Generator *o, int16_t *buf, uint32_t len,
+mgsGenerator* mgs_create_Generator(const mgsProgram *prg, uint32_t srate);
+void mgs_destroy_Generator(mgsGenerator *o);
+bool mgsGenerator_run(mgsGenerator *o, int16_t *buf, uint32_t len,
 		bool stereo, uint32_t *gen_len);

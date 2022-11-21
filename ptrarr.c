@@ -27,7 +27,7 @@
  *
  * \return true unless allocation failed
  */
-bool MGS_PtrArr_add(MGS_PtrArr *restrict o, void *restrict item) {
+bool mgsPtrArr_add(mgsPtrArr *restrict o, void *restrict item) {
 	if (!o->asize) {
 		if (o->count == 0) {
 			o->items = (void**) item;
@@ -72,7 +72,7 @@ bool MGS_PtrArr_add(MGS_PtrArr *restrict o, void *restrict item) {
 /**
  * Clear the given array.
  */
-void MGS_PtrArr_clear(MGS_PtrArr *restrict o) {
+void mgsPtrArr_clear(mgsPtrArr *restrict o) {
 	if ((o->old_count == 0 || o->count > o->old_count) && o->asize > 0) {
 		free(o->items);
 	}
@@ -92,14 +92,14 @@ void MGS_PtrArr_clear(MGS_PtrArr *restrict o) {
  *
  * \return true unless allocation failed
  */
-bool MGS_PtrArr_memdup(MGS_PtrArr *restrict o, void ***restrict dst) {
+bool mgsPtrArr_memdup(mgsPtrArr *restrict o, void ***restrict dst) {
 	if (!o->count) {
 		*dst = NULL;
 		return true;
 	}
 	size_t size = o->count * sizeof(void*);
-	void **src = MGS_PtrArr_ITEMS(o);
-	void **a = MGS_memdup(src, size);
+	void **src = mgsPtrArr_ITEMS(o);
+	void **a = mgs_memdup(src, size);
 	if (!a)
 		return false;
 	*dst = a;
@@ -117,15 +117,15 @@ bool MGS_PtrArr_memdup(MGS_PtrArr *restrict o, void ***restrict dst) {
  *
  * \return true unless allocation failed
  */
-bool MGS_PtrArr_mpmemdup(MGS_PtrArr *restrict o, void ***restrict dst,
-		MGS_MemPool *restrict mempool) {
+bool mgsPtrArr_mpmemdup(mgsPtrArr *restrict o, void ***restrict dst,
+		mgsMemPool *restrict mempool) {
 	if (!o->count) {
 		*dst = NULL;
 		return true;
 	}
 	size_t size = o->count * sizeof(void*);
-	void **src = MGS_PtrArr_ITEMS(o);
-	void **a = MGS_mpmemdup(mempool, src, size);
+	void **src = mgsPtrArr_ITEMS(o);
+	void **a = mgs_mpmemdup(mempool, src, size);
 	if (!a)
 		return false;
 	*dst = a;
@@ -147,9 +147,9 @@ bool MGS_PtrArr_mpmemdup(MGS_PtrArr *restrict o, void ***restrict dst,
  * through iteration between \a old_count and \a count, all
  * accessing of freed memory is avoided.
  */
-void MGS_PtrArr_soft_copy(MGS_PtrArr *restrict dst,
-		const MGS_PtrArr *restrict src) {
-	MGS_PtrArr_clear(dst);
+void mgsPtrArr_soft_copy(mgsPtrArr *restrict dst,
+		const mgsPtrArr *restrict src) {
+	mgsPtrArr_clear(dst);
 	dst->items = src->items;
 	dst->count = src->count;
 	dst->old_count = src->count;
