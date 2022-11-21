@@ -16,10 +16,22 @@ OBJ=reader/file.o reader/symtab.o \
 
 all: mgensys
 
+include makedepend
+
 clean:
 	rm -f $(OBJ) mgensys
 
-mgensys: $(OBJ)
+depend makedepend:
+	@$(CC) -MM -DMAKEDEPEND *.c | \
+		sed 's/\([a-z]*\)\/\.\.\///g' > makedepend; \
+	for dir in `ls -d */`; do \
+		if [ -n "`ls $$dir*.c 2> /dev/null`" ]; then \
+			$(CC) -MM -DMAKEDEPEND $$dir*.c | \
+sed "s/\([a-z]*\)\/\.\.\///g; s/\([a-z]*\.o:\)/$${dir%/}\/\1/g" >> makedepend; \
+		fi; \
+	done
+
+mgensys: $(OBJ) makedepend
 	@UNAME="`uname -s`"; \
 	if [ $$UNAME = 'Linux' ]; then \
 		echo "Linking for Linux (using ALSA and OSS)."; \
@@ -37,65 +49,65 @@ mgensys: $(OBJ)
 
 # Objects...
 
-arrtype.o: arrtype.c arrtype.h common.h mempool.h
+arrtype.o:
 	$(CC) -c $(CFLAGS) arrtype.c
 
-builder/builder.o: builder/builder.c common.h mgensys.h ptrarr.h
+builder/builder.o:
 	$(CC) -c $(CFLAGS) builder/builder.c -o builder/builder.o
 
-builder/parser.o: builder/parser.c builder/parser.h common.h help.h reader/file.h reader/symtab.h math.h mempool.h mgensys.h noise.h program.h wave.h
+builder/parser.o:
 	$(CC) -c $(CFLAGS) builder/parser.c -o builder/parser.o
 
-builder/postparse.o: builder/parser.h builder/postparse.c common.h help.h reader/file.h reader/symtab.h math.h mempool.h mgensys.h noise.h program.h wave.h
+builder/postparse.o:
 	$(CC) -c $(CFLAGS) builder/postparse.c -o builder/postparse.o
 
-common.o: common.c common.h
+common.o:
 	$(CC) -c $(CFLAGS) common.c
 
-help.o: common.h help.c help.h line.h math.h noise.h wave.h
+help.o:
 	$(CC) -c $(CFLAGS) help.c
 
-interp/generator.o: arrtype.h common.h interp/generator.c interp/ngen.h interp/osc.h interp/runalloc.h math.h mempool.h mgensys.h noise.h program.h ptrarr.h wave.h
+interp/generator.o:
 	$(CC) -c $(CFLAGS_FAST) interp/generator.c -o interp/generator.o
 
-interp/ngen.o: common.h interp/ngen.c interp/ngen.h math.h noise.h
+interp/ngen.o:
 	$(CC) -c $(CFLAGS_FAST) interp/ngen.c -o interp/ngen.o
 
-interp/osc.o: common.h interp/osc.c interp/osc.h math.h wave.h
+interp/osc.o:
 	$(CC) -c $(CFLAGS_FAST) interp/osc.c -o interp/osc.o
 
-interp/runalloc.o: arrtype.h common.h interp/ngen.h interp/osc.h interp/runalloc.c interp/runalloc.h math.h mempool.h mgensys.h noise.h program.h ptrarr.h wave.h
+interp/runalloc.o:
 	$(CC) -c $(CFLAGS_FAST) interp/runalloc.c -o interp/runalloc.o
 
-line.o: common.h line.c line.h math.h
+line.o:
 	$(CC) -c $(CFLAGS_FAST) line.c
 
-mempool.o: common.h mempool.c mempool.h
+mempool.o:
 	$(CC) -c $(CFLAGS) mempool.c
 
-mgensys.o: common.h help.h mgensys.c mgensys.h ptrarr.h
+mgensys.o:
 	$(CC) -c $(CFLAGS) mgensys.c
 
-noise.o: common.h math.h noise.c noise.h
+noise.o:
 	$(CC) -c $(CFLAGS_FAST) noise.c
 
-ptrarr.o: common.h mempool.h ptrarr.c ptrarr.h
+ptrarr.o:
 	$(CC) -c $(CFLAGS) ptrarr.c
 
-reader/file.o: common.h reader/file.c reader/file.h
+reader/file.o:
 	$(CC) -c $(CFLAGS) reader/file.c -o reader/file.o
 
-reader/symtab.o: common.h mempool.h mgensys.h reader/symtab.c reader/symtab.h
+reader/symtab.o:
 	$(CC) -c $(CFLAGS) reader/symtab.c -o reader/symtab.o
 
-player/audiodev.o: common.h player/audiodev.c player/audiodev.h player/audiodev/*.c
+player/audiodev.o: player/audiodev/*.c
 	$(CC) -c $(CFLAGS) player/audiodev.c -o player/audiodev.o
 
-player/player.o: common.h math.h mgensys.h player/audiodev.h player/player.c player/sndfile.h program.h ptrarr.h
+player/player.o:
 	$(CC) -c $(CFLAGS_FAST) player/player.c -o player/player.o
 
-player/sndfile.o: common.h player/sndfile.c player/sndfile.h
+player/sndfile.o:
 	$(CC) -c $(CFLAGS) player/sndfile.c -o player/sndfile.o
 
-wave.o: common.h math.h wave.c wave.h
+wave.o:
 	$(CC) -c $(CFLAGS_FAST) wave.c

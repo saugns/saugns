@@ -56,12 +56,14 @@ static const char *getenv_nonblank(const char *restrict env_name) {
 	return name;
 }
 
-#ifdef __linux
-# include "audiodev/linux.c"
-#elif defined(__OpenBSD__)
-# include "audiodev/sndio.c"
-#else
-# include "audiodev/oss.c"
+#ifndef MAKEDEPEND
+# ifdef __linux
+#  include "audiodev/linux.c"
+# elif defined(__OpenBSD__)
+#  include "audiodev/sndio.c"
+# else
+#  include "audiodev/oss.c"
+# endif
 #endif
 
 /**
