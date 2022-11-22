@@ -1,6 +1,6 @@
 /* mgensys: Audio generator data allocator.
  * Copyright (c) 2020-2022 Joel K. Pettersson
- * <joelkpettersson@gmail.com>.
+ * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
  * terms of the GNU Lesser General Public License, either version 3 or (at
