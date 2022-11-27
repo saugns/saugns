@@ -12,6 +12,7 @@
  */
 
 #pragma once
+#include "sgensys.h"
 #include <math.h>
 
 #define SGS_PI       3.14159265358979323846
@@ -25,4 +26,17 @@ static inline uint64_t SGS_ms_in_samples(uint64_t time_ms, uint64_t srate) {
 	uint64_t time = time_ms * srate;
 	time = (time + 500) / 1000;
 	return time;
+}
+
+/**
+ * Convert cyclical value (0.0 = 0% and 1.0 = 100%, with ends
+ * wrapping around) to 32-bit integer with 0 as the 0% value.
+ *
+ * Note that if \p x is exactly 0.5 or some integer multiples
+ * of it, and long is 32-bit, the result is undefined; but in
+ * practice it'll be either INT32_MIN or INT32_MAX, depending
+ * on if lrint() overflow wraps or saturates on the platform.
+ */
+static inline int32_t SGS_cyclepos_dtoi32(double x) {
+	return lrint(remainder(x, 1.f) * 2.f * (float)INT32_MAX);
 }

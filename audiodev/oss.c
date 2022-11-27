@@ -27,43 +27,42 @@
  */
 static inline SGSAudioDev *open_oss(const char *name, int mode,
 		uint16_t channels, uint32_t *srate) {
-	const char *errp = NULL;
+	const char *err_name = NULL;
 	int tmp, fd;
 
 	if ((fd = open(name, mode, 0)) == -1) {
-		errp = name;
+		err_name = name;
 		goto ERROR;
 	}
 
 	tmp = AFMT_S16_NE;
 	if (ioctl(fd, SNDCTL_DSP_SETFMT, &tmp) == -1) {
-		errp = "SNDCTL_DSP_SETFMT";
+		err_name = "SNDCTL_DSP_SETFMT";
 		goto ERROR;
 	}
 	if (tmp != AFMT_S16_NE) {
-		fputs("error [OSS]: 16-bit signed integer native endian format unsupported\n",
-			stderr);
+		SGS_error("OSS", "16-bit signed integer native endian format unsupported");
                 goto ERROR;
         }
 
 	tmp = channels;
 	if (ioctl(fd, SNDCTL_DSP_CHANNELS, &tmp) == -1) {
-		errp = "SNDCTL_DSP_CHANNELS";
+		err_name = "SNDCTL_DSP_CHANNELS";
 		goto ERROR;
 	}
 	if (tmp != channels) {
-		fprintf(stderr, "error [OSS]: %d channels unsupported\n",
+		SGS_error("OSS", "%d channels unsupported",
 			channels);
                 goto ERROR;
         }
 
 	tmp = *srate;
 	if (ioctl(fd, SNDCTL_DSP_SPEED, &tmp) == -1) {
-		errp = "SNDCTL_DSP_SPEED";
+		err_name = "SNDCTL_DSP_SPEED";
 		goto ERROR;
 	}
 	if ((uint32_t) tmp != *srate) {
-		fprintf(stderr, "warning [OSS]: sample rate %d unsupported, using %d\n",
+		SGS_warning("OSS", "sample rate %d unsupported, using %d",
 			*srate, tmp);
 		*srate = tmp;
 	}
@@ -76,11 +75,11 @@ static inline SGSAudioDev *open_oss(const char *name, int mode,
 	return o;
 
 ERROR:
-	if (errp)
-		fprintf(stderr, "error [OSS]: %s: %s\n", errp, strerror(errno));
+	if (err_name)
+		SGS_error("OSS", "%s: %s", err_name, strerror(errno));
 	if (fd != -1)
 		close(fd);
-	fprintf(stderr, "error [OSS]: configuration for device \"%s\" failed\n",
+	SGS_error("OSS", "configuration for device \"%s\" failed",
 		name);
 	return NULL;
 }

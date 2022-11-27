@@ -39,11 +39,11 @@ static bool produce_audio(struct SGSProgram *prg,
 	bool run;
 	do {
 		run = SGS_generator_run(gen, audio_buf, BUF_SAMPLES, &len);
-		if (ad && !SGS_audiodev_write(ad, audio_buf, len)) {
+		if (ad && !SGSAudioDev_write(ad, audio_buf, len)) {
 			error = true;
 			fputs("error: audio device write failed\n", stderr);
 		}
-		if (wf && !SGS_wavfile_write(wf, audio_buf, len)) {
+		if (wf && !SGSWAVFile_write(wf, audio_buf, len)) {
 			error = true;
 			fputs("error: WAV file write failed\n", stderr);
 		}
@@ -67,11 +67,11 @@ static bool run_program(struct SGSProgram *prg,
 	SGSWAVFile *wf = NULL;
 	bool status = true;
 	if (use_audiodev) {
-		ad = SGS_open_audiodev(NUM_CHANNELS, &ad_srate);
+		ad = SGS_open_AudioDev(NUM_CHANNELS, &ad_srate);
 		if (!ad) goto CLEANUP;
 	}
 	if (wav_path) {
-		wf = SGS_create_wavfile(wav_path, NUM_CHANNELS, srate);
+		wf = SGS_create_WAVFile(wav_path, NUM_CHANNELS, srate);
 		if (!wf) goto CLEANUP;
 	}
 
@@ -85,10 +85,10 @@ static bool run_program(struct SGSProgram *prg,
 
 CLEANUP:
 	if (ad) {
-		SGS_close_audiodev(ad);
+		SGS_close_AudioDev(ad);
 	}
 	if (wf) {
-		status = status && (SGS_close_wavfile(wf) == 0);
+		status = status && (SGS_close_WAVFile(wf) == 0);
 	}
 	return status;
 }
