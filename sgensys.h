@@ -14,7 +14,7 @@
 #pragma once
 
 /*
- * Common types.
+ * Basic types.
  */
 
 #include <stddef.h>
@@ -22,8 +22,35 @@
 #include <stdbool.h>
 
 /*
+ * Keyword-like macros.
+ */
+
+#if defined(__GNUC__) || defined(__clang__)
+# define SGS__malloclike __attribute__((malloc))
+# define SGS__maybe_unused __attribute__((unused))
+# define SGS__printflike(string_index, first_to_check) \
+	__attribute__((format(printf, string_index, first_to_check)))
+#else
+# define SGS__malloclike
+# define SGS__maybe_unused
+# define SGS__printflike(string_index, first_to_check)
+#endif
+
+/*
+ * Utility functions.
+ */
+
+void SGS_warning(const char *label, const char *fmt, ...)
+	SGS__printflike(2, 3);
+void SGS_error(const char *label, const char *fmt, ...)
+	SGS__printflike(2, 3);
+
+/*
  * Debugging options.
  */
+
+/* Debug-friendly memory handling? (Slower.) */
+//#define SGS_MEM_DEBUG 1
 
 /* Disable old parser, run lexer testing instead. */
 #define SGS_TEST_LEXER 0
