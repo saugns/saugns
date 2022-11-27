@@ -13,6 +13,7 @@
 
 #include "program.h"
 #include "parser.h"
+#include "mempool.h"
 #include "symtab.h"
 #include "math.h"
 #include <string.h>
@@ -22,27 +23,6 @@
 /*
  * General-purpose functions
  */
-
-static void *memdup(const void *src, size_t size) {
-  void *ret = malloc(size);
-  if (!ret) return 0;
-  memcpy(ret, src, size);
-  return ret;
-}
-
-#ifdef strdup /* deal with libc issues when already provided */
-# undef strdup
-#endif
-#define strdup _strdup
-static char *_strdup(const char *src) {
-  size_t len = strlen(src);
-  char *ret;
-  if (!len) return 0;
-  ret = memdup(src, len + 1);
-  if (!ret) return 0;
-  ret[len] = '\0';
-  return ret;
-}
 
 #define IS_WHITESPACE(c) \
   ((c) == ' ' || (c) == '\t' || (c) == '\n' || (c) == '\r')
@@ -119,6 +99,7 @@ typedef struct SGSParser {
   FILE *f;
   const char *fn;
   SGSSymtab *st;
+  SGSMempool *mp;
   uint32_t line;
   uint32_t calllevel;
   uint32_t scopeid;
@@ -154,7 +135,8 @@ typedef float (*ReadSym_f)(SGSParser *o);
  */
 static SGSParser *create_parser(void) {
   SGSParser *o = calloc(1, sizeof(SGSParser));
-  o->st = SGS_create_symtab();
+  o->mp = SGS_create_Mempool(0);
+  o->st = SGS_create_Symtab();
   o->sopt = def_sopt;
   return o;
 }
@@ -163,7 +145,7 @@ static SGSParser *create_parser(void) {
  * Destroy parser instance.
  */
 static void destroy_parser(SGSParser *o) {
-  SGS_destroy_symtab(o->st);
+  SGS_destroy_Symtab(o->st);
   free(o);
 }
 
@@ -188,6 +170,8 @@ enum {
   NS_NESTED_SCOPE = 1<<2,
   NS_NEW_EVENT_FORK = 1<<3,
   NS_BIND_MULTIPLE = 1<<4, /* previous node interpreted as set of nodes */
+  NS_OWN_EV = 1<<5,
+  NS_OWN_OP = 1<<6,
 };
 
 /*
@@ -204,9 +188,10 @@ typedef struct NodeScope {
   uint8_t last_linktype; /* FIXME: kludge */
   char scope, close_c;
   SGSEventNode *event, *last_event;
-  SGSOperatorNode *operator, *first_operator, *last_operator;
+  SGSListNode *nest_list;
+  SGSOperatorNode *operator, *scope_first, *ev_last, *nest_last;
   SGSOperatorNode *parent_on, *on_prev;
-  char *set_label;
+  const char *set_label;
   /* timing/delay */
   SGSEventNode *main_event; /* grouping of events for a voice and/or operator */
   uint32_t next_wait_ms; /* added for next event */
@@ -528,7 +513,7 @@ static bool parse_waittime(NodeScope *ns) {
   SGSParser *o = ns->o;
   /* FIXME: ADD_WAIT_DURATION */
   if (tryc('t', o->f)) {
-    if (!ns->last_operator) {
+    if (!ns->ev_last) {
       warning(o, "add wait for last duration before any parts given");
       return false;
     }
@@ -560,54 +545,14 @@ enum {
   NL_AMODS,
 };
 
-static void destroy_operator(SGSOperatorNode *op) {
-  SGSPtrList_clear(&op->on_next);
-  size_t i;
-  SGSOperatorNode **ops;
-  ops = (SGSOperatorNode**) SGSPtrList_ITEMS(&op->fmods);
-  for (i = op->fmods.old_count; i < op->fmods.count; ++i) {
-    destroy_operator(ops[i]);
-  }
-  SGSPtrList_clear(&op->fmods);
-  ops = (SGSOperatorNode**) SGSPtrList_ITEMS(&op->pmods);
-  for (i = op->pmods.old_count; i < op->pmods.count; ++i) {
-    destroy_operator(ops[i]);
-  }
-  SGSPtrList_clear(&op->pmods);
-  ops = (SGSOperatorNode**) SGSPtrList_ITEMS(&op->amods);
-  for (i = op->amods.old_count; i < op->amods.count; ++i) {
-    destroy_operator(ops[i]);
-  }
-  SGSPtrList_clear(&op->amods);
-  if ((op->on_flags & ON_LABEL_ALLOC) != 0) {
-    free((char*) op->label);
-  }
-  free(op);
-}
-
-/*
- * Destroy the given event node and all associated operator nodes.
- */
-static void destroy_event_node(SGSEventNode *e) {
-  size_t i;
-  SGSOperatorNode **ops;
-  ops = (SGSOperatorNode**) SGSPtrList_ITEMS(&e->operators);
-  for (i = e->operators.old_count; i < e->operators.count; ++i) {
-    destroy_operator(ops[i]);
-  }
-  SGSPtrList_clear(&e->operators);
-  SGSPtrList_clear(&e->graph);
-  free(e);
-}
-
 static void end_operator(NodeScope *ns) {
+  if (!(ns->ns_flags & NS_OWN_OP))
+    return;
+  ns->ns_flags &= ~NS_OWN_OP;
   SGSParser *o = ns->o;
   SGSOperatorNode *op = ns->operator;
-  if (!op)
-    return; /* nothing to do */
   if (!op->on_prev) { /* initial event should reset its parameters */
-    op->operator_params |= SGS_P_ADJCS |
-                           SGS_P_WAVE |
+    op->operator_params |= SGS_P_WAVE |
                            SGS_P_TIME |
                            SGS_P_SILENCE |
                            SGS_P_FREQ |
@@ -644,16 +589,17 @@ static void end_operator(NodeScope *ns) {
     op->valitamp.goal *= o->sopt.ampmult;
   }
   ns->operator = NULL;
-  ns->last_operator = op;
 }
 
 static void end_event(NodeScope *ns) {
+  if (!(ns->ns_flags & NS_OWN_EV))
+    return;
+  ns->ns_flags &= ~NS_OWN_EV;
   SGSParser *o = ns->o;
   SGSEventNode *e = ns->event;
   SGSEventNode *pve;
-  if (!e)
-    return; /* nothing to do */
   end_operator(ns);
+  ns->scope_first = ns->ev_last = NULL;
   pve = e->voice_prev;
   if (!pve) { /* initial event should reset its parameters */
     e->voice_params |= SGS_P_VOATTR |
@@ -679,7 +625,7 @@ static void begin_event(NodeScope *ns, uint8_t linktype,
   SGSParser *o = ns->o;
   SGSEventNode *e, *pve;
   end_event(ns);
-  ns->event = calloc(1, sizeof(SGSEventNode));
+  ns->event = SGSMempool_alloc(o->mp, sizeof(SGSEventNode));
   e = ns->event;
   e->wait_ms = ns->next_wait_ms;
   ns->next_wait_ms = 0;
@@ -722,6 +668,7 @@ static void begin_event(NodeScope *ns, uint8_t linktype,
     o->last_event = e;
     ns->main_event = NULL;
   }
+  ns->ns_flags |= NS_OWN_EV;
 }
 
 static void begin_operator(NodeScope *ns, uint8_t linktype,
@@ -733,12 +680,8 @@ static void begin_operator(NodeScope *ns, uint8_t linktype,
    * It is assumed that a valid voice event exists.
    */
   end_operator(ns);
-  ns->operator = calloc(1, sizeof(SGSOperatorNode));
+  ns->operator = SGSMempool_alloc(o->mp, sizeof(SGSOperatorNode));
   op = ns->operator;
-  if (!ns->first_operator)
-    ns->first_operator = op;
-  if (!is_compstep && ns->last_operator != NULL)
-    ns->last_operator->next_bound = op;
   if (!is_compstep)
     ns->ns_flags |= NS_NEW_EVENT_FORK;
   /*
@@ -763,21 +706,15 @@ static void begin_operator(NodeScope *ns, uint8_t linktype,
     op->dynamp = pop->dynamp;
     op->valitfreq = pop->valitfreq;
     op->valitamp = pop->valitamp;
-    SGSPtrList_soft_copy(&op->fmods, &pop->fmods);
-    SGSPtrList_soft_copy(&op->pmods, &pop->pmods);
-    SGSPtrList_soft_copy(&op->amods, &pop->amods);
     if ((ns->ns_flags & NS_BIND_MULTIPLE) != 0) {
       SGSOperatorNode *mpop = pop;
       int32_t max_time = 0;
       do {
         if (max_time < mpop->time_ms) max_time = mpop->time_ms;
-        SGSPtrList_add(&mpop->on_next, op);
-      } while ((mpop = mpop->next_bound) != NULL);
+      } while ((mpop = mpop->next) != NULL);
       op->on_flags |= ON_MULTIPLE_OPERATORS;
       op->time_ms = max_time;
       ns->ns_flags &= ~NS_BIND_MULTIPLE;
-    } else {
-      SGSPtrList_add(&pop->on_next, op);
     }
   } else {
     /*
@@ -800,51 +737,46 @@ static void begin_operator(NodeScope *ns, uint8_t linktype,
    * operator node (either ordinary or representing multiple carriers) in the
    * case of operator linking/nesting.
    */
-  if (linktype == NL_REFER ||
-      linktype == NL_GRAPH) {
-    SGSPtrList_add(&e->operators, op);
+  SGSListNode *nest_list = ns->parent ? ns->parent->nest_list : NULL;
+  if (pop || !nest_list) {
+    if (!e->operators.first_on)
+      e->operators.first_on = op;
+    else
+      ns->ev_last->next = op;
+    ns->ev_last = op;
     if (linktype == NL_GRAPH) {
       e->voice_params |= SGS_P_GRAPH;
-      SGSPtrList_add(&e->graph, op);
+      if (!e->graph.first_on)
+        e->graph.first_on = op;
+      ++e->graph.count;
     }
   } else {
-    SGSPtrList *list = NULL;
-    switch (linktype) {
-    case NL_FMODS:
-      list = &ns->parent_on->fmods;
-      break;
-    case NL_PMODS:
-      list = &ns->parent_on->pmods;
-      break;
-    case NL_AMODS:
-      list = &ns->parent_on->amods;
-      break;
-    }
-    ns->parent_on->operator_params |= SGS_P_ADJCS;
-    SGSPtrList_add(list, op);
+    if (!nest_list->first_on)
+      nest_list->first_on = op;
+    else
+      ns->nest_last->next = op;
+    ns->nest_last = op;
+    ++nest_list->count;
   }
+  if (!ns->scope_first)
+    ns->scope_first = op;
   /*
-   * Assign label. If no new label but previous node (for a non-compstep)
-   * has one, update label to point32_t to new node, but keep pointer (and flag
-   * exclusively for safe deallocation) in previous node.
+   * Assign label?
    */
   if (ns->set_label != NULL) {
-    SGS_symtab_set(o->st, ns->set_label, op);
-    op->on_flags |= ON_LABEL_ALLOC;
-    op->label = ns->set_label;
+    SGSSymtab_set(o->st, ns->set_label, strlen(ns->set_label), op);
     ns->set_label = NULL;
-  } else if (!is_compstep && pop != NULL && pop->label != NULL) {
-    SGS_symtab_set(o->st, pop->label, op);
-    op->label = pop->label;
   }
+  ns->ns_flags |= NS_OWN_OP;
 }
 
 /*
  * Assign label to next node (specifically, the next operator).
  */
 static void label_next_node(NodeScope *ns, const char *label) {
-  if (ns->set_label != NULL || !label) free((char*)ns->set_label);
-  ns->set_label = strdup(label);
+  ns->set_label = label ?
+	  SGSSymtab_pool_str(ns->o->st, label, strlen(label)) :
+	  NULL;
 }
 
 /*
@@ -894,6 +826,16 @@ static void begin_scope(SGSParser *o, NodeScope *ns, NodeScope *parent,
       ns->ns_flags |= NS_NESTED_SCOPE;
       ns->parent_on = parent->operator;
       ns->sub_f = ns->op_sweep ? parse_in_par_sweep : NULL;
+      SGSListNode **list = NULL;
+      switch (linktype) {
+      case NL_AMODS: list = &ns->parent_on->amods; break;
+      case NL_FMODS: list = &ns->parent_on->fmods; break;
+      case NL_PMODS: list = &ns->parent_on->pmods; break;
+      }
+      if (list) {
+        parent->nest_list->prev = *list;
+        *list = parent->nest_list;
+      }
     }
   }
   ns->linktype = linktype;
@@ -907,9 +849,9 @@ static void end_scope(NodeScope *ns) {
      * Begin multiple-operator node in parent scope for the operator nodes in
      * this scope, provided any are present.
      */
-    if (ns->first_operator != NULL) {
+    if (ns->scope_first != NULL) {
       ns->parent->ns_flags |= NS_BIND_MULTIPLE;
-      begin_node(ns->parent, ns->first_operator, ns->parent->last_linktype, false);
+      begin_node(ns->parent, ns->scope_first, ns->parent->last_linktype, false);
     }
   }
   if (!ns->parent) {
@@ -923,7 +865,6 @@ static void end_scope(NodeScope *ns) {
     ns->parent->ns_flags |= ns->ns_flags & NS_SET_SWEEP;
   }
   if (ns->set_label != NULL) {
-    free((char*)ns->set_label);
     warning(o, "ignoring label assignment without operator");
   }
 }
@@ -1044,25 +985,20 @@ static bool parse_par_list(NodeScope *ns,
                           SGSProgramValit *op_sweep,
                           uint8_t linktype) {
   SGSParser *o = ns->o;
-  SGSOperatorNode *op = ns->operator;
   bool clear = tryc('-', o->f);
   bool empty = true;
-  SGSPtrList *list = NULL;
-  switch (linktype) {
-  case NL_FMODS: list = &op->fmods; break;
-  case NL_PMODS: list = &op->pmods; break;
-  case NL_AMODS: list = &op->amods; break;
-  }
   ns->op_sweep = op_sweep;
   ns->read_sym_f = read_sym_f;
   while (tryc('[', o->f)) {
     empty = false;
-    op->operator_params |= SGS_P_ADJCS;
-    if (clear) {
-      clear = false;
-      SGSPtrList_clear(list);
-    }
+    ns->nest_list = SGSMempool_alloc(o->mp, sizeof(SGSListNode));
     parse_level(o, ns, linktype, SCOPE_NEST, ']');
+    if (clear) clear = false;
+    else {
+      if (ns->nest_list->prev)
+        ns->nest_list->count += ns->nest_list->prev->count;
+      ns->nest_list->append = true;
+    }
   }
   return empty;
 }
@@ -1134,7 +1070,7 @@ static void parse_in_op_step(NodeScope *ns) {
     case 'p': {
       float phase;
       if (read_num(o, 0, &phase)) {
-        op->phase = lrint(remainder(phase, 1.f) * 2.f * (float)INT32_MAX);
+        op->phase = SGS_cyclepos_dtoi32(phase);
         op->operator_params |= SGS_P_PHASE;
       }
       parse_par_list(ns, NULL, NULL, NL_PMODS);
@@ -1229,7 +1165,6 @@ static bool parse_level(SGSParser *o, NodeScope *parentns,
         if (o->calllevel > 1)
           goto RETURN;
         ns.sub_f = NULL;
-        ns.first_operator = NULL;
       }
       break;
     case '\'':
@@ -1273,11 +1208,12 @@ static bool parse_level(SGSParser *o, NodeScope *parentns,
       }
       ns.sub_f = NULL;
       if (read_label(o, label, c)) {
-        SGSOperatorNode *ref = SGS_symtab_get(o->st, label);
+        SGSOperatorNode *ref = SGSSymtab_get(o->st, label, strlen(label));
         if (!ref)
           warning(o, "ignoring reference to undefined label");
         else {
           begin_node(&ns, ref, NL_REFER, false);
+          SGSSymtab_set(o->st, label, strlen(label), ns.operator); /* update */
           ns.sub_f = parse_in_op_step;
         }
       }
@@ -1378,13 +1314,9 @@ static bool parse_file(SGSParser *o, const char *filename) {
  */
 static void time_durgroup(SGSEventNode *e_last) {
   SGSEventNode *e, *e_after = e_last->next;
-  size_t i;
   uint32_t cur_longest = 0, wait_sum = 0, wait_after = 0;
   for (e = e_last->group_backref; e != e_after; ) {
-    SGSOperatorNode **ops;
-    ops = (SGSOperatorNode**) SGSPtrList_ITEMS(&e->operators);
-    for (i = 0; i < e->operators.count; ++i) {
-      SGSOperatorNode *op = ops[i];
+    for (SGSOperatorNode *op = e->operators.first_on; op; op = op->next) {
       if (cur_longest < op->time_ms)
         cur_longest = op->time_ms;
     }
@@ -1399,10 +1331,7 @@ static void time_durgroup(SGSEventNode *e_last) {
     }
   }
   for (e = e_last->group_backref; e != e_after; ) {
-    SGSOperatorNode **ops;
-    ops = (SGSOperatorNode**) SGSPtrList_ITEMS(&e->operators);
-    for (i = 0; i < e->operators.count; ++i) {
-      SGSOperatorNode *op = ops[i];
+    for (SGSOperatorNode *op = e->operators.first_on; op; op = op->next) {
       if (op->on_flags & ON_TIME_DEFAULT) {
         /* fill in sensible default time */
         op->time_ms = cur_longest + wait_sum;
@@ -1440,19 +1369,17 @@ static void time_operator(SGSOperatorNode *op) {
       ((SGSEventNode*)e->next)->wait_ms += op->time_ms;
     e->en_flags &= ~EN_ADD_WAIT_DURATION;
   }
-  size_t i;
-  SGSOperatorNode **ops;
-  ops = (SGSOperatorNode**) SGSPtrList_ITEMS(&op->fmods);
-  for (i = op->fmods.old_count; i < op->fmods.count; ++i) {
-    time_operator(ops[i]);
+  if (op->amods) for (SGSOperatorNode *subop = op->amods->first_on; subop;
+       subop = subop->next) {
+    time_operator(subop);
   }
-  ops = (SGSOperatorNode**) SGSPtrList_ITEMS(&op->pmods);
-  for (i = op->pmods.old_count; i < op->pmods.count; ++i) {
-    time_operator(ops[i]);
+  if (op->fmods) for (SGSOperatorNode *subop = op->fmods->first_on; subop;
+       subop = subop->next) {
+    time_operator(subop);
   }
-  ops = (SGSOperatorNode**) SGSPtrList_ITEMS(&op->amods);
-  for (i = op->amods.old_count; i < op->amods.count; ++i) {
-    time_operator(ops[i]);
+  if (op->pmods) for (SGSOperatorNode *subop = op->pmods->first_on; subop;
+       subop = subop->next) {
+    time_operator(subop);
   }
 }
 
@@ -1463,11 +1390,8 @@ static void time_event(SGSEventNode *e) {
    */
   if (e->valitpanning.time_ms == VI_TIME_DEFAULT)
     e->valitpanning.time_ms = 1000; /* FIXME! */
-  size_t i;
-  SGSOperatorNode **ops;
-  ops = (SGSOperatorNode**) SGSPtrList_ITEMS(&e->operators);
-  for (i = e->operators.old_count; i < e->operators.count; ++i) {
-    time_operator(ops[i]);
+  for (SGSOperatorNode *op = e->operators.first_on; op; op = op->next) {
+    time_operator(op);
   }
   /*
    * Timing for sub-events - done before event list flattened.
@@ -1475,7 +1399,7 @@ static void time_event(SGSEventNode *e) {
   SGSEventBranch *fork = e->forks;
   while (fork != NULL) {
     SGSEventNode *ce = fork->events;
-    SGSOperatorNode *ce_op = (SGSOperatorNode*) SGSPtrList_GET(&ce->operators, 0),
+    SGSOperatorNode *ce_op = ce->operators.first_on,
                     *ce_op_prev = ce_op->on_prev,
                     *e_op = ce_op_prev;
     if (e_op->on_flags & ON_TIME_DEFAULT)
@@ -1498,7 +1422,7 @@ static void time_event(SGSEventNode *e) {
       ce_op_prev = ce_op;
       ce = ce->next;
       if (!ce) break;
-      ce_op = (SGSOperatorNode*) SGSPtrList_GET(&ce->operators, 0);
+      ce_op = ce->operators.first_on;
     }
     fork = fork->prev;
   }
@@ -1590,9 +1514,9 @@ SGSParserResult* SGSParser_parse(const char *filename) {
   if (!parse_file(o, filename)) {
     goto DONE;
   }
-
   postparse_passes(o);
-  pr = calloc(1, sizeof(SGSParserResult));
+  pr = SGSMempool_alloc(o->mp, sizeof(SGSParserResult));
+  pr->mp = o->mp;
   pr->events = o->events;
   pr->name = filename;
   pr->sopt = o->sopt;
@@ -1606,11 +1530,7 @@ DONE:
  * Destroy the given parse result.
  */
 void SGSParser_destroy_result(SGSParserResult *pr) {
-  SGSEventNode *e;
-  for (e = pr->events; e; ) {
-    SGSEventNode *e_next = e->next;
-    destroy_event_node(e);
-    e = e_next;
-  }
-  free(pr);
+  if (!pr)
+    return;
+  SGS_destroy_Mempool(pr->mp);
 }
