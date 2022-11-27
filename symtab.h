@@ -1,5 +1,5 @@
 /* sgensys: Symbol table module.
- * Copyright (c) 2011-2012, 2014, 2017-2018 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2014, 2017-2019 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -17,10 +17,13 @@
 struct SGSSymtab;
 typedef struct SGSSymtab SGSSymtab;
 
-SGSSymtab* SGS_create_symtab(void);
-void SGS_destroy_symtab(SGSSymtab *o);
+SGSSymtab *SGS_create_Symtab(void) SGS__malloclike;
+void SGS_destroy_Symtab(SGSSymtab *o);
 
-const char *SGS_symtab_pool_str(SGSSymtab *o, const char *str, uint32_t len);
+const void *SGSSymtab_pool_str(SGSSymtab *o,
+		const void *str, size_t len);
 
-void* SGS_symtab_get(SGSSymtab *o, const char *key);
-void* SGS_symtab_set(SGSSymtab *o, const char *key, void *value);
+void *SGSSymtab_get(SGSSymtab *o,
+		const void *key, size_t len);
+void *SGSSymtab_set(SGSSymtab *o,
+		const void *key, size_t len, void *value);

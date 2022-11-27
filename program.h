@@ -25,7 +25,7 @@ enum {
 	SGS_P_VALITPANNING = 1<<2,
 	SGS_P_VOATTR = 1<<3,
 	/* operator parameters */
-	SGS_P_ADJCS = 1<<4,
+	/* SGS_P_ADJCS = 1<<4, */
 	SGS_P_WAVE = 1<<5,
 	SGS_P_TIME = 1<<6,
 	SGS_P_SILENCE = 1<<7,
@@ -62,19 +62,10 @@ enum {
 	SGS_VALIT_LOG
 };
 
-typedef struct SGSProgramGraph {
-	uint32_t opc;
-	int32_t ops[1]; /* sized to opc */
-} SGSProgramGraph;
-
-typedef struct SGSProgramGraphAdjcs {
-	uint32_t fmodc;
-	uint32_t pmodc;
-	uint32_t amodc;
-	uint32_t level;  /* index for buffer used to store result to use if
-	                    node revisited when traversing the graph. */
-	int32_t adjcs[1]; /* sized to total number */
-} SGSProgramGraphAdjcs;
+typedef struct SGSProgramIDArr {
+	uint32_t count;
+	uint32_t ids[];
+} SGSProgramIDArr;
 
 typedef struct SGSProgramValit {
 	int32_t time_ms, pos_ms;
@@ -83,14 +74,14 @@ typedef struct SGSProgramValit {
 } SGSProgramValit;
 
 typedef struct SGSProgramVoiceData {
-	const SGSProgramGraph *graph;
+	const SGSProgramIDArr *graph;
 	uint8_t attr;
 	float panning;
 	SGSProgramValit valitpanning;
 } SGSProgramVoiceData;
 
 typedef struct SGSProgramOperatorData {
-	const SGSProgramGraphAdjcs *adjcs;
+	const SGSProgramIDArr *amods, *fmods, *pmods;
 	uint32_t operator_id;
 	uint8_t attr, wave;
 	int32_t time_ms, silence_ms;

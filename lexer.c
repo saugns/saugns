@@ -346,7 +346,7 @@ static void handle_identifier(SGSLexer *o, uint8_t id_head) {
 		++i;
 		o->string[i] = '\0';
 	}
-	pool_str = SGS_symtab_pool_str(o->symtab, (const char*)o->string, i);
+	pool_str = SGSSymtab_pool_str(o->symtab, (const char*)o->string, i);
 	if (pool_str == NULL) {
 		SGS_lexer_error(o, "failed to register string '%s'", o->string);
 	}
