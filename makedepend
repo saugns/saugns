@@ -12,20 +12,20 @@ builder/builder.o: builder/builder.c mgensys.h ptrarr.h \
  common.h
 builder/parser.o: builder/parser.c builder/parser.h mgensys.h \
  ptrarr.h common.h program.h \
- line.h math.h noise.h wave.h \
- help.h reader/file.h mempool.h \
- reader/symtab.h
+ Object.h line.h math.h \
+ noise.h wave.h help.h \
+ reader/file.h mempool.h reader/symtab.h
 builder/postparse.o: builder/postparse.c builder/parser.h mgensys.h \
  ptrarr.h common.h program.h \
- line.h math.h noise.h wave.h \
- help.h reader/file.h mempool.h \
- reader/symtab.h
+ Object.h line.h math.h \
+ noise.h wave.h help.h \
+ reader/file.h mempool.h reader/symtab.h
 interp/env.o: interp/env.c
 interp/generator.o: interp/generator.c interp/runalloc.h mgensys.h \
  ptrarr.h common.h interp/ngen.h noise.h \
  math.h interp/osc.h wave.h interp/env.h \
- program.h line.h mempool.h \
- arrtype.h
+ program.h Object.h line.h \
+ mempool.h arrtype.h
 interp/ngen.o: interp/ngen.c interp/ngen.h noise.h math.h \
  common.h
 interp/osc.o: interp/osc.c interp/osc.h wave.h common.h \
@@ -33,12 +33,13 @@ interp/osc.o: interp/osc.c interp/osc.h wave.h common.h \
 interp/runalloc.o: interp/runalloc.c interp/runalloc.h mgensys.h \
  ptrarr.h common.h interp/ngen.h noise.h \
  math.h interp/osc.h wave.h interp/env.h \
- program.h line.h mempool.h \
- arrtype.h
+ program.h Object.h line.h \
+ mempool.h arrtype.h
 player/audiodev.o: player/audiodev.c player/audiodev.h common.h
 player/player.o: player/player.c mgensys.h ptrarr.h \
- common.h program.h line.h math.h \
- noise.h wave.h player/audiodev.h player/sndfile.h
+ common.h program.h Object.h \
+ line.h math.h noise.h wave.h \
+ player/audiodev.h player/sndfile.h
 player/sndfile.o: player/sndfile.c player/sndfile.h common.h
 reader/file.o: reader/file.c reader/file.h common.h math.h
 reader/symtab.o: reader/symtab.c reader/symtab.h mempool.h \

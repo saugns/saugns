@@ -12,6 +12,7 @@
  */
 
 #pragma once
+#include "Object.h"
 #include "line.h"
 #include "noise.h"
 #include "wave.h"
@@ -71,7 +72,6 @@ enum {
 };
 
 typedef struct mgsProgramNode mgsProgramNode;
-typedef struct mgsProgramSoundData mgsProgramSoundData;
 typedef struct mgsProgramLineData mgsProgramLineData;
 typedef struct mgsProgramNoiseData mgsProgramNoiseData;
 typedef struct mgsProgramWaveData mgsProgramWaveData;
@@ -89,14 +89,17 @@ typedef struct mgsTimePar {
 	uint32_t flags;
 } mgsTimePar;
 
-struct mgsProgramSoundData {
-	mgsTimePar time;
-	mgsProgramNode *root;
-	uint32_t params;
-	float amp, dynamp, pan;
-	mgsProgramArrData *amod;
-	mgsProgramNode *nested_next;
-};
+#define mgsProgramSoundData_C_ mgsObject_C_ \
+	mgsTimePar time; \
+	mgsProgramNode *root; \
+	uint32_t params; \
+	float amp, dynamp, pan; \
+	mgsProgramArrData *amod; \
+	mgsProgramNode *nested_next; \
+/**/
+#define mgsProgramSoundData_V_ mgsObject_V_ \
+/**/
+MGSclassdef(mgsProgramSoundData)
 
 struct mgsProgramLineData {
 	mgsProgramSoundData sound;

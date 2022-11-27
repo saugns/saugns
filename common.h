@@ -52,10 +52,10 @@
 #define MGS_STREXP(arg) MGS_STRLIT(arg)
 
 /** Concatenate the text of two arguments before macro-expanding them. */
-#define MGS_CONCAT(_0, _1) _0 ## _1
+#define MGS_CAT(_0, _1) _0 ## _1
 
 /** Concatenate the text of two arguments after macro-expanding them. */
-#define MGS_PASTE(_0, _1) MGS_CONCAT(_0, _1)
+#define MGS_PASTE(_0, _1) MGS_CAT(_0, _1)
 
 /** Return all arguments. Can be used to remove parentheses around a list. */
 #define MGS_ARGS(...) __VA_ARGS__
@@ -80,20 +80,28 @@
  * Check whether arguments include at least one comma,
  * i.e. there's more than one argument (blank or not).
  *
- * This version only works with fewer than 16 arguments.
+ * This version only works with fewer than 32 arguments.
  */
-#define MGS_HAS_COMMA(...) MGS__ARG16(__VA_ARGS__, \
+#define MGS_HAS_COMMA(...) MGS__ARG32(__VA_ARGS__, \
+		1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, \
 		1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, )
-#define MGS__ARG16(_0, _1, _2, _3, _4, _5, _6, _7, \
-		_8, _9, _10, _11, _12, _13, _14, _15, ...) _15
+#define MGS__ARG32(_0, \
+ _1, _2, _3, _4, _5, _6, _7, _8, _9,_10,_11,_12,_13,_14,_15,_16, \
+_17,_18,_19,_20,_21,_22,_23,_24,_25,_26,_27,_28,_29,_30,_31, ...) _31
+
+/** Return \p cond if not empty, otherwise return \p repl. */
+#define MGS_NONEMPTY_OR(cond, repl) \
+	MGS_PASTE(MGS__NONEMPTY_OR, MGS_IS_EMPTY(cond))(cond, repl)
+#define MGS__NONEMPTY_OR0(cond, repl) cond
+#define MGS__NONEMPTY_OR1(cond, repl) repl
 
 /**
- * C99-compatible macro returning a comma if the argument list is not empty.
- * Derived from Jens Gustedt's empty macro arguments detection.
+ * C99-compatible empty macro arguments detection,
+ * using Jens Gustedt's technique.
  */
-#define MGS_COMMA_ON_ARGS(...) \
-/* test for empty argument in four ways, then invert result... */       \
-MGS__COMMA_ON_ARGS( \
+#define MGS_IS_EMPTY(...) \
+/* test for empty argument in four ways, then produce 1 or 0   */       \
+MGS__IS_EMPTY( \
 	/* if argument has comma (not just one arg, empty or not)? */   \
 	MGS_HAS_COMMA(__VA_ARGS__),                                     \
 	/* if _TRIGGER_PARENTHESIS_ and argument adds a comma? */       \
@@ -103,13 +111,10 @@ MGS__COMMA_ON_ARGS( \
 	/* if placed between _TRIGGER_PARENTHESIS_ and parentheses? */  \
 	MGS_HAS_COMMA(MGS__TRIGGER_PARENTHESIS_ __VA_ARGS__ (/*empty*/))\
 )
-#define MGS__ARG3(_0, _1, _2, ...) _2
 #define MGS__IS_EMPTY_CASE_0001 ,
-#define MGS_CONCAT5(_0, _1, _2, _3, _4) _0 ## _1 ## _2 ## _3 ## _4
-#define MGS__COMMA ,
-#define MGS__INVERT_COMMA(...) MGS__ARG3(__VA_ARGS__, , MGS__COMMA, )
-#define MGS__COMMA_ON_ARGS(_0, _1, _2, _3) \
-	MGS__INVERT_COMMA(MGS_CONCAT5(MGS__IS_EMPTY_CASE_, _0, _1, _2, _3))
+#define MGS_CAT5(_0, _1, _2, _3, _4) _0 ## _1 ## _2 ## _3 ## _4
+#define MGS__IS_EMPTY(_0, _1, _2, _3) \
+	MGS_HAS_COMMA(MGS_CAT5(MGS__IS_EMPTY_CASE_, _0, _1, _2, _3))
 #define MGS__TRIGGER_PARENTHESIS_(...) ,
 
 /** Is \p c a visible non-whitespace 7-bit ASCII character? */

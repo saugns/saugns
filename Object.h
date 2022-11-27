@@ -54,24 +54,21 @@ struct mgsMemPool;
    using a convenience macro for brevity, and use a utility function to deal
    with memory allocation and initialization of the instance.
 
-   There is no need to "register" a class before allocating an instance. The
-   meta type will become fully initialized the first time an instance
+   There is no need to "register" a class before allocating an instance;
+   the meta type will become fully initialized the first time an instance
    is allocated.
 
    A note on the API naming convention:
-   - Declarations and definitions meant to mimic new keywords are named
-     with an "MGS"-prefix (no underscore follows), the rest of the name
-     then in lowercase. E.g., MGSclassdef.
-   - Functions and macros that behave like functions are named with an
-     "mgs_"-prefix and the rest of the name in lowercase, unless methods
-     of a class.
-   - Macros that don't behave like functions are generally named with an
-     "mgs_"-prefix and the rest of the name in uppercase, unless methods
-     of a class.
-   - For methods of a class, the name of the class, followed by an
-     underscore, prefixes the name. If the method is a macro which doesn't
-     behave like a function, then the rest of the name is in all-uppercase
-     letters; otherwise, the rest of the name is in all-lowercase letters.
+   - "mgs"-prefix (no underscore), camel case after.
+     Typedefs and plain keyword-like macros.
+   - "mgs_"-prefix, lowercase after.
+     Global functions, and macros that behave like normal functions.
+   - "MGS"-prefix (no underscore), lowercase after.
+     Key feature macros like MGSclassdef() with special behavior.
+   - "MGS_"-prefix, uppercase after.
+     Enums, constants, miscellaneous macros.
+   - Type name and underscore as a prefix.
+     For things belonging to the type.
  */
 
 /*
@@ -82,11 +79,11 @@ struct mgsMemPool;
   * (There is no support for passing such data to mgs_delete(),
   * mgs_finalize(), or trying to use RTTI or virtual functions.)
   *
-  * \p Name is the name of the type to declare. The existence of a
-  * macro, having the same name except with an appended underscore, is
-  * expected. That macro should list all the members of the type, the
-  * way they are listed within a struct declaration; it will be
-  * referenced as a means of declaring the type.
+  * \p Name is the name of the type to declare. The existence of
+  * a macro, having the same name except with "_S_" appended, is
+  * expected. That macro should list all the members of the type,
+  * the way they are listed within a struct declaration; it
+  * will be referenced as a means of declaring the type.
   *
   * A member list macro can reference one other MGSstructdef()
   * type's member list macro at the beginning, giving rise to single
@@ -96,7 +93,7 @@ struct mgsMemPool;
   * wrapped in an anonymous struct. This works for non-class types.)
   */
 #define MGSstructdef(Name) \
-typedef struct Name { Name##_ } Name
+typedef struct Name { Name##_S_ } Name;
 
 /*
  * OOC full-fledged classes.
@@ -107,11 +104,11 @@ typedef struct Name { Name##_ } Name
   * RTTI and virtual table system used.) Each such struct begins
   * with a \a meta pointer to its meta type.
   *
-  * \p Name is the name of the type to declare. The existence of a
-  * macro, having the same name except with an appended underscore, is
-  * expected. That macro should list all the members of the type, the
-  * way they are listed within a struct declaration; it will be
-  * referenced as a means of declaring the type.
+  * \p Name is the name of the type to declare. The existence of
+  * a macro, having the same name except with "_C_" appended, is
+  * expected. That macro should list all the members of the type,
+  * the way they are listed within a struct declaration; it
+  * will be referenced as a means of declaring the type.
   *
   * A member list macro can reference one other MGSclassdef()/MGSclasstype()
   * type's member list macro at the beginning, giving rise to single
@@ -121,7 +118,7 @@ typedef struct Name { Name##_ } Name
   * keyword-like macro.
   */
 #define MGSclasstype(Name) \
-typedef struct Name { const struct Name##_Meta *meta; Name##_ } Name
+typedef struct Name { const struct Name##_Meta *meta; Name##_C_ } Name;
 
 #ifndef MGS__DTOR_F_DEFINED
 # define MGS__DTOR_F_DEFINED
@@ -133,36 +130,13 @@ typedef void (*mgsDtor_f)(void *o);
     The meta type instance is expected as the \p o argument. */
 typedef void (*mgsVtinit_f)(void *o);
 
-/** Declare a meta type for a type declared with MGSclassdef();
-  * the name of this type seldom needs to be explicitly referenced,
-  * but is the same as that of the class with _Meta appended.
-  *
-  * This version \a does \a not forward-declare the corresponding global
-  * instance made by \ref MGSmetainst() for symbol export.
-  *
-  * \see MGSmetatype()
-  *
-  * _MGSclassdef() combines this and MGSclasstype() into a single step.
-  */
-#define _MGSmetatype(Class) \
-typedef struct Class##_Virt { mgsDtor_f dtor; Class##__ } Class##_Virt; \
-typedef struct Class##_Meta { \
-	const struct mgsObject_Meta *super; \
-	size_t size; \
-	unsigned short vnum; \
-	unsigned char done; \
-	const char *name; \
-	mgsVtinit_f vtinit; /* virtual table init function, passed meta */ \
-	Class##_Virt virt; \
-} Class##_Meta
-
 /** Declare a meta type for a type declared with MGSclassdef().
   * the name of this type seldom needs to be explicitly referenced,
   * but is the same as that of the class with _Meta appended.
   *
   * This version \a will \a also forward-declare the corresponding global
   * instance made by MGSmetainst() for symbol export, as is done for
-  * public APIs. To avoid that, use \ref _MGSmetatype() instead.
+  * public APIs. To avoid that, use \ref MGSmetatype_() instead.
   *
   * The declaration uses the corresponding macro listing virtual
   * methods - named the same as the class except for having \a two
@@ -178,8 +152,31 @@ typedef struct Class##_Meta { \
   * MGSclassdef() combines this and MGSclasstype() into a single step.
   */
 #define MGSmetatype(Class) \
-_MGSmetatype(Class); \
-MGS_USERAPI extern Class##_Meta Class##__meta
+MGSmetatype_(Class) \
+MGS_USERAPI extern Class##_Meta Class##__meta;
+
+/** Declare a meta type for a type declared with MGSclassdef();
+  * the name of this type seldom needs to be explicitly referenced,
+  * but is the same as that of the class with _Meta appended.
+  *
+  * This version \a does \a not forward-declare the corresponding global
+  * instance made by \ref MGSmetainst() for symbol export.
+  *
+  * \see MGSmetatype()
+  *
+  * MGSclassdef_() combines this and MGSclasstype() into a single step.
+  */
+#define MGSmetatype_(Class) \
+typedef struct Class##_Virt { mgsDtor_f dtor; Class##_V_ } Class##_Virt; \
+typedef struct Class##_Meta { \
+	const struct mgsObject_Meta *super; \
+	size_t size; \
+	unsigned short vnum; \
+	unsigned char done; \
+	const char *name; \
+	mgsVtinit_f vtinit; /* virtual table init function, passed meta */ \
+	Class##_Virt virt; \
+} Class##_Meta;
 
 /** Get the global meta type instance of the \p Class named.
   *
@@ -193,15 +190,6 @@ MGS_USERAPI extern Class##_Meta Class##__meta
   */
 #define mgs_metaof(Class) (&(Class##__meta))
 
-/** This combines MGSclasstype() and _MGSmetatype() to declare a class
-  * and its meta type at once.
-  * \see MGSclasstype()
-  * \see _MGSmetatype()
-  */
-#define _MGSclassdef(Class) \
-MGSclasstype(Class); \
-_MGSmetatype(Class)
-
 /** This combines MGSclasstype() and MGSmetatype() to declare a class
   * and its meta type at once - and forward-declare the symbol of
   * the MGSmetainst() definition of the global meta type for
@@ -210,20 +198,17 @@ _MGSmetatype(Class)
   * \see MGSmetatype()
   */
 #define MGSclassdef(Class) \
-MGSclasstype(Class); \
+MGSclasstype(Class) \
 MGSmetatype(Class)
 
-/** Use to declare a set of allocation and constructor functions for a
-  * class if they do not take variable arguments. This version is used
-  * to forward-declare a static set (not part of any visible API).
-  *
-  * \see MGSctordec()
+/** This combines MGSclasstype() and MGSmetatype_() to declare a class
+  * and its meta type at once.
+  * \see MGSclasstype()
+  * \see MGSmetatype_()
   */
-#define _MGSctordec(Class, FunctionName, NameSuffix, Parlist) \
-static Class* FunctionName##_new##NameSuffix Parlist; \
-static Class* FunctionName##_mpnew##NameSuffix \
-MGS_SUBST_HEAD(struct mgsMemPool *mp, Parlist); \
-static inline unsigned char FunctionName##_ctor##NameSuffix Parlist
+#define MGSclassdef_(Class) \
+MGSclasstype(Class) \
+MGSmetatype_(Class)
 
 /** Use to declare a set of allocation and constructor functions for a
   * class if they do not take variable arguments. They will include a
@@ -234,6 +219,10 @@ static inline unsigned char FunctionName##_ctor##NameSuffix Parlist
   * A FunctionName_mpnew() variation will also be included, which
   * replaces the first parameter with one for a mempool instance.
   *
+  * If \p FunctionName is blank, \p Class will be used for it.
+  * Optionally \p NameSuffix can be non-blank to add a suffix to the
+  * names in the set of functions, useful for adding several sets.
+  *
   * Any number of these function sets may be declared and defined.
   *
   * \ref MGSctordef() is used to define an allocation/construction
@@ -242,47 +231,27 @@ static inline unsigned char FunctionName##_ctor##NameSuffix Parlist
   * See \ref MGSctordef() for further details.
   */
 #define MGSctordec(Class, FunctionName, NameSuffix, Parlist) \
-MGS_USERAPI Class* FunctionName##_new##NameSuffix Parlist; \
-MGS_USERAPI Class* FunctionName##_mpnew##NameSuffix \
-MGS_SUBST_HEAD(struct mgsMemPool *mp, Parlist); \
-MGS_USERAPI unsigned char FunctionName##_ctor##NameSuffix Parlist
+	MGS__ctordec(MGS_USERAPI, Class, \
+			MGS_NONEMPTY_OR(FunctionName, Class), \
+			NameSuffix, Parlist)
 
-/** Use to define a set of allocation and constructor functions for a
+/** Use to declare a set of allocation and constructor functions for a
   * class if they do not take variable arguments. This version is used
   * to forward-declare a static set (not part of any visible API).
   *
-  * \see MGSctordef()
+  * \see MGSctordec()
   */
-#define _MGSctordef(Class, FunctionName, NameSuffix, Parlist, Arglist) \
-static inline unsigned char FunctionName##_ctor##NameSuffix Parlist; \
-static mgsMaybeUnused Class * \
-FunctionName##_new##NameSuffix Parlist \
-{ \
-	void *MGSctordef__mem = (MGS_ARG1 Arglist); \
-	if (((MGS_ARG1 Arglist) = \
-	     mgs_raw_new(MGSctordef__mem, mgs_metaof(Class))) != NULL && \
-	    !FunctionName##_ctor##NameSuffix Arglist) { \
-		(MGSctordef__mem ? mgs_finalize : mgs_delete)( \
-				(MGS_ARG1 Arglist)); \
-		return 0; \
-	} \
-	return (MGS_ARG1 Arglist); \
-} \
-static mgsMaybeUnused Class * \
-FunctionName##_mpnew##NameSuffix \
-MGS_SUBST_HEAD(struct mgsMemPool *MGSctordef__mp, Parlist) \
-{ \
-	void *MGSctordef__mem; \
-	if ((MGSctordef__mem = \
-	     mgs_raw_mpnew(MGSctordef__mp, mgs_metaof(Class))) != NULL && \
-	    !FunctionName##_ctor##NameSuffix \
-	    MGS_SUBST_HEAD(MGSctordef__mem, Arglist)) { \
-		return 0; \
-	} \
-	return MGSctordef__mem; \
-} \
-static inline mgsMaybeUnused unsigned char \
-FunctionName##_ctor##NameSuffix Parlist
+#define MGSctordec_(Class, FunctionName, NameSuffix, Parlist) \
+	MGS__ctordec(static, Class, \
+			MGS_NONEMPTY_OR(FunctionName, Class), \
+			NameSuffix, Parlist)
+
+/* Body of MGSctordec() and MGSctordec_(). */
+#define MGS__ctordec(Attr, Class, FunctionName, NameSuffix, Parlist) \
+Attr Class *MGS_CAT(FunctionName, _new##NameSuffix) Parlist; \
+Attr Class *MGS_CAT(FunctionName, _mpnew##NameSuffix) \
+MGS_SUBST_HEAD(struct mgsMemPool *mp, Parlist); \
+Attr unsigned char MGS_CAT(FunctionName, _ctor##NameSuffix) Parlist
 
 /** Use to define a set of allocation and constructor functions for a
   * class if they do not take variable arguments. They will include a
@@ -309,6 +278,10 @@ FunctionName##_ctor##NameSuffix Parlist
   * A FunctionName_mpnew() variation will also be included, which
   * replaces the first parameter with one for a mempool instance.
   *
+  * If \p FunctionName is blank, \p Class will be used for it.
+  * Optionally \p NameSuffix can be non-blank to add a suffix to the
+  * names in the set of functions, useful for adding several sets.
+  *
   * Note that a constructor for a derived class must explicitly call a
   * constructor for the superclass at the beginning of the function.
   *
@@ -326,39 +299,56 @@ FunctionName##_ctor##NameSuffix Parlist
   * \see MGSctordec() for simply declaring them as in a header.
   */
 #define MGSctordef(Class, FunctionName, NameSuffix, Parlist, Arglist) \
-unsigned char FunctionName##_ctor##NameSuffix Parlist; \
-Class* FunctionName##_new##NameSuffix Parlist \
+	MGS__ctordef(, Class, \
+			MGS_NONEMPTY_OR(FunctionName, Class), \
+			NameSuffix, Parlist, Arglist)
+
+/** Use to define a set of allocation and constructor functions for a
+  * class if they do not take variable arguments. This version is used
+  * to forward-declare a static set (not part of any visible API).
+  *
+  * \see MGSctordef()
+  */
+#define MGSctordef_(Class, FunctionName, NameSuffix, Parlist, Arglist) \
+	MGS__ctordef(static mgsMaybeUnused, Class, \
+			MGS_NONEMPTY_OR(FunctionName, Class), \
+			NameSuffix, Parlist, Arglist)
+
+/* Body of MGSctordef() and MGSctordef_(). */
+#define MGS__ctordef(Attr, Class, FunctionName, NameSuffix, Parlist, Arglist) \
+Attr unsigned char MGS_CAT(FunctionName, _ctor##NameSuffix) Parlist; \
+Attr Class *MGS_CAT(FunctionName, _new##NameSuffix) Parlist \
 { \
 	void *MGSctordef__mem = (MGS_ARG1 Arglist); \
 	if (((MGS_ARG1 Arglist) = \
 	     mgs_raw_new(MGSctordef__mem, mgs_metaof(Class))) != NULL && \
-	    !FunctionName##_ctor##NameSuffix Arglist) { \
+	    !MGS_CAT(FunctionName, _ctor##NameSuffix) Arglist) { \
 		(MGSctordef__mem ? mgs_finalize : mgs_delete)( \
 				(MGS_ARG1 Arglist)); \
 		return 0; \
 	} \
 	return (MGS_ARG1 Arglist); \
 } \
-Class* FunctionName##_mpnew##NameSuffix \
+Attr Class *MGS_CAT(FunctionName, _mpnew##NameSuffix) \
 MGS_SUBST_HEAD(struct mgsMemPool *MGSctordef__mp, Parlist) \
 { \
 	void *MGSctordef__mem; \
 	if ((MGSctordef__mem = \
 	     mgs_raw_mpnew(MGSctordef__mp, mgs_metaof(Class))) != NULL && \
-	    !FunctionName##_ctor##NameSuffix \
+	    !MGS_CAT(FunctionName, _ctor##NameSuffix) \
 	    MGS_SUBST_HEAD(MGSctordef__mem, Arglist)) { \
 		return 0; \
 	} \
 	return MGSctordef__mem; \
 } \
-unsigned char FunctionName##_ctor##NameSuffix Parlist
+Attr unsigned char MGS_CAT(FunctionName, _ctor##NameSuffix) Parlist
 
 /** Define the global instance of the meta type for the class.
   * This version makes the symbol static (not part of a public API).
   *
   * \see MGSmetainst()
   */
-#define _MGSmetainst static MGSmetainst
+#define MGSmetainst_ static MGSmetainst
 
 /** Define the global instance of the meta type for the class.
   *
@@ -392,17 +382,17 @@ struct Class##_Meta Class##__meta = { \
 	#Class, \
 	(mgsVtinit_f)vtinit, \
 	{(mgsDtor_f)dtor}, \
-}
+};
 
-/** The member content list for the dummy type mgsObject - it is empty,
+/** The class member list for the dummy type mgsObject - it is empty,
   * and does not need to be referenced anywhere.
   */
-#define mgsObject_
+#define mgsObject_C_
 
 /** The virtual method list for the dummy type mgsObject - it is empty,
   * and does not need to be referenced anywhere.
   */
-#define mgsObject__
+#define mgsObject_V_
 
 /** Dummy class containing only the meta type pointer; a
   * mgsObject pointer and/or cast may be used to access the basic
@@ -411,7 +401,7 @@ struct Class##_Meta Class##__meta = { \
   *
   * mgsObject is just a dummy definition - not a valid class name!
   */
-MGSclasstype(mgsObject);
+MGSclasstype(mgsObject)
 
 /** Dummy meta type type containing only the common type
   * information; a mgsObject_Meta pointer and/or cast may be used to
@@ -420,7 +410,7 @@ MGSclasstype(mgsObject);
   *
   * mgsObject is just a dummy definition - not a valid class name!
   */
-_MGSmetatype(mgsObject);
+MGSmetatype_(mgsObject)
 
 #ifndef MGS_DOXYGEN
 /* This is a dummy meta type allowing the keyword \a mgsNone

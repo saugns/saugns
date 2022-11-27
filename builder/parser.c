@@ -138,6 +138,13 @@ typedef struct mgsNodeData {
   float n_delay_next;
 } mgsNodeData;
 
+MGSmetainst(mgsProgramSoundData, mgsNone, NULL, NULL)
+
+MGSctordef_(mgsProgramSoundData,,, (void *o), (o)) {
+  (void)o;
+  return true;
+}
+
 /*
  * Allocate sound data and do common initialization.
  *
