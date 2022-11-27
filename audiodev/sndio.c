@@ -35,8 +35,7 @@ static inline SGSAudioDev *open_sndio(const char *name,
 	if ((!sio_setpar(hdl, &par)) ||
 	    (!sio_getpar(hdl, &par))) goto ERROR;
 	if (par.rate != *srate) {
-		fprintf(stderr,
-			"warning [sndio]: sample rate %d unsupported, using %d\n",
+		SGS_warning("sndio", "sample rate %d unsupported, using %d",
 			*srate, par.rate);
 		*srate = par.rate;
 	}
@@ -51,8 +50,7 @@ static inline SGSAudioDev *open_sndio(const char *name,
 	return o;
 
 ERROR:
-	fprintf(stderr,
-		"error [sndio]: configuration for device \"%s\" failed\n",
+	SGS_error("sndio", "configuration for device \"%s\" failed",
 		name);
 	return NULL;
 }
