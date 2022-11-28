@@ -1,5 +1,5 @@
 /* Object module -- mgensys version. Originally from the FLPTK library
- * (FLTK-2 fork), later spun off into the SCOOP library, then reworked.
+ * (FLTK-2 fork), later spun off into the SCOOP library, then adjusted.
  *
  * Copyright (c) 2010-2011, 2013, 2022 Joel K. Pettersson
  * <joelkp@tuta.io>.

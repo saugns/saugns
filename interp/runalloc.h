@@ -60,7 +60,7 @@ typedef struct mgsVoiceNode {
 	uint32_t delay;
 } mgsVoiceNode;
 
-mgsArrType(mgsVoiceArr, mgsVoiceNode, );
+mgsArrType(mgsVoiceArr, mgsVoiceNode, )
 
 enum {
 	MGS_EV_PREPARED = 1<<0,
@@ -76,7 +76,7 @@ typedef struct mgsEventNode {
 	uint32_t ref_i;
 } mgsEventNode;
 
-mgsArrType(mgsEventArr, mgsEventNode, );
+mgsArrType(mgsEventArr, mgsEventNode, )
 
 typedef struct mgsRunAlloc {
 	mgsEventArr ev_arr;

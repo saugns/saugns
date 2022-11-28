@@ -29,7 +29,7 @@ static mgsModList *create_ModList(const mgsProgramArrData *restrict arr_data,
 		mgsMemPool *restrict mem) {
 	mgsModList *o = mgs_mpalloc(mem, sizeof(mgsModList) +
 			arr_data->count * sizeof(uint32_t));
-	mgsProgramNode *n = arr_data->scope.first_node;
+	mgsProgramNode *n = arr_data->first_node;
 	size_t i = 0;
 	o->count = arr_data->count;
 	while (n != NULL) {
@@ -43,7 +43,7 @@ static mgsModList *create_ModList(const mgsProgramArrData *restrict arr_data,
 bool mgs_init_RunAlloc(mgsRunAlloc *restrict o,
 		const mgsProgram *restrict prg, uint32_t srate,
 		mgsMemPool *restrict mem) {
-	*o = (mgsRunAlloc){};
+	*o = (mgsRunAlloc){0};
 	o->prg = prg;
 	o->srate = srate;
 	o->mem = mem;

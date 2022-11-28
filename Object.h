@@ -1,5 +1,5 @@
 /* Object module -- mgensys version. Originally from the FLPTK library
- * (FLTK-2 fork), later spun off into the SCOOP library, then reworked.
+ * (FLTK-2 fork), later spun off into the SCOOP library, then adjusted.
  *
  * Copyright (c) 2010-2011, 2013, 2022 Joel K. Pettersson
  * <joelkp@tuta.io>.
@@ -19,6 +19,9 @@
 
 #pragma once
 #include "common.h"
+/** Type used instead of bool in APIs to ensure binary compatibility between
+    C and C++ given that real bool possibly has different size in C and C++. */
+typedef unsigned char mgsFakeBool;
 #ifndef MGS_API /* not yet used */
 # define MGS_API
 #endif
@@ -153,7 +156,7 @@ typedef void (*mgsVtinit_f)(void *o);
   */
 #define MGSmetatype(Class) \
 MGSmetatype_(Class) \
-MGS_USERAPI extern Class##_Meta Class##__meta;
+MGS_USERAPI extern Class##_Meta Class##_meta;
 
 /** Declare a meta type for a type declared with MGSclassdef();
   * the name of this type seldom needs to be explicitly referenced,
@@ -172,7 +175,7 @@ typedef struct Class##_Meta { \
 	const struct mgsObject_Meta *super; \
 	size_t size; \
 	unsigned short vnum; \
-	unsigned char done; \
+	mgsFakeBool done; \
 	const char *name; \
 	mgsVtinit_f vtinit; /* virtual table init function, passed meta */ \
 	Class##_Virt virt; \
@@ -188,7 +191,7 @@ typedef struct Class##_Meta { \
   * Supplying the keyword \a mgsNone as the class will produce a NULL
   * pointer.
   */
-#define mgs_metaof(Class) (&(Class##__meta))
+#define mgs_metaof(Class) (&(Class##_meta))
 
 /** This combines MGSclasstype() and MGSmetatype() to declare a class
   * and its meta type at once - and forward-declare the symbol of
@@ -250,8 +253,8 @@ MGSmetatype_(Class)
 #define MGS__ctordec(Attr, Class, FunctionName, NameSuffix, Parlist) \
 Attr Class *MGS_CAT(FunctionName, _new##NameSuffix) Parlist; \
 Attr Class *MGS_CAT(FunctionName, _mpnew##NameSuffix) \
-MGS_SUBST_HEAD(struct mgsMemPool *mp, Parlist); \
-Attr unsigned char MGS_CAT(FunctionName, _ctor##NameSuffix) Parlist
+MGS_SUBST_HEAD(struct mgsMemPool *mpnew_arg1__mp, Parlist); \
+Attr mgsFakeBool MGS_CAT(FunctionName, _ctor##NameSuffix) Parlist;
 
 /** Use to define a set of allocation and constructor functions for a
   * class if they do not take variable arguments. They will include a
@@ -316,7 +319,7 @@ Attr unsigned char MGS_CAT(FunctionName, _ctor##NameSuffix) Parlist
 
 /* Body of MGSctordef() and MGSctordef_(). */
 #define MGS__ctordef(Attr, Class, FunctionName, NameSuffix, Parlist, Arglist) \
-Attr unsigned char MGS_CAT(FunctionName, _ctor##NameSuffix) Parlist; \
+Attr mgsFakeBool MGS_CAT(FunctionName, _ctor##NameSuffix) Parlist; \
 Attr Class *MGS_CAT(FunctionName, _new##NameSuffix) Parlist \
 { \
 	void *MGSctordef__mem = (MGS_ARG1 Arglist); \
@@ -330,18 +333,18 @@ Attr Class *MGS_CAT(FunctionName, _new##NameSuffix) Parlist \
 	return (MGS_ARG1 Arglist); \
 } \
 Attr Class *MGS_CAT(FunctionName, _mpnew##NameSuffix) \
-MGS_SUBST_HEAD(struct mgsMemPool *MGSctordef__mp, Parlist) \
+MGS_SUBST_HEAD(struct mgsMemPool *mpnew_arg1__mp, Parlist) \
 { \
 	void *MGSctordef__mem; \
 	if ((MGSctordef__mem = \
-	     mgs_raw_mpnew(MGSctordef__mp, mgs_metaof(Class))) != NULL && \
+	     mgs_raw_mpnew(mpnew_arg1__mp, mgs_metaof(Class))) != NULL && \
 	    !MGS_CAT(FunctionName, _ctor##NameSuffix) \
 	    MGS_SUBST_HEAD(MGSctordef__mem, Arglist)) { \
 		return 0; \
 	} \
 	return MGSctordef__mem; \
 } \
-Attr unsigned char MGS_CAT(FunctionName, _ctor##NameSuffix) Parlist
+Attr mgsFakeBool MGS_CAT(FunctionName, _ctor##NameSuffix) Parlist
 
 /** Define the global instance of the meta type for the class.
   * This version makes the symbol static (not part of a public API).
@@ -374,7 +377,7 @@ Attr unsigned char MGS_CAT(FunctionName, _ctor##NameSuffix) Parlist
   * (using \ref mgs_fatal()) if called.
   */
 #define MGSmetainst(Class, Superclass, dtor, vtinit) \
-struct Class##_Meta Class##__meta = { \
+struct Class##_Meta Class##_meta = { \
 	(mgsObject_Meta*)mgs_metaof(Superclass), \
 	sizeof(Class), \
 	(sizeof(Class##_Virt) / sizeof(void (*)())), \
@@ -416,7 +419,7 @@ MGSmetatype_(mgsObject)
 /* This is a dummy meta type allowing the keyword \a mgsNone
  * to be specified as the supertype for base classes in MGSmetainst().
  */
-# define mgsNone__meta (*(mgsObject_Meta*)(0))
+# define mgsNone_meta (*(mgsObject_Meta*)(0))
 #endif
 
 /** Assuming \p mem points to a valid object, retrieves the class
@@ -443,16 +446,27 @@ MGSmetatype_(mgsObject)
 	((void)(((mgsObject*)mem)->meta = (mgsObject_Meta*)mgs_metaof(Class)))
 
 /** Call a virtual method named \p func belonging to the
-  * class instance \p o and pass \p o as the first argument,
-  * any other arguments following.
+  * class instance given by the second argument, passing
+  * the instance, and any additional arguments after it.
   *
-  * This macro is meant to simplify calls to dynamically selected
-  * versions of virtual functions, but is not needed to make such
-  * calls. It can only be used for functions which have this form
-  * and include the object pointer as the first parameter.
+  * This convenience macro is meant to simplify calls to
+  * dynamically selected versions of functions. When the
+  * function doesn't take an object pointer as its first
+  * argument, \ref mgs_svirt() can instead be used.
   */
 #define mgs_virt(func, ...) \
 	(MGS_ARG1(__VA_ARGS__))->meta->virt.func(__VA_ARGS__)
+
+/** Call a static virtual method named \p func belonging to the
+  * class instance given by the second argument. Only arguments
+  * after the second argument, if any, are passed for the call.
+  *
+  * This convenience macro is for virtual functions which don't
+  * take the object pointer as their first parameter. Otherwise
+  * it is the same as \ref mgs_virt().
+  */
+#define mgs_svirt(func, ...) \
+	(MGS_ARG1(__VA_ARGS__))->meta->virt.func(MGS_ARGS_TAIL(__VA_ARGS__))
 
 /** Allocation method used in instance creation functions,
   * typically inside the "new"-wrapper around the constructor
@@ -524,11 +538,12 @@ MGS_API int mgs_rtticheck(const void *submeta, const void *meta);
 #define mgs_superclass(Superclass, Class) \
 	mgs_rtticheck(mgs_metaof(Class), mgs_metaof(Superclass))
 
-/** Checks if \p o is an instance of \p Class or of a class derived
-    from it. */
+/** Checks if \p o is an instance of \p Class or of a class derived from it.
+    Returns 1 if such an instance, 0 if not. */
 #define mgs_of_class(o, Class) \
-	(mgs_rtticheck((o)->meta, mgs_metaof(Class)) >= 0)
+	(mgs_rtticheck(((mgsObject*)(o))->meta, mgs_metaof(Class)) >= 0)
 
-/** Checks if \p o is of a type derived from \p Class. */
+/** Checks if \p o is of a type derived from \p Class.
+    Returns 1 if such an instance, 0 if not. */
 #define mgs_of_subclass(o, Class) \
-	(mgs_rtticheck((o)->meta, mgs_metaof(Class)) > 0)
+	(mgs_rtticheck(((mgsObject*)(o))->meta, mgs_metaof(Class)) > 0)

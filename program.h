@@ -71,13 +71,9 @@ enum {
 	MGS_WAVEP_PHASE = 1<<12,
 };
 
+struct mgsParser;
+struct mgsProgramArrData;
 typedef struct mgsProgramNode mgsProgramNode;
-typedef struct mgsProgramLineData mgsProgramLineData;
-typedef struct mgsProgramNoiseData mgsProgramNoiseData;
-typedef struct mgsProgramWaveData mgsProgramWaveData;
-typedef struct mgsProgramScopeData mgsProgramScopeData;
-typedef struct mgsProgramDurData mgsProgramDurData;
-typedef struct mgsProgramArrData mgsProgramArrData;
 
 /* Time parameter flags. */
 enum {
@@ -89,51 +85,72 @@ typedef struct mgsTimePar {
 	uint32_t flags;
 } mgsTimePar;
 
-#define mgsProgramSoundData_C_ mgsObject_C_ \
+#define mgsProgramData_C_ mgsObject_C_ \
+/**/
+#define mgsProgramData_V_ mgsObject_V_ \
+	bool (*end_prev_node)(struct mgsParser *pr); \
+	/* void (*time_node)(mgsProgramNode *n); */ \
+/**/
+MGSclassdef(mgsProgramData)
+
+#define mgsProgramSoundData_C_ mgsProgramData_C_ \
 	mgsTimePar time; \
 	mgsProgramNode *root; \
 	uint32_t params; \
 	float amp, dynamp, pan; \
-	mgsProgramArrData *amod; \
+	struct mgsProgramArrData *amod; \
 	mgsProgramNode *nested_next; \
 /**/
-#define mgsProgramSoundData_V_ mgsObject_V_ \
+#define mgsProgramSoundData_V_ mgsProgramData_V_ \
 /**/
 MGSclassdef(mgsProgramSoundData)
 
-struct mgsProgramLineData {
-	mgsProgramSoundData sound;
-	mgsLine line;
-};
+#define mgsProgramLineData_C_ mgsProgramSoundData_C_ \
+	mgsLine line; \
+/**/
+#define mgsProgramLineData_V_ mgsProgramSoundData_V_ \
+/**/
+MGSclassdef(mgsProgramLineData)
 
-struct mgsProgramNoiseData {
-	mgsProgramSoundData sound;
-	uint8_t noise;
-};
+#define mgsProgramNoiseData_C_ mgsProgramSoundData_C_ \
+	uint8_t noise; \
+/**/
+#define mgsProgramNoiseData_V_ mgsProgramSoundData_V_ \
+/**/
+MGSclassdef(mgsProgramNoiseData)
 
-struct mgsProgramWaveData {
-	mgsProgramSoundData sound;
-	uint8_t attr, wave;
-	float freq, dynfreq;
-	uint32_t phase;
-	mgsProgramArrData *pmod, *fmod;
-};
+#define mgsProgramWaveData_C_ mgsProgramSoundData_C_ \
+	uint8_t attr, wave; \
+	float freq, dynfreq; \
+	uint32_t phase; \
+	struct mgsProgramArrData *pmod, *fmod; \
+/**/
+#define mgsProgramWaveData_V_ mgsProgramSoundData_V_ \
+/**/
+MGSclassdef(mgsProgramWaveData)
 
-struct mgsProgramScopeData {
-	mgsProgramNode *first_node;
-	mgsProgramNode *last_node;
-};
+#define mgsProgramScopeData_C_ mgsProgramData_C_ \
+	mgsProgramNode *first_node; \
+	mgsProgramNode *last_node; \
+/**/
+#define mgsProgramScopeData_V_ mgsProgramData_V_ \
+/**/
+MGSclassdef(mgsProgramScopeData)
 
-struct mgsProgramDurData {
-	mgsProgramScopeData scope;
-	mgsProgramNode *next;
-};
+#define mgsProgramDurData_C_ mgsProgramScopeData_C_ \
+	mgsProgramNode *next_dur; \
+/**/
+#define mgsProgramDurData_V_ mgsProgramScopeData_V_ \
+/**/
+MGSclassdef(mgsProgramDurData)
 
-struct mgsProgramArrData {
-	mgsProgramScopeData scope;
-	uint32_t count;
-	uint8_t mod_type;
-};
+#define mgsProgramArrData_C_ mgsProgramScopeData_C_ \
+	uint32_t count; \
+	uint8_t mod_type; \
+/**/
+#define mgsProgramArrData_V_ mgsProgramScopeData_V_ \
+/**/
+MGSclassdef(mgsProgramArrData)
 
 struct mgsProgramNode {
 	mgsProgramNode *next;
@@ -146,19 +163,8 @@ struct mgsProgramNode {
 	void *data;
 };
 
-static inline bool mgsProgramNode_is_type(const mgsProgramNode *restrict n,
-		uint8_t type) {
-	if (n->type == type || n->base_type == type)
-		return true;
-	/*switch (type) {
-	}*/
-	return false;
-}
-
-static inline void *mgsProgramNode_get_data(const mgsProgramNode *restrict n,
-		uint8_t type) {
-	return mgsProgramNode_is_type(n, type) ? n->data : NULL;
-}
+#define mgsProgramNode_get_data(n, Class) \
+	(mgs_of_class((n)->data, Class) ? (n)->data : NULL)
 
 struct mgsMemPool;
 struct mgsSymTab;

@@ -29,12 +29,12 @@ static void time_sound(mgsProgramNode *restrict n) {
  * the nodes involved.
  */
 static void time_durscope(mgsProgramDurData *restrict dur) {
-	mgsProgramNode *n_after = dur->scope.last_node->next;
+	mgsProgramNode *n_after = dur->last_node->next;
 	double delay = 0.f, delaycount = 0.f;
 	mgsProgramNode *step;
-	for (step = dur->scope.first_node; step != n_after; ) {
+	for (step = dur->first_node; step != n_after; ) {
 		mgsProgramSoundData *sound;
-		sound = mgsProgramNode_get_data(step, MGS_BASETYPE_SOUND);
+		sound = mgsProgramNode_get_data(step, mgsProgramSoundData);
 		/*
 		 * Skip unsupported nodes, and
 		 * exclude nested nodes from duration.
@@ -54,9 +54,9 @@ static void time_durscope(mgsProgramDurData *restrict dur) {
 			delaycount += step->delay;
 		}
 	}
-	for (step = dur->scope.first_node; step != n_after; ) {
+	for (step = dur->first_node; step != n_after; ) {
 		mgsProgramSoundData *sound;
-		sound = mgsProgramNode_get_data(step, MGS_BASETYPE_SOUND);
+		sound = mgsProgramNode_get_data(step, mgsProgramSoundData);
 		/*
 		 * Skip unsupported nodes, and
 		 * exclude nested nodes from duration.
@@ -89,7 +89,7 @@ void mgs_adjust_node_list(mgsProgramNode *restrict list) {
 			continue;
 		}
 		if (n->base_type == MGS_BASETYPE_SOUND) time_sound(n);
-		if (n == dur->scope.last_node) time_durscope(dur);
+		if (n == dur->last_node) time_durscope(dur);
 		n = n->next;
 	}
 }
