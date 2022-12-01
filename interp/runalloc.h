@@ -101,4 +101,4 @@ bool mgs_init_RunAlloc(mgsRunAlloc *restrict o,
 void mgs_fini_RunAlloc(mgsRunAlloc *restrict o);
 
 bool mgsRunAlloc_for_nodelist(mgsRunAlloc *restrict o,
-		mgsProgramNode *restrict first_n);
+		mgsProgramData *restrict first_n);

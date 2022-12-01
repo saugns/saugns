@@ -539,11 +539,15 @@ MGS_API int mgs_rtticheck(const void *submeta, const void *meta);
 	mgs_rtticheck(mgs_metaof(Class), mgs_metaof(Superclass))
 
 /** Checks if \p o is an instance of \p Class or of a class derived from it.
-    Returns 1 if such an instance, 0 if not. */
+    Returns \p o cast to Class* on success, 0 cast to Class* on failure. */
 #define mgs_of_class(o, Class) \
-	(mgs_rtticheck(((mgsObject*)(o))->meta, mgs_metaof(Class)) >= 0)
+	(mgs_rtticheck(((mgsObject*)(o))->meta, mgs_metaof(Class)) >= 0 ? \
+	 ((Class*)(o)) : \
+	 ((Class*)0))
 
-/** Checks if \p o is of a type derived from \p Class.
-    Returns 1 if such an instance, 0 if not. */
+/** Checks if \p o is an instance of a type derived from \p Class.
+    Returns \p o cast to Class* on success, 0 cast to Class* on failure. */
 #define mgs_of_subclass(o, Class) \
-	(mgs_rtticheck(((mgsObject*)(o))->meta, mgs_metaof(Class)) > 0)
+	(mgs_rtticheck(((mgsObject*)(o))->meta, mgs_metaof(Class)) > 0 ? \
+	 ((Class*)(o)) : \
+	 ((Class*)0))

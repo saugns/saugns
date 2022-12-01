@@ -13,8 +13,8 @@
 
 #include "parser.h"
 
-static void time_sound(mgsProgramNode *restrict n) {
-	mgsProgramSoundData *sound = n->data;
+static void time_sound(mgsProgramData *restrict n) {
+	mgsProgramSoundData *sound = (mgsProgramSoundData*) n;
 	if (!(sound->time.flags & MGS_TIME_SET)) {
 		if (n->base_id != sound->root->base_id)
 			sound->time.flags |= MGS_TIME_SET;
@@ -29,12 +29,12 @@ static void time_sound(mgsProgramNode *restrict n) {
  * the nodes involved.
  */
 static void time_durscope(mgsProgramDurData *restrict dur) {
-	mgsProgramNode *n_after = dur->last_node->next;
+	mgsProgramData *n_last = dur->last_node, *n_after = n_last->next;
 	double delay = 0.f, delaycount = 0.f;
-	mgsProgramNode *step;
+	mgsProgramData *step;
 	for (step = dur->first_node; step != n_after; ) {
 		mgsProgramSoundData *sound;
-		sound = mgsProgramNode_get_data(step, mgsProgramSoundData);
+		sound = mgs_of_class(step, mgsProgramSoundData);
 		/*
 		 * Skip unsupported nodes, and
 		 * exclude nested nodes from duration.
@@ -56,7 +56,7 @@ static void time_durscope(mgsProgramDurData *restrict dur) {
 	}
 	for (step = dur->first_node; step != n_after; ) {
 		mgsProgramSoundData *sound;
-		sound = mgsProgramNode_get_data(step, mgsProgramSoundData);
+		sound = mgs_of_class(step, mgsProgramSoundData);
 		/*
 		 * Skip unsupported nodes, and
 		 * exclude nested nodes from duration.
@@ -79,17 +79,18 @@ static void time_durscope(mgsProgramDurData *restrict dur) {
 		n_after->delay += delay;
 }
 
-void mgs_adjust_node_list(mgsProgramNode *restrict list) {
-	mgsProgramNode *n = list;
-	mgsProgramDurData *dur = NULL;
+void mgs_adjust_node_list(mgsProgramData *restrict list) {
+	mgsProgramData *n = list;
+	mgsProgramDurData *cur_dur = NULL;
 	while (n != NULL) {
-		if (n->type == MGS_TYPE_DUR) {
-			dur = n->data;
+		mgsProgramDurData *dur = mgs_of_class(n, mgsProgramDurData);
+		if (dur) {
+			cur_dur = dur;
 			n = n->next;
 			continue;
 		}
 		if (n->base_type == MGS_BASETYPE_SOUND) time_sound(n);
-		if (n == dur->last_node) time_durscope(dur);
+		if (n == cur_dur->last_node) time_durscope(cur_dur);
 		n = n->next;
 	}
 }

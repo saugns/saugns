@@ -61,10 +61,10 @@ typedef struct mgsParser {
   /* node state */
   uint32_t level;
   uint32_t setdef, setnode;
-  mgsProgramNode *cur_node;
-  mgsProgramNode *prev_node;
-  mgsProgramNode *cur_dur;
-  mgsProgramNode *cur_sound;
+  mgsProgramData *cur_node;
+  mgsProgramData *prev_node;
+  mgsProgramDurData *cur_dur;
+  mgsProgramSoundData *cur_sound;
   struct mgsNodeData *cur_nd;
   /* settings/ops */
   float n_pan;
@@ -131,7 +131,7 @@ enum {
 typedef struct mgsNodeData {
   mgsParser *o;
   struct mgsNodeData *up;
-  mgsProgramNode *node; /* state for tentative node until end_node() */
+  void *node; /* state for tentative node until end_node() */
   mgsProgramArrData *target;
   mgsSymItem *set_var; /* assign variable to next node? */
   uint32_t flags;
@@ -141,10 +141,9 @@ typedef struct mgsNodeData {
 } mgsNodeData;
 
 static void end_node(mgsNodeData *nd) {
-  if (nd->node) {
-    mgsProgramData *data = nd->node->data;
-    mgs_svirt(end_prev_node, data, nd->o);
-  }
+  mgsProgramData *n = nd->node;
+  if (n)
+    mgs_svirt(end_prev_node, n, nd->o);
 }
 
 static bool mgsProgramData_end_prev_node(mgsParser *pr) {
@@ -159,12 +158,11 @@ static bool mgsProgramData_end_prev_node(mgsParser *pr) {
 
 static bool mgsProgramSoundData_end_prev_node(mgsParser *pr) {
   mgsNodeData *nd = pr->cur_nd;
-  mgsProgramNode *n = nd->node;
+  mgsProgramSoundData *snd = nd->node;
   if (!mgsProgramData_end_prev_node(pr))
     return false; /* nothing to do */
 
-  mgsProgramSoundData *snd = n->data;
-  if (!n->ref_prev) {
+  if (!snd->ref_prev) {
     /* first node sets all values */
     snd->params |= MGS_PARAM_MASK;
   } else {
@@ -173,7 +171,7 @@ static bool mgsProgramSoundData_end_prev_node(mgsParser *pr) {
   }
   if (snd->params & MGS_SOUNDP_AMP) {
     /* only apply to non-modulators */
-    if (n->base_id == snd->root->base_id)
+    if (snd->base_id == snd->root->base_id)
       snd->amp *= pr->n_ampmult;
   }
   return true;
@@ -197,11 +195,10 @@ MGSmetainst(mgsProgramScopeData, mgsProgramData, NULL, NULL)
 MGSmetainst(mgsProgramDurData, mgsProgramScopeData, NULL, NULL)
 MGSmetainst(mgsProgramArrData, mgsProgramScopeData, NULL, NULL)
 
-static mgsProgramNode *create_node(mgsParser *pr) {
+static void link_node(mgsProgramData *n, mgsParser *pr) {
   mgsNodeData *nd = pr->cur_nd;
   mgsProgram *p = pr->prg;
   end_node(nd);
-  mgsProgramNode *n = mgs_mpalloc(p->mem, sizeof(mgsProgramNode));
   nd->node = n;
   nd->flags |= ND_OWN_NODE;
 
@@ -219,79 +216,73 @@ static mgsProgramNode *create_node(mgsParser *pr) {
   /* prepare timing adjustment */
   n->delay = nd->n_delay_next;
   nd->n_delay_next = 0.f;
-
-  return n;
 }
 
 MGSctordef_(mgsProgramSoundData,,,
-		(void *mem, mgsParser *pr, mgsProgramNode *ref_prev),
+		(void *mem, mgsParser *pr, mgsProgramData *ref_prev),
 		(mem, pr, ref_prev)) {
   mgsNodeData *nd = pr->cur_nd;
   mgsProgramSoundData *snd = mem;
   mgsProgram *p = pr->prg;
-  mgsProgramNode *n = create_node(pr);
-  n->ref_prev = ref_prev;
+  link_node(mem, pr);
+  snd->ref_prev = ref_prev;
   if (pr->cur_dur != NULL) {
-    mgsProgramDurData *dur = pr->cur_dur->data;
+    mgsProgramDurData *dur = pr->cur_dur;
     if (!dur->first_node)
-      dur->first_node = n;
-    dur->last_node = n;
+      dur->first_node = snd;
+    dur->last_node = snd;
   }
 
-  if (!n->ref_prev) {
+  if (!snd->ref_prev) {
     if (!nd->target) {
-      snd->root = n;
+      snd->root = snd;
       ++p->root_count;
     } else {
-      mgsProgramSoundData *prev_snd = pr->cur_sound->data;
+      mgsProgramSoundData *prev_snd = pr->cur_sound;
       snd->root = prev_snd->root;
       if (!nd->target->first_node)
-        nd->target->first_node = n;
+        nd->target->first_node = snd;
       else {
-        mgsProgramSoundData *link_sound = nd->target->last_node->data;
-        link_sound->nested_next = n;
+        mgsProgramSoundData *link_sound = nd->target->last_node;
+        link_sound->nested_next = snd;
       }
-      nd->target->last_node = n;
+      nd->target->last_node = snd;
       ++nd->target->count;
     }
     snd->amp = 1.f;
     snd->dynamp = snd->amp;
     snd->pan = pr->n_pan;
-    n->base_id = p->base_counts[MGS_BASETYPE_SOUND]++;
+    snd->base_id = p->base_counts[MGS_BASETYPE_SOUND]++;
   } else {
-    mgsProgramNode *ref = n->ref_prev;
-    mgsProgramSoundData *ref_snd = ref->data;
-    //memcpy(snd, ref_snd, snd->meta->size);
-    snd->root = ref_snd->root;
-    n->base_id = ref->base_id;
+    mgsProgramSoundData *ref = snd->ref_prev;
+    //memcpy(snd, ref, snd->meta->size);
+    snd->root = ref->root;
+    snd->base_id = ref->base_id;
   }
   /* time is not copied across reference */
   snd->time.v = pr->n_time;
   snd->time.flags = 0;
-  n->base_type = MGS_BASETYPE_SOUND;
-  n->data = snd;
-  pr->cur_sound = n;
+  snd->base_type = MGS_BASETYPE_SOUND;
+  pr->cur_sound = snd;
 
   /*
    * Make a variable point to this?
    */
   if (nd->set_var) {
     nd->set_var->data_use = MGS_SYM_DATA_OBJ;
-    nd->set_var->data.obj = n;
+    nd->set_var->data.obj = snd;
     nd->set_var = NULL;
   }
   return true;
 }
 
 MGSctordef_(mgsProgramLineData,,,
-		(void *mem, mgsParser *pr, mgsProgramNode *ref_prev),
+		(void *mem, mgsParser *pr, mgsProgramData *ref_prev),
 		(mem, pr, ref_prev)) {
   if (!mgsProgramSoundData_ctor(mem, pr, ref_prev))
 	  return false;
-  mgsNodeData *nd = pr->cur_nd;
-  mgsProgramNode *n = nd->node;
-  n->type = MGS_TYPE_LINE;
   mgsProgramLineData *lod = mem;
+  lod->type = MGS_TYPE_LINE;
   lod->line.time_ms = lrint(lod->time.v * 1000.f);
   lod->line.fill_type = MGS_LINE_N_lin;
   lod->line.flags |= MGS_LINEP_STATE
@@ -301,26 +292,24 @@ MGSctordef_(mgsProgramLineData,,,
 }
 
 MGSctordef_(mgsProgramNoiseData,,,
-		(void *mem, mgsParser *pr, mgsProgramNode *ref_prev),
+		(void *mem, mgsParser *pr, mgsProgramData *ref_prev),
 		(mem, pr, ref_prev)) {
   if (!mgsProgramSoundData_ctor(mem, pr, ref_prev))
 	  return false;
-  mgsNodeData *nd = pr->cur_nd;
-  mgsProgramNode *n = nd->node;
-  n->type = MGS_TYPE_NOISE;
+  mgsProgramNoiseData *nod = mem;
+  nod->type = MGS_TYPE_NOISE;
   return true;
 }
 
 MGSctordef_(mgsProgramWaveData,,,
-		(void *mem, mgsParser *pr, mgsProgramNode *ref_prev),
+		(void *mem, mgsParser *pr, mgsProgramData *ref_prev),
 		(mem, pr, ref_prev)) {
   if (!mgsProgramSoundData_ctor(mem, pr, ref_prev))
 	  return false;
   mgsProgramWaveData *wod = mem;
   mgsNodeData *nd = pr->cur_nd;
-  mgsProgramNode *n = nd->node;
-  n->type = MGS_TYPE_WAVE;
-  if (!n->ref_prev) {
+  wod->type = MGS_TYPE_WAVE;
+  if (!wod->ref_prev) {
     if (!nd->target) {
       wod->freq = pr->n_freq;
     } else {
@@ -341,21 +330,15 @@ MGSctordef_(mgsProgramScopeData,,, (void *mem, mgsParser *pr), (mem, pr)) {
 MGSctordef_(mgsProgramDurData,,, (void *mem, mgsParser *pr), (mem, pr)) {
   if (!mgsProgramScopeData_ctor(mem, pr))
 	  return false;
-  mgsProgramNode *n = create_node(pr);
-  if (!n)
-	  return false;
-  n->base_type = MGS_BASETYPE_SCOPE;
-  n->data = mem;
+  link_node(mem, pr);
   mgsProgramDurData *dur = mem;
-  (void)dur;
-  //mgsNodeData *nd = pr->cur_nd;
-  //mgsProgramNode *n = nd->node;
-  n->type = MGS_TYPE_DUR;
+  dur->base_type = MGS_BASETYPE_SCOPE;
+  dur->type = MGS_TYPE_DUR;
   if (pr->cur_dur != NULL) {
-    mgsProgramDurData *prev_dur = pr->cur_dur->data;
-    prev_dur->next_dur = n;
+    mgsProgramDurData *prev_dur = pr->cur_dur;
+    prev_dur->next_dur = dur;
   }
-  pr->cur_dur = n;
+  pr->cur_dur = dur;
   return true;
 }
 
@@ -643,9 +626,8 @@ static mgsProgram* parse(mgsFile *f, mgsParser *o) {
   return o->prg;
 }
 
-static bool parse_amp(mgsParser *o, mgsProgramNode *n) {
-  mgsProgramSoundData *sound;
-  sound = mgsProgramNode_get_data(n, mgsProgramSoundData);
+static bool parse_amp(mgsParser *o, mgsProgramData *n) {
+  mgsProgramSoundData *sound = mgs_of_class(n, mgsProgramSoundData);
   if (!sound) goto INVALID;
   double f;
   if (mgsFile_TRYC(o->f, '!')) {
@@ -669,9 +651,8 @@ INVALID:
   return false;
 }
 
-static bool parse_channel(mgsParser *o, mgsProgramNode *n) {
-  mgsProgramSoundData *sound;
-  sound = mgsProgramNode_get_data(n, mgsProgramSoundData);
+static bool parse_channel(mgsParser *o, mgsProgramData *n) {
+  mgsProgramSoundData *sound = mgs_of_class(n, mgsProgramSoundData);
   if (!sound) goto INVALID;
   mgsNodeData *nd = o->cur_nd;
   if (nd->target != NULL) {
@@ -688,8 +669,8 @@ INVALID:
   return false;
 }
 
-static bool parse_freq(mgsParser *o, mgsProgramNode *n, bool ratio) {
-  mgsProgramWaveData *wod = mgsProgramNode_get_data(n, mgsProgramWaveData);
+static bool parse_freq(mgsParser *o, mgsProgramData *n, bool ratio) {
+  mgsProgramWaveData *wod = mgs_of_class(n, mgsProgramWaveData);
   if (!wod) goto INVALID;
   if (ratio && (n->base_id == wod->root->base_id)) goto INVALID;
   double f;
@@ -724,8 +705,8 @@ INVALID:
   return false;
 }
 
-static bool parse_goal(mgsParser *o, mgsProgramNode *n) {
-  mgsProgramLineData *lod = mgsProgramNode_get_data(n, mgsProgramLineData);
+static bool parse_goal(mgsParser *o, mgsProgramData *n) {
+  mgsProgramLineData *lod = mgs_of_class(n, mgsProgramLineData);
   if (!lod) goto INVALID;
   double f;
   if (!scan_num(o, NULL, &f)) goto INVALID;
@@ -736,8 +717,8 @@ INVALID:
   return false;
 }
 
-static bool parse_line(mgsParser *o, mgsProgramNode *n, char pos_c) {
-  mgsProgramLineData *lod = mgsProgramNode_get_data(n, mgsProgramLineData);
+static bool parse_line(mgsParser *o, mgsProgramData *n, char pos_c) {
+  mgsProgramLineData *lod = mgs_of_class(n, mgsProgramLineData);
   if (!lod) goto INVALID;
   size_t line;
   if (!scan_linetype(o, &line, pos_c)) goto INVALID;
@@ -748,8 +729,8 @@ INVALID:
   return false;
 }
 
-static bool parse_noise(mgsParser *o, mgsProgramNode *n, char pos_c) {
-  mgsProgramNoiseData *nod = mgsProgramNode_get_data(n, mgsProgramNoiseData);
+static bool parse_noise(mgsParser *o, mgsProgramData *n, char pos_c) {
+  mgsProgramNoiseData *nod = mgs_of_class(n, mgsProgramNoiseData);
   if (!nod) goto INVALID;
   size_t noise;
   if (!scan_noisetype(o, &noise, pos_c)) goto INVALID;
@@ -760,8 +741,8 @@ INVALID:
   return false;
 }
 
-static bool parse_phase(mgsParser *o, mgsProgramNode *n) {
-  mgsProgramWaveData *wod = mgsProgramNode_get_data(n, mgsProgramWaveData);
+static bool parse_phase(mgsParser *o, mgsProgramData *n) {
+  mgsProgramWaveData *wod = mgs_of_class(n, mgsProgramWaveData);
   if (!wod) goto INVALID;
   double f;
   if (mgsFile_TRYC(o->f, '!')) {
@@ -780,14 +761,14 @@ INVALID:
   return false;
 }
 
-static bool parse_time(mgsParser *o, mgsProgramNode *n) {
-  mgsProgramSoundData *sound = mgsProgramNode_get_data(n, mgsProgramSoundData);
+static bool parse_time(mgsParser *o, mgsProgramData *n) {
+  mgsProgramSoundData *sound = mgs_of_class(n, mgsProgramSoundData);
   if (!sound) goto INVALID;
   double f;
   if (!scan_timeval(o, &f)) goto INVALID;
   sound->time.v = f;
   sound->time.flags |= MGS_TIME_SET;
-  mgsProgramLineData *lod = mgsProgramNode_get_data(n, mgsProgramLineData);
+  mgsProgramLineData *lod = mgs_of_class(n, mgsProgramLineData);
   if (lod != NULL) {
     lod->line.time_ms = lrint(f * 1000.f);
     lod->line.flags |= MGS_LINEP_TIME;
@@ -798,8 +779,8 @@ INVALID:
   return false;
 }
 
-static bool parse_value(mgsParser *o, mgsProgramNode *n) {
-  mgsProgramLineData *lod = mgsProgramNode_get_data(n, mgsProgramLineData);
+static bool parse_value(mgsParser *o, mgsProgramData *n) {
+  mgsProgramLineData *lod = mgs_of_class(n, mgsProgramLineData);
   if (!lod) goto INVALID;
   double f;
   if (!scan_num(o, NULL, &f)) goto INVALID;
@@ -810,8 +791,8 @@ INVALID:
   return false;
 }
 
-static bool parse_wave(mgsParser *o, mgsProgramNode *n, char pos_c) {
-  mgsProgramWaveData *wod = mgsProgramNode_get_data(n, mgsProgramWaveData);
+static bool parse_wave(mgsParser *o, mgsProgramData *n, char pos_c) {
+  mgsProgramWaveData *wod = mgs_of_class(n, mgsProgramWaveData);
   if (!wod) goto INVALID;
   size_t wave;
   if (!scan_wavetype(o, &wave, pos_c)) goto INVALID;
@@ -830,7 +811,7 @@ static bool parse_ref(mgsParser *o, char pos_c) {
   if (!sym)
     return false;
   if (sym->data_use == MGS_SYM_DATA_OBJ) {
-    mgsProgramNode *ref = sym->data.obj;
+    mgsProgramData *ref = sym->data.obj;
     void *data = NULL;
     switch (ref->type) {
     case MGS_TYPE_LINE: data = mgsProgramLineData_mpnew(o->mp, o, ref); break;
@@ -947,19 +928,20 @@ static void parse_level(mgsParser *o, mgsProgramArrData *chain) {
       o->setnode = o->level + 1;
       break; }
     case '|': {
-      mgsProgramDurData *dur = o->cur_dur->data;
+      mgsProgramDurData *dur = o->cur_dur;
       if (!dur->first_node) {
         warning(o, "no sounds precede time separator", c);
         break;
       }
       dur = mgsProgramDurData_mpnew(o->mp, o);
       break; }
-    case '\\':
+    case '\\': {
+      mgsProgramData *n = nd.node;
       if (o->setdef > o->setnode)
         goto INVALID;
       if (!scan_timeval(o, &f)) goto INVALID;
-      nd.node->delay += f;
-      break;
+      n->delay += f;
+      break; }
     case '\'':
       end_node(&nd);
       if (nd.set_var != NULL) {

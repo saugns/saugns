@@ -17,7 +17,7 @@
 #include "noise.h"
 #include "wave.h"
 
-/* Node types. */
+/* Node type tags. Used for representations elsewhere too. */
 enum {
 	MGS_BASETYPE_NONE = 0,
 	MGS_BASETYPE_SOUND,
@@ -72,8 +72,6 @@ enum {
 };
 
 struct mgsParser;
-struct mgsProgramArrData;
-typedef struct mgsProgramNode mgsProgramNode;
 
 /* Time parameter flags. */
 enum {
@@ -86,20 +84,25 @@ typedef struct mgsTimePar {
 } mgsTimePar;
 
 #define mgsProgramData_C_ mgsObject_C_ \
+	void *next, *ref_prev; \
+	float delay; \
+	uint8_t base_type, type; /* type tags used elsewhere too */ \
+	uint32_t base_id; /* per-base-type id, not increased for references */ \
+	uint32_t conv_id; /* for use by later processing */ \
 /**/
 #define mgsProgramData_V_ mgsObject_V_ \
 	bool (*end_prev_node)(struct mgsParser *pr); \
-	/* void (*time_node)(mgsProgramNode *n); */ \
+	/* void (*time_node)(mgsProgramData *n); */ \
 /**/
 MGSclassdef(mgsProgramData)
 
 #define mgsProgramSoundData_C_ mgsProgramData_C_ \
 	mgsTimePar time; \
-	mgsProgramNode *root; \
+	struct mgsProgramSoundData *root; \
 	uint32_t params; \
 	float amp, dynamp, pan; \
 	struct mgsProgramArrData *amod; \
-	mgsProgramNode *nested_next; \
+	void *nested_next; \
 /**/
 #define mgsProgramSoundData_V_ mgsProgramData_V_ \
 /**/
@@ -130,15 +133,14 @@ MGSclassdef(mgsProgramNoiseData)
 MGSclassdef(mgsProgramWaveData)
 
 #define mgsProgramScopeData_C_ mgsProgramData_C_ \
-	mgsProgramNode *first_node; \
-	mgsProgramNode *last_node; \
+	void *first_node, *last_node; \
 /**/
 #define mgsProgramScopeData_V_ mgsProgramData_V_ \
 /**/
 MGSclassdef(mgsProgramScopeData)
 
 #define mgsProgramDurData_C_ mgsProgramScopeData_C_ \
-	mgsProgramNode *next_dur; \
+	struct mgsProgramDurData *next_dur; \
 /**/
 #define mgsProgramDurData_V_ mgsProgramScopeData_V_ \
 /**/
@@ -152,20 +154,6 @@ MGSclassdef(mgsProgramDurData)
 /**/
 MGSclassdef(mgsProgramArrData)
 
-struct mgsProgramNode {
-	mgsProgramNode *next;
-	mgsProgramNode *ref_prev;
-	float delay;
-	uint8_t base_type;
-	uint8_t type;
-	uint32_t base_id; // per-base-type id, not increased for references
-	uint32_t conv_id; // for use by later processing
-	void *data;
-};
-
-#define mgsProgramNode_get_data(n, Class) \
-	(mgs_of_class((n)->data, Class) ? (n)->data : NULL)
-
 struct mgsMemPool;
 struct mgsSymTab;
 
@@ -176,7 +164,7 @@ bool mgs_init_LangOpt(mgsLangOpt *restrict o,
 		struct mgsSymTab *restrict symtab);
 
 struct mgsProgram {
-	mgsProgramNode *node_list;
+	mgsProgramData *node_list;
 	uint32_t node_count;
 	uint32_t root_count;
 	uint32_t base_counts[MGS_BASETYPES];

@@ -29,13 +29,12 @@ static mgsModList *create_ModList(const mgsProgramArrData *restrict arr_data,
 		mgsMemPool *restrict mem) {
 	mgsModList *o = mgs_mpalloc(mem, sizeof(mgsModList) +
 			arr_data->count * sizeof(uint32_t));
-	mgsProgramNode *n = arr_data->first_node;
+	mgsProgramSoundData *n = arr_data->first_node;
 	size_t i = 0;
 	o->count = arr_data->count;
 	while (n != NULL) {
-		mgsProgramSoundData *sound_data = n->data;
 		o->ids[i++] = n->base_id;
-		n = sound_data->nested_next;
+		n = n->nested_next;
 	}
 	return o;
 }
@@ -107,7 +106,7 @@ static mgsNoinline bool mgsRunAlloc_make_modlist(mgsRunAlloc *restrict o,
  * \return true, or false on allocation failure
  */
 static bool mgsRunAlloc_make_event(mgsRunAlloc *restrict o,
-		mgsProgramNode *restrict n) {
+		mgsProgramData *restrict n) {
 	mgsEventNode *ev = mgsEventArr_add(&o->ev_arr, NULL);
 	if (!ev)
 		return false;
@@ -117,7 +116,7 @@ static bool mgsRunAlloc_make_event(mgsRunAlloc *restrict o,
 	ev->pos = 0 - o->next_ev_delay;
 	o->next_ev_delay = 0;
 	if (n->ref_prev != NULL) {
-		const mgsProgramNode *ref = n->ref_prev;
+		const mgsProgramData *ref = n->ref_prev;
 		ev->status |= MGS_EV_UPDATE;
 		ev->ref_i = ref->conv_id;
 	}
@@ -133,20 +132,19 @@ static bool mgsRunAlloc_make_event(mgsRunAlloc *restrict o,
  */
 static bool mgsRunAlloc_make_voice(mgsRunAlloc *restrict o,
 		mgsSoundNode *restrict sndn,
-		const mgsProgramNode *restrict n) {
+		const mgsProgramSoundData *restrict sndd) {
 	uint32_t voice_id;
-	mgsProgramSoundData *sound_data = n->data;
-	if (n->base_id == sound_data->root->base_id) {
+	if (sndd->base_id == sndd->root->base_id) {
 		voice_id = o->voice_arr.count;
 		mgsVoiceNode *voice = mgsVoiceArr_add(&o->voice_arr, NULL);
 		if (!voice)
 			return false;
 		voice->root = sndn;
-		voice->delay = lrintf(n->delay * o->srate);
+		voice->delay = lrintf(sndd->delay * o->srate);
 		o->flags |= RECHECK_BUFS;
 	} else {
-		const mgsProgramNode *root_n = sound_data->root;
-		mgsSoundNode *root_sndn = o->sound_list[root_n->base_id];
+		const mgsProgramSoundData *root_sndd = sndd->root;
+		mgsSoundNode *root_sndn = o->sound_list[root_sndd->base_id];
 		voice_id = root_sndn->voice_id;
 	}
 	sndn->voice_id = voice_id;
@@ -163,27 +161,23 @@ static bool mgsRunAlloc_make_voice(mgsRunAlloc *restrict o,
  */
 static bool mgsRunAlloc_init_sound(mgsRunAlloc *restrict o,
 		mgsSoundNode *restrict sndn,
-		const mgsProgramNode *restrict n) {
-	mgsProgramSoundData *sound_data = n->data;
-	mgsProgramSoundData *prev_sound_data = NULL;
-	if (!n->ref_prev) {
-		o->sound_list[n->base_id] = sndn;
-		if (!mgsRunAlloc_make_voice(o, sndn, n))
-			return false;
-	} else {
-		prev_sound_data = n->ref_prev->data;
-	}
-	sndn->time = lrintf(sound_data->time.v * o->srate);
-	sndn->amp = sound_data->amp;
-	sndn->dynamp = sound_data->dynamp;
-	sndn->pan = sound_data->pan;
-	if (NEED_MODLIST(sound_data, prev_sound_data, amod)) {
-		if (!mgsRunAlloc_make_modlist(o, sound_data->amod,
-				&sndn->amods_id))
+		const mgsProgramSoundData *restrict sndd) {
+	mgsProgramSoundData *prev_sndd = sndd->ref_prev;
+	if (!prev_sndd) {
+		o->sound_list[sndd->base_id] = sndn;
+		if (!mgsRunAlloc_make_voice(o, sndn, sndd))
 			return false;
 	}
-	sndn->params = sound_data->params;
-	sndn->type = n->type;
+	sndn->time = lrintf(sndd->time.v * o->srate);
+	sndn->amp = sndd->amp;
+	sndn->dynamp = sndd->dynamp;
+	sndn->pan = sndd->pan;
+	if (NEED_MODLIST(sndd, prev_sndd, amod)) {
+		if (!mgsRunAlloc_make_modlist(o, sndd->amod, &sndn->amods_id))
+			return false;
+	}
+	sndn->params = sndd->params;
+	sndn->type = sndd->type;
 	mgsEventNode *ev = o->cur_ev;
 	ev->sndn = sndn;
 	ev->base_type = MGS_BASETYPE_SOUND;
@@ -196,20 +190,18 @@ static bool mgsRunAlloc_init_sound(mgsRunAlloc *restrict o,
  * \return true, or false on allocation failure
  */
 static bool mgsRunAlloc_make_line(mgsRunAlloc *restrict o,
-		const mgsProgramNode *restrict n) {
+		const mgsProgramLineData *restrict lod) {
 	mgsEventNode *ev = o->cur_ev;
 	mgsLineNode *lon;
-	mgsProgramLineData *lod = n->data;
-	mgsProgramLineData *prev_lod = NULL;
+	mgsProgramLineData *prev_lod = lod->ref_prev;
 	if (!(ev->status & MGS_EV_UPDATE)) {
 		lon = mgs_mpalloc(o->mem, sizeof(mgsLineNode));
 	} else {
 		mgsEventNode *ref_ev = &o->ev_arr.a[ev->ref_i];
-		lon = mgs_mpmemdup(o->mem,
-				ref_ev->sndn, sizeof(mgsLineNode));
-		prev_lod = n->ref_prev->data;
+		lon = mgs_mpmemdup(o->mem, ref_ev->sndn, sizeof(mgsLineNode));
 	}
-	if (!lon || !mgsRunAlloc_init_sound(o, &lon->sound, n))
+	if (!lon || !mgsRunAlloc_init_sound(o, &lon->sound,
+				(const mgsProgramSoundData*) lod))
 		return false;
 	lon->line = lod->line;
 	if (!prev_lod)
@@ -224,20 +216,18 @@ static bool mgsRunAlloc_make_line(mgsRunAlloc *restrict o,
  * \return true, or false on allocation failure
  */
 static bool mgsRunAlloc_make_noise(mgsRunAlloc *restrict o,
-		const mgsProgramNode *restrict n) {
+		const mgsProgramNoiseData *restrict nod) {
 	mgsEventNode *ev = o->cur_ev;
 	mgsNoiseNode *non;
-	//mgsProgramNoiseData *nod = n->data;
-	//mgsProgramNoiseData *prev_nod = NULL;
+	//mgsProgramNoiseData *prev_nod = nod->ref_prev;
 	if (!(ev->status & MGS_EV_UPDATE)) {
 		non = mgs_mpalloc(o->mem, sizeof(mgsNoiseNode));
 	} else {
 		mgsEventNode *ref_ev = &o->ev_arr.a[ev->ref_i];
-		non = mgs_mpmemdup(o->mem,
-				ref_ev->sndn, sizeof(mgsNoiseNode));
-		//prev_nod = n->ref_prev->data;
+		non = mgs_mpmemdup(o->mem, ref_ev->sndn, sizeof(mgsNoiseNode));
 	}
-	if (!non || !mgsRunAlloc_init_sound(o, &non->sound, n))
+	if (!non || !mgsRunAlloc_init_sound(o, &non->sound,
+				(const mgsProgramSoundData*)nod))
 		return false;
 	mgs_init_NGen(&non->ngen, random_next(&o->seed));
 	return true;
@@ -249,20 +239,18 @@ static bool mgsRunAlloc_make_noise(mgsRunAlloc *restrict o,
  * \return true, or false on allocation failure
  */
 static bool mgsRunAlloc_make_wave(mgsRunAlloc *restrict o,
-		const mgsProgramNode *restrict n) {
+		const mgsProgramWaveData *restrict wod) {
 	mgsEventNode *ev = o->cur_ev;
 	mgsWaveNode *won;
-	mgsProgramWaveData *wod = n->data;
-	mgsProgramWaveData *prev_wod = NULL;
+	mgsProgramWaveData *prev_wod = wod->ref_prev;
 	if (!(ev->status & MGS_EV_UPDATE)) {
 		won = mgs_mpalloc(o->mem, sizeof(mgsWaveNode));
 	} else {
 		mgsEventNode *ref_ev = &o->ev_arr.a[ev->ref_i];
-		won = mgs_mpmemdup(o->mem,
-				ref_ev->sndn, sizeof(mgsWaveNode));
-		prev_wod = n->ref_prev->data;
+		won = mgs_mpmemdup(o->mem, ref_ev->sndn, sizeof(mgsWaveNode));
 	}
-	if (!won || !mgsRunAlloc_init_sound(o, &won->sound, n))
+	if (!won || !mgsRunAlloc_init_sound(o, &won->sound,
+				(const mgsProgramSoundData*)wod))
 		return false;
 	mgs_init_Osc(&won->osc, o->srate);
 	won->osc.wave = wod->wave;
@@ -287,20 +275,20 @@ static bool mgsRunAlloc_make_wave(mgsRunAlloc *restrict o,
  * \return index node, or NULL on allocation failure or unsupported type
  */
 static bool mgsRunAlloc_make_sound(mgsRunAlloc *restrict o,
-		mgsProgramNode *restrict n) {
+		mgsProgramData *restrict n) {
 	if (!mgsRunAlloc_make_event(o, n))
 		return false;
 	switch (n->type) {
 	case MGS_TYPE_LINE:
-		if (!mgsRunAlloc_make_line(o, n))
+		if (!mgsRunAlloc_make_line(o, (const mgsProgramLineData*) n))
 			return false;
 		break;
 	case MGS_TYPE_NOISE:
-		if (!mgsRunAlloc_make_noise(o, n))
+		if (!mgsRunAlloc_make_noise(o, (const mgsProgramNoiseData*) n))
 			return false;
 		break;
 	case MGS_TYPE_WAVE:
-		if (!mgsRunAlloc_make_wave(o, n))
+		if (!mgsRunAlloc_make_wave(o, (const mgsProgramWaveData*) n))
 			return false;
 		break;
 	default:
@@ -320,8 +308,8 @@ static bool mgsRunAlloc_recheck_bufs(mgsRunAlloc *restrict o);
  * \return true, or false on allocation failure
  */
 bool mgsRunAlloc_for_nodelist(mgsRunAlloc *restrict o,
-		mgsProgramNode *restrict first_n) {
-	mgsProgramNode *n = first_n;
+		mgsProgramData *restrict first_n) {
+	mgsProgramData *n = first_n;
 	while (n != NULL) {
 		uint32_t delay = lrintf(n->delay * o->srate);
 		o->next_ev_delay += delay;
