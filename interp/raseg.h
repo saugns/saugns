@@ -29,16 +29,6 @@ typedef struct mgsCyclor {
 	float coeff;
 } mgsCyclor;
 
-static void mgsCyclor_fill(mgsCyclor *restrict o,
-		uint32_t *restrict cycle_ui32,
-		uint32_t *restrict phase_ui32,
-		size_t buf_len,
-		const float *restrict freq_f,
-		const float *restrict pm_f,
-		const float *restrict fpm_f);
-
-#define MGS_RASEG_RESET  (1<<0)
-
 typedef struct mgsRaseg {
 	mgsCyclor cyclor;
 	uint8_t line;
@@ -53,10 +43,10 @@ static inline void mgs_init_Raseg(mgsRaseg *restrict o, uint32_t srate) {
 	*o = (mgsRaseg){
 		.cyclor = (mgsCyclor){
 			.cycle_phase = 0,
-			.coeff = mgsCyclor_COEFF(srate),
+			.coeff = 2.f * mgsCyclor_COEFF(srate), /* 2x */
 		},
 		.line = MGS_LINE_N_lin,
-		.flags = MGS_RASEG_RESET,
+		.flags = 0,
 //		.prev_x = 0,
 	};
 }
@@ -116,7 +106,10 @@ static void mgsRaseg_run(mgsRaseg *restrict o,
 	ofs + o->cycle_phase; (o->cycle_phase += inc)     /* post-increment */
 
 /**
- * Fill phase-value buffer for use with mgsRaseg_run().
+ * Fill cycle-value and phase-value buffers for use with mgsRaseg_run().
+ *
+ * "Cycles" actually refer to PRNG states, advancing at 2x normal speed,
+ * as two points (each from a state) are needed to match a normal cycle.
  */
 static mgsMaybeUnused void mgsCyclor_fill(mgsCyclor *restrict o,
 		uint32_t *restrict cycle_ui32,
@@ -138,7 +131,7 @@ static mgsMaybeUnused void mgsCyclor_fill(mgsCyclor *restrict o,
 			float s_f = freq_f[i];
 			float s_pofs = pm_f[i];
 			uint64_t cycle_phase = P(llrintf(o->coeff * s_f),
-					llrintf(s_pofs * (float) INT32_MAX));
+					llrintf(s_pofs * (2.f * INT32_MAX)));
 			cycle_ui32[i] = cycle_phase >> 32;
 			phase_ui32[i] = cycle_phase;
 		}
@@ -147,7 +140,7 @@ static mgsMaybeUnused void mgsCyclor_fill(mgsCyclor *restrict o,
 			float s_f = freq_f[i];
 			float s_pofs = fpm_f[i] * fpm_scale * s_f;
 			uint64_t cycle_phase = P(llrintf(o->coeff * s_f),
-					llrintf(s_pofs * (float) INT32_MAX));
+					llrintf(s_pofs * (2.f * INT32_MAX)));
 			cycle_ui32[i] = cycle_phase >> 32;
 			phase_ui32[i] = cycle_phase;
 		}
@@ -156,7 +149,7 @@ static mgsMaybeUnused void mgsCyclor_fill(mgsCyclor *restrict o,
 			float s_f = freq_f[i];
 			float s_pofs = pm_f[i] + (fpm_f[i] * fpm_scale * s_f);
 			uint64_t cycle_phase = P(llrintf(o->coeff * s_f),
-					llrintf(s_pofs * (float) INT32_MAX));
+					llrintf(s_pofs * (2.f * INT32_MAX)));
 			cycle_ui32[i] = cycle_phase >> 32;
 			phase_ui32[i] = cycle_phase;
 		}
@@ -164,13 +157,6 @@ static mgsMaybeUnused void mgsCyclor_fill(mgsCyclor *restrict o,
 }
 
 #undef P /* done */
-
-static void mgsRaseg_reset(mgsRaseg *restrict o, uint32_t cycle) {
-//	if (o->flags & MGS_RASEG_RESET) {
-//		o->prev_x = mgs_ranoise32(cycle - 1) * 1.f/(float)INT32_MAX;
-//	}
-//	o->flags &= ~MGS_RASEG_RESET;
-}
 
 /**
  * Run for \p buf_len samples, generating output.
@@ -182,17 +168,12 @@ static mgsMaybeUnused void mgsRaseg_run(mgsRaseg *restrict o,
 		const uint32_t *restrict cycle_buf,
 		const uint32_t *restrict phase_buf) {
 	mgsLine_map_f map = mgsLine_map_funcs[o->line];
-	if (buf_len > 0 && o->flags & MGS_RASEG_RESET)
-		mgsRaseg_reset(o, cycle_buf[0]);
 	for (size_t i = 0; i < buf_len; ++i) {
-		//float s;
 		uint32_t cycle = cycle_buf[i];
 		uint32_t phase = phase_buf[i];
 		float a = mgs_ranoise32(cycle) * 1.f/(float)INT32_MAX;
 		float b = mgs_ranoise32(cycle + 1) * 1.f/(float)INT32_MAX;
 		float p = ((int32_t) (phase >> 1)) * 1.f/(float)INT32_MAX;
 		map(&buf[i], 1, a, b, &p);
-//		map(&buf[i], 1, o->prev_x, x, &p);
-//		o->prev_x = x;
 	}
 }

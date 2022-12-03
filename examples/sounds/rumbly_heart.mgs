@@ -1,3 +1,4 @@
-Rsin f50*2 t15 p!{Wsin f3/2 a10} |
+Rsin f50 t15 p!{Wsin f3/2 a10/2}
 
-Rsin f50*2 t15 p!{Wsin f1/2 a100} |
+|
+Rsin f50 t15 p!{Wsin f1/2 a100/2}

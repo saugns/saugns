@@ -1,3 +1,4 @@
-Rsin f50*2 t15 |
+Rsin f50 t15
 
-Rlge f50*2 t15 p!{Wsin f1/2 a10} |
+|
+Rlge f50 t15 p!{Wsin f1/2 a10/2}

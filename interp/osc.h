@@ -38,13 +38,6 @@ typedef struct mgsPhasor {
 	float coeff;
 } mgsPhasor;
 
-static void mgsPhasor_fill(mgsPhasor *restrict o,
-		uint32_t *restrict phase_ui32,
-		size_t buf_len,
-		const float *restrict freq_f,
-		const float *restrict pm_f,
-		const float *restrict fpm_f);
-
 #define MGS_OSC_RESET_DIFF  (1<<0)
 #define MGS_OSC_RESET       ((1<<1) - 1)
 
@@ -132,10 +125,6 @@ static inline int32_t mgsOsc_cycle_offs(mgsOsc *restrict o,
 	uint32_t phs = inc * pos;
 	return (phs - mgsWave_SLEN) / inc;
 }
-
-static void mgsOsc_run(mgsOsc *restrict o,
-		float *restrict buf, size_t buf_len,
-		const uint32_t *restrict phase_buf);
 
 #if !USE_PILUT
 # define P(inc, ofs) ofs + o->phase; (o->phase += inc)     /* post-increment */
