@@ -14,7 +14,7 @@ Script syntax
 
 Values can be of several main types, each with its own syntax:
  * Numbers; Numerical expressions.
- * Objects; Types S, L, N, W.
+ * Objects; Types S, L, N, R, W.
  * Arrays.
 
 Numerical expressions:
@@ -67,13 +67,13 @@ S -- Script options
 	t	Default time duration in seconds. Starts at 1.0.
 
 Signal generator common parameters
-	Named parameters common to types L, N, and W.
+	Named parameters common to types L, N, R, and W.
 	t	Time duration in seconds. If no t setting given, default time
 		depends on context - either scaling to fit the duration of
-		play until the end of the current group of sounds, or the
+		play until the end of the current group of signals, or the
 		default value if alone.
 	a	Amplitude, where 1.0 gives a level of 0dB, which is the signal
-		max of the output. For a modulator wave, this however simply
+		max of the output. For a modulator signal, this however
 		adjusts the effect strength.
 	a!{}	Second amplitude to modulate (AM) to by wave or envelope,
 		and/or a list of modulators given within {} following the
@@ -85,38 +85,24 @@ Signal generator common parameters
 L -- Line generator
 	Expects a start value following the L; the start value is repeated
 	to make a flat line if the goal parameter isn't used.
-	See "Signal generator common parameters" for other named parameters.
+	It also has the "Signal generator common parameters".
 	g	Goal (go-to) value, assigned to the parameter after time.
 		This value has no default and must be provided. If changed
 		again before the full time, the current point reached on the
 		previous trajectory will be used to change the start value.
-	l	Line shape (default 'lin', or the previous shape if any):
-			hor	Horizontal line with old value held until time.
-			lin	Linear trajectory over time.
-			sin	Sine-like smooth ends trajectory over time.
-			exp	Steep "exp(x)-1"-like increase or decrease.
-			log	Steep "log(x+1)"-like increase or decrease.
-			xpe	Exponential envelope shape (saturate or decay).
-			lge	Logarithmic envelope shape (saturate or decay).
-		(The 'exp' and 'log' shapes use ear-tuned polynomial
-		approximations with definite beginnings and ends,
-		designed to sound natural for frequency sweeping,
-		and symmetric one to the other. The 'xpe' shape increases
-		like 'log' and decreases like 'exp', much like a capacitor
-		charges and discharges, natural-sounding for an envelope;
-		and 'lge' increases like 'exp' and decreases like 'log'.
-		The 'sin' shape sounds similar to 'lin', except it has a
-		smoothly curved start and stop, and a steeper middle.)
+	l	Line shape (default 'lin', or the previous shape if any);
+		see "Line types".
 	v	Start (state) value. It can also be set in this way.
 
 N -- Noise generator
-	Noise generator; "wh" (white noise) is currently the only type.
-	See "Signal generator common parameters" for other named parameters.
+	Expects a noise type following the N; "wh" (white noise)
+	is currently the only noise type.
+	It also has the "Signal generator common parameters".
 	n	Noise type; "wh" (white noise) is currently the only type.
 
-W -- Wave oscillator
-	Wave oscillator; see "Wave types" for all types.
-	See "Signal generator common parameters" for other named parameters.
+Oscillating generator common parameters
+	Named parameters common to types R and W.
+	They also have the more universal "Signal generator common parameters".
 	f	Frequency in Hz, for carrier or modulator.
 	f!{}	Second frequency in Hz to modulate (FM) to by wave or envelope,
 		and/or a list of modulators given within {} following the
@@ -134,7 +120,50 @@ W -- Wave oscillator
 	p!{}	A list of modulator (PM) waves is given within the {}, the
 		per-sample sum of which is used to phase-modulate the carrier,
 		be it the final carrier or in turn another modulator.
+
+R -- Random segments generator
+	Expects a line type following the R; see "Line types" for all types.
+	It also has the "Oscillating generator common parameters".
+	s	Segment line type; see "Line types" for all types.
+
+W -- Wave oscillator
+	Expects a wave type following the W; see "Wave types" for all types.
+	It also has the "Oscillating generator common parameters".
 	w	Wave type; see "Wave types" for all types.
+
+Channel mixing values:
+	Panning, where 0.0 is centered. Named constants can be used in place
+	of numbers for the three classic channel "modes". Values outside the
+	range of L to R are allowed, amplifying one channel while giving the
+	other a negative amplitude.
+	C	0.0
+	L	(-1.0)
+	R	1.0
+
+Line types:
+	hor
+		Horizontal line with old value held until time.
+	lin
+		Linear trajectory over time.
+	sin
+		Sine-like smooth ends trajectory over time.
+	exp
+		Steep "exp(x)-1"-like increase or decrease.
+	log
+		Steep "log(x+1)"-like increase or decrease.
+	xpe
+		Exponential envelope shape (saturate or decay).
+	lge
+		Logarithmic envelope shape (saturate or decay).
+	The 'exp' and 'log' shapes use ear-tuned polynomial
+	approximations with definite beginnings and ends,
+	designed to sound natural for frequency sweeping,
+	and symmetric one to the other. The 'xpe' shape increases
+	like 'log' and decreases like 'exp', much like a capacitor
+	charges and discharges, natural-sounding for an envelope;
+	and 'lge' increases like 'exp' and decreases like 'log'.
+	The 'sin' shape sounds similar to 'lin', except it has a
+	smoothly curved start and stop, and a steeper middle.
 
 Wave types:
 	sin	Sine.
@@ -161,15 +190,6 @@ Wave types:
 	ssr	Squared & square root of sine.
 			A little more thin and sharp, it differs from
 			"srs" a little like "srs" differs from "szh".
-
-Channel mixing values:
-	Panning, where 0.0 is centered. Named constants can be used in place
-	of numbers for the three classic channel "modes". Values outside the
-	range of L to R are allowed, amplifying one channel while giving the
-	other a negative amplitude.
-	C	0.0
-	L	(-1.0)
-	R	1.0
 
 The following modifiers are supported:
 
