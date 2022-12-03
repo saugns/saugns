@@ -238,8 +238,8 @@ void mgsLine_fill_xpe(float *restrict buf, uint32_t len,
 	const float inv_time = 1.f / time;
 	for (uint32_t i = 0; i < len; ++i) {
 		const uint32_t i_pos = i + pos;
-		float x = 1.f - i_pos * inv_time;
-		float v = vt + (v0 - vt) * expramp(x);
+		float x = i_pos * inv_time;
+		float v = vt + (v0 - vt) * expramp(1.f - x);
 		if (!mulbuf)
 			buf[i] = v;
 		else
@@ -257,7 +257,7 @@ void mgsLine_fill_xpe(float *restrict buf, uint32_t len,
 void mgsLine_map_xpe(float *restrict buf, uint32_t len,
 		float v0, float vt, const float *restrict t) {
 	for (uint32_t i = 0; i < len; ++i) {
-		buf[i] = v0 + (vt - v0) * expramp(1.f - t[i]);
+		buf[i] = vt + (v0 - vt) * expramp(1.f - t[i]);
 	}
 }
 
