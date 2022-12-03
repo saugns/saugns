@@ -286,9 +286,9 @@ MGSctordef_(mgsProgramLineData,,,
   mgsProgramLineData *lod = mem;
   lod->type = MGS_TYPE_LINE;
   lod->line.time_ms = lrint(lod->time.v * 1000.f);
-  lod->line.fill_type = MGS_LINE_N_lin;
+  lod->line.type = MGS_LINE_N_lin;
   lod->line.flags |= MGS_LINEP_STATE
-                  | MGS_LINEP_FILL_TYPE
+                  | MGS_LINEP_TYPE
                   | MGS_LINEP_TIME_IF_NEW;
   return true;
 }
@@ -743,8 +743,8 @@ static bool parse_line(mgsParser *o, mgsProgramData *n, char pos_c) {
   if (!lod) goto INVALID;
   size_t line;
   if (!scan_linetype(o, &line, pos_c)) goto INVALID;
-  lod->line.fill_type = line;
-  lod->line.flags |= MGS_LINEP_FILL_TYPE;
+  lod->line.type = line;
+  lod->line.flags |= MGS_LINEP_TYPE;
   return true;
 INVALID:
   return false;

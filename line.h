@@ -18,7 +18,7 @@
 #pragma once
 #include "math.h"
 
-/* Macro used to declare and define line fill sets of items. */
+/* Macro used to declare and define line sets of items. */
 #define MGS_LINE__ITEMS(X) \
 	X(hor) \
 	X(lin) \
@@ -30,11 +30,15 @@
 	//
 #define MGS_LINE__X_ID(NAME) MGS_LINE_N_##NAME,
 #define MGS_LINE__X_NAME(NAME) #NAME,
-#define MGS_LINE__X_PROTOTYPE(NAME) \
+#define MGS_LINE__X_PROTOTYPES(NAME) \
 void mgsLine_fill_##NAME(float *restrict buf, uint32_t len, \
 		float v0, float vt, uint32_t pos, uint32_t time, \
-		const float *restrict mulbuf);
-#define MGS_LINE__X_ADDRESS(NAME) mgsLine_fill_##NAME,
+		const float *restrict mulbuf); \
+void mgsLine_map_##NAME(float *restrict buf, uint32_t len, \
+		float v0, float vt, const float *restrict t); \
+/**/
+#define MGS_LINE__X_FILL_ADDR(NAME) mgsLine_fill_##NAME,
+#define MGS_LINE__X_MAP_ADDR(NAME) mgsLine_map_##NAME,
 
 /**
  * Line fill types.
@@ -44,7 +48,7 @@ enum {
 	MGS_LINE_NAMED
 };
 
-MGS_LINE__ITEMS(MGS_LINE__X_PROTOTYPE)
+MGS_LINE__ITEMS(MGS_LINE__X_PROTOTYPES)
 
 /** Names of line fill types, with an extra NULL pointer at the end. */
 extern const char *const mgsLine_names[MGS_LINE_NAMED + 1];
@@ -53,8 +57,14 @@ typedef void (*mgsLine_fill_f)(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf);
 
-/** Fill functions for line fill types. */
+typedef void (*mgsLine_map_f)(float *restrict buf, uint32_t len,
+		float v0, float vt, const float *restrict t);
+
+/** Fill functions for line types. */
 extern const mgsLine_fill_f mgsLine_fill_funcs[MGS_LINE_NAMED];
+
+/** Map functions for line types. */
+extern const mgsLine_map_f mgsLine_map_funcs[MGS_LINE_NAMED];
 
 /**
  * Line parameter flags.
@@ -64,7 +74,7 @@ enum {
 	MGS_LINEP_STATE_RATIO = 1<<1,
 	MGS_LINEP_GOAL        = 1<<2, // vt set -- and timed fill will be done
 	MGS_LINEP_GOAL_RATIO  = 1<<3,
-	MGS_LINEP_FILL_TYPE   = 1<<4, // fill_type set
+	MGS_LINEP_TYPE        = 1<<4, // type set
 	MGS_LINEP_TIME        = 1<<5, // time_ms set -- cleared on time expiry
 	MGS_LINEP_TIME_IF_NEW = 1<<6, // time_ms to be kept if currently set
 };
@@ -79,7 +89,7 @@ typedef struct mgsLine {
 	float v0, vt;
 	uint32_t pos, end;
 	uint32_t time_ms;
-	uint8_t fill_type;
+	uint8_t type;
 	uint8_t flags;
 } mgsLine;
 

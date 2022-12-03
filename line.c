@@ -23,7 +23,11 @@ const char *const mgsLine_names[MGS_LINE_NAMED + 1] = {
 };
 
 const mgsLine_fill_f mgsLine_fill_funcs[MGS_LINE_NAMED] = {
-	MGS_LINE__ITEMS(MGS_LINE__X_ADDRESS)
+	MGS_LINE__ITEMS(MGS_LINE__X_FILL_ADDR)
+};
+
+const mgsLine_map_f mgsLine_map_funcs[MGS_LINE_NAMED] = {
+	MGS_LINE__ITEMS(MGS_LINE__X_MAP_ADDR)
 };
 
 // the noinline use below works around i386 clang performance issue
@@ -47,6 +51,20 @@ mgsNoinline void mgsLine_fill_hor(float *restrict buf, uint32_t len,
 }
 
 /**
+ * Map positions \p t (values from 0.0 to 1.0) to a straight horizontal line,
+ * by simply writing \p len copies of \p v0 into \p buf.
+ *
+ * Mapping counterpart of filling function mgsLine_fill_hor().
+ */
+void mgsLine_map_hor(float *restrict buf, uint32_t len,
+		float v0, float vt, const float *restrict t) {
+	(void)vt;
+	(void)t;
+	for (uint32_t i = 0; i < len; ++i)
+		buf[i] = v0;
+}
+
+/**
  * Fill \p buf with \p len values along a linear trajectory
  * from \p v0 (at position 0) to \p vt (at position \p time),
  * beginning at position \p pos.
@@ -62,6 +80,19 @@ void mgsLine_fill_lin(float *restrict buf, uint32_t len,
 			buf[i] = v;
 		else
 			buf[i] = v * mulbuf[i];
+	}
+}
+
+/**
+ * Map positions \p t (values from 0.0 to 1.0) to a linear trajectory,
+ * by writing \p len values between of \p v0 and \p vt into \p buf.
+ *
+ * Mapping counterpart of filling function mgsLine_fill_lin().
+ */
+void mgsLine_map_lin(float *restrict buf, uint32_t len,
+		float v0, float vt, const float *restrict t) {
+	for (uint32_t i = 0; i < len; ++i) {
+		buf[i] = v0 + (vt - v0) * t[i];
 	}
 }
 
@@ -110,6 +141,19 @@ void mgsLine_fill_sin(float *restrict buf, uint32_t len,
 }
 
 /**
+ * Map positions \p t (values from 0.0 to 1.0) to a sinuous trajectory,
+ * by writing \p len values between of \p v0 and \p vt into \p buf.
+ *
+ * Mapping counterpart of filling function mgsLine_fill_sin().
+ */
+void mgsLine_map_sin(float *restrict buf, uint32_t len,
+		float v0, float vt, const float *restrict t) {
+	for (uint32_t i = 0; i < len; ++i) {
+		buf[i] = v0 + (vt - v0) * sinramp(t[i]);
+	}
+}
+
+/**
  * Fill \p buf with \p len values along an exponential trajectory
  * from \p v0 (at position 0) to \p vt (at position \p time),
  * beginning at position \p pos.
@@ -124,6 +168,19 @@ void mgsLine_fill_exp(float *restrict buf, uint32_t len,
 	(v0 > vt ?
 		mgsLine_fill_xpe :
 		mgsLine_fill_lge)(buf, len, v0, vt, pos, time, mulbuf);
+}
+
+/**
+ * Map positions \p t (values from 0.0 to 1.0) to an exponential trajectory,
+ * by writing \p len values between of \p v0 and \p vt into \p buf.
+ *
+ * Mapping counterpart of filling function mgsLine_fill_exp().
+ */
+void mgsLine_map_exp(float *restrict buf, uint32_t len,
+		float v0, float vt, const float *restrict t) {
+	(v0 > vt ?
+		mgsLine_map_xpe :
+		mgsLine_map_lge)(buf, len, v0, vt, t);
 }
 
 /**
@@ -144,13 +201,36 @@ void mgsLine_fill_log(float *restrict buf, uint32_t len,
 }
 
 /**
+ * Map positions \p t (values from 0.0 to 1.0) to a logarithmic trajectory,
+ * by writing \p len values between of \p v0 and \p vt into \p buf.
+ *
+ * Mapping counterpart of filling function mgsLine_fill_log().
+ */
+void mgsLine_map_log(float *restrict buf, uint32_t len,
+		float v0, float vt, const float *restrict t) {
+	(v0 < vt ?
+		mgsLine_map_xpe :
+		mgsLine_map_lge)(buf, len, v0, vt, t);
+}
+
+/*
+ * My 2011 exponential curve approximation.
+ */
+static inline float expramp(float x) {
+	float x2 = x * x;
+	float x3 = x2 * x;
+	return x3 + (x2 * x3 - x2) *
+		(x * (629.f/1792.f) + x2 * (1163.f/1792.f));
+}
+
+/**
  * Fill \p buf with \p len values along an "envelope" trajectory
  * which exponentially saturates and decays (like a capacitor),
  * from \p v0 (at position 0) to \p vt (at position \p time),
  * beginning at position \p pos.
  *
- * Uses an ear-tuned polynomial, designed to sound natural,
- * and symmetric to the "opposite" 'lge' fill type.
+ * Uses an ear-tuned polynomial, designed to sound natural for
+ * frequency sweeping, and symmetric to the "opposite", 'lge' fill type.
  */
 void mgsLine_fill_xpe(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
@@ -158,16 +238,26 @@ void mgsLine_fill_xpe(float *restrict buf, uint32_t len,
 	const float inv_time = 1.f / time;
 	for (uint32_t i = 0; i < len; ++i) {
 		const uint32_t i_pos = i + pos;
-		float mod = 1.f - i_pos * inv_time,
-			modp2 = mod * mod,
-			modp3 = modp2 * mod;
-		mod = modp3 + (modp2 * modp3 - modp2) *
-			(mod * (629.f/1792.f) + modp2 * (1163.f/1792.f));
-		float v = vt + (v0 - vt) * mod;
+		float x = 1.f - i_pos * inv_time;
+		float v = vt + (v0 - vt) * expramp(x);
 		if (!mulbuf)
 			buf[i] = v;
 		else
 			buf[i] = v * mulbuf[i];
+	}
+}
+
+/**
+ * Map positions \p t (values from 0.0 to 1.0) to an "envelope" trajectory
+ * which exponentially saturates and decays (like a capacitor),
+ * by writing \p len values between of \p v0 and \p vt into \p buf.
+ *
+ * Mapping counterpart of filling function mgsLine_fill_xpe().
+ */
+void mgsLine_map_xpe(float *restrict buf, uint32_t len,
+		float v0, float vt, const float *restrict t) {
+	for (uint32_t i = 0; i < len; ++i) {
+		buf[i] = v0 + (vt - v0) * expramp(1.f - t[i]);
 	}
 }
 
@@ -177,8 +267,8 @@ void mgsLine_fill_xpe(float *restrict buf, uint32_t len,
  * from \p v0 (at position 0) to \p vt (at position \p time),
  * beginning at position \p pos.
  *
- * Uses an ear-tuned polynomial, designed to sound natural,
- * and symmetric to the "opposite" 'xpe' fill type.
+ * Uses an ear-tuned polynomial, designed to sound natural for
+ * frequency sweeping, and symmetric to the "opposite", 'xpe' fill type.
  */
 void mgsLine_fill_lge(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
@@ -186,16 +276,26 @@ void mgsLine_fill_lge(float *restrict buf, uint32_t len,
 	const float inv_time = 1.f / time;
 	for (uint32_t i = 0; i < len; ++i) {
 		const uint32_t i_pos = i + pos;
-		float mod = i_pos * inv_time,
-			modp2 = mod * mod,
-			modp3 = modp2 * mod;
-		mod = modp3 + (modp2 * modp3 - modp2) *
-			(mod * (629.f/1792.f) + modp2 * (1163.f/1792.f));
-		float v = v0 + (vt - v0) * mod;
+		float x = i_pos * inv_time;
+		float v = v0 + (vt - v0) * expramp(x);
 		if (!mulbuf)
 			buf[i] = v;
 		else
 			buf[i] = v * mulbuf[i];
+	}
+}
+
+/**
+ * Map positions \p t (values from 0.0 to 1.0) to an "envelope" trajectory
+ * which logarithmically saturates and decays (opposite of a capacitor),
+ * by writing \p len values between of \p v0 and \p vt into \p buf.
+ *
+ * Mapping counterpart of filling function mgsLine_fill_lge().
+ */
+void mgsLine_map_lge(float *restrict buf, uint32_t len,
+		float v0, float vt, const float *restrict t) {
+	for (uint32_t i = 0; i < len; ++i) {
+		buf[i] = v0 + (vt - v0) * expramp(t[i]);
 	}
 }
 
@@ -231,9 +331,9 @@ void mgsLine_copy(mgsLine *restrict o,
 		mask |= MGS_LINEP_GOAL
 			| MGS_LINEP_GOAL_RATIO;
 	}
-	if ((src->flags & MGS_LINEP_FILL_TYPE) != 0) {
-		o->fill_type = src->fill_type;
-		mask |= MGS_LINEP_FILL_TYPE;
+	if ((src->flags & MGS_LINEP_TYPE) != 0) {
+		o->type = src->type;
+		mask |= MGS_LINEP_TYPE;
 	}
 	if (!(o->flags & MGS_LINEP_TIME) ||
 	    !(src->flags & MGS_LINEP_TIME_IF_NEW)) {
@@ -291,7 +391,7 @@ mgsNoinline uint32_t mgsLine_get(mgsLine *restrict o,
 		return 0;
 	uint32_t len = o->end - o->pos;
 	if (len > buf_len) len = buf_len;
-	mgsLine_fill_funcs[o->fill_type](buf, len,
+	mgsLine_fill_funcs[o->type](buf, len,
 			o->v0, o->vt, o->pos, o->end, mulbuf);
 	return len;
 }

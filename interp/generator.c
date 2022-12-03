@@ -383,7 +383,6 @@ static void run_block_raseg(mgsGenerator *o, Buf *bufs_from, uint32_t len,
   sub_par_amp(o, bufs_from, len, &n->ogen.sound, freq);
   amp = bufs_from++;
   tmp_buf = bufs_from++;
-  puts("0");
   mgsRaseg_run(&n->raseg, tmp_buf->f, len, cycle_buf->u, phase_buf->u);
   ((flags & BLOCK_WAVEENV) ?
    block_mix_mul_waveenv :
