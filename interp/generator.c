@@ -138,17 +138,17 @@ static void mgsGenerator_update_sound(mgsGenerator *o, mgsEventNode *ev) {
     if (updn->sound.params & MGS_WAVEP_WAVE) {
       refn->osc.wave = updn->osc.wave;
     }
-    if (updn->sound.params & MGS_WAVEP_FREQ) {
+    if (updn->sound.params & MGS_OSCGENP_FREQ) {
       refn->freq = updn->freq;
       adjtime = true;
     }
-    if (updn->sound.params & MGS_WAVEP_DYNFREQ) {
+    if (updn->sound.params & MGS_OSCGENP_DYNFREQ) {
       refn->dynfreq = updn->dynfreq;
     }
-    if (updn->sound.params & MGS_WAVEP_PHASE) {
+    if (updn->sound.params & MGS_OSCGENP_PHASE) {
       mgsOsc_set_phase(&refn->osc, updn->osc.phasor.phase);
     }
-    if (updn->sound.params & MGS_WAVEP_ATTR) {
+    if (updn->sound.params & MGS_OSCGENP_ATTR) {
       refn->attr = updn->attr;
     }
     if (refsn == rootsn) {
@@ -245,26 +245,31 @@ static void run_block_sub(mgsGenerator *o, Buf *bufs_from, uint32_t len,
     uint32_t mods_id, Buf *freq,
     uint32_t flags);
 
+static void sub_par_amp(mgsGenerator *o, Buf *bufs_from, uint32_t len,
+    mgsSoundNode *n, Buf *freq) {
+  uint32_t i;
+  Buf *amp = bufs_from;
+  if (n->amods_id > 0) {
+    run_block_sub(o, bufs_from, len,
+        n->amods_id, freq,
+        BLOCK_WAVEENV);
+    float dynampdiff = n->dynamp - n->amp;
+    for (i = 0; i < len; ++i)
+      amp->f[i] = n->amp + amp->f[i] * dynampdiff;
+  } else {
+    for (i = 0; i < len; ++i)
+      amp->f[i] = n->amp;
+  }
+}
+
 static void run_block_line(mgsGenerator *o, Buf *bufs_from, uint32_t len,
     mgsLineNode *n,
     uint32_t layer, uint32_t flags) {
-  uint32_t i;
   Buf *mix_buf = bufs_from++;
   Buf *amp = NULL;
   Buf *tmp_buf = NULL;
-  if (n->sound.amods_id > 0) {
-    run_block_sub(o, bufs_from, len,
-        n->sound.amods_id, NULL,
-        BLOCK_WAVEENV);
-    amp = bufs_from++;
-    float dynampdiff = n->sound.dynamp - n->sound.amp;
-    for (i = 0; i < len; ++i)
-      amp->f[i] = n->sound.amp + amp->f[i] * dynampdiff;
-  } else {
-    amp = bufs_from++;
-    for (i = 0; i < len; ++i)
-      amp->f[i] = n->sound.amp;
-  }
+  sub_par_amp(o, bufs_from, len, &n->sound, NULL);
+  amp = bufs_from++;
   tmp_buf = bufs_from++;
   mgsLine_run(&n->line, tmp_buf->f, len, NULL);
   ((flags & BLOCK_WAVEENV) ?
@@ -275,23 +280,11 @@ static void run_block_line(mgsGenerator *o, Buf *bufs_from, uint32_t len,
 static void run_block_noise(mgsGenerator *o, Buf *bufs_from, uint32_t len,
     mgsNoiseNode *n,
     uint32_t layer, uint32_t flags) {
-  uint32_t i;
   Buf *mix_buf = bufs_from++;
   Buf *amp = NULL;
   Buf *tmp_buf = NULL;
-  if (n->sound.amods_id > 0) {
-    run_block_sub(o, bufs_from, len,
-        n->sound.amods_id, NULL,
-        BLOCK_WAVEENV);
-    amp = bufs_from++;
-    float dynampdiff = n->sound.dynamp - n->sound.amp;
-    for (i = 0; i < len; ++i)
-      amp->f[i] = n->sound.amp + amp->f[i] * dynampdiff;
-  } else {
-    amp = bufs_from++;
-    for (i = 0; i < len; ++i)
-      amp->f[i] = n->sound.amp;
-  }
+  sub_par_amp(o, bufs_from, len, &n->sound, NULL);
+  amp = bufs_from++;
   tmp_buf = bufs_from++;
   mgsNGen_run(&n->ngen, tmp_buf->f, len);
   ((flags & BLOCK_WAVEENV) ?
@@ -335,19 +328,8 @@ static void run_block_wave(mgsGenerator *o, Buf *bufs_from, uint32_t len,
   }
   mgsPhasor_fill(&n->osc.phasor, phase_buf->u, len,
       freq->f, (pm_buf ? pm_buf->f : NULL), NULL);
-  if (n->sound.amods_id > 0) {
-    run_block_sub(o, bufs_from, len,
-        n->sound.amods_id, freq,
-        BLOCK_WAVEENV);
-    amp = bufs_from++;
-    float dynampdiff = n->sound.dynamp - n->sound.amp;
-    for (i = 0; i < len; ++i)
-      amp->f[i] = n->sound.amp + amp->f[i] * dynampdiff;
-  } else {
-    amp = (bufs_from++);
-    for (i = 0; i < len; ++i)
-      amp->f[i] = n->sound.amp;
-  }
+  sub_par_amp(o, bufs_from, len, &n->sound, freq);
+  amp = bufs_from++;
   tmp_buf = bufs_from++;
   mgsOsc_run(&n->osc, tmp_buf->f, len, phase_buf->u);
   ((flags & BLOCK_WAVEENV) ?

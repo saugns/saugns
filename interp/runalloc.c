@@ -293,8 +293,8 @@ static bool mgsRunAlloc_make_sound(mgsRunAlloc *restrict o,
 		break;
 	default:
 		mgs_warning("runalloc",
-"sound data type %hhd unsupported, event %d left blank",
-				n->type, o->cur_ev_id);
+"sound data type %hhd (\"%s\") unsupported;\n\tevent %d left blank",
+				n->type, n->meta->name, o->cur_ev_id);
 		break;
 	}
 	return true;

@@ -190,7 +190,9 @@ MGSmetainst(mgsProgramSoundData, mgsProgramData, NULL,
 		mgsProgramSoundData_vtinit)
 MGSmetainst(mgsProgramLineData, mgsProgramSoundData, NULL, NULL)
 MGSmetainst(mgsProgramNoiseData, mgsProgramSoundData, NULL, NULL)
-MGSmetainst(mgsProgramWaveData, mgsProgramSoundData, NULL, NULL)
+MGSmetainst(mgsProgramOscgenData, mgsProgramSoundData, NULL, NULL)
+MGSmetainst(mgsProgramWaveData, mgsProgramOscgenData, NULL, NULL)
+MGSmetainst(mgsProgramRasegData, mgsProgramOscgenData, NULL, NULL)
 MGSmetainst(mgsProgramScopeData, mgsProgramData, NULL, NULL)
 MGSmetainst(mgsProgramDurData, mgsProgramScopeData, NULL, NULL)
 MGSmetainst(mgsProgramArrData, mgsProgramScopeData, NULL, NULL)
@@ -301,23 +303,42 @@ MGSctordef_(mgsProgramNoiseData,,,
   return true;
 }
 
-MGSctordef_(mgsProgramWaveData,,,
+MGSctordef_(mgsProgramOscgenData,,,
 		(void *mem, mgsParser *pr, mgsProgramData *ref_prev),
 		(mem, pr, ref_prev)) {
   if (!mgsProgramSoundData_ctor(mem, pr, ref_prev))
 	  return false;
-  mgsProgramWaveData *wod = mem;
+  mgsProgramOscgenData *ood = mem;
   mgsNodeData *nd = pr->cur_nd;
-  wod->type = MGS_TYPE_WAVE;
-  if (!wod->ref_prev) {
+  if (!ood->ref_prev) {
     if (!nd->target) {
-      wod->freq = pr->n_freq;
+      ood->freq = pr->n_freq;
     } else {
-      wod->freq = pr->n_ratio;
-      wod->attr |= MGS_ATTR_FREQRATIO | MGS_ATTR_DYNFREQRATIO;
+      ood->freq = pr->n_ratio;
+      ood->attr |= MGS_ATTR_FREQRATIO | MGS_ATTR_DYNFREQRATIO;
     }
-    wod->dynfreq = wod->freq;
+    ood->dynfreq = ood->freq;
   }
+  return true;
+}
+
+MGSctordef_(mgsProgramWaveData,,,
+		(void *mem, mgsParser *pr, mgsProgramData *ref_prev),
+		(mem, pr, ref_prev)) {
+  if (!mgsProgramOscgenData_ctor(mem, pr, ref_prev))
+	  return false;
+  mgsProgramWaveData *wod = mem;
+  wod->type = MGS_TYPE_WAVE;
+  return true;
+}
+
+MGSctordef_(mgsProgramRasegData,,,
+		(void *mem, mgsParser *pr, mgsProgramData *ref_prev),
+		(mem, pr, ref_prev)) {
+  if (!mgsProgramOscgenData_ctor(mem, pr, ref_prev))
+	  return false;
+  mgsProgramRasegData *rod = mem;
+  rod->type = MGS_TYPE_RASEG;
   return true;
 }
 
@@ -670,35 +691,35 @@ INVALID:
 }
 
 static bool parse_freq(mgsParser *o, mgsProgramData *n, bool ratio) {
-  mgsProgramWaveData *wod = mgs_of_class(n, mgsProgramWaveData);
-  if (!wod) goto INVALID;
-  if (ratio && (n->base_id == wod->root->base_id)) goto INVALID;
+  mgsProgramOscgenData *ood = mgs_of_class(n, mgsProgramOscgenData);
+  if (!ood) goto INVALID;
+  if (ratio && (n->base_id == ood->root->base_id)) goto INVALID;
   double f;
   if (mgsFile_TRYC(o->f, '!')) {
     if (!mgsFile_TESTC(o->f, '{')) {
       if (!scan_num(o, NULL, &f)) goto INVALID;
-      wod->dynfreq = f;
+      ood->dynfreq = f;
       if (ratio) {
-        wod->attr |= MGS_ATTR_DYNFREQRATIO;
+        ood->attr |= MGS_ATTR_DYNFREQRATIO;
       } else {
-        wod->attr &= ~MGS_ATTR_DYNFREQRATIO;
+        ood->attr &= ~MGS_ATTR_DYNFREQRATIO;
       }
-      wod->params |= MGS_WAVEP_DYNFREQ | MGS_WAVEP_ATTR;
+      ood->params |= MGS_OSCGENP_DYNFREQ | MGS_OSCGENP_ATTR;
     }
     if (mgsFile_TRYC(o->f, '{')) {
-      wod->fmod = mgsProgramArrData_mpnew(o->mp, o);
-      wod->fmod->mod_type = MGS_MOD_FM;
-      parse_level(o, wod->fmod);
+      ood->fmod = mgsProgramArrData_mpnew(o->mp, o);
+      ood->fmod->mod_type = MGS_MOD_FM;
+      parse_level(o, ood->fmod);
     }
   } else {
     if (!scan_num(o, NULL, &f)) goto INVALID;
-    wod->freq = f;
+    ood->freq = f;
     if (ratio) {
-      wod->attr |= MGS_ATTR_FREQRATIO;
+      ood->attr |= MGS_ATTR_FREQRATIO;
     } else {
-      wod->attr &= ~MGS_ATTR_FREQRATIO;
+      ood->attr &= ~MGS_ATTR_FREQRATIO;
     }
-    wod->params |= MGS_WAVEP_FREQ | MGS_WAVEP_ATTR;
+    ood->params |= MGS_OSCGENP_FREQ | MGS_OSCGENP_ATTR;
   }
   return true;
 INVALID:
@@ -742,19 +763,19 @@ INVALID:
 }
 
 static bool parse_phase(mgsParser *o, mgsProgramData *n) {
-  mgsProgramWaveData *wod = mgs_of_class(n, mgsProgramWaveData);
-  if (!wod) goto INVALID;
+  mgsProgramOscgenData *ood = mgs_of_class(n, mgsProgramOscgenData);
+  if (!ood) goto INVALID;
   double f;
   if (mgsFile_TRYC(o->f, '!')) {
     if (mgsFile_TRYC(o->f, '{')) {
-      wod->pmod = mgsProgramArrData_mpnew(o->mp, o);
-      wod->pmod->mod_type = MGS_MOD_PM;
-      parse_level(o, wod->pmod);
+      ood->pmod = mgsProgramArrData_mpnew(o->mp, o);
+      ood->pmod->mod_type = MGS_MOD_PM;
+      parse_level(o, ood->pmod);
     }
   } else {
     if (!scan_num(o, NULL, &f)) goto INVALID;
-    wod->phase = lrint(f * UINT32_MAX);
-    wod->params |= MGS_WAVEP_PHASE;
+    ood->phase = lrint(f * UINT32_MAX);
+    ood->params |= MGS_OSCGENP_PHASE;
   }
   return true;
 INVALID:
@@ -803,6 +824,18 @@ INVALID:
   return false;
 }
 
+static bool parse_seg(mgsParser *o, mgsProgramData *n, char pos_c) {
+  mgsProgramRasegData *rod = mgs_of_class(n, mgsProgramRasegData);
+  if (!rod) goto INVALID;
+  size_t line;
+  if (!scan_linetype(o, &line, pos_c)) goto INVALID;
+  rod->seg = line;
+  rod->params |= MGS_RASEGP_SEG;
+  return true;
+INVALID:
+  return false;
+}
+
 static bool parse_ref(mgsParser *o, char pos_c) {
   mgsNodeData *nd = o->cur_nd;
   if (nd->target != NULL)
@@ -817,9 +850,10 @@ static bool parse_ref(mgsParser *o, char pos_c) {
     case MGS_TYPE_LINE: data = mgsProgramLineData_mpnew(o->mp, o, ref); break;
     case MGS_TYPE_NOISE: data = mgsProgramNoiseData_mpnew(o->mp, o, ref); break;
     case MGS_TYPE_WAVE: data = mgsProgramWaveData_mpnew(o->mp, o, ref); break;
-    default: break; // FIXME: Do this better than switch-case...
+    case MGS_TYPE_RASEG: data = mgsProgramRasegData_mpnew(o->mp, o, ref); break;
+    default: break; // TODO: Do this better than switch-case...
     }
-    sym->data.obj = o->cur_node;
+    sym->data.obj = data;
     o->setnode = o->level + 1;
   } else {
     warning(o, "reference doesn't point to an object", pos_c);
@@ -917,6 +951,13 @@ static void parse_level(mgsParser *o, mgsProgramArrData *chain) {
       break; }
     case 'Q':
       goto FINISH;
+    case 'R': {
+      size_t line;
+      if (!scan_linetype(o, &line, c)) break;
+      mgsProgramRasegData *rod = mgsProgramRasegData_mpnew(o->mp, o, NULL);
+      rod->seg = line;
+      o->setnode = o->level + 1;
+      break; }
     case 'S':
       o->setdef = o->level + 1;
       break;
@@ -1020,6 +1061,11 @@ static void parse_level(mgsParser *o, mgsProgramArrData *chain) {
       } else if (o->setnode <= 0)
         goto INVALID;
       if (!parse_freq(o, nd.node, true)) goto INVALID;
+      break;
+    case 's':
+      if (o->setdef > o->setnode || o->setnode <= 0)
+        goto INVALID;
+      if (!parse_seg(o, nd.node, c)) goto INVALID;
       break;
     case 't':
       if (o->setdef > o->setnode) {

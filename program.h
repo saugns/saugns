@@ -28,6 +28,7 @@ enum {
 	MGS_TYPE_LINE = MGS_BASETYPES,
 	MGS_TYPE_NOISE,
 	MGS_TYPE_WAVE,
+	MGS_TYPE_RASEG,
 	MGS_TYPE_ENV,
 	MGS_TYPE_DUR,
 	MGS_TYPE_ARR,
@@ -51,24 +52,27 @@ enum {
 
 /* Sound node parameters. */
 enum {
-	MGS_PARAM_MASK = (1<<16) - 1,
-	/* Common object parameters. */
+	MGS_PARAM_MASK = (1<<24) - 1,
+	/* (Level 1) Common object parameters. */
 	MGS_SOUNDP_TIME = 1<<0,
 	MGS_SOUNDP_AMP = 1<<1,
 	MGS_SOUNDP_DYNAMP = 1<<2,
 	MGS_SOUNDP_PAN = 1<<3,
-	/* Line object parameters. */
+	/* (Level 2) Line object parameters. */
 	MGS_LINEP_LINE = 1<<8,
 	//MGS_LINEP_VALUE = 1<<9,
 	//MGS_LINEP_GOAL = 1<<10,
-	/* Noise object parameters. */
+	/* (Level 2) Noise object parameters. */
 	MGS_NOISEP_NOISE = 1<<8,
-	/* Wave object parameters. */
-	MGS_WAVEP_WAVE = 1<<8,
-	MGS_WAVEP_ATTR = 1<<9,
-	MGS_WAVEP_FREQ = 1<<10,
-	MGS_WAVEP_DYNFREQ = 1<<11,
-	MGS_WAVEP_PHASE = 1<<12,
+	/* (Level 2) Oscillating generator object parameters. */
+	MGS_OSCGENP_ATTR = 1<<8,
+	MGS_OSCGENP_FREQ = 1<<9,
+	MGS_OSCGENP_DYNFREQ = 1<<10,
+	MGS_OSCGENP_PHASE = 1<<11,
+	/* (Level 3) Wave object parameters. */
+	MGS_WAVEP_WAVE = 1<<16,
+	/* (Level 3) Random segments object parameters. */
+	MGS_RASEGP_SEG = 1<<16,
 };
 
 struct mgsParser;
@@ -122,15 +126,29 @@ MGSclassdef(mgsProgramLineData)
 /**/
 MGSclassdef(mgsProgramNoiseData)
 
-#define mgsProgramWaveData_C_ mgsProgramSoundData_C_ \
-	uint8_t attr, wave; \
+#define mgsProgramOscgenData_C_ mgsProgramSoundData_C_ \
 	float freq, dynfreq; \
 	uint32_t phase; \
 	struct mgsProgramArrData *pmod, *fmod; \
+	uint8_t attr; \
 /**/
-#define mgsProgramWaveData_V_ mgsProgramSoundData_V_ \
+#define mgsProgramOscgenData_V_ mgsProgramSoundData_V_ \
+/**/
+MGSclassdef(mgsProgramOscgenData)
+
+#define mgsProgramWaveData_C_ mgsProgramOscgenData_C_ \
+	uint8_t wave; \
+/**/
+#define mgsProgramWaveData_V_ mgsProgramOscgenData_V_ \
 /**/
 MGSclassdef(mgsProgramWaveData)
+
+#define mgsProgramRasegData_C_ mgsProgramOscgenData_C_ \
+	uint8_t seg; \
+/**/
+#define mgsProgramRasegData_V_ mgsProgramOscgenData_V_ \
+/**/
+MGSclassdef(mgsProgramRasegData)
 
 #define mgsProgramScopeData_C_ mgsProgramData_C_ \
 	void *first_node, *last_node; \
