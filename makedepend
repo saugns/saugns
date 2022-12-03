@@ -23,17 +23,13 @@ builder/postparse.o: builder/postparse.c builder/parser.h mgensys.h \
 interp/env.o: interp/env.c
 interp/generator.o: interp/generator.c interp/runalloc.h mgensys.h \
  ptrarr.h common.h interp/ngen.h noise.h \
- math.h interp/osc.h wave.h interp/env.h \
- program.h Object.h line.h \
+ math.h interp/osc.h wave.h interp/raseg.h \
+ line.h interp/env.h program.h Object.h \
  mempool.h arrtype.h
-interp/ngen.o: interp/ngen.c interp/ngen.h noise.h math.h \
- common.h
-interp/osc.o: interp/osc.c interp/osc.h wave.h common.h \
- math.h
 interp/runalloc.o: interp/runalloc.c interp/runalloc.h mgensys.h \
  ptrarr.h common.h interp/ngen.h noise.h \
- math.h interp/osc.h wave.h interp/env.h \
- program.h Object.h line.h \
+ math.h interp/osc.h wave.h interp/raseg.h \
+ line.h interp/env.h program.h Object.h \
  mempool.h arrtype.h
 player/audiodev.o: player/audiodev.c player/audiodev.h common.h
 player/player.o: player/player.c mgensys.h ptrarr.h \

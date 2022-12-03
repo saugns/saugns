@@ -12,6 +12,9 @@
  */
 
 #include "runalloc.h"
+#include "ngen.h"
+#include "osc.h"
+#include "raseg.h"
 #include <string.h>
 
 #define BUF_LEN 256
@@ -72,8 +75,8 @@ mgsGenerator* mgs_create_Generator(const mgsProgram *prg, uint32_t srate) {
  * Click reduction: decrease time to make it end at wave cycle's end.
  */
 static mgsNoinline void adjust_wave_time(mgsGenerator *o, mgsWaveNode *n) {
-  int pos_offs = mgsOsc_cycle_offs(&n->osc, n->freq, n->sound.time);
-  n->sound.time -= pos_offs;
+  int pos_offs = mgsOsc_cycle_offs(&n->osc, n->ogen.freq, n->ogen.sound.time);
+  n->ogen.sound.time -= pos_offs;
   if (!(o->time_flags & MGS_GEN_TIME_OFFS) || o->delay_offs > pos_offs) {
     o->delay_offs = pos_offs;
     o->time_flags |= MGS_GEN_TIME_OFFS;
@@ -129,31 +132,45 @@ static void mgsGenerator_update_sound(mgsGenerator *o, mgsEventNode *ev) {
     break; }
   case MGS_TYPE_NOISE:
     break;
-  case MGS_TYPE_WAVE: {
-    mgsWaveNode *refn = (mgsWaveNode*) refsn;
-    mgsWaveNode *updn = (mgsWaveNode*) updsn;
+  case MGS_TYPE_WAVE:
+  case MGS_TYPE_RASEG: {
+    mgsOscgenNode *refn = (mgsOscgenNode*) refsn;
+    mgsOscgenNode *updn = (mgsOscgenNode*) updsn;
     /* set state */
     refn->fmods_id = updn->fmods_id;
     refn->pmods_id = updn->pmods_id;
-    if (updn->sound.params & MGS_WAVEP_WAVE) {
-      refn->osc.wave = updn->osc.wave;
-    }
-    if (updn->sound.params & MGS_OSCGENP_FREQ) {
+    if (updsn->params & MGS_OSCGENP_FREQ) {
       refn->freq = updn->freq;
       adjtime = true;
     }
-    if (updn->sound.params & MGS_OSCGENP_DYNFREQ) {
+    if (updsn->params & MGS_OSCGENP_DYNFREQ) {
       refn->dynfreq = updn->dynfreq;
     }
-    if (updn->sound.params & MGS_OSCGENP_PHASE) {
-      mgsOsc_set_phase(&refn->osc, updn->osc.phasor.phase);
-    }
-    if (updn->sound.params & MGS_OSCGENP_ATTR) {
+    if (updsn->params & MGS_OSCGENP_ATTR) {
       refn->attr = updn->attr;
     }
-    if (refsn == rootsn) {
-      if (adjtime) /* here so new freq also used if set */
-        adjust_wave_time(o, refn);
+    if (refsn->type == MGS_TYPE_WAVE) {
+      mgsWaveNode *refn = (mgsWaveNode*) refsn;
+      mgsWaveNode *updn = (mgsWaveNode*) updsn;
+      if (updsn->params & MGS_OSCGENP_PHASE) {
+        mgsOsc_set_phase(&refn->osc, updn->osc.phasor.phase);
+      }
+      if (updsn->params & MGS_WAVEP_WAVE) {
+        refn->osc.wave = updn->osc.wave;
+      }
+      if (refsn == rootsn) {
+        if (adjtime) /* here so new freq also used if set */
+          adjust_wave_time(o, refn);
+      }
+    } else {
+      mgsRasegNode *refn = (mgsRasegNode*) refsn;
+      mgsRasegNode *updn = (mgsRasegNode*) updsn;
+      if (updsn->params & MGS_OSCGENP_PHASE) {
+        mgsRaseg_set_phase(&refn->raseg, updn->raseg.cyclor.cycle_phase);
+      }
+      if (updsn->params & MGS_RASEGP_SEG) {
+        refn->raseg.line = updn->raseg.line;
+      }
     }
     break; }
   }
@@ -292,13 +309,10 @@ static void run_block_noise(mgsGenerator *o, Buf *bufs_from, uint32_t len,
    block_mix_add)(mix_buf->f, len, layer, tmp_buf->f, amp->f);
 }
 
-static void run_block_wave(mgsGenerator *o, Buf *bufs_from, uint32_t len,
-    mgsWaveNode *n, Buf *parentfreq,
-    uint32_t layer, uint32_t flags) {
+static void sub_par_freq(mgsGenerator *o, Buf *bufs_from, uint32_t len,
+    mgsOscgenNode *n, Buf *parentfreq) {
   uint32_t i;
-  Buf *mix_buf = bufs_from++, *phase_buf = bufs_from++, *pm_buf = NULL;
-  Buf *freq = bufs_from++, *amp = NULL;
-  Buf *tmp_buf = NULL;
+  Buf *freq = bufs_from++;
   if ((n->attr & MGS_ATTR_FREQRATIO) != 0 && parentfreq != NULL) {
     for (i = 0; i < len; ++i)
       freq->f[i] = n->freq * parentfreq->f[i];
@@ -319,19 +333,58 @@ static void run_block_wave(mgsGenerator *o, Buf *bufs_from, uint32_t len,
         freq->f[i] += (n->dynfreq - freq->f[i]) * fmbuf->f[i];
     }
   }
+}
+
+static void run_block_wave(mgsGenerator *o, Buf *bufs_from, uint32_t len,
+    mgsWaveNode *n, Buf *parentfreq,
+    uint32_t layer, uint32_t flags) {
+  Buf *mix_buf = bufs_from++, *phase_buf = bufs_from++, *pm_buf = NULL;
+  Buf *freq = NULL, *amp = NULL;
+  Buf *tmp_buf = NULL;
+  sub_par_freq(o, bufs_from, len, &n->ogen, parentfreq);
+  freq = bufs_from++;
   pm_buf = NULL;
-  if (n->pmods_id > 0) {
+  if (n->ogen.pmods_id > 0) {
     run_block_sub(o, (bufs_from + 0), len,
-        n->pmods_id, freq,
+        n->ogen.pmods_id, freq,
         0);
     pm_buf = (bufs_from + 0);
   }
   mgsPhasor_fill(&n->osc.phasor, phase_buf->u, len,
       freq->f, (pm_buf ? pm_buf->f : NULL), NULL);
-  sub_par_amp(o, bufs_from, len, &n->sound, freq);
+  sub_par_amp(o, bufs_from, len, &n->ogen.sound, freq);
   amp = bufs_from++;
   tmp_buf = bufs_from++;
   mgsOsc_run(&n->osc, tmp_buf->f, len, phase_buf->u);
+  ((flags & BLOCK_WAVEENV) ?
+   block_mix_mul_waveenv :
+   block_mix_add)(mix_buf->f, len, layer, tmp_buf->f, amp->f);
+}
+
+static void run_block_raseg(mgsGenerator *o, Buf *bufs_from, uint32_t len,
+    mgsRasegNode *n, Buf *parentfreq,
+    uint32_t layer, uint32_t flags) {
+  Buf *mix_buf = bufs_from++,
+      *cycle_buf = bufs_from++, *phase_buf = bufs_from++,
+      *pm_buf = NULL;
+  Buf *freq = NULL, *amp = NULL;
+  Buf *tmp_buf = NULL;
+  sub_par_freq(o, bufs_from, len, &n->ogen, parentfreq);
+  freq = bufs_from++;
+  pm_buf = NULL;
+  if (n->ogen.pmods_id > 0) {
+    run_block_sub(o, (bufs_from + 0), len,
+        n->ogen.pmods_id, freq,
+        0);
+    pm_buf = (bufs_from + 0);
+  }
+  mgsCyclor_fill(&n->raseg.cyclor, cycle_buf->u, phase_buf->u, len,
+      freq->f, (pm_buf ? pm_buf->f : NULL), NULL);
+  sub_par_amp(o, bufs_from, len, &n->ogen.sound, freq);
+  amp = bufs_from++;
+  tmp_buf = bufs_from++;
+  puts("0");
+  mgsRaseg_run(&n->raseg, tmp_buf->f, len, cycle_buf->u, phase_buf->u);
   ((flags & BLOCK_WAVEENV) ?
    block_mix_mul_waveenv :
    block_mix_add)(mix_buf->f, len, layer, tmp_buf->f, amp->f);
@@ -357,6 +410,11 @@ static void run_block_sub(mgsGenerator *o, Buf *bufs_from, uint32_t len,
     case MGS_TYPE_WAVE:
       run_block_wave(o, bufs_from, len,
           (mgsWaveNode*) n, freq,
+          i, flags);
+      break;
+    case MGS_TYPE_RASEG:
+      run_block_raseg(o, bufs_from, len,
+          (mgsRasegNode*) n, freq,
           i, flags);
       break;
     }
@@ -388,6 +446,11 @@ static uint32_t run_sound(mgsGenerator *o,
     case MGS_TYPE_WAVE:
       run_block_wave(o, o->bufs, len,
           (mgsWaveNode*) sndn, NULL,
+          0, 0);
+      break;
+    case MGS_TYPE_RASEG:
+      run_block_raseg(o, o->bufs, len,
+          (mgsRasegNode*) sndn, NULL,
           0, 0);
       break;
     }

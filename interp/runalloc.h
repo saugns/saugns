@@ -15,6 +15,7 @@
 #include "../mgensys.h"
 #include "ngen.h"
 #include "osc.h"
+#include "raseg.h"
 #include "env.h"
 #include "../program.h"
 #include "../mempool.h"
@@ -46,14 +47,23 @@ typedef struct mgsNoiseNode {
 	mgsNGen ngen;
 } mgsNoiseNode;
 
-typedef struct mgsWaveNode {
+typedef struct mgsOscgenNode {
 	mgsSoundNode sound;
-	mgsOsc osc;
 	uint8_t attr;
 	float freq, dynfreq;
 	uint32_t fmods_id;
 	uint32_t pmods_id;
+} mgsOscgenNode;
+
+typedef struct mgsWaveNode {
+	mgsOscgenNode ogen;
+	mgsOsc osc;
 } mgsWaveNode;
+
+typedef struct mgsRasegNode {
+	mgsOscgenNode ogen;
+	mgsRaseg raseg;
+} mgsRasegNode;
 
 typedef struct mgsVoiceNode {
 	mgsSoundNode *root;

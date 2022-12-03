@@ -9,7 +9,7 @@ LFLAGS_OSSAUDIO=$(LFLAGS) -lossaudio
 OBJ=reader/file.o reader/symtab.o \
     builder/parser.o builder/postparse.o builder/builder.o \
     player/audiodev.o player/sndfile.o player/player.o \
-    interp/generator.o interp/ngen.o interp/osc.o interp/runalloc.o \
+    interp/generator.o interp/runalloc.o \
     common.o Object.o mempool.o ptrarr.o arrtype.o \
     line.o noise.o wave.o help.o \
     mgensys.o
@@ -69,12 +69,6 @@ help.o:
 
 interp/generator.o:
 	$(CC) -c $(CFLAGS_FAST) interp/generator.c -o interp/generator.o
-
-interp/ngen.o:
-	$(CC) -c $(CFLAGS_FAST) interp/ngen.c -o interp/ngen.o
-
-interp/osc.o:
-	$(CC) -c $(CFLAGS_FAST) interp/osc.c -o interp/osc.o
 
 interp/runalloc.o:
 	$(CC) -c $(CFLAGS_FAST) interp/runalloc.c -o interp/runalloc.o

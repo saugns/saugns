@@ -227,9 +227,37 @@ static bool mgsRunAlloc_make_noise(mgsRunAlloc *restrict o,
 		non = mgs_mpmemdup(o->mem, ref_ev->sndn, sizeof(mgsNoiseNode));
 	}
 	if (!non || !mgsRunAlloc_init_sound(o, &non->sound,
-				(const mgsProgramSoundData*)nod))
+				(const mgsProgramSoundData*) nod))
 		return false;
 	mgs_init_NGen(&non->ngen, random_next(&o->seed));
+	return true;
+}
+
+/*
+ * Fill in oscillating genenerator node data.
+ *
+ * To be called to initialize common data for oscillating generator nodes.
+ *
+ * \return true, or false on allocation failure
+ */
+static bool mgsRunAlloc_init_oscgen(mgsRunAlloc *restrict o,
+		mgsOscgenNode *oon,
+		const mgsProgramOscgenData *restrict ood) {
+	mgsProgramOscgenData *prev_ood = ood->ref_prev;
+	if (!mgsRunAlloc_init_sound(o, &oon->sound,
+				(const mgsProgramSoundData*) ood))
+		return false;
+	oon->attr = ood->attr;
+	oon->freq = ood->freq;
+	oon->dynfreq = ood->dynfreq;
+	if (NEED_MODLIST(ood, prev_ood, fmod)) {
+		if (!mgsRunAlloc_make_modlist(o, ood->fmod, &oon->fmods_id))
+			return false;
+	}
+	if (NEED_MODLIST(ood, prev_ood, pmod)) {
+		if (!mgsRunAlloc_make_modlist(o, ood->pmod, &oon->pmods_id))
+			return false;
+	}
 	return true;
 }
 
@@ -242,30 +270,43 @@ static bool mgsRunAlloc_make_wave(mgsRunAlloc *restrict o,
 		const mgsProgramWaveData *restrict wod) {
 	mgsEventNode *ev = o->cur_ev;
 	mgsWaveNode *won;
-	mgsProgramWaveData *prev_wod = wod->ref_prev;
 	if (!(ev->status & MGS_EV_UPDATE)) {
 		won = mgs_mpalloc(o->mem, sizeof(mgsWaveNode));
 	} else {
 		mgsEventNode *ref_ev = &o->ev_arr.a[ev->ref_i];
 		won = mgs_mpmemdup(o->mem, ref_ev->sndn, sizeof(mgsWaveNode));
 	}
-	if (!won || !mgsRunAlloc_init_sound(o, &won->sound,
-				(const mgsProgramSoundData*)wod))
+	if (!won || !mgsRunAlloc_init_oscgen(o, &won->ogen,
+				(const mgsProgramOscgenData*) wod))
 		return false;
 	mgs_init_Osc(&won->osc, o->srate);
 	won->osc.wave = wod->wave;
 	mgsOsc_set_phase(&won->osc, wod->phase);
-	won->attr = wod->attr;
-	won->freq = wod->freq;
-	won->dynfreq = wod->dynfreq;
-	if (NEED_MODLIST(wod, prev_wod, fmod)) {
-		if (!mgsRunAlloc_make_modlist(o, wod->fmod, &won->fmods_id))
-			return false;
+	return true;
+}
+
+/*
+ * Allocate and initialize random segments node.
+ *
+ * \return true, or false on allocation failure
+ */
+static bool mgsRunAlloc_make_raseg(mgsRunAlloc *restrict o,
+		const mgsProgramRasegData *restrict rod) {
+	mgsEventNode *ev = o->cur_ev;
+	mgsRasegNode *ron;
+	if (!(ev->status & MGS_EV_UPDATE)) {
+		ron = mgs_mpalloc(o->mem, sizeof(mgsRasegNode));
+	} else {
+		mgsEventNode *ref_ev = &o->ev_arr.a[ev->ref_i];
+		ron = mgs_mpmemdup(o->mem, ref_ev->sndn, sizeof(mgsRasegNode));
 	}
-	if (NEED_MODLIST(wod, prev_wod, pmod)) {
-		if (!mgsRunAlloc_make_modlist(o, wod->pmod, &won->pmods_id))
-			return false;
-	}
+	if (!ron || !mgsRunAlloc_init_oscgen(o, &ron->ogen,
+				(const mgsProgramOscgenData*) rod))
+		return false;
+	mgs_init_Raseg(&ron->raseg, o->srate);
+	ron->raseg.line = rod->seg;
+	/* cycle... */
+	mgsRaseg_set_phase(&ron->raseg, rod->phase);
 	return true;
 }
 
@@ -289,6 +330,10 @@ static bool mgsRunAlloc_make_sound(mgsRunAlloc *restrict o,
 		break;
 	case MGS_TYPE_WAVE:
 		if (!mgsRunAlloc_make_wave(o, (const mgsProgramWaveData*) n))
+			return false;
+		break;
+	case MGS_TYPE_RASEG:
+		if (!mgsRunAlloc_make_raseg(o, (const mgsProgramRasegData*) n))
 			return false;
 		break;
 	default:
@@ -379,16 +424,45 @@ static size_t calc_bufs_wave(mgsRunAlloc *restrict o,
 	++count;
 	++count;
 	++count;
-	if (n->fmods_id > 0) {
-		size_t sub_count = calc_bufs_sub(o, count, n->fmods_id);
+	if (n->ogen.fmods_id > 0) {
+		size_t sub_count = calc_bufs_sub(o, count, n->ogen.fmods_id);
 		if (max_count < sub_count) max_count = sub_count;
 	}
-	if (n->pmods_id > 0) {
-		size_t sub_count = calc_bufs_sub(o, count, n->pmods_id);
+	if (n->ogen.pmods_id > 0) {
+		size_t sub_count = calc_bufs_sub(o, count, n->ogen.pmods_id);
 		if (max_count < sub_count) max_count = sub_count;
 	}
-	if (n->sound.amods_id > 0) {
-		size_t sub_count = calc_bufs_sub(o, count, n->sound.amods_id);
+	if (n->ogen.sound.amods_id > 0) {
+		size_t sub_count = calc_bufs_sub(o, count, n->ogen.sound.amods_id);
+		if (max_count < sub_count) max_count = sub_count;
+		++count;
+	} else {
+		++count;
+	}
+	++count;
+	if (max_count < count) max_count = count;
+	return max_count;
+}
+
+/*
+ * Traversal mirroring the function for running an mgsRasegNode.
+ */
+static size_t calc_bufs_raseg(mgsRunAlloc *restrict o,
+		size_t count_from, mgsRasegNode *restrict n) {
+	size_t count = count_from, max_count = count_from;
+	++count;
+	count += 2;
+	++count;
+	if (n->ogen.fmods_id > 0) {
+		size_t sub_count = calc_bufs_sub(o, count, n->ogen.fmods_id);
+		if (max_count < sub_count) max_count = sub_count;
+	}
+	if (n->ogen.pmods_id > 0) {
+		size_t sub_count = calc_bufs_sub(o, count, n->ogen.pmods_id);
+		if (max_count < sub_count) max_count = sub_count;
+	}
+	if (n->ogen.sound.amods_id > 0) {
+		size_t sub_count = calc_bufs_sub(o, count, n->ogen.sound.amods_id);
 		if (max_count < sub_count) max_count = sub_count;
 		++count;
 	} else {
@@ -419,6 +493,10 @@ static size_t calc_bufs_sub(mgsRunAlloc *restrict o,
 			sub_count = calc_bufs_wave(o,
 					count_from, (mgsWaveNode*) n);
 			break;
+		case MGS_TYPE_RASEG:
+			sub_count = calc_bufs_raseg(o,
+					count_from, (mgsRasegNode*) n);
+			break;
 		}
 		if (max_count < sub_count)
 			max_count = sub_count;
@@ -445,6 +523,9 @@ static bool mgsRunAlloc_recheck_bufs(mgsRunAlloc *restrict o) {
 			break;
 		case MGS_TYPE_WAVE:
 			count = calc_bufs_wave(o, 0, (mgsWaveNode*) sndn);
+			break;
+		case MGS_TYPE_RASEG:
+			count = calc_bufs_raseg(o, 0, (mgsRasegNode*) sndn);
 			break;
 		}
 		if (o->max_bufs < count)
