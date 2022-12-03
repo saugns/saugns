@@ -37,13 +37,13 @@ static void mgsCyclor_fill(mgsCyclor *restrict o,
 		const float *restrict pm_f,
 		const float *restrict fpm_f);
 
-//#define MGS_OSC_RESET_DIFF  (1<<0)
-//#define MGS_OSC_RESET       ((1<<1) - 1)
+#define MGS_RASEG_RESET  (1<<0)
 
 typedef struct mgsRaseg {
 	mgsCyclor cyclor;
 	uint8_t line;
 	uint8_t flags;
+//	float prev_x;
 } mgsRaseg;
 
 /**
@@ -56,8 +56,14 @@ static inline void mgs_init_Raseg(mgsRaseg *restrict o, uint32_t srate) {
 			.coeff = mgsCyclor_COEFF(srate),
 		},
 		.line = MGS_LINE_N_lin,
-		.flags = 0,
+		.flags = MGS_RASEG_RESET,
+//		.prev_x = 0,
 	};
+}
+
+static inline void mgsRaseg_set_cycle(mgsRaseg *restrict o, uint32_t cycle) {
+	o->cyclor.cycle_phase =
+		(o->cyclor.cycle_phase & UINT32_MAX) | (((uint64_t)cycle)<<32);
 }
 
 static inline void mgsRaseg_set_phase(mgsRaseg *restrict o, uint32_t phase) {
@@ -159,10 +165,11 @@ static mgsMaybeUnused void mgsCyclor_fill(mgsCyclor *restrict o,
 
 #undef P /* done */
 
-static mgsMaybeUnused void mgsRaseg_reset(mgsRaseg *restrict o, int32_t phase) {
-	//if (o->flags & MGS_OSC_RESET_DIFF) {
-	//}
-	//o->flags &= ~MGS_OSC_RESET;
+static void mgsRaseg_reset(mgsRaseg *restrict o, uint32_t cycle) {
+//	if (o->flags & MGS_RASEG_RESET) {
+//		o->prev_x = mgs_ranoise32(cycle - 1) * 1.f/(float)INT32_MAX;
+//	}
+//	o->flags &= ~MGS_RASEG_RESET;
 }
 
 /**
@@ -174,14 +181,18 @@ static mgsMaybeUnused void mgsRaseg_run(mgsRaseg *restrict o,
 		float *restrict buf, size_t buf_len,
 		const uint32_t *restrict cycle_buf,
 		const uint32_t *restrict phase_buf) {
-//	if (buf_len > 0 && o->flags & MGS_OSC_RESET)
-//		mgsRaseg_reset(o, phase_buf[0]);
+	mgsLine_map_f map = mgsLine_map_funcs[o->line];
+	if (buf_len > 0 && o->flags & MGS_RASEG_RESET)
+		mgsRaseg_reset(o, cycle_buf[0]);
 	for (size_t i = 0; i < buf_len; ++i) {
-		float s;
+		//float s;
 		uint32_t cycle = cycle_buf[i];
 		uint32_t phase = phase_buf[i];
-		int32_t x = mgs_ranoise32(cycle);
-		s = x * 1.f/(float)INT32_MAX;
-		buf[i] = s;
+		float a = mgs_ranoise32(cycle) * 1.f/(float)INT32_MAX;
+		float b = mgs_ranoise32(cycle + 1) * 1.f/(float)INT32_MAX;
+		float p = ((int32_t) (phase >> 1)) * 1.f/(float)INT32_MAX;
+		map(&buf[i], 1, a, b, &p);
+//		map(&buf[i], 1, o->prev_x, x, &p);
+//		o->prev_x = x;
 	}
 }
