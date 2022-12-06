@@ -1,0 +1,6 @@
+# Rain sound; similar to white noise except the so-so darker "splashy" bursts.
+Rsin f50 p!{Wsin f10/2 a10^5/2} t60 a1/2
+
+# Thunderous sound, oscillating between rumbly and crackly (rather soft) part;
+# amplitude fading in and out works pretty well, but too regular to seem real.
+Wsin f-50 f!+50{Rsin r1*2 r!10*2{Wsin f1/10}} a0 a!1{Wsin f3/20} t60

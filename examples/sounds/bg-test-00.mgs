@@ -1,0 +1,2 @@
+# use richness of tri as PM modulator
+Rsin f5 t60 p!{Wtri r0 r!25{Wsin f1/30} a1}

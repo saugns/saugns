@@ -1,0 +1,2 @@
+# exp gives neat even harmonics
+'a Rexp f2.5 t14 p!{Wsin r10 r!100*3{Wsaw f1/15} a1} | :a a!0{L-1 g+1 t1} t1
