@@ -152,21 +152,21 @@ static mgsMaybeUnused void mgsPhasor_fill(mgsPhasor *restrict o,
 			float s_f = freq_f[i];
 			float s_pofs = pm_f[i];
 			phase_ui32[i] = P(lrintf(o->coeff * s_f),
-					lrintf(s_pofs * (float) INT32_MAX));
+					llrintf(s_pofs * (float)INT32_MAX));
 		}
 	} else if (!pm_f) {
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s_f = freq_f[i];
 			float s_pofs = fpm_f[i] * fpm_scale * s_f;
 			phase_ui32[i] = P(lrintf(o->coeff * s_f),
-					lrintf(s_pofs * (float) INT32_MAX));
+					llrintf(s_pofs * (float)INT32_MAX));
 		}
 	} else {
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s_f = freq_f[i];
 			float s_pofs = pm_f[i] + (fpm_f[i] * fpm_scale * s_f);
 			phase_ui32[i] = P(lrintf(o->coeff * s_f),
-					lrintf(s_pofs * (float) INT32_MAX));
+					llrintf(s_pofs * (float)INT32_MAX));
 		}
 	}
 }

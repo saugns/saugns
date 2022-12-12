@@ -131,7 +131,7 @@ static mgsMaybeUnused void mgsCyclor_fill(mgsCyclor *restrict o,
 			float s_f = freq_f[i];
 			float s_pofs = pm_f[i];
 			uint64_t cycle_phase = P(llrintf(o->coeff * s_f),
-					llrintf(s_pofs * (2.f * INT32_MAX)));
+					llrintf(s_pofs * 2.f*(float)INT32_MAX));
 			cycle_ui32[i] = cycle_phase >> 32;
 			phase_ui32[i] = cycle_phase;
 		}
@@ -140,7 +140,7 @@ static mgsMaybeUnused void mgsCyclor_fill(mgsCyclor *restrict o,
 			float s_f = freq_f[i];
 			float s_pofs = fpm_f[i] * fpm_scale * s_f;
 			uint64_t cycle_phase = P(llrintf(o->coeff * s_f),
-					llrintf(s_pofs * (2.f * INT32_MAX)));
+					llrintf(s_pofs * 2.f*(float)INT32_MAX));
 			cycle_ui32[i] = cycle_phase >> 32;
 			phase_ui32[i] = cycle_phase;
 		}
@@ -149,7 +149,7 @@ static mgsMaybeUnused void mgsCyclor_fill(mgsCyclor *restrict o,
 			float s_f = freq_f[i];
 			float s_pofs = pm_f[i] + (fpm_f[i] * fpm_scale * s_f);
 			uint64_t cycle_phase = P(llrintf(o->coeff * s_f),
-					llrintf(s_pofs * (2.f * INT32_MAX)));
+					llrintf(s_pofs * 2.f*(float)INT32_MAX));
 			cycle_ui32[i] = cycle_phase >> 32;
 			phase_ui32[i] = cycle_phase;
 		}
