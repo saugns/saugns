@@ -18,6 +18,7 @@
 #pragma once
 #include "common.h"
 #include <math.h>
+#include <limits.h>
 
 #define MGS_PI          3.14159265358979323846
 #define MGS_ASIN_1_2    0.52359877559829887308 // asin(0.5)
@@ -45,6 +46,23 @@ static inline uint64_t mgs_ms_in_samples(uint64_t time_ms, uint64_t srate) {
 	uint64_t time = time_ms * srate;
 	time = (time + 500) / 1000;
 	return time;
+}
+
+/** Apply lrint() if long can hold UINT32_MAX, otherwise llrint(). */
+#define mgs_ui32rint(x) ((uint32_t) \
+	(LONG_MAX >= UINT32_MAX ? lrint(x) : llrint(x)))
+
+/** Apply lrintf() if long can hold UINT32_MAX, otherwise llrintf(). */
+#define mgs_ui32rintf(x) ((uint32_t) \
+	(LONG_MAX >= UINT32_MAX ? lrintf(x) : llrintf(x)))
+
+/**
+ * Convert cyclical value (0.0 = 0% and 1.0 = 100%, with ends
+ * wrapping around) to 32-bit integer with 0 as the 0% value.
+ */
+static inline uint32_t mgs_cyclepos_dtoui32(double x) {
+	// needs long(er) range because 0.5 from remainder becomes INT32_MAX+1
+	return mgs_ui32rint(remainder(x, 1.f) * (float)UINT32_MAX);
 }
 
 /*

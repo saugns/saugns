@@ -774,7 +774,7 @@ static bool parse_phase(mgsParser *o, mgsProgramData *n) {
     }
   } else {
     if (!scan_num(o, NULL, &f)) goto INVALID;
-    ood->phase = lrint(f * UINT32_MAX);
+    ood->phase = mgs_cyclepos_dtoui32(f);
     ood->params |= MGS_OSCGENP_PHASE;
   }
   return true;
