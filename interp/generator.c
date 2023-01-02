@@ -1,5 +1,5 @@
 /* mgensys: Audio generator.
- * Copyright (c) 2011, 2020-2022 Joel K. Pettersson
+ * Copyright (c) 2011, 2020-2023 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
@@ -170,6 +170,9 @@ static void mgsGenerator_update_sound(mgsGenerator *o, mgsEventNode *ev) {
       }
       if (updsn->params & MGS_RASEGP_SEG) {
         refn->raseg.line = updn->raseg.line;
+      }
+      if (updsn->params & MGS_RASEGP_MODE) {
+        refn->raseg.mode = updn->raseg.mode;
       }
     }
     break; }

@@ -1,5 +1,5 @@
 /* mgensys: Audio program data.
- * Copyright (c) 2011, 2020-2022 Joel K. Pettersson
+ * Copyright (c) 2011, 2020-2023 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
@@ -73,6 +73,7 @@ enum {
 	MGS_WAVEP_WAVE = 1<<16,
 	/* (Level 3) Random segments object parameters. */
 	MGS_RASEGP_SEG = 1<<16,
+	MGS_RASEGP_MODE = 1<<17,
 };
 
 struct mgsParser;
@@ -143,8 +144,14 @@ MGSclassdef(mgsProgramOscgenData)
 /**/
 MGSclassdef(mgsProgramWaveData)
 
+enum {
+	MGS_RASEG_MODE_RAND = 0,
+//	MGS_RASEG_MODE_MET,
+	MGS_RASEG_MODE_FIXED,
+};
+
 #define mgsProgramRasegData_C_ mgsProgramOscgenData_C_ \
-	uint8_t seg; \
+	uint8_t seg, mode; \
 /**/
 #define mgsProgramRasegData_V_ mgsProgramOscgenData_V_ \
 /**/

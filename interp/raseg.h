@@ -1,5 +1,5 @@
 /* mgensys: Random segments implementation.
- * Copyright (c) 2022 Joel K. Pettersson
+ * Copyright (c) 2022-2023 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
@@ -13,6 +13,7 @@
 
 #pragma once
 #include "../line.h"
+#include "../program.h"
 
 /**
  * Calculate the coefficent, based on the sample rate, used for
@@ -27,7 +28,7 @@ typedef struct mgsCyclor {
 
 typedef struct mgsRaseg {
 	mgsCyclor cyclor;
-	uint8_t line;
+	uint8_t line, mode;
 	uint8_t flags;
 //	float prev_x;
 } mgsRaseg;
@@ -42,6 +43,7 @@ static inline void mgs_init_Raseg(mgsRaseg *restrict o, uint32_t srate) {
 			.coeff = 2.f * mgsCyclor_COEFF(srate), /* 2x */
 		},
 		.line = MGS_LINE_N_lin,
+		.mode = MGS_RASEG_MODE_RAND,
 		.flags = 0,
 //		.prev_x = 0,
 	};
@@ -155,11 +157,11 @@ static mgsMaybeUnused void mgsCyclor_fill(mgsCyclor *restrict o,
 #undef P /* done */
 
 /**
- * Run for \p buf_len samples, generating output.
+ * Run for \p buf_len samples in 'random' mode, generating output.
  *
  * Uses post-incremented phase each sample.
  */
-static mgsMaybeUnused void mgsRaseg_run(mgsRaseg *restrict o,
+static mgsMaybeUnused void mgsRaseg_run_rand(mgsRaseg *restrict o,
 		float *restrict buf, size_t buf_len,
 		const uint32_t *restrict cycle_buf,
 		const uint32_t *restrict phase_buf) {
@@ -171,5 +173,77 @@ static mgsMaybeUnused void mgsRaseg_run(mgsRaseg *restrict o,
 		float b = mgs_ranoise32(cycle + 1) * 1.f/(float)INT32_MAX;
 		float p = ((int32_t) (phase >> 1)) * 1.f/(float)INT32_MAX;
 		map(&buf[i], 1, a, b, &p);
+	}
+}
+
+/**
+ * Run for \p buf_len samples in 'fixed' mode, generating output.
+ *
+ * Uses post-incremented phase each sample.
+ */
+static mgsMaybeUnused void mgsRaseg_run_fixed(mgsRaseg *restrict o,
+		float *restrict buf, size_t buf_len,
+		const uint32_t *restrict cycle_buf,
+		const uint32_t *restrict phase_buf) {
+	mgsLine_map_f map = mgsLine_map_funcs[o->line];
+	for (size_t i = 0; i < buf_len; ++i) {
+		uint32_t cycle = cycle_buf[i];
+		uint32_t phase = phase_buf[i];
+		float a = mgs_oddness_as_sign(cycle);
+		float b = mgs_oddness_as_sign(cycle + 1);
+		float p = ((int32_t) (phase >> 1)) * 1.f/(float)INT32_MAX;
+		map(&buf[i], 1, a, b, &p);
+	}
+}
+
+#if 0
+/**
+ * Metallic sound derived from the oldest ranoise32() version.
+ *
+ * \return not-quite-random number for index \p n
+ */
+static inline int32_t mgs_ranmet32(uint32_t n) {
+	uint32_t s = n * MGS_FIBH32;
+	s = MGS_ROR32(s, s + 14);
+	return s;
+}
+
+/**
+ * Run for \p buf_len samples in 'metallic' mode, generating output.
+ *
+ * Uses post-incremented phase each sample.
+ */
+static mgsMaybeUnused void mgsRaseg_run_met(mgsRaseg *restrict o,
+		float *restrict buf, size_t buf_len,
+		const uint32_t *restrict cycle_buf,
+		const uint32_t *restrict phase_buf) {
+	mgsLine_map_f map = mgsLine_map_funcs[o->line];
+	for (size_t i = 0; i < buf_len; ++i) {
+		uint32_t cycle = cycle_buf[i];
+		uint32_t phase = phase_buf[i];
+		float a = mgs_ranmet32(cycle) * 1.f/(float)INT32_MAX;
+		float b = mgs_ranmet32(cycle + 1) * 1.f/(float)INT32_MAX;
+		float p = ((int32_t) (phase >> 1)) * 1.f/(float)INT32_MAX;
+		map(&buf[i], 1, a, b, &p);
+	}
+}
+#endif
+
+/**
+ * Run for \p buf_len samples, generating output.
+ *
+ * Uses post-incremented phase each sample.
+ */
+static mgsMaybeUnused void mgsRaseg_run(mgsRaseg *restrict o,
+		float *restrict buf, size_t buf_len,
+		const uint32_t *restrict cycle_buf,
+		const uint32_t *restrict phase_buf) {
+	switch (o->mode) {
+	case MGS_RASEG_MODE_RAND:
+		mgsRaseg_run_rand(o, buf, buf_len, cycle_buf, phase_buf); break;
+//	case MGS_RASEG_MODE_MET:
+//		mgsRaseg_run_met(o, buf, buf_len, cycle_buf, phase_buf); break;
+	case MGS_RASEG_MODE_FIXED:
+		mgsRaseg_run_fixed(o, buf, buf_len, cycle_buf, phase_buf);break;
 	}
 }

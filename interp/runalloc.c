@@ -1,5 +1,5 @@
 /* mgensys: Audio generator data allocator.
- * Copyright (c) 2020-2022 Joel K. Pettersson
+ * Copyright (c) 2020-2023 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
@@ -305,6 +305,7 @@ static bool mgsRunAlloc_make_raseg(mgsRunAlloc *restrict o,
 		return false;
 	mgs_init_Raseg(&ron->raseg, o->srate);
 	ron->raseg.line = rod->seg;
+	ron->raseg.mode = rod->mode;
 	/* cycle... */
 	mgsRaseg_set_phase(&ron->raseg, rod->phase);
 	return true;

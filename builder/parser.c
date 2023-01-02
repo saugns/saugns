@@ -1,5 +1,5 @@
 /* mgensys: Script parser.
- * Copyright (c) 2011, 2019-2022 Joel K. Pettersson
+ * Copyright (c) 2011, 2019-2023 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
@@ -750,6 +750,23 @@ INVALID:
   return false;
 }
 
+static bool parse_mode(mgsParser *o, mgsProgramData *n, char pos_c) {
+  mgsProgramRasegData *rod = mgs_of_class(n, mgsProgramRasegData);
+  if (!rod) goto INVALID;
+  uint8_t mode;
+  switch (mgsFile_GETC(o->f)) {
+  case 'r': mode = MGS_RASEG_MODE_RAND; break;
+//  case 'm': mode = MGS_RASEG_MODE_MET; break;
+  case 'f': mode = MGS_RASEG_MODE_FIXED; break;
+  default: mgsFile_DECP(o->f); goto INVALID;
+  }
+  rod->mode = mode;
+  rod->params |= MGS_RASEGP_MODE;
+  return true;
+INVALID:
+  return false;
+}
+
 static bool parse_noise(mgsParser *o, mgsProgramData *n, char pos_c) {
   mgsProgramNoiseData *nod = mgs_of_class(n, mgsProgramNoiseData);
   if (!nod) goto INVALID;
@@ -1042,6 +1059,11 @@ static void parse_level(mgsParser *o, mgsProgramArrData *chain) {
       if (o->setdef > o->setnode || o->setnode <= 0)
         goto INVALID;
       if (!parse_line(o, nd.node, c)) goto INVALID;
+      break;
+    case 'm':
+      if (o->setdef > o->setnode || o->setnode <= 0)
+        goto INVALID;
+      if (!parse_mode(o, nd.node, c)) goto INVALID;
       break;
     case 'n':
       if (o->setdef > o->setnode || o->setnode <= 0)

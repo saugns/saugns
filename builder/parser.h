@@ -1,5 +1,5 @@
 /* mgensys: Script parser.
- * Copyright (c) 2011, 2019-2020 Joel K. Pettersson
+ * Copyright (c) 2011, 2019-2023 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the

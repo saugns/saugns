@@ -121,10 +121,14 @@ Oscillating generator common parameters
 		per-sample sum of which is used to phase-modulate the carrier,
 		be it the final carrier or in turn another modulator.
 
-R -- Random segments generator
+R -- Repeated line segments generator
 	Expects a line type following the R; see "Line types" for all types.
+	By default, uses random mode to produce a noise depending on frequency.
 	It also has the "Oscillating generator common parameters".
 	s	Segment line type; see "Line types" for all types.
+	m	Mode:
+		'r' for random (default),
+		'f' for fixed (naive oscillator).
 
 W -- Wave oscillator
 	Expects a wave type following the W; see "Wave types" for all types.

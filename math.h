@@ -1,5 +1,5 @@
 /* mgensys: Math header.
- * Copyright (c) 2011, 2020-2022 Joel K. Pettersson
+ * Copyright (c) 2011, 2020-2023 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -63,6 +63,13 @@ static inline uint64_t mgs_ms_in_samples(uint64_t time_ms, uint64_t srate) {
 static inline uint32_t mgs_cyclepos_dtoui32(double x) {
 	// needs long(er) range because 0.5 from remainder becomes INT32_MAX+1
 	return mgs_ui32rint(remainder(x, 1.f) * (float)UINT32_MAX);
+}
+
+/**
+ * \return +1 if \p n & 1 is 0, otherwise -1.
+ */
+static inline int mgs_oddness_as_sign(int n) {
+	return (1 - ((n & 1) * 2));
 }
 
 /*
