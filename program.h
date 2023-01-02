@@ -71,7 +71,7 @@ enum {
 	MGS_OSCGENP_PHASE = 1<<11,
 	/* (Level 3) Wave object parameters. */
 	MGS_WAVEP_WAVE = 1<<16,
-	/* (Level 3) Random segments object parameters. */
+	/* (Level 3) Repeated line segments object parameters. */
 	MGS_RASEGP_SEG = 1<<16,
 	MGS_RASEGP_MODE = 1<<17,
 };
@@ -146,7 +146,6 @@ MGSclassdef(mgsProgramWaveData)
 
 enum {
 	MGS_RASEG_MODE_RAND = 0,
-//	MGS_RASEG_MODE_MET,
 	MGS_RASEG_MODE_FIXED,
 };
 

@@ -66,7 +66,7 @@ static inline uint32_t mgs_cyclepos_dtoui32(double x) {
 }
 
 /**
- * \return +1 if \p n & 1 is 0, otherwise -1.
+ * \return +1 if \p n is even, -1 if it's odd.
  */
 static inline int mgs_oddness_as_sign(int n) {
 	return (1 - ((n & 1) * 2));

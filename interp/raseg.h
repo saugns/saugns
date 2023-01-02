@@ -40,7 +40,7 @@ static inline void mgs_init_Raseg(mgsRaseg *restrict o, uint32_t srate) {
 	*o = (mgsRaseg){
 		.cyclor = (mgsCyclor){
 			.cycle_phase = 0,
-			.coeff = 2.f * mgsCyclor_COEFF(srate), /* 2x */
+			.coeff = mgsCyclor_COEFF(srate),
 		},
 		.line = MGS_LINE_N_lin,
 		.mode = MGS_RASEG_MODE_RAND,
@@ -121,35 +121,35 @@ static mgsMaybeUnused void mgsCyclor_fill(mgsCyclor *restrict o,
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s_f = freq_f[i];
 			uint64_t cycle_phase = P(llrintf(o->coeff * s_f), 0);
-			cycle_ui32[i] = cycle_phase >> 32;
-			phase_ui32[i] = cycle_phase;
+			cycle_ui32[i] = cycle_phase >> 31;
+			phase_ui32[i] = cycle_phase << 1;
 		}
 	} else if (!fpm_f) {
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s_f = freq_f[i];
 			float s_pofs = pm_f[i];
 			uint64_t cycle_phase = P(llrintf(o->coeff * s_f),
-					llrintf(s_pofs * 2.f*(float)INT32_MAX));
-			cycle_ui32[i] = cycle_phase >> 32;
-			phase_ui32[i] = cycle_phase;
+					llrintf(s_pofs * (float)INT32_MAX));
+			cycle_ui32[i] = cycle_phase >> 31;
+			phase_ui32[i] = cycle_phase << 1;
 		}
 	} else if (!pm_f) {
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s_f = freq_f[i];
 			float s_pofs = fpm_f[i] * fpm_scale * s_f;
 			uint64_t cycle_phase = P(llrintf(o->coeff * s_f),
-					llrintf(s_pofs * 2.f*(float)INT32_MAX));
-			cycle_ui32[i] = cycle_phase >> 32;
-			phase_ui32[i] = cycle_phase;
+					llrintf(s_pofs * (float)INT32_MAX));
+			cycle_ui32[i] = cycle_phase >> 31;
+			phase_ui32[i] = cycle_phase << 1;
 		}
 	} else {
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s_f = freq_f[i];
 			float s_pofs = pm_f[i] + (fpm_f[i] * fpm_scale * s_f);
 			uint64_t cycle_phase = P(llrintf(o->coeff * s_f),
-					llrintf(s_pofs * 2.f*(float)INT32_MAX));
-			cycle_ui32[i] = cycle_phase >> 32;
-			phase_ui32[i] = cycle_phase;
+					llrintf(s_pofs * (float)INT32_MAX));
+			cycle_ui32[i] = cycle_phase >> 31;
+			phase_ui32[i] = cycle_phase << 1;
 		}
 	}
 }
@@ -190,44 +190,11 @@ static mgsMaybeUnused void mgsRaseg_run_fixed(mgsRaseg *restrict o,
 		uint32_t cycle = cycle_buf[i];
 		uint32_t phase = phase_buf[i];
 		float a = mgs_oddness_as_sign(cycle);
-		float b = mgs_oddness_as_sign(cycle + 1);
+		float b = -a;
 		float p = ((int32_t) (phase >> 1)) * 1.f/(float)INT32_MAX;
 		map(&buf[i], 1, a, b, &p);
 	}
 }
-
-#if 0
-/**
- * Metallic sound derived from the oldest ranoise32() version.
- *
- * \return not-quite-random number for index \p n
- */
-static inline int32_t mgs_ranmet32(uint32_t n) {
-	uint32_t s = n * MGS_FIBH32;
-	s = MGS_ROR32(s, s + 14);
-	return s;
-}
-
-/**
- * Run for \p buf_len samples in 'metallic' mode, generating output.
- *
- * Uses post-incremented phase each sample.
- */
-static mgsMaybeUnused void mgsRaseg_run_met(mgsRaseg *restrict o,
-		float *restrict buf, size_t buf_len,
-		const uint32_t *restrict cycle_buf,
-		const uint32_t *restrict phase_buf) {
-	mgsLine_map_f map = mgsLine_map_funcs[o->line];
-	for (size_t i = 0; i < buf_len; ++i) {
-		uint32_t cycle = cycle_buf[i];
-		uint32_t phase = phase_buf[i];
-		float a = mgs_ranmet32(cycle) * 1.f/(float)INT32_MAX;
-		float b = mgs_ranmet32(cycle + 1) * 1.f/(float)INT32_MAX;
-		float p = ((int32_t) (phase >> 1)) * 1.f/(float)INT32_MAX;
-		map(&buf[i], 1, a, b, &p);
-	}
-}
-#endif
 
 /**
  * Run for \p buf_len samples, generating output.
@@ -241,8 +208,6 @@ static mgsMaybeUnused void mgsRaseg_run(mgsRaseg *restrict o,
 	switch (o->mode) {
 	case MGS_RASEG_MODE_RAND:
 		mgsRaseg_run_rand(o, buf, buf_len, cycle_buf, phase_buf); break;
-//	case MGS_RASEG_MODE_MET:
-//		mgsRaseg_run_met(o, buf, buf_len, cycle_buf, phase_buf); break;
 	case MGS_RASEG_MODE_FIXED:
 		mgsRaseg_run_fixed(o, buf, buf_len, cycle_buf, phase_buf);break;
 	}
