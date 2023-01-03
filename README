@@ -128,6 +128,7 @@ R -- Repeated line segments generator
 	s	Segment line type; see "Line types" for all types.
 	m	Mode for line start and goal value variation:
 		'r' for uniform random (default),
+		'b' for binary random -- maximized consistent amplitude,
 		's' for smoothed random,
 		't' for super-smoothed ternary random,
 		'f' for fixed binary cycle -- naive oscillator behavior.

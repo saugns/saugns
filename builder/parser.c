@@ -756,6 +756,7 @@ static bool parse_mode(mgsParser *o, mgsProgramData *n, char pos_c) {
   uint8_t mode;
   switch (mgsFile_GETC(o->f)) {
   case 'r': mode = MGS_RASEG_MODE_RAND; break;
+  case 'b': mode = MGS_RASEG_MODE_BIN; break;
   case 's': mode = MGS_RASEG_MODE_SMOOTH; break;
   case 't': mode = MGS_RASEG_MODE_TERN; break;
   case 'f': mode = MGS_RASEG_MODE_FIXED; break;

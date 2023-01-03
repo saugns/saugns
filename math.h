@@ -113,6 +113,68 @@ static inline int32_t mgs_ranoise32_next(uint32_t *restrict pos) {
 	return s;
 }
 
+/**
+ * Random access noise, smoother more LCG-ish version. Chaotic waveshaper which
+ * turns sawtooth-ish number sequences into white noise. Returns zero for zero.
+ * Lower bits have very poor-quality randomness, but the whole sounds 'smooth'.
+ *
+ * This function is mainly an alternative to using buffers of noise, for random
+ * access. The index \p n can be used as a counter or varied for random access.
+ *
+ * \return pseudo-random number for index \p n
+ */
+static inline int32_t mgs_ransmooth32(uint32_t n) {
+	uint32_t s = n * MGS_FIBH32;
+	s *= MGS_ROR32(s, s >> 27);
+	return s;
+}
+
+/**
+ * Random access noise, smoother more LCG-ish version. Chaotic waveshaper which
+ * turns sawtooth-ish number sequences into white noise. Returns zero for zero.
+ * Lower bits have very poor-quality randomness, but the whole sounds 'smooth'.
+ *
+ * This function is mainly an alternative to using buffers of noise, for random
+ * access. The index \p n can be used as a counter or varied for random access.
+ *
+ * \return pseudo-random number for index \p n
+ */
+static inline int32_t mgs_ransmooth32_next(uint32_t *restrict pos) {
+	uint32_t s = *pos += MGS_FIBH32;
+	s *= MGS_ROR32(s, s >> 27);
+	return s;
+}
+
+/**
+ * Random access noise, simpler binary output version. Chaotic waveshaper which
+ * turns sawtooth-ish number sequences into white noise. Returns zero for zero.
+ *
+ * This function is mainly an alternative to using buffers of noise, for random
+ * access. The index \p n can be used as a counter or varied for random access.
+ *
+ * \return pseudo-random 1 or 0 for index \p n
+ */
+static inline bool mgs_ranbit32(uint32_t n) {
+	uint32_t s = n * MGS_FIBH32;
+	s *= MGS_ROR32(s, s >> 27);
+	return ((int32_t)s) < 0;
+}
+
+/**
+ * Random access noise, simpler binary output version. Chaotic waveshaper which
+ * turns sawtooth-ish number sequences into white noise. Returns zero for zero.
+ *
+ * This function is mainly an alternative to using buffers of noise, for random
+ * access. The index \p n can be used as a counter or varied for random access.
+ *
+ * \return pseudo-random 1 or 0 for index \p n
+ */
+static inline bool mgs_ranbit32_next(uint32_t *restrict pos) {
+	uint32_t s = *pos += MGS_FIBH32;
+	s *= MGS_ROR32(s, s >> 27);
+	return ((int32_t)s) < 0;
+}
+
 /** Initial seed for mgs_xorshift32(). Other non-zero values can be used. */
 #define MGS_XORSHIFT32_SEED 2463534242UL
 
