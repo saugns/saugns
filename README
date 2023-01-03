@@ -128,7 +128,8 @@ R -- Repeated line segments generator
 	s	Segment line type; see "Line types" for all types.
 	m	Mode:
 		'r' for random (default),
-		'f' for fixed (naive oscillator).
+		's' for smooth random,
+		'f' for fixed cycle (naive oscillator).
 
 W -- Wave oscillator
 	Expects a wave type following the W; see "Wave types" for all types.

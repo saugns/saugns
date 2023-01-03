@@ -72,6 +72,13 @@ static inline int mgs_oddness_as_sign(int n) {
 	return (1 - ((n & 1) * 2));
 }
 
+/**
+ * Portable int32_t arithmetic right shift.
+ */
+static inline int32_t mgs_ars32(int32_t x, int32_t s) {
+	return x < 0 ? ~(~x >> s) : x >> s;
+}
+
 /*
  * Simple PRNGs
  */

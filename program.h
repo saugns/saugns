@@ -146,6 +146,7 @@ MGSclassdef(mgsProgramWaveData)
 
 enum {
 	MGS_RASEG_MODE_RAND = 0,
+	MGS_RASEG_MODE_SMOOTH,
 	MGS_RASEG_MODE_FIXED,
 };
 
