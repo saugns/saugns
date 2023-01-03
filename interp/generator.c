@@ -174,6 +174,9 @@ static void mgsGenerator_update_sound(mgsGenerator *o, mgsEventNode *ev) {
       if (updsn->params & MGS_RASEGP_MODE) {
         refn->raseg.mode = updn->raseg.mode;
       }
+      if (updsn->params & MGS_RASEGP_M_LEVEL) {
+        refn->raseg.m_level = updn->raseg.m_level;
+      }
     }
     break; }
   }

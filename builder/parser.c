@@ -339,6 +339,8 @@ MGSctordef_(mgsProgramRasegData,,,
 	  return false;
   mgsProgramRasegData *rod = mem;
   rod->type = MGS_TYPE_RASEG;
+  rod->mode = MGS_RASEG_MODE_RAND;
+  rod->m_level = 9;
   return true;
 }
 
@@ -539,6 +541,21 @@ static mgsNoinline bool scan_timeval(mgsParser *restrict o,
     return false;
   }
   *val = tval;
+  return true;
+}
+
+static mgsNoinline bool scan_digitval(mgsParser *restrict o,
+    int32_t *restrict var) {
+  size_t num_len;
+  int32_t num;
+  mgsFile_geti(o->f, &num, false, &num_len);
+  if (!num_len)
+    return false;
+  if (num_len > 1) {
+    warning(o, "discarding integer out of range (0-9)", 0);
+    return false;
+  }
+  *var = num;
   return true;
 }
 
@@ -753,17 +770,31 @@ INVALID:
 static bool parse_mode(mgsParser *o, mgsProgramData *n, char pos_c) {
   mgsProgramRasegData *rod = mgs_of_class(n, mgsProgramRasegData);
   if (!rod) goto INVALID;
-  uint8_t mode;
-  switch (mgsFile_GETC(o->f)) {
+  uint8_t mode = MGS_RASEG_MODES;
+  int32_t m_level = -1;
+  char c;
+TRY_C:
+  switch ((c = mgsFile_GETC(o->f))) {
   case 'r': mode = MGS_RASEG_MODE_RAND; break;
   case 'b': mode = MGS_RASEG_MODE_BIN; break;
   case 's': mode = MGS_RASEG_MODE_SMOOTH; break;
   case 't': mode = MGS_RASEG_MODE_TERN; break;
   case 'f': mode = MGS_RASEG_MODE_FIXED; break;
-  default: mgsFile_DECP(o->f); goto INVALID;
+  default:
+    mgsFile_DECP(o->f);
+    if (!IS_DIGIT(c) && !(m_level >= 0)) goto INVALID;
   }
-  rod->mode = mode;
-  rod->params |= MGS_RASEGP_MODE;
+  if (!(m_level >= 0) && scan_digitval(o, &m_level)) {
+    if (!(mode < MGS_RASEG_MODES)) goto TRY_C;
+  }
+  if (mode < MGS_RASEG_MODES) {
+    rod->mode = mode;
+    rod->params |= MGS_RASEGP_MODE;
+  }
+  if (m_level >= 0) {
+    rod->m_level = m_level;
+    rod->params |= MGS_RASEGP_M_LEVEL;
+  }
   return true;
 INVALID:
   return false;

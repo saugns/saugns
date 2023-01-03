@@ -74,6 +74,7 @@ enum {
 	/* (Level 3) Repeated line segments object parameters. */
 	MGS_RASEGP_SEG = 1<<16,
 	MGS_RASEGP_MODE = 1<<17,
+	MGS_RASEGP_M_LEVEL = 1<<18,
 };
 
 struct mgsParser;
@@ -150,10 +151,11 @@ enum {
 	MGS_RASEG_MODE_SMOOTH,
 	MGS_RASEG_MODE_TERN,
 	MGS_RASEG_MODE_FIXED,
+	MGS_RASEG_MODES,
 };
 
 #define mgsProgramRasegData_C_ mgsProgramOscgenData_C_ \
-	uint8_t seg, mode; \
+	uint8_t seg, mode, m_level; \
 /**/
 #define mgsProgramRasegData_V_ mgsProgramOscgenData_V_ \
 /**/

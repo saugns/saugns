@@ -304,10 +304,11 @@ static bool mgsRunAlloc_make_raseg(mgsRunAlloc *restrict o,
 				(const mgsProgramOscgenData*) rod))
 		return false;
 	mgs_init_Raseg(&ron->raseg, o->srate);
-	ron->raseg.line = rod->seg;
-	ron->raseg.mode = rod->mode;
 	/* cycle... */
 	mgsRaseg_set_phase(&ron->raseg, rod->phase);
+	mgsRaseg_set_line(&ron->raseg, rod->seg);
+	mgsRaseg_set_mode(&ron->raseg, rod->mode);
+	mgsRaseg_set_level(&ron->raseg, rod->m_level);
 	return true;
 }
 

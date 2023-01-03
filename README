@@ -126,12 +126,14 @@ R -- Repeated line segments generator
 	By default, uses random mode to produce a noise depending on frequency.
 	It also has the "Oscillating generator common parameters".
 	s	Segment line type; see "Line types" for all types.
-	m	Mode for line start and goal value variation:
-		'r' for uniform random (default),
-		'b' for binary random -- maximized consistent amplitude,
-		's' for smoothed random,
-		't' for super-smoothed ternary random,
-		'f' for fixed binary cycle -- naive oscillator behavior.
+	m	Mode for line start and goal value variation; consists of
+		a letter (random function) and a digit (0-9 shaping level);
+		one or both may be set at a time; the default level is '9'.
+		r	Uniform random (default) -- ignores digit.
+		b	Binary random -- shaping doubles each digit increase.
+		t	Ternary random -- shaping doubles each digit increase.
+		s	Smoothed random -- ???.
+		f	Fixed binary cycle -- naive oscillator, ignores digit.
 
 W -- Wave oscillator
 	Expects a wave type following the W; see "Wave types" for all types.

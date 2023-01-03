@@ -28,7 +28,7 @@ typedef struct mgsCyclor {
 
 typedef struct mgsRaseg {
 	mgsCyclor cyclor;
-	uint8_t line, mode;
+	uint8_t line, mode, m_level;
 	uint8_t flags;
 //	float prev_x;
 } mgsRaseg;
@@ -44,6 +44,7 @@ static inline void mgs_init_Raseg(mgsRaseg *restrict o, uint32_t srate) {
 		},
 		.line = MGS_LINE_N_lin,
 		.mode = MGS_RASEG_MODE_RAND,
+		.m_level = 9, /* max one-digit number, practically like 31 */
 		.flags = 0,
 //		.prev_x = 0,
 	};
@@ -60,6 +61,14 @@ static inline void mgsRaseg_set_phase(mgsRaseg *restrict o, uint32_t phase) {
 
 static inline void mgsRaseg_set_line(mgsRaseg *restrict o, uint8_t line) {
 	o->line = line;
+}
+
+static inline void mgsRaseg_set_mode(mgsRaseg *restrict o, uint8_t mode) {
+	o->mode = mode;
+}
+
+static inline void mgsRaseg_set_level(mgsRaseg *restrict o, uint8_t m_level) {
+	o->m_level = m_level;
 }
 
 /**
@@ -191,35 +200,10 @@ static mgsMaybeUnused void mgsRaseg_run_smooth(mgsRaseg *restrict o,
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t cycle = cycle_buf[i];
 		uint32_t phase = phase_buf[i];
-		int32_t sb = (cycle & 1) << 31;
-		float a = ((1<<31)-sb + mgs_ars32(mgs_ranoise32(cycle), 3))
+		int32_t sb = INT32_MAX + (cycle & 1) * 2;
+		float a = (sb + mgs_sar32(mgs_ranoise32(cycle), 1))
 			* scale;
-		float b = (sb + mgs_ars32(mgs_ranoise32(cycle + 1), 3))
-			* scale;
-		float p = ((int32_t) (phase >> 1)) * scale;
-		map(&buf[i], 1, a, b, &p);
-	}
-}
-
-/**
- * Run for \p buf_len samples in 'super-smoothed ternary random' mode,
- * generating output.
- *
- * Uses post-incremented phase each sample.
- */
-static mgsMaybeUnused void mgsRaseg_run_tern(mgsRaseg *restrict o,
-		float *restrict buf, size_t buf_len,
-		const uint32_t *restrict cycle_buf,
-		const uint32_t *restrict phase_buf) {
-	mgsLine_map_f map = mgsLine_map_funcs[o->line];
-	const float scale = 1.f/(float)INT32_MAX;
-	for (size_t i = 0; i < buf_len; ++i) {
-		uint32_t cycle = cycle_buf[i];
-		uint32_t phase = phase_buf[i];
-		int32_t sb = (cycle & 1) << 31;
-		float a = ((1<<31)+(sb) - mgs_ranbit32(cycle))
-			* scale;
-		float b = (sb - mgs_ranbit32(cycle + 1))
+		float b = (-sb + mgs_sar32(mgs_ranoise32(cycle + 1), 1))
 			* scale;
 		float p = ((int32_t) (phase >> 1)) * scale;
 		map(&buf[i], 1, a, b, &p);
@@ -228,6 +212,8 @@ static mgsMaybeUnused void mgsRaseg_run_tern(mgsRaseg *restrict o,
 
 /**
  * Run for \p buf_len samples in 'binary random' mode, generating output.
+ * For increasing \a m_level > 0, each new level is half as squiggly, for
+ * a practically binary mode when above 5, but 30 is technically perfect.
  *
  * Uses post-incremented phase each sample.
  */
@@ -237,11 +223,42 @@ static mgsMaybeUnused void mgsRaseg_run_bin(mgsRaseg *restrict o,
 		const uint32_t *restrict phase_buf) {
 	mgsLine_map_f map = mgsLine_map_funcs[o->line];
 	const float scale = 1.f/(float)INT32_MAX;
+	int sar = o->m_level;
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t cycle = cycle_buf[i];
 		uint32_t phase = phase_buf[i];
-		float a = (mgs_ranbit32(cycle)*2 - 1);
-		float b = (mgs_ranbit32(cycle + 1)*2 - 1);
+		int32_t offs = INT32_MAX + (cycle & 1) * 2;
+		float a = (mgs_sar32(mgs_ranoise32(cycle), sar) + offs)
+			* scale;
+		float b = (mgs_sar32(mgs_ranoise32(cycle + 1), sar) - offs)
+			* scale;
+		float p = ((int32_t) (phase >> 1)) * scale;
+		map(&buf[i], 1, a, b, &p);
+	}
+}
+
+/**
+ * Run for \p buf_len samples in 'ternary random' mode, generating output.
+ * For increasing \a m_level > 0, each new level is half as squiggly, with
+ * a practically ternary mode when above 5, but 31 is technically perfect.
+ *
+ * Uses post-incremented phase each sample.
+ */
+static mgsMaybeUnused void mgsRaseg_run_tern(mgsRaseg *restrict o,
+		float *restrict buf, size_t buf_len,
+		const uint32_t *restrict cycle_buf,
+		const uint32_t *restrict phase_buf) {
+	mgsLine_map_f map = mgsLine_map_funcs[o->line];
+	const float scale = 1.f/(float)INT32_MAX;
+	int sar = o->m_level;
+	for (size_t i = 0; i < buf_len; ++i) {
+		uint32_t cycle = cycle_buf[i];
+		uint32_t phase = phase_buf[i];
+		int32_t sb = (cycle & 1) << 31;
+		float a = ((1<<31)-sb + mgs_sar32(mgs_ranoise32(cycle), sar))
+			* scale;
+		float b = (sb + mgs_sar32(mgs_ranoise32(cycle + 1), sar))
+			* scale;
 		float p = ((int32_t) (phase >> 1)) * scale;
 		map(&buf[i], 1, a, b, &p);
 	}

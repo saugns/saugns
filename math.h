@@ -73,9 +73,9 @@ static inline int mgs_oddness_as_sign(int n) {
 }
 
 /**
- * Portable int32_t arithmetic right shift.
+ * Portable 32-bit arithmetic right shift.
  */
-static inline int32_t mgs_ars32(int32_t x, int32_t s) {
+static inline int32_t mgs_sar32(int32_t x, int32_t s) {
 	return x < 0 ? ~(~x >> s) : x >> s;
 }
 
