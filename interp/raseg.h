@@ -192,9 +192,9 @@ static mgsMaybeUnused void mgsRaseg_run_smooth(mgsRaseg *restrict o,
 		uint32_t cycle = cycle_buf[i];
 		uint32_t phase = phase_buf[i];
 		int32_t sb = (cycle & 1) << 31;
-		float a = (sb + mgs_ars32(mgs_ranoise32(cycle), 1))
+		float a = ((1<<31)-sb + mgs_ars32(mgs_ranoise32(cycle), 3))
 			* scale;
-		float b = ((1<<31)-sb + mgs_ars32(mgs_ranoise32(cycle + 1), 1))
+		float b = (sb + mgs_ars32(mgs_ranoise32(cycle + 1), 3))
 			* scale;
 		float p = ((int32_t) (phase >> 1)) * scale;
 		map(&buf[i], 1, a, b, &p);
@@ -217,9 +217,9 @@ static mgsMaybeUnused void mgsRaseg_run_tern(mgsRaseg *restrict o,
 		uint32_t cycle = cycle_buf[i];
 		uint32_t phase = phase_buf[i];
 		int32_t sb = (cycle & 1) << 31;
-		float a = (sb + mgs_ars32(mgs_ranoise32(cycle), 31))
+		float a = ((1<<31)+(sb) - mgs_ranbit32(cycle))
 			* scale;
-		float b = ((1<<31)-sb + mgs_ars32(mgs_ranoise32(cycle + 1), 31))
+		float b = (sb - mgs_ranbit32(cycle + 1))
 			* scale;
 		float p = ((int32_t) (phase >> 1)) * scale;
 		map(&buf[i], 1, a, b, &p);
