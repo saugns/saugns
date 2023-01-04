@@ -44,7 +44,7 @@ static inline void mgs_init_Raseg(mgsRaseg *restrict o, uint32_t srate) {
 		},
 		.line = MGS_LINE_N_lin,
 		.mode = MGS_RASEG_MODE_RAND,
-		.m_level = 9, /* max one-digit number, practically like 31 */
+		.m_level = mgsRaseg_level(9 /* max one-digit number */),
 		.flags = 0,
 //		.prev_x = 0,
 	};
@@ -57,18 +57,6 @@ static inline void mgsRaseg_set_cycle(mgsRaseg *restrict o, uint32_t cycle) {
 
 static inline void mgsRaseg_set_phase(mgsRaseg *restrict o, uint32_t phase) {
 	o->cyclor.cycle_phase = (o->cyclor.cycle_phase & ~UINT32_MAX) | phase;
-}
-
-static inline void mgsRaseg_set_line(mgsRaseg *restrict o, uint8_t line) {
-	o->line = line;
-}
-
-static inline void mgsRaseg_set_mode(mgsRaseg *restrict o, uint8_t mode) {
-	o->mode = mode;
-}
-
-static inline void mgsRaseg_set_level(mgsRaseg *restrict o, uint8_t m_level) {
-	o->m_level = m_level;
 }
 
 /**
@@ -299,10 +287,10 @@ static mgsMaybeUnused void mgsRaseg_run(mgsRaseg *restrict o,
 		mgsRaseg_run_rand(o, buf, buf_len, cycle_buf, phase_buf); break;
 	case MGS_RASEG_MODE_BIN:
 		mgsRaseg_run_bin(o, buf, buf_len, cycle_buf, phase_buf); break;
-	case MGS_RASEG_MODE_SMOOTH:
-		mgsRaseg_run_smooth(o, buf, buf_len, cycle_buf,phase_buf);break;
 	case MGS_RASEG_MODE_TERN:
 		mgsRaseg_run_tern(o, buf, buf_len, cycle_buf, phase_buf); break;
+	case MGS_RASEG_MODE_SMOOTH:
+		mgsRaseg_run_smooth(o, buf, buf_len, cycle_buf,phase_buf);break;
 	case MGS_RASEG_MODE_FIXED:
 		mgsRaseg_run_fixed(o, buf, buf_len, cycle_buf, phase_buf);break;
 	}

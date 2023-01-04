@@ -148,11 +148,16 @@ MGSclassdef(mgsProgramWaveData)
 enum {
 	MGS_RASEG_MODE_RAND = 0,
 	MGS_RASEG_MODE_BIN,
-	MGS_RASEG_MODE_SMOOTH,
 	MGS_RASEG_MODE_TERN,
+	MGS_RASEG_MODE_SMOOTH,
 	MGS_RASEG_MODE_FIXED,
 	MGS_RASEG_MODES,
 };
+
+/** Stretch digit range (0-9) across 0-31 range for Raseg level setting. */
+static inline unsigned int mgsRaseg_level(unsigned int digit) {
+	return digit <= 5 ? digit : (digit - 4)*(digit - 4) + 3;
+}
 
 #define mgsProgramRasegData_C_ mgsProgramOscgenData_C_ \
 	uint8_t seg, mode, m_level; \

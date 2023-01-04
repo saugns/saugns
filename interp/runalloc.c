@@ -306,9 +306,9 @@ static bool mgsRunAlloc_make_raseg(mgsRunAlloc *restrict o,
 	mgs_init_Raseg(&ron->raseg, o->srate);
 	/* cycle... */
 	mgsRaseg_set_phase(&ron->raseg, rod->phase);
-	mgsRaseg_set_line(&ron->raseg, rod->seg);
-	mgsRaseg_set_mode(&ron->raseg, rod->mode);
-	mgsRaseg_set_level(&ron->raseg, rod->m_level);
+	ron->raseg.line = rod->seg;
+	ron->raseg.mode = rod->mode;
+	ron->raseg.m_level = rod->m_level;
 	return true;
 }
 

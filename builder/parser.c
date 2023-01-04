@@ -340,7 +340,7 @@ MGSctordef_(mgsProgramRasegData,,,
   mgsProgramRasegData *rod = mem;
   rod->type = MGS_TYPE_RASEG;
   rod->mode = MGS_RASEG_MODE_RAND;
-  rod->m_level = 9;
+  rod->m_level = mgsRaseg_level(9);
   return true;
 }
 
@@ -777,8 +777,8 @@ TRY_C:
   switch ((c = mgsFile_GETC(o->f))) {
   case 'r': mode = MGS_RASEG_MODE_RAND; break;
   case 'b': mode = MGS_RASEG_MODE_BIN; break;
-  case 's': mode = MGS_RASEG_MODE_SMOOTH; break;
   case 't': mode = MGS_RASEG_MODE_TERN; break;
+  case 's': mode = MGS_RASEG_MODE_SMOOTH; break;
   case 'f': mode = MGS_RASEG_MODE_FIXED; break;
   default:
     mgsFile_DECP(o->f);
@@ -792,7 +792,7 @@ TRY_C:
     rod->params |= MGS_RASEGP_MODE;
   }
   if (m_level >= 0) {
-    rod->m_level = m_level;
+    rod->m_level = mgsRaseg_level(m_level);
     rod->params |= MGS_RASEGP_M_LEVEL;
   }
   return true;
