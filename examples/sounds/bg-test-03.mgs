@@ -1,1 +1,1 @@
-Rexp f5 t60 p!{Wsin f550 a1/32 a!1{Wsin f1/20}}
+Rexp mt2 f5 t60 p!{Wsin f550 a1/32 a!1/2{Wsin f1/20}}
