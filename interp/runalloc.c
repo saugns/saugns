@@ -304,7 +304,7 @@ static bool mgsRunAlloc_make_raseg(mgsRunAlloc *restrict o,
 				(const mgsProgramOscgenData*) rod))
 		return false;
 	mgs_init_Raseg(&ron->raseg, o->srate);
-	/* cycle... */
+	mgsRaseg_set_cycle(&ron->raseg, random_next(&o->seed));
 	mgsRaseg_set_phase(&ron->raseg, rod->phase);
 	ron->raseg.line = rod->seg;
 	ron->raseg.mode = rod->mode;

@@ -154,9 +154,9 @@ enum {
 	MGS_RASEG_MODES,
 };
 
-/** Stretch digit range (0-9) across 0-31 range for Raseg level setting. */
+/** Stretch digit range (0-9) across 0-30 range for Raseg level setting. */
 static inline unsigned int mgsRaseg_level(unsigned int digit) {
-	return digit <= 5 ? digit : (digit - 4)*(digit - 4) + 3;
+	return digit <= 6 ? digit : (digit - 4)*(digit - 4) + 2;
 }
 
 #define mgsProgramRasegData_C_ mgsProgramOscgenData_C_ \

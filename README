@@ -130,8 +130,8 @@ R -- Repeated line segments generator
 		a letter (random function) and a digit (0-9 shaping level);
 		one or both may be set at a time; the default level is '9'.
 		r	Uniform random (default) -- ignores digit.
-		b	Binary random -- shaping doubles each digit increase.
-		t	Ternary random -- shaping doubles each digit increase.
+		b	Binary random -- shaping multiplies each new level.
+		t	Ternary random -- shaping multiplies each new level.
 		s	Smoothed random -- ???.
 		f	Fixed binary cycle -- naive oscillator, ignores digit.
 
