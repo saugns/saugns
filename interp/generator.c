@@ -371,10 +371,10 @@ static void run_block_raseg(mgsGenerator *o, Buf *bufs_from, uint32_t len,
     mgsRasegNode *n, Buf *parentfreq,
     uint32_t layer, uint32_t flags) {
   Buf *mix_buf = bufs_from++,
-      *cycle_buf = bufs_from++, *phase_buf = bufs_from++,
+      *cycle_buf = bufs_from++, *raseg_buf = bufs_from++,
       *pm_buf = NULL;
   Buf *freq = NULL, *amp = NULL;
-  Buf *tmp_buf = NULL;
+  Buf *tmp_buf = NULL, *tmp2_buf = NULL;
   sub_par_freq(o, bufs_from, len, &n->ogen, parentfreq);
   freq = bufs_from++;
   pm_buf = NULL;
@@ -384,15 +384,17 @@ static void run_block_raseg(mgsGenerator *o, Buf *bufs_from, uint32_t len,
         0);
     pm_buf = (bufs_from + 0);
   }
-  mgsCyclor_fill(&n->raseg.cyclor, cycle_buf->u, phase_buf->u, len,
+  mgsCyclor_fill(&n->raseg.cyclor, cycle_buf->u, raseg_buf->f, len,
       freq->f, (pm_buf ? pm_buf->f : NULL), NULL);
   sub_par_amp(o, bufs_from, len, &n->ogen.sound, freq);
   amp = bufs_from++;
   tmp_buf = bufs_from++;
-  mgsRaseg_run(&n->raseg, tmp_buf->f, len, cycle_buf->u, phase_buf->u);
+  tmp2_buf = bufs_from++;
+  mgsRaseg_run(&n->raseg, len, raseg_buf->f, tmp_buf->f, tmp2_buf->f,
+               cycle_buf->u);
   ((flags & BLOCK_WAVEENV) ?
    block_mix_mul_waveenv :
-   block_mix_add)(mix_buf->f, len, layer, tmp_buf->f, amp->f);
+   block_mix_add)(mix_buf->f, len, layer, raseg_buf->f, amp->f);
 }
 
 static void run_block_sub(mgsGenerator *o, Buf *bufs_from, uint32_t len,

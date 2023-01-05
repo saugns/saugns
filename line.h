@@ -35,7 +35,7 @@ void mgsLine_fill_##NAME(float *restrict buf, uint32_t len, \
 		float v0, float vt, uint32_t pos, uint32_t time, \
 		const float *restrict mulbuf); \
 void mgsLine_map_##NAME(float *restrict buf, uint32_t len, \
-		float v0, float vt, const float *restrict t); \
+		const float *restrict end0, const float *restrict end1); \
 /**/
 #define MGS_LINE__X_FILL_ADDR(NAME) mgsLine_fill_##NAME,
 #define MGS_LINE__X_MAP_ADDR(NAME) mgsLine_map_##NAME,
@@ -58,7 +58,7 @@ typedef void (*mgsLine_fill_f)(float *restrict buf, uint32_t len,
 		const float *restrict mulbuf);
 
 typedef void (*mgsLine_map_f)(float *restrict buf, uint32_t len,
-		float v0, float vt, const float *restrict t);
+		const float *restrict end0, const float *restrict end1);
 
 /** Fill functions for line types. */
 extern const mgsLine_fill_f mgsLine_fill_funcs[MGS_LINE_NAMED];

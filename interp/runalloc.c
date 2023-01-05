@@ -470,7 +470,7 @@ static size_t calc_bufs_raseg(mgsRunAlloc *restrict o,
 	} else {
 		++count;
 	}
-	++count;
+	count += 2;
 	if (max_count < count) max_count = count;
 	return max_count;
 }
