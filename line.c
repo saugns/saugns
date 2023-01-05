@@ -100,6 +100,8 @@ void mgsLine_map_lin(float *restrict buf, uint32_t len,
  * Scaled and shifted sine ramp, using degree 5 polynomial
  * with no error at ends and double the minimax max error.
  *
+ * Note: Needs \p x from -0.5 to 0.5.
+ *
  * If used for oscillator, would have a roughly -84 dB 5th
  * harmonic distortion but nothing else above 16-bit noise
  * floor. http://joelkp.frama.io/blog/modified-taylor.html
@@ -112,7 +114,6 @@ static inline float sinramp(float x) {
 		+1.1496958507977182668618673644367L,
 	};
 	float x2;
-	x -= 0.5f;
 	x2 = x*x;
 	return 0.5f + x*(scale[0] + x2*(scale[1] + x2*scale[2]));
 }
@@ -128,10 +129,11 @@ static inline float sinramp(float x) {
 void mgsLine_fill_cos(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf) {
+	const int32_t adj_pos = pos - (time / 2);
 	const float inv_time = 1.f / time;
 	for (uint32_t i = 0; i < len; ++i) {
-		const uint32_t i_pos = i + pos;
-		float x = i_pos * inv_time;
+		const int32_t i_pos = i + adj_pos;
+		float x = i_pos * inv_time; // range -0.5 to +0.5
 		float v = v0 + (vt - v0) * sinramp(x);
 		if (!mulbuf)
 			buf[i] = v;
@@ -149,7 +151,7 @@ void mgsLine_fill_cos(float *restrict buf, uint32_t len,
 void mgsLine_map_cos(float *restrict buf, uint32_t len,
 		float v0, float vt, const float *restrict t) {
 	for (uint32_t i = 0; i < len; ++i) {
-		buf[i] = v0 + (vt - v0) * sinramp(t[i]);
+		buf[i] = v0 + (vt - v0) * sinramp(t[i] - 0.5f);
 	}
 }
 
