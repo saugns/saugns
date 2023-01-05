@@ -150,12 +150,12 @@ Channel mixing values:
 	R	1.0
 
 Line types:
-	hor
-		Horizontal line with old value held until time.
+	sah
+		Sample and hold until time (then jump to goal).
 	lin
 		Linear trajectory over time.
-	sin
-		Sine-like smooth ends trajectory over time.
+	cos
+		Half cosine (S-curve) trajectory over time.
 	exp
 		Steep "exp(x)-1"-like increase or decrease.
 	log
@@ -171,7 +171,7 @@ Line types:
 	like 'log' and decreases like 'exp', much like a capacitor
 	charges and discharges, natural-sounding for an envelope;
 	and 'lge' increases like 'exp' and decreases like 'log'.
-	The 'sin' shape sounds similar to 'lin', except it has a
+	The 'cos' shape sounds similar to 'lin', except it has a
 	smoothly curved start and stop, and a steeper middle.
 
 Wave types:

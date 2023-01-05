@@ -1,5 +1,5 @@
 /* mgensys: Value line module.
- * Copyright (c) 2011-2013, 2017-2022 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2023 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -20,9 +20,9 @@
 
 /* Macro used to declare and define line sets of items. */
 #define MGS_LINE__ITEMS(X) \
-	X(hor) \
+	X(sah) \
 	X(lin) \
-	X(sin) \
+	X(cos) \
 	X(exp) \
 	X(log) \
 	X(xpe) \

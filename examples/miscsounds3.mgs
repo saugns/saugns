@@ -1,5 +1,5 @@
 # mb more voicelike, f100 grimmer, f120 gentler
-Rsin mb f100/2 t15 p!{Wtri r2^0 a12.5} |
+Rcos mb f100/2 t15 p!{Wtri r2^0 a12.5} |
 
 # mt more electrical
-Rsin mt f1000/5 t15 p!{Wtri r1/3 a12.5} |
+Rcos mt f1000/5 t15 p!{Wtri r1/3 a12.5} |

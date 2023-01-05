@@ -1,5 +1,5 @@
 /* mgensys: Value line module.
- * Copyright (c) 2011-2013, 2017-2022 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2023 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -32,10 +32,10 @@ const mgsLine_map_f mgsLine_map_funcs[MGS_LINE_NAMED] = {
 
 // the noinline use below works around i386 clang performance issue
 /**
- * Fill \p buf with \p len values along a straight horizontal line,
- * i.e. \p len copies of \p v0.
+ * Fill \p buf with \p len values along a "sample and hold"
+ * straight horizontal line, i.e. \p len copies of \p v0.
  */
-mgsNoinline void mgsLine_fill_hor(float *restrict buf, uint32_t len,
+mgsNoinline void mgsLine_fill_sah(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf) {
 	(void)vt;
@@ -51,12 +51,12 @@ mgsNoinline void mgsLine_fill_hor(float *restrict buf, uint32_t len,
 }
 
 /**
- * Map positions \p t (values from 0.0 to 1.0) to a straight horizontal line,
- * by simply writing \p len copies of \p v0 into \p buf.
+ * Map positions \p t (values from 0.0 to 1.0) along a "sample and hold"
+ * straight horizontal line, by writing \p len copies of \p v0 into \p buf.
  *
- * Mapping counterpart of filling function mgsLine_fill_hor().
+ * Mapping counterpart of filling function mgsLine_fill_sah().
  */
-void mgsLine_map_hor(float *restrict buf, uint32_t len,
+void mgsLine_map_sah(float *restrict buf, uint32_t len,
 		float v0, float vt, const float *restrict t) {
 	(void)vt;
 	(void)t;
@@ -125,7 +125,7 @@ static inline float sinramp(float x) {
  * Rises or falls similarly to how sin() moves from trough to
  * crest and back. Uses a ~99.993% accurate polynomial curve.
  */
-void mgsLine_fill_sin(float *restrict buf, uint32_t len,
+void mgsLine_fill_cos(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf) {
 	const float inv_time = 1.f / time;
@@ -144,9 +144,9 @@ void mgsLine_fill_sin(float *restrict buf, uint32_t len,
  * Map positions \p t (values from 0.0 to 1.0) to a sinuous trajectory,
  * by writing \p len values between of \p v0 and \p vt into \p buf.
  *
- * Mapping counterpart of filling function mgsLine_fill_sin().
+ * Mapping counterpart of filling function mgsLine_fill_cos().
  */
-void mgsLine_map_sin(float *restrict buf, uint32_t len,
+void mgsLine_map_cos(float *restrict buf, uint32_t len,
 		float v0, float vt, const float *restrict t) {
 	for (uint32_t i = 0; i < len; ++i) {
 		buf[i] = v0 + (vt - v0) * sinramp(t[i]);
@@ -456,7 +456,7 @@ bool mgsLine_run(mgsLine *restrict o,
 			mulbuf = NULL;
 		else if (mulbuf != NULL)
 			mulbuf += len;
-		mgsLine_fill_hor(buf + len, buf_len - len,
+		mgsLine_fill_sah(buf + len, buf_len - len,
 				o->v0, o->v0, 0, 0, mulbuf);
 		return false;
 	}
