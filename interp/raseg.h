@@ -193,11 +193,13 @@ static mgsMaybeUnused void mgsRaseg_map_smooth(mgsRaseg *restrict o,
 	int sar = o->m_level;
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t cycle = cycle_buf[i];
-		int32_t offs = INT32_MAX + (cycle & 1) * 2;
-		end_a_buf[i] = (mgs_sar32(mgs_ranoise32(cycle), sar)
-				+ offs) * scale;
-		end_b_buf[i] = (mgs_sar32(mgs_ranoise32(cycle + 1), sar)
-				- offs) * scale;
+		int32_t sign = mgs_oddness_as_sign(cycle);
+		end_a_buf[i] = (-sign * (int32_t)
+				(((uint32_t)mgs_ranoise32(cycle) >> sar) -
+				 INT32_MAX)) * scale;
+		end_b_buf[i] = (sign * (int32_t)
+				(((uint32_t)mgs_ranoise32(cycle + 1) >> sar) -
+				 INT32_MAX)) * scale;
 	}
 }
 
@@ -245,10 +247,12 @@ static mgsMaybeUnused void mgsRaseg_map_tern(mgsRaseg *restrict o,
 	}
 }
 
+#if 0
 /**
- * Run for \p buf_len samples in 'fixed binary cycle' mode, generating output.
+ * Run for \p buf_len samples in 'fixed cycle' mode, generating output.
+ * Simple version, optimizing high level (pure base frequency) setting.
  */
-static mgsMaybeUnused void mgsRaseg_map_fixed(mgsRaseg *restrict o,
+static mgsMaybeUnused void mgsRaseg_map_fixed_simple(mgsRaseg *restrict o,
 		size_t buf_len,
 		float *restrict end_a_buf,
 		float *restrict end_b_buf,
@@ -259,6 +263,31 @@ static mgsMaybeUnused void mgsRaseg_map_fixed(mgsRaseg *restrict o,
 		float a =
 		end_a_buf[i] = mgs_oddness_as_sign(cycle);
 		end_b_buf[i] = -a;
+	}
+}
+#endif
+
+/**
+ * Run for \p buf_len samples in 'fixed cycle' mode, generating output.
+ * For increasing \a m_level > 0, each new level halves the randomness,
+ * the base frequency amplifying in its place toward ultimately purity.
+ */
+static mgsMaybeUnused void mgsRaseg_map_fixed(mgsRaseg *restrict o,
+		size_t buf_len,
+		float *restrict end_a_buf,
+		float *restrict end_b_buf,
+		const uint32_t *restrict cycle_buf) {
+	const float scale = 1.f/(float)INT32_MAX;
+	int sar = o->m_level;
+	for (size_t i = 0; i < buf_len; ++i) {
+		uint32_t cycle = cycle_buf[i];
+		int32_t sign = mgs_oddness_as_sign(cycle);
+		end_a_buf[i] = (-sign * (int32_t)
+				(((uint32_t)mgs_ranoise32(cycle) >> sar) -
+				 INT32_MAX)) * scale;
+		end_b_buf[i] = (sign * (int32_t)
+				(((uint32_t)mgs_ranoise32(cycle + 1) >> sar) -
+				 INT32_MAX)) * scale;
 	}
 }
 

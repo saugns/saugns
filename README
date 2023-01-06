@@ -129,11 +129,14 @@ R -- Repeated line segments generator
 	m	Mode for line start and goal value variation; consists of
 		a letter (random function) and a digit (0-9 shaping level);
 		one or both may be set at a time; the default level is '9'.
+		Roughly, each level above 0 doubles the effect of the mode.
 		r	Uniform random (default) -- ignores digit.
-		b	Binary random -- shaping multiplies each new level.
-		t	Ternary random -- shaping multiplies each new level.
+		b	Binary random -- extreme levels, more repetitive runs.
+		t	Ternary smooth random -- never repeats twice in a row,
+			cycles above or below zero randomly flipping polarity.
 		s	Smoothed random -- ???.
-		f	Fixed binary cycle -- naive oscillator, ignores digit.
+		f	Fixed cycle -- plain naive oscillator at max level,
+			below it mixed with randomness at reduced strength.
 
 W -- Wave oscillator
 	Expects a wave type following the W; see "Wave types" for all types.
