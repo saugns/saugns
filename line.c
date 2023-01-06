@@ -41,13 +41,8 @@ mgsNoinline void mgsLine_fill_sah(float *restrict buf, uint32_t len,
 	(void)vt;
 	(void)pos;
 	(void)time;
-	if (!mulbuf) {
-		for (uint32_t i = 0; i < len; ++i)
-			buf[i] = v0;
-	} else {
-		for (uint32_t i = 0; i < len; ++i)
-			buf[i] = v0 * mulbuf[i];
-	}
+	for (uint32_t i = 0; i < len; ++i)
+		buf[i] = mulbuf ? (v0 * mulbuf[i]) : v0;
 }
 
 /**
@@ -71,14 +66,14 @@ void mgsLine_map_sah(float *restrict buf, uint32_t len,
 void mgsLine_fill_lin(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf) {
+	const int32_t adj_pos = pos - (time / 2);
 	const float inv_time = 1.f / time;
+	const float vm = (v0 + vt) * 0.5f;
+	const float vd = (vt - v0);
 	for (uint32_t i = 0; i < len; ++i) {
-		const uint32_t i_pos = i + pos;
-		float v = v0 + (vt - v0) * (i_pos * inv_time);
-		if (!mulbuf)
-			buf[i] = v;
-		else
-			buf[i] = v * mulbuf[i];
+		float x = ((int32_t)i + adj_pos) * inv_time;
+		float v = vm + vd * x;
+		buf[i] = mulbuf ? (v * mulbuf[i]) : v;
 	}
 }
 
@@ -100,7 +95,7 @@ void mgsLine_map_lin(float *restrict buf, uint32_t len,
  * Scaled and shifted sine ramp, using degree 5 polynomial
  * with no error at ends and double the minimax max error.
  *
- * Note: Needs \p x from -0.5 to 0.5.
+ * Note: Needs \p x in, returns in range from -0.5 to 0.5.
  *
  * If used for oscillator, would have a roughly -84 dB 5th
  * harmonic distortion but nothing else above 16-bit noise
@@ -115,7 +110,7 @@ static inline float sinramp(float x) {
 	};
 	float x2;
 	x2 = x*x;
-	return 0.5f + x*(scale[0] + x2*(scale[1] + x2*scale[2]));
+	return x*(scale[0] + x2*(scale[1] + x2*scale[2]));
 }
 
 /**
@@ -131,14 +126,12 @@ void mgsLine_fill_cos(float *restrict buf, uint32_t len,
 		const float *restrict mulbuf) {
 	const int32_t adj_pos = pos - (time / 2);
 	const float inv_time = 1.f / time;
+	const float vm = (v0 + vt) * 0.5f;
+	const float vd = (vt - v0);
 	for (uint32_t i = 0; i < len; ++i) {
-		const int32_t i_pos = i + adj_pos;
-		float x = i_pos * inv_time; // range -0.5 to +0.5
-		float v = v0 + (vt - v0) * sinramp(x);
-		if (!mulbuf)
-			buf[i] = v;
-		else
-			buf[i] = v * mulbuf[i];
+		float x = ((int32_t)i + adj_pos) * inv_time;
+		float v = vm + vd * sinramp(x);
+		buf[i] = mulbuf ? (v * mulbuf[i]) : v;
 	}
 }
 
@@ -152,7 +145,7 @@ void mgsLine_map_cos(float *restrict buf, uint32_t len,
 		const float *restrict end0, const float *restrict end1) {
 	for (uint32_t i = 0; i < len; ++i) {
 		float x = buf[i] - 0.5f;
-		buf[i] = end0[i] + (end1[i] - end0[i]) * sinramp(x);
+		buf[i] = end0[i] + (end1[i] - end0[i]) * (0.5f + sinramp(x));
 	}
 }
 
@@ -250,13 +243,9 @@ void mgsLine_fill_xpe(float *restrict buf, uint32_t len,
 		const float *restrict mulbuf) {
 	const float inv_time = 1.f / time;
 	for (uint32_t i = 0; i < len; ++i) {
-		const uint32_t i_pos = i + pos;
-		float x = i_pos * inv_time;
+		float x = (i + pos) * inv_time;
 		float v = vt + (v0 - vt) * expramp(1.f - x);
-		if (!mulbuf)
-			buf[i] = v;
-		else
-			buf[i] = v * mulbuf[i];
+		buf[i] = mulbuf ? (v * mulbuf[i]) : v;
 	}
 }
 
@@ -289,13 +278,9 @@ void mgsLine_fill_lge(float *restrict buf, uint32_t len,
 		const float *restrict mulbuf) {
 	const float inv_time = 1.f / time;
 	for (uint32_t i = 0; i < len; ++i) {
-		const uint32_t i_pos = i + pos;
-		float x = i_pos * inv_time;
+		float x = (i + pos) * inv_time;
 		float v = v0 + (vt - v0) * expramp(x);
-		if (!mulbuf)
-			buf[i] = v;
-		else
-			buf[i] = v * mulbuf[i];
+		buf[i] = mulbuf ? (v * mulbuf[i]) : v;
 	}
 }
 
