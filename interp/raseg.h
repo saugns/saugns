@@ -176,8 +176,8 @@ static mgsMaybeUnused void mgsRaseg_map_rand(mgsRaseg *restrict o,
 	(void)o;
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t cycle = cycle_buf[i];
-		end_a_buf[i] = mgs_ranoise32(cycle) * scale;
-		end_b_buf[i] = mgs_ranoise32(cycle + 1) * scale;
+		end_a_buf[i] = ((int32_t)mgs_ranfast32(cycle)) * scale;
+		end_b_buf[i] = ((int32_t)mgs_ranfast32(cycle + 1)) * scale;
 	}
 }
 
@@ -194,8 +194,8 @@ static mgsMaybeUnused void mgsRaseg_map_gauss(mgsRaseg *restrict o,
 	static uint32_t cc = 0;
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t cycle = cc++;//cycle_buf[i];
-		float a = ((uint32_t)mgs_ranoise32(cycle)) * scale;
-		float b = ((uint32_t)mgs_ranoise32(cycle + 1)) * scale;
+		float a = ((uint32_t)mgs_ranfast32(cycle)) * scale;
+		float b = ((uint32_t)mgs_ranfast32(cycle + 1)) * scale;
 //		if (cycle & 1) { float tmp = a; a = b; b = tmp; }
 		float c = 0.25f * sqrtf(-2.f * logf(a));
 		a = c * cos(2.f*MGS_PI * b);
@@ -221,9 +221,9 @@ static mgsMaybeUnused void mgsRaseg_map_bin(mgsRaseg *restrict o,
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t cycle = cycle_buf[i];
 		int32_t offs = INT32_MAX + (cycle & 1) * 2;
-		end_a_buf[i] = (mgs_sar32(mgs_ranoise32(cycle), sar)
+		end_a_buf[i] = (mgs_sar32(mgs_ranfast32(cycle), sar)
 				+ offs) * scale;
-		end_b_buf[i] = (mgs_sar32(mgs_ranoise32(cycle + 1), sar)
+		end_b_buf[i] = (mgs_sar32(mgs_ranfast32(cycle + 1), sar)
 				- offs) * scale;
 	}
 }
@@ -243,9 +243,9 @@ static mgsMaybeUnused void mgsRaseg_map_tern(mgsRaseg *restrict o,
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t cycle = cycle_buf[i];
 		int32_t sb = (cycle & 1) << 31;
-		end_a_buf[i] = (mgs_sar32(mgs_ranoise32(cycle), sar)
+		end_a_buf[i] = (mgs_sar32(mgs_ranfast32(cycle), sar)
 				+ (1<<31)-sb) * scale; // is first to cos-align
-		end_b_buf[i] = (mgs_sar32(mgs_ranoise32(cycle + 1), sar)
+		end_b_buf[i] = (mgs_sar32(mgs_ranfast32(cycle + 1), sar)
 				+ sb) * scale;
 	}
 }
@@ -263,8 +263,8 @@ static mgsMaybeUnused void mgsRaseg_map_smooth(mgsRaseg *restrict o,
 	(void)o;
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t cycle = cycle_buf[i];
-		float a = mgs_ranoise32(cycle) * scale;
-		float b = mgs_ranoise32(cycle + 1) * scale;
+		float a = ((int32_t)mgs_ranfast32(cycle)) * scale;
+		float b = ((int32_t)mgs_ranfast32(cycle + 1)) * scale;
 		end_a_buf[i] = a*fabs(a);
 		end_b_buf[i] = b*fabs(b);
 	}
@@ -299,15 +299,15 @@ static mgsMaybeUnused void mgsRaseg_map_fixed(mgsRaseg *restrict o,
 		float *restrict end_b_buf,
 		const uint32_t *restrict cycle_buf) {
 	const float scale = 1.f/(float)INT32_MAX;
-	int sar = o->m_level;
+	int slr = o->m_level;
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t cycle = cycle_buf[i];
 		int32_t sign = mgs_oddness_as_sign(cycle);
 		end_a_buf[i] = (-sign * (int32_t)
-				(((uint32_t)mgs_ranoise32(cycle) >> sar) -
+				(((uint32_t)mgs_ranfast32(cycle) >> slr) -
 				 INT32_MAX)) * scale;
 		end_b_buf[i] = (sign * (int32_t)
-				(((uint32_t)mgs_ranoise32(cycle + 1) >> sar) -
+				(((uint32_t)mgs_ranfast32(cycle + 1) >> slr) -
 				 INT32_MAX)) * scale;
 	}
 }

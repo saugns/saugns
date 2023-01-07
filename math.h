@@ -26,15 +26,6 @@
 #define MGS_HUMMID    632.45553203367586639978 // human hearing range geom.mean
 #define MGS_FIBH32      2654435769UL           // 32-bit Fibonacci hash constant
 
-/** Rotate bits right, for 32-bit unsigned \p x, \p r positions. */
-#define MGS_ROR32(x, r) \
-	((uint32_t)(x) >> ((r) & 31) | (uint32_t)(x) << ((32-(r)) & 31))
-
-/** Multiplicatively mix bits using varying right-rotation,
-    for 32-bit unsigned \p x value, \p r rotation, \p ro rotation offset. */
-#define MGS_MUVAROR32(x, r, ro) \
-	(((uint32_t)(x) | ((1<<((ro) & 31))|1)) * MGS_ROR32((x), (r)+(ro)))
-
 /*
  * Format conversions
  */
@@ -65,18 +56,19 @@ static inline uint32_t mgs_cyclepos_dtoui32(double x) {
 	return mgs_ui32rint(remainder(x, 1.f) * (float)UINT32_MAX);
 }
 
-/**
- * \return +1 if \p n is even, -1 if it's odd.
- */
+/** \return +1 if \p n is even, -1 if it's odd. */
 static inline int mgs_oddness_as_sign(int n) {
 	return (1 - ((n & 1) * 2));
 }
 
-/**
- * Portable 32-bit arithmetic right shift.
- */
-static inline int32_t mgs_sar32(int32_t x, int32_t s) {
+/** Portable 32-bit arithmetic right shift. */
+static inline int32_t mgs_sar32(int32_t x, int s) {
 	return x < 0 ? ~(~x >> s) : x >> s;
+}
+
+/** 32-bit right rotation. */
+static inline uint32_t mgs_ror32(uint32_t x, int r) {
+	return x >> r | x << (32 - r);
 }
 
 /*
@@ -84,95 +76,65 @@ static inline int32_t mgs_sar32(int32_t x, int32_t s) {
  */
 
 /**
- * Random access noise, minimal lower-quality version. Chaotic waveshaper which
- * turns sawtooth-ish number sequences into white noise. Returns zero for zero.
+ * Random access noise, fast version with bitshifts but no bitrotation. Chaotic
+ * waveshaper, which turns e.g. sawtooth-ish number sequences into white noise.
+ * Lower bits have lower quality; use SplitMix32 if those need to be good, too.
  *
  * This function is mainly an alternative to using buffers of noise, for random
  * access. The index \p n can be used as a counter or varied for random access.
  *
  * \return pseudo-random number for index \p n
  */
-static inline int32_t mgs_ranoise32(uint32_t n) {
+static inline uint32_t mgs_ranfast32(uint32_t n) {
 	uint32_t s = n * MGS_FIBH32;
-	s = MGS_MUVAROR32(s, s >> 27, 0);
+	s ^= s >> 14;
+	s = (s | 1) * s;
+	s ^= s >> 13;
 	return s;
 }
 
 /**
- * Random access noise, minimal lower-quality version. Chaotic waveshaper which
- * turns sawtooth-ish number sequences into white noise. Returns zero for zero.
+ * Random access noise, fast version with bitshifts but no bitrotation. Chaotic
+ * waveshaper, which turns e.g. sawtooth-ish number sequences into white noise.
+ * Lower bits have lower quality; use SplitMix32 if those need to be good, too.
  *
  * This "next" function returns a new value each time, corresponding to a state
  * \p pos, which is increased. It may be initialized with any seed (0 is fine).
  *
- * \return pseudo-random number for state \p pos
+ * \return next pseudo-random number for state \p pos
  */
-static inline int32_t mgs_ranoise32_next(uint32_t *restrict pos) {
+static inline uint32_t mgs_ranfast32_next(uint32_t *restrict pos) {
 	uint32_t s = *pos += MGS_FIBH32;
-	s = MGS_MUVAROR32(s, s >> 27, 0);
+	s ^= s >> 14;
+	s = (s | 1) * s;
+	s ^= s >> 13;
 	return s;
 }
 
 /**
- * Random access noise, smoother more LCG-ish version. Chaotic waveshaper which
- * turns sawtooth-ish number sequences into white noise. Returns zero for zero.
- * Lower bits have very poor-quality randomness, but the whole sounds 'smooth'.
- *
- * This function is mainly an alternative to using buffers of noise, for random
- * access. The index \p n can be used as a counter or varied for random access.
+ * A random access SplitMix32 variant, using an alternative function
+ * by TheIronBorn & Christopher Wellons's "Hash Prospector" project.
  *
  * \return pseudo-random number for index \p n
  */
-static inline int32_t mgs_ransmooth32(uint32_t n) {
-	uint32_t s = n * MGS_FIBH32;
-	s *= MGS_ROR32(s, s >> 27);
-	return s;
+static inline uint32_t mgs_splitmix32(uint32_t n) {
+	uint32_t z = (n * 0x9e3779b9);
+	z = (z ^ (z >> 16)) * 0x21f0aaad;
+	z = (z ^ (z >> 15)) * 0xf35a2d97; /* similar alt. 0x735a2d97 */
+	return z ^ (z >> 15);
 }
 
 /**
- * Random access noise, smoother more LCG-ish version. Chaotic waveshaper which
- * turns sawtooth-ish number sequences into white noise. Returns zero for zero.
- * Lower bits have very poor-quality randomness, but the whole sounds 'smooth'.
+ * Fixed-increment SplitMix32 variant, using an alternative function
+ * by TheIronBorn & Christopher Wellons's "Hash Prospector" project.
  *
- * This function is mainly an alternative to using buffers of noise, for random
- * access. The index \p n can be used as a counter or varied for random access.
- *
- * \return pseudo-random number for index \p n
+ * \return next pseudo-random number for state \p pos
  */
-static inline int32_t mgs_ransmooth32_next(uint32_t *restrict pos) {
-	uint32_t s = *pos += MGS_FIBH32;
-	s *= MGS_ROR32(s, s >> 27);
-	return s;
-}
-
-/**
- * Random access noise, simpler binary output version. Chaotic waveshaper which
- * turns sawtooth-ish number sequences into white noise. Returns zero for zero.
- *
- * This function is mainly an alternative to using buffers of noise, for random
- * access. The index \p n can be used as a counter or varied for random access.
- *
- * \return pseudo-random 1 or 0 for index \p n
- */
-static inline bool mgs_ranbit32(uint32_t n) {
-	uint32_t s = n * MGS_FIBH32;
-	s *= MGS_ROR32(s, s >> 27);
-	return ((int32_t)s) < 0;
-}
-
-/**
- * Random access noise, simpler binary output version. Chaotic waveshaper which
- * turns sawtooth-ish number sequences into white noise. Returns zero for zero.
- *
- * This function is mainly an alternative to using buffers of noise, for random
- * access. The index \p n can be used as a counter or varied for random access.
- *
- * \return pseudo-random 1 or 0 for index \p n
- */
-static inline bool mgs_ranbit32_next(uint32_t *restrict pos) {
-	uint32_t s = *pos += MGS_FIBH32;
-	s *= MGS_ROR32(s, s >> 27);
-	return ((int32_t)s) < 0;
+static inline uint32_t mgs_splitmix32_next(uint32_t *restrict pos) {
+	uint32_t z = (*pos += 0x9e3779b9);
+	z = (z ^ (z >> 16)) * 0x21f0aaad;
+	z = (z ^ (z >> 15)) * 0xf35a2d97; /* similar alt. 0x735a2d97 */
+	return z ^ (z >> 15);
 }
 
 /** Initial seed for mgs_xorshift32(). Other non-zero values can be used. */
@@ -185,7 +147,6 @@ static inline uint32_t mgs_xorshift32(uint32_t seed) {
 	uint32_t x = seed;
 	x ^= x << 13;
 	x ^= x >> 17;
-	x ^= x << 5; // Marsaglia's version (most common, better in dieharder)
-	//x ^= x << 15; // WebDrake's version (also valid, worse in dieharder)
+	x ^= x << 5;
 	return x;
 }
