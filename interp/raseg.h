@@ -247,7 +247,6 @@ static mgsMaybeUnused void mgsRaseg_map_tern(mgsRaseg *restrict o,
 	}
 }
 
-#if 0
 /**
  * Run for \p buf_len samples in 'fixed cycle' mode, generating output.
  * Simple version, optimizing high level (pure base frequency) setting.
@@ -265,12 +264,11 @@ static mgsMaybeUnused void mgsRaseg_map_fixed_simple(mgsRaseg *restrict o,
 		end_b_buf[i] = -a;
 	}
 }
-#endif
 
 /**
  * Run for \p buf_len samples in 'fixed cycle' mode, generating output.
  * For increasing \a m_level > 0, each new level halves the randomness,
- * the base frequency amplifying in its place toward ultimately purity.
+ * the base frequency amplifying in its place (toward ultimate purity).
  */
 static mgsMaybeUnused void mgsRaseg_map_fixed(mgsRaseg *restrict o,
 		size_t buf_len,
@@ -311,7 +309,10 @@ static mgsMaybeUnused void mgsRaseg_run(mgsRaseg *restrict o,
 	case MGS_RASEG_MODE_BIN: map = mgsRaseg_map_bin; break;
 	case MGS_RASEG_MODE_TERN: map = mgsRaseg_map_tern; break;
 	case MGS_RASEG_MODE_SMOOTH: map = mgsRaseg_map_smooth; break;
-	case MGS_RASEG_MODE_FIXED: map = mgsRaseg_map_fixed; break;
+	case MGS_RASEG_MODE_FIXED: map = mgsRaseg_map_fixed;
+		if (o->m_level >= mgsRaseg_level(9))
+			map = mgsRaseg_map_fixed_simple;
+		break;
 	}
 	map(o, buf_len, end_a_buf, end_b_buf, cycle_buf);
 	mgsLine_map_funcs[o->line](main_buf, buf_len, end_a_buf, end_b_buf);

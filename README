@@ -132,11 +132,11 @@ R -- Repeated line segments generator
 		Roughly, each level above 0 doubles the effect of the mode.
 		r	Uniform random (default) -- ignores digit.
 		b	Binary random -- extreme levels, more repetitive runs.
-		t	Ternary smooth random -- never repeats twice in a row,
-			cycles above or below zero randomly flipping polarity.
+		t	Ternary smooth random -- never repeats twice in a row;
+			cycle above or below zero, randomly flipping polarity.
 		s	Smoothed random -- ???.
-		f	Fixed cycle -- plain naive oscillator at max level,
-			below it mixed with randomness at reduced strength.
+		f	Fixed cycle -- plain naive oscillator at max. level,
+			below it mixed with randomness at reduced amplitude.
 
 W -- Wave oscillator
 	Expects a wave type following the W; see "Wave types" for all types.
