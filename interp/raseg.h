@@ -182,28 +182,6 @@ static mgsMaybeUnused void mgsRaseg_map_rand(mgsRaseg *restrict o,
 }
 
 /**
- * Run for \p buf_len samples in 'smoothed random' mode, generating output.
- */
-static mgsMaybeUnused void mgsRaseg_map_smooth(mgsRaseg *restrict o,
-		size_t buf_len,
-		float *restrict end_a_buf,
-		float *restrict end_b_buf,
-		const uint32_t *restrict cycle_buf) {
-	const float scale = 1.f/(float)INT32_MAX;
-	int sar = o->m_level;
-	for (size_t i = 0; i < buf_len; ++i) {
-		uint32_t cycle = cycle_buf[i];
-		int32_t sign = mgs_oddness_as_sign(cycle);
-		end_a_buf[i] = (-sign * (int32_t)
-				(((uint32_t)mgs_ranoise32(cycle) >> sar) -
-				 INT32_MAX)) * scale;
-		end_b_buf[i] = (sign * (int32_t)
-				(((uint32_t)mgs_ranoise32(cycle + 1) >> sar) -
-				 INT32_MAX)) * scale;
-	}
-}
-
-/**
  * Run for \p buf_len samples in 'binary random' mode, generating output.
  * For increasing \a m_level > 0, each new level is half as squiggly, for
  * a near-binary mode when above 5 (with best quality seemingly from 27).
@@ -244,6 +222,25 @@ static mgsMaybeUnused void mgsRaseg_map_tern(mgsRaseg *restrict o,
 				+ (1<<31)-sb) * scale; // is first to cos-align
 		end_b_buf[i] = (mgs_sar32(mgs_ranoise32(cycle + 1), sar)
 				+ sb) * scale;
+	}
+}
+
+/**
+ * Run for \p buf_len samples in 'squared random' mode, generating output.
+ * Squaring while preserving sign, uniformity moves from values to energy.
+ */
+static mgsMaybeUnused void mgsRaseg_map_smooth(mgsRaseg *restrict o,
+		size_t buf_len,
+		float *restrict end_a_buf,
+		float *restrict end_b_buf,
+		const uint32_t *restrict cycle_buf) {
+	const float scale = 1.f/(float)INT32_MAX;
+	for (size_t i = 0; i < buf_len; ++i) {
+		uint32_t cycle = cycle_buf[i];
+		float a = mgs_ranoise32(cycle) * scale;
+		float b = mgs_ranoise32(cycle + 1) * scale;
+		end_a_buf[i] = a*fabs(a);
+		end_b_buf[i] = b*fabs(b);
 	}
 }
 
