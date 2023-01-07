@@ -182,6 +182,31 @@ static mgsMaybeUnused void mgsRaseg_map_rand(mgsRaseg *restrict o,
 }
 
 /**
+ * Run for \p buf_len samples in 'Gaussian random' mode, generating output.
+ */
+static mgsMaybeUnused void mgsRaseg_map_gauss(mgsRaseg *restrict o,
+		size_t buf_len,
+		float *restrict end_a_buf,
+		float *restrict end_b_buf,
+		const uint32_t *restrict cycle_buf) {
+	const float scale = 1.f/(float)UINT32_MAX;
+	(void)o;
+	static uint32_t cc = 0;
+	for (size_t i = 0; i < buf_len; ++i) {
+		uint32_t cycle = cc++;//cycle_buf[i];
+		float a = ((uint32_t)mgs_ranoise32(cycle)) * scale;
+		float b = ((uint32_t)mgs_ranoise32(cycle + 1)) * scale;
+//		if (cycle & 1) { float tmp = a; a = b; b = tmp; }
+		float c = 0.25f * sqrtf(-2.f * logf(a));
+		a = c * cos(2.f*MGS_PI * b);
+		b = c * sin(2.f*MGS_PI * b);
+//		if (cycle & 1) { float tmp = a; a = b; b = tmp; }
+		end_a_buf[i] = a;
+		end_b_buf[i] = b;
+	}
+}
+
+/**
  * Run for \p buf_len samples in 'binary random' mode, generating output.
  * For increasing \a m_level > 0, each new level is half as squiggly, for
  * a near-binary mode when above 5 (with best quality seemingly from 27).
@@ -235,6 +260,7 @@ static mgsMaybeUnused void mgsRaseg_map_smooth(mgsRaseg *restrict o,
 		float *restrict end_b_buf,
 		const uint32_t *restrict cycle_buf) {
 	const float scale = 1.f/(float)INT32_MAX;
+	(void)o;
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t cycle = cycle_buf[i];
 		float a = mgs_ranoise32(cycle) * scale;
@@ -303,6 +329,7 @@ static mgsMaybeUnused void mgsRaseg_run(mgsRaseg *restrict o,
 	switch (o->mode) {
 	default:
 	case MGS_RASEG_MODE_RAND: map = mgsRaseg_map_rand; break;
+	case MGS_RASEG_MODE_GAUSS: map = mgsRaseg_map_gauss; break;
 	case MGS_RASEG_MODE_BIN: map = mgsRaseg_map_bin; break;
 	case MGS_RASEG_MODE_TERN: map = mgsRaseg_map_tern; break;
 	case MGS_RASEG_MODE_SMOOTH: map = mgsRaseg_map_smooth; break;

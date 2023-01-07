@@ -776,6 +776,7 @@ static bool parse_mode(mgsParser *o, mgsProgramData *n, char pos_c) {
 TRY_C:
   switch ((c = mgsFile_GETC(o->f))) {
   case 'r': mode = MGS_RASEG_MODE_RAND; break;
+  case 'g': mode = MGS_RASEG_MODE_GAUSS; break;
   case 'b': mode = MGS_RASEG_MODE_BIN; break;
   case 't': mode = MGS_RASEG_MODE_TERN; break;
   case 's': mode = MGS_RASEG_MODE_SMOOTH; break;
