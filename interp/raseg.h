@@ -181,6 +181,19 @@ static mgsMaybeUnused void mgsRaseg_map_rand(mgsRaseg *restrict o,
 	}
 }
 
+static inline float mgs_fgaussrand32(uint32_t n) {
+	uint32_t s0 = mgs_ranfast32(n);
+	uint32_t s1 = mgs_mcg32(s0);
+	float a = s0 * 1.f/(float)UINT32_MAX;
+	float b = s1 * 1.f/(float)UINT32_MAX;
+	float c = 0.15566118875375304694f /* make overshoot rare (measured) */
+		* sqrtf(-2.f * logf(a));
+	a = c * cosf(2.f*(float)MGS_PI * b);
+//	b = c * sinf(2.f*(float)MGS_PI * b);
+//	a = b;
+	return a;
+}
+
 /**
  * Run for \p buf_len samples in 'Gaussian random' mode, generating output.
  */
@@ -189,20 +202,11 @@ static mgsMaybeUnused void mgsRaseg_map_gauss(mgsRaseg *restrict o,
 		float *restrict end_a_buf,
 		float *restrict end_b_buf,
 		const uint32_t *restrict cycle_buf) {
-	const float scale = 1.f/(float)UINT32_MAX;
 	(void)o;
-	static uint32_t cc = 0;
 	for (size_t i = 0; i < buf_len; ++i) {
-		uint32_t cycle = cc++;//cycle_buf[i];
-		float a = ((uint32_t)mgs_splitmix32(cycle)) * scale;
-		float b = ((uint32_t)mgs_splitmix32(cycle + 1)) * scale;
-//		if (cycle & 1) { float tmp = a; a = b; b = tmp; }
-		float c = 0.25f * sqrtf(-2.f * logf(a));
-		a = c * cos(2.f*MGS_PI * b);
-		b = c * sin(2.f*MGS_PI * b);
-//		if (cycle & 1) { float tmp = a; a = b; b = tmp; }
-		end_a_buf[i] = a;
-		end_b_buf[i] = b;
+		uint32_t cycle = cycle_buf[i];
+		end_a_buf[i] = mgs_fgaussrand32(cycle);
+		end_b_buf[i] = mgs_fgaussrand32(cycle + 1);
 	}
 }
 

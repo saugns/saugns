@@ -137,6 +137,14 @@ static inline uint32_t mgs_splitmix32_next(uint32_t *restrict pos) {
 	return z ^ (z >> 15);
 }
 
+/**
+ * 32-bit MCG. Usable together with another PRNG, for additional values
+ * extended in a perpendicular sequence in a computationally cheap way.
+ */
+static inline uint32_t mgs_mcg32(uint32_t seed) {
+	return seed * 0xe47135; /* alt. 0x93d765dd; both Steele & Vigna 2021 */
+}
+
 /** Initial seed for mgs_xorshift32(). Other non-zero values can be used. */
 #define MGS_XORSHIFT32_SEED 2463534242UL
 
