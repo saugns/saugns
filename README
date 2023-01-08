@@ -132,14 +132,16 @@ R -- Repeated line segments generator
 		Roughly, each level above 0 doubles the effect of the mode.
 		r	Uniform random (default). Ignores the level setting.
 		g	Gaussian random. Ignores the level setting.
-		s	Squared random. Uniform energy (amplitude squared);
-			quieter, more tremulant, useful for amplitude LFO use.
-			Ignores the level setting.
 		b	Binary random. Extreme levels, more repetitive runs.
 		t	Ternary smooth random. Never repeats twice in a row;
 			cycles above or below zero, randomly flips polarity.
-		f	Fixed cycle. Plain naive oscillator at maximum level;
+		f	Fixed cycle. Plain naive oscillator at the top level;
 			below it, mixed with randomness at reduced amplitude.
+		In addition to the function and level, these flags can be set.
+		s	Square random start/goal values while preserving sign.
+			Turns uniform value variation into uniform energy
+			variation; somewhat quieter, and more tremulant.
+			Doesn't affect 'b', 't', nor 'f' with level '9'.
 
 W -- Wave oscillator
 	Expects a wave type following the W; see "Wave types" for all types.

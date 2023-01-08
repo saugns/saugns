@@ -194,8 +194,8 @@ static mgsMaybeUnused void mgsRaseg_map_gauss(mgsRaseg *restrict o,
 	static uint32_t cc = 0;
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t cycle = cc++;//cycle_buf[i];
-		float a = ((uint32_t)mgs_ranfast32(cycle)) * scale;
-		float b = ((uint32_t)mgs_ranfast32(cycle + 1)) * scale;
+		float a = ((uint32_t)mgs_splitmix32(cycle)) * scale;
+		float b = ((uint32_t)mgs_splitmix32(cycle + 1)) * scale;
 //		if (cycle & 1) { float tmp = a; a = b; b = tmp; }
 		float c = 0.25f * sqrtf(-2.f * logf(a));
 		a = c * cos(2.f*MGS_PI * b);
@@ -247,26 +247,6 @@ static mgsMaybeUnused void mgsRaseg_map_tern(mgsRaseg *restrict o,
 				+ (1<<31)-sb) * scale; // is first to cos-align
 		end_b_buf[i] = (mgs_sar32(mgs_ranfast32(cycle + 1), sar)
 				+ sb) * scale;
-	}
-}
-
-/**
- * Run for \p buf_len samples in 'squared random' mode, generating output.
- * Squaring while preserving sign, uniformity moves from values to energy.
- */
-static mgsMaybeUnused void mgsRaseg_map_smooth(mgsRaseg *restrict o,
-		size_t buf_len,
-		float *restrict end_a_buf,
-		float *restrict end_b_buf,
-		const uint32_t *restrict cycle_buf) {
-	const float scale = 1.f/(float)INT32_MAX;
-	(void)o;
-	for (size_t i = 0; i < buf_len; ++i) {
-		uint32_t cycle = cycle_buf[i];
-		float a = ((int32_t)mgs_ranfast32(cycle)) * scale;
-		float b = ((int32_t)mgs_ranfast32(cycle + 1)) * scale;
-		end_a_buf[i] = a*fabs(a);
-		end_b_buf[i] = b*fabs(b);
 	}
 }
 
@@ -326,18 +306,24 @@ static mgsMaybeUnused void mgsRaseg_run(mgsRaseg *restrict o,
 		float *restrict end_b_buf,
 		const uint32_t *restrict cycle_buf) {
 	mgsRaseg_map_f map;
-	switch (o->mode) {
+	switch (o->mode & MGS_RASEG_MFUNC_MASK) {
 	default:
 	case MGS_RASEG_MODE_RAND: map = mgsRaseg_map_rand; break;
 	case MGS_RASEG_MODE_GAUSS: map = mgsRaseg_map_gauss; break;
 	case MGS_RASEG_MODE_BIN: map = mgsRaseg_map_bin; break;
 	case MGS_RASEG_MODE_TERN: map = mgsRaseg_map_tern; break;
-	case MGS_RASEG_MODE_SMOOTH: map = mgsRaseg_map_smooth; break;
 	case MGS_RASEG_MODE_FIXED: map = mgsRaseg_map_fixed;
 		if (o->m_level >= mgsRaseg_level(9))
 			map = mgsRaseg_map_fixed_simple;
 		break;
 	}
 	map(o, buf_len, end_a_buf, end_b_buf, cycle_buf);
+	if (o->mode & MGS_RASEG_MEXT_SQ) {
+		// square keeping sign; value uniformity to energy uniformity
+		for (size_t i = 0; i < buf_len; ++i) {
+			end_a_buf[i] *= fabsf(end_a_buf[i]);
+			end_b_buf[i] *= fabsf(end_b_buf[i]);
+		}
+	}
 	mgsLine_map_funcs[o->line](main_buf, buf_len, end_a_buf, end_b_buf);
 }

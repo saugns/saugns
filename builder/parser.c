@@ -771,31 +771,54 @@ static bool parse_mode(mgsParser *o, mgsProgramData *n, char pos_c) {
   mgsProgramRasegData *rod = mgs_of_class(n, mgsProgramRasegData);
   if (!rod) goto INVALID;
   uint8_t mode = MGS_RASEG_MODES;
+  uint8_t m_flags = 0;
   int32_t m_level = -1;
-  char c;
-TRY_C:
-  switch ((c = mgsFile_GETC(o->f))) {
-  case 'r': mode = MGS_RASEG_MODE_RAND; break;
-  case 'g': mode = MGS_RASEG_MODE_GAUSS; break;
-  case 'b': mode = MGS_RASEG_MODE_BIN; break;
-  case 't': mode = MGS_RASEG_MODE_TERN; break;
-  case 's': mode = MGS_RASEG_MODE_SMOOTH; break;
-  case 'f': mode = MGS_RASEG_MODE_FIXED; break;
-  default:
-    mgsFile_DECP(o->f);
-    if (!IS_DIGIT(c) && !(m_level >= 0)) goto INVALID;
-  }
-  if (!(m_level >= 0) && scan_digitval(o, &m_level)) {
-    if (!(mode < MGS_RASEG_MODES)) goto TRY_C;
-  }
-  if (mode < MGS_RASEG_MODES) {
-    rod->mode = mode;
-    rod->params |= MGS_RASEGP_MODE;
-  }
-  if (m_level >= 0) {
-    rod->m_level = mgsRaseg_level(m_level);
-    rod->params |= MGS_RASEGP_M_LEVEL;
-  }
+  do {
+    char c;
+    int matched = 0;
+    if (!(mode < MGS_RASEG_MODES) && ++matched)
+    switch ((c = mgsFile_GETC(o->f))) {
+    case 'r': mode = MGS_RASEG_MODE_RAND; break;
+    case 'g': mode = MGS_RASEG_MODE_GAUSS; break;
+    case 'b': mode = MGS_RASEG_MODE_BIN; break;
+    case 't': mode = MGS_RASEG_MODE_TERN; break;
+    case 'f': mode = MGS_RASEG_MODE_FIXED; break;
+    default:
+      mgsFile_DECP(o->f);
+      --matched;
+      break;
+    }
+    if (!m_flags && ++matched)
+    switch ((c = mgsFile_GETC(o->f))) {
+    case 's': m_flags = MGS_RASEG_MEXT_SQ; break;
+    default:
+      mgsFile_DECP(o->f);
+      --matched;
+      break;
+    }
+    if (!(m_level >= 0) && ++matched) {
+      c = mgsFile_RETC(o->f);
+      if (IS_DIGIT(c)) scan_digitval(o, &m_level);
+      else --matched;
+    }
+    if (mode < MGS_RASEG_MODES) {
+      rod->mode = mode;
+      rod->params |= MGS_RASEGP_MODE;
+    }
+    if (m_flags) {
+      rod->mode |= m_flags;
+      rod->params |= MGS_RASEGP_MODE;
+    }
+    if (m_level >= 0) {
+      rod->m_level = mgsRaseg_level(m_level);
+      rod->params |= MGS_RASEGP_M_LEVEL;
+    }
+    if (matched == 0) {
+      if ((mode < MGS_RASEG_MODES) || m_flags || (m_level >= 0))
+        return true;
+      goto INVALID;
+    }
+  } while (!(mode < MGS_RASEG_MODES) || !m_flags || !(m_level >= 0));
   return true;
 INVALID:
   return false;

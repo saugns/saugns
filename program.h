@@ -150,9 +150,10 @@ enum {
 	MGS_RASEG_MODE_GAUSS,
 	MGS_RASEG_MODE_BIN,
 	MGS_RASEG_MODE_TERN,
-	MGS_RASEG_MODE_SMOOTH,
 	MGS_RASEG_MODE_FIXED,
 	MGS_RASEG_MODES,
+	MGS_RASEG_MFUNC_MASK = (1<<4)-1,
+	MGS_RASEG_MEXT_SQ = 1<<4,
 };
 
 /** Stretch digit range (0-9) across 0-30 range for Raseg level setting. */
