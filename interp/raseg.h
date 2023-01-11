@@ -181,16 +181,53 @@ static mgsMaybeUnused void mgsRaseg_map_rand(mgsRaseg *restrict o,
 	}
 }
 
-static inline float mgs_fgaussrand32(uint32_t n) {
-	uint32_t s0 = mgs_ranfast32(n);
-	uint32_t s1 = mgs_mcg32(s0);
+#if 0 // real function for initial soft-saturated curve
+static inline float mgs_soft_sqrtm2logp1_2(float x) {
+	float v = (x > 0 ?
+		sqrtf(-2.f * logf(x + 0.5f)) :
+		(sqrtf(-2.f * logf(0.5f))*2.f -
+		 sqrtf(-2.f * logf(0.5f - x))));
+	return v;
+}
+#else // polynomial approximation, scaled down to 0.0-1.0 interval
+static inline float mgs_soft_sqrtm2logp1_2_r01(float x) {
+	float x2 = x*x;
+	float x4 = x2*x2;
+	return 0.5f + x*(-0.72882846379025637609f +
+	                 x4*(+0.95336914062499999966f +
+	                     x4*-76.20243884870739047856f));
+}
+#endif
+
+// Function used to distort initial soft-saurated curve
+// so as to make it look and sound approximately right.
+static inline float mgs_restore_gauss(float x) {
+	float x2 = x*x;
+	float gx = (x + x2)*0.5f;
+//	return x*(1 - gx*(1 - x2));
+	return x*(1 - gx*(1 - gx));
+//	return x*(1 - gx*(1 - x));
+//	return x*(1 - x*(1 - x));
+//	return x*(1 - x*(1 - x*x));
+}
+
+static inline float mgs_franssgauss32(uint32_t n) {
+	int32_t s0 = mgs_ranfast32(n);
+	int32_t s1 = mgs_mcg32(s0);
 	float a = s0 * 1.f/(float)UINT32_MAX;
 	float b = s1 * 1.f/(float)UINT32_MAX;
-	float c = 0.15566118875375304694f /* make overshoot rare (measured) */
-		* sqrtf(-2.f * logf(a));
-	a = c * cosf(2.f*(float)MGS_PI * b);
-//	b = c * sinf(2.f*(float)MGS_PI * b);
-//	a = b;
+//	float c = 0.15014030109830622436f /* prevent overshoot */
+//		* sqrtf(-2.f * logf(a + 0.5f));
+#if 0 // use "real" soft-saturated curve
+	const float sigma = 1.f / (sqrtf(-2.f * logf(0.5f))*2.f);
+	float c = sigma * mgs_soft_sqrtm2logp1_2(a);
+#else // use approximation
+	float c = mgs_soft_sqrtm2logp1_2_r01(a);
+#endif
+	c = mgs_restore_gauss(c);
+//	a = c * cosf(2.f*(float)MGS_PI * b);
+	b = c * sinf(2.f*(float)MGS_PI * b);
+	a = b;
 	return a;
 }
 
@@ -205,8 +242,8 @@ static mgsMaybeUnused void mgsRaseg_map_gauss(mgsRaseg *restrict o,
 	(void)o;
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t cycle = cycle_buf[i];
-		end_a_buf[i] = mgs_fgaussrand32(cycle);
-		end_b_buf[i] = mgs_fgaussrand32(cycle + 1);
+		end_a_buf[i] = mgs_franssgauss32(cycle);
+		end_b_buf[i] = mgs_franssgauss32(cycle + 1);
 	}
 }
 
