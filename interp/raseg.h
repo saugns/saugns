@@ -225,10 +225,7 @@ static inline float mgs_franssgauss32(uint32_t n) {
 	float c = mgs_soft_sqrtm2logp1_2_r01(a);
 #endif
 	c = mgs_restore_gauss(c);
-//	a = c * cosf(2.f*(float)MGS_PI * b);
-	b = c * sinf(2.f*(float)MGS_PI * b);
-	a = b;
-	return a;
+	return c * MGS_sinpif_d5_rh(b); // one of two values; cos also possible
 }
 
 /**

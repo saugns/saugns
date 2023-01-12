@@ -71,6 +71,28 @@ static inline uint32_t mgs_ror32(uint32_t x, int r) {
 	return x >> r | x << (32 - r);
 }
 
+/**
+ * Degree 5 sin(PI * x) approximation function for limited input range.
+ *
+ * For \p x domain -0.5 <= x <= +0.5; use with pre-wrapped values only.
+ *
+ * Almost clean spectrum, adds a 5th harmonic at slightly below -84 dB.
+ */
+static inline float MGS_sinpif_d5_rh(float x) {
+	/*
+	 * Coefficients generated for no end-point error,
+	 * on top of minimax, roughly doubling the error.
+	 * Slightly lower max error than Taylor degree 7.
+	 */
+	const float scale[] = {
+		+3.14042741234069229463,
+		-5.13655757476162831091,
+		+2.29939170159543653372,
+	};
+	float x2 = x*x;
+	return x*(scale[0] + x2*(scale[1] + x2*scale[2]));
+}
+
 /*
  * Simple PRNGs
  */
