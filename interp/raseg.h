@@ -181,47 +181,53 @@ static mgsMaybeUnused void mgsRaseg_map_rand(mgsRaseg *restrict o,
 	}
 }
 
-#if 0 // real function for initial soft-saturated curve
-static inline float mgs_soft_sqrtm2logp1_2(float x) {
-	float v = (x > 0 ?
-		sqrtf(-2.f * logf(x + 0.5f)) :
-		(sqrtf(-2.f * logf(0.5f))*2.f -
-		 sqrtf(-2.f * logf(0.5f - x))));
-	return v;
-}
-#else // polynomial approximation, scaled down to 0.0-1.0 interval
-static inline float mgs_soft_sqrtm2logp1_2_r01(float x) {
+/*
+ * Approximation of a symmetric, highly soft-saturated modification
+ * of expression "sqrtf(-2.f * logf(x + 0.5f))"; more precisely, of
+ * "x > 0 ?
+ *  sqrtf(-2.f * logf(x + 0.5f)) :
+ *  (2.f*sqrtf(-2.f * logf(0.5f)) - sqrtf(-2.f * logf(0.5f - x)))".
+ *
+ * Unlike the original expression, the result is also downscaled by
+ * "2.f*sqrtf(-2.f * logf(0.5f))" (otherwise the maximum value), to
+ * the range of 0.0 to 1.0 inclusive.
+ */
+static inline float soft_sqrtm2logp1_2_r01(float x) {
+	const float scale[] = {
+		-0.80270565422983103084,
+		+5.52274428214641442648,
+		-138.87126103150588693697,
+	};
 	float x2 = x*x;
 	float x4 = x2*x2;
-	return 0.5f + x*(-0.72882846379025637609f +
-	                 x4*(+0.95336914062499999966f +
-	                     x4*-76.20243884870739047856f));
+	return 0.5f + x*(scale[0] + x4*(scale[1] + x4*scale[2]));
 }
-#endif
 
 /*
  * Function used to distort initial soft-saurated curve
  * so as to make it look and sound approximately right.
+ * (Graphed, looks like half a bell curve on its side.)
  */
-static inline float mgs_ssgauss_fixup(float x) {
+static inline float ssgauss_dist4(float x) {
 	float x2 = x*x;
 	float gx = (x + x2)*0.5f;
-	return x*(1 - gx*(1 - x2)); // sharp, ~6dB quieter than uniform random
+	return x*(1 - gx*(1 - x2));
 }
 
+/**
+ * Random access soft-saturated Gaussian noise, using approximation.
+ *
+ * Described at: https://joelkp.frama.io/blog/ran-softsat-gauss.html
+ *
+ * \return pseudo-random number between -1.0 and +1.0 for index \p n
+ */
 static inline float mgs_franssgauss32(uint32_t n) {
 	int32_t s0 = mgs_ranfast32(n);
 	int32_t s1 = mgs_mcg32(s0);
 	float a = s0 * 1.f/(float)UINT32_MAX;
 	float b = s1 * 1.f/(float)UINT32_MAX;
-#if 0 // use "real" soft-saturated curve
-	const float sigma = 1.f / (sqrtf(-2.f * logf(0.5f))*2.f);
-	float c = sigma * mgs_soft_sqrtm2logp1_2(a);
-#else // use approximation
-	float c = mgs_soft_sqrtm2logp1_2_r01(a);
-#endif
-	c = mgs_ssgauss_fixup(c);
-	b = c * MGS_sinpi_d5f(b); // simple range handling for no cos() output
+	float c = ssgauss_dist4(soft_sqrtm2logp1_2_r01(a));
+	b = c * mgs_sinpi_d5f(b); // simplified for only sin(), no cos() output
 	return b;
 }
 
