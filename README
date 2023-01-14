@@ -131,7 +131,8 @@ R -- Repeated line segments generator
 		one or both may be set at a time; the default level is '9'.
 		Roughly, each level above 0 doubles the effect of the mode.
 		r	Uniform random (default). Ignores the level setting.
-		g	Gaussian random. Ignores the level setting.
+		g	Gaussian random, soft-saturated approximation. On
+			average ~6 dB quieter. Ignores the level setting.
 		b	Binary random. Extreme levels, more repetitive runs.
 		t	Ternary smooth random. Never repeats twice in a row;
 			cycles above or below zero, randomly flips polarity.

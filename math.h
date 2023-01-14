@@ -78,7 +78,7 @@ static inline uint32_t mgs_ror32(uint32_t x, int r) {
  *
  * Almost clean spectrum, adds a 5th harmonic at slightly below -84 dB.
  */
-static inline float MGS_sinpif_d5_rh(float x) {
+static inline float MGS_sinpi_d5f(float x) {
 	/*
 	 * Coefficients generated for no end-point error,
 	 * on top of minimax, roughly doubling the error.

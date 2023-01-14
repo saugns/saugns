@@ -199,16 +199,14 @@ static inline float mgs_soft_sqrtm2logp1_2_r01(float x) {
 }
 #endif
 
-// Function used to distort initial soft-saurated curve
-// so as to make it look and sound approximately right.
-static inline float mgs_restore_gauss(float x) {
+/*
+ * Function used to distort initial soft-saurated curve
+ * so as to make it look and sound approximately right.
+ */
+static inline float mgs_ssgauss_fixup(float x) {
 	float x2 = x*x;
 	float gx = (x + x2)*0.5f;
-//	return x*(1 - gx*(1 - x2));
-	return x*(1 - gx*(1 - gx));
-//	return x*(1 - gx*(1 - x));
-//	return x*(1 - x*(1 - x));
-//	return x*(1 - x*(1 - x*x));
+	return x*(1 - gx*(1 - x2)); // sharp, ~6dB quieter than uniform random
 }
 
 static inline float mgs_franssgauss32(uint32_t n) {
@@ -216,16 +214,15 @@ static inline float mgs_franssgauss32(uint32_t n) {
 	int32_t s1 = mgs_mcg32(s0);
 	float a = s0 * 1.f/(float)UINT32_MAX;
 	float b = s1 * 1.f/(float)UINT32_MAX;
-//	float c = 0.15014030109830622436f /* prevent overshoot */
-//		* sqrtf(-2.f * logf(a + 0.5f));
 #if 0 // use "real" soft-saturated curve
 	const float sigma = 1.f / (sqrtf(-2.f * logf(0.5f))*2.f);
 	float c = sigma * mgs_soft_sqrtm2logp1_2(a);
 #else // use approximation
 	float c = mgs_soft_sqrtm2logp1_2_r01(a);
 #endif
-	c = mgs_restore_gauss(c);
-	return c * MGS_sinpif_d5_rh(b); // one of two values; cos also possible
+	c = mgs_ssgauss_fixup(c);
+	b = c * MGS_sinpi_d5f(b); // simple range handling for no cos() output
+	return b;
 }
 
 /**
