@@ -27,6 +27,7 @@
 #define IS_LOWER(c) ((c) >= 'a' && (c) <= 'z')
 #define IS_UPPER(c) ((c) >= 'A' && (c) <= 'Z')
 #define IS_ALPHA(c) (IS_LOWER(c) || IS_UPPER(c))
+#define IS_DIGIT(c) ((c) >= '0' && (c) <= '9')
 
 enum {
 	SAU_SYM_VAR = 0,
@@ -390,6 +391,23 @@ static sauNoinline bool scan_time_val(sauScanner *restrict o,
 	return true;
 }
 
+static sauNoinline bool scan_digit_val(sauScanner *restrict o,
+		int32_t *restrict val) {
+	sauScanFrame sf = o->sf;
+	size_t num_len;
+	int32_t num;
+	sauScanner_geti(o, &num, false, &num_len);
+	if (!num_len)
+		return false;
+	if (num_len > 1) {
+		sauScanner_warning(o, &sf,
+				"discarding integer out of range (0-9)");
+		return false;
+	}
+	*val = num;
+	return true;
+}
+
 static size_t scan_chanmix_const(sauScanner *restrict o,
 		double *restrict val) {
 	char c = sauFile_GETC(o->f);
@@ -664,7 +682,7 @@ static sauLine *create_line(sauParser *restrict o,
 	float v0 = 0.f;
 	if (!line)
 		return NULL;
-	line->fill_type = SAU_LINE_N_lin; // default if goal enabled
+	line->type = SAU_LINE_N_lin; // default if goal enabled
 	switch (par_flag) {
 	case SAU_PSWEEP_PAN:
 		v0 = sl->sopt.def_chanmix;
@@ -688,7 +706,7 @@ static sauLine *create_line(sauParser *restrict o,
 	}
 	line->v0 = v0;
 	line->flags |= SAU_LINEP_STATE |
-		SAU_LINEP_FILL_TYPE |
+		SAU_LINEP_TYPE |
 		SAU_LINEP_TIME_IF_NEW; /* don't set main SAU_LINEP_TIME here */
 	if (mult) {
 		line->flags |= SAU_LINEP_STATE_RATIO;
@@ -788,7 +806,8 @@ static void begin_event(sauParser *restrict o,
 }
 
 static void begin_operator(sauParser *restrict o,
-		sauScriptOpData *restrict pop, bool is_compstep) {
+		sauScriptOpData *restrict pop, bool is_compstep,
+		uint32_t type) {
 	struct ParseLevel *pl = o->cur_pl;
 	sauScriptEvData *e = pl->event;
 	sauScriptOpData *op;
@@ -840,6 +859,9 @@ static void begin_operator(sauParser *restrict o,
 		op->amp = create_line(o, false, SAU_PSWEEP_AMP);
 		op->info = sau_mpalloc(o->mp, sizeof(sauScriptObjInfo));
 		op->info->root_event = e;
+		op->info->type = type;
+		if (type == SAU_POPT_RAS)
+			op->info->seed = sau_rand32(&o->sl.math_state);
 	}
 	op->event = e;
 	/*
@@ -884,7 +906,8 @@ static void begin_operator(sauParser *restrict o,
  * Used instead of directly calling begin_operator() and/or begin_event().
  */
 static void begin_node(sauParser *restrict o,
-		sauScriptOpData *restrict previous, bool is_compstep) {
+		sauScriptOpData *restrict previous, bool is_compstep,
+		uint32_t type) {
 	struct ParseLevel *pl = o->cur_pl;
 	if (!pl->event || pl->add_wait_ms > 0 ||
 			/* previous event implicitly ended */
@@ -892,7 +915,7 @@ static void begin_node(sauParser *restrict o,
 			 && pl->event->objs.first_item) ||
 			is_compstep)
 		begin_event(o, previous, is_compstep);
-	begin_operator(o, previous, is_compstep);
+	begin_operator(o, previous, is_compstep, type);
 }
 
 static sauScriptEvData *time_durgroup(sauScriptEvData *restrict e_from,
@@ -978,7 +1001,7 @@ static void leave_level(sauParser *restrict o) {
 		 */
 		if (pl->scope_first != NULL) {
 			pl->parent->pl_flags |= PL_BIND_MULTIPLE;
-			begin_node(o, pl->scope_first, false);
+			begin_node(o, pl->scope_first, false, 0);
 		}
 	} else if (pl->scope == SCOPE_NEST) {
 		/*
@@ -1095,8 +1118,8 @@ static void parse_in_par_sweep(sauParser *restrict o) {
 			if (!scan_sym_id(sc, &id, SAU_SYM_LINE_ID,
 						sauLine_names))
 				break;
-			line->fill_type = id;
-			line->flags |= SAU_LINEP_FILL_TYPE;
+			line->type = id;
+			line->flags |= SAU_LINEP_TYPE;
 			break; }
 		case 't':
 			if (scan_time_val(sc, &line->time_ms))
@@ -1123,7 +1146,7 @@ static bool prepare_sweep(sauParser *restrict o,
 	}
 	if (!*op_sweep) { /* create for updating, unparsed values kept unset */
 		*op_sweep = create_line(o, ratio, sweep_id);
-		(*op_sweep)->flags &= ~(SAU_LINEP_STATE | SAU_LINEP_FILL_TYPE);
+		(*op_sweep)->flags &= ~(SAU_LINEP_STATE | SAU_LINEP_TYPE);
 	}
 	pl->op_sweep = *op_sweep;
 	pl->numconst_f = numconst_f;
@@ -1192,6 +1215,51 @@ static bool parse_op_freq(sauParser *restrict o, bool rel_freq) {
 	return false;
 }
 
+static bool parse_op_mode(sauParser *restrict o) {
+	struct ParseLevel *pl = o->cur_pl;
+	sauScanner *sc = o->sc;
+	sauScriptOpData *op = pl->operator;
+	if (op->info->type != SAU_POPT_RAS)
+		return true; // reject
+	uint8_t func = SAU_RAS_FUNCTIONS;
+	int32_t level = -1;
+	for (;;) {
+		char c;
+		int matched = 0;
+		if (!(func < SAU_RAS_FUNCTIONS) && ++matched)
+		switch ((c = sauScanner_getc(sc))) {
+		case 'r': func = SAU_RAS_F_RAND; break;
+		case 'b': func = SAU_RAS_F_BIN; break;
+		case 't': func = SAU_RAS_F_TERN; break;
+		case 's': func = SAU_RAS_F_SMOOTH; break;
+		case 'f': func = SAU_RAS_F_FIXED; break;
+		default:
+			sauScanner_ungetc(sc);
+			--matched;
+			break;
+		}
+		if (!(level >= 0) && ++matched) {
+			c = sauScanner_retc(sc);
+			if (IS_DIGIT(c)) scan_digit_val(sc, &level);
+			else --matched;
+		}
+		if (matched == 0)
+			break;
+	}
+	if (func < SAU_RAS_FUNCTIONS) {
+		op->ras_opt.func = func;
+		op->ras_opt.flags &= SAU_RAS_O_LINE_SET;
+		op->ras_opt.flags |= SAU_RAS_O_FUNC_SET;
+		op->params |= SAU_POPP_RAS;
+	}
+	if (level >= 0) {
+		op->ras_opt.level = sau_ras_level(level);
+		op->ras_opt.flags |= SAU_RAS_O_LEVEL_SET;
+		op->params |= SAU_POPP_RAS;
+	}
+	return false;
+}
+
 static bool parse_op_phase(sauParser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
 	sauScriptOpData *op = pl->operator;
@@ -1217,13 +1285,13 @@ static void parse_in_op_step(sauParser *restrict o) {
 		switch (c) {
 		case '/':
 			if (parse_waittime(o)) {
-				begin_node(o, pl->operator, false);
+				begin_node(o, pl->operator, false, 0);
 			}
 			break;
 		case ';':
 			pl->pl_flags &= ~PL_WARN_NOSPACE; /* OK before */
 			if (parse_waittime(o)) {
-				begin_node(o, pl->operator, true);
+				begin_node(o, pl->operator, true, 0);
 				pl->event->ev_flags |= SAU_SDEV_FROM_GAPSHIFT;
 			} else {
 				if ((op->time.flags &
@@ -1231,7 +1299,7 @@ static void parse_in_op_step(sauParser *restrict o) {
 				    (SAU_TIMEP_SET|SAU_TIMEP_IMPLICIT))
 					sauScanner_warning(sc, NULL,
 "ignoring 'ti' (implicit time) before ';' without number");
-				begin_node(o, pl->operator, true);
+				begin_node(o, pl->operator, true, 0);
 				pl->event->ev_flags |= SAU_SDEV_WAIT_PREV_DUR;
 			}
 			break;
@@ -1243,6 +1311,19 @@ static void parse_in_op_step(sauParser *restrict o) {
 			break;
 		case 'f':
 			if (parse_op_freq(o, false)) goto DEFER;
+			break;
+		case 'l': {
+			if (op->info->type != SAU_POPT_RAS) goto DEFER;
+			size_t id;
+			if (!scan_sym_id(sc, &id, SAU_SYM_LINE_ID,
+						sauLine_names))
+				break;
+			op->ras_opt.line = id;
+			op->ras_opt.flags |= SAU_RAS_O_LINE_SET;
+			op->params |= SAU_POPP_RAS;
+			break; }
+		case 'm':
+			if (parse_op_mode(o)) goto DEFER;
 			break;
 		case 'p':
 			if (parse_op_phase(o)) goto DEFER;
@@ -1271,6 +1352,7 @@ static void parse_in_op_step(sauParser *restrict o) {
 			op->params |= SAU_POPP_TIME;
 			break;
 		case 'w': {
+			if (op->info->type != SAU_POPT_WAVE) goto DEFER;
 			size_t id;
 			if (!scan_sym_id(sc, &id, SAU_SYM_WAVE_ID,
 						sauWave_names))
@@ -1347,7 +1429,7 @@ static bool parse_level(sauParser *restrict o,
 			if (var != NULL) {
 				if (var->data_use == SAU_SYM_DATA_OBJ) {
 					sauScriptOpData *ref = var->data.obj;
-					begin_node(o, ref, false);
+					begin_node(o, ref, false, 0);
 					ref = pl.operator;
 					var->data.obj = ref; /* update */
 					pl.sub_f = parse_in_op_step;
@@ -1357,6 +1439,18 @@ static bool parse_level(sauParser *restrict o,
 				}
 			}
 			break; }
+		case 'R': {
+			size_t id = 0; /* default as fallback value */
+			scan_sym_id(sc, &id, SAU_SYM_LINE_ID, sauLine_names);
+			if (pl.parent && !pl.use_type && pl.parent->op_sweep) {
+				sauScanner_warning(sc, NULL, "modulators not supported here");
+				break;
+			}
+			begin_node(o, NULL, false, SAU_POPT_RAS);
+			pl.operator->ras_opt.line = id;
+			pl.operator->ras_opt.flags = SAU_RAS_O_LINE_SET;
+			pl.sub_f = parse_in_op_step;
+			break; }
 		case 'O': {
 			size_t id = 0; /* default as fallback value */
 			scan_sym_id(sc, &id, SAU_SYM_WAVE_ID, sauWave_names);
@@ -1364,7 +1458,7 @@ static bool parse_level(sauParser *restrict o,
 				sauScanner_warning(sc, NULL, "modulators not supported here");
 				break;
 			}
-			begin_node(o, NULL, false);
+			begin_node(o, NULL, false, SAU_POPT_WAVE);
 			pl.operator->wave = id;
 			pl.sub_f = parse_in_op_step;
 			break; }
