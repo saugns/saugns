@@ -1,13 +1,13 @@
 /* SAU library: Symbol table module.
  * Copyright (c) 2011-2012, 2014, 2017-2023 Joel K. Pettersson
- * <joelkpettersson@gmail.com>.
+ * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
  * terms of the GNU Lesser General Public License, either version 3 or (at
  * your option) any later version, WITHOUT ANY WARRANTY, not even of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
- * View the file COPYING for details, or if missing, see
+ * View the files COPYING.LESSER and COPYING for details, or if missing, see
  * <https://www.gnu.org/licenses/>.
  */
 
@@ -29,7 +29,7 @@ static size_t collision_count = 0;
 #endif
 
 typedef struct StrTab {
-	SAU_Symstr **sstra;
+	sauSymstr **sstra;
 	size_t count;
 	size_t alloc;
 } StrTab;
@@ -66,13 +66,13 @@ static size_t StrTab_hash_key(StrTab *restrict o,
  * \return true, or false on allocation failure
  */
 static bool StrTab_upsize(StrTab *restrict o) {
-	SAU_Symstr **sstra, **old_sstra = o->sstra;
+	sauSymstr **sstra, **old_sstra = o->sstra;
 	size_t alloc, old_alloc = o->alloc;
 	size_t i;
 	alloc = (old_alloc > 0) ?
 		(old_alloc << 1) :
 		STRTAB_ALLOC_INITIAL;
-	sstra = calloc(alloc, sizeof(SAU_Symstr*));
+	sstra = calloc(alloc, sizeof(sauSymstr*));
 	if (!sstra)
 		return false;
 	o->alloc = alloc;
@@ -82,9 +82,9 @@ static bool StrTab_upsize(StrTab *restrict o) {
 	 * Rehash entries
 	 */
 	for (i = 0; i < old_alloc; ++i) {
-		SAU_Symstr *node = old_sstra[i];
+		sauSymstr *node = old_sstra[i];
 		while (node != NULL) {
-			SAU_Symstr *prev_node;
+			sauSymstr *prev_node;
 			size_t hash;
 			hash = StrTab_hash_key(o, node->key, node->key_len);
 			/*
@@ -111,10 +111,10 @@ static bool StrTab_upsize(StrTab *restrict o) {
  *
  * Initializes the hash table if empty.
  *
- * \return SAU_Symstr, or NULL on allocation failure
+ * \return sauSymstr, or NULL on allocation failure
  */
-static SAU_Symstr *StrTab_unique_node(StrTab *restrict o,
-		SAU_Mempool *restrict memp,
+static sauSymstr *StrTab_unique_node(StrTab *restrict o,
+		sauMempool *restrict memp,
 		const void *restrict key, size_t len, size_t extra) {
 	if (!key || len == 0)
 		return NULL;
@@ -124,7 +124,7 @@ static SAU_Symstr *StrTab_unique_node(StrTab *restrict o,
 	}
 
 	size_t hash = StrTab_hash_key(o, key, len);
-	SAU_Symstr *sstr = o->sstra[hash];
+	sauSymstr *sstr = o->sstra[hash];
 	while (sstr != NULL) {
 		if (sstr->key_len == len &&
 			!memcmp(sstr->key, key, len)) return sstr;
@@ -133,7 +133,7 @@ static SAU_Symstr *StrTab_unique_node(StrTab *restrict o,
 		++collision_count;
 #endif
 	}
-	sstr = SAU_mpalloc(memp, sizeof(SAU_Symstr) + (len + extra));
+	sstr = sau_mpalloc(memp, sizeof(sauSymstr) + (len + extra));
 	if (!sstr)
 		return NULL;
 	sstr->prev = o->sstra[hash];
@@ -144,12 +144,12 @@ static SAU_Symstr *StrTab_unique_node(StrTab *restrict o,
 	return sstr;
 }
 
-struct SAU_Symtab {
-	SAU_Mempool *memp;
+struct sauSymtab {
+	sauMempool *memp;
 	StrTab strt;
 };
 
-static void fini_Symtab(SAU_Symtab *restrict o) {
+static void fini_Symtab(sauSymtab *restrict o) {
 #if SAU_SYMTAB_STATS
 	fprintf(stderr, "collision count: %zd\n", collision_count);
 #endif
@@ -161,11 +161,11 @@ static void fini_Symtab(SAU_Symtab *restrict o) {
  *
  * \return instance, or NULL on allocation failure
  */
-SAU_Symtab *SAU_create_Symtab(SAU_Mempool *restrict mempool) {
+sauSymtab *sau_create_Symtab(sauMempool *restrict mempool) {
 	if (!mempool)
 		return NULL;
-	SAU_Symtab *o = SAU_mpalloc(mempool, sizeof(SAU_Symtab));
-	if (!SAU_mpregdtor(mempool, (SAU_Dtor_f) fini_Symtab, o))
+	sauSymtab *o = sau_mpalloc(mempool, sizeof(sauSymtab));
+	if (!sau_mpregdtor(mempool, (sauDtor_f) fini_Symtab, o))
 		return NULL;
 	o->memp = mempool;
 	return o;
@@ -177,7 +177,7 @@ SAU_Symtab *SAU_create_Symtab(SAU_Mempool *restrict mempool) {
  *
  * \return unique node for \p str, or NULL on allocation failure
  */
-SAU_Symstr *SAU_Symtab_get_symstr(SAU_Symtab *restrict o,
+sauSymstr *sauSymtab_get_symstr(sauSymtab *restrict o,
 		const void *restrict str, size_t len) {
 	return StrTab_unique_node(&o->strt, o->memp, str, len, 1);
 }
@@ -187,9 +187,9 @@ SAU_Symstr *SAU_Symtab_get_symstr(SAU_Symtab *restrict o,
  *
  * \return item, or NULL if none
  */
-SAU_Symitem *SAU_Symtab_add_item(SAU_Symtab *restrict o,
-		SAU_Symstr *restrict symstr, uint32_t sym_type) {
-	SAU_Symitem *item = SAU_mpalloc(o->memp, sizeof(SAU_Symitem));
+sauSymitem *sauSymtab_add_item(sauSymtab *restrict o,
+		sauSymstr *restrict symstr, uint32_t sym_type) {
+	sauSymitem *item = sau_mpalloc(o->memp, sizeof(sauSymitem));
 	if (!item)
 		return NULL;
 	item->sym_type = sym_type;
@@ -204,9 +204,9 @@ SAU_Symitem *SAU_Symtab_add_item(SAU_Symtab *restrict o,
  *
  * \return item, or NULL if none
  */
-SAU_Symitem *SAU_Symtab_find_item(SAU_Symtab *restrict o sauMaybeUnused,
-		SAU_Symstr *restrict symstr, uint32_t sym_type) {
-	SAU_Symitem *item = symstr->item;
+sauSymitem *sauSymtab_find_item(sauSymtab *restrict o sauMaybeUnused,
+		sauSymstr *restrict symstr, uint32_t sym_type) {
+	sauSymitem *item = symstr->item;
 	while (item) {
 		if (item->sym_type == sym_type)
 			return item;
@@ -225,14 +225,14 @@ SAU_Symitem *SAU_Symtab_find_item(SAU_Symtab *restrict o sauMaybeUnused,
  *
  * \return true, or false on allocation failure
  */
-bool SAU_Symtab_add_stra(SAU_Symtab *restrict o,
+bool sauSymtab_add_stra(sauSymtab *restrict o,
 		const char *const*restrict stra, size_t n,
 		uint32_t sym_type) {
 	for (size_t i = 0; i < n; ++i) {
-		SAU_Symitem *item;
-		SAU_Symstr *s = SAU_Symtab_get_symstr(o,
+		sauSymitem *item;
+		sauSymstr *s = sauSymtab_get_symstr(o,
 				stra[i], strlen(stra[i]));
-		if (!s || !(item = SAU_Symtab_add_item(o, s, sym_type)))
+		if (!s || !(item = sauSymtab_add_item(o, s, sym_type)))
 			return false;
 		item->data_use = SAU_SYM_DATA_ID;
 		item->data.id = i;
