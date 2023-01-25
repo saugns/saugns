@@ -1,6 +1,6 @@
 /* SAU library: Generic array module.
- * Copyright (c) 2018-2022 Joel K. Pettersson
- * <joelkpettersson@gmail.com>.
+ * Copyright (c) 2018-2023 Joel K. Pettersson
+ * <joelkp@tuta.io>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -25,7 +25,7 @@
  * Each concrete type uses inline wrappers around generic methods.
  */
 
-struct SAU_Mempool;
+struct sauMempool;
 
 /**
  * Declare array type using \p Name, with \p ElementType.
@@ -52,22 +52,22 @@ typedef struct Name { \
 static inline ElementType sauMaybeUnused \
 *MethodPrefix##Name##_add(Name *restrict o, \
 		const ElementType *restrict item) { \
-	return SAU_ArrType_add(o, item, sizeof(ElementType)); \
+	return sauArrType_add(o, item, sizeof(ElementType)); \
 } \
 static inline void sauMaybeUnused \
 MethodPrefix##Name##_clear(Name *restrict o) { \
-	SAU_ArrType_clear(o); \
+	sauArrType_clear(o); \
 } \
 static inline bool sauMaybeUnused \
 MethodPrefix##Name##_memdup(Name *restrict o, \
 		ElementType **restrict dst) { \
-	return SAU_ArrType_memdup(o, (void**) dst, sizeof(ElementType)); \
+	return sauArrType_memdup(o, (void**) dst, sizeof(ElementType)); \
 } \
 static inline bool sauMaybeUnused \
 MethodPrefix##Name##_mpmemdup(Name *restrict o, \
 		ElementType **restrict dst, \
-		struct SAU_Mempool *restrict mempool) { \
-	return SAU_ArrType_mpmemdup(o, (void**) dst, \
+		struct sauMempool *restrict mempool) { \
+	return sauArrType_mpmemdup(o, (void**) dst, \
 		sizeof(ElementType), mempool); \
 }
 
@@ -84,14 +84,14 @@ MethodPrefix##Name##_mpmemdup(Name *restrict o, \
 sauArrTypeStruct(Name, ElementType) \
 sauArrTypeMethods(Name, ElementType, MethodPrefix)
 
-void *SAU_ArrType_add(void *restrict o,
+void *sauArrType_add(void *restrict o,
 		const void *restrict item, size_t item_size);
-void SAU_ArrType_clear(void *restrict o);
-bool SAU_ArrType_memdup(void *restrict o,
+void sauArrType_clear(void *restrict o);
+bool sauArrType_memdup(void *restrict o,
 		void **restrict dst, size_t item_size);
-bool SAU_ArrType_mpmemdup(void *restrict o,
+bool sauArrType_mpmemdup(void *restrict o,
 		void **restrict dst, size_t item_size,
-		struct SAU_Mempool *mempool);
+		struct sauMempool *mempool);
 
 /** Byte (uint8_t) array type. */
-sauArrType(SAU_ByteArr, uint8_t, )
+sauArrType(sauByteArr, uint8_t, )

@@ -60,7 +60,7 @@ install: all
 	mkdir -p $(DESTDIR)$(PREFIX)/share/doc/$(SHARE)
 	mkdir -p $(DESTDIR)$(PREFIX)/share/examples/$(SHARE)
 	cp -f $(BIN) $(DESTDIR)$(PREFIX)/bin
-	cp -RP $(README) doc/* $(DESTDIR)$(PREFIX)/share/doc/$(SHARE)
+	cp -RP $(README) sau/doc/* $(DESTDIR)$(PREFIX)/share/doc/$(SHARE)
 	cp -RP examples/* $(DESTDIR)$(PREFIX)/share/examples/$(SHARE)
 uninstall:
 	@if [ -d "$(DESTDIR)$(PREFIX)/man" ]; then \
@@ -91,7 +91,7 @@ $(BIN): $(OBJ) sau/libsau.a
 		$(CC) $(OBJ) $(LFLAGS) -o $(BIN); \
 	fi
 
-sau/libsau.a sau/libsau-tests.a: sau/*.[hc] sau/*/*.[hc]
+sau/libsau.a sau/libsau-tests.a: sau/*.[hc] sau/generator/*.[hc]
 	(cd sau; make)
 
 test-scan: $(TEST1_OBJ) sau/libsau-tests.a
