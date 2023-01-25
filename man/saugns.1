@@ -1,8 +1,8 @@
-.\" Copyright (c) 2019-2022 Joel K. Pettersson
+.\" Copyright (c) 2019-2024 Joel K. Pettersson
 .\"
 .\" This file is licensed under Creative Commons Attribution-ShareAlike 4.0
 .\" <https://creativecommons.org/licenses/by-sa/4.0/>.
-.Dd January 31, 2023
+.Dd April 3, 2024
 .Dt SAUGNS 1
 .Os
 .Sh NAME
@@ -39,8 +39,9 @@ Output is by default to system audio, but may instead be muted and/or
 written to a 16-bit PCM WAV file; it is also possible to stream audio
 data to stdout, either raw (--stdout) or AU (-o -).
 .Pp
-Scripts can use an arbitrary number of oscillators,
-each with one of various wave forms.
+Scripts can use an arbitrary number of audio generators of the types supported.
+"O" (Wave oscillator) produces tones with a chosen waveshape,
+"R" (Random segments oscillator) produces pitched noises with a line and mode.
 Synthesis techniques supported include PM, FM, and AM/RM.
 Duration and some other attributes can be calculated for each script
 without generating audio; the scripting language is not Turing complete.

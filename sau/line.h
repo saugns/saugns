@@ -20,9 +20,9 @@
 
 /* Macro used to declare and define line type sets of items. */
 #define SAU_LINE__ITEMS(X) \
-	X(sah) \
-	X(lin) \
 	X(cos) \
+	X(lin) \
+	X(sah) \
 	X(exp) \
 	X(log) \
 	X(xpe) \
@@ -30,21 +30,25 @@
 	//
 #define SAU_LINE__X_ID(NAME) SAU_LINE_N_##NAME,
 #define SAU_LINE__X_NAME(NAME) #NAME,
-#define SAU_LINE__X_PROTOTYPE(NAME) \
+#define SAU_LINE__X_PROTOTYPES(NAME) \
 void sauLine_fill_##NAME(float *restrict buf, uint32_t len, \
 		float v0, float vt, uint32_t pos, uint32_t time, \
-		const float *restrict mulbuf);
-#define SAU_LINE__X_ADDRESS(NAME) sauLine_fill_##NAME,
+		const float *restrict mulbuf); \
+void sauLine_map_##NAME(float *restrict buf, uint32_t len, \
+		float v0, float vt, const float *restrict t); \
+/**/
+#define SAU_LINE__X_FILL_ADDR(NAME) sauLine_fill_##NAME,
+#define SAU_LINE__X_MAP_ADDR(NAME) sauLine_map_##NAME,
 
 /**
- * Line type shapes.
+ * Line fill types.
  */
 enum {
 	SAU_LINE__ITEMS(SAU_LINE__X_ID)
 	SAU_LINE_NAMED
 };
 
-SAU_LINE__ITEMS(SAU_LINE__X_PROTOTYPE)
+SAU_LINE__ITEMS(SAU_LINE__X_PROTOTYPES)
 
 /** Names of line fill types, with an extra NULL pointer at the end. */
 extern const char *const sauLine_names[SAU_LINE_NAMED + 1];
@@ -53,8 +57,14 @@ typedef void (*sauLine_fill_f)(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf);
 
-/** Fill functions for line type shapes. */
+typedef void (*sauLine_map_f)(float *restrict buf, uint32_t len,
+		float v0, float vt, const float *restrict t);
+
+/** Fill functions for line types. */
 extern const sauLine_fill_f sauLine_fill_funcs[SAU_LINE_NAMED];
+
+/** Map functions for line types. */
+extern const sauLine_map_f sauLine_map_funcs[SAU_LINE_NAMED];
 
 /**
  * Line parameter flags.
@@ -64,7 +74,7 @@ enum {
 	SAU_LINEP_STATE_RATIO = 1<<1,
 	SAU_LINEP_GOAL        = 1<<2, // vt set -- and timed fill will be done
 	SAU_LINEP_GOAL_RATIO  = 1<<3,
-	SAU_LINEP_FILL_TYPE   = 1<<4, // fill_type set
+	SAU_LINEP_TYPE        = 1<<4, // type set
 	SAU_LINEP_TIME        = 1<<5, // time_ms set -- cleared on time expiry
 	SAU_LINEP_TIME_IF_NEW = 1<<6, // time_ms to be kept if currently set
 };
@@ -79,7 +89,7 @@ typedef struct sauLine {
 	float v0, vt;
 	uint32_t pos, end;
 	uint32_t time_ms;
-	uint8_t fill_type;
+	uint8_t type;
 	uint8_t flags;
 } sauLine;
 
