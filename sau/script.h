@@ -36,7 +36,9 @@ typedef struct sauScriptListData {
 typedef struct sauScriptObjInfo {
 	struct sauScriptOpData *last_ref; // used for iterating references
 	struct sauScriptEvData *root_event;
+	uint32_t type; // type info, for now
 	uint32_t id; // for conversion
+	uint32_t seed; // TODO: divide containing node type
 } sauScriptObjInfo;
 
 /**
@@ -51,11 +53,12 @@ typedef struct sauScriptOpData {
 	/* operator parameters */
 	uint32_t params;
 	sauTime time;
-	sauRamp *pan;
-	sauRamp *amp, *amp2;
-	sauRamp *freq, *freq2;
+	sauLine *pan;
+	sauLine *amp, *amp2;
+	sauLine *freq, *freq2;
 	uint32_t phase;
 	uint8_t wave;
+	sauRasOpt ras_opt; // TODO: divide containing node type
 	/* node adjacents in operator linkage graph */
 	sauScriptListData *mods;
 } sauScriptOpData;
