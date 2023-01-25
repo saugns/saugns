@@ -31,13 +31,14 @@ static double mf_const(void) { return SAU_HUMMID; }
 static double pi_const(void) { return SAU_PI; }
 
 static double sau_rand(struct sauMath_state *restrict o) {
-	return sau_d01_from_ui64(sau_splitmix64_next(&o->seed));
+	return sau_d01_from_ui64(sau_splitmix64_next(&o->seed64));
 }
 
 static double sau_seed(struct sauMath_state *restrict o, double x) {
 	union { double d; uint64_t ui64; } v;
 	v.d = x;
-	o->seed = v.ui64;
+	o->seed64 = v.ui64;
+	o->seed32 = (o->seed64 >> 32) + o->seed64;
 	return 0.f;
 }
 

@@ -103,8 +103,8 @@ player/audiodev.o: player/audiodev.c player/audiodev.h player/audiodev/*.c sau/c
 player/sndfile.o: player/sndfile.c player/sndfile.h sau/common.h
 	$(CC) -c $(CFLAGS) player/sndfile.c -o player/sndfile.o
 
-saugns.o: saugns.c saugns.h player/audiodev.h player/sndfile.h sau/common.h sau/help.h sau/generator.h sau/script.h sau/arrtype.h sau/program.h sau/ramp.h sau/wave.h sau/math.h sau/file.h sau/scanner.h sau/symtab.h
+saugns.o: saugns.c saugns.h player/audiodev.h player/sndfile.h sau/common.h sau/help.h sau/generator.h sau/script.h sau/arrtype.h sau/program.h sau/line.h sau/wave.h sau/math.h sau/file.h sau/scanner.h sau/symtab.h
 	$(CC) -c $(CFLAGS_SIZE) saugns.c
 
-test-scan.o: test-scan.c saugns.h sau/common.h sau/math.h sau/program.h sau/ramp.h sau/file.h sau/lexer.h sau/scanner.h sau/symtab.h sau/wave.h
+test-scan.o: test-scan.c saugns.h sau/common.h sau/math.h sau/program.h sau/line.h sau/file.h sau/lexer.h sau/scanner.h sau/symtab.h sau/wave.h
 	$(CC) -c $(CFLAGS) test-scan.c

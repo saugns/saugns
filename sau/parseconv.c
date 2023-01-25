@@ -299,6 +299,10 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 	ood->freq2 = op->freq2;
 	ood->phase = op->phase;
 	ood->wave = op->wave;
+	/* TODO: separation of types */
+	ood->type = op->info->type;
+	ood->seed = op->info->seed;
+	ood->ras_opt = op->ras_opt;
 	sauVoAllocState *vas = &o->va.a[o->ev->vo_id];
 	const sauScriptListData *mods[SAU_POP_USES] = {0};
 	for (sauScriptListData *in_list = op->mods;
@@ -684,17 +688,17 @@ print_oplist(const sauProgramOpRef *restrict list,
 }
 
 static sauNoinline void
-print_ramp(const sauRamp *restrict ramp, char c) {
-	if (!ramp)
+print_line(const sauLine *restrict line, char c) {
+	if (!line)
 		return;
-	if ((ramp->flags & SAU_RAMPP_STATE) != 0) {
-		if ((ramp->flags & SAU_RAMPP_GOAL) != 0)
-			sau_printf("\t%c=%-6.2f->%-6.2f", c, ramp->v0, ramp->vt);
+	if ((line->flags & SAU_LINEP_STATE) != 0) {
+		if ((line->flags & SAU_LINEP_GOAL) != 0)
+			sau_printf("\t%c=%-6.2f->%-6.2f", c, line->v0, line->vt);
 		else
-			sau_printf("\t%c=%-6.2f\t", c, ramp->v0);
+			sau_printf("\t%c=%-6.2f\t", c, line->v0);
 	} else {
-		if ((ramp->flags & SAU_RAMPP_GOAL) != 0)
-			sau_printf("\t%c->%-6.2f\t", c, ramp->vt);
+		if ((line->flags & SAU_LINEP_GOAL) != 0)
+			sau_printf("\t%c->%-6.2f\t", c, line->vt);
 		else
 			sau_printf("\t%c", c);
 	}
@@ -702,13 +706,19 @@ print_ramp(const sauRamp *restrict ramp, char c) {
 
 static void
 print_opline(const sauProgramOpData *restrict od) {
-	if (od->time.flags & SAU_TIMEP_IMPLICIT) {
-		sau_printf("\n\top %u \tt=IMPL  ", od->id);
-	} else {
-		sau_printf("\n\top %u \tt=%-6u", od->id, od->time.v_ms);
+	char type = '?';
+	switch (od->type) {
+	case SAU_POPT_WAVE: type = 'O'; break;
+	case SAU_POPT_RAS: type = 'R'; break;
 	}
-	print_ramp(od->freq, 'f');
-	print_ramp(od->amp, 'a');
+	if (od->time.flags & SAU_TIMEP_IMPLICIT) {
+		sau_printf("\n\top %-2u %c t=IMPL  ", od->id, type);
+	} else {
+		sau_printf("\n\top %-2u %c t=%-6u",
+				od->id, type, od->time.v_ms);
+	}
+	print_line(od->freq, 'f');
+	print_line(od->amp, 'a');
 }
 
 /**
