@@ -17,7 +17,7 @@
 
 #include "help.h"
 #include "math.h"
-#include "ramp.h"
+#include "line.h"
 #include "wave.h"
 #include <string.h>
 
