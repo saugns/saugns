@@ -11,17 +11,16 @@ most of the features.
 
 While the language is still primitive relative to the
 goal (a useful language for writing electronic music),
-it makes it simple to experiment with sounds.
-A collection of basic wave types are supported, as well
-as AM/RM, FM, and PM (the "FM" of most commercial synthesizers).
-An arbitrary number of oscillators can be used.
+it makes it simple to experiment with sounds and soundscapes.
+An arbitrary number of audio generators of the types provided
+can be used, and combined with various types of modulation.
 
 The program reads SAU (Scriptable AUdio) files or strings,
 and can output to system audio, a 16-bit PCM WAV file,
 and/or stdout (raw or AU, for interfacing with other programs).
 Basic usage information is provided with the `-h` option. More
 can be found in the man page and on the
-[usage web page](https://sau.frama.io/usage.html).
+[_usage web page_](https://sau.frama.io/usage.html).
 
 Tested mainly on x86 and x86-64. Comes with support for
 running on DragonFly, FreeBSD, Linux, NetBSD, and OpenBSD.
