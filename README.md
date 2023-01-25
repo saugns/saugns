@@ -1,12 +1,13 @@
-saugns is the Scriptable AUdio GeNeration System,
-the implementation of the SAU (Scriptable AUdio) language.
+**saugns** is the Scriptable AUdio GeNeration System,
+the implementation of the **SAU language** (Scriptable AUdio).
 [The project website](https://sau.frama.io/) has more on them.
 
 SAU is a simple language for mathematical audio synthesis,
 without support for using pre-recorded samples.
-See [doc/README.SAU](doc/README.SAU) for the details in the present version,
-or a [more how-to web page](https://sau.frama.io/language.html) covering
-the main features. Example scripts under `examples/` also use most features.
+See the [_README.SAU_](sau/doc/README.SAU) for the current details,
+or a more how-to [_language web page_](https://sau.frama.io/language.html)
+covering the main features. Example scripts under `examples/` also use
+most of the features.
 
 While the language is still primitive relative to the
 goal (a useful language for writing electronic music),
@@ -68,10 +69,12 @@ Licensing
 
 saugns is Copyright (c) 2011-2014, 2017-2024 Joel K. Pettersson.
 As a whole it is distributed under the terms of the GNU Lesser General
-Public License (LGPL), version 3 or later. See the file [COPYING](COPYING)
-for details, or <https://www.gnu.org/licenses/lgpl-3.0.en.html>.
+Public License (LGPL), version 3 or later. See the files
+[COPYING.LESSER](COPYING.LESSER) and [COPYING](COPYING) for
+details, or <https://www.gnu.org/licenses/lgpl-3.0.en.html>.
 
-Some files are licensed under more permissive terms, such as
+All the source files outside the `sau/` library directory (and
+some inside) are licensed under more permissive terms, such as
 the ISC license (2-clause-BSD-equivalent), or
 the 0BSD license (public-domain-equivalent shorter version);
 see the heading comment text of source files.
