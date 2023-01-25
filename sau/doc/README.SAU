@@ -11,7 +11,8 @@ basically a list of such timed instructions. Language constructs
 also offer more flexible arrangement of steps to take than a
 bare flat list of instructions and forward time movement.
 
-The current syntax uses keywords followed by zero or more
+The syntax is a bit terse and unusual. It uses one-character
+keywords with or without an argument, followed by zero or more
 parameters with arguments. Each main keyword provides an action,
 either at run time (like a function call in other languages),
 or at parse time (like a global script setting).
@@ -21,14 +22,15 @@ wave oscillator. They may be connected as carriers and modulators.
 They, and the timing of their running, make the core features of
 the scripting language.
 
-Keyword parameters may either be set (named, followed by writing
-their argument(s)), or left out to use the previous value or a
-default value. Some default values can be changed using the "S"
-(set option) parse-time action.
+Keyword parameters may either be set (by writing the name,
+followed by immediately writing their argument(s)), or left out
+to use the previous value or a default value. Some default values
+can be changed using the S (Script options) parse-time action.
 
-Modifiers are similar to keywords, but simpler and more flexible
-in how they may be used. They may or may not be followed by an
-argument (e.g. a delay time).
+Modifiers are somewhat like keywords, but use another character
+than a letter as a name. They are used alongside the keywords to
+adjust time placement. They are simpler and more flexible in how
+they may be used.
 
 Scopes
 ------
