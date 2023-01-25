@@ -12,7 +12,7 @@
  */
 
 #pragma once
-#include "ramp.h"
+#include "line.h"
 #include "wave.h"
 
 /*
@@ -48,14 +48,14 @@ typedef struct sauTime {
 }
 
 /**
- * Ramp use IDs.
+ * Swept parameter IDs.
  */
 enum {
-	SAU_PRAMP_PAN = 0,
-	SAU_PRAMP_AMP,
-	SAU_PRAMP_AMP2,
-	SAU_PRAMP_FREQ,
-	SAU_PRAMP_FREQ2,
+	SAU_PSWEEP_PAN = 0,
+	SAU_PSWEEP_AMP,
+	SAU_PSWEEP_AMP2,
+	SAU_PSWEEP_FREQ,
+	SAU_PSWEEP_FREQ2,
 };
 
 /**
@@ -115,9 +115,9 @@ typedef struct sauProgramOpData {
 	uint32_t id;
 	uint32_t params;
 	sauTime time;
-	sauRamp *pan;
-	sauRamp *amp, *amp2;
-	sauRamp *freq, *freq2;
+	sauLine *pan;
+	sauLine *amp, *amp2;
+	sauLine *freq, *freq2;
 	uint32_t phase;
 	uint8_t wave;
 	const sauProgramIDArr *amods, *ramods;

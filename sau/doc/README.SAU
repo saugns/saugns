@@ -56,15 +56,17 @@ Each of these keywords is further described in its own section below.
 	S	Script options (parameter default value or other);
 		runs during parsing. Changes made inside a
 		nested list scope don't apply outside of it.
-	O	Wave oscillator; the "O" is followed by the (initial)
-		wave type, as in "Osin".
+	O	Wave oscillator -- "O", optionally followed
+		by the initial "Wave types" value, e.g. "Otri".
 
 S: Script options
 -----------------
 
 Set parameter default value or other option; runs during parsing.
 Changes made inside a nested list scope don't apply outside of it.
-Usage: "S", followed by zero or more parameters, each with a value.
+
+Usage: "S", followed by zero or more whitespace-separated parameters,
+each with a value.
 
 Parameters:
 	a	Multiplier for amplitude "a" values, for the current
@@ -93,8 +95,10 @@ FM synthesizer operator.) If not used as a modulator,
 the output will be added as a sound at the current
 time position, playing for the time duration.
 
-Usage: "O" followed by (initial) wave type (e.g. "Osin"),
-followed by zero or more parameters, each with a value.
+Usage: "O", optionally followed by a wave type (e.g. "Otri"),
+by the default the same as "Osin". Followed by zero or more
+whitespace-separated parameters, each with a value.
+See "Wave types" for the available wave types.
 
 Wave types:
 	sin	Sine.
@@ -215,7 +219,7 @@ Parameters:
 		the carrier(s). For frequency-amplified PM modulators, first
 		the amplitudes are multiplied by the carrier frequency divided
 		by 632.45... Hz (the geometric mean of 20 and 20000 Hz).
-	w	Wave type. See "Wave types" for values.
+	w	Wave type -- see "Wave types" for values.
 	c	(For non-nested oscillators only.) Channel mixing, mainly
 		(-1.0) to 1.0. See "Channel mixing values" for more.
 			"Value sweep" values are supported; see section.
@@ -283,38 +287,48 @@ Numerical expressions:
 			If disabled (deterministic mode), instead gives 0.
 
 Value sweep:
-	To ramp, or sweep, a parameter which supports this towards a
+	To sweep a parameter which supports sweep subparameters towards a
 	goal value -- the ordinary value being the start for a trajectory --
-	following the ordinary value or by itself, the following value ramp
+	following the ordinary value or by itself, the following value sweep
 	subparameters can be given values within "[]" (square brackets):
 	g	Goal (go-to) value, assigned to the parameter after time.
 		This value has no default and must be provided. If changed
 		again before the full time, the current point reached on the
 		previous trajectory will be used to change the start value.
-	r	Ramp fill shape (default 'lin', or the previous shape if any):
-			sah	Sample and hold until time (then jump to goal).
-			lin	Linear trajectory over time.
-			cos	Half cosine (S-curve) trajectory over time.
-			exp	Steep "exp(x)-1"-like increase or decrease.
-			log	Steep "log(x+1)"-like increase or decrease.
-			xpe	Exponential envelope shape (saturate or decay).
-			lge	Logarithmic envelope shape (saturate or decay).
-		(The 'exp' and 'log' shapes use ear-tuned polynomial
-		approximations with definite beginnings and ends,
-		designed to sound natural for frequency sweeping,
-		and symmetric one to the other. The 'xpe' shape increases
-		like 'log' and decreases like 'exp', much like a capacitor
-		charges and discharges, natural-sounding for an envelope;
-		and 'lge' increases like 'exp' and decreases like 'log'.
-		The 'cos' shape sounds similar to 'lin', except it has a
-		smoothly curved start and stop, and a steeper middle.)
+	l	Line fill shape (default 'lin', or the previous shape if any)
+		-- see "Line types" for values.
 	t	Time to reach goal (default is the external "t" duration,
 		or the remaining previous time, if any, for this parameter).
 		If longer than the active time for the object which has the
-		ramped parameter, the trajectory will be left unfinished.
+		swept parameter, the trajectory will be left unfinished.
 	v	Start (state) value, the ordinary parameter value.
 		It can alternatively be set here after a 'v',
 		if not set before the enclosing "[]".
+
+Line types:
+	sah
+		Sample and hold until time (then jump to goal).
+	lin
+		Linear trajectory over time.
+	cos
+		Half cosine (S-curve) trajectory over time.
+	exp
+		Steep "exp(x)-1"-like increase or decrease.
+	log
+		Steep "log(x+1)"-like increase or decrease.
+	xpe
+		Exponential envelope shape (saturate or decay).
+	lge
+		Logarithmic envelope shape (saturate or decay).
+	The 'exp' and 'log' shapes use ear-tuned polynomial
+	approximations with definite beginnings and ends,
+	designed to sound natural for frequency sweeping,
+	and symmetric one to the other. The 'xpe' shape increases
+	like 'log' and decreases like 'exp', much like a capacitor
+	charges and discharges, natural-sounding for an envelope;
+	and 'lge' increases like 'exp' and decreases like 'log'.
+	The 'cos' shape sounds similar to 'lin', except it has a
+	smoothly curved start and stop, and a steeper middle.
 
 Modulator list:
 	Within "[]", written after the name of a parameter that supports it,
@@ -360,7 +374,7 @@ Modulation with value range:
 		mentioned above, under ".r" a subparameter with a second
 		value can be set. This second value is the other boundary
 		for a range to which modulator amplitudes can be mapped;
-		it has no other uses, and defaults to 0.0. "Value ramp" is
+		it has no other uses, and defaults to 0.0. "Value sweep" is
 		also supported for this subparameter whenever for the main.
 			After a value or by itself, lists can be used (see
 		"Modulator list"). Each modulator here produces a result in

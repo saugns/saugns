@@ -24,7 +24,7 @@
 typedef float Buf[BUF_LEN];
 
 struct ParWithRangeMod {
-	sauRamp par, r_par;
+	sauLine par, r_par;
 	const sauProgramIDArr *mods, *r_mods;
 };
 
@@ -55,7 +55,7 @@ typedef struct VoiceNode {
 	uint32_t duration;
 	uint8_t flags;
 	uint32_t carr_op_id;
-	sauRamp pan;
+	sauLine pan;
 } VoiceNode;
 
 typedef struct EventNode {
@@ -245,11 +245,11 @@ static void handle_event(sauGenerator *restrict o, EventNode *restrict e) {
 			}
 			if (params & SAU_POPP_PHASE)
 				sauOsc_set_phase(&on->osc, od->phase);
-			sauRamp_copy(&vn->pan, od->pan, o->srate);
-			sauRamp_copy(&on->amp.par, od->amp, o->srate);
-			sauRamp_copy(&on->amp.r_par, od->amp2, o->srate);
-			sauRamp_copy(&on->freq.par, od->freq, o->srate);
-			sauRamp_copy(&on->freq.r_par, od->freq2, o->srate);
+			sauLine_copy(&vn->pan, od->pan, o->srate);
+			sauLine_copy(&on->amp.par, od->amp, o->srate);
+			sauLine_copy(&on->amp.r_par, od->amp2, o->srate);
+			sauLine_copy(&on->freq.par, od->freq, o->srate);
+			sauLine_copy(&on->freq.r_par, od->freq2, o->srate);
 		}
 		if (vd) {
 			vn->carr_op_id = vd->carr_op_id;
@@ -328,10 +328,10 @@ static void run_param_with_rangemod(sauGenerator *restrict o,
 	uint32_t i;
 	float *par_buf = *(bufs + 0);
 	float *freq = (reused_freq ? reused_freq : par_buf);
-	sauRamp_run(&n->par, par_buf, len, param_mulbuf);
+	sauLine_run(&n->par, par_buf, len, param_mulbuf);
 	if (n->r_mods->count > 0) {
 		float *r_par_buf = *(bufs + 1);
-		sauRamp_run(&n->r_par, r_par_buf, len, param_mulbuf);
+		sauLine_run(&n->r_par, r_par_buf, len, param_mulbuf);
 		for (i = 0; i < n->r_mods->count; ++i)
 			run_block(o, (bufs + 2), len,
 					&o->operators[n->r_mods->ids[i]],
@@ -340,7 +340,7 @@ static void run_param_with_rangemod(sauGenerator *restrict o,
 		for (i = 0; i < len; ++i)
 			par_buf[i] += (r_par_buf[i] - par_buf[i]) * mod_buf[i];
 	} else {
-		sauRamp_skip(&n->r_par, len);
+		sauLine_skip(&n->r_par, len);
 	}
 	if (n->mods->count > 0) {
 		for (i = 0; i < n->mods->count; ++i)
@@ -463,9 +463,9 @@ static void mix_add(sauGenerator *restrict o,
 	float *s_buf = o->gen_bufs[0];
 	float *mix_l = o->mix_bufs[0];
 	float *mix_r = o->mix_bufs[1];
-	if (vn->pan.flags & SAU_RAMPP_GOAL) {
+	if (vn->pan.flags & SAU_LINEP_GOAL) {
 		float *pan_buf = o->gen_bufs[1];
-		sauRamp_run(&vn->pan, pan_buf, len, NULL);
+		sauLine_run(&vn->pan, pan_buf, len, NULL);
 		for (uint32_t i = 0; i < len; ++i) {
 			float s = s_buf[i] * o->amp_scale;
 			float s_r = s * pan_buf[i];
@@ -473,7 +473,7 @@ static void mix_add(sauGenerator *restrict o,
 			mix_r[i] += s + s_r;
 		}
 	} else {
-		sauRamp_skip(&vn->pan, len);
+		sauLine_skip(&vn->pan, len);
 		for (uint32_t i = 0; i < len; ++i) {
 			float s = s_buf[i] * o->amp_scale;
 			float s_r = s * vn->pan.v0;
