@@ -1,13 +1,13 @@
 /* SAU library: Script lexer module.
- * Copyright (c) 2014, 2017-2022 Joel K. Pettersson
- * <joelkpettersson@gmail.com>.
+ * Copyright (c) 2014, 2017-2023 Joel K. Pettersson
+ * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
  * terms of the GNU Lesser General Public License, either version 3 or (at
  * your option) any later version, WITHOUT ANY WARRANTY, not even of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
- * View the file COPYING for details, or if missing, see
+ * View the files COPYING.LESSER and COPYING for details, or if missing, see
  * <https://www.gnu.org/licenses/>.
  */
 
@@ -40,10 +40,10 @@
 
 #define STRBUF_LEN 1024
 
-struct SAU_Lexer {
-	SAU_Scanner *sc;
-	SAU_Symtab *symtab;
-	SAU_ScriptToken token;
+struct sauLexer {
+	sauScanner *sc;
+	sauSymtab *symtab;
+	sauScriptToken token;
 };
 
 /**
@@ -51,96 +51,96 @@ struct SAU_Lexer {
  *
  * \return instance, or NULL on failure.
  */
-SAU_Lexer *SAU_create_Lexer(SAU_Symtab *restrict symtab) {
+sauLexer *sau_create_Lexer(sauSymtab *restrict symtab) {
 	if (!symtab)
 		return NULL;
-	SAU_Lexer *o = calloc(1, sizeof(SAU_Lexer));
+	sauLexer *o = calloc(1, sizeof(sauLexer));
 	if (!o)
 		return NULL;
-	o->sc = SAU_create_Scanner(symtab);
+	o->sc = sau_create_Scanner(symtab);
 	if (!o->sc) goto ERROR;
 	o->symtab = symtab;
 #if SAU_LEXER_QUIET
 	o->sc->s_flags |= SAU_SCAN_S_QUIET;
 #endif
-	SAU_Scanner_setws_level(o->sc, SAU_SCAN_WS_NONE);
+	sauScanner_setws_level(o->sc, SAU_SCAN_WS_NONE);
 	return o;
 ERROR:
-	SAU_destroy_Lexer(o);
+	sau_destroy_Lexer(o);
 	return NULL;
 }
 
 /**
  * Destroy instance.
  */
-void SAU_destroy_Lexer(SAU_Lexer *restrict o) {
+void sau_destroy_Lexer(sauLexer *restrict o) {
 	if (!o)
 		return;
-	SAU_destroy_Scanner(o->sc);
+	sau_destroy_Scanner(o->sc);
 	free(o);
 }
 
 /**
  * Open file for reading.
  *
- * Wrapper around SAU_Scanner functions. \p script may be
+ * Wrapper around sauScanner functions. \p script may be
  * either a file path or a string, depending on \p is_path.
  *
  * \return true on success
  */
-bool SAU_Lexer_open(SAU_Lexer *restrict o,
+bool sauLexer_open(sauLexer *restrict o,
 		const char *restrict script, bool is_path) {
-	return SAU_Scanner_open(o->sc, script, is_path);
+	return sauScanner_open(o->sc, script, is_path);
 }
 
 /**
  * Close file (if open).
  */
-void SAU_Lexer_close(SAU_Lexer *restrict o) {
-	SAU_Scanner_close(o->sc);
+void sauLexer_close(sauLexer *restrict o) {
+	sauScanner_close(o->sc);
 }
 
-static void handle_invalid(SAU_Lexer *o, uint8_t c sauMaybeUnused) {
-	SAU_ScriptToken *t = &o->token;
+static void handle_invalid(sauLexer *o, uint8_t c sauMaybeUnused) {
+	sauScriptToken *t = &o->token;
 	t->type = SAU_T_INVALID;
 	t->data.b = 0;
 }
 
-static void handle_eof(SAU_Lexer *restrict o,
+static void handle_eof(sauLexer *restrict o,
 		uint8_t c sauMaybeUnused) {
-	SAU_Scanner *sc = o->sc;
-	SAU_ScriptToken *t = &o->token;
+	sauScanner *sc = o->sc;
+	sauScriptToken *t = &o->token;
 	t->type = SAU_T_INVALID;
-	t->data.b = SAU_File_STATUS(sc->f);
+	t->data.b = sauFile_STATUS(sc->f);
 	//fputs("EOF", stderr);
 }
 
-static void handle_special(SAU_Lexer *restrict o, uint8_t c) {
-	SAU_ScriptToken *t = &o->token;
+static void handle_special(sauLexer *restrict o, uint8_t c) {
+	sauScriptToken *t = &o->token;
 	t->type = SAU_T_SPECIAL;
 	t->data.c = c;
 	//putc(c, stderr);
 }
 
-static void handle_numeric_value(SAU_Lexer *restrict o,
+static void handle_numeric_value(sauLexer *restrict o,
 		uint8_t c sauMaybeUnused) {
-	SAU_Scanner *sc = o->sc;
-	SAU_ScriptToken *t = &o->token;
+	sauScanner *sc = o->sc;
+	sauScriptToken *t = &o->token;
 	double d;
-	SAU_Scanner_ungetc(sc);
-	SAU_Scanner_getd(sc, &d, false, NULL, NULL);
+	sauScanner_ungetc(sc);
+	sauScanner_getd(sc, &d, false, NULL, NULL);
 	t->type = SAU_T_VAL_REAL;
 	t->data.f = d;
 	//fprintf(stderr, "num == %f\n", d);
 }
 
-static void handle_identifier(SAU_Lexer *restrict o,
+static void handle_identifier(sauLexer *restrict o,
 		uint8_t c sauMaybeUnused) {
-	SAU_Scanner *sc = o->sc;
-	SAU_ScriptToken *t = &o->token;
-	SAU_Symstr *symstr;
-	SAU_Scanner_ungetc(sc);
-	SAU_Scanner_get_symstr(sc, &symstr);
+	sauScanner *sc = o->sc;
+	sauScriptToken *t = &o->token;
+	sauSymstr *symstr;
+	sauScanner_ungetc(sc);
+	sauScanner_get_symstr(sc, &symstr);
 	t->type = SAU_T_ID_STR;
 	t->data.id = symstr ? symstr->key : NULL;
 	//fprintf(stderr, "str == %s\n", str);
@@ -156,11 +156,11 @@ static void handle_identifier(SAU_Lexer *restrict o,
  *
  * \return true if a token was successfully read from the file
  */
-bool SAU_Lexer_get(SAU_Lexer *restrict o, SAU_ScriptToken *restrict t) {
-	SAU_Scanner *sc = o->sc;
+bool sauLexer_get(sauLexer *restrict o, sauScriptToken *restrict t) {
+	sauScanner *sc = o->sc;
 	uint8_t c;
 REGET:
-	c = SAU_Scanner_getc(sc);
+	c = sauScanner_getc(sc);
 	switch (c) {
 	case 0x00:
 		handle_eof(o, c);
@@ -297,12 +297,12 @@ REGET:
  *
  * \return true if a token was successfully read from the file
  */
-bool SAU_Lexer_get_special(SAU_Lexer *restrict o,
-		SAU_ScriptToken *restrict t) {
-	SAU_Scanner *sc = o->sc;
+bool sauLexer_get_special(sauLexer *restrict o,
+		sauScriptToken *restrict t) {
+	sauScanner *sc = o->sc;
 	uint8_t c;
 	for (;;) {
-		c = SAU_Scanner_getc(sc);
+		c = sauScanner_getc(sc);
 		if (c == 0) {
 			handle_eof(o, c);
 			break;

@@ -1,6 +1,6 @@
 /* saugns: OSS audio output support.
  * Copyright (c) 2011-2014, 2017-2021 Joel K. Pettersson
- * <joelkpettersson@gmail.com>.
+ * <joelkp@tuta.io>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -49,7 +49,7 @@ static inline bool open_oss(SGS_AudioDev *restrict o,
 		goto ERROR;
 	}
 	if (tmp != AFMT_S16_NE) {
-		SAU_error("OSS", "16-bit signed integer native endian format unsupported");
+		sau_error("OSS", "16-bit signed integer native endian format unsupported");
 		goto ERROR;
 	}
 
@@ -59,7 +59,7 @@ static inline bool open_oss(SGS_AudioDev *restrict o,
 		goto ERROR;
 	}
 	if (tmp != o->channels) {
-		SAU_error("OSS", "%d channels unsupported",
+		sau_error("OSS", "%d channels unsupported",
 			o->channels);
 		goto ERROR;
 	}
@@ -70,7 +70,7 @@ static inline bool open_oss(SGS_AudioDev *restrict o,
 		goto ERROR;
 	}
 	if ((uint32_t) tmp != o->srate) {
-		SAU_warning("OSS", "sample rate %d unsupported, using %d",
+		sau_warning("OSS", "sample rate %d unsupported, using %d",
 			o->srate, tmp);
 		o->srate = tmp;
 	}
@@ -81,10 +81,10 @@ static inline bool open_oss(SGS_AudioDev *restrict o,
 	return true;
 ERROR:
 	if (err_name)
-		SAU_error("OSS", "%s: %s", err_name, strerror(errno));
+		sau_error("OSS", "%s: %s", err_name, strerror(errno));
 	if (fd != -1)
 		close(fd);
-	SAU_error("OSS", "configuration for device \"%s\" failed", dev_name);
+	sau_error("OSS", "configuration for device \"%s\" failed", dev_name);
 	return false;
 }
 
