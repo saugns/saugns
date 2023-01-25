@@ -11,10 +11,9 @@ most of the features.
 
 While the language is still primitive relative to the
 goal (a useful language for writing electronic music),
-it makes it simple to experiment with sounds.
-A collection of basic wave types are supported, as well
-as AM/RM, FM, and PM (the "FM" of most commercial synthesizers).
-An arbitrary number of oscillators can be used.
+it makes it simple to experiment with sounds and soundscapes.
+An arbitrary number of audio generators of the types provided
+can be used, and combined with various types of modulation.
 
 The program reads SAU (Scriptable AUdio) files or strings,
 and can output to system audio, a 16-bit PCM WAV file,

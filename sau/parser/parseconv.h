@@ -320,6 +320,10 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 	ood->freq2 = op->freq2;
 	ood->phase = op->phase;
 	ood->wave = op->wave;
+	/* TODO: separation of types */
+	ood->type = op->info->type;
+	ood->seed = op->info->seed;
+	ood->ras_opt = op->ras_opt;
 	sauVoAllocState *vas = &o->va.a[o->ev->vo_id];
 	const sauScriptListData *mods[SAU_POP_USES] = {0};
 	for (sauScriptListData *in_list = op->mods;
@@ -723,10 +727,16 @@ print_line(const sauLine *restrict line, char c) {
 
 static void
 print_opline(const sauProgramOpData *restrict od) {
+	char type = '?';
+	switch (od->type) {
+	case SAU_POPT_WAVE: type = 'O'; break;
+	case SAU_POPT_RAS: type = 'R'; break;
+	}
 	if (od->time.flags & SAU_TIMEP_IMPLICIT) {
-		sau_printf("\n\top %u \tt=IMPL  ", od->id);
+		sau_printf("\n\top %-2u %c t=IMPL  ", od->id, type);
 	} else {
-		sau_printf("\n\top %u \tt=%-6u", od->id, od->time.v_ms);
+		sau_printf("\n\top %-2u %c t=%-6u",
+				od->id, type, od->time.v_ms);
 	}
 	print_line(od->freq, 'f');
 	print_line(od->amp, 'a');
