@@ -299,6 +299,10 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 	ood->freq2 = op->freq2;
 	ood->phase = op->phase;
 	ood->wave = op->wave;
+	/* TODO: separation of types */
+	ood->type = op->info->type;
+	ood->seed = op->info->seed;
+	ood->ras_opt = op->ras_opt;
 	sauVoAllocState *vas = &o->va.a[o->ev->vo_id];
 	const sauScriptListData *mods[SAU_POP_USES] = {0};
 	for (sauScriptListData *in_list = op->mods;

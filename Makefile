@@ -91,7 +91,7 @@ $(BIN): $(OBJ) sau/libsau.a
 		$(CC) $(OBJ) $(LFLAGS) -o $(BIN); \
 	fi
 
-sau/libsau.a sau/libsau-tests.a: sau/*.[hc] sau/*/*.[hc]
+sau/libsau.a sau/libsau-tests.a: sau/*.[hc] sau/generator/*.[hc]
 	(cd sau; make)
 
 test-scan: $(TEST1_OBJ) sau/libsau-tests.a

@@ -1,6 +1,6 @@
 /* SAU library: Value line module.
  * Copyright (c) 2011-2013, 2017-2023 Joel K. Pettersson
- * <joelkpettersson@gmail.com>.
+ * <joelkp@tuta.io>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -30,11 +30,15 @@
 	//
 #define SAU_LINE__X_ID(NAME) SAU_LINE_N_##NAME,
 #define SAU_LINE__X_NAME(NAME) #NAME,
-#define SAU_LINE__X_PROTOTYPE(NAME) \
+#define SAU_LINE__X_PROTOTYPES(NAME) \
 void sauLine_fill_##NAME(float *restrict buf, uint32_t len, \
 		float v0, float vt, uint32_t pos, uint32_t time, \
-		const float *restrict mulbuf);
-#define SAU_LINE__X_ADDRESS(NAME) sauLine_fill_##NAME,
+		const float *restrict mulbuf); \
+void sauLine_map_##NAME(float *restrict buf, uint32_t len, \
+		const float *restrict end0, const float *restrict end1); \
+/**/
+#define SAU_LINE__X_FILL_ADDR(NAME) sauLine_fill_##NAME,
+#define SAU_LINE__X_MAP_ADDR(NAME) sauLine_map_##NAME,
 
 /**
  * Line type shapes.
@@ -44,17 +48,23 @@ enum {
 	SAU_LINE_NAMED
 };
 
-SAU_LINE__ITEMS(SAU_LINE__X_PROTOTYPE)
+SAU_LINE__ITEMS(SAU_LINE__X_PROTOTYPES)
 
-/** Names of line fill types, with an extra NULL pointer at the end. */
+/** Names of line type shapes, with an extra NULL pointer at the end. */
 extern const char *const sauLine_names[SAU_LINE_NAMED + 1];
 
 typedef void (*sauLine_fill_f)(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf);
 
+typedef void (*sauLine_map_f)(float *restrict buf, uint32_t len,
+		const float *restrict end0, const float *restrict end1);
+
 /** Fill functions for line type shapes. */
 extern const sauLine_fill_f sauLine_fill_funcs[SAU_LINE_NAMED];
+
+/** Map functions for line type shapes. */
+extern const sauLine_map_f sauLine_map_funcs[SAU_LINE_NAMED];
 
 /**
  * Line parameter flags.
@@ -64,7 +74,7 @@ enum {
 	SAU_LINEP_STATE_RATIO = 1<<1,
 	SAU_LINEP_GOAL        = 1<<2, // vt set -- and timed fill will be done
 	SAU_LINEP_GOAL_RATIO  = 1<<3,
-	SAU_LINEP_FILL_TYPE   = 1<<4, // fill_type set
+	SAU_LINEP_TYPE        = 1<<4, // type set
 	SAU_LINEP_TIME        = 1<<5, // time_ms set -- cleared on time expiry
 	SAU_LINEP_TIME_IF_NEW = 1<<6, // time_ms to be kept if currently set
 };
@@ -79,7 +89,7 @@ typedef struct sauLine {
 	float v0, vt;
 	uint32_t pos, end;
 	uint32_t time_ms;
-	uint8_t fill_type;
+	uint8_t type;
 	uint8_t flags;
 } sauLine;
 

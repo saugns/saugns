@@ -1,6 +1,6 @@
 /* SAU library: Value line module.
  * Copyright (c) 2011-2013, 2017-2023 Joel K. Pettersson
- * <joelkpettersson@gmail.com>.
+ * <joelkp@tuta.io>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -23,7 +23,11 @@ const char *const sauLine_names[SAU_LINE_NAMED + 1] = {
 };
 
 const sauLine_fill_f sauLine_fill_funcs[SAU_LINE_NAMED] = {
-	SAU_LINE__ITEMS(SAU_LINE__X_ADDRESS)
+	SAU_LINE__ITEMS(SAU_LINE__X_FILL_ADDR)
+};
+
+const sauLine_map_f sauLine_map_funcs[SAU_LINE_NAMED] = {
+	SAU_LINE__ITEMS(SAU_LINE__X_MAP_ADDR)
 };
 
 // the noinline use below works around i386 clang performance issue
@@ -37,13 +41,21 @@ sauNoinline void sauLine_fill_sah(float *restrict buf, uint32_t len,
 	(void)vt;
 	(void)pos;
 	(void)time;
-	if (!mulbuf) {
-		for (uint32_t i = 0; i < len; ++i)
-			buf[i] = v0;
-	} else {
-		for (uint32_t i = 0; i < len; ++i)
-			buf[i] = v0 * mulbuf[i];
-	}
+	for (uint32_t i = 0; i < len; ++i)
+		buf[i] = mulbuf ? (v0 * mulbuf[i]) : v0;
+}
+
+/**
+ * Map positions in \p buf (values from 0.0 to 1.0) along a "sample and hold"
+ * straight horizontal line, by writing \p len values from \p end0 into \p buf.
+ *
+ * Mapping counterpart of filling function sauLine_fill_sah().
+ */
+void sauLine_map_sah(float *restrict buf, uint32_t len,
+		const float *restrict end0, const float *restrict end1) {
+	(void)end1;
+	for (uint32_t i = 0; i < len; ++i)
+		buf[i] = end0[i];
 }
 
 /**
@@ -54,20 +66,36 @@ sauNoinline void sauLine_fill_sah(float *restrict buf, uint32_t len,
 void sauLine_fill_lin(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf) {
+	const int32_t adj_pos = pos - (time / 2);
 	const float inv_time = 1.f / time;
+	const float vm = (v0 + vt) * 0.5f;
+	const float vd = (vt - v0);
 	for (uint32_t i = 0; i < len; ++i) {
-		const uint32_t i_pos = i + pos;
-		float v = v0 + (vt - v0) * (i_pos * inv_time);
-		if (!mulbuf)
-			buf[i] = v;
-		else
-			buf[i] = v * mulbuf[i];
+		float x = ((int32_t)i + adj_pos) * inv_time;
+		float v = vm + vd * x;
+		buf[i] = mulbuf ? (v * mulbuf[i]) : v;
+	}
+}
+
+/**
+ * Map positions in \p buf (values from 0.0 to 1.0) to a linear trajectory,
+ * by writing \p len values between those of \p end0 and \p end1 into \p buf.
+ *
+ * Mapping counterpart of filling function sauLine_fill_lin().
+ */
+void sauLine_map_lin(float *restrict buf, uint32_t len,
+		const float *restrict end0, const float *restrict end1) {
+	for (uint32_t i = 0; i < len; ++i) {
+		float x = buf[i];
+		buf[i] = end0[i] + (end1[i] - end0[i]) * x;
 	}
 }
 
 /*
  * Scaled and shifted sine ramp, using degree 5 polynomial
  * with no error at ends and double the minimax max error.
+ *
+ * Note: Needs \p x in, returns in range from -0.5 to 0.5.
  *
  * If used for oscillator, would have a roughly -84 dB 5th
  * harmonic distortion but nothing else above 16-bit noise
@@ -81,9 +109,8 @@ static inline float sinramp(float x) {
 		+1.1496958507977182668618673644367L,
 	};
 	float x2;
-	x -= 0.5f;
 	x2 = x*x;
-	return 0.5f + x*(scale[0] + x2*(scale[1] + x2*scale[2]));
+	return x*(scale[0] + x2*(scale[1] + x2*scale[2]));
 }
 
 /**
@@ -91,22 +118,45 @@ static inline float sinramp(float x) {
  * from \p v0 (at position 0) to \p vt (at position \p time),
  * beginning at position \p pos.
  *
- * Rises or falls similarly to how cos() moves from trough to
+ * Rises or falls similarly to how sin() moves from trough to
  * crest and back. Uses a ~99.993% accurate polynomial curve.
  */
 void sauLine_fill_cos(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf) {
+	const int32_t adj_pos = pos - (time / 2);
 	const float inv_time = 1.f / time;
+	const float vm = (v0 + vt) * 0.5f;
+	const float vd = (vt - v0);
 	for (uint32_t i = 0; i < len; ++i) {
-		const uint32_t i_pos = i + pos;
-		float x = i_pos * inv_time;
-		float v = v0 + (vt - v0) * sinramp(x);
-		if (!mulbuf)
-			buf[i] = v;
-		else
-			buf[i] = v * mulbuf[i];
+		float x = ((int32_t)i + adj_pos) * inv_time;
+		float v = vm + vd * sinramp(x);
+		buf[i] = mulbuf ? (v * mulbuf[i]) : v;
 	}
+}
+
+/**
+ * Map positions in \p buf (values from 0.0 to 1.0) to a sinuous trajectory,
+ * by writing \p len values between those of \p end0 and \p end1 into \p buf.
+ *
+ * Mapping counterpart of filling function sauLine_fill_cos().
+ */
+void sauLine_map_cos(float *restrict buf, uint32_t len,
+		const float *restrict end0, const float *restrict end1) {
+	for (uint32_t i = 0; i < len; ++i) {
+		float x = buf[i] - 0.5f;
+		buf[i] = end0[i] + (end1[i] - end0[i]) * (0.5f + sinramp(x));
+	}
+}
+
+/*
+ * My 2011 exponential curve approximation.
+ */
+static inline float expramp(float x) {
+	float x2 = x * x;
+	float x3 = x2 * x;
+	return x3 + (x2 * x3 - x2) *
+		(x * (629.f/1792.f) + x2 * (1163.f/1792.f));
 }
 
 /**
@@ -127,6 +177,24 @@ void sauLine_fill_exp(float *restrict buf, uint32_t len,
 }
 
 /**
+ * Map positions in \p buf (values from 0.0 to 1.0) to an exponential
+ * trajectory, by writing \p len values between those of \p end0 and \p end1
+ * into \p buf.
+ *
+ * Mapping counterpart of filling function sauLine_fill_exp().
+ */
+void sauLine_map_exp(float *restrict buf, uint32_t len,
+		const float *restrict end0, const float *restrict end1) {
+	for (uint32_t i = 0; i < len; ++i) {
+		float x = buf[i];
+		if (end0[i] > end1[i])
+			buf[i] = end1[i] + (end0[i] - end1[i]) * expramp(1.f-x);
+		else
+			buf[i] = end0[i] + (end1[i] - end0[i]) * expramp(x);
+	}
+}
+
+/**
  * Fill \p buf with \p len values along a logarithmic trajectory
  * from \p v0 (at position 0) to \p vt (at position \p time),
  * beginning at position \p pos.
@@ -144,6 +212,24 @@ void sauLine_fill_log(float *restrict buf, uint32_t len,
 }
 
 /**
+ * Map positions in \p buf (values from 0.0 to 1.0) to a logarithmic
+ * trajectory, by writing \p len values between those of \p end0 and \p end1
+ * into \p buf.
+ *
+ * Mapping counterpart of filling function sauLine_fill_log().
+ */
+void sauLine_map_log(float *restrict buf, uint32_t len,
+		const float *restrict end0, const float *restrict end1) {
+	for (uint32_t i = 0; i < len; ++i) {
+		float x = buf[i];
+		if (end0[i] < end1[i])
+			buf[i] = end1[i] + (end0[i] - end1[i]) * expramp(1.f-x);
+		else
+			buf[i] = end0[i] + (end1[i] - end0[i]) * expramp(x);
+	}
+}
+
+/**
  * Fill \p buf with \p len values along an "envelope" trajectory
  * which exponentially saturates and decays (like a capacitor),
  * from \p v0 (at position 0) to \p vt (at position \p time),
@@ -157,17 +243,24 @@ void sauLine_fill_xpe(float *restrict buf, uint32_t len,
 		const float *restrict mulbuf) {
 	const float inv_time = 1.f / time;
 	for (uint32_t i = 0; i < len; ++i) {
-		const uint32_t i_pos = i + pos;
-		float mod = 1.f - i_pos * inv_time,
-			modp2 = mod * mod,
-			modp3 = modp2 * mod;
-		mod = modp3 + (modp2 * modp3 - modp2) *
-			(mod * (629.f/1792.f) + modp2 * (1163.f/1792.f));
-		float v = vt + (v0 - vt) * mod;
-		if (!mulbuf)
-			buf[i] = v;
-		else
-			buf[i] = v * mulbuf[i];
+		float x = (i + pos) * inv_time;
+		float v = vt + (v0 - vt) * expramp(1.f - x);
+		buf[i] = mulbuf ? (v * mulbuf[i]) : v;
+	}
+}
+
+/**
+ * Map positions in \p buf (values from 0.0 to 1.0) to an "envelope"
+ * trajectory which exponentially saturates and decays (like a capacitor),
+ * by writing \p len values between those of \p end0 and \p end1 into \p buf.
+ *
+ * Mapping counterpart of filling function sauLine_fill_xpe().
+ */
+void sauLine_map_xpe(float *restrict buf, uint32_t len,
+		const float *restrict end0, const float *restrict end1) {
+	for (uint32_t i = 0; i < len; ++i) {
+		float x = buf[i];
+		buf[i] = end1[i] + (end0[i] - end1[i]) * expramp(1.f - x);
 	}
 }
 
@@ -185,17 +278,25 @@ void sauLine_fill_lge(float *restrict buf, uint32_t len,
 		const float *restrict mulbuf) {
 	const float inv_time = 1.f / time;
 	for (uint32_t i = 0; i < len; ++i) {
-		const uint32_t i_pos = i + pos;
-		float mod = i_pos * inv_time,
-			modp2 = mod * mod,
-			modp3 = modp2 * mod;
-		mod = modp3 + (modp2 * modp3 - modp2) *
-			(mod * (629.f/1792.f) + modp2 * (1163.f/1792.f));
-		float v = v0 + (vt - v0) * mod;
-		if (!mulbuf)
-			buf[i] = v;
-		else
-			buf[i] = v * mulbuf[i];
+		float x = (i + pos) * inv_time;
+		float v = v0 + (vt - v0) * expramp(x);
+		buf[i] = mulbuf ? (v * mulbuf[i]) : v;
+	}
+}
+
+/**
+ * Map positions in \p buf (values from 0.0 to 1.0) to an "envelope"
+ * trajectory which logarithmically saturates and decays (opposite of
+ * a capacitor), by writing \p len values between those of \p end0
+ * and \p end1 into \p buf.
+ *
+ * Mapping counterpart of filling function sauLine_fill_lge().
+ */
+void sauLine_map_lge(float *restrict buf, uint32_t len,
+		const float *restrict end0, const float *restrict end1) {
+	for (uint32_t i = 0; i < len; ++i) {
+		float x = buf[i];
+		buf[i] = end0[i] + (end1[i] - end0[i]) * expramp(x);
 	}
 }
 
@@ -231,9 +332,9 @@ void sauLine_copy(sauLine *restrict o,
 		mask |= SAU_LINEP_GOAL
 			| SAU_LINEP_GOAL_RATIO;
 	}
-	if ((src->flags & SAU_LINEP_FILL_TYPE) != 0) {
-		o->fill_type = src->fill_type;
-		mask |= SAU_LINEP_FILL_TYPE;
+	if ((src->flags & SAU_LINEP_TYPE) != 0) {
+		o->type = src->type;
+		mask |= SAU_LINEP_TYPE;
 	}
 	if (!(o->flags & SAU_LINEP_TIME) ||
 	    !(src->flags & SAU_LINEP_TIME_IF_NEW)) {
@@ -291,7 +392,7 @@ sauNoinline uint32_t sauLine_get(sauLine *restrict o,
 		return 0;
 	uint32_t len = o->end - o->pos;
 	if (len > buf_len) len = buf_len;
-	sauLine_fill_funcs[o->fill_type](buf, len,
+	sauLine_fill_funcs[o->type](buf, len,
 			o->v0, o->vt, o->pos, o->end, mulbuf);
 	return len;
 }

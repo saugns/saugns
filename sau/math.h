@@ -1,5 +1,5 @@
 /* SAU library: Math definitions.
- * Copyright (c) 2011-2012, 2017-2022 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2023 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -26,6 +26,11 @@
 #define SAU_HUMMID    632.45553203367586639978 // human hearing range geom.mean
 #define SAU_GLDA        2.39996322972865332223 // golden angle 2*PI*(2.0 - phi)
 #define SAU_GLDA_1_2PI  0.38196601125010515180 // (in cycle %) 2.0 - phi
+#define SAU_FIBH32      2654435769UL           // 32-bit Fibonacci hash constant
+
+/*
+ * Format conversion & general purpose functions.
+ */
 
 /**
  * Convert time in ms to time in samples for a sample rate.
@@ -66,6 +71,25 @@ static inline uint32_t sau_cyclepos_dtoui32(double x) {
 static inline double sau_d01_from_ui64(uint64_t x) {
 	return (x >> 11) * 0x1.0p-53;
 }
+
+/** \return +1 if \p n is even, -1 if it's odd. */
+static inline int sau_oddness_as_sign(int n) {
+	return (1 - ((n & 1) * 2));
+}
+
+/** Portable 32-bit arithmetic right shift. */
+static inline int32_t sau_sar32(int32_t x, int s) {
+	return x < 0 ? ~(~x >> s) : x >> s;
+}
+
+/** 32-bit right rotation. */
+static inline uint32_t sau_ror32(uint32_t x, int r) {
+	return x >> r | x << (32 - r);
+}
+
+/*
+ * Math functions for use in SAU scripts.
+ */
 
 /**
  * Metallic value function. Golden ratio for \p x == 1, silver for x == 2, etc.
@@ -112,7 +136,8 @@ struct sauMath_state;
 
 /** State for math functions for each parsing and interpretation unit. */
 struct sauMath_state {
-	uint64_t seed;
+	uint64_t seed64;
+	uint32_t seed32;
 	bool no_time;
 };
 
@@ -141,17 +166,146 @@ extern const uint8_t sauMath_params[SAU_MATH_NAMED];
 extern const union sauMath_sym_f sauMath_symbols[SAU_MATH_NAMED];
 
 /*
- * Simple PRNGs
+ * Simple PRNGs.
  */
+
+/**
+ * 32-bit MCG. Usable together with another PRNG, for additional values
+ * extended in a perpendicular sequence in a computationally cheap way.
+ */
+static inline uint32_t sau_mcg32(uint32_t seed) {
+	return seed * 0xe47135; /* alt. 0x93d765dd; both Steele & Vigna 2021 */
+}
+
+/**
+ * Random access noise, fast version with bitshifts but no bitrotation. Chaotic
+ * waveshaper, which turns e.g. sawtooth-ish number sequences into white noise.
+ * Lower bits have lower quality; use SplitMix32 if those need to be good, too.
+ *
+ * This function is mainly an alternative to using buffers of noise, for random
+ * access. The index \p n can be used as a counter or varied for random access.
+ *
+ * \return pseudo-random number for index \p n
+ */
+static inline uint32_t sau_ranfast32(uint32_t n) {
+	uint32_t s = n * SAU_FIBH32;
+	s ^= s >> 14;
+	s = (s | 1) * s;
+	s ^= s >> 13;
+	return s;
+}
+
+/**
+ * Random access noise, fast version with bitshifts but no bitrotation. Chaotic
+ * waveshaper, which turns e.g. sawtooth-ish number sequences into white noise.
+ * Lower bits have lower quality; use SplitMix32 if those need to be good, too.
+ *
+ * This "next" function returns a new value each time, corresponding to a state
+ * \p pos, which is increased. It may be initialized with any seed (0 is fine).
+ *
+ * \return next pseudo-random number for state \p pos
+ */
+static inline uint32_t sau_ranfast32_next(uint32_t *restrict pos) {
+	uint32_t s = *pos += SAU_FIBH32;
+	s ^= s >> 14;
+	s = (s | 1) * s;
+	s ^= s >> 13;
+	return s;
+}
+
+/**
+ * A random access SplitMix32 variant, using an alternative function
+ * by TheIronBorn & Christopher Wellons's "Hash Prospector" project.
+ *
+ * \return pseudo-random number for index \p n
+ */
+static inline uint32_t sau_splitmix32(uint32_t n) {
+	uint32_t z = (n * 0x9e3779b9);
+	z = (z ^ (z >> 16)) * 0x21f0aaad;
+	z = (z ^ (z >> 15)) * 0xf35a2d97; /* similar alt. 0x735a2d97 */
+	return z ^ (z >> 15);
+}
+
+/**
+ * Fixed-increment SplitMix32 variant, using an alternative function
+ * by TheIronBorn & Christopher Wellons's "Hash Prospector" project.
+ *
+ * \return next pseudo-random number for state \p pos
+ */
+static inline uint32_t sau_splitmix32_next(uint32_t *restrict pos) {
+	uint32_t z = (*pos += 0x9e3779b9);
+	z = (z ^ (z >> 16)) * 0x21f0aaad;
+	z = (z ^ (z >> 15)) * 0xf35a2d97; /* similar alt. 0x735a2d97 */
+	return z ^ (z >> 15);
+}
+
+/**
+ * A random access SplitMix64, based on C version provided by Vigna.
+ *
+ * \return pseudo-random number for index \p n
+ */
+static inline uint64_t sau_splitmix64(uint64_t n) {
+	uint64_t z = (n * 0x9e3779b97f4a7c15);
+	z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9;
+	z = (z ^ (z >> 27)) * 0x94d049bb133111eb;
+	return z ^ (z >> 31);
+}
 
 /**
  * Fixed-increment SplitMix64, based on C version provided by Vigna.
  *
- * \return next pseudo-random value
+ * \return next pseudo-random number for state \p pos
  */
 static inline uint64_t sau_splitmix64_next(uint64_t *restrict pos) {
 	uint64_t z = (*pos += 0x9e3779b97f4a7c15);
 	z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9;
 	z = (z ^ (z >> 27)) * 0x94d049bb133111eb;
 	return z ^ (z >> 31);
+}
+
+/** Initial seed for sau_xorshift32(). Other non-zero values can be used. */
+#define SAU_XORSHIFT32_SEED 2463534242UL
+
+/**
+ * Get next Marsaglia xorshift32 state from non-zero \p seed.
+ */
+static inline uint32_t sau_xorshift32(uint32_t seed) {
+	uint32_t x = seed;
+	x ^= x << 13;
+	x ^= x >> 17;
+	x ^= x << 5;
+	return x;
+}
+
+/**
+ * Standard 32-bit PRNG for use together with math functions for SAU scripts.
+ */
+static inline uint32_t sau_rand32(struct sauMath_state *restrict o) {
+	return sau_splitmix32_next(&o->seed32);
+}
+
+/*
+ * Fast approximations.
+ */
+
+/**
+ * Degree 5 sin(PI * x) approximation function for limited input range.
+ *
+ * For \p x domain -0.5 <= x <= +0.5; use with pre-wrapped values only.
+ *
+ * Almost clean spectrum, adds a 5th harmonic at slightly below -84 dB.
+ */
+static inline float sau_sinpi_d5f(float x) {
+	/*
+	 * Coefficients generated for no end-point error,
+	 * on top of minimax, roughly doubling the error.
+	 * Slightly lower max error than Taylor degree 7.
+	 */
+	const float scale[] = {
+		+3.14042741234069229463,
+		-5.13655757476162831091,
+		+2.29939170159543653372,
+	};
+	float x2 = x*x;
+	return x*(scale[0] + x2*(scale[1] + x2*scale[2]));
 }

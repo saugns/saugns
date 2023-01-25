@@ -502,8 +502,10 @@ static size_t scan_phase_const(sauScanner *restrict o,
 	}
 }
 
-static bool scan_wavetype(sauScanner *restrict o, size_t *restrict found_id) {
-	sauSymitem *sym = scan_sym(o, SAU_SYM_WAVE_ID, sauWave_names);
+static bool scan_sym_id(sauScanner *restrict o,
+		size_t *restrict found_id, uint32_t type_id,
+		const char *const*restrict help_stra) {
+	sauSymitem *sym = scan_sym(o, type_id, help_stra);
 	if (!sym)
 		return false;
 	*found_id = sym->data.id;
@@ -556,12 +558,12 @@ static bool scan_line_param(sauScanner *restrict o,
 			}
 			break;
 		case 'l': {
-			sauSymitem *sym = scan_sym(o, SAU_SYM_LINE_ID,
-					sauLine_names);
-			if (sym) {
-				line->fill_type = sym->data.id;
-				line->flags |= SAU_LINEP_FILL_TYPE;
-			}
+			size_t id;
+			if (!scan_sym_id(o, &id, SAU_SYM_LINE_ID,
+						sauLine_names))
+				break;
+			line->type = id;
+			line->flags |= SAU_LINEP_TYPE;
 			break; }
 		case 't':
 			if (scan_time_val(o, &time_ms))
@@ -709,7 +711,7 @@ static sauLine *create_line(sauParser *restrict o,
 	float v0 = 0.f;
 	if (!line)
 		return NULL;
-	line->fill_type = SAU_LINE_N_lin; // default if goal enabled
+	line->type = SAU_LINE_N_lin; // default if goal enabled
 	switch (par_flag) {
 	case SAU_PSWEEP_PAN:
 		v0 = sl->sopt.def_chanmix;
@@ -733,7 +735,7 @@ static sauLine *create_line(sauParser *restrict o,
 	}
 	line->v0 = v0;
 	line->flags |= SAU_LINEP_STATE |
-		SAU_LINEP_FILL_TYPE |
+		SAU_LINEP_TYPE |
 		SAU_LINEP_TIME_IF_NEW; /* don't set main SAU_LINEP_TIME here */
 	if (mult) {
 		line->flags |= SAU_LINEP_STATE_RATIO;
@@ -747,7 +749,7 @@ static bool parse_line(sauParser *restrict o,
 		uint32_t line_id) {
 	if (!*linep) { /* create for updating, unparsed values kept unset */
 		*linep = create_line(o, mult, line_id);
-		(*linep)->flags &= ~(SAU_LINEP_STATE | SAU_LINEP_FILL_TYPE);
+		(*linep)->flags &= ~(SAU_LINEP_STATE | SAU_LINEP_TYPE);
 	}
 	return scan_line_param(o->sc, scan_numconst, *linep, mult);
 }
@@ -845,7 +847,8 @@ static void begin_event(sauParser *restrict o,
 }
 
 static void begin_operator(sauParser *restrict o,
-		sauScriptOpData *restrict pop, bool is_compstep) {
+		sauScriptOpData *restrict pop, bool is_compstep,
+		uint32_t type) {
 	struct ParseLevel *pl = o->cur_pl;
 	sauScriptEvData *e = pl->event;
 	sauScriptOpData *op;
@@ -896,6 +899,9 @@ static void begin_operator(sauParser *restrict o,
 		op->amp = create_line(o, false, SAU_PSWEEP_AMP);
 		op->info = sau_mpalloc(o->mp, sizeof(sauScriptObjInfo));
 		op->info->root_event = e;
+		op->info->type = type;
+		if (type == SAU_POPT_RAS)
+			op->info->seed = sau_rand32(&o->sl.math_state);
 	}
 	op->event = e;
 	/*
@@ -936,14 +942,15 @@ static void begin_operator(sauParser *restrict o,
  * Used instead of directly calling begin_operator() and/or begin_event().
  */
 static void begin_node(sauParser *restrict o,
-		sauScriptOpData *restrict previous, bool is_compstep) {
+		sauScriptOpData *restrict previous, bool is_compstep,
+		uint32_t type) {
 	struct ParseLevel *pl = o->cur_pl;
 	if (!pl->event || pl->next_wait_ms > 0 ||
 			((previous || pl->use_type == SAU_POP_CARR)
 			 && pl->event->objs.first_item) ||
 			is_compstep)
 		begin_event(o, previous, is_compstep);
-	begin_operator(o, previous, is_compstep);
+	begin_operator(o, previous, is_compstep, type);
 }
 
 static bool new_durgroup(sauParser *restrict o) {
@@ -1035,7 +1042,7 @@ static void leave_level(sauParser *restrict o) {
 		 */
 		if (pl->scope_first != NULL) {
 			pl->parent->pl_flags |= PL_BIND_MULTIPLE;
-			begin_node(o, pl->scope_first, false);
+			begin_node(o, pl->scope_first, false, 0);
 		}
 	} else if (pl->scope == SCOPE_NEST) {
 		/*
@@ -1205,13 +1212,13 @@ static void parse_in_event(sauParser *restrict o) {
 		switch (c) {
 		case '/':
 			if (parse_waittime(o)) {
-				begin_node(o, pl->operator, false);
+				begin_node(o, pl->operator, false, 0);
 			}
 			break;
 		case ';':
 			pl->pl_flags &= ~PL_WARN_NOSPACE; /* OK before */
 			if (parse_waittime(o)) {
-				begin_node(o, pl->operator, true);
+				begin_node(o, pl->operator, true, 0);
 				pl->event->ev_flags |= SAU_SDEV_FROM_GAPSHIFT;
 			} else {
 				if ((op->time.flags &
@@ -1219,7 +1226,7 @@ static void parse_in_event(sauParser *restrict o) {
 				    (SAU_TIMEP_SET|SAU_TIMEP_IMPLICIT))
 					sauScanner_warning(sc, NULL,
 "ignoring 'ti' (implicit time) before ';' without number");
-				begin_node(o, pl->operator, true);
+				begin_node(o, pl->operator, true, 0);
 				pl->event->ev_flags |= SAU_SDEV_WAIT_PREV_DUR;
 			}
 			break;
@@ -1232,6 +1239,10 @@ static void parse_in_event(sauParser *restrict o) {
 		case 'f':
 			if (parse_ev_freq(o, false)) goto DEFER;
 			break;
+		case 'm': {
+			if (op->info->type != SAU_POPT_RAS) goto DEFER;
+			/* ... */
+			break; }
 		case 'p':
 			if (parse_ev_phase(o)) goto DEFER;
 			break;
@@ -1259,10 +1270,12 @@ static void parse_in_event(sauParser *restrict o) {
 			op->params |= SAU_POPP_TIME;
 			break;
 		case 'w': {
-			size_t wave;
-			if (!scan_wavetype(sc, &wave))
+			if (op->info->type != SAU_POPT_WAVE) goto DEFER;
+			size_t id;
+			if (!scan_sym_id(sc, &id, SAU_SYM_WAVE_ID,
+						sauWave_names))
 				break;
-			op->wave = wave;
+			op->wave = id;
 			op->params |= SAU_POPP_WAVE;
 			break; }
 		default:
@@ -1349,7 +1362,7 @@ static bool parse_level(sauParser *restrict o,
 			if (var != NULL) {
 				if (var->data_use == SAU_SYM_DATA_OBJ) {
 					sauScriptOpData *ref = var->data.obj;
-					begin_node(o, ref, false);
+					begin_node(o, ref, false, 0);
 					ref = pl.operator;
 					var->data.obj = ref; /* update */
 					pl.sub_f = parse_in_event;
@@ -1359,12 +1372,23 @@ static bool parse_level(sauParser *restrict o,
 				}
 			}
 			break; }
-		case 'O': {
-			size_t wave;
-			if (!scan_wavetype(sc, &wave))
+		case 'R': {
+			size_t id;
+			if (!scan_sym_id(sc, &id, SAU_SYM_LINE_ID,
+						sauLine_names))
 				break;
-			begin_node(o, NULL, false);
-			pl.operator->wave = wave;
+			begin_node(o, NULL, false, SAU_POPT_RAS);
+			pl.operator->ras_opt.line = id;
+			pl.operator->ras_opt.flags = SAU_RAS_O_LINE_SET;
+			pl.sub_f = parse_in_event;
+			break; }
+		case 'O': {
+			size_t id;
+			if (!scan_sym_id(sc, &id, SAU_SYM_WAVE_ID,
+						sauWave_names))
+				break;
+			begin_node(o, NULL, false, SAU_POPT_WAVE);
+			pl.operator->wave = id;
 			pl.sub_f = parse_in_event;
 			break; }
 		case 'S':
