@@ -14,13 +14,13 @@
 #pragma once
 #include "program.h"
 
-struct SAU_Generator;
-typedef struct SAU_Generator SAU_Generator;
+struct sauGenerator;
+typedef struct sauGenerator sauGenerator;
 
-SAU_Generator* SAU_create_Generator(const SAU_Program *restrict prg,
+sauGenerator* sau_create_Generator(const sauProgram *restrict prg,
 		uint32_t srate) sauMalloclike;
-void SAU_destroy_Generator(SAU_Generator *restrict o);
+void sau_destroy_Generator(sauGenerator *restrict o);
 
-bool SAU_Generator_run(SAU_Generator *restrict o,
+bool sauGenerator_run(sauGenerator *restrict o,
 		int16_t *restrict buf, size_t buf_len, bool stereo,
 		size_t *restrict out_len);

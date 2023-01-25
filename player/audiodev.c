@@ -89,7 +89,7 @@ SGS_AudioDev *SGS_open_AudioDev(uint16_t channels, uint32_t *restrict srate) {
 	*srate = o->srate;
 	return o;
 ERROR:
-	SAU_error(NULL, "couldn't open audio device for output");
+	sau_error(NULL, "couldn't open audio device for output");
 	free(o);
 	return NULL;
 }

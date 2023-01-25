@@ -61,16 +61,16 @@
  * Utility functions.
  */
 
-extern int SAU_stdout_busy;
+extern int sau_stdout_busy;
 
 /** Return stream to use for printing when stdout is preferred. */
-#define SAU_print_stream() (SAU_stdout_busy ? stderr : stdout)
+#define sau_print_stream() (sau_stdout_busy ? stderr : stdout)
 
-int SAU_printf(const char *restrict fmt, ...)
+int sau_printf(const char *restrict fmt, ...)
 	sauPrintflike(1, 2);
-void SAU_warning(const char *restrict label, const char *restrict fmt, ...)
+void sau_warning(const char *restrict label, const char *restrict fmt, ...)
 	sauPrintflike(2, 3);
-void SAU_error(const char *restrict label, const char *restrict fmt, ...)
+void sau_error(const char *restrict label, const char *restrict fmt, ...)
 	sauPrintflike(2, 3);
 
 /*

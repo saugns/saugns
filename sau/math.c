@@ -18,30 +18,30 @@
 #include <sau/math.h>
 #include <time.h>
 
-const char *const SAU_Math_names[SAU_MATH_NAMED + 1] = {
+const char *const sauMath_names[SAU_MATH_NAMED + 1] = {
 	SAU_MATH__ITEMS(SAU_MATH__X_NAME)
 	NULL
 };
 
-const uint8_t SAU_Math_params[SAU_MATH_NAMED] = {
+const uint8_t sauMath_params[SAU_MATH_NAMED] = {
 	SAU_MATH__ITEMS(SAU_MATH__X_PARAMS)
 };
 
 static double mf_const(void) { return SAU_HUMMID; }
 static double pi_const(void) { return SAU_PI; }
 
-static double SAU_rand(struct SAU_Math_state *restrict o) {
-	return SAU_d01_from_ui64(SAU_splitmix64_next(&o->seed));
+static double sau_rand(struct sauMath_state *restrict o) {
+	return sau_d01_from_ui64(sau_splitmix64_next(&o->seed));
 }
 
-static double SAU_seed(struct SAU_Math_state *restrict o, double x) {
+static double sau_seed(struct sauMath_state *restrict o, double x) {
 	union { double d; uint64_t ui64; } v;
 	v.d = x;
 	o->seed = v.ui64;
 	return 0.f;
 }
 
-static double SAU_time(struct SAU_Math_state *restrict o) {
+static double sau_time(struct sauMath_state *restrict o) {
 	if (o->no_time)
 		return 0.0;
 	/*
@@ -53,6 +53,6 @@ static double SAU_time(struct SAU_Math_state *restrict o) {
 	return (double) (((int64_t) time(NULL)) & ((INT64_C(1)<<53) - 1));
 }
 
-const union SAU_Math_sym_f SAU_Math_symbols[SAU_MATH_NAMED] = {
+const union sauMath_sym_f sauMath_symbols[SAU_MATH_NAMED] = {
 	SAU_MATH__ITEMS(SAU_MATH__X_SYM_F)
 };

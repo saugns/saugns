@@ -38,12 +38,12 @@ typedef struct MemBlock {
 } MemBlock;
 
 typedef struct DtorItem {
-	SAU_Dtor_f func;
+	sauDtor_f func;
 	void *arg;
 	struct DtorItem *prev;
 } DtorItem;
 
-struct SAU_Mempool {
+struct sauMempool {
 	MemBlock *a;
 	size_t count, first_i, a_len;
 	size_t block_size, skip_size;
@@ -55,7 +55,7 @@ struct SAU_Mempool {
  *
  * \return true, or false on allocation failure
  */
-static bool upsize(SAU_Mempool *restrict o) {
+static bool upsize(sauMempool *restrict o) {
 	size_t new_a_len = (o->a_len > 0) ?  (o->a_len << 1) : 1;
 	MemBlock *new_a = realloc(o->a, sizeof(MemBlock) * new_a_len);
 	if (!new_a)
@@ -84,7 +84,7 @@ static bool upsize(SAU_Mempool *restrict o) {
  *
  * \return allocated memory, or NULL on allocation failure
  */
-static void *add(SAU_Mempool *restrict o, size_t size_used) {
+static void *add(sauMempool *restrict o, size_t size_used) {
 	if (o->count == o->a_len && !upsize(o))
 		return NULL;
 	size_t block_size = o->block_size;
@@ -109,7 +109,7 @@ static void *add(SAU_Mempool *restrict o, size_t size_used) {
  *
  * \return true if found, false if not
  */
-static bool first_smallest(const SAU_Mempool *restrict o,
+static bool first_smallest(const sauMempool *restrict o,
 		size_t size, size_t *restrict id) {
 	size_t i;
 	ptrdiff_t min = o->first_i;
@@ -152,7 +152,7 @@ static bool first_smallest(const SAU_Mempool *restrict o,
  * by the previous such block, until finally the last such block overwrites
  * the block at \p to.
  */
-static void copy_up_one(SAU_Mempool *restrict o,
+static void copy_up_one(sauMempool *restrict o,
 		size_t to, size_t from) {
 	if (from == (to - 1) || o->a[from].free == o->a[to - 1].free) {
 		/*
@@ -191,8 +191,8 @@ static void copy_up_one(SAU_Mempool *restrict o,
  *
  * \return instance, or NULL on allocation failure
  */
-SAU_Mempool *SAU_create_Mempool(size_t start_size) {
-	SAU_Mempool *o = calloc(1, sizeof(SAU_Mempool));
+sauMempool *sau_create_Mempool(size_t start_size) {
+	sauMempool *o = calloc(1, sizeof(sauMempool));
 	if (!o)
 		return NULL;
 	o->block_size = (start_size > 0) ?
@@ -208,7 +208,7 @@ SAU_Mempool *SAU_create_Mempool(size_t start_size) {
  * Frees all memory blocks. Any destructor functions registered
  * are called beforehand, in the reverse order of registration.
  */
-void SAU_destroy_Mempool(SAU_Mempool *restrict o) {
+void sau_destroy_Mempool(sauMempool *restrict o) {
 	if (!o)
 		return;
 	for (DtorItem *n = o->last_dtor; n; n = n->prev) {
@@ -227,7 +227,7 @@ void SAU_destroy_Mempool(SAU_Mempool *restrict o) {
  *
  * \return allocated memory, or NULL on allocation failure
  */
-void *SAU_mpalloc(SAU_Mempool *restrict o, size_t size) {
+void *sau_mpalloc(sauMempool *restrict o, size_t size) {
 #if !SAU_MEM_DEBUG
 	size_t i = o->count;
 	void *mem;
@@ -290,9 +290,9 @@ void *SAU_mpalloc(SAU_Mempool *restrict o, size_t size) {
  *
  * \return allocated memory, or NULL on allocation failure
  */
-void *SAU_mpmemdup(SAU_Mempool *restrict o,
+void *sau_mpmemdup(sauMempool *restrict o,
 		const void *restrict src, size_t size) {
-	void *mem = SAU_mpalloc(o, size);
+	void *mem = sau_mpalloc(o, size);
 	if (!mem)
 		return NULL;
 	if (src != NULL)
@@ -306,11 +306,11 @@ void *SAU_mpmemdup(SAU_Mempool *restrict o,
  *
  * \return true, or false for NULL func or arg or on allocation failure
  */
-bool SAU_mpregdtor(SAU_Mempool *restrict o,
-		SAU_Dtor_f func, void *restrict arg) {
+bool sau_mpregdtor(sauMempool *restrict o,
+		sauDtor_f func, void *restrict arg) {
 	if (!func || !arg)
 		return false;
-	DtorItem *n = SAU_mpalloc(o, sizeof(DtorItem));
+	DtorItem *n = sau_mpalloc(o, sizeof(DtorItem));
 	if (!n)
 		return false;
 	n->func = func;

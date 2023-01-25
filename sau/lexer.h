@@ -25,7 +25,7 @@ enum {
 	SAU_T_SPECIAL,
 };
 
-typedef struct SAU_ScriptToken {
+typedef struct sauScriptToken {
 	uint32_t type;
 	union {
 		const char *id;
@@ -34,17 +34,17 @@ typedef struct SAU_ScriptToken {
 		uint8_t b;
 		char c;
 	} data;
-} SAU_ScriptToken;
+} sauScriptToken;
 
-struct SAU_Lexer;
-typedef struct SAU_Lexer SAU_Lexer;
+struct sauLexer;
+typedef struct sauLexer sauLexer;
 
-SAU_Lexer *SAU_create_Lexer(SAU_Symtab *restrict symtab) sauMalloclike;
-void SAU_destroy_Lexer(SAU_Lexer *restrict o);
+sauLexer *sau_create_Lexer(sauSymtab *restrict symtab) sauMalloclike;
+void sau_destroy_Lexer(sauLexer *restrict o);
 
-bool SAU_Lexer_open(SAU_Lexer *restrict o,
+bool sauLexer_open(sauLexer *restrict o,
 		const char *restrict script, bool is_path);
-void SAU_Lexer_close(SAU_Lexer *restrict o);
+void sauLexer_close(sauLexer *restrict o);
 
-bool SAU_Lexer_get(SAU_Lexer *restrict o, SAU_ScriptToken *restrict t);
-bool SAU_Lexer_get_special(SAU_Lexer *restrict o, SAU_ScriptToken *restrict t);
+bool sauLexer_get(sauLexer *restrict o, sauScriptToken *restrict t);
+bool sauLexer_get_special(sauLexer *restrict o, sauScriptToken *restrict t);

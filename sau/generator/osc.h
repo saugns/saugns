@@ -27,18 +27,18 @@
  * Calculate the coefficent, based on the sample rate, used for
  * the per-sample phase by multiplying with the frequency used.
  */
-#define SAU_Phasor_COEFF(srate) (((float) UINT32_MAX)/(srate))
+#define sauPhasor_COEFF(srate) (((float) UINT32_MAX)/(srate))
 
-typedef struct SAU_Phasor {
+typedef struct sauPhasor {
 	uint32_t phase;
 	float coeff;
-} SAU_Phasor;
+} sauPhasor;
 
 #define SAU_OSC_RESET_DIFF  (1<<0)
 #define SAU_OSC_RESET       ((1<<1) - 1)
 
-typedef struct SAU_Osc {
-	SAU_Phasor phasor;
+typedef struct sauOsc {
+	sauPhasor phasor;
 	uint8_t wave;
 	uint8_t flags;
 #if USE_PILUT
@@ -46,22 +46,22 @@ typedef struct SAU_Osc {
 	double prev_Is;
 	float prev_diff_s;
 #endif
-} SAU_Osc;
+} sauOsc;
 
 /**
  * Initialize instance for use.
  */
-static inline void SAU_init_Osc(SAU_Osc *restrict o, uint32_t srate) {
-	*o = (SAU_Osc){
+static inline void sau_init_Osc(sauOsc *restrict o, uint32_t srate) {
+	*o = (sauOsc){
 #if USE_PILUT
-		.phasor = (SAU_Phasor){
-			.phase = SAU_Wave_picoeffs[SAU_WAVE_N_sin].phase_adj,
-			.coeff = SAU_Phasor_COEFF(srate),
+		.phasor = (sauPhasor){
+			.phase = sauWave_picoeffs[SAU_WAVE_N_sin].phase_adj,
+			.coeff = sauPhasor_COEFF(srate),
 		},
 #else
-		.phasor = (SAU_Phasor){
+		.phasor = (sauPhasor){
 			.phase = 0,
-			.coeff = SAU_Phasor_COEFF(srate),
+			.coeff = sauPhasor_COEFF(srate),
 		},
 #endif
 		.wave = SAU_WAVE_N_sin,
@@ -69,18 +69,18 @@ static inline void SAU_init_Osc(SAU_Osc *restrict o, uint32_t srate) {
 	};
 }
 
-static inline void SAU_Osc_set_phase(SAU_Osc *restrict o, uint32_t phase) {
+static inline void sauOsc_set_phase(sauOsc *restrict o, uint32_t phase) {
 #if USE_PILUT
-	o->phasor.phase = phase + SAU_Wave_picoeffs[o->wave].phase_adj;
+	o->phasor.phase = phase + sauWave_picoeffs[o->wave].phase_adj;
 #else
 	o->phasor.phase = phase;
 #endif
 }
 
-static inline void SAU_Osc_set_wave(SAU_Osc *restrict o, uint8_t wave) {
+static inline void sauOsc_set_wave(sauOsc *restrict o, uint8_t wave) {
 #if USE_PILUT
-	int32_t old_offset = SAU_Wave_picoeffs[o->wave].phase_adj;
-	int32_t offset = SAU_Wave_picoeffs[wave].phase_adj;
+	int32_t old_offset = sauWave_picoeffs[o->wave].phase_adj;
+	int32_t offset = sauWave_picoeffs[wave].phase_adj;
 	o->phasor.phase += offset - old_offset;
 	o->wave = wave;
 	o->flags |= SAU_OSC_RESET_DIFF;
@@ -94,7 +94,7 @@ static inline void SAU_Osc_set_wave(SAU_Osc *restrict o, uint8_t wave) {
  *
  * \return number of samples
  */
-static inline uint32_t SAU_Osc_cycle_len(SAU_Osc *restrict o, float freq) {
+static inline uint32_t sauOsc_cycle_len(sauOsc *restrict o, float freq) {
 	return lrintf(((float) UINT32_MAX) / (o->phasor.coeff * freq));
 }
 
@@ -103,7 +103,7 @@ static inline uint32_t SAU_Osc_cycle_len(SAU_Osc *restrict o, float freq) {
  *
  * \return number of samples
  */
-static inline uint32_t SAU_Osc_cycle_pos(SAU_Osc *restrict o,
+static inline uint32_t sauOsc_cycle_pos(sauOsc *restrict o,
 		float freq, uint32_t pos) {
 	uint32_t inc = lrintf(o->phasor.coeff * freq);
 	uint32_t phs = inc * pos;
@@ -115,11 +115,11 @@ static inline uint32_t SAU_Osc_cycle_pos(SAU_Osc *restrict o,
  *
  * Can be used to reduce time length to something rounder and reduce clicks.
  */
-static inline int32_t SAU_Osc_cycle_offs(SAU_Osc *restrict o,
+static inline int32_t sauOsc_cycle_offs(sauOsc *restrict o,
 		float freq, uint32_t pos) {
 	uint32_t inc = lrintf(o->phasor.coeff * freq);
 	uint32_t phs = inc * pos;
-	return (phs - SAU_Wave_SLEN) / inc;
+	return (phs - sauWave_SLEN) / inc;
 }
 
 #if !USE_PILUT
@@ -129,9 +129,9 @@ static inline int32_t SAU_Osc_cycle_offs(SAU_Osc *restrict o,
 #endif
 
 /**
- * Fill phase-value buffer for use with SAU_Osc_run().
+ * Fill phase-value buffer for use with sauOsc_run().
  */
-static sauMaybeUnused void SAU_Phasor_fill(SAU_Phasor *restrict o,
+static sauMaybeUnused void sauPhasor_fill(sauPhasor *restrict o,
 		uint32_t *restrict phase_ui32,
 		size_t buf_len,
 		const float *restrict freq_f,
@@ -171,32 +171,32 @@ static sauMaybeUnused void SAU_Phasor_fill(SAU_Phasor *restrict o,
 
 #if !USE_PILUT
 /*
- * Implementation of SAU_Osc_run()
+ * Implementation of sauOsc_run()
  * using naive LUTs with linear interpolation.
  *
  * Uses post-incremented phase each sample.
  */
-static void SAU_Osc_naive_run(SAU_Osc *restrict o,
+static void sauOsc_naive_run(sauOsc *restrict o,
 		float *restrict buf, size_t buf_len,
 		const uint32_t *restrict phase_buf) {
-	const float *const lut = SAU_Wave_luts[o->wave];
+	const float *const lut = sauWave_luts[o->wave];
 	for (size_t i = 0; i < buf_len; ++i) {
-		buf[i] = SAU_Wave_get_lerp(lut, phase_buf[i]);
+		buf[i] = sauWave_get_lerp(lut, phase_buf[i]);
 	}
 }
 #endif
 
 #if USE_PILUT
 /* Set up for differentiation (re)start with usable state. */
-static void SAU_Osc_reset(SAU_Osc *restrict o, int32_t phase) {
-	const float *const lut = SAU_Wave_piluts[o->wave];
-	const float diff_scale = SAU_Wave_DVSCALE(o->wave);
-	const float diff_offset = SAU_Wave_DVOFFSET(o->wave);
+static void sauOsc_reset(sauOsc *restrict o, int32_t phase) {
+	const float *const lut = sauWave_piluts[o->wave];
+	const float diff_scale = sauWave_DVSCALE(o->wave);
+	const float diff_offset = sauWave_DVOFFSET(o->wave);
 	if (o->flags & SAU_OSC_RESET_DIFF) {
 		/* one-LUT-value diff works fine for any freq, 0 Hz included */
-		int32_t phase_diff = SAU_Wave_SLEN;
-		o->prev_Is = SAU_Wave_get_herp(lut, phase - phase_diff);
-		double Is = SAU_Wave_get_herp(lut, phase);
+		int32_t phase_diff = sauWave_SLEN;
+		o->prev_Is = sauWave_get_herp(lut, phase - phase_diff);
+		double Is = sauWave_get_herp(lut, phase);
 		double x = (diff_scale / phase_diff);
 		o->prev_diff_s = (Is - o->prev_Is) * x + diff_offset;
 		o->prev_Is = Is;
@@ -211,15 +211,15 @@ static void SAU_Osc_reset(SAU_Osc *restrict o, int32_t phase) {
  *
  * Uses pre-incremented phase each sample.
  */
-static sauMaybeUnused void SAU_Osc_run(SAU_Osc *restrict o,
+static sauMaybeUnused void sauOsc_run(sauOsc *restrict o,
 		float *restrict buf, size_t buf_len,
 		const uint32_t *restrict phase_buf) {
 #if USE_PILUT /* higher-quality audio */
-	const float *const lut = SAU_Wave_piluts[o->wave];
-	const float diff_scale = SAU_Wave_DVSCALE(o->wave);
-	const float diff_offset = SAU_Wave_DVOFFSET(o->wave);
+	const float *const lut = sauWave_piluts[o->wave];
+	const float diff_scale = sauWave_DVSCALE(o->wave);
+	const float diff_offset = sauWave_DVOFFSET(o->wave);
 	if (buf_len > 0 && o->flags & SAU_OSC_RESET)
-		SAU_Osc_reset(o, phase_buf[0]);
+		sauOsc_reset(o, phase_buf[0]);
 	for (size_t i = 0; i < buf_len; ++i) {
 		float s;
 		uint32_t phase = phase_buf[i];
@@ -227,7 +227,7 @@ static sauMaybeUnused void SAU_Osc_run(SAU_Osc *restrict o,
 		if (phase_diff == 0) {
 			s = o->prev_diff_s;
 		} else {
-			double Is = SAU_Wave_get_herp(lut, phase);
+			double Is = sauWave_get_herp(lut, phase);
 			double x = (diff_scale / phase_diff);
 			s = (Is - o->prev_Is) * x + diff_offset;
 			o->prev_Is = Is;
@@ -237,6 +237,6 @@ static sauMaybeUnused void SAU_Osc_run(SAU_Osc *restrict o,
 		buf[i] = s;
 	}
 #else /* test naive LUT */
-	SAU_Osc_naive_run(o, buf, buf_len, phase_buf);
+	sauOsc_naive_run(o, buf, buf_len, phase_buf);
 #endif
 }

@@ -30,7 +30,7 @@
 /**
  * Convert time in ms to time in samples for a sample rate.
  */
-static inline uint64_t SAU_ms_in_samples(uint64_t time_ms, uint64_t srate,
+static inline uint64_t sau_ms_in_samples(uint64_t time_ms, uint64_t srate,
 		int *restrict carry) {
 	uint64_t time = time_ms * srate;
 	if (carry) {
@@ -44,26 +44,26 @@ static inline uint64_t SAU_ms_in_samples(uint64_t time_ms, uint64_t srate,
 }
 
 /** Apply lrint() if long can hold UINT32_MAX, otherwise llrint(). */
-#define SAU_ui32rint(x) ((uint32_t) \
+#define sau_ui32rint(x) ((uint32_t) \
 	(LONG_MAX >= UINT32_MAX ? lrint(x) : llrint(x)))
 
 /** Apply lrintf() if long can hold UINT32_MAX, otherwise llrintf(). */
-#define SAU_ui32rintf(x) ((uint32_t) \
+#define sau_ui32rintf(x) ((uint32_t) \
 	(LONG_MAX >= UINT32_MAX ? lrintf(x) : llrintf(x)))
 
 /**
  * Convert cyclical value (0.0 = 0% and 1.0 = 100%, with ends
  * wrapping around) to 32-bit integer with 0 as the 0% value.
  */
-static inline uint32_t SAU_cyclepos_dtoui32(double x) {
+static inline uint32_t sau_cyclepos_dtoui32(double x) {
 	// needs long(er) range because 0.5 from remainder becomes INT32_MAX+1
-	return SAU_ui32rint(remainder(x, 1.f) * (float)UINT32_MAX);
+	return sau_ui32rint(remainder(x, 1.f) * (float)UINT32_MAX);
 }
 
 /**
  * Convert an unsigned 64-bit integer to 0.0 to 1.0 value.
  */
-static inline double SAU_d01_from_ui64(uint64_t x) {
+static inline double sau_d01_from_ui64(uint64_t x) {
 	return (x >> 11) * 0x1.0p-53;
 }
 
@@ -75,7 +75,7 @@ static inline double SAU_d01_from_ui64(uint64_t x) {
  *
  * \return metallic value
  */
-static inline double SAU_met(double x) {
+static inline double sau_met(double x) {
 	return 0.5f * (x + sqrt(x * x + 4.f));
 }
 
@@ -85,15 +85,15 @@ static inline double SAU_met(double x) {
 	X(cos,       VAL_F, {.val = cos}) \
 	X(exp,       VAL_F, {.val = exp}) \
 	X(log,       VAL_F, {.val = log}) \
-	X(met,       VAL_F, {.val = SAU_met}) \
+	X(met,       VAL_F, {.val = sau_met}) \
 	X(mf,      NOARG_F, {.noarg = mf_const}) \
 	X(pi,      NOARG_F, {.noarg = pi_const}) \
-	X(rand,    STATE_F, {.state = SAU_rand}) \
+	X(rand,    STATE_F, {.state = sau_rand}) \
 	X(rint,      VAL_F, {.val = rint}) \
-	X(seed, STATEVAL_F, {.stateval = SAU_seed}) \
+	X(seed, STATEVAL_F, {.stateval = sau_seed}) \
 	X(sin,       VAL_F, {.val = sin}) \
 	X(sqrt,      VAL_F, {.val = sqrt}) \
-	X(time,    STATE_F, {.state = SAU_time}) \
+	X(time,    STATE_F, {.state = sau_time}) \
 	//
 #define SAU_MATH__X_ID(NAME, PARAMS, SYM_F) SAU_MATH_N_##NAME,
 #define SAU_MATH__X_NAME(NAME, PARAMS, SYM_F) #NAME,
@@ -108,10 +108,10 @@ enum {
 	SAU_MATH_NAMED
 };
 
-struct SAU_Math_state;
+struct sauMath_state;
 
 /** State for math functions for each parsing and interpretation unit. */
-struct SAU_Math_state {
+struct sauMath_state {
 	uint64_t seed;
 	bool no_time;
 };
@@ -124,21 +124,21 @@ enum {
 	SAU_MATH_NOARG_F
 };
 /** Math function pointer types. */
-union SAU_Math_sym_f {
+union sauMath_sym_f {
 	double (*val)(double x);
-	double (*state)(struct SAU_Math_state *o);
-	double (*stateval)(struct SAU_Math_state *o, double x);
+	double (*state)(struct sauMath_state *o);
+	double (*stateval)(struct sauMath_state *o, double x);
 	double (*noarg)(void);
 };
 
 /** Names of math functions, with an extra NULL pointer at the end. */
-extern const char *const SAU_Math_names[SAU_MATH_NAMED + 1];
+extern const char *const sauMath_names[SAU_MATH_NAMED + 1];
 
 /** Parameter types for math functions. */
-extern const uint8_t SAU_Math_params[SAU_MATH_NAMED];
+extern const uint8_t sauMath_params[SAU_MATH_NAMED];
 
 /** Function addresses for math functions. */
-extern const union SAU_Math_sym_f SAU_Math_symbols[SAU_MATH_NAMED];
+extern const union sauMath_sym_f sauMath_symbols[SAU_MATH_NAMED];
 
 /*
  * Simple PRNGs
@@ -149,7 +149,7 @@ extern const union SAU_Math_sym_f SAU_Math_symbols[SAU_MATH_NAMED];
  *
  * \return next pseudo-random value
  */
-static inline uint64_t SAU_splitmix64_next(uint64_t *restrict pos) {
+static inline uint64_t sau_splitmix64_next(uint64_t *restrict pos) {
 	uint64_t z = (*pos += 0x9e3779b97f4a7c15);
 	z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9;
 	z = (z ^ (z >> 27)) * 0x94d049bb133111eb;

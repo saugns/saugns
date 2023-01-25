@@ -18,17 +18,17 @@
 #include <stdio.h>
 #include <stdarg.h>
 
-int SAU_stdout_busy = 0; /* enable if stdout is given other uses! */
+int sau_stdout_busy = 0; /* enable if stdout is given other uses! */
 
 /**
  * Wrapper for vfprintf(), which prints to either stdout or stderr
- * depending on \ref SAU_print_stream().
+ * depending on \ref sau_print_stream().
  */
-int SAU_printf(const char *restrict fmt, ...) {
+int sau_printf(const char *restrict fmt, ...) {
 	int ret;
 	va_list ap;
 	va_start(ap, fmt);
-	ret = vfprintf(SAU_print_stream(), fmt, ap);
+	ret = vfprintf(sau_print_stream(), fmt, ap);
 	va_end(ap);
 	return ret;
 }
@@ -54,7 +54,7 @@ static void print_stderr(const char *restrict msg_type,
  * Print warning message. If \p label is not NULL, it will be
  * added after "warning" within square brackets.
  */
-void SAU_warning(const char *restrict label, const char *restrict fmt, ...) {
+void sau_warning(const char *restrict label, const char *restrict fmt, ...) {
 	va_list ap;
 	va_start(ap, fmt);
 	print_stderr("warning", label, fmt, ap);
@@ -65,7 +65,7 @@ void SAU_warning(const char *restrict label, const char *restrict fmt, ...) {
  * Print error message. If \p label is not NULL, it will be
  * added after "error" within square brackets.
  */
-void SAU_error(const char *restrict label, const char *restrict fmt, ...) {
+void sau_error(const char *restrict label, const char *restrict fmt, ...) {
 	va_list ap;
 	va_start(ap, fmt);
 	print_stderr("error", label, fmt, ap);

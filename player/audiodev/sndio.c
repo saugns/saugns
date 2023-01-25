@@ -40,7 +40,7 @@ static inline bool open_sndio(SGS_AudioDev *restrict o,
 	if ((!sio_setpar(hdl, &par)) || (!sio_getpar(hdl, &par)))
 		goto ERROR;
 	if (par.rate != o->srate) {
-		SAU_warning("sndio", "sample rate %d unsupported, using %d",
+		sau_warning("sndio", "sample rate %d unsupported, using %d",
 			o->srate, par.rate);
 		o->srate = par.rate;
 	}
@@ -52,7 +52,7 @@ static inline bool open_sndio(SGS_AudioDev *restrict o,
 	o->type = TYPE_SNDIO;
 	return true;
 ERROR:
-	SAU_error("sndio", "configuration for device \"%s\" failed", dev_name);
+	sau_error("sndio", "configuration for device \"%s\" failed", dev_name);
 	return false;
 }
 

@@ -28,7 +28,7 @@
 	//
 #define SAU_HELP__X_ID(NAME, ARRAY) SAU_HELP_N_##NAME,
 #define SAU_HELP__X_NAME(NAME, ARRAY) #NAME,
-#define SAU_HELP__X_ARRAY(NAME, ARRAY) SAU_##ARRAY##_names
+#define SAU_HELP__X_ARRAY(NAME, ARRAY) sau##ARRAY##_names
 
 /**
  * Named help types.
@@ -39,16 +39,16 @@ enum {
 };
 
 /** Names of help types, with an extra NULL pointer at the end. */
-extern const char *const SAU_Help_names[SAU_HELP_NAMED + 1];
+extern const char *const sauHelp_names[SAU_HELP_NAMED + 1];
 
-const char *const *SAU_find_help(const char *restrict str);
+const char *const *sau_find_help(const char *restrict str);
 
 /*
  * Name array functions of more general use.
  */
 
-bool SAU_find_name(const char *const *restrict namearr,
+bool sau_find_name(const char *const *restrict namearr,
 		const char *restrict str, size_t *restrict id);
-bool SAU_print_names(const char *const *restrict namearr,
+bool sau_print_names(const char *const *restrict namearr,
 		const char *restrict headstr,
 		FILE *restrict out);

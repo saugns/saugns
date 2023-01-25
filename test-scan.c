@@ -37,11 +37,11 @@ enum {
 	OPT_EVAL_STRING   = 1<<5,
 };
 
-struct SAU_ScriptArg {
+struct sauScriptArg {
 	const char *str;
 };
-sauArrType(SAU_ScriptArgArr, struct SAU_ScriptArg, )
-sauArrType(SAU_ProgramArr, SAU_Program*, )
+sauArrType(sauScriptArgArr, struct sauScriptArg, )
+sauArrType(sauProgramArr, sauProgram*, )
 
 /*
  * Print command line usage instructions.
@@ -74,7 +74,7 @@ static void print_version(void) {
  */
 static bool parse_args(int argc, char **restrict argv,
 		uint32_t *restrict flags,
-		SAU_ScriptArgArr *restrict script_args) {
+		sauScriptArgArr *restrict script_args) {
 	for (;;) {
 		const char *arg;
 		--argc;
@@ -85,8 +85,8 @@ static bool parse_args(int argc, char **restrict argv,
 		}
 		arg = *argv;
 		if (*arg != '-') {
-			struct SAU_ScriptArg entry = {arg};
-			SAU_ScriptArgArr_add(script_args, &entry);
+			struct sauScriptArg entry = {arg};
+			sauScriptArgArr_add(script_args, &entry);
 			continue;
 		}
 NEXT_C:
@@ -117,7 +117,7 @@ NEXT_C:
 USAGE:
 	print_usage();
 ABORT:
-	SAU_ScriptArgArr_clear(script_args);
+	sauScriptArgArr_clear(script_args);
 	return false;
 }
 
@@ -125,11 +125,11 @@ ABORT:
  * Discard the programs in the list, ignoring NULL entries,
  * and clearing the list.
  */
-static void discard(SAU_ProgramArr *restrict prg_objs) {
+static void discard(sauProgramArr *restrict prg_objs) {
 	for (size_t i = 0; i < prg_objs->count; ++i) {
 		free(prg_objs->a[i]); // for placeholder
 	}
-	SAU_ProgramArr_clear(prg_objs);
+	sauProgramArr_clear(prg_objs);
 }
 
 #if TEST_SCANNER
@@ -139,9 +139,9 @@ static void discard(SAU_ProgramArr *restrict prg_objs) {
  * as is done by default.
  */
 
-static inline void scan_simple(SAU_Scanner *o) {
+static inline void scan_simple(sauScanner *o) {
 	for (;;) {
-		uint8_t c = SAU_Scanner_getc(o);
+		uint8_t c = sauScanner_getc(o);
 		if (!c) {
 			putchar('\n');
 			break;
@@ -150,14 +150,14 @@ static inline void scan_simple(SAU_Scanner *o) {
 	}
 }
 
-static inline void scan_with_undo(SAU_Scanner *o) {
+static inline void scan_with_undo(sauScanner *o) {
 	for (;;) {
 		uint32_t i = 0, max = SAU_SCAN_UNGET_MAX;
 		uint8_t c;
 		bool end = false;
 		for (i = 0; ++i <= max; ) {
-			c = SAU_Scanner_retc(o);
-			c = SAU_Scanner_getc(o);
+			c = sauScanner_retc(o);
+			c = sauScanner_getc(o);
 			if (!c) {
 				end = true;
 				++i;
@@ -166,11 +166,11 @@ static inline void scan_with_undo(SAU_Scanner *o) {
 		}
 		max = i - 1;
 		for (i = 0; ++i <= max; ) {
-			SAU_Scanner_ungetc(o);
+			sauScanner_ungetc(o);
 		}
 		for (i = 0; ++i <= max; ) {
-			c = SAU_Scanner_retc(o);
-			c = SAU_Scanner_getc(o);
+			c = sauScanner_retc(o);
+			c = sauScanner_getc(o);
 			putchar(c);
 //			putchar('\n'); // for scanner.c test/debug printouts
 		}
@@ -186,38 +186,38 @@ static inline void scan_with_undo(SAU_Scanner *o) {
 /*
  * Run script through test code.
  *
- * \return SAU_Program or NULL on error
+ * \return sauProgram or NULL on error
  */
-static SAU_Program *build_program(const char *restrict script_arg,
+static sauProgram *build_program(const char *restrict script_arg,
 		bool is_path) {
-	SAU_Program *o = NULL;
-	SAU_Mempool *mempool = SAU_create_Mempool(0);
-	SAU_Symtab *symtab = SAU_create_Symtab(mempool);
+	sauProgram *o = NULL;
+	sauMempool *mempool = sau_create_Mempool(0);
+	sauSymtab *symtab = sau_create_Symtab(mempool);
 	if (!symtab)
 		return NULL;
 #if TEST_SCANNER
-	SAU_Scanner *scanner = SAU_create_Scanner(symtab);
+	sauScanner *scanner = sau_create_Scanner(symtab);
 	if (!scanner) goto CLOSE;
-	if (!SAU_Scanner_open(scanner, script_arg, is_path)) goto CLOSE;
+	if (!sauScanner_open(scanner, script_arg, is_path)) goto CLOSE;
 	/* print file contents with whitespace and comment filtering */
 	//scan_simple(scanner);
 	scan_with_undo(scanner);
-	o = (SAU_Program*) calloc(1, sizeof(SAU_Program)); // placeholder
+	o = (sauProgram*) calloc(1, sizeof(sauProgram)); // placeholder
 CLOSE:
-	SAU_destroy_Scanner(scanner);
+	sau_destroy_Scanner(scanner);
 #else
-	SAU_Lexer *lexer = SAU_create_Lexer(symtab);
+	sauLexer *lexer = sau_create_Lexer(symtab);
 	if (!lexer) goto CLOSE;
-	if (!SAU_Lexer_open(lexer, script_arg, is_path)) goto CLOSE;
+	if (!sauLexer_open(lexer, script_arg, is_path)) goto CLOSE;
 	for (;;) {
-		SAU_ScriptToken token;
-		if (!SAU_Lexer_get(lexer, &token)) break;
+		sauScriptToken token;
+		if (!sauLexer_get(lexer, &token)) break;
 	}
-	o = (SAU_Program*) calloc(1, sizeof(SAU_Program)); // placeholder
+	o = (sauProgram*) calloc(1, sizeof(sauProgram)); // placeholder
 CLOSE:
-	SAU_destroy_Lexer(lexer);
+	sau_destroy_Lexer(lexer);
 #endif
-	SAU_destroy_Mempool(mempool);
+	sau_destroy_Mempool(mempool);
 	return o;
 }
 
@@ -227,15 +227,15 @@ CLOSE:
  *
  * \return number of items successfully processed
  */
-static size_t read_scripts(const SAU_ScriptArgArr *restrict script_args,
-		uint32_t options, SAU_ProgramArr *restrict prg_objs) {
+static size_t read_scripts(const sauScriptArgArr *restrict script_args,
+		uint32_t options, sauProgramArr *restrict prg_objs) {
 	bool are_paths = !(options & OPT_EVAL_STRING);
 	size_t built = 0;
 	for (size_t i = 0; i < script_args->count; ++i) {
-		const SAU_Program *prg = build_program(script_args->a[i].str,
+		const sauProgram *prg = build_program(script_args->a[i].str,
 				are_paths);
 		if (prg != NULL) ++built;
-		SAU_ProgramArr_add(prg_objs, &prg);
+		sauProgramArr_add(prg_objs, &prg);
 	}
 	return built;
 }
@@ -244,13 +244,13 @@ static size_t read_scripts(const SAU_ScriptArgArr *restrict script_args,
  * Main function.
  */
 int main(int argc, char **restrict argv) {
-	SAU_ScriptArgArr script_args = (SAU_ScriptArgArr){0};
-	SAU_ProgramArr prg_objs = (SAU_ProgramArr){0};
+	sauScriptArgArr script_args = (sauScriptArgArr){0};
+	sauProgramArr prg_objs = (sauProgramArr){0};
 	uint32_t options = 0;
 	if (!parse_args(argc, argv, &options, &script_args))
 		return 0;
 	bool error = !read_scripts(&script_args, options, &prg_objs);
-	SAU_ScriptArgArr_clear(&script_args);
+	sauScriptArgArr_clear(&script_args);
 	if (error)
 		return 1;
 	if (prg_objs.count > 0) {

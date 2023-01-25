@@ -21,7 +21,7 @@
 #include <sau/wave.h>
 #include <string.h>
 
-const char *const SAU_Help_names[SAU_HELP_NAMED + 1] = {
+const char *const sauHelp_names[SAU_HELP_NAMED + 1] = {
 	SAU_HELP__ITEMS(SAU_HELP__X_NAME)
 	NULL
 };
@@ -34,9 +34,9 @@ const char *const SAU_Help_names[SAU_HELP_NAMED + 1] = {
  *
  * \return predefined array or NULL if none
  */
-const char *const *SAU_find_help(const char *restrict str) {
+const char *const *sau_find_help(const char *restrict str) {
 	size_t i;
-	if (!SAU_find_name(SAU_Help_names, str, &i))
+	if (!sau_find_name(sauHelp_names, str, &i))
 		return NULL;
 	switch (i) {
 	SAU_HELP__ITEMS(SAU_HELP__X_CASE)
@@ -50,7 +50,7 @@ const char *const *SAU_find_help(const char *restrict str) {
  *
  * \return true if found
  */
-bool SAU_find_name(const char *const *restrict namearr,
+bool sau_find_name(const char *const *restrict namearr,
 		const char *restrict str, size_t *restrict id) {
 	if (!str)
 		return false;
@@ -73,7 +73,7 @@ bool SAU_find_name(const char *const *restrict namearr,
  *
  * \return true if any items printed
  */
-bool SAU_print_names(const char *const *restrict namearr,
+bool sau_print_names(const char *const *restrict namearr,
 		const char *restrict headstr,
 		FILE *restrict out) {
 	if (!namearr[0])

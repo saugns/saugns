@@ -26,39 +26,39 @@ enum {
 /**
  * Container node for linked list, used for nesting.
  */
-typedef struct SAU_ScriptListData {
-	struct SAU_ScriptOpData *first_item;
-	struct SAU_ScriptListData *next_list;
+typedef struct sauScriptListData {
+	struct sauScriptOpData *first_item;
+	struct sauScriptListData *next_list;
 	uint8_t use_type;
-} SAU_ScriptListData;
+} sauScriptListData;
 
 /** Info shared by all references to an object. */
-typedef struct SAU_ScriptObjInfo {
-	struct SAU_ScriptOpData *last_ref; // used for iterating references
-	struct SAU_ScriptEvData *root_event;
+typedef struct sauScriptObjInfo {
+	struct sauScriptOpData *last_ref; // used for iterating references
+	struct sauScriptEvData *root_event;
 	uint32_t id; // for conversion
-} SAU_ScriptObjInfo;
+} sauScriptObjInfo;
 
 /**
  * Node type for operator data.
  */
-typedef struct SAU_ScriptOpData {
-	struct SAU_ScriptEvData *event;
-	struct SAU_ScriptOpData *next; // next in list, scope, grouping...
-	struct SAU_ScriptObjInfo *info; // shared by all references
-	struct SAU_ScriptOpData *prev_ref; // preceding for same op(s)
+typedef struct sauScriptOpData {
+	struct sauScriptEvData *event;
+	struct sauScriptOpData *next; // next in list, scope, grouping...
+	struct sauScriptObjInfo *info; // shared by all references
+	struct sauScriptOpData *prev_ref; // preceding for same op(s)
 	uint32_t op_flags;
 	/* operator parameters */
 	uint32_t params;
-	SAU_Time time;
-	SAU_Ramp *pan;
-	SAU_Ramp *amp, *amp2;
-	SAU_Ramp *freq, *freq2;
+	sauTime time;
+	sauRamp *pan;
+	sauRamp *amp, *amp2;
+	sauRamp *freq, *freq2;
 	uint32_t phase;
 	uint8_t wave;
 	/* node adjacents in operator linkage graph */
-	SAU_ScriptListData *mods;
-} SAU_ScriptOpData;
+	sauScriptListData *mods;
+} sauScriptOpData;
 
 /**
  * Script data event flags.
@@ -72,12 +72,12 @@ enum {
 	SAU_SDEV_LOCK_DUR_SCOPE   = 1<<5, // nested data can't lengthen dur
 };
 
-struct SAU_ScriptEvBranch;
+struct sauScriptEvBranch;
 
-typedef struct SAU_ScriptDurGroup {
-	struct SAU_ScriptEvData *first;
-	struct SAU_ScriptDurGroup *next_group;
-} SAU_ScriptDurGroup;
+typedef struct sauScriptDurGroup {
+	struct sauScriptEvData *first;
+	struct sauScriptDurGroup *next_group;
+} sauScriptDurGroup;
 
 /**
  * Node type for event data. Events are placed in time per script contents,
@@ -89,17 +89,17 @@ typedef struct SAU_ScriptDurGroup {
  * (E.g. a tree of carriers and modulators in one event, and then an update
  * node for a modulator in the next event. An update could add a sub-tree.)
  */
-typedef struct SAU_ScriptEvData {
-	struct SAU_ScriptEvData *next;
-	struct SAU_ScriptEvBranch *forks;
-	SAU_ScriptListData objs;
+typedef struct sauScriptEvData {
+	struct sauScriptEvData *next;
+	struct sauScriptEvBranch *forks;
+	sauScriptListData objs;
 	uint32_t ev_flags;
 	uint32_t wait_ms;
 	uint32_t dur_ms;
 	/* for conversion */
 	uint32_t vo_id;
-	struct SAU_ScriptEvData *root_ev; // if not the root event
-} SAU_ScriptEvData;
+	struct sauScriptEvData *root_ev; // if not the root event
+} sauScriptEvData;
 
 /**
  * Script data option flags.
@@ -116,18 +116,18 @@ enum {
 };
 
 /** Specifies a script to parse (and possibly process further). */
-typedef struct SAU_ScriptArg {
+typedef struct sauScriptArg {
 	const char *str;
 	bool is_path : 1;
 	bool no_time : 1;
-} SAU_ScriptArg;
+} sauScriptArg;
 
 /**
  * Options set for a script, affecting parsing.
  *
  * The final state is included in the parse result.
  */
-typedef struct SAU_ScriptOptions {
+typedef struct sauScriptOptions {
 	uint32_t set;  // flags (SAU_SOPT_*) set upon change by script
 	float ampmult; // amplitude multiplier for non-modulator operators
 	float A4_freq; // A4 tuning for frequency as note
@@ -136,20 +136,20 @@ typedef struct SAU_ScriptOptions {
 	float def_freq,
 	      def_relfreq,
 	      def_chanmix;
-} SAU_ScriptOptions;
+} sauScriptOptions;
 
 /**
  * Type returned after processing a file. The data is divided into
  * two mempools, one specific to the parse and one shared with any
- * later program data (SAU_Program), if built from the same parse.
+ * later program data (sauProgram), if built from the same parse.
  */
-typedef struct SAU_Script {
-	SAU_ScriptEvData *events;
-	SAU_ScriptOptions sopt;
+typedef struct sauScript {
+	sauScriptEvData *events;
+	sauScriptOptions sopt;
 	const char *name; // currently simply set to the filename
-	struct SAU_Mempool *mp, *prg_mp;
-	struct SAU_Symtab *st;
-} SAU_Script;
+	struct sauMempool *mp, *prg_mp;
+	struct sauSymtab *st;
+} sauScript;
 
-SAU_Script *SAU_read_Script(const SAU_ScriptArg *restrict arg) sauMalloclike;
-void SAU_discard_Script(SAU_Script *restrict o);
+sauScript *sau_read_Script(const sauScriptArg *restrict arg) sauMalloclike;
+void sau_discard_Script(sauScript *restrict o);
