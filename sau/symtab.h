@@ -1,13 +1,13 @@
 /* SAU library: Symbol table module.
- * Copyright (c) 2011-2012, 2014, 2017-2022 Joel K. Pettersson
- * <joelkpettersson@gmail.com>.
+ * Copyright (c) 2011-2012, 2014, 2017-2023 Joel K. Pettersson
+ * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
  * terms of the GNU Lesser General Public License, either version 3 or (at
  * your option) any later version, WITHOUT ANY WARRANTY, not even of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
- * View the file COPYING for details, or if missing, see
+ * View the files COPYING.LESSER and COPYING for details, or if missing, see
  * <https://www.gnu.org/licenses/>.
  */
 
@@ -17,12 +17,12 @@
 /**
  * Node stored for each unique string associated with the symbol table.
  */
-typedef struct SAU_Symstr {
-	struct SAU_Symstr *prev;
-	struct SAU_Symitem *item; // the last item with this string
+typedef struct sauSymstr {
+	struct sauSymstr *prev;
+	struct sauSymitem *item; // the last item with this string
 	uint32_t key_len;
 	char key[];
-} SAU_Symstr;
+} sauSymstr;
 
 /** Data type used in a symbol item. */
 enum {
@@ -35,31 +35,31 @@ enum {
 /**
  * Item with type, string, and data.
  */
-typedef struct SAU_Symitem {
+typedef struct sauSymitem {
 	uint32_t sym_type;
 	uint32_t data_use;
-	struct SAU_Symitem *prev; // the previous item with this string
-	SAU_Symstr *sstr;
+	struct sauSymitem *prev; // the previous item with this string
+	sauSymstr *sstr;
 	union {
 		uint32_t id;
 		double num;
 		void *obj;
 	} data;
-} SAU_Symitem;
+} sauSymitem;
 
-struct SAU_Symtab;
-typedef struct SAU_Symtab SAU_Symtab;
+struct sauSymtab;
+typedef struct sauSymtab sauSymtab;
 
-SAU_Symtab *SAU_create_Symtab(SAU_Mempool *restrict mempool) sauMalloclike;
+sauSymtab *sau_create_Symtab(sauMempool *restrict mempool) sauMalloclike;
 
-SAU_Symstr *SAU_Symtab_get_symstr(SAU_Symtab *restrict o,
+sauSymstr *sauSymtab_get_symstr(sauSymtab *restrict o,
 		const void *restrict str, size_t len);
 
-SAU_Symitem *SAU_Symtab_add_item(SAU_Symtab *restrict o,
-		SAU_Symstr *restrict symstr, uint32_t type_id);
-SAU_Symitem *SAU_Symtab_find_item(SAU_Symtab *restrict o,
-		SAU_Symstr *restrict symstr, uint32_t type_id);
+sauSymitem *sauSymtab_add_item(sauSymtab *restrict o,
+		sauSymstr *restrict symstr, uint32_t type_id);
+sauSymitem *sauSymtab_find_item(sauSymtab *restrict o,
+		sauSymstr *restrict symstr, uint32_t type_id);
 
-bool SAU_Symtab_add_stra(SAU_Symtab *restrict o,
+bool sauSymtab_add_stra(sauSymtab *restrict o,
 		const char *const*restrict stra, size_t n,
 		uint32_t type_id);

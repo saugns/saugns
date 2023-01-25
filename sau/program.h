@@ -1,13 +1,13 @@
 /* SAU library: Audio program data and functions.
- * Copyright (c) 2011-2013, 2017-2022 Joel K. Pettersson
- * <joelkpettersson@gmail.com>.
+ * Copyright (c) 2011-2013, 2017-2023 Joel K. Pettersson
+ * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
  * terms of the GNU Lesser General Public License, either version 3 or (at
  * your option) any later version, WITHOUT ANY WARRANTY, not even of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
- * View the file COPYING for details, or if missing, see
+ * View the files COPYING.LESSER and COPYING for details, or if missing, see
  * <https://www.gnu.org/licenses/>.
  */
 
@@ -33,10 +33,10 @@ enum {
  *
  * Holds data for a generic time parameter.
  */
-typedef struct SAU_Time {
+typedef struct sauTime {
 	uint32_t v_ms;
 	uint8_t flags;
-} SAU_Time;
+} sauTime;
 
 /**
  * Ramp use IDs.
@@ -71,10 +71,10 @@ enum {
 #define SAU_POP_NO_ID  UINT32_MAX       /* operator ID missing */
 #define SAU_POP_MAX_ID (UINT32_MAX - 1) /* error if exceeded */
 
-typedef struct SAU_ProgramIDArr {
+typedef struct sauProgramIDArr {
 	uint32_t count;
 	uint32_t ids[];
-} SAU_ProgramIDArr;
+} sauProgramIDArr;
 
 /**
  * Operator use types.
@@ -90,38 +90,38 @@ enum {
 	SAU_POP_USES,
 };
 
-typedef struct SAU_ProgramOpRef {
+typedef struct sauProgramOpRef {
 	uint32_t id;
 	uint8_t use;
 	uint8_t level; /* > 0 if used as a modulator */
-} SAU_ProgramOpRef;
+} sauProgramOpRef;
 
-typedef struct SAU_ProgramVoData {
-	const SAU_ProgramOpRef *op_list;
+typedef struct sauProgramVoData {
+	const sauProgramOpRef *op_list;
 	uint32_t op_count;
-} SAU_ProgramVoData;
+} sauProgramVoData;
 
-typedef struct SAU_ProgramOpData {
+typedef struct sauProgramOpData {
 	uint32_t id;
 	uint32_t params;
-	SAU_Time time;
-	SAU_Ramp *pan;
-	SAU_Ramp *amp, *amp2;
-	SAU_Ramp *freq, *freq2;
+	sauTime time;
+	sauRamp *pan;
+	sauRamp *amp, *amp2;
+	sauRamp *freq, *freq2;
 	uint32_t phase;
 	uint8_t wave;
-	const SAU_ProgramIDArr *amods, *ramods;
-	const SAU_ProgramIDArr *fmods, *rfmods;
-	const SAU_ProgramIDArr *pmods, *fpmods;
-} SAU_ProgramOpData;
+	const sauProgramIDArr *amods, *ramods;
+	const sauProgramIDArr *fmods, *rfmods;
+	const sauProgramIDArr *pmods, *fpmods;
+} sauProgramOpData;
 
-typedef struct SAU_ProgramEvent {
+typedef struct sauProgramEvent {
 	uint32_t wait_ms;
 	uint16_t vo_id;
 	uint32_t op_data_count;
-	const SAU_ProgramVoData *vo_data;
-	const SAU_ProgramOpData *op_data;
-} SAU_ProgramEvent;
+	const sauProgramVoData *vo_data;
+	const sauProgramOpData *op_data;
+} sauProgramEvent;
 
 /**
  * Program flags affecting interpretation.
@@ -133,8 +133,8 @@ enum {
 /**
  * Main program type. Contains everything needed for interpretation.
  */
-typedef struct SAU_Program {
-	const SAU_ProgramEvent *events;
+typedef struct sauProgram {
+	const sauProgramEvent *events;
 	size_t ev_count;
 	uint16_t mode;
 	uint16_t vo_count;
@@ -142,13 +142,13 @@ typedef struct SAU_Program {
 	uint8_t op_nest_depth;
 	uint32_t duration_ms;
 	const char *name;
-	struct SAU_Mempool *mp; // holds memory for the specific program
-	struct SAU_Script *parse; // parser output used to build program
-} SAU_Program;
+	struct sauMempool *mp; // holds memory for the specific program
+	struct sauScript *parse; // parser output used to build program
+} sauProgram;
 
-struct SAU_Script;
-SAU_Program* SAU_build_Program(struct SAU_Script *restrict parse,
+struct sauScript;
+sauProgram* sau_build_Program(struct sauScript *restrict parse,
 		bool keep_parse) sauMalloclike;
-void SAU_discard_Program(SAU_Program *restrict o);
+void sau_discard_Program(sauProgram *restrict o);
 
-void SAU_Program_print_info(const SAU_Program *restrict o);
+void sauProgram_print_info(const sauProgram *restrict o);

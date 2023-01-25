@@ -1,6 +1,6 @@
 /* SAU library: Value ramp module.
- * Copyright (c) 2011-2013, 2017-2022 Joel K. Pettersson
- * <joelkpettersson@gmail.com>.
+ * Copyright (c) 2011-2013, 2017-2023 Joel K. Pettersson
+ * <joelkp@tuta.io>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -31,10 +31,10 @@
 #define SAU_RAMP__X_ID(NAME) SAU_RAMP_N_##NAME,
 #define SAU_RAMP__X_NAME(NAME) #NAME,
 #define SAU_RAMP__X_PROTOTYPE(NAME) \
-void SAU_Ramp_fill_##NAME(float *restrict buf, uint32_t len, \
+void sauRamp_fill_##NAME(float *restrict buf, uint32_t len, \
 		float v0, float vt, uint32_t pos, uint32_t time, \
 		const float *restrict mulbuf);
-#define SAU_RAMP__X_ADDRESS(NAME) SAU_Ramp_fill_##NAME,
+#define SAU_RAMP__X_ADDRESS(NAME) sauRamp_fill_##NAME,
 
 /**
  * Ramp fill types.
@@ -47,14 +47,14 @@ enum {
 SAU_RAMP__ITEMS(SAU_RAMP__X_PROTOTYPE)
 
 /** Names of ramp fill types, with an extra NULL pointer at the end. */
-extern const char *const SAU_Ramp_names[SAU_RAMP_NAMED + 1];
+extern const char *const sauRamp_names[SAU_RAMP_NAMED + 1];
 
-typedef void (*SAU_Ramp_fill_f)(float *restrict buf, uint32_t len,
+typedef void (*sauRamp_fill_f)(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf);
 
 /** Fill functions for ramp fill types. */
-extern const SAU_Ramp_fill_f SAU_Ramp_fill_funcs[SAU_RAMP_NAMED];
+extern const sauRamp_fill_f sauRamp_fill_funcs[SAU_RAMP_NAMED];
 
 /**
  * Ramp parameter flags.
@@ -75,13 +75,13 @@ enum {
  * Holds data for parameters with support for gradual change,
  * both during script processing and audio rendering.
  */
-typedef struct SAU_Ramp {
+typedef struct sauRamp {
 	float v0, vt;
 	uint32_t pos, end;
 	uint32_t time_ms;
 	uint8_t fill_type;
 	uint8_t flags;
-} SAU_Ramp;
+} sauRamp;
 
 /**
  * Get the main flags showing whether state and/or goal are enabled.
@@ -89,21 +89,21 @@ typedef struct SAU_Ramp {
  *
  * \return flag values
  */
-#define SAU_Ramp_ENABLED(o) \
+#define sauRamp_ENABLED(o) \
 	((o)->flags & (SAU_RAMPP_STATE | SAU_RAMPP_GOAL))
 
 /** Needed before get, run, or skip when a ramp is not copy-initialized. */
-static inline void SAU_Ramp_setup(SAU_Ramp *restrict o, uint32_t srate) {
-	o->end = SAU_ms_in_samples(o->time_ms, srate, NULL);
+static inline void sauRamp_setup(sauRamp *restrict o, uint32_t srate) {
+	o->end = sau_ms_in_samples(o->time_ms, srate, NULL);
 }
-void SAU_Ramp_copy(SAU_Ramp *restrict o,
-		const SAU_Ramp *restrict src,
+void sauRamp_copy(sauRamp *restrict o,
+		const sauRamp *restrict src,
 		uint32_t srate);
 
-uint32_t SAU_Ramp_get(SAU_Ramp *restrict o,
+uint32_t sauRamp_get(sauRamp *restrict o,
 		float *restrict buf, uint32_t buf_len,
 		const float *restrict mulbuf);
-bool SAU_Ramp_run(SAU_Ramp *restrict o,
+bool sauRamp_run(sauRamp *restrict o,
 		float *restrict buf, uint32_t buf_len,
 		const float *restrict mulbuf);
-bool SAU_Ramp_skip(SAU_Ramp *restrict o, uint32_t skip_len);
+bool sauRamp_skip(sauRamp *restrict o, uint32_t skip_len);
