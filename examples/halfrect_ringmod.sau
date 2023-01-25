@@ -8,6 +8,6 @@
 
 // Nest inside PM
 Osin p[
-	Ohrs r0[g100/1 rexp] a0[Osin r1/2] t2; r[g0];
-	r0[g1/2 rlog] t1; r[g0]
+	Ohrs r0[g100/1 lexp] a0[Osin r1/2] t2; r[g0];
+	r0[g1/2 llog] t1; r[g0]
 ]

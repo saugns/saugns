@@ -53,9 +53,9 @@ typedef struct sauScriptOpData {
 	/* operator parameters */
 	uint32_t params;
 	sauTime time;
-	sauRamp *pan;
-	sauRamp *amp, *amp2;
-	sauRamp *freq, *freq2;
+	sauLine *pan;
+	sauLine *amp, *amp2;
+	sauLine *freq, *freq2;
 	uint32_t phase;
 	uint8_t wave;
 	/* node adjacents in operator linkage graph */
