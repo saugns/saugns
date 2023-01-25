@@ -1,6 +1,6 @@
 /* SAU library: Text file buffer module.
- * Copyright (c) 2014, 2017-2022 Joel K. Pettersson
- * <joelkpettersson@gmail.com>.
+ * Copyright (c) 2014, 2017-2023 Joel K. Pettersson
+ * <joelkp@tuta.io>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -22,24 +22,24 @@
 #define SAU_FILE_ANUM   2
 #define SAU_FILE_BUFSIZ (SAU_FILE_ALEN * SAU_FILE_ANUM)
 
-struct SAU_File;
-typedef struct SAU_File SAU_File;
+struct sauFile;
+typedef struct sauFile sauFile;
 
 /**
  * Action callback type. Must update call position, may change position,
  * and may e.g. handle file reading or writing to/from the buffer in
  * addition. Should return the number of bytes successfully handled.
  */
-typedef size_t (*SAU_FileAction_f)(SAU_File *restrict o);
+typedef size_t (*sauFileAction_f)(sauFile *restrict o);
 
-size_t SAU_File_action_wrap(SAU_File *restrict o); // default & EOF'd callback
+size_t sauFile_action_wrap(sauFile *restrict o); // default & EOF'd callback
 
 /**
  * Flip to the beginning of the next buffer area.
  *
  * \return new position
  */
-#define SAU_File_ANEXT(o) \
+#define sauFile_ANEXT(o) \
 	((o)->pos = ((o)->pos + SAU_FILE_ALEN) \
 		& ((SAU_FILE_BUFSIZ - 1) & ~(SAU_FILE_ALEN - 1)))
 
@@ -49,7 +49,7 @@ size_t SAU_File_action_wrap(SAU_File *restrict o); // default & EOF'd callback
  *
  * \return new position
  */
-#define SAU_File_AINC(o) \
+#define sauFile_AINC(o) \
 	((o)->pos = ((o)->pos + SAU_FILE_ALEN) \
 		& (SAU_FILE_BUFSIZ - 1))
 
@@ -58,7 +58,7 @@ size_t SAU_File_action_wrap(SAU_File *restrict o); // default & EOF'd callback
  *
  * \return position
  */
-#define SAU_File_APOS(o) \
+#define sauFile_APOS(o) \
 	((o)->pos & (SAU_FILE_ALEN - 1))
 
 /**
@@ -67,7 +67,7 @@ size_t SAU_File_action_wrap(SAU_File *restrict o); // default & EOF'd callback
  *
  * \return length
  */
-#define SAU_File_AREM(o) \
+#define sauFile_AREM(o) \
 	((SAU_FILE_ALEN - 1) - ((o)->pos & (SAU_FILE_ALEN - 1)))
 
 /**
@@ -76,14 +76,14 @@ size_t SAU_File_action_wrap(SAU_File *restrict o); // default & EOF'd callback
  *
  * \return length
  */
-#define SAU_File_BREM(o) \
+#define sauFile_BREM(o) \
 	((SAU_FILE_BUFSIZ - 1) - ((o)->pos & (SAU_FILE_BUFSIZ - 1)))
 
 /**
  * True if at call position, prior to calling callback.
  * (The callback is expected to change the call position.)
  */
-#define SAU_File_NEED_CALL(o) \
+#define sauFile_NEED_CALL(o) \
 	((o)->pos == (o)->call_pos)
 
 /**
@@ -95,7 +95,7 @@ size_t SAU_File_action_wrap(SAU_File *restrict o); // default & EOF'd callback
  *
  * \return length
  */
-#define SAU_File_CREM(o) \
+#define sauFile_CREM(o) \
 	(((o)->call_pos - (o)->pos) & (SAU_FILE_BUFSIZ - 1))
 
 /**
@@ -106,7 +106,7 @@ size_t SAU_File_action_wrap(SAU_File *restrict o); // default & EOF'd callback
  *
  * \return new position
  */
-#define SAU_File_INCP(o) (++(o)->pos)
+#define sauFile_INCP(o) (++(o)->pos)
 
 /**
  * Decrement position without limiting it to the buffer boundary.
@@ -116,14 +116,14 @@ size_t SAU_File_action_wrap(SAU_File *restrict o); // default & EOF'd callback
  *
  * \return new position
  */
-#define SAU_File_DECP(o) (--(o)->pos)
+#define sauFile_DECP(o) (--(o)->pos)
 
 /**
  * Wrap position to within the buffer boundary.
  *
  * \return new position
  */
-#define SAU_File_FIXP(o) ((o)->pos &= SAU_FILE_BUFSIZ - 1)
+#define sauFile_FIXP(o) ((o)->pos &= SAU_FILE_BUFSIZ - 1)
 
 /**
  * File reading status constants.
@@ -148,7 +148,7 @@ enum {
  * Should close file and set \a ref to NULL, otherwise
  * leaving state unchanged.
  */
-typedef void (*SAU_FileClose_f)(SAU_File *restrict o);
+typedef void (*sauFileClose_f)(sauFile *restrict o);
 
 /**
  * File type using circular buffer, meant for scanning and parsing.
@@ -161,43 +161,43 @@ typedef void (*SAU_FileClose_f)(SAU_File *restrict o);
  * Opening a file for reading sets a callback to fill the buffer
  * one area at a time.
  */
-struct SAU_File {
+struct sauFile {
 	size_t pos;
 	size_t call_pos;
-	SAU_FileAction_f call_f;
+	sauFileAction_f call_f;
 	uint8_t status;
 	size_t end_pos;
 	void *ref;
 	const char *path;
-	SAU_File *parent;
-	SAU_FileClose_f close_f;
+	sauFile *parent;
+	sauFileClose_f close_f;
 	uint8_t buf[SAU_FILE_BUFSIZ];
 };
 
-SAU_File *SAU_create_File(void) sauMalloclike;
-SAU_File *SAU_create_sub_File(SAU_File *restrict parent) sauMalloclike;
-SAU_File *SAU_destroy_File(SAU_File *restrict o);
+sauFile *sau_create_File(void) sauMalloclike;
+sauFile *sau_create_sub_File(sauFile *restrict parent) sauMalloclike;
+sauFile *sau_destroy_File(sauFile *restrict o);
 
-void SAU_File_init(SAU_File *restrict o,
-		SAU_FileAction_f call_f, void *restrict ref,
-		const char *path, SAU_FileClose_f close_f);
+void sauFile_init(sauFile *restrict o,
+		sauFileAction_f call_f, void *restrict ref,
+		const char *path, sauFileClose_f close_f);
 
-bool SAU_File_fopenrb(SAU_File *restrict o, const char *restrict path);
-bool SAU_File_stropenrb(SAU_File *restrict o,
+bool sauFile_fopenrb(sauFile *restrict o, const char *restrict path);
+bool sauFile_stropenrb(sauFile *restrict o,
 		const char *restrict path, const char *restrict str);
 
-void SAU_File_close(SAU_File *restrict o);
-void SAU_File_reset(SAU_File *restrict o);
+void sauFile_close(sauFile *restrict o);
+void sauFile_reset(sauFile *restrict o);
 
-void SAU_File_end(SAU_File *restrict o, size_t keep_len, bool error);
+void sauFile_end(sauFile *restrict o, size_t keep_len, bool error);
 
 /**
  * Check position and call callback if at the call position.
  *
  * Wraps position to within the buffer boundary.
  */
-#define SAU_File_UPDATE(o) ((void) \
-	((SAU_File_FIXP(o), SAU_File_NEED_CALL(o)) \
+#define sauFile_UPDATE(o) ((void) \
+	((sauFile_FIXP(o), sauFile_NEED_CALL(o)) \
 		&& (o)->call_f((o))))
 
 /**
@@ -205,8 +205,8 @@ void SAU_File_end(SAU_File *restrict o, size_t keep_len, bool error);
  *
  * \return current character
  */
-#define SAU_File_RETC(o) \
-	(SAU_File_UPDATE((o)), \
+#define sauFile_RETC(o) \
+	(sauFile_UPDATE((o)), \
 	 (o)->buf[(o)->pos])
 
 /**
@@ -215,18 +215,18 @@ void SAU_File_end(SAU_File *restrict o, size_t keep_len, bool error);
  *
  * \return current character
  */
-#define SAU_File_RETC_NC(o) \
+#define sauFile_RETC_NC(o) \
 	((o)->buf[(o)->pos])
 
 /**
  * Get current character, advancing position after retrieval.
  *
- * Equivalent to SAU_File_RETC() followed by SAU_File_INCP().
+ * Equivalent to sauFile_RETC() followed by sauFile_INCP().
  *
  * \return current character
  */
-#define SAU_File_GETC(o) \
-	(SAU_File_UPDATE((o)), \
+#define sauFile_GETC(o) \
+	(sauFile_UPDATE((o)), \
 	 (o)->buf[(o)->pos++])
 
 /**
@@ -235,7 +235,7 @@ void SAU_File_end(SAU_File *restrict o, size_t keep_len, bool error);
  *
  * \return current character
  */
-#define SAU_File_GETC_NC(o) \
+#define sauFile_GETC_NC(o) \
 	((o)->buf[(o)->pos++])
 
 /**
@@ -248,7 +248,7 @@ void SAU_File_end(SAU_File *restrict o, size_t keep_len, bool error);
  *
  * \return new position
  */
-#define SAU_File_UNGETC(o, c) \
+#define sauFile_UNGETC(o, c) \
 	(((o)->buf[(o)->pos = ((o)->pos - 1) & (SAU_FILE_BUFSIZ - 1)] = (c)), \
 	 ((o)->pos = (o)->pos) /* bogus pos assignment to silence -Wunused */)
 
@@ -257,20 +257,20 @@ void SAU_File_end(SAU_File *restrict o, size_t keep_len, bool error);
  *
  * \return true if equal
  */
-#define SAU_File_TESTC(o, c) \
-	(SAU_File_UPDATE((o)), \
+#define sauFile_TESTC(o, c) \
+	(sauFile_UPDATE((o)), \
 	 ((o)->buf[(o)->pos] == (c)))
 
 /**
  * Compare current character to value \p c, advancing position if equal.
  *
- * Equivalent to SAU_File_TESTC() followed by SAU_File_INCP()
+ * Equivalent to sauFile_TESTC() followed by sauFile_INCP()
  * when true.
  *
  * \return true if character got
  */
-#define SAU_File_TRYC(o, c) \
-	(SAU_File_TESTC((o), c) && (SAU_File_INCP((o)), true))
+#define sauFile_TRYC(o, c) \
+	(sauFile_TESTC((o), c) && (sauFile_INCP((o)), true))
 
 /**
  * Undo the getting of \p n number of characters.
@@ -282,46 +282,46 @@ void SAU_File_end(SAU_File *restrict o, size_t keep_len, bool error);
  *
  * \return new position
  */
-#define SAU_File_UNGETN(o, n) \
+#define sauFile_UNGETN(o, n) \
 	((o)->pos = ((o)->pos - (n)) & (SAU_FILE_BUFSIZ - 1))
 
 /**
  * Set current character, without advancing position.
  */
-#define SAU_File_SETC(o, c) ((void) \
-	(SAU_File_UPDATE((o)), \
+#define sauFile_SETC(o, c) ((void) \
+	(sauFile_UPDATE((o)), \
 	 ((o)->buf[(o)->pos] = (c))))
 
 /**
  * Set current character without checking buffer area boundaries nor
  * handling callback, without advancing position.
  */
-#define SAU_File_SETC_NC(o, c) ((void) \
+#define sauFile_SETC_NC(o, c) ((void) \
 	((o)->buf[(o)->pos] = (c)))
 
 /**
  * Set current character, advancing position after write.
  */
-#define SAU_File_PUTC(o, c) ((void) \
-	(SAU_File_UPDATE((o)), \
+#define sauFile_PUTC(o, c) ((void) \
+	(sauFile_UPDATE((o)), \
 	 ((o)->buf[(o)->pos++] = (c))))
 
 /**
  * Set current character without checking buffer area boundaries nor
  * handling callback, advancing position after write.
  */
-#define SAU_File_PUTC_NC(o, c) ((void) \
+#define sauFile_PUTC_NC(o, c) ((void) \
 	((o)->buf[(o)->pos++] = (c)))
 
 /**
  * Non-zero if EOF reached or a read error has occurred.
  * The flags set will indicate which.
  *
- * SAU_File_AT_EOF()/SAU_File_AFTER_EOF() can be used
+ * sauFile_AT_EOF()/sauFile_AFTER_EOF() can be used
  * to find out if the position at which the exception
  * occurred has been reached.
  */
-#define SAU_File_STATUS(o) \
+#define sauFile_STATUS(o) \
 	((o)->status)
 
 /**
@@ -330,10 +330,10 @@ void SAU_File_end(SAU_File *restrict o, size_t keep_len, bool error);
  *
  * A character can be equal to a marker value without the end
  * of the file having been reached, so check using this
- * (or SAU_File_AFTER_EOF() if reading position was incremented)
+ * (or sauFile_AFTER_EOF() if reading position was incremented)
  * before handling the situation.
  */
-#define SAU_File_AT_EOF(o) \
+#define sauFile_AT_EOF(o) \
 	((o)->end_pos == (o)->pos)
 
 /**
@@ -342,10 +342,10 @@ void SAU_File_end(SAU_File *restrict o, size_t keep_len, bool error);
  *
  * A character can be equal to a marker value without the end
  * of the file having been reached, so check using this
- * (or SAU_File_AT_EOF() if reading position wasn't incremented)
+ * (or sauFile_AT_EOF() if reading position wasn't incremented)
  * before handling the situation.
  */
-#define SAU_File_AFTER_EOF(o) \
+#define sauFile_AFTER_EOF(o) \
 	((o)->end_pos == (((o)->pos - 1) & (SAU_FILE_BUFSIZ - 1)))
 
 /**
@@ -353,15 +353,15 @@ void SAU_File_end(SAU_File *restrict o, size_t keep_len, bool error);
  *
  * \return true if newline got
  */
-static inline bool SAU_File_trynewline(SAU_File *restrict o) {
-	uint8_t c = SAU_File_RETC(o);
+static inline bool sauFile_trynewline(sauFile *restrict o) {
+	uint8_t c = sauFile_RETC(o);
 	if (c == '\n') {
-		SAU_File_INCP(o);
-		SAU_File_TRYC(o, '\r');
+		sauFile_INCP(o);
+		sauFile_TRYC(o, '\r');
 		return true;
 	}
 	if (c == '\r') {
-		SAU_File_INCP(o);
+		sauFile_INCP(o);
 		return true;
 	}
 	return false;
@@ -371,17 +371,17 @@ static inline bool SAU_File_trynewline(SAU_File *restrict o) {
  * Callback type for filtering characters.
  * Should return the character to use, or 0 to indicate no match.
  */
-typedef uint8_t (*SAU_FileFilter_f)(SAU_File *restrict o, uint8_t c);
+typedef uint8_t (*sauFileFilter_f)(sauFile *restrict o, uint8_t c);
 
-bool SAU_File_getstr(SAU_File *restrict o,
+bool sauFile_getstr(sauFile *restrict o,
 		void *restrict buf, size_t buf_len,
-		size_t *restrict lenp, SAU_FileFilter_f filter_f);
-bool SAU_File_geti(SAU_File *restrict o,
+		size_t *restrict lenp, sauFileFilter_f filter_f);
+bool sauFile_geti(sauFile *restrict o,
 		int32_t *restrict var, bool allow_sign,
 		size_t *restrict lenp);
-bool SAU_File_getd(SAU_File *restrict o,
+bool sauFile_getd(sauFile *restrict o,
 		double *restrict var, bool allow_sign,
 		size_t *restrict lenp);
-size_t SAU_File_skipstr(SAU_File *restrict o, SAU_FileFilter_f filter_f);
-size_t SAU_File_skipspace(SAU_File *restrict o);
-size_t SAU_File_skipline(SAU_File *restrict o);
+size_t sauFile_skipstr(sauFile *restrict o, sauFileFilter_f filter_f);
+size_t sauFile_skipspace(sauFile *restrict o);
+size_t sauFile_skipline(sauFile *restrict o);
