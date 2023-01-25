@@ -1,6 +1,6 @@
 /* SAU library: Memory pool module.
- * Copyright (c) 2014, 2018-2022 Joel K. Pettersson
- * <joelkpettersson@gmail.com>.
+ * Copyright (c) 2014, 2018-2023 Joel K. Pettersson
+ * <joelkp@tuta.io>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -18,15 +18,15 @@
 #pragma once
 #include "common.h"
 
-struct SAU_Mempool;
-typedef struct SAU_Mempool SAU_Mempool;
+struct sauMempool;
+typedef struct sauMempool sauMempool;
 
-SAU_Mempool *SAU_create_Mempool(size_t start_size) sauMalloclike;
-void SAU_destroy_Mempool(SAU_Mempool *restrict o);
+sauMempool *sau_create_Mempool(size_t start_size) sauMalloclike;
+void sau_destroy_Mempool(sauMempool *restrict o);
 
-void *SAU_mpalloc(SAU_Mempool *restrict o, size_t size) sauMalloclike;
-void *SAU_mpmemdup(SAU_Mempool *restrict o,
+void *sau_mpalloc(sauMempool *restrict o, size_t size) sauMalloclike;
+void *sau_mpmemdup(sauMempool *restrict o,
 		const void *restrict src, size_t size) sauMalloclike;
-typedef void (*SAU_Dtor_f)(void *o);
-bool SAU_mpregdtor(SAU_Mempool *restrict o,
-		SAU_Dtor_f func, void *restrict arg);
+typedef void (*sauDtor_f)(void *o);
+bool sau_mpregdtor(sauMempool *restrict o,
+		sauDtor_f func, void *restrict arg);

@@ -1,14 +1,18 @@
 /* saugns: Main module / Command-line interface.
- * Copyright (c) 2011-2013, 2017-2022 Joel K. Pettersson
- * <joelkpettersson@gmail.com>.
+ * Copyright (c) 2011-2013, 2017-2023 Joel K. Pettersson
+ * <joelkp@tuta.io>.
  *
- * This file and the software of which it is part is distributed under the
- * terms of the GNU Lesser General Public License, either version 3 or (at
- * your option) any later version, WITHOUT ANY WARRANTY, not even of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
  *
- * View the file COPYING for details, or if missing, see
- * <https://www.gnu.org/licenses/>.
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
 #include "saugns.h"
@@ -53,20 +57,20 @@ enum {
  */
 static void print_help(const char *restrict topic,
 		const char *restrict description) {
-	const char *const *contents = SAU_find_help(topic);
+	const char *const *contents = sau_find_help(topic);
 	if (!contents || /* silence warning */ !topic) {
-		topic = SAU_Help_names[SAU_HELP_N_help];
-		contents = SAU_Help_names;
+		topic = sauHelp_names[SAU_HELP_N_help];
+		contents = sauHelp_names;
 	}
 	fprintf(stderr, "\nList of '%s' names", topic);
 	if (description != NULL)
 		fprintf(stderr, " (%s)", description);
 	fputs(":\n", stderr);
-	SAU_print_names(contents, "\t", stderr);
+	sau_print_names(contents, "\t", stderr);
 }
 
-sauArrType(SAU_ScriptArgArr, SAU_ScriptArg, )
-sauArrType(SAU_ProgramArr, SAU_Program*, )
+sauArrType(sauScriptArgArr, sauScriptArg, )
+sauArrType(sauProgramArr, sauProgram*, )
 
 /*
  * Print command line usage instructions.
@@ -246,7 +250,7 @@ static int getopt(int argc, char *const*restrict argv,
  */
 static bool parse_args(int argc, char **restrict argv,
 		uint32_t *restrict flags,
-		SAU_ScriptArgArr *restrict script_args,
+		sauScriptArgArr *restrict script_args,
 		const char **restrict wav_path,
 		uint32_t *restrict srate) {
 	struct Opt opt = (struct Opt){0};
@@ -274,7 +278,7 @@ REPARSE:
 					goto USAGE;
 				*flags |= OPT_MODE_FULL |
 					OPT_AUDIO_STDOUT;
-				SAU_stdout_busy = 1; /* required for audio */
+				sau_stdout_busy = 1; /* required for audio */
 			} else {
 				goto USAGE;
 			}
@@ -324,7 +328,7 @@ REPARSE:
 				if (*flags & OPT_AUDIO_STDOUT)
 					goto USAGE;
 				*flags |= OPT_AUFILE_STDOUT;
-				SAU_stdout_busy = 1; /* required for AU file */
+				sau_stdout_busy = 1; /* required for AU file */
 			}
 			*flags |= OPT_MODE_FULL;
 			*wav_path = opt.arg;
@@ -355,14 +359,14 @@ REPARSE:
 		}
 		const char *str = argv[opt.ind];
 		if (!dashdash && c != -1 && str[0] == '-') goto REPARSE;
-		SAU_ScriptArg *arg = SAU_ScriptArgArr_add(script_args, NULL);
+		sauScriptArg *arg = sauScriptArgArr_add(script_args, NULL);
 		if (!arg) goto ABORT;
 		arg->str = str;
 		++opt.ind;
 		c = 0; /* only goto REPARSE after advancing, to prevent hang */
 	}
 	for (size_t i = 0; i < script_args->count; ++i) {
-		SAU_ScriptArg *arg = &script_args->a[i];
+		sauScriptArg *arg = &script_args->a[i];
 		arg->is_path = !(*flags & OPT_EVAL_STRING);
 		arg->no_time = *flags & OPT_DETERMINISTIC;
 	}
@@ -370,7 +374,7 @@ REPARSE:
 USAGE:
 	print_usage(h_arg, h_type);
 ABORT:
-	SAU_ScriptArgArr_clear(script_args);
+	sauScriptArgArr_clear(script_args);
 	return false;
 }
 
@@ -380,15 +384,15 @@ ABORT:
  *
  * \return number of items successfully processed
  */
-static size_t read_scripts(const SAU_ScriptArgArr *restrict script_args,
-		SAU_ProgramArr *restrict prg_objs) {
+static size_t read_scripts(const sauScriptArgArr *restrict script_args,
+		sauProgramArr *restrict prg_objs) {
 	size_t built = 0;
 	for (size_t i = 0; i < script_args->count; ++i) {
-		const SAU_Program *prg =
-			SAU_build_Program(SAU_read_Script(&script_args->a[i]),
+		const sauProgram *prg =
+			sau_build_Program(sau_read_Script(&script_args->a[i]),
 					false);
 		if (prg != NULL) ++built;
-		SAU_ProgramArr_add(prg_objs, &prg);
+		sauProgramArr_add(prg_objs, &prg);
 	}
 	return built;
 }
@@ -397,11 +401,11 @@ static size_t read_scripts(const SAU_ScriptArgArr *restrict script_args,
  * Discard the programs in the list, ignoring NULL entries,
  * and clearing the list.
  */
-static void discard(SAU_ProgramArr *restrict prg_objs) {
+static void discard(sauProgramArr *restrict prg_objs) {
 	for (size_t i = 0; i < prg_objs->count; ++i) {
-		SAU_discard_Program(prg_objs->a[i]);
+		sau_discard_Program(prg_objs->a[i]);
 	}
-	SAU_ProgramArr_clear(prg_objs);
+	sauProgramArr_clear(prg_objs);
 }
 
 #define BUF_TIME_MS  256
@@ -459,7 +463,7 @@ static bool init_Player(struct Player *restrict o, uint32_t srate,
 	}
 
 	o->srate = srate;
-	o->ch_len = SAU_ms_in_samples(BUF_TIME_MS, srate, NULL);
+	o->ch_len = sau_ms_in_samples(BUF_TIME_MS, srate, NULL);
 	if (o->ch_len < CH_MIN_LEN) o->ch_len = CH_MIN_LEN;
 	o->buf = calloc(o->ch_len * o->ch_count, sizeof(int16_t));
 	if (!o->buf)
@@ -469,7 +473,7 @@ static bool init_Player(struct Player *restrict o, uint32_t srate,
 		 * For alternating buffered generation with non-ad_* version.
 		 */
 		o->ad_srate = ad_srate;
-		o->ad_ch_len = SAU_ms_in_samples(BUF_TIME_MS, ad_srate, NULL);
+		o->ad_ch_len = sau_ms_in_samples(BUF_TIME_MS, ad_srate, NULL);
 		if (o->ad_ch_len < CH_MIN_LEN) o->ad_ch_len = CH_MIN_LEN;
 		o->ad_buf = calloc(o->ad_ch_len * o->ch_count, sizeof(int16_t));
 		if (!o->ad_buf)
@@ -509,42 +513,42 @@ static bool raw_audio_write(FILE *restrict f, uint32_t channels,
  * \return true unless error occurred
  */
 static bool Player_run(struct Player *restrict o,
-		const SAU_Program *restrict prg) {
+		const sauProgram *restrict prg) {
 	bool use_stereo = !(o->options & OPT_AUDIO_MONO);
 	bool use_stdout = (o->options & OPT_AUDIO_STDOUT);
 	bool split_gen = o->ad_buf;
 	bool run = !(o->options & OPT_MODE_CHECK);
 	bool error = false;
-	SAU_Generator *gen = NULL, *ad_gen = NULL;
-	if (!(gen = SAU_create_Generator(prg, o->srate)))
+	sauGenerator *gen = NULL, *ad_gen = NULL;
+	if (!(gen = sau_create_Generator(prg, o->srate)))
 		return false;
-	if (split_gen && !(ad_gen = SAU_create_Generator(prg, o->ad_srate))) {
+	if (split_gen && !(ad_gen = sau_create_Generator(prg, o->ad_srate))) {
 		error = true;
 		goto ERROR;
 	}
 	while (run) {
 		int16_t *buf = o->buf, *ad_buf = NULL;
 		size_t len, ad_len;
-		run = SAU_Generator_run(gen, buf, o->ch_len, use_stereo, &len);
+		run = sauGenerator_run(gen, buf, o->ch_len, use_stereo, &len);
 		if (split_gen) {
 			ad_buf = o->ad_buf;
-			run |= SAU_Generator_run(ad_gen, ad_buf, o->ad_ch_len,
+			run |= sauGenerator_run(ad_gen, ad_buf, o->ad_ch_len,
 					use_stereo, &ad_len);
 		} else {
 			ad_buf = o->buf;
 			ad_len = len;
 		}
 		if (o->ad && !SGS_AudioDev_write(o->ad, ad_buf, ad_len)) {
-			SAU_error(NULL, "system audio write failed");
+			sau_error(NULL, "system audio write failed");
 			error = true;
 		}
 		if (use_stdout && !raw_audio_write(stdout,
 					o->ch_count, buf, len)) {
-			SAU_error(NULL, "raw audio stdout write failed");
+			sau_error(NULL, "raw audio stdout write failed");
 			error = true;
 		}
 		if (o->sf && !SGS_SndFile_write(o->sf, buf, len)) {
-			SAU_error(NULL, "%s file write failed",
+			sau_error(NULL, "%s file write failed",
 					SGS_SndFile_formats[
 					(o->options & OPT_AUFILE_STDOUT) ?
 					SGS_SNDFILE_AU :
@@ -553,8 +557,8 @@ static bool Player_run(struct Player *restrict o,
 		}
 	}
 ERROR:
-	SAU_destroy_Generator(gen);
-	SAU_destroy_Generator(ad_gen);
+	sau_destroy_Generator(gen);
+	sau_destroy_Generator(ad_gen);
 	return !error;
 }
 
@@ -567,7 +571,7 @@ ERROR:
  *
  * \return true unless error occurred
  */
-static bool play(const SAU_ProgramArr *restrict prg_objs, uint32_t srate,
+static bool play(const sauProgramArr *restrict prg_objs, uint32_t srate,
 		uint32_t options, const char *restrict wav_path) {
 	if (!prg_objs->count)
 		return true;
@@ -579,15 +583,15 @@ static bool play(const SAU_ProgramArr *restrict prg_objs, uint32_t srate,
 		goto CLEANUP;
 	}
 	bool split_gen = out.ad_buf;
-	if (split_gen) SAU_warning(NULL,
+	if (split_gen) sau_warning(NULL,
 			"generating audio twice, using different sample rates");
 	for (size_t i = 0; i < prg_objs->count; ++i) {
-		const SAU_Program *prg = prg_objs->a[i];
+		const sauProgram *prg = prg_objs->a[i];
 		if (!prg) continue;
 		if ((options & OPT_PRINT_INFO) != 0)
-			SAU_Program_print_info(prg);
+			sauProgram_print_info(prg);
 		if ((options & OPT_PRINT_VERBOSE) != 0)
-			SAU_printf((options & OPT_MODE_CHECK) != 0 ?
+			sau_printf((options & OPT_MODE_CHECK) != 0 ?
 					"Checked \"%s\".\n" :
 					"Playing \"%s\".\n", prg->name);
 		if (!Player_run(&out, prg))
@@ -604,8 +608,8 @@ CLEANUP:
  * Main function.
  */
 int main(int argc, char **restrict argv) {
-	SAU_ScriptArgArr script_args = (SAU_ScriptArgArr){0};
-	SAU_ProgramArr prg_objs = (SAU_ProgramArr){0};
+	sauScriptArgArr script_args = (sauScriptArgArr){0};
+	sauProgramArr prg_objs = (sauProgramArr){0};
 	const char *wav_path = NULL;
 	uint32_t options = 0;
 	uint32_t srate = 0;
@@ -613,7 +617,7 @@ int main(int argc, char **restrict argv) {
 			&srate))
 		return 0;
 	bool error = !read_scripts(&script_args, &prg_objs);
-	SAU_ScriptArgArr_clear(&script_args);
+	sauScriptArgArr_clear(&script_args);
 	if (error)
 		return 1;
 	if (prg_objs.count > 0) {
