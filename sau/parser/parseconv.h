@@ -706,17 +706,17 @@ print_oplist(const sauProgramOpRef *restrict list,
 }
 
 static sauNoinline void
-print_ramp(const sauRamp *restrict ramp, char c) {
-	if (!ramp)
+print_line(const sauLine *restrict line, char c) {
+	if (!line)
 		return;
-	if ((ramp->flags & SAU_RAMPP_STATE) != 0) {
-		if ((ramp->flags & SAU_RAMPP_GOAL) != 0)
-			sau_printf("\t%c=%-6.2f->%-6.2f", c, ramp->v0, ramp->vt);
+	if ((line->flags & SAU_LINEP_STATE) != 0) {
+		if ((line->flags & SAU_LINEP_GOAL) != 0)
+			sau_printf("\t%c=%-6.2f->%-6.2f", c, line->v0, line->vt);
 		else
-			sau_printf("\t%c=%-6.2f\t", c, ramp->v0);
+			sau_printf("\t%c=%-6.2f\t", c, line->v0);
 	} else {
-		if ((ramp->flags & SAU_RAMPP_GOAL) != 0)
-			sau_printf("\t%c->%-6.2f\t", c, ramp->vt);
+		if ((line->flags & SAU_LINEP_GOAL) != 0)
+			sau_printf("\t%c->%-6.2f\t", c, line->vt);
 		else
 			sau_printf("\t%c", c);
 	}
@@ -729,8 +729,8 @@ print_opline(const sauProgramOpData *restrict od) {
 	} else {
 		sau_printf("\n\top %u \tt=%-6u", od->id, od->time.v_ms);
 	}
-	print_ramp(od->freq, 'f');
-	print_ramp(od->amp, 'a');
+	print_line(od->freq, 'f');
+	print_line(od->amp, 'a');
 }
 
 /**
