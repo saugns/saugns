@@ -23,7 +23,7 @@
 #define SAU_HELP__ITEMS(X) \
 	X(help, Help) \
 	X(math, Math) \
-	X(ramp, Ramp) \
+	X(line, Line) \
 	X(wave, Wave) \
 	//
 #define SAU_HELP__X_ID(NAME, ARRAY) SAU_HELP_N_##NAME,

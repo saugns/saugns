@@ -1,5 +1,5 @@
 /* SAU library: Script parser module.
- * Copyright (c) 2011-2012, 2017-2022 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2023 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -30,7 +30,7 @@
 enum {
 	SAU_SYM_VAR = 0,
 	SAU_SYM_MATH_ID,
-	SAU_SYM_RAMP_ID,
+	SAU_SYM_LINE_ID,
 	SAU_SYM_WAVE_ID,
 	SAU_SYM_TYPES
 };
@@ -38,7 +38,7 @@ enum {
 static const char *const scan_sym_labels[SAU_SYM_TYPES] = {
 	"variable",
 	"math symbol",
-	"ramp fill shape",
+	"line shape",
 	"wave type",
 };
 
@@ -66,8 +66,8 @@ static bool init_ScanLookup(struct ScanLookup *restrict o,
 	o->sopt = def_sopt;
 	if (!sauSymtab_add_stra(st, sauMath_names, SAU_MATH_NAMED,
 			SAU_SYM_MATH_ID) ||
-	    !sauSymtab_add_stra(st, sauRamp_names, SAU_RAMP_NAMED,
-			SAU_SYM_RAMP_ID) ||
+	    !sauSymtab_add_stra(st, sauLine_names, SAU_LINE_NAMED,
+			SAU_SYM_LINE_ID) ||
 	    !sauSymtab_add_stra(st, sauWave_names, SAU_WAVE_NAMED,
 			SAU_SYM_WAVE_ID))
 		return false;
@@ -510,32 +510,32 @@ static bool scan_wavetype(sauScanner *restrict o, size_t *restrict found_id) {
 	return true;
 }
 
-static bool scan_ramp_state(sauScanner *restrict o,
+static bool scan_line_state(sauScanner *restrict o,
 		sauScanNumConst_f scan_numconst,
-		sauRamp *restrict ramp, bool ratio) {
+		sauLine *restrict line, bool ratio) {
 	double v0;
 	if (!scan_num(o, scan_numconst, &v0))
 		return false;
-	ramp->v0 = v0;
-	ramp->flags |= SAU_RAMPP_STATE;
+	line->v0 = v0;
+	line->flags |= SAU_LINEP_STATE;
 	if (ratio)
-		ramp->flags |= SAU_RAMPP_STATE_RATIO;
+		line->flags |= SAU_LINEP_STATE_RATIO;
 	else
-		ramp->flags &= ~SAU_RAMPP_STATE_RATIO;
+		line->flags &= ~SAU_LINEP_STATE_RATIO;
 	return true;
 }
 
-static bool scan_ramp_param(sauScanner *restrict o,
+static bool scan_line_param(sauScanner *restrict o,
 		sauScanNumConst_f scan_numconst,
-		sauRamp *restrict ramp, bool ratio) {
-	bool state = scan_ramp_state(o, scan_numconst, ramp, ratio);
+		sauLine *restrict line, bool ratio) {
+	bool state = scan_line_state(o, scan_numconst, line, ratio);
 	if (!sauScanner_tryc(o, '{'))
 		return state;
 	struct ScanLookup *sl = o->data;
 	bool warn_nospace = false;
 	double vt;
-	uint32_t time_ms = (ramp->flags & SAU_RAMPP_TIME) != 0 ?
-		ramp->time_ms :
+	uint32_t time_ms = (line->flags & SAU_LINEP_TIME) != 0 ?
+		line->time_ms :
 		sl->sopt.def_time_ms;
 	for (;;) {
 		uint8_t c = sauScanner_getc(o);
@@ -547,29 +547,29 @@ static bool scan_ramp_param(sauScanner *restrict o,
 			continue;
 		case 'g':
 			if (scan_num(o, scan_numconst, &vt)) {
-				ramp->vt = vt;
-				ramp->flags |= SAU_RAMPP_GOAL;
+				line->vt = vt;
+				line->flags |= SAU_LINEP_GOAL;
 				if (ratio)
-					ramp->flags |= SAU_RAMPP_GOAL_RATIO;
+					line->flags |= SAU_LINEP_GOAL_RATIO;
 				else
-					ramp->flags &= ~SAU_RAMPP_GOAL_RATIO;
+					line->flags &= ~SAU_LINEP_GOAL_RATIO;
 			}
 			break;
-		case 'r': {
-			sauSymitem *sym = scan_sym(o, SAU_SYM_RAMP_ID,
-					sauRamp_names);
+		case 'l': {
+			sauSymitem *sym = scan_sym(o, SAU_SYM_LINE_ID,
+					sauLine_names);
 			if (sym) {
-				ramp->fill_type = sym->data.id;
-				ramp->flags |= SAU_RAMPP_FILL_TYPE;
+				line->fill_type = sym->data.id;
+				line->flags |= SAU_LINEP_FILL_TYPE;
 			}
 			break; }
 		case 't':
 			if (scan_time_val(o, &time_ms))
-				ramp->flags &= ~SAU_RAMPP_TIME_IF_NEW;
+				line->flags &= ~SAU_LINEP_TIME_IF_NEW;
 			break;
 		case 'v':
 			if (state) goto REJECT;
-			scan_ramp_state(o, scan_numconst, ramp, ratio);
+			scan_line_state(o, scan_numconst, line, ratio);
 			break;
 		case '}':
 			goto RETURN;
@@ -586,8 +586,8 @@ static bool scan_ramp_param(sauScanner *restrict o,
 		warn_nospace = true;
 	}
 RETURN:
-	ramp->time_ms = time_ms;
-	ramp->flags |= SAU_RAMPP_TIME;
+	line->time_ms = time_ms;
+	line->flags |= SAU_LINEP_TIME;
 	return true;
 }
 
@@ -702,54 +702,54 @@ typedef struct sauScriptEvBranch {
 	struct sauScriptEvBranch *prev;
 } sauScriptEvBranch;
 
-static sauRamp *create_ramp(sauParser *restrict o,
+static sauLine *create_line(sauParser *restrict o,
 		bool mult, uint32_t par_flag) {
 	struct ScanLookup *sl = &o->sl;
-	sauRamp *ramp = sau_mpalloc(o->prg_mp, sizeof(sauRamp));
+	sauLine *line = sau_mpalloc(o->prg_mp, sizeof(sauLine));
 	float v0 = 0.f;
-	if (!ramp)
+	if (!line)
 		return NULL;
-	ramp->fill_type = SAU_RAMP_N_lin; // default if goal enabled
+	line->fill_type = SAU_LINE_N_lin; // default if goal enabled
 	switch (par_flag) {
-	case SAU_PRAMP_PAN:
+	case SAU_PSWEEP_PAN:
 		v0 = sl->sopt.def_chanmix;
 		break;
-	case SAU_PRAMP_AMP:
+	case SAU_PSWEEP_AMP:
 		v0 = 1.0f; /* multiplied with sl->sopt.ampmult separately */
 		break;
-	case SAU_PRAMP_AMP2:
+	case SAU_PSWEEP_AMP2:
 		v0 = 0.f;
 		break;
-	case SAU_PRAMP_FREQ:
+	case SAU_PSWEEP_FREQ:
 		v0 = mult ?
 			sl->sopt.def_relfreq :
 			sl->sopt.def_freq;
 		break;
-	case SAU_PRAMP_FREQ2:
+	case SAU_PSWEEP_FREQ2:
 		v0 = 0.f;
 		break;
 	default:
 		return NULL;
 	}
-	ramp->v0 = v0;
-	ramp->flags |= SAU_RAMPP_STATE |
-		SAU_RAMPP_FILL_TYPE |
-		SAU_RAMPP_TIME_IF_NEW; /* don't set main SAU_RAMPP_TIME here */
+	line->v0 = v0;
+	line->flags |= SAU_LINEP_STATE |
+		SAU_LINEP_FILL_TYPE |
+		SAU_LINEP_TIME_IF_NEW; /* don't set main SAU_LINEP_TIME here */
 	if (mult) {
-		ramp->flags |= SAU_RAMPP_STATE_RATIO;
+		line->flags |= SAU_LINEP_STATE_RATIO;
 	}
-	return ramp;
+	return line;
 }
 
-static bool parse_ramp(sauParser *restrict o,
+static bool parse_line(sauParser *restrict o,
 		sauScanNumConst_f scan_numconst,
-		sauRamp **restrict rampp, bool mult,
-		uint32_t ramp_id) {
-	if (!*rampp) { /* create for updating, unparsed values kept unset */
-		*rampp = create_ramp(o, mult, ramp_id);
-		(*rampp)->flags &= ~(SAU_RAMPP_STATE | SAU_RAMPP_FILL_TYPE);
+		sauLine **restrict linep, bool mult,
+		uint32_t line_id) {
+	if (!*linep) { /* create for updating, unparsed values kept unset */
+		*linep = create_line(o, mult, line_id);
+		(*linep)->flags &= ~(SAU_LINEP_STATE | SAU_LINEP_FILL_TYPE);
 	}
-	return scan_ramp_param(o->sc, scan_numconst, *rampp, mult);
+	return scan_line_param(o->sc, scan_numconst, *linep, mult);
 }
 
 static bool parse_waittime(sauParser *restrict o) {
@@ -887,13 +887,13 @@ static void begin_operator(sauParser *restrict o,
 		 */
 		op->time = (sauTime){o->sl.sopt.def_time_ms, 0};
 		if (pl->use_type == SAU_POP_CARR) {
-			op->pan = create_ramp(o, false, SAU_PRAMP_PAN);
-			op->freq = create_ramp(o, false, SAU_PRAMP_FREQ);
+			op->pan = create_line(o, false, SAU_PSWEEP_PAN);
+			op->freq = create_line(o, false, SAU_PSWEEP_FREQ);
 		} else {
 			op->op_flags |= SAU_SDOP_NESTED;
-			op->freq = create_ramp(o, true, SAU_PRAMP_FREQ);
+			op->freq = create_line(o, true, SAU_PSWEEP_FREQ);
 		}
-		op->amp = create_ramp(o, false, SAU_PRAMP_AMP);
+		op->amp = create_line(o, false, SAU_PSWEEP_AMP);
 		op->info = sau_mpalloc(o->mp, sizeof(sauScriptObjInfo));
 		op->info->root_event = e;
 	}
@@ -1122,13 +1122,13 @@ static bool parse_ev_amp(sauParser *restrict o) {
 	sauScanner *sc = o->sc;
 	sauScriptOpData *op = pl->operator;
 	uint8_t c;
-	parse_ramp(o, NULL, &op->amp, false, SAU_PRAMP_AMP);
+	parse_line(o, NULL, &op->amp, false, SAU_PSWEEP_AMP);
 	if (sauScanner_tryc(sc, '[')) {
 		parse_level(o, SAU_POP_AMOD, SCOPE_NEST);
 	}
 	if (sauScanner_tryc(sc, '.')) switch ((c = sauScanner_getc(sc))) {
 	case 'r':
-		parse_ramp(o, NULL, &op->amp2, false, SAU_PRAMP_AMP2);
+		parse_line(o, NULL, &op->amp2, false, SAU_PSWEEP_AMP2);
 		if (sauScanner_tryc(sc, '[')) {
 			parse_level(o, SAU_POP_RAMOD, SCOPE_NEST);
 		}
@@ -1144,7 +1144,7 @@ static bool parse_ev_chanmix(sauParser *restrict o) {
 	sauScriptOpData *op = pl->operator;
 	if (op->op_flags & SAU_SDOP_NESTED)
 		return true; // reject
-	parse_ramp(o, scan_chanmix_const, &op->pan, false, SAU_PRAMP_PAN);
+	parse_line(o, scan_chanmix_const, &op->pan, false, SAU_PSWEEP_PAN);
 	return false;
 }
 
@@ -1156,14 +1156,14 @@ static bool parse_ev_freq(sauParser *restrict o, bool rel_freq) {
 		return true; // reject
 	sauScanNumConst_f numconst_f = rel_freq ? NULL : scan_note_const;
 	uint8_t c;
-	parse_ramp(o, numconst_f, &op->freq, rel_freq, SAU_PRAMP_FREQ);
+	parse_line(o, numconst_f, &op->freq, rel_freq, SAU_PSWEEP_FREQ);
 	if (sauScanner_tryc(sc, '[')) {
 		parse_level(o, SAU_POP_FMOD, SCOPE_NEST);
 	}
 	if (sauScanner_tryc(sc, '.')) switch ((c = sauScanner_getc(sc))) {
 	case 'r':
-		parse_ramp(o, numconst_f, &op->freq2,
-				rel_freq, SAU_PRAMP_FREQ2);
+		parse_line(o, numconst_f, &op->freq2,
+				rel_freq, SAU_PSWEEP_FREQ2);
 		if (sauScanner_tryc(sc, '[')) {
 			parse_level(o, SAU_POP_RFMOD, SCOPE_NEST);
 		}
@@ -1441,17 +1441,17 @@ static const char *parse_file(sauParser *restrict o,
 	return name;
 }
 
-static inline void time_ramp(sauRamp *restrict ramp,
+static inline void time_line(sauLine *restrict line,
 		uint32_t default_time_ms) {
-	if (!ramp)
+	if (!line)
 		return;
-	if (ramp->flags & SAU_RAMPP_TIME_IF_NEW) { /* update fallback value */
-		ramp->time_ms = default_time_ms;
-		ramp->flags |= SAU_RAMPP_TIME;
+	if (line->flags & SAU_LINEP_TIME_IF_NEW) { /* update fallback value */
+		line->time_ms = default_time_ms;
+		line->flags |= SAU_LINEP_TIME;
 	}
 }
 
-static void time_op_ramps(sauScriptOpData *restrict op);
+static void time_op_lines(sauScriptOpData *restrict op);
 static uint32_t time_event(sauScriptEvData *restrict e);
 static void flatten_events(sauScriptEvData *restrict e);
 
@@ -1490,7 +1490,7 @@ static void time_durgroup(sauScriptDurGroup *restrict g) {
 				op->time.flags |= SAU_TIMEP_SET;
 				if (e->dur_ms < op->time.v_ms)
 					e->dur_ms = op->time.v_ms;
-				time_op_ramps(op);
+				time_op_lines(op);
 			}
 		}
 		e = e->next;
@@ -1524,13 +1524,13 @@ static void time_durgroup(sauScriptDurGroup *restrict g) {
 	}
 }
 
-static void time_op_ramps(sauScriptOpData *restrict op) {
+static void time_op_lines(sauScriptOpData *restrict op) {
 	uint32_t dur_ms = op->time.v_ms;
-	time_ramp(op->pan, dur_ms);
-	time_ramp(op->amp, dur_ms);
-	time_ramp(op->amp2, dur_ms);
-	time_ramp(op->freq, dur_ms);
-	time_ramp(op->freq2, dur_ms);
+	time_line(op->pan, dur_ms);
+	time_line(op->amp, dur_ms);
+	time_line(op->amp2, dur_ms);
+	time_line(op->freq, dur_ms);
+	time_line(op->freq2, dur_ms);
 }
 
 static uint32_t time_operator(sauScriptOpData *restrict op) {
@@ -1557,7 +1557,7 @@ static uint32_t time_operator(sauScriptOpData *restrict op) {
 		}
 	}
 	op->time.v_ms = dur_ms;
-	time_op_ramps(op);
+	time_op_lines(op);
 	return dur_ms;
 }
 

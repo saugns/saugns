@@ -1,5 +1,5 @@
-/* SAU library: Value ramp module.
- * Copyright (c) 2011-2013, 2017-2022 Joel K. Pettersson
+/* SAU library: Value line module.
+ * Copyright (c) 2011-2013, 2017-2023 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -15,15 +15,15 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include <sau/ramp.h>
+#include <sau/line.h>
 
-const char *const sauRamp_names[SAU_RAMP_NAMED + 1] = {
-	SAU_RAMP__ITEMS(SAU_RAMP__X_NAME)
+const char *const sauLine_names[SAU_LINE_NAMED + 1] = {
+	SAU_LINE__ITEMS(SAU_LINE__X_NAME)
 	NULL
 };
 
-const sauRamp_fill_f sauRamp_fill_funcs[SAU_RAMP_NAMED] = {
-	SAU_RAMP__ITEMS(SAU_RAMP__X_ADDRESS)
+const sauLine_fill_f sauLine_fill_funcs[SAU_LINE_NAMED] = {
+	SAU_LINE__ITEMS(SAU_LINE__X_ADDRESS)
 };
 
 // the noinline use below works around i386 clang performance issue
@@ -31,7 +31,7 @@ const sauRamp_fill_f sauRamp_fill_funcs[SAU_RAMP_NAMED] = {
  * Fill \p buf with \p len values along a "sample and hold"
  * straight horizontal line, i.e. \p len copies of \p v0.
  */
-sauNoinline void sauRamp_fill_sah(float *restrict buf, uint32_t len,
+sauNoinline void sauLine_fill_sah(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf) {
 	(void)vt;
@@ -51,7 +51,7 @@ sauNoinline void sauRamp_fill_sah(float *restrict buf, uint32_t len,
  * from \p v0 (at position 0) to \p vt (at position \p time),
  * beginning at position \p pos.
  */
-void sauRamp_fill_lin(float *restrict buf, uint32_t len,
+void sauLine_fill_lin(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf) {
 	const float inv_time = 1.f / time;
@@ -94,7 +94,7 @@ static inline float sinramp(float x) {
  * Rises or falls similarly to how cos() moves from trough to
  * crest and back. Uses a ~99.993% accurate polynomial curve.
  */
-void sauRamp_fill_cos(float *restrict buf, uint32_t len,
+void sauLine_fill_cos(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf) {
 	const float inv_time = 1.f / time;
@@ -118,12 +118,12 @@ void sauRamp_fill_cos(float *restrict buf, uint32_t len,
  * and end. (Uses one of 'xpe' or 'lge', depending on whether
  * the curve rises or falls.)
  */
-void sauRamp_fill_exp(float *restrict buf, uint32_t len,
+void sauLine_fill_exp(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf) {
 	(v0 > vt ?
-		sauRamp_fill_xpe :
-		sauRamp_fill_lge)(buf, len, v0, vt, pos, time, mulbuf);
+		sauLine_fill_xpe :
+		sauLine_fill_lge)(buf, len, v0, vt, pos, time, mulbuf);
 }
 
 /**
@@ -135,12 +135,12 @@ void sauRamp_fill_exp(float *restrict buf, uint32_t len,
  * and end. (Uses one of 'xpe' or 'lge', depending on whether
  * the curve rises or falls.)
  */
-void sauRamp_fill_log(float *restrict buf, uint32_t len,
+void sauLine_fill_log(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf) {
 	(v0 < vt ?
-		sauRamp_fill_xpe :
-		sauRamp_fill_lge)(buf, len, v0, vt, pos, time, mulbuf);
+		sauLine_fill_xpe :
+		sauLine_fill_lge)(buf, len, v0, vt, pos, time, mulbuf);
 }
 
 /**
@@ -149,10 +149,10 @@ void sauRamp_fill_log(float *restrict buf, uint32_t len,
  * from \p v0 (at position 0) to \p vt (at position \p time),
  * beginning at position \p pos.
  *
- * Uses an ear-tuned polynomial, designed to sound natural,
- * and symmetric to the "opposite" 'lge' fill type.
+ * Uses an ear-tuned polynomial, designed to sound natural for
+ * frequency sweeping, and symmetric to the "opposite", 'lge' fill type.
  */
-void sauRamp_fill_xpe(float *restrict buf, uint32_t len,
+void sauLine_fill_xpe(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf) {
 	const float inv_time = 1.f / time;
@@ -177,10 +177,10 @@ void sauRamp_fill_xpe(float *restrict buf, uint32_t len,
  * from \p v0 (at position 0) to \p vt (at position \p time),
  * beginning at position \p pos.
  *
- * Uses an ear-tuned polynomial, designed to sound natural,
- * and symmetric to the "opposite" 'xpe' fill type.
+ * Uses an ear-tuned polynomial, designed to sound natural for
+ * frequency sweeping, and symmetric to the "opposite", 'xpe' fill type.
  */
-void sauRamp_fill_lge(float *restrict buf, uint32_t len,
+void sauLine_fill_lge(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf) {
 	const float inv_time = 1.f / time;
@@ -203,47 +203,47 @@ void sauRamp_fill_lge(float *restrict buf, uint32_t len,
  * Copy changes from \p src to the instance,
  * preserving non-overridden parts of state.
  */
-void sauRamp_copy(sauRamp *restrict o,
-		const sauRamp *restrict src,
+void sauLine_copy(sauLine *restrict o,
+		const sauLine *restrict src,
 		uint32_t srate) {
 	if (!src)
 		return;
 	uint8_t mask = 0;
-	if ((src->flags & SAU_RAMPP_STATE) != 0) {
+	if ((src->flags & SAU_LINEP_STATE) != 0) {
 		o->v0 = src->v0;
-		mask |= SAU_RAMPP_STATE
-			| SAU_RAMPP_STATE_RATIO;
-	} else if ((o->flags & SAU_RAMPP_GOAL) != 0) {
+		mask |= SAU_LINEP_STATE
+			| SAU_LINEP_STATE_RATIO;
+	} else if ((o->flags & SAU_LINEP_GOAL) != 0) {
 		/*
 		 * If old goal not reached, pick value at its current position.
 		 */
-		if ((src->flags & SAU_RAMPP_GOAL) != 0) {
+		if ((src->flags & SAU_LINEP_GOAL) != 0) {
 			float f;
-			sauRamp_get(o, &f, 1, NULL);
+			sauLine_get(o, &f, 1, NULL);
 			o->v0 = f;
 		}
 	}
-	if ((src->flags & SAU_RAMPP_GOAL) != 0) {
+	if ((src->flags & SAU_LINEP_GOAL) != 0) {
 		o->vt = src->vt;
-		if (src->flags & SAU_RAMPP_TIME_IF_NEW)
+		if (src->flags & SAU_LINEP_TIME_IF_NEW)
 			o->end -= o->pos;
 		o->pos = 0;
-		mask |= SAU_RAMPP_GOAL
-			| SAU_RAMPP_GOAL_RATIO;
+		mask |= SAU_LINEP_GOAL
+			| SAU_LINEP_GOAL_RATIO;
 	}
-	if ((src->flags & SAU_RAMPP_FILL_TYPE) != 0) {
+	if ((src->flags & SAU_LINEP_FILL_TYPE) != 0) {
 		o->fill_type = src->fill_type;
-		mask |= SAU_RAMPP_FILL_TYPE;
+		mask |= SAU_LINEP_FILL_TYPE;
 	}
-	if (!(o->flags & SAU_RAMPP_TIME) ||
-	    !(src->flags & SAU_RAMPP_TIME_IF_NEW)) {
+	if (!(o->flags & SAU_LINEP_TIME) ||
+	    !(src->flags & SAU_LINEP_TIME_IF_NEW)) {
 		/*
 		 * Time overridden.
 		 */
-		if ((src->flags & SAU_RAMPP_TIME) != 0) {
+		if ((src->flags & SAU_LINEP_TIME) != 0) {
 			o->end = sau_ms_in_samples(src->time_ms, srate, NULL);
 			o->time_ms = src->time_ms;
-			mask |= SAU_RAMPP_TIME;
+			mask |= SAU_LINEP_TIME;
 		}
 	}
 	o->flags &= ~mask;
@@ -251,11 +251,11 @@ void sauRamp_copy(sauRamp *restrict o,
 }
 
 /**
- * Fill \p buf with up to \p buf_len values for the ramp.
+ * Fill \p buf with up to \p buf_len values for the line.
  * Only fills values for an active (remaining) goal, none
  * if there's none. Will fill less than \p buf_len values
  * if the goal is reached first. Does not advance current
- * position for the ramp.
+ * position for the line.
  *
  * If state and/or goal is a ratio, \p mulbuf is
  * used for value multipliers, to get "absolute"
@@ -265,25 +265,25 @@ void sauRamp_copy(sauRamp *restrict o,
  *
  * \return number of next values got
  */
-sauNoinline uint32_t sauRamp_get(sauRamp *restrict o,
+sauNoinline uint32_t sauLine_get(sauLine *restrict o,
 		float *restrict buf, uint32_t buf_len,
 		const float *restrict mulbuf) {
-	if (!(o->flags & SAU_RAMPP_GOAL))
+	if (!(o->flags & SAU_LINEP_GOAL))
 		return 0;
 	/*
 	 * If only one of state and goal is a ratio value,
 	 * adjust state value used for state-to-goal fill.
 	 */
-	if ((o->flags & SAU_RAMPP_GOAL_RATIO) != 0) {
-		if (!(o->flags & SAU_RAMPP_STATE_RATIO)) {
+	if ((o->flags & SAU_LINEP_GOAL_RATIO) != 0) {
+		if (!(o->flags & SAU_LINEP_STATE_RATIO)) {
 			if (mulbuf != NULL) o->v0 /= mulbuf[0];
-			o->flags |= SAU_RAMPP_STATE_RATIO;
+			o->flags |= SAU_LINEP_STATE_RATIO;
 		}
 		/* allow a missing mulbuf */
 	} else {
-		if ((o->flags & SAU_RAMPP_STATE_RATIO) != 0) {
+		if ((o->flags & SAU_LINEP_STATE_RATIO) != 0) {
 			if (mulbuf != NULL) o->v0 *= mulbuf[0];
-			o->flags &= ~SAU_RAMPP_STATE_RATIO;
+			o->flags &= ~SAU_LINEP_STATE_RATIO;
 		}
 		mulbuf = NULL; /* no ratio handling past first value */
 	}
@@ -291,17 +291,17 @@ sauNoinline uint32_t sauRamp_get(sauRamp *restrict o,
 		return 0;
 	uint32_t len = o->end - o->pos;
 	if (len > buf_len) len = buf_len;
-	sauRamp_fill_funcs[o->fill_type](buf, len,
+	sauLine_fill_funcs[o->fill_type](buf, len,
 			o->v0, o->vt, o->pos, o->end, mulbuf);
 	return len;
 }
 
 /*
- * Move time position up to \p buf_len samples for the ramp towards the end.
+ * Move time position up to \p buf_len samples for the line towards the end.
  *
  * \return true unless time has expired
  */
-static bool advance_len(sauRamp *restrict o, uint32_t buf_len) {
+static bool advance_len(sauLine *restrict o, uint32_t buf_len) {
 	uint32_t len = 0;
 	if (o->pos < o->end) {
 		len = o->end - o->pos;
@@ -310,15 +310,15 @@ static bool advance_len(sauRamp *restrict o, uint32_t buf_len) {
 	}
 	if (o->pos >= o->end) {
 		o->pos = 0;
-		o->flags &= ~SAU_RAMPP_TIME;
+		o->flags &= ~SAU_LINEP_TIME;
 		return false;
 	}
 	return true;
 }
 
 /**
- * Fill \p buf with \p buf_len values for the ramp.
- * A value is \a v0 if no goal is set, or a ramping
+ * Fill \p buf with \p buf_len values for the line.
+ * A value is \a v0 if no goal is set, or a lineing
  * towards \a vt if a goal is set, unless converted
  * from a ratio.
  *
@@ -331,17 +331,17 @@ static bool advance_len(sauRamp *restrict o, uint32_t buf_len) {
  * When a goal is reached and cleared, its \a vt value becomes
  * the new \a v0 value.
  *
- * \return true if ramp goal not yet reached
+ * \return true if line goal not yet reached
  */
-bool sauRamp_run(sauRamp *restrict o,
+bool sauLine_run(sauLine *restrict o,
 		float *restrict buf, uint32_t buf_len,
 		const float *restrict mulbuf) {
 	uint32_t len = 0;
-	if (!(o->flags & SAU_RAMPP_GOAL)) {
+	if (!(o->flags & SAU_LINEP_GOAL)) {
 		advance_len(o, buf_len);
 		goto FILL;
 	}
-	len = sauRamp_get(o, buf, buf_len, mulbuf);
+	len = sauLine_get(o, buf, buf_len, mulbuf);
 	o->pos += len;
 	if (o->pos >= o->end) {
 		/*
@@ -350,13 +350,13 @@ bool sauRamp_run(sauRamp *restrict o,
 		 */
 		o->v0 = o->vt;
 		o->pos = 0;
-		o->flags&=~(SAU_RAMPP_GOAL|SAU_RAMPP_GOAL_RATIO|SAU_RAMPP_TIME);
+		o->flags&=~(SAU_LINEP_GOAL|SAU_LINEP_GOAL_RATIO|SAU_LINEP_TIME);
 	FILL:
-		if (!(o->flags & SAU_RAMPP_STATE_RATIO))
+		if (!(o->flags & SAU_LINEP_STATE_RATIO))
 			mulbuf = NULL;
 		else if (mulbuf != NULL)
 			mulbuf += len;
-		sauRamp_fill_sah(buf + len, buf_len - len,
+		sauLine_fill_sah(buf + len, buf_len - len,
 				o->v0, o->v0, 0, 0, mulbuf);
 		return false;
 	}
@@ -364,29 +364,29 @@ bool sauRamp_run(sauRamp *restrict o,
 }
 
 /**
- * Skip ahead \p skip_len values for the ramp, updating state
+ * Skip ahead \p skip_len values for the line, updating state
  * and run position without generating values.
  *
  * When a goal is reached and cleared, its \a vt value becomes
  * the new \a v0 value.
  *
- * \return true if ramp goal not yet reached
+ * \return true if line goal not yet reached
  */
-bool sauRamp_skip(sauRamp *restrict o, uint32_t skip_len) {
+bool sauLine_skip(sauLine *restrict o, uint32_t skip_len) {
 	if (!advance_len(o, skip_len)) {
-		if (!(o->flags & SAU_RAMPP_GOAL))
+		if (!(o->flags & SAU_LINEP_GOAL))
 			return false;
 		/*
 		 * Goal reached; turn into new state value.
 		 */
 		o->v0 = o->vt;
-		if ((o->flags & SAU_RAMPP_GOAL_RATIO) != 0) {
-			o->flags |= SAU_RAMPP_STATE_RATIO;
+		if ((o->flags & SAU_LINEP_GOAL_RATIO) != 0) {
+			o->flags |= SAU_LINEP_STATE_RATIO;
 		} else {
-			o->flags &= ~SAU_RAMPP_STATE_RATIO;
+			o->flags &= ~SAU_LINEP_STATE_RATIO;
 		}
-		o->flags &= ~(SAU_RAMPP_GOAL | SAU_RAMPP_GOAL_RATIO);
+		o->flags &= ~(SAU_LINEP_GOAL | SAU_LINEP_GOAL_RATIO);
 		return false;
 	}
-	return (o->flags & SAU_RAMPP_GOAL) != 0;
+	return (o->flags & SAU_LINEP_GOAL) != 0;
 }

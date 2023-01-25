@@ -93,6 +93,7 @@ time position, playing for the time duration.
 
 Usage: "O" followed by (initial) wave type (e.g. "Osin"),
 followed by zero or more parameters, each with a value.
+See "Wave types" for the available wave types.
 
 Wave types:
 	sin	Sine.
@@ -166,7 +167,7 @@ Parameters:
 		d	Definite default time can be set using "td", always.
 		i	Implicit time can be set using "ti", for modulators.
 	f	Frequency in Hz. Can be negative to flip wave shape timewise.
-			"Value ramp" values are supported; see section.
+			"Value sweep" values are supported; see section.
 			"Modulation with value range" is supported for FM
 		(frequency modulation); see section. Note that the modulator
 		lists for "f" and "r" expressions are shared and identical.
@@ -181,7 +182,7 @@ Parameters:
 		by carrier frequency is switched on or off. Specific values
 		like the main value or the ".r" second value can be set again
 		under "f" or "r" to toggle just that value.
-			"Value ramp" values are supported; see section.
+			"Value sweep" values are supported; see section.
 			"Modulation with value range" is supported for FM
 		(frequency modulation); see section. Note that the modulator
 		lists for "f" and "r" expressions are shared and identical.
@@ -196,7 +197,7 @@ Parameters:
 		can be used to set a multiplier used when adding a top-level
 		carrier. Panning will further reduce output level unless
 		fully left or right.) Can be negative to flip sign of result.
-			"Value ramp" values are supported; see section.
+			"Value sweep" values are supported; see section.
 			"Modulation with value range" is supported for AM & RM
 		(amplitude and ring modulation); see section.
 	p	Phase in percentage of the wave cycle modulo 1.0. Set to
@@ -213,10 +214,10 @@ Parameters:
 		the carrier(s). For frequency-amplified PM modulators, first
 		the amplitudes are multiplied by the carrier frequency divided
 		by 632.45... Hz (the geometric mean of 20 and 20000 Hz).
-	w	Wave type. See "Wave types" for values.
+	w	Wave type -- see "Wave types" for values.
 	c	(For non-nested oscillators only.) Channel mixing, mainly
 		(-1.0) to 1.0. See "Channel mixing values" for more.
-			"Value ramp" values are supported; see section.
+			"Value sweep" values are supported; see section.
 
 Values and expressions
 ----------------------
@@ -280,39 +281,49 @@ Numerical expressions:
 			(Note that the exact value is platform-dependent.)
 			If disabled (deterministic mode), instead gives 0.
 
-Value ramp:
-	To ramp, or sweep, a parameter which supports this towards a
+Value sweep:
+	To sweep a parameter which supports sweep subparameters towards a
 	goal value -- the ordinary value being the start for a trajectory --
-	following the ordinary value or by itself, the following value ramp
+	following the ordinary value or by itself, the following value sweep
 	subparameters can be given values within "{}" (curly brackets):
 	g	Goal (go-to) value, assigned to the parameter after time.
 		This value has no default and must be provided. If changed
 		again before the full time, the current point reached on the
 		previous trajectory will be used to change the start value.
-	r	Ramp fill shape (default 'lin', or the previous shape if any):
-			sah	Sample and hold until time (then jump to goal).
-			lin	Linear trajectory over time.
-			cos	Half cosine (S-curve) trajectory over time.
-			exp	Steep "exp(x)-1"-like increase or decrease.
-			log	Steep "log(x+1)"-like increase or decrease.
-			xpe	Exponential envelope shape (saturate or decay).
-			lge	Logarithmic envelope shape (saturate or decay).
-		(The 'exp' and 'log' shapes use ear-tuned polynomial
-		approximations with definite beginnings and ends,
-		designed to sound natural for frequency sweeping,
-		and symmetric one to the other. The 'xpe' shape increases
-		like 'log' and decreases like 'exp', much like a capacitor
-		charges and discharges, natural-sounding for an envelope;
-		and 'lge' increases like 'exp' and decreases like 'log'.
-		The 'cos' shape sounds similar to 'lin', except it has a
-		smoothly curved start and stop, and a steeper middle.)
+	l	Line fill shape (default 'lin', or the previous shape if any)
+		-- see "Line types" for values.
 	t	Time to reach goal (default is the external "t" duration,
 		or the remaining previous time, if any, for this parameter).
 		If longer than the active time for the object which has the
-		ramped parameter, the trajectory will be left unfinished.
+		swept parameter, the trajectory will be left unfinished.
 	v	Start (state) value, the ordinary parameter value.
 		It can alternatively be set here after a 'v',
 		if not set before the enclosing "{}".
+
+Line types:
+	sah
+		Sample and hold until time (then jump to goal).
+	lin
+		Linear trajectory over time.
+	cos
+		Half cosine (S-curve) trajectory over time.
+	exp
+		Steep "exp(x)-1"-like increase or decrease.
+	log
+		Steep "log(x+1)"-like increase or decrease.
+	xpe
+		Exponential envelope shape (saturate or decay).
+	lge
+		Logarithmic envelope shape (saturate or decay).
+	The 'exp' and 'log' shapes use ear-tuned polynomial
+	approximations with definite beginnings and ends,
+	designed to sound natural for frequency sweeping,
+	and symmetric one to the other. The 'xpe' shape increases
+	like 'log' and decreases like 'exp', much like a capacitor
+	charges and discharges, natural-sounding for an envelope;
+	and 'lge' increases like 'exp' and decreases like 'log'.
+	The 'cos' shape sounds similar to 'lin', except it has a
+	smoothly curved start and stop, and a steeper middle.
 
 Modulation with value range:
 	Amplitude ("a"), frequency ("f"), and relative frequency ("r")
@@ -336,7 +347,7 @@ Modulation with value range:
 		mentioned above, under ".r" a subparameter with a second
 		value can be set. This second value is the other boundary
 		for a range to which modulator amplitudes can be mapped;
-		it has no other uses, and defaults to 0.0. "Value ramp" is
+		it has no other uses, and defaults to 0.0. "Value sweep" is
 		also supported for this subparameter whenever for the main.
 			After a value or by itself, "[]" (square brackets)
 		can be used to set a list of modulators. Each modulator in
