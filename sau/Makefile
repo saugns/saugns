@@ -20,7 +20,7 @@ OBJ=\
 	parser.o \
 	parseconv.o \
 	mempool.o \
-	ramp.o \
+	line.o \
 	wave.o \
 	generator.o
 OBJ_TESTS=\
@@ -51,7 +51,7 @@ arrtype.o: arrtype.c arrtype.h common.h mempool.h
 error.o: common.h error.c
 	$(CC) -c $(CFLAGS_SIZE) error.c
 
-help.o: common.h help.c help.h math.h ramp.h wave.h
+help.o: common.h help.c help.h math.h line.h wave.h
 	$(CC) -c $(CFLAGS_SIZE) help.c
 
 math.o: common.h math.c math.h
@@ -60,8 +60,8 @@ math.o: common.h math.c math.h
 mempool.o: common.h mempool.c mempool.h
 	$(CC) -c $(CFLAGS_FAST) mempool.c
 
-ramp.o: common.h math.h ramp.c ramp.h
-	$(CC) -c $(CFLAGS_FASTF) ramp.c
+line.o: common.h math.h line.c line.h
+	$(CC) -c $(CFLAGS_FASTF) line.c
 
 file.o: common.h file.c file.h
 	$(CC) -c $(CFLAGS) file.c
@@ -69,10 +69,10 @@ file.o: common.h file.c file.h
 lexer.o: common.h math.h mempool.h file.h lexer.c lexer.h scanner.h symtab.h
 	$(CC) -c $(CFLAGS) lexer.c
 
-parseconv.o: arrtype.h common.h math.h mempool.h parseconv.c program.h ramp.h script.h wave.h
+parseconv.o: arrtype.h common.h math.h mempool.h parseconv.c program.h line.h script.h wave.h
 	$(CC) -c $(CFLAGS) parseconv.c
 
-parser.o: common.h math.h mempool.h program.h ramp.h file.h parser.c scanner.h symtab.h script.h wave.h
+parser.o: common.h math.h mempool.h program.h line.h file.h parser.c scanner.h symtab.h script.h wave.h
 	$(CC) -c $(CFLAGS_SIZE) parser.c
 
 scanner.o: common.h math.h mempool.h file.h scanner.h scanner.c symtab.h
@@ -81,7 +81,7 @@ scanner.o: common.h math.h mempool.h file.h scanner.h scanner.c symtab.h
 symtab.o: common.h mempool.h symtab.h symtab.c
 	$(CC) -c $(CFLAGS_FAST) symtab.c
 
-generator.o: common.h generator.c generator.h generator/osc.h math.h mempool.h program.h ramp.h wave.h
+generator.o: common.h generator.c generator.h generator/rasg.h generator/wosc.h math.h mempool.h program.h line.h wave.h
 	$(CC) -c $(CFLAGS_FASTF) generator.c
 
 wave.o: common.h math.h wave.c wave.h

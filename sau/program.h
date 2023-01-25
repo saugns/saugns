@@ -12,7 +12,7 @@
  */
 
 #pragma once
-#include "ramp.h"
+#include "line.h"
 #include "wave.h"
 
 /*
@@ -39,14 +39,20 @@ typedef struct sauTime {
 } sauTime;
 
 /**
- * Ramp use IDs.
+ * Swept parameter IDs.
  */
 enum {
-	SAU_PRAMP_PAN = 0,
-	SAU_PRAMP_AMP,
-	SAU_PRAMP_AMP2,
-	SAU_PRAMP_FREQ,
-	SAU_PRAMP_FREQ2,
+	SAU_PSWEEP_PAN = 0,
+	SAU_PSWEEP_AMP,
+	SAU_PSWEEP_AMP2,
+	SAU_PSWEEP_FREQ,
+	SAU_PSWEEP_FREQ2,
+};
+
+enum {
+	SAU_POPT_WAVE = 0,
+	SAU_POPT_RAS,
+	SAU_POPT_TYPES,
 };
 
 /**
@@ -55,8 +61,40 @@ enum {
 enum {
 	SAU_POPP_TIME = 1<<0,
 	SAU_POPP_PHASE = 1<<1,
-	SAU_POPP_WAVE = 1<<2,
+	SAU_POPP_WAVE = 1<<2, // WAVE only
+	SAU_POPP_RAS = 1<<2, // RAS only
 	SAU_POP_PARAMS = (1<<3) - 1,
+};
+
+/** Random segments option data. */
+typedef struct sauRasOpt {
+	uint8_t line; // line module type
+	uint8_t func;
+	uint8_t level;
+	uint8_t flags;
+} sauRasOpt;
+
+/** Random segments functions. */
+enum {
+	SAU_RAS_F_RAND = 0,
+	SAU_RAS_F_GAUSS,
+	SAU_RAS_F_BIN,
+	SAU_RAS_F_TERN,
+	SAU_RAS_F_FIXED,
+	SAU_RAS_FUNCTIONS,
+};
+
+/** Stretch digit range (0-9) across 0-30 range for Ras level setting. */
+static inline unsigned int sau_ras_level(unsigned int digit) {
+	return digit <= 6 ? digit : (digit - 4)*(digit - 4) + 2;
+}
+
+/** Random segments option flags. */
+enum {
+	SAU_RAS_O_LINE_SET = 1<<0,
+	SAU_RAS_O_FUNC_SET = 1<<1,
+	SAU_RAS_O_LEVEL_SET = 1<<2,
+	SAU_RAS_O_SQUARE = 1<<3,
 };
 
 /*
@@ -105,11 +143,14 @@ typedef struct sauProgramOpData {
 	uint32_t id;
 	uint32_t params;
 	sauTime time;
-	sauRamp *pan;
-	sauRamp *amp, *amp2;
-	sauRamp *freq, *freq2;
+	sauLine *pan;
+	sauLine *amp, *amp2;
+	sauLine *freq, *freq2;
 	uint32_t phase;
+	uint32_t seed; // TODO: divide containing node type
 	uint8_t wave;
+	sauRasOpt ras_opt; // TODO: divide containing node type
+	uint32_t type; // type info, for now
 	const sauProgramIDArr *amods, *ramods;
 	const sauProgramIDArr *fmods, *rfmods;
 	const sauProgramIDArr *pmods, *fpmods;
