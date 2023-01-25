@@ -1,0 +1,17 @@
+/*
+ * Variation #6 of the first saugns script made,
+ * changed to use "Rexp" instead of "Osin".
+ */
+Rexp ms	fA3 t1
+;	fA4 t1.5
+;	fG4 t0.5
+;	fF4 t0.5
+;	fE4 t1.5
+;;1	fA3 t1
+;	fA4 t1.5
+;	fGs4 t0.5
+;	fA4 t0.5
+;	fB4 t1
+;	fAf4 t1
+;	fA4 t1.5
+#Q
