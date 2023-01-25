@@ -1,4 +1,4 @@
-/* SAU library: Value ramp module.
+/* SAU library: Value line module.
  * Copyright (c) 2011-2013, 2017-2023 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
@@ -18,8 +18,8 @@
 #pragma once
 #include "math.h"
 
-/* Macro used to declare and define ramp fill sets of items. */
-#define SAU_RAMP__ITEMS(X) \
+/* Macro used to declare and define line type sets of items. */
+#define SAU_LINE__ITEMS(X) \
 	X(sah) \
 	X(lin) \
 	X(cos) \
@@ -28,60 +28,60 @@
 	X(xpe) \
 	X(lge) \
 	//
-#define SAU_RAMP__X_ID(NAME) SAU_RAMP_N_##NAME,
-#define SAU_RAMP__X_NAME(NAME) #NAME,
-#define SAU_RAMP__X_PROTOTYPE(NAME) \
-void sauRamp_fill_##NAME(float *restrict buf, uint32_t len, \
+#define SAU_LINE__X_ID(NAME) SAU_LINE_N_##NAME,
+#define SAU_LINE__X_NAME(NAME) #NAME,
+#define SAU_LINE__X_PROTOTYPE(NAME) \
+void sauLine_fill_##NAME(float *restrict buf, uint32_t len, \
 		float v0, float vt, uint32_t pos, uint32_t time, \
 		const float *restrict mulbuf);
-#define SAU_RAMP__X_ADDRESS(NAME) sauRamp_fill_##NAME,
+#define SAU_LINE__X_ADDRESS(NAME) sauLine_fill_##NAME,
 
 /**
- * Ramp fill types.
+ * Line type shapes.
  */
 enum {
-	SAU_RAMP__ITEMS(SAU_RAMP__X_ID)
-	SAU_RAMP_NAMED
+	SAU_LINE__ITEMS(SAU_LINE__X_ID)
+	SAU_LINE_NAMED
 };
 
-SAU_RAMP__ITEMS(SAU_RAMP__X_PROTOTYPE)
+SAU_LINE__ITEMS(SAU_LINE__X_PROTOTYPE)
 
-/** Names of ramp fill types, with an extra NULL pointer at the end. */
-extern const char *const sauRamp_names[SAU_RAMP_NAMED + 1];
+/** Names of line fill types, with an extra NULL pointer at the end. */
+extern const char *const sauLine_names[SAU_LINE_NAMED + 1];
 
-typedef void (*sauRamp_fill_f)(float *restrict buf, uint32_t len,
+typedef void (*sauLine_fill_f)(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf);
 
-/** Fill functions for ramp fill types. */
-extern const sauRamp_fill_f sauRamp_fill_funcs[SAU_RAMP_NAMED];
+/** Fill functions for line type shapes. */
+extern const sauLine_fill_f sauLine_fill_funcs[SAU_LINE_NAMED];
 
 /**
- * Ramp parameter flags.
+ * Line parameter flags.
  */
 enum {
-	SAU_RAMPP_STATE       = 1<<0, // v0 set
-	SAU_RAMPP_STATE_RATIO = 1<<1,
-	SAU_RAMPP_GOAL        = 1<<2, // vt set -- and timed fill will be done
-	SAU_RAMPP_GOAL_RATIO  = 1<<3,
-	SAU_RAMPP_FILL_TYPE   = 1<<4, // fill_type set
-	SAU_RAMPP_TIME        = 1<<5, // time_ms set -- cleared on time expiry
-	SAU_RAMPP_TIME_IF_NEW = 1<<6, // time_ms to be kept if currently set
+	SAU_LINEP_STATE       = 1<<0, // v0 set
+	SAU_LINEP_STATE_RATIO = 1<<1,
+	SAU_LINEP_GOAL        = 1<<2, // vt set -- and timed fill will be done
+	SAU_LINEP_GOAL_RATIO  = 1<<3,
+	SAU_LINEP_FILL_TYPE   = 1<<4, // fill_type set
+	SAU_LINEP_TIME        = 1<<5, // time_ms set -- cleared on time expiry
+	SAU_LINEP_TIME_IF_NEW = 1<<6, // time_ms to be kept if currently set
 };
 
 /**
- * Ramp parameter type.
+ * Line parameter type.
  *
  * Holds data for parameters with support for gradual change,
  * both during script processing and audio rendering.
  */
-typedef struct sauRamp {
+typedef struct sauLine {
 	float v0, vt;
 	uint32_t pos, end;
 	uint32_t time_ms;
 	uint8_t fill_type;
 	uint8_t flags;
-} sauRamp;
+} sauLine;
 
 /**
  * Get the main flags showing whether state and/or goal are enabled.
@@ -89,21 +89,21 @@ typedef struct sauRamp {
  *
  * \return flag values
  */
-#define sauRamp_ENABLED(o) \
-	((o)->flags & (SAU_RAMPP_STATE | SAU_RAMPP_GOAL))
+#define sauLine_ENABLED(o) \
+	((o)->flags & (SAU_LINEP_STATE | SAU_LINEP_GOAL))
 
-/** Needed before get, run, or skip when a ramp is not copy-initialized. */
-static inline void sauRamp_setup(sauRamp *restrict o, uint32_t srate) {
+/** Needed before get, run, or skip when a line is not copy-initialized. */
+static inline void sauLine_setup(sauLine *restrict o, uint32_t srate) {
 	o->end = sau_ms_in_samples(o->time_ms, srate, NULL);
 }
-void sauRamp_copy(sauRamp *restrict o,
-		const sauRamp *restrict src,
+void sauLine_copy(sauLine *restrict o,
+		const sauLine *restrict src,
 		uint32_t srate);
 
-uint32_t sauRamp_get(sauRamp *restrict o,
+uint32_t sauLine_get(sauLine *restrict o,
 		float *restrict buf, uint32_t buf_len,
 		const float *restrict mulbuf);
-bool sauRamp_run(sauRamp *restrict o,
+bool sauLine_run(sauLine *restrict o,
 		float *restrict buf, uint32_t buf_len,
 		const float *restrict mulbuf);
-bool sauRamp_skip(sauRamp *restrict o, uint32_t skip_len);
+bool sauLine_skip(sauLine *restrict o, uint32_t skip_len);
