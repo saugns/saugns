@@ -1,6 +1,6 @@
 /* SAU library: Generic array module.
  * Copyright (c) 2018-2024 Joel K. Pettersson
- * <joelkpettersson@gmail.com>.
+ * <joelkp@tuta.io>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -33,9 +33,9 @@
  *
  * \return item in array, or NULL if allocation failed
  */
-void *SAU_ArrType_add(void *restrict _o, size_t item_size) {
-	SAU_ByteArr *restrict o = _o;
-	if (!SAU_ArrType_upsize(o, o->count + 1, item_size))
+void *sauArrType_add(void *restrict _o, size_t item_size) {
+	sauByteArr *restrict o = _o;
+	if (!sauArrType_upsize(o, o->count + 1, item_size))
 		return NULL;
 	size_t offs = o->count * item_size;
 	void *mem = o->a + offs;
@@ -56,10 +56,10 @@ void *SAU_ArrType_add(void *restrict _o, size_t item_size) {
  *
  * \return item in array, or NULL if allocation failed
  */
-void *SAU_ArrType_push(void *restrict _o,
+void *sauArrType_push(void *restrict _o,
 		const void *restrict item, size_t item_size) {
-	SAU_ByteArr *restrict o = _o;
-	if (!SAU_ArrType_upsize(o, o->count + 1, item_size))
+	sauByteArr *restrict o = _o;
+	if (!sauArrType_upsize(o, o->count + 1, item_size))
 		return NULL;
 	size_t offs = o->count * item_size;
 	void *mem = o->a + offs;
@@ -79,9 +79,9 @@ void *SAU_ArrType_push(void *restrict _o,
  *
  * \return true unless allocation failed
  */
-bool SAU_ArrType_upsize(void *restrict _o,
+bool sauArrType_upsize(void *restrict _o,
 		size_t count, size_t item_size) {
-	SAU_ByteArr *restrict o = _o;
+	sauByteArr *restrict o = _o;
 	size_t asize = o->asize;
 	size_t min_asize = count * item_size;
 	if (!o->a || asize < min_asize) {
@@ -105,8 +105,8 @@ bool SAU_ArrType_upsize(void *restrict _o,
  *
  * (Generic version of the function, to be used through wrapper.)
  */
-void SAU_ArrType_clear(void *restrict _o) {
-	SAU_ByteArr *restrict o = _o;
+void sauArrType_clear(void *restrict _o) {
+	sauByteArr *restrict o = _o;
 	free(o->a);
 	o->a = NULL;
 	o->count = 0;
@@ -125,9 +125,9 @@ void SAU_ArrType_clear(void *restrict _o) {
  *
  * \return true unless allocation failed
  */
-bool SAU_ArrType_memdup(void *restrict _o,
+bool sauArrType_memdup(void *restrict _o,
 		void **restrict dst, size_t item_size) {
-	SAU_ByteArr *restrict o = _o;
+	sauByteArr *restrict o = _o;
 	if (!o->count) {
 		*dst = NULL;
 		return true;
@@ -154,16 +154,16 @@ bool SAU_ArrType_memdup(void *restrict _o,
  *
  * \return true unless allocation failed
  */
-bool SAU_ArrType_mpmemdup(void *restrict _o,
+bool sauArrType_mpmemdup(void *restrict _o,
 		void **restrict dst, size_t item_size,
-		SAU_Mempool *restrict mempool) {
-	SAU_ByteArr *restrict o = _o;
+		sauMempool *restrict mempool) {
+	sauByteArr *restrict o = _o;
 	if (!o->count) {
 		*dst = NULL;
 		return true;
 	}
 	size_t size = o->count * item_size;
-	void *a = SAU_mpmemdup(mempool, o->a, size);
+	void *a = sau_mpmemdup(mempool, o->a, size);
 	if (!a)
 		return false;
 	*dst = a;
