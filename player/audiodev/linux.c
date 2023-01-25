@@ -1,6 +1,6 @@
 /* saugns: Linux audio output support.
  * Copyright (c) 2013, 2017-2021, 2025 Joel K. Pettersson
- * <joelkpettersson@gmail.com>.
+ * <joelkp@tuta.io>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -36,7 +36,7 @@ static inline bool open_linux(SGS_AudioDev *restrict o,
 			0)) < 0) {
 		if (open_oss(o, oss_mode))
 			return true; /* fallback in use */
-		SAU_error(NULL, "could neither use ALSA nor OSS");
+		sau_error(NULL, "could neither use ALSA nor OSS");
 		goto ERROR;
 	}
 
@@ -57,7 +57,7 @@ static inline bool open_linux(SGS_AudioDev *restrict o,
 		goto ERROR;
 	snd_pcm_hw_params_free(params);
 	if (srate != o->srate) {
-		SAU_warning("ALSA", "sample rate %d unsupported, using %d",
+		sau_warning("ALSA", "sample rate %d unsupported, using %d",
 				o->srate, srate);
 		o->srate = srate;
 	}
@@ -67,10 +67,10 @@ static inline bool open_linux(SGS_AudioDev *restrict o,
 	o->type = TYPE_ALSA;
 	return true;
 ERROR:
-	SAU_error("ALSA", "%s", snd_strerror(err));
+	sau_error("ALSA", "%s", snd_strerror(err));
 	if (handle) snd_pcm_close(handle);
 	if (params) snd_pcm_hw_params_free(params);
-	SAU_error("ALSA", "configuration for device \"%s\" failed", dev_name);
+	sau_error("ALSA", "configuration for device \"%s\" failed", dev_name);
 	return false;
 }
 
@@ -102,10 +102,10 @@ static inline bool linux_write(SGS_AudioDev *restrict o,
 	snd_pcm_sframes_t written;
 	while ((written = snd_pcm_writei(o->ref.handle, buf, samples)) < 0) {
 		if (written == -EPIPE) {
-			SAU_warning("ALSA", "audio device buffer underrun");
+			sau_warning("ALSA", "audio device buffer underrun");
 			snd_pcm_prepare(o->ref.handle);
 		} else {
-			SAU_warning("ALSA", "%s", snd_strerror(written));
+			sau_warning("ALSA", "%s", snd_strerror(written));
 			break;
 		}
 	}
