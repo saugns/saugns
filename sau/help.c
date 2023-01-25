@@ -17,7 +17,7 @@
 
 #include <sau/help.h>
 #include <sau/math.h>
-#include <sau/ramp.h>
+#include <sau/line.h>
 #include <sau/wave.h>
 #include <string.h>
 
