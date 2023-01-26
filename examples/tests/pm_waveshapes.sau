@@ -1,10 +1,10 @@
 /* Soft square wave (odd harmonics) */
-Osin p[Osin r2/1 a1/4]
+Wsin p[Wsin r2/1 a1/4]
 | /1
 
 /* Soft sawtooth wave (all harmonics) */
-Osin p[Osin r1/1 a1/4]
+Wsin p[Wsin r1/1 a1/4]
 | /1
 
 /* Soft pseudo-eventooth wave (excludes every 3rd harmonic) */
-Osin p[Osin r3/1 a1/4]
+Wsin p[Wsin r3/1 a1/4]
