@@ -1475,7 +1475,7 @@ static bool parse_level(sauParser *restrict o,
 			break;
 		case 'O':
 			sauScanner_warning(sc, NULL,
-"type 'O' has been renamed 'W' ('O' is a deprecated alias)");
+"type 'O' is deprecated, use new name 'W'");
 			/* fall-through */
 		case 'W': {
 			size_t id;
