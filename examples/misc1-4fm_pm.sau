@@ -1,22 +1,22 @@
-Osin t15 f500.r501[Osin f1] p[
-	Osin f400.r800[
-		Osqr f1.r10[Osin f5000]
-		Otri f0.1.r10.0[Osin f0.2]
+Wsin t15 f500.r501[Wsin f1] p[
+	Wsin f400.r800[
+		Wsqr f1.r10[Wsin f5000]
+		Wtri f0.1.r10.0[Wsin f0.2]
 	]
 ] |
 
-Osin t15 f400.r500[Osqr f10] p[
-	Osin r1.22/2 a.5
-	Osin f244 a.5
+Wsin t15 f400.r500[Wsqr f10] p[
+	Wsin r1.22/2 a.5
+	Wsin f244 a.5
 ] |
 
-Osin t15 f600.r666[Osin f2] p[
-	Osin f400
-	Osin f400.r500[Osin f.1]
+Wsin t15 f600.r666[Wsin f2] p[
+	Wsin f400
+	Wsin f400.r500[Wsin f.1]
 ] |
 
-Osin t15 f222.r666[Osin f0.1] p[
-	Osin r2/1
-	Osin r4/3
-	Osin r3/7
+Wsin t15 f222.r666[Wsin f0.1] p[
+	Wsin r2/1
+	Wsin r4/3
+	Wsin r3/7
 ]
