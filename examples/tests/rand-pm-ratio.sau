@@ -1,6 +1,6 @@
 // Seed with time() for a different result each run, unless ran with '-d'.
 /seed(2*pi + time())
-Osin p[
-	Osin rrand(); rrand(); rrand(); rrand(); // Set randomized 'r' values.
+Wsin p[
+	Wsin rrand(); rrand(); rrand(); rrand(); // Set randomized 'r' values.
 	r0.r1[Rsah f1/2] t4 // Instead, modulate with random amplitude square.
 ]
