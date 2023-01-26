@@ -16,10 +16,10 @@ parameters with arguments. Each main keyword provides an action,
 either at run time (like a function call in other languages),
 or at parse time (like a global script setting).
 
-The most important keyword, "O" followed by a wavetype, adds a
-wave oscillator. They may be connected as carriers and modulators.
-They, and the timing of their running, make the core features of
-the scripting language.
+The keywords "O" and "R" are type names, and are used to add instances
+of oscillators and rumbly noise generators. They may be used as carriers
+and modulators; such objects, the timing of their running, and their
+parameters, make the core features of the scripting language.
 
 Keyword parameters may either be set (named, followed by writing
 their argument(s)), or left out to use the previous value or a
@@ -54,8 +54,10 @@ Each of these keywords is further described in its own section below.
 	S	Script options (parameter default value or other);
 		runs during parsing. Changes made inside a
 		nested list scope don't apply outside of it.
-	O	Wave oscillator; the "O" is followed by the (initial)
-		wave type, as in "Osin".
+	O	Wave oscillator -- "O" followed by an
+		initial "Wave types" value, e.g. "Osin".
+	R	Random segments generator -- "R" followed by an
+		initial "Line types" value, e.g. "Rlin".
 
 S: Script options
 -----------------
@@ -83,66 +85,15 @@ Parameters:
 		Default times may be longer (and occasionally shorter)
 		depending on the context. Starts at 1.0.
 
-O: Wave oscillator
-------------------
+Signal generator common parameters
+----------------------------------
 
-Wave oscillator. (The sine variety can be used as a typical
-FM synthesizer operator.) If not used as a modulator,
-the output will be added as a sound at the current
-time position, playing for the time duration.
-
-Usage: "O" followed by (initial) wave type (e.g. "Osin"),
-followed by zero or more parameters, each with a value.
-See "Wave types" for the available wave types.
-
-Wave types:
-	sin	Sine.
-			For cosine, use (1/4) phase.
-	sqr	Square.
-	tri	Triangle.
-	saw	Saw.
-			Increasing slope; use negative amplitude
-			or frequency for decreasing slope.
-	ahs	Absolute half-frequency sine (adjusted).
-			Sine-based parabola-like wave.
-			Frequency halved to restore base frequency,
-			peak amplitude centered and doubled, phase
-			shifted to begin and end at zero amplitude.
-			A softer alternative to "saw" (saw wave).
-	hrs	Half-rectified sine (adjusted).
-			Positive half kept, negative half zero'd.
-			Peak amplitude centered and doubled, phase
-			shifted to begin and end at zero amplitude.
-			A warm and full sound.
-	srs	Square root of sine.
-			Mirrored for the negative half.
-			A softer alternative to "sqr" (square wave).
-	ssr	Squared & square root of sine.
-			A little more thin and sharp, it differs from
-			"srs" a little like "srs" differs from "szh".
-
-Channel mixing values:
-	Panning, where 0.0 is centered. Named constants can be used in place
-	of numbers for the three classic channel "modes". Values outside the
-	range of L to R are allowed, amplifying one channel while giving the
-	other a negative amplitude.
-	C	0.0
-	L	(-1.0)
-	R	1.0
-
-Phase values:
-	Phase offset as a percentage of the wave cycle. Any value will be used
-	modulo 1.0. For example, (1/4) turns sine into cosine. Named constants
-	provide scaled angles which can be used in expressions, e.g. (G*n) for
-	some whole number n makes for the nth leaf-around-a-stem angle.
-	G	0.3819... (golden angle as cycle percentage)
-
-Parameters:
+The "O" and "R" types have these parameters in common:
 	t	Time duration in seconds. If no "t" setting is given, the
 		time set depends on the context.
-			For a single non-nested oscillator, 1.0 is used unless
+			For a single non-nested generator, 1.0 is used unless
 		the default value is changed with "S t".
-			When several oscillators are specified, the default
+			When several generators are specified, the default
 		time is based on the longest remaining (at the current time)
 		duration of play in use for any step at the current level,
 		in considering the surrounding sequence of steps and delays
@@ -150,10 +101,10 @@ Parameters:
 		script if none).
 			The default time lengthens further when modulators
 		with longer definite times are specified for the current step.
-			For modulator oscillators, default time is however an
+			For modulator generators, default time is however an
 		"implicit" time length (see 'i' below), meaning playing
 		whenever a carrier it is linked to does. (Implicit time is
-		only supported for nested oscillators.) When such a time
+		only supported for nested generators.) When such a time
 		length is retrieved as part of setting the default time for
 		something else, a definite default time in seconds (e.g. 1
 		second) is however used instead.
@@ -171,7 +122,7 @@ Parameters:
 			"Modulation with value range" is supported for FM
 		(frequency modulation); see section. Note that the modulator
 		lists for "f" and "r" expressions are shared and identical.
-	r	(For modulator oscillators only.) Relative frequency, a value
+	r	(For modulator generators only.) Relative frequency, a value
 		which will be multiplied by the frequency of closest carrier
 		in the chain for the modulator, to give the frequency to use.
 		For an n:m modulator:carrier frequency ratio, a value of the
@@ -204,7 +155,7 @@ Parameters:
 		reset the phase, e.g. to change the initial value from 0.0.
 		See "Phase values" for more.
 			After a value or by itself, "[]" (square brackets)
-		can be used to set a list of PM modulator oscillators specified
+		can be used to set a list of PM modulator generators specified
 		within the "[]"; the list replaces any previous set, and may
 		be empty. Also, after these or by itself, ".f[]" (".f" and
 		square brackets) can likewise set a list of
@@ -214,10 +165,124 @@ Parameters:
 		the carrier(s). For frequency-amplified PM modulators, first
 		the amplitudes are multiplied by the carrier frequency divided
 		by 632.45... Hz (the geometric mean of 20 and 20000 Hz).
-	w	Wave type -- see "Wave types" for values.
-	c	(For non-nested oscillators only.) Channel mixing, mainly
+	c	(For non-nested generators only.) Channel mixing, mainly
 		(-1.0) to 1.0. See "Channel mixing values" for more.
 			"Value sweep" values are supported; see section.
+
+O: Wave oscillator
+------------------
+
+Wave oscillator. The sine variety is a typical FM synthesizer operator.
+
+As a signal generator, if not enclosed within a "[]" list, then
+it will run and output at the current time, for its duration.
+
+Usage: "O" followed by (initial) wave type (e.g. "Osin"),
+followed by zero or more parameters, each with a value.
+See "Wave types" for the available wave types.
+
+Parameters:
+	The "O" wave oscillator has the
+	"Signal generator common parameters", and additionally:
+	w	Wave type -- see "Wave types" for values.
+
+Wave types:
+	sin
+		Sine. For cosine, use (1/4) phase.
+	sqr
+		Square.
+	tri
+		Triangle.
+	saw
+		Saw. Increasing slope; use
+		negative amplitude or frequency for decreasing slope.
+	ahs
+		Absolute half-frequency sine (adjusted).
+		Sine-based parabola-like wave.
+		Frequency halved to restore base frequency,
+		peak amplitude centered and doubled, phase
+		shifted to begin and end at zero amplitude.
+		A softer alternative to "saw" (saw wave).
+	hrs
+		Half-rectified sine (adjusted).
+		Positive half kept, negative half zero'd.
+		Peak amplitude centered and doubled, phase
+		shifted to begin and end at zero amplitude.
+		A warm and full sound.
+	srs
+		Square root of sine.
+		Mirrored for the negative half.
+		A softer alternative to "sqr" (square wave).
+	ssr
+		Squared & square root of sine.
+		A little more thin and sharp, it differs from
+		"srs" a little like "srs" differs from "szh".
+
+R: Random segments generator
+----------------------------
+
+Value noise generator, connecting random values generated at a frequency
+with line segments of a selected shape. Two random values are generated
+each "cycle", so that the base frequency matches a normal oscillator.
+
+As a signal generator, if not enclosed within a "[]" list, then
+it will run and output at the current time, for its duration.
+
+Usage: "R" followed by (initial) line type (e.g. "Rlin"),
+followed by zero or more parameters, each with a value.
+See "Line types" for the available line types. Several
+'m' modes are available, for several types of random
+distribution, as well as a naive oscillator mode.
+
+The "seed(x)" mathematical function changes
+the starting seed of new "R" instances.
+
+Parameters:
+	The "R" random segments generator has the
+	"Signal generator common parameters", and additionally:
+	l	Line type -- see "Line types" for values.
+	m	Mode for line start and goal value variation; consists of
+		a letter (random function) and a digit (0-9 shaping level);
+		one or both may be set at a time; the default level is '9'.
+		Roughly, each level above 0 doubles the effect of the mode.
+		r	Uniform random (default). Ignores the level setting.
+		g	Gaussian random, soft-saturated approximation. On
+			average ~6 dB quieter. Ignores the level setting.
+		b	Binary random. Extreme levels, more repetitive runs.
+		t	Ternary smooth random. Never repeats twice in a row;
+			cycles above or below zero, randomly flips polarity.
+		f	Fixed cycle. Plain naive oscillator at the top level;
+			below it, mixed with randomness at reduced amplitude.
+		In addition to the function and level, these flags can be set.
+		s	Square random start/goal values while preserving sign.
+			Turns uniform value variation into uniform energy
+			variation; somewhat quieter, and more tremulant.
+			Doesn't affect 'b', 't', nor 'f' with level '9'.
+
+Line types:
+	sah
+		Sample and hold until time (then jump to goal).
+	lin
+		Linear trajectory over time.
+	cos
+		Half cosine (S-curve) trajectory over time.
+	exp
+		Steep "exp(x)-1"-like increase or decrease.
+	log
+		Steep "log(x+1)"-like increase or decrease.
+	xpe
+		Exponential envelope shape (saturate or decay).
+	lge
+		Logarithmic envelope shape (saturate or decay).
+	The 'exp' and 'log' shapes use ear-tuned polynomial
+	approximations with definite beginnings and ends,
+	designed to sound natural for frequency sweeping,
+	and symmetric one to the other. The 'xpe' shape increases
+	like 'log' and decreases like 'exp', much like a capacitor
+	charges and discharges, natural-sounding for an envelope;
+	and 'lge' increases like 'exp' and decreases like 'log'.
+	The 'cos' shape sounds similar to 'lin', except it has a
+	smoothly curved start and stop, and a steeper middle.
 
 Values and expressions
 ----------------------
@@ -281,6 +346,22 @@ Numerical expressions:
 			(Note that the exact value is platform-dependent.)
 			If disabled (deterministic mode), instead gives 0.
 
+Channel mixing values:
+	Panning, where 0.0 is centered. Named constants can be used in place
+	of numbers for the three classic channel "modes". Values outside the
+	range of L to R are allowed, amplifying one channel while giving the
+	other a negative amplitude.
+	C	0.0
+	L	(-1.0)
+	R	1.0
+
+Phase values:
+	Phase offset as a percentage of the wave cycle. Any value will be used
+	modulo 1.0. For example, (1/4) turns sine into cosine. Named constants
+	provide scaled angles which can be used in expressions, e.g. (G*n) for
+	some whole number n makes for the nth leaf-around-a-stem angle.
+	G	0.3819... (golden angle as cycle percentage)
+
 Value sweep:
 	To sweep a parameter which supports sweep subparameters towards a
 	goal value -- the ordinary value being the start for a trajectory --
@@ -299,31 +380,6 @@ Value sweep:
 	v	Start (state) value, the ordinary parameter value.
 		It can alternatively be set here after a 'v',
 		if not set before the enclosing "{}".
-
-Line types:
-	sah
-		Sample and hold until time (then jump to goal).
-	lin
-		Linear trajectory over time.
-	cos
-		Half cosine (S-curve) trajectory over time.
-	exp
-		Steep "exp(x)-1"-like increase or decrease.
-	log
-		Steep "log(x+1)"-like increase or decrease.
-	xpe
-		Exponential envelope shape (saturate or decay).
-	lge
-		Logarithmic envelope shape (saturate or decay).
-	The 'exp' and 'log' shapes use ear-tuned polynomial
-	approximations with definite beginnings and ends,
-	designed to sound natural for frequency sweeping,
-	and symmetric one to the other. The 'xpe' shape increases
-	like 'log' and decreases like 'exp', much like a capacitor
-	charges and discharges, natural-sounding for an envelope;
-	and 'lge' increases like 'exp' and decreases like 'log'.
-	The 'cos' shape sounds similar to 'lin', except it has a
-	smoothly curved start and stop, and a steeper middle.
 
 Modulation with value range:
 	Amplitude ("a"), frequency ("f"), and relative frequency ("r")
