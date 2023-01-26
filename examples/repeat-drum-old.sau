@@ -1,0 +1,14 @@
+// Produces "drum-like" repeating sound
+
+//Wsin t2 f244.4 p[Wsin r(2/3)]
+//Q
+
+// Uses negative frequency for a decreasing 'saw' slope
+Wsin t10 f44.4.r(44.4*4)[
+	Wsaw f(-1/.50) p[
+		Wsin f244.4 p[Wsin r(2/3)] a0.1
+		Wsin f144.4 p[Wsin r(8/3)] a0.1
+		Wsin f44.4 p[Wsin r(9/3)] a0.1
+	]
+	Wsaw f-1
+]
