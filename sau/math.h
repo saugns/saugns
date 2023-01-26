@@ -26,7 +26,8 @@
 #define SAU_HUMMID    632.45553203367586639978 // human hearing range geom.mean
 #define SAU_GLDA        2.39996322972865332223 // golden angle 2*PI*(2.0 - phi)
 #define SAU_GLDA_1_2PI  0.38196601125010515180 // (in cycle %) 2.0 - phi
-#define SAU_FIBH32      2654435769UL           // 32-bit Fibonacci hash constant
+#define SAU_FIBH32      0x9e3779b9             // 32-bit Fibonacci hash constant
+#define SAU_FIBH64      0x9e3779b97f4a7c15     // 64-bit Fibonacci hash constant
 
 /*
  * Format conversion & general purpose functions.
@@ -220,7 +221,7 @@ static inline uint32_t sau_ranfast32_next(uint32_t *restrict pos) {
  * \return pseudo-random number for index \p n
  */
 static inline uint32_t sau_splitmix32(uint32_t n) {
-	uint32_t z = (n * 0x9e3779b9);
+	uint32_t z = (n * SAU_FIBH32);
 	z = (z ^ (z >> 16)) * 0x21f0aaad;
 	z = (z ^ (z >> 15)) * 0xf35a2d97; /* similar alt. 0x735a2d97 */
 	return z ^ (z >> 15);
@@ -233,7 +234,7 @@ static inline uint32_t sau_splitmix32(uint32_t n) {
  * \return next pseudo-random number for state \p pos
  */
 static inline uint32_t sau_splitmix32_next(uint32_t *restrict pos) {
-	uint32_t z = (*pos += 0x9e3779b9);
+	uint32_t z = (*pos += SAU_FIBH32);
 	z = (z ^ (z >> 16)) * 0x21f0aaad;
 	z = (z ^ (z >> 15)) * 0xf35a2d97; /* similar alt. 0x735a2d97 */
 	return z ^ (z >> 15);
@@ -245,7 +246,7 @@ static inline uint32_t sau_splitmix32_next(uint32_t *restrict pos) {
  * \return pseudo-random number for index \p n
  */
 static inline uint64_t sau_splitmix64(uint64_t n) {
-	uint64_t z = (n * 0x9e3779b97f4a7c15);
+	uint64_t z = (n * SAU_FIBH64);
 	z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9;
 	z = (z ^ (z >> 27)) * 0x94d049bb133111eb;
 	return z ^ (z >> 31);
@@ -257,7 +258,7 @@ static inline uint64_t sau_splitmix64(uint64_t n) {
  * \return next pseudo-random number for state \p pos
  */
 static inline uint64_t sau_splitmix64_next(uint64_t *restrict pos) {
-	uint64_t z = (*pos += 0x9e3779b97f4a7c15);
+	uint64_t z = (*pos += SAU_FIBH64);
 	z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9;
 	z = (z ^ (z >> 27)) * 0x94d049bb133111eb;
 	return z ^ (z >> 31);
