@@ -35,13 +35,13 @@ void sauLine_fill_##NAME(float *restrict buf, uint32_t len, \
 		float v0, float vt, uint32_t pos, uint32_t time, \
 		const float *restrict mulbuf); \
 void sauLine_map_##NAME(float *restrict buf, uint32_t len, \
-		float v0, float vt, const float *restrict t); \
+		const float *restrict end0, const float *restrict end1); \
 /**/
 #define SAU_LINE__X_FILL_ADDR(NAME) sauLine_fill_##NAME,
 #define SAU_LINE__X_MAP_ADDR(NAME) sauLine_map_##NAME,
 
 /**
- * Line fill types.
+ * Line type shapes.
  */
 enum {
 	SAU_LINE__ITEMS(SAU_LINE__X_ID)
@@ -50,7 +50,7 @@ enum {
 
 SAU_LINE__ITEMS(SAU_LINE__X_PROTOTYPES)
 
-/** Names of line fill types, with an extra NULL pointer at the end. */
+/** Names of line type shapes, with an extra NULL pointer at the end. */
 extern const char *const sauLine_names[SAU_LINE_NAMED + 1];
 
 typedef void (*sauLine_fill_f)(float *restrict buf, uint32_t len,
@@ -58,12 +58,12 @@ typedef void (*sauLine_fill_f)(float *restrict buf, uint32_t len,
 		const float *restrict mulbuf);
 
 typedef void (*sauLine_map_f)(float *restrict buf, uint32_t len,
-		float v0, float vt, const float *restrict t);
+		const float *restrict end0, const float *restrict end1);
 
-/** Fill functions for line types. */
+/** Fill functions for line type shapes. */
 extern const sauLine_fill_f sauLine_fill_funcs[SAU_LINE_NAMED];
 
-/** Map functions for line types. */
+/** Map functions for line type shapes. */
 extern const sauLine_map_f sauLine_map_funcs[SAU_LINE_NAMED];
 
 /**
