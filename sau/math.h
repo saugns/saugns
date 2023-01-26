@@ -263,20 +263,6 @@ static inline uint64_t sau_splitmix64_next(uint64_t *restrict pos) {
 	return z ^ (z >> 31);
 }
 
-/** Initial seed for sau_xorshift32(). Other non-zero values can be used. */
-#define SAU_XORSHIFT32_SEED 2463534242UL
-
-/**
- * Get next Marsaglia xorshift32 state from non-zero \p seed.
- */
-static inline uint32_t sau_xorshift32(uint32_t seed) {
-	uint32_t x = seed;
-	x ^= x << 13;
-	x ^= x >> 17;
-	x ^= x << 5;
-	return x;
-}
-
 /**
  * Standard 32-bit PRNG for use together with math functions for SAU scripts.
  */
