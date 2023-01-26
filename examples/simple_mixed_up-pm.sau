@@ -1,19 +1,19 @@
 S a(1/3)
 
-'0 Osin f200 p[
-	Osin r(4/3)
+'0 Wsin f200 p[
+	Wsin r(4/3)
 ] /.1
 @0 f220 /.2
-'1 Osin f500 t.3 p[
-	Osin r(6/5)
+'1 Wsin f500 t.3 p[
+	Wsin r(6/5)
 ] ;;.1 t.2 ;;.1 t.2 ;;.1 f250 t.2
 @0 t20 f232
 /.7
 
-Osin t15 f400 p[
-	Osin ;2 r(4/3)
-	Osin ;4 r(5/3)
-	Osin ;6 r(6/3)
-	Osin ;8 r(7/3)
-	Osin ;10 r(8/3)
+Wsin t15 f400 p[
+	Wsin ;2 r(4/3)
+	Wsin ;4 r(5/3)
+	Wsin ;6 r(6/3)
+	Wsin ;8 r(7/3)
+	Wsin ;10 r(8/3)
 ]
