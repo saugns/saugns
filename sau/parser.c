@@ -1473,6 +1473,10 @@ static bool parse_level(sauParser *restrict o,
 		case 'S':
 			pl.sub_f = parse_in_settings;
 			break;
+		case 'O':
+			sauScanner_warning(sc, NULL,
+"type 'O' has been renamed 'W' ('O' is a deprecated alias)");
+			/* fall-through */
 		case 'W': {
 			size_t id;
 			if (!scan_sym_id(sc, &id, SAU_SYM_WAVE_ID,
