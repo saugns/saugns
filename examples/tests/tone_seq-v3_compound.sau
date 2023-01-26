@@ -2,7 +2,7 @@
  * Variation #3 of the first saugns script made,
  * changed to test the compound step syntax.
  */
-Osin	f220 t1
+Wsin	f220 t1
 ;	f440 t1.5
 ;	f400 t0.5
 ;	f350 t0.5

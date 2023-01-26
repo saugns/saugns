@@ -1,2 +1,2 @@
 // Sweep through the human hearing range in 10 seconds
-Osin f{v20 g20000 lexp} t10 a0.25
+Wsin f{v20 g20000 lexp} t10 a0.25

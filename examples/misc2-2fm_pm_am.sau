@@ -1,14 +1,14 @@
-Osin t4 f200.r400[
-	Osin r3/1.r24/1[
-		Osin f10.r5[Osin f2]
+Wsin t4 f200.r400[
+	Wsin r3/1.r24/1[
+		Wsin f10.r5[Wsin f2]
 	]
 ] a0.5.r1.0[
-	Osin f1
+	Wsin f1
 ] |
 
-Osin t12 f120 a0.5.r1.0[
-	Osin f0.222
+Wsin t12 f120 a0.5.r1.0[
+	Wsin f0.222
 ] p[
-	Osin f190 a1 p[Osin f1125 a1]
-	Osin f64
+	Wsin f190 a1 p[Wsin f1125 a1]
+	Wsin f64
 ]

@@ -4,8 +4,8 @@
  */
 	S	a0.5
 			/0.5
-'a	Osin	f220 t1
-'b	Osin	f110 t0.5 a.05 	|
+'a	Wsin	f220 t1
+'b	Wsin	f110 t0.5 a.05 	|
 	@a	f440 t1.5
 	@b	f220 t0.5 a.05 	|
 	@a	f400 t0.5 	|
@@ -19,5 +19,5 @@
 	@a	f420 t1 	|
 	@a	f440 t1.5 	| /1
 
-'a	Osin	f660 t2
+'a	Wsin	f660 t2
 #Q
