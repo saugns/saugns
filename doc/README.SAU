@@ -239,7 +239,9 @@ Line types:
 W: Wave oscillator
 ------------------
 
-Wave oscillator. The sine variety is a typical FM synthesizer operator.
+Wave oscillator. The sine variety is a fairly typical "FM synth operator".
+Producing a (weakly) anti-aliased signal, including for FM/PM, amplitude
+can be a little lower for frequencies close to half the sample rate.
 
 As a signal generator, if not enclosed within a "[]" list, then
 it will run and output at the current time, for its duration.
