@@ -1220,6 +1220,7 @@ static bool parse_op_mode(sauParser *restrict o) {
 	if (op->info->type != SAU_POPT_RAS)
 		return true; // reject
 	uint8_t func = SAU_RAS_FUNCTIONS;
+	uint8_t flags = 0;
 	int32_t level = -1;
 	for (;;) {
 		char c;
@@ -1227,10 +1228,18 @@ static bool parse_op_mode(sauParser *restrict o) {
 		if (!(func < SAU_RAS_FUNCTIONS) && ++matched)
 		switch ((c = sauScanner_getc(sc))) {
 		case 'r': func = SAU_RAS_F_RAND; break;
+		case 'g': func = SAU_RAS_F_GAUSS; break;
 		case 'b': func = SAU_RAS_F_BIN; break;
 		case 't': func = SAU_RAS_F_TERN; break;
-		case 's': func = SAU_RAS_F_SMOOTH; break;
 		case 'f': func = SAU_RAS_F_FIXED; break;
+		default:
+			sauScanner_ungetc(sc);
+			--matched;
+			break;
+		}
+		if (!flags && ++matched)
+		switch ((c = sauScanner_getc(sc))) {
+		case 's': flags = SAU_RAS_O_SQUARE; break;
 		default:
 			sauScanner_ungetc(sc);
 			--matched;
@@ -1248,6 +1257,10 @@ static bool parse_op_mode(sauParser *restrict o) {
 		op->ras_opt.func = func;
 		op->ras_opt.flags &= SAU_RAS_O_LINE_SET;
 		op->ras_opt.flags |= SAU_RAS_O_FUNC_SET;
+		op->params |= SAU_POPP_RAS;
+	}
+	if (flags) {
+		op->ras_opt.flags |= flags;
 		op->params |= SAU_POPP_RAS;
 	}
 	if (level >= 0) {

@@ -15,6 +15,9 @@
 #include <sau/mempool.h>
 #define sau_dtoi sau_i64rint  // use for wrap-around behavior
 #define sau_ftoi sau_i64rintf // use for wrap-around behavior
+#define sau_dscalei(i, scale) (((int32_t)(i)) * (double)(scale))
+#define sau_fscalei(i, scale) (((int32_t)(i)) * (float)(scale))
+#define sau_divi(i, div) (((int32_t)(i)) / (int32_t)(div))
 #include "generator/wosc.h"
 #include "generator/rasg.h"
 #include <stdio.h>
@@ -492,7 +495,7 @@ static void run_block_rasg(sauGenerator *restrict o,
 	float *mix_buf = *(bufs++), *pm_buf = NULL, *fpm_buf = NULL;
 	void *cycle_buf = *(bufs++), *rasg_buf = *(bufs++);
 	float *freq = NULL, *amp = NULL;
-	float *tmp_buf = NULL;
+	float *tmp_buf = NULL, *tmp2_buf = NULL;
 	/*
 	 * Handle frequency (alternatively ratio) parameter,
 	 * including frequency modulation if modulators linked.
@@ -527,10 +530,11 @@ static void run_block_rasg(sauGenerator *restrict o,
 	run_param_with_rangemod(o, bufs, len, &n->gen.amp, NULL, freq);
 	amp = *(bufs++); // #5 (++) and temporary #6, #7
 	tmp_buf = *(bufs + 0); // #6
-	sauRasG_run(&n->rg.rasg, tmp_buf, len, cycle_buf, rasg_buf);
+	tmp2_buf = *(bufs + 1); // #7
+	sauRasG_run(&n->rg.rasg, len, rasg_buf, tmp_buf, tmp2_buf, cycle_buf);
 	(wave_env ?
 	 block_mix_mul_waveenv :
-	 block_mix_add)(mix_buf, len, layer, tmp_buf, amp);
+	 block_mix_add)(mix_buf, len, layer, rasg_buf, amp);
 }
 
 /*
