@@ -1,4 +1,4 @@
-Osin	fB3 t.3 p.f[Osin r(4/3) Osin a2 r(1/9)]
+Wsin	fB3 t.2 p.f[Wsin r(4/3) Wsin a2 r(1/9)]
 ;	fA4
 ;	fGs5 t.4
 ;;.3	fB3 t.2
@@ -8,7 +8,7 @@ Osin	fB3 t.3 p.f[Osin r(4/3) Osin a2 r(1/9)]
 ;;.1	fGs5 t.4
 |/.4
 
-Osin	fB3 t.3 p.f[Osin r(4/3) Osin a2 r(2/9)]
+Wsin	fB3 t.2 p.f[Wsin r(4/3) Wsin a2 r(2/9)]
 ;	fA4
 ;	fGs5 t.4
 ;;.3	fB3 t.2
@@ -18,7 +18,7 @@ Osin	fB3 t.3 p.f[Osin r(4/3) Osin a2 r(2/9)]
 ;;.1	fGs5 t.4
 |/.4
 
-Osin	fB3 t.3 p.f[Osin r(4/3) Osin a2 r(3/9)]
+Wsin	fB3 t.2 p.f[Wsin r(4/3) Wsin a2 r(3/9)]
 ;	fA4
 ;	fGs5 t.4
 ;;.3	fB3 t.2
@@ -28,7 +28,7 @@ Osin	fB3 t.3 p.f[Osin r(4/3) Osin a2 r(3/9)]
 ;;.1	fGs5 t.4
 |/.4
 
-Osin	fB3 t.3 p.f[Osin r(4/3) Osin a2 r(4/9)]
+Wsin	fB3 t.2 p.f[Wsin r(4/3) Wsin a2 r(4/9)]
 ;	fA4
 ;	fGs5 t.4
 ;;.3	fB3 t.2
@@ -38,7 +38,7 @@ Osin	fB3 t.3 p.f[Osin r(4/3) Osin a2 r(4/9)]
 ;;.1	fGs5 t.4
 |/.4
 
-Osin	fB3 t.3 p.f[Osin r(4/3) Osin a2 r(5/9)]
+Wsin	fB3 t.2 p.f[Wsin r(4/3) Wsin a2 r(5/9)]
 ;	fA4
 ;	fGs5 t.4
 ;;.3	fB3 t.2
@@ -48,7 +48,7 @@ Osin	fB3 t.3 p.f[Osin r(4/3) Osin a2 r(5/9)]
 ;;.1	fGs5 t.4
 |/.4
 
-Osin	fB3 t.3 p.f[Osin r(4/3) Osin a2 r(6/9)]
+Wsin	fB3 t.2 p.f[Wsin r(4/3) Wsin a2 r(6/9)]
 ;	fA4
 ;	fGs5 t.4
 ;;.3	fB3 t.2
@@ -58,7 +58,7 @@ Osin	fB3 t.3 p.f[Osin r(4/3) Osin a2 r(6/9)]
 ;;.1	fGs5 t.4
 |/.4
 
-Osin	fB3 t.3 p.f[Osin r(4/3) Osin a2 r(7/9)]
+Wsin	fB3 t.2 p.f[Wsin r(4/3) Wsin a2 r(7/9)]
 ;	fA4
 ;	fGs5 t.4
 ;;.3	fB3 t.2
@@ -68,7 +68,7 @@ Osin	fB3 t.3 p.f[Osin r(4/3) Osin a2 r(7/9)]
 ;;.1	fGs5 t.4
 |/.4
 
-Osin	fB3 t.3 p.f[Osin r(4/3) Osin a2 r(8/9)]
+Wsin	fB3 t.2 p.f[Wsin r(4/3) Wsin a2 r(8/9)]
 ;	fA4
 ;	fGs5 t.4
 ;;.3	fB3 t.2

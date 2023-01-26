@@ -17,7 +17,7 @@ parameters with arguments. Each main keyword provides an action,
 either at run time (like a function call in other languages),
 or at parse time (like a global script setting).
 
-The keywords "O" and "R" are type names for signal generators,
+The keywords "W" and "R" are type names for signal generators,
 and are used to add instances of them -- wave oscillators, and
 rumble oscillators, respectively. Such objects can be connected
 for modulation. Together with the timing logic and parameters,
@@ -59,8 +59,8 @@ Each of these keywords is further described in its own section below.
 		nested list scope don't apply outside of it.
 	R	Rumble oscillator -- "R", optionally followed
 		by the initial "Line types" value, e.g. "Rlin".
-	O	Wave oscillator -- "O", optionally followed
-		by the initial "Wave types" value, e.g. "Otri".
+	W	Wave oscillator -- "W", optionally followed
+		by the initial "Wave types" value, e.g. "Wtri".
 
 S: Script options
 -----------------
@@ -93,7 +93,7 @@ Parameters:
 Signal generator common parameters
 ----------------------------------
 
-The "R" and "O" types have these parameters in common:
+The "R" and "W" types have these parameters in common:
 	t	Time duration in seconds. If no "t" setting is given, the
 		time set depends on the context.
 			For a single non-nested generator, 1.0 is used unless
@@ -256,21 +256,23 @@ Line types:
 	The 'cos' shape sounds similar to 'lin', except it has a
 	smoothly curved start and stop, and a steeper middle.
 
-O: Wave oscillator
+W: Wave oscillator
 ------------------
 
-Wave oscillator. The sine variety is a typical FM synthesizer operator.
+Wave oscillator. The sine variety is a fairly typical "FM synth operator".
+Producing a (weakly) anti-aliased signal, including for FM/PM, amplitude
+can be a little lower for frequencies close to half the sample rate.
 
 As a signal generator, if not enclosed within a "[]" list, then
 it will run and output at the current time, for its duration.
 
-Usage: "O", optionally followed by a wave type (e.g. "Otri"),
-by the default the same as "Osin". Followed by zero or more
+Usage: "W", optionally followed by a wave type (e.g. "Wtri"),
+by the default the same as "Wsin". Followed by zero or more
 whitespace-separated parameters, each with a value.
 See "Wave types" for the available wave types.
 
 Parameters:
-	The "O" wave oscillator has the
+	The "W" wave oscillator has the
 	"Signal generator common parameters", and additionally:
 	w	Wave type -- see "Wave types" for values.
 
@@ -540,7 +542,7 @@ Compound steps:
 			The time handling is designed to simplify writing a
 		sequence of connected, non-overlapping timed updates for a
 		single object. For example (three frequencies, one a second):
-		"Osin f100 t1; f200; f300". Changing "t1" in this example
+		"Wsin f100 t1; f200; f300". Changing "t1" in this example
 		changes the time length for all three parts.
 			For more flexibility, especially for adding "silent"
 		gaps between parts, the numberless ';' can be combined with,
@@ -549,7 +551,7 @@ Compound steps:
 		by "number" of seconds, and move the active time duration for
 		the second sub-step past the second split, creating a gap
 		"number" of seconds long. For example (1 second of silence
-		between frequency changes): "Osin f100 t1;;1 f200;;1 f300".
+		between frequency changes): "Wsin f100 t1;;1 f200;;1 f300".
 	;number	Gapshift, time in seconds. When a number immediately follows
 		the ';', then the new sub-step is placed in time that number
 		of seconds after the previous, instead of after the duration
