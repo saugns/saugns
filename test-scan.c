@@ -1,6 +1,6 @@
 /* saugns: Test program for experimental reader code.
  * Copyright (c) 2017-2022 Joel K. Pettersson
- * <joelkpettersson@gmail.com>.
+ * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
  * terms of the GNU Lesser General Public License, either version 3 or (at
