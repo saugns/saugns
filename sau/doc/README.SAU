@@ -205,10 +205,18 @@ Parameters:
 		Roughly, each level above 0 halves what remains of the
 		unshaped underlying randomness. The functions are...
 		r	Uniform random (default). Ignores the level setting.
+		g	Gaussian random, soft-saturated approximation. On
+			average ~6 dB quieter. Ignores the level setting.
 		b	Binary random. Extreme levels, more repetitive runs.
 		t	Ternary smooth random. Never repeats twice in a row;
 			cycles above or below zero, randomly flips polarity.
-		f	Fixed cycle. Plain naive oscillator.
+		f	Fixed cycle. Plain naive oscillator at the top level;
+			below it, mixed with randomness at reduced amplitude.
+		In addition to the function and level, these flags can be set.
+		s	Square random start/goal values while preserving sign.
+			Turns uniform value variation into uniform energy
+			variation; somewhat quieter, and more tremulant.
+			Doesn't affect 'b', 't', nor 'f' with level '9'.
 
 Line types:
 	cos

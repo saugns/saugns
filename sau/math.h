@@ -1,5 +1,5 @@
 /* SAU library: Math definitions.
- * Copyright (c) 2011-2012, 2017-2024 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2023 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -88,12 +88,6 @@ static inline uint32_t sau_ror32(uint32_t x, int r) {
 	return x >> r | x << (32 - r);
 }
 
-/** Multiplicatively mix bits using varying right-rotation,
-    for 32-bit unsigned \p x value, \p r rotation, \p ro rotation offset. */
-static inline uint32_t sau_muvaror32(uint32_t x, int r, int ro) {
-	return (x | (1U << (ro & 31)) | 1U) * sau_ror32(x, r + ro);
-}
-
 /*
  * Math functions for use in SAU scripts.
  */
@@ -177,109 +171,60 @@ extern const union sauMath_sym_f sauMath_symbols[SAU_MATH_NAMED];
  */
 
 /**
- * Random access noise, minimal lower-quality version. Chaotic waveshaper which
- * turns sawtooth-ish number sequences into white noise. Returns zero for zero.
+ * 32-bit MCG. Usable together with another PRNG, for additional values
+ * extended in a perpendicular sequence in a computationally cheap way.
+ */
+static inline uint32_t sau_mcg32(uint32_t seed) {
+	return seed * 0xe47135; /* alt. 0x93d765dd; both Steele & Vigna 2021 */
+}
+
+/**
+ * Random access noise, fast version with bitshifts but no bitrotation. Chaotic
+ * waveshaper, which turns e.g. sawtooth-ish number sequences into white noise.
+ * Lower bits have lower quality; use SplitMix32 if those need to be good, too.
  *
  * This function is mainly an alternative to using buffers of noise, for random
  * access. The index \p n can be used as a counter or varied for random access.
  *
  * \return pseudo-random number for index \p n
  */
-static inline int32_t sau_ranoise32(uint32_t n) {
+static inline uint32_t sau_ranfast32(uint32_t n) {
 	uint32_t s = n * SAU_FIBH32;
-	s = sau_muvaror32(s, s >> 27, 0);
+	s ^= s >> 14;
+	s = (s | 1) * s;
+	s ^= s >> 13;
 	return s;
 }
 
 /**
- * Random access noise, minimal lower-quality version. Chaotic waveshaper which
- * turns sawtooth-ish number sequences into white noise. Returns zero for zero.
+ * Random access noise, fast version with bitshifts but no bitrotation. Chaotic
+ * waveshaper, which turns e.g. sawtooth-ish number sequences into white noise.
+ * Lower bits have lower quality; use SplitMix32 if those need to be good, too.
  *
  * This "next" function returns a new value each time, corresponding to a state
  * \p pos, which is increased. It may be initialized with any seed (0 is fine).
  *
- * \return pseudo-random number for state \p pos
+ * \return next pseudo-random number for state \p pos
  */
-static inline int32_t sau_ranoise32_next(uint32_t *restrict pos) {
+static inline uint32_t sau_ranfast32_next(uint32_t *restrict pos) {
 	uint32_t s = *pos += SAU_FIBH32;
-	s = sau_muvaror32(s, s >> 27, 0);
+	s ^= s >> 14;
+	s = (s | 1) * s;
+	s ^= s >> 13;
 	return s;
 }
 
 /**
- * Random access noise, smoother more LCG-ish version. Chaotic waveshaper which
- * turns sawtooth-ish number sequences into white noise. Returns zero for zero.
- * Lower bits have very poor-quality randomness, but the whole sounds 'smooth'.
+ * Fixed-increment SplitMix32 variant, using an alternative function
+ * by TheIronBorn & Christopher Wellons's "Hash Prospector" project.
  *
- * This function is mainly an alternative to using buffers of noise, for random
- * access. The index \p n can be used as a counter or varied for random access.
- *
- * \return pseudo-random number for index \p n
+ * \return next pseudo-random number for state \p pos
  */
-static inline int32_t sau_ransmooth32(uint32_t n) {
-	uint32_t s = n * SAU_FIBH32;
-	s *= sau_ror32(s, s >> 27);
-	return s;
-}
-
-/**
- * Random access noise, smoother more LCG-ish version. Chaotic waveshaper which
- * turns sawtooth-ish number sequences into white noise. Returns zero for zero.
- * Lower bits have very poor-quality randomness, but the whole sounds 'smooth'.
- *
- * This function is mainly an alternative to using buffers of noise, for random
- * access. The index \p n can be used as a counter or varied for random access.
- *
- * \return pseudo-random number for index \p n
- */
-static inline int32_t sau_ransmooth32_next(uint32_t *restrict pos) {
-	uint32_t s = *pos += SAU_FIBH32;
-	s *= sau_ror32(s, s >> 27);
-	return s;
-}
-
-/**
- * Random access noise, simpler binary output version. Chaotic waveshaper which
- * turns sawtooth-ish number sequences into white noise. Returns zero for zero.
- *
- * This function is mainly an alternative to using buffers of noise, for random
- * access. The index \p n can be used as a counter or varied for random access.
- *
- * \return pseudo-random 1 or 0 for index \p n
- */
-static inline bool sau_ranbit32(uint32_t n) {
-	uint32_t s = n * SAU_FIBH32;
-	s *= sau_ror32(s, s >> 27);
-	return ((int32_t)s) < 0;
-}
-
-/**
- * Random access noise, simpler binary output version. Chaotic waveshaper which
- * turns sawtooth-ish number sequences into white noise. Returns zero for zero.
- *
- * This function is mainly an alternative to using buffers of noise, for random
- * access. The index \p n can be used as a counter or varied for random access.
- *
- * \return pseudo-random 1 or 0 for index \p n
- */
-static inline bool sau_ranbit32_next(uint32_t *restrict pos) {
-	uint32_t s = *pos += SAU_FIBH32;
-	s *= sau_ror32(s, s >> 27);
-	return ((int32_t)s) < 0;
-}
-
-/** Initial seed for mgs_xorshift32(). Other non-zero values can be used. */
-#define SAU_XORSHIFT32_SEED 2463534242UL
-
-/**
- * Get Marsaglia xorshift32 state from non-zero \p seed.
- */
-static inline uint32_t sau_xorshift32(uint32_t seed) {
-	uint32_t x = seed;
-	x ^= x << 13;
-	x ^= x >> 17;
-	x ^= x << 5;
-	return x;
+static inline uint32_t sau_splitmix32_next(uint32_t *restrict pos) {
+	uint32_t z = (*pos += SAU_FIBH32);
+	z = (z ^ (z >> 16)) * 0x21f0aaad;
+	z = (z ^ (z >> 15)) * 0xf35a2d97; /* similar alt. 0x735a2d97 */
+	return z ^ (z >> 15);
 }
 
 /**
@@ -298,8 +243,7 @@ static inline uint64_t sau_splitmix64_next(uint64_t *restrict pos) {
  * Standard 32-bit PRNG for use together with math functions for SAU scripts.
  */
 static inline uint32_t sau_rand32(struct sauMath_state *restrict o) {
-	if (o->seed32 == 0) o->seed32 = SAU_XORSHIFT32_SEED;
-	return (o->seed32 = sau_xorshift32(o->seed32));
+	return sau_splitmix32_next(&o->seed32);
 }
 
 /*

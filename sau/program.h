@@ -86,9 +86,9 @@ typedef struct sauRasOpt {
 /** Random segments functions. */
 enum {
 	SAU_RAS_F_RAND = 0,
+	SAU_RAS_F_GAUSS,
 	SAU_RAS_F_BIN,
 	SAU_RAS_F_TERN,
-	SAU_RAS_F_SMOOTH,
 	SAU_RAS_F_FIXED,
 	SAU_RAS_FUNCTIONS,
 };
