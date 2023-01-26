@@ -730,7 +730,7 @@ static void
 print_opline(const sauProgramOpData *restrict od) {
 	char type = '?';
 	switch (od->type) {
-	case SAU_POPT_WAVE: type = 'O'; break;
+	case SAU_POPT_WAVE: type = 'W'; break;
 	case SAU_POPT_RAS: type = 'R'; break;
 	}
 	if (od->time.flags & SAU_TIMEP_IMPLICIT) {

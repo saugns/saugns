@@ -1464,7 +1464,13 @@ static bool parse_level(sauParser *restrict o,
 			pl.operator->ras_opt.flags = SAU_RAS_O_LINE_SET;
 			pl.sub_f = parse_in_op_step;
 			break; }
-		case 'O': {
+		case 'S':
+			pl.sub_f = parse_in_settings;
+			break;
+		case 'O':
+			warn_deprecated(sc, "type 'O'", "name 'W'");
+			/* fall-through */
+		case 'W': {
 			size_t id = 0; /* default as fallback value */
 			scan_sym_id(sc, &id, SAU_SYM_WAVE_ID, sauWave_names);
 			if (pl.parent && !pl.use_type && pl.parent->op_sweep) {
@@ -1475,9 +1481,6 @@ static bool parse_level(sauParser *restrict o,
 			pl.operator->wave = id;
 			pl.sub_f = parse_in_op_step;
 			break; }
-		case 'S':
-			pl.sub_f = parse_in_settings;
-			break;
 		case '<':
 			warn_opening_disallowed(sc, '<');
 			pl.pl_flags &= ~PL_WARN_NOSPACE; /* OK around */
