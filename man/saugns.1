@@ -40,7 +40,7 @@ written to a 16-bit PCM WAV file; it is also possible to stream audio
 data to stdout, either raw (--stdout) or AU (-o -).
 .Pp
 Scripts can use an arbitrary number of audio generators of the types supported.
-"O" (Wave oscillator) produces tones with a chosen waveshape,
+"W" (Wave oscillator) produces tones with a chosen waveshape,
 "R" (Random segments oscillator) produces pitched noises with a line and mode.
 Synthesis techniques supported include PM, FM, and AM/RM.
 Duration and some other attributes can be calculated for each script
@@ -126,10 +126,10 @@ A less compact and more how-to overview can be found at:
 .Pa https://sau.frama.io/language.html
 .Sh EXAMPLES
 One-second beep:
-.Dl % "saugns -e ""Osin"""
+.Dl % "saugns -e ""Wsin"""
 .Pp
 10 seconds of "engine rumble" using PM:
-.Dl % "saugns -e ""Osin f137 t10 p[Osin f10*pi p[Osin r(4/3)(pi/3)]]"""
+.Dl % "saugns -e ""Wsin f137 t10 p[Wsin f10*pi p[Wsin r(4/3)(pi/3)]]"""
 .Pp
 A set of example scripts come with the installation.
 By default, they are copied to one of the following locations, depending on whether or not the system seems to house example files under "share/examples/":
