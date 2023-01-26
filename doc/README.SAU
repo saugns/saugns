@@ -195,7 +195,8 @@ Parameters:
 	m	Mode for line start and goal value variation; consists of
 		a letter (random function) and a digit (0-9 shaping level);
 		one or both may be set at a time; the default level is '9'.
-		Roughly, each level above 0 doubles the effect of the mode.
+		Roughly, each level above 0 halves what remains of the
+		unshaped underlying randomness. The functions are...
 		r	Uniform random (default). Ignores the level setting.
 		g	Gaussian random, soft-saturated approximation. On
 			average ~6 dB quieter. Ignores the level setting.
