@@ -60,7 +60,7 @@ or similar for it may possibly need to be installed for building to work.
 In the cases of the 4 major BSDs, the base systems have it all.
 
 A simple test after building is the following, which should
-play a sine wave at 440 Hz for 1 second: `./saugns -e "Osin"`.
+play a sine wave at 440 Hz for 1 second: `./saugns -e "Wsin"`.
 
 Running `make install` will by default copy `saugns` to `/usr/local/bin/`,
 and the contents of `doc/` and `examples/` to
