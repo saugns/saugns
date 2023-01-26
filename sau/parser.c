@@ -1470,7 +1470,10 @@ static bool parse_level(sauParser *restrict o,
 			pl.operator->ras_opt.flags = SAU_RAS_O_LINE_SET;
 			pl.sub_f = parse_in_event;
 			break; }
-		case 'O': {
+		case 'S':
+			pl.sub_f = parse_in_settings;
+			break;
+		case 'W': {
 			size_t id;
 			if (!scan_sym_id(sc, &id, SAU_SYM_WAVE_ID,
 						sauWave_names))
@@ -1479,9 +1482,6 @@ static bool parse_level(sauParser *restrict o,
 			pl.operator->wave = id;
 			pl.sub_f = parse_in_event;
 			break; }
-		case 'S':
-			pl.sub_f = parse_in_settings;
-			break;
 		case '[':
 			warn_opening_disallowed(sc, '[');
 			break;

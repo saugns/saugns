@@ -9,7 +9,7 @@
 // optional, as nothing follows it, but nothing after would
 // affect default times before it.)
 
-Osin f400
-Osin f300 t2
-Osin f600
+Wsin f400
+Wsin f300 t2
+Wsin f600
 |

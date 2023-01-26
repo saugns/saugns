@@ -1,6 +1,6 @@
-Osin fD3 t0.5 p[
-'a	Osin r(3/7) a0 a{g2 t0.025 lxpe}
-'b	Osin r(3/2) a0 a{g1 t0.025 lxpe}
+Wsin fD3 t0.5 p[
+'a	Wsin r(3/7) a0 a{g2 t0.025 lxpe}
+'b	Wsin r(3/2) a0 a{g1 t0.025 lxpe}
 ]
 /0.025
 @a	a{g0 t0.5 lxpe}

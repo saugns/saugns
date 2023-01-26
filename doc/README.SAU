@@ -16,7 +16,7 @@ parameters with arguments. Each main keyword provides an action,
 either at run time (like a function call in other languages),
 or at parse time (like a global script setting).
 
-The keywords "O" and "R" are type names, and are used to add instances
+The keywords "W" and "R" are type names, and are used to add instances
 of oscillators and rumbly noise generators. They may be used as carriers
 and modulators; such objects, the timing of their running, and their
 parameters, make the core features of the scripting language.
@@ -54,10 +54,10 @@ Each of these keywords is further described in its own section below.
 	S	Script options (parameter default value or other);
 		runs during parsing. Changes made inside a
 		nested list scope don't apply outside of it.
-	O	Wave oscillator -- "O" followed by an
-		initial "Wave types" value, e.g. "Osin".
 	R	Random segments generator -- "R" followed by an
 		initial "Line types" value, e.g. "Rlin".
+	W	Wave oscillator -- "W" followed by an
+		initial "Wave types" value, e.g. "Wsin".
 
 S: Script options
 -----------------
@@ -88,7 +88,7 @@ Parameters:
 Signal generator common parameters
 ----------------------------------
 
-The "O" and "R" types have these parameters in common:
+The "R" and "W" types have these parameters in common:
 	t	Time duration in seconds. If no "t" setting is given, the
 		time set depends on the context.
 			For a single non-nested generator, 1.0 is used unless
@@ -169,55 +169,6 @@ The "O" and "R" types have these parameters in common:
 		(-1.0) to 1.0. See "Channel mixing values" for more.
 			"Value sweep" values are supported; see section.
 
-O: Wave oscillator
-------------------
-
-Wave oscillator. The sine variety is a typical FM synthesizer operator.
-
-As a signal generator, if not enclosed within a "[]" list, then
-it will run and output at the current time, for its duration.
-
-Usage: "O" followed by (initial) wave type (e.g. "Osin"),
-followed by zero or more parameters, each with a value.
-See "Wave types" for the available wave types.
-
-Parameters:
-	The "O" wave oscillator has the
-	"Signal generator common parameters", and additionally:
-	w	Wave type -- see "Wave types" for values.
-
-Wave types:
-	sin
-		Sine. For cosine, use (1/4) phase.
-	sqr
-		Square.
-	tri
-		Triangle.
-	saw
-		Saw. Increasing slope; use
-		negative amplitude or frequency for decreasing slope.
-	ahs
-		Absolute half-frequency sine (adjusted).
-		Sine-based parabola-like wave.
-		Frequency halved to restore base frequency,
-		peak amplitude centered and doubled, phase
-		shifted to begin and end at zero amplitude.
-		A softer alternative to "saw" (saw wave).
-	hrs
-		Half-rectified sine (adjusted).
-		Positive half kept, negative half zero'd.
-		Peak amplitude centered and doubled, phase
-		shifted to begin and end at zero amplitude.
-		A warm and full sound.
-	srs
-		Square root of sine.
-		Mirrored for the negative half.
-		A softer alternative to "sqr" (square wave).
-	ssr
-		Squared & square root of sine.
-		A little more thin and sharp, it differs from
-		"srs" a little like "srs" differs from "szh".
-
 R: Random segments generator
 ----------------------------
 
@@ -283,6 +234,55 @@ Line types:
 	and 'lge' increases like 'exp' and decreases like 'log'.
 	The 'cos' shape sounds similar to 'lin', except it has a
 	smoothly curved start and stop, and a steeper middle.
+
+W: Wave oscillator
+------------------
+
+Wave oscillator. The sine variety is a typical FM synthesizer operator.
+
+As a signal generator, if not enclosed within a "[]" list, then
+it will run and output at the current time, for its duration.
+
+Usage: "W" followed by (initial) wave type (e.g. "Wsin"),
+followed by zero or more parameters, each with a value.
+See "Wave types" for the available wave types.
+
+Parameters:
+	The "W" wave oscillator has the
+	"Signal generator common parameters", and additionally:
+	w	Wave type -- see "Wave types" for values.
+
+Wave types:
+	sin
+		Sine. For cosine, use (1/4) phase.
+	sqr
+		Square.
+	tri
+		Triangle.
+	saw
+		Saw. Increasing slope; use
+		negative amplitude or frequency for decreasing slope.
+	ahs
+		Absolute half-frequency sine (adjusted).
+		Sine-based parabola-like wave.
+		Frequency halved to restore base frequency,
+		peak amplitude centered and doubled, phase
+		shifted to begin and end at zero amplitude.
+		A softer alternative to "saw" (saw wave).
+	hrs
+		Half-rectified sine (adjusted).
+		Positive half kept, negative half zero'd.
+		Peak amplitude centered and doubled, phase
+		shifted to begin and end at zero amplitude.
+		A warm and full sound.
+	srs
+		Square root of sine.
+		Mirrored for the negative half.
+		A softer alternative to "sqr" (square wave).
+	ssr
+		Squared & square root of sine.
+		A little more thin and sharp, it differs from
+		"srs" a little like "srs" differs from "szh".
 
 Values and expressions
 ----------------------
@@ -497,7 +497,7 @@ Compound steps:
 			The time handling is designed to simplify writing a
 		sequence of connected, non-overlapping timed updates for a
 		single object. For example (three frequencies, one a second):
-		"Osin f100 t1; f200; f300". Changing "t1" in this example
+		"Wsin f100 t1; f200; f300". Changing "t1" in this example
 		changes the time length for all three parts.
 			For more flexibility, especially for adding "silent"
 		gaps between parts, the numberless ';' can be combined with,
@@ -506,7 +506,7 @@ Compound steps:
 		by "number" of seconds, and move the active time duration for
 		the second sub-step past the second split, creating a gap
 		"number" of seconds long. For example (1 second of silence
-		between frequency changes): "Osin f100 t1;;1 f200;;1 f300".
+		between frequency changes): "Wsin f100 t1;;1 f200;;1 f300".
 	;number	Gapshift, time in seconds. When a number immediately follows
 		the ';', then the new sub-step is placed in time that number
 		of seconds after the previous, instead of after the duration
