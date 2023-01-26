@@ -215,19 +215,6 @@ static inline uint32_t sau_ranfast32_next(uint32_t *restrict pos) {
 }
 
 /**
- * A random access SplitMix32 variant, using an alternative function
- * by TheIronBorn & Christopher Wellons's "Hash Prospector" project.
- *
- * \return pseudo-random number for index \p n
- */
-static inline uint32_t sau_splitmix32(uint32_t n) {
-	uint32_t z = (n * SAU_FIBH32);
-	z = (z ^ (z >> 16)) * 0x21f0aaad;
-	z = (z ^ (z >> 15)) * 0xf35a2d97; /* similar alt. 0x735a2d97 */
-	return z ^ (z >> 15);
-}
-
-/**
  * Fixed-increment SplitMix32 variant, using an alternative function
  * by TheIronBorn & Christopher Wellons's "Hash Prospector" project.
  *
@@ -238,18 +225,6 @@ static inline uint32_t sau_splitmix32_next(uint32_t *restrict pos) {
 	z = (z ^ (z >> 16)) * 0x21f0aaad;
 	z = (z ^ (z >> 15)) * 0xf35a2d97; /* similar alt. 0x735a2d97 */
 	return z ^ (z >> 15);
-}
-
-/**
- * A random access SplitMix64, based on C version provided by Vigna.
- *
- * \return pseudo-random number for index \p n
- */
-static inline uint64_t sau_splitmix64(uint64_t n) {
-	uint64_t z = (n * SAU_FIBH64);
-	z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9;
-	z = (z ^ (z >> 27)) * 0x94d049bb133111eb;
-	return z ^ (z >> 31);
 }
 
 /**
