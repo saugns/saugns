@@ -26,6 +26,7 @@
 #define IS_LOWER(c) ((c) >= 'a' && (c) <= 'z')
 #define IS_UPPER(c) ((c) >= 'A' && (c) <= 'Z')
 #define IS_ALPHA(c) (IS_LOWER(c) || IS_UPPER(c))
+#define IS_DIGIT(c) ((c) >= '0' && (c) <= '9')
 
 enum {
 	SAU_SYM_VAR = 0,
@@ -370,6 +371,23 @@ static sauNoinline bool scan_time_val(sauScanner *restrict o,
 		return false;
 	}
 	*val = sau_ui32rint(val_s * 1000.f);
+	return true;
+}
+
+static sauNoinline bool scan_digit_val(sauScanner *restrict o,
+		int32_t *restrict val) {
+	sauScanFrame sf = o->sf;
+	size_t num_len;
+	int32_t num;
+	sauScanner_geti(o, &num, false, &num_len);
+	if (!num_len)
+		return false;
+	if (num_len > 1) {
+		sauScanner_warning(o, &sf,
+				"discarding integer out of range (0-9)");
+		return false;
+	}
+	*val = num;
 	return true;
 }
 
@@ -1201,6 +1219,67 @@ static bool parse_ev_phase(sauParser *restrict o) {
 	return false;
 }
 
+static bool parse_ev_mode(sauParser *restrict o) {
+	struct ParseLevel *pl = o->cur_pl;
+	sauScanner *sc = o->sc;
+	sauScriptOpData *op = pl->operator;
+	if (op->info->type != SAU_POPT_RAS)
+		return true; // reject
+	uint8_t func = SAU_RAS_FUNCTIONS;
+	uint8_t flags = 0;
+	int32_t level = -1;
+	for (;;) {
+		char c;
+		int matched = 0;
+		if (!(func < SAU_RAS_FUNCTIONS) && ++matched)
+		switch ((c = sauScanner_getc(sc))) {
+		case 'r': func = SAU_RAS_F_RAND; break;
+		case 'g': func = SAU_RAS_F_GAUSS; break;
+		case 'b': func = SAU_RAS_F_BIN; break;
+		case 't': func = SAU_RAS_F_TERN; break;
+		case 'f': func = SAU_RAS_F_FIXED; break;
+		default:
+			sauScanner_ungetc(sc);
+			--matched;
+			break;
+		}
+		if (!flags && ++matched)
+		switch ((c = sauScanner_getc(sc))) {
+		case 's': flags = SAU_RAS_O_SQUARE; break;
+		default:
+			sauScanner_ungetc(sc);
+			--matched;
+			break;
+		}
+		if (!(level >= 0) && ++matched) {
+			c = sauScanner_retc(sc);
+			if (IS_DIGIT(c)) scan_digit_val(sc, &level);
+			else --matched;
+		}
+		if (matched == 0) {
+			if (func < SAU_RAS_FUNCTIONS || flags || level >= 0)
+				break;
+			return true;
+		}
+	}
+	if (func < SAU_RAS_FUNCTIONS) {
+		op->ras_opt.func = func;
+		op->ras_opt.flags &= SAU_RAS_O_LINE_SET;
+		op->ras_opt.flags |= SAU_RAS_O_FUNC_SET;
+		op->params |= SAU_POPP_RAS;
+	}
+	if (flags) {
+		op->ras_opt.flags |= flags;
+		op->params |= SAU_POPP_RAS;
+	}
+	if (level >= 0) {
+		op->ras_opt.level = sau_ras_level(level);
+		op->ras_opt.flags |= SAU_RAS_O_LEVEL_SET;
+		op->params |= SAU_POPP_RAS;
+	}
+	return false;
+}
+
 static void parse_in_event(sauParser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
 	sauScanner *sc = o->sc;
@@ -1239,10 +1318,19 @@ static void parse_in_event(sauParser *restrict o) {
 		case 'f':
 			if (parse_ev_freq(o, false)) goto DEFER;
 			break;
-		case 'm': {
+		case 'l': {
 			if (op->info->type != SAU_POPT_RAS) goto DEFER;
-			/* ... */
+			size_t id;
+			if (!scan_sym_id(sc, &id, SAU_SYM_LINE_ID,
+						sauLine_names))
+				break;
+			op->ras_opt.line = id;
+			op->ras_opt.flags |= SAU_RAS_O_LINE_SET;
+			op->params |= SAU_POPP_RAS;
 			break; }
+		case 'm':
+			if (parse_ev_mode(o)) goto DEFER;
+			break;
 		case 'p':
 			if (parse_ev_phase(o)) goto DEFER;
 			break;
