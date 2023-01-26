@@ -2,7 +2,7 @@
 // provides the same vibrato effect at all carrier
 // pitches.
 
-Osin	fB3 t.2 p[Osin r(4/3)].f[Osin a1.25 f17]
+Wsin	fB3 t.2 p[Wsin r(4/3)].f[Wsin a1.25 f17]
 ;	fA4
 ;	fG5
 ;;.3	fA4 t.3
