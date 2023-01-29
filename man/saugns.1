@@ -2,7 +2,7 @@
 .\"
 .\" This file is licensed under Creative Commons Attribution-ShareAlike 4.0
 .\" <https://creativecommons.org/licenses/by-sa/4.0/>.
-.Dd December 29, 2022
+.Dd January 31, 2023
 .Dt SAUGNS 1
 .Os
 .Sh NAME
@@ -131,8 +131,10 @@ One-second beep:
 .Dl % "saugns -e ""Osin f137 t10 p[Osin f10*pi p[Osin r(4/3)(pi/3)]]"""
 .Pp
 A set of example scripts come with the installation.
-By default, they are copied to:
+By default, they are copied to one of the following locations, depending on whether or not the system seems to house example files under "share/examples/":
+.Pp
 .Pa /usr/local/share/examples/saugns/
+.Pa /usr/local/share/saugns/examples/
 .Sh HISTORY
 The program was first written in 2011, released in 2012.
 Reworked after 2017, renamed from sgensys to saugns in 2019.
