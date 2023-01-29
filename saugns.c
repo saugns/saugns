@@ -62,11 +62,11 @@ static void print_help(const char *restrict topic,
 		topic = sauHelp_names[SAU_HELP_N_help];
 		contents = sauHelp_names;
 	}
-	fprintf(stderr, "\nList of '%s' names", topic);
+	fprintf(stdout, "\nList of '%s' names", topic);
 	if (description != NULL)
-		fprintf(stderr, " (%s)", description);
-	fputs(":\n", stderr);
-	sau_print_names(contents, "\t", stderr);
+		fprintf(stdout, " (%s)", description);
+	fputs(":\n", stdout);
+	sau_print_names(contents, "\t", stdout);
 }
 
 sauArrType(sauScriptArgArr, sauScriptArg, )
@@ -80,7 +80,7 @@ static void print_usage(bool h_arg, const char *restrict h_type) {
 "Usage: "NAME" [-a | -m] [-r <srate>] [--mono] [-o <file>] [--stdout]\n"
 "              [-d] [-p] [-e] <script>...\n"
 "       "NAME" -c [-d] [-p] [-e] <script>...\n",
-		stderr);
+		h_arg ? stdout : stderr);
 	if (!h_type)
 		fputs(
 "\n"
@@ -102,7 +102,7 @@ static void print_usage(bool h_arg, const char *restrict h_type) {
 "  -h \tPrint this and list help topics, or print help for '-h <topic>'.\n"
 "  -v \tBe verbose.\n"
 "  -V \tPrint version.\n",
-			stderr);
+			h_arg ? stdout : stderr);
 	if (h_arg) {
 		const char *description = (h_type != NULL) ?
 			"pass '-h' without topic for general usage" :
@@ -115,7 +115,7 @@ static void print_usage(bool h_arg, const char *restrict h_type) {
  * Print version.
  */
 static void print_version(void) {
-	fputs(NAME" "VERSION_STR"\n", stderr);
+	fputs(NAME" "VERSION_STR"\n", stdout);
 }
 
 /*
