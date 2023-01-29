@@ -50,13 +50,15 @@ play a sine wave at 440 Hz for 1 second: `./saugns -e "Osin"`.
 
 Running `make install` will by default copy `saugns` to `/usr/local/bin/`,
 and the contents of `doc/` and `examples/` to
-directories under `/usr/local/share/`.
+directories under `/usr/local/share/`. The BSDism is to place examples
+under a "share/examples/" directory, but such are often missing on Linux.
 
-| Files under share/    | Description               |
-| -                     | -                         |
-| doc/saugns/README.md  | This file.                |
-| doc/saugns/README.SAU | SAU language reference.   |
-| examples/saugns/      | Example scripts.          |
+| Files under share/    | Description                                     |
+| -                     | -                                               |
+| doc/saugns/README.md  | This file.                                      |
+| doc/saugns/README.SAU | SAU language reference.                         |
+| examples/saugns/      | Example scripts, *if "share/examples/" exists*. |
+| saugns/examples/      | Example scripts, *the fallback location*.       |
 
 A `make uninstall` removes the added saugns binary and share/ subdirectories.
 It's recommended before installing a new version, for a consistent file set.
