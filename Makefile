@@ -10,10 +10,10 @@ LFLAGS_LINUX=$(LFLAGS) -lasound
 LFLAGS_SNDIO=$(LFLAGS) -lsndio
 LFLAGS_OSSAUDIO=$(LFLAGS) -lossaudio
 LFLAGS_TESTS=-s -Lsau -lsau-tests -lm
-PREFIX=/usr/local
+PREFIX ?=/usr/local
 BIN=saugns
 MAN1=saugns.1
-README=README.md
+README=CHANGELOG.md README.md
 SHARE=saugns
 OBJ=\
 	player/audiodev.o \
@@ -38,6 +38,15 @@ install: all
 	else \
 		MANDIR="share/man"; \
 	fi; \
+	DOCSDIR="share/doc/$(SHARE)"; \
+	if [ -d "$(DESTDIR)$(PREFIX)/share/examples" ]; then \
+		EXAMPLESDIR="share/examples/$(SHARE)"; \
+	else \
+		EXAMPLESDIR="share/$(SHARE)/examples"; \
+	fi; \
+	echo "Installing binary under $(DESTDIR)$(PREFIX)/bin."; \
+	mkdir -p $(DESTDIR)$(PREFIX)/bin; \
+	cp -f $(BIN) $(DESTDIR)$(PREFIX)/bin; \
 	echo "Installing man page under $(DESTDIR)$(PREFIX)/$$MANDIR."; \
 	if [ -d "/usr/share/man" ]; then \
 		for f in "/usr/share/man/man"?/*.gz; do \
@@ -56,24 +65,34 @@ install: all
 		echo "(Gzip man pages? 'No', quick look says.)"; \
 		cp -f man/$(MAN1) $(DESTDIR)$(PREFIX)/$$MANDIR/man1; \
 	fi; \
-	mkdir -p $(DESTDIR)$(PREFIX)/bin
-	mkdir -p $(DESTDIR)$(PREFIX)/share/doc/$(SHARE)
-	mkdir -p $(DESTDIR)$(PREFIX)/share/examples/$(SHARE)
-	cp -f $(BIN) $(DESTDIR)$(PREFIX)/bin
-	cp -RP $(README) sau/doc/* $(DESTDIR)$(PREFIX)/share/doc/$(SHARE)
-	cp -RP examples/* $(DESTDIR)$(PREFIX)/share/examples/$(SHARE)
+	echo "Installing docs under $(DESTDIR)$(PREFIX)/$$DOCSDIR."; \
+	mkdir -p $(DESTDIR)$(PREFIX)/$$DOCSDIR; \
+	cp -RP $(README) sau/doc/* $(DESTDIR)$(PREFIX)/$$DOCSDIR; \
+	echo "Installing examples under $(DESTDIR)$(PREFIX)/$$EXAMPLESDIR."; \
+	mkdir -p $(DESTDIR)$(PREFIX)/$$EXAMPLESDIR; \
+	cp -RP examples/* $(DESTDIR)$(PREFIX)/$$EXAMPLESDIR;
 uninstall:
 	@if [ -d "$(DESTDIR)$(PREFIX)/man" ]; then \
 		MANDIR="man"; \
 	else \
 		MANDIR="share/man"; \
 	fi; \
+	DOCSDIR="share/doc/$(SHARE)"; \
+	DATADIR="share/$(SHARE)"; \
+	if [ -d "$(DESTDIR)$(PREFIX)/share/examples/$(SHARE)" ]; then \
+		EXAMPLESDIR="share/examples/$(SHARE)"; \
+	else \
+		EXAMPLESDIR="share/$(SHARE)/examples"; \
+	fi; \
+	echo "Uninstalling binary under $(DESTDIR)$(PREFIX)/bin."; \
+	rm -f $(DESTDIR)$(PREFIX)/bin/$(BIN); \
 	echo "Uninstalling man page under $(DESTDIR)$(PREFIX)/$$MANDIR."; \
 	rm -f $(DESTDIR)$(PREFIX)/$$MANDIR/man1/$(MAN1).gz \
-		$(DESTDIR)$(PREFIX)/$$MANDIR/man1/$(MAN1)
-	rm -f $(DESTDIR)$(PREFIX)/bin/$(BIN)
-	rm -Rf $(DESTDIR)$(PREFIX)/share/doc/$(SHARE)
-	rm -Rf $(DESTDIR)$(PREFIX)/share/examples/$(SHARE)
+		$(DESTDIR)$(PREFIX)/$$MANDIR/man1/$(MAN1); \
+	echo "Uninstalling docs under $(DESTDIR)$(PREFIX)/$$DOCSDIR."; \
+	rm -Rf $(DESTDIR)$(PREFIX)/$$DOCSDIR; \
+	echo "Uninstalling examples under $(DESTDIR)$(PREFIX)/$$EXAMPLESDIR."; \
+	rm -Rf $(DESTDIR)$(PREFIX)/$$EXAMPLESDIR $(DESTDIR)$(PREFIX)/$$DATADIR;
 
 $(BIN): $(OBJ) sau/libsau.a
 	@UNAME="`uname -s`"; \
