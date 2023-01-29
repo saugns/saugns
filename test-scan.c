@@ -50,7 +50,7 @@ sauArrType(sauProgramArr, sauProgram*, )
 /*
  * Print command line usage instructions.
  */
-static void print_usage(void) {
+static void print_usage(bool h_arg) {
 	fputs(
 "Usage: "NAME" [-c] [-p] [-e] <script>...\n"
 "\n"
@@ -59,14 +59,14 @@ static void print_usage(void) {
 "  -p \tPrint info for scripts after loading.\n"
 "  -h \tPrint this message.\n"
 "  -V \tPrint version.\n",
-		stderr);
+		h_arg ? stdout : stderr);
 }
 
 /*
  * Print version.
  */
 static void print_version(void) {
-	fputs(NAME" ("CLINAME_STR") "VERSION_STR, stderr);
+	fputs(NAME" ("CLINAME_STR") "VERSION_STR"\n", stdout);
 }
 
 /*
@@ -79,6 +79,7 @@ static void print_version(void) {
 static bool parse_args(int argc, char **restrict argv,
 		uint32_t *restrict flags,
 		sauScriptArgArr *restrict script_args) {
+	bool h_arg = false;
 	for (;;) {
 		const char *arg;
 		--argc;
@@ -108,6 +109,7 @@ NEXT_C:
 			*flags |= OPT_EVAL_STRING;
 			break;
 		case 'h':
+			h_arg = true;
 			goto USAGE;
 		case 'p':
 			*flags |= OPT_PRINT_INFO;
@@ -119,7 +121,7 @@ NEXT_C:
 	}
 	return true;
 USAGE:
-	print_usage();
+	print_usage(h_arg);
 ABORT:
 	sauScriptArgArr_clear(script_args);
 	return false;
