@@ -54,15 +54,17 @@ Each of these keywords is further described in its own section below.
 	S	Script options (parameter default value or other);
 		runs during parsing. Changes made inside a
 		nested list scope don't apply outside of it.
-	O	Wave oscillator; the "O" is followed by the (initial)
-		wave type, as in "Osin".
+	O	Wave oscillator -- "O", optionally followed
+		by the initial "Wave types" value, e.g. "Otri".
 
 S: Script options
 -----------------
 
 Set parameter default value or other option; runs during parsing.
 Changes made inside a nested list scope don't apply outside of it.
-Usage: "S", followed by zero or more parameters, each with a value.
+
+Usage: "S", followed by zero or more whitespace-separated parameters,
+each with a value.
 
 Parameters:
 	a	Multiplier for amplitude "a" values, for the current
@@ -91,8 +93,10 @@ FM synthesizer operator.) If not used as a modulator,
 the output will be added as a sound at the current
 time position, playing for the time duration.
 
-Usage: "O" followed by (initial) wave type (e.g. "Osin"),
-followed by zero or more parameters, each with a value.
+Usage: "O", optionally followed by a wave type (e.g. "Otri"),
+by the default the same as "Osin". Followed by zero or more
+whitespace-separated parameters, each with a value.
+See "Wave types" for the available wave types.
 
 Wave types:
 	sin	Sine.

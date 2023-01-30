@@ -148,30 +148,38 @@ static uint8_t scan_filter_hashcommands(sauScanner *restrict o, uint8_t c) {
 }
 
 static sauSymitem *scan_sym(sauScanner *restrict o, uint32_t type_id,
-		const char *const*restrict help_stra) {
+		const char *const*restrict help_stra, bool optional) {
 	const char *type_label = scan_sym_labels[type_id];
 	sauScanFrame sf_begin = o->sf;
 	sauSymstr *s = NULL;
 	sauScanner_get_symstr(o, &s);
-	if (!s) {
-		sauScanner_warning(o, NULL, "%s name missing", type_label);
-		return NULL;
-	}
+	if (!s) goto NOT_FOUND;
 	sauSymitem *item = sauSymtab_find_item(o->symtab, s, type_id);
-	if (!item && type_id == SAU_SYM_VAR)
+	if (!item) {
+		if (type_id != SAU_SYM_VAR) goto NOT_FOUND;
 		item = sauSymtab_add_item(o->symtab, s, SAU_SYM_VAR);
-	if (!item && help_stra != NULL) {
+	}
+	return item;
+NOT_FOUND:
+	if (!s) {
+		if (optional)
+			return NULL;
+		const char *msg = help_stra ?
+				"%s name missing; available are:" :
+				"%s name missing";
+		sauScanner_warning(o, NULL, msg, type_label);
+		if (help_stra) sau_print_names(help_stra, "\t", stderr);
+	} else if (help_stra) /* standard warning produced here */ {
 		sauScanner_warning(o, &sf_begin,
 				"invalid %s name '%s'; available are:",
 				type_label, s->key);
 		sau_print_names(help_stra, "\t", stderr);
-		return NULL;
 	}
-	return item;
+	return NULL;
 }
 
 static bool scan_mathfunc(sauScanner *restrict o, size_t *restrict found_id) {
-	sauSymitem *sym = scan_sym(o, SAU_SYM_MATH_ID, sauMath_names);
+	sauSymitem *sym = scan_sym(o, SAU_SYM_MATH_ID, sauMath_names, false);
 	if (!sym)
 		return false;
 	if (sauMath_params[sym->data.id] == SAU_MATH_NOARG_F // no parentheses
@@ -215,7 +223,7 @@ static double scan_num_r(struct NumParser *restrict o,
 		if (isnan(num)) goto DEFER;
 		if (c == '-') num = -num;
 	} else if (c == '$') {
-		sauSymitem *var = scan_sym(sc, SAU_SYM_VAR, NULL);
+		sauSymitem *var = scan_sym(sc, SAU_SYM_VAR, NULL, false);
 		if (!var) goto REJECT;
 		if (var->data_use != SAU_SYM_DATA_NUM) {
 			sauScanner_warning(sc, NULL,
@@ -502,8 +510,10 @@ static size_t scan_phase_const(sauScanner *restrict o,
 	}
 }
 
-static bool scan_wavetype(sauScanner *restrict o, size_t *restrict found_id) {
-	sauSymitem *sym = scan_sym(o, SAU_SYM_WAVE_ID, sauWave_names);
+static bool scan_sym_id(sauScanner *restrict o,
+		size_t *restrict found_id, uint32_t type_id,
+		const char *const*restrict help_stra) {
+	sauSymitem *sym = scan_sym(o, type_id, help_stra, true);
 	if (!sym)
 		return false;
 	*found_id = sym->data.id;
@@ -556,12 +566,12 @@ static bool scan_ramp_param(sauScanner *restrict o,
 			}
 			break;
 		case 'r': {
-			sauSymitem *sym = scan_sym(o, SAU_SYM_RAMP_ID,
-					sauRamp_names);
-			if (sym) {
-				ramp->fill_type = sym->data.id;
-				ramp->flags |= SAU_RAMPP_FILL_TYPE;
-			}
+			size_t id;
+			if (!scan_sym_id(o, &id, SAU_SYM_RAMP_ID,
+						sauRamp_names))
+				break;
+			ramp->fill_type = id;
+			ramp->flags |= SAU_RAMPP_FILL_TYPE;
 			break; }
 		case 't':
 			if (scan_time_val(o, &time_ms))
@@ -1249,10 +1259,11 @@ static void parse_in_event(sauParser *restrict o) {
 			op->params |= SAU_POPP_TIME;
 			break;
 		case 'w': {
-			size_t wave;
-			if (!scan_wavetype(sc, &wave))
+			size_t id;
+			if (!scan_sym_id(sc, &id, SAU_SYM_WAVE_ID,
+						sauWave_names))
 				break;
-			op->wave = wave;
+			op->wave = id;
 			op->params |= SAU_POPP_WAVE;
 			break; }
 		default:
@@ -1302,7 +1313,7 @@ static bool parse_level(sauParser *restrict o,
 "ignoring variable assignment to variable assignment");
 				break;
 			}
-			pl.set_var = scan_sym(sc, SAU_SYM_VAR, NULL);
+			pl.set_var = scan_sym(sc, SAU_SYM_VAR, NULL, false);
 			break;
 		case '/':
 			if (pl.nest_list) goto INVALID;
@@ -1334,7 +1345,8 @@ static bool parse_level(sauParser *restrict o,
 			 * Variable reference (get and use object).
 			 */
 			pl.sub_f = NULL;
-			sauSymitem *var = scan_sym(sc, SAU_SYM_VAR, NULL);
+			sauSymitem *var = scan_sym(sc, SAU_SYM_VAR,
+					NULL, false);
 			if (var != NULL) {
 				if (var->data_use == SAU_SYM_DATA_OBJ) {
 					sauScriptOpData *ref = var->data.obj;
@@ -1349,11 +1361,10 @@ static bool parse_level(sauParser *restrict o,
 			}
 			break; }
 		case 'O': {
-			size_t wave;
-			if (!scan_wavetype(sc, &wave))
-				break;
+			size_t id = 0; /* default as fallback value */
+			scan_sym_id(sc, &id, SAU_SYM_WAVE_ID, sauWave_names);
 			begin_node(o, NULL, false);
-			pl.operator->wave = wave;
+			pl.operator->wave = id;
 			pl.sub_f = parse_in_event;
 			break; }
 		case 'S':
