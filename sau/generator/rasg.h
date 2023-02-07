@@ -178,6 +178,26 @@ typedef void (*sauRasG_map_f)(sauRasG *restrict o,
 		const uint32_t *restrict cycle_buf);
 
 /**
+ * Run for \p buf_len samples in 'violet random' mode, generating output.
+ */
+static sauMaybeUnused void sauRasG_map_v_rand(sauRasG *restrict o,
+		size_t buf_len,
+		float *restrict end_a_buf,
+		float *restrict end_b_buf,
+		const uint32_t *restrict cycle_buf) {
+	const float scale = 1.f/(float)INT32_MAX;
+	(void)o;
+	for (size_t i = 0; i < buf_len; ++i) {
+		uint32_t cycle = cycle_buf[i];
+		int32_t s0 = sau_ranfast32(cycle - 1) / 2;
+		int32_t s1 = sau_ranfast32(cycle) / 2;
+		int32_t s2 = sau_ranfast32(cycle + 1) / 2;
+		end_a_buf[i] = (s1 - s0) * scale;
+		end_b_buf[i] = (s2 - s1) * scale;
+	}
+}
+
+/**
  * Run for \p buf_len samples in 'uniform random' mode, generating output.
  */
 static sauMaybeUnused void sauRasG_map_rand(sauRasG *restrict o,
@@ -185,6 +205,10 @@ static sauMaybeUnused void sauRasG_map_rand(sauRasG *restrict o,
 		float *restrict end_a_buf,
 		float *restrict end_b_buf,
 		const uint32_t *restrict cycle_buf) {
+	if (o->flags & SAU_RAS_O_VIOLET) {
+		sauRasG_map_v_rand(o, buf_len, end_a_buf, end_b_buf, cycle_buf);
+		return;
+	}
 	const float scale = 1.f/(float)INT32_MAX;
 	(void)o;
 	for (size_t i = 0; i < buf_len; ++i) {
@@ -261,6 +285,36 @@ static sauMaybeUnused void sauRasG_map_gauss(sauRasG *restrict o,
 }
 
 /**
+ * Run for \p buf_len samples in 'violet binary' mode -- a differentiated,
+ * scaled 'ternary random' variation. Ternary smooth random always changes
+ * value, so only two differences are possible -- hence diffed for binary.
+ */
+static sauMaybeUnused void sauRasG_map_v_bin(sauRasG *restrict o,
+		size_t buf_len,
+		float *restrict end_a_buf,
+		float *restrict end_b_buf,
+		const uint32_t *restrict cycle_buf) {
+	int sar = o->level;
+	// TODO: Scaling ends up slightly too low near sar == 1, improve?
+	const float scale_diff = 1.f
+		- (sau_sar32(INT32_MAX, sar) / (float)INT32_MAX);
+	const float scale = (1.f + scale_diff*scale_diff) / (float)INT32_MAX;
+	for (size_t i = 0; i < buf_len; ++i) {
+		uint32_t cycle = cycle_buf[i];
+		int32_t sb = (cycle & 1) << 31;
+		int32_t sb_flip = (1U<<31) - sb;
+		int32_t s0 = (sau_sar32(sau_ranfast32(cycle - 1), sar)
+				+ sb) / 2;
+		int32_t s1 = (sau_sar32(sau_ranfast32(cycle), sar)
+				+ sb_flip) / 2; // at even pos to cos-align
+		int32_t s2 = (sau_sar32(sau_ranfast32(cycle + 1), sar)
+				+ sb) / 2;
+		end_a_buf[i] = (s1 - s0) * scale;
+		end_b_buf[i] = (s2 - s1) * scale;
+	}
+}
+
+/**
  * Run for \p buf_len samples in 'binary random' mode, generating output.
  * For an increasing \a level > 0 each new level is half as squiggly, for
  * a near-binary mode when above 5 (with best quality seemingly from 27).
@@ -270,6 +324,10 @@ static sauMaybeUnused void sauRasG_map_bin(sauRasG *restrict o,
 		float *restrict end_a_buf,
 		float *restrict end_b_buf,
 		const uint32_t *restrict cycle_buf) {
+	if (o->flags & SAU_RAS_O_VIOLET) {
+		sauRasG_map_v_bin(o, buf_len, end_a_buf, end_b_buf, cycle_buf);
+		return;
+	}
 	const float scale = 1.f/(float)INT32_MAX;
 	int sar = o->level;
 	for (size_t i = 0; i < buf_len; ++i) {
@@ -286,6 +344,10 @@ static sauMaybeUnused void sauRasG_map_bin(sauRasG *restrict o,
  * Run for \p buf_len samples in 'ternary random' mode, generating output.
  * For an increasing \a level > 0 each new level is half as squiggly, with
  * a practically ternary mode when above 5, but 30 is technically perfect.
+ *
+ * This is a special, smooth ternary random, which always changes value --
+ * from top-or-bottom to middle, like an oscillation randomly flipping its
+ * polarity at zero crossings. Smooth-sounding, and has useful properties.
  */
 static sauMaybeUnused void sauRasG_map_tern(sauRasG *restrict o,
 		size_t buf_len,
@@ -324,6 +386,35 @@ static sauMaybeUnused void sauRasG_map_fixed_simple(sauRasG *restrict o,
 }
 
 /**
+ * Run for \p buf_len samples in 'violet fixed' (violet-fixed mix) mode.
+ * For an increasing \a level > 0, each new level halves the randomness,
+ * the base frequency amplifying in its place -- toward ultimate purity.
+ */
+static sauMaybeUnused void sauRasG_map_v_fixed(sauRasG *restrict o,
+		size_t buf_len,
+		float *restrict end_a_buf,
+		float *restrict end_b_buf,
+		const uint32_t *restrict cycle_buf) {
+	const float scale = 1.f/(float)INT32_MAX;
+	int slr = o->level;
+	for (size_t i = 0; i < buf_len; ++i) {
+		uint32_t cycle = cycle_buf[i];
+		int32_t sign = sau_oddness_as_sign(cycle);
+		int32_t s0 = (sign * (int32_t)
+				(((uint32_t)sau_ranfast32(cycle - 1) >> slr) -
+				 INT32_MAX)) / 2;
+		int32_t s1 = (-sign * (int32_t)
+				(((uint32_t)sau_ranfast32(cycle) >> slr) -
+				 INT32_MAX)) / 2;
+		int32_t s2 = (sign * (int32_t)
+				(((uint32_t)sau_ranfast32(cycle + 1) >> slr) -
+				 INT32_MAX)) / 2;
+		end_a_buf[i] = (s1 - s0) * scale;
+		end_b_buf[i] = (s2 - s1) * scale;
+	}
+}
+
+/**
  * Run for \p buf_len samples in 'fixed cycle' mode, generating output.
  * For an increasing \a level > 0 each new level halves the randomness,
  * the base frequency amplifying in its place (toward ultimate purity).
@@ -333,6 +424,10 @@ static sauMaybeUnused void sauRasG_map_fixed(sauRasG *restrict o,
 		float *restrict end_a_buf,
 		float *restrict end_b_buf,
 		const uint32_t *restrict cycle_buf) {
+	if (o->flags & SAU_RAS_O_VIOLET) {
+		sauRasG_map_v_fixed(o, buf_len, end_a_buf,end_b_buf, cycle_buf);
+		return;
+	}
 	const float scale = 1.f/(float)INT32_MAX;
 	int slr = o->level;
 	for (size_t i = 0; i < buf_len; ++i) {
