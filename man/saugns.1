@@ -2,7 +2,7 @@
 .\"
 .\" This file is licensed under Creative Commons Attribution-ShareAlike 4.0
 .\" <https://creativecommons.org/licenses/by-sa/4.0/>.
-.Dd April 3, 2024
+.Dd June 3, 2024
 .Dt SAUGNS 1
 .Os
 .Sh NAME
@@ -41,7 +41,8 @@ data to stdout, either raw (--stdout) or AU (-o -).
 .Pp
 Scripts can use an arbitrary number of audio generators of the types supported.
 "O" (Wave oscillator) produces tones with a chosen waveshape,
-"R" (Random segments oscillator) produces pitched noises with a line and mode.
+"R" (Rumble oscillator, a.k.a. random line segments oscillator)
+produces pitched noises with a selected line and mode.
 Synthesis techniques supported include PM, FM, and AM/RM.
 Duration and some other attributes can be calculated for each script
 without generating audio; the scripting language is not Turing complete.
