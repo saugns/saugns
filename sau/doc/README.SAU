@@ -18,8 +18,8 @@ either at run time (like a function call in other languages),
 or at parse time (like a global script setting).
 
 The keywords "O" and "R" are type names for signal generators,
-and are used to add instances of wave oscillators, and rumbly
-noise generators, respectively. Such objects can be connected
+and are used to add instances of them -- wave oscillators, and
+rumble oscillators, respectively. Such objects can be connected
 for modulation. Together with the timing logic and parameters,
 these are the core features of the language.
 
@@ -57,7 +57,7 @@ Each of these keywords is further described in its own section below.
 	S	Script options (parameter default value or other);
 		runs during parsing. Changes made inside a
 		nested list scope don't apply outside of it.
-	R	Random segments oscillator -- "R", optionally followed
+	R	Rumble oscillator -- "R", optionally followed
 		by the initial "Line types" value, e.g. "Rlin".
 	O	Wave oscillator -- "O", optionally followed
 		by the initial "Wave types" value, e.g. "Otri".
@@ -174,29 +174,32 @@ The "R" and "O" types have these parameters in common:
 		(-1.0) to 1.0. See "Channel mixing values" for more.
 			"Value sweep" values are supported; see section.
 
-R: Random segments oscillator
------------------------------
+R: Rumble oscillator
+--------------------
 
-Value noise oscillator, connecting random values generated at a frequency
-with line segments of a selected shape. Two random values and line segments
-are generated each "cycle", so that the base frequency matches that of
-a wave oscillator -- though the spectrum otherwise differs in most modes.
+Rumble oscillator, a.k.a. random line segments oscillator.
+A value noise oscillator, connecting random values generated at a
+frequency with line segments of a selected shape. Two random values and
+line segments are generated each "cycle", so that the base frequency
+matches that of a wave oscillator -- though the spectrum otherwise differs
+in most modes. Fully supports FM & PM like a wave oscillator does.
 
 As a signal generator, if not enclosed within a "[]" list, then
 it will run and output at the current time, for its duration.
 
 Usage: "R", optionally followed by a line type (e.g. "Rlin"),
 by the default the same as "Rcos". Followed by zero or more
-whitespace-separated parameters, each with a value. Several
-'m' modes are available, for several types of random
-distribution, as well as a naive oscillator mode.
-See "Line types" for the available line types.
+whitespace-separated parameters, each with a value. Several 'm'
+modes are available, for several types of random distribution,
+as well as a naive oscillator mode. See "Line types" for the
+available line types. The default mode and line shape makes
+the output similar to low-pass-filtered white noise.
 
 The "seed(x)" mathematical function changes
 the starting seed of new "R" instances.
 
 Parameters:
-	The "R" random segments oscillator has the
+	The "R" rumble oscillator has the
 	"Signal generator common parameters", and additionally:
 	l	Line type -- see "Line types" for values.
 	m	Mode for line start and goal value variation; consists of
@@ -213,10 +216,14 @@ Parameters:
 		f	Fixed cycle. Plain naive oscillator at the top level;
 			below it, mixed with randomness at reduced amplitude.
 		In addition to the function and level, these flags can be set.
-		s	Square random start/goal values while preserving sign.
+		v	Violet rather than white noise version of the function
+			if available; missing for 'g' and 't'. Like high-pass
+			filtering the lower end of the noise, 6 dB per octave.
+		s	Square, then restore sign, of the start/goal values.
 			Turns uniform value variation into uniform energy
 			variation; somewhat quieter, and more tremulant.
 			Doesn't affect 'b', 't', nor 'f' with level '9'.
+			Distorts 'v' violet noise toward white, as if mixed.
 
 Line types:
 	cos
