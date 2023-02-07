@@ -209,10 +209,14 @@ Parameters:
 		f	Fixed cycle. Plain naive oscillator at the top level;
 			below it, mixed with randomness at reduced amplitude.
 		In addition to the function and level, these flags can be set.
-		s	Square random start/goal values while preserving sign.
+		v	Violet rather than white noise version of the function
+			if available; missing for 'g' and 't'. Like high-pass
+			filtering the lower end of the noise, 6 dB per octave.
+		s	Square, then restore sign, of the start/goal values.
 			Turns uniform value variation into uniform energy
 			variation; somewhat quieter, and more tremulant.
 			Doesn't affect 'b', 't', nor 'f' with level '9'.
+			Distorts 'v' violet noise toward white, as if mixed.
 
 Line types:
 	cos
