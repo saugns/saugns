@@ -768,6 +768,7 @@ static void check_final_state(sauGenerator *restrict o) {
 "voice %hd left uninitialized (never used)", i);
 		}
 	}
+	sau_printf("%.11f, %.11f\n", _min, _max);
 }
 
 /**

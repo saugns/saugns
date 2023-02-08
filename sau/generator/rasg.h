@@ -284,6 +284,8 @@ static sauMaybeUnused void sauRasG_map_gauss(sauRasG *restrict o,
 	}
 }
 
+static float _min, _max;
+
 /**
  * Run for \p buf_len samples in 'violet binary' mode -- a differentiated,
  * scaled 'ternary random' variation. Ternary smooth random always changes
@@ -299,6 +301,11 @@ static sauMaybeUnused void sauRasG_map_v_bin(sauRasG *restrict o,
 	const float scale_diff = 1.f
 		- (sau_sar32(INT32_MAX, sar) / (float)INT32_MAX);
 	const float scale = (1.f + scale_diff*scale_diff) / (float)INT32_MAX;
+	static bool _printed = false;
+	if (!_printed) {
+		_printed = true;
+		sau_printf("scale %.11f\n", scale_diff);
+	}
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t cycle = cycle_buf[i];
 		uint32_t sb = (cycle & 1) << 31;
@@ -311,6 +318,10 @@ static sauMaybeUnused void sauRasG_map_v_bin(sauRasG *restrict o,
 				+ sb, 2);
 		end_a_buf[i] = sau_fscalei(s1 - s0, scale);
 		end_b_buf[i] = sau_fscalei(s2 - s1, scale);
+		if (_min > end_a_buf[i]) _min = end_a_buf[i];
+		if (_min > end_b_buf[i]) _min = end_b_buf[i];
+		if (_max < end_a_buf[i]) _max = end_a_buf[i];
+		if (_max < end_b_buf[i]) _max = end_b_buf[i];
 	}
 }
 
@@ -341,6 +352,37 @@ static sauMaybeUnused void sauRasG_map_bin(sauRasG *restrict o,
 }
 
 /**
+ */
+static sauMaybeUnused void sauRasG_map_v_tern(sauRasG *restrict o,
+		size_t buf_len,
+		float *restrict end_a_buf,
+		float *restrict end_b_buf,
+		const uint32_t *restrict cycle_buf) {
+	const float scale = 1.f/(float)INT32_MAX;
+	int sar = o->level;
+	for (size_t i = 0; i < buf_len; ++i) {
+		uint32_t cycle = cycle_buf[i];
+		int32_t offs = INT32_MAX + (cycle & 1) * 2;
+#if 1
+		int32_t s0 = sau_ranfast32(cycle - 1) / 2;
+		int32_t s1 = sau_ranfast32(cycle) / 2;
+		int32_t s2 = sau_ranfast32(cycle + 1) / 2;
+		end_a_buf[i] = (sau_sar32(s1 - s0, sar) + offs / 2) * scale;
+		end_b_buf[i] = (sau_sar32(s2 - s1, sar) - offs / 2) * scale;
+#else
+		int32_t s0 = (sau_sar32(sau_ranfast32(cycle - 1), sar)
+				- offs) / 2;
+		int32_t s1 = (sau_sar32(sau_ranfast32(cycle), sar)
+				+ offs) / 2;
+		int32_t s2 = (sau_sar32(sau_ranfast32(cycle + 1), sar)
+				- offs) / 2;
+		end_a_buf[i] = (s1 - s0) * scale;
+		end_b_buf[i] = (s2 - s1) * scale;
+#endif
+	}
+}
+
+/**
  * Run for \p buf_len samples in 'ternary random' mode, generating output.
  * For an increasing \a level > 0 each new level is half as squiggly, with
  * a practically ternary mode when above 5, but 30 is technically perfect.
@@ -354,6 +396,10 @@ static sauMaybeUnused void sauRasG_map_tern(sauRasG *restrict o,
 		float *restrict end_a_buf,
 		float *restrict end_b_buf,
 		const uint32_t *restrict cycle_buf) {
+	if (o->flags & SAU_RAS_O_VIOLET) {
+		sauRasG_map_v_tern(o, buf_len, end_a_buf, end_b_buf, cycle_buf);
+		return;
+	}
 	const float scale = 1.f/(float)INT32_MAX;
 	int sar = o->level;
 	for (size_t i = 0; i < buf_len; ++i) {
