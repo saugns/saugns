@@ -259,9 +259,8 @@ static inline float ssgauss_dist4(float x) {
  * \return pseudo-random number between -1.0 and +1.0 for index \p n
  */
 static inline float sau_franssgauss32(uint32_t n) {
-	int32_t sc = sau_ranfast32(n), sp = sau_ranfast32(n - 1);
-	int32_t s0 = sc / 2 - sp / 2;
-	int32_t s1 = sau_mcg32(sc) / 2 - sau_mcg32(sp) / 2;
+	int32_t s0 = sau_ranfast32(n);
+	int32_t s1 = sau_mcg32(s0);
 	float a = s0 * 1.f/(float)UINT32_MAX;
 	float b = s1 * 1.f/(float)UINT32_MAX;
 	float c = ssgauss_dist4(soft_sqrtm2logp1_2_r01(a));
