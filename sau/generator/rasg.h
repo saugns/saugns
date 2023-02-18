@@ -79,7 +79,7 @@ static void sauRasG_set_opt(sauRasG *restrict o,
  * \return number of samples
  */
 static inline uint32_t sauRasG_cycle_len(sauRasG *restrict o, float freq) {
-	return lrintf(((float) UINT32_MAX) / (o->cyclor.coeff * freq));
+	return sau_ftoi(((float) UINT32_MAX) / (o->cyclor.coeff * freq));
 }
 
 /**
@@ -89,7 +89,7 @@ static inline uint32_t sauRasG_cycle_len(sauRasG *restrict o, float freq) {
  */
 static inline uint32_t sauRasG_cycle_pos(sauRasG *restrict o,
 		float freq, uint32_t pos) {
-	uint32_t inc = lrintf(o->cyclor.coeff * freq);
+	uint32_t inc = sau_ftoi(o->cyclor.coeff * freq);
 	uint32_t phs = inc * pos;
 	return phs / inc;
 }
@@ -101,7 +101,7 @@ static inline uint32_t sauRasG_cycle_pos(sauRasG *restrict o,
  */
 static inline int32_t sauRasG_cycle_offs(sauRasG *restrict o,
 		float freq, uint32_t pos) {
-	uint32_t inc = lrintf(o->cyclor.coeff * freq);
+	uint32_t inc = sau_ftoi(o->cyclor.coeff * freq);
 	uint32_t phs = inc * pos;
 	return (phs - sauWave_SLEN) / inc;
 }
@@ -127,7 +127,7 @@ static sauMaybeUnused void sauCyclor_fill(sauCyclor *restrict o,
 	if (!pm_f && !fpm_f) {
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s_f = freq_f[i];
-			uint64_t cycle_phase = P(llrintf(o->coeff * s_f), 0);
+			uint64_t cycle_phase = P(sau_ftoi(o->coeff * s_f), 0);
 			uint32_t phase;
 			cycle_ui32[i] = cycle_phase >> 31;
 			phase = cycle_phase & ~(1U<<31);
@@ -137,8 +137,8 @@ static sauMaybeUnused void sauCyclor_fill(sauCyclor *restrict o,
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s_f = freq_f[i];
 			float s_pofs = pm_f[i];
-			uint64_t cycle_phase = P(llrintf(o->coeff * s_f),
-					llrintf(s_pofs * (float)INT32_MAX));
+			uint64_t cycle_phase = P(sau_ftoi(o->coeff * s_f),
+					sau_ftoi(s_pofs * (float)INT32_MAX));
 			uint32_t phase;
 			cycle_ui32[i] = cycle_phase >> 31;
 			phase = cycle_phase & ~(1U<<31);
@@ -148,8 +148,8 @@ static sauMaybeUnused void sauCyclor_fill(sauCyclor *restrict o,
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s_f = freq_f[i];
 			float s_pofs = fpm_f[i] * fpm_scale * s_f;
-			uint64_t cycle_phase = P(llrintf(o->coeff * s_f),
-					llrintf(s_pofs * (float)INT32_MAX));
+			uint64_t cycle_phase = P(sau_ftoi(o->coeff * s_f),
+					sau_ftoi(s_pofs * (float)INT32_MAX));
 			uint32_t phase;
 			cycle_ui32[i] = cycle_phase >> 31;
 			phase = cycle_phase & ~(1U<<31);
@@ -159,8 +159,8 @@ static sauMaybeUnused void sauCyclor_fill(sauCyclor *restrict o,
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s_f = freq_f[i];
 			float s_pofs = pm_f[i] + (fpm_f[i] * fpm_scale * s_f);
-			uint64_t cycle_phase = P(llrintf(o->coeff * s_f),
-					llrintf(s_pofs * (float)INT32_MAX));
+			uint64_t cycle_phase = P(sau_ftoi(o->coeff * s_f),
+					sau_ftoi(s_pofs * (float)INT32_MAX));
 			uint32_t phase;
 			cycle_ui32[i] = cycle_phase >> 31;
 			phase = cycle_phase & ~(1U<<31);

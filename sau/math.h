@@ -57,6 +57,16 @@ static inline uint64_t sau_ms_in_samples(uint64_t time_ms, uint64_t srate,
 #define sau_ui32rintf(x) ((uint32_t) \
 	(LONG_MAX >= UINT32_MAX ? lrintf(x) : llrintf(x)))
 
+/** Portably wrap-around behaving lrint() within 64-bit int boundaries.
+    Apply lrint() if long can hold INT64_MAX, otherwise llrint(). */
+#define sau_i64rint(x) ((int64_t) \
+	(LONG_MAX >= INT64_MAX ? lrint(x) : llrint(x)))
+
+/** Portably wrap-around behaving lrintf() within 64-bit int boundaries.
+    Apply lrintf() if long can hold INT64_MAX, otherwise llrintf(). */
+#define sau_i64rintf(x) ((int64_t) \
+	(LONG_MAX >= INT64_MAX ? lrintf(x) : llrintf(x)))
+
 /**
  * Convert cyclical value (0.0 = 0% and 1.0 = 100%, with ends
  * wrapping around) to 32-bit integer with 0 as the 0% value.
