@@ -13,6 +13,8 @@
 
 #include <sau/generator.h>
 #include <sau/mempool.h>
+#define sau_dtoi sau_i64rint  // use for wrap-around behavior
+#define sau_ftoi sau_i64rintf // use for wrap-around behavior
 #include "generator/wosc.h"
 #include "generator/rasg.h"
 #include <stdio.h>

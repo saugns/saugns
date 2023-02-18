@@ -95,7 +95,7 @@ static inline void sauWOsc_set_wave(sauWOsc *restrict o, uint8_t wave) {
  * \return number of samples
  */
 static inline uint32_t sauWOsc_cycle_len(sauWOsc *restrict o, float freq) {
-	return lrintf(((float) UINT32_MAX) / (o->phasor.coeff * freq));
+	return sau_ftoi(((float) UINT32_MAX) / (o->phasor.coeff * freq));
 }
 
 /**
@@ -105,7 +105,7 @@ static inline uint32_t sauWOsc_cycle_len(sauWOsc *restrict o, float freq) {
  */
 static inline uint32_t sauWOsc_cycle_pos(sauWOsc *restrict o,
 		float freq, uint32_t pos) {
-	uint32_t inc = lrintf(o->phasor.coeff * freq);
+	uint32_t inc = sau_ftoi(o->phasor.coeff * freq);
 	uint32_t phs = inc * pos;
 	return phs / inc;
 }
@@ -117,7 +117,7 @@ static inline uint32_t sauWOsc_cycle_pos(sauWOsc *restrict o,
  */
 static inline int32_t sauWOsc_cycle_offs(sauWOsc *restrict o,
 		float freq, uint32_t pos) {
-	uint32_t inc = lrintf(o->phasor.coeff * freq);
+	uint32_t inc = sau_ftoi(o->phasor.coeff * freq);
 	uint32_t phs = inc * pos;
 	return (phs - sauWave_SLEN) / inc;
 }
@@ -141,28 +141,28 @@ static sauMaybeUnused void sauPhasor_fill(sauPhasor *restrict o,
 	if (!pm_f && !fpm_f) {
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s_f = freq_f[i];
-			phase_ui32[i] = P(lrintf(o->coeff * s_f), 0);
+			phase_ui32[i] = P(sau_ftoi(o->coeff * s_f), 0);
 		}
 	} else if (!fpm_f) {
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s_f = freq_f[i];
 			float s_pofs = pm_f[i];
-			phase_ui32[i] = P(lrintf(o->coeff * s_f),
-					llrintf(s_pofs * (float)INT32_MAX));
+			phase_ui32[i] = P(sau_ftoi(o->coeff * s_f),
+					sau_ftoi(s_pofs * (float)INT32_MAX));
 		}
 	} else if (!pm_f) {
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s_f = freq_f[i];
 			float s_pofs = fpm_f[i] * fpm_scale * s_f;
-			phase_ui32[i] = P(lrintf(o->coeff * s_f),
-					llrintf(s_pofs * (float)INT32_MAX));
+			phase_ui32[i] = P(sau_ftoi(o->coeff * s_f),
+					sau_ftoi(s_pofs * (float)INT32_MAX));
 		}
 	} else {
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s_f = freq_f[i];
 			float s_pofs = pm_f[i] + (fpm_f[i] * fpm_scale * s_f);
-			phase_ui32[i] = P(lrintf(o->coeff * s_f),
-					llrintf(s_pofs * (float)INT32_MAX));
+			phase_ui32[i] = P(sau_ftoi(o->coeff * s_f),
+					sau_ftoi(s_pofs * (float)INT32_MAX));
 		}
 	}
 }
