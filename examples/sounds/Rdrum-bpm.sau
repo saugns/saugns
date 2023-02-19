@@ -1,0 +1,8 @@
+// The carrier has a very low frequency other than of 0 Hz to help the
+// sound vary a little over time, rather than alternating between just
+// two back-and-forth beats (PM amp rising, amp falling) all the time.
+'bpm=240
+'strength=100
+Rlin f$bpm/120 p[
+	Rxpe mf a$strength*(120/$bpm)
+] t30
