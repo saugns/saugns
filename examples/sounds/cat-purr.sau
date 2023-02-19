@@ -1,1 +1,1 @@
-Rcos f50 p[Wsin r1 a1/2] a0[Wsin r1 a2 p1/4] t10
+Rcos f50 p[Wsin r1 a1/2] a0[Wsin r1 a1/3].r2/3[Wsin f1] t30
