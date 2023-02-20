@@ -2,17 +2,13 @@
  * Copyright (c) 2011-2013, 2017-2023 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
- * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
+ * This file and the software of which it is part is distributed under the
+ * terms of the GNU Lesser General Public License, either version 3 or (at
+ * your option) any later version, WITHOUT ANY WARRANTY, not even of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
- * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
- * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
- * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
- * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
- * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
- * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ * View the files COPYING.LESSER and COPYING for details, or if missing, see
+ * <https://www.gnu.org/licenses/>.
  */
 
 #include <sau/line.h>
@@ -299,6 +295,125 @@ void sauLine_map_lge(float *restrict buf, uint32_t len,
 	for (uint32_t i = 0; i < len; ++i) {
 		float x = buf[i];
 		buf[i] = end0[i] + (end1[i] - end0[i]) * expramp(x);
+	}
+}
+
+/**
+ * Fill \p buf with \p len values of uniform white noise
+ * between \p v0 and \p vt, seeded with position \p pos.
+ */
+void sauLine_fill_uwh(float *restrict buf, uint32_t len,
+		float v0, float vt, uint32_t pos, uint32_t time,
+		const float *restrict mulbuf) {
+	const float scale = 0.5f/(float)INT32_MAX;
+	const float vm = (v0 + vt) * 0.5f;
+	const float vd = (vt - v0) * scale;
+	(void)time;
+	for (uint32_t i = 0; i < len; ++i) {
+		int32_t s = sau_ranfast32(pos + i);
+		float v = vm + vd * s;
+		buf[i] = mulbuf ? (v * mulbuf[i]) : v;
+	}
+}
+
+/**
+ * Map positions in \p buf (values from 0.0 to 1.0) to uniform white noise
+ * samples between \p end0 and \p end1, writing \p len values into \p buf.
+ *
+ * Mapping counterpart of filling function sauLine_fill_uwh().
+ */
+void sauLine_map_uwh(float *restrict buf, uint32_t len,
+		const float *restrict end0, const float *restrict end1) {
+	const float scale = 0.5f/(float)INT32_MAX;
+	for (uint32_t i = 0; i < len; ++i) {
+		union {float f; int32_t i;} x = {buf[i]};
+		int32_t s = sau_ranfast32(x.i);
+		float v = 0.5f + scale * s;
+		buf[i] = end0[i] + (end1[i] - end0[i]) * v;
+	}
+}
+
+/**
+ * Fill \p buf with \p len values along "noise camel line" (line
+ * plus two softer white noise bulges), between \p v0 and \p vt,
+ * seeded with position \p pos.
+ */
+void sauLine_fill_ncl(float *restrict buf, uint32_t len,
+		float v0, float vt, uint32_t pos, uint32_t time,
+		const float *restrict mulbuf) {
+	const int32_t adj_pos = pos - (time / 2);
+	const float inv_time = 1.f / time;
+	const float scale = 0.5f/(float)INT32_MAX;
+	const float vm = (v0 + vt) * 0.5f;
+	const float vd = (vt - v0);
+	for (uint32_t i = 0; i < len; ++i) {
+		float x = ((int32_t)i + adj_pos) * inv_time;
+		float xb = x + 0.5f; xb -= (3.f - (xb+xb))*xb*xb;
+		int32_t s = sau_ranfast32(pos + i);
+		float v = vm + vd * (x + xb * s * scale);
+		buf[i] = mulbuf ? (v * mulbuf[i]) : v;
+	}
+}
+
+/**
+ * Map positions in \p buf (values from 0.0 to 1.0) to the trajectory of
+ * a "noise camel line" (line plus two softer white noise bulges),
+ * between \p end0 and \p end1, writing \p len values into \p buf.
+ *
+ * Mapping counterpart of filling function sauLine_fill_ncl().
+ */
+void sauLine_map_ncl(float *restrict buf, uint32_t len,
+		const float *restrict end0, const float *restrict end1) {
+	const float scale = 0.5f/(float)INT32_MAX;
+	for (uint32_t i = 0; i < len; ++i) {
+		float x = buf[i];
+		float xb = x; xb -= (3.f - (xb+xb))*xb*xb;
+		union {float f; int32_t i;} xs = {buf[i]};
+		int32_t s = sau_ranfast32(xs.i);
+		float v = x + xb * s * scale;
+		buf[i] = end0[i] + (end1[i] - end0[i]) * v;
+	}
+}
+
+/**
+ * Fill \p buf with \p len values along "noise hump line" (line
+ * plus broad, big white noise bulge), between \p v0 and \p vt,
+ * seeded with position \p pos.
+ */
+void sauLine_fill_nhl(float *restrict buf, uint32_t len,
+		float v0, float vt, uint32_t pos, uint32_t time,
+		const float *restrict mulbuf) {
+	const int32_t adj_pos = pos - (time / 2);
+	const float inv_time = 1.f / time;
+	const float scale = 2 * 0.5f/(float)INT32_MAX;
+	const float vm = (v0 + vt) * 0.5f;
+	const float vd = (vt - v0);
+	for (uint32_t i = 0; i < len; ++i) {
+		float x = ((int32_t)i + adj_pos) * inv_time;
+		float xb = x + 0.5f; xb -= xb*xb;
+		int32_t s = sau_ranfast32(pos + i);
+		float v = vm + vd * (x + xb * s * scale);
+		buf[i] = mulbuf ? (v * mulbuf[i]) : v;
+	}
+}
+
+/**
+ * Map positions in \p buf (values from 0.0 to 1.0) to the trajectory of
+ * a "noise hump line" (line plus a broad, big white noise bulge),
+ * between \p end0 and \p end1, writing \p len values into \p buf.
+ *
+ * Mapping counterpart of filling function sauLine_fill_nhl().
+ */
+void sauLine_map_nhl(float *restrict buf, uint32_t len,
+		const float *restrict end0, const float *restrict end1) {
+	const float scale = 2 * 0.5f/(float)INT32_MAX;
+	for (uint32_t i = 0; i < len; ++i) {
+		float x = buf[i];
+		float xb = x; xb -= xb*xb;
+		union {float f; int32_t i;} xs = {buf[i]};
+		int32_t s = sau_ranfast32(xs.i);
+		float v = x + xb * s * scale;
+		buf[i] = end0[i] + (end1[i] - end0[i]) * v;
 	}
 }
 
