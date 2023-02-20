@@ -301,6 +301,41 @@ void sauLine_map_lge(float *restrict buf, uint32_t len,
 }
 
 /**
+ * Fill \p buf with \p len values of uniform white noise
+ * between \p v0 and \p vt, seeded with position \p pos.
+ */
+void sauLine_fill_uwh(float *restrict buf, uint32_t len,
+		float v0, float vt, uint32_t pos, uint32_t time,
+		const float *restrict mulbuf) {
+	const float scale = 0.5f/(float)INT32_MAX;
+	const float vm = (v0 + vt) * 0.5f;
+	const float vd = (vt - v0) * scale;
+	(void)time;
+	for (uint32_t i = 0; i < len; ++i) {
+		int32_t s = sau_ranfast32(pos + i);
+		float v = vm + vd * s;
+		buf[i] = mulbuf ? (v * mulbuf[i]) : v;
+	}
+}
+
+/**
+ * Map positions in \p buf (values from 0.0 to 1.0) to uniform white noise
+ * samples between \p end0 and \p end1, writing \p len values into \p buf.
+ *
+ * Mapping counterpart of filling function sauLine_fill_uwh().
+ */
+void sauLine_map_uwh(float *restrict buf, uint32_t len,
+		const float *restrict end0, const float *restrict end1) {
+	const float scale = 0.5f/(float)INT32_MAX;
+	for (uint32_t i = 0; i < len; ++i) {
+		union {float f; int32_t i;} x = {buf[i]};
+		int32_t s = sau_ranfast32(x.i);
+		float v = 0.5f + scale * s;
+		buf[i] = end0[i] + (end1[i] - end0[i]) * v;
+	}
+}
+
+/**
  * Copy changes from \p src to the instance,
  * preserving non-overridden parts of state.
  */
