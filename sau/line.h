@@ -27,6 +27,7 @@
 	X(log) \
 	X(xpe) \
 	X(lge) \
+	X(uwh) \
 	//
 #define SAU_LINE__X_ID(NAME) SAU_LINE_N_##NAME,
 #define SAU_LINE__X_NAME(NAME) #NAME,
