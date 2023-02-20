@@ -233,6 +233,8 @@ Line types:
 		Exponential envelope shape (saturate or decay).
 	lge
 		Logarithmic envelope shape (saturate or decay).
+	uwh
+		Uniform random white noise in start-goal range.
 	The 'exp' and 'log' shapes use ear-tuned polynomial
 	approximations with definite beginnings and ends,
 	designed to sound natural for frequency sweeping,
