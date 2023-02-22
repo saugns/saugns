@@ -228,7 +228,7 @@ static double scan_num_r(struct NumParser *restrict o,
 	if (c == '(') {
 		num = scan_num_r(o, NUMEXP_SUB, level+1);
 	} else if (c == '+' || c == '-') {
-		num = scan_num_r(o, NUMEXP_ADT, level+1);
+		num = scan_num_r(o, NUMEXP_ADT, level);
 		if (isnan(num)) goto DEFER;
 		if (c == '-') num = -num;
 	} else if (c == '$') {
