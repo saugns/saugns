@@ -228,7 +228,7 @@ static double scan_num_r(struct NumParser *restrict o,
 	if (c == '(') {
 		num = scan_num_r(o, NUMEXP_SUB, level+1);
 	} else if (c == '+' || c == '-') {
-		num = scan_num_r(o, NUMEXP_ADT, level+1);
+		num = scan_num_r(o, NUMEXP_ADT, level);
 		if (isnan(num)) goto DEFER;
 		if (c == '-') num = -num;
 	} else if (c == '$') {
@@ -1435,7 +1435,6 @@ static bool parse_level(sauParser *restrict o,
 			if (pl.nest_list) goto INVALID;
 			parse_waittime(o);
 			break;
-			break;
 		case '=': {
 			sauSymitem *var = pl.set_var;
 			if (!var) goto INVALID;
@@ -1497,7 +1496,8 @@ static bool parse_level(sauParser *restrict o,
 			break;
 		case '[':
 			warn_opening_disallowed(sc, '[');
-			break;
+			pl.pl_flags &= ~PL_WARN_NOSPACE; /* OK around */
+			continue;
 		case ']':
 			if (pl.scope == SCOPE_BIND) {
 				endscope = true;
@@ -1512,7 +1512,8 @@ static bool parse_level(sauParser *restrict o,
 			break;
 		case '{':
 			warn_opening_disallowed(sc, '{');
-			break;
+			pl.pl_flags &= ~PL_WARN_NOSPACE; /* OK around */
+			continue;
 		case '|':
 			if (pl.nest_list) goto INVALID;
 			if (newscope == SCOPE_SAME) {
