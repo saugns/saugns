@@ -48,6 +48,9 @@
  * Utility macros.
  */
 
+/** Return all arguments. Can be used to remove parentheses around a list. */
+#define SAU_ARGS(...) __VA_ARGS__
+
 /** Turn \p arg into string literal before macro-expanding it. */
 #define SAU_STRLIT(arg) #arg
 

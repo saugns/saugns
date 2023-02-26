@@ -1,0 +1,12 @@
+// Three tones with increasingly bright wave types: par, mto, saw
+Wpar fC4 t1
+; fE4 t1
+; fF4 t1
+|/1.0
+Wmto fC4 t1
+; fE4 t1
+; fF4 t1
+|/1.0
+Wsaw fC4 t1
+; fE4 t1
+; fF4 t1
