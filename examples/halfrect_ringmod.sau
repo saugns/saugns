@@ -1,4 +1,4 @@
-'c Whrs a1[
+'c Whsi a1[
 	'm1 Wsin r1/2 a0[g1 t2]
 ] t2; a[g0 t2]; t1/2 |
 @m1 a[g0 t1]; a1[g0]; a1[g0]; a1[g0] /* "soft square wave" beeps */
@@ -8,6 +8,6 @@
 
 // Nest inside PM
 Wsin p[
-	Whrs r0[g100/1 lexp] a0[Wsin r1/2] t2; r[g0];
+	Whsi r0[g100/1 lexp] a0[Wsin r1/2] t2; r[g0];
 	r0[g1/2 llog] t1; r[g0]
 ]
