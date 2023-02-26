@@ -1,0 +1,12 @@
+// Three tones with increasingly bright wave types: tri, srs, sqr
+Wtri fC4 t1
+; fE4 t1
+; fF4 t1
+|/1.0
+Wsrs fC4 t1
+; fE4 t1
+; fF4 t1
+|/1.0
+Wsqr fC4 t1
+; fE4 t1
+; fF4 t1
