@@ -2,17 +2,13 @@
  * Copyright (c) 2011-2012, 2017-2023 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
- * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
+ * This file and the software of which it is part is distributed under the
+ * terms of the GNU Lesser General Public License, either version 3 or (at
+ * your option) any later version, WITHOUT ANY WARRANTY, not even of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
- * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
- * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
- * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
- * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
- * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
- * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ * View the files COPYING.LESSER and COPYING for details, or if missing, see
+ * <https://www.gnu.org/licenses/>.
  */
 
 #pragma once
@@ -33,19 +29,48 @@
 #define sauWave_SLENMASK (sauWave_SLEN - 1)
 
 /* Macro used to declare and define wave type sets of items.
-   Note that the extra "PILUT" data isn't all fit into this. */
+   The PILUT coefficients affect use by the oscillator code. */
 #define SAU_WAVE__ITEMS(X) \
-	X(sin) \
-	X(sqr) \
-	X(tri) \
-	X(saw) \
-	X(ahs) \
-	X(hrs) \
-	X(srs) \
-	X(ssr) \
+	X(sin, (.amp_scale = 1.27324153848, \
+		.amp_dc    = 0.0, \
+		.phase_adj = (INT32_MIN/2))) \
+	X(tri, (.amp_scale = 1.00097751711, \
+		.amp_dc    = 0.0, \
+		.phase_adj = 0)) \
+	X(srs, (.amp_scale = 1.52547437578, \
+		.amp_dc    = 0.0, \
+		.phase_adj = 0)) \
+	X(sqr, (.amp_scale = 2.00000000000, \
+		.amp_dc    = 0.0, \
+		.phase_adj = (INT32_MIN/2))) \
+	X(ean, (.amp_scale = 1.20275515347, \
+		.amp_dc    = -0.24257955076, \
+		.phase_adj = 0)) \
+	X(cat, (.amp_scale = 1.37070880305, \
+		.amp_dc    = -0.23725526633, \
+		.phase_adj = 0)) \
+	X(eto, (.amp_scale = 1.26113986272 * -1 /* flip sign */, \
+		.amp_dc    = 0.0, \
+		.phase_adj = -(INT32_MIN/2))) \
+	X(par, (.amp_scale = 1.02639326795, \
+		.amp_dc    = -0.33333333333, \
+		.phase_adj = 0)) \
+	X(mto, (.amp_scale = 1.57268451738, \
+		.amp_dc    = -0.23724704918, \
+		.phase_adj = 0)) \
+	X(saw, (.amp_scale = 1.00048851979 * -1 /* flip sign */, \
+		.amp_dc    = 0.0, \
+		.phase_adj = -(INT32_MIN/2))) \
+	X(hsi, (.amp_scale = 1.40333871035, \
+		.amp_dc    = -0.36334126990, \
+		.phase_adj = 0)) \
+	X(spa, (.amp_scale = 1.07213756312, \
+		.amp_dc    = 0.27322393756, \
+		.phase_adj = 0)) \
 	//
-#define SAU_WAVE__X_ID(NAME) SAU_WAVE_N_##NAME,
-#define SAU_WAVE__X_NAME(NAME) #NAME,
+#define SAU_WAVE__X_ID(NAME, COEFFS) SAU_WAVE_N_##NAME,
+#define SAU_WAVE__X_NAME(NAME, COEFFS) #NAME,
+#define SAU_WAVE__X_COEFFS(NAME, COEFFS) {SAU_ARGS COEFFS},
 
 /**
  * Wave types.
@@ -125,4 +150,4 @@ static inline double sauWave_get_herp(const float *restrict lut,
 
 void sau_global_init_Wave(void);
 
-void sauWave_print(uint8_t id);
+void sauWave_print(uint8_t id, bool verbose);
