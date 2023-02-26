@@ -270,36 +270,61 @@ Parameters:
 	w	Wave type -- see "Wave types" for values.
 
 Wave types:
+	Beyond 'sin', there's 3 times 3 complementary wave types, in terms
+	of the added harmonics (odd, even, or all), and mellow vs. bright.
+	Additionally, there's 2 more, listed after these first 10.
 	sin
-		Sine. For cosine, use (1/4) phase.
-	sqr
-		Square.
+		Sine. For cosine, set phase 'p' to 1/4.
 	tri
 		Triangle.
-	saw
-		Saw. Increasing slope; use
-		negative amplitude or frequency for decreasing slope.
-	ahs
-		Absolute half-frequency sine (adjusted).
-		Sine-based parabola-like wave.
-		Frequency halved to restore base frequency,
-		peak amplitude centered and doubled, phase
-		shifted to begin and end at zero amplitude.
-		A softer alternative to "saw" (saw wave).
-	hrs
-		Half-rectified sine (adjusted).
-		Positive half kept, negative half zero'd.
-		Peak amplitude centered and doubled, phase
-		shifted to begin and end at zero amplitude.
-		A warm and full sound.
+		Mellow odd-harmonics wave.
+		Opposite of 'ean' relative to 'par'.
 	srs
-		Square root of sine.
-		Mirrored for the negative half.
-		A softer alternative to "sqr" (square wave).
-	ssr
-		Squared & square root of sine.
-		A little more thin and sharp, it differs from
-		"srs" a little like "srs" differs from "szh".
+		Square root of sine. (Mirrored for the negative half.)
+		Medium-bright odd-harmonics wave.
+		Opposite of 'cat' relative to 'hsr'.
+	sqr
+		Square.
+		Bright odd-harmonics wave.
+		Opposite of 'eto' relative to 'saw'.
+	ean
+		Evenangle.
+		Mellow even-harmonics wave.
+		Opposite of 'tri' relative to 'par'.
+		To begin at 0.0 amplitude, set phase 'p' to 6/93.
+	cat
+		Catear.
+		Medium-bright even-harmonics wave.
+		Opposite of 'srs' relative to 'hsr'.
+		To begin at 0.0 amplitude, set phase 'p' to 1/16.
+	eto
+		Eventooth.
+		Bright even-harmonics wave.
+		Opposite of 'sqr' relative to 'saw'.
+	par
+		Parabola. (x^2, steep part up.)
+		Mellow all-harmonics wave.
+		Between 'tri' and 'ean'.
+		To begin at 0.0 amplitude, set phase 'p' to 9/87.
+	hsr
+		Mellowtooth. (Half-rectified 'srs', amplitude doubled.)
+		Medium-bright all-harmonics wave.
+		Between 'srs' and 'cat'.
+		To begin at 0.0 amplitude, set phase 'p' to 1/25.
+	saw
+		Sawtooth.
+		Bright all-harmonics wave.
+		Decreasing slope; use negative amplitude
+		or frequency (but not both) for increasing slope.
+		Between 'sqr' and 'eto'.
+	hsi
+		Half-rectified sine. (Amplitude doubled.)
+		Like a somewhat louder 'ean', harmonics decreasing as fast.
+		To begin at 0.0 amplitude, set phase 'p' to 1/12.
+	spa
+		Sine parabola. (First half, amplitude doubled.)
+		Slightly cleaner than 'par'. Mainly useful for modulation.
+		To begin at 0.0 amplitude, set phase 'p' to -1/12.
 
 Values and expressions
 ----------------------
