@@ -1,0 +1,12 @@
+// Three tones with increasingly bright wave types: ean, cat, eto
+Wean fC4 t1
+; fE4 t1
+; fF4 t1
+|/1.0
+Wcat fC4 t1
+; fE4 t1
+; fF4 t1
+|/1.0
+Weto fC4 t1
+; fE4 t1
+; fF4 t1
