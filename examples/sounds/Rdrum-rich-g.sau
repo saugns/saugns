@@ -2,6 +2,6 @@
 // The carrier frequency makes the background when beats are weak.
 'bpm=480
 'strength=75
-Whrs f$strength/2 p[
+Whsi f$strength/2 p1/12[
 	Rxpe mg f$bpm/120 a$strength*(240/$bpm)
 ] t30
