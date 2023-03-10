@@ -229,6 +229,10 @@ Line types:
 		Exponential envelope shape (saturate or decay).
 	lge
 		Logarithmic envelope shape (saturate or decay).
+	ncl
+		Noise camel line; softer, two noise bulges.
+	nhl
+		Noise hump line; harder, one broad noise bulge.
 	uwh
 		Uniform random white noise in start-goal range.
 	The 'exp' and 'log' shapes use ear-tuned polynomial
