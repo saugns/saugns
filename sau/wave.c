@@ -39,6 +39,9 @@ static float cat_lut[sauWave_LEN], picat_lut[sauWave_LEN];
 static float mto_lut[sauWave_LEN], pimto_lut[sauWave_LEN];
 static float hsi_lut[sauWave_LEN], pihsi_lut[sauWave_LEN];
 static float spa_lut[sauWave_LEN], pispa_lut[sauWave_LEN];
+static float siw_lut[sauWave_LEN], pisiw_lut[sauWave_LEN];
+static float shs_lut[sauWave_LEN], pishs_lut[sauWave_LEN];
+static float ssr_lut[sauWave_LEN], pissr_lut[sauWave_LEN];
 
 #define SAU_WAVE__X_LUT_NAME(NAME, COEFFS) NAME##_lut,
 
@@ -59,6 +62,9 @@ float *const sauWave_piluts[SAU_WAVE_NAMED] = {
 	par_lut,
 	pihsi_lut,
 	pispa_lut,
+	pisiw_lut,
+	pishs_lut,
+	pissr_lut,
 };
 
 const struct sauWaveCoeffs sauWave_picoeffs[SAU_WAVE_NAMED] = {
@@ -141,6 +147,15 @@ void sau_global_init_Wave(void) {
 
 		const float spa_x = sin(SAU_PI * 0.5f * (1 + x));
 		spa_lut[i + QUARTERLEN] = val_scale * (spa_x*2 - 1.f);
+
+		siw_lut[i] = sau_sintilt_r1(-1.f + x);
+		siw_lut[i + HALFLEN] = sau_sintilt_r1(x);
+
+		shs_lut[i] = sin_x*sin_x*2 - 1.f;
+		shs_lut[i + HALFLEN] = -sauWave_MAXVAL;
+
+		ssr_lut[i] = sin_x*sin_x;
+		ssr_lut[i + HALFLEN] = -srs_x;
 	}
 	for (i = 0; i < HALFLEN; ++i) {
 		const double x = i * (1.f/(HALFLEN-1));
@@ -212,11 +227,14 @@ void sau_global_init_Wave(void) {
 	fill_It(pimto_lut, sauWave_LEN, val_scale, mto_lut);
 	fill_It(pihsi_lut, sauWave_LEN, val_scale, hsi_lut);
 	fill_It(pispa_lut, sauWave_LEN, val_scale, spa_lut);
+	fill_It(pisiw_lut, sauWave_LEN, val_scale, siw_lut);
+	fill_It(pishs_lut, sauWave_LEN, val_scale, shs_lut);
+	fill_It(pissr_lut, sauWave_LEN, val_scale, ssr_lut);
 
-#if 0
-//	for (int i = 0; i < SAU_WAVE_NAMED; ++i)
-//		sauWave_print(i, false);
-	sauWave_print(SAU_WAVE_N_spa, true);
+#if 1
+	for (int i = 0; i < SAU_WAVE_NAMED; ++i)
+		sauWave_print(i, false);
+//	sauWave_print(SAU_WAVE_N_spa, true);
 #endif
 }
 

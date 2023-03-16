@@ -302,3 +302,45 @@ static inline float sau_sinpi_d5f(float x) {
 	float x2 = x*x;
 	return x*(scale[0] + x2*(scale[1] + x2*scale[2]));
 }
+
+/**
+ * Like a sine squashed inward so as to more resemble a bell.
+ * An inexact squared sine, except sign preserved. Stretching
+ * a half can generate a sine, with even harmonic distortion.
+ *
+ * Allows input range of -1 <= x <= 1, with symmetric result.
+ */
+static inline float sau_sinbell_r1(float x) {
+	float xa = fabsf(x);
+	float x2a = x*xa;
+	return 16.f*xa*(x - (x2a+x2a) + xa*x2a); /* 16x^2 - 32x^3 + 16x^4 */
+}
+
+/**
+ * Like a sine morphed to more resemble a very soft sawtooth.
+ * Softer than a parabola, with more even than odd harmonics.
+ *
+ * Allows input range of -1 <= x <= 1, with symmetric result.
+ */
+static inline float sau_sintilt_r1(float x) {
+	float xa = fabsf(x);
+	const float a = 5.f/1.00857799713379571722;
+	return a*x*(1 - xa*(1 + xa*(1 - xa))); /* a(x^1 - x^2 - x^3 + x^4) */
+}
+
+/**
+ * Adjustable quartic soft-saturation curve. With \p c zero
+ * it turns a sine wave into a rounded corner square shape.
+ * With \p c one it instead makes the waveform very ripply.
+ *
+ * A value of 1.f/16 gives a rounder shape, and 1.f/8 makes
+ * an angular-looking rough approximation of a square root.
+ *
+ * Allows input range of -1 <= x <= 1, with symmetric result.
+ */
+static inline float sau_qrtsat_r1(float x, float c) {
+	float xa = fabsf(x);
+	const float ca = 31.f*0.99768224233678181108;
+	float xc = c*ca*(1 + xa*(-2 + xa));
+	return x*(4.f + xa*(-6.f + xa*(4.f - xa) - xc));
+}

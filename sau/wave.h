@@ -67,6 +67,15 @@
 	X(spa, (.amp_scale = 1.07213756312, \
 		.amp_dc    = 0.27322393756, \
 		.phase_adj = 0)) \
+	X(siw, (.amp_scale = 1.15674304184, \
+		.amp_dc    = 0.0, \
+		.phase_adj = 0)) \
+	X(shs, (.amp_scale = 1.21798712306, \
+		.amp_dc    = -0.49998892885, \
+		.phase_adj = 0)) \
+	X(ssr, (.amp_scale = 1.26372678905, \
+		.amp_dc    = -0.13136092705, \
+		.phase_adj = 0)) \
 	//
 #define SAU_WAVE__X_ID(NAME, COEFFS) SAU_WAVE_N_##NAME,
 #define SAU_WAVE__X_NAME(NAME, COEFFS) #NAME,
