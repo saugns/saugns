@@ -302,10 +302,11 @@ static sauMaybeUnused void sauRasG_map_v_bin(sauRasG *restrict o,
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t cycle = cycle_buf[i];
 		int32_t sb = (cycle & 1) << 31;
+		int32_t sb_flip = (!(cycle & 1)) << 31;
 		int32_t s0 = (sau_sar32(sau_ranfast32(cycle - 1), sar)
 				+ sb) / 2;
 		int32_t s1 = (sau_sar32(sau_ranfast32(cycle), sar)
-				+ (1<<31)-sb) / 2; // at even pos to cos-align
+				+ sb_flip) / 2; // at even pos to cos-align
 		int32_t s2 = (sau_sar32(sau_ranfast32(cycle + 1), sar)
 				+ sb) / 2;
 		end_a_buf[i] = (s1 - s0) * scale;
@@ -358,8 +359,9 @@ static sauMaybeUnused void sauRasG_map_tern(sauRasG *restrict o,
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t cycle = cycle_buf[i];
 		int32_t sb = (cycle & 1) << 31;
+		int32_t sb_flip = (!(cycle & 1)) << 31;
 		end_a_buf[i] = (sau_sar32(sau_ranfast32(cycle), sar)
-				+ (1<<31)-sb) * scale; // is first to cos-align
+				+ sb_flip) * scale; // is first to cos-align
 		end_b_buf[i] = (sau_sar32(sau_ranfast32(cycle + 1), sar)
 				+ sb) * scale;
 	}
