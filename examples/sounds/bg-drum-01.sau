@@ -1,0 +1,14 @@
+// Amplitude shaping creates "ducking" sound, for drum pairs.
+// Innermost modulator varies frequency of the two sub-beats.
+// The sawtooth LFO wave extends rhythm and sound a bit more.
+'bpm=150*2
+'strength=30
+Wsrs f0[
+	Wsaw f$bpm/240 a$strength*2
+] p[
+	Rxpe mf f$bpm/120 a$strength*(240/$bpm)/2.r$strength*(240/$bpm)[
+		Rcos mf p1/2
+	]
+] a1/8.r1[
+	Rcub mf f$bpm/120
+] t30
