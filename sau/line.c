@@ -297,6 +297,78 @@ void sauLine_map_lge(float *restrict buf, uint32_t len,
 }
 
 /**
+ * Fill \p buf with \p len values along an x-squared "envelope"
+ * trajectory (the curve upside-down when increasing like 'xpe'),
+ * from \p v0 (at position 0) to \p vt (at position \p time),
+ * beginning at position \p pos.
+ *
+ * Uses half a parabola shape for a monotonic trajectory.
+ * A less-steep alternative to the exponential-ish 'xpe' fill type.
+ */
+void sauLine_fill_sqe(float *restrict buf, uint32_t len,
+		float v0, float vt, uint32_t pos, uint32_t time,
+		const float *restrict mulbuf) {
+	const int32_t adj_pos = pos - (time / 2);
+	const float inv_time = 1.f / time;
+	for (uint32_t i = 0; i < len; ++i) {
+		float x = 0.5f - ((int32_t)i + adj_pos) * inv_time;
+		float v = vt + (v0 - vt) * (x * x);
+		buf[i] = mulbuf ? (v * mulbuf[i]) : v;
+	}
+}
+
+/**
+ * Map positions in \p buf (values from 0.0 to 1.0) to an x-squared
+ * "envelope" trajectory (the curve upside-down when increasing like 'xpe'),
+ * by writing \p len values between those of \p end0 and \p end1 into \p buf.
+ *
+ * Mapping counterpart of filling function sauLine_fill_sqe().
+ */
+void sauLine_map_sqe(float *restrict buf, uint32_t len,
+		const float *restrict end0, const float *restrict end1) {
+	for (uint32_t i = 0; i < len; ++i) {
+		float x = 1.f - buf[i];
+		buf[i] = end1[i] + (end0[i] - end1[i]) * (x * x);
+	}
+}
+
+/**
+ * Fill \p buf with \p len values along an x-cubed trajectory,
+ * from \p v0 (at position 0) to \p vt (at position \p time),
+ * beginning at position \p pos.
+ *
+ * Uses both lower and upper parts (from -1 to +1) of a cube line.
+ * A little bit like three stages in one (change, sustain, change).
+ */
+void sauLine_fill_cub(float *restrict buf, uint32_t len,
+		float v0, float vt, uint32_t pos, uint32_t time,
+		const float *restrict mulbuf) {
+	const int32_t adj_pos = pos - (time / 2);
+	const float inv_time = 1.f / time;
+	const float scale = 2 * inv_time;
+	for (uint32_t i = 0; i < len; ++i) {
+		float x = 0.f - ((int32_t)i + adj_pos) * scale;
+		float v = vt + (v0 - vt) * (x * x * x * 0.5f + 0.5f);
+		buf[i] = mulbuf ? (v * mulbuf[i]) : v;
+	}
+}
+
+/**
+ * Map positions in \p buf (values from 0.0 to 1.0) to an x-cubed trajectory,
+ * by writing \p len values between those of \p end0 and \p end1 into \p buf.
+ *
+ * Mapping counterpart of filling function sauLine_fill_cub().
+ */
+void sauLine_map_cub(float *restrict buf, uint32_t len,
+		const float *restrict end0, const float *restrict end1) {
+	for (uint32_t i = 0; i < len; ++i) {
+		float x = (0.5f - buf[i])*2;
+		buf[i] = end1[i] + (end0[i] - end1[i]) *
+			(x * x * x * 0.5f + 0.5f);
+	}
+}
+
+/**
  * Fill \p buf with \p len values of uniform white noise
  * between \p v0 and \p vt, seeded with position \p pos.
  */

@@ -1,0 +1,8 @@
+// Amplitude shaping creates "ducking" sound, for drum pairs.
+'bpm=120*2
+'strength=20
+Wean f$strength/3 p6/93[
+	Rxpe mf f$bpm/120 a$strength*(240/$bpm)
+] a1/8.r1[
+	Rsqe mf f$bpm/120
+] t30
