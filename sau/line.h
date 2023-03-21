@@ -23,6 +23,8 @@
 	X(log) \
 	X(xpe) \
 	X(lge) \
+	X(sqe) \
+	X(cub) \
 	X(ncl) \
 	X(nhl) \
 	X(uwh) \
