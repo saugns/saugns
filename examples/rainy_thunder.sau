@@ -1,6 +1,9 @@
-// Rain sound; similar to white noise except the so-so darker "splashy" bursts.
-Rcos mg f50 p[Wsin f40/5 a10^5/2] a2/3 t60
+// Note that this script can sound very bad if rendered with a high
+// sample rate. Plain 48000 Hz recommended, or alternatively 44100 Hz.
+
+// Rain sound; uses soft messy modulator plus intense regular modulator.
+Rlin mg f12.5 p[Rcos mg rpi(10) a10^2 Wsin f20 a10^4] a1/2 t60
 
 // Thunderous sound, oscillating between rumbly and crackly (rather soft) part;
 // amplitude fading in and out works pretty well, but too regular to seem real.
-Wsin f-50.r+50[Rcos r2.r20[Wsin f1/10]] a0.r1[Wsin f3/20] t60
+Wsin f-50.r+50[Rlin r1.r20[Wsin f1/10]] a0.r1[Wsin f3/20] t60
