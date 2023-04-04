@@ -5,10 +5,10 @@
 'strength=30
 Wcat f0[
 	Wsaw f$bpm/240 a$strength p1/2
-	Weto f$bpm/240 a-$strength
+	Weto f$bpm/240 a$strength
 ] p[
 	Rxpe mf f$bpm/120 a$strength*(240/$bpm)/2.r$strength*(240/$bpm)[
-		Wpar p1/4+1/2
+		Wean p1/4+1/2
 	]
 ] a1/4.r1[
 	Rsqe mf f$bpm/120
