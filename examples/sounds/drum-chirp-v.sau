@@ -1,7 +1,10 @@
 // The 'bpm' is the maximum pace, rather than an accurate average.
 // The carrier frequency makes the background when beats are weak.
+// Amplitude shaping adds a mild "ducking" effect, for drum pairs.
 'bpm=480
 'strength=100
 Wsin f$strength/3 p[
 	Rxpe mv f$bpm/120 a$strength*(240/$bpm)
+] a1/2.r1[
+	Rsqe mf f$bpm/120
 ] t30
