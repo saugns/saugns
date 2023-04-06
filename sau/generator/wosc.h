@@ -79,8 +79,8 @@ static inline void sauWOsc_set_phase(sauWOsc *restrict o, uint32_t phase) {
 
 static inline void sauWOsc_set_wave(sauWOsc *restrict o, uint8_t wave) {
 #if USE_PILUT
-	int32_t old_offset = sauWave_picoeffs[o->wave].phase_adj;
-	int32_t offset = sauWave_picoeffs[wave].phase_adj;
+	uint32_t old_offset = sauWave_picoeffs[o->wave].phase_adj;
+	uint32_t offset = sauWave_picoeffs[wave].phase_adj;
 	o->phasor.phase += offset - old_offset;
 	o->wave = wave;
 	o->flags |= SAU_OSC_RESET_DIFF;
@@ -188,7 +188,7 @@ static void sauWOsc_naive_run(sauWOsc *restrict o,
 
 #if USE_PILUT
 /* Set up for differentiation (re)start with usable state. */
-static void sauWOsc_reset(sauWOsc *restrict o, int32_t phase) {
+static void sauWOsc_reset(sauWOsc *restrict o, uint32_t phase) {
 	const float *const lut = sauWave_piluts[o->wave];
 	const float diff_scale = sauWave_DVSCALE(o->wave);
 	const float diff_offset = sauWave_DVOFFSET(o->wave);
