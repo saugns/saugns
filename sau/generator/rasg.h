@@ -189,11 +189,11 @@ static sauMaybeUnused void sauRasG_map_v_rand(sauRasG *restrict o,
 	(void)o;
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t cycle = cycle_buf[i];
-		int32_t s0 = sau_ranfast32(cycle - 1) / 2;
-		int32_t s1 = sau_ranfast32(cycle) / 2;
-		int32_t s2 = sau_ranfast32(cycle + 1) / 2;
-		end_a_buf[i] = (s1 - s0) * scale;
-		end_b_buf[i] = (s2 - s1) * scale;
+		uint32_t s0 = sau_ranfast32(cycle - 1) / 2;
+		uint32_t s1 = sau_ranfast32(cycle) / 2;
+		uint32_t s2 = sau_ranfast32(cycle + 1) / 2;
+		end_a_buf[i] = sau_fscalei(s1 - s0, scale);
+		end_b_buf[i] = sau_fscalei(s2 - s1, scale);
 	}
 }
 
@@ -213,8 +213,8 @@ static sauMaybeUnused void sauRasG_map_rand(sauRasG *restrict o,
 	(void)o;
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t cycle = cycle_buf[i];
-		end_a_buf[i] = ((int32_t)sau_ranfast32(cycle)) * scale;
-		end_b_buf[i] = ((int32_t)sau_ranfast32(cycle + 1)) * scale;
+		end_a_buf[i] = sau_fscalei(sau_ranfast32(cycle), scale);
+		end_b_buf[i] = sau_fscalei(sau_ranfast32(cycle + 1), scale);
 	}
 }
 
@@ -301,16 +301,16 @@ static sauMaybeUnused void sauRasG_map_v_bin(sauRasG *restrict o,
 	const float scale = (1.f + scale_diff*scale_diff) / (float)INT32_MAX;
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t cycle = cycle_buf[i];
-		int32_t sb = (cycle & 1) << 31;
-		int32_t sb_flip = (1U<<31) - sb;
-		int32_t s0 = (sau_sar32(sau_ranfast32(cycle - 1), sar)
-				+ sb) / 2;
-		int32_t s1 = (sau_sar32(sau_ranfast32(cycle), sar)
-				+ sb_flip) / 2; // at even pos to cos-align
-		int32_t s2 = (sau_sar32(sau_ranfast32(cycle + 1), sar)
-				+ sb) / 2;
-		end_a_buf[i] = (s1 - s0) * scale;
-		end_b_buf[i] = (s2 - s1) * scale;
+		uint32_t sb = (cycle & 1) << 31;
+		uint32_t sb_flip = (1U<<31) - sb;
+		uint32_t s0 = sau_divi(sau_sar32(sau_ranfast32(cycle - 1), sar)
+				+ sb, 2);
+		uint32_t s1 = sau_divi(sau_sar32(sau_ranfast32(cycle), sar)
+				+ sb_flip, 2); // at even pos to cos-align
+		uint32_t s2 = sau_divi(sau_sar32(sau_ranfast32(cycle + 1), sar)
+				+ sb, 2);
+		end_a_buf[i] = sau_fscalei(s1 - s0, scale);
+		end_b_buf[i] = sau_fscalei(s2 - s1, scale);
 	}
 }
 
@@ -332,11 +332,11 @@ static sauMaybeUnused void sauRasG_map_bin(sauRasG *restrict o,
 	int sar = o->level;
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t cycle = cycle_buf[i];
-		int32_t offs = INT32_MAX + (cycle & 1) * 2;
-		end_a_buf[i] = (sau_sar32(sau_ranfast32(cycle), sar)
-				+ offs) * scale;
-		end_b_buf[i] = (sau_sar32(sau_ranfast32(cycle + 1), sar)
-				- offs) * scale;
+		uint32_t offs = INT32_MAX + (cycle & 1) * 2;
+		uint32_t s1 = sau_sar32(sau_ranfast32(cycle), sar) + offs;
+		uint32_t s2 = sau_sar32(sau_ranfast32(cycle + 1), sar) - offs;
+		end_a_buf[i] = sau_fscalei(s1, scale);
+		end_b_buf[i] = sau_fscalei(s2, scale);
 	}
 }
 
@@ -358,12 +358,13 @@ static sauMaybeUnused void sauRasG_map_tern(sauRasG *restrict o,
 	int sar = o->level;
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t cycle = cycle_buf[i];
-		int32_t sb = (cycle & 1) << 31;
-		int32_t sb_flip = (1U<<31) - sb;
-		end_a_buf[i] = (sau_sar32(sau_ranfast32(cycle), sar)
-				+ sb_flip) * scale; // is first to cos-align
-		end_b_buf[i] = (sau_sar32(sau_ranfast32(cycle + 1), sar)
-				+ sb) * scale;
+		uint32_t sb = (cycle & 1) << 31;
+		uint32_t sb_flip = (1U<<31) - sb;
+		// sb_flip is used before sb to cos-align result
+		uint32_t s1 = sau_sar32(sau_ranfast32(cycle), sar) + sb_flip;
+		uint32_t s2 = sau_sar32(sau_ranfast32(cycle + 1), sar) + sb;
+		end_a_buf[i] = sau_fscalei(s1, scale);
+		end_b_buf[i] = sau_fscalei(s2, scale);
 	}
 }
 
@@ -399,18 +400,18 @@ static sauMaybeUnused void sauRasG_map_v_fixed(sauRasG *restrict o,
 	int slr = o->level;
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t cycle = cycle_buf[i];
-		int32_t sign = sau_oddness_as_sign(cycle);
-		int32_t s0 = (sign * (int32_t)
-				(((uint32_t)sau_ranfast32(cycle - 1) >> slr) -
-				 INT32_MAX)) / 2;
-		int32_t s1 = (-sign * (int32_t)
-				(((uint32_t)sau_ranfast32(cycle) >> slr) -
-				 INT32_MAX)) / 2;
-		int32_t s2 = (sign * (int32_t)
-				(((uint32_t)sau_ranfast32(cycle + 1) >> slr) -
-				 INT32_MAX)) / 2;
-		end_a_buf[i] = (s1 - s0) * scale;
-		end_b_buf[i] = (s2 - s1) * scale;
+		uint32_t sign = sau_oddness_as_sign(cycle);
+		uint32_t s0 = sau_divi(sign *
+				((sau_ranfast32(cycle - 1) >> slr) -
+				 INT32_MAX),  2);
+		uint32_t s1 = sau_divi(-sign *
+				((sau_ranfast32(cycle) >> slr) -
+				 INT32_MAX),  2);
+		uint32_t s2 = sau_divi(sign *
+				((sau_ranfast32(cycle + 1) >> slr) -
+				 INT32_MAX),  2);
+		end_a_buf[i] = sau_fscalei(s1 - s0, scale);
+		end_b_buf[i] = sau_fscalei(s2 - s1, scale);
 	}
 }
 
@@ -432,13 +433,13 @@ static sauMaybeUnused void sauRasG_map_fixed(sauRasG *restrict o,
 	int slr = o->level;
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t cycle = cycle_buf[i];
-		int32_t sign = sau_oddness_as_sign(cycle);
-		end_a_buf[i] = (-sign * (int32_t)
-				(((uint32_t)sau_ranfast32(cycle) >> slr) -
-				 INT32_MAX)) * scale;
-		end_b_buf[i] = (sign * (int32_t)
-				(((uint32_t)sau_ranfast32(cycle + 1) >> slr) -
-				 INT32_MAX)) * scale;
+		uint32_t sign = sau_oddness_as_sign(cycle);
+		end_a_buf[i] = sau_fscalei(-sign *
+				((sau_ranfast32(cycle) >> slr) -
+				 INT32_MAX), scale);
+		end_b_buf[i] = sau_fscalei(sign *
+				((sau_ranfast32(cycle + 1) >> slr) -
+				 INT32_MAX), scale);
 	}
 }
 
