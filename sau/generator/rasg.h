@@ -362,22 +362,24 @@ static sauMaybeUnused void sauRasG_map_v_tern(sauRasG *restrict o,
 	int sar = o->level;
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t cycle = cycle_buf[i];
-		int32_t offs = INT32_MAX + (cycle & 1) * 2;
+		uint32_t offs = INT32_MAX + (cycle & 1) * 2;
 #if 1
-		int32_t s0 = sau_ranfast32(cycle - 1) / 2;
-		int32_t s1 = sau_ranfast32(cycle) / 2;
-		int32_t s2 = sau_ranfast32(cycle + 1) / 2;
-		end_a_buf[i] = (sau_sar32(s1 - s0, sar) + offs / 2) * scale;
-		end_b_buf[i] = (sau_sar32(s2 - s1, sar) - offs / 2) * scale;
+		uint32_t s0 = sau_ranfast32(cycle - 1) / 2;
+		uint32_t s1 = sau_ranfast32(cycle) / 2;
+		uint32_t s2 = sau_ranfast32(cycle + 1) / 2;
+		end_a_buf[i] = sau_fscalei(sau_sar32(s1 - s0, sar) +
+				sau_divi(offs, 2), scale);
+		end_b_buf[i] = sau_fscalei(sau_sar32(s2 - s1, sar) -
+				sau_divi(offs, 2), scale);
 #else
-		int32_t s0 = (sau_sar32(sau_ranfast32(cycle - 1), sar)
-				- offs) / 2;
-		int32_t s1 = (sau_sar32(sau_ranfast32(cycle), sar)
-				+ offs) / 2;
-		int32_t s2 = (sau_sar32(sau_ranfast32(cycle + 1), sar)
-				- offs) / 2;
-		end_a_buf[i] = (s1 - s0) * scale;
-		end_b_buf[i] = (s2 - s1) * scale;
+		uint32_t s0 = sau_divi(sau_sar32(sau_ranfast32(cycle - 1), sar)
+				- offs, 2);
+		uint32_t s1 = sau_divi(sau_sar32(sau_ranfast32(cycle), sar)
+				+ offs, 2);
+		uint32_t s2 = sau_divi(sau_sar32(sau_ranfast32(cycle + 1), sar)
+				- offs, 2);
+		end_a_buf[i] = sau_fscalei(s1 - s0, scale);
+		end_b_buf[i] = sau_fscalei(s2 - s1, scale);
 #endif
 	}
 }
