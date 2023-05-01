@@ -98,6 +98,45 @@ static inline uint32_t sau_ror32(uint32_t x, int r) {
 	return x >> r | x << (32 - r);
 }
 
+/**
+ * Shift and scale values in \p buf to a 0.0 to 1.0 range.
+ * from a \p min to \p max range.
+ */
+static inline void sau_fbuf_rangeto01(float *restrict buf, uint32_t len,
+		float min, float max) {
+	float range = max - min;
+	float scale = 1.f / range;
+	for (uint32_t i = 0; i < len; ++i) {
+		float x = buf[i];
+		buf[i] = (x - min) * scale;
+	}
+}
+
+/**
+ * Shift and scale values in \p buf to a \p min to \p max range,
+ * from a 0.0 to 1.0 range.
+*/
+static inline void sau_fbuf_01torange(float *restrict buf, size_t len,
+		float min, float max) {
+	float range = max - min;
+	for (uint32_t i = 0; i < len; ++i) {
+		float x = buf[i];
+		buf[i] = min + x * range;
+	}
+}
+
+/**
+ * Shift and scale values in \p buf to a value-by-value varying range
+ * from \p end0 to \p end1, from a 0.0 to 1.0 range.
+*/
+static inline void sau_fbuf_01torangearr(float *restrict buf, size_t len,
+		const float *restrict end0, const float *restrict end1) {
+	for (uint32_t i = 0; i < len; ++i) {
+		float x = buf[i];
+		buf[i] = end0[i] + (end1[i] - end0[i]) * x;
+	}
+}
+
 /*
  * Math functions for use in SAU scripts.
  */
