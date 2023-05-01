@@ -469,12 +469,15 @@ static sauMaybeUnused void sauRasG_run(sauRasG *restrict o,
 		break;
 	}
 	map(o, buf_len, end_a_buf, end_b_buf, cycle_buf);
-	if (1) {
+	if (o->flags & SAU_RAS_O_A) {
 		for (size_t i = 0; i < buf_len; ++i) {
-			main_buf[i] = 1.f - main_buf[i];
+			if (end_a_buf[i] > end_b_buf[i]) {
+				float tmp = end_a_buf[i];
+				end_a_buf[i] = end_b_buf[i];
+				end_b_buf[i] = tmp;
+				main_buf[i] = 1.f - main_buf[i];
+			}
 		}
-		float *tmp_p = end_a_buf;
-		end_a_buf = end_b_buf; end_b_buf = tmp_p;
 	}
 	if (o->flags & SAU_RAS_O_SQUARE) {
 		// square keeping sign; value uniformity to energy uniformity
