@@ -20,6 +20,7 @@ OBJ=\
 	parser.o \
 	parseconv.o \
 	mempool.o \
+	clip.o \
 	line.o \
 	wave.o \
 	generator.o
@@ -48,10 +49,13 @@ $(LIB_TESTS): $(OBJ) $(OBJ_TESTS)
 arrtype.o: arrtype.c arrtype.h common.h mempool.h
 	$(CC) -c $(CFLAGS) arrtype.c
 
+clip.o: common.h math.h clip.c clip.h
+	$(CC) -c $(CFLAGS_FASTF) clip.c
+
 error.o: common.h error.c
 	$(CC) -c $(CFLAGS_SIZE) error.c
 
-help.o: common.h help.c help.h math.h line.h wave.h
+help.o: common.h help.c help.h math.h clip.h line.h wave.h
 	$(CC) -c $(CFLAGS_SIZE) help.c
 
 math.o: common.h math.c math.h
@@ -69,10 +73,10 @@ file.o: common.h file.c file.h
 lexer.o: common.h math.h mempool.h file.h lexer.c lexer.h scanner.h symtab.h
 	$(CC) -c $(CFLAGS) lexer.c
 
-parseconv.o: arrtype.h common.h math.h mempool.h parseconv.c program.h line.h script.h wave.h
+parseconv.o: arrtype.h common.h math.h mempool.h parseconv.c program.h clip.h line.h script.h wave.h
 	$(CC) -c $(CFLAGS) parseconv.c
 
-parser.o: common.h math.h mempool.h program.h line.h file.h parser.c scanner.h symtab.h script.h wave.h
+parser.o: common.h math.h mempool.h program.h clip.h line.h file.h parser.c scanner.h symtab.h script.h wave.h
 	$(CC) -c $(CFLAGS_SIZE) parser.c
 
 scanner.o: common.h math.h mempool.h file.h scanner.h scanner.c symtab.h
@@ -81,7 +85,7 @@ scanner.o: common.h math.h mempool.h file.h scanner.h scanner.c symtab.h
 symtab.o: common.h mempool.h symtab.h symtab.c
 	$(CC) -c $(CFLAGS_FAST) symtab.c
 
-generator.o: common.h generator.c generator.h generator/rasg.h generator/wash.h generator/wosc.h math.h mempool.h program.h line.h wave.h
+generator.o: common.h generator.c generator.h generator/rasg.h generator/wash.h generator/wosc.h math.h mempool.h program.h clip.h line.h wave.h
 	$(CC) -c $(CFLAGS_FASTF) generator.c
 
 wave.o: common.h math.h wave.c wave.h

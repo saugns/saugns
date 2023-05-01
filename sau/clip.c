@@ -1,4 +1,4 @@
-/* SAU library: Waveshaping routines for extra functionality.
+/* SAU library: Simple (soft-)clipping functionality.
  * Copyright (c) 2023 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
@@ -11,26 +11,28 @@
  * <https://www.gnu.org/licenses/>.
  */
 
-#pragma once
-#include <sau/math.h>
+#include <sau/clip.h>
 
-enum {
-	CLIP_HARD,
-	CLIP_N_sa2,
-	CLIP_N_sa23,
-	CLIP_N_sa234,
-	CLIP_N_sa24,
-	CLIP_N_sa3,
-	CLIP_N_sa34,
-	CLIP_N_sa35,
+const char *const sauClip_names[SAU_CLIP_NAMED + 1] = {
+	SAU_CLIP__ITEMS(SAU_CLIP__X_NAME)
+	NULL
 };
 
-struct WaveshapeOptions {
-	float clip_threshold;
-	uint8_t clip_type;
+const sauClip_apply_f sauClip_apply_funcs[SAU_CLIP_NAMED] = {
+	SAU_CLIP__ITEMS(SAU_CLIP__X_APPLY_ADDR)
 };
 
-static sauMaybeUnused void softclip_sa2(float *restrict buf, size_t buf_len) {
+void sauClip_apply_off(float *restrict buf, size_t buf_len) {
+	(void)buf, (void)buf_len;
+}
+
+void sauClip_apply_hard(float *restrict buf, size_t buf_len) {
+	for (size_t i = 0; i < buf_len; ++i) {
+		buf[i] = sau_fclampf(buf[i], -1.f, 1.f);
+	}
+}
+
+void sauClip_apply_sa2(float *restrict buf, size_t buf_len) {
 	for (size_t i = 0; i < buf_len; ++i) {
 		float x = (buf[i] + 1.f) * 0.5f;
 		x = sau_fclampf(x, 0.f, 1.f);
@@ -40,7 +42,7 @@ static sauMaybeUnused void softclip_sa2(float *restrict buf, size_t buf_len) {
 	}
 }
 
-static sauMaybeUnused void softclip_sa23(float *restrict buf, size_t buf_len) {
+void sauClip_apply_sa23(float *restrict buf, size_t buf_len) {
 	for (size_t i = 0; i < buf_len; ++i) {
 		float x = (buf[i] + 1.f) * 0.5f;
 		x = sau_fclampf(x, 0.f, 1.f);
@@ -50,7 +52,7 @@ static sauMaybeUnused void softclip_sa23(float *restrict buf, size_t buf_len) {
 	}
 }
 
-static sauMaybeUnused void softclip_sa3(float *restrict buf, size_t buf_len) {
+void sauClip_apply_sa3(float *restrict buf, size_t buf_len) {
 	for (size_t i = 0; i < buf_len; ++i) {
 		float x = (buf[i] + 1.f) * 0.5f;
 		x = sau_fclampf(x, 0.f, 1.f);
@@ -60,7 +62,7 @@ static sauMaybeUnused void softclip_sa3(float *restrict buf, size_t buf_len) {
 	}
 }
 
-static sauMaybeUnused void softclip_sa234(float *restrict buf, size_t buf_len) {
+void sauClip_apply_sa234(float *restrict buf, size_t buf_len) {
 	for (size_t i = 0; i < buf_len; ++i) {
 		float x = (buf[i] + 1.f) * 0.5f;
 		x = sau_fclampf(x, 0.f, 1.f);
@@ -70,7 +72,7 @@ static sauMaybeUnused void softclip_sa234(float *restrict buf, size_t buf_len) {
 	}
 }
 
-static sauMaybeUnused void softclip_sa24(float *restrict buf, size_t buf_len) {
+void sauClip_apply_sa24(float *restrict buf, size_t buf_len) {
 	for (size_t i = 0; i < buf_len; ++i) {
 		float x = (buf[i] + 1.f) * 0.5f;
 		x = sau_fclampf(x, 0.f, 1.f);
@@ -80,7 +82,7 @@ static sauMaybeUnused void softclip_sa24(float *restrict buf, size_t buf_len) {
 	}
 }
 
-static sauMaybeUnused void softclip_sa34(float *restrict buf, size_t buf_len) {
+void sauClip_apply_sa34(float *restrict buf, size_t buf_len) {
 	for (size_t i = 0; i < buf_len; ++i) {
 		float x = (buf[i] + 1.f) * 0.5f;
 		x = sau_fclampf(x, 0.f, 1.f);
@@ -90,7 +92,7 @@ static sauMaybeUnused void softclip_sa34(float *restrict buf, size_t buf_len) {
 	}
 }
 
-static sauMaybeUnused void softclip_sa35(float *restrict buf, size_t buf_len) {
+void sauClip_apply_sa35(float *restrict buf, size_t buf_len) {
 	for (size_t i = 0; i < buf_len; ++i) {
 		float x = (buf[i] + 1.f) * 0.5f;
 		x = sau_fclampf(x, 0.f, 1.f);
