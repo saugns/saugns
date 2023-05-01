@@ -47,6 +47,7 @@ typedef struct GenNode {
 	uint8_t type;
 	uint8_t flags;
 	struct ParWithRangeMod amp;
+	struct sauClipParam amp_clip;
 } GenNode;
 
 typedef struct OscNode {
@@ -255,6 +256,7 @@ static void prepare_op(sauGenerator *restrict o,
 	}
 	GenNode *gen = &n->gen;
 	gen->amp.mods = gen->amp.r_mods = &blank_idarr;
+	gen->amp_clip.gain = 1.f;
 	gen->type = od->type;
 	gen->flags = ON_INIT;
 }
@@ -307,6 +309,10 @@ static void update_op(sauGenerator *restrict o,
 	if (od->ramods) gen->amp.r_mods = od->ramods;
 	sauLine_copy(&gen->amp.par, od->amp, o->srate);
 	sauLine_copy(&gen->amp.r_par, od->amp2, o->srate);
+	if (od->amp_clip.set_type)
+		gen->amp_clip.type = od->amp_clip.type;
+	if (od->amp_clip.set_gain)
+		gen->amp_clip.gain = od->amp_clip.gain;
 }
 
 /*
@@ -407,22 +413,8 @@ static void block_mix(GenNode *restrict gen,
 		bool wave_env, bool layer,
 		float *restrict in_buf,
 		const float *restrict amp) {
-	if (1) {
-		for (size_t i = 0; i < buf_len; ++i) {
-			float x = (in_buf[i] + 1.f) * 0.5f;
-			x = sau_fclampf(x, 0.f, 1.f);
-			//x = 2*x - 1*x*x; // H 2
-			//x = 2*x*x - 1*x*x*x; // H 2, 3
-			//x = 3*x*x - 2*x*x*x; // H 3
-			//x = 4*x*x - 4*x*x*x + 1*x*x*x*x; // H 2, 3, 4
-			//x = 4*x*x - 6*x*x*x + 3*x*x*x*x; // H 2, 4
-			//x = 4*x*x - 5*x*x*x + 2*x*x*x*x; // H 3, 4
-			//x = 10*x*x*x - 15*x*x*x*x + 6*x*x*x*x*x; // H 3, 5
-			//x = 9*x*x*x - 15*x*x*x*x + 7*x*x*x*x*x; // ? 2, 3, 4, 5
-			x = (x - 0.5f) * 2.f;
-			in_buf[i] = x;
-		}
-	}
+	if (gen->amp_clip.type)
+		sauClip_apply_funcs[gen->amp_clip.type](buf, buf_len);
 	(wave_env ?
 	 block_mix_mul_waveenv :
 	 block_mix_add)(buf, buf_len, layer, in_buf, amp);
