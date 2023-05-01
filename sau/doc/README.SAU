@@ -217,6 +217,8 @@ Parameters:
 			variation; somewhat quieter, and more tremulant.
 			Doesn't affect 'b', 't', nor 'f' with level '9'.
 			Distorts 'v' violet noise toward white, as if mixed.
+		z	Zig-zag flip; swap ends of each half-cycle, producing
+			jagged waveshapes unless using pure fixed cycle mode.
 
 Line types:
 	cos

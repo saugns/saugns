@@ -469,7 +469,7 @@ static sauMaybeUnused void sauRasG_run(sauRasG *restrict o,
 		break;
 	}
 	map(o, buf_len, end_a_buf, end_b_buf, cycle_buf);
-	if (o->flags & SAU_RAS_O_A) {
+	if (o->flags & SAU_RAS_O_B) {
 		for (size_t i = 0; i < buf_len; ++i) {
 			if (end_a_buf[i] > end_b_buf[i]) {
 				float tmp = end_a_buf[i];
@@ -479,22 +479,12 @@ static sauMaybeUnused void sauRasG_run(sauRasG *restrict o,
 			}
 		}
 	}
-	if (o->flags & SAU_RAS_O_B) {
+	if (o->flags & SAU_RAS_O_C) {
 		for (size_t i = 0; i < buf_len; ++i) {
 			main_buf[i] = 1.f - main_buf[i];
 		}
-		float *tmp_p = end_a_buf;
-		end_a_buf = end_b_buf; end_b_buf = tmp_p;
-	}
-	if (o->flags & SAU_RAS_O_C) {
-		//for (size_t i = 0; i < buf_len; ++i) {
-		//	end_b_buf[i] = -end_a_buf[i] ;
-		//}
-		//for (size_t i = 0; i < buf_len; ++i) {
-		//	main_buf[i] = 1.f - main_buf[i];
-		//}
-		float *tmp_p = end_a_buf;
-		end_a_buf = end_b_buf; end_b_buf = tmp_p;
+		float *tmp_buf = end_a_buf;
+		end_a_buf = end_b_buf; end_b_buf = tmp_buf;
 	}
 	if (o->flags & SAU_RAS_O_SQUARE) {
 		// square keeping sign; value uniformity to energy uniformity
@@ -502,6 +492,11 @@ static sauMaybeUnused void sauRasG_run(sauRasG *restrict o,
 			end_a_buf[i] *= fabsf(end_a_buf[i]);
 			end_b_buf[i] *= fabsf(end_b_buf[i]);
 		}
+	}
+	if (o->flags & SAU_RAS_O_ZIGZAG) {
+		// swap half-cycle ends for jagged shape when amplitude varies
+		float *tmp_buf = end_a_buf;
+		end_a_buf = end_b_buf; end_b_buf = tmp_buf;
 	}
 	sauLine_apply_funcs[o->line](main_buf, buf_len);
 	sau_fbuf_01torangearr(main_buf, buf_len, end_a_buf, end_b_buf);

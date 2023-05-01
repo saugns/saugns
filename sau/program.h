@@ -93,7 +93,7 @@ static inline unsigned int sau_ras_level(unsigned int digit) {
 enum {
 	SAU_RAS_O_VIOLET = 1U<<0,
 	SAU_RAS_O_SQUARE = 1U<<1,
-	SAU_RAS_O_A = 1U<<2,
+	SAU_RAS_O_ZIGZAG = 1U<<2,
 	SAU_RAS_O_B = 1U<<3,
 	SAU_RAS_O_C = 1U<<4,
 	SAU_RAS_O_FUNC_FLAGS = (1U<<5)-1,
