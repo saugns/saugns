@@ -103,6 +103,4 @@ could have been fixed much sooner if only they had been found earlier.
 
 General feedback, ideas, and proposed changes are also welcome. I'm
 open to extending and reworking the SAU language, though features will
-always be limited. Most valuable are those things that may provide the
-most with the least. I'm looking to increase flexibility and elegance,
-with a smaller number of added things.
+always be limited, and I prefer changes providing much with little.
