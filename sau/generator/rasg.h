@@ -476,5 +476,10 @@ static sauMaybeUnused void sauRasG_run(sauRasG *restrict o,
 			end_b_buf[i] *= fabsf(end_b_buf[i]);
 		}
 	}
+	if (o->flags & SAU_RAS_O_ZIGZAG) {
+		// swap half-cycle ends for jagged shape when amplitude varies
+		float *tmp_buf = end_a_buf;
+		end_a_buf = end_b_buf; end_b_buf = tmp_buf;
+	}
 	sauLine_map_funcs[o->line](main_buf, buf_len, end_a_buf, end_b_buf);
 }
