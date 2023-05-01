@@ -469,6 +469,13 @@ static sauMaybeUnused void sauRasG_run(sauRasG *restrict o,
 		break;
 	}
 	map(o, buf_len, end_a_buf, end_b_buf, cycle_buf);
+	if (1) {
+		for (size_t i = 0; i < buf_len; ++i) {
+			main_buf[i] = 1.f - main_buf[i];
+		}
+		float *tmp_p = end_a_buf;
+		end_a_buf = end_b_buf; end_b_buf = tmp_p;
+	}
 	if (o->flags & SAU_RAS_O_SQUARE) {
 		// square keeping sign; value uniformity to energy uniformity
 		for (size_t i = 0; i < buf_len; ++i) {
@@ -476,5 +483,6 @@ static sauMaybeUnused void sauRasG_run(sauRasG *restrict o,
 			end_b_buf[i] *= fabsf(end_b_buf[i]);
 		}
 	}
-	sauLine_map_funcs[o->line](main_buf, buf_len, end_a_buf, end_b_buf);
+	sauLine_apply_funcs[o->line](main_buf, buf_len);
+	sau_fbuf_01torangearr(main_buf, buf_len, end_a_buf, end_b_buf);
 }
