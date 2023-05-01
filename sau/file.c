@@ -16,7 +16,7 @@
  */
 
 #include <sau/file.h>
-#include <sau/math.h>
+#include <math.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
