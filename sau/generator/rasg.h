@@ -24,6 +24,7 @@
 typedef struct sauCyclor {
 	uint64_t cycle_phase; /* cycle counter upper 32 bits, phase lower */
 	float coeff;
+	bool rate2x;
 } sauCyclor;
 
 typedef struct sauRasG {
@@ -71,6 +72,7 @@ static void sauRasG_set_opt(sauRasG *restrict o,
 		SAU_RAS_O_LINE_SET |
 		SAU_RAS_O_FUNC_SET |
 		SAU_RAS_O_LEVEL_SET;
+	o->cyclor.rate2x = !(o->flags & SAU_RAS_O_HALFSHAPE);
 }
 
 /**
@@ -110,12 +112,68 @@ static inline int32_t sauRasG_cycle_offs(sauRasG *restrict o,
 	ofs + o->cycle_phase; (o->cycle_phase += inc)     /* post-increment */
 
 /**
- * Fill cycle-value and phase-value buffers for use with sauRasG_run().
- *
- * "Cycles" actually refer to PRNG states, advancing at 2x normal speed,
- * as two points (each from a state) are needed to match a normal cycle.
+ * Fill cycle-value and phase-value buffers with 1x frequency rate.
+ * Used for sawtooth-like waves needing one line segment per cycle.
  */
-static sauMaybeUnused void sauCyclor_fill(sauCyclor *restrict o,
+static sauMaybeUnused void sauCyclor_fill_rate1x(sauCyclor *restrict o,
+		uint32_t *restrict cycle_ui32,
+		float *restrict phase_f,
+		size_t buf_len,
+		const float *restrict freq_f,
+		const float *restrict pm_f,
+		const float *restrict fpm_f) {
+	const float inv_int32_max = 1.f/(float)INT32_MAX;
+	const float fpm_scale = 1.f / SAU_HUMMID;
+	if (!pm_f && !fpm_f) {
+		for (size_t i = 0; i < buf_len; ++i) {
+			float s_f = freq_f[i];
+			uint64_t cycle_phase = P(sau_ftoi(o->coeff * s_f), 0);
+			uint32_t phase;
+			cycle_ui32[i] = cycle_phase >> 32;
+			phase = (cycle_phase >> 1) & ~(1U<<31);
+			phase_f[i] = ((int32_t) phase) * inv_int32_max;
+		}
+	} else if (!fpm_f) {
+		for (size_t i = 0; i < buf_len; ++i) {
+			float s_f = freq_f[i];
+			float s_pofs = pm_f[i];
+			uint64_t cycle_phase = P(sau_ftoi(o->coeff * s_f),
+					sau_ftoi(s_pofs * (float)INT32_MAX));
+			uint32_t phase;
+			cycle_ui32[i] = cycle_phase >> 32;
+			phase = (cycle_phase >> 1) & ~(1U<<31);
+			phase_f[i] = ((int32_t) phase) * inv_int32_max;
+		}
+	} else if (!pm_f) {
+		for (size_t i = 0; i < buf_len; ++i) {
+			float s_f = freq_f[i];
+			float s_pofs = fpm_f[i] * fpm_scale * s_f;
+			uint64_t cycle_phase = P(sau_ftoi(o->coeff * s_f),
+					sau_ftoi(s_pofs * (float)INT32_MAX));
+			uint32_t phase;
+			cycle_ui32[i] = cycle_phase >> 32;
+			phase = (cycle_phase >> 1) & ~(1U<<31);
+			phase_f[i] = ((int32_t) phase) * inv_int32_max;
+		}
+	} else {
+		for (size_t i = 0; i < buf_len; ++i) {
+			float s_f = freq_f[i];
+			float s_pofs = pm_f[i] + (fpm_f[i] * fpm_scale * s_f);
+			uint64_t cycle_phase = P(sau_ftoi(o->coeff * s_f),
+					sau_ftoi(s_pofs * (float)INT32_MAX));
+			uint32_t phase;
+			cycle_ui32[i] = cycle_phase >> 32;
+			phase = (cycle_phase >> 1) & ~(1U<<31);
+			phase_f[i] = ((int32_t) phase) * inv_int32_max;
+		}
+	}
+}
+
+/**
+ * Fill cycle-value and phase-value buffers with 2x frequency rate.
+ * Used for waveforms where each real cycle uses two "cycle" lines.
+ */
+static sauMaybeUnused void sauCyclor_fill_rate2x(sauCyclor *restrict o,
 		uint32_t *restrict cycle_ui32,
 		float *restrict phase_f,
 		size_t buf_len,
@@ -167,6 +225,25 @@ static sauMaybeUnused void sauCyclor_fill(sauCyclor *restrict o,
 			phase_f[i] = ((int32_t) phase) * inv_int32_max;
 		}
 	}
+}
+
+/**
+ * Fill cycle-value and phase-value buffers for use with sauRasG_run().
+ *
+ * "Cycles" may have 2x the normal speed while mapped to line sgements.
+ * Most simple waveforms need two line segments per cycle, sawtooth and
+ * similar being the one-segment exceptions. Randomization maps a cycle
+ * to a PRNG state with two neighboring states used for a line segment.
+ */
+static sauMaybeUnused void sauCyclor_fill(sauCyclor *restrict o,
+		uint32_t *restrict cycle_ui32,
+		float *restrict phase_f,
+		size_t buf_len,
+		const float *restrict freq_f,
+		const float *restrict pm_f,
+		const float *restrict fpm_f) {
+	(o->rate2x ? sauCyclor_fill_rate2x : sauCyclor_fill_rate1x)
+		(o, cycle_ui32, phase_f, buf_len, freq_f, pm_f, fpm_f);
 }
 
 #undef P /* done */
@@ -469,6 +546,15 @@ static sauMaybeUnused void sauRasG_run(sauRasG *restrict o,
 		break;
 	}
 	map(o, buf_len, end_a_buf, end_b_buf, cycle_buf);
+	if (o->flags & SAU_RAS_O_HALFSHAPE) {
+		// sort value-pairs, for a decreasing sawtooth-like waveform
+		for (size_t i = 0; i < buf_len; ++i) {
+			float a = end_a_buf[i];
+			float b = end_b_buf[i];
+			end_a_buf[i] = sau_maxf(a, b);
+			end_b_buf[i] = sau_minf(a, b);
+		}
+	}
 	if (o->flags & SAU_RAS_O_SQUARE) {
 		// square keeping sign; value uniformity to energy uniformity
 		for (size_t i = 0; i < buf_len; ++i) {
