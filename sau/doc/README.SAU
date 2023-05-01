@@ -210,18 +210,21 @@ Parameters:
 		f	Fixed cycle. Plain naive oscillator at the top level;
 			below it, mixed with randomness at reduced amplitude.
 		In addition to the function and level, these flags can be set.
-		v	Violet rather than white noise version of the function
-			if available; missing for 'g' and 't'. Like high-pass
-			filtering the lower end of the noise, 6 dB per octave.
-		z	Zig-zag flip; swap ends of each half-cycle, adding an
-			inharmonic waveform jaggedness unless using 'f' with
-			level '9'; more difference from these means larger
-			sharp steps. Always flips the waveform top and bottom.
+		h	Half-shape waveform. Use with 'lin' for a decreasing
+			sawtooth instead of a triangle wave; similarly changes
+			the shape for all line types and randomness modes.
 		s	Square, then restore sign, of the start/goal values.
 			Turns uniform value variation into uniform energy
 			variation; somewhat quieter, and more tremulant.
 			Doesn't affect 'b', 't', nor 'f' with level '9'.
 			Distorts 'v' violet noise toward white, as if mixed.
+		v	Violet rather than white noise version of the function
+			if available; missing for 'g' and 't'. Like high-pass
+			filtering the lower end of the noise, 6 dB per octave.
+		z	Zig-zag flip. Swap ends of each half-cycle, adding an
+			inharmonic waveform jaggedness unless using 'h', or
+			'f' level '9'; more difference from these adds larger
+			sharp steps. Always flips the waveform top and bottom.
 
 Line types:
 	cos
