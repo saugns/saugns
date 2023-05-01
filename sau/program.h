@@ -12,6 +12,7 @@
  */
 
 #pragma once
+#include "clip.h"
 #include "line.h"
 #include "wave.h"
 
@@ -149,6 +150,7 @@ typedef struct sauProgramOpData {
 	sauLine *pan;
 	sauLine *amp, *amp2;
 	sauLine *freq, *freq2;
+	struct sauClipParam amp_clip;
 	uint32_t phase;
 	uint32_t seed; // TODO: divide containing node type
 	uint8_t wave;

@@ -31,6 +31,7 @@
 enum {
 	SAU_SYM_VAR = 0,
 	SAU_SYM_MATH_ID,
+	SAU_SYM_CLIP_ID,
 	SAU_SYM_LINE_ID,
 	SAU_SYM_WAVE_ID,
 	SAU_SYM_TYPES
@@ -39,6 +40,7 @@ enum {
 static const char *const scan_sym_labels[SAU_SYM_TYPES] = {
 	"variable",
 	"math symbol",
+	"clip mode",
 	"line shape",
 	"wave type",
 };
@@ -67,6 +69,8 @@ static bool init_ScanLookup(struct ScanLookup *restrict o,
 	o->sopt = def_sopt;
 	if (!sauSymtab_add_stra(st, sauMath_names, SAU_MATH_NAMED,
 			SAU_SYM_MATH_ID) ||
+	    !sauSymtab_add_stra(st, sauClip_names, SAU_CLIP_NAMED,
+			SAU_SYM_CLIP_ID) ||
 	    !sauSymtab_add_stra(st, sauLine_names, SAU_LINE_NAMED,
 			SAU_SYM_LINE_ID) ||
 	    !sauSymtab_add_stra(st, sauWave_names, SAU_WAVE_NAMED,
