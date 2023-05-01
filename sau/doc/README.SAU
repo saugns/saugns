@@ -1,7 +1,8 @@
 SAU language reference
 ======================
 
-SAU is a simple language for mathematical audio synthesis,
+SAU (Scriptable AUdio) is a simple and non-Turing-complete
+language for mathematical audio synthesis,
 without support for the use of pre-recorded samples.
 
 The core idea of the language is that of time-ordered steps for
@@ -219,6 +220,10 @@ Parameters:
 		v	Violet rather than white noise version of the function
 			if available; missing for 'g' and 't'. Like high-pass
 			filtering the lower end of the noise, 6 dB per octave.
+		z	Zig-zag flip; swap ends of each half-cycle, adding an
+			inharmonic waveform jaggedness unless using 'f' with
+			level '9'; more difference from these means larger
+			sharp steps. Always flips the waveform top and bottom.
 		s	Square, then restore sign, of the start/goal values.
 			Turns uniform value variation into uniform energy
 			variation; somewhat quieter, and more tremulant.
