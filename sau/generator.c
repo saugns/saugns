@@ -18,6 +18,7 @@
 #define sau_dscalei(i, scale) (((int32_t)(i)) * (double)(scale))
 #define sau_fscalei(i, scale) (((int32_t)(i)) * (float)(scale))
 #define sau_divi(i, div) (((int32_t)(i)) / (int32_t)(div))
+#include "generator/wash.h"
 #include "generator/wosc.h"
 #include "generator/rasg.h"
 #include <stdio.h>
@@ -410,13 +411,14 @@ static void block_mix(GenNode *restrict gen,
 		for (size_t i = 0; i < buf_len; ++i) {
 			float x = (in_buf[i] + 1.f) * 0.5f;
 			x = sau_fclampf(x, 0.f, 1.f);
-			//x = 2*x - x*x; // H 2
+			//x = 2*x - 1*x*x; // H 2
 			//x = 2*x*x - 1*x*x*x; // H 2, 3
 			//x = 3*x*x - 2*x*x*x; // H 3
 			//x = 4*x*x - 4*x*x*x + 1*x*x*x*x; // H 2, 3, 4
 			//x = 4*x*x - 6*x*x*x + 3*x*x*x*x; // H 2, 4
 			//x = 4*x*x - 5*x*x*x + 2*x*x*x*x; // H 3, 4
-			x = 6*x*x*x*x*x - 15*x*x*x*x + 10*x*x*x; // H 3, 5
+			//x = 10*x*x*x - 15*x*x*x*x + 6*x*x*x*x*x; // H 3, 5
+			//x = 9*x*x*x - 15*x*x*x*x + 7*x*x*x*x*x; // ? 2, 3, 4, 5
 			x = (x - 0.5f) * 2.f;
 			in_buf[i] = x;
 		}
