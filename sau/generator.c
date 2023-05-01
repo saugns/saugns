@@ -18,7 +18,6 @@
 #define sau_dscalei(i, scale) (((int32_t)(i)) * (double)(scale))
 #define sau_fscalei(i, scale) (((int32_t)(i)) * (float)(scale))
 #define sau_divi(i, div) (((int32_t)(i)) / (int32_t)(div))
-#include "generator/wash.h"
 #include "generator/wosc.h"
 #include "generator/rasg.h"
 #include <stdio.h>
