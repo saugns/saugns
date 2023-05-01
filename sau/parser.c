@@ -1266,6 +1266,7 @@ static bool parse_ev_mode(sauParser *restrict o) {
 		switch ((c = sauScanner_getc(sc))) {
 		case 'A': flags |= SAU_RAS_O_A; break;
 		case 'B': flags |= SAU_RAS_O_B; break;
+		case 'C': flags |= SAU_RAS_O_C; break;
 		case 'v': flags |= SAU_RAS_O_VIOLET; break;
 		case 's': flags |= SAU_RAS_O_SQUARE; break;
 		default:
