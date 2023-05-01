@@ -98,6 +98,13 @@ static inline uint32_t sau_ror32(uint32_t x, int r) {
 	return x >> r | x << (32 - r);
 }
 
+/** Clamp value of \p x to a range. */
+static inline float sau_fclampf(float x, float min, float max) {
+	x = x < min ? min : x;
+	x = x > max ? max : x;
+	return x;
+}
+
 /**
  * Shift and scale values in \p buf to a 0.0 to 1.0 range.
  * from a \p min to \p max range.

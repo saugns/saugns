@@ -401,10 +401,16 @@ static void block_mix_mul_waveenv(float *restrict buf, size_t buf_len,
 /*
  * Handle audio layer according to options.
  */
-static void block_mix(float *restrict buf, size_t buf_len,
+static void block_mix(GenNode *restrict gen,
+		float *restrict buf, size_t buf_len,
 		bool wave_env, bool layer,
-		const float *restrict in_buf,
+		float *restrict in_buf,
 		const float *restrict amp) {
+	if (1) {
+		for (size_t i = 0; i < buf_len; ++i) {
+			float x = sau_fclampf(in_buf[i], -1.f, 1.f);
+		}
+	}
 	(wave_env ?
 	 block_mix_mul_waveenv :
 	 block_mix_add)(buf, buf_len, layer, in_buf, amp);
@@ -496,7 +502,7 @@ static void run_block_wosc(sauGenerator *restrict o,
 	amp = *(bufs++); // #4 (++) and temporary #5, #6
 	tmp_buf = (*bufs + 0); // #5
 	sauWOsc_run(&n->wo.wosc, tmp_buf, len, phase_buf);
-	block_mix(mix_buf, len, wave_env, layer, tmp_buf, amp);
+	block_mix(&n->wo.osc.gen, mix_buf, len, wave_env, layer, tmp_buf, amp);
 }
 
 /*
@@ -550,7 +556,7 @@ static void run_block_rasg(sauGenerator *restrict o,
 	tmp_buf = *(bufs + 0); // #6
 	tmp2_buf = *(bufs + 1); // #7
 	sauRasG_run(&n->rg.rasg, len, rasg_buf, tmp_buf, tmp2_buf, cycle_buf);
-	block_mix(mix_buf, len, wave_env, layer, rasg_buf, amp);
+	block_mix(&n->rg.osc.gen, mix_buf, len, wave_env, layer, rasg_buf, amp);
 }
 
 /*
@@ -668,8 +674,7 @@ static void mix_write_mono(sauGenerator *restrict o,
 	o->gen_flags &= ~GEN_OUT_CLEAR;
 	for (uint32_t i = 0; i < len; ++i) {
 		float s_m = (mix_l[i] + mix_r[i]) * 0.5f;
-		if (s_m > 1.f) s_m = 1.f;
-		else if (s_m < -1.f) s_m = -1.f;
+		s_m = sau_fclampf(s_m, -1.f, 1.f);
 		*(*spp)++ += lrintf(s_m * (float) INT16_MAX);
 	}
 }
@@ -687,10 +692,8 @@ static void mix_write_stereo(sauGenerator *restrict o,
 	for (uint32_t i = 0; i < len; ++i) {
 		float s_l = mix_l[i];
 		float s_r = mix_r[i];
-		if (s_l > 1.f) s_l = 1.f;
-		else if (s_l < -1.f) s_l = -1.f;
-		if (s_r > 1.f) s_r = 1.f;
-		else if (s_r < -1.f) s_r = -1.f;
+		s_l = sau_fclampf(s_l, -1.f, 1.f);
+		s_r = sau_fclampf(s_r, -1.f, 1.f);
 		*(*spp)++ += lrintf(s_l * (float) INT16_MAX);
 		*(*spp)++ += lrintf(s_r * (float) INT16_MAX);
 	}
