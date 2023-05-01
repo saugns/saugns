@@ -218,7 +218,7 @@ Parameters:
 			Doesn't affect 'b', 't', nor 'f' with level '9'.
 			Distorts 'v' violet noise toward white, as if mixed.
 		z	Zig-zag flip; swap ends of each half-cycle, producing
-			jagged waveshapes unless using pure fixed cycle mode.
+			jagged waveshapes unless using 'f' with level '9'.
 
 Line types:
 	cos
