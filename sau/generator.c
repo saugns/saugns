@@ -352,7 +352,7 @@ static void handle_event(sauGenerator *restrict o, EventNode *restrict e) {
 /*
  * Add audio layer from \p in_buf into \p buf scaled with \p amp.
  *
- * Used to generate output for carrier or PM input.
+ * Used to generate output for carrier or additive modulator.
  */
 static void block_mix_add(float *restrict buf, size_t buf_len,
 		bool layer,
@@ -375,7 +375,7 @@ static void block_mix_add(float *restrict buf, size_t buf_len,
  * the absolute value of \p amp, and with the high and
  * low ends of the range flipped if \p amp is negative.
  *
- * Used to generate output for wave envelope FM or AM input.
+ * Used to generate output for modulation with value range.
  */
 static void block_mix_mul_waveenv(float *restrict buf, size_t buf_len,
 		bool layer,
@@ -396,6 +396,18 @@ static void block_mix_mul_waveenv(float *restrict buf, size_t buf_len,
 			buf[i] = s;
 		}
 	}
+}
+
+/*
+ * Handle audio layer according to options.
+ */
+static void block_mix(float *restrict buf, size_t buf_len,
+		bool wave_env, bool layer,
+		const float *restrict in_buf,
+		const float *restrict amp) {
+	(wave_env ?
+	 block_mix_mul_waveenv :
+	 block_mix_add)(buf, buf_len, layer, in_buf, amp);
 }
 
 static uint32_t run_block(sauGenerator *restrict o,
@@ -484,9 +496,7 @@ static void run_block_wosc(sauGenerator *restrict o,
 	amp = *(bufs++); // #4 (++) and temporary #5, #6
 	tmp_buf = (*bufs + 0); // #5
 	sauWOsc_run(&n->wo.wosc, tmp_buf, len, phase_buf);
-	(wave_env ?
-	 block_mix_mul_waveenv :
-	 block_mix_add)(mix_buf, len, layer, tmp_buf, amp);
+	block_mix(mix_buf, len, wave_env, layer, tmp_buf, amp);
 }
 
 /*
@@ -540,9 +550,7 @@ static void run_block_rasg(sauGenerator *restrict o,
 	tmp_buf = *(bufs + 0); // #6
 	tmp2_buf = *(bufs + 1); // #7
 	sauRasG_run(&n->rg.rasg, len, rasg_buf, tmp_buf, tmp2_buf, cycle_buf);
-	(wave_env ?
-	 block_mix_mul_waveenv :
-	 block_mix_add)(mix_buf, len, layer, rasg_buf, amp);
+	block_mix(mix_buf, len, wave_env, layer, rasg_buf, amp);
 }
 
 /*
