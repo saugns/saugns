@@ -23,6 +23,7 @@
 #define SAU_HELP__ITEMS(X) \
 	X(help, Help) \
 	X(math, Math) \
+	X(clip, Clip) \
 	X(line, Line) \
 	X(wave, Wave) \
 	//
