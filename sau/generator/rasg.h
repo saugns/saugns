@@ -481,6 +481,5 @@ static sauMaybeUnused void sauRasG_run(sauRasG *restrict o,
 		float *tmp_buf = end_a_buf;
 		end_a_buf = end_b_buf; end_b_buf = tmp_buf;
 	}
-	sauLine_apply_funcs[o->line](main_buf, buf_len);
-	sau_fbuf_01torangearr(main_buf, buf_len, end_a_buf, end_b_buf);
+	sauLine_map_funcs[o->line](main_buf, buf_len, end_a_buf, end_b_buf);
 }
