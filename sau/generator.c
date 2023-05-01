@@ -408,7 +408,17 @@ static void block_mix(GenNode *restrict gen,
 		const float *restrict amp) {
 	if (1) {
 		for (size_t i = 0; i < buf_len; ++i) {
-			float x = sau_fclampf(in_buf[i], -1.f, 1.f);
+			float x = (in_buf[i] + 1.f) * 0.5f;
+			x = sau_fclampf(x, 0.f, 1.f);
+			//x = 2*x - x*x; // H 2
+			//x = 2*x*x - 1*x*x*x; // H 2, 3
+			//x = 3*x*x - 2*x*x*x; // H 3
+			//x = 4*x*x - 4*x*x*x + 1*x*x*x*x; // H 2, 3, 4
+			//x = 4*x*x - 6*x*x*x + 3*x*x*x*x; // H 2, 4
+			//x = 4*x*x - 5*x*x*x + 2*x*x*x*x; // H 3, 4
+			x = 6*x*x*x*x*x - 15*x*x*x*x + 10*x*x*x; // H 3, 5
+			x = (x - 0.5f) * 2.f;
+			in_buf[i] = x;
 		}
 	}
 	(wave_env ?
