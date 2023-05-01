@@ -1243,6 +1243,7 @@ static bool parse_op_mode(sauParser *restrict o) {
 		switch ((c = sauScanner_getc(sc))) {
 		case 'v': flags |= SAU_RAS_O_VIOLET; break;
 		case 's': flags |= SAU_RAS_O_SQUARE; break;
+		case 'z': flags |= SAU_RAS_O_ZIGZAG; break;
 		default:
 			sauScanner_ungetc(sc);
 			--matched;
