@@ -100,9 +100,11 @@ static inline unsigned int sau_ras_level(unsigned int digit) {
 
 /** Random segments option flags. */
 enum {
-	SAU_RAS_O_VIOLET = 1U<<0,
+	SAU_RAS_O_HALFSHAPE = 1U<<0,
 	SAU_RAS_O_SQUARE = 1U<<1,
-	SAU_RAS_O_ZIGZAG = 1U<<2,
+	SAU_RAS_O_VIOLET = 1U<<2,
+	SAU_RAS_O_ZIGZAG = 1U<<3,
+	/* = 1U<<4, */
 	SAU_RAS_O_FUNC_FLAGS = (1U<<5)-1,
 	SAU_RAS_O_LINE_SET = 1U<<5,
 	SAU_RAS_O_FUNC_SET = 1U<<6,
