@@ -414,7 +414,7 @@ static void block_mix(GenNode *restrict gen,
 		float *restrict in_buf,
 		const float *restrict amp) {
 	if (gen->amp_clip.type)
-		sauClip_apply_funcs[gen->amp_clip.type](buf, buf_len);
+		sauClip_apply_funcs[gen->amp_clip.type](in_buf, buf_len);
 	(wave_env ?
 	 block_mix_mul_waveenv :
 	 block_mix_add)(buf, buf_len, layer, in_buf, amp);
