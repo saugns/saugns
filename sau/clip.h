@@ -20,8 +20,8 @@
 	X(hard) \
 	X(sa2) \
 	X(sa23) \
-	X(sa234) \
 	X(sa24) \
+	X(sa234) \
 	X(sa3) \
 	X(sa34) \
 	X(sa35) \

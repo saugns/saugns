@@ -62,21 +62,21 @@ void sauClip_apply_sa3(float *restrict buf, size_t buf_len) {
 	}
 }
 
-void sauClip_apply_sa234(float *restrict buf, size_t buf_len) {
-	for (size_t i = 0; i < buf_len; ++i) {
-		float x = (buf[i] + 1.f) * 0.5f;
-		x = sau_fclampf(x, 0.f, 1.f);
-		x = 4*x*x - 4*x*x*x + 1*x*x*x*x; // H 2, 3, 4
-		x = (x - 0.5f) * 2.f;
-		buf[i] = x;
-	}
-}
-
 void sauClip_apply_sa24(float *restrict buf, size_t buf_len) {
 	for (size_t i = 0; i < buf_len; ++i) {
 		float x = (buf[i] + 1.f) * 0.5f;
 		x = sau_fclampf(x, 0.f, 1.f);
 		x = 4*x*x - 6*x*x*x + 3*x*x*x*x; // H 2, 4
+		x = (x - 0.5f) * 2.f;
+		buf[i] = x;
+	}
+}
+
+void sauClip_apply_sa234(float *restrict buf, size_t buf_len) {
+	for (size_t i = 0; i < buf_len; ++i) {
+		float x = (buf[i] + 1.f) * 0.5f;
+		x = sau_fclampf(x, 0.f, 1.f);
+		x = 4*x*x - 4*x*x*x + 1*x*x*x*x; // H 2, 3, 4
 		x = (x - 0.5f) * 2.f;
 		buf[i] = x;
 	}
