@@ -153,8 +153,8 @@ The "R" and "W" types have these parameters in common:
 			"Value sweep" values are supported; see section.
 			"Modulation with value range" is supported for AM & RM
 		(amplitude and ring modulation); see section.
-			These options allow simple waveshaping to be added,
-		which applies *before* the main amplitude level adjustment.
+			Options for simple waveshaping (waveshaping is
+		applied *before* the main amplitude level adjustment):
 		c	Clipping mode -- see "Clipping modes" for values.
 	p	Phase in percentage of the wave cycle modulo 1.0. Set to
 		reset the phase, e.g. to change the initial value from 0.0.
