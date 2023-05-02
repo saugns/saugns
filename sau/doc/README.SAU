@@ -146,13 +146,15 @@ The "R" and "W" types have these parameters in common:
 		other kinds of modulation, if FM is done the result is used.
 	a	Amplitude, where 1.0 corresponds to a level of 0dB and
 		0.0 is silence. (Note that the final output level is scaled
-		down by the number of voices; alternatively, the S "a" option
+		down by the number of voices; alternatively, the "S a" option
 		can be used to set a multiplier used when adding a top-level
 		carrier. Panning will further reduce output level unless
 		fully left or right.) Can be negative to flip sign of result.
 			"Value sweep" values are supported; see section.
 			"Modulation with value range" is supported for AM & RM
 		(amplitude and ring modulation); see section.
+			These options allow simple waveshaping to be added.
+		c	Clipping mode -- see "Clipping modes" for values.
 	p	Phase in percentage of the wave cycle modulo 1.0. Set to
 		reset the phase, e.g. to change the initial value from 0.0.
 		See "Phase values" for more.
@@ -170,6 +172,35 @@ The "R" and "W" types have these parameters in common:
 	c	(For non-nested generators only.) Channel mixing, mainly
 		(-1.0) to 1.0. See "Channel mixing values" for more.
 			"Value sweep" values are supported; see section.
+
+Clipping modes:
+	These apply to individual generators and can be set under "a.c".
+	(The final sum of all voices is always separately hard-clipped.)
+	off
+		Nothing is done. This is the default.
+	hard
+		Hard-clip on overshoot, no effect otherwise.
+	sa2
+		Soft-saturate, adding 2nd harmonic.
+		Turns triangle wave into parabolic.
+	sa23
+		Soft-saturate, adding 2nd and 3rd harmonics.
+		Mellow; warmer-sounding than 'sa3'.
+	sa24
+		Soft-saturate, adding 2nd and 4th harmonics.
+		Mellow; fuller-sounding than 'sa3'.
+	sa234
+		Soft-saturate, adding 2nd, 3rd, and 4th harmonics.
+		Medium-bright; fuller and softer than 'sa5'.
+	sa3
+		Soft-saturate, adding 3rd harmonic.
+		Mellow; thin, slightly sharp-sound.
+	sa34
+		Soft-saturate, adding 3rd and 4th harmonics.
+		Medium-bright; less warm sound than 'sa234'.
+	sa35
+		Soft-saturate, adding 3rd and 5th harmonics.
+		Medium-bright; thin, somewhat sharp sound.
 
 R: Random segments generator
 ----------------------------
