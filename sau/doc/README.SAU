@@ -153,7 +153,8 @@ The "R" and "W" types have these parameters in common:
 			"Value sweep" values are supported; see section.
 			"Modulation with value range" is supported for AM & RM
 		(amplitude and ring modulation); see section.
-			These options allow simple waveshaping to be added.
+			These options allow simple waveshaping to be added,
+		which applies *before* the main amplitude level adjustment.
 		c	Clipping mode -- see "Clipping modes" for values.
 	p	Phase in percentage of the wave cycle modulo 1.0. Set to
 		reset the phase, e.g. to change the initial value from 0.0.
@@ -492,11 +493,11 @@ Modulation with value range:
 		a default of 1.0). However, a negative amplitude multiplier
 		will switch the top and bottom of the 0.0 to 1.0 range, and
 		then be used as if positive.
-			The result from these modulators are multiplied if
-		there's several, and finally the product mapped to a range
-		where 0.0 corresponds to the main value, and 1.0 to the
-		second. This adds a bias towards the main value with more
-		modulators used. Furthermore, changing amplitude multipliers
+			When several modulators are used for this, their
+		outputs are multiplied. The product of outputs is mapped to
+		a range where 0.0 is matched to the main value, and 1.0 to
+		the second. Using more mdoulators thus adds a bias towards
+		the main value. Furthermore, changing amplitude multipliers
 		for modulators from the default can change the range.
 			To use this for classic 100% modulation depth AM,
 		one of the bounds should be 0.0 (like the default for the
