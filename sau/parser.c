@@ -1177,11 +1177,20 @@ static bool parse_ev_amp(sauParser *restrict o) {
 	if (sauScanner_tryc(sc, '.')) switch ((c = sauScanner_getc(sc))) {
 	case 'c': {
 		size_t id;
-		if (!scan_sym_id(sc, &id, SAU_SYM_CLIP_ID,
-					sauClip_names))
-			break;
-		op->amp_clip.type = id;
-		op->amp_clip.set_type = true;
+		if (scan_sym_id(sc, &id, SAU_SYM_CLIP_ID,
+					sauClip_names)) {
+			op->amp_clip.type = id;
+			op->amp_clip.set_type = true;
+		}
+		if (sauScanner_tryc(sc, '.') &&
+		    sauScanner_tryc(sc, 't')) {
+			double val;
+			if (scan_num(sc,
+			             scan_phase_const, &val)) {
+				op->amp_clip.level = val;
+				op->amp_clip.set_level = true;
+			}
+		}
 		break; }
 	case 'r':
 		parse_line(o, NULL, &op->amp2, false, SAU_PSWEEP_AMP2);

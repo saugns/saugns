@@ -29,7 +29,7 @@
 #define SAU_CLIP__X_ID(NAME) SAU_CLIP_N_##NAME,
 #define SAU_CLIP__X_NAME(NAME) #NAME,
 #define SAU_CLIP__X_PROTOTYPES(NAME) \
-void sauClip_apply_##NAME(float *restrict buf, size_t len); \
+void sauClip_apply_##NAME(float *restrict buf, size_t len, float threshold); \
 /**/
 #define SAU_CLIP__X_APPLY_ADDR(NAME) sauClip_apply_##NAME,
 
@@ -46,7 +46,8 @@ SAU_CLIP__ITEMS(SAU_CLIP__X_PROTOTYPES)
 /** Names of clip function types, with an extra NULL pointer at the end. */
 extern const char *const sauClip_names[SAU_CLIP_NAMED + 1];
 
-typedef void (*sauClip_apply_f)(float *restrict buf, size_t len);
+typedef void (*sauClip_apply_f)(float *restrict buf, size_t len,
+		float threshold);
 
 /** In-place clip functions for types. */
 extern const sauClip_apply_f sauClip_apply_funcs[SAU_CLIP_NAMED];
@@ -55,8 +56,8 @@ extern const sauClip_apply_f sauClip_apply_funcs[SAU_CLIP_NAMED];
  * Clip parameter type.
  */
 struct sauClipParam {
-	float gain;
+	float level;
 	uint8_t type;
 	bool set_type : 1;
-	bool set_gain : 1;
+	bool set_level : 1;
 };

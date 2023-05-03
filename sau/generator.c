@@ -255,7 +255,7 @@ static void prepare_op(sauGenerator *restrict o,
 	}
 	GenNode *gen = &n->gen;
 	gen->amp.mods = gen->amp.r_mods = &blank_idarr;
-	gen->amp_clip.gain = 1.f;
+	gen->amp_clip.level = 1.f;
 	gen->type = od->type;
 	gen->flags = ON_INIT;
 }
@@ -310,8 +310,8 @@ static void update_op(sauGenerator *restrict o,
 	sauLine_copy(&gen->amp.r_par, od->amp2, o->srate);
 	if (od->amp_clip.set_type)
 		gen->amp_clip.type = od->amp_clip.type;
-	if (od->amp_clip.set_gain)
-		gen->amp_clip.gain = od->amp_clip.gain;
+	if (od->amp_clip.set_level)
+		gen->amp_clip.level = od->amp_clip.level;
 }
 
 /*
@@ -413,7 +413,8 @@ static void block_mix(GenNode *restrict gen,
 		float *restrict in_buf,
 		const float *restrict amp) {
 	if (gen->amp_clip.type)
-		sauClip_apply_funcs[gen->amp_clip.type](in_buf, buf_len);
+		sauClip_apply_funcs[gen->amp_clip.type](in_buf, buf_len,
+				gen->amp_clip.level);
 	(wave_env ?
 	 block_mix_mul_waveenv :
 	 block_mix_add)(buf, buf_len, layer, in_buf, amp);
