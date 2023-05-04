@@ -1,7 +1,8 @@
 SAU language reference
 ======================
 
-SAU is a simple language for mathematical audio synthesis,
+SAU (Scriptable AUdio) is a simple and non-Turing-complete
+language for mathematical audio synthesis,
 without support for the use of pre-recorded samples.
 
 The core idea of the language is that of time-ordered steps for
@@ -184,8 +185,6 @@ Clipping modes:
 		Nothing is done. This is the default.
 	hard
 		Hard-clip on overshoot, no effect otherwise.
-	dm4
-		Distort mildly and clip, adding 2nd and 4th harmonics.
 	sa3
 		Soft-saturate, adding 3rd harmonic.
 	sa4
@@ -193,6 +192,14 @@ Clipping modes:
 		A more full-sounding alternative to 'sa3'.
 	sa5
 		Soft-saturate, adding 3rd and 5th harmonics.
+	ds2
+		Distort and clip, adding 2nd harmonic.
+		Turns 1.0-amplitude triangle wave into parabolic wave.
+	ds2b
+		Distort and clip, adding 2nd and 3rd harmonics.
+		A brighter and somewhat exagerrated version of 'ds2'.
+	dm4
+		Distort mildly and clip, adding 2nd and 4th harmonics.
 
 R: Random segments generator
 ----------------------------
