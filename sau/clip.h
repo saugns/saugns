@@ -18,15 +18,15 @@
 #define SAU_CLIP__ITEMS(X) \
 	X(off) \
 	X(hard) \
-	X(ds2) \
-	X(ds3) \
 	X(sa3) \
 	X(sa4) \
 	X(sa4_2) \
 	X(sa5) \
+	X(ds2) \
+	X(ds2b) \
 	X(dm3) \
 	X(dm4) \
-	X(sa34) \
+	X(dm4_2) \
 	//
 #define SAU_CLIP__X_ID(NAME) SAU_CLIP_N_##NAME,
 #define SAU_CLIP__X_NAME(NAME) #NAME,
