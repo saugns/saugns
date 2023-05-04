@@ -22,6 +22,7 @@
 	X(ds3) \
 	X(sa3) \
 	X(sa4) \
+	X(sa4_2) \
 	X(sa5) \
 	X(dm3) \
 	X(dm4) \
