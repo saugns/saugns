@@ -1183,7 +1183,7 @@ static bool parse_ev_amp(sauParser *restrict o) {
 			op->amp_clip.set_type = true;
 		}
 		if (sauScanner_tryc(sc, '.') &&
-		    sauScanner_tryc(sc, 't')) {
+		    sauScanner_tryc(sc, 'g')) {
 			double val;
 			if (scan_num(sc,
 			             scan_phase_const, &val)) {

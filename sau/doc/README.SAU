@@ -156,10 +156,10 @@ The "R" and "W" types have these parameters in common:
 		(amplitude and ring modulation); see section.
 			Options for simple waveshaping (waveshaping is
 		applied *before* the main amplitude level adjustment):
-		c	Clipping mode -- see "Clipping modes" for values.
-		c.t	Threshold (inverse inner gain) before clipping.
-			If negative (e.g. -1.0 instead of 1.0), flips
-			the relation of asymmetric shaping to polarity.
+		c	Clip mode -- see "Clip modes" for values.
+		c.g	Inner gain prior to clipping signal to +/- 1.0 range.
+			Defaults to 1.0. If negative, flips the relation of
+			asymmetric waveshaping clip modes to signal polarity.
 	p	Phase in percentage of the wave cycle modulo 1.0. Set to
 		reset the phase, e.g. to change the initial value from 0.0.
 		See "Phase values" for more.
@@ -178,7 +178,7 @@ The "R" and "W" types have these parameters in common:
 		(-1.0) to 1.0. See "Channel mixing values" for more.
 			"Value sweep" values are supported; see section.
 
-Clipping modes:
+Clip modes:
 	These apply to individual generators and can be set under "a.c".
 	(The final sum of all voices is always separately hard-clipped.)
 	off

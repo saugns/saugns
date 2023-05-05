@@ -31,7 +31,7 @@
 #define SAU_CLIP__X_ID(NAME) SAU_CLIP_N_##NAME,
 #define SAU_CLIP__X_NAME(NAME) #NAME,
 #define SAU_CLIP__X_PROTOTYPES(NAME) \
-void sauClip_apply_##NAME(float *restrict buf, size_t len, float threshold); \
+void sauClip_apply_##NAME(float *restrict buf, size_t len, float gain); \
 /**/
 #define SAU_CLIP__X_APPLY_ADDR(NAME) sauClip_apply_##NAME,
 
@@ -49,7 +49,7 @@ SAU_CLIP__ITEMS(SAU_CLIP__X_PROTOTYPES)
 extern const char *const sauClip_names[SAU_CLIP_NAMED + 1];
 
 typedef void (*sauClip_apply_f)(float *restrict buf, size_t len,
-		float threshold);
+		float gain);
 
 /** In-place clip functions for types. */
 extern const sauClip_apply_f sauClip_apply_funcs[SAU_CLIP_NAMED];
