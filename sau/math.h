@@ -98,7 +98,19 @@ static inline uint32_t sau_ror32(uint32_t x, int r) {
 	return x >> r | x << (32 - r);
 }
 
-/** Clamp value of \p x to a range. */
+/** Pick smallest of two float values. */
+static inline float sau_minf(float x, float y) {
+	x = x > y ? y : x;
+	return x;
+}
+
+/** Pick largest of two float values. */
+static inline float sau_maxf(float x, float y) {
+	x = x < y ? y : x;
+	return x;
+}
+
+/** Clamp value of \p x to a float range. */
 static inline float sau_fclampf(float x, float min, float max) {
 	x = x < min ? min : x;
 	x = x > max ? max : x;

@@ -35,50 +35,64 @@ void sauClip_apply_hard(float *restrict buf, size_t buf_len,
 	}
 }
 
-void sauClip_apply_ds2(float *restrict buf, size_t buf_len,
-		float gain) {
+/*
+ * For a polynomial with even positive powers, the DC offset constant is
+ * the sum of the coefficients used for even powers, with sign reversed.
+ * This ensures output for +/- 1.0 input range also has a +/- 1.0 range.
+ *
+ * To keep output peak-amplitude centered for a +/- gain parameter input
+ * range, the DC offset constant is computed by copying the even powers,
+ * inserting the gain as value for the expression, when gain is below 1.
+ */
+
+void sauClip_apply_ds2(float *restrict buf, size_t buf_len, float gain) {
 	const float in_gain = gain;
 	const float out_gain = copysignf(1.f, in_gain);
+	float a = sau_minf(fabsf(gain), 1.f);
+	a = 0.5f*a*a;
 	for (size_t i = 0; i < buf_len; ++i) {
 		float x = buf[i] * in_gain;
 		x = sau_fclampf(x, -1.f, 1.f);
-		x = 0.5f + 1.0f*x - 0.5f*x*x; // H 2
+		x = a + 1.0f*x - 0.5f*x*x; // H 2
 		buf[i] = x * out_gain;
 	}
 }
 
-void sauClip_apply_ds2b(float *restrict buf, size_t buf_len,
-		float gain) {
+void sauClip_apply_ds2b(float *restrict buf, size_t buf_len, float gain) {
 	const float in_gain = gain;
 	const float out_gain = copysignf(1.f, in_gain);
+	float a = sau_minf(fabsf(gain), 1.f);
+	a = 0.75f*a*a;
 	for (size_t i = 0; i < buf_len; ++i) {
 		float x = buf[i] * in_gain;
 		x = sau_fclampf(x, -1.f, 1.f);
-		x = 0.75f + 0.75f*x - 0.75f*x*x + 0.25f*x*x*x; // H 2, 3
+		x = a + 0.75f*x - 0.75f*x*x + 0.25f*x*x*x; // H 2, 3
 		buf[i] = x * out_gain;
 	}
 }
 
-void sauClip_apply_dm3(float *restrict buf, size_t buf_len,
-		float gain) {
+void sauClip_apply_dm3(float *restrict buf, size_t buf_len, float gain) {
 	const float in_gain = gain;
 	const float out_gain = copysignf(1.f, in_gain);
+	float a = sau_minf(fabsf(gain), 1.f);
+	a = 0.25f*a*a;
 	for (size_t i = 0; i < buf_len; ++i) {
 		float x = buf[i] * in_gain;
 		x = sau_fclampf(x, -1.f, 1.f);
-		x = 0.25f + 0.75f*x - 0.25f*x*x + 0.25f*x*x*x; // H 2, 3
+		x = a + 0.75f*x - 0.25f*x*x + 0.25f*x*x*x; // H 2, 3
 		buf[i] = x * out_gain;
 	}
 }
 
-void sauClip_apply_dm4(float *restrict buf, size_t buf_len,
-		float gain) {
+void sauClip_apply_dm4(float *restrict buf, size_t buf_len, float gain) {
 	const float in_gain = gain;
 	const float out_gain = copysignf(1.f, in_gain);
+	float a = sau_minf(fabsf(gain), 1.f);
+	a = 0.25f*a*a - 0.375f*a*a*a*a;
 	for (size_t i = 0; i < buf_len; ++i) {
 		float x = buf[i] * in_gain;
 		x = sau_fclampf(x, -1.f, 1.f);
-		x = -0.125f + x - 0.25f*x*x + 0.375f*x*x*x*x; // H 2, 4
+		x = a + x - 0.25f*x*x + 0.375f*x*x*x*x; // H 2, 4
 		buf[i] = x * out_gain;
 	}
 }
@@ -88,9 +102,9 @@ void sauClip_apply_dm4_2(float *restrict buf, size_t buf_len,
 	const float in_gain = 0.5f * gain;
 	const float out_gain = copysignf(2.f, in_gain);
 	for (size_t i = 0; i < buf_len; ++i) {
-		float x = buf[i] * in_gain + 0.5f;
-		x = sau_fclampf(x, 0.f, 1.f);
-		x = 4*x*x - 5*x*x*x + 2*x*x*x*x - 0.5f; // H 3, 4 (2, 3, 4 at low vol)
+		float x = buf[i] * in_gain;
+		x = sau_fclampf(x, -1.f, 1.f);
+		x = 4*x*x  - 5*x*x*x + 2*x*x*x*x - 0.5f; // H 3, 4 (2, 3, 4 at low vol)
 		x = x * out_gain;
 		buf[i] = x;
 	}
