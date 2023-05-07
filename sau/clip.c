@@ -76,10 +76,8 @@ void sauClip_apply_dpgm(float *restrict buf, size_t buf_len,
 	for (size_t i = 0; i < buf_len; ++i) {
 		float x = buf[i] * in_gain;
 		x = sau_fclampf(x, -1.f, 1.f);
-		float tmp = 0.f * 1.f/3;
-		float tmp2 = x*x*(1 + tmp);
-		tmp = x - tmp2;
-		x = 1.f/6 + x*5.f/6 + (tmp + tmp2*tmp*tmp*0.25f)*1.f/3;
+		float x2 = x*x, tmp = x - x2;
+		x = 1.f/6 + x*5.f/6 + (tmp + x2*tmp*tmp*0.25f)*1.f/3;
 		buf[i] = x * out_gain;
 	}
 }
