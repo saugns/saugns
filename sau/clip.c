@@ -141,14 +141,13 @@ void sauClip_apply_sa4(float *restrict buf, size_t buf_len,
 
 void sauClip_apply_sa4_2(float *restrict buf, size_t buf_len,
 		float gain) {
-	const float in_gain = 0.5f * gain;
-	const float out_gain = copysignf(2.f, in_gain);
+	const float in_gain = gain;
+	const float out_gain = copysignf(1.f, in_gain);
 	for (size_t i = 0; i < buf_len; ++i) {
-		float x = buf[i] * in_gain + 0.5f;
-		x = sau_fclampf(x, 0.f, 1.f);
-		x = 5*x*x - 6*x*x*x + 2*x*x*x*x - 0.5f; // H 2, 3, 4 (more 2nd, 4th)
-		x = x * out_gain;
-		buf[i] = x;
+		float x = buf[i] * in_gain;
+		x = sau_fclampf(x, -1.f, 1.f);
+		x = 0.25f + 1.5f*x - 0.5f*x*x - 0.5f*x*x*x + 0.25f*x*x*x*x; // H 2, 3, 4 (more 2nd, 4th)
+		buf[i] = x * out_gain;
 	}
 }
 //	0 <= x <= 1:
@@ -156,14 +155,13 @@ void sauClip_apply_sa4_2(float *restrict buf, size_t buf_len,
 
 void sauClip_apply_sa5(float *restrict buf, size_t buf_len,
 		float gain) {
-	const float in_gain = 0.5f * fabsf(gain);
-	const float out_gain = 2.f;
+	const float in_gain = fabsf(gain);
+	const float out_gain = 1.f;
 	for (size_t i = 0; i < buf_len; ++i) {
-		float x = buf[i] * in_gain + 0.5f;
-		x = sau_fclampf(x, 0.f, 1.f);
-		x = 10*x*x*x - 15*x*x*x*x + 6*x*x*x*x*x - 0.5f; // H 3, 5
-		x = x * out_gain;
-		buf[i] = x;
+		float x = buf[i] * in_gain;
+		x = sau_fclampf(x, -1.f, 1.f);
+		x = 1.875f*x - 1.25f*x*x*x + 0.375f*x*x*x*x*x; // H 3, 5
+		buf[i] = x * out_gain;
 	}
 }
 //	0 <= x <= 1:
