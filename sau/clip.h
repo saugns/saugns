@@ -21,9 +21,7 @@
 	X(sa3) \
 	X(sa4) \
 	X(sa4_2) \
-	X(sa4b) \
 	X(sa5) \
-	X(ha2) \
 	X(ds2) \
 	X(ds2b) \
 	X(dm3) \
