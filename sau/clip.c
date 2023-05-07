@@ -128,6 +128,19 @@ void sauClip_apply_sa4(float *restrict buf, size_t buf_len,
 	}
 }
 
+void sauClip_apply_sa4b(float *restrict buf, size_t buf_len,
+		float gain) {
+	const float in_gain = gain;
+	const float out_gain = copysignf(1.f, in_gain);
+	for (size_t i = 0; i < buf_len; ++i) {
+		float x = buf[i] * in_gain;
+		x = sau_fclampf(x, -1.f, 1.f);
+		float xp = sau_maxf(x, 0.f), xn = sau_minf(x, 0.f);
+		x = (0.125f + x - xp*xp*0.5f + xn*xn*xn*xn*0.25f) * 1.f/(1.f-0.125f*3);
+		buf[i] = x * out_gain;
+	}
+}
+
 void sauClip_apply_sa4_2(float *restrict buf, size_t buf_len,
 		float gain) {
 	const float in_gain = 0.5f * gain;
