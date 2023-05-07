@@ -69,6 +69,21 @@ void sauClip_apply_ds2b(float *restrict buf, size_t buf_len,
 //	0 <= x <= 1:
 //		x = 3*x - 3*x*x + 1*x*x*x; // H 2, 3
 
+void sauClip_apply_dpgm(float *restrict buf, size_t buf_len,
+		float gain) {
+	const float in_gain = gain;
+	const float out_gain = copysignf(1.f, in_gain);
+	for (size_t i = 0; i < buf_len; ++i) {
+		float x = buf[i] * in_gain;
+		x = sau_fclampf(x, -1.f, 1.f);
+		float tmp = 0.f * 1.f/3;
+		float tmp2 = x*x*(1 + tmp);
+		tmp = x - tmp2;
+		x = 1.f/6 + x*5.f/6 + (tmp + tmp2*tmp*tmp*0.25f)*1.f/3;
+		buf[i] = x * out_gain;
+	}
+}
+
 void sauClip_apply_dm3(float *restrict buf, size_t buf_len,
 		float gain) {
 	const float in_gain = gain;
@@ -152,6 +167,18 @@ void sauClip_apply_sa4_2(float *restrict buf, size_t buf_len,
 }
 //	0 <= x <= 1:
 //		x = 5*x*x - 6*x*x*x + 2*x*x*x*x; // H 2, 3, 4 (more 2nd, 4th)
+
+void sauClip_apply_sae(float *restrict buf, size_t buf_len,
+		float gain) {
+	const float in_gain = gain;
+	const float out_gain = copysignf(1.f, in_gain);
+	for (size_t i = 0; i < buf_len; ++i) {
+		float x = buf[i] * in_gain;
+		x = sau_fclampf(x, -1.f, 1.f);
+		x = x - 0.25f*x*x + 0.5f*x*x*x*x - 0.25f*x*x*x*x*x*x;
+		buf[i] = x * out_gain;
+	}
+}
 
 void sauClip_apply_sa5(float *restrict buf, size_t buf_len,
 		float gain) {
