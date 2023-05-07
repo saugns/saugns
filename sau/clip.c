@@ -52,6 +52,8 @@ void sauClip_apply_ds2(float *restrict buf, size_t buf_len,
 		buf[i] = x * out_gain;
 	}
 }
+//	0 <= x <= 1:
+//		x = 2*x - 1*x*x; // H 2
 
 void sauClip_apply_ds2b(float *restrict buf, size_t buf_len,
 		float gain) {
@@ -64,6 +66,8 @@ void sauClip_apply_ds2b(float *restrict buf, size_t buf_len,
 		buf[i] = x * out_gain;
 	}
 }
+//	0 <= x <= 1:
+//		x = 3*x - 3*x*x + 1*x*x*x; // H 2, 3
 
 void sauClip_apply_dm3(float *restrict buf, size_t buf_len,
 		float gain) {
@@ -76,6 +80,8 @@ void sauClip_apply_dm3(float *restrict buf, size_t buf_len,
 		buf[i] = x * out_gain;
 	}
 }
+//	0 <= x <= 1:
+//		x = 2*x - 2*x*x + 1*x*x*x; // H 2, 3
 
 void sauClip_apply_dm4(float *restrict buf, size_t buf_len,
 		float gain) {
@@ -88,6 +94,8 @@ void sauClip_apply_dm4(float *restrict buf, size_t buf_len,
 		buf[i] = x * out_gain;
 	}
 }
+//	0 <= x <= 1:
+//		x = 4*x*x - 6*x*x*x + 3*x*x*x*x; // H 2, 4
 
 void sauClip_apply_dm4_2(float *restrict buf, size_t buf_len,
 		float gain) {
@@ -101,6 +109,8 @@ void sauClip_apply_dm4_2(float *restrict buf, size_t buf_len,
 		buf[i] = x;
 	}
 }
+//	0 <= x <= 1:
+//		x = 4*x*x - 5*x*x*x + 2*x*x*x*x; // H 3, 4 (2, 3, 4 at low vol)
 
 void sauClip_apply_sa3(float *restrict buf, size_t buf_len,
 		float gain) {
@@ -114,6 +124,8 @@ void sauClip_apply_sa3(float *restrict buf, size_t buf_len,
 		buf[i] = x;
 	}
 }
+//	0 <= x <= 1:
+//		x = 3*x*x - 2*x*x*x; // H 3
 
 void sauClip_apply_sa4(float *restrict buf, size_t buf_len,
 		float gain) {
@@ -127,6 +139,8 @@ void sauClip_apply_sa4(float *restrict buf, size_t buf_len,
 		buf[i] = x;
 	}
 }
+//	0 <= x <= 1:
+//		x = 4*x*x - 4*x*x*x + 1*x*x*x*x; // H 2, 3, 4 (more 3rd)
 
 void sauClip_apply_sa4_2(float *restrict buf, size_t buf_len,
 		float gain) {
@@ -140,6 +154,8 @@ void sauClip_apply_sa4_2(float *restrict buf, size_t buf_len,
 		buf[i] = x;
 	}
 }
+//	0 <= x <= 1:
+//		x = 5*x*x - 6*x*x*x + 2*x*x*x*x; // H 2, 3, 4 (more 2nd, 4th)
 
 void sauClip_apply_sa5(float *restrict buf, size_t buf_len,
 		float gain) {
@@ -153,20 +169,7 @@ void sauClip_apply_sa5(float *restrict buf, size_t buf_len,
 		buf[i] = x;
 	}
 }
-
-// Distortion effects, strong
-//		x = 2*x - 1*x*x; // H 2
-//		x = 3*x - 3*x*x + 1*x*x*x; // H 2, 3
-
-// Distortion effects, mellow
-//		x = 2*x - 2*x*x + 1*x*x*x; // H 2, 3
-//		x = 4*x*x - 6*x*x*x + 3*x*x*x*x; // H 2, 4
-//		x = 4*x*x - 5*x*x*x + 2*x*x*x*x; // H 3, 4 (2, 3, 4 at low vol)
-
-// Soft-saturate
-//		x = 3*x*x - 2*x*x*x; // H 3
-//		x = 4*x*x - 4*x*x*x + 1*x*x*x*x; // H 2, 3, 4 (more 3rd)
-//		x = 5*x*x - 6*x*x*x + 2*x*x*x*x; // H 2, 3, 4 (more 2nd, 4th)
+//	0 <= x <= 1:
 //		x = 10*x*x*x - 15*x*x*x*x + 6*x*x*x*x*x; // H 3, 5
 
 //		x = 9*x*x*x - 15*x*x*x*x + 7*x*x*x*x*x; // ? 2, 3, 4, 5
