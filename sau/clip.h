@@ -18,6 +18,7 @@
 #define SAU_CLIP__ITEMS(X) \
 	X(off) \
 	X(hard) \
+	X(fr6) \
 	X(sa3) \
 	X(sa4) \
 	X(sa4_2) \

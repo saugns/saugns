@@ -185,6 +185,9 @@ Clip modes:
 		Nothing is done. This is the default.
 	hard
 		Hard-clip on overshoot, no effect otherwise.
+	fr6
+		Full-rectify and center peak amplitude, degree 6 polynomial.
+		Replaces base frequency with 2nd, 4th, and 6th harmonics.
 	sa3
 		Soft-saturate, adding 3rd harmonic.
 	sa4

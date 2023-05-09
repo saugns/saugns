@@ -41,6 +41,24 @@ void sauClip_apply_hard(float *restrict buf, size_t buf_len,
  * This ensures output for +/- 1.0 input range also has a +/- 1.0 range.
  */
 
+/** 6th-degree polynomial abs() approximation, -1 <= x <= 1. */
+static inline float abs_d6(float x) {
+	x = 1.5f*x - 0.5f*x*x*x;
+	return x*x;
+}
+
+void sauClip_apply_fr6(float *restrict buf, size_t buf_len,
+		float gain) {
+	const float in_gain = gain;
+	const float out_gain = copysignf(1.f, in_gain);
+	for (size_t i = 0; i < buf_len; ++i) {
+		float x = buf[i] * in_gain;
+		x = sau_fclampf(x, -1.f, 1.f);
+		x = (abs_d6(x) - 0.5f)*2;
+		buf[i] = x * out_gain;
+	}
+}
+
 void sauClip_apply_ds2(float *restrict buf, size_t buf_len,
 		float gain) {
 	const float in_gain = gain;
