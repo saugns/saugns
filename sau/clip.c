@@ -41,10 +41,44 @@ void sauClip_apply_hard(float *restrict buf, size_t buf_len,
  * This ensures output for +/- 1.0 input range also has a +/- 1.0 range.
  */
 
+/** 2th-degree polynomial abs() approximation, -1 <= x <= 1. */
+static inline float abs_d2(float x) {
+	return x*x;
+}
+
+/** 4th-degree polynomial abs() approximation, -1 <= x <= 1. */
+static inline float abs_d4(float x) {
+	float x2 = x*x;
+	return 2*x2 - x2*x2;
+}
+
 /** 6th-degree polynomial abs() approximation, -1 <= x <= 1. */
 static inline float abs_d6(float x) {
+	float x2 = x*x;
+	return 3*x2 - 4*x2*x2 + 2*x2*x2*x2;
+//	return 2.5*x2 - 2*x2*x2 + 0.5*x2*x2*x2;
+}
+
+/** Squared 3rd-degree smoothstep
+    6th-degree polynomial abs() approximation, -1 <= x <= 1. */
+static inline float lowabs(float x) {
+//	return abs_d4(x);
 	x = 1.5f*x - 0.5f*x*x*x;
 	return x*x;
+//	float x2 = x*x;
+//	return 2.5f*x2 - 2*x2*x2 + 0.5f*x2*x2*x2;
+}
+
+void sauClip_apply_fr2(float *restrict buf, size_t buf_len,
+		float gain) {
+	const float in_gain = gain;
+	const float out_gain = copysignf(1.f, in_gain);
+	for (size_t i = 0; i < buf_len; ++i) {
+		float x = buf[i] * in_gain;
+		x = sau_fclampf(x, -1.f, 1.f);
+		x = (abs_d2(x) - 0.5f)*2;
+		buf[i] = x * out_gain;
+	}
 }
 
 void sauClip_apply_fr6(float *restrict buf, size_t buf_len,
@@ -54,7 +88,32 @@ void sauClip_apply_fr6(float *restrict buf, size_t buf_len,
 	for (size_t i = 0; i < buf_len; ++i) {
 		float x = buf[i] * in_gain;
 		x = sau_fclampf(x, -1.f, 1.f);
-		x = (abs_d6(x) - 0.5f)*2;
+		x = (lowabs(x) - 0.5f)*2;
+		buf[i] = x * out_gain;
+	}
+}
+
+void sauClip_apply_hr2(float *restrict buf, size_t buf_len,
+		float gain) {
+	const float in_gain = gain;
+	const float out_gain = copysignf(1.f, in_gain);
+	for (size_t i = 0; i < buf_len; ++i) {
+		float x = buf[i] * in_gain;
+		x = sau_fclampf(x, -1.f, 1.f);
+		x = (0.25f + x + abs_d2(x)) * (0.5f / (1.f+0.25f/2));//- 1.f + 0.25f)*0.5f;
+		buf[i] = x * out_gain;
+	}
+}
+
+void sauClip_apply_hr6(float *restrict buf, size_t buf_len,
+		float gain) {
+	const float in_gain = gain;
+	const float out_gain = copysignf(1.f, in_gain);
+	for (size_t i = 0; i < buf_len; ++i) {
+		float x = buf[i] * in_gain;
+		x = sau_fclampf(x, -1.f, 1.f);
+		x = 0.05452073256422515176f +
+		    ((x + lowabs(x)) * 0.47273963371788742412f);
 		buf[i] = x * out_gain;
 	}
 }
