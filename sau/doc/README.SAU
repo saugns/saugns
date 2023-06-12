@@ -83,8 +83,17 @@ Parameters:
 		i.e. C (center). Useful as a main way of setting
 		the parameter value.
 	f	Default frequency "f" value, in Hz. Starts at 440.
+		.k	Key selection for "f" values using note syntax,
+			default C4. Mainly changes the default and relative
+			octave. Can be C, D, E, F, G, A, or B, with or
+			without f (flat) or s (sharp) -- and/or an octave
+			number (0-10) to move the default from a 4-5 range
+			to one of the number to the number plus one.
 		.n	A4 tuning frequency in Hz for "f" values
 			using note syntax. Starts at 440.
+			For example, use "S f.n432" for 432 Hz.
+		.s	Tuning system, either 'e' (12TET, default),
+			or 'j' (SAU justly intoned, may change).
 	r	Default relative frequency "r" value, a
 		modulator:carrier ratio. Starts at 1 (1/1, a "1:1" ratio).
 	t	Default short definite time "t" value, in seconds.
@@ -518,15 +527,27 @@ Variables:
 	The time scope is however new and of the reference.
 
 Frequencies as notes:
-	Frequency values may be specified as notes. Currently, justly
-	intoned C-major scale is supported; "S f.n" sets the A4 tuning
-	(default 440 Hz).
-		The value consists of the note (C, D, E, F, G, A or B),
-	optionally given a prefix and/or suffix. The prefix is an optional
-	subnote (c, d, e, f, g, a or b) inside an inner octave (between
-	note and next note). The suffix is an optional s (sharp) or
-	f (flat), and/or, in the last position, an octave number
-	(from 0-10, default 4).
+	Frequency values may be specified as notes. The "S f.n" option
+	sets the A4 tuning frequency, by default 440 Hz. The tuning system
+	can also be changed using "S f.s".
+		By default, notes use the 12-tone equal temperament system.
+	There is also another option, a just intonation system with 3 times 7
+	notes (each of the 7 notes having a natural, a flat, and a sharp
+	variation, all of which are distinct).
+		Each note is written with a C, D, E, F, G, A, or B. As a
+	first suffix, an f (flat) or s (sharp) can be added. An octave
+	number (0-10) can be written as a final suffix, e.g. "A5" matches
+	twice the tuning frequency, "Af5" a little below that. With no number,
+	the octave for the note will be relative to the key setting ("S f.k"),
+	and by default 4-5, so that the note for the selected key is also the
+	lowest using the low default octave.
+		Additionally, for microtonal variation an optional subnote
+	prefix can be added (c, d, e, f, g, a, or b) for a position in an
+	"inner octave" between the note otherwise used and the note a capital
+	letter above it. I.e., "cC" is the same as just "C", but "dC" moves
+	up a little notch towards "D", "eC" another little notch, and so on.
+	If the key selected is not C, this small letter scale rotates with it.
+	In just intonation, the frequency increases apply rational fractions.
 
 Timing
 ------
