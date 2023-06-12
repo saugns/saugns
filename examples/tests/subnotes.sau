@@ -1,3 +1,4 @@
+S f.sj // sounds a little more distinct for the last tones with just intonation
 Wsin fcG t.5
 ;    fdG
 ;    feG
@@ -5,18 +6,18 @@ Wsin fcG t.5
 ;    fgG
 ;    faG
 ;    fbG
-;    fcA t.5
+;    fcA
 ;    fdA
 ;    feA
 ;    ffA
 ;    fgA
 ;    faA
 ;    fbA
-;    fcB t.5
+;    fcB
 ;    fdB
 ;    feB
 ;    ffB
 ;    fgB
 ;    faB
 ;    fbB
-;    fcC5 t.5
+;    fcC*2
