@@ -28,6 +28,9 @@
 #define IS_ALPHA(c) (IS_LOWER(c) || IS_UPPER(c))
 #define IS_DIGIT(c) ((c) >= '0' && (c) <= '9')
 
+/* Music note key 8-bit identifiers. Based on C, D, E, F, G, A, B scale. */
+#define MUSKEY(cnum, notemod) (((cnum) * 3) + 1 + (notemod))
+
 enum {
 	SAU_SYM_VAR = 0,
 	SAU_SYM_MATH_ID,
@@ -59,6 +62,9 @@ static const sauScriptOptions def_sopt = {
 	.def_freq = 440.f,
 	.def_relfreq = 1.f,
 	.def_chanmix = 0.f,
+	.note_key = MUSKEY(0, 0),
+	.key_octave = 4,
+	.key_ji = false,
 };
 
 static bool init_ScanLookup(struct ScanLookup *restrict o,
@@ -135,6 +141,16 @@ static void warn_missing_whitespace(sauScanner *restrict o,
 static void warn_deprecated(sauScanner *restrict o,
 		const char *restrict old, const char *restrict new) {
 	sauScanner_warning(o, NULL, "%s is deprecated, use new %s", old, new);
+}
+
+/*
+ * Print warning for integer outside allowed range, with fallback value.
+ */
+static void warn_int_range_fallback(sauScanner *restrict o,
+		sauScanFrame *sf, int32_t min, int32_t max, int32_t used,
+		const char *restrict name) {
+	sauScanner_warning(o, sf,
+"invalid %s, using %d (valid range %d-%d)", name, used, min, max);
 }
 
 /*
@@ -390,18 +406,18 @@ static sauNoinline bool scan_time_val(sauScanner *restrict o,
 	return true;
 }
 
-static sauNoinline bool scan_digit_val(sauScanner *restrict o,
-		int32_t *restrict val) {
+static sauNoinline int32_t scan_int_in_range(sauScanner *restrict o,
+		int32_t min, int32_t max, int32_t fallback,
+		int32_t *restrict val, const char *restrict name) {
 	sauScanFrame sf = o->sf;
 	size_t num_len;
 	int32_t num;
 	sauScanner_geti(o, &num, false, &num_len);
-	if (!num_len)
+	if (num_len == 0)
 		return false;
-	if (num_len > 1) {
-		sauScanner_warning(o, &sf,
-				"discarding integer out of range (0-9)");
-		return false;
+	if (num < min || num > max) {
+		warn_int_range_fallback(o, &sf, min, max, fallback, name);
+		num = fallback;
 	}
 	*val = num;
 	return true;
@@ -427,99 +443,108 @@ static size_t scan_chanmix_const(sauScanner *restrict o,
 }
 
 #define OCTAVES 11
+#define OCTAVE(n) ((1 << ((n)+1)) * (1.f/32)) // standard tuning at no. 4 = 1.0
 static size_t scan_note_const(sauScanner *restrict o,
 		double *restrict val) {
-	static const float octaves[OCTAVES] = {
-		(1.f/16.f),
-		(1.f/8.f),
-		(1.f/4.f),
-		(1.f/2.f),
-		1.f, /* no. 4 - standard tuning here */
-		2.f,
-		4.f,
-		8.f,
-		16.f,
-		32.f,
-		64.f
+	static const float notes_e12[8*3] = {
+		0.9438743126816934966f, // -1	Cf
+		1.f,                    // 0	C
+		1.0594630943592952646f, // 1	Cs
+		1.0594630943592952646f, // 1	Df
+		1.1224620483093729814f, // 2	D
+		1.1892071150027210667f, // 3	Ds
+		1.1892071150027210667f, // 3	Ef
+		1.2599210498948731648f, // 4	E
+		1.3348398541700343648f, // 5	Es
+		1.2599210498948731648f, // 4	Ff
+		1.3348398541700343648f, // 5	F
+		1.4142135623730950488f, // 6	Fs
+		1.4142135623730950488f, // 6	Gf
+		1.4983070768766814988f, // 7	G
+		1.5874010519681994747f, // 8	Gs
+		1.5874010519681994747f, // 8	Af
+		1.6817928305074290860f, // 9	A
+		1.7817974362806786095f, // 10	As
+		1.7817974362806786095f, // 10	Bf
+		1.8877486253633869932f, // 11	B
+		2.f,                    // 12	Bs
+		1.8877486253633869932f, // 11
+		2.f,                    // 12
+		2.1189261887185905291f, // 13
 	};
-	static const float notes[3][8] = {
-		{ /* flat */
-			48.f/25.f,
-			16.f/15.f,
-			6.f/5.f,
-			32.f/25.f,
-			36.f/25.f,
-			8.f/5.f,
-			9.f/5.f,
-			96.f/25.f
-		},
-		{ /* normal (9/8 replaced with 10/9 for symmetry) */
-			1.f,
-			10.f/9.f,
-			5.f/4.f,
-			4.f/3.f,
-			3.f/2.f,
-			5.f/3.f,
-			15.f/8.f,
-			2.f
-		},
-		{ /* sharp */
-			25.f/24.f,
-			75.f/64.f,
-			125.f/96.f,
-			25.f/18.f,
-			25.f/16.f,
-			225.f/128.f,
-			125.f/64.f,
-			25.f/12.f
-		}
+	static const float notes_ji[8*3] = {
+		24.f/25, // Cf
+		1.f/1,	 // C
+		25.f/24, // Cs
+		15.f/14, // Df alt. 16.f/15
+		9.f/8,	 // D  alt. 10.f/9 (sym. 9/5)
+		7.f/6,   // Ds alt. 75.f/64
+		6.f/5,   // Ef
+		5.f/4,	 // E
+		9.f/7,   // Es alt. 32.f/25
+		21.f/16, // Ff alt. 125.f/96
+		4.f/3,	 // F
+		7.f/5,   // Fs alt. 25.f/18
+		10.f/7,  // Gf alt. 36.f/25
+		3.f/2,	 // G
+		14.f/9,  // Gs alt. 25.f/16
+		8.f/5,   // Af
+		5.f/3,	 // A
+		7.f/4,   // As alt. 225.f/128
+		9.f/5,   // Bf alt. 16.f/9 (sym. 9/8)
+		15.f/8,	 // B
+		40.f/21, // Bs alt. 243.f/128, 256/135
+		48.f/25, //
+		2.f/1,   //
+		25.f/12, //
 	};
 	sauFile *f = o->f;
 	struct ScanLookup *sl = o->data;
+	const float *notes = sl->sopt.key_ji ? notes_ji : notes_e12;
+	double freq = sl->sopt.A4_freq / notes[5*3 + 1];
+	const int key = sl->sopt.note_key;
 	size_t len = 0, num_len;
-	uint8_t c;
-	double freq;
-	int32_t octave;
-	int32_t semitone = 1, note;
-	int32_t subnote = -1;
+	int c, cnum, keycnum = key/3;
+	int octave, default_octave = sl->sopt.key_octave;
+	int notemod = 0, note;
+	int subnote = -1;
 	c = sauFile_GETC(f); ++len;
 	if (c >= 'a' && c <= 'g') {
-		subnote = c - 'c';
-		if (subnote < 0) /* a, b */
-			subnote += 7;
+		if ((c -= 'c') < 0) c += 7;
+		if ((c -= keycnum) < 0) c += 7;
+		subnote = MUSKEY(c, 0);
 		c = sauFile_GETC(f); ++len;
 	}
 	if (c < 'A' || c > 'G') {
 		sauFile_UNGETN(f, len);
 		return 0;
 	}
-	note = c - 'C';
-	if (note < 0) /* A, B */
-		note += 7;
+	if ((c -= 'C') < 0) c += 7;
+	cnum = c;
 	c = sauFile_GETC(f); ++len;
-	if (c == 's')
-		semitone = 2;
-	else if (c == 'f')
-		semitone = 0;
+	if (c == 'f')
+		notemod = -1;
+	else if (c == 's')
+		notemod = +1;
 	else {
 		sauFile_DECP(f); --len;
 	}
+	note = MUSKEY(cnum, notemod);
+	if (note < key) ++default_octave; // wrap around below chosen key
 	sauFile_geti(f, &octave, false, &num_len);
 	len += num_len;
 	if (num_len == 0)
-		octave = 4;
+		octave = default_octave;
 	else if (octave >= OCTAVES) {
-		sauScanner_warning(o, NULL,
-"invalid note octave number, using 4 (valid range 0-10)");
-		octave = 4;
+		warn_int_range_fallback(o, NULL, 0, 10, default_octave,
+				"note octave number");
+		octave = default_octave;
 	}
-	freq = sl->sopt.A4_freq * (3.f/5.f); /* get C4 */
-	freq *= octaves[octave] * notes[semitone][note];
+	freq *= notes[note] * OCTAVE(octave);
 	if (subnote >= 0)
-		freq *= 1.f + (notes[semitone][note+1] /
-				notes[semitone][note] - 1.f) *
-			(notes[1][subnote] - 1.f);
-	*val = (double) freq;
+		freq *= 1.f + (notes[note+3] / notes[note] - 1.f) *
+			(notes[subnote] - 1.f);
+	*val = freq;
 	return len;
 }
 
@@ -1106,6 +1131,83 @@ static void leave_level(sauParser *restrict o) {
  * Main parser functions
  */
 
+static bool parse_so_freq(sauParser *restrict o, bool rel_freq) {
+	sauScanner *sc = o->sc;
+	double val;
+	int c;
+	if (rel_freq) {
+		if (scan_num(sc, NULL, &val)) {
+			o->sl.sopt.def_relfreq = val;
+			o->sl.sopt.set |= SAU_SOPT_DEF_RELFREQ;
+		}
+		return false;
+	}
+	if (scan_num(sc, scan_note_const, &val)) {
+		o->sl.sopt.def_freq = val;
+		o->sl.sopt.set |= SAU_SOPT_DEF_FREQ;
+	}
+	if (sauScanner_tryc(sc, '.')) switch ((c = sauScanner_getc(sc))) {
+	case 'k': {
+		int32_t octave = o->sl.sopt.key_octave;
+		c = sauScanner_getc(sc);
+		if (!SAU_IS_ASCIIVISIBLE(c))
+			return true;
+		if (c < 'A' || c > 'G') {
+			if (IS_DIGIT(c)) {
+				sauScanner_ungetc(sc);
+				goto K_NUM;
+			}
+			sauScanner_warning(sc, NULL,
+"invalid key; valid are 'A' through 'G', with or without 'f' or 's'");
+			break;
+		}
+		int notemod = 0;
+		int sufc = sauScanner_getc(sc);
+		if (sufc == 'f') notemod = -1;
+		else if (sufc == 's') notemod = +1;
+		else sauScanner_ungetc(sc);
+		if ((c -= 'C') < 0) c += 7;
+		o->sl.sopt.note_key = MUSKEY(c, notemod);
+	K_NUM:
+		if (scan_int_in_range(sc, 0, 10, octave,
+					 &octave, "mode level"))
+			o->sl.sopt.key_octave = octave;
+		break; }
+	case 'n':
+		if (scan_num(sc, NULL, &val)) {
+			if (val < 1.f) {
+				sauScanner_warning(sc, NULL,
+"ignoring A4 tuning frequency (Hz) below 1.0");
+				break;
+			}
+			o->sl.sopt.A4_freq = val;
+			o->sl.sopt.set |= SAU_SOPT_A4_FREQ;
+		}
+		break;
+	case 's':
+		switch ((c = sauScanner_getc(sc))) {
+		case 'e':
+			o->sl.sopt.key_ji = false;
+			o->sl.sopt.set |= SAU_SOPT_NOTE_SCALE;
+			break;
+		case 'j':
+			o->sl.sopt.key_ji = true;
+			o->sl.sopt.set |= SAU_SOPT_NOTE_SCALE;
+			break;
+		default:
+			if (!SAU_IS_ASCIIVISIBLE(c))
+				return true;
+			sauScanner_warning(sc, NULL,
+ "unknown scale; valid are 'e' (12-ET), 'j' (SAU justly intoned)");
+			break;
+		}
+		break;
+	default:
+		return true;
+	}
+	return false;
+}
+
 static void parse_in_settings(sauParser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
 	sauScanner *sc = o->sc;
@@ -1131,28 +1233,10 @@ static void parse_in_settings(sauParser *restrict o) {
 			}
 			break;
 		case 'f':
-			if (scan_num(sc, scan_note_const, &val)) {
-				o->sl.sopt.def_freq = val;
-				o->sl.sopt.set |= SAU_SOPT_DEF_FREQ;
-			}
-			if (sauScanner_tryc(sc, '.') &&
-			    sauScanner_tryc(sc, 'n')) {
-				if (scan_num(sc, NULL, &val)) {
-					if (val < 1.f) {
-						sauScanner_warning(sc, NULL,
-"ignoring tuning frequency (Hz) below 1.0");
-						break;
-					}
-					o->sl.sopt.A4_freq = val;
-					o->sl.sopt.set |= SAU_SOPT_A4_FREQ;
-				}
-			}
+			if (parse_so_freq(o, false)) goto DEFER;
 			break;
 		case 'r':
-			if (scan_num(sc, NULL, &val)) {
-				o->sl.sopt.def_relfreq = val;
-				o->sl.sopt.set |= SAU_SOPT_DEF_RELFREQ;
-			}
+			if (parse_so_freq(o, true)) goto DEFER;
 			break;
 		case 't':
 			if (scan_time_val(sc, &o->sl.sopt.def_time_ms))
@@ -1288,7 +1372,8 @@ static bool parse_ev_mode(sauParser *restrict o) {
 		}
 		if (!(level >= 0) && ++matched) {
 			c = sauScanner_retc(sc);
-			if (IS_DIGIT(c)) scan_digit_val(sc, &level);
+			if (IS_DIGIT(c)) scan_int_in_range(sc, 0, 9, 9,
+					&level, "mode level");
 			else --matched;
 		}
 		if (matched == 0)
