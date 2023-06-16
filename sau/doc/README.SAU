@@ -86,14 +86,19 @@ Parameters:
 		.k	Key selection for "f" values using note syntax,
 			default C4. Mainly changes the default and relative
 			octave. Can be C, D, E, F, G, A, or B, with or
-			without f (flat) or s (sharp) -- and/or an octave
-			number (0-10) to move the default from a 4-5 range
-			to one of the number to the number plus one.
+			without one of 'b'/'f' (flat), 's' (sharp),
+			'd' (half-flat), 'z' (half-sharp),
+			'v' (flat-and-a-half), 'k' (sharp-and-a-half),
+			'w' (double-flat), or 'x' (double-sharp) --
+			and/or an octave number (0-10) to move the default
+			from a 4-5 range to one of the number to the number
+			plus one.
 		.n	A4 tuning frequency in Hz for "f" values
 			using note syntax. Starts at 440.
 			For example, use "S f.n432" for 432 Hz.
-		.s	Tuning system, either 'e' (12TET, default),
-			or 'j' (SAU justly intoned, may change).
+		.s	Tuning system, either 'e' (24-EDO, default),
+			'p' (Pythagorean JI), 'c' (classic 5-limit JI),
+			or 'j' (SAU 7-limit JI).
 	r	Default relative frequency "r" value, a
 		modulator:carrier ratio. Starts at 1 (1/1, a "1:1" ratio).
 	t	Default short definite time "t" value, in seconds.
@@ -397,7 +402,7 @@ Numerical expressions:
 			and negative (gives how much the positive value would
 			be increased, approaching zero further from zero).
 			Note that met(-x) is also equal to (1/met(x)).
-		mf	632.45... (Geometric mean of 20 and 20000.)
+		mf	632.45... Geometric mean of 20 and 20000.
 		pi	3.1415...
 		rand()	Pseudo-random number in range 0-1. The value sequence
 			from a series of calls restarts each new script unit.
@@ -551,24 +556,35 @@ Frequencies as notes:
 	Frequency values may be specified as notes. The "S f.n" option
 	sets the A4 tuning frequency, by default 440 Hz. The tuning system
 	can also be changed using "S f.s".
-		By default, notes use the 12-tone equal temperament system.
-	There is also another option, a just intonation system with 3 times 7
-	notes (each of the 7 notes having a natural, a flat, and a sharp
-	variation, all of which are distinct).
+		By default, notes use the 24-tone equal temperament or equal
+	divisons of the octave (24-EDO) system, a superset of 12-EDO. There
+	are also three justly intoned systems (Pythagorean JI, classic
+	5-limit JI, SAU 7-limit JI), in all of which each of the 7 notes
+	have a natural, 3 flat, and 3 sharp variations, all of them unique.
 		Each note is written with a C, D, E, F, G, A, or B. As a
-	first suffix, an f (flat) or s (sharp) can be added. An octave
-	number (0-10) can be written as a final suffix, e.g. "A5" matches
-	twice the tuning frequency, "Af5" a little below that. With no number,
-	the octave for the note will be relative to the key setting ("S f.k"),
-	and by default 4-5, so that the note for the selected key is also the
-	lowest using the low default octave.
-		Additionally, for microtonal variation an optional subnote
-	prefix can be added (c, d, e, f, g, a, or b) for a position in an
-	"inner octave" between the note otherwise used and the note a capital
-	letter above it. I.e., "cC" is the same as just "C", but "dC" moves
-	up a little notch towards "D", "eC" another little notch, and so on.
-	If the key selected is not C, this small letter scale rotates with it.
-	In just intonation, the frequency increases apply rational fractions.
+	first optional suffix, a 'b'/'f' (flat) or 's' (sharp) can be added --
+	or a quartertone alternative: 'd' (half-flat), 'z' (half-sharp),
+	'v' (flat-and-a-half), or 'k' (sharp-and-a-half). There's also
+	'w' (double-flat) and 'x' (double-sharp). The flats and sharps
+	differ for EDO and the three JI systems -- making a smaller
+	difference in the JI systems than for EDO, except for the
+	Pythagorean JI which very slighly exaggerates it instead.
+		An octave number (0-10) can be written as a final suffix,
+	e.g. "A5" matches twice the tuning frequency, "Ad5" a little below
+	that. With no number, the octave for the note will be relative to the
+	key setting ("S f.k"), and by default 4-5, so that the note set for
+	the selected key is also the lowest using the low default octave.
+	To access more octaves from a relative position, add arithmetic.
+		Another means of microtonal variation is a subnote prefix
+	for "inner octave" placement, optionally added first: c, d, e, f,
+	g, a, or b. (It can be combined with any other options.) The result
+	is moving the tone, part of the distance from the diatonic note used
+	to that above it. I.e., "cC" is the same as only "C", but "dC" moves
+	up one subnote step towards "D", "eC" another step, and so on. (What
+	about "eCs"? It likewise moves two subnote steps from "Cs" towards
+	"Ds", as the 's' is applied in addition.) If the diatonic part of the
+	key selected is not C, this small letter scale rotates with it. In
+	just intonation, the frequency increases apply rational fractions.
 
 Timing
 ------
