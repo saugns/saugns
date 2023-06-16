@@ -138,9 +138,9 @@ typedef struct sauScriptOptions {
 	float def_freq,
 	      def_relfreq,
 	      def_chanmix;
-	uint8_t note_key;
+	int8_t note_key;
 	uint8_t key_octave;
-	bool key_ji : 1;
+	uint8_t key_system;
 } sauScriptOptions;
 
 /**
