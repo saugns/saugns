@@ -530,7 +530,7 @@ static size_t scan_note_const(sauScanner *restrict o,
 			1.0293022366434920288f,	// 1/2  z/d, quarter tone
 			1.0905077326652576592f,	// 3/2  k/v, 3/4 tone
 //			1.1224620483093729814f, // 2	x/w, tone
-			1.0145453349375236415f, // 1/4  extra, eighth tone
+			1.0072464122237038981f, // 1/8  r/l, eighth tone
 			1.0145453349375236415f, // 1/4  p/m, eighth tone
 			1.0293022366434920288f,	// 1/2  extra, quarter tone
 			1.0293022366434920288f,	// 1/2  extra, quarter tone
