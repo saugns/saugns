@@ -577,8 +577,6 @@ static size_t scan_note_const(sauScanner *restrict o,
 	double freq = sl->sopt.A4_freq / notes[5];
 	const int key = sl->sopt.note_key, key_note = MUSNOTE(key);
 	int32_t octave, default_octave = sl->sopt.key_octave;
-	read_note_modpairseq(f, &freq, notemods[6], 't', 'y', &len);
-	read_note_modpairseq(f, &freq, notemods[5], 'q', 'u', &len);
 	switch (++len, (c = sauFile_GETC(f))) {
 	case 'b': notemod = -2; freq /= notemods[0]; break; // flat
 	case 's': notemod = +2; freq *= notemods[0]; break; // sharp
@@ -592,8 +590,6 @@ static size_t scan_note_const(sauScanner *restrict o,
 #endif
 	default: --len; sauFile_DECP(f); break;
 	}
-	read_note_modpairseq(f, &freq, notemods[4], 'p', 'm', &len);
-	read_note_modpairseq(f, &freq, notemods[3], 'r', 'l', &len);
 	if (MUSKEY(note, notemod) < key) // wrap around below chosen key
 		++default_octave;
 	sauFile_geti(f, &octave, false, &num_len);
@@ -605,6 +601,10 @@ static size_t scan_note_const(sauScanner *restrict o,
 				"note octave number");
 		octave = default_octave;
 	}
+	read_note_modpairseq(f, &freq, notemods[6], 't', 'y', &len);
+	read_note_modpairseq(f, &freq, notemods[5], 'q', 'u', &len);
+	read_note_modpairseq(f, &freq, notemods[4], 'p', 'm', &len);
+	read_note_modpairseq(f, &freq, notemods[3], 'r', 'l', &len);
 	freq *= notes[note] * OCTAVE(octave);
 	if (subnote >= 0) {
 		double shift = notes[subnote] / notes[key_note];
