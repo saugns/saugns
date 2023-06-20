@@ -540,20 +540,20 @@ static size_t scan_note_const(sauScanner *restrict o,
 			36.f/35,   // z/d, septimal quarter tone (half-sharp)
 			15.f/14,   // k/v, septimal diatonic semitone, product
 //			1.f,
-			126.f/125, // r/l, septimal semicomma (~1/16 tone)
+			2109375.f/2097152, // r/l, semicomma (~1/16 tone)
 			81.f/80,   // p/m, syntonic comma (5-plus, ~1/8 tone)
-			36.f/35,   // q/u, septimal quarter tone (7-down)
-			33.f/32,   // t/y, undecimal comma (11-up-arrow)
+			36.f/35,   // y/q, septimal quarter tone (7-utonal)
+			33.f/32,   // t/u, undecimal comma (11-up-arrow)
 		},
 		{	/* Pythagorean tuning */
 			2187.f/2048,   // s/b, Pythagorean chromatic semitone
 			36.f/35,       // z/d, septimal quarter tone
 			19683.f/17920, // k/v, ???, product
 //			1.f,
-			126.f/125, // r/l, septimal semicomma (~1/16 tone)
+			2109375.f/2097152, // r/l, semicomma (~1/16 tone)
 			81.f/80,   // p/m, syntonic comma (5-plus, ~1/8 tone)
-			64.f/63,   // q/u, septimal comma (7-down)
-			33.f/32,   // t/y, undecimal comma (11-up-arrow)
+			64.f/63,   // y/q, septimal comma (7-utonal)
+			33.f/32,   // t/u, undecimal comma (11-up-arrow)
 		},
 	};
 	sauFile *f = o->f;
@@ -601,8 +601,8 @@ static size_t scan_note_const(sauScanner *restrict o,
 				"note octave number");
 		octave = default_octave;
 	}
-	read_note_modpairseq(f, &freq, notemods[6], 't', 'y', &len);
-	read_note_modpairseq(f, &freq, notemods[5], 'q', 'u', &len);
+	read_note_modpairseq(f, &freq, notemods[6], 't', 'u', &len);
+	read_note_modpairseq(f, &freq, notemods[5], 'y', 'q', &len);
 	read_note_modpairseq(f, &freq, notemods[4], 'p', 'm', &len);
 	read_note_modpairseq(f, &freq, notemods[3], 'r', 'l', &len);
 	freq *= notes[note] * OCTAVE(octave);

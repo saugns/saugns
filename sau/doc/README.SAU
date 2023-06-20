@@ -541,10 +541,11 @@ Frequencies as notes:
 	sets the A4 tuning frequency, by default 440 Hz. The tuning system
 	can also be changed using "S f.s".
 		By default, notes use the 24-tone equal temperament or equal
-	divisons of the octave (24-EDO) system, a superset of 12-EDO. There
-	are also two justly intoned systems (a main JI and a Pythagorean JI),
-	in both of which each of the 7 notes have a natural, 3 flat, and
-	3 sharp variations, all of them unique.
+	divisons of the octave (24-EDO) system, a superset of 12-EDO -- extra
+	suffixes allowing 96-EDO tones. There are also two justly intoned
+	systems (a main JI and a Pythagorean JI), in both of which each of
+	the 7 notes have a natural, 3 flat, and 3 sharp variations, all of
+	them unique -- with further suffixes allowing more tones.
 		Each note is written with a C, D, E, F, G, A, or B. As a
 	first optional suffix, a 'b' (flat) or 's' (sharp) can be added --
 	or a quartertone alternative: 'd' (half-flat), 'z' (half-sharp),
