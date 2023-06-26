@@ -536,9 +536,9 @@ static size_t scan_note_const(sauScanner *restrict o,
 			1.0293022366434920288f,	// 1/2  extra, quarter tone
 		},
 		{	/* 5-limit JI (Ptolemy's intense diatonic scale) */
-			25.f/24,   // s/b, augmented unison (sharp)
-			36.f/35,   // z/d, septimal quarter tone (half-sharp)
-			15.f/14,   // k/v, septimal diatonic semitone, product
+			25.f/24,      // s/b, augmented unison (sharp)
+			49.f/48,      // z/d, slendro diesis (half-sharp)
+			1225.f/1152,  // k/v, ???, product
 //			1.f,
 			2109375.f/2097152, // r/l, semicomma (~1/16 tone)
 			81.f/80,   // p/m, syntonic comma (5-plus, ~1/8 tone)
