@@ -443,23 +443,6 @@ static size_t scan_chanmix_const(sauScanner *restrict o,
 	}
 }
 
-static void read_note_modpairseq(sauFile *restrict f,
-		double *restrict freq, double modval,
-		uint8_t raise_op, uint8_t lower_op,
-		size_t *restrict len) {
-	int seq = 0;
-	for (;;) {
-		uint8_t c = sauFile_GETC(f); ++(*len);
-		if (c == raise_op && seq >= 0) {
-			*freq *= modval; seq = +1;
-		} else if (c == lower_op && seq <= 0) {
-			*freq /= modval; seq = -1;
-		} else {
-			sauFile_DECP(f); --(*len); break;
-		}
-	}
-}
-
 #define OCTAVES 11
 #define OCTAVE(n) ((1 << ((n)+1)) * (1.f/32)) // standard tuning at no. 4 = 1.0
 static size_t scan_note_const(sauScanner *restrict o,
@@ -524,36 +507,24 @@ static size_t scan_note_const(sauScanner *restrict o,
 			2.f/1,     //
 		},
 	};
-	static const float notemods_all[3][7] = {
+	static const float notemods_all[3][3] = {
 		{	/* Equal temperament */
 			1.0594630943592952646f, // 1	s/b, semitone (sharp)
 			1.0293022366434920288f,	// 1/2  z/d, quarter tone
 			1.0905077326652576592f,	// 3/2  k/v, 3/4 tone
 //			1.1224620483093729814f, // 2	x/w, tone
-			1.0145453349375236415f, // 1/4  extra, eighth tone
-			1.0145453349375236415f, // 1/4  p/m, eighth tone
-			1.0293022366434920288f,	// 1/2  extra, quarter tone
-			1.0293022366434920288f,	// 1/2  extra, quarter tone
 		},
 		{	/* 5-limit JI (Ptolemy's intense diatonic scale) */
 			25.f/24, // s/b, augmented unison (sharp)
 			36.f/35, // z/d, septimal quarter tone (half-sharp)
 			15.f/14, // k/v, septimal diatonic semitone, product
 //			1.f,
-			531441.f/524288, // r/l, Pythagorean comma (3-raise)
-			81.f/80,         // p/m, syntonic comma (5-plus)
-			36.f/35,         // q/u, septimal quarter tone (7-down)
-			33.f/32,         // t/y, undecimal comma (11-up-arrow)
 		},
 		{	/* Pythagorean tuning */
 			2187.f/2048,     // s/b, Pythagorean chromatic semitone
 			36.f/35,         // z/d, septimal quarter tone
 			19683.f/17920,   // k/v, ???, product
 //			1.f,
-			531441.f/524288, // r/l, Pythagorean comma (3-raise)
-			81.f/80,         // p/m, syntonic comma (5-plus)
-			64.f/63,         // q/u, septimal comma (7-down)
-			33.f/32,         // t/y, undecimal comma (11-up-arrow)
 		},
 	};
 	sauFile *f = o->f;
@@ -577,8 +548,6 @@ static size_t scan_note_const(sauScanner *restrict o,
 	double freq = sl->sopt.A4_freq / notes[5];
 	const int key = sl->sopt.note_key, key_note = MUSNOTE(key);
 	int32_t octave, default_octave = sl->sopt.key_octave;
-	read_note_modpairseq(f, &freq, notemods[6], 't', 'y', &len);
-	read_note_modpairseq(f, &freq, notemods[5], 'q', 'u', &len);
 	switch (++len, (c = sauFile_GETC(f))) {
 	case 'b': notemod = -2; freq /= notemods[0]; break; // flat
 	case 's': notemod = +2; freq *= notemods[0]; break; // sharp
@@ -592,8 +561,6 @@ static size_t scan_note_const(sauScanner *restrict o,
 #endif
 	default: --len; sauFile_DECP(f); break;
 	}
-	read_note_modpairseq(f, &freq, notemods[4], 'p', 'm', &len);
-	read_note_modpairseq(f, &freq, notemods[3], 'r', 'l', &len);
 	if (MUSKEY(note, notemod) < key) // wrap around below chosen key
 		++default_octave;
 	sauFile_geti(f, &octave, false, &num_len);
