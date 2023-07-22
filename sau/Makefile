@@ -1,3 +1,6 @@
+# Copyright (c) 2011-2014, 2017-2023 Joel K. Pettersson <joelkp@tuta.io>
+#
+# This file can be freely copied, modified, distributed. It has no warranty.
 .POSIX:
 AR=ar
 CC=cc

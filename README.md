@@ -6,8 +6,7 @@ SAU is a simple language for mathematical audio synthesis,
 without support for using pre-recorded samples.
 See the [_README.SAU_](sau/doc/README.SAU) for the current details,
 or a more how-to [_language web page_](https://sau.frama.io/language.html)
-covering the main features. Example scripts under `examples/` also use
-most of the features.
+covering the main features.
 
 While the language is still primitive relative to the
 goal (a useful language for writing electronic music),
@@ -33,6 +32,19 @@ The following audio systems are expected:
 | Linux     | ALSA, OSS       |
 | NetBSD    | OSS             |
 | OpenBSD   | sndio           |
+
+Examples
+========
+
+The example scripts under `examples/` use most features; beyond playing them,
+a Makefile in that directory allows bulk-rendering (by default to MP3s) using
+the SoX utility in addition to saugns. That Makefile is provided to make such
+things easier for your own scripts (the Makefile can be used for other paths,
+having a `DIRS` option). Apart from the `DIRS` default, it is the same as the
+Makefile provided in [extra-scripts](https://codeberg.org/sau/extra-scripts).
+
+A limited set of scripts with pre-rendered audio is on the
+[_examples web page_](https://sau.frama.io/examples.html).
 
 Building and installing
 =======================
