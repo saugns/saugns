@@ -22,22 +22,32 @@ enum {
 	SAU_SDOP_MULTIPLE = 1U<<1,
 };
 
-/** Info shared by all references to an object. */
+/** Info per script data object, shared by all references to the object. */
 typedef struct sauScriptObjInfo {
 	uint8_t obj_type; // type of object described
+	uint8_t op_type; // type of audio operator, if such
 	uint16_t last_vo_id; // for voice allocation (objects change voices)
-	uint32_t root_obj_id; // root carrier for a carrier or modulator
-	uint32_t parent_obj_id; // parent carrier for a carrier or modulator
+	uint32_t last_op_id; // ID for audio generator, if such
+	uint32_t root_op_obj; // root op for op
+	uint32_t parent_op_obj; // parent op for any object
 	uint32_t seed; // TODO: divide containing node type
 } sauScriptObjInfo;
+
+/** Reference to script data object, common data for all subtypes. */
+typedef struct sauScriptObjRef {
+	uint32_t obj_id; // shared by all references to an object
+	uint8_t obj_type; // included for quick access
+	uint8_t op_type;  // included for quick access
+	uint16_t vo_id; // ID for carrier use, or SAU_PVO_NO_ID
+	void *next; // next in set of objects
+} sauScriptObjRef;
 
 /**
  * Container node for linked list, used for nesting.
  */
 typedef struct sauScriptListData {
+	sauScriptObjRef ref;
 	void *first_item;
-	struct sauScriptListData *next_list;
-	uint32_t parent_obj_id;
 	uint8_t use_type;
 	uint8_t flags;
 } sauScriptListData;
@@ -50,12 +60,9 @@ enum {
  * Node type for operator data.
  */
 typedef struct sauScriptOpData {
+	sauScriptObjRef ref;
 	struct sauScriptEvData *event;
-	struct sauScriptOpData *next; // next in list, scope, grouping...
 	struct sauScriptOpData *prev_ref; // preceding for same op(s)
-	uint32_t obj_id; // shared by all references to an object
-	uint8_t obj_type; // included for quick access
-	uint16_t vo_id; // ID for carrier use, or SAU_PVO_NO_ID
 	uint32_t op_flags;
 	/* operator parameters */
 	uint32_t params;
@@ -97,9 +104,9 @@ struct sauScriptEvBranch;
 typedef struct sauScriptEvData {
 	struct sauScriptEvData *next;
 	struct sauScriptEvBranch *forks;
-	sauScriptListData objs;
+	void *main_obj;
 	uint32_t wait_ms;
-	uint32_t dur_ms;
+	uint32_t dur_ms; // for level at which main object is included
 	uint8_t ev_flags;
 } sauScriptEvData;
 
