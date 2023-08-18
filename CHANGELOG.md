@@ -7,14 +7,17 @@ is a shorter change log with only the SAU language changes.
 Pre-release
 -----------
 
-[rebase in progress]
-
 Language changes:
  * Variable syntax. Relax rules for use of numerical
    variable `=`, allow whitespace after `=`, and not
    only before it. This behavior is less surprising.
+ * Allow `[]` list unconnected to any parameter. Its
+   objects are held unused. More language constructs
+   are needed to use the free list, or its contents.
 
 Parser redesign:
+ * Turn lists into a main type, for two with the old
+   audio "operator". Create objects, do type checks.
  * Make parseconv a utility header the parser simply
    uses. Simplify memory handling & code structures.
 
