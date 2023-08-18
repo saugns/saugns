@@ -3,7 +3,7 @@
 # This file can be freely copied, modified, distributed. It has no warranty.
 .POSIX:
 CC=cc
-CFLAGS_COMMON=-std=c99 -W -Wall -I.
+CFLAGS_COMMON=-std=c99 -W -Wall -pedantic -I.
 CFLAGS=$(CFLAGS_COMMON) -O2
 CFLAGS_FAST=$(CFLAGS_COMMON) -O3
 CFLAGS_FASTF=$(CFLAGS_COMMON) -O3 -ffast-math
