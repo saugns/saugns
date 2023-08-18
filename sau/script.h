@@ -23,23 +23,33 @@ enum {
 	SAU_SDOP_NESTED = 1<<2,
 };
 
-/** Info shared by all references to an object. */
+/** Info per script data object, shared by all references to the object. */
 typedef struct sauScriptObjInfo {
 	struct sauScriptOpData *last_ref; // used for iterating references
-	struct sauScriptEvData *root_event;
+	struct sauScriptEvData *first_event;
 	uint32_t type; // type info, for now
 	uint32_t id; // for conversion
 	uint32_t seed; // TODO: divide containing node type
 } sauScriptObjInfo;
 
+/** Reference to script data object, common data for all subtypes. */
+typedef struct sauScriptObjRef {
+	sauScriptObjInfo *info;
+	struct sauScriptEvData *event; // event associated with reference
+	void *prev; // preceding reference to same object
+	void *next_item; // reference to next object in object list...
+} sauScriptObjRef;
+
 /**
  * Container node for linked list, used for nesting.
  */
 typedef struct sauScriptListData {
+	sauScriptObjRef ref;
 	void *first_item;
 	struct sauScriptListData *next_list;
 	uint8_t use_type;
 	uint8_t flags;
+	uint32_t dur_ms; // for level inside list, below that of the event
 } sauScriptListData;
 
 enum {
@@ -50,10 +60,7 @@ enum {
  * Node type for operator data.
  */
 typedef struct sauScriptOpData {
-	struct sauScriptEvData *event;
-	struct sauScriptOpData *next; // next in list, scope, grouping...
-	struct sauScriptObjInfo *info; // shared by all references
-	struct sauScriptOpData *prev_ref; // preceding for same op(s)
+	sauScriptObjRef ref;
 	uint32_t op_flags;
 	/* operator parameters */
 	uint32_t params;
@@ -95,13 +102,13 @@ struct sauScriptEvBranch;
 typedef struct sauScriptEvData {
 	struct sauScriptEvData *next;
 	struct sauScriptEvBranch *forks;
-	sauScriptListData objs;
+	void *root_obj; // outermost in this particular event
 	uint32_t ev_flags;
 	uint32_t wait_ms;
-	uint32_t dur_ms;
+	uint32_t dur_ms; // for level at which root object is included
 	/* for conversion */
 	uint32_t vo_id;
-	struct sauScriptEvData *root_ev; // if not the root event
+	struct sauScriptEvData *obj_first_ev; // if not it
 } sauScriptEvData;
 
 /**
@@ -161,3 +168,13 @@ typedef struct sauScript {
 
 sauScript *sau_read_Script(const sauScriptArg *restrict arg) sauMalloclike;
 void sau_discard_Script(sauScript *restrict o);
+
+/** Type check for operator data. */
+static inline bool sauScriptObjRef_is_opdata(sauScriptObjRef *restrict obj) {
+	return obj->info->type >= SAU_POBJT_ANY_OSC;
+}
+
+/** Type check for list data. */
+static inline bool sauScriptObjRef_is_listdata(sauScriptObjRef *restrict obj) {
+	return obj->info->type == SAU_POBJT_LIST;
+}

@@ -240,14 +240,14 @@ static void prepare_op(sauGenerator *restrict o,
 		vn->camods = &blank_idarr;
 	}
 	switch (od->type) {
-	case SAU_POPT_WAVE: {
+	case SAU_POBJT_WAVE: {
 		WOscNode *wo = &n->wo;
 		memset(n, 0, sizeof(*wo));
 		sau_init_WOsc(&wo->wosc, o->srate);
 		if (od->use_type == SAU_POP_CARR) // must match run_block_wosc()
 			vn->freq_buf_id = 3 - 1;
 		goto OSC_COMMON; }
-	case SAU_POPT_RAS: {
+	case SAU_POBJT_RASG: {
 		RasGNode *rg = &n->rg;
 		memset(n, 0, sizeof(*rg));
 		sau_init_RasG(&rg->rasg, o->srate);
@@ -276,14 +276,14 @@ static void update_op(sauGenerator *restrict o,
 		const sauProgramOpData *restrict od) {
 	uint32_t params = od->params;
 	switch (od->type) {
-	case SAU_POPT_WAVE: {
+	case SAU_POBJT_WAVE: {
 		WOscNode *wo = &n->wo;
 		if (params & SAU_POPP_PHASE)
 			sauWOsc_set_phase(&wo->wosc, od->phase);
 		if (params & SAU_POPP_WAVE)
 			sauWOsc_set_wave(&wo->wosc, od->wave);
 		goto OSC_COMMON; }
-	case SAU_POPT_RAS: {
+	case SAU_POBJT_RASG: {
 		RasGNode *rg = &n->rg;
 		if (params & SAU_POPP_PHASE)
 			sauRasG_set_phase(&rg->rasg, od->phase);
@@ -327,7 +327,6 @@ static void update_op(sauGenerator *restrict o,
 static void handle_event(sauGenerator *restrict o, EventNode *restrict e) {
 	if (1) /* more types to be added in the future */ {
 		const sauProgramEvent *pe = e->prg_event;
-		const sauProgramVoData *vd = pe->vo_data;
 		/*
 		 * Set state of operator and/or voice.
 		 *
@@ -344,11 +343,9 @@ static void handle_event(sauGenerator *restrict o, EventNode *restrict e) {
 				prepare_op(o, n, vn, od);
 			update_op(o, n, vn, od);
 		}
-		if (vd) {
-			if (vd->op_list) {
-				vn->graph = vd->op_list;
-				vn->op_count = vd->op_count;
-			}
+		if (pe->op_list) {
+			vn->graph = pe->op_list;
+			vn->op_count = pe->op_list_count;
 		}
 		if (vn) {
 			vn->flags |= VN_INIT;
@@ -604,10 +601,10 @@ static uint32_t run_block(sauGenerator *restrict o,
 	 * Use sub-function.
 	 */
 	switch (gen->type) {
-	case SAU_POPT_WAVE:
+	case SAU_POBJT_WAVE:
 		run_block_wosc(o, bufs, len, n, parent_freq, wave_env, layer);
 		break;
-	case SAU_POPT_RAS:
+	case SAU_POBJT_RASG:
 		run_block_rasg(o, bufs, len, n, parent_freq, wave_env, layer);
 		break;
 	}
