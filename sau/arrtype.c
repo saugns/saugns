@@ -87,7 +87,7 @@ bool sauArrType_upsize(void *restrict _o,
 	if (!o->a || asize < min_asize) {
 		if (!asize) asize = item_size;
 		while (asize < min_asize) asize <<= 1;
-		void *a = realloc(o->a, asize);
+		uint8_t *a = realloc(o->a, asize);
 		if (!a)
 			return false;
 		if (!o->a)

@@ -322,7 +322,6 @@ static void update_op(sauGenerator *restrict o,
 static void handle_event(sauGenerator *restrict o, EventNode *restrict e) {
 	if (1) /* more types to be added in the future */ {
 		const sauProgramEvent *pe = e->prg_event;
-		const sauProgramVoData *vd = pe->vo_data;
 		/*
 		 * Set state of operator and/or voice.
 		 *
@@ -339,10 +338,8 @@ static void handle_event(sauGenerator *restrict o, EventNode *restrict e) {
 				prepare_op(o, n, vn, od);
 			update_op(o, n, od);
 		}
-		if (vd) {
-			vn->carr_op_id = vd->carr_op_id;
-		}
 		if (vn) {
+			vn->carr_op_id = pe->carr_op_id;
 			vn->flags |= VN_INIT;
 			if (o->voice > pe->vo_id) {
 				/* go back to re-activated node */
