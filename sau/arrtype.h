@@ -44,9 +44,9 @@ typedef struct Name { \
  *
  * Only declares methods, not type. See sauArrType().
  *
- * The Name_*() methods defined are inline wrappers around the
- * generic methods. If not blank, \p MethodPrefix will be used
- * to prefix their names.
+ * The Name_*() methods defined are inline functions including
+ * wrappers around the generic arrtype functions, and more. If
+ * not blank, \p MethodPrefix will be used to prefix their names.
  */
 #define sauArrTypeMethods(Name, ElementType, MethodPrefix) \
 static inline ElementType sauMaybeUnused \
@@ -69,6 +69,10 @@ MethodPrefix##Name##_upsize(Name *restrict o, size_t count) { \
 static inline ElementType sauMaybeUnused \
 *MethodPrefix##Name##_get(Name *restrict o, size_t i) { \
 	return (o->count > i) ? &o->a[i] : NULL; \
+} \
+static inline ElementType sauMaybeUnused \
+*MethodPrefix##Name##_getrev(Name *restrict o, size_t i) { \
+	return (o->count > i) ? &o->a[o->count - (i+1)] : NULL; \
 } \
 static inline ElementType sauMaybeUnused \
 *MethodPrefix##Name##_tip(Name *restrict o) { \
