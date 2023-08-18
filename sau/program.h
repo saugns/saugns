@@ -59,6 +59,12 @@ enum {
 };
 
 enum {
+	SAU_POBJT_LIST = 0,
+	SAU_POBJT_OP,
+	SAU_POBJT_TYPES,
+};
+
+enum {
 	SAU_POPT_WAVE = 0,
 	SAU_POPT_RAS,
 	SAU_POPT_TYPES,
@@ -157,12 +163,6 @@ typedef struct sauProgramOpRef {
 	uint8_t level; /* > 0 if used as a modulator */
 } sauProgramOpRef;
 
-typedef struct sauProgramVoData {
-	const sauProgramOpRef *op_list; // used for printout
-	uint32_t op_count;
-	uint32_t carr_op_id;
-} sauProgramVoData;
-
 typedef struct sauProgramOpData {
 	uint32_t id;
 	uint32_t params;
@@ -184,8 +184,10 @@ typedef struct sauProgramOpData {
 typedef struct sauProgramEvent {
 	uint32_t wait_ms;
 	uint16_t vo_id;
+	uint32_t carr_op_id;
+	uint32_t op_count;
 	uint32_t op_data_count;
-	const sauProgramVoData *vo_data;
+	const sauProgramOpRef *op_list; // used for printout
 	const sauProgramOpData *op_data;
 } sauProgramEvent;
 
