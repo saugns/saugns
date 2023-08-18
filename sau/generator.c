@@ -1,5 +1,5 @@
 /* SAU library: Audio generator module.
- * Copyright (c) 2011-2012, 2017-2023 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2024 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
@@ -326,7 +326,6 @@ static void update_op(sauGenerator *restrict o,
 static void handle_event(sauGenerator *restrict o, EventNode *restrict e) {
 	if (1) /* more types to be added in the future */ {
 		const sauProgramEvent *pe = e->prg_event;
-		const sauProgramVoData *vd = pe->vo_data;
 		/*
 		 * Set state of operator and/or voice.
 		 *
@@ -343,11 +342,9 @@ static void handle_event(sauGenerator *restrict o, EventNode *restrict e) {
 				prepare_op(o, n, vn, od);
 			update_op(o, n, od);
 		}
-		if (vd) {
-			if (vd->op_list) {
-				vn->graph = vd->op_list;
-				vn->op_count = vd->op_count;
-			}
+		if (pe->op_list) {
+			vn->graph = pe->op_list;
+			vn->op_count = pe->op_count;
 		}
 		if (vn) {
 			vn->flags |= VN_INIT;
