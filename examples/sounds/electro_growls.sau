@@ -1,1 +1,1 @@
-Rexp mt f50*4{g50*8} t15 p[Wsin f1/6 a10^3.0/2]
+Rexp mt f50*4[g50*8] t15 p[Wsin f1/6 a10^3.0/2]
