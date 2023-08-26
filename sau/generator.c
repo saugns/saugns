@@ -81,9 +81,11 @@ enum {
 typedef struct VoiceNode {
 	uint32_t duration;
 	uint8_t flags;
+	uint8_t freq_buf_id; // zero if unavailable
 	const sauProgramOpRef *graph;
 	uint32_t op_count;
 	sauLine pan;
+	const sauProgramIDArr *camods;
 } VoiceNode;
 
 typedef struct EventNode {
@@ -218,10 +220,9 @@ void sau_destroy_Generator(sauGenerator *restrict o) {
 static void set_voice_duration(sauGenerator *restrict o,
 		VoiceNode *restrict vn) {
 	uint32_t time = 0;
-	for (uint32_t i = 0; i < vn->op_count; ++i) {
-		const sauProgramOpRef *or = &vn->graph[i];
-		if (or->use != SAU_POP_CARR) continue;
-		GenNode *gen = &o->operators[or->id].gen;
+	const sauProgramOpRef *root_op;
+	if ((root_op = sauProgramOpRef_get_root(vn->graph, vn->op_count))) {
+		GenNode *gen = &o->operators[root_op->id].gen;
 		if (gen->time > time)
 			time = gen->time;
 	}
@@ -232,18 +233,27 @@ static void set_voice_duration(sauGenerator *restrict o,
  * Initialize an operator node for use as the given type.
  */
 static void prepare_op(sauGenerator *restrict o,
-		OperatorNode *restrict n, const sauProgramOpData *restrict od) {
+		OperatorNode *restrict n, VoiceNode *restrict vn,
+		const sauProgramOpData *restrict od) {
+	if (od->use_type == SAU_POP_CARR) {
+		vn->freq_buf_id = 0;
+		vn->camods = &blank_idarr;
+	}
 	switch (od->type) {
 	case SAU_POPT_WAVE: {
 		WOscNode *wo = &n->wo;
 		memset(n, 0, sizeof(*wo));
 		sau_init_WOsc(&wo->wosc, o->srate);
+		if (od->use_type == SAU_POP_CARR) // must match run_block_wosc()
+			vn->freq_buf_id = 3 - 1;
 		goto OSC_COMMON; }
 	case SAU_POPT_RAS: {
 		RasGNode *rg = &n->rg;
 		memset(n, 0, sizeof(*rg));
 		sau_init_RasG(&rg->rasg, o->srate);
 		sauRasG_set_cycle(&rg->rasg, od->seed);
+		if (od->use_type == SAU_POP_CARR) // must match run_block_rasg()
+			vn->freq_buf_id = 4 - 1;
 		goto OSC_COMMON; }
 	}
 	if (false)
@@ -262,7 +272,8 @@ static void prepare_op(sauGenerator *restrict o,
  * Update an operator node with new data from event.
  */
 static void update_op(sauGenerator *restrict o,
-		OperatorNode *restrict n, const sauProgramOpData *restrict od) {
+		OperatorNode *restrict n, VoiceNode *restrict vn,
+		const sauProgramOpData *restrict od) {
 	uint32_t params = od->params;
 	switch (od->type) {
 	case SAU_POPT_WAVE: {
@@ -302,10 +313,12 @@ static void update_op(sauGenerator *restrict o,
 			gen->flags &= ~ON_TIME_INF;
 		}
 	}
+	if (od->camods) vn->camods = od->camods;
 	if (od->amods) gen->amp.mods = od->amods;
 	if (od->ramods) gen->amp.r_mods = od->ramods;
 	sauLine_copy(&gen->amp.par, od->amp, o->srate);
 	sauLine_copy(&gen->amp.r_par, od->amp2, o->srate);
+	sauLine_copy(&vn->pan, od->pan, o->srate);
 }
 
 /*
@@ -328,9 +341,8 @@ static void handle_event(sauGenerator *restrict o, EventNode *restrict e) {
 			const sauProgramOpData *od = &pe->op_data[i];
 			OperatorNode *n = &o->operators[od->id];
 			if (!(n->gen.flags & ON_INIT))
-				prepare_op(o, n, od);
-			update_op(o, n, od);
-			sauLine_copy(&vn->pan, od->pan, o->srate);
+				prepare_op(o, n, vn, od);
+			update_op(o, n, vn, od);
 		}
 		if (vd) {
 			if (vd->op_list) {
@@ -635,11 +647,26 @@ static void mix_clear(sauGenerator *restrict o) {
 static void mix_add(sauGenerator *restrict o,
 		VoiceNode *restrict vn, uint32_t len) {
 	float *s_buf = o->gen_bufs[0];
+	float *pan_buf = NULL;
 	float *mix_l = o->mix_bufs[0];
 	float *mix_r = o->mix_bufs[1];
 	if (vn->pan.flags & SAU_LINEP_GOAL) {
-		float *pan_buf = o->gen_bufs[1];
+		pan_buf = o->gen_bufs[1];
 		sauLine_run(&vn->pan, pan_buf, len, NULL);
+	} else {
+		sauLine_skip(&vn->pan, len);
+	}
+	if (vn->camods->count > 0) {
+		float *freq_buf = vn->freq_buf_id > 0 ?
+			o->gen_bufs[vn->freq_buf_id] :
+			NULL;
+		for (uint32_t i = 0; i < vn->camods->count; ++i)
+			run_block(o, (o->gen_bufs + 1 + vn->freq_buf_id), len,
+					&o->operators[vn->camods->ids[i]],
+					freq_buf, false, pan_buf != NULL);
+		pan_buf = o->gen_bufs[1 + vn->freq_buf_id];
+	}
+	if (pan_buf != NULL) {
 		for (uint32_t i = 0; i < len; ++i) {
 			float s = s_buf[i] * o->amp_scale;
 			float s_r = s * pan_buf[i];
@@ -647,7 +674,6 @@ static void mix_add(sauGenerator *restrict o,
 			mix_r[i] += s + s_r;
 		}
 	} else {
-		sauLine_skip(&vn->pan, len);
 		for (uint32_t i = 0; i < len; ++i) {
 			float s = s_buf[i] * o->amp_scale;
 			float s_r = s * vn->pan.v0;
@@ -703,31 +729,18 @@ static void mix_write_stereo(sauGenerator *restrict o,
  */
 static uint32_t run_voice(sauGenerator *restrict o,
 		VoiceNode *restrict vn, uint32_t len) {
-	uint32_t out_len = 0;
-	const sauProgramOpRef *ops = vn->graph;
-	uint32_t opc = vn->op_count;
-	if (!ops)
+	const sauProgramOpRef *root_op;
+	if (!(root_op = sauProgramOpRef_get_root(vn->graph, vn->op_count)))
 		return 0;
-	bool layer = false;
-	uint32_t time;
-	uint32_t i;
-	time = vn->duration;
+	OperatorNode *n = &o->operators[root_op->id];
+	uint32_t time = vn->duration, out_len = 0;
 	if (len > BUF_LEN) len = BUF_LEN;
 	if (time > len) time = len;
-	for (i = 0; i < opc; ++i) {
-		uint32_t last_len;
-		// TODO: finish redesign
-		if (ops[i].use != SAU_POP_CARR) continue;
-		OperatorNode *n = &o->operators[ops[i].id];
-		if (n->gen.time == 0) continue;
-		last_len = run_block(o, o->gen_bufs, time, n,
-				NULL, false, layer);
-		layer = true;
-		if (last_len > out_len) out_len = last_len;
-	}
-	if (out_len > 0) {
+	if (n->gen.time > 0)
+		out_len = run_block(o, o->gen_bufs, time, n,
+				NULL, false, false);
+	if (out_len > 0)
 		mix_add(o, vn, out_len);
-	}
 	vn->duration -= time;
 	return out_len;
 }

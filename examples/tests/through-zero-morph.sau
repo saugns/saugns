@@ -1,7 +1,7 @@
 Wsin f0[
-	Wsin f0{gmf*pi} a10^pi
-	; f{gmf/pi lexp} a{g10^((3+pi)/2) lcos}
-	; f{g50 t1} a{g10^met(3) lcos t3} t2
-	; f{g440*pi llog}
-	; f{g50}
+	Wsin f0[gmf*pi] a10^pi
+	; f[gmf/pi lexp] a[g10^((3+pi)/2) lcos]
+	; f[g50 t1] a[g10^met(3) lcos t3] t2
+	; f[g440*pi llog]
+	; f[g50]
 ]
