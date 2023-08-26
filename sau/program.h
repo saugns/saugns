@@ -128,18 +128,27 @@ typedef struct sauProgramIDArr {
 	uint32_t ids[];
 } sauProgramIDArr;
 
+/* Macro used for operator use type sets of items. */
+#define SAU_POP__ITEMS(X) \
+	X(carr,  0, " CA", NULL) \
+	X(camod, 1, "cAM", "c") /* channel mix i.e. panning modulation */ \
+	X(amod,  1, " AM", "a") \
+	X(ramod, 1, "rAM", "a.r") \
+	X(fmod,  1, " FM", "f") \
+	X(rfmod, 1, "rFM", "f.r") \
+	X(pmod,  1, " PM", "p") \
+	X(fpmod, 1, "fPM", "p.f") \
+	//
+#define SAU_POP__X_ID(NAME, ...) SAU_POP_N_##NAME,
+#define SAU_POP__X_GRAPH(NAME, IS_MOD, LABEL, ...) LABEL,
+
 /**
  * Operator use types.
  */
 enum {
-	SAU_POP_CARR = 0,
-	SAU_POP_AMOD,
-	SAU_POP_RAMOD,
-	SAU_POP_FMOD,
-	SAU_POP_RFMOD,
-	SAU_POP_PMOD,
-	SAU_POP_FPMOD,
-	SAU_POP_USES,
+	SAU_POP__ITEMS(SAU_POP__X_ID)
+	SAU_POP_NAMED,
+	SAU_POP_N_default = 0, // shares value with carrier
 };
 
 typedef struct sauProgramOpRef {
@@ -163,12 +172,13 @@ typedef struct sauProgramOpData {
 	sauLine *freq, *freq2;
 	uint32_t phase;
 	uint32_t seed; // TODO: divide containing node type
-	uint8_t wave;
+	uint8_t wave; // TODO: divide containing node type
+	uint8_t use_type;
 	sauRasOpt ras_opt; // TODO: divide containing node type
 	uint32_t type; // type info, for now
-	const sauProgramIDArr *amods, *ramods;
-	const sauProgramIDArr *fmods, *rfmods;
-	const sauProgramIDArr *pmods, *fpmods;
+#define SAU_POP__X_IDARR_PTR(NAME, IS_MOD, ...) \
+	SAU_IF(IS_MOD, const sauProgramIDArr *NAME##s;, )
+	SAU_POP__ITEMS(SAU_POP__X_IDARR_PTR)
 } sauProgramOpData;
 
 typedef struct sauProgramEvent {

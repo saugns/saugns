@@ -23,45 +23,39 @@
 
 static const sauProgramIDArr blank_idarr = {0};
 
-static uint32_t
-copy_list_ids(uint32_t *dst, const sauScriptListData *list_in) {
-	uint8_t use_type = list_in->use_type;
-	unsigned i = 0;
-COPY:
-	for (sauScriptOpData *op = list_in->first_item; op; op = op->next)
-		dst[i++] = op->info->id;
-	while ((list_in = list_in->next)) {
-		if (list_in->use_type == use_type) {
-			if (!list_in->append) i = 0;
-			goto COPY;
-		}
-	}
-	return i;
-}
-
 static sauNoinline const sauProgramIDArr *
 sau_create_ProgramIDArr(sauMempool *restrict mp,
-		const sauScriptListData *restrict list_in,
-		const sauProgramIDArr *restrict copy) {
-	uint8_t use_type = list_in->use_type;
+		const sauScriptListData *restrict list_in) {
 	uint32_t count = list_in->count;
-	for (sauScriptListData *next = list_in->next; next; next = next->next)
-		if (next->use_type == use_type) count += next->count;
-	if (!list_in->append) copy = NULL;
 	if (!count)
-		return copy ? copy : &blank_idarr;
-	if (copy) count += copy->count;
+		return &blank_idarr;
 	sauProgramIDArr *idarr = sau_mpalloc(mp,
 			sizeof(sauProgramIDArr) + sizeof(uint32_t) * count);
 	if (!idarr)
 		return NULL;
+	idarr->count = count;
 	uint32_t i = 0;
-	if (copy) {
-		memcpy(idarr->ids, copy->ids, sizeof(uint32_t) * copy->count);
-		i = copy->count;
-	}
-	uint32_t *ids = &idarr->ids[i];
-	idarr->count = copy_list_ids(ids, list_in);
+	for (sauScriptOpData *op = list_in->first_item; op; op = op->next)
+		idarr->ids[i++] = op->info->id;
+	return idarr;
+}
+
+static sauNoinline const sauProgramIDArr *
+sau_concat_ProgramIDArr(sauMempool *restrict mp,
+		const sauProgramIDArr *arr0, const sauProgramIDArr *arr1) {
+	if (!arr0 || arr0->count == 0)
+		return arr1;
+	if (!arr1 || arr1->count == 0)
+		return arr0;
+	size_t size0 = sizeof(uint32_t) * arr0->count;
+	size_t size1 = sizeof(uint32_t) * arr1->count;
+	sauProgramIDArr *idarr = sau_mpalloc(mp,
+			sizeof(sauProgramIDArr) + size0 + size1);
+	if (!idarr)
+		return NULL;
+	idarr->count = arr0->count + arr1->count;
+	memcpy(idarr->ids, arr0->ids, size0);
+	memcpy(&idarr->ids[arr0->count], arr1->ids, size1);
 	return idarr;
 }
 
@@ -161,9 +155,7 @@ enum {
  */
 typedef struct sauOpAllocState {
 	sauScriptOpData *last_pod;
-	const sauProgramIDArr *amods, *ramods;
-	const sauProgramIDArr *fmods, *rfmods;
-	const sauProgramIDArr *pmods, *fpmods;
+	const sauProgramIDArr *mods[SAU_POP_NAMED - 1];
 	uint32_t flags;
 	//uint32_t duration_ms;
 } sauOpAllocState;
@@ -196,6 +188,10 @@ sauOpAlloc_get_id(sauOpAlloc *restrict oa,
 	if (!_sauOpAlloc_add(oa, NULL))
 		return false;
 //ASSIGNED:
+	sauOpAllocState *oas = &oa->a[*op_id];
+	for (int i = 1; i < SAU_POP_NAMED; ++i) {
+		oas->mods[i - 1] = &blank_idarr;
+	}
 	od->info->id = *op_id;
 	return true;
 }
@@ -292,7 +288,7 @@ static inline bool
 set_oplist(const sauProgramIDArr **restrict dstp,
 		const sauScriptListData *restrict src,
 		sauMempool *restrict mem) {
-	const sauProgramIDArr *dst = sau_create_ProgramIDArr(mem, src, *dstp);
+	const sauProgramIDArr *dst = sau_create_ProgramIDArr(mem, src);
 	if (!dst)
 		return false;
 	*dstp = dst;
@@ -307,7 +303,8 @@ set_oplist(const sauProgramIDArr **restrict dstp,
  */
 static bool
 ParseConv_convert_opdata(ParseConv *restrict o,
-		const sauScriptOpData *restrict op, uint32_t op_id) {
+		const sauScriptOpData *restrict op, uint32_t op_id,
+		uint8_t use_type) {
 	sauOpAllocState *oas = &o->oa.a[op_id];
 	sauProgramOpData *ood = _OpDataArr_add(&o->ev_op_data, NULL);
 	if (!ood) goto MEM_ERR;
@@ -320,47 +317,33 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 	ood->freq = op->freq;
 	ood->freq2 = op->freq2;
 	ood->phase = op->phase;
-	ood->wave = op->wave;
+	ood->use_type = use_type;
 	/* TODO: separation of types */
 	ood->type = op->info->type;
 	ood->seed = op->info->seed;
+	ood->wave = op->wave;
 	ood->ras_opt = op->ras_opt;
 	sauVoAllocState *vas = &o->va.a[o->ev->vo_id];
-	const sauScriptListData *mods[SAU_POP_USES] = {0};
 	for (sauScriptListData *in_list = op->mods;
 			in_list != NULL; in_list = in_list->next) {
+		int type = in_list->use_type - 1;
+		const sauProgramIDArr *arr;
+		if (!(arr = sau_create_ProgramIDArr(o->mp, in_list)))
+			goto MEM_ERR;
+		if (in_list->append) {
+			if (arr == &blank_idarr) continue; // omit no-op
+			if (!(arr = sau_concat_ProgramIDArr(o->mp,
+					oas->mods[type], arr))) goto MEM_ERR;
+		} else {
+			if (arr == oas->mods[type]) continue; // omit no-op
+		}
+		oas->mods[type] = arr;
 		vas->flags |= SAU_VAS_GRAPH;
-		if (!mods[in_list->use_type]) mods[in_list->use_type] = in_list;
-	}
-	if (mods[SAU_POP_AMOD] != NULL) {
-		if (!set_oplist(&oas->amods, mods[SAU_POP_AMOD], o->mp))
-			goto MEM_ERR;
-		ood->amods = oas->amods;
-	}
-	if (mods[SAU_POP_RAMOD] != NULL) {
-		if (!set_oplist(&oas->ramods, mods[SAU_POP_RAMOD], o->mp))
-			goto MEM_ERR;
-		ood->ramods = oas->ramods;
-	}
-	if (mods[SAU_POP_FMOD] != NULL) {
-		if (!set_oplist(&oas->fmods, mods[SAU_POP_FMOD], o->mp))
-			goto MEM_ERR;
-		ood->fmods = oas->fmods;
-	}
-	if (mods[SAU_POP_RFMOD] != NULL) {
-		if (!set_oplist(&oas->rfmods, mods[SAU_POP_RFMOD], o->mp))
-			goto MEM_ERR;
-		ood->rfmods = oas->rfmods;
-	}
-	if (mods[SAU_POP_PMOD] != NULL) {
-		if (!set_oplist(&oas->pmods, mods[SAU_POP_PMOD], o->mp))
-			goto MEM_ERR;
-		ood->pmods = oas->pmods;
-	}
-	if (mods[SAU_POP_FPMOD] != NULL) {
-		if (!set_oplist(&oas->fpmods, mods[SAU_POP_FPMOD], o->mp))
-			goto MEM_ERR;
-		ood->fpmods = oas->fpmods;
+#define SAU_POP__X_CASE(NAME, IS_MOD, ...) \
+SAU_IF(IS_MOD, case SAU_POP_N_##NAME: ood->NAME##s = oas->mods[type]; break;, )
+		switch (type + 1) {
+		SAU_POP__ITEMS(SAU_POP__X_CASE)
+		}
 	}
 	return true;
 MEM_ERR:
@@ -389,7 +372,7 @@ ParseConv_convert_ops(ParseConv *restrict o,
 			if (!ParseConv_convert_ops(o, in_list))
 				return false;
 		}
-		if (!ParseConv_convert_opdata(o, op, op_id))
+		if (!ParseConv_convert_opdata(o, op, op_id, op_list->use_type))
 			return false;
 	}
 	return true;
@@ -439,18 +422,10 @@ sauVoiceGraph_handle_op_node(sauVoiceGraph *restrict o,
 	}
 	++o->op_nest_level;
 	oas->flags |= SAU_OAS_VISITED;
-	if (!sauVoiceGraph_handle_op_list(o, oas->amods, SAU_POP_AMOD))
-		return false;
-	if (!sauVoiceGraph_handle_op_list(o, oas->ramods, SAU_POP_RAMOD))
-		return false;
-	if (!sauVoiceGraph_handle_op_list(o, oas->fmods, SAU_POP_FMOD))
-		return false;
-	if (!sauVoiceGraph_handle_op_list(o, oas->rfmods, SAU_POP_RFMOD))
-		return false;
-	if (!sauVoiceGraph_handle_op_list(o, oas->pmods, SAU_POP_PMOD))
-		return false;
-	if (!sauVoiceGraph_handle_op_list(o, oas->fpmods, SAU_POP_FPMOD))
-		return false;
+	for (int i = 1; i < SAU_POP_NAMED; ++i) {
+		if (!sauVoiceGraph_handle_op_list(o, oas->mods[i - 1], i))
+			return false;
+	}
 	oas->flags &= ~SAU_OAS_VISITED;
 	--o->op_nest_level;
 	if (!OpRefArr_add(&o->vo_graph, op_ref))
@@ -471,7 +446,7 @@ sauVoiceGraph_set(sauVoiceGraph *restrict o,
 		sauMempool *restrict mp) {
 	sauVoAllocState *vas = &o->va->a[ev->vo_id];
 	if (!(vas->flags & SAU_VAS_HAS_CARR)) goto DONE;
-	sauProgramOpRef op_ref = {vas->carr_op_id, SAU_POP_CARR, 0};
+	sauProgramOpRef op_ref = {vas->carr_op_id, SAU_POP_N_carr, 0};
 	if (!sauVoiceGraph_handle_op_node(o, &op_ref))
 		return false;
 	sauProgramVoData *vd = (sauProgramVoData*) ev->vo_data;
@@ -669,7 +644,7 @@ print_linked(const char *restrict header,
 		const sauProgramIDArr *restrict idarr) {
 	if (!idarr || !idarr->count)
 		return;
-	sau_printf("%s[%u", header, idarr->ids[0]);
+	sau_printf("\n\t    %s[%u", header, idarr->ids[0]);
 	for (uint32_t i = 0; ++i < idarr->count; )
 		sau_printf(", %u", idarr->ids[i]);
 	sau_printf("]");
@@ -681,14 +656,8 @@ print_oplist(const sauProgramOpRef *restrict list,
 	if (!list)
 		return;
 	FILE *out = sau_print_stream();
-	static const char *const uses[SAU_POP_USES] = {
-		" CA",
-		" AM",
-		"rAM",
-		" FM",
-		"rFM",
-		" PM",
-		"fPM",
+	static const char *const uses[SAU_POP_NAMED] = {
+		SAU_POP__ITEMS(SAU_POP__X_GRAPH)
 	};
 
 	uint32_t i = 0;
@@ -743,6 +712,9 @@ print_opline(const sauProgramOpData *restrict od) {
 	print_line(od->amp, 'a');
 }
 
+#define SAU_POP__X_PRINT(NAME, IS_MOD, LABEL, SYNTAX) \
+SAU_IF(IS_MOD, print_linked(SYNTAX, od->NAME##s);, )
+
 /**
  * Print information about program contents. Useful for debugging.
  */
@@ -772,12 +744,7 @@ sauProgram_print_info(const sauProgram *restrict o) {
 		for (size_t i = 0; i < ev->op_data_count; ++i) {
 			const sauProgramOpData *od = &ev->op_data[i];
 			print_opline(od);
-			print_linked("\n\t    a", od->amods);
-			print_linked("\n\t    a.r", od->ramods);
-			print_linked("\n\t    f", od->fmods);
-			print_linked("\n\t    f.r", od->rfmods);
-			print_linked("\n\t    p", od->pmods);
-			print_linked("\n\t    p.f", od->fpmods);
+			SAU_POP__ITEMS(SAU_POP__X_PRINT)
 		}
 		sau_printf("\n");
 	}

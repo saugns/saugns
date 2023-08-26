@@ -76,7 +76,7 @@ Parameters:
 	a	Multiplier for amplitude "a" values, for the current
 		scope of "[]" nesting. (The multiplier also applies to
 		"a.r" values, and to the multiplier in any deeper main
-		"a[]" modulation list.) If used at the top level, this
+		"a[]" modulator list.) If used at the top level, this
 		disables automatic down-scaling of amplitude per voice
 		by the number of voices, for manual control instead.
 	c	Default channel mixing "c" value. Starts at 0.0,
@@ -188,6 +188,10 @@ The "R" and "W" types have these parameters in common:
 	c	(For non-nested generators only.) Channel mixing, mainly
 		(-1.0) to 1.0. See "Channel mixing values" for more.
 			"Value sweep" values are supported; see section.
+			"Modulator list" values are supported for panning-AM
+		(stereo placement amplitude modulation); see section. The sum
+		of modulator amplitudes is added to the channel mixing used.
+		(If you downmix the result to mono the effect will disappear.)
 
 R: Random segments oscillator
 -----------------------------
@@ -440,7 +444,9 @@ Value sweep:
 	To sweep a parameter which supports sweep subparameters towards a
 	goal value -- the ordinary value being the start for a trajectory --
 	following the ordinary value or by itself, the following value sweep
-	subparameters can be given values within "[]" (square brackets):
+	subparameters can be given values prior to any objects within a new
+	"[]" list. For example, "f[g220]" sweeps frequency to 220 Hz over a
+	default time.
 	g	Goal (go-to) value, assigned to the parameter after time.
 		This value has no default and must be provided. If changed
 		again before the full time, the current point reached on the

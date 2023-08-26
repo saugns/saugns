@@ -81,8 +81,10 @@ enum {
 typedef struct VoiceNode {
 	uint32_t duration;
 	uint8_t flags;
+	uint8_t freq_buf_id; // zero if unused (freq is never main buffer zero)
 	uint32_t carr_op_id;
 	sauLine pan;
+	const sauProgramIDArr *camods;
 } VoiceNode;
 
 typedef struct EventNode {
@@ -227,18 +229,27 @@ static void set_voice_duration(sauGenerator *restrict o,
  * Initialize an operator node for use as the given type.
  */
 static void prepare_op(sauGenerator *restrict o,
-		OperatorNode *restrict n, const sauProgramOpData *restrict od) {
+		OperatorNode *restrict n, VoiceNode *restrict vn,
+		const sauProgramOpData *restrict od) {
+	if (od->use_type == SAU_POP_N_carr) {
+		vn->freq_buf_id = 0;
+		vn->camods = &blank_idarr;
+	}
 	switch (od->type) {
 	case SAU_POPT_WAVE: {
 		WOscNode *wo = &n->wo;
 		memset(n, 0, sizeof(*wo));
 		sau_init_WOsc(&wo->wosc, o->srate);
+		if (od->use_type == SAU_POP_N_carr) // match run_block_wosc()
+			vn->freq_buf_id = 3 - 1;
 		goto OSC_COMMON; }
 	case SAU_POPT_RAS: {
 		RasGNode *rg = &n->rg;
 		memset(n, 0, sizeof(*rg));
 		sau_init_RasG(&rg->rasg, o->srate);
 		sauRasG_set_cycle(&rg->rasg, od->seed);
+		if (od->use_type == SAU_POP_N_carr) // match run_block_rasg()
+			vn->freq_buf_id = 4 - 1;
 		goto OSC_COMMON; }
 	}
 	if (false)
@@ -257,7 +268,8 @@ static void prepare_op(sauGenerator *restrict o,
  * Update an operator node with new data from event.
  */
 static void update_op(sauGenerator *restrict o,
-		OperatorNode *restrict n, const sauProgramOpData *restrict od) {
+		OperatorNode *restrict n, VoiceNode *restrict vn,
+		const sauProgramOpData *restrict od) {
 	uint32_t params = od->params;
 	switch (od->type) {
 	case SAU_POPT_WAVE: {
@@ -297,10 +309,12 @@ static void update_op(sauGenerator *restrict o,
 			gen->flags &= ~ON_TIME_INF;
 		}
 	}
+	if (od->camods) vn->camods = od->camods;
 	if (od->amods) gen->amp.mods = od->amods;
 	if (od->ramods) gen->amp.r_mods = od->ramods;
 	sauLine_copy(&gen->amp.par, od->amp, o->srate);
 	sauLine_copy(&gen->amp.r_par, od->amp2, o->srate);
+	sauLine_copy(&vn->pan, od->pan, o->srate);
 }
 
 /*
@@ -323,9 +337,8 @@ static void handle_event(sauGenerator *restrict o, EventNode *restrict e) {
 			const sauProgramOpData *od = &pe->op_data[i];
 			OperatorNode *n = &o->operators[od->id];
 			if (!(n->gen.flags & ON_INIT))
-				prepare_op(o, n, od);
-			update_op(o, n, od);
-			sauLine_copy(&vn->pan, od->pan, o->srate);
+				prepare_op(o, n, vn, od);
+			update_op(o, n, vn, od);
 		}
 		if (vd) {
 			vn->carr_op_id = vd->carr_op_id;
@@ -627,11 +640,26 @@ static void mix_clear(sauGenerator *restrict o) {
 static void mix_add(sauGenerator *restrict o,
 		VoiceNode *restrict vn, uint32_t len) {
 	float *s_buf = o->gen_bufs[0];
+	float *pan_buf = NULL;
 	float *mix_l = o->mix_bufs[0];
 	float *mix_r = o->mix_bufs[1];
-	if (vn->pan.flags & SAU_LINEP_GOAL) {
-		float *pan_buf = o->gen_bufs[1];
+	if (vn->pan.flags & SAU_LINEP_GOAL ||
+	    vn->camods->count > 0) {
+		pan_buf = o->gen_bufs[1 + vn->freq_buf_id];
 		sauLine_run(&vn->pan, pan_buf, len, NULL);
+	} else {
+		sauLine_skip(&vn->pan, len);
+	}
+	if (vn->camods->count > 0) {
+		float *freq_buf = vn->freq_buf_id > 0 ?
+			o->gen_bufs[vn->freq_buf_id] :
+			NULL;
+		for (uint32_t i = 0; i < vn->camods->count; ++i)
+			run_block(o, (o->gen_bufs + 1 + vn->freq_buf_id), len,
+					&o->operators[vn->camods->ids[i]],
+					freq_buf, false, true);
+	}
+	if (pan_buf != NULL) {
 		for (uint32_t i = 0; i < len; ++i) {
 			float s = s_buf[i] * o->amp_scale;
 			float s_r = s * pan_buf[i];
@@ -639,7 +667,6 @@ static void mix_add(sauGenerator *restrict o,
 			mix_r[i] += s + s_r;
 		}
 	} else {
-		sauLine_skip(&vn->pan, len);
 		for (uint32_t i = 0; i < len; ++i) {
 			float s = s_buf[i] * o->amp_scale;
 			float s_r = s * vn->pan.v0;

@@ -1,5 +1,5 @@
 /* SAU library: Common definitions.
- * Copyright (c) 2011-2012, 2018-2023 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2018-2024 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -56,6 +56,16 @@
 
 /** Turn \p arg into string literal after macro-expanding it. */
 #define SAU_STREXP(arg) SAU_STRLIT(arg)
+
+/** Concatenate the text of two arguments after macro-expanding them. */
+#define SAU_PASTE(_0, _1) SAU__CAT(_0, _1)
+#define SAU__CAT(_0, _1) _0##_1
+
+/** Preprocessor conditional expansion; \p cond may expand to blank, 0 or 1. */
+#define SAU_IF(cond, t, f) SAU_PASTE(SAU__IF, cond)(t, f)
+#define SAU__IF(t, f) f
+#define SAU__IF0(t, f) f
+#define SAU__IF1(t, f) t
 
 /** Is \p c a visible non-whitespace 7-bit ASCII character? */
 #define SAU_IS_ASCIIVISIBLE(c) ((c) >= '!' && (c) <= '~')
