@@ -1,13 +1,13 @@
 S f.sj // sounds better with just intonation
-Wsin fF4{lxpe gA4 t1} t1
-;    f{lxpe gF4 t1} t1
-;    f{lxpe gA4 t1} t1
-;    f{lxpe gF4 t1} t1
-;    f{lxpe gA4 t1} t1
-;    f{lxpe gF4 t1} t1
-Wsin fA4{llge gF4 t1} t1
-;    f{llge gA4 t1} t1
-;    f{llge gF4 t1} t1
-;    f{llge gA4 t1} t1
-;    f{llge gF4 t1} t1
-;    f{llge gA4 t1} t1
+Wsin fF4[lxpe gA4 t1] t1
+;    f[lxpe gF4 t1] t1
+;    f[lxpe gA4 t1] t1
+;    f[lxpe gF4 t1] t1
+;    f[lxpe gA4 t1] t1
+;    f[lxpe gF4 t1] t1
+Wsin fA4[llge gF4 t1] t1
+;    f[llge gA4 t1] t1
+;    f[llge gF4 t1] t1
+;    f[llge gA4 t1] t1
+;    f[llge gF4 t1] t1
+;    f[llge gA4 t1] t1

@@ -23,15 +23,6 @@ enum {
 	SAU_SDOP_NESTED = 1<<2,
 };
 
-/**
- * Container node for linked list, used for nesting.
- */
-typedef struct sauScriptListData {
-	struct sauScriptOpData *first_item;
-	struct sauScriptListData *next_list;
-	uint8_t use_type;
-} sauScriptListData;
-
 /** Info shared by all references to an object. */
 typedef struct sauScriptObjInfo {
 	struct sauScriptOpData *last_ref; // used for iterating references
@@ -40,6 +31,20 @@ typedef struct sauScriptObjInfo {
 	uint32_t id; // for conversion
 	uint32_t seed; // TODO: divide containing node type
 } sauScriptObjInfo;
+
+/**
+ * Container node for linked list, used for nesting.
+ */
+typedef struct sauScriptListData {
+	void *first_item;
+	struct sauScriptListData *next_list;
+	uint8_t use_type;
+	uint8_t flags;
+} sauScriptListData;
+
+enum {
+	SAU_SDLI_APPEND = 1<<0,
+};
 
 /**
  * Node type for operator data.
