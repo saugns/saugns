@@ -9,6 +9,11 @@ Pre-release
 
 [rebase in progress]
 
+Language changes:
+ * Channel mixing. Fix combination of `c[]` modulation
+   and non-swept non-center values; e.g. `cL[...]` now
+   is at left compared to `cC[...]`, before it wasn't.
+
 Fix minor bugs in parser timing code:
  * Make time `td` default time work properly
    for modulators; it (from v0.3.11c) always
