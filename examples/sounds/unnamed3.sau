@@ -1,8 +1,8 @@
 Wsin fFs3 t0.5 p[
-'a	Wsin r(6/11) a0 a{g2 t0.025 lxpe} p[
-'b		Wsin r(27/11) a0 a{g1 t0.025 lxpe}
+'a	Wsin r(6/11) a0 a[g2 t0.025 lxpe] p[
+'b		Wsin r(27/11) a0 a[g1 t0.025 lxpe]
 	]
 ]
 /0.025
-@a	a{g0 t0.5 lxpe}
-@b	a{g0 t0.5 lxpe}
+@a	a[g0 t0.5 lxpe]
+@b	a[g0 t0.5 lxpe]

@@ -76,7 +76,7 @@ Parameters:
 	a	Multiplier for amplitude "a" values, for the current
 		scope of "[]" nesting. (The multiplier also applies to
 		"a.r" values, and to the multiplier in any deeper main
-		"a[]" modulation list.) If used at the top level, this
+		"a[]" modulator list.) If used at the top level, this
 		disables automatic down-scaling of amplitude per voice
 		by the number of voices, for manual control instead.
 	c	Default channel mixing "c" value. Starts at 0.0,
@@ -174,20 +174,24 @@ The "R" and "W" types have these parameters in common:
 	p	Phase in percentage of the wave cycle modulo 1.0. Set to
 		reset the phase, e.g. to change the initial value from 0.0.
 		See "Phase values" for more.
-			After a value or by itself, "[]" (square brackets)
-		can be used to set a list of PM modulator generators specified
-		within the "[]"; the list replaces any previous set, and may
-		be empty. Also, after these or by itself, ".f[]" (".f" and
-		square brackets) can likewise set a list of
-		frequency-amplified PM modulators. This whole larger argument
-		cannot contain any whitespace outside parentheses or brackets.
-			The sum of modulator amplitudes will phase-modulate
+			"Modulator list" values are supported for PM (phase
+		modulation); see section. A phase percentage value can be set
+		together with a list in one go, the value then going first
+		after the 'p', for example "p0.25[...]". A subparameter can
+		be used instead or in addition for another kind of PM.
+		.f	Frequency-amplified PM modulators can be set in a
+			separate list, as in "p.f[...]". See "Modulator list".
+		The sum of all PM modulator amplitudes will phase-modulate
 		the carrier(s). For frequency-amplified PM modulators, first
 		the amplitudes are multiplied by the carrier frequency divided
 		by 632.45... Hz (the geometric mean of 20 and 20000 Hz).
 	c	(For non-nested generators only.) Channel mixing, mainly
 		(-1.0) to 1.0. See "Channel mixing values" for more.
 			"Value sweep" values are supported; see section.
+			"Modulator list" values are supported for panning-AM
+		(stereo placement amplitude modulation); see section. The sum
+		of modulator amplitudes is added to the channel mixing used.
+		(If you downmix the result to mono the effect will disappear.)
 
 R: Random segments oscillator
 -----------------------------
@@ -370,6 +374,24 @@ Comment syntax:
 	"#!" (Shebang) comments out the rest of the line.
 	"#Q" (Quit file) comments out the rest of the whole file.
 
+Modulator list:
+	Within "[]", written after the name of a parameter that supports it,
+	signal generators can be included for use with that parameter. For
+	example, for PM the phase parameter 'p' is assigned a list as in
+	"p[...]". It works the same for other parameters such as 'a'
+	(for AM/RM) and 'f' (for FM), and subparameters such as 'a.r', etc.
+		Assigning a list to a parameter will append the new list to
+	any old one, expanding it rather than replacing the old items. Thus
+	"p[]" changes nothing. To clear old items when setting a list, add
+	'-' before the '[', as in "p-[]" (which removes all PM modulators).
+		Lists can be assigned together with other values (numbers)
+	for various parameters. For the whole expression beginning with the
+	parameter name, whitespace can only be placed inside list brackets
+	(or inside parentheses for any numerical expressions).
+		"Value sweep" for a parameter can use the same list as one
+	which contains modulators; the modulators simply need to be listed
+	after any sweep subparameters (see section) which head the list.
+
 Numerical expressions:
 	A number can be specified with or without a decimal point;
 	for a number with a decimal point, a leading zero can be omitted.
@@ -440,7 +462,8 @@ Value sweep:
 	To sweep a parameter which supports sweep subparameters towards a
 	goal value -- the ordinary value being the start for a trajectory --
 	following the ordinary value or by itself, the following value sweep
-	subparameters can be given values within "{}" (curly brackets):
+	subparameters can be given values at the start of a "[]" list. For
+	example, "f[g220]" sweeps frequency to 220 Hz over a default time.
 	g	Goal (go-to) value, assigned to the parameter after time.
 		This value has no default and must be provided. If changed
 		again before the full time, the current point reached on the
@@ -453,22 +476,21 @@ Value sweep:
 		swept parameter, the trajectory will be left unfinished.
 	v	Start (state) value, the ordinary parameter value.
 		It can alternatively be set here after a 'v',
-		if not set before the enclosing "{}".
+		if not set before the enclosing "[]".
 
 Modulation with value range:
-	Amplitude ("a"), frequency ("f"), and relative frequency ("r")
+	Amplitude ('a'), frequency ('f'), and relative frequency ('r')
 	parameters all support modulation of the parameter values in the
 	same ways. For amplitude, whether the result is called amplitude
 	modulation (AM), or ring modulation (RM), depends on how carrier
 	and modulator amplitude are set up relative to one another. (For
 	frequency modulation, the result is however always the "real FM"
-	related to PM, yet distinct from it, whenever modulation happens.)
+	related to yet distinct from PM, whenever modulation happens.)
 		Following a parameter name and optionally its main value(s),
-	"[]" (square brackets) can be used to set a list of modulators whose
+	lists can be used (see "Modulator list") to assign modulators whose
 	amplitudes are simply added to the main value. For example "a0[...]"
-	will set amplitude to 0 and then modulators within "[...]" will have
+	will set amplitude to 0, and the modulators within "[...]" will have
 	the effect of ring modulating, while with "a1" set the result is AM.
-	A new list if set, even if empty, will replace the previous one set.
 		A subparameter can be used instead or in addition, to set up
 	modulation in a complementary way (the whole larger argument, for
 	example "f200.r(200 * 2)[...]", cannot contain any whitespace
@@ -479,13 +501,12 @@ Modulation with value range:
 		for a range to which modulator amplitudes can be mapped;
 		it has no other uses, and defaults to 0.0. "Value sweep" is
 		also supported for this subparameter whenever for the main.
-			After a value or by itself, "[]" (square brackets)
-		can be used to set a list of modulators. Each modulator in
-		this list will produce a result in the range of 0.0 to 1.0,
-		i.e. a positive signal, multiplied by its amplitude (with
-		a default of 1.0). However, a negative amplitude multiplier
-		will switch the top and bottom of the 0.0 to 1.0 range, and
-		then be used as if positive.
+			After a value or by itself, lists can be used (see
+		"Modulator list"). Each modulator here produces a result in
+		the range of 0.0 to 1.0 (i.e. a positive signal) multiplied
+		by its amplitude (with a default of 1.0). However, a negative
+		amplitude multiplier can be used to switch the top and bottom
+		of the 0.0 to 1.0 range, and is then used as if positive.
 			When several modulators are used for this, their
 		outputs are multiplied. The product of outputs is mapped to
 		a range where 0.0 is matched to the main value, and 1.0 to

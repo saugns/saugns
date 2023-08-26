@@ -16,6 +16,7 @@
 #include <sau/mempool.h>
 #include <sau/arrtype.h>
 #include <stdio.h>
+#include <string.h>
 
 /*
  * Program construction from parse data.
@@ -41,6 +42,25 @@ sau_create_ProgramIDArr(sauMempool *restrict mp,
 	uint32_t i = 0;
 	for (sauScriptOpData *op = list_in->first_item; op; op = op->next)
 		idarr->ids[i++] = op->info->id;
+	return idarr;
+}
+
+static sauNoinline const sauProgramIDArr *
+sau_concat_ProgramIDArr(sauMempool *restrict mp,
+		const sauProgramIDArr *arr0, const sauProgramIDArr *arr1) {
+	if (!arr0 || arr0->count == 0)
+		return arr1;
+	if (!arr1 || arr1->count == 0)
+		return arr0;
+	size_t size0 = sizeof(uint32_t) * arr0->count;
+	size_t size1 = sizeof(uint32_t) * arr1->count;
+	sauProgramIDArr *idarr = sau_mpalloc(mp,
+			sizeof(sauProgramIDArr) + size0 + size1);
+	if (!idarr)
+		return NULL;
+	idarr->count = arr0->count + arr1->count;
+	memcpy(idarr->ids, arr0->ids, size0);
+	memcpy(&idarr->ids[arr0->count], arr1->ids, size1);
 	return idarr;
 }
 
@@ -139,9 +159,7 @@ enum {
  */
 typedef struct sauOpAllocState {
 	sauScriptOpData *last_pod;
-	const sauProgramIDArr *amods, *ramods;
-	const sauProgramIDArr *fmods, *rfmods;
-	const sauProgramIDArr *pmods, *fpmods;
+	const sauProgramIDArr *mods[SAU_POP_USES - 1];
 	uint32_t flags;
 	//uint32_t duration_ms;
 } sauOpAllocState;
@@ -174,6 +192,10 @@ sauOpAlloc_get_id(sauOpAlloc *restrict oa,
 	if (!_sauOpAlloc_add(oa, NULL))
 		return false;
 //ASSIGNED:
+	sauOpAllocState *oas = &oa->a[*op_id];
+	for (int i = 1; i < SAU_POP_USES; ++i) {
+		oas->mods[i - 1] = &blank_idarr;
+	}
 	od->info->id = *op_id;
 	return true;
 }
@@ -285,7 +307,8 @@ set_oplist(const sauProgramIDArr **restrict dstp,
  */
 static bool
 ParseConv_convert_opdata(ParseConv *restrict o,
-		const sauScriptOpData *restrict op, uint32_t op_id) {
+		const sauScriptOpData *restrict op, uint32_t op_id,
+		uint8_t use_type) {
 	sauOpAllocState *oas = &o->oa.a[op_id];
 	sauProgramOpData *ood = _OpDataArr_add(&o->ev_op_data, NULL);
 	if (!ood) goto MEM_ERR;
@@ -298,47 +321,37 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 	ood->freq = op->freq;
 	ood->freq2 = op->freq2;
 	ood->phase = op->phase;
-	ood->wave = op->wave;
+	ood->use_type = use_type;
 	/* TODO: separation of types */
 	ood->type = op->info->type;
 	ood->seed = op->info->seed;
+	ood->wave = op->wave;
 	ood->ras_opt = op->ras_opt;
 	sauVoAllocState *vas = &o->va.a[o->ev->vo_id];
-	const sauScriptListData *mods[SAU_POP_USES] = {0};
 	for (sauScriptListData *in_list = op->mods;
 			in_list != NULL; in_list = in_list->next_list) {
+		int type = in_list->use_type - 1;
+		const sauProgramIDArr *arr;
+		if (!(arr = sau_create_ProgramIDArr(o->mp, in_list)))
+			goto MEM_ERR;
+		if (in_list->flags & SAU_SDLI_APPEND) {
+			if (arr == &blank_idarr) continue; // omit no-op
+			if (!(arr = sau_concat_ProgramIDArr(o->mp,
+					oas->mods[type], arr))) goto MEM_ERR;
+		} else {
+			if (arr == oas->mods[type]) continue; // omit no-op
+		}
+		oas->mods[type] = arr;
 		vas->flags |= SAU_VAS_GRAPH;
-		mods[in_list->use_type] = in_list;
-	}
-	if (mods[SAU_POP_AMOD] != NULL) {
-		if (!set_oplist(&oas->amods, mods[SAU_POP_AMOD], o->mp))
-			goto MEM_ERR;
-		ood->amods = oas->amods;
-	}
-	if (mods[SAU_POP_RAMOD] != NULL) {
-		if (!set_oplist(&oas->ramods, mods[SAU_POP_RAMOD], o->mp))
-			goto MEM_ERR;
-		ood->ramods = oas->ramods;
-	}
-	if (mods[SAU_POP_FMOD] != NULL) {
-		if (!set_oplist(&oas->fmods, mods[SAU_POP_FMOD], o->mp))
-			goto MEM_ERR;
-		ood->fmods = oas->fmods;
-	}
-	if (mods[SAU_POP_RFMOD] != NULL) {
-		if (!set_oplist(&oas->rfmods, mods[SAU_POP_RFMOD], o->mp))
-			goto MEM_ERR;
-		ood->rfmods = oas->rfmods;
-	}
-	if (mods[SAU_POP_PMOD] != NULL) {
-		if (!set_oplist(&oas->pmods, mods[SAU_POP_PMOD], o->mp))
-			goto MEM_ERR;
-		ood->pmods = oas->pmods;
-	}
-	if (mods[SAU_POP_FPMOD] != NULL) {
-		if (!set_oplist(&oas->fpmods, mods[SAU_POP_FPMOD], o->mp))
-			goto MEM_ERR;
-		ood->fpmods = oas->fpmods;
+		switch (type + 1) {
+		case SAU_POP_CAMOD: ood->camods = oas->mods[type]; break;
+		case SAU_POP_AMOD:  ood->amods  = oas->mods[type]; break;
+		case SAU_POP_RAMOD: ood->ramods = oas->mods[type]; break;
+		case SAU_POP_FMOD:  ood->fmods  = oas->mods[type]; break;
+		case SAU_POP_RFMOD: ood->rfmods = oas->mods[type]; break;
+		case SAU_POP_PMOD:  ood->pmods  = oas->mods[type]; break;
+		case SAU_POP_FPMOD: ood->fpmods = oas->mods[type]; break;
+		}
 	}
 	return true;
 MEM_ERR:
@@ -367,7 +380,7 @@ ParseConv_convert_ops(ParseConv *restrict o,
 			if (!ParseConv_convert_ops(o, in_list))
 				return false;
 		}
-		if (!ParseConv_convert_opdata(o, op, op_id))
+		if (!ParseConv_convert_opdata(o, op, op_id, op_list->use_type))
 			return false;
 	}
 	return true;
@@ -417,18 +430,10 @@ sauVoiceGraph_handle_op_node(sauVoiceGraph *restrict o,
 	}
 	++o->op_nest_level;
 	oas->flags |= SAU_OAS_VISITED;
-	if (!sauVoiceGraph_handle_op_list(o, oas->amods, SAU_POP_AMOD))
-		return false;
-	if (!sauVoiceGraph_handle_op_list(o, oas->ramods, SAU_POP_RAMOD))
-		return false;
-	if (!sauVoiceGraph_handle_op_list(o, oas->fmods, SAU_POP_FMOD))
-		return false;
-	if (!sauVoiceGraph_handle_op_list(o, oas->rfmods, SAU_POP_RFMOD))
-		return false;
-	if (!sauVoiceGraph_handle_op_list(o, oas->pmods, SAU_POP_PMOD))
-		return false;
-	if (!sauVoiceGraph_handle_op_list(o, oas->fpmods, SAU_POP_FPMOD))
-		return false;
+	for (int i = 1; i < SAU_POP_USES; ++i) {
+		if (!sauVoiceGraph_handle_op_list(o, oas->mods[i - 1], i))
+			return false;
+	}
 	oas->flags &= ~SAU_OAS_VISITED;
 	--o->op_nest_level;
 	if (!OpRefArr_add(&o->vo_graph, op_ref))
@@ -661,6 +666,7 @@ print_oplist(const sauProgramOpRef *restrict list,
 	FILE *out = sau_print_stream();
 	static const char *const uses[SAU_POP_USES] = {
 		" CA",
+		"cAM",
 		" AM",
 		"rAM",
 		" FM",
@@ -750,6 +756,7 @@ sauProgram_print_info(const sauProgram *restrict o) {
 		for (size_t i = 0; i < ev->op_data_count; ++i) {
 			const sauProgramOpData *od = &ev->op_data[i];
 			print_opline(od);
+			print_linked("\n\t    c[", "]", od->camods);
 			print_linked("\n\t    a[", "]", od->amods);
 			print_linked("\n\t    ar[", "]", od->ramods);
 			print_linked("\n\t    f[", "]", od->fmods);

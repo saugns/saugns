@@ -23,10 +23,10 @@
 	; f550 t.1 |
 /2
 
-	Wsin f444 t1 p[Wsin r(1/1.23456789)] |
-'a	Wsin f444 t1 p[Wsin r7.12] |
-	@a t1 p[Wsin r2.255] |
-'b	Wsin f444 t1 p[Wsin f(444 * (2.255))] |
+	Wsin f444 t1 p-[Wsin r(1/1.23456789)] |
+'a	Wsin f444 t1 p-[Wsin r7.12] |
+	@a t1 p-[Wsin r2.255] |
+'b	Wsin f444 t1 p-[Wsin f(444 * (2.255))] |
 	@a f400 t1
 	; f389 t1
 	; f339 t1
