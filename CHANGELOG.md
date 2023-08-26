@@ -9,6 +9,11 @@ Pre-release
 
 [rebase in progress]
 
+Language changes:
+ * Channel mixing. Fix combination of `c[]` modulation
+   and non-swept non-center values; e.g. `Lc[...]` now
+   is at left compared to `Cc[...]`, before it wasn't.
+
 Parser redesign:
  * Make postparse code in parser run once
    per durgroup just after it, not at end

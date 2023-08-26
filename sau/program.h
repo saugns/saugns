@@ -123,7 +123,9 @@ typedef struct sauProgramIDArr {
  * Operator use types.
  */
 enum {
+	SAU_POP_DEFAULT = 0,
 	SAU_POP_CARR = 0,
+	SAU_POP_CAMOD, /* channel mix (panning) modulation */
 	SAU_POP_AMOD,
 	SAU_POP_RAMOD,
 	SAU_POP_FMOD,
@@ -139,6 +141,13 @@ typedef struct sauProgramOpRef {
 	uint8_t level; /* > 0 if used as a modulator */
 } sauProgramOpRef;
 
+static inline const sauProgramOpRef *
+sauProgramOpRef_get_root(const sauProgramOpRef *restrict ops, uint32_t count) {
+	if (!ops || !count)
+	       return NULL;
+	return &ops[count - 1];
+}
+
 typedef struct sauProgramVoData {
 	const sauProgramOpRef *op_list;
 	uint32_t op_count;
@@ -153,9 +162,11 @@ typedef struct sauProgramOpData {
 	sauLine *freq, *freq2;
 	uint32_t phase;
 	uint32_t seed; // TODO: divide containing node type
-	uint8_t wave;
+	uint8_t wave; // TODO: divide containing node type
+	uint8_t use_type;
 	sauRasOpt ras_opt; // TODO: divide containing node type
 	uint32_t type; // type info, for now
+	const sauProgramIDArr *camods;
 	const sauProgramIDArr *amods, *ramods;
 	const sauProgramIDArr *fmods, *rfmods;
 	const sauProgramIDArr *pmods, *fpmods;
