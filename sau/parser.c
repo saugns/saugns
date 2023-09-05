@@ -648,77 +648,6 @@ static bool scan_line_state(sauScanner *restrict o,
 	return true;
 }
 
-static bool scan_line_param(sauScanner *restrict o,
-		sauScanNumConst_f scan_numconst,
-		sauLine *restrict line, bool ratio) {
-	bool state = scan_line_state(o, scan_numconst, line, ratio);
-	if (!sauScanner_tryc(o, '{'))
-		return state;
-	warn_deprecated(o, "sweep in {...}", "sweep in [...]\n"
-"\tat the beginning of the list, before any modulators added");
-	struct ScanLookup *sl = o->data;
-	bool warn_nospace = false;
-	double vt;
-	uint32_t time_ms = (line->flags & SAU_LINEP_TIME) != 0 ?
-		line->time_ms :
-		sl->sopt.def_time_ms;
-	for (;;) {
-		uint8_t c = sauScanner_getc(o);
-		sauScanFrame sf_first = o->sf;
-		switch (c) {
-		case SAU_SCAN_SPACE:
-		case SAU_SCAN_LNBRK:
-			warn_nospace = false;
-			continue;
-		case 'g':
-			if (scan_num(o, scan_numconst, &vt)) {
-				line->vt = vt;
-				line->flags |= SAU_LINEP_GOAL;
-				if (ratio)
-					line->flags |= SAU_LINEP_GOAL_RATIO;
-				else
-					line->flags &= ~SAU_LINEP_GOAL_RATIO;
-			}
-			break;
-		case 'r':
-			warn_deprecated(o, "sweep parameter 'r'", "name 'l'");
-			/* fall-through */
-		case 'l': {
-			size_t id;
-			if (!scan_sym_id(o, &id, SAU_SYM_LINE_ID,
-						sauLine_names))
-				break;
-			line->type = id;
-			line->flags |= SAU_LINEP_TYPE;
-			break; }
-		case 't':
-			if (scan_time_val(o, &time_ms))
-				line->flags &= ~SAU_LINEP_TIME_IF_NEW;
-			break;
-		case 'v':
-			if (state) goto REJECT;
-			scan_line_state(o, scan_numconst, line, ratio);
-			break;
-		case '}':
-			goto RETURN;
-		default:
-		REJECT:
-			if (!handle_unknown_or_eof(o, c)) {
-				warn_eof_without_closing(o, '}');
-				goto RETURN;
-			}
-			continue;
-		}
-		if (warn_nospace)
-			warn_missing_whitespace(o, &sf_first, c);
-		warn_nospace = true;
-	}
-RETURN:
-	line->time_ms = time_ms;
-	line->flags |= SAU_LINEP_TIME;
-	return true;
-}
-
 /*
  * Parser
  */
@@ -732,7 +661,6 @@ typedef struct sauParser {
 	/* node state */
 	struct ParseLevel *cur_pl;
 	sauScriptEvData *events, *last_event, *group_event;
-	sauLine *cur_op_line;
 } sauParser;
 
 /*
@@ -811,11 +739,12 @@ struct ParseLevel {
 	struct ParseLevel *parent;
 	ParseLevel_sub_f sub_f; // identifies "location" and implicit context
 	uint32_t pl_flags;
-	uint8_t scope;
+	uint8_t scope, close_c;
 	uint8_t use_type;
 	sauScriptEvData *event;
 	sauScriptListData *nest_list, *last_mods_list;
 	sauScriptOpData *operator, *scope_first, *ev_last, *nest_last;
+	sauLine *op_line;
 	sauSymitem *set_var;
 	/* timing/delay */
 	sauScriptEvData *main_ev; /* if events are nested, for grouping... */
@@ -875,7 +804,7 @@ static bool prepare_line(sauParser *restrict o,
 		sauLine **restrict linep, bool mult,
 		uint32_t line_id) {
 	if (!linep) { /* clear when no line provided */
-		o->cur_op_line = NULL;
+		o->cur_pl->op_line = NULL;
 		return true;
 	}
 	if (!*linep) { /* create for updating, unparsed values kept unset */
@@ -884,19 +813,8 @@ static bool prepare_line(sauParser *restrict o,
 	}
 	o->sl.scan_numconst = scan_numconst;
 	o->sl.num_ratio = mult;
-	o->cur_op_line = *linep;
+	o->cur_pl->op_line = *linep;
 	return true;
-}
-
-static bool parse_line(sauParser *restrict o,
-		sauScanNumConst_f scan_numconst,
-		sauLine **restrict linep, bool mult,
-		uint32_t line_id) {
-	if (!*linep) { /* create for updating, unparsed values kept unset */
-		*linep = create_line(o, mult, line_id);
-		(*linep)->flags &= ~(SAU_LINEP_STATE | SAU_LINEP_TYPE);
-	}
-	return scan_line_param(o->sc, scan_numconst, *linep, mult);
 }
 
 static bool parse_waittime(sauParser *restrict o) {
@@ -1125,12 +1043,13 @@ static void finish_durgroup(sauParser *restrict o) {
 
 static void enter_level(sauParser *restrict o,
 		struct ParseLevel *restrict pl,
-		uint8_t use_type, uint8_t newscope) {
+		uint8_t use_type, uint8_t newscope, uint8_t close_c) {
 	struct ParseLevel *restrict parent_pl = o->cur_pl;
 	++o->call_level;
 	o->cur_pl = pl;
 	*pl = (struct ParseLevel){0};
 	pl->scope = newscope;
+	pl->close_c = close_c;
 	if (parent_pl != NULL) {
 		pl->parent = parent_pl;
 		pl->sub_f = parent_pl->sub_f;
@@ -1141,12 +1060,13 @@ static void enter_level(sauParser *restrict o,
 		}
 		pl->event = parent_pl->event;
 		pl->operator = parent_pl->operator;
+		pl->op_line = parent_pl->op_line;
 		if (newscope == SCOPE_GROUP) {
 			pl->nest_list = parent_pl->nest_list;
 		}
 		if (newscope == SCOPE_NEST) {
 			pl->sub_f = (use_type != SAU_POP_DEFAULT
-				     && o->cur_op_line != NULL)
+				     && pl->op_line != NULL)
 				? parse_in_op_line /* for parameter sub-args */
 				: NULL;
 			pl->set_var = parent_pl->set_var; // for list assign
@@ -1236,8 +1156,8 @@ DEFER: \
 
 static void parse_in_op_line(sauParser *restrict o) {
 	struct ScanLookup *sl = &o->sl;
-	sauLine *line = o->cur_op_line;
 	PARSE_IN__HEAD(parse_in_op_line)
+	sauLine *line = pl->op_line;
 	double vt;
 	switch (c) {
 	case 'g':
@@ -1406,22 +1326,36 @@ static void parse_in_settings(sauParser *restrict o) {
 }
 
 static bool parse_level(sauParser *restrict o,
-		uint8_t use_type, uint8_t newscope);
+		uint8_t use_type, uint8_t newscope, uint8_t close_c);
+
+static bool parse_line(sauParser *restrict o,
+		sauScanNumConst_f scan_numconst,
+		sauLine **restrict linep, bool mult,
+		uint32_t mod_type) {
+	scan_line_state(o->sc, scan_numconst, *linep, mult);
+	if (sauScanner_tryc(o->sc, '{')) {
+		warn_deprecated(o->sc, "sweep in {...}", "sweep in [...]\n"
+"\tat the beginning of the list, before any modulators added");
+		parse_level(o, mod_type, SCOPE_NEST, '}');
+		o->cur_pl->last_mods_list->flags |= SAU_SDLI_APPEND;
+	}
+	return true;
+}
 
 static bool parse_ev_modparam(sauParser *restrict o,
 		sauScanNumConst_f scan_numconst,
 		sauLine **restrict linep, bool mult,
 		uint32_t line_id, uint32_t mod_type) {
-	struct ParseLevel *pl = o->cur_pl;
 	sauScanner *sc = o->sc;
+	prepare_line(o, scan_numconst, linep, mult, line_id);
 	if (linep) // deprecated syntax
-		parse_line(o, scan_numconst, linep, mult, line_id);
+		parse_line(o, scan_numconst, linep, mult, mod_type);
 	bool append = !sauScanner_tryc(sc, '-');
-	if (sauScanner_tryc(sc, '[')) {
-		prepare_line(o, scan_numconst, linep, mult, line_id);
-		parse_level(o, mod_type, SCOPE_NEST);
+	while (sauScanner_tryc(sc, '[')) {
+		parse_level(o, mod_type, SCOPE_NEST, ']');
 		if (append)
-			pl->last_mods_list->flags |= SAU_SDLI_APPEND;
+			o->cur_pl->last_mods_list->flags |= SAU_SDLI_APPEND;
+		append = true;
 	}
 	return false;
 }
@@ -1652,10 +1586,11 @@ static void parse_in_opdata(sauParser *restrict o) {
 }
 
 static bool parse_level(sauParser *restrict o,
-		uint8_t use_type, uint8_t newscope) {
+		uint8_t use_type, uint8_t newscope, uint8_t close_c) {
 	struct ParseLevel pl;
 	bool endscope = false;
-	enter_level(o, &pl, use_type, newscope);
+	uint8_t c;
+	enter_level(o, &pl, use_type, newscope, close_c);
 	sauScanner *sc = o->sc;
 	for (;;) {
 		/*
@@ -1669,7 +1604,7 @@ static bool parse_level(sauParser *restrict o,
 		/*
 		 * Parse main tokens.
 		 */
-		uint8_t c = sauScanner_getc(sc);
+		c = sauScanner_getc(sc);
 		sauScanFrame sf_first = sc->sf;
 		switch (c) {
 		case SAU_SCAN_SPACE:
@@ -1692,7 +1627,7 @@ static bool parse_level(sauParser *restrict o,
 			parse_waittime(o);
 			break;
 		case '<':
-			if (parse_level(o, pl.use_type, SCOPE_GROUP))
+			if (parse_level(o, pl.use_type, SCOPE_GROUP, '>'))
 				goto RETURN;
 			break;
 		case '=': {
@@ -1716,15 +1651,13 @@ static bool parse_level(sauParser *restrict o,
 "missing right-hand value for \"'%s=\"", var->sstr->key);
 			break; }
 		case '>':
-			if (pl.scope == SCOPE_GROUP) {
-				goto RETURN;
-			}
+			if (c == close_c) goto RETURN;
 			warn_closing_without_opening(sc, '>', '<');
 			break;
 		case '@': {
 			if (sauScanner_tryc(sc, '[')) {
 				end_operator(o);
-				if (parse_level(o, pl.use_type, SCOPE_BIND))
+				if (parse_level(o, pl.use_type, SCOPE_BIND,']'))
 					goto RETURN;
 				/*
 				 * Multiple-operator node now open.
@@ -1777,10 +1710,8 @@ static bool parse_level(sauParser *restrict o,
 			pl.pl_flags &= ~PL_WARN_NOSPACE; /* OK around */
 			continue;
 		case ']':
-			if (pl.scope == SCOPE_NEST) {
-				end_operator(o);
-			}
-			if (pl.scope > SCOPE_GROUP) {
+			if (c == close_c) {
+				if (pl.scope == SCOPE_NEST) end_operator(o);
 				endscope = true;
 				goto RETURN;
 			}
@@ -1802,6 +1733,11 @@ static bool parse_level(sauParser *restrict o,
 			pl.sub_f = NULL;
 			continue;
 		case '}':
+			if (c == close_c) {
+				if (pl.scope == SCOPE_NEST) end_operator(o);
+				endscope = true;
+				goto RETURN;
+			}
 			warn_closing_without_opening(sc, '}', '{');
 			break;
 		default:
@@ -1814,10 +1750,7 @@ static bool parse_level(sauParser *restrict o,
 		pl.pl_flags |= PL_WARN_NOSPACE;
 	}
 FINISH:
-	if (newscope > SCOPE_GROUP)
-		warn_eof_without_closing(sc, ']');
-	else if (pl.parent != NULL)
-		warn_eof_without_closing(sc, '>');
+	if (close_c && c != close_c) warn_eof_without_closing(sc, close_c);
 RETURN:
 	leave_level(o);
 	/*
@@ -1839,7 +1772,7 @@ static const char *parse_file(sauParser *restrict o,
 	if (!sauScanner_open(sc, arg->str, arg->is_path)) {
 		return NULL;
 	}
-	parse_level(o, SAU_POP_CARR, SCOPE_GROUP);
+	parse_level(o, SAU_POP_CARR, SCOPE_GROUP, 0);
 	name = sc->f->path;
 	sauScanner_close(sc);
 	return name;
