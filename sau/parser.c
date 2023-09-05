@@ -1353,28 +1353,14 @@ static void parse_in_settings(sauParser *restrict o) {
 static bool parse_level(sauParser *restrict o,
 		uint8_t use_type, uint8_t newscope, uint8_t close_c);
 
-static bool parse_line(sauParser *restrict o,
-		sauScanNumConst_f scan_numconst,
-		sauLine **restrict linep, bool mult,
-		uint32_t mod_type) {
-	scan_line_state(o->sc, scan_numconst, *linep, mult);
-	if (sauScanner_tryc(o->sc, '{')) {
-		warn_deprecated(o->sc, "sweep in {...}", "sweep in [...]\n"
-"\tat the beginning of the list, before any modulators added");
-		parse_level(o, mod_type, SCOPE_NEST, '}');
-		o->cur_pl->nest.last_list->flags |= SAU_SDLI_APPEND;
-	}
-	return true;
-}
-
 static bool parse_ev_modparam(sauParser *restrict o,
 		sauScanNumConst_f scan_numconst,
 		sauLine **restrict linep, bool mult,
 		uint32_t line_id, uint32_t mod_type) {
 	sauScanner *sc = o->sc;
 	prepare_line(o, scan_numconst, linep, mult, line_id);
-	if (linep) // deprecated syntax
-		parse_line(o, scan_numconst, linep, mult, mod_type);
+	if (linep)
+		scan_line_state(o->sc, scan_numconst, *linep, mult);
 	bool append = !sauScanner_tryc(sc, '-');
 	while (sauScanner_tryc(sc, '[')) {
 		parse_level(o, mod_type, SCOPE_NEST, ']');
