@@ -17,6 +17,7 @@ Language changes:
  * Amplitude handling. Add `S a.m`, script-wide gain
    mix control in outermost scope. Replaces the role
    of `S a` in disabling auto-downscaling by voices.
+ * Sweep syntax. Remove deprecated support for `{}`.
 
 Parser redesign:
  * Turn lists into a main type, for two with the old
