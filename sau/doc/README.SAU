@@ -382,6 +382,11 @@ Modulator list:
 		"Value sweep" for a parameter can use the same list as one
 	which contains modulators; the modulators simply need to be listed
 	after any sweep subparameters (see section) which head the list.
+		It's also possible to write multiple lists directly after
+	one another when setting to a parameter (with or without the one
+	leading '-'). These lists will be joined into one, meaning that
+	"[X][Y]" for some contents "X" and "Y" is the same as "[X Y]".
+	This also allows placing sweep subparameters in a later list.
 
 Numerical expressions:
 	A number can be specified with or without a decimal point;
