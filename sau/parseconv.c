@@ -481,7 +481,7 @@ ParseConv_convert_ops(ParseConv *restrict o,
 		uint32_t op_vo_id = vo_id;
 		if (!sauOpAlloc_update(&o->oa, op, &op_id))
 			return false;
-		if (op_vo_id == SAU_PVO_NO_ID)
+		if (op_vo_id == SAU_PVO_NO_ID) // allocate one for each op
 			if (!sauVoAlloc_update(&o->va, e, &op_vo_id))
 				return false;
 		for (sauScriptListData *in_list = op->mods;
@@ -511,7 +511,14 @@ ParseConv_convert_ops(ParseConv *restrict o,
 static bool
 ParseConv_convert_list(ParseConv *restrict o,
 		const sauScriptListData *restrict list, uint16_t vo_id) {
-	if (!ParseConv_convert_ops(o, list, true, vo_id)) goto MEM_ERR;
+	bool insert = list->flags & SAU_SDLI_INSERT;
+	if (!insert) {
+		uint32_t id;
+		if (!sauVoAlloc_update(&o->va, list->ref.event, &id))
+			goto MEM_ERR;
+		vo_id = id;
+	}
+	if (!ParseConv_convert_ops(o, list, insert, vo_id)) goto MEM_ERR;
 	const sauProgramIDArr *arr;
 	if (!sauLiAlloc_get_idarr(&o->la, list,
 				o->mp, &arr)) goto MEM_ERR;
@@ -619,11 +626,9 @@ sau_fini_VoiceGraph(sauVoiceGraph *restrict o) {
 static bool
 ParseConv_convert_event(ParseConv *restrict o,
 		sauScriptEvData *restrict e) {
-	uint32_t vo_id;
+	uint32_t vo_id = SAU_PVO_NO_ID;
 	sauScriptObjRef *obj = e->root_obj;
 	if (sauScriptObjRef_is_listdata(obj)) {
-		vo_id = SAU_PVO_NO_ID; // allocate one for each op
-		//if (!sauVoAlloc_update(&o->va, e, &vo_id)) goto MEM_ERR;
 		if (!ParseConv_convert_list(o, (void*)obj, vo_id)) goto MEM_ERR;
 		goto DONE;
 	}
