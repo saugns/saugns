@@ -414,6 +414,7 @@ ParseConv_finish_event(ParseConv *restrict o) {
 	uint16_t vo_id = pe->vo_id;
 	sauVoAllocState *vas = &o->va.a[vo_id];
 	o->ev = NULL;
+	o->in_ev = NULL;
 	if (o->ev_op_data.count > 0) {
 		if (!_OpDataArr_mpmemdup(&o->ev_op_data,
 					(sauProgramOpData**) &pe->op_data,
@@ -516,8 +517,10 @@ ParseConv_convert_list(ParseConv *restrict o,
 		uint32_t id;
 		if (!sauVoAlloc_update(&o->va, list->ref.event, &id))
 			goto MEM_ERR;
-		vo_id = id;
+		o->va.a[id].duration_ms = 0; // unused, allow re-use
+		vo_id = id;                  // tmp dummy voice here
 	}
+	if (list->ref.prev) list = list->ref.prev;
 	if (!ParseConv_convert_ops(o, list, insert, vo_id)) goto MEM_ERR;
 	const sauProgramIDArr *arr;
 	if (!sauLiAlloc_get_idarr(&o->la, list,

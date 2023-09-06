@@ -858,6 +858,11 @@ static void end_operator(sauParser *restrict o) {
 	pl->operator = NULL;
 }
 
+static void end_list(sauParser *restrict o) {
+	struct ParseLevel *pl = o->cur_pl;
+	pl->nest = (struct PLNest){0};
+}
+
 static void end_event(sauParser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
 	if (!(pl->pl_flags & PL_OWN_EV))
@@ -872,7 +877,7 @@ static void end_event(sauParser *restrict o) {
 }
 
 static void begin_event(sauParser *restrict o,
-		sauScriptOpData *restrict prev_data,
+		sauScriptObjRef *restrict prev_data,
 		bool is_compstep) {
 	struct ParseLevel *pl = o->cur_pl;
 	sauScriptEvData *e;
@@ -882,10 +887,13 @@ static void begin_event(sauParser *restrict o,
 	e->wait_ms = pl->add_wait_ms + pl->carry_wait_ms;
 	pl->add_wait_ms = pl->carry_wait_ms = 0;
 	if (prev_data != NULL) {
-		sauScriptEvData *pve = prev_data->ref.event;
-		if (prev_data->op_flags & SAU_SDOP_NESTED)
-			e->ev_flags |= SAU_SDEV_IMPLICIT_TIME;
-		e->obj_first_ev = prev_data->ref.info->first_event;
+		sauScriptEvData *pve = prev_data->event;
+		if (sauScriptObjRef_is_opdata(prev_data)) {
+			sauScriptOpData *pop = (void*)prev_data;
+			if (pop->op_flags & SAU_SDOP_NESTED)
+				e->ev_flags |= SAU_SDEV_IMPLICIT_TIME;
+		}
+		e->obj_first_ev = prev_data->info->first_event;
 		if (is_compstep) {
 			if (pl->pl_flags & PL_NEW_EVENT_FORK) {
 				sauScriptEvBranch *fork =
@@ -975,6 +983,7 @@ static void begin_list(sauParser *restrict o,
 	list->use_type = use_type;
 	if (plist != NULL) {
 		list->ref.prev = plist;
+		list->ref.info = plist->ref.info;
 	} else {
 		list->ref.info = sau_mpalloc(o->mp, sizeof(sauScriptObjInfo));
 		list->ref.info->first_event = e;
@@ -983,6 +992,8 @@ static void begin_list(sauParser *restrict o,
 	/* linking done *before* setting up this as the nest list... */
 	link_ev_obj(o, &list->ref, &plist->ref);
 	pl->nest.list = list;
+	if (!parent_pl)
+		return;
 	if (use_type != SAU_POP_CARR) {
 		sauScriptOpData *parent_on = parent_pl->operator;
 		if (!parent_on->mods)
@@ -1645,7 +1656,6 @@ static bool parse_level(sauParser *restrict o,
 			}
 			/*
 			 * Variable reference (get and insert from object).
-			 * TODO: all logic
 			 */
 			pl.sub_f = NULL;
 			sauSymitem *var = scan_sym(sc, SAU_SYM_VAR,
@@ -1653,6 +1663,14 @@ static bool parse_level(sauParser *restrict o,
 			if (var != NULL) {
 				if (var->data_use == SAU_SYM_DATA_OBJ) {
 					void *ref = var->data.obj;
+					if (sauScriptObjRef_is_listdata(ref)) {
+						end_operator(o);
+						prepare_event(o, ref, false);
+						begin_list(o, ref, use_type);
+						pl.nest.list->flags |=
+							SAU_SDLI_INSERT;
+						end_list(o);
+					}
 					if (sauScriptObjRef_is_opdata(ref)) {
 						begin_operator(o, ref, false,0);
 						ref = pl.operator;
@@ -1844,6 +1862,7 @@ static void time_durgroup_object(sauScriptEvData *restrict e,
 	switch (obj->info->type) {
 	case SAU_POBJT_LIST: {
 		sauScriptListData *list = (void*)obj;
+		if (list->ref.prev) break;
 		for (sauScriptObjRef *obj = list->first_item;
 		     obj; obj = obj->next_item) {
 			time_durgroup_object(e, obj, cur_longest, wait_sum);
@@ -1945,6 +1964,11 @@ static uint32_t time_object(sauScriptObjRef *restrict obj) {
 	switch (obj->info->type) {
 	case SAU_POBJT_LIST: {
 		sauScriptListData *list = (void*)obj;
+		if (list->ref.prev) {
+			list = list->ref.prev;
+			dur_ms = list->ref.event->dur_ms;
+			break;
+		}
 		for (sauScriptObjRef *obj = list->first_item;
 		     obj; obj = obj->next_item) {
 			uint32_t sub_dur_ms = time_object(obj);
