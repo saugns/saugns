@@ -1,22 +1,19 @@
 /* SAU library: Generic array module.
- * Copyright (c) 2018-2024 Joel K. Pettersson
+ * Copyright (c) 2018-2025 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
- * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
+ * This file and the software of which it is part is distributed under the
+ * terms of the GNU Lesser General Public License, either version 3 or (at
+ * your option) any later version, WITHOUT ANY WARRANTY, not even of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  *
- * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
- * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
- * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
- * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
- * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
- * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ * View the files COPYING.LESSER and COPYING for details, or if missing, see
+ * <https://www.gnu.org/licenses/>.
  */
 
 #include <sau/arrtype.h>
 #include <sau/mempool.h>
+#include <sau/math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -73,7 +70,8 @@ void *sauArrType_push(void *restrict _o,
 
 /**
  * Resize the given array if \p count is greater than the current
- * allocation. Initializes a new part of the array to zero bytes.
+ * allocation. Picks next power of two multiple of the item size.
+ * Can clone, can initialize new part of the array to zero bytes.
  *
  * (Generic version of the function, to be used through wrapper.)
  *
@@ -85,15 +83,23 @@ bool sauArrType_upsize(void *restrict _o,
 	size_t asize = o->asize;
 	size_t min_asize = count * item_size;
 	if (!o->a || asize < min_asize) {
-		if (!asize) asize = item_size;
-		while (asize < min_asize) asize <<= 1;
-		uint8_t *a = realloc(o->a, asize);
-		if (!a)
-			return false;
-		if (!o->a)
-			memset(a, 0, asize);
-		else
-			memset(a + o->asize, 0, asize - o->asize);
+		uint8_t *a;
+		if (asize < min_asize)
+			asize = sau_zirupo2(count) * item_size;
+		if (!o->asize && o->a) { // clone borrowed allocation
+			size_t copy_asize = o->count * item_size;
+			if (!(a = malloc(asize)))
+				return false;
+			memcpy(a, o->a, copy_asize);
+			memset(a + copy_asize, 0, asize - copy_asize);
+		} else {
+			if (!(a = realloc(o->a, asize)))
+				return false;
+			if (!o->a)
+				memset(a, 0, asize);
+			else
+				memset(a + o->asize, 0, asize - o->asize);
+		}
 		o->a = a;
 		o->asize = asize;
 	}
@@ -107,7 +113,7 @@ bool sauArrType_upsize(void *restrict _o,
  */
 void sauArrType_clear(void *restrict _o) {
 	sauByteArr *restrict o = _o;
-	free(o->a);
+	if (o->asize) free(o->a); // don't free on borrowed allocation
 	o->a = NULL;
 	o->count = 0;
 	o->asize = 0;
