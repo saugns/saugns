@@ -48,7 +48,7 @@ $(LIB): $(OBJ)
 $(LIB_TESTS): $(OBJ) $(OBJ_TESTS)
 	$(AR) crs $(LIB_TESTS) $(OBJ) $(OBJ_TESTS)
 
-arrtype.o: arrtype.c arrtype.h common.h mempool.h
+arrtype.o: arrtype.c arrtype.h common.h math.h mempool.h
 	$(CC) -c $(CFLAGS) arrtype.c
 
 error.o: common.h error.c

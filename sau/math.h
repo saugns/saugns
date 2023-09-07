@@ -79,6 +79,43 @@ static inline double sau_d01_from_ui64(uint64_t x) {
 	return (x >> 11) * 0x1.0p-53;
 }
 
+/** Round up 32-bit unsigned integer to nearest power of 2. */
+static inline uint32_t sau_ui32rupo2(uint32_t x) {
+#if defined(__GNUC__) || defined(__clang__)
+	x = x == 1 ? 1 : (UINT32_C(1) << (32 - __builtin_clz(x - 1)));
+#else
+	x--;
+	x |= x >> 1;
+	x |= x >> 2;
+	x |= x >> 4;
+	x |= x >> 8;
+	x |= x >> 16;
+	x++;
+#endif
+	return x;
+}
+
+/** Round up 64-bit unsigned integer to nearest power of 2. */
+static inline uint64_t sau_ui64rupo2(uint64_t x) {
+#if defined(__GNUC__) || defined(__clang__)
+	x = x == 1 ? 1 : (UINT64_C(1) << (64 - __builtin_clzl(x - 1)));
+#else
+	x--;
+	x |= x >> 1;
+	x |= x >> 2;
+	x |= x >> 4;
+	x |= x >> 8;
+	x |= x >> 16;
+	x |= x >> 32;
+	x++;
+#endif
+	return x;
+}
+
+/** Round up size integer to nearest power of 2. */
+#define sau_zirupo2(x) ((size_t) \
+	(SIZE_MAX >= INT64_MAX ? sau_ui64rupo2(x) : sau_ui32rupo2(x)))
+
 /** \return +1 if \p n is even, -1 if it's odd. */
 static inline int sau_oddness_as_sign(int n) {
 	return (1 - ((n & 1) * 2));
