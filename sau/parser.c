@@ -1772,6 +1772,15 @@ static bool parse_level(sauParser *restrict o,
 			prepare_event(o, NULL, false);
 			parse_level(o, SAU_POP_DEFAULT, SCOPE_NEST, ']');
 			end_operator(o);
+			while (sauScanner_tryc(sc, '[')) {
+				sauScriptListData *prev_list =
+					o->cur_pl->nest.last_list;
+				prepare_event(o, prev_list, false);
+				parse_level(o, SAU_POP_DEFAULT, SCOPE_NEST,']');
+				end_operator(o);
+				o->cur_pl->nest.last_list->flags |=
+					SAU_SDLI_APPEND|SAU_SDLI_UPDATE;
+			}
 			break;
 		case ']':
 			if (c == close_c) {
