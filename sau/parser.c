@@ -1107,7 +1107,11 @@ static void enter_level(sauParser *restrict o,
 			pl->set_var = parent_pl->set_var; // for list assign
 			if (use_type == SAU_POP_DEFAULT)
 				pl->nest = parent_pl->nest;
-			begin_list(o, NULL, use_type);
+			sauScriptListData *prev_list =
+				parent_pl->nest.last_list;
+			begin_list(o, (prev_list &&
+				       prev_list->flags & SAU_SDLI_REPLACE) ?
+					prev_list : NULL, use_type);
 			/*
 			 * Push script options, and prepare for a new context.
 			 *
@@ -1364,16 +1368,29 @@ static void parse_in_settings(sauParser *restrict o) {
 static bool parse_level(sauParser *restrict o,
 		uint8_t use_type, uint8_t newscope, uint8_t close_c);
 
+static bool parse_ev_joinedlist(sauParser *restrict o, uint8_t extra_flags) {
+	while (sauScanner_tryc(o->sc, '[')) {
+		// follow-on list without its own event
+		sauScriptListData *prev_list =
+			o->cur_pl->nest.last_list;
+		prev_list->flags |= SAU_SDLI_REPLACE;
+		parse_level(o, SAU_POP_DEFAULT, SCOPE_NEST, ']');
+		prev_list->next_list =
+			o->cur_pl->nest.last_list;
+		prev_list->next_list->flags |= SAU_SDLI_APPEND | extra_flags;
+	}
+	return false;
+}
+
 static bool parse_ev_modparam(sauParser *restrict o,
 		sauScanNumConst_f scan_numconst,
 		sauLine **restrict linep, bool mult,
 		uint32_t line_id, uint32_t mod_type) {
-	sauScanner *sc = o->sc;
 	prepare_line(o, scan_numconst, linep, mult, line_id);
 	if (linep)
 		scan_line_state(o->sc, scan_numconst, *linep, mult);
-	bool append = !sauScanner_tryc(sc, '-');
-	while (sauScanner_tryc(sc, '[')) {
+	bool append = !sauScanner_tryc(o->sc, '-');
+	while (sauScanner_tryc(o->sc, '[')) {
 		parse_level(o, mod_type, SCOPE_NEST, ']');
 		if (append)
 			o->cur_pl->nest.last_list->flags |= SAU_SDLI_APPEND;
@@ -1652,6 +1669,7 @@ static bool parse_level(sauParser *restrict o,
 				parse_level(o, SAU_POP_DEFAULT, SCOPE_NEST,']');
 				pl.nest.last_list->flags |= SAU_SDLI_INSERT;
 				end_operator(o);
+				parse_ev_joinedlist(o, SAU_SDLI_INSERT);
 				break;
 			}
 			/*
@@ -1772,15 +1790,7 @@ static bool parse_level(sauParser *restrict o,
 			prepare_event(o, NULL, false);
 			parse_level(o, SAU_POP_DEFAULT, SCOPE_NEST, ']');
 			end_operator(o);
-			while (sauScanner_tryc(sc, '[')) {
-				sauScriptListData *prev_list =
-					o->cur_pl->nest.last_list;
-				prepare_event(o, prev_list, false);
-				parse_level(o, SAU_POP_DEFAULT, SCOPE_NEST,']');
-				end_operator(o);
-				o->cur_pl->nest.last_list->flags |=
-					SAU_SDLI_APPEND|SAU_SDLI_UPDATE;
-			}
+			parse_ev_joinedlist(o, 0);
 			break;
 		case ']':
 			if (c == close_c) {

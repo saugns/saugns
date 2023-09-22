@@ -53,9 +53,9 @@ typedef struct sauScriptListData {
 } sauScriptListData;
 
 enum {
-	SAU_SDLI_APPEND = 1<<0,
-	SAU_SDLI_UPDATE = 1<<1,
-	SAU_SDLI_INSERT = 1<<2,
+	SAU_SDLI_APPEND  = 1<<0,
+	SAU_SDLI_REPLACE = 1<<1,
+	SAU_SDLI_INSERT  = 1<<2,
 };
 
 /**

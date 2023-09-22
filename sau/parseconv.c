@@ -436,6 +436,7 @@ ParseConv_prepare_event(ParseConv *restrict o, sauScriptEvData *restrict e,
 
 /*
  * Loop and handle list and its contents, creating ID array for it.
+ * Join adjacent lists if set up in the parser.
  *
  * The sauUint32Arr is used like a stack in this function on recursion.
  *
@@ -447,6 +448,7 @@ ParseConv_convert_list(ParseConv *restrict o,
 	const sauProgramIDArr *idarr = NULL;
 	size_t offset = o->uint32_arr.count;
 	bool split_ev = false;
+NEW_LIST:
 	for (sauScriptObjRef *obj = list_in->first_item;
 	     obj; obj = obj->next_item) {
 		if (!sauScriptObjRef_is_opdata(obj)) continue;
@@ -460,38 +462,39 @@ ParseConv_convert_list(ParseConv *restrict o,
 		if (o->uint32_arr.count == list_max_count) {
 			if (!sauUint32Arr_upsize(&o->uint32_arr,
 						list_max_count + 1024))
-				goto RETURN;
+				goto MEM_ERR;
 		}
 		uint32_t old_ev_vo_id = o->ev_vo_id;
 		if (o->ev_vo_id == SAU_PVO_NO_ID) // allocate one for each op
 			if (!sauVoAlloc_update(&o->va, e, &o->ev_vo_id))
-				goto RETURN;
+				goto MEM_ERR;
 		if (!ParseConv_prepare_event(o, e, obj, split_ev))
-			goto RETURN;
+			goto MEM_ERR;
 		if (list_in->use_type == SAU_POP_CARR) split_ev = true;
 		uint32_t op_id;
 		if (!ParseConv_convert_opdata(o, op, &op_id, list_in->use_type))
-			goto RETURN;
+			goto MEM_ERR;
 		o->uint32_arr.a[o->uint32_arr.count++] = op_id;
 		o->ev_vo_id = old_ev_vo_id;
+	}
+	/*
+	 * Handle list/IDArr bookkeeping. List ID is the same in replacements.
+	 */
+	uint32_t id;
+	if (!sauLiAlloc_get_id(&o->la, list_in, &id)) goto MEM_ERR;
+	if (list_in->flags & SAU_SDLI_REPLACE) {
+		list_in = list_in->next_list;
+		if (!(list_in->flags & SAU_SDLI_APPEND)) // unused replace mode
+			o->uint32_arr.count = offset; // pop allocation used
+		goto NEW_LIST;
 	}
 	idarr = create_ProgramIDArr(o->mp,
 			&o->uint32_arr.a[offset],
 			o->uint32_arr.count - offset);
-	/*
-	 * Handle list/IDArr bookkeeping.
-	 */
-	uint32_t id;
-	if (!sauLiAlloc_get_id(&o->la, list_in, &id)) goto RETURN;
 	sauLiAllocState *las = &o->la.a[id];
-	if ((list_in->flags & (SAU_SDLI_APPEND|SAU_SDLI_UPDATE))
-	    == (SAU_SDLI_APPEND|SAU_SDLI_UPDATE)) {
-		if (!(idarr = concat_ProgramIDArr(o->mp, las->arr, idarr)))
-			goto RETURN;
-	}
 	las->arr = idarr;
-RETURN:
-	o->uint32_arr.count = offset; // reuse allocation (zero when fully out)
+MEM_ERR:
+	o->uint32_arr.count = offset; // pop allocation used in this call
 	return idarr;
 }
 
