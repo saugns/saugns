@@ -451,7 +451,11 @@ ParseConv_convert_list(ParseConv *restrict o,
 NEW_LIST:
 	for (sauScriptObjRef *obj = list_in->first_item;
 	     obj; obj = obj->next_item) {
-		if (!sauScriptObjRef_is_opdata(obj)) continue;
+		if (sauScriptObjRef_is_listdata(obj)) {
+			sauScriptListData *list = (sauScriptListData*)obj;
+			if (!ParseConv_convert_list(o, list)) goto MEM_ERR;
+			continue;
+		} else if (!sauScriptObjRef_is_opdata(obj)) continue;
 		sauScriptOpData *op = (sauScriptOpData*)obj;
 		// TODO: handle multiple operator nodes
 		if ((op->op_flags & SAU_SDOP_MULTIPLE) != 0) continue;
