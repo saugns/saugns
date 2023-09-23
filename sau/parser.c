@@ -742,9 +742,12 @@ struct ParseLevel {
 	uint8_t scope, close_c;
 	uint8_t use_type;
 	sauScriptEvData *event;
-	sauScriptListData *nest_list, *last_mods_list;
+	struct PLNest {
+		sauScriptListData *list, *last_list;
+		sauScriptObjRef *last_obj;
+	} nest;
 	sauScriptOpData *operator;
-	sauScriptObjRef *scope_first, *ev_last, *nest_last;
+	sauScriptObjRef *scope_first, *ev_last;
 	sauLine *op_line;
 	sauSymitem *set_var;
 	/* timing/delay */
@@ -917,7 +920,7 @@ static void prepare_event(sauParser *restrict o,
 		void *restrict prev_obj, bool is_compstep) {
 	struct ParseLevel *pl = o->cur_pl;
 	if (!pl->event || pl->add_wait_ms > 0 ||
-			((prev_obj || !pl->nest_list)
+			((prev_obj || !pl->nest.list)
 			 && pl->event->root_obj) ||
 			is_compstep)
 		begin_event(o, prev_obj, is_compstep);
@@ -934,18 +937,21 @@ static void link_ev_obj(sauParser *restrict o,
 	struct ParseLevel *pl = o->cur_pl;
 	sauScriptEvData *e = pl->event;
 	obj->event = e;
-	if (prev || !pl->nest_list) {
+	if (prev || !pl->nest.list) {
 		if (!e->root_obj)
 			e->root_obj = obj;
-		else if (pl->ev_last) /* may be false for just-made sub-list */
+		else if (pl->ev_last) /* may be false for fresh mods list */
 			pl->ev_last->next_item = obj;
 		pl->ev_last = obj;
 	} else {
-		if (!pl->nest_list->first_item)
-			pl->nest_list->first_item = obj;
+		if (!pl->nest.list->first_item)
+			pl->nest.list->first_item = obj;
 		else
-			pl->nest_last->next_item = obj;
-		pl->nest_last = obj;
+			pl->nest.last_obj->next_item = obj;
+		pl->nest.last_obj = obj;
+		/* needed for nested list placement, as in "[[] ...]" */
+		if (pl->parent && pl->parent->nest.list == pl->nest.list)
+			pl->parent->nest.last_obj = obj;
 	}
 	if (!pl->scope_first)
 		pl->scope_first = obj;
@@ -976,14 +982,14 @@ static void begin_list(sauParser *restrict o,
 	}
 	/* linking done *before* setting up this as the nest list... */
 	link_ev_obj(o, &list->ref, &plist->ref);
-	pl->nest_list = list;
+	pl->nest.list = list;
 	if (use_type != SAU_POP_CARR) {
 		sauScriptOpData *parent_on = parent_pl->operator;
 		if (!parent_on->mods)
-			parent_on->mods = pl->nest_list;
+			parent_on->mods = pl->nest.list;
 		else
-			parent_pl->last_mods_list->next_list = list;
-		parent_pl->last_mods_list = pl->nest_list;
+			parent_pl->nest.last_list->next_list = list;
+		parent_pl->nest.last_list = pl->nest.list;
 	}
 }
 
@@ -996,7 +1002,7 @@ static void begin_operator(sauParser *restrict o,
 	sauScriptOpData *op;
 	end_operator(o);
 	pl->operator = op = sau_mpalloc(o->mp, sizeof(sauScriptOpData));
-	pl->last_mods_list = NULL; /* now track for this node */
+	pl->nest.last_list = NULL; /* now track for this node */
 	if (!is_compstep)
 		pl->pl_flags |= PL_NEW_EVENT_FORK;
 	pl->used_ampmult = o->sl.sopt.ampmult;
@@ -1074,13 +1080,13 @@ static void enter_level(sauParser *restrict o,
 		pl->pl_flags = parent_pl->pl_flags & PL_BIND_MULTIPLE;
 		if (newscope == SCOPE_SAME) {
 			pl->scope = parent_pl->scope;
-			pl->nest_list = parent_pl->nest_list;
+			pl->nest = parent_pl->nest;
 		}
 		pl->event = parent_pl->event;
 		pl->operator = parent_pl->operator;
 		pl->op_line = parent_pl->op_line;
 		if (newscope == SCOPE_GROUP) {
-			pl->nest_list = parent_pl->nest_list;
+			pl->nest = parent_pl->nest;
 		}
 		if (newscope == SCOPE_NEST) {
 			pl->sub_f = (use_type != SAU_POP_DEFAULT
@@ -1089,7 +1095,7 @@ static void enter_level(sauParser *restrict o,
 				: NULL;
 			pl->set_var = parent_pl->set_var; // for list assign
 			if (use_type == SAU_POP_DEFAULT)
-				pl->nest_list = parent_pl->nest_list;
+				pl->nest = parent_pl->nest;
 			begin_list(o, NULL, use_type);
 			/*
 			 * Push script options, and prepare for a new context.
@@ -1356,7 +1362,7 @@ static bool parse_line(sauParser *restrict o,
 		warn_deprecated(o->sc, "sweep in {...}", "sweep in [...]\n"
 "\tat the beginning of the list, before any modulators added");
 		parse_level(o, mod_type, SCOPE_NEST, '}');
-		o->cur_pl->last_mods_list->flags |= SAU_SDLI_APPEND;
+		o->cur_pl->nest.last_list->flags |= SAU_SDLI_APPEND;
 	}
 	return true;
 }
@@ -1373,7 +1379,7 @@ static bool parse_ev_modparam(sauParser *restrict o,
 	while (sauScanner_tryc(sc, '[')) {
 		parse_level(o, mod_type, SCOPE_NEST, ']');
 		if (append)
-			o->cur_pl->last_mods_list->flags |= SAU_SDLI_APPEND;
+			o->cur_pl->nest.last_list->flags |= SAU_SDLI_APPEND;
 		append = true;
 	}
 	return false;
@@ -1641,7 +1647,7 @@ static bool parse_level(sauParser *restrict o,
 			pl.set_var = scan_sym(sc, SAU_SYM_VAR, NULL, false);
 			break;
 		case '/':
-			if (pl.nest_list) goto INVALID;
+			if (pl.nest.list) goto INVALID;
 			parse_waittime(o);
 			break;
 		case '<':
@@ -1743,7 +1749,7 @@ static bool parse_level(sauParser *restrict o,
 			pl.pl_flags &= ~PL_WARN_NOSPACE; /* OK around */
 			continue;
 		case '|':
-			if (pl.nest_list) goto INVALID;
+			if (pl.nest.list) goto INVALID;
 			if (newscope == SCOPE_SAME) {
 				sauScanner_ungetc(sc);
 				goto RETURN;
