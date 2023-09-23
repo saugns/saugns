@@ -317,7 +317,8 @@ typedef struct ParseConv {
 
 static sauNoinline const sauProgramIDArr *
 ParseConv_convert_list(ParseConv *restrict o,
-		const sauScriptListData *restrict list_in);
+		const sauScriptListData *restrict list_in,
+		uint8_t use_type);
 
 /*
  * Convert data for an operator node to program operator data,
@@ -352,7 +353,9 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 			in_list != NULL; in_list = in_list->next_list) {
 		int type = in_list->use_type - 1;
 		const sauProgramIDArr *arr;
-		if (!(arr = ParseConv_convert_list(o, in_list))) goto MEM_ERR;
+		if (!(arr = ParseConv_convert_list(o,
+						in_list, in_list->use_type)))
+			goto MEM_ERR;
 		/*
 		 * Addresses in resized arrays got here, after maybe changing.
 		 */
@@ -444,7 +447,8 @@ ParseConv_prepare_event(ParseConv *restrict o, sauScriptEvData *restrict e,
  */
 static sauNoinline const sauProgramIDArr *
 ParseConv_convert_list(ParseConv *restrict o,
-		const sauScriptListData *restrict list_in) {
+		const sauScriptListData *restrict list_in,
+		uint8_t use_type) {
 	const sauProgramIDArr *idarr = NULL;
 	size_t offset = o->uint32_arr.count;
 	bool split_ev = false;
@@ -453,7 +457,13 @@ NEW_LIST:
 	     obj; obj = obj->next_item) {
 		if (sauScriptObjRef_is_listdata(obj)) {
 			sauScriptListData *list = (sauScriptListData*)obj;
-			if (!ParseConv_convert_list(o, list)) goto MEM_ERR;
+			const sauProgramIDArr *new_idarr = NULL;
+			// use outer use_type for handling of modulators, etc.
+			if (!(new_idarr = ParseConv_convert_list(o, list,
+					    use_type)) ||
+			    !(idarr = concat_ProgramIDArr(o->mp,
+					    idarr, new_idarr)))
+				goto MEM_ERR;
 			continue;
 		} else if (!sauScriptObjRef_is_opdata(obj)) continue;
 		sauScriptOpData *op = (sauScriptOpData*)obj;
@@ -474,9 +484,9 @@ NEW_LIST:
 				goto MEM_ERR;
 		if (!ParseConv_prepare_event(o, e, obj, split_ev))
 			goto MEM_ERR;
-		if (list_in->use_type == SAU_POP_CARR) split_ev = true;
+		if (use_type == SAU_POP_CARR) split_ev = true;
 		uint32_t op_id;
-		if (!ParseConv_convert_opdata(o, op, &op_id, list_in->use_type))
+		if (!ParseConv_convert_opdata(o, op, &op_id, use_type))
 			goto MEM_ERR;
 		o->uint32_arr.a[o->uint32_arr.count++] = op_id;
 		o->ev_vo_id = old_ev_vo_id;
@@ -492,9 +502,12 @@ NEW_LIST:
 			o->uint32_arr.count = offset; // pop allocation used
 		goto NEW_LIST;
 	}
-	idarr = create_ProgramIDArr(o->mp,
-			&o->uint32_arr.a[offset],
-			o->uint32_arr.count - offset);
+	const sauProgramIDArr *new_idarr;
+	if (!(new_idarr = create_ProgramIDArr(o->mp,
+			    &o->uint32_arr.a[offset],
+			    o->uint32_arr.count - offset)) ||
+	    !(idarr = concat_ProgramIDArr(o->mp, idarr, new_idarr)))
+		goto MEM_ERR;
 	sauLiAllocState *las = &o->la.a[id];
 	las->arr = idarr;
 MEM_ERR:
@@ -615,7 +628,8 @@ ParseConv_convert_event(ParseConv *restrict o,
 		} else {
 			if (list->ref.prev) list = list->ref.prev;
 		}
-		if (!ParseConv_convert_list(o, list)) goto MEM_ERR;
+		if (!ParseConv_convert_list(o, list, SAU_POP_DEFAULT))
+			goto MEM_ERR;
 	} else if (sauScriptObjRef_is_opdata(obj)) {
 		if (!sauVoAlloc_update(&o->va, e, &o->ev_vo_id)) goto MEM_ERR;
 		if (!ParseConv_prepare_event(o, e, obj, false)) goto MEM_ERR;
