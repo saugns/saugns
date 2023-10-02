@@ -83,16 +83,19 @@ Parameters:
 		.k	Key selection for "f" values using note syntax,
 			default C4. Mainly changes the default and relative
 			octave. Can be C, D, E, F, G, A, or B, with or
-			without a 'b' (flat), 's' (sharp), 'd' (half-flat),
-			'z' (half-sharp), 'v' (flat-and-a-half), or
-			'k' (sharp-and-a-half) -- and/or an octave number
-			(0-10) to move the default from a 4-5 range
-			to one of the number to the number plus one.
+			without one of 'b' (flat), 's' (sharp),
+			'd' (half-flat), 'z' (half-sharp),
+			'v' (flat-and-a-half), 'k' (sharp-and-a-half),
+			'w' (double-flat), or 'x' (double-sharp) --
+			and/or an octave number (0-10) to move the default
+			from a 4-5 range to one of the number to the number
+			plus one.
 		.n	A4 tuning frequency in Hz for "f" values
 			using note syntax. Starts at 440.
 			For example, use "S f.n432" for 432 Hz.
 		.s	Tuning system, either 'e' (24-EDO, default),
-			'j' (SAU justly intoned), or 'p' (Pythagorean JI).
+			'p' (Pythagorean JI), 'c' (classic 5-limit JI),
+			or 'j' (SAU 7-limit JI),
 	r	Default relative frequency "r" value, a
 		modulator:carrier ratio. Starts at 1 (1/1, a "1:1" ratio).
 	t	Default short definite time "t" value, in seconds.
@@ -538,18 +541,18 @@ Frequencies as notes:
 	sets the A4 tuning frequency, by default 440 Hz. The tuning system
 	can also be changed using "S f.s".
 		By default, notes use the 24-tone equal temperament or equal
-	divisons of the octave (24-EDO) system, a superset of 12-EDO -- extra
-	suffixes allowing 96-EDO tones. There are also two justly intoned
-	systems (a main JI and a Pythagorean JI), in both of which each of
-	the 7 notes have a natural, 3 flat, and 3 sharp variations, all of
-	them unique -- with further suffixes allowing more tones.
+	divisons of the octave (24-EDO) system, a superset of 12-EDO. There
+	are also three justly intoned systems (Pythagorean JI, classic
+	5-limit JI, SAU 7-limit JI), in all of which each of the 7 notes
+	have a natural, 3 flat, and 3 sharp variations, all of them unique.
 		Each note is written with a C, D, E, F, G, A, or B. As a
 	first optional suffix, a 'b' (flat) or 's' (sharp) can be added --
 	or a quartertone alternative: 'd' (half-flat), 'z' (half-sharp),
-	'v' (flat-and-a-half), or 'k' (sharp-and-a-half). The flats and
-	sharps differ for EDO and the two JI systems -- for the main JI
-	system, they make a smaller difference, while for Pythagorean JI,
-	they are instead very slightly exaggerated.
+	'v' (flat-and-a-half), or 'k' (sharp-and-a-half). There's also
+	'w' (double-flat) and 'x' (double-sharp). The flats and sharps
+	differ for EDO and the three JI systems -- making a smaller
+	difference in the JI systems than for EDO, except for the
+	Pythagorean JI which very slighly exaggerates it instead.
 		An octave number (0-10) can be written as a final suffix,
 	e.g. "A5" matches twice the tuning frequency, "Ad5" a little below
 	that. With no number, the octave for the note will be relative to the

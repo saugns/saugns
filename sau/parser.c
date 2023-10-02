@@ -29,8 +29,8 @@
 #define IS_DIGIT(c) ((c) >= '0' && (c) <= '9')
 
 /* Music note key 8-bit identifiers. Based on C, D, E, F, G, A, B scale. */
-#define MUSKEY(note, notemod) (((note) * 7) + 3 + (notemod))
-#define MUSNOTE(key) ((key) / 7)
+#define MUSKEY(note, notemod) (((note) * 9) + 4 + (notemod))
+#define MUSNOTE(key) ((key) / 9)
 
 enum {
 	SAU_SYM_VAR = 0,
@@ -443,57 +443,44 @@ static size_t scan_chanmix_const(sauScanner *restrict o,
 	}
 }
 
-static void read_note_modpairseq(sauFile *restrict f,
-		double *restrict freq, double modval,
-		uint8_t raise_op, uint8_t lower_op,
-		size_t *restrict len) {
-	int seq = 0;
-	for (;;) {
-		uint8_t c = sauFile_GETC(f); ++(*len);
-		if (c == raise_op && seq >= 0) {
-			*freq *= modval; seq = +1;
-		} else if (c == lower_op && seq <= 0) {
-			*freq /= modval; seq = -1;
-		} else {
-			sauFile_DECP(f); --(*len); break;
-		}
-	}
-}
-
 #define OCTAVES 11
 #define OCTAVE(n) ((1 << ((n)+1)) * (1.f/32)) // standard tuning at no. 4 = 1.0
 static size_t scan_note_const(sauScanner *restrict o,
 		double *restrict val) {
-#if 0
-	static const float notes_ji[8*3] = {
-		24.f/25, // Cf
-		1.f/1,	 // C
-		25.f/24, // Cs
-		15.f/14, // Df alt. 16.f/15
-		9.f/8,	 // D  alt. 10.f/9 (sym. 9/5)
-		7.f/6,   // Ds alt. 75.f/64
-		6.f/5,   // Ef
-		5.f/4,	 // E
-		9.f/7,   // Es alt. 32.f/25
-		21.f/16, // Ff alt. 125.f/96
-		4.f/3,	 // F
-		7.f/5,   // Fs alt. 25.f/18
-		10.f/7,  // Gf alt. 36.f/25
-		3.f/2,	 // G
-		14.f/9,  // Gs alt. 25.f/16
-		8.f/5,   // Af
-		5.f/3,	 // A
-		7.f/4,   // As alt. 225.f/128
-		9.f/5,   // Bf alt. 16.f/9 (sym. 9/8)
-		15.f/8,	 // B
-		40.f/21, // Bs alt. 243.f/128, 256/135
-		48.f/25, //
-		2.f/1,   //
-		25.f/12, //
+	static const float notes_sau_ji[3][8] = {
+		{ /* SAU JI flat (7-limit simplified 5-limit flat) */
+			24.f/25, // Cf
+			15.f/14, // Df alt. 16.f/15
+			6.f/5,   // Ef
+			21.f/16, // Ff alt. 125.f/96
+			10.f/7,  // Gf alt. 36.f/25
+			8.f/5,   // Af
+			9.f/5,   // Bf alt. 16.f/9 (sym. 9/8)
+			48.f/25, //
+		},
+		{ /* SAU JI natural (5-limit natural) */
+			1.f/1,	 // C
+			9.f/8,	 // D  alt. 10.f/9 (sym. 9/5)
+			5.f/4,	 // E
+			4.f/3,	 // F
+			3.f/2,	 // G
+			5.f/3,	 // A
+			15.f/8,	 // B
+			2.f/1,   //
+		},
+		{ /* SAU JI sharp (7-limit simplified 5-limit sharp) */
+			25.f/24, // Cs
+			7.f/6,   // Ds alt. 75.f/64
+			9.f/7,   // Es alt. 32.f/25
+			7.f/5,   // Fs alt. 25.f/18
+			14.f/9,  // Gs alt. 25.f/16
+			7.f/4,   // As alt. 225.f/128
+			40.f/21, // Bs alt. 243.f/128, 256/135
+			25.f/12, //
+		},
 	};
-#endif
-	static const float notes_all[3][8] = {
-		{	/* Equal temperament */
+	static const float notes_main[3][8] = {
+		{ /* Equal temperament */
 			1.f,                    // 0	C
 			1.1224620483093729814f, // 2	D
 			1.2599210498948731648f, // 4	E
@@ -503,7 +490,7 @@ static size_t scan_note_const(sauScanner *restrict o,
 			1.8877486253633869932f, // 11	B
 			2.f,                    //
 		},
-		{	/* 5-limit JI (Ptolemy's intense diatonic scale) */
+		{ /* 5-limit JI (Ptolemy's intense diatonic scale) */
 			1.f/1,     // C
 			9.f/8,     // D
 			5.f/4,     // E
@@ -513,7 +500,7 @@ static size_t scan_note_const(sauScanner *restrict o,
 			15.f/8,	   // B
 			2.f/1,     //
 		},
-		{	/* Pythagorean tuning */
+		{ /* Pythagorean tuning */
 			1.f/1,     // C
 			9.f/8,     // D
 			81.f/64,   // E
@@ -524,41 +511,29 @@ static size_t scan_note_const(sauScanner *restrict o,
 			2.f/1,     //
 		},
 	};
-	static const float notemods_all[3][7] = {
-		{	/* Equal temperament */
-			1.0594630943592952646f, // 1	s/b, semitone (sharp)
+	static const float notemods_main[3][4] = {
+		{ /* Equal temperament */
 			1.0293022366434920288f,	// 1/2  z/d, quarter tone
+			1.0594630943592952646f, // 1	s/b, semitone (sharp)
 			1.0905077326652576592f,	// 3/2  k/v, 3/4 tone
-//			1.1224620483093729814f, // 2	x/w, tone
-			1.0072464122237038981f, // 1/8  r/l, eighth tone
-			1.0145453349375236415f, // 1/4  p/m, eighth tone
-			1.0293022366434920288f,	// 1/2  extra, quarter tone
-			1.0293022366434920288f,	// 1/2  extra, quarter tone
+			1.1224620483093729814f, // 2	x/w, tone
 		},
-		{	/* 5-limit JI (Ptolemy's intense diatonic scale) */
+		{ /* 5-limit JI (Ptolemy's intense diatonic scale) */
+			36.f/35,      // z/d, septimal quarter tone
 			25.f/24,      // s/b, augmented unison (sharp)
-			49.f/48,      // z/d, slendro diesis (half-sharp)
-			1225.f/1152,  // k/v, ???, product
-//			1.f,
-			2109375.f/2097152, // r/l, semicomma (~1/16 tone)
-			81.f/80,   // p/m, syntonic comma (5-plus, ~1/8 tone)
-			36.f/35,   // y/q, septimal quarter tone (7-utonal)
-			33.f/32,   // t/u, undecimal comma (11-up-arrow)
+			25.f/24 * 36.f/35, // k/v
+			25.f/24 * 25.f/24, // x/w
 		},
-		{	/* Pythagorean tuning */
-			2187.f/2048,   // s/b, Pythagorean chromatic semitone
+		{ /* Pythagorean tuning */
 			36.f/35,       // z/d, septimal quarter tone
-			19683.f/17920, // k/v, ???, product
-//			1.f,
-			2109375.f/2097152, // r/l, semicomma (~1/16 tone)
-			81.f/80,   // p/m, syntonic comma (5-plus, ~1/8 tone)
-			64.f/63,   // y/q, septimal comma (7-utonal)
-			33.f/32,   // t/u, undecimal comma (11-up-arrow)
+			2187.f/2048,   // s/b, Pythagorean chromatic semitone
+			2187.f/2048 * 36.f/35, // k/v
+			2187.f/2048 * 2187.f/2048, // x/w
 		},
 	};
 	sauFile *f = o->f;
 	size_t len = 0, num_len;
-	int note, notemod = 0, subnote = -1;
+	int note, subnote = -1;
 	int c = sauFile_GETC(f); ++len;
 	if (c >= 'a' && c <= 'g') {
 		if ((c -= 'c') < 0) c += 7;
@@ -572,26 +547,46 @@ static size_t scan_note_const(sauScanner *restrict o,
 	if ((c -= 'C') < 0) c += 7;
 	note = c;
 	struct ScanLookup *sl = o->data;
-	const float *notes = notes_all[sl->sopt.key_system];
-	const float *notemods = notemods_all[sl->sopt.key_system];
-	double freq = sl->sopt.A4_freq / notes[5];
 	const int key = sl->sopt.note_key, key_note = MUSNOTE(key);
 	int32_t octave, default_octave = sl->sopt.key_octave;
+	int notemod = 0;
 	switch (++len, (c = sauFile_GETC(f))) {
-	case 'b': notemod = -2; freq /= notemods[0]; break; // flat
-	case 's': notemod = +2; freq *= notemods[0]; break; // sharp
-	case 'd': notemod = -1; freq /= notemods[1]; break; // half-flat
-	case 'z': notemod = +1; freq *= notemods[1]; break; // half-sharp
-	case 'v': notemod = -3; freq /= notemods[2]; break; // flat-and-a-half
-	case 'k': notemod = +3; freq *= notemods[2]; break; // sharp-and-a-half
-#if 0
-	case 'w': notemod = -4; freq /= notemods[3]; break; // double-flat
-	case 'x': notemod = +4; freq *= notemods[3]; break; // double-sharp
-#endif
+	case 'd': /* fall-through */
+	case 'p': notemod = -1; break; // half-flat
+	case 'z': notemod = +1; break; // half-sharp
+	case 'b': /* fall-through */
+	case 'f': notemod = -2; break; // flat
+	case 's': notemod = +2; break; // sharp
+	case 'v': notemod = -3; break; // flat-and-a-half
+	case 'k': notemod = +3; break; // sharp-and-a-half
+	case 'w': notemod = -4; break; // double-flat
+	case 'x': notemod = +4; break; // double-sharp
 	default: --len; sauFile_DECP(f); break;
 	}
 	if (MUSKEY(note, notemod) < key) // wrap around below chosen key
 		++default_octave;
+	const float *notes, *notemods;
+	double freq;
+	if (sl->sopt.key_system < 3) {
+		notes = notes_main[sl->sopt.key_system];
+		notemods = notemods_main[sl->sopt.key_system];
+		freq = sl->sopt.A4_freq / notes[5]; // tune using A4/A
+	} else { // special case for SAU JI table
+		int key_table = 1;
+		if (notemod >= +2) {
+			key_table += 1; notemod -= 2; // table for sharp
+		}
+		else if (notemod <= -2) {
+			key_table -= 1; notemod += 2; // table for flat
+		}
+		notes = notes_sau_ji[key_table];
+		notemods = notemods_main[1]; // same as main 5-limit table
+		freq = sl->sopt.A4_freq / notes_sau_ji[1][5]; // tune using A4/A
+	}
+	if (notemod < 0)
+		freq /= notemods[(-notemod) - 1]; // flatten
+	else if (notemod > 0)
+		freq *= notemods[notemod - 1]; // sharpen
 	sauFile_geti(f, &octave, false, &num_len);
 	len += num_len;
 	if (num_len == 0)
@@ -601,10 +596,6 @@ static size_t scan_note_const(sauScanner *restrict o,
 				"note octave number");
 		octave = default_octave;
 	}
-	read_note_modpairseq(f, &freq, notemods[6], 't', 'u', &len);
-	read_note_modpairseq(f, &freq, notemods[5], 'y', 'q', &len);
-	read_note_modpairseq(f, &freq, notemods[4], 'p', 'm', &len);
-	read_note_modpairseq(f, &freq, notemods[3], 'r', 'l', &len);
 	freq *= notes[note] * OCTAVE(octave);
 	if (subnote >= 0) {
 		double shift = notes[subnote] / notes[key_note];
@@ -1227,17 +1218,21 @@ static bool parse_so_freq(sauParser *restrict o, bool rel_freq) {
 			}
 			sauScanner_warning(sc, NULL,
 "invalid key; valid are 'A' through 'G',\n"
-"\twith or without added 'b'/'d'/'v' (flat) or 's'/'z'/'k' (sharp)");
+"\twith or without added 'b'/'d'/'v'/'w' (flat) or 's'/'z'/'k'/'x' (sharp)");
 			break;
 		}
 		int sufc, notemod = 0;
 		switch ((sufc = sauScanner_getc(sc))) {
+		case 'f': /* fall-through */
 		case 'b': notemod = -2; break;
 		case 's': notemod = +2; break;
+		case 'p': /* fall-through */
 		case 'd': notemod = -1; break;
 		case 'z': notemod = +1; break;
 		case 'v': notemod = -3; break;
 		case 'k': notemod = +3; break;
+		case 'w': notemod = -4; break;
+		case 'x': notemod = +4; break;
 		default: sauScanner_ungetc(sc); break;
 		}
 		if ((c -= 'C') < 0) c += 7;
@@ -1264,7 +1259,7 @@ static bool parse_so_freq(sauParser *restrict o, bool rel_freq) {
 			o->sl.sopt.key_system = 0;
 			o->sl.sopt.set |= SAU_SOPT_NOTE_SCALE;
 			break;
-		case 'j':
+		case 'c':
 			o->sl.sopt.key_system = 1;
 			o->sl.sopt.set |= SAU_SOPT_NOTE_SCALE;
 			break;
@@ -1272,11 +1267,16 @@ static bool parse_so_freq(sauParser *restrict o, bool rel_freq) {
 			o->sl.sopt.key_system = 2;
 			o->sl.sopt.set |= SAU_SOPT_NOTE_SCALE;
 			break;
+		case 'j':
+			o->sl.sopt.key_system = 3;
+			o->sl.sopt.set |= SAU_SOPT_NOTE_SCALE;
+			break;
 		default:
 			if (!c)
 				return false;
 			sauScanner_warning(sc, NULL,
-"unknown scale; valid are 'e' (12-ET), 'j' (SAU justly intoned)");
+"unknown scale; valid are:\n"
+"\t'e' (24-EDO), 'p' (Pythagorean JI), 'c' (classic 5-limit), 'j' (SAU JI)");
 			break;
 		}
 		break;
