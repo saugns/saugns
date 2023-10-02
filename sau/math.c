@@ -25,7 +25,6 @@ const uint8_t sauMath_params[SAU_MATH_NAMED] = {
 
 static double mf_const(void) { return SAU_HUMMID; }
 static double pi_const(void) { return SAU_PI; }
-static double pyc_const(void) { return SAU_PYTHCOM; }
 
 static double sau_rand(struct sauMath_state *restrict o) {
 	return sau_d01_from_ui64(sau_splitmix64_next(&o->seed64));

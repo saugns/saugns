@@ -24,7 +24,6 @@
 #define SAU_GLDA_1_2PI  0.38196601125010515180 // (in cycle %) 2.0 - phi
 #define SAU_FIBH32      0x9e3779b9             // 32-bit Fibonacci hash constant
 #define SAU_FIBH64      0x9e3779b97f4a7c15     // 64-bit Fibonacci hash constant
-#define SAU_PYTHCOM     (531441.0/524288)      // Pythagorean comma
 
 /*
  * Format conversion & general purpose functions.
@@ -139,7 +138,6 @@ static inline double sau_met(double x) {
 	X(met,       VAL_F, {.val = sau_met}) \
 	X(mf,      NOARG_F, {.noarg = mf_const}) \
 	X(pi,      NOARG_F, {.noarg = pi_const}) \
-	X(pyc,     NOARG_F, {.noarg = pyc_const}) \
 	X(rand,    STATE_F, {.state = sau_rand}) \
 	X(rint,      VAL_F, {.val = rint}) \
 	X(seed, STATEVAL_F, {.stateval = sau_seed}) \

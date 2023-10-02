@@ -397,9 +397,6 @@ Numerical expressions:
 			Note that met(-x) is also equal to (1/met(x)).
 		mf	632.45... Geometric mean of 20 and 20000.
 		pi	3.1415...
-		pyc	531441/524288. Pythagorean comma. Difference between
-			e.g. notes Db and Cs in Pythagorean tuning mode. As a
-			factor for frequency, roughly 1/8th whole tone large.
 		rand()	Pseudo-random number in range 0-1. The value sequence
 			from a series of calls restarts each new script unit.
 		rint(x)	Round value to the nearest integer. Halfway cases are
