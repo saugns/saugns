@@ -81,7 +81,7 @@ typedef struct sauScriptOpData {
  * Script data event flags.
  */
 enum {
-	SAU_SDEV_VOICE_LATER_USED = 1<<0,
+	SAU_SDEV_VOICE_EXPIRED    = 1<<0, // can't reuse again from this event
 	SAU_SDEV_VOICE_SET_DUR    = 1<<1,
 	SAU_SDEV_IMPLICIT_TIME    = 1<<2,
 	SAU_SDEV_WAIT_PREV_DUR    = 1<<3, // compound step timing
@@ -111,6 +111,7 @@ typedef struct sauScriptEvData {
 	/* for conversion */
 	uint32_t vo_id;
 	struct sauScriptEvData *obj_first_ev; // if not it
+	sauScriptObjInfo *carr_info; // non-NULL on voice-carrier updates
 } sauScriptEvData;
 
 /**
@@ -163,6 +164,8 @@ typedef struct sauScriptOptions {
 typedef struct sauScript {
 	sauScriptEvData *events;
 	sauScriptOptions sopt;
+	uint32_t duration_ms;
+	uint16_t voice_count;
 	const char *name; // currently simply set to the filename
 	struct sauMempool *mp, *prg_mp;
 	struct sauSymtab *st;

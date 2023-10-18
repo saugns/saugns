@@ -15,6 +15,7 @@
 #include <sau/script.h>
 #include <sau/help.h>
 #include <sau/math.h>
+#include <sau/arrtype.h>
 #include <string.h>
 #include <stdio.h>
 
@@ -652,6 +653,14 @@ static bool scan_line_state(sauScanner *restrict o,
  * Parser
  */
 
+typedef struct sauVoAllocState {
+	sauScriptEvData *last_ev;
+//	sauScriptObjInfo *cur_obj;
+	uint32_t duration_ms;
+} sauVoAllocState;
+
+sauArrType(sauVoAlloc, sauVoAllocState, _)
+
 typedef struct sauParser {
 	struct ScanLookup sl;
 	sauScanner *sc;
@@ -661,6 +670,8 @@ typedef struct sauParser {
 	/* node state */
 	struct ParseLevel *cur_pl;
 	sauScriptEvData *events, *last_event, *group_event;
+	sauVoAlloc va;
+	uint32_t tot_dur_ms;
 } sauParser;
 
 /*
@@ -671,6 +682,7 @@ static void fini_Parser(sauParser *restrict o) {
 	sau_destroy_Mempool(o->tmp_mp);
 	sau_destroy_Mempool(o->prg_mp);
 	sau_destroy_Mempool(o->mp);
+	_sauVoAlloc_clear(&o->va);
 }
 
 /*
@@ -1064,7 +1076,8 @@ static void begin_operator(sauParser *restrict o,
 	pl->pl_flags |= PL_OWN_OP;
 }
 
-static sauScriptEvData *time_durgroup(sauScriptEvData *restrict e_from,
+static sauScriptEvData *time_durgroup(sauParser *restrict o,
+		sauScriptEvData *restrict e_from,
 		uint32_t *restrict wait_after);
 
 static void finish_durgroup(sauParser *restrict o) {
@@ -1072,7 +1085,7 @@ static void finish_durgroup(sauParser *restrict o) {
 	pl->add_wait_ms = 0; /* reset by each '|' boundary */
 	if (!o->group_event)
 		return; /* nothing to do */
-	o->last_event = time_durgroup(o->group_event, &pl->carry_wait_ms);
+	o->last_event = time_durgroup(o, o->group_event, &pl->carry_wait_ms);
 	o->group_event = NULL;
 }
 
@@ -1141,6 +1154,13 @@ static void leave_level(sauParser *restrict o) {
 		 */
 		end_event(o);
 		finish_durgroup(o);
+		uint32_t remaining_ms = 0;
+		for (size_t i = 0; i < o->va.count; ++i) {
+			sauVoAllocState *vas = &o->va.a[i];
+			if (vas->duration_ms > remaining_ms)
+				remaining_ms = vas->duration_ms;
+		}
+		o->tot_dur_ms += remaining_ms;
 	}
 	--o->call_level;
 	o->cur_pl = pl->parent;
@@ -1861,6 +1881,82 @@ static const char *parse_file(sauParser *restrict o,
 	return name;
 }
 
+/*
+ * Post-parse code (currently ran after each durgroup for those nodes)
+ */
+
+/*
+ * Get voice ID for event, setting it to \p vo_id.
+ *
+ * \return true, or false on allocation failure
+ */
+static bool
+sauVoAlloc_get_id(sauVoAlloc *restrict va,
+		sauScriptEvData *restrict e, uint32_t *restrict vo_id) {
+	if (e->obj_first_ev != NULL) {
+		e = e->obj_first_ev;
+		*vo_id = e->obj_first_ev->vo_id;
+		if (!(e->ev_flags & SAU_SDEV_VOICE_EXPIRED)) {
+			*vo_id = e->vo_id;
+			return true;
+		}
+	}
+	for (size_t id = 0; id < va->count; ++id) {
+		sauVoAllocState *vas = &va->a[id];
+		if (vas->duration_ms == 0) {
+			sauScriptEvData *old_e = vas->last_ev;
+			if (old_e->obj_first_ev != NULL)
+				old_e = old_e->obj_first_ev;
+			old_e->ev_flags |= SAU_SDEV_VOICE_EXPIRED;
+			e->ev_flags &= ~SAU_SDEV_VOICE_EXPIRED;
+			*vas = (sauVoAllocState){0};
+			*vo_id = id;
+			goto ASSIGNED;
+		}
+	}
+	*vo_id = va->count;
+	if (!_sauVoAlloc_add(va, NULL))
+		return false;
+ASSIGNED:
+	return true;
+}
+
+/*
+ * Update voices for event and return state for voice.
+ *
+ * Use the current voice if any, otherwise reusing an expired voice
+ * if possible, or allocating a new if not.
+ *
+ * \return current array element, or NULL on allocation failure
+ */
+static sauVoAllocState *
+sauVoAlloc_update(sauVoAlloc *restrict va,
+		sauScriptEvData *restrict e) {
+	uint32_t vo_id;
+	for (uint32_t id = 0; id < va->count; ++id) {
+		if (va->a[id].duration_ms < e->wait_ms)
+			va->a[id].duration_ms = 0;
+		else
+			va->a[id].duration_ms -= e->wait_ms;
+	}
+	if (!sauVoAlloc_get_id(va, e, &vo_id))
+		return NULL;
+	e->vo_id = vo_id;
+	sauVoAllocState *vas = &va->a[vo_id];
+	vas->last_ev = e;
+	if ((e->ev_flags & SAU_SDEV_VOICE_SET_DUR) != 0)
+		vas->duration_ms = e->dur_ms;
+	return vas;
+}
+
+/*
+ * Clear voice allocator.
+ */
+static inline void
+sauVoAlloc_clear(sauVoAlloc *restrict o) {
+	_sauVoAlloc_clear(o);
+}
+
 static inline void time_line(sauLine *restrict line,
 		uint32_t default_time_ms) {
 	if (!line)
@@ -1903,10 +1999,12 @@ static void time_durgroup_object(sauScriptEvData *restrict e,
 		if (prev_ref != NULL) {
 			op->ref.prev = prev_ref;
 			prev_ref->op_flags |= SAU_SDOP_LATER_USED;
-			prev_ref->ref.event->ev_flags |=
-				SAU_SDEV_VOICE_LATER_USED;
 		}
 		op->ref.info->last_ref = op;
+		if (!(op->op_flags & SAU_SDOP_NESTED)) {
+			e->carr_info = obj->info;
+//			vas->cur_obj = e->carr_info;
+		}
 		break; }
 	}
 }
@@ -1916,7 +2014,8 @@ static void time_durgroup_object(sauScriptEvData *restrict e,
  * only allowed on the "top" operator level, so the algorithm only deals with
  * this for the events involved.
  */
-static sauScriptEvData *time_durgroup(sauScriptEvData *restrict e_from,
+static sauScriptEvData *time_durgroup(sauParser *restrict o,
+		sauScriptEvData *restrict e_from,
 		uint32_t *restrict wait_after) {
 	sauScriptEvData *e, *e_subtract_after = e_from;
 	uint32_t cur_longest = 0, wait_sum = 0, group_carry = 0;
@@ -1951,7 +2050,9 @@ static sauScriptEvData *time_durgroup(sauScriptEvData *restrict e_from,
 		if (e->root_obj) {
 			sauScriptObjRef *obj = e->root_obj;
 			time_durgroup_object(e, obj, cur_longest, wait_sum);
+			sauVoAlloc_update(&o->va, e);
 		}
+		o->tot_dur_ms += e->wait_ms;
 		if (!e->next) break;
 		if (e == e_subtract_after) subtract = true;
 		e = e->next;
@@ -2180,6 +2281,8 @@ sauScript* sau_read_Script(const sauScriptArg *restrict arg) {
 	o->events = pr.events;
 	o->name = name;
 	o->sopt = pr.sl.sopt;
+	o->duration_ms = pr.tot_dur_ms;
+	o->voice_count = pr.va.count;
 	pr.mp = pr.prg_mp = NULL; // keep with result
 
 DONE:
