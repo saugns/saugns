@@ -46,6 +46,8 @@ typedef struct GenNode {
 	uint8_t type;
 	uint8_t flags;
 	struct ParWithRangeMod amp;
+	sauLine pan;
+	const sauProgramIDArr *camods;
 } GenNode;
 
 typedef struct OscNode {
@@ -83,8 +85,6 @@ typedef struct VoiceNode {
 	uint8_t flags;
 	uint8_t freq_buf_id; // zero if unused (freq is never main buffer zero)
 	uint32_t carr_op_id;
-	sauLine pan;
-	const sauProgramIDArr *camods;
 } VoiceNode;
 
 typedef struct EventNode {
@@ -233,7 +233,6 @@ static void prepare_op(sauGenerator *restrict o,
 		const sauProgramOpData *restrict od) {
 	if (od->use_type == SAU_POP_N_carr) {
 		vn->freq_buf_id = 0;
-		vn->camods = &blank_idarr;
 	}
 	switch (od->type) {
 	case SAU_POPT_WAVE: {
@@ -259,7 +258,7 @@ static void prepare_op(sauGenerator *restrict o,
 		osc->pmods = osc->fpmods = &blank_idarr;
 	}
 	GenNode *gen = &n->gen;
-	gen->amp.mods = gen->amp.r_mods = &blank_idarr;
+	gen->amp.mods = gen->amp.r_mods = gen->camods = &blank_idarr;
 	gen->type = od->type;
 	gen->flags = ON_INIT;
 }
@@ -268,7 +267,7 @@ static void prepare_op(sauGenerator *restrict o,
  * Update an operator node with new data from event.
  */
 static void update_op(sauGenerator *restrict o,
-		OperatorNode *restrict n, VoiceNode *restrict vn,
+		OperatorNode *restrict n,
 		const sauProgramOpData *restrict od) {
 	uint32_t params = od->params;
 	switch (od->type) {
@@ -309,12 +308,12 @@ static void update_op(sauGenerator *restrict o,
 			gen->flags &= ~ON_TIME_INF;
 		}
 	}
-	if (od->camods) vn->camods = od->camods;
+	if (od->camods) gen->camods = od->camods;
 	if (od->amods) gen->amp.mods = od->amods;
 	if (od->ramods) gen->amp.r_mods = od->ramods;
 	sauLine_copy(&gen->amp.par, od->amp, o->srate);
 	sauLine_copy(&gen->amp.r_par, od->amp2, o->srate);
-	sauLine_copy(&vn->pan, od->pan, o->srate);
+	sauLine_copy(&gen->pan, od->pan, o->srate);
 }
 
 /*
@@ -338,7 +337,7 @@ static void handle_event(sauGenerator *restrict o, EventNode *restrict e) {
 			OperatorNode *n = &o->operators[od->id];
 			if (!(n->gen.flags & ON_INIT))
 				prepare_op(o, n, vn, od);
-			update_op(o, n, vn, od);
+			update_op(o, n, od);
 		}
 		if (vd) {
 			vn->carr_op_id = vd->carr_op_id;
@@ -638,25 +637,26 @@ static void mix_clear(sauGenerator *restrict o) {
  * is used.
  */
 static void mix_add(sauGenerator *restrict o,
+		OperatorNode *restrict n,
 		VoiceNode *restrict vn, uint32_t len) {
 	float *s_buf = o->gen_bufs[0];
 	float *pan_buf = NULL;
 	float *mix_l = o->mix_bufs[0];
 	float *mix_r = o->mix_bufs[1];
-	if (vn->pan.flags & SAU_LINEP_GOAL ||
-	    vn->camods->count > 0) {
+	if (n->gen.pan.flags & SAU_LINEP_GOAL ||
+	    n->gen.camods->count > 0) {
 		pan_buf = o->gen_bufs[1 + vn->freq_buf_id];
-		sauLine_run(&vn->pan, pan_buf, len, NULL);
+		sauLine_run(&n->gen.pan, pan_buf, len, NULL);
 	} else {
-		sauLine_skip(&vn->pan, len);
+		sauLine_skip(&n->gen.pan, len);
 	}
-	if (vn->camods->count > 0) {
+	if (n->gen.camods->count > 0) {
 		float *freq_buf = vn->freq_buf_id > 0 ?
 			o->gen_bufs[vn->freq_buf_id] :
 			NULL;
-		for (uint32_t i = 0; i < vn->camods->count; ++i)
+		for (uint32_t i = 0; i < n->gen.camods->count; ++i)
 			run_block(o, (o->gen_bufs + 1 + vn->freq_buf_id), len,
-					&o->operators[vn->camods->ids[i]],
+					&o->operators[n->gen.camods->ids[i]],
 					freq_buf, false, true);
 	}
 	if (pan_buf != NULL) {
@@ -669,7 +669,7 @@ static void mix_add(sauGenerator *restrict o,
 	} else {
 		for (uint32_t i = 0; i < len; ++i) {
 			float s = s_buf[i] * o->amp_scale;
-			float s_r = s * vn->pan.v0;
+			float s_r = s * n->gen.pan.v0;
 			mix_l[i] += s - s_r;
 			mix_r[i] += s + s_r;
 		}
@@ -730,7 +730,7 @@ static uint32_t run_voice(sauGenerator *restrict o,
 		out_len = run_block(o, o->gen_bufs, time, n,
 				NULL, false, false);
 	if (out_len > 0)
-		mix_add(o, vn, out_len);
+		mix_add(o, n, vn, out_len);
 	vn->duration -= time;
 	return out_len;
 }
