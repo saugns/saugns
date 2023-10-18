@@ -1023,7 +1023,8 @@ static void begin_operator(sauParser *restrict o,
 	pl->pl_flags |= PL_OWN_OP;
 }
 
-static sauScriptEvData *time_durgroup(sauScriptEvData *restrict e_from,
+static sauScriptEvData *time_durgroup(sauParser *restrict o,
+		sauScriptEvData *restrict e_from,
 		uint32_t *restrict wait_after);
 
 static void finish_durgroup(sauParser *restrict o) {
@@ -1031,7 +1032,7 @@ static void finish_durgroup(sauParser *restrict o) {
 	pl->add_wait_ms = 0; /* reset by each '|' boundary */
 	if (!o->group_event)
 		return; /* nothing to do */
-	o->last_event = time_durgroup(o->group_event, &pl->carry_wait_ms);
+	o->last_event = time_durgroup(o, o->group_event, &pl->carry_wait_ms);
 	o->group_event = NULL;
 }
 
@@ -1096,6 +1097,7 @@ static void leave_level(sauParser *restrict o) {
 		 */
 		end_event(o);
 		finish_durgroup(o);
+		ParseConv_end_dur_ms(&o->pc);
 	}
 	--o->call_level;
 	o->cur_pl = pl->parent;
@@ -1832,7 +1834,8 @@ static void flatten_events(sauScriptEvData *restrict e);
  * only allowed on the "top" operator level, so the algorithm only deals with
  * this for the events involved.
  */
-static sauScriptEvData *time_durgroup(sauScriptEvData *restrict e_from,
+static sauScriptEvData *time_durgroup(sauParser *restrict o,
+		sauScriptEvData *restrict e_from,
 		uint32_t *restrict wait_after) {
 	sauScriptEvData *e, *e_subtract_after = e_from;
 	uint32_t cur_longest = 0, wait_sum = 0, group_carry = 0;
@@ -1864,8 +1867,8 @@ static sauScriptEvData *time_durgroup(sauScriptEvData *restrict e_from,
 		/*
 		 * Track sequence of references and later use here.
 		 */
-		for (sauScriptOpData *op = e->objs.first_item; op;
-				op = op->next) {
+		if (e->objs.first_item) {
+			sauScriptOpData *op = e->objs.first_item;
 			if ((op->time.flags & (SAU_TIMEP_SET|SAU_TIMEP_DEFAULT))
 			    != SAU_TIMEP_SET) {
 				/* fill in sensible default time */
@@ -1879,11 +1882,14 @@ static sauScriptEvData *time_durgroup(sauScriptEvData *restrict e_from,
 			if (prev_ref != NULL) {
 				op->prev_ref = prev_ref;
 				prev_ref->op_flags |= SAU_SDOP_LATER_USED;
-				prev_ref->event->ev_flags |=
-					SAU_SDEV_VOICE_LATER_USED;
 			}
 			op->info->last_ref = op;
+			if (!(op->op_flags & SAU_SDOP_NESTED)) {
+				e->carr_info = op->info;
+			}
 		}
+		sauVoAlloc_update(&o->pc.va, e);
+		ParseConv_sum_dur_ms(&o->pc, e->wait_ms);
 		if (!e->next) break;
 		if (e == e_subtract_after) subtract = true;
 		e = e->next;
@@ -1937,10 +1943,9 @@ static uint32_t time_operator(sauScriptOpData *restrict op) {
 
 static uint32_t time_event(sauScriptEvData *restrict e) {
 	uint32_t dur_ms = 0;
-	for (sauScriptOpData *op = e->objs.first_item; op; op = op->next) {
-		uint32_t sub_dur_ms = time_operator(op);
-		if (dur_ms < sub_dur_ms)
-			dur_ms = sub_dur_ms;
+	if (e->objs.first_item) {
+		sauScriptOpData *op = e->objs.first_item;
+		dur_ms = time_operator(op);
 	}
 	/*
 	 * Timing for sub-events - done before event list flattened.
@@ -1996,7 +2001,7 @@ static uint32_t time_event(sauScriptEvData *restrict e) {
 		 *
 		 * TODO: Replace with design that gives nodes at each level
 		 * their own event. Merge event and data nodes (always make
-		 * new events for everything), or event and durgroup nodes?
+		 * new events for everything), or sublist into event nodes?
 		 */
 		if (!(e->ev_flags & SAU_SDEV_LOCK_DUR_SCOPE)
 		    || !(e_op->op_flags & SAU_SDOP_NESTED)) {
