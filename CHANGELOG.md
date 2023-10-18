@@ -7,8 +7,6 @@ is a shorter change log with only the SAU language changes.
 Pre-release
 -----------
 
-[rebase in progress]
-
 Language changes:
  * Channel mixing. Fix combination of `c[]` modulation
    and non-swept non-center values; e.g. `Lc[...]` now
@@ -19,9 +17,17 @@ Parser redesign:
    per durgroup just after it, not at end
    of script. Adjust, simplify time code.
    Preparation for further time redesign.
+ * Move voice number allocation to parser
+   from parseconv. Don't fix a number for
+   each carrier, allow their renumbering.
+   This made voices number optimally low.
 
 Add `CHANGELOG.md` based on tag messages and the website,
 with a few additions for clarity on parts of the history.
+
+A few scripts may now count as having fewer voices and
+consequently play louder, if auto-scaling of amplitude
+is used. One example being, `'a W cL| 'b W cR| @a t1`.
 
 v0.4.2c (2023-10-02)
 --------------------

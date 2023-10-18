@@ -15,6 +15,7 @@
 #include <sau/script.h>
 #include <sau/help.h>
 #include <sau/math.h>
+#include <sau/arrtype.h>
 #include <string.h>
 #include <stdio.h>
 
@@ -652,6 +653,13 @@ static bool scan_line_state(sauScanner *restrict o,
  * Parser
  */
 
+typedef struct sauVoAllocState {
+	sauScriptEvData *last_ev;
+	uint32_t duration_ms;
+} sauVoAllocState;
+
+sauArrType(sauVoAlloc, sauVoAllocState, )
+
 typedef struct sauParser {
 	struct ScanLookup sl;
 	sauScanner *sc;
@@ -661,6 +669,8 @@ typedef struct sauParser {
 	/* node state */
 	struct ParseLevel *cur_pl;
 	sauScriptEvData *events, *last_event, *group_event;
+	sauVoAlloc va;
+	uint32_t tot_dur_ms;
 } sauParser;
 
 /*
@@ -671,6 +681,7 @@ static void fini_Parser(sauParser *restrict o) {
 	sau_destroy_Mempool(o->tmp_mp);
 	sau_destroy_Mempool(o->prg_mp);
 	sau_destroy_Mempool(o->mp);
+	sauVoAlloc_clear(&o->va);
 }
 
 /*
@@ -1029,7 +1040,8 @@ static void begin_operator(sauParser *restrict o,
 	pl->pl_flags |= PL_OWN_OP;
 }
 
-static sauScriptEvData *time_durgroup(sauScriptEvData *restrict e_from,
+static sauScriptEvData *time_durgroup(sauParser *restrict o,
+		sauScriptEvData *restrict e_from,
 		uint32_t *restrict wait_after);
 
 static void finish_durgroup(sauParser *restrict o) {
@@ -1037,7 +1049,7 @@ static void finish_durgroup(sauParser *restrict o) {
 	pl->add_wait_ms = 0; /* reset by each '|' boundary */
 	if (!o->group_event)
 		return; /* nothing to do */
-	o->last_event = time_durgroup(o->group_event, &pl->carry_wait_ms);
+	o->last_event = time_durgroup(o, o->group_event, &pl->carry_wait_ms);
 	o->group_event = NULL;
 }
 
@@ -1102,6 +1114,13 @@ static void leave_level(sauParser *restrict o) {
 		 */
 		end_event(o);
 		finish_durgroup(o);
+		uint32_t remaining_ms = 0;
+		for (size_t i = 0; i < o->va.count; ++i) {
+			sauVoAllocState *vas = &o->va.a[i];
+			if (vas->duration_ms > remaining_ms)
+				remaining_ms = vas->duration_ms;
+		}
+		o->tot_dur_ms += remaining_ms;
 	}
 	--o->call_level;
 	o->cur_pl = pl->parent;
@@ -1778,6 +1797,124 @@ static const char *parse_file(sauParser *restrict o,
 	return name;
 }
 
+/*
+ * Check whether parse result appears usable.
+ * (Even with warnings and errors it may be.)
+ *
+ * \return true, unless invalid data detected
+ */
+static bool
+check_parse_valid(sauParser *restrict o, const char *restrict name) {
+	bool error = false;
+	if (o->va.count > SAU_PVO_MAX_ID) {
+		fprintf(stderr,
+"%s: error: number of voices exceed %u, data corrupt\n",
+			name, SAU_PVO_MAX_ID);
+		error = true;
+	}
+	return !error;
+}
+
+/**
+ * Parse a file and return script data.
+ *
+ * \return instance or NULL on error preventing parse
+ */
+sauScript* sau_read_Script(const sauScriptArg *restrict arg) {
+	if (!arg)
+		return NULL;
+	sauParser pr;
+	sauScript *o = NULL;
+	init_Parser(&pr, arg);
+	const char *name = parse_file(&pr, arg);
+	if (!name || !check_parse_valid(&pr, name)) goto DONE;
+	o = sau_mpalloc(pr.mp, sizeof(sauScript));
+	o->mp = pr.mp;
+	o->prg_mp = pr.prg_mp;
+	o->st = pr.st;
+	o->events = pr.events;
+	o->name = name;
+	o->sopt = pr.sl.sopt;
+	o->duration_ms = pr.tot_dur_ms;
+	o->voice_count = pr.va.count;
+	pr.mp = pr.prg_mp = NULL; // keep with result
+DONE:
+	fini_Parser(&pr);
+	return o;
+}
+
+/**
+ * Destroy instance.
+ */
+void sau_discard_Script(sauScript *restrict o) {
+	if (!o)
+		return;
+	sau_destroy_Mempool(o->prg_mp);
+	sau_destroy_Mempool(o->mp);
+}
+
+/*
+ * Get voice ID for event, setting it to \p vo_id.
+ *
+ * \return true, or false on allocation failure
+ */
+static bool
+sauVoAlloc_get_id(sauVoAlloc *restrict va,
+		sauScriptEvData *restrict e, uint32_t *restrict vo_id) {
+	if (e->root_ev != NULL) {
+		e = e->root_ev;
+		if (!(e->ev_flags & SAU_SDEV_VOICE_EXPIRED)) {
+			*vo_id = e->vo_id;
+			return true;
+		}
+	}
+	for (size_t id = 0; id < va->count; ++id) {
+		sauVoAllocState *vas = &va->a[id];
+		if (vas->duration_ms == 0) {
+			sauScriptEvData *old_e = vas->last_ev;
+			if (old_e->root_ev != NULL) old_e = old_e->root_ev;
+			old_e->ev_flags |= SAU_SDEV_VOICE_EXPIRED;
+			e->ev_flags &= ~SAU_SDEV_VOICE_EXPIRED;
+			*vas = (sauVoAllocState){0};
+			*vo_id = id;
+			goto ASSIGNED;
+		}
+	}
+	*vo_id = va->count;
+	if (!sauVoAlloc_add(va, NULL))
+		return false;
+ASSIGNED:
+	return true;
+}
+
+/*
+ * Update voices for event and return state for voice.
+ *
+ * Use the current voice if any, otherwise reusing an expired voice
+ * if possible, or allocating a new if not.
+ *
+ * \return current array element, or NULL on allocation failure
+ */
+static sauVoAllocState *
+sauVoAlloc_update(sauVoAlloc *restrict va,
+		sauScriptEvData *restrict e) {
+	uint32_t vo_id;
+	for (uint32_t id = 0; id < va->count; ++id) {
+		if (va->a[id].duration_ms < e->wait_ms)
+			va->a[id].duration_ms = 0;
+		else
+			va->a[id].duration_ms -= e->wait_ms;
+	}
+	if (!sauVoAlloc_get_id(va, e, &vo_id))
+		return NULL;
+	e->vo_id = vo_id;
+	sauVoAllocState *vas = &va->a[vo_id];
+	vas->last_ev = e;
+	if ((e->ev_flags & SAU_SDEV_VOICE_SET_DUR) != 0)
+		vas->duration_ms = e->dur_ms;
+	return vas;
+}
+
 static inline void time_line(sauLine *restrict line,
 		uint32_t default_time_ms) {
 	if (!line)
@@ -1797,7 +1934,8 @@ static void flatten_events(sauScriptEvData *restrict e);
  * only allowed on the "top" operator level, so the algorithm only deals with
  * this for the events involved.
  */
-static sauScriptEvData *time_durgroup(sauScriptEvData *restrict e_from,
+static sauScriptEvData *time_durgroup(sauParser *restrict o,
+		sauScriptEvData *restrict e_from,
 		uint32_t *restrict wait_after) {
 	sauScriptEvData *e, *e_subtract_after = e_from;
 	uint32_t cur_longest = 0, wait_sum = 0, group_carry = 0;
@@ -1821,8 +1959,8 @@ static sauScriptEvData *time_durgroup(sauScriptEvData *restrict e_from,
 		wait_sum += e->wait_ms;
 	}
 	for (e = e_from; e; ) {
-		for (sauScriptOpData *op = e->objs.first_item; op;
-				op = op->next) {
+		if (e->objs.first_item) {
+			sauScriptOpData *op = e->objs.first_item;
 			if (!(op->time.flags & SAU_TIMEP_SET)) {
 				/* fill in sensible default time */
 				op->time.v_ms = cur_longest + wait_sum;
@@ -1846,17 +1984,20 @@ static sauScriptEvData *time_durgroup(sauScriptEvData *restrict e_from,
 		/*
 		 * Track sequence of references and later use here.
 		 */
-		for (sauScriptOpData *sub_op = e->objs.first_item;
-				sub_op; sub_op = sub_op->next) {
+		if (e->objs.first_item) {
+			sauScriptOpData *sub_op = e->objs.first_item;
 			sauScriptOpData *prev_ref = sub_op->info->last_ref;
 			if (prev_ref != NULL) {
 				sub_op->prev_ref = prev_ref;
 				prev_ref->op_flags |= SAU_SDOP_LATER_USED;
-				prev_ref->event->ev_flags |=
-					SAU_SDEV_VOICE_LATER_USED;
 			}
 			sub_op->info->last_ref = sub_op;
+			if (!(sub_op->op_flags & SAU_SDOP_NESTED)) {
+				e->carr_info = sub_op->info;
+			}
 		}
+		sauVoAlloc_update(&o->va, e);
+		o->tot_dur_ms += e->wait_ms;
 		if (!e->next) break;
 		if (e == e_subtract_after) subtract = true;
 		e = e->next;
@@ -1910,10 +2051,9 @@ static uint32_t time_operator(sauScriptOpData *restrict op) {
 
 static uint32_t time_event(sauScriptEvData *restrict e) {
 	uint32_t dur_ms = 0;
-	for (sauScriptOpData *op = e->objs.first_item; op; op = op->next) {
-		uint32_t sub_dur_ms = time_operator(op);
-		if (dur_ms < sub_dur_ms)
-			dur_ms = sub_dur_ms;
+	if (e->objs.first_item) {
+		sauScriptOpData *op = e->objs.first_item;
+		dur_ms = time_operator(op);
 	}
 	/*
 	 * Timing for sub-events - done before event list flattened.
@@ -1979,7 +2119,7 @@ static uint32_t time_event(sauScriptEvData *restrict e) {
 		 *
 		 * TODO: Replace with design that gives nodes at each level
 		 * their own event. Merge event and data nodes (always make
-		 * new events for everything), or event and durgroup nodes?
+		 * new events for everything), or sublist into event nodes?
 		 */
 		if (!(e->ev_flags & SAU_SDEV_LOCK_DUR_SCOPE)
 		    || !(e_op->op_flags & SAU_SDOP_NESTED)) {
@@ -2045,41 +2185,4 @@ static void flatten_events(sauScriptEvData *restrict e) {
 		ne = ne_next;
 	}
 	e->forks = fork->prev;
-}
-
-/**
- * Parse a file and return script data.
- *
- * \return instance or NULL on error preventing parse
- */
-sauScript* sau_read_Script(const sauScriptArg *restrict arg) {
-	if (!arg)
-		return NULL;
-	sauParser pr;
-	sauScript *o = NULL;
-	init_Parser(&pr, arg);
-	const char *name = parse_file(&pr, arg);
-	if (!name) goto DONE;
-	o = sau_mpalloc(pr.mp, sizeof(sauScript));
-	o->mp = pr.mp;
-	o->prg_mp = pr.prg_mp;
-	o->st = pr.st;
-	o->events = pr.events;
-	o->name = name;
-	o->sopt = pr.sl.sopt;
-	pr.mp = pr.prg_mp = NULL; // keep with result
-
-DONE:
-	fini_Parser(&pr);
-	return o;
-}
-
-/**
- * Destroy instance.
- */
-void sau_discard_Script(sauScript *restrict o) {
-	if (!o)
-		return;
-	sau_destroy_Mempool(o->prg_mp);
-	sau_destroy_Mempool(o->mp);
 }
