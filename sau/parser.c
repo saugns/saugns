@@ -660,6 +660,7 @@ struct NestScope {
 };
 
 sauArrType(NestArr, struct NestScope, )
+sauArrType(ObjInfoArr, sauScriptObjInfo, _)
 
 typedef struct sauParser {
 	struct ScanLookup sl;
@@ -670,6 +671,8 @@ typedef struct sauParser {
 	/* node state */
 	struct ParseLevel *cur_pl;
 	sauScriptEvData *events, *last_event, *group_event;
+	uint32_t root_obj_id;
+	ObjInfoArr obj_arr;
 	ParseConv pc;
 } sauParser;
 
@@ -681,6 +684,7 @@ static void fini_Parser(sauParser *restrict o) {
 	sau_destroy_Mempool(o->tmp_mp);
 	sau_destroy_Mempool(o->mp);
 	NestArr_clear(&o->nest);
+	_ObjInfoArr_clear(&o->obj_arr);
 }
 
 /*
@@ -743,8 +747,7 @@ enum {
 struct ParseLevel {
 	struct ParseLevel *parent;
 	ParseLevel_sub_f sub_f;
-	uint8_t pl_flags;
-	uint8_t scope, close_c;
+	uint8_t pl_flags, scope, close_c;
 	uint8_t use_type;
 	sauScriptEvData *event;
 	sauScriptOpData *operator, *ev_last;
@@ -862,7 +865,6 @@ static void begin_event(sauParser *restrict o,
 		sauScriptEvData *pve = prev_data->event;
 		if (prev_data->op_flags & SAU_SDOP_NESTED)
 			e->ev_flags |= SAU_SDEV_IMPLICIT_TIME;
-		e->root_ev = prev_data->info->root_event;
 		if (is_compstep) {
 			if (pl->pl_flags & PL_NEW_EVENT_FORK) {
 				sauScriptEvBranch *fork =
@@ -910,6 +912,7 @@ static void begin_operator(sauParser *restrict o,
 		uint32_t type) {
 	prepare_event(o, pop, is_compstep);
 	struct ParseLevel *pl = o->cur_pl;
+	struct NestScope *nest = NestArr_tip(&o->nest);
 	sauScriptEvData *e = pl->event;
 	sauScriptOpData *op;
 	end_operator(o);
@@ -928,7 +931,9 @@ static void begin_operator(sauParser *restrict o,
 				pop->time.flags & SAU_TIMEP_IMPLICIT);
 		op->wave = pop->wave;
 		op->phase = pop->phase;
-		op->info = pop->info;
+		op->obj_id = pop->obj_id;
+		op->obj_type = pop->obj_type;
+		op->vo_id = SAU_PVO_NO_ID;
 		if ((pl->pl_flags & PL_BIND_MULTIPLE) != 0) {
 			sauScriptOpData *mpop = pop;
 			uint32_t max_time = 0;
@@ -945,20 +950,26 @@ static void begin_operator(sauParser *restrict o,
 		 * New operator with initial parameter values.
 		 */
 		bool is_nested = pl->use_type != SAU_POP_N_carr;
+		op->obj_id = o->obj_arr.count;
+		sauScriptObjInfo *info = _ObjInfoArr_add(&o->obj_arr);
+		info->obj_type = op->obj_type = type;
+		info->last_vo_id = op->vo_id = SAU_PVO_NO_ID;
+		if (type == SAU_POPT_RAS)
+			info->seed = sau_rand32(&o->sl.math_state);
 		op->time = sauTime_DEFAULT(o->sl.sopt.def_time_ms, is_nested);
 		if (!is_nested) {
+			o->root_obj_id = op->obj_id;
 			op->pan = create_line(o, false, SAU_PSWEEP_PAN);
 			op->freq = create_line(o, false, SAU_PSWEEP_FREQ);
 		} else {
 			op->op_flags |= SAU_SDOP_NESTED;
 			op->freq = create_line(o, true, SAU_PSWEEP_FREQ);
 		}
+		info->root_obj_id = o->root_obj_id;
+		info->parent_obj_id = (is_nested && nest) ?
+			nest->list->parent_obj_id :
+			op->obj_id;
 		op->amp = create_line(o, false, SAU_PSWEEP_AMP);
-		op->info = sau_mpalloc(o->mp, sizeof(sauScriptObjInfo));
-		op->info->root_event = e;
-		op->info->type = type;
-		if (type == SAU_POPT_RAS)
-			op->info->seed = sau_rand32(&o->sl.math_state);
 	}
 	op->event = e;
 	/*
@@ -966,7 +977,6 @@ static void begin_operator(sauParser *restrict o,
 	 * or an operator node (either ordinary or representing multiple
 	 * carriers) in the case of operator linking/nesting.
 	 */
-	struct NestScope *nest = NestArr_tip(&o->nest);
 	if (pop || !nest) {
 		if (!e->objs.first_item) {
 			e->objs.first_item = op;
@@ -1039,6 +1049,7 @@ static void enter_level(sauParser *restrict o,
 				else
 					nest->last_mods->next = nest->list;
 				nest->last_mods = nest->list;
+				nest->list->parent_obj_id = parent_on->obj_id;
 			}
 			/*
 			 * Push script options, and prepare for a new context.
@@ -1372,7 +1383,7 @@ static bool parse_op_mode(sauParser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
 	sauScanner *sc = o->sc;
 	sauScriptOpData *op = pl->operator;
-	if (op->info->type != SAU_POPT_RAS)
+	if (op->obj_type != SAU_POPT_RAS)
 		return true; // reject
 	uint8_t func = SAU_RAS_FUNCTIONS;
 	uint8_t flags = 0;
@@ -1484,7 +1495,7 @@ static void parse_in_op_step(sauParser *restrict o) {
 			if (parse_op_freq(o, false)) goto DEFER;
 			break;
 		case 'l': {
-			if (op->info->type != SAU_POPT_RAS) goto DEFER;
+			if (op->obj_type != SAU_POPT_RAS) goto DEFER;
 			size_t id;
 			if (!scan_sym_id(sc, &id, SAU_SYM_LINE_ID,
 						sauLine_names))
@@ -1530,7 +1541,7 @@ static void parse_in_op_step(sauParser *restrict o) {
 			op->params |= SAU_POPP_TIME;
 			break; }
 		case 'w': {
-			if (op->info->type != SAU_POPT_WAVE) goto DEFER;
+			if (op->obj_type != SAU_POPT_WAVE) goto DEFER;
 			size_t id;
 			if (!scan_sym_id(sc, &id, SAU_SYM_WAVE_ID,
 						sauWave_names))
@@ -1758,12 +1769,14 @@ sau_build_Program(const sauScriptArg *restrict arg) {
 		return NULL;
 	if (!(parse = sau_mpalloc(pr.mp, sizeof(*parse)))) goto DONE;
 	const char *name = parse_file(&pr, arg);
-	if (!name) goto DONE;
+	if (!name || !_ObjInfoArr_mpmemdup(&pr.obj_arr, &parse->objects, pr.mp))
+		goto DONE;
 	parse->mp = pr.mp;
 	parse->st = pr.st;
 	parse->events = pr.events;
 	parse->name = name;
 	parse->sopt = pr.sl.sopt;
+	parse->object_count = pr.obj_arr.count;
 	if ((o = ParseConv_convert(&pr.pc, parse)) != NULL)
 		pr.mp = NULL; // keep with result
 DONE:
@@ -1827,12 +1840,12 @@ static sauScriptEvData *time_durgroup(sauParser *restrict o,
 	/*
 	 * Flatten event forks in loop following the timing adjustments
 	 * depending on composite step event structure, complete times.
+	 *
+	 * Also run voice allocation, any other final bookkeeping here.
+	 * This is the last event loop per durgroup, place it all here.
 	 */
 	for (e = e_from; e; ) {
 		while (e->forks != NULL) flatten_events(e);
-		/*
-		 * Track sequence of references and later use here.
-		 */
 		if (e->objs.first_item) {
 			sauScriptOpData *op = e->objs.first_item;
 			if ((op->time.flags & (SAU_TIMEP_SET|SAU_TIMEP_DEFAULT))
@@ -1844,17 +1857,8 @@ static sauScriptEvData *time_durgroup(sauParser *restrict o,
 					e->dur_ms = op->time.v_ms;
 				time_op_lines(op);
 			}
-			sauScriptOpData *prev_ref = op->info->last_ref;
-			if (prev_ref != NULL) {
-				op->prev_ref = prev_ref;
-				prev_ref->op_flags |= SAU_SDOP_LATER_USED;
-			}
-			op->info->last_ref = op;
-			if (!(op->op_flags & SAU_SDOP_NESTED)) {
-				e->carr_info = op->info;
-			}
 		}
-		sauVoAlloc_update(&o->pc.va, e);
+		sauVoAlloc_update(&o->pc.va, o->obj_arr.a, e);
 		ParseConv_sum_dur_ms(&o->pc, e->wait_ms);
 		if (!e->next) break;
 		if (e == e_subtract_after) subtract = true;
