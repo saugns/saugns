@@ -18,9 +18,8 @@
  * Script data operator flags.
  */
 enum {
-	SAU_SDOP_LATER_USED = 1<<0,
-	SAU_SDOP_MULTIPLE = 1<<1,
-	SAU_SDOP_NESTED = 1<<2,
+	SAU_SDOP_NESTED   = 1U<<0,
+	SAU_SDOP_MULTIPLE = 1U<<1,
 };
 
 /**
@@ -30,16 +29,17 @@ typedef struct sauScriptListData {
 	struct sauScriptOpData *first_item;
 	struct sauScriptListData *next;
 	uint32_t count;
+	uint32_t parent_obj_id;
 	uint8_t use_type;
 	bool append;
 } sauScriptListData;
 
 /** Info shared by all references to an object. */
 typedef struct sauScriptObjInfo {
-	struct sauScriptOpData *last_ref; // used for iterating references
-	struct sauScriptEvData *root_event;
-	uint32_t type; // type info, for now
-	uint32_t id; // for conversion
+	uint8_t obj_type; // type of object described
+	uint16_t last_vo_id; // for voice allocation (objects change voices)
+	uint32_t root_obj_id; // root carrier for a carrier or modulator
+	uint32_t parent_obj_id; // parent carrier for a carrier or modulator
 	uint32_t seed; // TODO: divide containing node type
 } sauScriptObjInfo;
 
@@ -49,8 +49,10 @@ typedef struct sauScriptObjInfo {
 typedef struct sauScriptOpData {
 	struct sauScriptEvData *event;
 	struct sauScriptOpData *next; // next in list, scope, grouping...
-	struct sauScriptObjInfo *info; // shared by all references
 	struct sauScriptOpData *prev_ref; // preceding for same op(s)
+	uint32_t obj_id; // shared by all references to an object
+	uint8_t obj_type; // included for quick access
+	uint16_t vo_id; // ID for carrier use, or SAU_PVO_NO_ID
 	uint32_t op_flags;
 	/* operator parameters */
 	uint32_t params;
@@ -69,12 +71,12 @@ typedef struct sauScriptOpData {
  * Script data event flags.
  */
 enum {
-	SAU_SDEV_VOICE_EXPIRED    = 1<<0, // can't reuse again from this event
-	SAU_SDEV_VOICE_SET_DUR    = 1<<1,
-	SAU_SDEV_IMPLICIT_TIME    = 1<<2,
-	SAU_SDEV_WAIT_PREV_DUR    = 1<<3, // compound step timing
-	SAU_SDEV_FROM_GAPSHIFT    = 1<<4, // gapshift follow-on event
-	SAU_SDEV_LOCK_DUR_SCOPE   = 1<<5, // nested data can't lengthen dur
+	SAU_SDEV_ASSIGN_VOICE     = 1U<<0, // numbered voice has new carrier
+	SAU_SDEV_VOICE_SET_DUR    = 1U<<1,
+	SAU_SDEV_IMPLICIT_TIME    = 1U<<2,
+	SAU_SDEV_WAIT_PREV_DUR    = 1U<<3, // compound step timing
+	SAU_SDEV_FROM_GAPSHIFT    = 1U<<4, // gapshift follow-on event
+	SAU_SDEV_LOCK_DUR_SCOPE   = 1U<<5, // nested data can't lengthen dur
 };
 
 struct sauScriptEvBranch;
@@ -96,10 +98,6 @@ typedef struct sauScriptEvData {
 	uint32_t wait_ms;
 	uint32_t dur_ms;
 	uint8_t ev_flags;
-	/* for conversion */
-	uint16_t vo_id;
-	struct sauScriptEvData *root_ev; // if not the root event
-	sauScriptObjInfo *carr_info; // non-NULL on voice-carrier updates
 } sauScriptEvData;
 
 /**
@@ -151,7 +149,9 @@ typedef struct sauScriptOptions {
  */
 typedef struct sauScript {
 	sauScriptEvData *events;
+	sauScriptObjInfo *objects; // currently also op info array
 	sauScriptOptions sopt;
+	uint32_t object_count;
 	const char *name; // currently simply set to the filename
 	struct sauMempool *mp;
 	struct sauSymtab *st;
