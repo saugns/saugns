@@ -14,6 +14,7 @@
 #include <sau/arrtype.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 /*
  * Program construction from parse data.
@@ -38,7 +39,7 @@ sau_create_ProgramIDArr(sauMempool *restrict mp,
 	idarr->count = count;
 	uint32_t i = 0;
 	for (sauScriptOpData *op = list_in->first_item; op; op = op->next)
-		idarr->ids[i++] = op->info->id;
+		idarr->ids[i++] = op->obj_id;
 	return idarr;
 }
 
@@ -73,47 +74,13 @@ enum {
  * Per-voice state during data allocation.
  */
 typedef struct sauVoAllocState {
-	sauScriptEvData *last_ev;
+	uint32_t obj_id;
 	uint32_t duration_ms;
 	uint32_t carr_op_id;
 	uint32_t flags;
 } sauVoAllocState;
 
 sauArrType(sauVoAlloc, sauVoAllocState, _)
-
-/*
- * Get voice ID for event, setting it to \p vo_id.
- *
- * \return true, or false on allocation failure
- */
-static bool
-sauVoAlloc_get_id(sauVoAlloc *restrict va,
-		sauScriptEvData *restrict e, uint32_t *restrict vo_id) {
-	if (e->root_ev != NULL) {
-		e = e->root_ev;
-		if (!(e->ev_flags & SAU_SDEV_VOICE_EXPIRED)) {
-			*vo_id = e->vo_id;
-			return true;
-		}
-	}
-	for (size_t id = 0; id < va->count; ++id) {
-		sauVoAllocState *vas = &va->a[id];
-		if (vas->duration_ms == 0) {
-			sauScriptEvData *old_e = vas->last_ev;
-			if (old_e->root_ev != NULL) old_e = old_e->root_ev;
-			old_e->ev_flags |= SAU_SDEV_VOICE_EXPIRED;
-			e->ev_flags &= ~SAU_SDEV_VOICE_EXPIRED;
-			*vas = (sauVoAllocState){0};
-			*vo_id = id;
-			goto ASSIGNED;
-		}
-	}
-	*vo_id = va->count;
-	if (!_sauVoAlloc_add(va, NULL))
-		return false;
-ASSIGNED:
-	return true;
-}
 
 /*
  * Update voices for event and return state for voice.
@@ -125,21 +92,56 @@ ASSIGNED:
  */
 static sauVoAllocState *
 sauVoAlloc_update(sauVoAlloc *restrict va,
+		sauScriptObjInfo *restrict info_a,
 		sauScriptEvData *restrict e) {
-	uint32_t vo_id;
+	uint32_t vo_id, obj_id;
+	/*
+	 * Count down remaining durations before voice reuse.
+	 */
 	for (uint32_t id = 0; id < va->count; ++id) {
 		if (va->a[id].duration_ms < e->wait_ms)
 			va->a[id].duration_ms = 0;
 		else
 			va->a[id].duration_ms -= e->wait_ms;
 	}
-	if (!sauVoAlloc_get_id(va, e, &vo_id))
+	/*
+	 * Use voice without change if possible.
+	 */
+	sauScriptOpData *obj = e->objs.first_item;
+	sauScriptObjInfo *info = &info_a[(obj_id = obj->obj_id)];
+	sauVoAllocState *vas;
+	if (obj->prev_ref) {
+		info = &info_a[(obj_id = info->root_obj_id)];
+		if (info->last_vo_id != SAU_PVO_NO_ID) {
+			vo_id = info->last_vo_id;
+			vas = &va->a[vo_id];
+			goto PRESERVED;
+		}
+	}
+	e->ev_flags |= SAU_SDEV_ASSIGN_VOICE; // now new, renumbered, or reused
+	/*
+	 * Reuse first lowest free voice (duration expired), if any.
+	 */
+	for (size_t id = 0; id < va->count; ++id) {
+		vas = &va->a[id];
+		if (vas->duration_ms == 0) {
+			sauScriptObjInfo *old_info = &info_a[vas->obj_id];
+			old_info->last_vo_id = SAU_PVO_NO_ID; // renumber on use
+			*vas = (sauVoAllocState){0};
+			vo_id = id;
+			goto RECYCLED;
+		}
+	}
+	vo_id = va->count;
+	if (!(vas = _sauVoAlloc_add(va, NULL)))
 		return NULL;
-	e->vo_id = vo_id;
-	sauVoAllocState *vas = &va->a[vo_id];
-	vas->last_ev = e;
+RECYCLED:
+	info->last_vo_id = vo_id;
+	vas->obj_id = obj_id;
+PRESERVED:
 	if ((e->ev_flags & SAU_SDEV_VOICE_SET_DUR) != 0)
 		vas->duration_ms = e->dur_ms;
+	obj->vo_id = vo_id;
 	return vas;
 }
 
@@ -154,54 +156,18 @@ enum {
  * Per-operator state used during program data allocation.
  */
 typedef struct sauOpAllocState {
-	sauScriptOpData *last_pod;
 	const sauProgramIDArr *mods[SAU_POP_USES - 1];
 	uint32_t flags;
-	//uint32_t duration_ms;
 } sauOpAllocState;
 
 sauArrType(sauOpAlloc, sauOpAllocState, _)
 
 /*
- * Get operator ID for event, setting it to \p op_id.
- * (Tracking of expired operators for reuse of their IDs is currently
- * disabled.)
- *
- * \return true, or false on allocation failure
- */
-static bool
-sauOpAlloc_get_id(sauOpAlloc *restrict oa,
-		const sauScriptOpData *restrict od, uint32_t *restrict op_id) {
-	if (od->prev_ref != NULL) {
-		*op_id = od->info->id;
-		return true;
-	}
-//	for (uint32_t id = 0; id < oa->count; ++id) {
-//		if (!(oa->a[id].last_pod->op_flags & SAU_SDOP_LATER_USED)
-//			&& oa->a[id].duration_ms == 0) {
-//			oa->a[id] = (sauOpAllocState){0};
-//			*op_id = id;
-//			goto ASSIGNED;
-//		}
-//	}
-	*op_id = oa->count;
-	if (!_sauOpAlloc_add(oa, NULL))
-		return false;
-//ASSIGNED:
-	sauOpAllocState *oas = &oa->a[*op_id];
-	for (int i = 1; i < SAU_POP_USES; ++i) {
-		oas->mods[i - 1] = &blank_idarr;
-	}
-	od->info->id = *op_id;
-	return true;
-}
-
-/*
- * Update operators for event and return an operator ID for the event.
+ * Update operator data for event and return an operator ID in \p op_id.
  *
  * Use the current operator if any, otherwise allocating a new one.
- * (Tracking of expired operators for reuse of their IDs is currently
- * disabled.)
+ * (TODO: Implement tracking of expired operators (requires look at
+ * nesting and use of modulators by carriers), for reusing of IDs.)
  *
  * Only valid to call for single-operator nodes.
  *
@@ -209,20 +175,16 @@ sauOpAlloc_get_id(sauOpAlloc *restrict oa,
  */
 static bool
 sauOpAlloc_update(sauOpAlloc *restrict oa,
-		sauScriptOpData *restrict od,
-		uint32_t *restrict op_id) {
-//	sauScriptEvData *e = od->event;
-//	for (uint32_t id = 0; id < oa->count; ++id) {
-//		if (oa->a[id].duration_ms < e->wait_ms)
-//			oa->a[id].duration_ms = 0;
-//		else
-//			oa->a[id].duration_ms -= e->wait_ms;
-//	}
-	if (!sauOpAlloc_get_id(oa, od, op_id))
-		return false;
+		sauScriptOpData *restrict od, uint32_t *restrict op_id) {
+	if (od->prev_ref != NULL) {
+		*op_id = od->obj_id;
+		return true;
+	}
+	*op_id = od->obj_id;
 	sauOpAllocState *oas = &oa->a[*op_id];
-	oas->last_pod = od;
-//	oas->duration_ms = od->time.v_ms;
+	for (int i = 1; i < SAU_POP_USES; ++i) {
+		oas->mods[i - 1] = &blank_idarr;
+	}
 	return true;
 }
 
@@ -277,6 +239,7 @@ typedef struct ParseConv {
 	sauMempool *mp;
 	sauVoAlloc va;
 	uint32_t tot_dur_ms;
+	sauScriptObjInfo *objects;
 } ParseConv;
 
 #define ParseConv_sum_dur_ms(o, add_ms) ((o)->tot_dur_ms += (add_ms))
@@ -310,6 +273,7 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 	sauOpAllocState *oas = &o->oa.a[op_id];
 	sauProgramOpData *ood = _OpDataArr_add(&o->ev_op_data, NULL);
 	if (!ood) goto MEM_ERR;
+	sauScriptObjInfo *info = &o->objects[op->obj_id];
 	ood->id = op_id;
 	ood->params = op->params;
 	ood->time = op->time;
@@ -321,8 +285,8 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 	ood->phase = op->phase;
 	ood->use_type = use_type;
 	/* TODO: separation of types */
-	ood->type = op->info->type;
-	ood->seed = op->info->seed;
+	ood->type = info->obj_type;
+	ood->seed = info->seed;
 	ood->wave = op->wave;
 	ood->ras_opt = op->ras_opt;
 	sauVoAllocState *vas = &o->va.a[o->ev->vo_id];
@@ -389,8 +353,8 @@ ParseConv_convert_ops(ParseConv *restrict o,
  */
 static sauVoAllocState *
 sauVoiceGraph_prepare(sauVoiceGraph *restrict o,
-		sauScriptEvData *restrict e) {
-	sauVoAllocState *vas = &o->va->a[e->vo_id];
+		sauScriptOpData *restrict obj) {
+	sauVoAllocState *vas = &o->va->a[obj->vo_id];
 	vas->flags &= ~SAU_VAS_SET_GRAPH;
 	return vas;
 }
@@ -495,11 +459,12 @@ sau_fini_VoiceGraph(sauVoiceGraph *restrict o) {
 static bool
 ParseConv_convert_event(ParseConv *restrict o,
 		sauScriptEvData *restrict e) {
-	sauVoAllocState *vas = sauVoiceGraph_prepare(&o->ev_vo_graph, e);
+	sauScriptOpData *obj = e->objs.first_item;
+	sauVoAllocState *vas = sauVoiceGraph_prepare(&o->ev_vo_graph, obj);
 	sauProgramEvent *out_ev = SAU_PEvArr_add(&o->ev_arr, NULL);
 	if (!out_ev) goto MEM_ERR;
 	out_ev->wait_ms = e->wait_ms;
-	out_ev->vo_id = e->vo_id;
+	out_ev->vo_id = obj->vo_id;
 	o->ev = out_ev;
 	if (!ParseConv_convert_ops(o, &e->objs)) goto MEM_ERR;
 	if (o->ev_op_data.count > 0) {
@@ -509,24 +474,15 @@ ParseConv_convert_event(ParseConv *restrict o,
 		out_ev->op_data_count = o->ev_op_data.count;
 		o->ev_op_data.count = 0; // reuse allocation
 	}
-	if (!e->root_ev)
-		vas->flags |= SAU_VAS_SET_GRAPH;
-	if (e->carr_info) {
-		if (vas->carr_op_id != e->carr_info->id ||
-		    (e->root_ev && e->root_ev->vo_id != e->vo_id))
-			vas->flags |= SAU_VAS_SET_GRAPH;
-		vas->flags |= SAU_VAS_HAS_CARR;
-		vas->carr_op_id = e->carr_info->id;
+	if (e->ev_flags & SAU_SDEV_ASSIGN_VOICE) {
+		sauScriptObjInfo *info = &o->objects[obj->obj_id];
+		vas->flags |= SAU_VAS_HAS_CARR | SAU_VAS_SET_GRAPH;
+		vas->carr_op_id = info->root_obj_id;
 	}
 	if ((vas->flags & SAU_VAS_SET_GRAPH) != 0) {
 		sauProgramVoData *ovd =
 			sau_mpalloc(o->mp, sizeof(sauProgramVoData));
 		if (!ovd) goto MEM_ERR;
-		if (!e->root_ev) {
-			sauScriptOpData *obj = e->objs.first_item;
-			vas->flags |= SAU_VAS_HAS_CARR;
-			vas->carr_op_id = obj->info->id;
-		}
 		out_ev->vo_data = ovd;
 		if (!sauVoiceGraph_set(&o->ev_vo_graph, out_ev, o->mp))
 			goto MEM_ERR;
@@ -577,7 +533,7 @@ ParseConv_create_program(ParseConv *restrict o,
 		prg->mode |= SAU_PMODE_AMP_DIV_VOICES;
 	}
 	prg->vo_count = o->va.count;
-	prg->op_count = o->oa.count;
+	prg->op_count = parse->object_count;
 	prg->op_nest_depth = o->ev_vo_graph.op_nest_max;
 	prg->duration_ms = o->tot_dur_ms;
 	prg->name = parse->name;
@@ -597,6 +553,9 @@ ParseConv_convert(ParseConv *restrict o,
 		sauScript *restrict parse) {
 	sauProgram *prg = NULL;
 	o->mp = parse->mp;
+	o->objects = parse->objects;
+	o->oa.asize = parse->object_count;
+	o->oa.a = calloc(parse->object_count, sizeof(sauOpAllocState));
 	sau_init_VoiceGraph(&o->ev_vo_graph, &o->va, &o->oa);
 	for (sauScriptEvData *e = parse->events; e; e = e->next) {
 		if (!ParseConv_convert_event(o, e)) goto MEM_ERR;
