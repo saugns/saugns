@@ -1974,7 +1974,8 @@ static sauScriptEvData *time_durgroup(sauParser *restrict o,
 		wait_sum += e->wait_ms;
 	}
 	for (e = e_from; e; ) {
-		if (e->objs.first_item) {
+		for (sauScriptOpData *op = e->objs.first_item; op;
+				op = op->next) {
 			sauScriptOpData *op = e->objs.first_item;
 			if (!(op->time.flags & SAU_TIMEP_SET)) {
 				/* fill in sensible default time */
@@ -2054,9 +2055,10 @@ static uint32_t time_operator(sauScriptOpData *restrict op) {
 
 static uint32_t time_event(sauScriptEvData *restrict e) {
 	uint32_t dur_ms = 0;
-	if (e->objs.first_item) {
-		sauScriptOpData *op = e->objs.first_item;
-		dur_ms = time_operator(op);
+	for (sauScriptOpData *op = e->objs.first_item; op; op = op->next) {
+		uint32_t sub_dur_ms = time_operator(op);
+		if (dur_ms < sub_dur_ms)
+			dur_ms = sub_dur_ms;
 	}
 	/*
 	 * Timing for sub-events - done before event list flattened.
