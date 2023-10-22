@@ -42,7 +42,7 @@ sau_create_ProgramIDArr(sauMempool *restrict mp,
 	idarr->count = count;
 	uint32_t i = 0;
 	for (sauScriptOpData *op = list_in->first_item; op; op = op->next)
-		idarr->ids[i++] = op->obj_id;
+		idarr->ids[i++] = op->ref.obj_id;
 	return idarr;
 }
 
@@ -97,10 +97,10 @@ static bool
 sauOpAlloc_update(sauOpAlloc *restrict oa,
 		sauScriptOpData *restrict od, uint32_t *restrict op_id) {
 	if (od->prev_ref != NULL) {
-		*op_id = od->obj_id;
+		*op_id = od->ref.obj_id;
 		return true;
 	}
-	*op_id = od->obj_id;
+	*op_id = od->ref.obj_id;
 	sauOpAllocState *oas = &oa->a[*op_id];
 	for (int i = 1; i < SAU_POP_NAMED; ++i) {
 		oas->mods[i - 1] = &blank_idarr;
@@ -189,7 +189,7 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 	sauOpAllocState *oas = &o->oa.a[op_id];
 	sauProgramOpData *ood = _OpDataArr_add(&o->ev_op_data, NULL);
 	if (!ood) goto MEM_ERR;
-	sauScriptObjInfo *info = &o->parse->objects[op->obj_id];
+	sauScriptObjInfo *info = &o->parse->objects[op->ref.obj_id];
 	ood->id = op_id;
 	ood->params = op->params;
 	ood->time = op->time;
@@ -270,7 +270,7 @@ ParseConv_convert_ops(ParseConv *restrict o,
 static sauVoiceState *
 sauVoiceGraph_prepare(sauVoiceGraph *restrict o,
 		sauScriptOpData *restrict obj) {
-	sauVoiceState *vos = &o->vos[obj->vo_id];
+	sauVoiceState *vos = &o->vos[obj->ref.vo_id];
 	vos->flags &= ~SAU_VOS_SET_GRAPH;
 	return vos;
 }
@@ -381,7 +381,7 @@ ParseConv_convert_event(ParseConv *restrict o,
 	sauProgramEvent *out_ev = SAU_PEvArr_add(&o->ev_arr, NULL);
 	if (!out_ev) goto MEM_ERR;
 	out_ev->wait_ms = e->wait_ms;
-	out_ev->vo_id = obj->vo_id;
+	out_ev->vo_id = obj->ref.vo_id;
 	o->ev = out_ev;
 	if (!ParseConv_convert_ops(o, &e->objs)) goto MEM_ERR;
 	if (o->ev_op_data.count > 0) {
@@ -392,7 +392,7 @@ ParseConv_convert_event(ParseConv *restrict o,
 		o->ev_op_data.count = 0; // reuse allocation
 	}
 	if (e->ev_flags & SAU_SDEV_ASSIGN_VOICE) {
-		sauScriptObjInfo *info = &o->parse->objects[obj->obj_id];
+		sauScriptObjInfo *info = &o->parse->objects[obj->ref.obj_id];
 		vos->flags |= SAU_VOS_HAS_CARR | SAU_VOS_SET_GRAPH;
 		vos->carr_op_id = info->root_obj_id;
 	}

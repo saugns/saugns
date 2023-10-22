@@ -22,7 +22,7 @@ enum {
 	SAU_SDOP_MULTIPLE = 1U<<1,
 };
 
-/** Info shared by all references to an object. */
+/** Info per script data object, shared by all references to the object. */
 typedef struct sauScriptObjInfo {
 	uint8_t obj_type; // type of object described
 	uint16_t last_vo_id; // for voice allocation (objects change voices)
@@ -30,6 +30,13 @@ typedef struct sauScriptObjInfo {
 	uint32_t parent_obj_id; // parent carrier for a carrier or modulator
 	uint32_t seed; // TODO: divide containing node type
 } sauScriptObjInfo;
+
+/** Reference to script data object, common data for all subtypes. */
+typedef struct sauScriptObjRef {
+	uint32_t obj_id; // shared by all references to an object
+	uint8_t obj_type; // included for quick access
+	uint16_t vo_id; // ID for carrier use, or SAU_PVO_NO_ID
+} sauScriptObjRef;
 
 /**
  * Container node for linked list, used for nesting.
@@ -50,12 +57,10 @@ enum {
  * Node type for operator data.
  */
 typedef struct sauScriptOpData {
+	sauScriptObjRef ref;
 	struct sauScriptEvData *event;
 	struct sauScriptOpData *next; // next in list, scope, grouping...
 	struct sauScriptOpData *prev_ref; // preceding for same op(s)
-	uint32_t obj_id; // shared by all references to an object
-	uint8_t obj_type; // included for quick access
-	uint16_t vo_id; // ID for carrier use, or SAU_PVO_NO_ID
 	uint32_t op_flags;
 	/* operator parameters */
 	uint32_t params;

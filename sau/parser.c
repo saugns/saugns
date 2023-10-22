@@ -952,7 +952,7 @@ static void begin_list(sauParser *restrict o,
 		else
 			parent_pl->last_mods_list->next_list = list;
 		parent_pl->last_mods_list = pl->nest_list;
-		list->parent_obj_id = parent_on->obj_id;
+		list->parent_obj_id = parent_on->ref.obj_id;
 	}
 }
 
@@ -973,6 +973,7 @@ static void begin_operator(sauParser *restrict o,
 	 * Initialize node.
 	 */
 	if (pop != NULL) {
+		op->ref = pop->ref;
 		op->prev_ref = pop;
 		op->op_flags = pop->op_flags &
 			(SAU_SDOP_NESTED | SAU_SDOP_MULTIPLE);
@@ -980,9 +981,6 @@ static void begin_operator(sauParser *restrict o,
 			(pop->time.flags & SAU_TIMEP_IMPLICIT)};
 		op->wave = pop->wave;
 		op->phase = pop->phase;
-		op->obj_id = pop->obj_id;
-		op->obj_type = pop->obj_type;
-		op->vo_id = SAU_PVO_NO_ID;
 		if ((pl->pl_flags & PL_BIND_MULTIPLE) != 0) {
 			sauScriptOpData *mpop = pop;
 			uint32_t max_time = 0;
@@ -998,15 +996,15 @@ static void begin_operator(sauParser *restrict o,
 		/*
 		 * New operator with initial parameter values.
 		 */
-		op->obj_id = o->obj_arr.count;
+		op->ref.obj_id = o->obj_arr.count;
 		sauScriptObjInfo *info = sauScriptObjArr_add(&o->obj_arr, NULL);
-		info->obj_type = op->obj_type = type;
-		info->last_vo_id = op->vo_id = SAU_PVO_NO_ID;
+		info->obj_type = op->ref.obj_type = type;
+		info->last_vo_id = op->ref.vo_id = SAU_PVO_NO_ID;
 		if (type == SAU_POPT_RAS)
 			info->seed = sau_rand32(&o->sl.math_state);
 		op->time = (sauTime){o->sl.sopt.def_time_ms, 0};
 		if (pl->use_type == SAU_POP_N_carr) {
-			o->root_obj_id = op->obj_id;
+			o->root_obj_id = op->ref.obj_id;
 			op->pan = create_line(o, false, SAU_PSWEEP_PAN);
 			op->freq = create_line(o, false, SAU_PSWEEP_FREQ);
 		} else {
@@ -1016,7 +1014,7 @@ static void begin_operator(sauParser *restrict o,
 		info->root_obj_id = o->root_obj_id;
 		info->parent_obj_id = pl->nest_list ?
 			pl->nest_list->parent_obj_id :
-			op->obj_id;
+			op->ref.obj_id;
 		op->amp = create_line(o, false, SAU_PSWEEP_AMP);
 	}
 	op->event = e;
@@ -1464,7 +1462,7 @@ static bool parse_ev_mode(sauParser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
 	sauScanner *sc = o->sc;
 	sauScriptOpData *op = pl->operator;
-	if (op->obj_type != SAU_POPT_RAS)
+	if (op->ref.obj_type != SAU_POPT_RAS)
 		return true; // reject
 	uint8_t func = SAU_RAS_FUNCTIONS;
 	uint8_t flags = 0;
@@ -1556,7 +1554,7 @@ static void parse_in_opdata(sauParser *restrict o) {
 		if (parse_ev_freq(o, false)) goto DEFER;
 		break;
 	case 'l': {
-		if (op->obj_type != SAU_POPT_RAS) goto DEFER;
+		if (op->ref.obj_type != SAU_POPT_RAS) goto DEFER;
 		size_t id;
 		if (!scan_sym_id(sc, &id, SAU_SYM_LINE_ID,
 					sauLine_names))
@@ -1601,7 +1599,7 @@ static void parse_in_opdata(sauParser *restrict o) {
 		op->params |= SAU_POPP_TIME;
 		break; }
 	case 'w': {
-		if (op->obj_type != SAU_POPT_WAVE) goto DEFER;
+		if (op->ref.obj_type != SAU_POPT_WAVE) goto DEFER;
 		size_t id;
 		if (!scan_sym_id(sc, &id, SAU_SYM_WAVE_ID,
 					sauWave_names))
@@ -1893,7 +1891,7 @@ sauVoAlloc_update(sauParser *restrict o,
 	 * Use voice without change if possible.
 	 */
 	sauScriptOpData *obj = e->objs.first_item;
-	sauScriptObjInfo *info = &o->obj_arr.a[(obj_id = obj->obj_id)];
+	sauScriptObjInfo *info = &o->obj_arr.a[(obj_id = obj->ref.obj_id)];
 	sauVoAllocState *vas;
 	if (obj->prev_ref) {
 		info = &o->obj_arr.a[(obj_id = info->root_obj_id)];
@@ -1926,7 +1924,7 @@ RECYCLED:
 PRESERVED:
 	if ((e->ev_flags & SAU_SDEV_VOICE_SET_DUR) != 0)
 		vas->duration_ms = e->dur_ms;
-	obj->vo_id = vo_id;
+	obj->ref.vo_id = vo_id;
 	return vas;
 }
 
