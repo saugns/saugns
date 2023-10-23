@@ -284,6 +284,10 @@ static void update_op(sauGenerator *restrict o,
 		OperatorNode *restrict n,
 		const sauProgramOpData *restrict od) {
 	uint32_t params = od->params;
+	if (params & SAU_POPP_COPY) {
+		const OperatorNode *src_n = &o->operators[od->copy_id];
+		*n = *src_n;
+	}
 	switch (od->type) {
 	case SAU_POPT_N_amp: break;
 	case SAU_POPT_N_noise: {

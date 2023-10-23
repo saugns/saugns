@@ -157,7 +157,8 @@ sauOpAlloc_update(sauOpAlloc *restrict o,
 		sauScriptObjInfo *restrict info_a,
 		const sauScriptOpData *restrict od) {
 	sauScriptObjInfo *info = &info_a[od->ref.obj_id];
-	if (!od->prev_ref) {
+	bool is_copy = od->params & SAU_POPP_COPY;
+	if (!od->prev_ref || is_copy) {
 		uint32_t op_id = o->count;
 		sauOpAllocState *oas = _sauOpAlloc_add(o);
 		if (!oas)
@@ -289,6 +290,9 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 	sauProgramOpData *ood = _OpDataArr_push(&o->ev_op_data, NULL);
 	if (!ood) goto MEM_ERR;
 	ood->id = op_id;
+	ood->copy_id = (op->params & SAU_POPP_COPY) ?
+		objects[op->prev_ref->ref.obj_id].last_op_id :
+		SAU_POP_NO_ID;
 	ood->params = op->params;
 	ood->time = op->time;
 	ood->pan = op->pan;

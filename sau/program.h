@@ -91,11 +91,12 @@ static inline bool sau_pop_has_seed(unsigned type_id) {
  * Operator parameter flags. For parameters without other tracking only.
  */
 enum {
-	SAU_POPP_TIME = 1<<0,
-	SAU_POPP_MODE = 1<<1, // type-specific data
-	SAU_POPP_PHASE = 1<<2,
-	SAU_POPP_SEED = 1<<3,
-	SAU_POP_PARAMS = (1<<4) - 1,
+	SAU_POPP_COPY  = 1U<<0,
+	SAU_POPP_TIME  = 1U<<1,
+	SAU_POPP_MODE  = 1U<<2, // type-specific data
+	SAU_POPP_PHASE = 1U<<3,
+	SAU_POPP_SEED  = 1U<<4,
+	SAU_POP_PARAMS = (1U<<5) - 1,
 };
 
 /* Macro used to declare and define noise type sets of items. */
@@ -211,6 +212,7 @@ typedef struct sauProgramOpRef {
 
 typedef struct sauProgramOpData {
 	uint32_t id;
+	uint32_t copy_id;
 	uint32_t params;
 	sauTime time;
 	sauLine *pan;

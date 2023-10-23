@@ -981,13 +981,6 @@ static void end_operator(sauParser *restrict o) {
 		op->amp2->v0 *= pl->used_ampmult;
 		op->amp2->vt *= pl->used_ampmult;
 	}
-	sauScriptOpData *pop = op->prev_ref;
-	if (!pop) {
-		/*
-		 * Reset all operator state for initial event.
-		 */
-		op->params = SAU_POP_PARAMS;
-	}
 	pl->operator = NULL;
 }
 
@@ -1065,10 +1058,11 @@ static void prepare_event(sauParser *restrict o,
 static void link_ev_obj(struct ParseLevel *restrict pl,
 		struct NestScope *restrict nest,
 		sauScriptObjRef *restrict obj,
-		sauScriptObjRef *restrict prev) {
+		sauScriptObjRef *restrict prev,
+		bool is_copy) {
 	sauScriptEvData *e = pl->event;
 	obj->next = NULL; /* ensure NULL when new, may have been copied */
-	if (prev || !nest) {
+	if ((prev && !is_copy) || !nest) {
 		if (!e->main_obj)
 			e->main_obj = obj;
 		else
@@ -1112,7 +1106,7 @@ static void begin_list(sauParser *restrict o,
 	//}
 	if (use_type == SAU_POP_N_carr) {
 		link_ev_obj(parent_pl, NestArr_getrev(&o->nest, 1),
-				&nest->list->ref, &plist->ref);
+				&nest->list->ref, &plist->ref, false);
 	} else {
 		sauScriptOpData *parent_on = parent_pl->operator;
 		if (!parent_on->mods)
@@ -1125,9 +1119,9 @@ static void begin_list(sauParser *restrict o,
 }
 
 static void begin_operator(sauParser *restrict o,
-		sauScriptOpData *restrict pop, bool is_compstep,
+		sauScriptOpData *restrict pop, bool is_compstep, bool is_copy,
 		uint32_t type) {
-	prepare_event(o, pop, is_compstep);
+	prepare_event(o, is_copy ? NULL : pop, is_compstep);
 	struct ParseLevel *pl = o->cur_pl;
 	struct NestScope *nest = NestArr_tip(&o->nest);
 	sauScriptEvData *e = pl->event;
@@ -1140,11 +1134,13 @@ static void begin_operator(sauParser *restrict o,
 	/*
 	 * Initialize node.
 	 */
+	bool is_nested = pl->use_type != SAU_POP_N_carr;
+	sauScriptObjInfo *info = NULL;
 	if (pop != NULL) {
-		op->ref = pop->ref;
 		op->prev_ref = pop;
 		op->op_flags = pop->op_flags &
 			(SAU_SDOP_NESTED | SAU_SDOP_MULTIPLE);
+		op->seed = pop->seed;
 		op->time = sauTime_DEFAULT(pop->time.v_ms,
 				pop->time.flags & SAU_TIMEP_IMPLICIT);
 		op->mode.main = pop->mode.main;
@@ -1159,31 +1155,44 @@ static void begin_operator(sauParser *restrict o,
 			op->time.v_ms = max_time;
 			pl->pl_flags &= ~PL_BIND_MULTIPLE;
 		}
+		if (is_copy) {
+			op->params |= SAU_POPP_COPY | SAU_POPP_TIME;
+			type = pop->ref.op_type;
+			goto NEW_COPY;
+		}
+		op->ref = pop->ref;
 	} else {
 		/*
 		 * New operator with initial parameter values.
 		 */
-		bool is_nested = pl->use_type != SAU_POP_N_carr;
-		sauScriptObjInfo *info = ObjInfoArr_add(&o->obj_arr, &op->ref,
+		op->params = SAU_POP_PARAMS - SAU_POPP_COPY;
+		op->freq = create_line(o, is_nested, SAU_PSWEEP_FREQ);
+		op->amp = create_line(o, false, SAU_PSWEEP_AMP);
+	NEW_COPY:
+		info = ObjInfoArr_add(&o->obj_arr, &op->ref,
 				SAU_POBJT_OP, type);
-		if (sau_pop_has_seed(type))
-			op->seed = info->seed = sau_rand32(&o->sl.math_state);
-		op->time = sauTime_DEFAULT(o->sl.sopt.def_time_ms, is_nested);
+		if (!is_copy) {
+			if (sau_pop_has_seed(type)) {
+				op->seed =
+				info->seed = sau_rand32(&o->sl.math_state);
+			}
+			op->time = sauTime_DEFAULT(o->sl.sopt.def_time_ms,
+					is_nested);
+		}
 		if (!is_nested) {
+			op->op_flags = 0;
 			o->root_op_obj = op->ref.obj_id;
-			op->pan = create_line(o, false, SAU_PSWEEP_PAN);
-			op->freq = create_line(o, false, SAU_PSWEEP_FREQ);
+			if (!pop || pop->op_flags & SAU_SDOP_NESTED)
+				op->pan = create_line(o, false, SAU_PSWEEP_PAN);
 		} else {
-			op->op_flags |= SAU_SDOP_NESTED;
-			op->freq = create_line(o, true, SAU_PSWEEP_FREQ);
+			op->op_flags = SAU_SDOP_NESTED;
 		}
 		info->root_op_obj = o->root_op_obj;
 		info->parent_op_obj = (is_nested && nest) ?
 			o->obj_arr.a[nest->list->ref.obj_id].parent_op_obj :
 			op->ref.obj_id;
-		op->amp = create_line(o, false, SAU_PSWEEP_AMP);
 	}
-	link_ev_obj(pl, nest, &op->ref, &pop->ref);
+	link_ev_obj(pl, nest, &op->ref, &pop->ref, is_copy);
 	op->event = e;
 	pl->pl_flags |= PL_OWN_OP;
 }
@@ -1531,7 +1540,7 @@ static void parse_op(sauParser *restrict o, uint8_t op_type,
 			return;
 		}
 	}
-	begin_operator(o, NULL, false, op_type);
+	begin_operator(o, NULL, false, false, op_type);
 	pl->operator->mode.main = id;
 	pl->sub_f = parse_in_op_step;
 }
@@ -1723,13 +1732,13 @@ static void parse_in_op_step(sauParser *restrict o) {
 		switch (c) {
 		case '/':
 			if (parse_waittime(o)) {
-				begin_operator(o, pl->operator, false, 0);
+				begin_operator(o, pl->operator, false,false, 0);
 			}
 			break;
 		case ';':
 			pl->pl_flags &= ~PL_WARN_NOSPACE; /* OK before */
 			if (parse_waittime(o)) {
-				begin_operator(o, pl->operator, true, 0);
+				begin_operator(o, pl->operator, true, false, 0);
 				pl->event->ev_flags |= SAU_SDEV_FROM_GAPSHIFT;
 			} else {
 				if ((op->time.flags &
@@ -1737,7 +1746,7 @@ static void parse_in_op_step(sauParser *restrict o) {
 				    (SAU_TIMEP_SET|SAU_TIMEP_IMPLICIT))
 					sauScanner_warning(sc, NULL,
 "ignoring 'ti' (implicit time) before ';' without number");
-				begin_operator(o, pl->operator, true, 0);
+				begin_operator(o, pl->operator, true, false, 0);
 				pl->event->ev_flags |= SAU_SDEV_WAIT_PREV_DUR;
 			}
 			break;
@@ -1887,6 +1896,31 @@ static bool parse_numvar_lhs(sauParser *restrict o) {
 	return var; // skipped whitespace?
 }
 
+/*
+ * Label reference (get and use object).
+ */
+static bool parse_getlabel(sauParser *restrict o, char c, bool is_copy) {
+	struct ParseLevel *pl = o->cur_pl;
+	pl->sub_f = NULL;
+	sauSymitem *label = scan_sym(o->sc, SAU_SYM_LABEL, NULL, false);
+	if (label != NULL) {
+		if (label->data_use == SAU_SYM_DATA_OBJ) {
+			sauScriptObjRef *ref = label->data.obj;
+			if (ref->obj_type == SAU_POBJT_OP) {
+				begin_operator(o, (void*)ref,
+						false, is_copy, 0);
+				ref = &pl->operator->ref;
+				pl->sub_f = parse_in_op_step;
+			}
+			label->data.obj = ref; /* update */
+		} else {
+			sauScanner_warning(o->sc, NULL,
+"label '%c%s' doesn't refer to any object", c, label->sstr->key);
+		}
+	}
+	return false;
+}
+
 static bool parse_level(sauParser *restrict o,
 		uint8_t use_type, uint8_t newscope, uint8_t close_c) {
 	struct ParseLevel pl;
@@ -1918,18 +1952,10 @@ static bool parse_level(sauParser *restrict o,
 				break;
 			}
 			pl.set_label = scan_sym(sc, SAU_SYM_LABEL, NULL, false);
-			sauScanner_skipws(o->sc);
-			if (sauScanner_tryc(sc, '=')) {
-				sauSymitem *item = sauSymtab_find_item(o->st,
-						pl.set_label->sstr,SAU_SYM_VAR);
-				if (!item) item = sauSymtab_add_item(o->st,
-						pl.set_label->sstr,SAU_SYM_VAR);
-				warn_deprecated(sc,
-					"\"'name=value\"", "\"$name=value\"");
-				parse_numvar_rhs(o, item, false, false);
-				pl.set_label = NULL; // used here
-			}
-			continue; /* no space is OK after, always (skipws) */
+			break;
+		case '*':
+			parse_getlabel(o, c, true);
+			break;
 		case '/':
 			if (NestArr_tip(&o->nest)) goto INVALID;
 			parse_waittime(o);
@@ -1954,33 +1980,14 @@ static bool parse_level(sauParser *restrict o,
 				if (!nest || !nest->list->first_item) break;
 				pl.pl_flags |= PL_BIND_MULTIPLE;
 				begin_operator(o, nest->list->first_item,
-						false, 0);
+						false, false, 0);
 				/*
 				 * Multiple-operator node now open.
 				 */
 				pl.sub_f = parse_in_op_step;
 				break;
 			}
-			/*
-			 * Label reference (get and use object).
-			 */
-			pl.sub_f = NULL;
-			sauSymitem *label = scan_sym(sc, SAU_SYM_LABEL,
-					NULL, false);
-			if (label != NULL) {
-				if (label->data_use == SAU_SYM_DATA_OBJ) {
-					sauScriptOpData *op = label->data.obj;
-					if (op->ref.obj_type == SAU_POBJT_OP) {
-						begin_operator(o, op, false, 0);
-						op = pl.operator;
-						pl.sub_f = parse_in_op_step;
-					}
-					label->data.obj = op; /* update */
-				} else {
-					sauScanner_warning(sc, NULL,
-"label '@%s' doesn't refer to any object", label->sstr->key);
-				}
-			}
+			parse_getlabel(o, c, false);
 			break; }
 		case 'A':
 			parse_op(o, SAU_POPT_N_amp, 0, NULL);
