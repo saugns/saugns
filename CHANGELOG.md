@@ -7,6 +7,17 @@ is a shorter change log with only the SAU language changes.
 Pre-release
 -----------
 
+Language changes:
+ * Label syntax.
+   - Add `:name` expression, for copying the object
+     pointed to by "name". A generator copy will be
+     inserted where the reference is placed, unlike
+     with an `@name` reference which merely touches
+     the original object. A copy has separate time.
+     All modulators are also cloned, once per copy.
+   - Remove the deprecated syntax for num. variable
+     assignment, `'name=`.
+
 Simplify parsing code and semantics before audio generation.
 One less set of data structures, don't copy and "convert".
 The code formerly called "parseconv" is now parser/semantics.

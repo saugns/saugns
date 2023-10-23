@@ -361,6 +361,10 @@ update_range(struct ParWithRangeMod *restrict rm,
 static void update_gen(sauGenerator *restrict o,
 		AnyGen *restrict n,
 		const sauParseGenData *restrict gd) {
+	if (gd->copy_from_id != SAU_PGEN_NO_ID)
+		*n = o->gens[gd->copy_from_id];
+	else if (gd->is_new)
+		prepare_gen(o, n, gd);
 	uint32_t params = gd->params;
 	for (uint32_t i = 0; i < gd->mod_count; ++i)
 		update_ids(n, &gd->mods_idarr[i]);
@@ -441,12 +445,10 @@ static void handle_event(sauGenerator *restrict o) {
 			const sauParseGenData *gd = pe->gen_data[i];
 			o->obj_to_gen[gd->ref.obj_id] = gd->id; // update lookup
 			AnyGen *n = &o->gens[gd->id];
-			if (gd->copy_to_id != SAU_PGEN_NO_ID) {
-				o->obj_to_gen[n->gen.obj_id] = gd->copy_to_id;
-				o->gens[gd->copy_to_id] = *n;
+			if (gd->swap_to_id != SAU_PGEN_NO_ID) {
+				o->obj_to_gen[n->gen.obj_id] = gd->swap_to_id;
+				o->gens[gd->swap_to_id] = *n;
 			}
-			bool reset = !gd->prev_ref;
-			if (reset) prepare_gen(o, n, gd);
 			update_gen(o, n, gd);
 		}
 		if (vn) {
