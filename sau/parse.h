@@ -332,6 +332,7 @@ typedef struct sauParseObjInfo {
 	uint16_t last_vo_id; // for voice allocation (objects change voices)
 	uint32_t last_gen_id; // ID for audio generator, if such
 	uint32_t root_gen_obj; // root gen for gen
+	uint32_t dst_obj_id;                  // for gen. allocation (copying)
 	struct sauParseGenData *swap_from_gd; // for gen. allocation (renumber)
 	struct sauParseGenData *last_gd;
 	const sauProgramIDArr *mods_idarr[SAU_MOD_NAMED - 1];
@@ -363,9 +364,13 @@ typedef struct sauParseGenData {
 	sauParseObjRef ref;
 	struct sauParseEvData *event;
 	struct sauParseGenData *prev_ref; // preceding for same gen(s)
+	bool is_new    : 1; // generator is first instance or needs reset
+	bool is_cloned : 1;
 	bool is_nested : 1;
 	/* generator parameters */
-	uint32_t id, copy_to_id;
+	uint32_t id;
+	uint32_t swap_to_id;   // for moving old generator with ID to new ID
+	uint32_t copy_from_id; // for initializing a cloned generator
 	uint32_t params;
 	sauTime time;
 	sauRange *amp, *pan;
