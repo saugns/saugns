@@ -191,6 +191,9 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 	if (!ood) goto MEM_ERR;
 	sauScriptObjInfo *info = &o->parse->objects[op->ref.obj_id];
 	ood->id = op_id;
+	ood->copy_id = (op->params & SAU_POPP_COPY) ?
+		op->prev_ref->ref.obj_id :
+		SAU_POP_NO_ID;
 	ood->params = op->params;
 	ood->time = op->time;
 	ood->pan = op->pan;

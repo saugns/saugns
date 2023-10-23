@@ -550,17 +550,22 @@ Variables:
 	p	Phase values
 		To point a variable to an object, "'name " can be written
 	just before an object is added or referenced. The name can then be
-	used to refer back to the object as "@name", to start a new step for
-	the object anywhere later in the script.
-		A new "@name" step differs in not automatically setting a new
-	time duration for the object, so "t" (see "Parameters") or other
-	time-altering syntax (see "Timing") must be used in order for the
-	old time duration value to be changed.
-		Note that a "@name" reference placed in a nesting scope
-	different from the original (e.g. outside a list, or in a new list)
-	does not move the object into the new nesting scope. It will not be
-	added to, nor removed from, any list by being referenced anywhere.
-	The time scope is however new and of the reference.
+	used to refer back to the object using either syntax below, to start
+	a new step anywhere later in the script for the object or a copy.
+	*name	Copy a named object and insert the copy for use in the
+		current nesting scope. The copy will inherit the state
+		of the copied object at the time of the copy step.
+	@name	Refer back to an original named object and reconfigure it.
+		An "@name" step differs from other steps for an object in
+		not automatically setting a new time duration for the
+		object, so "t" (see "Parameters") or other time-altering
+		syntax (see "Timing") must be used in order for the old
+		time duration value to be changed.
+			Does not move the original object from its old
+		nesting scope, nor into that of the "@name" reference.
+		The object is treated as if the reference had been made
+		where the object was originally inserted. The time scope
+		is however new and of the reference.
 
 Frequencies as notes:
 	Frequency values may be specified as notes. The "S f.n" option

@@ -8,6 +8,12 @@ Pre-release
 -----------
 
 Language changes:
+ * Variable syntax.
+   - Add `*name` expression, for copying the object
+     pointed to by "name". An operator copy will be
+     inserted where the reference is placed, unlike
+     with an `@name` reference which merely touches
+     the original object. A copy has separate time.
  * Channel mixing. Fix combination of `c[]` modulation
    and non-swept non-center values; e.g. `Lc[...]` now
    is at left compared to `Cc[...]`, before it wasn't.
@@ -286,7 +292,7 @@ Ramp syntax.
  * Rename ramp `hold` to `sah` (sample and hold).
  * Rename ramp `sin` back to `cos`.
 
-Variable syntax.
+Variable syntax. (Formerly called "Label".)
  * Add `'name=...` variation of the syntax for
    variable assignment, for assigning a number.
    Variables are now dynamically typed. (The old

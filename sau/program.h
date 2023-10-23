@@ -59,11 +59,12 @@ enum {
  * Operator parameter flags. For parameters without other tracking only.
  */
 enum {
-	SAU_POPP_TIME = 1<<0,
-	SAU_POPP_PHASE = 1<<1,
-	SAU_POPP_WAVE = 1<<2, // WAVE only
-	SAU_POPP_RAS = 1<<2, // RAS only
-	SAU_POP_PARAMS = (1<<3) - 1,
+	SAU_POPP_COPY  = 1U<<0,
+	SAU_POPP_TIME  = 1U<<1,
+	SAU_POPP_PHASE = 1U<<2,
+	SAU_POPP_WAVE  = 1U<<3, // WAVE only
+	SAU_POPP_RAS   = 1U<<3, // RAS only
+	SAU_POP_PARAMS = (1U<<4) - 1,
 };
 
 /** Random segments option data. */
@@ -162,6 +163,7 @@ typedef struct sauProgramVoData {
 
 typedef struct sauProgramOpData {
 	uint32_t id;
+	uint32_t copy_id;
 	uint32_t params;
 	sauTime time;
 	sauLine *pan;

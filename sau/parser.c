@@ -858,13 +858,6 @@ static void end_operator(sauParser *restrict o) {
 		op->amp2->v0 *= pl->used_ampmult;
 		op->amp2->vt *= pl->used_ampmult;
 	}
-	sauScriptOpData *pop = op->prev_ref;
-	if (!pop) {
-		/*
-		 * Reset all operator state for initial event.
-		 */
-		op->params = SAU_POP_PARAMS;
-	}
 	pl->operator = NULL;
 }
 
@@ -957,9 +950,9 @@ static void begin_list(sauParser *restrict o,
 }
 
 static void begin_operator(sauParser *restrict o,
-		sauScriptOpData *restrict pop, bool is_compstep,
+		sauScriptOpData *restrict pop, bool is_compstep, bool is_copy,
 		uint32_t type) {
-	prepare_event(o, pop, is_compstep);
+	prepare_event(o, is_copy ? NULL : pop, is_compstep);
 	struct ParseLevel *pl = o->cur_pl;
 	sauScriptEvData *e = pl->event;
 	sauScriptOpData *op;
@@ -973,7 +966,6 @@ static void begin_operator(sauParser *restrict o,
 	 * Initialize node.
 	 */
 	if (pop != NULL) {
-		op->ref = pop->ref;
 		op->prev_ref = pop;
 		op->op_flags = pop->op_flags &
 			(SAU_SDOP_NESTED | SAU_SDOP_MULTIPLE);
@@ -992,30 +984,40 @@ static void begin_operator(sauParser *restrict o,
 			op->time.v_ms = max_time;
 			pl->pl_flags &= ~PL_BIND_MULTIPLE;
 		}
+		if (is_copy) {
+			op->params |= SAU_POPP_COPY | SAU_POPP_TIME;
+			type = pop->ref.obj_type;
+			goto NEW_COPY;
+		}
+		op->ref = pop->ref;
 	} else {
 		/*
 		 * New operator with initial parameter values.
 		 */
+		op->params = SAU_POP_PARAMS - SAU_POPP_COPY;
+		op->time = (sauTime){o->sl.sopt.def_time_ms, 0};
+		op->freq = create_line(o, (pl->use_type != SAU_POP_N_carr),
+				SAU_PSWEEP_FREQ);
+		op->amp = create_line(o, false, SAU_PSWEEP_AMP);
+	NEW_COPY:
 		op->ref.obj_id = o->obj_arr.count;
 		sauScriptObjInfo *info = sauScriptObjArr_add(&o->obj_arr, NULL);
 		info->obj_type = op->ref.obj_type = type;
 		info->last_vo_id = op->ref.vo_id = SAU_PVO_NO_ID;
-		if (type == SAU_POPT_RAS)
+		if (!is_copy && type == SAU_POPT_RAS)
 			info->seed = sau_rand32(&o->sl.math_state);
-		op->time = (sauTime){o->sl.sopt.def_time_ms, 0};
 		if (pl->use_type == SAU_POP_N_carr) {
+			op->op_flags = 0;
 			o->root_obj_id = op->ref.obj_id;
-			op->pan = create_line(o, false, SAU_PSWEEP_PAN);
-			op->freq = create_line(o, false, SAU_PSWEEP_FREQ);
+			if (!pop || pop->op_flags & SAU_SDOP_NESTED)
+				op->pan = create_line(o, false, SAU_PSWEEP_PAN);
 		} else {
-			op->op_flags |= SAU_SDOP_NESTED;
-			op->freq = create_line(o, true, SAU_PSWEEP_FREQ);
+			op->op_flags = SAU_SDOP_NESTED;
 		}
 		info->root_obj_id = o->root_obj_id;
 		info->parent_obj_id = pl->nest_list ?
 			pl->nest_list->parent_obj_id :
 			op->ref.obj_id;
-		op->amp = create_line(o, false, SAU_PSWEEP_AMP);
 	}
 	op->event = e;
 	/*
@@ -1023,7 +1025,7 @@ static void begin_operator(sauParser *restrict o,
 	 * or an operator node (either ordinary or representing multiple
 	 * carriers) in the case of operator linking/nesting.
 	 */
-	if (pop || !pl->nest_list) {
+	if ((pop && !is_copy) || !pl->nest_list) {
 		if (!e->objs.first_item)
 			e->objs.first_item = op;
 		else
@@ -1148,7 +1150,7 @@ static void leave_level(sauParser *restrict o) {
 		 */
 		if (pl->scope_first != NULL) {
 			pl->parent->pl_flags |= PL_BIND_MULTIPLE;
-			begin_operator(o, pl->scope_first, false, 0);
+			begin_operator(o, pl->scope_first, false, false, 0);
 		}
 	} else if (pl->scope == SCOPE_NEST) {
 		/*
@@ -1526,13 +1528,13 @@ static void parse_in_opdata(sauParser *restrict o) {
 	switch (c) {
 	case '/':
 		if (parse_waittime(o)) {
-			begin_operator(o, pl->operator, false, 0);
+			begin_operator(o, pl->operator, false, false, 0);
 		}
 		break;
 	case ';':
 		pl->pl_flags &= ~PL_WARN_NOSPACE; /* OK before */
 		if (parse_waittime(o)) {
-			begin_operator(o, pl->operator, true, 0);
+			begin_operator(o, pl->operator, true, false, 0);
 			pl->event->ev_flags |= SAU_SDEV_FROM_GAPSHIFT;
 		} else {
 			if ((op->time.flags &
@@ -1540,7 +1542,7 @@ static void parse_in_opdata(sauParser *restrict o) {
 			    (SAU_TIMEP_SET|SAU_TIMEP_IMPLICIT))
 				sauScanner_warning(sc, NULL,
 "ignoring 'ti' (implicit time) before ';' without number");
-			begin_operator(o, pl->operator, true, 0);
+			begin_operator(o, pl->operator, true, false, 0);
 			pl->event->ev_flags |= SAU_SDEV_WAIT_PREV_DUR;
 		}
 		break;
@@ -1613,6 +1615,29 @@ static void parse_in_opdata(sauParser *restrict o) {
 	PARSE_IN__TAIL()
 }
 
+/*
+ * Variable reference (get and use object).
+ */
+static bool parse_varuse(sauParser *restrict o, char c, bool is_copy) {
+	struct ParseLevel *pl = o->cur_pl;
+	pl->sub_f = NULL;
+	sauSymitem *var = scan_sym(o->sc, SAU_SYM_VAR,
+			NULL, false);
+	if (var != NULL) {
+		if (var->data_use == SAU_SYM_DATA_OBJ) {
+			sauScriptOpData *ref = var->data.obj;
+			begin_operator(o, ref, false, is_copy, 0);
+			ref = pl->operator;
+			var->data.obj = ref; /* update */
+			pl->sub_f = parse_in_opdata;
+		} else {
+			sauScanner_warning(o->sc, NULL,
+"reference '%c%s' doesn't point to an object", c, var->sstr->key);
+		}
+	}
+	return false;
+}
+
 static bool parse_level(sauParser *restrict o,
 		uint8_t use_type, uint8_t newscope, uint8_t close_c) {
 	struct ParseLevel pl;
@@ -1649,6 +1674,9 @@ static bool parse_level(sauParser *restrict o,
 				break;
 			}
 			pl.set_var = scan_sym(sc, SAU_SYM_VAR, NULL, false);
+			break;
+		case '*':
+			parse_varuse(o, c, true);
 			break;
 		case '/':
 			if (pl.nest_list) goto INVALID;
@@ -1693,29 +1721,12 @@ static bool parse_level(sauParser *restrict o,
 				pl.sub_f = parse_in_opdata;
 				break;
 			}
-			/*
-			 * Variable reference (get and use object).
-			 */
-			pl.sub_f = NULL;
-			sauSymitem *var = scan_sym(sc, SAU_SYM_VAR,
-					NULL, false);
-			if (var != NULL) {
-				if (var->data_use == SAU_SYM_DATA_OBJ) {
-					sauScriptOpData *ref = var->data.obj;
-					begin_operator(o, ref, false, 0);
-					ref = pl.operator;
-					var->data.obj = ref; /* update */
-					pl.sub_f = parse_in_opdata;
-				} else {
-					sauScanner_warning(sc, NULL,
-"reference '@%s' doesn't point to an object", var->sstr->key);
-				}
-			}
+			parse_varuse(o, c, false);
 			break; }
 		case 'R': {
 			size_t id = 0; /* default as fallback value */
 			scan_sym_id(sc, &id, SAU_SYM_LINE_ID, sauLine_names);
-			begin_operator(o, NULL, false, SAU_POPT_RAS);
+			begin_operator(o, NULL, false, false, SAU_POPT_RAS);
 			pl.operator->ras_opt.line = id;
 			pl.operator->ras_opt.flags = SAU_RAS_O_LINE_SET;
 			pl.sub_f = parse_in_opdata;
@@ -1729,7 +1740,7 @@ static bool parse_level(sauParser *restrict o,
 		case 'W': {
 			size_t id = 0; /* default as fallback value */
 			scan_sym_id(sc, &id, SAU_SYM_WAVE_ID, sauWave_names);
-			begin_operator(o, NULL, false, SAU_POPT_WAVE);
+			begin_operator(o, NULL, false, false, SAU_POPT_WAVE);
 			pl.operator->wave = id;
 			pl.sub_f = parse_in_opdata;
 			break; }
