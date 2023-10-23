@@ -4,6 +4,18 @@ saugns version changes
 [On the website](https://sau.frama.io/changes.html#saulang)
 is a shorter change log with only the SAU language changes.
 
+Pre-release
+-----------
+
+Language changes:
+ * Label syntax.
+   - Add `*name` expression, for copying the object
+     pointed to by "name". An operator copy will be
+     inserted where the reference is placed, unlike
+     with an `@name` reference which merely touches
+     the original object. A copy has separate time.
+   - Remove deprecated numerical variable `'name=`.
+
 v0.4.8c (2014-11-15)
 --------------------
 
