@@ -175,10 +175,15 @@ Generator universal parameters:
 		whenever a carrier it is linked to does. (Implicit time is
 		only supported for nested generators.) When such a time
 		length is retrieved as part of setting the default time for
-		something else, a definite default time in seconds (e.g. 1
-		second) is however used instead.
-			For a compound step, the first substep is however
-		simply given the "S t" default value if no time is set.
+		something else, a definite default time in seconds (e.g. 1.0
+		seconds or "S t") is however used instead.
+			For steps began with a "@name" label reference or a
+		":name" label copy, the default time (aside from modulator
+		implicit time) is the last time got through the label. That's
+		the time for the last prior "@name" reference if any, or if
+		none, the object when and where the "'name " label was added.
+			For a compound step, the first substep uses "S t" for
+		the default time, unless it used a label to get an object.
 		The following substeps in turn each have the time of the
 		previous as its default time. The exception is modulators,
 		for which the last substep has implicit time ('i', "ti")
@@ -1004,16 +1009,23 @@ Labels for objects:
 	To label an object, "'name " can be written just before it is added
 	or referenced. The name is case-sensitive and can have any sequence
 	of alphanumeric characters and/or '_'. The name can then be used to
-	refer back to the object as "@name", starting a new step for it.
-		A new "@name" step differs in not automatically setting a new
-	time duration for the object, so "t" (see "Parameters") or other
-	time-altering syntax (see "Timing") must be used in order for the
-	old time duration value to be changed.
-		Note that a "@name" reference placed in a nesting scope
-	different from the original (e.g. outside a list, or in a new list)
-	does not move the object into the new nesting scope. It will not be
-	added to, nor removed from, any list by being referenced anywhere.
-	The time scope is however new and of the reference.
+	refer back to the object using either syntax below, to start a new
+	step anywhere later in the script for the object or for a copy of it.
+	:name   Copy a named object and insert the copy for use in the
+		current nesting scope. The copy will inherit the state
+		of the copied object at the time of the copy step. All
+		modulator objects are also cloned, once per copy step.
+	@name   Refer back to an original named object and reconfigure it.
+		An "@name" step differs from other steps for an object in
+		not automatically setting a new time duration for the
+		object. Use "t" (see "Parameters") or other time-altering
+		syntax (see "Timing") to change the generator's time
+		duration value, e.g. to restart or stop it.
+			Does not move the original object from its old
+		nesting scope, nor into that where the "@name" reference
+		is located. The object is treated as if the reference had
+		been made in the original nesting scope for the object.
+		The time scope is however new and of the reference.
 
 Frequencies as notes:
 	Frequency values may be specified as notes, using symbolic named
