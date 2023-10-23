@@ -987,13 +987,6 @@ static void end_gen(sauParser *restrict o) {
 		gen->amp->e.v0 *= pl->used_ampmult;
 		gen->amp->e.vt *= pl->used_ampmult;
 	}
-	sauParseGenData *pgen = gen->prev_ref;
-	if (!pgen) {
-		/*
-		 * Reset all generator state for initial event.
-		 */
-		gen->params = SAU_PGEN_PARAMS;
-	}
 	pl->gen = NULL;
 }
 
@@ -1071,10 +1064,11 @@ static void prepare_event(sauParser *restrict o,
 static void link_ev_obj(struct ParseLevel *restrict pl,
 		struct NestScope *restrict nest,
 		sauParseObjRef *restrict obj,
-		sauParseObjRef *restrict prev) {
+		sauParseObjRef *restrict prev,
+		bool is_copy) {
 	sauParseEvData *e = pl->event;
 	obj->next = NULL; /* ensure NULL when new, may have been copied */
-	if (prev || !nest) {
+	if ((prev && !is_copy) || !nest) {
 		if (!e->main_obj)
 			e->main_obj = obj;
 		else
@@ -1122,7 +1116,8 @@ static void begin_list(sauParser *restrict o,
 		//} else {
 			sem_objinfo_add(&o->ps, &list->ref, SAU_POBJT_LIST, 0);
 		//}
-		link_ev_obj(parent_pl, parent_nest, &list->ref, &plist->ref);
+		link_ev_obj(parent_pl, parent_nest,
+				&list->ref, &plist->ref, false);
 	} else {
 		/*
 		 * Maintain linked list of modulator lists per owner (carrier).
@@ -1149,9 +1144,9 @@ static void begin_list(sauParser *restrict o,
 }
 
 static void begin_gen(sauParser *restrict o,
-		sauParseGenData *restrict pgen, bool is_compstep,
+		sauParseGenData *restrict pgen, bool is_compstep, bool is_copy,
 		uint32_t type) {
-	prepare_event(o, pgen, is_compstep);
+	prepare_event(o, is_copy ? NULL : pgen, is_compstep);
 	struct ParseLevel *pl = o->cur_pl;
 	struct NestScope *nest = NestArr_tip(&o->nest);
 	sauParseEvData *e = pl->event;
@@ -1164,35 +1159,37 @@ static void begin_gen(sauParser *restrict o,
 	/*
 	 * Initialize node.
 	 */
+	bool is_nested = pl->use_type != SAU_MOD_N_carr;
 	if (pgen != NULL) {
-		gen->ref = pgen->ref;
 		gen->prev_ref = pgen;
 		gen->is_nested = pgen->is_nested;
-		gen->time = sauTime_DEFAULT(pgen->time.v_ms,
-				pgen->time.flags & SAU_TIMEP_IMPLICIT);
+		// verify time flags wrt nesting for the case of cloning
+		unsigned time_flags = is_nested ?
+			pgen->time.flags & SAU_TIMEP_IMPLICIT :
+			0;
+		gen->time = sauTime_DEFAULT(pgen->time.v_ms, time_flags);
 		gen->mode.main = pgen->mode.main;
+		if (is_copy) {
+			type = pgen->ref.gen_type;
+			gen->params |= SAU_PGENP_TIME;
+			gen->is_cloned = true;
+			goto NEW_COPY;
+		}
+		gen->ref = pgen->ref;
 	} else {
 		/*
 		 * New generator with initial parameter values.
 		 *
 		 * Defaults not handled during parsing are not set here.
 		 */
-		bool is_nested = pl->use_type != SAU_MOD_N_carr;
-		gen->is_nested = is_nested;
-		sauParseObjInfo *info = sem_objinfo_add(&o->ps, &gen->ref,
-				SAU_POBJT_GEN, type);
+		gen->params = SAU_PGEN_PARAMS;
 		if (sau_pgen_has_seed(type))
 			gen->seed = sau_rand32(&o->sl.math_state);
 		gen->time = sauTime_DEFAULT(o->sl.sopt.def_time_ms, is_nested);
-		if (!is_nested) {
-			o->root_gen_obj = gen->ref.obj_id;
-			if (o->sl.sopt.def_chanmix != 0.f)
-				gen->pan = create_range(o,
-						false, SAU_PSWEEP_PAN);
-		}
-		info->root_gen_obj = o->root_gen_obj;
 		if (pl->used_ampmult != 1.f)
 			gen->amp = create_range(o, false, SAU_PSWEEP_AMP);
+		if (!is_nested && o->sl.sopt.def_chanmix != 0.f)
+			gen->pan = create_range(o, false, SAU_PSWEEP_PAN);
 		if (sau_pgen_is_osc(type)) {
 			switch (type) {
 			case SAU_PGEN_N_raseg:
@@ -1201,13 +1198,19 @@ static void begin_gen(sauParser *restrict o,
 				gen->mode.woo = o->sl.sopt.def_woo; break;
 			}
 		}
-		/*
-		 * All audio generators have frequency, not only oscillators.
-		 */
+		// all audio generators have frequency, not only oscillators
 		if (is_nested || o->sl.sopt.def_freq != SAU_PDEF_FREQ)
 			gen->freq = create_range(o, is_nested, SAU_PSWEEP_FREQ);
+	NEW_COPY:
+		gen->is_new = true;
+		gen->is_nested = is_nested;
+		sauParseObjInfo *info = sem_objinfo_add(&o->ps, &gen->ref,
+				SAU_POBJT_GEN, type);
+		if (!is_nested)
+			o->root_gen_obj = gen->ref.obj_id;
+		info->root_gen_obj = o->root_gen_obj;
 	}
-	link_ev_obj(pl, nest, &gen->ref, &pgen->ref);
+	link_ev_obj(pl, nest, &gen->ref, &pgen->ref, is_copy);
 	gen->event = e;
 	pl->pl_flags |= PL_OWN_GEN;
 }
@@ -1771,7 +1774,7 @@ static bool parse_gen(sauParser *restrict o, uint8_t gen_type,
 				"modulators not supported here");
 		return true;
 	}
-	begin_gen(o, NULL, false, gen_type);
+	begin_gen(o, NULL, false, false, gen_type);
 	pl->sub_f = parse_in_gen_step;
 	return parse_gen_main(o, gen_type, sym_type, sym_names);
 }
@@ -1989,13 +1992,13 @@ static void parse_in_gen_step(sauParser *restrict o) {
 		switch (c) {
 		case '/':
 			if (parse_waittime(o)) {
-				begin_gen(o, pl->gen, false, 0);
+				begin_gen(o, pl->gen, false, false, 0);
 			}
 			break;
 		case ';':
 			pl->pl_flags &= ~PL_WARN_NOSPACE; /* OK before */
 			if (parse_waittime(o)) {
-				begin_gen(o, pl->gen, true, 0);
+				begin_gen(o, pl->gen, true, false, 0);
 				pl->event->ev_flags |= SAU_PEV_FROM_GAPSHIFT;
 			} else {
 				if ((gen->time.flags &
@@ -2003,7 +2006,7 @@ static void parse_in_gen_step(sauParser *restrict o) {
 				    (SAU_TIMEP_SET|SAU_TIMEP_IMPLICIT))
 					sauScanner_warning(sc, NULL,
 "ignoring 'ti' (implicit time) before ';' without number");
-				begin_gen(o, pl->gen, true, 0);
+				begin_gen(o, pl->gen, true, false, 0);
 				pl->event->ev_flags |= SAU_PEV_WAIT_PREV_DUR;
 			}
 			break;
@@ -2154,6 +2157,30 @@ static bool parse_numvar_lhs(sauParser *restrict o) {
 	return var; // skipped whitespace?
 }
 
+/*
+ * Label reference (get and use object).
+ */
+static bool parse_getlabel(sauParser *restrict o, uint8_t c, bool is_copy) {
+	struct ParseLevel *pl = o->cur_pl;
+	pl->sub_f = NULL;
+	sauSymitem *label = scan_sym(o->sc, SAU_SYM_LABEL, NULL, false);
+	if (label != NULL) {
+		if (label->data_use == SAU_SYM_DATA_OBJ) {
+			sauParseGenData *gen = label->data.obj;
+			if (gen->ref.obj_type == SAU_POBJT_GEN){
+				begin_gen(o, gen, false, is_copy, 0);
+				gen = pl->gen;
+				pl->sub_f = parse_in_gen_step;
+			}
+			if (!is_copy) label->data.obj = gen; /* update */
+		} else {
+			sauScanner_warning(o->sc, NULL,
+"label '%c%s' doesn't refer to any object", c, label->sstr->key);
+		}
+	}
+	return false;
+}
+
 static bool parse_level(sauParser *restrict o,
 		uint8_t use_type, uint8_t newscope, uint8_t close_c) {
 	struct ParseLevel pl;
@@ -2185,21 +2212,13 @@ static bool parse_level(sauParser *restrict o,
 				break;
 			}
 			pl.set_label = scan_sym(sc, SAU_SYM_LABEL, NULL, false);
-			sauScanner_skipws(o->sc);
-			if (sauScanner_tryc(sc, '=')) {
-				sauSymitem *item = sauSymtab_find_item(o->st,
-						pl.set_label->sstr,SAU_SYM_VAR);
-				if (!item) item = sauSymtab_add_item(o->st,
-						pl.set_label->sstr,SAU_SYM_VAR);
-				warn_deprecated(sc,
-					"\"'name=value\"", "\"$name=value\"");
-				parse_numvar_rhs(o, item, false, false);
-				pl.set_label = NULL; // used here
-			}
-			continue; /* no space is OK after, always (skipws) */
+			break;
 		case '/':
 			if (NestArr_tip(&o->nest)) goto INVALID;
 			parse_waittime(o);
+			break;
+		case ':':
+			parse_getlabel(o, c, true);
 			break;
 		case '<':
 			warn_opening_disallowed(sc, '<');
@@ -2211,28 +2230,9 @@ static bool parse_level(sauParser *restrict o,
 		case '>':
 			warn_closing_without_opening(sc, '>', '<');
 			break;
-		case '@': {
-			/*
-			 * Label reference (get and use object).
-			 */
-			pl.sub_f = NULL;
-			sauSymitem *label = scan_sym(sc, SAU_SYM_LABEL,
-					NULL, false);
-			if (label != NULL) {
-				if (label->data_use == SAU_SYM_DATA_OBJ) {
-					sauParseGenData *gen = label->data.obj;
-					if (gen->ref.obj_type == SAU_POBJT_GEN){
-						begin_gen(o, gen, false, 0);
-						gen = pl.gen;
-						pl.sub_f = parse_in_gen_step;
-					}
-					label->data.obj = gen; /* update */
-				} else {
-					sauScanner_warning(sc, NULL,
-"label '@%s' doesn't refer to any object", label->sstr->key);
-				}
-			}
-			break; }
+		case '@':
+			parse_getlabel(o, c, false);
+			break;
 		case 'A':
 			if (parse_gen(o, SAU_PGEN_N_amp, 0, NULL)) break;
 			if ((c = parse_gen_amp(o))) goto INVALID;
