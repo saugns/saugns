@@ -93,8 +93,21 @@ typedef struct EventNode {
 	const sauProgramEvent *prg_event;
 } EventNode;
 
+enum {
+	UINS_SUM = 0,
+	UINS_AMP,
+	UINS_FREQ,
+	UINS_PHASE,
+	UINS_CYCLE_PHASE,
+	UINS_WOSC_FILL,
+	UINS_RASG_FILL,
+};
+
 typedef struct BlockSched {
 	uint32_t use;
+	uint32_t out;
+	int32_t in, in2;
+	void *data;
 	//uint32_t max_len;
 } BlockSched;
 
@@ -378,18 +391,18 @@ static void handle_event(sauGenerator *restrict o, EventNode *restrict e) {
 }
 
 static uint32_t sched_block(sauGenerator *restrict o,
-		BlockSched *restrict blocks,
+		uint32_t block,
 		OperatorNode *restrict n,
 		int32_t parent_freq,
 		bool wave_env, bool layer);
 
 static void sched_param_with_rangemod(sauGenerator *restrict o,
-		BlockSched *restrict blocks,
+		uint32_t block,
 		struct ParWithRangeMod *restrict n,
 		int32_t param_mulbuf,
 		int32_t reused_freq) {
+	BlockSched *blocks = &o->blocks[block];
 	uint32_t i;
-	uint32_t block = 0;
 //	float *par_buf = *(bufs + 0);
 //	float *freq = (reused_freq ? reused_freq : par_buf);
 	int32_t par_buf = block;
@@ -399,7 +412,7 @@ static void sched_param_with_rangemod(sauGenerator *restrict o,
 //		float *r_par_buf = *(bufs + 1);
 //		sauLine_run(&n->r_par, r_par_buf, len, param_mulbuf);
 		for (i = 0; i < n->r_mods->count; ++i)
-			sched_block(o, (blocks + 2),
+			sched_block(o, (block + 2),
 					&o->operators[n->r_mods->ids[i]],
 					freq, true, i);
 //		float *mod_buf = *(bufs + 2);
@@ -410,10 +423,13 @@ static void sched_param_with_rangemod(sauGenerator *restrict o,
 	}
 	if (n->mods->count > 0) {
 		for (i = 0; i < n->mods->count; ++i)
-			sched_block(o, (blocks + 0),
+			sched_block(o, (block + 0),
 					&o->operators[n->mods->ids[i]],
 					freq, false, true);
 	}
+	blocks->in = param_mulbuf;
+	blocks->out = par_buf;
+	blocks->data = n;
 }
 
 /*
@@ -422,44 +438,45 @@ static void sched_param_with_rangemod(sauGenerator *restrict o,
  * Needs up to 6 buffers for its own node level.
  */
 static void sched_block_wosc(sauGenerator *restrict o,
-		BlockSched *restrict blocks,
+		uint32_t block,
 		OperatorNode *restrict n,
 		int32_t parent_freq,
 		bool wave_env, bool layer) {
 	uint32_t i;
-	uint32_t block = 0;
+	BlockSched *blocks = &o->blocks[block];
 //	float *mix_buf = *(bufs++), *pm_buf = NULL, *fpm_buf = NULL;
 //	void *phase_buf = *(bufs++);
 //	float *freq = NULL, *amp = NULL;
 //	float *tmp_buf = NULL;
+	int32_t mix_buf = block++, pm_buf = -1, fpm_buf = -1;
+	int32_t phase_buf = block++;
 	int32_t freq = -1, amp = -1;
-	int32_t pm_buf = -1, fpm_buf = -1;
 	int32_t tmp_buf = -1;
 	/*
 	 * Handle frequency (alternatively ratio) parameter,
 	 * including frequency modulation if modulators linked.
 	 */
-	block += 2;
-	blocks += 2;
-	sched_param_with_rangemod(o, blocks, &n->osc.freq, parent_freq, -1);
+	block++; blocks++;
+	blocks->use = UINS_FREQ;
+	sched_param_with_rangemod(o, block, &n->osc.freq, parent_freq, -1);
 	freq = block;
 	/*
 	 * Pre-fill phase buffers.
 	 *
 	 * If phase modulators linked, get phase offsets for modulation.
 	 */
-	block += 1;
-	blocks += 1;
+	block++; blocks++;
+	blocks->use = UINS_PHASE;
 	if (n->osc.pmods->count > 0) {
 		for (i = 0; i < n->osc.pmods->count; ++i)
-			sched_block(o, (blocks + 0),
+			sched_block(o, (block + 0),
 					&o->operators[n->osc.pmods->ids[i]],
 					freq, false, i);
 		pm_buf = block;
 	}
 	if (n->osc.fpmods->count > 0) {
 		for (i = 0; i < n->osc.fpmods->count; ++i)
-			sched_block(o, (blocks + 1),
+			sched_block(o, (block + 1),
 					&o->operators[n->osc.fpmods->ids[i]],
 					freq, false, i);
 		fpm_buf = block + 1;
@@ -470,10 +487,19 @@ static void sched_block_wosc(sauGenerator *restrict o,
 	 * Handle amplitude parameter, including amplitude modulation if
 	 * modulators linked.
 	 */
-	sched_param_with_rangemod(o, blocks, &n->gen.amp, -1, freq);
+	blocks->use = UINS_AMP;
+	sched_param_with_rangemod(o, block, &n->gen.amp, -1, freq);
 	amp = block++; blocks++;
 	tmp_buf = block;
+	blocks->use = UINS_WOSC_FILL;
+	blocks->in = phase_buf;
+	blocks->out = tmp_buf;
 //	sauWOsc_run(&n->wo.wosc, tmp_buf, len, phase_buf);
+	blocks++; // mixing here
+	blocks->use = UINS_SUM;
+	blocks->out = mix_buf;
+	blocks->in = tmp_buf;
+	blocks->in2 = amp;
 //	block_mix(&n->wo.osc.gen, mix_buf, len, wave_env, layer, tmp_buf, amp);
 }
 
@@ -483,44 +509,45 @@ static void sched_block_wosc(sauGenerator *restrict o,
  * Needs up to 7 buffers for its own node level.
  */
 static void sched_block_rasg(sauGenerator *restrict o,
-		BlockSched *restrict blocks,
+		uint32_t block,
 		OperatorNode *restrict n,
 		int32_t parent_freq,
 		bool wave_env, bool layer) {
 	uint32_t i;
-	uint32_t block = 0;
+	BlockSched *blocks = &o->blocks[block];
 //	float *mix_buf = *(bufs++), *pm_buf = NULL, *fpm_buf = NULL;
 //	void *cycle_buf = *(bufs++), *rasg_buf = *(bufs++);
 //	float *freq = NULL, *amp = NULL;
 //	float *tmp_buf = NULL, *tmp2_buf = NULL;
-	int32_t freq = -1, amp = -1;
+	int32_t mix_buf = block++, freq = -1, amp = -1;
+	int32_t cycle_buf = block++, rasg_buf = block++;
 	int32_t pm_buf = -1, fpm_buf = -1;
 	int32_t tmp_buf = -1, tmp2_buf = -1;
 	/*
 	 * Handle frequency (alternatively ratio) parameter,
 	 * including frequency modulation if modulators linked.
 	 */
-	block += 3;
-	blocks += 3;
-	sched_param_with_rangemod(o, blocks, &n->osc.freq, parent_freq, -1);
+	block++; blocks++;
+	blocks->use = UINS_FREQ;
+	sched_param_with_rangemod(o, block, &n->osc.freq, parent_freq, -1);
 	freq = block;
 	/*
 	 * Pre-fill cycle & phase buffers.
 	 *
 	 * If phase modulators linked, get phase offsets for modulation.
 	 */
-	block += 1;
-	blocks += 1;
+	block++; blocks++;
+	blocks->use = UINS_CYCLE_PHASE;
 	if (n->osc.pmods->count > 0) {
 		for (i = 0; i < n->osc.pmods->count; ++i)
-			sched_block(o, (blocks + 0),
+			sched_block(o, (block + 0),
 					&o->operators[n->osc.pmods->ids[i]],
 					freq, false, i);
 		pm_buf = block;
 	}
 	if (n->osc.fpmods->count > 0) {
 		for (i = 0; i < n->osc.fpmods->count; ++i)
-			sched_block(o, (blocks + 1),
+			sched_block(o, (block + 1),
 					&o->operators[n->osc.fpmods->ids[i]],
 					freq, false, i);
 		fpm_buf = block + 1;
@@ -531,11 +558,21 @@ static void sched_block_rasg(sauGenerator *restrict o,
 	 * Handle amplitude parameter, including amplitude modulation if
 	 * modulators linked.
 	 */
-	sched_param_with_rangemod(o, blocks, &n->gen.amp, -1, freq);
+	blocks->use = UINS_AMP;
+	sched_param_with_rangemod(o, block, &n->gen.amp, -1, freq);
 	amp = block++; blocks++;
 	tmp_buf = block;
 	tmp2_buf = block + 1;
+	blocks->use = UINS_RASG_FILL;
+	blocks->in = tmp_buf; // uses pair, this and this + 1
+	blocks->in2 = cycle_buf;
+	blocks->out = rasg_buf;
 //	sauRasG_run(&n->rg.rasg, len, rasg_buf, tmp_buf, tmp2_buf, cycle_buf);
+	blocks++; // mixing here
+	blocks->use = UINS_SUM;
+	blocks->out = mix_buf;
+	blocks->in = rasg_buf;
+	blocks->in2 = amp;
 //	block_mix(&n->rg.osc.gen, mix_buf, len, wave_env, layer, rasg_buf, amp);
 }
 
@@ -549,11 +586,12 @@ static void sched_block_rasg(sauGenerator *restrict o,
  * \return number of samples generated
  */
 static uint32_t sched_block(sauGenerator *restrict o,
-		BlockSched *restrict blocks,
+		uint32_t block,
 		OperatorNode *restrict n,
 		int32_t parent_freq,
 		bool wave_env, bool layer) {
 	GenNode *gen = &n->gen;
+	BlockSched *blocks = &o->blocks[block];
 	blocks[0].use; // mix
 	/*
 	 * Guard against circular references.
@@ -575,10 +613,10 @@ static uint32_t sched_block(sauGenerator *restrict o,
 	 */
 	switch (gen->type) {
 	case SAU_POPT_WAVE:
-		sched_block_wosc(o, blocks, n, parent_freq, wave_env, layer);
+		sched_block_wosc(o, block, n, parent_freq, wave_env, layer);
 		break;
 	case SAU_POPT_RAS:
-		sched_block_rasg(o, blocks, n, parent_freq, wave_env, layer);
+		sched_block_rasg(o, block, n, parent_freq, wave_env, layer);
 		break;
 	}
 	/*
