@@ -96,6 +96,8 @@ typedef struct EventNode {
 
 /* Macro used for lists which include generator instruction names. */
 #define GEN_INS__ITEMS(X) \
+	X(error) \
+	X(time_sub) \
 	X(mix_add) \
 	X(mix_mul) \
 	X(raparam) \
@@ -104,7 +106,6 @@ typedef struct EventNode {
 	X(cycle_phase) \
 	X(fill_wosc) \
 	X(fill_rasg) \
-	X(time_sub) \
 	//
 #define GEN_INS__X_ID(NAME) INS_N_##NAME,
 #define GEN_INS__X_NAME(NAME) #NAME,
@@ -469,7 +470,7 @@ static void handle_event(sauGenerator *restrict o, EventNode *restrict e) {
 
 static GenIns *
 sched_ins(sauGenerator *restrict o,
-		GenIns *restrict gen_ins, uint32_t buf,
+		GenIns *restrict ins, uint32_t buf,
 		OperatorNode *restrict n,
 		int32_t parent_freq,
 		bool wave_env, bool layer);
@@ -481,7 +482,7 @@ sched_ins(sauGenerator *restrict o,
  */
 static GenIns *
 sched_param_with_rangemod(sauGenerator *restrict o,
-		GenIns *restrict gen_ins, uint32_t buf,
+		GenIns *restrict ins, uint32_t buf,
 		struct ParWithRangeMod *restrict n,
 		int32_t param_mulbuf,
 		int32_t reused_freq) {
@@ -491,22 +492,21 @@ sched_param_with_rangemod(sauGenerator *restrict o,
 	if (n->r_mods->count > 0) {
 		r_par_buf = par_buf + 1;
 		for (i = 0; i < n->r_mods->count; ++i)
-			gen_ins = 1 + sched_ins(o, gen_ins, par_buf + 2,
+			ins = sched_ins(o, ins, par_buf + 2,
 					&o->operators[n->r_mods->ids[i]],
 					freq, true, i);
 	}
-	*gen_ins = INS_RAPARAM(par_buf, param_mulbuf, r_par_buf, n);
+	*(ins++) = INS_RAPARAM(par_buf, param_mulbuf, r_par_buf, n);
 	if (r_par_buf >= 0) {
-		++gen_ins;
-		*gen_ins = INS_ARI_MEANS(par_buf, par_buf + 1, par_buf + 2);
+		*(ins++) = INS_ARI_MEANS(par_buf, par_buf + 1, par_buf + 2);
 	}
 	if (n->mods->count > 0) {
 		for (i = 0; i < n->mods->count; ++i)
-			gen_ins = sched_ins(o, 1 + gen_ins, par_buf,
+			ins = sched_ins(o, ins, par_buf,
 					&o->operators[n->mods->ids[i]],
 					freq, false, true);
 	}
-	return gen_ins;
+	return ins;
 }
 
 /*
@@ -517,7 +517,7 @@ sched_param_with_rangemod(sauGenerator *restrict o,
  */
 static GenIns *
 sched_ins_wosc(sauGenerator *restrict o,
-		GenIns *restrict gen_ins, uint32_t buf,
+		GenIns *restrict ins, uint32_t buf,
 		OperatorNode *restrict n,
 		int32_t parent_freq,
 		bool wave_env, bool layer) {
@@ -531,7 +531,7 @@ sched_ins_wosc(sauGenerator *restrict o,
 	 * including frequency modulation if modulators linked.
 	 */
 	freq = buf;
-	gen_ins = 1 + sched_param_with_rangemod(o, gen_ins, buf,
+	ins = sched_param_with_rangemod(o, ins, buf,
 			&n->osc.freq, parent_freq, -1);
 	++buf; // freq is passed along to modulators that need it; kept below
 	/*
@@ -541,36 +541,34 @@ sched_ins_wosc(sauGenerator *restrict o,
 	 */
 	if (n->osc.pmods->count > 0) {
 		for (i = 0; i < n->osc.pmods->count; ++i)
-			gen_ins = 1 + sched_ins(o, gen_ins, (buf + 0),
+			ins = sched_ins(o, ins, (buf + 0),
 					&o->operators[n->osc.pmods->ids[i]],
 					freq, false, i);
 		pm_buf = buf; // temporary
 	}
 	if (n->osc.fpmods->count > 0) {
 		for (i = 0; i < n->osc.fpmods->count; ++i)
-			gen_ins = 1 + sched_ins(o, gen_ins, (buf + 1),
+			ins = sched_ins(o, ins, (buf + 1),
 					&o->operators[n->osc.fpmods->ids[i]],
 					freq, false, i);
 		fpm_buf = buf + 1; // temporary
 	}
-	*gen_ins = INS_PHASE(phase_buf, freq, buf, n,
+	*(ins++) = INS_PHASE(phase_buf, freq, buf, n,
 			pm_buf>=0, fpm_buf>=0);
-	++gen_ins;
 	/*
 	 * Handle amplitude parameter, including amplitude modulation if
 	 * modulators linked.
 	 */
-	gen_ins = 1 + sched_param_with_rangemod(o, gen_ins, buf,
+	ins = sched_param_with_rangemod(o, ins, buf,
 			&n->gen.amp, -1, freq);
 	amp = buf++;
 	tmp_buf = buf;
-	*gen_ins = INS_FILL_WOSC(tmp_buf, phase_buf, n);
-	++gen_ins;
+	*(ins++) = INS_FILL_WOSC(tmp_buf, phase_buf, n);
 	if (wave_env)
-		*gen_ins = INS_MIX_MUL(mix_buf, tmp_buf, amp, !layer);
+		*(ins++) = INS_MIX_MUL(mix_buf, tmp_buf, amp, !layer);
 	else
-		*gen_ins = INS_MIX_ADD(mix_buf, tmp_buf, amp, !layer);
-	return gen_ins;
+		*(ins++) = INS_MIX_ADD(mix_buf, tmp_buf, amp, !layer);
+	return ins;
 }
 
 /*
@@ -581,7 +579,7 @@ sched_ins_wosc(sauGenerator *restrict o,
  */
 static GenIns *
 sched_ins_rasg(sauGenerator *restrict o,
-		GenIns *restrict gen_ins, uint32_t buf,
+		GenIns *restrict ins, uint32_t buf,
 		OperatorNode *restrict n,
 		int32_t parent_freq,
 		bool wave_env, bool layer) {
@@ -595,7 +593,7 @@ sched_ins_rasg(sauGenerator *restrict o,
 	 * including frequency modulation if modulators linked.
 	 */
 	freq = buf;
-	gen_ins = 1 + sched_param_with_rangemod(o, gen_ins, buf,
+	ins = sched_param_with_rangemod(o, ins, buf,
 			&n->osc.freq, parent_freq, -1);
 	++buf; // freq is passed along to modulators that need it; kept below
 	/*
@@ -605,36 +603,34 @@ sched_ins_rasg(sauGenerator *restrict o,
 	 */
 	if (n->osc.pmods->count > 0) {
 		for (i = 0; i < n->osc.pmods->count; ++i)
-			gen_ins = 1 + sched_ins(o, gen_ins, (buf + 0),
+			ins = sched_ins(o, ins, (buf + 0),
 					&o->operators[n->osc.pmods->ids[i]],
 					freq, false, i);
 		pm_buf = buf; // temporary
 	}
 	if (n->osc.fpmods->count > 0) {
 		for (i = 0; i < n->osc.fpmods->count; ++i)
-			gen_ins = 1 + sched_ins(o, gen_ins, (buf + 1),
+			ins = sched_ins(o, ins, (buf + 1),
 					&o->operators[n->osc.fpmods->ids[i]],
 					freq, false, i);
 		fpm_buf = buf + 1; // temporary
 	}
-	*gen_ins = INS_CYCLE_PHASE(cycle_buf, freq, buf, n,
+	*(ins++) = INS_CYCLE_PHASE(cycle_buf, freq, buf, n,
 			pm_buf>=0, fpm_buf>=0); /* uses rasg_buf as out 2 */
-	++gen_ins;
 	/*
 	 * Handle amplitude parameter, including amplitude modulation if
 	 * modulators linked.
 	 */
-	gen_ins = 1 + sched_param_with_rangemod(o, gen_ins, buf,
+	ins = sched_param_with_rangemod(o, ins, buf,
 			&n->gen.amp, -1, freq);
 	amp = buf++;
 	tmp_buf = buf;
-	*gen_ins = INS_FILL_RASG(rasg_buf, cycle_buf, tmp_buf, n); /* 2 tmp */
-	++gen_ins;
+	*(ins++) = INS_FILL_RASG(rasg_buf, cycle_buf, tmp_buf, n); /* 2 tmp */
 	if (wave_env)
-		*gen_ins = INS_MIX_MUL(mix_buf, rasg_buf, amp, !layer);
+		*(ins++) = INS_MIX_MUL(mix_buf, rasg_buf, amp, !layer);
 	else
-		*gen_ins = INS_MIX_ADD(mix_buf, rasg_buf, amp, !layer);
-	return gen_ins;
+		*(ins++) = INS_MIX_ADD(mix_buf, rasg_buf, amp, !layer);
+	return ins;
 }
 
 /*
@@ -644,7 +640,7 @@ sched_ins_rasg(sauGenerator *restrict o,
  */
 static GenIns *
 sched_ins(sauGenerator *restrict o,
-		GenIns *restrict gen_ins, uint32_t buf,
+		GenIns *restrict ins, uint32_t buf,
 		OperatorNode *restrict n,
 		int32_t parent_freq,
 		bool wave_env, bool layer) {
@@ -657,28 +653,27 @@ sched_ins(sauGenerator *restrict o,
 	 */
 	switch (gen->type) {
 	case SAU_POPT_WAVE:
-		gen_ins = 1 + sched_ins_wosc(o, gen_ins, buf,
+		ins = sched_ins_wosc(o, ins, buf,
 				n, parent_freq, wave_env, layer);
 		break;
 	case SAU_POPT_RAS:
-		gen_ins = 1 + sched_ins_rasg(o, gen_ins, buf,
+		ins = sched_ins_rasg(o, ins, buf,
 				n, parent_freq, wave_env, layer);
 		break;
 	}
-//	if (!(n->gen.flags & ON_TIME_INF)) {
-		*gen_ins = INS_TIME_SUB(n);
-		++gen_ins;
-//	}
+	if (!(n->gen.flags & ON_TIME_INF)) {
+		*(ins++) = INS_TIME_SUB(n);
+	}
 	gen->flags &= ~ON_VISITED;
 SKIP_NODES:
-	return gen_ins;
+	return ins;
 }
 
 /*
  * Loop through all voices and schedule instructions for them.
  */
 static void run_resched(sauGenerator *restrict o) {
-	GenIns *gen_ins = o->gen_ins, *prev_gen_ins;
+	GenIns *ins = o->gen_ins, *prev_ins;
 	for (uint32_t i = 0; i < o->vo_count; ++i) {
 		VoiceNode *vn = &o->voices[i];
 		const sauProgramOpRef *root_op;
@@ -686,13 +681,29 @@ static void run_resched(sauGenerator *restrict o) {
 						vn->op_count)))
 			continue;
 		OperatorNode *n = &o->operators[root_op->id];
-		prev_gen_ins = gen_ins;
-		gen_ins = sched_ins(o, gen_ins, 0,
+		prev_ins = ins;
+		ins = sched_ins(o, ins, 0,
 				n, -1, false, false);
-		vn->first_ins = prev_gen_ins - o->gen_ins;
-		vn->ins_count = gen_ins - prev_gen_ins;
+		vn->first_ins = prev_ins - o->gen_ins;
+		vn->ins_count = ins - prev_ins;
 	}
 	o->gen_flags &= ~GEN_RUN_RESCHED;
+}
+
+/* Called on any uninitialized instruction. */
+static uint32_t gen_ins_error(const GenIns *restrict block,
+		Buf *restrict bufs_from, uint32_t len) {
+	sau_error("generator", "gen_ins_error() called from block %x", block);
+	return len;
+}
+
+static uint32_t gen_ins_time_sub(const GenIns *restrict block,
+		Buf *restrict bufs_from, uint32_t len) {
+	OperatorNode *restrict n = block->data;
+	if (!(n->gen.flags & ON_TIME_INF)) {
+		n->gen.time = (n->gen.time > len) ? (n->gen.time - len) : 0;
+	}
+	return len;
 }
 
 /*
@@ -827,15 +838,6 @@ static uint32_t gen_ins_fill_rasg(const GenIns *restrict block,
 	void *restrict tmp2_buf = bufs_from[block->ext + 1];
 	OperatorNode *restrict n = block->data;
 	sauRasG_run(&n->rg.rasg, len, buf, tmp_buf, tmp2_buf, cycle_buf);
-	return len;
-}
-
-static uint32_t gen_ins_time_sub(const GenIns *restrict block,
-		Buf *restrict bufs_from, uint32_t len) {
-	OperatorNode *restrict n = block->data;
-	if (!(n->gen.flags & ON_TIME_INF)) {
-		n->gen.time = (n->gen.time > len) ? (n->gen.time - len) : 0;
-	}
 	return len;
 }
 
@@ -1160,12 +1162,12 @@ static uint32_t run_voice(sauGenerator *restrict o,
 	if (len > BUF_LEN) len = BUF_LEN;
 	if (time > len) time = len;
 	for (uint32_t i = 0; i < vn->ins_count; ++i) {
-		GenIns *gen_ins = &o->gen_ins[vn->first_ins + i];
-		GenIns_run_f ins_f = get_gen_ins_run_f(gen_ins->ins);
+		GenIns *ins = &o->gen_ins[vn->first_ins + i];
+		GenIns_run_f ins_f = get_gen_ins_run_f(ins->ins);
 		/*
 		 * Last out_len set is for the final output of the voice.
 		 */
-		out_len = ins_f(gen_ins, o->gen_bufs, time);
+		out_len = ins_f(ins, o->gen_bufs, time);
 	}
 	if (out_len > 0) {
 		const sauProgramOpRef *root_op =
