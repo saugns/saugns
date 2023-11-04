@@ -97,7 +97,7 @@ typedef struct EventNode {
 /* Macro used for lists which include generator instruction names. */
 #define GEN_INS__ITEMS(X) \
 	X(error) \
-	X(time_sub) \
+	X(time_jz_sub) \
 	X(mix_add) \
 	X(mix_mul) \
 	X(raparam) \
@@ -120,23 +120,23 @@ enum {
 };
 
 typedef struct GenIns {
-	uint8_t ins, mode;
-	uint32_t out;
-	int32_t in, ext;
+	uint8_t id, mode;
+	uint32_t dst;
+	int32_t src, ext;
 	void *data;
 	//uint32_t max_len;
 } GenIns;
 
-typedef uint32_t (*GenIns_run_f)(const GenIns *restrict gen_ins,
-		Buf *restrict bufs_from, uint32_t len);
+typedef uint32_t (*GenIns_run_f)(struct sauGenerator *restrict o,
+		uint32_t ins_i, uint32_t len);
 
 /*
  * Macros for instruction struct initializers.
  */
 
-#define INS_TIME_SUB(node) \
+#define INS_TIME_JZ_SUB(node, jmp_dst) \
 (GenIns){ \
-	INS_N_time_sub, 0, -1, -1, -1, (node) \
+	INS_N_time_jz_sub, 0, (jmp_dst), -1, -1, (node) \
 }
 
 #define INS_RAPARAM(out_buf, in_buf, in2_buf, data) \
@@ -162,27 +162,27 @@ typedef uint32_t (*GenIns_run_f)(const GenIns *restrict gen_ins,
 #define PHASE_MOD_TYPES(has_pm, has_fpm) \
 	((has_pm) | ((has_fpm) << 1))
 
-// uses 1 out buffer, 1 in buffer, 2 ext buffers as optional inputs
+// uses 1 dst buffer, 1 src buffer, 2 ext buffers as optional inputs
 #define INS_PHASE(out, freq, mod_from, node, has_pm, has_fpm) \
 (GenIns){ \
 	INS_N_phase, PHASE_MOD_TYPES((has_pm), (has_fpm)), \
 	(out), (freq), (mod_from), (node) \
 }
 
-// uses 2 out buffers, 1 in buffer, 2 ext buffers as optional inputs
+// uses 2 dst buffers, 1 src buffer, 2 ext buffers as optional inputs
 #define INS_CYCLE_PHASE(out, freq, mod_from, node, has_pm, has_fpm) \
 (GenIns){ \
 	INS_N_cycle_phase, PHASE_MOD_TYPES((has_pm), (has_fpm)), \
 	(out), (freq), (mod_from), (node) \
 }
 
-// uses 1 out buffer, 1 in buffer, 2 ext buffers as temporary storage
+// uses 1 dst buffer, 1 src buffer, 2 ext buffers as temporary storage
 #define INS_FILL_RASG(out, cycle_buf, tmp_from, node) \
 (GenIns){ \
 	INS_N_fill_rasg, 0, (out), (cycle_buf), (tmp_from), (node) \
 }
 
-// uses 1 out buffer, 1 in buffer
+// uses 1 dst buffer, 1 src buffer
 #define INS_FILL_WOSC(out, phase_buf, node) \
 (GenIns){ \
 	INS_N_fill_wosc, 0, (out), (phase_buf), -1, (node) \
@@ -645,8 +645,14 @@ sched_ins(sauGenerator *restrict o,
 		int32_t parent_freq,
 		bool wave_env, bool layer) {
 	GenNode *gen = &n->gen;
-	if ((gen->flags & ON_VISITED) != 0) goto SKIP_NODES;
-	if (gen->time == 0 && !(gen->flags & ON_TIME_INF)) goto SKIP_NODES;
+	if ((gen->flags & ON_VISITED) != 0)
+		return ins; /* guard against circular references */
+	GenIns *time_ins = NULL;
+	if (!(gen->flags & ON_TIME_INF)) {
+		if (gen->time == 0)
+			return ins; /* omit entirely */
+		time_ins = ins++; /* insert time check */
+	}
 	gen->flags |= ON_VISITED;
 	/*
 	 * Use sub-function.
@@ -661,11 +667,8 @@ sched_ins(sauGenerator *restrict o,
 				n, parent_freq, wave_env, layer);
 		break;
 	}
-	if (!(n->gen.flags & ON_TIME_INF)) {
-		*(ins++) = INS_TIME_SUB(n);
-	}
+	if (time_ins) *time_ins = INS_TIME_JZ_SUB(n, (ins - o->gen_ins));
 	gen->flags &= ~ON_VISITED;
-SKIP_NODES:
 	return ins;
 }
 
@@ -691,15 +694,17 @@ static void run_resched(sauGenerator *restrict o) {
 }
 
 /* Called on any uninitialized instruction. */
-static uint32_t gen_ins_error(const GenIns *restrict block,
-		Buf *restrict bufs_from, uint32_t len) {
-	sau_error("generator", "gen_ins_error() called from block %x", block);
+static uint32_t gen_ins_error(struct sauGenerator *restrict o,
+		uint32_t ins_i, uint32_t len) {
+	(void)o;
+	sau_error("generator", "gen_ins_error() called from ins %d", ins_i);
 	return len;
 }
 
-static uint32_t gen_ins_time_sub(const GenIns *restrict block,
-		Buf *restrict bufs_from, uint32_t len) {
-	OperatorNode *restrict n = block->data;
+static uint32_t gen_ins_time_jz_sub(struct sauGenerator *restrict o,
+		uint32_t ins_i, uint32_t len) {
+	GenIns *ins = &o->gen_ins[ins_i];
+	OperatorNode *n = ins->data;
 	if (!(n->gen.flags & ON_TIME_INF)) {
 		n->gen.time = (n->gen.time > len) ? (n->gen.time - len) : 0;
 	}
@@ -711,12 +716,10 @@ static uint32_t gen_ins_time_sub(const GenIns *restrict block,
  *
  * Used to generate output for carrier or additive modulator.
  */
-static uint32_t gen_ins_mix_add(const GenIns *restrict block,
-		Buf *restrict bufs_from, uint32_t len) {
-	float *restrict buf = bufs_from[block->out];
-	const float *restrict in_buf = bufs_from[block->in];
-	const float *restrict amp = bufs_from[block->ext];
-	bool layer = (block->mode != 0);
+static inline void block_mix_add(float *restrict buf, uint32_t len,
+		bool layer,
+		const float *restrict in_buf,
+		const float *restrict amp) {
 	if (layer) {
 		for (uint32_t i = 0; i < len; ++i) {
 			buf[i] += in_buf[i] * amp[i];
@@ -729,6 +732,13 @@ static uint32_t gen_ins_mix_add(const GenIns *restrict block,
 			buf[i] = 0;
 		}
 	}
+}
+
+static uint32_t gen_ins_mix_add(struct sauGenerator *restrict o,
+		uint32_t ins_i, uint32_t len) {
+	GenIns *ins = &o->gen_ins[ins_i];
+	block_mix_add(o->gen_bufs[ins->dst], len, (ins->mode != 0),
+			o->gen_bufs[ins->src], o->gen_bufs[ins->ext]);
 	return len;
 }
 
@@ -740,12 +750,10 @@ static uint32_t gen_ins_mix_add(const GenIns *restrict block,
  *
  * Used to generate output for modulation with value range.
  */
-static uint32_t gen_ins_mix_mul(const GenIns *restrict block,
-		Buf *restrict bufs_from, uint32_t len) {
-	float *restrict buf = bufs_from[block->out];
-	const float *restrict in_buf = bufs_from[block->in];
-	const float *restrict amp = bufs_from[block->ext];
-	bool layer = (block->mode != 0);
+static inline void block_mix_mul_waveenv(float *restrict buf, uint32_t len,
+		bool layer,
+		const float *restrict in_buf,
+		const float *restrict amp) {
 	if (layer) {
 		for (uint32_t i = 0; i < len; ++i) {
 			float s = in_buf[i];
@@ -767,14 +775,23 @@ static uint32_t gen_ins_mix_mul(const GenIns *restrict block,
 	return len;
 }
 
-static uint32_t gen_ins_raparam(const GenIns *restrict block,
-		Buf *restrict bufs_from, uint32_t len) {
-	float *restrict par_buf = bufs_from[block->out];
-	const float *restrict param_mulbuf = bufs_from[block->in];
-	struct ParWithRangeMod *restrict n = block->data;
+static uint32_t gen_ins_mix_mul(struct sauGenerator *restrict o,
+		uint32_t ins_i, uint32_t len) {
+	GenIns *ins = &o->gen_ins[ins_i];
+	block_mix_mul_waveenv(o->gen_bufs[ins->dst], len, (ins->mode != 0),
+			o->gen_bufs[ins->src], o->gen_bufs[ins->ext]);
+	return len;
+}
+
+static uint32_t gen_ins_raparam(struct sauGenerator *restrict o,
+		uint32_t ins_i, uint32_t len) {
+	GenIns *ins = &o->gen_ins[ins_i];
+	float *par_buf = o->gen_bufs[ins->dst];
+	const float *param_mulbuf = o->gen_bufs[ins->src];
+	struct ParWithRangeMod *n = ins->data;
 	sauLine_run(&n->par, par_buf, len, param_mulbuf);
-	if (block->ext >= 0) {
-		float *restrict r_par_buf = bufs_from[block->ext];
+	if (ins->ext >= 0) {
+		float *r_par_buf = o->gen_bufs[ins->ext];
 		sauLine_run(&n->r_par, r_par_buf, len, param_mulbuf);
 	} else {
 		sauLine_skip(&n->r_par, len);
@@ -782,61 +799,73 @@ static uint32_t gen_ins_raparam(const GenIns *restrict block,
 	return len;
 }
 
-static uint32_t gen_ins_ari_means(const GenIns *restrict block,
-		Buf *restrict bufs_from, uint32_t len) {
-	float *restrict buf = bufs_from[block->out];
-	const float *restrict buf2 = bufs_from[block->in];
-	const float *restrict mix = bufs_from[block->ext];
+/*
+ * Replace \p buf values with linear \p mix of \p buf and \p buf2.
+ */
+static inline void block_ari_means(float *restrict buf, uint32_t len,
+		const float *restrict buf2,
+		const float *restrict mix) {
 	for (uint32_t i = 0; i < len; ++i)
 		buf[i] += (buf2[i] - buf[i]) * mix[i];
+}
+
+static uint32_t gen_ins_ari_means(struct sauGenerator *restrict o,
+		uint32_t ins_i, uint32_t len) {
+	GenIns *ins = &o->gen_ins[ins_i];
+	block_ari_means(o->gen_bufs[ins->dst], len,
+			o->gen_bufs[ins->src], o->gen_bufs[ins->ext]);
 	return len;
 }
 
-static uint32_t gen_ins_phase(const GenIns *restrict block,
-		Buf *restrict bufs_from, uint32_t len) {
-	void *restrict phase_buf = bufs_from[block->out];
-	const float *restrict freq = bufs_from[block->in];
-	const float *restrict pm_buf = (block->mode & PHASE_MOD_TYPES(1, 0))
-		? bufs_from[block->ext] : NULL;
-	const float *restrict fpm_buf = (block->mode & PHASE_MOD_TYPES(0, 1))
-		? bufs_from[block->ext + 1] : NULL;
-	OperatorNode *restrict n = block->data;
+static uint32_t gen_ins_phase(struct sauGenerator *restrict o,
+		uint32_t ins_i, uint32_t len) {
+	GenIns *ins = &o->gen_ins[ins_i];
+	void *restrict phase_buf = o->gen_bufs[ins->dst];
+	const float *restrict freq = o->gen_bufs[ins->src];
+	const float *restrict pm_buf = (ins->mode & PHASE_MOD_TYPES(1, 0))
+		? o->gen_bufs[ins->ext] : NULL;
+	const float *restrict fpm_buf = (ins->mode & PHASE_MOD_TYPES(0, 1))
+		? o->gen_bufs[ins->ext + 1] : NULL;
+	OperatorNode *restrict n = ins->data;
 	sauPhasor_fill(&n->wo.wosc.phasor, phase_buf, len,
 			freq, pm_buf, fpm_buf);
 	return len;
 }
 
-static uint32_t gen_ins_cycle_phase(const GenIns *restrict block,
-		Buf *restrict bufs_from, uint32_t len) {
-	void *restrict cycle_buf = bufs_from[block->out];
-	void *restrict rasg_buf = bufs_from[block->out + 1];
-	const float *restrict freq = bufs_from[block->in];
-	const float *restrict pm_buf = (block->mode & PHASE_MOD_TYPES(1, 0))
-		? bufs_from[block->ext] : NULL;
-	const float *restrict fpm_buf = (block->mode & PHASE_MOD_TYPES(0, 1))
-		? bufs_from[block->ext + 1] : NULL;
-	OperatorNode *restrict n = block->data;
+static uint32_t gen_ins_cycle_phase(struct sauGenerator *restrict o,
+		uint32_t ins_i, uint32_t len) {
+	GenIns *ins = &o->gen_ins[ins_i];
+	void *restrict cycle_buf = o->gen_bufs[ins->dst];
+	void *restrict rasg_buf = o->gen_bufs[ins->dst + 1];
+	const float *restrict freq = o->gen_bufs[ins->src];
+	const float *restrict pm_buf = (ins->mode & PHASE_MOD_TYPES(1, 0))
+		? o->gen_bufs[ins->ext] : NULL;
+	const float *restrict fpm_buf = (ins->mode & PHASE_MOD_TYPES(0, 1))
+		? o->gen_bufs[ins->ext + 1] : NULL;
+	OperatorNode *restrict n = ins->data;
 	sauCyclor_fill(&n->rg.rasg.cyclor, cycle_buf, rasg_buf, len,
 			freq, pm_buf, fpm_buf);
 	return len;
 }
 
-static uint32_t gen_ins_fill_wosc(const GenIns *restrict block,
-		Buf *restrict bufs_from, uint32_t len) {
-	void *restrict buf = bufs_from[block->out];
-	const void *restrict phase_buf = bufs_from[block->in];
-	OperatorNode *restrict n = block->data;
+static uint32_t gen_ins_fill_wosc(struct sauGenerator *restrict o,
+		uint32_t ins_i, uint32_t len) {
+	GenIns *ins = &o->gen_ins[ins_i];
+	void *restrict buf = o->gen_bufs[ins->dst];
+	const void *restrict phase_buf = o->gen_bufs[ins->src];
+	OperatorNode *restrict n = ins->data;
 	sauWOsc_run(&n->wo.wosc, buf, len, phase_buf);
 	return len;
 }
 
-static uint32_t gen_ins_fill_rasg(const GenIns *restrict block,
-		Buf *restrict bufs_from, uint32_t len) {
-	void *restrict buf = bufs_from[block->out];
-	const void *restrict cycle_buf = bufs_from[block->in];
-	void *restrict tmp_buf = bufs_from[block->ext];
-	void *restrict tmp2_buf = bufs_from[block->ext + 1];
-	OperatorNode *restrict n = block->data;
+static uint32_t gen_ins_fill_rasg(struct sauGenerator *restrict o,
+		uint32_t ins_i, uint32_t len) {
+	GenIns *ins = &o->gen_ins[ins_i];
+	void *restrict buf = o->gen_bufs[ins->dst];
+	const void *restrict cycle_buf = o->gen_bufs[ins->src];
+	void *restrict tmp_buf = o->gen_bufs[ins->ext];
+	void *restrict tmp2_buf = o->gen_bufs[ins->ext + 1];
+	OperatorNode *restrict n = ins->data;
 	sauRasG_run(&n->rg.rasg, len, buf, tmp_buf, tmp2_buf, cycle_buf);
 	return len;
 }
@@ -1162,12 +1191,13 @@ static uint32_t run_voice(sauGenerator *restrict o,
 	if (len > BUF_LEN) len = BUF_LEN;
 	if (time > len) time = len;
 	for (uint32_t i = 0; i < vn->ins_count; ++i) {
-		GenIns *ins = &o->gen_ins[vn->first_ins + i];
-		GenIns_run_f ins_f = get_gen_ins_run_f(ins->ins);
+		uint32_t ins_i = vn->first_ins + i;
+		GenIns *ins = &o->gen_ins[ins_i];
+		GenIns_run_f ins_f = get_gen_ins_run_f(ins->id);
 		/*
 		 * Last out_len set is for the final output of the voice.
 		 */
-		out_len = ins_f(ins, o->gen_bufs, time);
+		out_len = ins_f(o, ins_i, time);
 	}
 	if (out_len > 0) {
 		const sauProgramOpRef *root_op =
