@@ -128,7 +128,7 @@ typedef struct GenIns {
 } GenIns;
 
 typedef uint32_t (*GenIns_run_f)(struct sauGenerator *restrict o,
-		uint32_t ins_i, uint32_t len);
+		uint32_t *restrict ins_i, uint32_t len);
 
 /*
  * Macros for instruction struct initializers.
@@ -695,19 +695,20 @@ static void run_resched(sauGenerator *restrict o) {
 
 /* Called on any uninitialized instruction. */
 static uint32_t gen_ins_error(struct sauGenerator *restrict o,
-		uint32_t ins_i, uint32_t len) {
+		uint32_t *restrict ins_i, uint32_t len) {
 	(void)o;
-	sau_error("generator", "gen_ins_error() called from ins %d", ins_i);
+	sau_error("generator", "gen_ins_error() called from ins %d", *ins_i);
 	return len;
 }
 
 static uint32_t gen_ins_time_jz_sub(struct sauGenerator *restrict o,
-		uint32_t ins_i, uint32_t len) {
-	GenIns *ins = &o->gen_ins[ins_i];
-	OperatorNode *n = ins->data;
-	if (!(n->gen.flags & ON_TIME_INF)) {
-		n->gen.time = (n->gen.time > len) ? (n->gen.time - len) : 0;
-	}
+		uint32_t *restrict ins_i, uint32_t len) {
+	GenIns *ins = &o->gen_ins[*ins_i];
+	GenNode *gen = ins->data;
+	if (gen->time == 0)
+		*ins_i = ins->dst - 1; /* jump, adjusted for increment after */
+	else
+		gen->time = (gen->time >= len) ? (gen->time - len) : 0;
 	return len;
 }
 
@@ -735,8 +736,8 @@ static inline void block_mix_add(float *restrict buf, uint32_t len,
 }
 
 static uint32_t gen_ins_mix_add(struct sauGenerator *restrict o,
-		uint32_t ins_i, uint32_t len) {
-	GenIns *ins = &o->gen_ins[ins_i];
+		uint32_t *restrict ins_i, uint32_t len) {
+	GenIns *ins = &o->gen_ins[*ins_i];
 	block_mix_add(o->gen_bufs[ins->dst], len, (ins->mode != 0),
 			o->gen_bufs[ins->src], o->gen_bufs[ins->ext]);
 	return len;
@@ -772,20 +773,19 @@ static inline void block_mix_mul_waveenv(float *restrict buf, uint32_t len,
 			buf[i] = 0;
 		}
 	}
-	return len;
 }
 
 static uint32_t gen_ins_mix_mul(struct sauGenerator *restrict o,
-		uint32_t ins_i, uint32_t len) {
-	GenIns *ins = &o->gen_ins[ins_i];
+		uint32_t *restrict ins_i, uint32_t len) {
+	GenIns *ins = &o->gen_ins[*ins_i];
 	block_mix_mul_waveenv(o->gen_bufs[ins->dst], len, (ins->mode != 0),
 			o->gen_bufs[ins->src], o->gen_bufs[ins->ext]);
 	return len;
 }
 
 static uint32_t gen_ins_raparam(struct sauGenerator *restrict o,
-		uint32_t ins_i, uint32_t len) {
-	GenIns *ins = &o->gen_ins[ins_i];
+		uint32_t *restrict ins_i, uint32_t len) {
+	GenIns *ins = &o->gen_ins[*ins_i];
 	float *par_buf = o->gen_bufs[ins->dst];
 	const float *param_mulbuf = o->gen_bufs[ins->src];
 	struct ParWithRangeMod *n = ins->data;
@@ -810,16 +810,16 @@ static inline void block_ari_means(float *restrict buf, uint32_t len,
 }
 
 static uint32_t gen_ins_ari_means(struct sauGenerator *restrict o,
-		uint32_t ins_i, uint32_t len) {
-	GenIns *ins = &o->gen_ins[ins_i];
+		uint32_t *restrict ins_i, uint32_t len) {
+	GenIns *ins = &o->gen_ins[*ins_i];
 	block_ari_means(o->gen_bufs[ins->dst], len,
 			o->gen_bufs[ins->src], o->gen_bufs[ins->ext]);
 	return len;
 }
 
 static uint32_t gen_ins_phase(struct sauGenerator *restrict o,
-		uint32_t ins_i, uint32_t len) {
-	GenIns *ins = &o->gen_ins[ins_i];
+		uint32_t *restrict ins_i, uint32_t len) {
+	GenIns *ins = &o->gen_ins[*ins_i];
 	void *restrict phase_buf = o->gen_bufs[ins->dst];
 	const float *restrict freq = o->gen_bufs[ins->src];
 	const float *restrict pm_buf = (ins->mode & PHASE_MOD_TYPES(1, 0))
@@ -833,8 +833,8 @@ static uint32_t gen_ins_phase(struct sauGenerator *restrict o,
 }
 
 static uint32_t gen_ins_cycle_phase(struct sauGenerator *restrict o,
-		uint32_t ins_i, uint32_t len) {
-	GenIns *ins = &o->gen_ins[ins_i];
+		uint32_t *restrict ins_i, uint32_t len) {
+	GenIns *ins = &o->gen_ins[*ins_i];
 	void *restrict cycle_buf = o->gen_bufs[ins->dst];
 	void *restrict rasg_buf = o->gen_bufs[ins->dst + 1];
 	const float *restrict freq = o->gen_bufs[ins->src];
@@ -849,8 +849,8 @@ static uint32_t gen_ins_cycle_phase(struct sauGenerator *restrict o,
 }
 
 static uint32_t gen_ins_fill_wosc(struct sauGenerator *restrict o,
-		uint32_t ins_i, uint32_t len) {
-	GenIns *ins = &o->gen_ins[ins_i];
+		uint32_t *restrict ins_i, uint32_t len) {
+	GenIns *ins = &o->gen_ins[*ins_i];
 	void *restrict buf = o->gen_bufs[ins->dst];
 	const void *restrict phase_buf = o->gen_bufs[ins->src];
 	OperatorNode *restrict n = ins->data;
@@ -859,8 +859,8 @@ static uint32_t gen_ins_fill_wosc(struct sauGenerator *restrict o,
 }
 
 static uint32_t gen_ins_fill_rasg(struct sauGenerator *restrict o,
-		uint32_t ins_i, uint32_t len) {
-	GenIns *ins = &o->gen_ins[ins_i];
+		uint32_t *restrict ins_i, uint32_t len) {
+	GenIns *ins = &o->gen_ins[*ins_i];
 	void *restrict buf = o->gen_bufs[ins->dst];
 	const void *restrict cycle_buf = o->gen_bufs[ins->src];
 	void *restrict tmp_buf = o->gen_bufs[ins->ext];
@@ -1190,14 +1190,14 @@ static uint32_t run_voice(sauGenerator *restrict o,
 	uint32_t time = vn->duration, out_len = 0;
 	if (len > BUF_LEN) len = BUF_LEN;
 	if (time > len) time = len;
-	for (uint32_t i = 0; i < vn->ins_count; ++i) {
-		uint32_t ins_i = vn->first_ins + i;
-		GenIns *ins = &o->gen_ins[ins_i];
+	for (uint32_t i = vn->first_ins, last_ins = i + vn->ins_count;
+			i < last_ins; ++i) {
+		GenIns *ins = &o->gen_ins[i];
 		GenIns_run_f ins_f = get_gen_ins_run_f(ins->id);
 		/*
 		 * Last out_len set is for the final output of the voice.
 		 */
-		out_len = ins_f(o, ins_i, time);
+		out_len = ins_f(o, &i, time);
 	}
 	if (out_len > 0) {
 		const sauProgramOpRef *root_op =
