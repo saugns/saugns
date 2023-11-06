@@ -27,6 +27,11 @@
 #define BUF_LEN 1024
 typedef float Buf[BUF_LEN];
 
+struct ParWithMod {
+	sauLine par;
+	const sauProgramIDArr *mods;
+};
+
 struct ParWithRangeMod {
 	sauLine par, r_par;
 	const sauProgramIDArr *mods, *r_mods;
@@ -46,8 +51,7 @@ typedef struct GenNode {
 	uint8_t type;
 	uint8_t flags;
 	struct ParWithRangeMod amp;
-	sauLine pan;
-	const sauProgramIDArr *camods;
+	struct ParWithMod pan;
 } GenNode;
 
 typedef struct OscNode {
@@ -365,7 +369,7 @@ static void prepare_op(sauGenerator *restrict o,
 		osc->pmods = osc->fpmods = &blank_idarr;
 	}
 	GenNode *gen = &n->gen;
-	gen->amp.mods = gen->amp.r_mods = gen->camods = &blank_idarr;
+	gen->amp.mods = gen->amp.r_mods = gen->pan.mods = &blank_idarr;
 	gen->type = od->type;
 	gen->flags = ON_INIT;
 }
@@ -419,12 +423,12 @@ static void update_op(sauGenerator *restrict o,
 			gen->flags &= ~ON_TIME_INF;
 		}
 	}
-	if (od->camods) gen->camods = od->camods;
 	if (od->amods) gen->amp.mods = od->amods;
 	if (od->ramods) gen->amp.r_mods = od->ramods;
+	if (od->camods) gen->pan.mods = od->camods;
 	sauLine_copy(&gen->amp.par, od->amp, o->srate);
 	sauLine_copy(&gen->amp.r_par, od->amp2, o->srate);
-	sauLine_copy(&gen->pan, od->pan, o->srate);
+	sauLine_copy(&gen->pan.par, od->pan, o->srate);
 }
 
 /*
@@ -475,6 +479,39 @@ sched_ins(sauGenerator *restrict o,
 		int32_t parent_freq,
 		bool wave_env, bool layer);
 
+#if 1
+/*
+ * Sub-function for for a parameter with modulation.
+ *
+ * Needs up to 3 buffers and 2 instructions for its own node level.
+ */
+static GenIns *
+sched_param_with_mod(sauGenerator *restrict o,
+		GenIns *restrict ins, uint32_t buf,
+		struct ParWithMod *restrict n,
+		int32_t param_mulbuf,
+		int32_t freq) {
+	uint32_t i;
+	int32_t par_buf = -1, sum_buf = -1;
+	if (n->par.flags & SAU_LINEP_GOAL) {
+		par_buf = buf;
+//		sauLine_run(&n->par, par_buf, len, NULL);
+	} else {
+//		sauLine_skip(&n-par, len);
+	}
+//	*(ins++) = INS_RAPARAM(par_buf, param_mulbuf, r_par_buf, n);
+	if (n->mods->count > 0) {
+		sum_buf = buf;
+		for (i = 0; i < n->mods->count; ++i)
+			ins = sched_ins(o, ins, sum_buf,
+					&o->operators[n->mods->ids[i]],
+					freq, false, par_buf >= 0);
+	}
+
+	return ins;
+}
+#endif
+
 /*
  * Sub-function for a parameter with range modulation.
  *
@@ -487,22 +524,24 @@ sched_param_with_rangemod(sauGenerator *restrict o,
 		int32_t param_mulbuf,
 		int32_t reused_freq) {
 	uint32_t i;
-	int32_t par_buf = buf, r_par_buf = -1;
+	int32_t par_buf = buf, r_par_buf = -1, sum_buf = -1;
 	int32_t freq = (reused_freq >= 0 ? reused_freq : par_buf);
 	if (n->r_mods->count > 0) {
-		r_par_buf = par_buf + 1;
+		r_par_buf = buf + 1;
+		sum_buf = buf + 2;
 		for (i = 0; i < n->r_mods->count; ++i)
-			ins = sched_ins(o, ins, par_buf + 2,
+			ins = sched_ins(o, ins, sum_buf,
 					&o->operators[n->r_mods->ids[i]],
 					freq, true, i);
 	}
 	*(ins++) = INS_RAPARAM(par_buf, param_mulbuf, r_par_buf, n);
 	if (r_par_buf >= 0) {
-		*(ins++) = INS_ARI_MEANS(par_buf, par_buf + 1, par_buf + 2);
+		*(ins++) = INS_ARI_MEANS(par_buf, r_par_buf, sum_buf);
 	}
 	if (n->mods->count > 0) {
+		sum_buf = par_buf;
 		for (i = 0; i < n->mods->count; ++i)
-			ins = sched_ins(o, ins, par_buf,
+			ins = sched_ins(o, ins, sum_buf,
 					&o->operators[n->mods->ids[i]],
 					freq, false, true);
 	}
@@ -880,6 +919,20 @@ static inline GenIns_run_f get_gen_ins_run_f(unsigned ins) {
 	}
 }
 
+/*
+ * Handle audio layer according to options.
+ */
+static void block_mix(GenNode *restrict gen,
+		float *restrict buf, uint32_t len,
+		bool wave_env, bool layer,
+		float *restrict in_buf,
+		const float *restrict amp) {
+	(void)gen;
+	(wave_env ?
+	 block_mix_mul_waveenv :
+	 block_mix_add)(buf, len, layer, in_buf, amp);
+}
+
 static uint32_t run_block(sauGenerator *restrict o,
 		Buf *restrict bufs, uint32_t buf_len,
 		OperatorNode *restrict n,
@@ -966,7 +1019,7 @@ static void run_block_wosc(sauGenerator *restrict o,
 	amp = *(bufs++); // #4 (++) and temporary #5, #6
 	tmp_buf = (*bufs + 0); // #5
 	sauWOsc_run(&n->wo.wosc, tmp_buf, len, phase_buf);
-	//block_mix(&n->wo.osc.gen, mix_buf, len, wave_env, layer, tmp_buf, amp);
+	block_mix(&n->wo.osc.gen, mix_buf, len, wave_env, layer, tmp_buf, amp);
 }
 
 /*
@@ -1020,7 +1073,7 @@ static void run_block_rasg(sauGenerator *restrict o,
 	tmp_buf = *(bufs + 0); // #6
 	tmp2_buf = *(bufs + 1); // #7
 	sauRasG_run(&n->rg.rasg, len, rasg_buf, tmp_buf, tmp2_buf, cycle_buf);
-	//block_mix(&n->rg.osc.gen, mix_buf, len, wave_env, layer, rasg_buf, amp);
+	block_mix(&n->rg.osc.gen, mix_buf, len, wave_env, layer, rasg_buf, amp);
 }
 
 /*
@@ -1107,20 +1160,20 @@ static void mix_add(sauGenerator *restrict o,
 	float *pan_buf = NULL;
 	float *mix_l = o->mix_bufs[0];
 	float *mix_r = o->mix_bufs[1];
-	if (n->gen.pan.flags & SAU_LINEP_GOAL ||
-	    n->gen.camods->count > 0) {
+	if (n->gen.pan.par.flags & SAU_LINEP_GOAL ||
+	    n->gen.pan.mods->count > 0) {
 		pan_buf = o->gen_bufs[1 + vn->freq_buf_id];
-		sauLine_run(&n->gen.pan, pan_buf, len, NULL);
+		sauLine_run(&n->gen.pan.par, pan_buf, len, NULL);
 	} else {
-		sauLine_skip(&n->gen.pan, len);
+		sauLine_skip(&n->gen.pan.par, len);
 	}
-	if (n->gen.camods->count > 0) {
+	if (n->gen.pan.mods->count > 0) {
 		float *freq_buf = vn->freq_buf_id > 0 ?
 			o->gen_bufs[vn->freq_buf_id] :
 			NULL;
-		for (uint32_t i = 0; i < n->gen.camods->count; ++i)
+		for (uint32_t i = 0; i < n->gen.pan.mods->count; ++i)
 			run_block(o, (o->gen_bufs + 1 + vn->freq_buf_id), len,
-					&o->operators[n->gen.camods->ids[i]],
+					&o->operators[n->gen.pan.mods->ids[i]],
 					freq_buf, false, true);
 	}
 	if (pan_buf != NULL) {
@@ -1133,7 +1186,7 @@ static void mix_add(sauGenerator *restrict o,
 	} else {
 		for (uint32_t i = 0; i < len; ++i) {
 			float s = s_buf[i] * o->amp_scale;
-			float s_r = s * n->gen.pan.v0;
+			float s_r = s * n->gen.pan.par.v0;
 			mix_l[i] += s - s_r;
 			mix_r[i] += s + s_r;
 		}
