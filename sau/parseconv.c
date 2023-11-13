@@ -76,7 +76,7 @@ enum {
  * Per-operator state used during program data allocation.
  */
 typedef struct sauOpAllocState {
-	const sauProgramIDArr *mods[SAU_POP_USES - 1];
+	const sauProgramIDArr *mods[SAU_POP_NAMED - 1];
 	uint32_t flags;
 } sauOpAllocState;
 
@@ -102,7 +102,7 @@ sauOpAlloc_update(sauOpAlloc *restrict oa,
 	}
 	*op_id = od->obj_id;
 	sauOpAllocState *oas = &oa->a[*op_id];
-	for (int i = 1; i < SAU_POP_USES; ++i) {
+	for (int i = 1; i < SAU_POP_NAMED; ++i) {
 		oas->mods[i - 1] = &blank_idarr;
 	}
 	return true;
@@ -222,13 +222,13 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 		oas->mods[type] = arr;
 		vos->flags |= SAU_VOS_SET_GRAPH;
 		switch (type + 1) {
-		case SAU_POP_CAMOD: ood->camods = oas->mods[type]; break;
-		case SAU_POP_AMOD:  ood->amods  = oas->mods[type]; break;
-		case SAU_POP_RAMOD: ood->ramods = oas->mods[type]; break;
-		case SAU_POP_FMOD:  ood->fmods  = oas->mods[type]; break;
-		case SAU_POP_RFMOD: ood->rfmods = oas->mods[type]; break;
-		case SAU_POP_PMOD:  ood->pmods  = oas->mods[type]; break;
-		case SAU_POP_FPMOD: ood->fpmods = oas->mods[type]; break;
+		case SAU_POP_N_camod: ood->camods = oas->mods[type]; break;
+		case SAU_POP_N_amod:  ood->amods  = oas->mods[type]; break;
+		case SAU_POP_N_ramod: ood->ramods = oas->mods[type]; break;
+		case SAU_POP_N_fmod:  ood->fmods  = oas->mods[type]; break;
+		case SAU_POP_N_rfmod: ood->rfmods = oas->mods[type]; break;
+		case SAU_POP_N_pmod:  ood->pmods  = oas->mods[type]; break;
+		case SAU_POP_N_fpmod: ood->fpmods = oas->mods[type]; break;
 		}
 	}
 	return true;
@@ -319,7 +319,7 @@ sauVoiceGraph_handle_op_node(sauVoiceGraph *restrict o,
 	}
 	++o->op_nest_level;
 	oas->flags |= SAU_OAS_VISITED;
-	for (int i = 1; i < SAU_POP_USES; ++i) {
+	for (int i = 1; i < SAU_POP_NAMED; ++i) {
 		if (!sauVoiceGraph_handle_op_list(o, oas->mods[i - 1], i))
 			return false;
 	}
@@ -343,7 +343,7 @@ sauVoiceGraph_set(sauVoiceGraph *restrict o,
 		sauMempool *restrict mp) {
 	sauVoiceState *vos = &o->vos[ev->vo_id];
 	if (!(vos->flags & SAU_VOS_HAS_CARR)) goto DONE;
-	sauProgramOpRef op_ref = {vos->carr_op_id, SAU_POP_CARR, 0};
+	sauProgramOpRef op_ref = {vos->carr_op_id, SAU_POP_N_carr, 0};
 	if (!sauVoiceGraph_handle_op_node(o, &op_ref))
 		return false;
 	sauProgramVoData *vd = (sauProgramVoData*) ev->vo_data;
@@ -519,15 +519,8 @@ print_oplist(const sauProgramOpRef *restrict list,
 	if (!list)
 		return;
 	FILE *out = sau_print_stream();
-	static const char *const uses[SAU_POP_USES] = {
-		" CA",
-		"cAM",
-		" AM",
-		"rAM",
-		" FM",
-		"rFM",
-		" PM",
-		"fPM",
+	static const char *const uses[SAU_POP_NAMED] = {
+		SAU_POP__ITEMS(SAU_POP__X_PRINT)
 	};
 
 	uint32_t i = 0;

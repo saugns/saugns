@@ -929,7 +929,7 @@ static void prepare_event(sauParser *restrict o,
 		void *restrict prev_obj, bool is_compstep) {
 	struct ParseLevel *pl = o->cur_pl;
 	if (!pl->event || pl->add_wait_ms > 0 ||
-			((prev_obj || pl->use_type == SAU_POP_CARR)
+			((prev_obj || pl->use_type == SAU_POP_N_carr)
 			 && pl->event->objs.first_item) ||
 			is_compstep)
 		begin_event(o, prev_obj, is_compstep);
@@ -945,7 +945,7 @@ static void begin_list(sauParser *restrict o,
 	list->use_type = use_type;
 	/* linking done *before* setting up this as the nest list... */
 	pl->nest_list = list;
-	if (use_type != SAU_POP_CARR) {
+	if (use_type != SAU_POP_N_carr) {
 		sauScriptOpData *parent_on = parent_pl->operator;
 		if (!parent_on->mods)
 			parent_on->mods = pl->nest_list;
@@ -1005,7 +1005,7 @@ static void begin_operator(sauParser *restrict o,
 		if (type == SAU_POPT_RAS)
 			info->seed = sau_rand32(&o->sl.math_state);
 		op->time = (sauTime){o->sl.sopt.def_time_ms, 0};
-		if (pl->use_type == SAU_POP_CARR) {
+		if (pl->use_type == SAU_POP_N_carr) {
 			o->root_obj_id = op->obj_id;
 			op->pan = create_line(o, false, SAU_PSWEEP_PAN);
 			op->freq = create_line(o, false, SAU_PSWEEP_FREQ);
@@ -1088,23 +1088,23 @@ static void enter_level(sauParser *restrict o,
 			pl->nest_list = parent_pl->nest_list;
 		}
 		if (newscope == SCOPE_NEST) {
-			pl->sub_f = (use_type != SAU_POP_DEFAULT
+			pl->sub_f = (use_type != SAU_POP_N_default
 				     && pl->op_line != NULL)
 				? parse_in_op_line /* for parameter sub-args */
 				: NULL;
 			pl->set_var = parent_pl->set_var; // for list assign
-			if (use_type == SAU_POP_DEFAULT)
+			if (use_type == SAU_POP_N_default)
 				pl->nest_list = parent_pl->nest_list;
 			begin_list(o, NULL, use_type);
 			/*
 			 * Push script options, and prepare for a new context.
 			 *
 			 * The amplitude multiplier is reset each list, unless
-			 * an AMOD list (where the value builds on the outer).
+			 * an amod list (where the value builds on the outer).
 			 */
 			parent_pl->sopt_save = o->sl.sopt;
 			o->sl.sopt.set = 0;
-			if (use_type != SAU_POP_AMOD)
+			if (use_type != SAU_POP_N_amod)
 				o->sl.sopt.ampmult = def_sopt.ampmult;
 		}
 	}
@@ -1326,8 +1326,8 @@ static void parse_in_settings(sauParser *restrict o) {
 	switch (c) {
 	case 'a':
 		if (scan_num(sc, NULL, &val)) {
-			// AMOD lists inherit outer value
-			if (pl->use_type == SAU_POP_AMOD)
+			// amod lists inherit outer value
+			if (pl->use_type == SAU_POP_N_amod)
 				val *= pl->parent->sopt_save.ampmult;
 			o->sl.sopt.ampmult = val;
 			o->sl.sopt.set |= SAU_SOPT_AMPMULT;
@@ -1396,11 +1396,11 @@ static bool parse_ev_amp(sauParser *restrict o) {
 	sauScriptOpData *op = pl->operator;
 	uint8_t c;
 	parse_ev_modparam(o, NULL, &op->amp, false,
-			SAU_PSWEEP_AMP, SAU_POP_AMOD);
+			SAU_PSWEEP_AMP, SAU_POP_N_amod);
 	if (sauScanner_tryc(sc, '.')) switch ((c = sauScanner_getc(sc))) {
 	case 'r':
 		parse_ev_modparam(o, NULL, &op->amp2, false,
-				SAU_PSWEEP_AMP2, SAU_POP_RAMOD);
+				SAU_PSWEEP_AMP2, SAU_POP_N_ramod);
 		break;
 	default:
 		return true;
@@ -1414,7 +1414,7 @@ static bool parse_ev_chanmix(sauParser *restrict o) {
 	if (op->op_flags & SAU_SDOP_NESTED)
 		return true; // reject
 	parse_ev_modparam(o, scan_chanmix_const, &op->pan, false,
-			SAU_PSWEEP_PAN, SAU_POP_CAMOD);
+			SAU_PSWEEP_PAN, SAU_POP_N_camod);
 	return false;
 }
 
@@ -1427,11 +1427,11 @@ static bool parse_ev_freq(sauParser *restrict o, bool rel_freq) {
 	sauScanNumConst_f numconst_f = rel_freq ? NULL : scan_note_const;
 	uint8_t c;
 	parse_ev_modparam(o, numconst_f, &op->freq, rel_freq,
-			SAU_PSWEEP_FREQ, SAU_POP_FMOD);
+			SAU_PSWEEP_FREQ, SAU_POP_N_fmod);
 	if (sauScanner_tryc(sc, '.')) switch ((c = sauScanner_getc(sc))) {
 	case 'r':
 		parse_ev_modparam(o, numconst_f, &op->freq2, rel_freq,
-				SAU_PSWEEP_FREQ2, SAU_POP_RFMOD);
+				SAU_PSWEEP_FREQ2, SAU_POP_N_rfmod);
 		break;
 	default:
 		return true;
@@ -1449,10 +1449,10 @@ static bool parse_ev_phase(sauParser *restrict o) {
 		op->params |= SAU_POPP_PHASE;
 	}
 	uint8_t c;
-	parse_ev_modparam(o, NULL, NULL, false, 0, SAU_POP_PMOD);
+	parse_ev_modparam(o, NULL, NULL, false, 0, SAU_POP_N_pmod);
 	if (sauScanner_tryc(sc, '.')) switch ((c = sauScanner_getc(sc))) {
 	case 'f':
-		parse_ev_modparam(o, NULL, NULL, false, 0, SAU_POP_FPMOD);
+		parse_ev_modparam(o, NULL, NULL, false, 0, SAU_POP_N_fpmod);
 		break;
 	default:
 		return true;
@@ -1802,7 +1802,7 @@ static const char *parse_file(sauParser *restrict o,
 	if (!sauScanner_open(sc, arg->str, arg->is_path)) {
 		return NULL;
 	}
-	parse_level(o, SAU_POP_CARR, SCOPE_GROUP, 0);
+	parse_level(o, SAU_POP_N_carr, SCOPE_GROUP, 0);
 	name = sc->f->path;
 	sauScanner_close(sc);
 	return name;

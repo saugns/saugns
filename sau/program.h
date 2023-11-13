@@ -119,20 +119,27 @@ typedef struct sauProgramIDArr {
 	uint32_t ids[];
 } sauProgramIDArr;
 
+/* Macro used for operator use type sets of items. */
+#define SAU_POP__ITEMS(X) \
+	X(carr,  " CA") \
+	X(camod, "cAM") /* channel mix i.e. panning modulation */ \
+	X(amod,  " AM") \
+	X(ramod, "rAM") \
+	X(fmod,  " FM") \
+	X(rfmod, "rFM") \
+	X(pmod,  " PM") \
+	X(fpmod, "fPM") \
+	//
+#define SAU_POP__X_ID(NAME, PRINT) SAU_POP_N_##NAME,
+#define SAU_POP__X_PRINT(NAME, PRINT) PRINT,
+
 /**
  * Operator use types.
  */
 enum {
-	SAU_POP_DEFAULT = 0,
-	SAU_POP_CARR = 0,
-	SAU_POP_CAMOD, /* channel mix (panning) modulation */
-	SAU_POP_AMOD,
-	SAU_POP_RAMOD,
-	SAU_POP_FMOD,
-	SAU_POP_RFMOD,
-	SAU_POP_PMOD,
-	SAU_POP_FPMOD,
-	SAU_POP_USES,
+	SAU_POP__ITEMS(SAU_POP__X_ID)
+	SAU_POP_NAMED,
+	SAU_POP_N_default = 0, // shares value with carrier
 };
 
 typedef struct sauProgramOpRef {

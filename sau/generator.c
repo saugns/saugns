@@ -235,7 +235,7 @@ static void set_voice_duration(sauGenerator *restrict o,
 static void prepare_op(sauGenerator *restrict o,
 		OperatorNode *restrict n, VoiceNode *restrict vn,
 		const sauProgramOpData *restrict od) {
-	if (od->use_type == SAU_POP_CARR) {
+	if (od->use_type == SAU_POP_N_carr) {
 		vn->freq_buf_id = 0;
 	}
 	switch (od->type) {
@@ -243,7 +243,7 @@ static void prepare_op(sauGenerator *restrict o,
 		WOscNode *wo = &n->wo;
 		memset(n, 0, sizeof(*wo));
 		sau_init_WOsc(&wo->wosc, o->srate);
-		if (od->use_type == SAU_POP_CARR) // must match run_block_wosc()
+		if (od->use_type == SAU_POP_N_carr) // must match run_block_wosc()
 			vn->freq_buf_id = 3 - 1;
 		goto OSC_COMMON; }
 	case SAU_POPT_RAS: {
@@ -251,7 +251,7 @@ static void prepare_op(sauGenerator *restrict o,
 		memset(n, 0, sizeof(*rg));
 		sau_init_RasG(&rg->rasg, o->srate);
 		sauRasG_set_cycle(&rg->rasg, od->seed);
-		if (od->use_type == SAU_POP_CARR) // must match run_block_rasg()
+		if (od->use_type == SAU_POP_N_carr) // must match run_block_rasg()
 			vn->freq_buf_id = 4 - 1;
 		goto OSC_COMMON; }
 	}
