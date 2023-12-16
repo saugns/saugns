@@ -790,8 +790,8 @@ static void begin_operator(sauParser *restrict o,
 		op->prev_ref = pop;
 		op->op_flags = pop->op_flags &
 			(SAU_SDOP_NESTED | SAU_SDOP_MULTIPLE);
-		op->time = (sauTime){pop->time.v_ms,
-			(pop->time.flags & SAU_TIMEP_IMPLICIT)};
+		op->time = sauTime_DEFAULT(pop->time.v_ms,
+				pop->time.flags & SAU_TIMEP_IMPLICIT);
 		op->wave = pop->wave;
 		op->phase = pop->phase;
 		op->info = pop->info;
@@ -810,8 +810,9 @@ static void begin_operator(sauParser *restrict o,
 		/*
 		 * New operator with initial parameter values.
 		 */
-		op->time = (sauTime){o->sl.sopt.def_time_ms, 0};
-		if (pl->use_type == SAU_POP_CARR) {
+		bool is_nested = pl->use_type != SAU_POP_CARR;
+		op->time = sauTime_DEFAULT(o->sl.sopt.def_time_ms, is_nested);
+		if (!is_nested) {
 			op->pan = create_ramp(o, false, SAU_PRAMP_PAN);
 			op->freq = create_ramp(o, false, SAU_PRAMP_FREQ);
 		} else {
@@ -1230,21 +1231,21 @@ static void parse_in_op_step(sauParser *restrict o) {
 			break;
 		case 't':
 			if (sauScanner_tryc(sc, 'd')) {
-				op->time = (sauTime){o->sl.sopt.def_time_ms,
-					0};
+				op->time = sauTime_DEFAULT(
+						o->sl.sopt.def_time_ms, 0);
 			} else if (sauScanner_tryc(sc, 'i')) {
 				if (!(op->op_flags & SAU_SDOP_NESTED)) {
 					sauScanner_warning(sc, NULL,
 "ignoring 'ti' (implicit time) for non-nested operator");
 					break;
 				}
-				op->time = (sauTime){o->sl.sopt.def_time_ms,
-					SAU_TIMEP_SET | SAU_TIMEP_IMPLICIT};
+				op->time = sauTime_VALUE(
+						o->sl.sopt.def_time_ms, 1);
 			} else {
 				uint32_t time_ms;
 				if (!scan_time_val(sc, &time_ms))
 					break;
-				op->time = (sauTime){time_ms, SAU_TIMEP_SET};
+				op->time = sauTime_VALUE(time_ms, 0);
 			}
 			op->params |= SAU_POPP_TIME;
 			break;
@@ -1469,7 +1470,8 @@ static sauScriptEvData *time_durgroup(sauScriptEvData *restrict e_from,
 		 */
 		for (sauScriptOpData *op = e->objs.first_item; op;
 				op = op->next) {
-			if (!(op->time.flags & SAU_TIMEP_SET)) {
+			if ((op->time.flags & (SAU_TIMEP_SET|SAU_TIMEP_DEFAULT))
+			    != SAU_TIMEP_SET) {
 				/* fill in sensible default time */
 				op->time.v_ms = cur_longest + wait_sum;
 				op->time.flags |= SAU_TIMEP_SET;
@@ -1515,11 +1517,10 @@ static uint32_t time_operator(sauScriptOpData *restrict op) {
 	if (!(op->params & SAU_POPP_TIME))
 		op->event->ev_flags &= ~SAU_SDEV_VOICE_SET_DUR;
 	if (!(op->time.flags & SAU_TIMEP_SET)) {
-		op->time.flags |= SAU_TIMEP_DEFAULT;
-		if (op->op_flags & SAU_SDOP_NESTED) {
-			op->time.flags |= SAU_TIMEP_IMPLICIT;
-			op->time.flags |= SAU_TIMEP_SET; /* no durgroup yet */
-		}
+		if (op->time.flags & SAU_TIMEP_DEFAULT)
+			op->time.flags |= SAU_TIMEP_SET; /* use, may adjust */
+		else
+			op->time.flags |= SAU_TIMEP_DEFAULT;
 	} else if (!(op->op_flags & SAU_SDOP_NESTED)) {
 		op->event->ev_flags |= SAU_SDEV_LOCK_DUR_SCOPE;
 	}
@@ -1556,35 +1557,24 @@ static uint32_t time_event(sauScriptEvData *restrict e) {
 				 *ne_op_prev = ne_op->prev_ref,
 				 *e_op = ne_op_prev;
 		uint32_t first_time_ms = e_op->time.v_ms;
-		sauTime def_time = {
-			e_op->time.v_ms,
-			(e_op->time.flags & SAU_TIMEP_IMPLICIT)
-		};
+		uint32_t def_time_ms = e_op->time.v_ms;
 		e->dur_ms = first_time_ms; /* for first value in series */
 		if (!(e->ev_flags & SAU_SDEV_IMPLICIT_TIME))
 			e->ev_flags |= SAU_SDEV_VOICE_SET_DUR;
 		for (;;) {
 			wait_sum_ms += ne->wait_ms;
 			if (!(ne_op->time.flags & SAU_TIMEP_SET)) {
-				ne_op->time = def_time;
+				ne_op->time.v_ms = def_time_ms;
 				if (ne->ev_flags & SAU_SDEV_FROM_GAPSHIFT)
-					ne_op->time.flags |= SAU_TIMEP_SET |
-						SAU_TIMEP_DEFAULT;
+					ne_op->time.flags |= SAU_TIMEP_SET;
 			}
 			time_event(ne);
-			def_time = (sauTime){
-				ne_op->time.v_ms,
-				(ne_op->time.flags & SAU_TIMEP_IMPLICIT)
-			};
+			def_time_ms = ne_op->time.v_ms;
 			if (ne->ev_flags & SAU_SDEV_FROM_GAPSHIFT) {
 				if (ne_op_prev->time.flags & SAU_TIMEP_DEFAULT
 				    && !(ne_prev->ev_flags &
-					    SAU_SDEV_FROM_GAPSHIFT)) {
-					ne_op_prev->time = (sauTime){ // gap
-						0,
-						SAU_TIMEP_SET|SAU_TIMEP_DEFAULT
-					};
-				}
+					    SAU_SDEV_FROM_GAPSHIFT)) /* gap */
+					ne_op_prev->time = sauTime_VALUE(0, 0);
 			}
 			if (ne->ev_flags & SAU_SDEV_WAIT_PREV_DUR) {
 				ne->wait_ms += ne_op_prev->time.v_ms;
@@ -1594,6 +1584,7 @@ static uint32_t time_event(sauScriptEvData *restrict e) {
 				nest_dur_ms = wait_sum_ms + ne->dur_ms;
 			first_time_ms += ne->dur_ms +
 				(ne->wait_ms - ne_prev->dur_ms);
+			ne_op_prev->time.flags &= ~SAU_TIMEP_DEFAULT; // fix val
 			ne_op->time.flags |= SAU_TIMEP_SET;
 			ne_op->params |= SAU_POPP_TIME;
 			ne_op_prev = ne_op;
