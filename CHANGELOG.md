@@ -9,6 +9,13 @@ Pre-release
 
 [rebase in progress]
 
+Fix minor bugs in parser timing code:
+ * Make time `td` default time work properly
+   for modulators; it (from v0.3.11c) always
+   used to change to implicit time for them.
+ * Fix bug causing default times to end up
+   too short in a few situations; cleanup.
+
 Parser redesign:
  * Make postparse code in parser run once
    per durgroup just after it, not at end
