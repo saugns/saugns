@@ -38,6 +38,15 @@ typedef struct sauTime {
 	uint8_t flags;
 } sauTime;
 
+#define sauTime_VALUE(v_ms, implicit) (sauTime){ \
+	(v_ms), SAU_TIMEP_SET | \
+		((implicit) ? (SAU_TIMEP_DEFAULT | SAU_TIMEP_IMPLICIT) : 0) \
+}
+
+#define sauTime_DEFAULT(v_ms, implicit) (sauTime){ \
+	(v_ms), SAU_TIMEP_DEFAULT | ((implicit) ? SAU_TIMEP_IMPLICIT : 0) \
+}
+
 /**
  * Ramp use IDs.
  */
