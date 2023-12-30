@@ -4,8 +4,8 @@ saugns version changes
 [On the website](https://sau.frama.io/changes.html#saulang)
 is a shorter change log with only the SAU language changes.
 
-Pre-release
------------
+v0.4.2d (2023-12-31)
+--------------------
 
 Language changes:
  * Channel mixing. Fix combination of `c[]` modulation
