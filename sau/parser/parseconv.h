@@ -284,7 +284,7 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 		uint8_t use_type,
 		const sauScriptObjInfo *restrict info) {
 	uint32_t op_id = info->last_op_id;
-	sauOpAllocState *oas = &o->oa.a[op_id];
+	size_t ev_op_i = o->ev_op_data.count;
 	sauProgramOpData *ood = _OpDataArr_add(&o->ev_op_data, NULL);
 	if (!ood) goto MEM_ERR;
 	ood->id = op_id;
@@ -309,6 +309,11 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 		const sauProgramIDArr *arr;
 		if (!(arr = ParseConv_convert_list(o, in_list)))
 			goto MEM_ERR;
+		/*
+		 * Addresses in resized arrays got here, after maybe changing.
+		 */
+		ood = &o->ev_op_data.a[ev_op_i];
+		sauOpAllocState *oas = &o->oa.a[op_id];
 		if (in_list->flags & SAU_SDLI_APPEND) {
 			if (arr == &blank_idarr) continue; // omit no-op
 			if (!(arr = concat_ProgramIDArr(o->mp,
@@ -478,7 +483,9 @@ ParseConv_convert_event(ParseConv *restrict o,
 	o->objects = objects; // set here, allocation may change between calls
 	switch (obj->obj_type) {
 	case SAU_POBJT_LIST:
+		// TODO: merge these functions
 		if (!ParseConv_convert_ops(o, (void*)obj, false)) goto MEM_ERR;
+		if (!ParseConv_convert_list(o, (void*)obj)) goto MEM_ERR;
 		return true;
 	case SAU_POBJT_OP:
 		break; /* below */
