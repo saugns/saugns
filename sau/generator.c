@@ -48,6 +48,7 @@ typedef struct GenNode {
 	struct ParWithRangeMod amp;
 	sauLine pan;
 	const sauProgramIDArr *camods;
+	float amp_lec;
 } GenNode;
 
 typedef struct OscNode {
@@ -312,6 +313,8 @@ static void update_op(sauGenerator *restrict o,
 			gen->flags &= ~ON_TIME_INF;
 		}
 	}
+	if (params & SAU_POPP_AMP_LEC)
+		gen->amp_lec = od->amp_lec;
 	if (od->camods) gen->camods = od->camods;
 	if (od->amods) gen->amp.mods = od->amods;
 	if (od->ramods) gen->amp.r_mods = od->ramods;
@@ -365,14 +368,20 @@ static void handle_event(sauGenerator *restrict o, EventNode *restrict e) {
 static void block_mix_add(float *restrict buf, size_t buf_len,
 		bool layer,
 		const float *restrict in_buf,
-		const float *restrict amp) {
+		const float *restrict amp, float lec) {
+	float lec2 = - lec * lec;
+	float lec3 = 1.f / (1.f + fabsf(lec));
 	if (layer) {
 		for (size_t i = 0; i < buf_len; ++i) {
-			buf[i] += in_buf[i] * amp[i];
+			float s = in_buf[i] * amp[i];
+			if (s < lec2) s = (s - lec) * lec3;
+			buf[i] += s;
 		}
 	} else {
 		for (size_t i = 0; i < buf_len; ++i) {
-			buf[i] = in_buf[i] * amp[i];
+			float s = in_buf[i] * amp[i];
+			if (s < lec2) s = (s - lec) * lec3;
+			buf[i] = s;
 		}
 	}
 }
@@ -388,7 +397,7 @@ static void block_mix_add(float *restrict buf, size_t buf_len,
 static void block_mix_mul_waveenv(float *restrict buf, size_t buf_len,
 		bool layer,
 		const float *restrict in_buf,
-		const float *restrict amp) {
+		const float *restrict amp, float lec) {
 	if (layer) {
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s = in_buf[i];
@@ -414,10 +423,10 @@ static void block_mix(GenNode *restrict gen,
 		bool wave_env, bool layer,
 		float *restrict in_buf,
 		const float *restrict amp) {
-	(void)gen;
+	float lec = gen->amp_lec;
 	(wave_env ?
 	 block_mix_mul_waveenv :
-	 block_mix_add)(buf, buf_len, layer, in_buf, amp);
+	 block_mix_add)(buf, buf_len, layer, in_buf, amp, lec);
 }
 
 static uint32_t run_block(sauGenerator *restrict o,

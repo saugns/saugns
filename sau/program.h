@@ -76,9 +76,10 @@ enum {
 enum {
 	SAU_POPP_TIME = 1<<0,
 	SAU_POPP_PHASE = 1<<1,
-	SAU_POPP_WAVE = 1<<2, // WAVE only
-	SAU_POPP_RAS = 1<<2, // RAS only
-	SAU_POP_PARAMS = (1<<3) - 1,
+	SAU_POPP_AMP_LEC = 1<<2,
+	SAU_POPP_WAVE = 1<<3, // WAVE only
+	SAU_POPP_RAS = 1<<3, // RAS only
+	SAU_POP_PARAMS = (1<<4) - 1,
 };
 
 /** Random segments option data. */
@@ -170,6 +171,7 @@ typedef struct sauProgramOpData {
 	sauLine *pan;
 	sauLine *amp, *amp2;
 	sauLine *freq, *freq2;
+	float amp_lec;
 	uint32_t phase;
 	uint32_t seed; // TODO: divide containing node type
 	uint8_t wave; // TODO: divide containing node type

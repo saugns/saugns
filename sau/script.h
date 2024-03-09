@@ -70,6 +70,7 @@ typedef struct sauScriptOpData {
 	sauLine *pan;
 	sauLine *amp, *amp2;
 	sauLine *freq, *freq2;
+	float amp_lec;
 	uint32_t phase;
 	uint8_t wave;
 	sauRasOpt ras_opt; // TODO: divide containing node type
