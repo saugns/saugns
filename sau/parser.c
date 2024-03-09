@@ -1064,6 +1064,7 @@ static void begin_operator(sauParser *restrict o,
 			o->obj_arr.a[pl->nest.list->ref.obj_id].parent_op_obj :
 			op->ref.obj_id;
 		op->amp = create_line(o, false, SAU_PSWEEP_AMP);
+		op->amp_lec = 0.05f;
 	}
 	op->event = e;
 	link_ev_obj(o, &op->ref, &pop->ref);
