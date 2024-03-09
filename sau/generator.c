@@ -50,6 +50,7 @@ typedef struct GenNode {
 	sauLine pan;
 	const sauProgramIDArr *camods;
 	float amp_lec;
+	float amp_le_prev;
 } GenNode;
 
 typedef struct AmpNode {
@@ -397,22 +398,30 @@ static void handle_event(sauGenerator *restrict o, EventNode *restrict e) {
  *
  * Used to generate output for carrier or additive modulator.
  */
-static void block_mix_add(float *restrict buf, size_t buf_len,
+static void block_mix_add(GenNode *restrict gen,
+		float *restrict buf, size_t buf_len,
 		bool layer,
 		const float *restrict in_buf,
-		const float *restrict amp, float lec) {
+		const float *restrict amp) {
+	float lec = - gen->amp_lec * 0.5f;
 	float lec2 = - lec * lec;
-	float lec3 = 1.f / (1.f + fabsf(lec));
+	float lec3 = 1.f - fabsf(gen->amp_lec);
 	if (layer) {
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s = in_buf[i] * amp[i];
-			if (s < lec2) s = (s - lec) * lec3;
+			float le_in = (s < lec2) ? lec : 0.f;
+			float le_s = le_in + gen->amp_le_prev;
+			gen->amp_le_prev = le_in;
+			s = s * lec3 + le_s;
 			buf[i] += s;
 		}
 	} else {
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s = in_buf[i] * amp[i];
-			if (s < lec2) s = (s - lec) * lec3;
+			float le_in = (s < lec2) ? lec : 0.f;
+			float le_s = le_in + gen->amp_le_prev;
+			gen->amp_le_prev = le_in;
+			s = s * lec3 + le_s;
 			buf[i] = s;
 		}
 	}
@@ -426,10 +435,12 @@ static void block_mix_add(float *restrict buf, size_t buf_len,
  *
  * Used to generate output for modulation with value range.
  */
-static void block_mix_mul_waveenv(float *restrict buf, size_t buf_len,
+static void block_mix_mul_waveenv(GenNode *restrict gen,
+		float *restrict buf, size_t buf_len,
 		bool layer,
 		const float *restrict in_buf,
-		const float *restrict amp, float lec) {
+		const float *restrict amp) {
+	(void)gen;
 	if (layer) {
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s = in_buf[i];
@@ -455,10 +466,9 @@ static void block_mix(GenNode *restrict gen,
 		bool wave_env, bool layer,
 		float *restrict in_buf,
 		const float *restrict amp) {
-	float lec = gen->amp_lec;
 	(wave_env ?
 	 block_mix_mul_waveenv :
-	 block_mix_add)(buf, buf_len, layer, in_buf, amp, lec);
+	 block_mix_add)(gen, buf, buf_len, layer, in_buf, amp);
 }
 
 static uint32_t run_block(sauGenerator *restrict o,
