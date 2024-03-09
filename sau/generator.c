@@ -448,22 +448,38 @@ static void block_mix_mul_waveenv(GenNode *restrict gen,
 		bool layer,
 		const float *restrict in_buf,
 		const float *restrict amp) {
-	(void)gen;
+	float lec = - gen->amp_lec;
+	float le_th = - sqrtf(fabsf(gen->amp_lec)) * (0.5f/128);
+	float le_gr = 1.f - fabsf(gen->amp_lec);
+	float le_prev = gen->amp_le_prev;
+	float le_avg = gen->amp_le_avg;
 	if (layer) {
 		for (size_t i = 0; i < buf_len; ++i) {
-			float s = in_buf[i];
 			float s_amp = amp[i] * 0.5f;
-			s = (s * s_amp) + fabsf(s_amp);
+			float s = in_buf[i] * s_amp;
+			float le_in = (s < le_th) ? lec : 0.f;
+			float le_s = le_in + le_prev;
+			le_prev = le_in;
+			le_avg = (le_avg + le_s) * 0.5f;
+			le_s = le_avg;
+			s = (s + fabsf(s_amp)) * le_gr + (le_s * 0.5f - lec);
 			buf[i] *= s;
 		}
 	} else {
 		for (size_t i = 0; i < buf_len; ++i) {
-			float s = in_buf[i];
 			float s_amp = amp[i] * 0.5f;
-			s = (s * s_amp) + fabsf(s_amp);
+			float s = in_buf[i] * s_amp;
+			float le_in = (s < le_th) ? lec : 0.f;
+			float le_s = le_in + le_prev;
+			le_prev = le_in;
+			le_avg = (le_avg + le_s) * 0.5f;
+			le_s = le_avg;
+			s = (s + fabsf(s_amp)) * le_gr + (le_s * 0.5f - lec);
 			buf[i] = s;
 		}
 	}
+	gen->amp_le_prev = le_prev;
+	gen->amp_le_avg = le_avg;
 }
 
 /*
