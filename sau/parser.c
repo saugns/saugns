@@ -1623,8 +1623,21 @@ static uint8_t parse_par_modranges(sauParser *restrict o,
 static uint8_t parse_op_amp(sauParser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
 	sauScriptOpData *op = pl->operator;
-	return parse_par_modranges(o, NULL, &op->amp, false,
-			SAU_PSWEEP_AMP, SAU_POP_N_amod);
+	uint8_t c;
+	switch ((c = parse_par_modranges(o, NULL, &op->amp, false,
+				SAU_PSWEEP_AMP, SAU_POP_N_amod))) {
+	case 'l': {
+		double val;
+		if (scan_num(o->sc, NULL, &val)) {
+			op->amp_lec = val;
+			op->params |= SAU_POPP_AMP_LEC;
+		}
+		break; }
+	default:
+		return c;
+	}
+	return 0;
+
 }
 
 static bool parse_op_chanmix(sauParser *restrict o) {
