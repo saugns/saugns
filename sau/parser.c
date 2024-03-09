@@ -1168,6 +1168,7 @@ static void begin_operator(sauParser *restrict o,
 		op->params = SAU_POP_PARAMS - SAU_POPP_COPY;
 		op->freq = create_line(o, is_nested, SAU_PSWEEP_FREQ);
 		op->amp = create_line(o, false, SAU_PSWEEP_AMP);
+		op->amp_lec = 0.05f;
 	NEW_COPY:
 		info = ObjInfoArr_add(&o->obj_arr, &op->ref,
 				SAU_POBJT_OP, type);
