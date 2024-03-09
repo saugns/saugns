@@ -1179,6 +1179,7 @@ static void begin_operator(sauParser *restrict o,
 			op->time = sauTime_DEFAULT(o->sl.sopt.def_time_ms,
 					is_nested);
 			op->amp = create_range(o, false, SAU_PSWEEP_AMP);
+			op->amp_lec = 0.05f;
 			op->freq = create_range(o,
 					is_nested && info->has_osc_parent,
 					SAU_PSWEEP_FREQ);
