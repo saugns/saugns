@@ -406,7 +406,6 @@ static void block_mix_add(GenNode *restrict gen,
 	float lec = - gen->amp_lec;
 	float le_th = - sqrtf(fabsf(gen->amp_lec)) * (1.f/128);
 	float le_gr = 1.f - fabsf(gen->amp_lec);
-	lec *= 0.5f;
 	float le_prev = gen->amp_le_prev;
 	float le_avg = gen->amp_le_avg;
 	if (layer) {
@@ -417,7 +416,7 @@ static void block_mix_add(GenNode *restrict gen,
 			le_prev = le_in;
 			le_avg = (le_avg + le_s) * 0.5f;
 			le_s = le_avg;
-			s = s * le_gr + le_s;
+			s = s * le_gr + (le_s - lec);
 			buf[i] += s;
 		}
 	} else {
@@ -428,7 +427,7 @@ static void block_mix_add(GenNode *restrict gen,
 			le_prev = le_in;
 			le_avg = (le_avg + le_s) * 0.5f;
 			le_s = le_avg;
-			s = s * le_gr + le_s;
+			s = s * le_gr + (le_s - lec);
 			buf[i] = s;
 		}
 	}
