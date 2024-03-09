@@ -94,9 +94,10 @@ enum {
 	SAU_POPP_COPY  = 1U<<0,
 	SAU_POPP_TIME  = 1U<<1,
 	SAU_POPP_MODE  = 1U<<2, // type-specific data
-	SAU_POPP_PHASE = 1U<<3,
-	SAU_POPP_SEED  = 1U<<4,
-	SAU_POP_PARAMS = (1U<<5) - 1,
+	SAU_POPP_AMP_LEC=1U<<3,
+	SAU_POPP_PHASE = 1U<<4,
+	SAU_POPP_SEED  = 1U<<5,
+	SAU_POP_PARAMS = (1U<<6) - 1,
 };
 
 /* Macro used to declare and define noise type sets of items. */
@@ -226,6 +227,7 @@ typedef struct sauProgramOpData {
 	sauLine *amp, *amp2;
 	sauLine *freq, *freq2;
 	sauLine *pm_a;
+	float amp_lec;
 	uint32_t phase;
 	uint32_t seed;
 	uint8_t use_type; // carrier or modulator use?

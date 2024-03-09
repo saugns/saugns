@@ -1566,6 +1566,13 @@ static uint8_t parse_op_amp(sauParser *restrict o) {
 	parse_par_list(o, NULL, &op->amp, false,
 			SAU_PSWEEP_AMP, SAU_POP_N_amod);
 	switch ((c = sauScanner_getc_after(o->sc, '.'))) {
+	case 'l': {
+		double val;
+		if (scan_num(o->sc, NULL, &val)) {
+			op->amp_lec = val;
+			op->params |= SAU_POPP_AMP_LEC;
+		}
+		break; }
 	case 'r':
 		parse_par_list(o, NULL, &op->amp2, false,
 				SAU_PSWEEP_AMP2, SAU_POP_N_ramod);

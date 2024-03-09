@@ -301,6 +301,7 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 	ood->freq = op->freq;
 	ood->freq2 = op->freq2;
 	ood->pm_a = op->pm_a;
+	ood->amp_lec = op->amp_lec;
 	ood->phase = op->phase;
 	ood->use_type = use_type;
 	/* TODO: separation of types */
