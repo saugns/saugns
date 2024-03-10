@@ -25,20 +25,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-/** RC time constant for \p msXsr time in ms multiplied by sample rate. */
-#define SAU_RC_TIME_COEFF(msXsr) exp(-1000.f / (msXsr))
-
-/** RC frequency constant for \p hz_sr frequency in Hz divided by sample rate.*/
-#define SAU_RC_FREQ_COEFF(hz_sr) exp(-2*SAU_PI * (hz_sr))
-
-/** Run exponential averaging for 1 sample, updating and returning state. */
-#define SAU_RC_AVG_NEXT(state, in, coeff) \
-	((state) = (in) + (coeff)*((state) - (in)))
-
-/** Run DC blocker for 1 sample, updating and returning state. */
-#define SAU_RC_DCBLOCK_NEXT(state, in, in_prev, coeff) \
-	((state) = (in) - (in_prev) + (coeff)*(state))
-
 #define BUF_LEN 1024
 typedef float Buf[BUF_LEN];
 
