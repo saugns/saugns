@@ -430,11 +430,12 @@ static void block_mix_add(sauGenerator *restrict o,
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s = in_buf[i] * amp[i];
 			float le_in = (s < le_th) ? lec : 0.f;
+			le_in -= SAU_RC_AVG_NEXT(le_dc, le_in, o->dc_coeff);
+			le_in = sau_fclampf(le_in, -0.5f, 0.5f);
 			float le_s = le_in + le_prev;
 			le_prev = le_in;
 			le_avg = (le_avg + le_s) * 0.5f;
 			le_s = le_avg;
-			le_s -= SAU_RC_AVG_NEXT(le_dc, le_s, o->dc_coeff);
 			s = s * le_gr + le_s;
 			buf[i] += s;
 		}
@@ -442,11 +443,12 @@ static void block_mix_add(sauGenerator *restrict o,
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s = in_buf[i] * amp[i];
 			float le_in = (s < le_th) ? lec : 0.f;
+			le_in -= SAU_RC_AVG_NEXT(le_dc, le_in, o->dc_coeff);
+			le_in = sau_fclampf(le_in, -0.5f, 0.5f);
 			float le_s = le_in + le_prev;
 			le_prev = le_in;
 			le_avg = (le_avg + le_s) * 0.5f;
 			le_s = le_avg;
-			le_s -= SAU_RC_AVG_NEXT(le_dc, le_s, o->dc_coeff);
 			s = s * le_gr + le_s;
 			buf[i] = s;
 		}
@@ -481,11 +483,12 @@ static void block_mix_mul_waveenv(sauGenerator *restrict o,
 			float s_amp = amp[i] * 0.5f;
 			float s = in_buf[i] * s_amp;
 			float le_in = (s < le_th) ? lec : 0.f;
+			le_in -= SAU_RC_AVG_NEXT(le_dc, le_in, o->dc_coeff);
+			le_in = sau_fclampf(le_in, -0.5f, 0.5f);
 			float le_s = le_in + le_prev;
 			le_prev = le_in;
 			le_avg = (le_avg + le_s) * 0.5f;
 			le_s = le_avg;
-			le_s -= SAU_RC_AVG_NEXT(le_dc, le_s, o->dc_coeff);
 			s = s * le_gr + le_s + fabsf(s_amp);
 			buf[i] *= s;
 		}
@@ -494,11 +497,12 @@ static void block_mix_mul_waveenv(sauGenerator *restrict o,
 			float s_amp = amp[i] * 0.5f;
 			float s = in_buf[i] * s_amp;
 			float le_in = (s < le_th) ? lec : 0.f;
+			le_in -= SAU_RC_AVG_NEXT(le_dc, le_in, o->dc_coeff);
+			le_in = sau_fclampf(le_in, -0.5f, 0.5f);
 			float le_s = le_in + le_prev;
 			le_prev = le_in;
 			le_avg = (le_avg + le_s) * 0.5f;
 			le_s = le_avg;
-			le_s -= SAU_RC_AVG_NEXT(le_dc, le_s, o->dc_coeff);
 			s = s * le_gr + le_s + fabsf(s_amp);
 			buf[i] = s;
 		}
