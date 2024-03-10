@@ -25,6 +25,20 @@
 #include <stdlib.h>
 #include <string.h>
 
+/** RC time constant for \p msXsr time in ms multiplied by sample rate. */
+#define SAU_RC_TIME_COEFF(msXsr) exp(-1000.f / (msXsr))
+
+/** RC frequency constant for \p hz_sr frequency in Hz divided by sample rate.*/
+#define SAU_RC_FREQ_COEFF(hz_sr) exp(-2*SAU_PI * (hz_sr))
+
+/** Run exponential averaging for 1 sample, updating and returning state. */
+#define SAU_RC_AVG_NEXT(state, in, coeff) \
+	((state) = (in) + (coeff)*((state) - (in)))
+
+/** Run DC blocker for 1 sample, updating and returning state. */
+#define SAU_RC_DCBLOCK_NEXT(state, in, in_prev, coeff) \
+	((state) = (in) - (in_prev) + (coeff)*(state))
+
 #define BUF_LEN 1024
 typedef float Buf[BUF_LEN];
 
@@ -50,7 +64,7 @@ typedef struct GenNode {
 	sauLine pan;
 	const sauProgramIDArr *camods;
 	float amp_lec;
-	float amp_le_prev, amp_le_avg;
+	float amp_le_prev, amp_le_avg, amp_le_dc, amp_le_dcx;
 } GenNode;
 
 typedef struct AmpNode {
@@ -129,6 +143,7 @@ struct sauGenerator {
 	uint32_t op_count;
 	OperatorNode *operators;
 	sauMempool *mem;
+	float dc_coeff;
 };
 
 // maximum number of buffers needed for op nesting depth
@@ -182,6 +197,7 @@ static bool convert_program(sauGenerator *restrict o,
 	 */
 	int ev_time_carry = 0;
 	o->srate = srate;
+	o->dc_coeff = SAU_RC_TIME_COEFF(5.0 * srate);
 	o->amp_scale = 0.5f * prg->ampmult; // half for panning sum
 	if ((prg->mode & SAU_PMODE_AMP_DIV_VOICES) != 0)
 		o->amp_scale /= o->vo_count;
@@ -398,7 +414,8 @@ static void handle_event(sauGenerator *restrict o, EventNode *restrict e) {
  *
  * Used to generate output for carrier or additive modulator.
  */
-static void block_mix_add(GenNode *restrict gen,
+static void block_mix_add(sauGenerator *restrict o,
+		GenNode *restrict gen,
 		float *restrict buf, size_t buf_len,
 		bool layer,
 		const float *restrict in_buf,
@@ -408,6 +425,8 @@ static void block_mix_add(GenNode *restrict gen,
 	float le_gr = 1.f - fabsf(gen->amp_lec);
 	float le_prev = gen->amp_le_prev;
 	float le_avg = gen->amp_le_avg;
+	float le_dc = gen->amp_le_dc;
+	float le_dcx = gen->amp_le_dcx;
 	if (layer) {
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s = in_buf[i] * amp[i];
@@ -416,7 +435,10 @@ static void block_mix_add(GenNode *restrict gen,
 			le_prev = le_in;
 			le_avg = (le_avg + le_s) * 0.5f;
 			le_s = le_avg;
-			s = s * le_gr + (le_s - lec);
+			SAU_RC_DCBLOCK_NEXT(le_dc, le_s, le_dcx, o->dc_coeff);
+			le_dcx = le_s;
+			le_s = le_dc;
+			s = s * le_gr + le_s;
 			buf[i] += s;
 		}
 	} else {
@@ -427,12 +449,17 @@ static void block_mix_add(GenNode *restrict gen,
 			le_prev = le_in;
 			le_avg = (le_avg + le_s) * 0.5f;
 			le_s = le_avg;
-			s = s * le_gr + (le_s - lec);
+			SAU_RC_DCBLOCK_NEXT(le_dc, le_s, le_dcx, o->dc_coeff);
+			le_dcx = le_s;
+			le_s = le_dc;
+			s = s * le_gr + le_s;
 			buf[i] = s;
 		}
 	}
 	gen->amp_le_prev = le_prev;
 	gen->amp_le_avg = le_avg;
+	gen->amp_le_dc = le_dc;
+	gen->amp_le_dcx = le_dcx;
 }
 
 /*
@@ -443,7 +470,8 @@ static void block_mix_add(GenNode *restrict gen,
  *
  * Used to generate output for modulation with value range.
  */
-static void block_mix_mul_waveenv(GenNode *restrict gen,
+static void block_mix_mul_waveenv(sauGenerator *restrict o,
+		GenNode *restrict gen,
 		float *restrict buf, size_t buf_len,
 		bool layer,
 		const float *restrict in_buf,
@@ -453,6 +481,8 @@ static void block_mix_mul_waveenv(GenNode *restrict gen,
 	float le_gr = 1.f - fabsf(gen->amp_lec);
 	float le_prev = gen->amp_le_prev;
 	float le_avg = gen->amp_le_avg;
+	float le_dc = gen->amp_le_dc;
+	float le_dcx = gen->amp_le_dcx;
 	if (layer) {
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s_amp = amp[i] * 0.5f;
@@ -462,7 +492,10 @@ static void block_mix_mul_waveenv(GenNode *restrict gen,
 			le_prev = le_in;
 			le_avg = (le_avg + le_s) * 0.5f;
 			le_s = le_avg;
-			s = s * le_gr + (le_s - lec) + fabsf(s_amp);
+			SAU_RC_DCBLOCK_NEXT(le_dc, le_s, le_dcx, o->dc_coeff);
+			le_dcx = le_s;
+			le_s = le_dc;
+			s = s * le_gr + le_s + fabsf(s_amp);
 			buf[i] *= s;
 		}
 	} else {
@@ -474,25 +507,31 @@ static void block_mix_mul_waveenv(GenNode *restrict gen,
 			le_prev = le_in;
 			le_avg = (le_avg + le_s) * 0.5f;
 			le_s = le_avg;
-			s = s * le_gr + (le_s - lec) + fabsf(s_amp);
+			SAU_RC_DCBLOCK_NEXT(le_dc, le_s, le_dcx, o->dc_coeff);
+			le_dcx = le_s;
+			le_s = le_dc;
+			s = s * le_gr + le_s + fabsf(s_amp);
 			buf[i] = s;
 		}
 	}
 	gen->amp_le_prev = le_prev;
 	gen->amp_le_avg = le_avg;
+	gen->amp_le_dc = le_dc;
+	gen->amp_le_dcx = le_dcx;
 }
 
 /*
  * Handle audio layer according to options.
  */
-static void block_mix(GenNode *restrict gen,
+static void block_mix(sauGenerator *restrict o,
+		GenNode *restrict gen,
 		float *restrict buf, size_t buf_len,
 		bool wave_env, bool layer,
 		float *restrict in_buf,
 		const float *restrict amp) {
 	(wave_env ?
 	 block_mix_mul_waveenv :
-	 block_mix_add)(gen, buf, buf_len, layer, in_buf, amp);
+	 block_mix_add)(o, gen, buf, buf_len, layer, in_buf, amp);
 }
 
 static uint32_t run_block(sauGenerator *restrict o,
@@ -572,7 +611,7 @@ static void run_block_amp(sauGenerator *restrict o,
 	tmp_buf = (*bufs + 0); // #3
 	for (uint32_t i = 0; i < len; ++i)
 		tmp_buf[i] = 1.f; // scale to amp; TODO: use specialized code
-	block_mix(&n->ag.gen, mix_buf, len, wave_env, layer, tmp_buf, amp);
+	block_mix(o, &n->ag.gen, mix_buf, len, wave_env, layer, tmp_buf, amp);
 }
 
 /*
@@ -593,7 +632,7 @@ static void run_block_noiseg(sauGenerator *restrict o,
 	amp = *(bufs++); // #2 (++) and temporary #3, #4
 	tmp_buf = (*bufs + 0); // #3
 	sauNoiseG_run(&n->ng.noiseg, tmp_buf, len);
-	block_mix(&n->ng.gen, mix_buf, len, wave_env, layer, tmp_buf, amp);
+	block_mix(o, &n->ng.gen, mix_buf, len, wave_env, layer, tmp_buf, amp);
 }
 
 /*
@@ -654,7 +693,8 @@ static void run_block_wosc(sauGenerator *restrict o,
 	} else {
 		sauWOsc_run(&n->wo.wosc, tmp_buf, len, phase_buf);
 	}
-	block_mix(&n->wo.osc.gen, mix_buf, len, wave_env, layer, tmp_buf, amp);
+	block_mix(o, &n->wo.osc.gen, mix_buf, len,
+			wave_env, layer, tmp_buf, amp);
 }
 
 /*
@@ -716,7 +756,8 @@ static void run_block_rasg(sauGenerator *restrict o,
 		sauRasG_run(&n->rg.rasg, len, rasg_buf, tmp_buf, tmp2_buf,
 				cycle_buf);
 	}
-	block_mix(&n->rg.osc.gen, mix_buf, len, wave_env, layer, rasg_buf, amp);
+	block_mix(o, &n->rg.osc.gen, mix_buf, len,
+			wave_env, layer, rasg_buf, amp);
 }
 
 /*
