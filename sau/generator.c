@@ -395,6 +395,13 @@ static void handle_event(sauGenerator *restrict o, EventNode *restrict e) {
 	}
 }
 
+/* Run "ladder effect" averaging for 1 sample, updating and returning state.
+   Jumps if difference is too large in one direction, for switching on fast. */
+#define SAU_LE_AVG_NEXT(state, in, a_th, coeff) \
+	(((state) = (((in)-(state)) < (a_th)) ? \
+	 (a_th) : \
+	 ((in) - (coeff)*((in)-(state)))))
+
 /*
  * Add audio layer from \p in_buf into \p buf scaled with \p amp.
  *
@@ -416,8 +423,9 @@ static void block_mix_add(sauGenerator *restrict o,
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s = in_buf[i] * amp[i];
 			float le_in = (s < le_th) ? lec : 0.f;
-			le_in -= SAU_RC_AVG_NEXT(le_dc, le_in, o->dc_coeff);
-			le_in = sau_fclampf(le_in, lec_clip, -lec_clip);
+			le_in -= SAU_LE_AVG_NEXT(le_dc, le_in,
+					lec_clip, o->dc_coeff);
+			le_in = sau_minf(le_in, -lec_clip);
 			float le_s = le_in + le_prev;
 			le_prev = le_in;
 			le_avg = (le_avg + le_s) * 0.5f;
@@ -426,11 +434,13 @@ static void block_mix_add(sauGenerator *restrict o,
 			buf[i] += s;
 		}
 	} else {
+
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s = in_buf[i] * amp[i];
 			float le_in = (s < le_th) ? lec : 0.f;
-			le_in -= SAU_RC_AVG_NEXT(le_dc, le_in, o->dc_coeff);
-			le_in = sau_fclampf(le_in, lec_clip, -lec_clip);
+			le_in -= SAU_LE_AVG_NEXT(le_dc, le_in,
+					lec_clip, o->dc_coeff);
+			le_in = sau_minf(le_in, -lec_clip);
 			float le_s = le_in + le_prev;
 			le_prev = le_in;
 			le_avg = (le_avg + le_s) * 0.5f;
@@ -469,8 +479,9 @@ static void block_mix_mul_waveenv(sauGenerator *restrict o,
 			float s_amp = amp[i] * 0.5f;
 			float s = in_buf[i] * s_amp;
 			float le_in = (s < le_th) ? lec : 0.f;
-			le_in -= SAU_RC_AVG_NEXT(le_dc, le_in, o->dc_coeff);
-			le_in = sau_fclampf(le_in, lec_clip, -lec_clip);
+			le_in -= SAU_LE_AVG_NEXT(le_dc, le_in,
+					lec_clip, o->dc_coeff);
+			le_in = sau_minf(le_in, -lec_clip);
 			float le_s = le_in + le_prev;
 			le_prev = le_in;
 			le_avg = (le_avg + le_s) * 0.5f;
@@ -483,8 +494,9 @@ static void block_mix_mul_waveenv(sauGenerator *restrict o,
 			float s_amp = amp[i] * 0.5f;
 			float s = in_buf[i] * s_amp;
 			float le_in = (s < le_th) ? lec : 0.f;
-			le_in -= SAU_RC_AVG_NEXT(le_dc, le_in, o->dc_coeff);
-			le_in = sau_fclampf(le_in, lec_clip, -lec_clip);
+			le_in -= SAU_LE_AVG_NEXT(le_dc, le_in,
+					lec_clip, o->dc_coeff);
+			le_in = sau_minf(le_in, -lec_clip);
 			float le_s = le_in + le_prev;
 			le_prev = le_in;
 			le_avg = (le_avg + le_s) * 0.5f;
