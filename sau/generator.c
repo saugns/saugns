@@ -447,7 +447,7 @@ static void block_mix_add(sauGenerator *restrict o,
 		if (!layer) sau_nzerof(buf, buf_len);
 		return;
 	}
-	float lec = - gen->amp_lec;
+	float lec = - gen->amp_lec, lec_clip = lec * 0.5f;
 	float le_th = - sqrtf(fabsf(gen->amp_lec)) * (1.f/128);
 	float le_gr = 1.f - fabsf(gen->amp_lec);
 	float le_prev = gen->amp_le_prev;
@@ -458,7 +458,7 @@ static void block_mix_add(sauGenerator *restrict o,
 			float s = in_buf[i] * amp[i];
 			float le_in = (s < le_th) ? lec : 0.f;
 			le_in -= SAU_RC_AVG_NEXT(le_dc, le_in, o->dc_coeff);
-			le_in = sau_fclampf(le_in, -0.5f, 0.5f);
+			le_in = sau_fclampf(le_in, lec_clip, -lec_clip);
 			float le_s = le_in + le_prev;
 			le_prev = le_in;
 			le_avg = (le_avg + le_s) * 0.5f;
@@ -471,7 +471,7 @@ static void block_mix_add(sauGenerator *restrict o,
 			float s = in_buf[i] * amp[i];
 			float le_in = (s < le_th) ? lec : 0.f;
 			le_in -= SAU_RC_AVG_NEXT(le_dc, le_in, o->dc_coeff);
-			le_in = sau_fclampf(le_in, -0.5f, 0.5f);
+			le_in = sau_fclampf(le_in, lec_clip, -lec_clip);
 			float le_s = le_in + le_prev;
 			le_prev = le_in;
 			le_avg = (le_avg + le_s) * 0.5f;
@@ -503,7 +503,7 @@ static void block_mix_mul_waveenv(sauGenerator *restrict o,
 		sau_nzerof(buf, buf_len);
 		return;
 	}
-	float lec = - gen->amp_lec * 0.5f;
+	float lec = - gen->amp_lec * 0.5f, lec_clip = lec * 0.5f;
 	float le_th = - sqrtf(fabsf(gen->amp_lec)) * (0.5f/128);
 	float le_gr = 1.f - fabsf(gen->amp_lec);
 	float le_prev = gen->amp_le_prev;
@@ -515,7 +515,7 @@ static void block_mix_mul_waveenv(sauGenerator *restrict o,
 			float s = in_buf[i] * s_amp;
 			float le_in = (s < le_th) ? lec : 0.f;
 			le_in -= SAU_RC_AVG_NEXT(le_dc, le_in, o->dc_coeff);
-			le_in = sau_fclampf(le_in, -0.5f, 0.5f);
+			le_in = sau_fclampf(le_in, lec_clip, -lec_clip);
 			float le_s = le_in + le_prev;
 			le_prev = le_in;
 			le_avg = (le_avg + le_s) * 0.5f;
@@ -529,7 +529,7 @@ static void block_mix_mul_waveenv(sauGenerator *restrict o,
 			float s = in_buf[i] * s_amp;
 			float le_in = (s < le_th) ? lec : 0.f;
 			le_in -= SAU_RC_AVG_NEXT(le_dc, le_in, o->dc_coeff);
-			le_in = sau_fclampf(le_in, -0.5f, 0.5f);
+			le_in = sau_fclampf(le_in, lec_clip, -lec_clip);
 			float le_s = le_in + le_prev;
 			le_prev = le_in;
 			le_avg = (le_avg + le_s) * 0.5f;
