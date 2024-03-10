@@ -1,5 +1,5 @@
 /* SAU library: Math definitions.
- * Copyright (c) 2011-2012, 2017-2023 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2024 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
@@ -296,3 +296,34 @@ static inline float sau_sinpi_d5f(float x) {
 	float x2 = x*x;
 	return x*(scale[0] + x2*(scale[1] + x2*scale[2]));
 }
+
+/*
+ * Filters & envelopes.
+ */
+
+/** RC time constant for \p msXsr time in ms multiplied by sample rate. */
+#define SAU_RC_TIME_COEFF(msXsr) exp(-1000.f / (msXsr))
+
+/** RC frequency constant for \p hz_sr frequency in Hz divided by sample rate.*/
+#define SAU_RC_FREQ_COEFF(hz_sr) exp(-2*SAU_PI * (hz_sr))
+
+/** Run exponential averaging for 1 sample, updating and returning state. */
+#define SAU_RC_AVG_NEXT(state, in, coeff) \
+	((state) = (in) + (coeff)*((state)-(in)))
+
+/** Run zero-attack envelope for 1 sample, updating and returning state. */
+#define SAU_RC_ZAENV_NEXT(state, in, coeff) \
+	((state) = (in) + (((state)-(in)) > 0.f) ? (coeff)*((state)-(in)) : 0.f)
+
+/** Run zero-release envelope for 1 sample, updating and returning state. */
+#define SAU_RC_ZRENV_NEXT(state, in, coeff) \
+	((state) = (in) + (((state)-(in)) < 0.f) ? (coeff)*((state)-(in)) : 0.f)
+
+/** Run attack-release envelope for 1 sample, updating and returning state. */
+#define SAU_RC_ARENV_NEXT(state, in, a_coeff, r_coeff) \
+	((state) = (in) + ((((state)-(in)) < 0.f) ? (a_coeff) : (r_coeff)) * \
+	                  ((state)-(in)))
+
+/** Run DC blocker for 1 sample, updating and returning state. */
+#define SAU_RC_DCBLOCK_NEXT(state, in, in_prev, coeff) \
+	((state) = (in) - (in_prev) + (coeff)*(state))
