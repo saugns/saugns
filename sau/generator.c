@@ -66,7 +66,7 @@ typedef struct GenNode {
 	uint8_t flags;
 	struct ParWithRangeMod amp, pan;
 	float amp_lec;
-	float amp_le_prev, amp_le_avg, amp_le_dc, amp_le_dcx;
+	float amp_le_prev, amp_le_avg, amp_le_dc;
 } GenNode;
 
 typedef struct AmpNode {
@@ -453,7 +453,6 @@ static void block_mix_add(sauGenerator *restrict o,
 	float le_prev = gen->amp_le_prev;
 	float le_avg = gen->amp_le_avg;
 	float le_dc = gen->amp_le_dc;
-	float le_dcx = gen->amp_le_dcx;
 	if (layer) {
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s = in_buf[i] * amp[i];
@@ -462,9 +461,7 @@ static void block_mix_add(sauGenerator *restrict o,
 			le_prev = le_in;
 			le_avg = (le_avg + le_s) * 0.5f;
 			le_s = le_avg;
-			SAU_RC_DCBLOCK_NEXT(le_dc, le_s, le_dcx, o->dc_coeff);
-			le_dcx = le_s;
-			le_s = le_dc;
+			le_s -= SAU_RC_AVG_NEXT(le_dc, le_s, o->dc_coeff);
 			s = s * le_gr + le_s;
 			buf[i] += s;
 		}
@@ -476,9 +473,7 @@ static void block_mix_add(sauGenerator *restrict o,
 			le_prev = le_in;
 			le_avg = (le_avg + le_s) * 0.5f;
 			le_s = le_avg;
-			SAU_RC_DCBLOCK_NEXT(le_dc, le_s, le_dcx, o->dc_coeff);
-			le_dcx = le_s;
-			le_s = le_dc;
+			le_s -= SAU_RC_AVG_NEXT(le_dc, le_s, o->dc_coeff);
 			s = s * le_gr + le_s;
 			buf[i] = s;
 		}
@@ -486,7 +481,6 @@ static void block_mix_add(sauGenerator *restrict o,
 	gen->amp_le_prev = le_prev;
 	gen->amp_le_avg = le_avg;
 	gen->amp_le_dc = le_dc;
-	gen->amp_le_dcx = le_dcx;
 }
 
 /*
@@ -513,7 +507,6 @@ static void block_mix_mul_waveenv(sauGenerator *restrict o,
 	float le_prev = gen->amp_le_prev;
 	float le_avg = gen->amp_le_avg;
 	float le_dc = gen->amp_le_dc;
-	float le_dcx = gen->amp_le_dcx;
 	if (layer) {
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s_amp = amp[i] * 0.5f;
@@ -523,9 +516,7 @@ static void block_mix_mul_waveenv(sauGenerator *restrict o,
 			le_prev = le_in;
 			le_avg = (le_avg + le_s) * 0.5f;
 			le_s = le_avg;
-			SAU_RC_DCBLOCK_NEXT(le_dc, le_s, le_dcx, o->dc_coeff);
-			le_dcx = le_s;
-			le_s = le_dc;
+			le_s -= SAU_RC_AVG_NEXT(le_dc, le_s, o->dc_coeff);
 			s = s * le_gr + le_s + fabsf(s_amp);
 			buf[i] *= s;
 		}
@@ -538,9 +529,7 @@ static void block_mix_mul_waveenv(sauGenerator *restrict o,
 			le_prev = le_in;
 			le_avg = (le_avg + le_s) * 0.5f;
 			le_s = le_avg;
-			SAU_RC_DCBLOCK_NEXT(le_dc, le_s, le_dcx, o->dc_coeff);
-			le_dcx = le_s;
-			le_s = le_dc;
+			le_s -= SAU_RC_AVG_NEXT(le_dc, le_s, o->dc_coeff);
 			s = s * le_gr + le_s + fabsf(s_amp);
 			buf[i] = s;
 		}
@@ -548,7 +537,6 @@ static void block_mix_mul_waveenv(sauGenerator *restrict o,
 	gen->amp_le_prev = le_prev;
 	gen->amp_le_avg = le_avg;
 	gen->amp_le_dc = le_dc;
-	gen->amp_le_dcx = le_dcx;
 }
 
 /*
