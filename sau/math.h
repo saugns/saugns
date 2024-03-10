@@ -384,3 +384,30 @@ static inline float sau_sinpi_d5f(float x) {
 
 /** Inverse frequency coefficient with \p po2 power of two multiplier. */
 #define SAU_INV_FREQ(po2, freq) (SAU_PASTE(0x1.0p, po2) / (freq))
+
+/** RC time constant for \p msXsr time in ms multiplied by sample rate. */
+#define SAU_RC_TIME_COEFF(msXsr) exp(-1000.f / (msXsr))
+
+/** RC frequency constant for \p hz_sr frequency in Hz divided by sample rate.*/
+#define SAU_RC_FREQ_COEFF(hz_sr) exp(-2*SAU_PI * (hz_sr))
+
+/** Run exponential averaging for 1 sample, updating and returning state. */
+#define SAU_RC_AVG_NEXT(state, in, coeff) \
+	((state) = (in) + (coeff)*((state)-(in)))
+
+/** Run zero-attack envelope for 1 sample, updating and returning state. */
+#define SAU_RC_ZAENV_NEXT(state, in, coeff) \
+	((state) = (in) + (((state)-(in)) > 0.f) ? (coeff)*((state)-(in)) : 0.f)
+
+/** Run zero-release envelope for 1 sample, updating and returning state. */
+#define SAU_RC_ZRENV_NEXT(state, in, coeff) \
+	((state) = (in) + (((state)-(in)) < 0.f) ? (coeff)*((state)-(in)) : 0.f)
+
+/** Run attack-release envelope for 1 sample, updating and returning state. */
+#define SAU_RC_ARENV_NEXT(state, in, a_coeff, r_coeff) \
+	((state) = (in) + ((((state)-(in)) < 0.f) ? (a_coeff) : (r_coeff)) * \
+	                  ((state)-(in)))
+
+/** Run DC blocker for 1 sample, updating and returning state. */
+#define SAU_RC_DCBLOCK_NEXT(state, in, in_prev, coeff) \
+	((state) = (in) - (in_prev) + (coeff)*(state))
