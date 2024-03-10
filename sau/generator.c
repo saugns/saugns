@@ -448,7 +448,7 @@ static void block_mix_mul_waveenv(GenNode *restrict gen,
 		bool layer,
 		const float *restrict in_buf,
 		const float *restrict amp) {
-	float lec = - gen->amp_lec;
+	float lec = - gen->amp_lec * 0.5f;
 	float le_th = - sqrtf(fabsf(gen->amp_lec)) * (0.5f/128);
 	float le_gr = 1.f - fabsf(gen->amp_lec);
 	float le_prev = gen->amp_le_prev;
@@ -462,7 +462,7 @@ static void block_mix_mul_waveenv(GenNode *restrict gen,
 			le_prev = le_in;
 			le_avg = (le_avg + le_s) * 0.5f;
 			le_s = le_avg;
-			s = (s + fabsf(s_amp)) * le_gr + (le_s * 0.5f - lec);
+			s = s * le_gr + (le_s - lec) + fabsf(s_amp);
 			buf[i] *= s;
 		}
 	} else {
@@ -474,7 +474,7 @@ static void block_mix_mul_waveenv(GenNode *restrict gen,
 			le_prev = le_in;
 			le_avg = (le_avg + le_s) * 0.5f;
 			le_s = le_avg;
-			s = (s + fabsf(s_amp)) * le_gr + (le_s * 0.5f - lec);
+			s = s * le_gr + (le_s - lec) + fabsf(s_amp);
 			buf[i] = s;
 		}
 	}
