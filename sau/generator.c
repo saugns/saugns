@@ -413,8 +413,9 @@ static void block_mix_add(sauGenerator *restrict o,
 		bool layer,
 		const float *restrict in_buf,
 		const float *restrict amp) {
-	float lec = - gen->amp_lec, lec_clip = lec * 0.5f;
+	float lec = - gen->amp_lec;
 	float le_th = - sqrtf(fabsf(gen->amp_lec)) * (1.f/128);
+	float le_clip = lec * 0.5f;
 	float le_gr = 1.f - fabsf(gen->amp_lec);
 	float le_prev = gen->amp_le_prev;
 	float le_avg = gen->amp_le_avg;
@@ -422,30 +423,26 @@ static void block_mix_add(sauGenerator *restrict o,
 	if (layer) {
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s = in_buf[i] * amp[i];
-			float le_in = (s < le_th) ? lec : 0.f;
-			le_in -= SAU_LE_AVG_NEXT(le_dc, le_in,
-					lec_clip, o->dc_coeff);
-			le_in = sau_minf(le_in, -lec_clip);
-			float le_s = le_in + le_prev;
-			le_prev = le_in;
-			le_avg = (le_avg + le_s) * 0.5f;
-			le_s = le_avg;
-			s = s * le_gr + le_s;
+			float le_s = (s < le_th) ? lec : 0.f;
+			le_s -= SAU_LE_AVG_NEXT(le_dc, le_s,
+					le_clip, o->dc_coeff);
+			le_s = sau_minf(le_s, -le_clip);
+			le_avg = (le_avg + le_s + le_prev) * 0.5f;
+			le_prev = le_s;
+			s = s * le_gr + le_avg;
 			buf[i] += s;
 		}
 	} else {
 
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s = in_buf[i] * amp[i];
-			float le_in = (s < le_th) ? lec : 0.f;
-			le_in -= SAU_LE_AVG_NEXT(le_dc, le_in,
-					lec_clip, o->dc_coeff);
-			le_in = sau_minf(le_in, -lec_clip);
-			float le_s = le_in + le_prev;
-			le_prev = le_in;
-			le_avg = (le_avg + le_s) * 0.5f;
-			le_s = le_avg;
-			s = s * le_gr + le_s;
+			float le_s = (s < le_th) ? lec : 0.f;
+			le_s -= SAU_LE_AVG_NEXT(le_dc, le_s,
+					le_clip, o->dc_coeff);
+			le_s = sau_minf(le_s, -le_clip);
+			le_avg = (le_avg + le_s + le_prev) * 0.5f;
+			le_prev = le_s;
+			s = s * le_gr + le_avg;
 			buf[i] = s;
 		}
 	}
@@ -468,8 +465,9 @@ static void block_mix_mul_waveenv(sauGenerator *restrict o,
 		bool layer,
 		const float *restrict in_buf,
 		const float *restrict amp) {
-	float lec = - gen->amp_lec * 0.5f, lec_clip = lec * 0.5f;
+	float lec = - gen->amp_lec * 0.5f;
 	float le_th = - sqrtf(fabsf(gen->amp_lec)) * (0.5f/128);
+	float le_clip = lec * 0.5f;
 	float le_gr = 1.f - fabsf(gen->amp_lec);
 	float le_prev = gen->amp_le_prev;
 	float le_avg = gen->amp_le_avg;
@@ -478,30 +476,26 @@ static void block_mix_mul_waveenv(sauGenerator *restrict o,
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s_amp = amp[i] * 0.5f;
 			float s = in_buf[i] * s_amp;
-			float le_in = (s < le_th) ? lec : 0.f;
-			le_in -= SAU_LE_AVG_NEXT(le_dc, le_in,
-					lec_clip, o->dc_coeff);
-			le_in = sau_minf(le_in, -lec_clip);
-			float le_s = le_in + le_prev;
-			le_prev = le_in;
-			le_avg = (le_avg + le_s) * 0.5f;
-			le_s = le_avg;
-			s = s * le_gr + le_s + fabsf(s_amp);
+			float le_s = (s < le_th) ? lec : 0.f;
+			le_s -= SAU_LE_AVG_NEXT(le_dc, le_s,
+					le_clip, o->dc_coeff);
+			le_s = sau_minf(le_s, -le_clip);
+			le_avg = (le_avg + le_s + le_prev) * 0.5f;
+			le_prev = le_s;
+			s = s * le_gr + le_avg + fabsf(s_amp);
 			buf[i] *= s;
 		}
 	} else {
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s_amp = amp[i] * 0.5f;
 			float s = in_buf[i] * s_amp;
-			float le_in = (s < le_th) ? lec : 0.f;
-			le_in -= SAU_LE_AVG_NEXT(le_dc, le_in,
-					lec_clip, o->dc_coeff);
-			le_in = sau_minf(le_in, -lec_clip);
-			float le_s = le_in + le_prev;
-			le_prev = le_in;
-			le_avg = (le_avg + le_s) * 0.5f;
-			le_s = le_avg;
-			s = s * le_gr + le_s + fabsf(s_amp);
+			float le_s = (s < le_th) ? lec : 0.f;
+			le_s -= SAU_LE_AVG_NEXT(le_dc, le_s,
+					le_clip, o->dc_coeff);
+			le_s = sau_minf(le_s, -le_clip);
+			le_avg = (le_avg + le_s + le_prev) * 0.5f;
+			le_prev = le_s;
+			s = s * le_gr + le_avg + fabsf(s_amp);
 			buf[i] = s;
 		}
 	}
