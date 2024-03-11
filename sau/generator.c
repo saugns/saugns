@@ -395,12 +395,12 @@ static void handle_event(sauGenerator *restrict o, EventNode *restrict e) {
 	}
 }
 
-/* Run "ladder effect" DC filter for 1 sample, updating and returning state.
-   Jumps if difference is too large in one direction, for switching on fast. */
-#define SAU_LE_DCBLOCK_NEXT(state, in, in_prev, a_th, coeff) \
-	((state) = ((((in_prev)-(in)) > (a_th)) ? \
+/* Run "ladder effect" DC average for 1 sample, updating and returning state.
+   Jumps if difference is too large (in one direction) for switching on fast. */
+#define SAU_LE_AVG_NEXT(state, in, a_th, coeff) \
+	((state) = (((in)-(state)) < (a_th)) ? \
 	 (a_th) : \
-	 ((coeff)*(state))) - ((in_prev)-(in)))
+	 ((in) - (coeff)*((in)-(state))))
 
 /*
  * Add audio layer from \p in_buf into \p buf scaled with \p amp.
@@ -415,7 +415,7 @@ static void block_mix_add(sauGenerator *restrict o,
 		const float *restrict amp) {
 	float lec = - gen->amp_lec;
 	float le_th = - sqrtf(fabsf(gen->amp_lec)) * (1.f/128);
-	float le_clip = gen->amp_lec * 0.5f;
+	float le_clip = lec * 0.5f * 0.99999988f; // very slightly below 0.5x
 	float le_gr = 1.f - fabsf(gen->amp_lec);
 	float le_prev = gen->amp_le_prev;
 	float le_avg = gen->amp_le_avg;
@@ -423,13 +423,11 @@ static void block_mix_add(sauGenerator *restrict o,
 	if (layer) {
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s = in_buf[i] * amp[i];
-			float le_in = (s < le_th) ? lec : 0.f;
-			float le_s = le_dc;
-			SAU_LE_DCBLOCK_NEXT(le_dc, le_in,
-					le_prev, le_clip, o->dc_coeff);
-			le_s += (le_dc = sau_minf(le_dc, le_clip));
-			le_prev = le_in;
-			le_avg = (le_avg + le_s) * 0.5f;
+			float le_s = (s < le_th) ? lec : 0.f;
+			le_s -= SAU_LE_AVG_NEXT(le_dc, le_s,
+					le_clip, o->dc_coeff);
+			le_avg = (le_avg + (le_s + le_prev)) * 0.5f;
+			le_prev = le_s;
 			s = s * le_gr + le_avg;
 			buf[i] += s;
 		}
@@ -437,13 +435,11 @@ static void block_mix_add(sauGenerator *restrict o,
 
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s = in_buf[i] * amp[i];
-			float le_in = (s < le_th) ? lec : 0.f;
-			float le_s = le_dc;
-			SAU_LE_DCBLOCK_NEXT(le_dc, le_in,
-					le_prev, le_clip, o->dc_coeff);
-			le_s += (le_dc = sau_minf(le_dc, le_clip));
-			le_prev = le_in;
-			le_avg = (le_avg + le_s) * 0.5f;
+			float le_s = (s < le_th) ? lec : 0.f;
+			le_s -= SAU_LE_AVG_NEXT(le_dc, le_s,
+					le_clip, o->dc_coeff);
+			le_avg = (le_avg + (le_s + le_prev)) * 0.5f;
+			le_prev = le_s;
 			s = s * le_gr + le_avg;
 			buf[i] = s;
 		}
@@ -469,7 +465,7 @@ static void block_mix_mul_waveenv(sauGenerator *restrict o,
 		const float *restrict amp) {
 	float lec = - gen->amp_lec * 0.5f;
 	float le_th = - sqrtf(fabsf(gen->amp_lec)) * (0.5f/128);
-	float le_clip = gen->amp_lec * 0.25f;
+	float le_clip = lec * 0.5f * 0.99999988f; // very slightly below 0.5x
 	float le_gr = 1.f - fabsf(gen->amp_lec);
 	float le_prev = gen->amp_le_prev;
 	float le_avg = gen->amp_le_avg;
@@ -478,13 +474,11 @@ static void block_mix_mul_waveenv(sauGenerator *restrict o,
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s_amp = amp[i] * 0.5f;
 			float s = in_buf[i] * s_amp;
-			float le_in = (s < le_th) ? lec : 0.f;
-			float le_s = le_dc;
-			SAU_LE_DCBLOCK_NEXT(le_dc, le_in,
-					le_prev, le_clip, o->dc_coeff);
-			le_s += (le_dc = sau_minf(le_dc, le_clip));
-			le_prev = le_in;
-			le_avg = (le_avg + le_s) * 0.5f;
+			float le_s = (s < le_th) ? lec : 0.f;
+			le_s -= SAU_LE_AVG_NEXT(le_dc, le_s,
+					le_clip, o->dc_coeff);
+			le_avg = (le_avg + (le_s + le_prev)) * 0.5f;
+			le_prev = le_s;
 			s = s * le_gr + le_avg + fabsf(s_amp);
 			buf[i] *= s;
 		}
@@ -492,13 +486,11 @@ static void block_mix_mul_waveenv(sauGenerator *restrict o,
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s_amp = amp[i] * 0.5f;
 			float s = in_buf[i] * s_amp;
-			float le_in = (s < le_th) ? lec : 0.f;
-			float le_s = le_dc;
-			SAU_LE_DCBLOCK_NEXT(le_dc, le_in,
-					le_prev, le_clip, o->dc_coeff);
-			le_s += (le_dc = sau_minf(le_dc, le_clip));
-			le_prev = le_in;
-			le_avg = (le_avg + le_s) * 0.5f;
+			float le_s = (s < le_th) ? lec : 0.f;
+			le_s -= SAU_LE_AVG_NEXT(le_dc, le_s,
+					le_clip, o->dc_coeff);
+			le_avg = (le_avg + (le_s + le_prev)) * 0.5f;
+			le_prev = le_s;
 			s = s * le_gr + le_avg + fabsf(s_amp);
 			buf[i] = s;
 		}
