@@ -9,7 +9,17 @@ Deprecated things work but will warn to update the scripts.
 Pre-release
 -----------
 
+"Ladder effect" distortion.
+
 Language changes:
+ * Amplitude handling. Add ladder effect distortion,
+   by default off. The `a.l` parameter can be set to
+   `C` or 0.01 to mimic the classic effect from Sega
+   Genesis/Mega Drive model 1. Positive, or negative
+   (for a sign-flipped mix of the distortion signal)
+   values can be set. Distortion is from a pulse, of
+   fixed amplitude, the value in proportion to a 1.0
+   fixed amplitude; their sum is scaled down to 1.0.
  * Label syntax.
    - Add `*name` expression, for copying the object
      pointed to by "name". An operator copy will be

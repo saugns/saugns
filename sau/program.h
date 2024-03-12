@@ -101,7 +101,7 @@ enum {
 };
 
 /** If defined to 1, the "ladder effect" will be on by default in scripts. */
-#define SAU_LADDERFX_SET 1
+#define SAU_LADDERFX_SET 0
 
 /** Classic "ladder effect" intensity. Matches Sega Genesis/Mega Drive I. */
 #define SAU_LADDERFX_CLASSIC 0.01f // corresponds to Aly James's use of 0.02
