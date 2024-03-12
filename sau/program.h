@@ -82,6 +82,12 @@ enum {
 	SAU_POP_PARAMS = (1<<4) - 1,
 };
 
+/** If defined to 1, the "ladder effect" will be on by default in scripts. */
+#define SAU_LADDERFX_SET 1
+
+/** Classic "ladder effect" intensity. Matches Sega Genesis/Mega Drive I. */
+#define SAU_LADDERFX_CLASSIC 0.01f // corresponds to Aly James's use of 0.02
+
 /** Random segments option data. */
 typedef struct sauRasOpt {
 	uint8_t line; // line module type
