@@ -17,6 +17,14 @@ Language changes:
  * Amplitude handling. Add `S a.m`, script-wide gain
    mix control in outermost scope. Replaces the role
    of `S a` in disabling auto-downscaling by voices.
+ * Amplitude handling. Add ladder effect distortion,
+   by default off. The `a.l` parameter can be set to
+   `C` or 0.01 to mimic the classic effect from Sega
+   Genesis/Mega Drive model I. Positive, or negative
+   (for a sign-flipped mix of the distortion signal)
+   values can be set. Distortion is from a pulse, of
+   fixed amplitude, the value in proportion to a 1.0
+   fixed amplitude; their sum is scaled down to 1.0.
 
 Parser redesign:
  * Turn lists into a main type, for two with the old
