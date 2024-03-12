@@ -1442,7 +1442,7 @@ static bool parse_ev_amp(sauParser *restrict o) {
 		double val;
 		if (scan_num(sc, NULL, &val)) {
 			op->amp_lec = val;
-			op->op_flags |= SAU_POPP_AMP_LEC;
+			op->params |= SAU_POPP_AMP_LEC;
 		}
 		break; }
 	case 'r':
