@@ -53,7 +53,7 @@ typedef struct GenNode {
 	uint8_t flags;
 	struct ParWithRangeMod amp, pan;
 	float amp_lec;
-	float amp_le_prev, amp_le_avg, amp_le_dc;
+	float amp_le_dc, amp_le_prev, amp_le_avg;
 } GenNode;
 
 typedef struct AmpNode {
@@ -377,8 +377,11 @@ static void update_op(sauGenerator *restrict o,
 			gen->flags &= ~ON_TIME_INF;
 		}
 	}
-	if (params & SAU_POPP_AMP_LEC)
+	if (params & SAU_POPP_AMP_LEC) {
 		gen->amp_lec = od->amp_lec;
+		// reset, prevent burst
+		gen->amp_le_dc = gen->amp_le_avg = gen->amp_le_prev = 0.f;
+	}
 	update_range(&gen->amp, od->amp, o->srate);
 	update_range(&gen->pan, od->pan, o->srate);
 	for (uint32_t i = 0; i < od->mod_count; ++i)
@@ -449,9 +452,9 @@ static void block_mix_add(sauGenerator *restrict o,
 		const float le_th = - sqrtf(fabsf(gen->amp_lec)) * (1.f/128);
 		const float le_clip = lec * 0.5f * 0.99999988f; // just < 0.5x
 		const float le_gr = 1.f / (1.f + fabsf(gen->amp_lec));
+		float le_dc = gen->amp_le_dc;
 		float le_prev = gen->amp_le_prev;
 		float le_avg = gen->amp_le_avg;
-		float le_dc = gen->amp_le_dc;
 		if (layer) {
 			for (size_t i = 0; i < buf_len; ++i) {
 				float s = in_buf[i] * amp[i];
@@ -475,9 +478,9 @@ static void block_mix_add(sauGenerator *restrict o,
 				buf[i] = s;
 			}
 		}
+		gen->amp_le_dc = le_dc;
 		gen->amp_le_prev = le_prev;
 		gen->amp_le_avg = le_avg;
-		gen->amp_le_dc = le_dc;
 	} else {
 		if (layer) {
 			for (size_t i = 0; i < buf_len; ++i) {
@@ -520,9 +523,9 @@ static void block_mix_mul_waveenv(sauGenerator *restrict o,
 		const float le_th = - sqrtf(fabsf(gen->amp_lec)) * (0.5f/128);
 		const float le_clip = lec * 0.5f * 0.99999988f; // just < 0.5x
 		const float le_gr = 1.f / (1.f + fabsf(gen->amp_lec));
+		float le_dc = gen->amp_le_dc;
 		float le_prev = gen->amp_le_prev;
 		float le_avg = gen->amp_le_avg;
-		float le_dc = gen->amp_le_dc;
 		if (layer) {
 			for (size_t i = 0; i < buf_len; ++i) {
 				const float s_amp = amp[i] * 0.5f;
@@ -550,9 +553,9 @@ static void block_mix_mul_waveenv(sauGenerator *restrict o,
 				buf[i] = s;
 			}
 		}
+		gen->amp_le_dc = le_dc;
 		gen->amp_le_prev = le_prev;
 		gen->amp_le_avg = le_avg;
-		gen->amp_le_dc = le_dc;
 	} else {
 		if (layer) {
 			for (size_t i = 0; i < buf_len; ++i) {
