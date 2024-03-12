@@ -84,10 +84,10 @@ Parameters:
 		main "a[]" modulator list. It does not apply to other nested
 		lists for modulators; their multipliers apply unchanged.
 		.l	Default ladder effect distortion intensity, as
-			proportion relative to a signal with an amplitude
-			of 1.0. Starts at 0.0; traditionally only used
-			for carriers, so this default is reset to 0.0
-			inside each modulator list, but can be set again.
+			proportion of an added pulse to a fixed amplitude
+			of 1.0. Starts at 0.0. Traditionally only used for
+			carriers, and the setting isn't carried over to
+			nested modulator lists, but can be set in them.
 		.m	Script-wide gain mix control (multiplier). If used,
 			this disables automatic down-scaling of amplitude
 			by the number of voices (max carrier audio generators
@@ -136,9 +136,9 @@ Generator universal parameters:
 			"Value sweep" values are supported; see section.
 			"Modulation with value range" is supported for AM & RM
 		(amplitude and ring modulation); see section.
-		.l	Ladder effect distortion intensity, as proportion
-			relative to a signal with an amplitude of 1.0.
-			Use C or 0.01 on carriers for the classic effect.
+		.l	Ladder effect distortion intensity, as proportion of
+			an added pulse to a fixed amplitude of 1.0. Use a
+			value of C or 0.01 on carriers for the classic effect.
 			See "Ladder effect distortion values" for more.
 	c	(For non-nested generators only.) Channel mixing, mainly
 		(-1.0) to 1.0. See "Channel mixing values" for more.
@@ -560,15 +560,14 @@ Numerical expressions:
 			If disabled (deterministic mode), instead gives 0.
 
 Ladder effect distortion values:
-	Intensity, as proportion relative to a signal with an amplitude of
-	1.0. Non-zero (and typically small and positive) values make for a
-	brighter and noisier timbre. The effect consists in a pulse signal
-	tracking zero-crossings in the dry audio signal, mixed with it for
-	the result. The actual amplitude of the dry signal does not change
-	that of the added pulse, except when it disappears after narrowing
-	the pulse width in response to too-quiet inputs. As a non-standard
-	extension, negative values can be used to subtract rather than add
-	the pulse, mixing differently for a thin sound and a creased wave.
+	Intensity, as proportion of an added pulse to a fixed amplitude of
+	1.0. (The mixing scales the result so that the pulse, plus 1.0, is
+	scaled to 1.0.) The pulse tracks zero-crossings in the dry signal.
+	With very low input amplitude, the pulse narrows in width, finally
+	"fading" by becoming too narrow to remain, turning off on silence.
+		Non-zero (typically small and positive) values make a more
+	bright and noisy timbre. An unusual feature is negative values can
+	be used to subtract rather than add the pulse, mixing differently.
 	Traditionally only used for carriers, but it can be used anywhere.
 	C	0.01 (classic, mimics the Sega Genesis/Mega Drive model I)
 
