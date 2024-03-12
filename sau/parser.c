@@ -82,6 +82,7 @@ static const sauScriptOptions def_sopt = {
 	.def_freq = 440.f,
 	.def_relfreq = 1.f,
 	.def_chanmix = 0.f,
+	.def_ladderfx = SAU_IF(SAU_LADDERFX_SET, SAU_LADDERFX_CLASSIC, 0.f),
 	.note_key = MUSKEY(0, 0),
 	.key_octave = 4,
 	.key_system = 0,
@@ -508,6 +509,19 @@ static size_t scan_chanmix_const(sauScanner *restrict o,
 		return 1;
 	case 'R':
 		*val = 1.f;
+		return 1;
+	default:
+		sauFile_DECP(o->f);
+		return 0;
+	}
+}
+
+static size_t scan_ladderfx_const(sauScanner *restrict o,
+		double *restrict val) {
+	char c = sauFile_GETC(o->f);
+	switch (c) {
+	case 'C':
+		*val = SAU_LADDERFX_CLASSIC;
 		return 1;
 	default:
 		sauFile_DECP(o->f);
@@ -1168,7 +1182,7 @@ static void begin_operator(sauParser *restrict o,
 		op->params = SAU_POP_PARAMS - SAU_POPP_COPY;
 		op->freq = create_line(o, is_nested, SAU_PSWEEP_FREQ);
 		op->amp = create_line(o, false, SAU_PSWEEP_AMP);
-		if (!is_nested) op->amp_lec = 0.01f; // 0.01 as Aly James 0.02
+		op->amp_lec = o->sl.sopt.def_ladderfx;
 	NEW_COPY:
 		info = ObjInfoArr_add(&o->obj_arr, &op->ref,
 				SAU_POBJT_OP, type);
@@ -1245,6 +1259,8 @@ static void enter_level(sauParser *restrict o,
 			if (use_type != SAU_POP_N_carr &&
 			    use_type != SAU_POP_N_amod)
 				o->sl.sopt.def_ampmult = def_sopt.def_ampmult;
+			if (use_type != SAU_POP_N_carr)
+				o->sl.sopt.def_ladderfx = 0.f; // reset, clear
 		}
 	}
 	pl->use_type = use_type;
@@ -1326,6 +1342,12 @@ static bool parse_so_amp(sauParser *restrict o) {
 		if (scan_num(sc, NULL, &val)) {
 			o->sl.sopt.ampmult = val;
 			o->sl.sopt.set |= SAU_SOPT_AMPMULT;
+		}
+		break;
+	case 'l':
+		if (scan_num(sc, scan_ladderfx_const, &val)) {
+			o->sl.sopt.def_ladderfx = val;
+			o->sl.sopt.set |= SAU_SOPT_DEF_LADDERFX;
 		}
 		break;
 	default:
@@ -1569,7 +1591,7 @@ static uint8_t parse_op_amp(sauParser *restrict o) {
 	switch ((c = sauScanner_getc_after(o->sc, '.'))) {
 	case 'l': {
 		double val;
-		if (scan_num(o->sc, NULL, &val)) {
+		if (scan_num(o->sc, scan_ladderfx_const, &val)) {
 			op->amp_lec = val;
 			op->params |= SAU_POPP_AMP_LEC;
 		}

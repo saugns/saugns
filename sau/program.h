@@ -100,6 +100,12 @@ enum {
 	SAU_POP_PARAMS = (1U<<6) - 1,
 };
 
+/** If defined to 1, the "ladder effect" will be on by default in scripts. */
+#define SAU_LADDERFX_SET 1
+
+/** Classic "ladder effect" intensity. Matches Sega Genesis/Mega Drive I. */
+#define SAU_LADDERFX_CLASSIC 0.01f // corresponds to Aly James's use of 0.02
+
 /* Macro used to declare and define noise type sets of items. */
 #define SAU_NOISE__ITEMS(X) \
 	X(wh) \
