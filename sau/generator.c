@@ -18,6 +18,7 @@
 #define sau_dscalei(i, scale) (((int32_t)(i)) * (double)(scale))
 #define sau_fscalei(i, scale) (((int32_t)(i)) * (float)(scale))
 #define sau_divi(i, div) (((int32_t)(i)) / (int32_t)(div))
+#define sau_fnonzero(x) isnormal(x)
 #include "generator/noise.h"
 #include "generator/wosc.h"
 #include "generator/rasg.h"
@@ -405,6 +406,8 @@ static void handle_event(sauGenerator *restrict o, EventNode *restrict e) {
 /*
  * Add audio layer from \p in_buf into \p buf scaled with \p amp.
  *
+ * Optionally applies "ladder effect" distortion.
+ *
  * Used to generate output for carrier or additive modulator.
  */
 static void block_mix_add(sauGenerator *restrict o,
@@ -413,40 +416,55 @@ static void block_mix_add(sauGenerator *restrict o,
 		bool layer,
 		const float *restrict in_buf,
 		const float *restrict amp) {
-	float lec = - gen->amp_lec;
-	float le_th = - sqrtf(fabsf(gen->amp_lec)) * (1.f/128);
-	float le_clip = lec * 0.5f * 0.99999988f; // very slightly below 0.5x
-	float le_gr = 1.f - fabsf(gen->amp_lec);
-	float le_prev = gen->amp_le_prev;
-	float le_avg = gen->amp_le_avg;
-	float le_dc = gen->amp_le_dc;
-	if (layer) {
-		for (size_t i = 0; i < buf_len; ++i) {
-			float s = in_buf[i] * amp[i];
-			float le_s = (s < le_th) ? lec : 0.f;
-			le_s -= SAU_LE_AVG_NEXT(le_dc, le_s,
-					le_clip, o->dc_coeff);
-			le_avg = (le_avg + (le_s + le_prev)) * 0.5f;
-			le_prev = le_s;
-			s = s * le_gr + le_avg;
-			buf[i] += s;
+	const float lec = - fabsf(gen->amp_lec);
+	if (sau_fnonzero(lec)) {
+		const bool flip = gen->amp_lec < 0.f;
+		const float le_th = - sqrtf(fabsf(gen->amp_lec)) * (1.f/128);
+		const float le_clip = lec * 0.5f * 0.99999988f; // just < 0.5x
+		const float le_gr = 1.f / (1.f + fabsf(gen->amp_lec));
+		float le_prev = gen->amp_le_prev;
+		float le_avg = gen->amp_le_avg;
+		float le_dc = gen->amp_le_dc;
+		if (layer) {
+			for (size_t i = 0; i < buf_len; ++i) {
+				float s = in_buf[i] * amp[i];
+				float le_s = (s < le_th) ? lec : 0.f;
+				le_s -= SAU_LE_AVG_NEXT(le_dc, le_s,
+						le_clip, o->dc_coeff);
+				le_avg = (le_avg + (le_s + le_prev)) * 0.5f;
+				le_prev = le_s;
+				s = (s + (flip ? -le_avg : le_avg)) * le_gr;
+				buf[i] += s;
+			}
+		} else {
+			for (size_t i = 0; i < buf_len; ++i) {
+				float s = in_buf[i] * amp[i];
+				float le_s = (s < le_th) ? lec : 0.f;
+				le_s -= SAU_LE_AVG_NEXT(le_dc, le_s,
+						le_clip, o->dc_coeff);
+				le_avg = (le_avg + (le_s + le_prev)) * 0.5f;
+				le_prev = le_s;
+				s = (s + (flip ? -le_avg : le_avg)) * le_gr;
+				buf[i] = s;
+			}
 		}
+		gen->amp_le_prev = le_prev;
+		gen->amp_le_avg = le_avg;
+		gen->amp_le_dc = le_dc;
 	} else {
+		if (layer) {
+			for (size_t i = 0; i < buf_len; ++i) {
+				float s = in_buf[i] * amp[i];
+				buf[i] += s;
+			}
+		} else {
 
-		for (size_t i = 0; i < buf_len; ++i) {
-			float s = in_buf[i] * amp[i];
-			float le_s = (s < le_th) ? lec : 0.f;
-			le_s -= SAU_LE_AVG_NEXT(le_dc, le_s,
-					le_clip, o->dc_coeff);
-			le_avg = (le_avg + (le_s + le_prev)) * 0.5f;
-			le_prev = le_s;
-			s = s * le_gr + le_avg;
-			buf[i] = s;
+			for (size_t i = 0; i < buf_len; ++i) {
+				float s = in_buf[i] * amp[i];
+				buf[i] = s;
+			}
 		}
 	}
-	gen->amp_le_prev = le_prev;
-	gen->amp_le_avg = le_avg;
-	gen->amp_le_dc = le_dc;
 }
 
 /*
@@ -454,6 +472,8 @@ static void block_mix_add(sauGenerator *restrict o,
  * after scaling to a 0.0 to 1.0 range multiplied by
  * the absolute value of \p amp, and with the high and
  * low ends of the range flipped if \p amp is negative.
+ *
+ * Optionally applies "ladder effect" distortion.
  *
  * Used to generate output for modulation with value range.
  */
@@ -463,41 +483,60 @@ static void block_mix_mul_waveenv(sauGenerator *restrict o,
 		bool layer,
 		const float *restrict in_buf,
 		const float *restrict amp) {
-	float lec = - gen->amp_lec * 0.5f;
-	float le_th = - sqrtf(fabsf(gen->amp_lec)) * (0.5f/128);
-	float le_clip = lec * 0.5f * 0.99999988f; // very slightly below 0.5x
-	float le_gr = 1.f - fabsf(gen->amp_lec);
-	float le_prev = gen->amp_le_prev;
-	float le_avg = gen->amp_le_avg;
-	float le_dc = gen->amp_le_dc;
-	if (layer) {
-		for (size_t i = 0; i < buf_len; ++i) {
-			float s_amp = amp[i] * 0.5f;
-			float s = in_buf[i] * s_amp;
-			float le_s = (s < le_th) ? lec : 0.f;
-			le_s -= SAU_LE_AVG_NEXT(le_dc, le_s,
-					le_clip, o->dc_coeff);
-			le_avg = (le_avg + (le_s + le_prev)) * 0.5f;
-			le_prev = le_s;
-			s = s * le_gr + le_avg + fabsf(s_amp);
-			buf[i] *= s;
+	const float lec = - fabsf(gen->amp_lec) * 0.5f;
+	if (sau_fnonzero(lec)) {
+		const bool flip = gen->amp_lec < 0.f;
+		const float le_th = - sqrtf(fabsf(gen->amp_lec)) * (0.5f/128);
+		const float le_clip = lec * 0.5f * 0.99999988f; // just < 0.5x
+		const float le_gr = 1.f / (1.f + fabsf(gen->amp_lec));
+		float le_prev = gen->amp_le_prev;
+		float le_avg = gen->amp_le_avg;
+		float le_dc = gen->amp_le_dc;
+		if (layer) {
+			for (size_t i = 0; i < buf_len; ++i) {
+				const float s_amp = amp[i] * 0.5f;
+				float s = in_buf[i] * s_amp;
+				float le_s = (s < le_th) ? lec : 0.f;
+				le_s -= SAU_LE_AVG_NEXT(le_dc, le_s,
+						le_clip, o->dc_coeff);
+				le_avg = (le_avg + (le_s + le_prev)) * 0.5f;
+				le_prev = le_s;
+				s = (s + (flip ? -le_avg : le_avg)) * le_gr
+					+ fabsf(s_amp);
+				buf[i] *= s;
+			}
+		} else {
+			for (size_t i = 0; i < buf_len; ++i) {
+				const float s_amp = amp[i] * 0.5f;
+				float s = in_buf[i] * s_amp;
+				float le_s = (s < le_th) ? lec : 0.f;
+				le_s -= SAU_LE_AVG_NEXT(le_dc, le_s,
+						le_clip, o->dc_coeff);
+				le_avg = (le_avg + (le_s + le_prev)) * 0.5f;
+				le_prev = le_s;
+				s = (s + (flip ? -le_avg : le_avg)) * le_gr
+					+ fabsf(s_amp);
+				buf[i] = s;
+			}
 		}
+		gen->amp_le_prev = le_prev;
+		gen->amp_le_avg = le_avg;
+		gen->amp_le_dc = le_dc;
 	} else {
-		for (size_t i = 0; i < buf_len; ++i) {
-			float s_amp = amp[i] * 0.5f;
-			float s = in_buf[i] * s_amp;
-			float le_s = (s < le_th) ? lec : 0.f;
-			le_s -= SAU_LE_AVG_NEXT(le_dc, le_s,
-					le_clip, o->dc_coeff);
-			le_avg = (le_avg + (le_s + le_prev)) * 0.5f;
-			le_prev = le_s;
-			s = s * le_gr + le_avg + fabsf(s_amp);
-			buf[i] = s;
+		if (layer) {
+			for (size_t i = 0; i < buf_len; ++i) {
+				const float s_amp = amp[i] * 0.5f;
+				float s = in_buf[i] * s_amp + fabsf(s_amp);
+				buf[i] *= s;
+			}
+		} else {
+			for (size_t i = 0; i < buf_len; ++i) {
+				const float s_amp = amp[i] * 0.5f;
+				float s = in_buf[i] * s_amp + fabsf(s_amp);
+				buf[i] = s;
+			}
 		}
 	}
-	gen->amp_le_prev = le_prev;
-	gen->amp_le_avg = le_avg;
-	gen->amp_le_dc = le_dc;
 }
 
 /*
