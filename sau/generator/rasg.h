@@ -19,7 +19,7 @@
  * Calculate the coefficent, based on the sample rate, used for
  * the per-sample phase by multiplying with the frequency used.
  */
-#define sauCyclor_COEFF(srate) (((float) UINT32_MAX)/(srate))
+#define sauCyclor_COEFF(srate) SAU_INV_FREQ(32, srate)
 
 typedef struct sauCyclor {
 	uint64_t cycle_phase; /* cycle counter upper 32 bits, phase lower */
@@ -123,7 +123,7 @@ static sauMaybeUnused void sauCyclor_fill_rate1x(sauCyclor *restrict o,
 		const float *restrict freq_f,
 		const float *restrict pm_f,
 		const float *restrict fpm_f) {
-	const float inv_int32_max = 1.f/(float)INT32_MAX;
+	const float inv_int32_max = 0x1.0p-31f;
 	const float fpm_scale = 1.f / SAU_HUMMID;
 	if (!pm_f && !fpm_f) {
 		for (size_t i = 0; i < buf_len; ++i) {
@@ -139,7 +139,7 @@ static sauMaybeUnused void sauCyclor_fill_rate1x(sauCyclor *restrict o,
 			float s_f = freq_f[i];
 			float s_pofs = pm_f[i];
 			uint64_t cycle_phase = P(sau_ftoi(o->coeff * s_f),
-					sau_ftoi(s_pofs * (float)INT32_MAX));
+					sau_ftoi(s_pofs * 0x1.0p31f));
 			uint32_t phase;
 			cycle_ui32[i] = cycle_phase >> 32;
 			phase = (cycle_phase >> 1) & ~(1U<<31);
@@ -150,7 +150,7 @@ static sauMaybeUnused void sauCyclor_fill_rate1x(sauCyclor *restrict o,
 			float s_f = freq_f[i];
 			float s_pofs = fpm_f[i] * fpm_scale * s_f;
 			uint64_t cycle_phase = P(sau_ftoi(o->coeff * s_f),
-					sau_ftoi(s_pofs * (float)INT32_MAX));
+					sau_ftoi(s_pofs * 0x1.0p31f));
 			uint32_t phase;
 			cycle_ui32[i] = cycle_phase >> 32;
 			phase = (cycle_phase >> 1) & ~(1U<<31);
@@ -161,7 +161,7 @@ static sauMaybeUnused void sauCyclor_fill_rate1x(sauCyclor *restrict o,
 			float s_f = freq_f[i];
 			float s_pofs = pm_f[i] + (fpm_f[i] * fpm_scale * s_f);
 			uint64_t cycle_phase = P(sau_ftoi(o->coeff * s_f),
-					sau_ftoi(s_pofs * (float)INT32_MAX));
+					sau_ftoi(s_pofs * 0x1.0p31f));
 			uint32_t phase;
 			cycle_ui32[i] = cycle_phase >> 32;
 			phase = (cycle_phase >> 1) & ~(1U<<31);
@@ -181,7 +181,7 @@ static sauMaybeUnused void sauCyclor_fill_rate2x(sauCyclor *restrict o,
 		const float *restrict freq_f,
 		const float *restrict pm_f,
 		const float *restrict fpm_f) {
-	const float inv_int32_max = 1.f/(float)INT32_MAX;
+	const float inv_int32_max = 0x1.0p-31f;
 	const float fpm_scale = 1.f / SAU_HUMMID;
 	if (!pm_f && !fpm_f) {
 		for (size_t i = 0; i < buf_len; ++i) {
@@ -197,7 +197,7 @@ static sauMaybeUnused void sauCyclor_fill_rate2x(sauCyclor *restrict o,
 			float s_f = freq_f[i];
 			float s_pofs = pm_f[i];
 			uint64_t cycle_phase = P(sau_ftoi(o->coeff * s_f),
-					sau_ftoi(s_pofs * (float)INT32_MAX));
+					sau_ftoi(s_pofs * 0x1.0p31f));
 			uint32_t phase;
 			cycle_ui32[i] = cycle_phase >> 31;
 			phase = cycle_phase & ~(1U<<31);
@@ -208,7 +208,7 @@ static sauMaybeUnused void sauCyclor_fill_rate2x(sauCyclor *restrict o,
 			float s_f = freq_f[i];
 			float s_pofs = fpm_f[i] * fpm_scale * s_f;
 			uint64_t cycle_phase = P(sau_ftoi(o->coeff * s_f),
-					sau_ftoi(s_pofs * (float)INT32_MAX));
+					sau_ftoi(s_pofs * 0x1.0p31f));
 			uint32_t phase;
 			cycle_ui32[i] = cycle_phase >> 31;
 			phase = cycle_phase & ~(1U<<31);
@@ -219,7 +219,7 @@ static sauMaybeUnused void sauCyclor_fill_rate2x(sauCyclor *restrict o,
 			float s_f = freq_f[i];
 			float s_pofs = pm_f[i] + (fpm_f[i] * fpm_scale * s_f);
 			uint64_t cycle_phase = P(sau_ftoi(o->coeff * s_f),
-					sau_ftoi(s_pofs * (float)INT32_MAX));
+					sau_ftoi(s_pofs * 0x1.0p31f));
 			uint32_t phase;
 			cycle_ui32[i] = cycle_phase >> 31;
 			phase = cycle_phase & ~(1U<<31);
@@ -263,7 +263,7 @@ static sauMaybeUnused void sauRasG_map_v_rand(sauRasG *restrict o,
 		float *restrict end_a_buf,
 		float *restrict end_b_buf,
 		const uint32_t *restrict cycle_buf) {
-	const float scale = 1.f/(float)INT32_MAX;
+	const float scale = 0x1.0p-31f;
 	(void)o;
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t cycle = cycle_buf[i];
@@ -287,7 +287,7 @@ static sauMaybeUnused void sauRasG_map_rand(sauRasG *restrict o,
 		sauRasG_map_v_rand(o, buf_len, end_a_buf, end_b_buf, cycle_buf);
 		return;
 	}
-	const float scale = 1.f/(float)INT32_MAX;
+	const float scale = 0x1.0p-31f;
 	(void)o;
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t cycle = cycle_buf[i];
@@ -375,8 +375,8 @@ static sauMaybeUnused void sauRasG_map_v_bin(sauRasG *restrict o,
 	int sar = o->level;
 	// TODO: Scaling ends up slightly too low near sar == 1, improve?
 	const float scale_diff = 1.f
-		- (sau_sar32(INT32_MAX, sar) / (float)INT32_MAX);
-	const float scale = (1.f + scale_diff*scale_diff) / (float)INT32_MAX;
+		- (sau_sar32(INT32_MAX, sar) / 0x1.0p31f);
+	const float scale = (1.f + scale_diff*scale_diff) / 0x1.0p31f;
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t cycle = cycle_buf[i];
 		uint32_t sb = (cycle & 1) << 31;
@@ -406,7 +406,7 @@ static sauMaybeUnused void sauRasG_map_bin(sauRasG *restrict o,
 		sauRasG_map_v_bin(o, buf_len, end_a_buf, end_b_buf, cycle_buf);
 		return;
 	}
-	const float scale = 1.f/(float)INT32_MAX;
+	const float scale = 0x1.0p-31f;
 	int sar = o->level;
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t cycle = cycle_buf[i];
@@ -432,7 +432,7 @@ static sauMaybeUnused void sauRasG_map_tern(sauRasG *restrict o,
 		float *restrict end_a_buf,
 		float *restrict end_b_buf,
 		const uint32_t *restrict cycle_buf) {
-	const float scale = 1.f/(float)INT32_MAX;
+	const float scale = 0x1.0p-31f;
 	int sar = o->level;
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t cycle = cycle_buf[i];
@@ -474,7 +474,7 @@ static sauMaybeUnused void sauRasG_map_v_fixed(sauRasG *restrict o,
 		float *restrict end_a_buf,
 		float *restrict end_b_buf,
 		const uint32_t *restrict cycle_buf) {
-	const float scale = 1.f/(float)INT32_MAX;
+	const float scale = 0x1.0p-31f;
 	int slr = o->level;
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t cycle = cycle_buf[i];
@@ -507,7 +507,7 @@ static sauMaybeUnused void sauRasG_map_fixed(sauRasG *restrict o,
 		sauRasG_map_v_fixed(o, buf_len, end_a_buf,end_b_buf, cycle_buf);
 		return;
 	}
-	const float scale = 1.f/(float)INT32_MAX;
+	const float scale = 0x1.0p-31f;
 	int slr = o->level;
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t cycle = cycle_buf[i];
