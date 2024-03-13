@@ -1853,6 +1853,13 @@ static bool parse_numvar_rhs(sauParser *restrict o, sauSymitem *restrict var,
 	sauScanNumConst_f numconst_f = NULL;
 	sauScanner_skipws(o->sc);
 	switch ((suffc = sauScanner_get_suffc(o->sc))) {
+	case 'a': {
+		uint8_t suffc = sauScanner_getc_after(o->sc, '.');
+		if (suffc == 'l')
+			numconst_f = scan_ladderfx_const;
+		else if (suffc != 0)
+			sauScanner_ungetc(o->sc);
+		break; }
 	case 'c': numconst_f = scan_chanmix_const; break;
 	case 'f': numconst_f = scan_note_const; break;
 	case 'p': numconst_f = scan_cyclepos_const; break;

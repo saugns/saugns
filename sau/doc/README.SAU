@@ -707,6 +707,7 @@ Variables:
 	after the '='. Between it and any number or mathematical name after
 	must be whitespace and/or a mathematical symbol, to keep names apart.
 	For example, "$freq=f A4" has the frequency value of the note "A4".
+	a.l	Ladder effect distortion values
 	c	Channel mixing values
 	f	Frequencies as notes
 	p	Cycle position values (phase)
