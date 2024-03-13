@@ -177,7 +177,6 @@ static uint8_t scan_filter_hashcommands(sauScanner *restrict o, uint8_t c) {
 static sauSymitem *scan_sym(sauScanner *restrict o, uint32_t type_id,
 		const char *const*restrict help_stra, bool optional) {
 	const char *type_label = scan_sym_labels[type_id];
-	sauScanFrame sf_begin = o->sf;
 	sauSymstr *s = NULL;
 	sauScanner_get_symstr(o, &s);
 	if (!s) goto NOT_FOUND;
@@ -197,7 +196,7 @@ NOT_FOUND:
 		sauScanner_warning(o, NULL, msg, type_label);
 		if (help_stra) sau_print_names(help_stra, "\t", stderr);
 	} else if (help_stra) /* standard warning produced here */ {
-		sauScanner_warning(o, &sf_begin,
+		sauScanner_warning_at(o, 0,
 				"invalid %s name '%s'; available are:",
 				type_label, s->key);
 		sau_print_names(help_stra, "\t", stderr);
@@ -1147,7 +1146,7 @@ static bool parse_so_freq(sauParser *restrict o, bool rel_freq) {
 		o->sl.sopt.def_freq = val;
 		o->sl.sopt.set |= SAU_SOPT_DEF_FREQ;
 	}
-	if (sauScanner_tryc(sc, '.')) switch ((c = sauScanner_getc(sc))) {
+	switch ((c = sauScanner_getc_after(sc, '.'))) {
 	case 'k': {
 		int32_t octave = o->sl.sopt.key_octave;
 		c = sauScanner_getc(sc);
@@ -1223,7 +1222,7 @@ static bool parse_so_freq(sauParser *restrict o, bool rel_freq) {
 		}
 		break;
 	default:
-		return true;
+		return c != 0;
 	}
 	return false;
 }
@@ -1350,14 +1349,15 @@ static void parse_par_list(sauParser *restrict o,
 static bool parse_op_amp(sauParser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
 	sauScriptOpData *op = pl->operator;
+	uint8_t c;
 	parse_par_list(o, NULL, &op->amp, false, SAU_PSWEEP_AMP, SAU_POP_AMOD);
-	if (sauScanner_tryc(o->sc, '.')) switch (sauScanner_getc(o->sc)) {
+	switch ((c = sauScanner_getc_after(o->sc, '.'))) {
 	case 'r':
 		parse_par_list(o, NULL, &op->amp2, false,
 				SAU_PSWEEP_AMP2, SAU_POP_RAMOD);
 		break;
 	default:
-		return true;
+		return c != 0;
 	}
 	return false;
 }
@@ -1376,16 +1376,17 @@ static bool parse_op_freq(sauParser *restrict o, bool rel_freq) {
 	sauScriptOpData *op = pl->operator;
 	if (rel_freq && !(op->op_flags & SAU_SDOP_NESTED))
 		return true; // reject
+	uint8_t c;
 	sauScanNumConst_f num_f = rel_freq ? NULL : scan_note_const;
 	parse_par_list(o, num_f, &op->freq, rel_freq,
 			SAU_PSWEEP_FREQ, SAU_POP_FMOD);
-	if (sauScanner_tryc(o->sc, '.')) switch (sauScanner_getc(o->sc)) {
+	switch ((c = sauScanner_getc_after(o->sc, '.'))) {
 	case 'r':
 		parse_par_list(o, num_f, &op->freq2, rel_freq,
 				SAU_PSWEEP_FREQ2, SAU_POP_RFMOD);
 		break;
 	default:
-		return true;
+		return c != 0;
 	}
 	return false;
 }
@@ -1455,18 +1456,19 @@ static bool parse_op_mode(sauParser *restrict o) {
 static bool parse_op_phase(sauParser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
 	sauScriptOpData *op = pl->operator;
+	uint8_t c;
 	double val;
 	if (scan_num(o->sc, scan_phase_const, &val)) {
 		op->phase = sau_cyclepos_dtoui32(val);
 		op->params |= SAU_POPP_PHASE;
 	}
 	parse_par_list(o, NULL, NULL, false, 0, SAU_POP_PMOD);
-	if (sauScanner_tryc(o->sc, '.')) switch (sauScanner_getc(o->sc)) {
+	switch ((c = sauScanner_getc_after(o->sc, '.'))) {
 	case 'f':
 		parse_par_list(o, NULL, NULL, false, 0, SAU_POP_FPMOD);
 		break;
 	default:
-		return true;
+		return c != 0;
 	}
 	return false;
 }
