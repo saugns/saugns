@@ -1,5 +1,5 @@
 /* SAU library: Script scanner module.
- * Copyright (c) 2014, 2017-2023 Joel K. Pettersson
+ * Copyright (c) 2014, 2017-2024 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
@@ -90,7 +90,6 @@ bool sauScanner_open(sauScanner *restrict o,
 
 	o->sf.line_num = 1; // not increased upon first read
 	o->sf.char_num = 0;
-	o->s_flags |= SAU_SCAN_S_DISCARD;
 	return true;
 }
 
@@ -507,17 +506,24 @@ static void change_frame(sauScanner *restrict o, int offset) {
 /*
  * Perform pending updates before a get call.
  */
-static void prepare_frame(sauScanner *restrict o) {
+static void pre_get_setup(sauScanner *restrict o) {
 	if (o->undo_ungets > 0) {
 		--o->undo_ungets;
 		/*
 		 * Start from frame after the one ungotten to.
 		 */
 		change_frame(o, +1);
-		return;
+		o->s_flags |= SAU_SCAN_S_REGOT;
+		--o->sf.char_num;
 	}
-	if (o->s_flags & SAU_SCAN_S_DISCARD) {
-		o->s_flags &= ~SAU_SCAN_S_DISCARD;
+}
+
+/*
+ * Perform pending updates for a completed one-character get call.
+ */
+static void prepare_frame(sauScanner *restrict o) {
+	if (o->s_flags & SAU_SCAN_S_REGOT) {
+		o->s_flags &= ~SAU_SCAN_S_REGOT;
 	} else {
 		o->undo_pos = (o->undo_pos + 1) & SAU_SCAN_UNGET_MAX;
 	}
@@ -548,42 +554,45 @@ static void set_usedc(sauScanner *restrict o, uint8_t c) {
 /*
  * Perform updates after reading a sequence of characters,
  * e.g. a string or number. Prepares a temporary post-get scan frame.
+ *
+ * TODO: The current approach doeen't allow for unget with position preserved.
  */
-static void advance_frame(sauScanner *restrict o, size_t strlen, uint8_t c) {
+static void advance_frame(sauScanner *restrict o,
+		size_t strlen, size_t prelen, uint8_t c) {
 	if (strlen == 0)
 		return;
-	uint32_t reget_count = (strlen > o->undo_ungets) ?
-		o->undo_ungets :
-		strlen;
-	uint32_t char_inc = strlen;
+	uint32_t reget_count = strlen - prelen;
+	if (reget_count > o->undo_ungets) reget_count = o->undo_ungets;
 	if (reget_count > 0) {
 		/*
 		 * Advance past ungets prior to frame to restore to.
 		 */
 		o->undo_ungets -= (reget_count - 1);
 	}
+	o->sf.char_num += prelen;
 	prepare_frame(o);
-	o->sf.char_num += char_inc;
+	o->sf.char_num += strlen - prelen;
 	o->sf.c = c;
-	o->s_flags |= SAU_SCAN_S_DISCARD;
 }
 
-/*
+/**
  * Filter character, read more if needed until a character can be returned.
  *
- * \return character or 0 upon end of file
+ * \return character, or 0 upon end of file
  */
 uint8_t sauScanner_filterc(sauScanner *restrict o, uint8_t c,
 		sauScanFilter_f filter_f) {
 	sauFile_INCP(o->f);
-	prepare_frame(o);
+	pre_get_setup(o);
 	for (;;) {
 		++o->sf.char_num;
 		o->match_c = 0;
 		c = filter_f(o, c);
 		if (c != 0) {
-			if (c == SAU_SCAN_EOF)
-				return 0;
+			if (c == SAU_SCAN_EOF) {
+				c = 0;
+				goto RETURN;
+			}
 			set_usedc(o, c);
 			break;
 		}
@@ -595,6 +604,8 @@ uint8_t sauScanner_filterc(sauScanner *restrict o, uint8_t c,
 			break;
 		}
 	}
+RETURN:
+	prepare_frame(o);
 	return c;
 }
 
@@ -608,7 +619,7 @@ uint8_t sauScanner_filterc(sauScanner *restrict o, uint8_t c,
  * Upon end of file, 0 will be returned. A 0 value in the
  * input is otherwise moved past, printing a warning.
  *
- * \return character or 0 upon end of file
+ * \return character, or 0 upon end of file
  */
 uint8_t sauScanner_retc(sauScanner *restrict o) {
 	uint8_t c = sauFile_RETC(o->f);
@@ -627,12 +638,12 @@ uint8_t sauScanner_retc(sauScanner *restrict o) {
  * Upon end of file, 0 will be returned. A 0 value in the
  * input is otherwise moved past, printing a warning.
  *
- * \return character or 0 upon end of file
+ * \return character, or 0 upon end of file
  */
 uint8_t sauScanner_getc(sauScanner *restrict o) {
 	uint8_t c;
 	sauScanFilter_f filter_f;
-	prepare_frame(o);
+	pre_get_setup(o);
 	for (;;) {
 		c = sauFile_GETC(o->f);
 		filter_f = sauScanner_getfilter(o, c);
@@ -644,13 +655,33 @@ uint8_t sauScanner_getc(sauScanner *restrict o) {
 		o->match_c = 0;
 		c = filter_f(o, c);
 		if (c != 0) {
-			if (c == SAU_SCAN_EOF)
-				return 0;
+			if (c == SAU_SCAN_EOF) {
+				c = 0;
+				goto RETURN;
+			}
 			set_usedc(o, c);
 			break;
 		}
 	}
+RETURN:
+	prepare_frame(o);
 	return c;
+}
+
+/**
+ * Get character after the current if \p testc was matched first.
+ * Advances the position if both characters got, otherwise acts like
+ * an unsuccessful sauScanner_tryc().
+ *
+ * A value of 0 is returned for no character. Otherwise handles 0
+ * values like sauScanner_getc().
+ *
+ * \return character, or 0 upon either mismatch or end of file
+ */
+uint8_t sauScanner_getc_after(sauScanner *restrict o, uint8_t testc) {
+	if (!sauScanner_tryc(o, testc))
+		return 0;
+	return sauScanner_getc(o);
 }
 
 /**
@@ -667,22 +698,20 @@ bool sauScanner_tryc(sauScanner *restrict o, uint8_t testc) {
 	sauFile *f = o->f;
 	uint8_t c = sauFile_RETC(f);
 	sauScanFilter_f filter_f = sauScanner_getfilter(o, c);
-	/*
-	 * Use quick handling for unfiltered characters.
-	 */
 	if (!filter_f) {
 		if (c != testc)
 			return false;
-		prepare_frame(o);
+		pre_get_setup(o);
 		++o->sf.char_num;
 		sauFile_INCP(f);
 		o->sf.c = c;
-		return true;
-	}
-	c = sauScanner_filterc(o, c, filter_f);
-	if (c != testc) {
-		sauScanner_ungetc(o);
-		return false;
+		prepare_frame(o);
+	} else {
+		c = sauScanner_filterc(o, c, filter_f);
+		if (c != testc) {
+			sauScanner_ungetc(o);
+			return false;
+		}
 	}
 	return true;
 }
@@ -706,10 +735,10 @@ uint32_t sauScanner_ungetc(sauScanner *restrict o) {
 		return o->undo_ungets;
 	}
 	++o->undo_ungets;
-	o->s_flags &= ~SAU_SCAN_S_DISCARD;
-	char safe_c = o->undo[o->undo_pos].c;
+	o->s_flags &= ~SAU_SCAN_S_REGOT;
 	change_frame(o, -1);
 	sauFile_DECP(o->f);
+	char safe_c = o->undo[o->undo_pos].c;
 	set_usedc(o, safe_c); /* re-getting past skipped comments now safe */
 	return o->undo_ungets;
 }
@@ -727,12 +756,10 @@ bool sauScanner_geti(sauScanner *restrict o,
 		size_t *restrict str_len) {
 	sauFile *f = o->f;
 	size_t read_len;
-	prepare_frame(o);
+	pre_get_setup(o);
 	o->sf.c = sauFile_RETC(f);
-	++o->sf.char_num;
 	bool truncated = !sauFile_geti(f, var, allow_sign, &read_len);
 	if (read_len == 0) {
-		o->s_flags |= SAU_SCAN_S_DISCARD;
 		if (str_len) *str_len = 0;
 		return true;
 	}
@@ -740,7 +767,7 @@ bool sauScanner_geti(sauScanner *restrict o,
 		sauScanner_warning(o, NULL,
 			"value truncated, too large for signed 32-bit int");
 	}
-	advance_frame(o, read_len - 1, sauFile_RETC_NC(f));
+	advance_frame(o, read_len, 1, sauFile_RETC_NC(f));
 	if (str_len) *str_len = read_len;
 	return !truncated;
 }
@@ -765,9 +792,8 @@ bool sauScanner_getd(sauScanner *restrict o,
 	uint8_t c;
 	bool sign = false, minus = false;
 	size_t read_len;
-	prepare_frame(o);
+	pre_get_setup(o);
 	o->sf.c = c = sauFile_RETC(f);
-	++o->sf.char_num;
 	/*
 	 * Handle sign here to allow it before named constant too.
 	 * Otherwise the same behavior as sauFile_getd().
@@ -787,7 +813,6 @@ bool sauScanner_getd(sauScanner *restrict o,
 	if (read_len == 0) {
 		if (sign)
 			sauFile_DECP(f);
-		o->s_flags |= SAU_SCAN_S_DISCARD;
 		if (str_len) *str_len = 0;
 		return true;
 	}
@@ -797,7 +822,7 @@ bool sauScanner_getd(sauScanner *restrict o,
 	}
 	if (sign) ++read_len;
 	if (minus) *var = - *var;
-	advance_frame(o, read_len - 1, sauFile_RETC_NC(f));
+	advance_frame(o, read_len, 1, sauFile_RETC_NC(f));
 	if (str_len) *str_len = read_len;
 	return !truncated;
 }
@@ -811,25 +836,18 @@ uint8_t sauScanner_get_suffc(sauScanner *restrict o) {
 	sauFile *f = o->f;
 	uint8_t c = sauFile_RETC(f), next_c;
 	sauScanFilter_f filter_f = sauScanner_getfilter(o, c);
-	/*
-	 * Use quick handling for unfiltered characters.
-	 */
 	if (!filter_f) {
 		if (!IS_ALPHA(c))
 			return 0;
+		pre_get_setup(o);
 		sauFile_INCP(f);
-		next_c = sauScanner_retc(o);
-		if (IS_SYMCHAR(next_c)) {
-			sauFile_DECP(f);
-			return 0;
-		}
-		prepare_frame(o);
 		++o->sf.char_num;
 		o->sf.c = c;
-		return c;
+		prepare_frame(o);
+	} else {
+		c = sauScanner_filterc(o, c, filter_f);
+		if (!IS_ALPHA(c)) goto UNGET_C;
 	}
-	c = sauScanner_filterc(o, c, filter_f);
-	if (!IS_ALPHA(c)) goto UNGET_C;
 	next_c = sauScanner_retc(o);
 	if (IS_SYMCHAR(next_c)) goto UNGET_C;
 	return c;
@@ -851,12 +869,10 @@ bool sauScanner_get_symstr(sauScanner *restrict o,
 	sauFile *f = o->f;
 	size_t len;
 	bool truncated;
-	prepare_frame(o);
+	pre_get_setup(o);
 	o->sf.c = sauFile_RETC(f);
-	++o->sf.char_num;
 	truncated = !read_symstr(f, o->strbuf, STRBUF_LEN, &len);
 	if (len == 0) {
-		o->s_flags |= SAU_SCAN_S_DISCARD;
 		*symstrp = NULL;
 		return true;
 	}
@@ -867,7 +883,7 @@ bool sauScanner_get_symstr(sauScanner *restrict o,
 "limiting identifier to %d characters", (STRBUF_LEN - 1));
 		read_len += sauFile_skipstr(f, filter_symchar);
 	}
-	advance_frame(o, read_len - 1, sauFile_RETC_NC(f));
+	advance_frame(o, read_len, 1, sauFile_RETC_NC(f));
 
 	sauSymstr *symstr = sauSymtab_get_symstr(o->symtab, o->strbuf, len);
 	if (!symstr) {
@@ -943,6 +959,37 @@ void sauScanner_error(sauScanner *restrict o,
 	va_list ap;
 	va_start(ap, fmt);
 	print_stderr(o, (sf != NULL ? sf : &o->sf),
+		"error", fmt, ap);
+	o->s_flags |= SAU_SCAN_S_ERROR;
+	va_end(ap);
+}
+
+/**
+ * Print warning message including file path and position.
+ * Uses \p got_at for information from unget buffer at relative position:
+ * 0 the current, -1 the previus, +1 the next if ungot, etc.
+ */
+void sauScanner_warning_at(const sauScanner *restrict o,
+		int got_at, const char *restrict fmt, ...) {
+	if (o->s_flags & SAU_SCAN_S_QUIET)
+		return;
+	va_list ap;
+	va_start(ap, fmt);
+	print_stderr(o, &o->undo[(o->undo_pos + got_at) & SAU_SCAN_UNGET_MAX],
+		"warning", fmt, ap);
+	va_end(ap);
+}
+
+/**
+ * Print warning message including file path and position.
+ * Uses \p got_at for information from unget buffer at relative position:
+ * 0 the current, -1 the previus, +1 the next if ungot, etc.
+ */
+void sauScanner_error_at(sauScanner *restrict o,
+		int got_at, const char *restrict fmt, ...) {
+	va_list ap;
+	va_start(ap, fmt);
+	print_stderr(o, &o->undo[(o->undo_pos + got_at) & SAU_SCAN_UNGET_MAX],
 		"error", fmt, ap);
 	o->s_flags |= SAU_SCAN_S_ERROR;
 	va_end(ap);
