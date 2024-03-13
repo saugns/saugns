@@ -1737,6 +1737,13 @@ static bool parse_level(sauParser *restrict o,
 			pl.set_var = NULL; // used here
 			sauScanner_skipws(sc);
 			switch ((suffc = sauScanner_get_suffc(sc))) {
+			case 'a': {
+				uint8_t suffc = sauScanner_getc_after(sc, '.');
+				if (suffc == 'l')
+					numconst_f = scan_ladderfx_const;
+				else if (suffc != 0)
+					sauScanner_ungetc(sc);
+				break; }
 			case 'c': numconst_f = scan_chanmix_const; break;
 			case 'f': numconst_f = scan_note_const; break;
 			case 'p': numconst_f = scan_phase_const; break;
