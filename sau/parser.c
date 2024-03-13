@@ -176,7 +176,6 @@ static uint8_t scan_filter_hashcommands(sauScanner *restrict o, uint8_t c) {
 static sauSymitem *scan_sym(sauScanner *restrict o, uint32_t type_id,
 		const char *const*restrict help_stra, bool optional) {
 	const char *type_label = scan_sym_labels[type_id];
-	sauScanFrame sf_begin = o->sf;
 	sauSymstr *s = NULL;
 	sauScanner_get_symstr(o, &s);
 	if (!s) goto NOT_FOUND;
@@ -196,7 +195,7 @@ NOT_FOUND:
 		sauScanner_warning(o, NULL, msg, type_label);
 		if (help_stra) sau_print_names(help_stra, "\t", stderr);
 	} else if (help_stra) /* standard warning produced here */ {
-		sauScanner_warning(o, &sf_begin,
+		sauScanner_warning_at(o, 0,
 				"invalid %s name '%s'; available are:",
 				type_label, s->key);
 		sau_print_names(help_stra, "\t", stderr);
@@ -1195,7 +1194,7 @@ static bool parse_so_freq(sauParser *restrict o, bool rel_freq) {
 		o->sl.sopt.def_freq = val;
 		o->sl.sopt.set |= SAU_SOPT_DEF_FREQ;
 	}
-	if (sauScanner_tryc(sc, '.')) switch ((c = sauScanner_getc(sc))) {
+	switch ((c = sauScanner_getc_after(sc, '.'))) {
 	case 'k': {
 		int32_t octave = o->sl.sopt.key_octave;
 		c = sauScanner_getc(sc);
@@ -1271,7 +1270,7 @@ static bool parse_so_freq(sauParser *restrict o, bool rel_freq) {
 		}
 		break;
 	default:
-		return true;
+		return c != 0;
 	}
 	return false;
 }
@@ -1335,7 +1334,7 @@ static bool parse_ev_amp(sauParser *restrict o) {
 	if (sauScanner_tryc(sc, '[')) {
 		parse_level(o, SAU_POP_AMOD, SCOPE_NEST);
 	}
-	if (sauScanner_tryc(sc, '.')) switch ((c = sauScanner_getc(sc))) {
+	switch ((c = sauScanner_getc_after(sc, '.'))) {
 	case 'r':
 		parse_line(o, NULL, &op->amp2, false, SAU_PSWEEP_AMP2);
 		if (sauScanner_tryc(sc, '[')) {
@@ -1343,7 +1342,7 @@ static bool parse_ev_amp(sauParser *restrict o) {
 		}
 		break;
 	default:
-		return true;
+		return c != 0;
 	}
 	return false;
 }
@@ -1369,7 +1368,7 @@ static bool parse_ev_freq(sauParser *restrict o, bool rel_freq) {
 	if (sauScanner_tryc(sc, '[')) {
 		parse_level(o, SAU_POP_FMOD, SCOPE_NEST);
 	}
-	if (sauScanner_tryc(sc, '.')) switch ((c = sauScanner_getc(sc))) {
+	switch ((c = sauScanner_getc_after(sc, '.'))) {
 	case 'r':
 		parse_line(o, numconst_f, &op->freq2,
 				rel_freq, SAU_PSWEEP_FREQ2);
@@ -1378,7 +1377,7 @@ static bool parse_ev_freq(sauParser *restrict o, bool rel_freq) {
 		}
 		break;
 	default:
-		return true;
+		return c != 0;
 	}
 	return false;
 }
@@ -1395,10 +1394,15 @@ static bool parse_ev_phase(sauParser *restrict o) {
 	if (sauScanner_tryc(sc, '[')) {
 		parse_level(o, SAU_POP_PMOD, SCOPE_NEST);
 	}
-	if (sauScanner_tryc(sc, '.')) {
-		if (sauScanner_tryc(sc, 'f') && sauScanner_tryc(sc, '[')) {
+	uint8_t c;
+	switch ((c = sauScanner_getc_after(sc, '.'))) {
+	case 'f':
+		if (sauScanner_tryc(sc, '[')) {
 			parse_level(o, SAU_POP_FPMOD, SCOPE_NEST);
 		}
+		break;
+	default:
+		return c != 0;
 	}
 	return false;
 }
