@@ -23,15 +23,8 @@
  */
 #define USE_PILUT 1
 
-/**
- * Calculate the coefficent, based on the sample rate, used for
- * the per-sample phase by multiplying with the frequency used.
- */
-#define sauPhasor_COEFF(srate) SAU_INV_FREQ(32, srate)
-
 typedef struct sauPhasor {
 	uint32_t phase;
-	float coeff;
 } sauPhasor;
 
 #define SAU_OSC_RESET_DIFF  (1<<0)
@@ -42,8 +35,8 @@ typedef struct sauWOsc {
 	uint8_t wave;
 	uint8_t flags;
 #if USE_PILUT
-	uint32_t prev_phase;
 	double prev_Is;
+	uint32_t prev_phase;
 	float prev_diff_s;
 #endif
 } sauWOsc;
@@ -51,17 +44,15 @@ typedef struct sauWOsc {
 /**
  * Initialize instance for use.
  */
-static inline void sau_init_WOsc(sauWOsc *restrict o, uint32_t srate) {
+static inline void sau_init_WOsc(sauWOsc *restrict o) {
 	*o = (sauWOsc){
 #if USE_PILUT
 		.phasor = (sauPhasor){
 			.phase = sauWave_picoeffs[SAU_WAVE_N_sin].phase_adj,
-			.coeff = sauPhasor_COEFF(srate),
 		},
 #else
 		.phasor = (sauPhasor){
 			.phase = 0,
-			.coeff = sauPhasor_COEFF(srate),
 		},
 #endif
 		.wave = SAU_WAVE_N_sin,
@@ -94,8 +85,8 @@ static inline void sauWOsc_set_wave(sauWOsc *restrict o, uint8_t wave) {
  *
  * \return number of samples
  */
-static inline uint32_t sauWOsc_cycle_len(sauWOsc *restrict o, float freq) {
-	return sau_ftoi(SAU_INV_FREQ(32, o->phasor.coeff * freq));
+static inline uint32_t sauWOsc_cycle_len(float freq, float inv32_srate) {
+	return sau_ftoi(SAU_INV_FREQ(32, inv32_srate * freq));
 }
 
 /**
@@ -103,9 +94,9 @@ static inline uint32_t sauWOsc_cycle_len(sauWOsc *restrict o, float freq) {
  *
  * \return number of samples
  */
-static inline uint32_t sauWOsc_cycle_pos(sauWOsc *restrict o,
-		float freq, uint32_t pos) {
-	uint32_t inc = sau_ftoi(o->phasor.coeff * freq);
+static inline uint32_t sauWOsc_cycle_pos(float freq, uint32_t pos,
+		float inv32_srate) {
+	uint32_t inc = sau_ftoi(inv32_srate * freq);
 	uint32_t phs = inc * pos;
 	return phs / inc;
 }
@@ -115,9 +106,9 @@ static inline uint32_t sauWOsc_cycle_pos(sauWOsc *restrict o,
  *
  * Can be used to reduce time length to something rounder and reduce clicks.
  */
-static inline int32_t sauWOsc_cycle_offs(sauWOsc *restrict o,
-		float freq, uint32_t pos) {
-	uint32_t inc = sau_ftoi(o->phasor.coeff * freq);
+static inline int32_t sauWOsc_cycle_offs(float freq, uint32_t pos,
+		float inv32_srate) {
+	uint32_t inc = sau_ftoi(inv32_srate * freq);
 	uint32_t phs = inc * pos;
 	return (phs - sauWave_SLEN) / inc;
 }
@@ -136,32 +127,33 @@ static sauMaybeUnused void sauPhasor_fill(sauPhasor *restrict o,
 		size_t buf_len,
 		const float *restrict freq_f,
 		const float *restrict pm_f,
-		const float *restrict fpm_f) {
+		const float *restrict fpm_f,
+		float inv32_srate) {
 	const float fpm_scale = 1.f / SAU_HUMMID;
 	if (!pm_f && !fpm_f) {
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s_f = freq_f[i];
-			phase_ui32[i] = P(sau_ftoi(o->coeff * s_f), 0);
+			phase_ui32[i] = P(sau_ftoi(inv32_srate * s_f), 0);
 		}
 	} else if (!fpm_f) {
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s_f = freq_f[i];
 			float s_pofs = pm_f[i];
-			phase_ui32[i] = P(sau_ftoi(o->coeff * s_f),
+			phase_ui32[i] = P(sau_ftoi(inv32_srate * s_f),
 					sau_ftoi(s_pofs * 0x1.0p31f));
 		}
 	} else if (!pm_f) {
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s_f = freq_f[i];
 			float s_pofs = fpm_f[i] * fpm_scale * s_f;
-			phase_ui32[i] = P(sau_ftoi(o->coeff * s_f),
+			phase_ui32[i] = P(sau_ftoi(inv32_srate * s_f),
 					sau_ftoi(s_pofs * 0x1.0p31f));
 		}
 	} else {
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s_f = freq_f[i];
 			float s_pofs = pm_f[i] + (fpm_f[i] * fpm_scale * s_f);
-			phase_ui32[i] = P(sau_ftoi(o->coeff * s_f),
+			phase_ui32[i] = P(sau_ftoi(inv32_srate * s_f),
 					sau_ftoi(s_pofs * 0x1.0p31f));
 		}
 	}
