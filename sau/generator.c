@@ -116,8 +116,8 @@ struct sauGenerator {
 	float amp_scale;
 	uint32_t op_count;
 	OperatorNode *operators;
-	float inv32_srate, dc_coeff;
 	sauMempool *mem;
+	float dc_coeff;
 };
 
 // maximum number of buffers needed for op nesting depth
@@ -171,7 +171,6 @@ static bool convert_program(sauGenerator *restrict o,
 	 */
 	int ev_time_carry = 0;
 	o->srate = srate;
-	o->inv32_srate = SAU_INV_FREQ(32, srate);
 	o->dc_coeff = SAU_RC_TIME_COEFF(5.0 * srate);
 	o->amp_scale = 0.5f * prg->ampmult; // half for panning sum
 	if ((prg->mode & SAU_PMODE_AMP_DIV_VOICES) != 0)
@@ -241,7 +240,6 @@ static void set_voice_duration(sauGenerator *restrict o,
 static void prepare_op(sauGenerator *restrict o,
 		OperatorNode *restrict n, VoiceNode *restrict vn,
 		const sauProgramOpData *restrict od) {
-	(void)o;
 	if (od->use_type == SAU_POP_CARR) {
 		vn->freq_buf_id = 0;
 	}
@@ -249,14 +247,14 @@ static void prepare_op(sauGenerator *restrict o,
 	case SAU_POPT_WAVE: {
 		WOscNode *wo = &n->wo;
 		memset(n, 0, sizeof(*wo));
-		sau_init_WOsc(&wo->wosc);
+		sau_init_WOsc(&wo->wosc, o->srate);
 		if (od->use_type == SAU_POP_CARR) // must match run_block_wosc()
 			vn->freq_buf_id = 3 - 1;
 		goto OSC_COMMON; }
 	case SAU_POPT_RAS: {
 		RasGNode *rg = &n->rg;
 		memset(n, 0, sizeof(*rg));
-		sau_init_RasG(&rg->rasg);
+		sau_init_RasG(&rg->rasg, o->srate);
 		sauRasG_set_cycle(&rg->rasg, od->seed);
 		if (od->use_type == SAU_POP_CARR) // must match run_block_rasg()
 			vn->freq_buf_id = 4 - 1;
@@ -577,7 +575,6 @@ static void run_block_wosc(sauGenerator *restrict o,
 	void *phase_buf = *(bufs++);
 	float *freq = NULL, *amp = NULL;
 	float *tmp_buf = NULL;
-	const float inv32_srate = o->inv32_srate;
 	/*
 	 * Handle frequency (alternatively ratio) parameter,
 	 * including frequency modulation if modulators linked.
@@ -604,7 +601,7 @@ static void run_block_wosc(sauGenerator *restrict o,
 		fpm_buf = *(bufs + 1); // #5
 	}
 	sauPhasor_fill(&n->wo.wosc.phasor, phase_buf, len,
-			freq, pm_buf, fpm_buf, inv32_srate);
+			freq, pm_buf, fpm_buf);
 	/*
 	 * Handle amplitude parameter, including amplitude modulation if
 	 * modulators linked.
@@ -632,7 +629,6 @@ static void run_block_rasg(sauGenerator *restrict o,
 	void *cycle_buf = *(bufs++), *rasg_buf = *(bufs++);
 	float *freq = NULL, *amp = NULL;
 	float *tmp_buf = NULL, *tmp2_buf = NULL;
-	const float inv32_srate = o->inv32_srate;
 	/*
 	 * Handle frequency (alternatively ratio) parameter,
 	 * including frequency modulation if modulators linked.
@@ -659,7 +655,7 @@ static void run_block_rasg(sauGenerator *restrict o,
 		fpm_buf = *(bufs + 1); // #6
 	}
 	sauCyclor_fill(&n->rg.rasg.cyclor, cycle_buf, rasg_buf, len,
-			freq, pm_buf, fpm_buf, inv32_srate);
+			freq, pm_buf, fpm_buf);
 	/*
 	 * Handle amplitude parameter, including amplitude modulation if
 	 * modulators linked.
