@@ -14,6 +14,8 @@ Language changes:
    variable `=`, allow whitespace after `=`, and not
    only before it. This behavior is less surprising.
 
+Fix some parser warnings wrongly numbering position.
+
 v0.4.2d (2023-12-31)
 --------------------
 
