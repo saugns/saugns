@@ -69,7 +69,7 @@ static inline uint64_t sau_ms_in_samples(uint64_t time_ms, uint64_t srate,
  */
 static inline uint32_t sau_cyclepos_dtoui32(double x) {
 	// needs long(er) range because 0.5 from remainder becomes INT32_MAX+1
-	return sau_ui32rint(remainder(x, 1.f) * 0x1.0p32);
+	return sau_ui32rint(remainder(x, 1.f) * (float)UINT32_MAX);
 }
 
 /**
@@ -300,9 +300,6 @@ static inline float sau_sinpi_d5f(float x) {
 /*
  * Filters & envelopes.
  */
-
-/** Inverse frequency coefficient with \p po2 power of two multiplier. */
-#define SAU_INV_FREQ(po2, freq) (SAU_PASTE(0x1.0p, po2) / (freq))
 
 /** RC time constant for \p msXsr time in ms multiplied by sample rate. */
 #define SAU_RC_TIME_COEFF(msXsr) exp(-1000.f / (msXsr))

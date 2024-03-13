@@ -57,12 +57,14 @@
 /** Turn \p arg into string literal after macro-expanding it. */
 #define SAU_STREXP(arg) SAU_STRLIT(arg)
 
+/** Concatenate the text of two arguments before macro-expanding them. */
+#define SAU_CAT(_0, _1) _0##_1
+
 /** Concatenate the text of two arguments after macro-expanding them. */
-#define SAU_PASTE(_0, _1) SAU__CAT(_0, _1)
-#define SAU__CAT(_0, _1) _0##_1
+#define SAU_PASTE(_0, _1) SAU_CAT(_0, _1)
 
 /** Preprocessor conditional expansion; \p cond may resolve to blank, 0 or 1. */
-#define SAU_IF(cond, t, f) SAU_PASTE(SAU__IF, cond)(t, f)
+#define SAU_IF(cond, t, f) SAU_CAT(SAU__IF, cond)(t, f)
 #define SAU__IF(t, f) f
 #define SAU__IF0(t, f) f
 #define SAU__IF1(t, f) t
