@@ -1,5 +1,5 @@
 /* SAU library: Script scanner module.
- * Copyright (c) 2014, 2017-2023 Joel K. Pettersson
+ * Copyright (c) 2014, 2017-2024 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
@@ -115,7 +115,7 @@ uint8_t sauScanner_setws_level(sauScanner *restrict o, uint8_t ws_level);
  */
 enum {
 	SAU_SCAN_S_ERROR = 1<<0, // true if at least one error has been printed
-	SAU_SCAN_S_DISCARD = 1<<1, // don't save scan frame next get
+	SAU_SCAN_S_REGOT = 1<<1, // freshly regot
 	SAU_SCAN_S_QUIET = 1<<2, // suppress warnings (but still print errors)
 };
 
@@ -194,6 +194,7 @@ typedef size_t (*sauScanNumConst_f)(sauScanner *restrict o,
 
 uint8_t sauScanner_retc(sauScanner *restrict o);
 uint8_t sauScanner_getc(sauScanner *restrict o);
+uint8_t sauScanner_getc_after(sauScanner *restrict o, uint8_t testc);
 uint8_t sauScanner_filterc(sauScanner *restrict o, uint8_t c,
 		sauScanFilter_f filter_f);
 bool sauScanner_tryc(sauScanner *restrict o, uint8_t testc);
@@ -216,3 +217,7 @@ void sauScanner_warning(const sauScanner *restrict o,
 void sauScanner_error(sauScanner *restrict o,
 		const sauScanFrame *restrict sf,
 		const char *restrict fmt, ...) sauPrintflike(3, 4);
+void sauScanner_warning_at(const sauScanner *restrict o,
+		int got_at, const char *restrict fmt, ...) sauPrintflike(3, 4);
+void sauScanner_error_at(sauScanner *restrict o,
+		int got_at, const char *restrict fmt, ...) sauPrintflike(3, 4);
