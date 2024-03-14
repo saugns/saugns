@@ -9,6 +9,213 @@ Pre-release
 
 [rebase in progress]
 
+v0.5.2 (2025-08-27)
+-------------------
+
+Language changes:
+ * Signal generator types. Allow frequency `f` (and ratio `r`)
+   for all generators, not only oscillators. This allows using
+   `A0[...]` (or `N[...]`) as a wrapper generator and giving
+   it timed pitch changes, to control nested oscillators
+   inside (which can use `r`). Useful for FM and additive
+   sound design, with several carriers per voice.
+ * Line types. More exp/log types with steepness not 6.
+    - Add `exp11`, `log11`, `xpe11`, `lge11`. Steepness 11.
+ * Modulation with value ranges. Tweak semantics, and add
+   envelope options `.e` to long-form, for completeness. Don't
+   switch list behavior for the very first list when the `..`
+   long-form syntax is written just after, instead do it when
+   short-form `.r` or `.e` are written after. After `..`, the
+   options `.r`, `.e`, and/or `.a` can be used -- concatenated
+   in the order listed, with any left out. For example, just
+   one of them, or `.r.e`.
+ * Fix `S a` when placed in additive AM list. (A typo in the
+   code prevented multiplication by outer level setting from
+   working, muting sound for generators after in scope
+   instead.)
+ * Frequencies as notes. Slightly tweak JI quartertones used.
+
+v0.5.1 (2025-02-16)
+-------------------
+
+Add ADSR envelope to sweepable parameters.
+
+Language changes:
+ * Parameter envelopes. Implement ADSR envelope, add to every
+   sweepable parameter. This uses list heading subparameters,
+   under the new `.e` (envelope) subparameter which has a new
+   sweepable secondary value (like that for value range `.r`,
+   but for an envelope as a stage applied after, similarly).
+   The envelope secondary value also accepts modulators in
+   the list as does the long-form value range secondary value.
+   - Add `a`, `d`, `s`, `r` subparameters within `.e[...]` --
+     these can be used alongside the sweep subparameters.
+     Also add `e` for further envelope-specific settings.
+   - Add line selection `.l` sub-subparameter for each timed
+     subparameter (`a`, `d`, and `r`), as well as `e` for
+     setting all of them (overridden by the others if used
+     at the same time) as in `e.lcos`.
+   - Add 4 modes which can be toggled under `e`, default `ec`:
+     `0` (off), `c` (clamp stage times to fit note duration,
+     shortening stage trajectories without cutting them off),
+     `l` (loop envelope instead of triggering when time set),
+     `t` (truncate envelope trajectory if times are too long).
+ * Remove long-deprecated sweep subparameter `r` (now `l`).
+ * Phase distortion synthesis. Make the secondary parameter
+   values default to the do-nothing values if not zero. Makes
+   PD envelopes and value range modulation simpler to use.
+
+Support an ADSR envelope for each of the parameters allowing
+value ranges and sweeps (most). It triggers and runs anew with
+each new time duration set to the main `t` parameter for the
+generator the parameter belongs to. Each `;` for the generator
+implicitly sets `t` and thus triggers the envelope.
+
+For modulators, if time is implicit/indefinite (default `ti`)
+then the envelopes for parameters trigger with the closest
+carrier having its time set. Thus a single `;` for a carrier
+can trigger envelopes for a nested structure of oscillators.
+
+Prune example scripts, tweak some old ones adding envelopes.
+
+Performance tweaks to phaseshaping code, replace floorf().
+
+v0.5.0c (2025-01-31)
+--------------------
+
+Fix for builds with the clang 19 compiler.
+This is for an issue known to have affected x86-64.
+
+No difference for gcc nor for clang 18 and older.
+With clang 19, to keep -ffast-math builds from having
+broken FM and PM, never use lrint()/lrintf(), always
+use llrint()/llrintf() even when C type `long` is 64-bit.
+(Otherwise the former turn into 32-bit result instructions
+that clip values in some places.)
+
+_Update_ -- The issue was deemed a bug in clang/llvm. It's
+limited to clang 19 as clang 20+ restores old behavior.
+
+v0.5.0b (2025-01-28)
+--------------------
+
+Fix sweeps for PD parameters. These were meant to
+work, but were broken by v0.5.0 refactoring; time
+flags lacked initialization.
+
+Correct polarity of PD `.p` phase offset for `R`,
+was flipped relative to `W`.
+
+Fix mis-scaling of the `.p` phase offset for `.c`
+and `.d`, when using `R mh`, and for `R` whenever
+the `.f` multiplier is used.
+
+Refactor, unify "phasor" (phase signal generator,
+including PD) for `W` & `R`.
+
+v0.5.0 (2025-01-06)
+-------------------
+
+Add a set of PD synthesis & PS options.
+
+Language changes:
+ * Signal generator types. Add `W` mode toggle. (See below.)
+ * Accept phase `p` values directly after `W` and `R` (a
+   phase number requires e.g. parentheses around to set it
+   apart from a wave or line type). This is mostly a shortcut
+   to using phase subparameters (`W.a1/2`) and/or PM (`W[W]`).
+ * Accept amplitude `a` values directly after `N` (not only
+   after `A` as before); an amplitude number requries e.g.
+   parentheses around to set it apart from the noise type.
+   This is more for consistency and as a shortcut for AM.
+ * Implement phase distortion synthesis, and some forms of
+   pulsar synthesis as well. Add a set of phase `p`
+   subparameters for this; each is for a distortion function,
+   with main and subvalues which can be set, swept, and
+   modulated. Used with constant numbers, they derive new wave
+   types, e.g. `W.c2` is a sine alternating between on and off
+   every other cycle with preserved base frequency.
+ * Accept phase `p` subparameters for PD and for self-PM as
+   `p[]` list heading subparameters. The main `p` parameter
+   doesn't support value sweeps etc., so there was nothing
+   else being parsed in such a way. This combines with the
+   new support for `p` values right after `R` or `W`.
+
+Implement `R` and `W` PD options, each such subparameter
+(including its 2 subparameters) having full value ranges
+support.
+ * Each PD option under `p` subparameters has in turn:
+   - Subfrequency `.f`.
+   - Phase offset `.p`.
+ * The new duty cycle parameter `p.d` defaults to 1; a
+   zoom phase distortion which is the inverse of `p.c`
+   and corresponds to "PulWM", implemented through PD.
+   Full zoom-out at 0.
+ * The new cycle length parameter `p.c` defaults to 1.
+   Values closer to 0 "zoom in" -- sawtooth-like edges
+   may form. Values larger than 1 "zoom out", with the
+   new area filled with a "blank" (the cycle beginning
+   and end amplitude).
+ * The new hold phase distortion with parameter `p.h`,
+   a way to overwrite a portion of a wave cycle. Using
+   a positive value draws a horizontal line up to that
+   phase position, e.g. 1/4 for the first 1/4; using a
+   negative value the line is drawn backward (for -1/4
+   over the last 1/4).
+ * The new `p.x` and `p.y` parameters allow a PWM-like
+   phase distortion, which changes the size proportion
+   of the 1st and 2nd halves of a cycle. Use `p.x` for
+   "PWM" generalized to any wave type. Meanwhile `p.y`
+   is the inverse, a rate-of-change distortion for how
+   much phase moves in each half, making one "slower",
+   the other "faster".
+ * Tweak the `W` oscillator's LFO behavior for ADAA to
+   remove overshoots, also fix PD glitches. For 0 Hz a
+   prior value was (re-)used instead of a new, causing
+   some LF noise with the new zoom-out PD. Instead, in
+   case of phase difference at most 1 LUT value large,
+   produce a naive sample instead. More glitches fixed
+   for extreme PD where one sample pops up or down but
+   some issues remain.
+
+Allow use of `W` as a naive oscillator using a new mode `m`
+switch. (The `W m` option is similar to `R m`, but simpler,
+having only 2 letters for modes as yet.) The default is `a`
+(ADAA, antiderivative anti-aliasing) preserving the current
+behavior. Using `n` switches to the naive implementation in
+the codebase that gives results like pre-v0.3.9 saugns, but
+with the current wave types -- not rounded like v0.3.3 had.
+
+Fix default line type for `p.a[]` -- now `lin`, was `cos`.
+
+Major refactoring, mainly of the generator module.
+
+v0.4.8c (2024-11-15)
+--------------------
+
+Fix v0.4.8b bug which gave junk results when a
+0 Hz oscillator has an `f` modulator with `r`
+frequency ratio. (Normally useless, but valid
+in scripts.) Was due to use of uninitialized
+data for that specific case only.
+
+This script made noise with the buggy v0.4.8b,
+is correctly silent now:
+
+`W f0[W r10 a1000] t10`
+
+v0.4.8b (2024-11-12)
+--------------------
+
+Value range modulation for more parameters.
+
+For consistency, allow "Modulation with value ranges" for
+every parameter which accepts value sweeps. That's all with
+modulators, except the main phase & PM parameter `p` and its
+frequency-scaled PM subparameter `p.f`, where range-mapping
+doesn't make sense. This means it's now supported for `c`
+(channel mixing) and for self-PM `p.a` as well.
+
 v0.4.8 (2024-11-03)
 -------------------
 
