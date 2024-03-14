@@ -73,12 +73,16 @@ Usage: "S", followed by zero or more whitespace-separated parameters,
 each with a value.
 
 Parameters:
-	a	Multiplier for amplitude "a" values, for the current
-		scope of "[]" nesting. (The multiplier also applies to
-		"a.r" values, and to the multiplier in any deeper main
-		"a[]" modulator list.) If used at the top level, this
-		disables automatic down-scaling of amplitude per voice
-		by the number of voices, for manual control instead.
+	a	Multiplier for amplitude "a" values after, in the current
+		scope of "[]" nesting. Starts at 1.0. The multiplier also
+		applies to "a.r" values, and to the multiplier in any deeper
+		main "a[]" modulator list. It does not apply to other nested
+		lists for modulators; their multipliers apply unchanged.
+		.m	Script-wide gain mix control (multiplier). If used,
+			this disables automatic down-scaling of amplitude
+			by the number of voices (max carrier audio generators
+			simultaneously producing signals), for manual control
+			instead. Can only be set in the outermost scope.
 	c	Default channel mixing "c" value. Starts at 0.0,
 		i.e. C (center). Useful as a main way of setting
 		the parameter value.
@@ -162,12 +166,12 @@ The "R" and "W" types have these parameters in common:
 		several types of FM list are set and used at the same time,
 		the result of earlier stages will be used for later.) For
 		other kinds of modulation, if FM is done the result is used.
-	a	Amplitude, where 1.0 corresponds to a level of 0dB and
-		0.0 is silence. (Note that the final output level is scaled
-		down by the number of voices; alternatively, the S "a" option
-		can be used to set a multiplier used when adding a top-level
-		carrier. Panning will further reduce output level unless
-		fully left or right.) Can be negative to flip sign of result.
+	a	Amplitude, where 1.0 corresponds to a level of 0 dB and
+		0.0 is silence. (Note that the "S a" option can be used to
+		set a multiplier for this value. Further options affect mixing
+		and the final output level afterwards; this includes panning,
+		which reduces output level unless fully left or right.)
+		Can be negative to flip the sign of the signal.
 			"Value sweep" values are supported; see section.
 			"Modulation with value range" is supported for AM & RM
 		(amplitude and ring modulation); see section.
