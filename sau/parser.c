@@ -60,6 +60,7 @@ static const sauScriptOptions def_sopt = {
 	.ampmult = 1.f,
 	.A4_freq = 440.f,
 	.def_time_ms = 1000,
+	.def_ampmult = 1.f,
 	.def_freq = 440.f,
 	.def_relfreq = 1.f,
 	.def_chanmix = 0.f,
@@ -791,7 +792,7 @@ static sauLine *create_line(sauParser *restrict o,
 		v0 = sl->sopt.def_chanmix;
 		break;
 	case SAU_PSWEEP_AMP:
-		v0 = 1.0f; /* multiplied with sl->sopt.ampmult separately */
+		v0 = 1.0f; /* multiplied with sl->sopt.def_ampmult separately */
 		break;
 	case SAU_PSWEEP_AMP2:
 		v0 = 0.f;
@@ -1001,7 +1002,7 @@ static void begin_operator(sauParser *restrict o,
 	pl->operator = op = sau_mpalloc(o->mp, sizeof(sauScriptOpData));
 	if (!is_compstep)
 		pl->pl_flags |= PL_NEW_EVENT_FORK;
-	pl->used_ampmult = o->sl.sopt.ampmult;
+	pl->used_ampmult = o->sl.sopt.def_ampmult;
 	/*
 	 * Initialize node.
 	 */
@@ -1100,7 +1101,7 @@ static void enter_level(sauParser *restrict o,
 			o->sl.sopt.set = 0;
 			if (use_type != SAU_POP_N_carr &&
 			    use_type != SAU_POP_N_amod)
-				o->sl.sopt.ampmult = def_sopt.ampmult;
+				o->sl.sopt.def_ampmult = def_sopt.def_ampmult;
 		}
 	}
 	pl->use_type = use_type;
@@ -1158,6 +1159,37 @@ static void leave_level(sauParser *restrict o) {
 	return; \
 DEFER: \
 	sauScanner_ungetc(sc); /* let parse_level() take care of it */
+
+static bool parse_so_amp(sauParser *restrict o) {
+	struct NestScope *nest = NestArr_tip(&o->nest);
+	struct ParseLevel *pl = o->cur_pl;
+	sauScanner *sc = o->sc;
+	double val;
+	int c;
+	if (scan_num(sc, NULL, &val)) {
+		// amod lists inherit outer value
+		if (pl->use_type == SAU_POP_N_amod)
+			val *= nest->sopt_save.ampmult;
+		o->sl.sopt.def_ampmult = val;
+		o->sl.sopt.set |= SAU_SOPT_DEF_AMPMULT;
+	}
+	switch ((c = sauScanner_getc_after(sc, '.'))) {
+	case 'm':
+		if (nest)
+			return true; // only allow in global scope
+		if (o->sl.sopt.set & SAU_SOPT_AMPMULT)
+			sauScanner_warning(sc, NULL,
+"'a.m' script-wide gain mix control already set");
+		if (scan_num(sc, NULL, &val)) {
+			o->sl.sopt.ampmult = val;
+			o->sl.sopt.set |= SAU_SOPT_AMPMULT;
+		}
+		break;
+	default:
+		return c != 0;
+	}
+	return false;
+}
 
 static bool parse_so_freq(sauParser *restrict o, bool rel_freq) {
 	sauScanner *sc = o->sc;
@@ -1260,14 +1292,7 @@ static void parse_in_settings(sauParser *restrict o) {
 		double val;
 		switch (c) {
 		case 'a':
-			if (scan_num(sc, NULL, &val)) {
-				struct NestScope *nest = NestArr_tip(&o->nest);
-				// amod lists inherit outer value
-				if (pl->use_type == SAU_POP_N_amod)
-					val *= nest->sopt_save.ampmult;
-				o->sl.sopt.ampmult = val;
-				o->sl.sopt.set |= SAU_SOPT_AMPMULT;
-			}
+			if (parse_so_amp(o)) goto DEFER;
 			break;
 		case 'c':
 			if (scan_num(sc, scan_chanmix_const, &val)) {
