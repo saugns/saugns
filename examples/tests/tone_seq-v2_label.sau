@@ -2,7 +2,7 @@
  * Variation #2 of the first saugns script made,
  * changed to test the label syntax.
  */
-	S	a0.5
+	S	a.m0.5
 			/0.5
 'a	Wsin	f220 t1
 'b	Wsin	f110 t0.5 a.05 	|
