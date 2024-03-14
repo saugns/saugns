@@ -14,6 +14,9 @@ Language changes:
  * Allow `[]` list unconnected to any parameter. Its
    objects are held unused. More language constructs
    are needed to use the free list, or its contents.
+ * Amplitude handling. Add `S a.m`, script-wide gain
+   mix control in outermost scope. Replaces the role
+   of `S a` in disabling auto-downscaling by voices.
 
 Parser redesign:
  * Turn lists into a main type, for two with the old
