@@ -18,7 +18,7 @@ Language changes:
    mix control in outermost scope. Replaces the role
    of `S a` in disabling auto-downscaling by voices.
  * Amplitude handling. Add ladder effect distortion,
-   by default off. The `a.l` parameter can be set to
+   by default off. The `a.x` parameter can be set to
    `C` or 0.01 to mimic the classic effect from Sega
    Genesis/Mega Drive model I. Positive, or negative
    (for a sign-flipped mix of the distortion signal)
