@@ -167,7 +167,7 @@ static bool convert_program(sauGenerator *restrict o,
 	 */
 	int ev_time_carry = 0;
 	o->srate = srate;
-	o->amp_scale = 0.5f; // half for panning sum
+	o->amp_scale = 0.5f * prg->ampmult; // half for panning sum
 	if ((prg->mode & SAU_PMODE_AMP_DIV_VOICES) != 0)
 		o->amp_scale /= o->vo_count;
 	for (size_t i = 0; i < prg->ev_count; ++i) {
