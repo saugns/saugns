@@ -209,6 +209,7 @@ typedef struct sauProgram {
 	uint32_t op_count;
 	uint8_t op_nest_depth;
 	uint32_t duration_ms;
+	float ampmult;
 	const char *name;
 	struct sauMempool *mp; // holds memory for the specific program
 	struct sauScript *parse; // parser output used to build program
