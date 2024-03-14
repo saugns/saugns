@@ -1280,7 +1280,7 @@ static bool parse_so_amp(sauParser *restrict o) {
 			o->sl.sopt.set |= SAU_SOPT_AMPMULT;
 		}
 		break;
-	case 'x':
+	case 'l':
 		if (scan_num(sc, scan_ladderfx_const, &val)) {
 			o->sl.sopt.def_ladderfx = val;
 			o->sl.sopt.set |= SAU_SOPT_DEF_LADDERFX;
@@ -1460,17 +1460,17 @@ static bool parse_ev_amp(sauParser *restrict o) {
 	parse_ev_modparam(o, NULL, &op->amp, false,
 			SAU_PSWEEP_AMP, SAU_POP_AMOD);
 	switch ((c = sauScanner_getc_after(sc, '.'))) {
-	case 'r':
-		parse_ev_modparam(o, NULL, &op->amp2, false,
-				SAU_PSWEEP_AMP2, SAU_POP_RAMOD);
-		break;
-	case 'x': {
+	case 'l': {
 		double val;
 		if (scan_num(sc, scan_ladderfx_const, &val)) {
 			op->amp_lec = val;
 			op->params |= SAU_POPP_AMP_LEC;
 		}
 		break; }
+	case 'r':
+		parse_ev_modparam(o, NULL, &op->amp2, false,
+				SAU_PSWEEP_AMP2, SAU_POP_RAMOD);
+		break;
 	default:
 		return c != 0;
 	}
@@ -1739,7 +1739,7 @@ static bool parse_level(sauParser *restrict o,
 			switch ((suffc = sauScanner_get_suffc(sc))) {
 			case 'a': {
 				uint8_t suffc = sauScanner_getc_after(sc, '.');
-				if (suffc == 'x')
+				if (suffc == 'l')
 					numconst_f = scan_ladderfx_const;
 				else if (suffc != 0)
 					sauScanner_ungetc(sc);
