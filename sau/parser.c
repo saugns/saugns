@@ -497,37 +497,30 @@ static sauNoinline int32_t scan_int_in_range(sauScanner *restrict o,
 	return true;
 }
 
-static size_t scan_chanmix_const(sauScanner *restrict o,
-		double *restrict val) {
-	char c = sauFile_GETC(o->f);
-	switch (c) {
-	case 'C':
-		*val = 0.f;
-		return 1;
-	case 'L':
-		*val = -1.f;
-		return 1;
-	case 'R':
-		*val = 1.f;
-		return 1;
-	default:
-		sauFile_DECP(o->f);
-		return 0;
-	}
+/*
+ * Use to define named constant functions that just map a char to a number.
+ */
+#define SIMPLE_NUMCONST_F(FName, XList) \
+static size_t (FName)(sauScanner *restrict o, double *restrict val) { \
+	switch (sauFile_GETC(o->f)) { \
+	XList(SIMPLE_NUMCONST_F__CASE) \
+	default: sauFile_DECP(o->f); return 0; \
+	} \
 }
+#define SIMPLE_NUMCONST_F__CASE(Name, Value) \
+	case Name: *val = (Value); return 1;
 
-static size_t scan_ladderfx_const(sauScanner *restrict o,
-		double *restrict val) {
-	char c = sauFile_GETC(o->f);
-	switch (c) {
-	case 'C':
-		*val = SAU_LADDERFX_CLASSIC;
-		return 1;
-	default:
-		sauFile_DECP(o->f);
-		return 0;
-	}
-}
+#define CHANMIX_XLIST(X) \
+	X('C', 0.f) \
+	X('L', -1.f) \
+	X('R', 1.f) \
+	//
+SIMPLE_NUMCONST_F(scan_chanmix_const, CHANMIX_XLIST)
+
+#define LADDERFX_XLIST(X) \
+	X('C', SAU_LADDERFX_CLASSIC) \
+	//
+SIMPLE_NUMCONST_F(scan_ladderfx_const, LADDERFX_XLIST)
 
 #define OCTAVES 11
 #define OCTAVE(n) ((1 << ((n)+1)) * (1.f/32)) // standard tuning at no. 4 = 1.0
@@ -752,18 +745,10 @@ static size_t scan_note_const(sauScanner *restrict o,
 	return len;
 }
 
-static size_t scan_cyclepos_const(sauScanner *restrict o,
-		double *restrict val) {
-	char c = sauFile_GETC(o->f);
-	switch (c) {
-	case 'G':
-		*val = SAU_GLDA_1_2PI;
-		return 1;
-	default:
-		sauFile_DECP(o->f);
-		return 0;
-	}
-}
+#define CYCLEPOS_XLIST(X) \
+	X('G', SAU_GLDA_1_2PI) \
+	//
+SIMPLE_NUMCONST_F(scan_cyclepos_const, CYCLEPOS_XLIST)
 
 static bool scan_sym_id(sauScanner *restrict o,
 		size_t *restrict found_id, uint32_t type_id,
