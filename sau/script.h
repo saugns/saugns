@@ -152,9 +152,6 @@ typedef struct sauScript {
 	sauScriptEvData *events;
 	sauScriptOptions sopt;
 	const char *name; // currently simply set to the filename
-	struct sauMempool *mp, *prg_mp;
+	struct sauMempool *mp;
 	struct sauSymtab *st;
 } sauScript;
-
-sauScript *sau_read_Script(const sauScriptArg *restrict arg) sauMalloclike;
-void sau_discard_Script(sauScript *restrict o);
