@@ -213,8 +213,8 @@ typedef struct sauProgram {
 } sauProgram;
 
 struct sauScript;
-sauProgram* sau_build_Program(struct sauScript *restrict parse,
-		bool keep_parse) sauMalloclike;
+struct sauScriptArg;
+sauProgram* sau_build_Program(const struct sauScriptArg *restrict arg) sauMalloclike;
 void sau_discard_Program(sauProgram *restrict o);
 
 void sauProgram_print_info(const sauProgram *restrict o);
