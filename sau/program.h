@@ -1,5 +1,5 @@
 /* SAU library: Audio program data and functions.
- * Copyright (c) 2011-2013, 2017-2023 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2024 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
@@ -213,8 +213,8 @@ typedef struct sauProgram {
 } sauProgram;
 
 struct sauScript;
-sauProgram* sau_build_Program(struct sauScript *restrict parse,
-		bool keep_parse) sauMalloclike;
+struct sauScriptArg;
+sauProgram* sau_build_Program(const struct sauScriptArg *restrict arg) sauMalloclike;
 void sau_discard_Program(sauProgram *restrict o);
 
 void sauProgram_print_info(const sauProgram *restrict o);

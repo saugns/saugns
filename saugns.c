@@ -1,5 +1,5 @@
 /* saugns: Main module / Command-line interface.
- * Copyright (c) 2011-2013, 2017-2023 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2024 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -388,9 +388,7 @@ static size_t read_scripts(const sauScriptArgArr *restrict script_args,
 		sauProgramArr *restrict prg_objs) {
 	size_t built = 0;
 	for (size_t i = 0; i < script_args->count; ++i) {
-		const sauProgram *prg =
-			sau_build_Program(sau_read_Script(&script_args->a[i]),
-					false);
+		const sauProgram *prg = sau_build_Program(&script_args->a[i]);
 		if (prg != NULL) ++built;
 		sauProgramArr_add(prg_objs, &prg);
 	}
