@@ -14,6 +14,10 @@ Language changes:
    variable `=`, allow whitespace after `=`, and not
    only before it. This behavior is less surprising.
 
+Parser redesign:
+ * Make parseconv a utility header the parser simply
+   uses. Simplify memory handling & code structures.
+
 Fix some parser warnings wrongly numbering position.
 
 v0.4.2d (2023-12-31)

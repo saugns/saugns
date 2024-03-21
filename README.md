@@ -81,7 +81,7 @@ point to the share/ files. Without installing, try `man ./man/saugns.1`.
 Licensing
 =========
 
-saugns is Copyright (c) 2011-2014, 2017-2023 Joel K. Pettersson.
+saugns is Copyright (c) 2011-2014, 2017-2024 Joel K. Pettersson.
 As a whole it is distributed under the terms of the GNU Lesser General
 Public License (LGPL), version 3 or later. See the files
 [COPYING.LESSER](COPYING.LESSER) and [COPYING](COPYING) for

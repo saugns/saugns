@@ -1,5 +1,5 @@
 /* SAU library: Script parser module.
- * Copyright (c) 2011-2012, 2017-2023 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2024 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
@@ -15,8 +15,7 @@
 #include <sau/script.h>
 #include <sau/help.h>
 #include <sau/math.h>
-#include <string.h>
-#include <stdio.h>
+#include "parser/parseconv.h"
 
 /*
  * File-reading code
@@ -655,11 +654,12 @@ typedef struct sauParser {
 	struct ScanLookup sl;
 	sauScanner *sc;
 	sauSymtab *st;
-	sauMempool *mp, *tmp_mp, *prg_mp;
+	sauMempool *mp, *tmp_mp;
 	uint32_t call_level;
 	/* node state */
 	struct ParseLevel *cur_pl;
 	sauScriptEvData *events, *last_event, *group_event;
+	ParseConv pc;
 } sauParser;
 
 /*
@@ -668,7 +668,6 @@ typedef struct sauParser {
 static void fini_Parser(sauParser *restrict o) {
 	sau_destroy_Scanner(o->sc);
 	sau_destroy_Mempool(o->tmp_mp);
-	sau_destroy_Mempool(o->prg_mp);
 	sau_destroy_Mempool(o->mp);
 }
 
@@ -683,17 +682,12 @@ static void fini_Parser(sauParser *restrict o) {
 static bool init_Parser(sauParser *restrict o,
 		const sauScriptArg *restrict script_arg) {
 	sauMempool *mp = sau_create_Mempool(0),
-		    *tmp_mp = sau_create_Mempool(0),
-		    *prg_mp = sau_create_Mempool(0);
+		    *tmp_mp = sau_create_Mempool(0);
 	sauSymtab *st = sau_create_Symtab(mp);
 	sauScanner *sc = sau_create_Scanner(st);
-	*o = (sauParser){0};
-	o->sc = sc;
-	o->st = st;
-	o->mp = mp;
-	o->tmp_mp = tmp_mp;
-	o->prg_mp = prg_mp;
-	if (!sc || !tmp_mp || !prg_mp) goto ERROR;
+	*o = (sauParser){.sc = sc, .st = st, .mp = mp, .tmp_mp = tmp_mp,
+		.pc = {.mp = mp}};
+	if (!sc || !tmp_mp) goto ERROR;
 	if (!init_ScanLookup(&o->sl, script_arg, st)) goto ERROR;
 	sc->filters['#'] = scan_filter_hashcommands;
 	sc->data = &o->sl;
@@ -760,7 +754,7 @@ typedef struct sauScriptEvBranch {
 static sauLine *create_line(sauParser *restrict o,
 		bool mult, uint32_t par_flag) {
 	struct ScanLookup *sl = &o->sl;
-	sauLine *line = sau_mpalloc(o->prg_mp, sizeof(sauLine));
+	sauLine *line = sau_mpalloc(o->mp, sizeof(*line));
 	float v0 = 0.f;
 	if (!line)
 		return NULL;
@@ -1778,6 +1772,47 @@ static const char *parse_file(sauParser *restrict o,
 	return name;
 }
 
+/**
+ * Create internal program for the given script file. Includes a pointer
+ * to \p parse as \a parse, unless \p keep_parse is false, in which case
+ * the parse is destroyed after the conversion regardless of the result.
+ *
+ * \return instance or NULL on error preventing parse
+ */
+sauProgram *
+sau_build_Program(const sauScriptArg *restrict arg) {
+	if (!arg)
+		return NULL;
+	sauParser pr;
+	sauProgram *o = NULL;
+	sauScript *parse;
+	if (!init_Parser(&pr, arg))
+		return NULL;
+	if (!(parse = sau_mpalloc(pr.mp, sizeof(*parse)))) goto DONE;
+	const char *name = parse_file(&pr, arg);
+	if (!name) goto DONE;
+	parse->mp = pr.mp;
+	parse->st = pr.st;
+	parse->events = pr.events;
+	parse->name = name;
+	parse->sopt = pr.sl.sopt;
+	if ((o = ParseConv_convert(&pr.pc, parse)) != NULL)
+		pr.mp = NULL; // keep with result
+DONE:
+	fini_Parser(&pr);
+	return o;
+}
+
+/**
+ * Destroy instance.
+ */
+void
+sau_discard_Program(sauProgram *restrict o) {
+	if (!o)
+		return;
+	sau_destroy_Mempool(o->mp);
+}
+
 static inline void time_line(sauLine *restrict line,
 		uint32_t default_time_ms) {
 	if (!line)
@@ -2027,41 +2062,4 @@ static void flatten_events(sauScriptEvData *restrict e) {
 		ne = ne_next;
 	}
 	e->forks = fork->prev;
-}
-
-/**
- * Parse a file and return script data.
- *
- * \return instance or NULL on error preventing parse
- */
-sauScript* sau_read_Script(const sauScriptArg *restrict arg) {
-	if (!arg)
-		return NULL;
-	sauParser pr;
-	sauScript *o = NULL;
-	init_Parser(&pr, arg);
-	const char *name = parse_file(&pr, arg);
-	if (!name) goto DONE;
-	o = sau_mpalloc(pr.mp, sizeof(sauScript));
-	o->mp = pr.mp;
-	o->prg_mp = pr.prg_mp;
-	o->st = pr.st;
-	o->events = pr.events;
-	o->name = name;
-	o->sopt = pr.sl.sopt;
-	pr.mp = pr.prg_mp = NULL; // keep with result
-
-DONE:
-	fini_Parser(&pr);
-	return o;
-}
-
-/**
- * Destroy instance.
- */
-void sau_discard_Script(sauScript *restrict o) {
-	if (!o)
-		return;
-	sau_destroy_Mempool(o->prg_mp);
-	sau_destroy_Mempool(o->mp);
 }

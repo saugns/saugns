@@ -21,7 +21,6 @@ OBJ=\
 	symtab.o \
 	scanner.o \
 	parser.o \
-	parseconv.o \
 	mempool.o \
 	line.o \
 	wave.o \
@@ -72,10 +71,7 @@ file.o: common.h file.c file.h
 lexer.o: common.h math.h mempool.h file.h lexer.c lexer.h scanner.h symtab.h
 	$(CC) -c $(CFLAGS) lexer.c
 
-parseconv.o: arrtype.h common.h math.h mempool.h parseconv.c program.h line.h script.h wave.h
-	$(CC) -c $(CFLAGS) parseconv.c
-
-parser.o: common.h math.h mempool.h program.h line.h file.h parser.c scanner.h symtab.h script.h wave.h
+parser.o: arrtype.h common.h math.h mempool.h program.h line.h file.h parser.c parser/parseconv.h scanner.h symtab.h script.h wave.h
 	$(CC) -c $(CFLAGS_SIZE) parser.c
 
 scanner.o: common.h math.h mempool.h file.h scanner.h scanner.c symtab.h
