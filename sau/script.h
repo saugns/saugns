@@ -1,5 +1,5 @@
 /* SAU library: Script file data and functions.
- * Copyright (c) 2011-2012, 2017-2023 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2024 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
@@ -155,9 +155,6 @@ typedef struct sauScript {
 	sauScriptEvData *events;
 	sauScriptOptions sopt;
 	const char *name; // currently simply set to the filename
-	struct sauMempool *mp, *prg_mp;
+	struct sauMempool *mp;
 	struct sauSymtab *st;
 } sauScript;
-
-sauScript *sau_read_Script(const sauScriptArg *restrict arg) sauMalloclike;
-void sau_discard_Script(sauScript *restrict o);
