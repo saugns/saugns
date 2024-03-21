@@ -1,4 +1,4 @@
-# Copyright (c) 2011-2014, 2017-2023 Joel K. Pettersson <joelkp@tuta.io>
+# Copyright (c) 2011-2014, 2017-2024 Joel K. Pettersson <joelkp@tuta.io>
 #
 # This file can be freely copied, modified, distributed. It has no warranty.
 .POSIX:
@@ -113,7 +113,7 @@ $(BIN): $(OBJ) sau/libsau.a
 		$(CC) $(OBJ) $(LFLAGS) -o $(BIN); \
 	fi
 
-sau/libsau.a sau/libsau-tests.a: sau/*.[hc] sau/generator/*.[hc]
+sau/libsau.a sau/libsau-tests.a: sau/*.[hc] sau/generator/*.[hc] sau/parser/*.[hc]
 	(cd sau; make)
 
 test-scan: $(TEST1_OBJ) sau/libsau-tests.a
