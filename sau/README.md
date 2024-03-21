@@ -13,7 +13,7 @@ can be used for other software which doesn't include it all.
 Licensing
 =========
 
-The SAU library is Copyright (c) 2011-2014, 2017-2023 Joel K. Pettersson.
+The SAU library is Copyright (c) 2011-2014, 2017-2024 Joel K. Pettersson.
 As a whole it is distributed under the terms of the GNU Lesser General
 Public License (LGPL), version 3 or later. See the files
 [COPYING.LESSER](COPYING.LESSER) and [COPYING](COPYING) for
