@@ -1,5 +1,5 @@
 /* SAU library: Parse result to audio program converter.
- * Copyright (c) 2011-2012, 2017-2023 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2024 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
@@ -11,12 +11,9 @@
  * <https://www.gnu.org/licenses/>.
  */
 
-#include <sau/script.h>
-#include <sau/program.h>
-#include <sau/mempool.h>
 #include <sau/arrtype.h>
-#include <stdio.h>
 #include <string.h>
+#include <stdio.h>
 
 /*
  * Program construction from parse data.
@@ -242,7 +239,7 @@ sauArrType(SAU_PEvArr, sauProgramEvent, )
 
 sauArrType(OpRefArr, sauProgramOpRef, )
 
-/**
+/*
  * Voice data, held during program building and set per event.
  */
 typedef struct sauVoiceGraph {
@@ -252,7 +249,7 @@ typedef struct sauVoiceGraph {
 	uint32_t op_nest_level, op_nest_max;
 } sauVoiceGraph;
 
-/**
+/*
  * Initialize instance for use.
  */
 static inline void
@@ -441,7 +438,7 @@ sauVoiceGraph_handle_op_node(sauVoiceGraph *restrict o,
 	return true;
 }
 
-/**
+/*
  * Create operator graph for voice using data built
  * during allocation, assigning an operator reference
  * list to the voice and block IDs to the operators.
@@ -466,7 +463,7 @@ DONE:
 	return true;
 }
 
-/**
+/*
  * Destroy data held by instance.
  */
 static void
@@ -580,7 +577,7 @@ static sauProgram *
 ParseConv_convert(ParseConv *restrict o,
 		sauScript *restrict parse) {
 	sauProgram *prg = NULL;
-	o->mp = parse->prg_mp;
+	o->mp = parse->mp;
 	sau_init_VoiceGraph(&o->ev_vo_graph, &o->va, &o->oa);
 	uint32_t remaining_ms = 0;
 	for (sauScriptEvData *e = parse->events; e; e = e->next) {
@@ -594,10 +591,8 @@ ParseConv_convert(ParseConv *restrict o,
 	}
 	o->duration_ms += remaining_ms;
 	if (ParseConv_check_validity(o, parse)) {
-		prg = ParseConv_create_program(o, parse);
-		if (!prg) goto MEM_ERR;
+		if (!(prg = ParseConv_create_program(o, parse))) goto MEM_ERR;
 	}
-
 	if (false)
 	MEM_ERR: {
 		sau_error("parseconv", "memory allocation failure");
@@ -608,42 +603,6 @@ ParseConv_convert(ParseConv *restrict o,
 	sauVoAlloc_clear(&o->va);
 	SAU_PEvArr_clear(&o->ev_arr);
 	return prg;
-}
-
-/**
- * Create internal program for the given script data. Includes a pointer
- * to \p parse as \a parse, unless \p keep_parse is false, in which case
- * the parse is destroyed after the conversion regardless of the result.
- *
- * \return instance or NULL on error
- */
-sauProgram *
-sau_build_Program(sauScript *restrict parse, bool keep_parse) {
-	if (!parse)
-		return NULL;
-	ParseConv pc = (ParseConv){0};
-	sauProgram *o = ParseConv_convert(&pc, parse);
-	if (!keep_parse) {
-		if (o) {
-			parse->prg_mp = NULL;
-			o->parse = NULL;
-		}
-		sau_discard_Script(parse);
-	}
-	return o;
-}
-
-/**
- * Destroy instance. Also free parse data if held.
- */
-void
-sau_discard_Program(sauProgram *restrict o) {
-	if (!o)
-		return;
-	if (o->parse && o->parse->prg_mp == o->mp) // avoid double-destroy
-		o->parse->prg_mp = NULL;
-	sau_discard_Script(o->parse);
-	sau_destroy_Mempool(o->mp);
 }
 
 static sauNoinline void
