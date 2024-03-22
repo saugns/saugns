@@ -1690,39 +1690,6 @@ static bool parse_level(sauParser *restrict o,
 			}
 			pl.set_var = scan_sym(sc, SAU_SYM_VAR, NULL, false);
 			break;
-		case '*': {
-			if (sauScanner_tryc(sc, '[')) {
-				/*
-				 * New list with insertion-from modifier.
-				 */
-				prepare_event(o, NULL, false);
-				parse_level(o, SAU_POP_DEFAULT, SCOPE_NEST,']');
-				pl.nest.last_list->flags |= SAU_SDLI_INSERT;
-				end_operator(o);
-				break;
-			}
-			/*
-			 * Variable reference (get and insert from object).
-			 * TODO: all logic
-			 */
-			pl.sub_f = NULL;
-			sauSymitem *var = scan_sym(sc, SAU_SYM_VAR,
-					NULL, false);
-			if (var != NULL) {
-				if (var->data_use == SAU_SYM_DATA_OBJ) {
-					sauScriptOpData *op = var->data.obj;
-					if (op->ref.obj_type == SAU_POBJT_OP) {
-						begin_operator(o, op, false, 0);
-						op = pl.operator;
-						pl.sub_f = parse_in_opdata;
-					}
-					var->data.obj = op; /* update */
-				} else {
-					sauScanner_warning(sc, NULL,
-"reference '@%s' doesn't point to an object", var->sstr->key);
-				}
-			}
-			break; }
 		case '/':
 			if (pl.nest.list) goto INVALID;
 			parse_waittime(o);
