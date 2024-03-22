@@ -1954,6 +1954,20 @@ static bool parse_level(sauParser *restrict o,
 			pl.set_label = scan_sym(sc, SAU_SYM_LABEL, NULL, false);
 			break;
 		case '*':
+			if (sauScanner_tryc(sc, '[')) {
+				/*
+				 * New list with insertion-from modifier.
+				 */
+				prepare_event(o, NULL, false);
+				NestArr_add(&o->nest);
+				parse_level(o, SAU_POP_N_default,
+						SCOPE_NEST, ']');
+				struct NestScope *nest = NestArr_pop(&o->nest);
+				if (!nest || !nest->list->first_item) break;
+				nest->list->insert = true;
+				end_operator(o);
+				break;
+			}
 			parse_getlabel(o, c, true);
 			break;
 		case '/':
@@ -2146,6 +2160,36 @@ static void time_op_lines(sauScriptOpData *restrict op);
 static uint32_t time_event(sauScriptEvData *restrict e);
 static void flatten_events(sauScriptEvData *restrict e);
 
+static void time_durgroup_object(sauParser *restrict o,
+		sauScriptEvData *restrict e,
+		sauScriptObjRef *restrict ref,
+		uint32_t cur_longest, uint32_t wait_sum,
+		unsigned level) {
+	switch (ref->obj_type) {
+	case SAU_POBJT_LIST: {
+		sauScriptListData *list = (void*)ref;
+		for (sauScriptObjRef *ref = list->first_item;
+		     ref; ref = ref->next) {
+			time_durgroup_object(o, e, ref,
+					cur_longest, wait_sum, level + 1);
+		}
+		break; }
+	case SAU_POBJT_OP: {
+		sauScriptOpData *op = (void*)ref;
+		if ((op->time.flags & (SAU_TIMEP_SET|SAU_TIMEP_DEFAULT))
+		    != SAU_TIMEP_SET) {
+			/* fill in sensible default time */
+			op->time.v_ms = cur_longest + wait_sum;
+			op->time.flags |= SAU_TIMEP_SET;
+			if (e->dur_ms < op->time.v_ms)
+				e->dur_ms = op->time.v_ms;
+			time_op_lines(op);
+		}
+		if (level == 0) sauVoAlloc_update(&o->pc.va, o->obj_arr.a, e);
+		break; }
+	}
+}
+
 /*
  * Adjust timing for a duration group; the script syntax for time grouping is
  * only allowed on the "top" operator level, so the algorithm only deals with
@@ -2184,19 +2228,9 @@ static sauScriptEvData *time_durgroup(sauParser *restrict o,
 	 */
 	for (e = e_from; e; ) {
 		while (e->forks != NULL) flatten_events(e);
-		sauScriptObjRef *obj = e->main_obj;
-		if (obj->obj_type == SAU_POBJT_OP) {
-			sauScriptOpData *op = (sauScriptOpData*)obj;
-			if ((op->time.flags & (SAU_TIMEP_SET|SAU_TIMEP_DEFAULT))
-			    != SAU_TIMEP_SET) {
-				/* fill in sensible default time */
-				op->time.v_ms = cur_longest + wait_sum;
-				op->time.flags |= SAU_TIMEP_SET;
-				if (e->dur_ms < op->time.v_ms)
-					e->dur_ms = op->time.v_ms;
-				time_op_lines(op);
-			}
-			sauVoAlloc_update(&o->pc.va, o->obj_arr.a, e);
+		if (e->main_obj) {
+			time_durgroup_object(o, e, e->main_obj,
+					cur_longest, wait_sum, 0);
 		}
 		ParseConv_convert_event(&o->pc, o->obj_arr.a, e);
 		ParseConv_sum_dur_ms(&o->pc, e->wait_ms);
@@ -2225,6 +2259,29 @@ static void time_op_lines(sauScriptOpData *restrict op) {
 	time_line(op->pm_a, dur_ms);
 }
 
+static uint32_t time_operator(sauScriptOpData *restrict op);
+
+static uint32_t time_object(sauScriptObjRef *restrict ref) {
+	uint32_t dur_ms = 0;
+	switch (ref->obj_type) {
+	case SAU_POBJT_LIST: {
+		sauScriptListData *list = (void*)ref;
+		for (sauScriptObjRef *ref = list->first_item;
+		     ref; ref = ref->next) {
+			uint32_t sub_dur_ms = time_object(ref);
+			if (dur_ms < sub_dur_ms)
+				dur_ms = sub_dur_ms;
+		}
+		break; }
+	case SAU_POBJT_OP: {
+		sauScriptOpData *op = (void*)ref;
+		dur_ms = time_operator(op);
+		break; }
+	}
+	return dur_ms;
+
+}
+
 static uint32_t time_operator(sauScriptOpData *restrict op) {
 	uint32_t dur_ms = op->time.v_ms;
 	if (!(op->params & SAU_POPP_TIME))
@@ -2240,10 +2297,8 @@ static uint32_t time_operator(sauScriptOpData *restrict op) {
 	for (sauScriptListData *list = op->mods;
 			list != NULL; list = list->ref.next) {
 		for (sauScriptObjRef *obj = list->first_item;
-				obj; obj = obj->next) {
-			if (obj->obj_type != SAU_POBJT_OP) continue;
-			sauScriptOpData *sub_op = (sauScriptOpData*)obj;
-			uint32_t sub_dur_ms = time_operator(sub_op);
+		     obj; obj = obj->next) {
+			uint32_t sub_dur_ms = time_object(obj);
 			if (dur_ms < sub_dur_ms
 			    && (op->time.flags & SAU_TIMEP_DEFAULT) != 0)
 				dur_ms = sub_dur_ms;
@@ -2258,10 +2313,7 @@ static uint32_t time_event(sauScriptEvData *restrict e) {
 	uint32_t dur_ms = 0;
 	if (e->main_obj) {
 		sauScriptObjRef *obj = e->main_obj;
-		if (obj->obj_type == SAU_POBJT_OP) {
-			sauScriptOpData *op = (sauScriptOpData*)obj;
-			dur_ms = time_operator(op);
-		}
+		dur_ms = time_object(obj);
 	}
 	/*
 	 * Timing for sub-events - done before event list flattened.

@@ -49,7 +49,7 @@ typedef struct sauScriptListData {
 	sauScriptObjRef ref;
 	void *first_item;
 	uint8_t use_type;
-	bool append;
+	bool append : 1, insert : 1;
 } sauScriptListData;
 
 /**
