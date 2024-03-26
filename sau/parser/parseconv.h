@@ -472,8 +472,10 @@ sau_fini_VoiceGraph(sauVoiceGraph *restrict o) {
  */
 static bool
 ParseConv_convert_event(ParseConv *restrict o,
+		sauScriptObjInfo *restrict objects,
 		sauScriptEvData *restrict e) {
 	sauScriptObjRef *obj = e->main_obj;
+	o->objects = objects; // set here, allocation may change between calls
 	switch (obj->obj_type) {
 	case SAU_POBJT_LIST:
 		if (!ParseConv_convert_ops(o, (void*)obj, false)) goto MEM_ERR;
@@ -568,19 +570,21 @@ MEM_ERR:
 	return NULL;
 }
 
+static bool
+init_ParseConv(ParseConv *restrict o,
+		sauMempool *restrict mp) {
+	o->mp = mp;
+	sau_init_VoiceGraph(&o->ev_vo_graph, &o->va, &o->oa);
+	return true;
+}
+
 /*
- * Build program, allocating events, voices, and operators.
+ * Build program using the gathered data, after conversion calls.
  */
 static sauProgram *
-ParseConv_convert(ParseConv *restrict o,
+fini_ParseConv(ParseConv *restrict o,
 		sauScript *restrict parse) {
 	sauProgram *prg = NULL;
-	o->mp = parse->mp;
-	o->objects = parse->objects;
-	sau_init_VoiceGraph(&o->ev_vo_graph, &o->va, &o->oa);
-	for (sauScriptEvData *e = parse->events; e; e = e->next) {
-		if (!ParseConv_convert_event(o, e)) goto MEM_ERR;
-	}
 	if (ParseConv_check_validity(o, parse)) {
 		if (!(prg = ParseConv_create_program(o, parse))) goto MEM_ERR;
 	}
