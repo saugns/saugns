@@ -1837,7 +1837,8 @@ sau_build_Program(const sauScriptArg *restrict arg) {
 	sauScript *parse;
 	if (!init_Parser(&pr, arg))
 		return NULL;
-	if (!(parse = sau_mpalloc(pr.mp, sizeof(*parse)))) goto DONE;
+	if (!(parse = sau_mpalloc(pr.mp, sizeof(*parse))) ||
+	    !init_ParseConv(&pr.pc, pr.mp)) goto DONE;
 	const char *name = parse_file(&pr, arg);
 	if (!name || !_ObjInfoArr_mpmemdup(&pr.obj_arr, &parse->objects, pr.mp))
 		goto DONE;
@@ -1847,9 +1848,9 @@ sau_build_Program(const sauScriptArg *restrict arg) {
 	parse->name = name;
 	parse->sopt = pr.sl.sopt;
 	parse->object_count = pr.obj_arr.count;
-	if ((o = ParseConv_convert(&pr.pc, parse)) != NULL)
-		pr.mp = NULL; // keep with result
 DONE:
+	if ((o = fini_ParseConv(&pr.pc, parse)) != NULL)
+		pr.mp = NULL; // keep with result
 	fini_Parser(&pr);
 	return o;
 }
@@ -1930,6 +1931,7 @@ static sauScriptEvData *time_durgroup(sauParser *restrict o,
 			}
 			sauVoAlloc_update(&o->pc.va, o->obj_arr.a, e);
 		}
+		ParseConv_convert_event(&o->pc, o->obj_arr.a, e);
 		ParseConv_sum_dur_ms(&o->pc, e->wait_ms);
 		if (!e->next) break;
 		if (e == e_subtract_after) subtract = true;
