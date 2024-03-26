@@ -147,17 +147,30 @@ sauArrType(SAU_PEvArr, sauProgramEvent, )
 sauArrType(OpRefArr, sauProgramOpRef, )
 
 /*
- * Voice data to be initialized for traversal per event, maybe per call.
+ * Voice data, held during program building and set per event.
  */
-struct VoiceGraph {
-	OpRefArr *vo_graph; // holds result, allocation reused if provided
+typedef struct sauVoiceGraph {
+	OpRefArr vo_graph;
 	sauVoAlloc *va;
 	sauOpAlloc *oa;
-	uint32_t op_nest_level, op_nest_max; // max value set is nesting depth
-};
+	uint32_t op_nest_level, op_nest_max;
+} sauVoiceGraph;
+
+/*
+ * Initialize instance for use.
+ */
+static inline void
+sau_init_VoiceGraph(sauVoiceGraph *restrict o,
+		sauVoAlloc *restrict va, sauOpAlloc *restrict oa) {
+	o->va = va;
+	o->oa = oa;
+}
+
+static void
+sau_fini_VoiceGraph(sauVoiceGraph *restrict o);
 
 static bool
-VoiceGraph_set(struct VoiceGraph *restrict o,
+sauVoiceGraph_set(sauVoiceGraph *restrict o,
 		sauProgramEvent *restrict ev,
 		sauMempool *restrict mp);
 
@@ -167,12 +180,11 @@ typedef struct ParseConv {
 	SAU_PEvArr ev_arr;
 	sauOpAlloc oa;
 	sauProgramEvent *ev;
+	sauVoiceGraph ev_vo_graph;
 	OpDataArr ev_op_data;
 	sauMempool *mp;
 	sauVoAlloc va;
-	OpRefArr vo_graph;
 	uint32_t tot_dur_ms;
-	uint32_t op_nest_depth;
 	sauScriptObjInfo *objects; // borrowed current array
 } ParseConv;
 
@@ -352,18 +364,18 @@ ParseConv_convert_ops(ParseConv *restrict o,
 }
 
 /*
- * Prepare for voice graph traversal related to event.
+ * Prepare voice graph for traversal related to event.
  */
 static sauVoAllocState *
-VoiceGraph_prepare(sauVoAlloc *restrict va,
+sauVoiceGraph_prepare(sauVoiceGraph *restrict o,
 		sauScriptObjRef *restrict obj) {
-	sauVoAllocState *vas = &va->a[obj->vo_id];
+	sauVoAllocState *vas = &o->va->a[obj->vo_id];
 	vas->flags &= ~SAU_VAS_SET_GRAPH;
 	return vas;
 }
 
 static bool
-VoiceGraph_handle_op_node(struct VoiceGraph *restrict o,
+sauVoiceGraph_handle_op_node(sauVoiceGraph *restrict o,
 		sauProgramOpRef *restrict op_ref);
 
 /*
@@ -372,14 +384,14 @@ VoiceGraph_handle_op_node(struct VoiceGraph *restrict o,
  * \return true, or false on allocation failure
  */
 static bool
-VoiceGraph_handle_op_list(struct VoiceGraph *restrict o,
+sauVoiceGraph_handle_op_list(sauVoiceGraph *restrict o,
 		const sauProgramIDArr *restrict op_list, uint8_t mod_use) {
 	if (!op_list)
 		return true;
 	sauProgramOpRef op_ref = {0, mod_use, o->op_nest_level};
 	for (uint32_t i = 0; i < op_list->count; ++i) {
 		op_ref.id = op_list->ids[i];
-		if (!VoiceGraph_handle_op_node(o, &op_ref))
+		if (!sauVoiceGraph_handle_op_node(o, &op_ref))
 			return false;
 	}
 	return true;
@@ -392,7 +404,7 @@ VoiceGraph_handle_op_list(struct VoiceGraph *restrict o,
  * \return true, or false on allocation failure
  */
 static bool
-VoiceGraph_handle_op_node(struct VoiceGraph *restrict o,
+sauVoiceGraph_handle_op_node(sauVoiceGraph *restrict o,
 		sauProgramOpRef *restrict op_ref) {
 	sauOpAllocState *oas = &o->oa->a[op_ref->id];
 	if (oas->flags & SAU_OAS_VISITED) {
@@ -407,12 +419,12 @@ VoiceGraph_handle_op_node(struct VoiceGraph *restrict o,
 	++o->op_nest_level;
 	oas->flags |= SAU_OAS_VISITED;
 	for (int i = 1; i < SAU_POP_USES; ++i) {
-		if (!VoiceGraph_handle_op_list(o, oas->mods[i - 1], i))
+		if (!sauVoiceGraph_handle_op_list(o, oas->mods[i - 1], i))
 			return false;
 	}
 	oas->flags &= ~SAU_OAS_VISITED;
 	--o->op_nest_level;
-	if (!OpRefArr_add(o->vo_graph, op_ref))
+	if (!OpRefArr_add(&o->vo_graph, op_ref))
 		return false;
 	return true;
 }
@@ -425,21 +437,29 @@ VoiceGraph_handle_op_node(struct VoiceGraph *restrict o,
  * \return true, or false on allocation failure
  */
 static bool
-VoiceGraph_set(struct VoiceGraph *restrict o,
+sauVoiceGraph_set(sauVoiceGraph *restrict o,
 		sauProgramEvent *restrict ev,
 		sauMempool *restrict mp) {
 	sauVoAllocState *vas = &o->va->a[ev->vo_id];
 	if (!(vas->flags & SAU_VAS_HAS_CARR)) goto DONE;
 	sauProgramOpRef op_ref = {vas->carr_op_id, SAU_POP_CARR, 0};
-	if (!VoiceGraph_handle_op_node(o, &op_ref))
+	if (!sauVoiceGraph_handle_op_node(o, &op_ref))
 		return false;
-	if (!OpRefArr_mpmemdup(o->vo_graph,
+	if (!OpRefArr_mpmemdup(&o->vo_graph,
 				(sauProgramOpRef**) &ev->op_list, mp))
 		return false;
-	ev->op_count = o->vo_graph->count;
+	ev->op_count = o->vo_graph.count;
 DONE:
-	o->vo_graph->count = 0; // reuse allocation
+	o->vo_graph.count = 0; // reuse allocation
 	return true;
+}
+
+/*
+ * Destroy data held by instance.
+ */
+static void
+sau_fini_VoiceGraph(sauVoiceGraph *restrict o) {
+	OpRefArr_clear(&o->vo_graph);
 }
 
 /*
@@ -465,7 +485,7 @@ ParseConv_convert_event(ParseConv *restrict o,
 	default:
 		return true; /* no handling yet */
 	}
-	sauVoAllocState *vas = VoiceGraph_prepare(&o->va, obj);
+	sauVoAllocState *vas = sauVoiceGraph_prepare(&o->ev_vo_graph, obj);
 	sauProgramEvent *out_ev = SAU_PEvArr_add(&o->ev_arr, NULL);
 	if (!out_ev) goto MEM_ERR;
 	out_ev->wait_ms = e->wait_ms;
@@ -488,11 +508,8 @@ ParseConv_convert_event(ParseConv *restrict o,
 		vas->carr_op_id = info->last_op_id;
 	}
 	if ((vas->flags & SAU_VAS_SET_GRAPH) != 0) {
-		struct VoiceGraph ev_vo_graph = {.vo_graph = &o->vo_graph,
-			.va = &o->va, .oa = &o->oa};
-		if (!VoiceGraph_set(&ev_vo_graph, out_ev, o->mp))
+		if (!sauVoiceGraph_set(&o->ev_vo_graph, out_ev, o->mp))
 			goto MEM_ERR;
-		o->op_nest_depth = ev_vo_graph.op_nest_max;
 	}
 	return true;
 MEM_ERR:
@@ -542,7 +559,7 @@ ParseConv_create_program(ParseConv *restrict o,
 	}
 	prg->vo_count = o->va.count;
 	prg->op_count = o->oa.count;
-	prg->op_nest_depth = o->op_nest_depth;
+	prg->op_nest_depth = o->ev_vo_graph.op_nest_max;
 	prg->duration_ms = o->tot_dur_ms;
 	prg->name = parse->name;
 	prg->mp = o->mp;
@@ -557,6 +574,7 @@ static bool
 init_ParseConv(ParseConv *restrict o,
 		sauMempool *restrict mp) {
 	o->mp = mp;
+	sau_init_VoiceGraph(&o->ev_vo_graph, &o->va, &o->oa);
 	return true;
 }
 
@@ -574,7 +592,7 @@ fini_ParseConv(ParseConv *restrict o,
 	MEM_ERR: {
 		sau_error("parseconv", "memory allocation failure");
 	}
-	OpRefArr_clear(&o->vo_graph);
+	sau_fini_VoiceGraph(&o->ev_vo_graph);
 	_OpDataArr_clear(&o->ev_op_data);
 	sauOpAlloc_clear(&o->oa);
 	_sauVoAlloc_clear(&o->va);
