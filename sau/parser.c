@@ -2146,6 +2146,10 @@ sau_discard_Program(sauProgram *restrict o) {
 	sau_destroy_Mempool(o->mp);
 }
 
+#define foreach_obj(ref, ref_list) \
+	for (sauScriptObjRef *(ref) = (ref_list)->first_item; \
+			(ref); (ref) = (ref)->next)
+
 static inline void time_line(sauLine *restrict line,
 		uint32_t default_time_ms) {
 	if (!line)
@@ -2168,8 +2172,7 @@ static void time_durgroup_object(sauParser *restrict o,
 	switch (ref->obj_type) {
 	case SAU_POBJT_LIST: {
 		sauScriptListData *list = (void*)ref;
-		for (sauScriptObjRef *ref = list->first_item;
-		     ref; ref = ref->next) {
+		foreach_obj (ref, list) {
 			time_durgroup_object(o, e, ref,
 					cur_longest, wait_sum, level + 1);
 		}
@@ -2266,8 +2269,7 @@ static uint32_t time_object(sauScriptObjRef *restrict ref) {
 	switch (ref->obj_type) {
 	case SAU_POBJT_LIST: {
 		sauScriptListData *list = (void*)ref;
-		for (sauScriptObjRef *ref = list->first_item;
-		     ref; ref = ref->next) {
+		foreach_obj (ref, list) {
 			uint32_t sub_dur_ms = time_object(ref);
 			if (dur_ms < sub_dur_ms)
 				dur_ms = sub_dur_ms;
@@ -2296,8 +2298,7 @@ static uint32_t time_operator(sauScriptOpData *restrict op) {
 	}
 	for (sauScriptListData *list = op->mods;
 			list != NULL; list = list->ref.next) {
-		for (sauScriptObjRef *obj = list->first_item;
-		     obj; obj = obj->next) {
+		foreach_obj (obj, list) {
 			uint32_t sub_dur_ms = time_object(obj);
 			if (dur_ms < sub_dur_ms
 			    && (op->time.flags & SAU_TIMEP_DEFAULT) != 0)
