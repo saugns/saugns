@@ -4,10 +4,112 @@ saugns version changes
 [On the website](https://sau.frama.io/changes.html#saulang)
 is a shorter change log with only the SAU language changes.
 
+Deprecated things work but will warn to update the scripts.
+
 Pre-release
 -----------
 
 [rebase in progress]
+
+Fix error resulting in silence rather than no script
+when script rejected by "$?variable" check. This bug
+was added in v0.4.4b.
+
+v0.4.7 (2024-10-16)
+-------------------
+
+Improved named note frequencies.
+
+Language changes:
+ * Add generator type `A` (Amplitude generator), for
+   sweepable amplitude offsets i.e. DC offsets, plus
+   adding and/or multiplying its AM modulators.
+ * Frequencies as notes.
+   - Support MIDI note number constants (`M0` to `M127`
+     where `M69` by default corresponds to 440 Hz). All
+     tuning systems are supported, but for just intoned
+     notes, numbers which don't map to any natural note
+     get the average of the two surrounding ones. Other
+     options include flats and sharps (which for a just
+     note are never exactly between two notes) like for
+     C-D-E-F-G-A-B notes.
+   - For just intoned tuning modes, rotate scale ratios
+     with key selection, so that the note for a key has
+     the first ratio. Makes tuning good for non-C keys.
+
+Generator `A` is yet of limited use, but will take a
+greater role when distortion options etc. are added.
+
+v0.4.6 (2024-10-01)
+-------------------
+
+Added `R` flag `p` for 1D Perlin noise modes.
+
+Language changes:
+ * Signal generator types. `R` mode `m` flags:
+   - Add `p` (Perlin noise mode) to reshape the waveform for
+     1D Perlin noise, combinable with all noise functions and
+     other flags.
+   - Change updating of flags when adjusting mode; now every
+     flag set is kept until setting a function, which clears
+     old flags. Before, any change to mode cleared old flags.
+     (Makes especially the use of parameter `.a` less clunky.)
+     Also fix `m.a... ma`, now handled like `ma.a...`.
+ * Line types.
+    - Add `smo` (Smoothstep degree 5),
+      a sinuous curve traditionally used for Perlin noise.
+ * Seed parameter. Make `s` recognize the same numerical
+   constants as `p` (phase), currently `G`.
+
+v0.4.5 (2024-08-09)
+-------------------
+
+Added self-PM/"feedback FM". New `R` mode `a`.
+
+Language changes:
+ * Add `p.a` amplitude feedback parameter for phase,
+   for phase self-modulation. Accepts both sweep and
+   modulators within `[]`. Default value is 0.0.
+ * Signal generator types. `R` mode `m` noise functions:
+   - Add `a` (additive recurrence, low-discrepancy a.k.a.
+     quasirandom sequence) by default based on the golden
+     ratio. Add mode subparameter `m.a` for changing the
+     multiplier used to the fractional part of a number.
+   - Rename `r` (uniform random, default) to `u`.
+   - Seeds for all modes not using the `h` flag now differ.
+     Keep the highest bit from the internal 32-bit seed,
+     sacrifice the lowest bit (odd vs. even line segment)
+     as phase extends a bit to take over its role instead.
+ * Numerical expressions. Changes to mathematical functions:
+   - Add `arbf(x)`, additive recurrence base frequency.
+     Returns a multiplier for how much the pitch will
+     change for an `R` instance when `x` is set to `R ma.a`.
+     The value may be negative, corresponding to direction
+     in a sawtooth-like wave which rises rather than falls.
+   - Add `arhf(x)`, additive recurrence higher frequency.
+     Like `arbf(x)`, but for the closest new frequency above
+     the unshifted base frequency, instead of below it.
+   - Add `sgn(x)`, which returns the sign of `x` as +/- 1
+     or 0. (The sign bit is also preserved for 0.)
+   - Remove deprecated `seed(x)` function replaced by `$seed`.
+ * Seedable common parameters. Add `s` common to `N` and `R`,
+   for overriding the default seed (assigned to new instances
+   based on the `$seed` variable and a random sequence
+   derived from it). `s` takes a value modulo 1.0 as the
+   percentage of the state space, so `s0` means beginning, 0.
+
+This self-PM support requries, to preserve the performance
+when not using the feature, twice as much code for both the
+`W` and `R` implementations. Self-modulation typically takes
+at least 3 times more CPU time, sometimes more than 4 times.
+(Self-modulation precludes use of vectorizing optimations.)
+
+The parameter range uses the simplest scaling possible, like
+multiplying the value by pi. This maps 1.0 to Yamaha feedback
+level 6 in their chips. To avoid excessive ringing at that
+level, stronger filtering than Yamaha used is used: 1-zero
+(their choice) combined with 1-pole (itself a little better
+at dampening self-oscillations than a 1-zero filter alone).
 
 v0.4.4d (2024-07-10)
 --------------------
@@ -36,9 +138,8 @@ Language changes:
 Rebased down modulator list `-` and concat, and sweep and list
 unification, to v0.2.x (modified sgensys versions pre-saugns).
 Logs kept while scripts in branch have one less syntax change.
-
 Changes in naming and code style built up, working through the
-versions. The new code is tidied similar to old rebasing work.
+versions. The branch tip is cleaned up like old rebasing work.
 Outside the parser, refactoring and more cover some more code.
 
 v0.4.4b (2024-04-16)
@@ -416,7 +517,7 @@ Ramp syntax.
  * Rename ramp `hold` to `sah` (sample and hold).
  * Rename ramp `sin` back to `cos`.
 
-Variable syntax.
+Variable syntax. (Formerly called "Label".)
  * Add `'name=...` variation of the syntax for
    variable assignment, for assigning a number.
    Variables are now dynamically typed. (The old
