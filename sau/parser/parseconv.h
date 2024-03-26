@@ -222,7 +222,6 @@ typedef struct ParseConv {
 	sauMempool *mp;
 	sauVoAlloc va;
 	uint32_t tot_dur_ms;
-	sauScriptObjInfo *objects;
 } ParseConv;
 
 #define ParseConv_sum_dur_ms(o, add_ms) ((o)->tot_dur_ms += (add_ms))
@@ -255,6 +254,7 @@ ParseConv_count_list(const sauScriptListData *restrict list_in) {
 
 static sauNoinline const sauProgramIDArr *
 ParseConv_convert_list(ParseConv *restrict o,
+		sauScriptObjInfo *restrict objects,
 		const sauScriptListData *restrict list_in) {
 	uint32_t count = ParseConv_count_list(list_in);
 	if (!count)
@@ -267,7 +267,7 @@ ParseConv_convert_list(ParseConv *restrict o,
 	uint32_t i = 0;
 	for (sauScriptOpData *op = list_in->first_item; op; op = op->ref.next) {
 		if (op->ref.obj_type != SAU_POBJT_OP) continue;
-		sauScriptObjInfo *info = &o->objects[op->ref.obj_id];
+		sauScriptObjInfo *info = &objects[op->ref.obj_id];
 		idarr->ids[i++] = info->last_op_id;
 	}
 	return idarr;
@@ -281,6 +281,7 @@ ParseConv_convert_list(ParseConv *restrict o,
  */
 static bool
 ParseConv_convert_opdata(ParseConv *restrict o,
+		sauScriptObjInfo *restrict objects,
 		const sauScriptOpData *restrict op,
 		uint8_t use_type,
 		const sauScriptObjInfo *restrict info) {
@@ -308,7 +309,7 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 			in_list != NULL; in_list = in_list->ref.next) {
 		int type = in_list->use_type - 1;
 		const sauProgramIDArr *arr;
-		if (!(arr = ParseConv_convert_list(o, in_list)))
+		if (!(arr = ParseConv_convert_list(o, objects, in_list)))
 			goto MEM_ERR;
 		if (in_list->flags & SAU_SDLI_APPEND) {
 			if (arr == &blank_idarr) continue; // omit no-op
@@ -343,6 +344,7 @@ MEM_ERR:
  */
 static bool
 ParseConv_convert_ops(ParseConv *restrict o,
+		sauScriptObjInfo *restrict objects,
 		sauScriptListData *restrict op_list, bool link) {
 	if (op_list) for (sauScriptOpData *op = op_list->first_item;
 			op; op = op->ref.next) {
@@ -350,15 +352,16 @@ ParseConv_convert_ops(ParseConv *restrict o,
 		// TODO: handle multiple operator nodes
 		if ((op->op_flags & SAU_SDOP_MULTIPLE) != 0) continue;
 		sauScriptObjInfo *info;
-		if (!(info = sauOpAlloc_update(&o->oa, o->objects, op)))
+		if (!(info = sauOpAlloc_update(&o->oa, objects, op)))
 			return false;
 		for (sauScriptListData *in_list = op->mods;
 				in_list != NULL; in_list = in_list->ref.next) {
-			if (!ParseConv_convert_ops(o, in_list, link))
+			if (!ParseConv_convert_ops(o, objects, in_list, link))
 				return false;
 		}
 		if (link &&
-		    !ParseConv_convert_opdata(o, op, op_list->use_type, info))
+		    !ParseConv_convert_opdata(o, objects, op,
+			    op_list->use_type, info))
 			return false;
 	}
 	return true;
@@ -473,11 +476,13 @@ sau_fini_VoiceGraph(sauVoiceGraph *restrict o) {
  */
 static bool
 ParseConv_convert_event(ParseConv *restrict o,
+		sauScriptObjInfo *restrict objects,
 		sauScriptEvData *restrict e) {
 	sauScriptObjRef *obj = e->main_obj;
 	switch (obj->obj_type) {
 	case SAU_POBJT_LIST:
-		if (!ParseConv_convert_ops(o, (void*)obj, false)) goto MEM_ERR;
+		if (!ParseConv_convert_ops(o, objects, (void*)obj, false))
+			goto MEM_ERR;
 		return true;
 	case SAU_POBJT_OP:
 		break; /* below */
@@ -492,7 +497,7 @@ ParseConv_convert_event(ParseConv *restrict o,
 	o->ev = out_ev;
 	sauScriptListData e_objs = {0};
 	e_objs.first_item = obj;
-	if (!ParseConv_convert_ops(o, &e_objs, true)) goto MEM_ERR;
+	if (!ParseConv_convert_ops(o, objects, &e_objs, true)) goto MEM_ERR;
 	if (o->ev_op_data.count > 0) {
 		if (!_OpDataArr_mpmemdup(&o->ev_op_data,
 					(sauProgramOpData**) &out_ev->op_data,
@@ -501,8 +506,8 @@ ParseConv_convert_event(ParseConv *restrict o,
 		o->ev_op_data.count = 0; // reuse allocation
 	}
 	if (e->ev_flags & SAU_SDEV_ASSIGN_VOICE) {
-		sauScriptObjInfo *info = &o->objects[obj->obj_id];
-		info = &o->objects[info->root_op_obj]; // for carrier
+		sauScriptObjInfo *info = &objects[obj->obj_id];
+		info = &objects[info->root_op_obj]; // for carrier
 		vas->flags |= SAU_VAS_HAS_CARR | SAU_VAS_SET_GRAPH;
 		vas->carr_op_id = info->last_op_id;
 	}
@@ -569,19 +574,21 @@ MEM_ERR:
 	return NULL;
 }
 
+static bool
+init_ParseConv(ParseConv *restrict o,
+		sauMempool *restrict mp) {
+	o->mp = mp;
+	sau_init_VoiceGraph(&o->ev_vo_graph, &o->va, &o->oa);
+	return true;
+}
+
 /*
- * Build program, allocating events, voices, and operators.
+ * Build program using the gathered data, after conversion calls.
  */
 static sauProgram *
-ParseConv_convert(ParseConv *restrict o,
+fini_ParseConv(ParseConv *restrict o,
 		sauScript *restrict parse) {
 	sauProgram *prg = NULL;
-	o->mp = parse->mp;
-	o->objects = parse->objects;
-	sau_init_VoiceGraph(&o->ev_vo_graph, &o->va, &o->oa);
-	for (sauScriptEvData *e = parse->events; e; e = e->next) {
-		if (!ParseConv_convert_event(o, e)) goto MEM_ERR;
-	}
 	if (ParseConv_check_validity(o, parse)) {
 		if (!(prg = ParseConv_create_program(o, parse))) goto MEM_ERR;
 	}
