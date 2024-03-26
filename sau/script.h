@@ -161,6 +161,5 @@ typedef struct sauScript {
 	sauScriptOptions sopt;
 	uint32_t object_count;
 	const char *name; // currently simply set to the filename
-	struct sauMempool *mp;
 	struct sauSymtab *st;
 } sauScript;
