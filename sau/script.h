@@ -31,6 +31,7 @@ typedef struct sauScriptObjInfo {
 	uint32_t root_op_obj; // root op for op
 	uint32_t parent_op_obj; // parent op for any object
 	uint32_t seed; // TODO: divide containing node type
+	bool has_osc_parent;
 } sauScriptObjInfo;
 
 /** Reference to script data object, common data for all subtypes. */
@@ -67,8 +68,7 @@ typedef struct sauScriptOpData {
 	sauLine *amp, *amp2;
 	sauLine *freq, *freq2;
 	uint32_t phase;
-	uint8_t wave;
-	sauRasOpt ras_opt; // TODO: divide containing node type
+	union sauPOPMode mode;
 	/* node adjacents in operator linkage graph */
 	sauScriptListData *mods;
 } sauScriptOpData;
