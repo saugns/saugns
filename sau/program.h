@@ -64,11 +64,21 @@ enum {
 	SAU_POBJT_TYPES,
 };
 
+/* Macro used to declare and define program op types sets of items. */
+#define SAU_POPT__ITEMS(X) \
+	X(noise, 'N') \
+	X(wave,  'W') \
+	X(raseg, 'R') \
+	//
+#define SAU_POPT__X_ID(NAME, LABELC) SAU_POPT_N_##NAME,
+
 enum {
-	SAU_POPT_WAVE = 0,
-	SAU_POPT_RAS,
+	SAU_POPT__ITEMS(SAU_POPT__X_ID)
 	SAU_POPT_TYPES,
 };
+
+/** True if the given program op type is an oscillator type. */
+#define sau_pop_is_osc(type_id) ((type_id) >= SAU_POPT_N_wave)
 
 /**
  * Operator parameter flags. For parameters without other tracking only.
@@ -76,14 +86,37 @@ enum {
 enum {
 	SAU_POPP_TIME = 1<<0,
 	SAU_POPP_PHASE = 1<<1,
-	SAU_POPP_WAVE = 1<<2, // WAVE only
-	SAU_POPP_RAS = 1<<2, // RAS only
+	SAU_POPP_MODE = 1<<2, // type-specific data
 	SAU_POP_PARAMS = (1<<3) - 1,
 };
 
+/* Macro used to declare and define noise type sets of items. */
+#define SAU_NOISE__ITEMS(X) \
+	X(wh) \
+	X(gw) \
+	X(bw) \
+	X(tw) \
+	X(re) \
+	X(vi) \
+	X(bv) \
+	//
+#define SAU_NOISE__X_ID(NAME) SAU_NOISE_N_##NAME,
+#define SAU_NOISE__X_NAME(NAME) #NAME,
+
+/**
+ * Noise types.
+ */
+enum {
+	SAU_NOISE__ITEMS(SAU_NOISE__X_ID)
+	SAU_NOISE_NAMED
+};
+
+/** Names of noise types, with an extra NULL pointer at the end. */
+extern const char *const sauNoise_names[SAU_NOISE_NAMED + 1];
+
 /** Random segments option data. */
 typedef struct sauRasOpt {
-	uint8_t line; // line module type
+	uint8_t line; // line module type; is first, to match sauPOPMode main
 	uint8_t func;
 	uint8_t level;
 	uint8_t flags;
@@ -172,10 +205,12 @@ typedef struct sauProgramOpData {
 	sauLine *freq, *freq2;
 	uint32_t phase;
 	uint32_t seed; // TODO: divide containing node type
-	uint8_t wave; // TODO: divide containing node type
-	uint8_t use_type;
-	sauRasOpt ras_opt; // TODO: divide containing node type
-	uint32_t type; // type info, for now
+	uint8_t use_type; // carrier or modulator use?
+	uint8_t type; // type info, for now
+	union sauPOPMode {
+		uint8_t main; // holds wave, noise, etc. ID -- what's primary
+		sauRasOpt ras;
+	} mode;
 	const sauProgramIDArr *camods;
 	const sauProgramIDArr *amods, *ramods;
 	const sauProgramIDArr *fmods, *rfmods;

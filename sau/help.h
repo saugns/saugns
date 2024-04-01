@@ -21,6 +21,7 @@
 	X(math, Math) \
 	X(line, Line) \
 	X(wave, Wave) \
+	X(noise, Noise) \
 	//
 #define SAU_HELP__X_ID(NAME, ARRAY) SAU_HELP_N_##NAME,
 #define SAU_HELP__X_NAME(NAME, ARRAY) #NAME,

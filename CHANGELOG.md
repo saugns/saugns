@@ -7,7 +7,12 @@ is a shorter change log with only the SAU language changes.
 Pre-release
 -----------
 
+Add `N` noise generator. Small redesign steps.
+
 Language changes:
+ * Add generator type `N` (Noise generator), a plain
+   noise generator without any frequency parameters.
+   It has the underlying noise types of `R` and red.
  * Variable syntax. Relax rules for use of numerical
    variable `=`, allow whitespace after `=`, and not
    only before it. This behavior is less surprising.

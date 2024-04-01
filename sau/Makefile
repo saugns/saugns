@@ -53,7 +53,7 @@ arrtype.o: arrtype.c arrtype.h common.h mempool.h
 error.o: common.h error.c
 	$(CC) -c $(CFLAGS_SIZE) error.c
 
-help.o: common.h help.c help.h math.h line.h wave.h
+help.o: common.h help.c help.h line.h math.h program.h wave.h
 	$(CC) -c $(CFLAGS_SIZE) help.c
 
 math.o: common.h math.c math.h
@@ -80,7 +80,7 @@ scanner.o: common.h math.h mempool.h file.h scanner.h scanner.c symtab.h
 symtab.o: common.h mempool.h symtab.h symtab.c
 	$(CC) -c $(CFLAGS_FAST) symtab.c
 
-generator.o: common.h generator.c generator.h generator/rasg.h generator/wosc.h math.h mempool.h program.h line.h wave.h
+generator.o: common.h generator.c generator.h generator/noise.h generator/rasg.h generator/wosc.h math.h mempool.h program.h line.h wave.h
 	$(CC) -c $(CFLAGS_FASTF) generator.c
 
 wave.o: common.h math.h wave.c wave.h

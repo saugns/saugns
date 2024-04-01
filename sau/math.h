@@ -1,5 +1,5 @@
 /* SAU library: Math definitions.
- * Copyright (c) 2011-2012, 2017-2023 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2024 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
@@ -69,12 +69,10 @@ static inline uint64_t sau_ms_in_samples(uint64_t time_ms, uint64_t srate,
  */
 static inline uint32_t sau_cyclepos_dtoui32(double x) {
 	// needs long(er) range because 0.5 from remainder becomes INT32_MAX+1
-	return sau_ui32rint(remainder(x, 1.f) * (float)UINT32_MAX);
+	return sau_ui32rint(remainder(x, 1.f) * 0x1.0p32f);
 }
 
-/**
- * Convert an unsigned 64-bit integer to 0.0 to 1.0 value.
- */
+/** Convert an unsigned 64-bit integer to 0.0 to 1.0 value. */
 static inline double sau_d01_from_ui64(uint64_t x) {
 	return (x >> 11) * 0x1.0p-53;
 }
@@ -92,6 +90,23 @@ static inline int32_t sau_sar32(int32_t x, int s) {
 /** 32-bit right rotation. */
 static inline uint32_t sau_ror32(uint32_t x, int r) {
 	return x >> r | x << (32 - r);
+}
+
+/**
+ * Fold the signed 32-bit integer value if beyond half the amplitude
+ * in either the positive or the negative range. Doubles the result.
+ *
+ * Turns a full-amplitude sawtooth wave signal into a triangle wave.
+ * Replaces wrap-around discontinuities with a more mild distortion.
+ *
+ * \return folded value
+ */
+static inline int32_t sau_foldhd32(int32_t x) {
+	uint32_t s = x; // unsigned to avoid C UB
+	if (s + (1U<<29) > (1U<<31))
+		s = (1U<<31) + (1U<<30) - s;
+	s = (s - (1U<<29)) * 2;
+	return s;
 }
 
 /** Pick smallest of two float values. */
