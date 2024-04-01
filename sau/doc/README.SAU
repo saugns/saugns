@@ -18,10 +18,11 @@ parameters with arguments. Each main keyword provides an action,
 either at run time (like a function call in other languages),
 or at parse time (like a global script setting).
 
-The keywords "W" and "R" are type names for signal generators,
-and are used to add instances of them -- wave oscillators, and
-rumble oscillators, respectively. Such objects can be connected
-for modulation. Together with the timing logic and parameters,
+The keywords "W", "R", and "N" are type names for
+signal generators, and are used to add instances of them --
+respectively: wave oscillators, rumble oscillators,
+and plain noise generators. Such objects can be connected for
+modulation. Together with the timing logic and parameters,
 these are the core features of the language.
 
 Keyword parameters may either be set (by writing the name,
@@ -58,6 +59,8 @@ Each of these keywords is further described in its own section below.
 	S	Script options (parameter default value or other);
 		runs during parsing. Changes made inside a
 		nested list scope don't apply outside of it.
+	N	Noise generator -- "N", optionally followed by
+		the initial "Noise type" value, e.g. "Nre".
 	R	Rumble oscillator -- "R", optionally followed
 		by the initial "Line types" value, e.g. "Rlin".
 	W	Wave oscillator -- "W", optionally followed
@@ -112,7 +115,24 @@ Parameters:
 Signal generator common parameters
 ----------------------------------
 
-The "R" and "W" types have these parameters in common:
+Generator universal parameters:
+	Named parameters common to all generator types -- "N", "R", and "W".
+	a	Amplitude, where 1.0 corresponds to a level of 0 dB and
+		0.0 is silence. (Note that the "S a" option can be used to
+		set a multiplier for this value. Further options affect mixing
+		and the final output level afterwards; this includes panning,
+		which reduces output level unless fully left or right.)
+		Can be negative to flip the sign of the signal.
+			"Value sweep" values are supported; see section.
+			"Modulation with value range" is supported for AM & RM
+		(amplitude and ring modulation); see section.
+	c	(For non-nested generators only.) Channel mixing, mainly
+		(-1.0) to 1.0. See "Channel mixing values" for more.
+			"Value sweep" values are supported; see section.
+			"Modulator list" values are supported for panning-AM
+		(stereo placement amplitude modulation); see section. The sum
+		of modulator amplitudes is added to the channel mixing used.
+		(If you downmix the result to mono the effect will disappear.)
 	t	Time duration in seconds. If no "t" setting is given, the
 		time set depends on the context.
 			For a single non-nested generator, 1.0 is used unless
@@ -141,6 +161,10 @@ The "R" and "W" types have these parameters in common:
 			Special non-number literals can also specify time:
 		d	Definite default time can be set using "td", always.
 		i	Implicit time can be set using "ti", for modulators.
+
+Oscillator common parameters:
+	Named parameters common to types "R" and "W".
+	They also have the "Generator universal parameters".
 	f	Frequency in Hz. Can be negative to flip wave shape timewise.
 			"Value sweep" values are supported; see section.
 			"Modulation with value range" is supported for FM
@@ -166,15 +190,6 @@ The "R" and "W" types have these parameters in common:
 		several types of FM list are set and used at the same time,
 		the result of earlier stages will be used for later.) For
 		other kinds of modulation, if FM is done the result is used.
-	a	Amplitude, where 1.0 corresponds to a level of 0 dB and
-		0.0 is silence. (Note that the "S a" option can be used to
-		set a multiplier for this value. Further options affect mixing
-		and the final output level afterwards; this includes panning,
-		which reduces output level unless fully left or right.)
-		Can be negative to flip the sign of the signal.
-			"Value sweep" values are supported; see section.
-			"Modulation with value range" is supported for AM & RM
-		(amplitude and ring modulation); see section.
 	p	Phase in percentage of the wave cycle modulo 1.0. Set to
 		reset the phase, e.g. to change the initial value from 0.0.
 		See "Phase values" for more.
@@ -189,13 +204,40 @@ The "R" and "W" types have these parameters in common:
 		the carrier(s). For frequency-amplified PM modulators, first
 		the amplitudes are multiplied by the carrier frequency divided
 		by 632.45... Hz (the geometric mean of 20 and 20000 Hz).
-	c	(For non-nested generators only.) Channel mixing, mainly
-		(-1.0) to 1.0. See "Channel mixing values" for more.
-			"Value sweep" values are supported; see section.
-			"Modulator list" values are supported for panning-AM
-		(stereo placement amplitude modulation); see section. The sum
-		of modulator amplitudes is added to the channel mixing used.
-		(If you downmix the result to mono the effect will disappear.)
+
+N: Noise generator
+------------------
+
+A plain noise generator, which outputs noise sample pairs at Nyquist
+frequency, producing a selected noise color and distribution.
+
+As a signal generator, if not enclosed within a "[]" list, then
+it will run and output at the current time, for its duration.
+
+Note that non-white noise has a sample-rate dependent sound, when
+generated at maximum rate as with this generator. For consistent
+noise at a per-sound rate of your choice, other means are needed.
+A violet noise that always peaks at a frequency of your choice can use
+the "R" oscillator with mode "mv", and the chosen frequency set to "f".
+
+Usage "N", optionally followed by the noise type (e.g. "Nre"),
+by default the same as "Nwh". Followed by zero or more
+whitespace-separated parameters, each with a value.
+See "Noise types" for the available noise types.
+
+Parameters:
+	The "N" noise generator has the
+	"Generator universal parameters", and additionally:
+	n	Noise type -- see "Noise types" for values.
+
+Noise types:
+	wh	Uniform white noise.
+	gw	Gaussian white noise, soft-saturated.
+	bw	Binary white noise.
+	tw	Ternary smooth white noise. Every other sample is zero.
+	re	Red/brown noise based on uniform white noise.
+	vi	Violet noise based on uniform white noise.
+	bv	Binary violet noise. Differentiated 'tw' noise.
 
 R: Rumble oscillator
 --------------------
@@ -223,7 +265,7 @@ the starting seed of new "R" instances.
 
 Parameters:
 	The "R" rumble oscillator has the
-	"Signal generator common parameters", and additionally:
+	"Oscillator common parameters", and additionally:
 	l	Line type -- see "Line types" for values.
 	m	Mode for line start and goal value variation; consists of
 		a letter (random function) and a digit (0-9 shaping level);
@@ -308,7 +350,7 @@ See "Wave types" for the available wave types.
 
 Parameters:
 	The "W" wave oscillator has the
-	"Signal generator common parameters", and additionally:
+	"Oscillator common parameters", and additionally:
 	w	Wave type -- see "Wave types" for values.
 
 Wave types:
