@@ -4,12 +4,32 @@ saugns version changes
 [On the website](https://sau.frama.io/changes.html#saulang)
 is a shorter change log with only the SAU language changes.
 
-Deprecated things work but will warn to update the scripts.
-
 Pre-release
 -----------
 
 [rebase in progress]
+
+Fix bugs for `r...` relative frequency parameters in
+AM modulators when placed inside `A` or `N`. (Latter
+types don't have frequency parameters, so use of `r`
+inside can't apply to them as the carriers outside.)
+When possible, make `r1` be better than `f1`.
+ * A script `N a0[W]` now has a default frequency of
+   `f440` for the inner `W`, not `r1` (which is like
+   `f1` here, as there's no carrier frequency). But,
+   in `W a0.r1[N[W]]` it's `r1`, effectively `f440`.
+ * A separate bug affected e.g. `W a0.r1[A0[W r1]]`,
+   where the `r1` acted like `f1` instead of passing
+   the nearest outer frequency from the other `W`. A
+   pointer wasn't passed along, a typo made it NULL.
+ * Don't allow `r` for a modulator with all carriers
+   being of types lacking a frequency parameter. Now
+   such modulators are more like 1st level carriers.
+
+Clarify `r` behavior fully in the `README.SAU` file.
+
+v0.4.7b (2024-10-26)
+--------------------
 
 Fix error resulting in silence rather than no script
 when script rejected by "$?variable" check. This bug
