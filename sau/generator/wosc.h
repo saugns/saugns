@@ -27,7 +27,7 @@
  * Calculate the coefficent, based on the sample rate, used for
  * the per-sample phase by multiplying with the frequency used.
  */
-#define sauPhasor_COEFF(srate) (((float) UINT32_MAX)/(srate))
+#define sauPhasor_COEFF(srate) SAU_INV_FREQ(32, srate)
 
 typedef struct sauPhasor {
 	uint32_t phase;
@@ -95,7 +95,7 @@ static inline void sauWOsc_set_wave(sauWOsc *restrict o, uint8_t wave) {
  * \return number of samples
  */
 static inline uint32_t sauWOsc_cycle_len(sauWOsc *restrict o, float freq) {
-	return sau_ftoi(((float) UINT32_MAX) / (o->phasor.coeff * freq));
+	return sau_ftoi(SAU_INV_FREQ(32, o->phasor.coeff * freq));
 }
 
 /**
@@ -148,21 +148,21 @@ static sauMaybeUnused void sauPhasor_fill(sauPhasor *restrict o,
 			float s_f = freq_f[i];
 			float s_pofs = pm_f[i];
 			phase_ui32[i] = P(sau_ftoi(o->coeff * s_f),
-					sau_ftoi(s_pofs * (float)INT32_MAX));
+					sau_ftoi(s_pofs * 0x1p31f));
 		}
 	} else if (!pm_f) {
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s_f = freq_f[i];
 			float s_pofs = fpm_f[i] * fpm_scale * s_f;
 			phase_ui32[i] = P(sau_ftoi(o->coeff * s_f),
-					sau_ftoi(s_pofs * (float)INT32_MAX));
+					sau_ftoi(s_pofs * 0x1p31f));
 		}
 	} else {
 		for (size_t i = 0; i < buf_len; ++i) {
 			float s_f = freq_f[i];
 			float s_pofs = pm_f[i] + (fpm_f[i] * fpm_scale * s_f);
 			phase_ui32[i] = P(sau_ftoi(o->coeff * s_f),
-					sau_ftoi(s_pofs * (float)INT32_MAX));
+					sau_ftoi(s_pofs * 0x1p31f));
 		}
 	}
 }
