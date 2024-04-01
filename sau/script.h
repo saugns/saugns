@@ -71,8 +71,7 @@ typedef struct sauScriptOpData {
 	sauLine *amp, *amp2;
 	sauLine *freq, *freq2;
 	uint32_t phase;
-	uint8_t wave;
-	sauRasOpt ras_opt; // TODO: divide containing node type
+	union sauPOPMode mode;
 	/* node adjacents in operator linkage graph */
 	sauScriptListData *mods;
 } sauScriptOpData;

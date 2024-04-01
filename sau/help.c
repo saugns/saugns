@@ -15,6 +15,7 @@
 #include <sau/math.h>
 #include <sau/line.h>
 #include <sau/wave.h>
+#include <sau/program.h>
 #include <string.h>
 
 const char *const sauHelp_names[SAU_HELP_NAMED + 1] = {
