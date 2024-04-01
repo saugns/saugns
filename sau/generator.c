@@ -18,6 +18,7 @@
 #define sau_dscalei(i, scale) (((int32_t)(i)) * (double)(scale))
 #define sau_fscalei(i, scale) (((int32_t)(i)) * (float)(scale))
 #define sau_divi(i, div) (((int32_t)(i)) / (int32_t)(div))
+#include "generator/noise.h"
 #include "generator/wosc.h"
 #include "generator/rasg.h"
 #include <stdio.h>
@@ -50,6 +51,11 @@ typedef struct GenNode {
 	const sauProgramIDArr *camods;
 } GenNode;
 
+typedef struct NoiseGNode {
+	GenNode gen;
+	sauNoiseG noiseg;
+} NoiseGNode;
+
 typedef struct OscNode {
 	GenNode gen;
 	struct ParWithRangeMod freq;
@@ -68,6 +74,7 @@ typedef struct RasGNode {
 
 typedef union OperatorNode {
 	GenNode gen; // generator base type
+	NoiseGNode ng;
 	OscNode osc; // oscillator base type
 	WOscNode wo;
 	RasGNode rg;
@@ -234,17 +241,20 @@ static void prepare_op(sauGenerator *restrict o,
 	if (od->use_type == SAU_POP_N_carr) {
 		vn->freq_buf_id = 0;
 	}
+	memset(n, 0, sizeof(*n));
 	switch (od->type) {
-	case SAU_POPT_WAVE: {
+	case SAU_POPT_N_noise: {
+		NoiseGNode *ng = &n->ng;
+		sauNoiseG_set_seed(&ng->noiseg, od->seed);
+		break; }
+	case SAU_POPT_N_wave: {
 		WOscNode *wo = &n->wo;
-		memset(n, 0, sizeof(*wo));
 		sau_init_WOsc(&wo->wosc, o->srate);
 		if (od->use_type == SAU_POP_N_carr) // match run_block_wosc()
 			vn->freq_buf_id = 3 - 1;
 		goto OSC_COMMON; }
-	case SAU_POPT_RAS: {
+	case SAU_POPT_N_raseg: {
 		RasGNode *rg = &n->rg;
-		memset(n, 0, sizeof(*rg));
 		sau_init_RasG(&rg->rasg, o->srate);
 		sauRasG_set_cycle(&rg->rasg, od->seed);
 		if (od->use_type == SAU_POP_N_carr) // match run_block_rasg()
@@ -271,19 +281,24 @@ static void update_op(sauGenerator *restrict o,
 		const sauProgramOpData *restrict od) {
 	uint32_t params = od->params;
 	switch (od->type) {
-	case SAU_POPT_WAVE: {
+	case SAU_POPT_N_noise: {
+		NoiseGNode *ng = &n->ng;
+		if (params & SAU_POPP_MODE)
+			sauNoiseG_set_noise(&ng->noiseg, od->mode.main);
+		break; }
+	case SAU_POPT_N_wave: {
 		WOscNode *wo = &n->wo;
 		if (params & SAU_POPP_PHASE)
 			sauWOsc_set_phase(&wo->wosc, od->phase);
-		if (params & SAU_POPP_WAVE)
-			sauWOsc_set_wave(&wo->wosc, od->wave);
+		if (params & SAU_POPP_MODE)
+			sauWOsc_set_wave(&wo->wosc, od->mode.main);
 		goto OSC_COMMON; }
-	case SAU_POPT_RAS: {
+	case SAU_POPT_N_raseg: {
 		RasGNode *rg = &n->rg;
 		if (params & SAU_POPP_PHASE)
 			sauRasG_set_phase(&rg->rasg, od->phase);
-		if (params & SAU_POPP_RAS)
-			sauRasG_set_opt(&rg->rasg, &od->ras_opt);
+		if (params & SAU_POPP_MODE)
+			sauRasG_set_opt(&rg->rasg, &od->mode.ras);
 		goto OSC_COMMON; }
 	}
 	if (false)
@@ -423,10 +438,11 @@ static void run_param_with_rangemod(sauGenerator *restrict o,
 		Buf *restrict bufs, uint32_t len,
 		struct ParWithRangeMod *restrict n,
 		float *restrict param_mulbuf,
-		float *restrict reused_freq) {
+		float *restrict reused_freq,
+		bool is_freq) {
 	uint32_t i;
 	float *par_buf = *(bufs + 0);
-	float *freq = (reused_freq ? reused_freq : par_buf);
+	float *freq = (reused_freq ? reused_freq : is_freq ? par_buf : NULL);
 	sauLine_run(&n->par, par_buf, len, param_mulbuf);
 	if (n->r_mods->count > 0) {
 		float *r_par_buf = *(bufs + 1);
@@ -450,6 +466,27 @@ static void run_param_with_rangemod(sauGenerator *restrict o,
 }
 
 /*
+ * The NoiseGNode sub-function for run_block().
+ *
+ * Needs up to 4 buffers for its own node level.
+ */
+static void run_block_noiseg(sauGenerator *restrict o,
+		Buf *restrict bufs, uint32_t len,
+		OperatorNode *restrict n,
+		float *restrict parent_freq sauMaybeUnused,
+		bool wave_env, bool layer) {
+	float *mix_buf = *(bufs++);
+	float *amp = NULL;
+	float *tmp_buf = NULL;
+	run_param_with_rangemod(o, bufs, len, &n->gen.amp, NULL,
+			NULL, false);
+	amp = *(bufs++); // #2 (++) and temporary #3, #4
+	tmp_buf = (*bufs + 0); // #3
+	sauNoiseG_run(&n->ng.noiseg, tmp_buf, len);
+	block_mix(&n->wo.osc.gen, mix_buf, len, wave_env, layer, tmp_buf, amp);
+}
+
+/*
  * The WOscNode sub-function for run_block().
  *
  * Needs up to 6 buffers for its own node level.
@@ -468,7 +505,8 @@ static void run_block_wosc(sauGenerator *restrict o,
 	 * Handle frequency (alternatively ratio) parameter,
 	 * including frequency modulation if modulators linked.
 	 */
-	run_param_with_rangemod(o, bufs, len, &n->osc.freq, parent_freq, NULL);
+	run_param_with_rangemod(o, bufs, len, &n->osc.freq, parent_freq,
+			NULL, true);
 	freq = *(bufs++); // #3 (++) and temporary #4, #5
 	/*
 	 * Pre-fill phase buffers.
@@ -495,7 +533,8 @@ static void run_block_wosc(sauGenerator *restrict o,
 	 * Handle amplitude parameter, including amplitude modulation if
 	 * modulators linked.
 	 */
-	run_param_with_rangemod(o, bufs, len, &n->gen.amp, NULL, freq);
+	run_param_with_rangemod(o, bufs, len, &n->gen.amp, NULL,
+			freq, false);
 	amp = *(bufs++); // #4 (++) and temporary #5, #6
 	tmp_buf = (*bufs + 0); // #5
 	sauWOsc_run(&n->wo.wosc, tmp_buf, len, phase_buf);
@@ -521,7 +560,8 @@ static void run_block_rasg(sauGenerator *restrict o,
 	 * Handle frequency (alternatively ratio) parameter,
 	 * including frequency modulation if modulators linked.
 	 */
-	run_param_with_rangemod(o, bufs, len, &n->osc.freq, parent_freq, NULL);
+	run_param_with_rangemod(o, bufs, len, &n->osc.freq, parent_freq,
+			NULL, true);
 	freq = *(bufs++); // #4 (++) and temporary #5, #6
 	/*
 	 * Pre-fill cycle & phase buffers.
@@ -548,7 +588,8 @@ static void run_block_rasg(sauGenerator *restrict o,
 	 * Handle amplitude parameter, including amplitude modulation if
 	 * modulators linked.
 	 */
-	run_param_with_rangemod(o, bufs, len, &n->gen.amp, NULL, freq);
+	run_param_with_rangemod(o, bufs, len, &n->gen.amp, NULL,
+			freq, false);
 	amp = *(bufs++); // #5 (++) and temporary #6, #7
 	tmp_buf = *(bufs + 0); // #6
 	tmp2_buf = *(bufs + 1); // #7
@@ -593,10 +634,13 @@ static uint32_t run_block(sauGenerator *restrict o,
 	 * Use sub-function.
 	 */
 	switch (gen->type) {
-	case SAU_POPT_WAVE:
+	case SAU_POPT_N_noise:
+		run_block_noiseg(o, bufs, len, n, parent_freq, wave_env, layer);
+		break;
+	case SAU_POPT_N_wave:
 		run_block_wosc(o, bufs, len, n, parent_freq, wave_env, layer);
 		break;
-	case SAU_POPT_RAS:
+	case SAU_POPT_N_raseg:
 		run_block_rasg(o, bufs, len, n, parent_freq, wave_env, layer);
 		break;
 	}

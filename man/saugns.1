@@ -40,8 +40,15 @@ written to a 16-bit PCM WAV file; it is also possible to stream audio
 data to stdout, either raw (--stdout) or AU (-o -).
 .Pp
 Scripts can use an arbitrary number of audio generators of the types supported.
-"W" (Wave oscillator) produces tones with a chosen waveshape,
-"R" (Random segments oscillator) produces pitched noises with a line and mode.
+.Bl -tag -width Ds
+.It Vt W
+Wave oscillator, produces tones with a chosen waveshape.
+.It Vt R
+Random segments oscillator, produces pitched noises with a line and a mode.
+.It Vt N
+Noise generator, makes simple unpitched noises.
+.El
+.Pp
 Synthesis techniques supported include PM, FM, and AM/RM.
 Duration and some other attributes can be calculated for each script
 without generating audio; the scripting language is not Turing complete.
