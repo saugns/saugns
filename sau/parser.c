@@ -37,6 +37,7 @@ enum {
 	SAU_SYM_MATH_ID,
 	SAU_SYM_LINE_ID,
 	SAU_SYM_WAVE_ID,
+	SAU_SYM_NOISE_ID,
 	SAU_SYM_TYPES
 };
 
@@ -45,6 +46,7 @@ static const char *const scan_sym_labels[SAU_SYM_TYPES] = {
 	"math symbol",
 	"line shape",
 	"wave type",
+	"noise type",
 };
 
 struct ScanLookup {
@@ -78,7 +80,9 @@ static bool init_ScanLookup(struct ScanLookup *restrict o,
 	    !sauSymtab_add_stra(st, sauLine_names, SAU_LINE_NAMED,
 			SAU_SYM_LINE_ID) ||
 	    !sauSymtab_add_stra(st, sauWave_names, SAU_WAVE_NAMED,
-			SAU_SYM_WAVE_ID))
+			SAU_SYM_WAVE_ID) ||
+	    !sauSymtab_add_stra(st, sauNoise_names, SAU_NOISE_NAMED,
+			SAU_SYM_NOISE_ID))
 		return false;
 	o->math_state.no_time = arg->no_time;
 	return true;
@@ -1017,7 +1021,7 @@ static void begin_operator(sauParser *restrict o,
 			(SAU_SDOP_NESTED | SAU_SDOP_MULTIPLE);
 		op->time = sauTime_DEFAULT(pop->time.v_ms,
 				pop->time.flags & SAU_TIMEP_IMPLICIT);
-		op->wave = pop->wave;
+		op->mode.main = pop->mode.main;
 		op->phase = pop->phase;
 		if ((pl->pl_flags & PL_BIND_MULTIPLE) != 0) {
 			sauScriptOpData *mpop = pop;
@@ -1037,21 +1041,28 @@ static void begin_operator(sauParser *restrict o,
 		bool is_nested = pl->use_type != SAU_POP_N_carr;
 		sauScriptObjInfo *info = ObjInfoArr_add(&o->obj_arr, &op->ref,
 				SAU_POBJT_OP, type);
-		if (type == SAU_POPT_RAS)
+		if (type == SAU_POPT_N_noise || type == SAU_POPT_N_raseg)
 			info->seed = sau_rand32(&o->sl.math_state);
 		op->time = sauTime_DEFAULT(o->sl.sopt.def_time_ms, is_nested);
+		info->parent_op_obj = op->ref.obj_id;
+		if (is_nested && nest) {
+			sauScriptObjInfo *parent_info =
+				&o->obj_arr.a[nest->list->ref.obj_id];
+			info->parent_op_obj = parent_info->parent_op_obj;
+			parent_info = &o->obj_arr.a[info->parent_op_obj];
+			info->has_osc_parent = parent_info->has_osc_parent
+				| sau_pop_is_osc(parent_info->op_type);
+		}
 		if (!is_nested) {
 			o->root_op_obj = op->ref.obj_id;
 			op->pan = create_line(o, false, SAU_PSWEEP_PAN);
 			op->freq = create_line(o, false, SAU_PSWEEP_FREQ);
 		} else {
 			op->op_flags |= SAU_SDOP_NESTED;
-			op->freq = create_line(o, true, SAU_PSWEEP_FREQ);
+			op->freq = create_line(o, info->has_osc_parent,
+					SAU_PSWEEP_FREQ);
 		}
 		info->root_op_obj = o->root_op_obj;
-		info->parent_op_obj = (is_nested && nest) ?
-			o->obj_arr.a[nest->list->ref.obj_id].parent_op_obj :
-			op->ref.obj_id;
 		op->amp = create_line(o, false, SAU_PSWEEP_AMP);
 	}
 	link_ev_obj(pl, nest, &op->ref, &pop->ref);
@@ -1402,6 +1413,35 @@ static void parse_par_list(sauParser *restrict o,
 	NestArr_pop(&o->nest);
 }
 
+static void parse_op(sauParser *restrict o, uint8_t op_type,
+		uint8_t sym_type, const char *const* restrict sym_names) {
+	struct ParseLevel *pl = o->cur_pl;
+	size_t id = 0; /* default as fallback value */
+	scan_sym_id(o->sc, &id, sym_type, sym_names);
+	struct NestScope *nest = NestArr_tip(&o->nest);
+	if (!pl->use_type && nest && nest->op_sweep) {
+		sauScanner_warning(o->sc,NULL, "modulators not supported here");
+		return;
+	}
+	begin_operator(o, NULL, false, op_type);
+	pl->operator->mode.main = id;
+	pl->sub_f = parse_in_op_step;
+}
+
+static bool parse_op_main(sauParser *restrict o, uint8_t op_type,
+	uint8_t sym_type, const char *const* restrict sym_names) {
+	struct ParseLevel *pl = o->cur_pl;
+	sauScriptOpData *op = pl->operator;
+	if (op->ref.op_type != op_type)
+		return true; // reject, lacks parameter
+	size_t id;
+	if (scan_sym_id(o->sc, &id, sym_type, sym_names)) {
+		op->mode.main = id;
+		op->params |= SAU_POPP_MODE;
+	}
+	return false;
+}
+
 static bool parse_op_amp(sauParser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
 	sauScriptOpData *op = pl->operator;
@@ -1423,7 +1463,7 @@ static bool parse_op_chanmix(sauParser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
 	sauScriptOpData *op = pl->operator;
 	if (op->op_flags & SAU_SDOP_NESTED)
-		return true; // reject
+		return true; // reject, lacks parameter
 	parse_par_list(o, scan_chanmix_const, &op->pan, false,
 			SAU_PSWEEP_PAN, SAU_POP_N_camod);
 	return false;
@@ -1432,8 +1472,10 @@ static bool parse_op_chanmix(sauParser *restrict o) {
 static bool parse_op_freq(sauParser *restrict o, bool rel_freq) {
 	struct ParseLevel *pl = o->cur_pl;
 	sauScriptOpData *op = pl->operator;
-	if (rel_freq && !(op->op_flags & SAU_SDOP_NESTED))
-		return true; // reject
+	const sauScriptObjInfo *info = &o->obj_arr.a[op->ref.obj_id];
+	if (!sau_pop_is_osc(op->ref.op_type) ||
+	    (rel_freq && !info->has_osc_parent))
+		return true; // reject, lacks parameter
 	uint8_t c;
 	sauScanNumConst_f num_f = rel_freq ? NULL : scan_note_const;
 	parse_par_list(o, num_f, &op->freq, rel_freq,
@@ -1453,7 +1495,7 @@ static bool parse_op_mode(sauParser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
 	sauScanner *sc = o->sc;
 	sauScriptOpData *op = pl->operator;
-	if (op->ref.op_type != SAU_POPT_RAS)
+	if (op->ref.op_type != SAU_POPT_N_raseg)
 		return true; // reject
 	uint8_t func = SAU_RAS_FUNCTIONS;
 	uint8_t flags = 0;
@@ -1494,19 +1536,19 @@ static bool parse_op_mode(sauParser *restrict o) {
 			break;
 	}
 	if (func < SAU_RAS_FUNCTIONS) {
-		op->ras_opt.func = func;
-		op->ras_opt.flags &= SAU_RAS_O_LINE_SET;
-		op->ras_opt.flags |= SAU_RAS_O_FUNC_SET;
-		op->params |= SAU_POPP_RAS;
+		op->mode.ras.func = func;
+		op->mode.ras.flags &= SAU_RAS_O_LINE_SET;
+		op->mode.ras.flags |= SAU_RAS_O_FUNC_SET;
+		op->params |= SAU_POPP_MODE;
 	}
 	if (flags) {
-		op->ras_opt.flags |= flags;
-		op->params |= SAU_POPP_RAS;
+		op->mode.ras.flags |= flags;
+		op->params |= SAU_POPP_MODE;
 	}
 	if (level >= 0) {
-		op->ras_opt.level = sau_ras_level(level);
-		op->ras_opt.flags |= SAU_RAS_O_LEVEL_SET;
-		op->params |= SAU_POPP_RAS;
+		op->mode.ras.level = sau_ras_level(level);
+		op->mode.ras.flags |= SAU_RAS_O_LEVEL_SET;
+		op->params |= SAU_POPP_MODE;
 	}
 	return false;
 }
@@ -1514,6 +1556,8 @@ static bool parse_op_mode(sauParser *restrict o) {
 static bool parse_op_phase(sauParser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
 	sauScriptOpData *op = pl->operator;
+	if (!sau_pop_is_osc(op->ref.op_type))
+		return true; // reject, lacks parameter
 	uint8_t c;
 	double val;
 	if (scan_num(o->sc, scan_phase_const, &val)) {
@@ -1564,18 +1608,17 @@ static void parse_in_op_step(sauParser *restrict o) {
 		case 'f':
 			if (parse_op_freq(o, false)) goto DEFER;
 			break;
-		case 'l': {
-			if (op->ref.op_type != SAU_POPT_RAS) goto DEFER;
-			size_t id;
-			if (!scan_sym_id(sc, &id, SAU_SYM_LINE_ID,
-						sauLine_names))
-				break;
-			op->ras_opt.line = id;
-			op->ras_opt.flags |= SAU_RAS_O_LINE_SET;
-			op->params |= SAU_POPP_RAS;
-			break; }
+		case 'l':
+			if (parse_op_main(o, SAU_POPT_N_raseg, SAU_SYM_LINE_ID,
+						sauLine_names)) goto DEFER;
+			pl->operator->mode.ras.flags |= SAU_RAS_O_LINE_SET;
+			break;
 		case 'm':
 			if (parse_op_mode(o)) goto DEFER;
+			break;
+		case 'n':
+			if (parse_op_main(o, SAU_POPT_N_noise, SAU_SYM_NOISE_ID,
+						sauNoise_names)) goto DEFER;
 			break;
 		case 'p':
 			if (parse_op_phase(o)) goto DEFER;
@@ -1610,15 +1653,10 @@ static void parse_in_op_step(sauParser *restrict o) {
 			}
 			op->params |= SAU_POPP_TIME;
 			break; }
-		case 'w': {
-			if (op->ref.op_type != SAU_POPT_WAVE) goto DEFER;
-			size_t id;
-			if (!scan_sym_id(sc, &id, SAU_SYM_WAVE_ID,
-						sauWave_names))
-				break;
-			op->wave = id;
-			op->params |= SAU_POPP_WAVE;
-			break; }
+		case 'w':
+			if (parse_op_main(o, SAU_POPT_N_wave, SAU_SYM_WAVE_ID,
+						sauWave_names)) goto DEFER;
+			break;
 		default:
 			goto DEFER;
 		}
@@ -1723,37 +1761,25 @@ static bool parse_level(sauParser *restrict o,
 				}
 			}
 			break; }
-		case 'R': {
-			size_t id = 0; /* default as fallback value */
-			scan_sym_id(sc, &id, SAU_SYM_LINE_ID, sauLine_names);
-			struct NestScope *nest = NestArr_tip(&o->nest);
-			if (!pl.use_type && nest && nest->op_sweep) {
-				sauScanner_warning(sc, NULL, "modulators not supported here");
-				break;
-			}
-			begin_operator(o, NULL, false, SAU_POPT_RAS);
-			pl.operator->ras_opt.line = id;
-			pl.operator->ras_opt.flags = SAU_RAS_O_LINE_SET;
-			pl.sub_f = parse_in_op_step;
-			break; }
+		case 'N':
+			parse_op(o, SAU_POPT_N_noise,
+					SAU_SYM_NOISE_ID, sauNoise_names);
+			break;
+		case 'R':
+			parse_op(o, SAU_POPT_N_raseg,
+					SAU_SYM_LINE_ID, sauLine_names);
+			pl.operator->mode.ras.flags = SAU_RAS_O_LINE_SET;
+			break;
 		case 'S':
 			pl.sub_f = parse_in_settings;
 			break;
 		case 'O':
 			warn_deprecated(sc, "type 'O'", "name 'W'");
 			/* fall-through */
-		case 'W': {
-			size_t id = 0; /* default as fallback value */
-			scan_sym_id(sc, &id, SAU_SYM_WAVE_ID, sauWave_names);
-			struct NestScope *nest = NestArr_tip(&o->nest);
-			if (!pl.use_type && nest && nest->op_sweep) {
-				sauScanner_warning(sc, NULL, "modulators not supported here");
-				break;
-			}
-			begin_operator(o, NULL, false, SAU_POPT_WAVE);
-			pl.operator->wave = id;
-			pl.sub_f = parse_in_op_step;
-			break; }
+		case 'W':
+			parse_op(o, SAU_POPT_N_wave,
+					SAU_SYM_WAVE_ID, sauWave_names);
+			break;
 		case '[':
 			prepare_event(o, NULL, false);
 			NestArr_add(&o->nest);
