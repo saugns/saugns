@@ -1,5 +1,5 @@
 /* SAU library: Help data and printout code.
- * Copyright (c) 2020-2023 Joel K. Pettersson
+ * Copyright (c) 2020-2024 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
@@ -15,6 +15,7 @@
 #include <sau/math.h>
 #include <sau/line.h>
 #include <sau/wave.h>
+#include <sau/program.h>
 #include <string.h>
 
 const char *const sauHelp_names[SAU_HELP_NAMED + 1] = {

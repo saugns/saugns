@@ -1,0 +1,3 @@
+// First, mellow "music" using 'R' (and also 'N'), ported from 2023-01 branch
+/seed(2) // a little more like the original branch seed is this: /seed(met(1))
+Rlin f3 t60 p[Wtri r8.r32[Nwh] a2]
