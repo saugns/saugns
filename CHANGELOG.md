@@ -4,8 +4,8 @@ saugns version changes
 [On the website](https://sau.frama.io/changes.html#saulang)
 is a shorter change log with only the SAU language changes.
 
-Pre-release
------------
+v0.4.3 (2024-04-03)
+-------------------
 
 Add `N` noise generator. Small redesign steps.
 
