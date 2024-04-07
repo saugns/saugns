@@ -901,20 +901,33 @@ uint8_t sauScanner_skipws(sauScanner *restrict o) {
 	return c;
 }
 
-static void print_stderr(const sauScanner *restrict o,
+static sauNoinline void print_stderr(const sauScanner *restrict o,
 		const sauScanFrame *restrict sf,
 		const char *restrict prefix, const char *restrict fmt,
 		va_list ap) {
 	sauFile *f = o->f;
-	if (sf != NULL) {
-		fprintf(stderr, "%s:%d:%d: ",
-			f->path, sf->line_num, sf->char_num);
-	}
+	if (!sf) sf = &o->sf;
+	fprintf(stderr, "%s:%d:%d: ", f->path, sf->line_num, sf->char_num);
 	if (prefix != NULL) {
 		fprintf(stderr, "%s: ", prefix);
 	}
 	vfprintf(stderr, fmt, ap);
 	putc('\n', stderr);
+}
+
+/**
+ * Print warning-like message without a "warning" or
+ * "error" prefix, including file path and position.
+ * If \p sf is not NULL, it will be used for position;
+ * otherwise, the current position is used.
+ */
+void sauScanner_notice(const sauScanner *restrict o,
+		const sauScanFrame *restrict sf,
+		const char *restrict fmt, ...) {
+	va_list ap;
+	va_start(ap, fmt);
+	print_stderr(o, sf, NULL, fmt, ap);
+	va_end(ap);
 }
 
 /**
@@ -929,8 +942,7 @@ void sauScanner_warning(const sauScanner *restrict o,
 		return;
 	va_list ap;
 	va_start(ap, fmt);
-	print_stderr(o, (sf != NULL ? sf : &o->sf),
-		"warning", fmt, ap);
+	print_stderr(o, sf, "warning", fmt, ap);
 	va_end(ap);
 }
 
@@ -944,11 +956,10 @@ void sauScanner_warning(const sauScanner *restrict o,
 void sauScanner_error(sauScanner *restrict o,
 		const sauScanFrame *restrict sf,
 		const char *restrict fmt, ...) {
+	o->s_flags |= SAU_SCAN_S_ERROR;
 	va_list ap;
 	va_start(ap, fmt);
-	print_stderr(o, (sf != NULL ? sf : &o->sf),
-		"error", fmt, ap);
-	o->s_flags |= SAU_SCAN_S_ERROR;
+	print_stderr(o, sf, "error", fmt, ap);
 	va_end(ap);
 }
 
@@ -975,10 +986,10 @@ void sauScanner_warning_at(const sauScanner *restrict o,
  */
 void sauScanner_error_at(sauScanner *restrict o,
 		int got_at, const char *restrict fmt, ...) {
+	o->s_flags |= SAU_SCAN_S_ERROR;
 	va_list ap;
 	va_start(ap, fmt);
 	print_stderr(o, &o->undo[(o->undo_pos + got_at) & SAU_SCAN_UNGET_MAX],
 		"error", fmt, ap);
-	o->s_flags |= SAU_SCAN_S_ERROR;
 	va_end(ap);
 }

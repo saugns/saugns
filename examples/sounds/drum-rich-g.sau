@@ -1,8 +1,8 @@
 // The 'bpm' is the maximum pace, rather than an accurate average.
 // The carrier frequency makes the background when beats are weak.
 // Amplitude shaping is tuned to sharpen each beat impact per bpm.
-'bpm=480
-'strength=75
+$bpm=480
+$strength=75
 Whsi f$strength/2 p1/12[
 	Rxpe mg f$bpm/120 a$strength*(240/$bpm)
 ] a1/2.r1[

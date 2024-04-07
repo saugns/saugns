@@ -8,7 +8,7 @@
  * Tests nested PM and gradual value changes with
  * compound step syntax.
  */
-'rt=0.15
+$rt=0.15
 Wsin	f220 p[
 		Wsin r7/2 a0.5
 		Wsin r7/5 a0.5 p[Wsin r10/7 a1/2]
