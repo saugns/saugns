@@ -21,12 +21,6 @@
  * File-reading code
  */
 
-/* Basic character types. */
-#define IS_LOWER(c) ((c) >= 'a' && (c) <= 'z')
-#define IS_UPPER(c) ((c) >= 'A' && (c) <= 'Z')
-#define IS_ALPHA(c) (IS_LOWER(c) || IS_UPPER(c))
-#define IS_DIGIT(c) ((c) >= '0' && (c) <= '9')
-
 /* Music note key 8-bit identifiers. Based on C, D, E, F, G, A, B scale. */
 #define MUSKEY(note, notemod) (((note) * 9) + 4 + (notemod))
 #define MUSNOTE(key) ((key) / 9)
@@ -83,6 +77,20 @@ static bool init_ScanLookup(struct ScanLookup *restrict o,
 	    !sauSymtab_add_stra(st, sauNoise_names, SAU_NOISE_NAMED,
 			SAU_SYM_NOISE_ID))
 		return false;
+	/*
+	 * Register predefined values as variable assignments.
+	 */
+	sauScriptPredef *predef = arg->predef;
+	for (size_t i = 0, count = arg->predef_count; i < count; ++i) {
+		sauSymstr *sstr = sauSymtab_get_symstr(st,
+				predef[i].key, predef[i].len);
+		sauSymitem *item;
+		if (!sstr ||
+		    !(item = sauSymtab_add_item(st, sstr, SAU_SYM_VAR)))
+			return false;
+		item->data.num = predef[i].val;
+		item->data_use = SAU_SYM_DATA_NUM;
+	}
 	o->math_state.no_time = arg->no_time;
 	return true;
 }
@@ -97,9 +105,9 @@ static bool handle_unknown_or_eof(sauScanner *restrict o, uint8_t c) {
 	if (c == 0)
 		return false;
 	const char *warn_str = SAU_IS_ASCIIVISIBLE(c) ?
-		(IS_UPPER(c) ?
+		(SAU_IS_UPPER(c) ?
 		"invalid or misplaced typename '%c'" :
-		(IS_LOWER(c) ?
+		(SAU_IS_LOWER(c) ?
 		"invalid or misplaced subname '%c'" :
 		"misplaced or unrecognized '%c'")) :
 		"invalid character (value 0x%02hhX)";
@@ -130,6 +138,15 @@ static void warn_closing_without_opening(sauScanner *restrict o,
 		uint8_t close_c, uint8_t open_c) {
 	sauScanner_warning(o, NULL, "closing '%c' without opening '%c'",
 			close_c, open_c);
+}
+
+/*
+ * Print warning for something missing prior to syntactic element.
+ */
+static void warn_expected_before(sauScanner *restrict o,
+		sauScanFrame *sf,
+		const char *restrict missing, const char *restrict op_str) {
+	sauScanner_warning(o, sf, "expected %s before '%s'", missing, op_str);
 }
 
 /*
@@ -225,6 +242,7 @@ struct NumParser {
 	sauScanner *sc;
 	sauScanNumConst_f numconst_f;
 	sauScanFrame sf_start;
+	bool skip_num; // if true, only parse to verify; no side effects
 	bool has_nannum, has_infnum;
 	bool after_rpar;
 };
@@ -265,11 +283,12 @@ static double scan_num_r(struct NumParser *restrict o,
 		sauScanner_ungetc(sc);
 		sauScanner_getd(sc, &num, false, &read_len, o->numconst_f);
 		if (read_len == 0) {
-			if (!IS_ALPHA(c) || !scan_mathfunc(sc, &func_id))
+			if (!SAU_IS_ALPHA(c) || !scan_mathfunc(sc, &func_id))
 				goto REJECT; /* silent NaN (nothing was read) */
 			switch (sauMath_params[func_id]) {
 			case SAU_MATH_VAL_F:
 				num = scan_num_r(o, NUMEXP_SUB, level+1);
+				if (o->skip_num) break; // parse only, no call
 				num = sauMath_symbols[func_id].val(num);
 				break;
 			case SAU_MATH_STATE_F:
@@ -279,15 +298,18 @@ static double scan_num_r(struct NumParser *restrict o,
 "math function '%s()' takes no arguments", sauMath_names[func_id]);
 					goto REJECT;
 				}
+				if (o->skip_num) break; // parse only, no call
 				num = sauMath_symbols[func_id]
 					.state(&sl->math_state);
 				break;
 			case SAU_MATH_STATEVAL_F:
 				num = scan_num_r(o, NUMEXP_SUB, level+1);
+				if (o->skip_num) break; // parse only, no call
 				num = sauMath_symbols[func_id]
 					.stateval(&sl->math_state, num);
 				break;
 			case SAU_MATH_NOARG_F:
+				if (o->skip_num) break; // parse only, no call
 				num = sauMath_symbols[func_id].noarg();
 				break;
 			default:
@@ -377,7 +399,7 @@ REJECT: {
 }
 static sauNoinline bool scan_num(sauScanner *restrict o,
 		sauScanNumConst_f scan_numconst, double *restrict var) {
-	struct NumParser np = {o, scan_numconst, o->sf, false, false, false};
+	struct NumParser np = {o, scan_numconst, o->sf, .skip_num = false};
 	double num = scan_num_r(&np, NUMEXP_SUB, 0);
 	if (np.has_nannum) {
 		sauScanner_warning(o, &np.sf_start,
@@ -393,6 +415,16 @@ static sauNoinline bool scan_num(sauScanner *restrict o,
 		return false;
 	}
 	*var = num;
+	return true;
+}
+static sauNoinline bool skip_num(sauScanner *restrict o,
+		sauScanNumConst_f scan_numconst) {
+	struct NumParser np = {o, scan_numconst, o->sf, .skip_num = true};
+	double num = scan_num_r(&np, NUMEXP_SUB, 0);
+	if (np.has_nannum)
+		return true;
+	if (isnan(num)) /* silent NaN (ignored blank expression) */
+		return false;
 	return true;
 }
 
@@ -1246,7 +1278,7 @@ static bool parse_so_freq(sauParser *restrict o, bool rel_freq) {
 		if (!SAU_IS_ASCIIVISIBLE(c))
 			return true;
 		if (c < 'A' || c > 'G') {
-			if (IS_DIGIT(c)) {
+			if (SAU_IS_DIGIT(c)) {
 				sauScanner_ungetc(sc);
 				goto K_NUM;
 			}
@@ -1541,7 +1573,7 @@ static bool parse_op_mode(sauParser *restrict o) {
 		}
 		if (!(level >= 0) && ++matched) {
 			c = sauScanner_retc(sc);
-			if (IS_DIGIT(c)) scan_int_in_range(sc, 0, 9, 9,
+			if (SAU_IS_DIGIT(c)) scan_int_in_range(sc, 0, 9, 9,
 					&level, "mode level");
 			else --matched;
 		}
@@ -1676,6 +1708,40 @@ static void parse_in_op_step(sauParser *restrict o) {
 	PARSE_IN__TAIL()
 }
 
+static bool parse_setvar(sauParser *restrict o, bool no_override,
+		sauScanFrame *sf_first, const char *restrict str_op) {
+	struct ParseLevel *pl = o->cur_pl;
+	uint8_t suffc;
+	sauScanNumConst_f numconst_f = NULL;
+	sauSymitem *var = pl->set_var;
+	if (!var) {
+		warn_expected_before(o->sc, sf_first, "variable", str_op);
+		return true; // rejected expression
+	}
+	pl->pl_flags &= ~PL_WARN_NOSPACE; /* OK before */
+	pl->set_var = NULL; // used here
+	sauScanner_skipws(o->sc);
+	switch ((suffc = sauScanner_get_suffc(o->sc))) {
+	case 'c': numconst_f = scan_chanmix_const; break;
+	case 'f': numconst_f = scan_note_const; break;
+	case 'p': numconst_f = scan_phase_const; break;
+	default: if (suffc) sauScanner_ungetc(o->sc); break;
+	}
+	if (numconst_f) sauScanner_skipws(o->sc);
+	if (no_override && var->data_use == SAU_SYM_DATA_NUM) {
+		if (skip_num(o->sc, numconst_f))
+			return false;
+	} else {
+		if (scan_num(o->sc, numconst_f, &var->data.num)) {
+			var->data_use = SAU_SYM_DATA_NUM;
+			return false;
+		}
+	}
+	sauScanner_warning(o->sc, NULL,
+"missing right-hand value for \"'%s%s\"", var->sstr->key, str_op);
+	return true; // rejected expression
+}
+
 static bool parse_level(sauParser *restrict o,
 		uint8_t use_type, uint8_t newscope, uint8_t close_c) {
 	struct ParseLevel pl;
@@ -1712,29 +1778,17 @@ static bool parse_level(sauParser *restrict o,
 			warn_opening_disallowed(sc, '<');
 			pl.pl_flags &= ~PL_WARN_NOSPACE; /* OK around */
 			continue;
-		case '=': {
-			uint8_t suffc;
-			sauScanNumConst_f numconst_f = NULL;
-			sauSymitem *var = pl.set_var;
-			if (!var) goto INVALID;
-			pl.pl_flags &= ~PL_WARN_NOSPACE; /* OK before */
-			pl.set_var = NULL; // used here
-			sauScanner_skipws(sc);
-			switch ((suffc = sauScanner_get_suffc(sc))) {
-			case 'c': numconst_f = scan_chanmix_const; break;
-			case 'f': numconst_f = scan_note_const; break;
-			case 'p': numconst_f = scan_phase_const; break;
-			default: if (suffc) sauScanner_ungetc(sc); break;
-			}
-			if (numconst_f) sauScanner_skipws(sc);
-			if (scan_num(sc, numconst_f, &var->data.num))
-				var->data_use = SAU_SYM_DATA_NUM;
-			else
-				sauScanner_warning(sc, NULL,
-"missing right-hand value for \"'%s=\"", var->sstr->key);
-			break; }
+		case '=':
+			if (parse_setvar(o, false, &sf_first, "="))
+				continue; /* no space OK after */
+			break;
 		case '>':
 			warn_closing_without_opening(sc, '>', '<');
+			break;
+		case '?':
+			if (!sauScanner_tryc(sc, '=')) goto INVALID;
+			if (parse_setvar(o, true, &sf_first, "?="))
+				continue; /* no space OK after */
 			break;
 		case '@': {
 			if (sauScanner_tryc(sc, '[')) {
