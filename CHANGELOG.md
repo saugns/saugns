@@ -18,13 +18,29 @@ Command-line options:
 
 Language changes:
  * Variable syntax.
+    - Change numerical variable assignment syntax to use a `$`
+      as leading character: `$name=...`, unlike object labels.
+      [Add backward-compatibility deprecated alias, `'name=`.]
+    - Labels (`'name `, `@name`) and variables (`$name`) won't
+      conflict if they have the same name any longer. Now they
+      are separate rather than one dynamically typed variable.
     - Add `?=` non-overriding numerical assignment; only takes
       effect for a variable that doesn't hold a number. Has no
       side effects when skipping evaluation of the expression.
+    - Add `$?name` construct warning when a numerical variable
+      isn't already set to a number. Can be used by itself, or
+      combined with assignment (`$?name=...`) to also do `?=`.
+      If used by itself, the script won't run on failed check.
 
 The new cli option and SAU `?=` syntax work together, to allow
 passing named, numerical arguments to a script. A script makes
 predefining a value optional by using `?=` to set its default.
+Using `$?name` requires that `name` be passed, used by itself.
+
+Old scripts can be updated to use the newer assignment syntax,
+without any manual adjustment, using regex search-and-replace:
+
+`perl -pi -e "s/'([A-Za-z0-9_]+\\s*)=/\\$\\1=/g;" paths...`
 
 v0.4.3 (2024-04-03)
 -------------------
