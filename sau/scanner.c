@@ -100,21 +100,9 @@ void sauScanner_close(sauScanner *restrict o) {
 	sauFile_close(o->f);
 }
 
-/* Basic character types. */
-#define IS_LOWER(c) ((c) >= 'a' && (c) <= 'z')
-#define IS_UPPER(c) ((c) >= 'A' && (c) <= 'Z')
-#define IS_DIGIT(c) ((c) >= '0' && (c) <= '9')
-#define IS_ALPHA(c) (IS_LOWER(c) || IS_UPPER(c))
-#define IS_ALNUM(c) (IS_ALPHA(c) || IS_DIGIT(c))
-#define IS_SPACE(c) ((c) == ' ' || (c) == '\t')
-#define IS_LNBRK(c) ((c) == '\n' || (c) == '\r')
-
-/* Valid characters in identifiers. */
-#define IS_SYMCHAR(c) (IS_ALNUM(c) || (c) == '_')
-
 static uint8_t filter_symchar(sauFile *restrict o sauMaybeUnused,
 		uint8_t c) {
-	return IS_SYMCHAR(c) ? c : 0;
+	return sau_is_symchar(c) ? c : 0;
 }
 
 /*
@@ -137,7 +125,7 @@ static bool read_symstr(sauFile *restrict f,
 			break;
 		}
 		uint8_t c = sauFile_GETC(f);
-		if (!IS_SYMCHAR(c)) {
+		if (!sau_is_symchar(c)) {
 			sauFile_DECP(f);
 			break;
 		}
@@ -837,7 +825,7 @@ uint8_t sauScanner_get_suffc(sauScanner *restrict o) {
 	uint8_t c = sauFile_RETC(f), next_c;
 	sauScanFilter_f filter_f = sauScanner_getfilter(o, c);
 	if (!filter_f) {
-		if (!IS_ALPHA(c))
+		if (!SAU_IS_ALPHA(c))
 			return 0;
 		pre_get_setup(o);
 		sauFile_INCP(f);
@@ -846,10 +834,10 @@ uint8_t sauScanner_get_suffc(sauScanner *restrict o) {
 		prepare_frame(o);
 	} else {
 		c = sauScanner_filterc(o, c, filter_f);
-		if (!IS_ALPHA(c)) goto UNGET_C;
+		if (!SAU_IS_ALPHA(c)) goto UNGET_C;
 	}
 	next_c = sauScanner_retc(o);
-	if (IS_SYMCHAR(next_c)) goto UNGET_C;
+	if (sau_is_symchar(next_c)) goto UNGET_C;
 	return c;
 
 UNGET_C:
