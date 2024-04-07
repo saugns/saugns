@@ -211,6 +211,9 @@ bool sauScanner_get_symstr(sauScanner *restrict o,
 		sauSymstr **restrict symstrp);
 uint8_t sauScanner_skipws(sauScanner *restrict o);
 
+void sauScanner_notice(const sauScanner *restrict o,
+		const sauScanFrame *restrict sf,
+		const char *restrict fmt, ...) sauPrintflike(3, 4);
 void sauScanner_warning(const sauScanner *restrict o,
 		const sauScanFrame *restrict sf,
 		const char *restrict fmt, ...) sauPrintflike(3, 4);

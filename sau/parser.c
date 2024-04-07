@@ -26,21 +26,24 @@
 #define MUSKEY(note, notemod) (((note) * 9) + 4 + (notemod))
 #define MUSNOTE(key) ((key) / 9)
 
+#define SAU_SYM__ITEMS(X) \
+	X(VAR, "variable") \
+	X(LABEL, "label") \
+	X(MATH_ID, "math symbol") \
+	X(LINE_ID, "line shape") \
+	X(WAVE_ID, "wave type") \
+	X(NOISE_ID, "noise type") \
+	//
+#define SAU_SYM__X_ID(ID, STR) SAU_SYM_##ID,
+#define SAU_SYM__X_STR(ID, STR) STR,
+
 enum {
-	SAU_SYM_VAR = 0,
-	SAU_SYM_MATH_ID,
-	SAU_SYM_LINE_ID,
-	SAU_SYM_WAVE_ID,
-	SAU_SYM_NOISE_ID,
+	SAU_SYM__ITEMS(SAU_SYM__X_ID)
 	SAU_SYM_TYPES
 };
 
-static const char *const scan_sym_labels[SAU_SYM_TYPES] = {
-	"variable",
-	"math symbol",
-	"line shape",
-	"wave type",
-	"noise type",
+static const char *const scan_sym_typelabels[SAU_SYM_TYPES] = {
+	SAU_SYM__ITEMS(SAU_SYM__X_STR)
 };
 
 struct ScanLookup {
@@ -197,14 +200,14 @@ static uint8_t scan_filter_hashcommands(sauScanner *restrict o, uint8_t c) {
 
 static sauSymitem *scan_sym(sauScanner *restrict o, uint32_t type_id,
 		const char *const*restrict help_stra, bool optional) {
-	const char *type_label = scan_sym_labels[type_id];
+	const char *type_label = scan_sym_typelabels[type_id];
 	sauSymstr *s = NULL;
 	sauScanner_get_symstr(o, &s);
 	if (!s) goto NOT_FOUND;
 	sauSymitem *item = sauSymtab_find_item(o->symtab, s, type_id);
 	if (!item) {
-		if (type_id != SAU_SYM_VAR) goto NOT_FOUND;
-		item = sauSymtab_add_item(o->symtab, s, SAU_SYM_VAR);
+		if (type_id > SAU_SYM_LABEL) goto NOT_FOUND;
+		item = sauSymtab_add_item(o->symtab, s, type_id);
 	}
 	return item;
 NOT_FOUND:
@@ -239,6 +242,19 @@ static bool scan_mathfunc(sauScanner *restrict o, size_t *restrict found_id) {
 	return false;
 }
 
+static sauSymitem *scan_numvar(sauScanner *restrict o) {
+	sauSymitem *var = scan_sym(o, SAU_SYM_VAR, NULL, false);
+	if (!var)
+		return NULL;
+	if (var->data_use != SAU_SYM_DATA_NUM) {
+		sauScanner_warning(o, NULL,
+"variable '$%s' in numerical expression doesn't hold a number",
+				var->sstr->key);
+		return NULL;
+	}
+	return var;
+}
+
 struct NumParser {
 	sauScanner *sc;
 	sauScanNumConst_f numconst_f;
@@ -271,13 +287,8 @@ static double scan_num_r(struct NumParser *restrict o,
 		if (isnan(num)) goto DEFER;
 		if (c == '-') num = -num;
 	} else if (c == '$') {
-		sauSymitem *var = scan_sym(sc, SAU_SYM_VAR, NULL, false);
+		sauSymitem *var = scan_numvar(sc);
 		if (!var) goto REJECT;
-		if (var->data_use != SAU_SYM_DATA_NUM) {
-			sauScanner_warning(sc, NULL,
-"variable '$%s' in numerical expression doesn't hold a number", var->sstr->key);
-			goto REJECT;
-		}
 		num = var->data.num;
 	} else {
 		size_t func_id = 0, read_len = 0;
@@ -708,6 +719,7 @@ typedef struct sauParser {
 	/* node state */
 	struct ParseLevel *cur_pl;
 	sauScriptEvData *events, *last_event, *group_event;
+	bool script_fail;
 	uint32_t root_op_obj;
 	ObjInfoArr obj_arr;
 	ParseConv pc;
@@ -789,7 +801,7 @@ struct ParseLevel {
 	sauScriptEvData *event;
 	sauScriptOpData *operator;
 	sauScriptObjRef *ev_last;
-	sauSymitem *set_var;
+	sauSymitem *set_label;
 	/* timing/delay */
 	sauScriptEvData *main_ev; /* if events are nested, for grouping... */
 	uint32_t add_wait_ms, carry_wait_ms; /* added for next event */
@@ -984,12 +996,12 @@ static void link_ev_obj(struct ParseLevel *restrict pl,
 		nest->last_item = obj;
 	}
 	/*
-	 * Assign to variable?
+	 * Assign to label?
 	 */
-	if (pl->set_var != NULL) {
-		pl->set_var->data_use = SAU_SYM_DATA_OBJ;
-		pl->set_var->data.obj = obj;
-		pl->set_var = NULL;
+	if (pl->set_label != NULL) {
+		pl->set_label->data_use = SAU_SYM_DATA_OBJ;
+		pl->set_label->data.obj = obj;
+		pl->set_label = NULL;
 	}
 }
 
@@ -1146,7 +1158,7 @@ static void enter_level(sauParser *restrict o,
 static void leave_level(sauParser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
 	end_operator(o);
-	if (pl->set_var != NULL) {
+	if (pl->set_label != NULL) {
 		sauScanner_warning(o->sc, NULL,
 				"ignoring variable assignment without object");
 	}
@@ -1682,18 +1694,10 @@ static void parse_in_op_step(sauParser *restrict o) {
 	PARSE_IN__TAIL()
 }
 
-static bool parse_setvar(sauParser *restrict o, bool no_override,
-		sauScanFrame *sf_first, const char *restrict str_op) {
-	struct ParseLevel *pl = o->cur_pl;
+static bool parse_numvar_rhs(sauParser *restrict o, sauSymitem *restrict var,
+		bool check_unset, bool no_override) {
 	uint8_t suffc;
 	sauScanNumConst_f numconst_f = NULL;
-	sauSymitem *var = pl->set_var;
-	if (!var) {
-		warn_expected_before(o->sc, sf_first, "variable", str_op);
-		return true; // rejected expression
-	}
-	pl->pl_flags &= ~PL_WARN_NOSPACE; /* OK before */
-	pl->set_var = NULL; // used here
 	sauScanner_skipws(o->sc);
 	switch ((suffc = sauScanner_get_suffc(o->sc))) {
 	case 'c': numconst_f = scan_chanmix_const; break;
@@ -1702,7 +1706,7 @@ static bool parse_setvar(sauParser *restrict o, bool no_override,
 	default: if (suffc) sauScanner_ungetc(o->sc); break;
 	}
 	if (numconst_f) sauScanner_skipws(o->sc);
-	if (no_override && var->data_use == SAU_SYM_DATA_NUM) {
+	if (!var || (no_override && var->data_use == SAU_SYM_DATA_NUM)) {
 		if (skip_num(o->sc, numconst_f))
 			return false;
 	} else {
@@ -1711,9 +1715,58 @@ static bool parse_setvar(sauParser *restrict o, bool no_override,
 			return false;
 		}
 	}
-	sauScanner_warning(o->sc, NULL,
-"missing right-hand value for \"'%s%s\"", var->sstr->key, str_op);
+	if (var) sauScanner_warning(o->sc, NULL,
+			"missing right-hand side value for \"$%s%s%s\"",
+			check_unset ? "?" : "", var->sstr->key,
+			(!check_unset && no_override) ? "?=" : "=");
 	return true; // rejected expression
+}
+
+static bool parse_numvar_lhs(sauParser *restrict o) {
+	bool check_unset = sauScanner_tryc(o->sc, '?'), was_unset = false;
+	sauSymitem *var = scan_sym(o->sc, SAU_SYM_VAR, NULL, false);
+	if (check_unset && var && var->data_use != SAU_SYM_DATA_NUM)
+		was_unset = true;
+	bool mark_fail = was_unset;
+	bool no_override = check_unset;
+	if (var) {
+		sauScanner_skipws(o->sc);
+		if (sauScanner_tryc(o->sc, '?')) {
+			if (!check_unset)
+				no_override = true;
+			else
+				sauScanner_warning(o->sc, NULL,
+						"'$?%s' needs no '?' after",
+						var->sstr->key);
+		}
+	}
+	if (sauScanner_tryc(o->sc, '=')) {
+		if (!parse_numvar_rhs(o, var, check_unset, no_override))
+			mark_fail = false;
+	} else if (!check_unset) {
+		if (var) sauScanner_warning(o->sc, NULL,
+				"variable '$%s' reference does nothing",
+				var->sstr->key);
+		if (no_override) sauScanner_ungetc(o->sc);
+	}
+	if (was_unset) {
+		if (mark_fail) {
+			o->script_fail = true;
+			o->sc->s_flags |= SAU_SCAN_S_QUIET; // silence warnings
+			sauScanner_notice(o->sc, NULL,
+"usage: variable '$%s' in script wasn't set;\n"
+"\ttry passing it to the script as an option, \"%s=...\"",
+					var->sstr->key, var->sstr->key);
+		} else {
+			sauScanner_notice(o->sc, NULL,
+"usage: variable '$%s' in script wasn't set;\n"
+"\tusing the fallback value of %f; to set,\n"
+"\tpass it to the script as an option, \"%s=...\"",
+					var->sstr->key,
+					var->data.num, var->sstr->key);
+		}
+	}
+	return var; // skipped whitespace?
 }
 
 static bool parse_level(sauParser *restrict o,
@@ -1733,17 +1786,32 @@ static bool parse_level(sauParser *restrict o,
 		case SAU_SCAN_LNBRK:
 			pl.pl_flags &= ~PL_WARN_NOSPACE;
 			continue;
+		case '$':
+			if (parse_numvar_lhs(o))
+				continue; /* no space is OK after */
+			break;
 		case '\'':
 			/*
-			 * Variable assignment, part 1; set to what follows.
+			 * Label assignment, part 1; set to what follows.
 			 */
-			if (pl.set_var != NULL) {
+			if (pl.set_label != NULL) {
 				sauScanner_warning(sc, NULL,
-"ignoring variable assignment to variable assignment");
+"ignoring label assignment to label assignment");
 				break;
 			}
-			pl.set_var = scan_sym(sc, SAU_SYM_VAR, NULL, false);
-			break;
+			pl.set_label = scan_sym(sc, SAU_SYM_LABEL, NULL, false);
+			sauScanner_skipws(o->sc);
+			if (sauScanner_tryc(sc, '=')) {
+				sauSymitem *item = sauSymtab_find_item(o->st,
+						pl.set_label->sstr,SAU_SYM_VAR);
+				if (!item) item = sauSymtab_add_item(o->st,
+						pl.set_label->sstr,SAU_SYM_VAR);
+				warn_deprecated(sc,
+					"\"'name=value\"", "\"$name=value\"");
+				parse_numvar_rhs(o, item, false, false);
+				pl.set_label = NULL; // used here
+			}
+			continue; /* no space is OK after, always (skipws) */
 		case '/':
 			if (NestArr_tip(&o->nest)) goto INVALID;
 			parse_waittime(o);
@@ -1753,16 +1821,10 @@ static bool parse_level(sauParser *restrict o,
 			pl.pl_flags &= ~PL_WARN_NOSPACE; /* OK around */
 			continue;
 		case '=':
-			if (parse_setvar(o, false, &sf_first, "="))
-				continue; /* no space OK after */
+			warn_expected_before(sc, &sf_first, "variable", "=");
 			break;
 		case '>':
 			warn_closing_without_opening(sc, '>', '<');
-			break;
-		case '?':
-			if (!sauScanner_tryc(sc, '=')) goto INVALID;
-			if (parse_setvar(o, true, &sf_first, "?="))
-				continue; /* no space OK after */
 			break;
 		case '@': {
 			if (sauScanner_tryc(sc, '[')) {
@@ -1782,23 +1844,23 @@ static bool parse_level(sauParser *restrict o,
 				break;
 			}
 			/*
-			 * Variable reference (get and use object).
+			 * Label reference (get and use object).
 			 */
 			pl.sub_f = NULL;
-			sauSymitem *var = scan_sym(sc, SAU_SYM_VAR,
+			sauSymitem *label = scan_sym(sc, SAU_SYM_LABEL,
 					NULL, false);
-			if (var != NULL) {
-				if (var->data_use == SAU_SYM_DATA_OBJ) {
-					sauScriptOpData *op = var->data.obj;
+			if (label != NULL) {
+				if (label->data_use == SAU_SYM_DATA_OBJ) {
+					sauScriptOpData *op = label->data.obj;
 					if (op->ref.obj_type == SAU_POBJT_OP) {
 						begin_operator(o, op, false, 0);
 						op = pl.operator;
 						pl.sub_f = parse_in_op_step;
 					}
-					var->data.obj = op; /* update */
+					label->data.obj = op; /* update */
 				} else {
 					sauScanner_warning(sc, NULL,
-"reference '@%s' doesn't point to an object", var->sstr->key);
+"label '@%s' doesn't refer to any object", label->sstr->key);
 				}
 			}
 			break; }
@@ -1890,6 +1952,11 @@ static const char *parse_file(sauParser *restrict o,
 	parse_level(o, SAU_POP_N_carr, SCOPE_GROUP, 0);
 	name = sc->f->path;
 	sauScanner_close(sc);
+	if (o->script_fail) {
+		sauScanner_notice(o->sc, NULL,
+				"failed requirement, script will be skipped");
+		return NULL;
+	}
 	return name;
 }
 
