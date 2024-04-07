@@ -7,6 +7,28 @@ is a shorter change log with only the SAU language changes.
 Pre-release
 -----------
 
+Cli and variable feature expansion.
+
+Command-line options:
+ * Add "variable=value" option, to set variables and pass them
+   to scripts. Each variable is passed as `$variable`, and the
+   name must be valid for use as a SAU variable. Each value is
+   restricted to only a number which may have a decimal point.
+ * Make `-e` apply only to scripts after, not to every script.
+
+Language changes:
+ * Variable syntax.
+    - Add `?=` non-overriding numerical assignment; only takes
+      effect for a variable that doesn't hold a number. Has no
+      side effects when skipping evaluation of the expression.
+
+The new cli option and SAU `?=` syntax work together, to allow
+passing named, numerical arguments to a script. A script makes
+predefining a value optional by using `?=` to set its default.
+
+v0.4.3 (2024-04-03)
+-------------------
+
 Add `N` noise generator. Small redesign steps.
 
 Language changes:

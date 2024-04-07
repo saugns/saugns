@@ -591,6 +591,11 @@ Variables:
 	numerical expression using "$name". (It's possible to retrieve such
 	a variable value as part of redefining its value.) Whitespace is
 	allowed both before and after the '='.
+		Alternatively, a non-overriding numerical assignment (mostly
+	useful for passing options to a script) uses '?=' in place of '='.
+	This means that the assignment is done only if the variable doesn't
+	hold a number, otherwise the assignment is ignored (and no functions
+	in the expression are called then, meaning it has no side effects).
 		Numerical expressions for some named parameters can use
 	context-sensitive constants; to allow such when assigning a variable,
 	one of the below parameter namespace names can be added after the

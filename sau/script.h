@@ -126,11 +126,20 @@ enum {
 	SAU_SOPT_NOTE_SCALE     = 1U<<8,
 };
 
+/** String and number pair for predefined values passed as arguments. */
+typedef struct sauScriptPredef {
+	const char *key;
+	uint32_t len;
+	double val;
+} sauScriptPredef;
+
 /** Specifies a script to parse (and possibly process further). */
 typedef struct sauScriptArg {
 	const char *str;
 	bool is_path : 1;
 	bool no_time : 1;
+	sauScriptPredef *predef;
+	size_t predef_count;
 } sauScriptArg;
 
 /**
