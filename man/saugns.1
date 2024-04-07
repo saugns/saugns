@@ -17,12 +17,14 @@
 .Op Fl \-stdout
 .Op Fl d
 .Op Fl p
+.Op Ar variable\| Ns Cm \&= Ns Ar value
 .Op Fl e
 .Ar script ...
 .Nm saugns
 .Fl c
 .Op Fl d
 .Op Fl p
+.Op Ar variable\| Ns Cm \&= Ns Ar value
 .Op Fl e
 .Ar script ...
 .Sh DESCRIPTION
@@ -64,7 +66,7 @@ Check scripts only; parse, handle \-p, but don't interpret unlike \-m.
 Deterministic mode; ensures unvarying script output from same input.
 This only affects the handling of scripts which use specific features.
 .It Fl e
-Evaluate strings instead of files.
+Evaluate strings instead of files. Applies to scripts after.
 .It Fl h
 Print help for topic, or usage information and a list of topics if none.
 .It Fl m
@@ -91,6 +93,9 @@ Be verbose.
 Mentions every script processed.
 .It Fl V
 Print version.
+.It Ar variable\| Ns Cm \&= Ns Ar value
+Set variable, passed on to scripts as "$variable".
+Each value must be a number, with or without a decimal point.
 .El
 .Sh ENVIRONMENT
 .Bl -tag -width OSS_AUDIODEV

@@ -70,6 +70,27 @@
 /** Is \p c a visible non-whitespace 7-bit ASCII character? */
 #define SAU_IS_ASCIIVISIBLE(c) ((c) >= '!' && (c) <= '~')
 
+/** Is \p c a lowercase ASCII letter? */
+#define SAU_IS_LOWER(c) ((c) >= 'a' && (c) <= 'z')
+
+/** Is \p c an uppercase ASCII letter? */
+#define SAU_IS_UPPER(c) ((c) >= 'A' && (c) <= 'Z')
+
+/** Is \p c a digit? */
+#define SAU_IS_DIGIT(c) ((c) >= '0' && (c) <= '9')
+
+/** Is \p c an ASCII letter? */
+#define SAU_IS_ALPHA(c) (SAU_IS_LOWER(c) || SAU_IS_UPPER(c))
+
+/** Is \p c an ASCII alphanumeric symbol? */
+#define SAU_IS_ALNUM(c) (SAU_IS_ALPHA(c) || SAU_IS_DIGIT(c))
+
+/** Is \p c an ASCII space or tab? */
+#define SAU_IS_SPACE(c) ((c) == ' ' || (c) == '\t')
+
+/** Is \p c an ASCII linebreak or carriage return? */
+#define SAU_IS_LNBRK(c) ((c) == '\n' || (c) == '\r')
+
 /*
  * Utility functions.
  */
