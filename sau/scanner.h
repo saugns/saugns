@@ -221,3 +221,8 @@ void sauScanner_warning_at(const sauScanner *restrict o,
 		int got_at, const char *restrict fmt, ...) sauPrintflike(3, 4);
 void sauScanner_error_at(sauScanner *restrict o,
 		int got_at, const char *restrict fmt, ...) sauPrintflike(3, 4);
+
+/** Valid characters in identifiers. */
+static inline bool sau_is_symchar(char c) {
+	return SAU_IS_ALNUM(c) || (c) == '_';
+}
