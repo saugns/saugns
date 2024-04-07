@@ -1,5 +1,5 @@
 // The 'p' for the innermost 'R' varies the sound; 0/4 is sharper than 2/4.
-'f=10/3
+'f?=10/3
 Rcos mg f$f t60 p[
 	Wsin r10 a4 p[Wsin r-2.r+2[Rlin mt p2/4 f20*$f]]
 ]
