@@ -1,5 +1,5 @@
 /* SAU library: Text file buffer module.
- * Copyright (c) 2014, 2017-2023 Joel K. Pettersson
+ * Copyright (c) 2014, 2017-2024 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -269,10 +269,6 @@ static void ref_fclose(sauFile *restrict o) {
 	}
 }
 
-#define IS_SPACE(c) ((c) == ' ' || (c) == '\t')
-#define IS_LNBRK(c) ((c) == '\n' || (c) == '\r')
-#define IS_DIGIT(c) ((c) >= '0' && (c) <= '9')
-
 /**
  * Read characters into \p buf. At most \p buf_len - 1 characters
  * are read, and the string is always NULL-terminated.
@@ -346,7 +342,7 @@ bool sauFile_geti(sauFile *restrict o,
 		c = sauFile_GETC(o);
 		++len;
 	}
-	if (!IS_DIGIT(c)) {
+	if (!SAU_IS_DIGIT(c)) {
 		sauFile_UNGETN(o, len);
 		if (lenp) *lenp = 0;
 		return true;
@@ -358,7 +354,7 @@ bool sauFile_geti(sauFile *restrict o,
 			else num = new_num;
 			c = sauFile_GETC(o);
 			++len;
-		} while (IS_DIGIT(c));
+		} while (SAU_IS_DIGIT(c));
 		if (truncate) num = INT32_MIN;
 	} else {
 		do {
@@ -367,7 +363,7 @@ bool sauFile_geti(sauFile *restrict o,
 			else num = new_num;
 			c = sauFile_GETC(o);
 			++len;
-		} while (IS_DIGIT(c));
+		} while (SAU_IS_DIGIT(c));
 		if (truncate) num = INT32_MAX;
 	}
 	*var = num;
@@ -407,19 +403,19 @@ bool sauFile_getd(sauFile *restrict o,
 		++len;
 	}
 	if (c != '.') {
-		if (!IS_DIGIT(c)) goto NO_NUM;
+		if (!SAU_IS_DIGIT(c)) goto NO_NUM;
 		do {
 			num_a = num_a * 10.f + (c - '0');
 			c = sauFile_GETC(o);
 			++len;
-		} while (IS_DIGIT(c));
+		} while (SAU_IS_DIGIT(c));
 		if (c != '.') goto DONE;
 		c = sauFile_GETC(o);
 #if GETD_ALLOW_TAIL_DOT
 		++len;
-		if (!IS_DIGIT(c)) goto DONE;
+		if (!SAU_IS_DIGIT(c)) goto DONE;
 #else
-		if (!IS_DIGIT(c)) {
+		if (!SAU_IS_DIGIT(c)) {
 			sauFile_UNGETN(o, 2);
 			sauFile_INCP(o);
 			goto DONE;
@@ -428,9 +424,9 @@ bool sauFile_getd(sauFile *restrict o,
 	} else {
 		c = sauFile_GETC(o);
 		++len;
-		if (!IS_DIGIT(c)) goto NO_NUM;
+		if (!SAU_IS_DIGIT(c)) goto NO_NUM;
 	}
-	while (IS_DIGIT(c)) {
+	while (SAU_IS_DIGIT(c)) {
 		int64_t b = num_b * 10 + (c - '0');
 		if (num_b <= b) {
 			num_b = b;
@@ -480,7 +476,7 @@ size_t sauFile_skipspace(sauFile *restrict o) {
 	size_t i = 0;
 	for (;;) {
 		uint8_t c = sauFile_GETC(o);
-		if (!IS_SPACE(c)) break;
+		if (!SAU_IS_SPACE(c)) break;
 		++i;
 	}
 	sauFile_DECP(o);
@@ -496,7 +492,7 @@ size_t sauFile_skipline(sauFile *restrict o) {
 	size_t i = 0;
 	for (;;) {
 		uint8_t c = sauFile_GETC(o);
-		if (IS_LNBRK(c) ||
+		if (SAU_IS_LNBRK(c) ||
 			(c <= SAU_FILE_MARKER && sauFile_AFTER_EOF(o))) break;
 		++i;
 	}

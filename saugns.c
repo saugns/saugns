@@ -17,6 +17,7 @@
 
 #include "saugns.h"
 #include <sau/script.h>
+#include <sau/scanner.h> // character tests
 #include <sau/arrtype.h>
 #include <sau/generator.h>
 #include <sau/math.h>
@@ -69,6 +70,7 @@ static void print_help(const char *restrict topic,
 	sau_print_names(contents, "\t", stdout);
 }
 
+sauArrType(sauScriptPredefArr, sauScriptPredef, )
 sauArrType(sauScriptArgArr, sauScriptArg, )
 sauArrType(sauProgramArr, sauProgram*, )
 
@@ -78,8 +80,8 @@ sauArrType(sauProgramArr, sauProgram*, )
 static void print_usage(bool h_arg, const char *restrict h_type) {
 	fputs(
 "Usage: "NAME" [-a | -m] [-r <srate>] [--mono] [-o <file>] [--stdout]\n"
-"              [-d] [-p] [-e] <script>...\n"
-"       "NAME" -c [-d] [-p] [-e] <script>...\n",
+"              [-d] [-p] [variable=value] [-e] <script>...\n"
+"       "NAME" -c [-d] [-p] [variable=value] [-e] <script>...\n",
 		h_arg ? stdout : stderr);
 	if (!h_type)
 		fputs(
@@ -98,10 +100,11 @@ static void print_usage(bool h_arg, const char *restrict h_type) {
 "  -c \tCheck scripts only; parse, handle -p, but don't interpret unlike -m.\n"
 "  -d \tDeterministic mode; ensures unvarying script output from same input.\n"
 "  -p \tPrint info for scripts read.\n"
-"  -e \tEvaluate strings instead of files.\n"
+"  -e \tEvaluate strings instead of files. Applies to scripts after.\n"
 "  -h \tPrint this and list help topics, or print help for '-h <topic>'.\n"
 "  -v \tBe verbose.\n"
-"  -V \tPrint version.\n",
+"  -V \tPrint version.\n"
+"  variable=value\tSet variable, passed on to scripts as \"$variable\".\n",
 			h_arg ? stdout : stderr);
 	if (h_arg) {
 		const char *description = (h_type != NULL) ?
@@ -129,6 +132,42 @@ static bool get_iarg(const char *restrict str, int32_t *i) {
 	*i = strtol(str, &endp, 10);
 	if (errno || endp == str || *endp)
 		return false;
+	return true;
+}
+
+/*
+ * Read a predefine value argument from the given string.
+ * Values are set to \p def, including reusing \p str.
+ *
+ * \return true, or false on error
+ */
+static bool get_defarg(sauScriptPredef *restrict def,
+		const char *restrict str) {
+	bool eq = false;
+	uint32_t i, len = 0;
+	double val;
+	const char *valp;
+	char *endp;
+	int c;
+	for (i = 0; str[i]; ++i) {
+		c = str[i];
+		if (c == '=') {
+			eq = true;
+			break;
+		}
+		else if (!sau_is_symchar(c))
+			return false;
+	}
+	if (!eq)
+		return false;
+	len = i;
+	valp = &str[len + 1];
+	val = strtod(valp, &endp);
+	if (endp == valp || *endp != '\0')
+		return false;
+	*def = (sauScriptPredef){
+		.key = str, .len = len, .val = val
+	};
 	return true;
 }
 
@@ -251,9 +290,11 @@ static int getopt(int argc, char *const*restrict argv,
 static bool parse_args(int argc, char **restrict argv,
 		uint32_t *restrict flags,
 		sauScriptArgArr *restrict script_args,
+		sauScriptPredefArr *restrict predef_args,
 		const char **restrict wav_path,
 		uint32_t *restrict srate) {
-	struct Opt opt = (struct Opt){0};
+	struct Opt opt = {0};
+	sauScriptPredef predef = {0};
 	int c;
 	int32_t i;
 	bool dashdash = false;
@@ -358,22 +399,43 @@ REPARSE:
 			break;
 		}
 		const char *str = argv[opt.ind];
-		if (!dashdash && c != -1 && str[0] == '-') goto REPARSE;
+		if (!dashdash) {
+			if (c != -1 && str[0] == '-') goto REPARSE;
+			/*
+			 * Check for and read "variable=number" string.
+			 */
+			if (!(*flags & OPT_EVAL_STRING) && strchr(str, '=')) {
+				if (get_defarg(&predef, str)) {
+					if (!sauScriptPredefArr_push(
+							predef_args, &predef))
+						goto ABORT;
+				} else {
+					fprintf(stderr,
+				"%s: malformed \"variable=number\" string\n",
+							argv[0]);
+				}
+				goto NEXT_POSTOPT;
+			}
+		}
 		sauScriptArg *arg = sauScriptArgArr_add(script_args);
 		if (!arg) goto ABORT;
 		arg->str = str;
+		arg->is_path = !(*flags & OPT_EVAL_STRING);
+	NEXT_POSTOPT:
 		++opt.ind;
 		c = 0; /* only goto REPARSE after advancing, to prevent hang */
 	}
 	for (size_t i = 0; i < script_args->count; ++i) {
 		sauScriptArg *arg = &script_args->a[i];
-		arg->is_path = !(*flags & OPT_EVAL_STRING);
 		arg->no_time = *flags & OPT_DETERMINISTIC;
+		arg->predef = predef_args->a;
+		arg->predef_count = predef_args->count;
 	}
 	return true;
 USAGE:
 	print_usage(h_arg, h_type);
 ABORT:
+	sauScriptPredefArr_clear(predef_args);
 	sauScriptArgArr_clear(script_args);
 	return false;
 }
@@ -606,15 +668,17 @@ CLEANUP:
  * Main function.
  */
 int main(int argc, char **restrict argv) {
-	sauScriptArgArr script_args = (sauScriptArgArr){0};
-	sauProgramArr prg_objs = (sauProgramArr){0};
+	sauScriptPredefArr predef_args = {0};
+	sauScriptArgArr script_args = {0};
+	sauProgramArr prg_objs = {0};
 	const char *wav_path = NULL;
 	uint32_t options = 0;
 	uint32_t srate = 0;
-	if (!parse_args(argc, argv, &options, &script_args, &wav_path,
-			&srate))
+	if (!parse_args(argc, argv, &options, &script_args, &predef_args,
+				&wav_path, &srate))
 		return 0;
 	bool error = !read_scripts(&script_args, &prg_objs);
+	sauScriptPredefArr_clear(&predef_args);
 	sauScriptArgArr_clear(&script_args);
 	if (error)
 		return 1;
