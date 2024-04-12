@@ -15,8 +15,10 @@
 #include <time.h>
 
 const char *const sauMath_names[SAU_MATH_NAMED + 1] = {
-	SAU_MATH__ITEMS(SAU_MATH__X_NAME)
-	NULL
+	SAU_MATH__ITEMS(SAU_MATH__X_NAME) NULL
+};
+const char *const sauMath_vars_names[SAU_MATH_VARS_NAMED + 1] = {
+	SAU_MATH__VARS_ITEMS(SAU_MATH__X_NAME) NULL
 };
 
 const uint8_t sauMath_params[SAU_MATH_NAMED] = {
@@ -38,6 +40,11 @@ static double sau_seed(struct sauMath_state *restrict o, double x) {
 	return 0.f;
 }
 
+static double sau_seed_old(struct sauMath_state *restrict o, double x) {
+	sau_warning("math", "seed() is deprecated, use \"$seed=...\"");
+	return sau_seed(o, x);
+}
+
 static double sau_time(struct sauMath_state *restrict o) {
 	if (o->no_time)
 		return 0.0;
@@ -52,4 +59,7 @@ static double sau_time(struct sauMath_state *restrict o) {
 
 const union sauMath_sym_f sauMath_symbols[SAU_MATH_NAMED] = {
 	SAU_MATH__ITEMS(SAU_MATH__X_SYM_F)
+};
+const sauMath_vars_sym_f sauMath_vars_symbols[SAU_MATH_VARS_NAMED] = {
+	SAU_MATH__VARS_ITEMS(SAU_MATH__X_VARS_SYM_F)
 };
