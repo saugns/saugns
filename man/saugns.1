@@ -2,7 +2,7 @@
 .\"
 .\" This file is licensed under Creative Commons Attribution-ShareAlike 4.0
 .\" <https://creativecommons.org/licenses/by-sa/4.0/>.
-.Dd April 8, 2024
+.Dd April 12, 2024
 .Dt SAUGNS 1
 .Os
 .Sh NAME
@@ -95,6 +95,13 @@ Print version.
 .It Ar variable\| Ns Cm \&= Ns Ar value
 Set variable, passed on to scripts as "$variable".
 Each value must be a number, with or without a decimal point.
+A script may expect, optionally use, or ignore a passed value.
+.Pp
+The following built-in magic variables have special handling.
+.Bl -tag -width Ds
+.It Va $seed
+Set to reset the rand() value sequence.
+.El
 .El
 .Sh ENVIRONMENT
 .Bl -tag -width OSS_AUDIODEV
