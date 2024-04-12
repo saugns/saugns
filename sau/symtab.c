@@ -1,5 +1,5 @@
 /* SAU library: Symbol table module.
- * Copyright (c) 2011-2012, 2014, 2017-2023 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2014, 2017-2024 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
@@ -227,7 +227,7 @@ sauSymitem *sauSymtab_find_item(sauSymtab *restrict o sauMaybeUnused,
  */
 bool sauSymtab_add_stra(sauSymtab *restrict o,
 		const char *const*restrict stra, size_t n,
-		uint32_t sym_type) {
+		uint32_t sym_type, uint32_t id_from) {
 	for (size_t i = 0; i < n; ++i) {
 		sauSymitem *item;
 		sauSymstr *s = sauSymtab_get_symstr(o,
@@ -235,7 +235,7 @@ bool sauSymtab_add_stra(sauSymtab *restrict o,
 		if (!s || !(item = sauSymtab_add_item(o, s, sym_type)))
 			return false;
 		item->data_use = SAU_SYM_DATA_ID;
-		item->data.id = i;
+		item->data_id = id_from + i;
 	}
 	return true;
 }
