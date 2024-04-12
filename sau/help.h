@@ -19,6 +19,7 @@
 #define SAU_HELP__ITEMS(X) \
 	X(help, Help) \
 	X(math, Math) \
+	X(variable, Math_vars) \
 	X(line, Line) \
 	X(wave, Wave) \
 	X(noise, Noise) \
