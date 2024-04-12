@@ -1,5 +1,5 @@
 /* SAU library: Symbol table module.
- * Copyright (c) 2011-2012, 2014, 2017-2023 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2014, 2017-2024 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
@@ -36,12 +36,12 @@ enum {
  * Item with type, string, and data.
  */
 typedef struct sauSymitem {
-	uint32_t sym_type;
-	uint32_t data_use;
+	uint8_t sym_type;
+	uint8_t data_use;
+	uint32_t data_id; // can also hold extra ID for != SAU_SYM_DATA_ID
 	struct sauSymitem *prev; // the previous item with this string
 	sauSymstr *sstr;
 	union {
-		uint32_t id;
 		double num;
 		void *obj;
 	} data;
@@ -62,4 +62,4 @@ sauSymitem *sauSymtab_find_item(sauSymtab *restrict o,
 
 bool sauSymtab_add_stra(sauSymtab *restrict o,
 		const char *const*restrict stra, size_t n,
-		uint32_t type_id);
+		uint32_t sym_type, uint32_t id_from);

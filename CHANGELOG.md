@@ -7,6 +7,25 @@ is a shorter change log with only the SAU language changes.
 Pre-release
 -----------
 
+Turn PRNG seed into cli-settable variable.
+
+Language changes:
+ * Numerical expressions. Replace `seed(x)` with `$seed` magic
+   variable, which composes with the non-overriding assignment
+   feature for simple cli setting and script handling of seed.
+   [Add backward-compatibility deprecated `seed(x)` function.]
+
+Improve usage warnings on failed `$?name`, `$?name=...` check.
+
+Old scripts can usually be updated with one of the below regex
+options -- the 2nd will use `?=` assignment to allow override.
+
+`perl -pi -e "s/\\/seed/\\\$seed=/g;" paths...`
+`perl -pi -e "s/\\/seed/\\\$seed\\?=/g;" paths...`
+
+v0.4.4 (2024-04-09)
+-------------------
+
 Cli and variable feature expansion.
 
 Command-line options:

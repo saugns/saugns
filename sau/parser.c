@@ -74,13 +74,15 @@ static bool init_ScanLookup(struct ScanLookup *restrict o,
 		sauSymtab *restrict st) {
 	o->sopt = def_sopt;
 	if (!sauSymtab_add_stra(st, sauMath_names, SAU_MATH_NAMED,
-			SAU_SYM_MATH_ID) ||
+			SAU_SYM_MATH_ID, 0) ||
+	    !sauSymtab_add_stra(st, sauMath_vars_names, SAU_MATH_VARS_NAMED,
+			SAU_SYM_VAR, 1 /* has ID only if > 0 */) ||
 	    !sauSymtab_add_stra(st, sauLine_names, SAU_LINE_NAMED,
-			SAU_SYM_LINE_ID) ||
+			SAU_SYM_LINE_ID, 0) ||
 	    !sauSymtab_add_stra(st, sauWave_names, SAU_WAVE_NAMED,
-			SAU_SYM_WAVE_ID) ||
+			SAU_SYM_WAVE_ID, 0) ||
 	    !sauSymtab_add_stra(st, sauNoise_names, SAU_NOISE_NAMED,
-			SAU_SYM_NOISE_ID))
+			SAU_SYM_NOISE_ID, 0))
 		return false;
 	/*
 	 * Register predefined values as variable assignments.
@@ -91,10 +93,14 @@ static bool init_ScanLookup(struct ScanLookup *restrict o,
 				predef[i].key, predef[i].len);
 		sauSymitem *item;
 		if (!sstr ||
-		    !(item = sauSymtab_add_item(st, sstr, SAU_SYM_VAR)))
+		    !((item = sauSymtab_find_item(st, sstr, SAU_SYM_VAR)) ||
+		      (item = sauSymtab_add_item(st, sstr, SAU_SYM_VAR))))
 			return false;
 		item->data.num = predef[i].val;
 		item->data_use = SAU_SYM_DATA_NUM;
+		if (item->data_id > 0)
+			sauMath_vars_symbols[item->data_id - 1]
+				(&o->math_state, item->data.num);
 	}
 	o->math_state.no_time = arg->no_time;
 	return true;
@@ -233,13 +239,13 @@ static bool scan_mathfunc(sauScanner *restrict o, size_t *restrict found_id) {
 	sauSymitem *sym = scan_sym(o, SAU_SYM_MATH_ID, sauMath_names, false);
 	if (!sym)
 		return false;
-	if (sauMath_params[sym->data.id] == SAU_MATH_NOARG_F // no parentheses
+	if (sauMath_params[sym->data_id] == SAU_MATH_NOARG_F // no parentheses
 	    || sauScanner_tryc(o, '(')) {
-		*found_id = sym->data.id;
+		*found_id = sym->data_id;
 		return true;
 	}
 	sauScanner_warning(o, NULL,
-"expected '(' following math function name '%s'", sauMath_names[sym->data.id]);
+"expected '(' following math function name '%s'", sauMath_names[sym->data_id]);
 	return false;
 }
 
@@ -675,7 +681,7 @@ static bool scan_sym_id(sauScanner *restrict o,
 	sauSymitem *sym = scan_sym(o, type_id, help_stra, true);
 	if (!sym)
 		return false;
-	*found_id = sym->data.id;
+	*found_id = sym->data_id;
 	return true;
 }
 
@@ -1741,6 +1747,9 @@ static bool parse_numvar_rhs(sauParser *restrict o, sauSymitem *restrict var,
 	} else {
 		if (scan_num(o->sc, numconst_f, &var->data.num)) {
 			var->data_use = SAU_SYM_DATA_NUM;
+			if (var->data_id > 0)
+				sauMath_vars_symbols[var->data_id - 1]
+					(&o->sl.math_state, var->data.num);
 			return false;
 		}
 	}

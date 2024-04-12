@@ -257,7 +257,7 @@ whitespace-separated parameters, each with a value. Several
 distribution, as well as a naive oscillator mode.
 See "Line types" for the available line types.
 
-The "seed(x)" mathematical function changes
+The "$seed" magic variable changes
 the starting seed of new "R" instances.
 
 Parameters:
@@ -480,12 +480,9 @@ Numerical expressions:
 		pi	3.1415...
 		rand()	Pseudo-random number in range 0-1. The value sequence
 			from a series of calls restarts each new script unit.
+			The PRNG is seeded using the magic variable, "$seed".
 		rint(x)	Round value to the nearest integer. Halfway cases are
 			rounded to the nearest even integer.
-		seed(x)	Reset the rand() value sequence with a passed number.
-			(Every bit counts; different expressions for the same
-			number, with e.g. rounding may give different seeds.)
-			Returns 0 so that e.g. "/seed(100)" will only reseed.
 		sin(x)	Sine of value.
 		sqrt(x)	Square root.
 		time()	Get a system timestamp number changed each second.
@@ -606,6 +603,16 @@ Variables:
 	c	Channel mixing values
 	f	Frequencies as notes
 	p	Phase values
+		Built-in magic variables exist that perform a procedure when
+	set, beyond holding a value. Like other variables, the initial values
+	can be changed by passing options to a script to assign variables.
+		$seed	Set to reset the rand() value sequence; defaults to 0
+			if no value was passed to the script. Does not hold a
+			number when checked unless a value was passed or set,
+			allowing non-overriding assignments, like "$seed?=1".
+			Keeps the last value set; "$seed=$seed" later resets.
+			(Every bit counts; different expressions for the same
+			number, with e.g. rounding may give different seeds.)
 
 Labels for objects:
 	To label an object, "'name " can be written just before it is added
