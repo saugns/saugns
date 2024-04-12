@@ -144,7 +144,7 @@ static inline double sau_met(double x) {
 	return 0.5f * (x + sqrt(x * x + 4.f));
 }
 
-/* Macro used to declare and define math symbol sets of items. */
+/* Macro used to declare and define math function sets of items. */
 #define SAU_MATH__ITEMS(X) \
 	X(abs,       VAL_F, {.val = fabs}) \
 	X(cos,       VAL_F, {.val = cos}) \
@@ -155,22 +155,31 @@ static inline double sau_met(double x) {
 	X(pi,      NOARG_F, {.noarg = pi_const}) \
 	X(rand,    STATE_F, {.state = sau_rand}) \
 	X(rint,      VAL_F, {.val = rint}) \
-	X(seed, STATEVAL_F, {.stateval = sau_seed}) \
+	X(seed, STATEVAL_F, {.stateval = sau_seed_old}) \
 	X(sin,       VAL_F, {.val = sin}) \
 	X(sqrt,      VAL_F, {.val = sqrt}) \
 	X(time,    STATE_F, {.state = sau_time}) \
 	//
-#define SAU_MATH__X_ID(NAME, PARAMS, SYM_F) SAU_MATH_N_##NAME,
-#define SAU_MATH__X_NAME(NAME, PARAMS, SYM_F) #NAME,
-#define SAU_MATH__X_PARAMS(NAME, PARAMS, SYM_F) SAU_MATH_##PARAMS,
+/* Macro used to declare and define math magic variable sets of items. */
+#define SAU_MATH__VARS_ITEMS(X) \
+	X(seed, sau_seed) \
+	//
+#define SAU_MATH__X_ID(NAME, ...) SAU_MATH_N_##NAME,
+#define SAU_MATH__X_VARS_ID(NAME, ...) SAU_MATH_N_V_##NAME,
+#define SAU_MATH__X_NAME(NAME, ...) #NAME,
+#define SAU_MATH__X_PARAMS(NAME, PARAMS, ...) SAU_MATH_##PARAMS,
 #define SAU_MATH__X_SYM_F(NAME, PARAMS, SYM_F) SYM_F,
+#define SAU_MATH__X_VARS_SYM_F(NAME, SYM_F) SYM_F,
 
-/**
- * Math symbol ids for functions and named constants.
- */
+/** Math symbol ids for functions and named constants. */
 enum {
 	SAU_MATH__ITEMS(SAU_MATH__X_ID)
 	SAU_MATH_NAMED
+};
+/** Math symbol ids for magic variables. */
+enum {
+	SAU_MATH__VARS_ITEMS(SAU_MATH__X_VARS_ID)
+	SAU_MATH_VARS_NAMED
 };
 
 struct sauMath_state;
@@ -189,22 +198,28 @@ enum {
 	SAU_MATH_STATEVAL_F,
 	SAU_MATH_NOARG_F
 };
-/** Math function pointer types. */
+/** Math function pointer types for functions and named constants. */
 union sauMath_sym_f {
 	double (*val)(double x);
 	double (*state)(struct sauMath_state *o);
 	double (*stateval)(struct sauMath_state *o, double x);
 	double (*noarg)(void);
 };
+/** Math function pointer type for magic variable. */
+typedef double (*sauMath_vars_sym_f)(struct sauMath_state *o, double x);
 
 /** Names of math functions, with an extra NULL pointer at the end. */
 extern const char *const sauMath_names[SAU_MATH_NAMED + 1];
+/** Names of math magic variables, with an extra NULL pointer at the end. */
+extern const char *const sauMath_vars_names[SAU_MATH_VARS_NAMED + 1];
 
 /** Parameter types for math functions. */
 extern const uint8_t sauMath_params[SAU_MATH_NAMED];
 
 /** Function addresses for math functions. */
 extern const union sauMath_sym_f sauMath_symbols[SAU_MATH_NAMED];
+/** Function addresses for math magic variables. */
+extern const sauMath_vars_sym_f sauMath_vars_symbols[SAU_MATH_VARS_NAMED];
 
 /*
  * Simple PRNGs.
