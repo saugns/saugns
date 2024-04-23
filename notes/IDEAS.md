@@ -35,3 +35,20 @@ Replace parseconv, redo processing passes/stages (2024)
   usage flag for all resources used, then per fill run flip a bit
   making it the color of the run (then toggle resources when used
   if not already toggled, else knowing to reuse results instead).
+
+Syntax for multiple carriers sharing modulator etc. (2024)
+----------------------------------------------------------
+
+The old unimplemented "multiple object binding" syntax which was
+never actually implemented, redone. Maybe e.g. `<carriers> p[modulators]`
+for PM, also allowing setting other parameters for several objects in one
+go. Another variation could be e.g. `<carr p carr p>[mods]`, where the
+parameters (the two `p`) are bound rather than the objects they belong to.
+Furthermore, the use of `<A...><B...>` could concat into `<A... B...>`.
+
+Copy a labeled object using syntax `*label`, after `'label ...`. Can be
+used to insert a carrier several times, duplicating the link from the
+original carrier to any modulator(s) in the process.
+
+Copy-insertion of objects in labeled list works similarly, at the level of
+objects ultimately in use after.
