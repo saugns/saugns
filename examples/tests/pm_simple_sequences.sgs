@@ -25,7 +25,7 @@
 
 	Osin f444 t1 p<Osin r(1/1.23456789)> |
 'a	Osin f444 t1 p<Osin r7.12> |
-	@a t1 p<Osin r2.255> |
+	@a t1 p-<Osin r2.255> |
 'b	Osin f444 t1 p<Osin f(444 * (2.255))> |
 	@a f400 t1
 	; f389 t1

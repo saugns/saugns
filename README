@@ -175,13 +175,13 @@ Parameters:
 		i	Implicit time can be set using "ti", for modulators.
 	f	Frequency in Hz. Can be negative to flip wave shape timewise.
 			Gradual value adjustment also supported; see section.
-	f,w<>	A second frequency in Hz may follow the ",w", for a range to
+	f,w	A second frequency in Hz may follow the ",w", for a range to
 		use with FM by wave or envelope.
-			A list of modulator operators may be specified
-		within "<>"; this list replaces any previous FM modulators
-		set, and may be empty. Each modulator will produce a result
-		in a 0.0 to 1.0 range, i.e. a positive signal, multiplied by
-		its amplitude parameter (defaulting to 1.0).
+			"Modulator list" values are supported for FM
+		(frequency modulation); see section. Each modulator will
+		produce a result in a 0.0 to 1.0 range, i.e. a positive
+		signal, multiplied by its amplitude parameter (defaulting
+		to 1.0).
 			The product of the modulator amplitudes is used to
 		frequency-modulate the carrier(s).
 	r	(For modulator operators only.) Relative frequency, a value
@@ -190,13 +190,13 @@ Parameters:
 		ratio, a value of the form (m/n) may be used; e.g., for a
 		3:4 frequency ratio, "r(4/3)".
 			Gradual value adjustment also supported; see section.
-	r,w<>	(For modulator operators only.) A second relative frequency,
+	r,w	(For modulator operators only.) A second relative frequency,
 		for a range to use with FM by wave or envelope.
-			A list of modulator operators may be specified
-		within "<>"; this list replaces any previous FM modulators
-		set, and may be empty. Each modulator will produce a result
-		in a 0.0 to 1.0 range, i.e. a positive signal, multiplied by
-		its amplitude parameter (defaulting to 1.0).
+			"Modulator list" values are supported for FM
+		(frequency modulation); see section. Each modulator will
+		produce a result in a 0.0 to 1.0 range, i.e. a positive
+		signal, multiplied by its amplitude parameter (defaulting
+		to 1.0).
 			The product of the modulator amplitudes is used to
 		frequency-modulate the carrier(s), be they the final
 		carrier(s) or in turn modulator(s) for one or more other
@@ -208,13 +208,13 @@ Parameters:
 		carrier. Panning will further reduce output level unless
 		fully left or right.) Can be negative to flip sign of result.
 			Gradual value adjustment also supported; see section.
-	a,w<>	A second amplitude may follow the ",w", for a range to use
+	a,w	A second amplitude may follow the ",w", for a range to use
 		with AM by wave or envelope.
-			A list of modulator operators may be specified
-		within "<>"; this list replaces any previous AM modulators
-		set, and may be empty. Each modulator will produce a result
-		in a 0.0 to 1.0 range, i.e. a positive signal, multiplied by
-		its amplitude parameter (defaulting to 1.0).
+			"Modulator list" values are supported for AM
+		(amplitude modulation); see section. Each modulator will
+		produce a result in a 0.0 to 1.0 range, i.e. a positive
+		signal, multiplied by its amplitude parameter (defaulting
+		to 1.0).
 			The product of the modulator amplitudes is used to
 		amplitude-modulate the carrier(s), be they the final
 		carrier(s) or in turn modulator(s) for one or more other
@@ -222,9 +222,8 @@ Parameters:
 	p	Set the beginning phase of the wave. For example, p(3/4) will
 		make a sine or triangle wave begin at its "bottom". This is
 		often more useful for modulators used by "f,w"/"r,w" or "a,w".
-	p<>	A list of PM modulator operators may be specified within "<>";
-		this list replaces any previous PM modulators set, and may be
-		empty.
+			"Modulator list" values are supported for PM (phase
+                modulation); see section.
 			The sum of the modulator amplitudes is used to
 		phase-modulate the carrier(s), be they the final carrier(s)
 		or in turn modulator(s) for one or more other carrier(s).
@@ -287,6 +286,25 @@ Gradual value adjustment:
 	c	Change type; either lin, exp or log. (exp and log use
 		ear-tuned polynomial approximations designed to sound
 		natural, and which are symmetric to one another.)
+
+Modulator list:
+	Within "<>", written after the name of a parameter that supports it,
+	signal generators can be included for use with that parameter. For
+	example, for PM the phase parameter 'p' is assigned a list as in
+	"p<...>". It works the same for other parameters such as 'a'
+	(for AM/RM) and 'f' (for FM), and subparameters such as 'a,w', etc.
+		Assigning a list to a parameter will append the new list to
+	any old one, expanding it rather than replacing the old items. Thus
+	"p<>" changes nothing. To clear old items when setting a list, add
+	'-' before the '<', as in "p-<>" (which removes all PM modulators).
+		Lists can be assigned together with other values (numbers)
+	for various parameters. For the whole expression beginning with the
+	parameter name, whitespace can only be placed inside list brackets
+	(or inside parentheses for any numerical expressions).
+		It's also possible to write multiple lists directly after
+	one another when setting to a parameter (with or without the one
+	leading '-'). These lists will be joined into one, meaning that
+	"<X><Y>" for some contents "X" and "Y" is the same as "<X Y>".
 
 Parameters and operator binding:
 	When specifying or referencing operators within "@<...>", any

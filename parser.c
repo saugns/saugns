@@ -1,5 +1,5 @@
 /* sgensys: Script parser module.
- * Copyright (c) 2011-2012, 2017-2022 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2024 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -46,12 +46,6 @@ static char *_strdup(const char *src) {
 
 #define IS_WHITESPACE(c) \
   ((c) == ' ' || (c) == '\t' || (c) == '\n' || (c) == '\r')
-
-static bool testc(char c, FILE *f) {
-  char gc = getc(f);
-  ungetc(gc, f);
-  return (gc == c);
-}
 
 static bool tryc(char c, FILE *f) {
   char gc;
@@ -1047,6 +1041,29 @@ static bool parse_settings(NodeScope *ns) {
 static bool parse_level(SGSParser *o, NodeScope *parentnd,
                          uint8_t linktype, char newscope);
 
+static bool parse_modlist(NodeScope *ns, uint8_t linktype) {
+  SGSParser *o = ns->o;
+  SGSOperatorNode *op = ns->operator;
+  bool clear = tryc('-', o->f);
+  bool empty = true;
+  SGSPtrList *list = NULL;
+  switch (linktype) {
+  case NL_FMODS: list = &op->fmods; break;
+  case NL_PMODS: list = &op->pmods; break;
+  case NL_AMODS: list = &op->amods; break;
+  }
+  while (tryc('<', o->f)) {
+    empty = false;
+    op->operator_params |= SGS_P_ADJCS;
+    if (clear) {
+      clear = false;
+      SGSPtrList_clear(list);
+    }
+    parse_level(o, ns, linktype, SCOPE_NEST);
+  }
+  return empty;
+}
+
 static bool parse_step(NodeScope *ns) {
   SGSParser *o = ns->o;
   char c;
@@ -1085,16 +1102,8 @@ static bool parse_step(NodeScope *ns) {
           op->attr |= SGS_ATTR_VALITAMP;
       }
       if (tryc(',', o->f) && tryc('w', o->f)) {
-        if (!testc('<', o->f)) {
-          read_num(o, 0, &op->dynamp);
-        }
-        if (tryc('<', o->f)) {
-          if (op->amods.count > 0) {
-            op->operator_params |= SGS_P_ADJCS;
-            SGSPtrList_clear(&op->amods);
-          }
-          parse_level(o, ns, NL_AMODS, SCOPE_NEST);
-        }
+        read_num(o, 0, &op->dynamp);
+        parse_modlist(ns, NL_AMODS);
       }
       break;
     case 'f':
@@ -1112,18 +1121,10 @@ static bool parse_step(NodeScope *ns) {
         }
       }
       if (tryc(',', o->f) && tryc('w', o->f)) {
-        if (!testc('<', o->f)) {
-          if (read_num(o, 0, &op->dynfreq)) {
-            op->attr &= ~SGS_ATTR_DYNFREQRATIO;
-          }
+        if (read_num(o, 0, &op->dynfreq)) {
+          op->attr &= ~SGS_ATTR_DYNFREQRATIO;
         }
-        if (tryc('<', o->f)) {
-          if (op->fmods.count > 0) {
-            op->operator_params |= SGS_P_ADJCS;
-            SGSPtrList_clear(&op->fmods);
-          }
-          parse_level(o, ns, NL_FMODS, SCOPE_NEST);
-        }
+        parse_modlist(ns, NL_FMODS);
       }
       break;
     case 'p': {
@@ -1132,13 +1133,7 @@ static bool parse_step(NodeScope *ns) {
         op->phase = lrint(remainder(phase, 1.f) * 2.f * (float)INT32_MAX);
         op->operator_params |= SGS_P_PHASE;
       }
-      if (tryc('<', o->f)) {
-        if (op->pmods.count > 0) {
-          op->operator_params |= SGS_P_ADJCS;
-          SGSPtrList_clear(&op->pmods);
-        }
-        parse_level(o, ns, NL_PMODS, SCOPE_NEST);
-      }
+      parse_modlist(ns, NL_PMODS);
       break; }
     case 'r':
       if (!(ns->ns_flags & NS_NESTED_SCOPE))
@@ -1157,18 +1152,10 @@ static bool parse_step(NodeScope *ns) {
         }
       }
       if (tryc(',', o->f) && tryc('w', o->f)) {
-        if (!testc('<', o->f)) {
-          if (read_num(o, 0, &op->dynfreq)) {
-            op->attr |= SGS_ATTR_DYNFREQRATIO;
-          }
+        if (read_num(o, 0, &op->dynfreq)) {
+          op->attr |= SGS_ATTR_DYNFREQRATIO;
         }
-        if (tryc('<', o->f)) {
-          if (op->fmods.count > 0) {
-            op->operator_params |= SGS_P_ADJCS;
-            SGSPtrList_clear(&op->fmods);
-          }
-          parse_level(o, ns, NL_FMODS, SCOPE_NEST);
-        }
+        parse_modlist(ns, NL_FMODS);
       }
       break;
     case 's': {
