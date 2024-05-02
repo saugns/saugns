@@ -174,7 +174,7 @@ Parameters:
 		d	Definite default time can be set using "td", always.
 		i	Implicit time can be set using "ti", for modulators.
 	f	Frequency in Hz. Can be negative to flip wave shape timewise.
-			Gradual value adjustment also supported; see section.
+			"Value sweep" also supported; see section.
 	f,w	A second frequency in Hz may follow the ",w", for a range to
 		use with FM by wave or envelope.
 			"Modulator list" values are supported for FM
@@ -189,7 +189,7 @@ Parameters:
 		the frequency to use. For an n:m carrier-modulator frequency
 		ratio, a value of the form (m/n) may be used; e.g., for a
 		3:4 frequency ratio, "r(4/3)".
-			Gradual value adjustment also supported; see section.
+			"Value sweep" also supported; see section.
 	r,w	(For modulator operators only.) A second relative frequency,
 		for a range to use with FM by wave or envelope.
 			"Modulator list" values are supported for FM
@@ -207,7 +207,7 @@ Parameters:
 		can be used to set a multiplier used when adding a top-level
 		carrier. Panning will further reduce output level unless
 		fully left or right.) Can be negative to flip sign of result.
-			Gradual value adjustment also supported; see section.
+			"Value sweep" also supported; see section.
 	a,w	A second amplitude may follow the ",w", for a range to use
 		with AM by wave or envelope.
 			"Modulator list" values are supported for AM
@@ -239,7 +239,7 @@ Set the panning (left-right "balance") of the voice associated with
 the present operator(s), affecting the left and right output levels.
 Value range is 0 (all-left) to 1 (all-right). Default is 0.5 (center).
 Panning not at either extreme end will reduce level.
-		Gradual value adjustment also supported; see section.
+		"Value sweep" also supported; see section.
 
 Quit: Q
 -------
@@ -276,7 +276,7 @@ Numerical expressions:
 		Some parameters support named constants specific to that type
 	of value. Such a name can be written instead of a number.
 
-Gradual value adjustment:
+Value sweep:
 	To ramp, or sweep, a parameter which supports this towards a
 	goal value -- the ordinary value being the start for a trajectory --
 	following the ordinary value or by itself, the following value ramp
@@ -288,30 +288,34 @@ Gradual value adjustment:
 		natural, and which are symmetric to one another.)
 
 Modulator list:
-	Within "<>", written after the name of a parameter that supports it,
+	Within "[]", written after the name of a parameter that supports it,
 	signal generators can be included for use with that parameter. For
 	example, for PM the phase parameter 'p' is assigned a list as in
-	"p<...>". It works the same for other parameters such as 'a'
+	"p[...]". It works the same for other parameters such as 'a'
 	(for AM/RM) and 'f' (for FM), and subparameters such as 'a,w', etc.
 		Assigning a list to a parameter will append the new list to
 	any old one, expanding it rather than replacing the old items. Thus
-	"p<>" changes nothing. To clear old items when setting a list, add
-	'-' before the '<', as in "p-<>" (which removes all PM modulators).
+	"p[]" changes nothing. To clear old items when setting a list, add
+	'-' before the '[', as in "p-[]" (which removes all PM modulators).
 		Lists can be assigned together with other values (numbers)
 	for various parameters. For the whole expression beginning with the
 	parameter name, whitespace can only be placed inside list brackets
 	(or inside parentheses for any numerical expressions).
+		"Value sweep" for a parameter can use the same list as one
+	which contains modulators; the modulators simply need to be listed
+	after any sweep subparameters (see section) which head the list.
 		It's also possible to write multiple lists directly after
 	one another when setting to a parameter (with or without the one
 	leading '-'). These lists will be joined into one, meaning that
-	"<X><Y>" for some contents "X" and "Y" is the same as "<X Y>".
+	"[X][Y]" for some contents "X" and "Y" is the same as "[X Y]".
+	This also allows placing sweep subparameters in a later list.
 
 Parameters and operator binding:
-	When specifying or referencing operators within "@<...>", any
-	parameters set following the closing '>' will be bound to and apply
+	When specifying or referencing operators within "@[...]", any
+	parameters set following the closing ']' will be bound to and apply
 	to all of them.
 		Significantly, this allows multiple carriers (given within
-	the <>) to be linked to the same modulator(s), whether for FM, PM,
+	the []) to be linked to the same modulator(s), whether for FM, PM,
 	or AM. (Note: Support for this is experimental and incomplete.)
 
 Labels and referencing:

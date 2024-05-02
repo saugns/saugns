@@ -142,6 +142,8 @@ static const SGSScriptOptions def_sopt = {
   .def_ratio = 1.f,
 };
 
+typedef float (*ReadSym_f)(SGSParser *o);
+
 /*
  * Create parser instance.
  *
@@ -175,9 +177,14 @@ enum {
   SCOPE_NEST,
 };
 
+struct NodeScope;
+typedef void (*ParseLevel_sub_f)(struct NodeScope *ns);
+static void parse_in_settings(struct NodeScope *ns);
+static void parse_in_op_step(struct NodeScope *ns);
+static void parse_in_par_sweep(struct NodeScope *ns);
+
 enum {
-  NS_IN_DEFAULTS = 1<<0, /* adjusting default values */
-  NS_IN_NODE = 1<<1,     /* adjusting operator and/or voice */
+  NS_SET_SWEEP = 1<<0, /* parameter sweep set in subscope */
   NS_NESTED_SCOPE = 1<<2,
   NS_NEW_EVENT_FORK = 1<<3,
   NS_BIND_MULTIPLE = 1<<4, /* previous node interpreted as set of nodes */
@@ -191,17 +198,21 @@ enum {
 typedef struct NodeScope {
   SGSParser *o;
   struct NodeScope *parent;
-  uint32_t ns_flags;
-  char scope;
+  ParseLevel_sub_f sub_f;
+  uint8_t ns_flags;
+  uint8_t linktype;
+  uint8_t last_linktype; /* FIXME: kludge */
+  char scope, close_c;
   SGSEventNode *event, *last_event;
   SGSOperatorNode *operator, *first_operator, *last_operator;
   SGSOperatorNode *parent_on, *on_prev;
-  uint8_t linktype;
-  uint8_t last_linktype; /* FIXME: kludge */
   char *set_label;
   /* timing/delay */
   SGSEventNode *main_event; /* grouping of events for a voice and/or operator */
   uint32_t next_wait_ms; /* added for next event */
+  /* parameter handling (handles passed from enclosing scope, flag got there) */
+  SGSProgramValit *op_sweep;
+  ReadSym_f read_sym_f;
 } NodeScope;
 
 typedef struct SGSEventBranch {
@@ -263,8 +274,6 @@ static void warning(SGSParser *o, const char *str) {
           o->fn, o->line, (o->c == EOF ? "EOF" : buf), str);
 }
 #define WARN_INVALID "invalid character"
-
-typedef float (*ReadSym_f)(SGSParser *o);
 
 typedef struct NumParser {
   SGSParser *pr;
@@ -513,63 +522,6 @@ static int32_t read_wavetype(SGSParser *o) {
     putc('\n', stderr);
   }
   return wave;
-}
-
-static bool read_valit(SGSParser *o, ReadSym_f read_symbol,
-                        SGSProgramValit *vi) {
-  static const char *const valittypes[] = {
-    "lin",
-    "exp",
-    "log",
-    0
-  };
-  char c;
-  bool goal = false;
-  int32_t type;
-  vi->time_ms = VI_TIME_DEFAULT;
-  vi->type = SGS_VALIT_LIN; /* default */
-  while ((c = read_char(o)) != EOF) {
-    switch (c) {
-    case NEWLINE:
-      ++o->line;
-      break;
-    case 'c':
-      type = strfind(o->f, valittypes);
-      if (type >= 0) {
-        vi->type = type + SGS_VALIT_LIN;
-        break;
-      }
-      goto INVALID;
-    case 't': {
-      float time;
-      if (read_num(o, 0, &time)) {
-        if (time < 0.f) {
-          warning(o, "ignoring 't' with sub-zero time");
-          break;
-        }
-        vi->time_ms = lrint(time * 1000.f);
-      }
-      break; }
-    case 'v':
-      if (read_num(o, read_symbol, &vi->goal))
-        goal = true;
-      break;
-    case ']':
-      goto RETURN;
-    default:
-    INVALID:
-      warning(o, WARN_INVALID);
-      break;
-    }
-  }
-  warning(o, "end of file without closing ']'");
-RETURN:
-  if (!goal) {
-    warning(o, "ignoring gradual parameter change with no target value");
-    vi->type = SGS_VALIT_NONE;
-    return false;
-  }
-  return true;
 }
 
 static bool parse_waittime(NodeScope *ns) {
@@ -896,20 +848,6 @@ static void label_next_node(NodeScope *ns, const char *label) {
 }
 
 /*
- * Default values for new nodes are being set.
- */
-#define in_defaults(ns) ((ns)->ns_flags & NS_IN_DEFAULTS)
-#define enter_defaults(ns) ((void)((ns)->ns_flags |= NS_IN_DEFAULTS))
-#define leave_defaults(ns) ((void)((ns)->ns_flags &= ~NS_IN_DEFAULTS))
-
-/*
- * Values for current node are being set.
- */
-#define in_current_node(ns) ((ns)->ns_flags & NS_IN_NODE)
-#define enter_current_node(ns) ((void)((ns)->ns_flags |= NS_IN_NODE))
-#define leave_current_node(ns) ((void)((ns)->ns_flags &= ~NS_IN_NODE))
-
-/*
  * Begin a new operator - depending on the context, either for the present
  * event or for a new event begun.
  *
@@ -918,9 +856,9 @@ static void label_next_node(NodeScope *ns, const char *label) {
 static void begin_node(NodeScope *ns, SGSOperatorNode *previous,
                        uint8_t linktype, bool is_compstep) {
   ns->on_prev = previous;
-  if (!ns->event ||
-      !in_current_node(ns) /* previous event implicitly ended */ ||
-      ns->next_wait_ms ||
+  if (!ns->event || ns->next_wait_ms > 0 ||
+      /* previous event implicitly ended */
+      (previous || ns->linktype <= NL_GRAPH) ||
       is_compstep)
     begin_event(ns, linktype, is_compstep);
   begin_operator(ns, linktype, is_compstep);
@@ -935,21 +873,27 @@ static void flush_durgroup(SGSParser *o) {
 }
 
 static void begin_scope(SGSParser *o, NodeScope *ns, NodeScope *parent,
-                        uint8_t linktype, char newscope) {
-  memset(ns, 0, sizeof(NodeScope));
-  ns->o = o;
-  ns->scope = newscope;
+                        uint8_t linktype, char newscope, char close_c) {
+  *ns = (NodeScope){
+    .o = o,
+    .scope = newscope,
+    .close_c = close_c,
+  };
   if (parent != NULL) {
     ns->parent = parent;
-    ns->ns_flags = parent->ns_flags;
+    ns->sub_f = parent->sub_f;
+    ns->ns_flags = parent->ns_flags & NS_BIND_MULTIPLE;
     if (newscope == SCOPE_SAME)
       ns->scope = parent->scope;
     ns->event = parent->event;
     ns->operator = parent->operator;
     ns->parent_on = parent->parent_on;
+    ns->op_sweep = parent->op_sweep;
+    ns->read_sym_f = parent->read_sym_f;
     if (newscope == SCOPE_NEST) {
       ns->ns_flags |= NS_NESTED_SCOPE;
       ns->parent_on = parent->operator;
+      ns->sub_f = ns->op_sweep ? parse_in_par_sweep : NULL;
     }
   }
   ns->linktype = linktype;
@@ -967,13 +911,16 @@ static void end_scope(NodeScope *ns) {
       ns->parent->ns_flags |= NS_BIND_MULTIPLE;
       begin_node(ns->parent, ns->first_operator, ns->parent->last_linktype, false);
     }
-  } else if (!ns->parent) {
+  }
+  if (!ns->parent) {
     /*
      * At end of top scope, ie. at end of script - end last event and adjust
      * timing.
      */
     end_event(ns);
     flush_durgroup(o);
+  } else {
+    ns->parent->ns_flags |= ns->ns_flags & NS_SET_SWEEP;
   }
   if (ns->set_label != NULL) {
     free((char*)ns->set_label);
@@ -985,12 +932,22 @@ static void end_scope(NodeScope *ns) {
  * Main parser functions
  */
 
-static bool parse_settings(NodeScope *ns) {
-  SGSParser *o = ns->o;
-  char c;
-  enter_defaults(ns);
-  leave_current_node(ns);
-  while ((c = read_char(o)) != EOF) {
+#define PARSE_IN__HEAD(Name) \
+  SGSParser *o = ns->o; \
+  char c; \
+  ns->sub_f = (Name); \
+  while ((c = read_char(o)) != EOF) { \
+    /* switch (c) { ... default: ... goto DEFER; } */
+
+#define PARSE_IN__TAIL() \
+    /* switch (c) { ... default: ... goto DEFER; } */ \
+  } \
+  return; \
+DEFER: \
+  o->nextc = c; /* let parse_level() take care of it */
+
+static void parse_in_settings(NodeScope *ns) {
+  PARSE_IN__HEAD(parse_in_settings)
     switch (c) {
     case 'a':
       if (read_num(o, 0, &o->sopt.ampmult)) {
@@ -1030,18 +987,62 @@ static bool parse_settings(NodeScope *ns) {
       }
       break; }
     default:
-    /*UNKNOWN:*/
-      o->nextc = c;
-      return true; /* let parse_level() take care of it */
+      goto DEFER;
     }
-  }
-  return false;
+  PARSE_IN__TAIL()
 }
 
 static bool parse_level(SGSParser *o, NodeScope *parentnd,
-                         uint8_t linktype, char newscope);
+                         uint8_t linktype, char newscope, char close_c);
 
-static bool parse_modlist(NodeScope *ns, uint8_t linktype) {
+static void parse_in_par_sweep(NodeScope *ns) {
+  static const char *const valittypes[] = {
+    "lin",
+    "exp",
+    "log",
+    0
+  };
+  int32_t type;
+  SGSProgramValit *vi = ns->op_sweep;
+  if (!(ns->ns_flags & NS_SET_SWEEP)) {
+    ns->ns_flags |= NS_SET_SWEEP;
+    /* set default values */
+    vi->time_ms = VI_TIME_DEFAULT;
+    vi->type = SGS_VALIT_LIN;
+  }
+  PARSE_IN__HEAD(parse_in_par_sweep)
+    switch (c) {
+    case 'c':
+      type = strfind(o->f, valittypes);
+      if (type >= 0) {
+        vi->type = type + SGS_VALIT_LIN;
+        break;
+      }
+      goto DEFER;
+    case 't': {
+      float time;
+      if (read_num(o, 0, &time)) {
+        if (time < 0.f) {
+          warning(o, "ignoring 't' with sub-zero time");
+          break;
+        }
+        vi->time_ms = lrint(time * 1000.f);
+      }
+      break; }
+    case 'v':
+      if (read_num(o, ns->read_sym_f, &vi->goal))
+        (void)0; // ns->ns_flags |= NS_SET_SWEEP;
+      break;
+    default:
+      goto DEFER;
+    }
+  PARSE_IN__TAIL()
+}
+
+static bool parse_par_list(NodeScope *ns,
+                          ReadSym_f read_sym_f,
+                          SGSProgramValit *op_sweep,
+                          uint8_t linktype) {
   SGSParser *o = ns->o;
   SGSOperatorNode *op = ns->operator;
   bool clear = tryc('-', o->f);
@@ -1052,37 +1053,37 @@ static bool parse_modlist(NodeScope *ns, uint8_t linktype) {
   case NL_PMODS: list = &op->pmods; break;
   case NL_AMODS: list = &op->amods; break;
   }
-  while (tryc('<', o->f)) {
+  ns->op_sweep = op_sweep;
+  ns->read_sym_f = read_sym_f;
+  while (tryc('[', o->f)) {
     empty = false;
     op->operator_params |= SGS_P_ADJCS;
     if (clear) {
       clear = false;
       SGSPtrList_clear(list);
     }
-    parse_level(o, ns, linktype, SCOPE_NEST);
+    parse_level(o, ns, linktype, SCOPE_NEST, ']');
   }
   return empty;
 }
 
-static bool parse_step(NodeScope *ns) {
-  SGSParser *o = ns->o;
-  char c;
-  leave_defaults(ns);
-  enter_current_node(ns);
-  while ((c = read_char(o)) != EOF) {
+static void parse_in_op_step(NodeScope *ns) {
+  PARSE_IN__HEAD(parse_in_op_step)
     SGSEventNode *e = ns->event;
     SGSOperatorNode *op = ns->operator;
     switch (c) {
     case 'P':
       if ((ns->ns_flags & NS_NESTED_SCOPE) != 0)
-        goto UNKNOWN;
+        goto DEFER;
       if (read_num(o, 0, &e->panning)) {
         if (e->valitpanning.type == SGS_VALIT_NONE)
           e->voice_attr &= ~SGS_ATTR_VALITPANNING;
       }
-      if (tryc('[', o->f)) {
-        if (read_valit(o, 0, &e->valitpanning))
-          e->voice_attr |= SGS_ATTR_VALITPANNING;
+      parse_par_list(ns, NULL, &e->valitpanning, NL_REFER);
+      if (ns->ns_flags & NS_SET_SWEEP) {
+        ns->ns_flags &= ~NS_SET_SWEEP;
+        ns->op_sweep = NULL;
+        e->voice_attr |= SGS_ATTR_VALITPANNING;
       }
       break;
     case '\\':
@@ -1097,13 +1098,15 @@ static bool parse_step(NodeScope *ns) {
         if (op->valitamp.type == SGS_VALIT_NONE)
           op->attr &= ~SGS_ATTR_VALITAMP;
       }
-      if (tryc('[', o->f)) {
-        if (read_valit(o, 0, &op->valitamp))
-          op->attr |= SGS_ATTR_VALITAMP;
+      parse_par_list(ns, NULL, &op->valitamp, NL_REFER);
+      if (ns->ns_flags & NS_SET_SWEEP) {
+        ns->ns_flags &= ~NS_SET_SWEEP;
+        ns->op_sweep = NULL;
+        op->attr |= SGS_ATTR_VALITAMP;
       }
       if (tryc(',', o->f) && tryc('w', o->f)) {
         read_num(o, 0, &op->dynamp);
-        parse_modlist(ns, NL_AMODS);
+        parse_par_list(ns, NULL, NULL, NL_AMODS);
       }
       break;
     case 'f':
@@ -1114,17 +1117,18 @@ static bool parse_step(NodeScope *ns) {
           op->attr &= ~(SGS_ATTR_VALITFREQ |
                         SGS_ATTR_VALITFREQRATIO);
       }
-      if (tryc('[', o->f)) {
-        if (read_valit(o, read_note, &op->valitfreq)) {
-          op->attr |= SGS_ATTR_VALITFREQ;
-          op->attr &= ~SGS_ATTR_VALITFREQRATIO;
-        }
+      parse_par_list(ns, read_note, &op->valitfreq, NL_REFER);
+      if (ns->ns_flags & NS_SET_SWEEP) {
+        ns->ns_flags &= ~NS_SET_SWEEP;
+        ns->op_sweep = NULL;
+        op->attr |= SGS_ATTR_VALITFREQ;
+        op->attr &= ~SGS_ATTR_VALITFREQRATIO;
       }
       if (tryc(',', o->f) && tryc('w', o->f)) {
         if (read_num(o, 0, &op->dynfreq)) {
           op->attr &= ~SGS_ATTR_DYNFREQRATIO;
         }
-        parse_modlist(ns, NL_FMODS);
+        parse_par_list(ns, read_note, NULL, NL_FMODS);
       }
       break;
     case 'p': {
@@ -1133,11 +1137,11 @@ static bool parse_step(NodeScope *ns) {
         op->phase = lrint(remainder(phase, 1.f) * 2.f * (float)INT32_MAX);
         op->operator_params |= SGS_P_PHASE;
       }
-      parse_modlist(ns, NL_PMODS);
+      parse_par_list(ns, NULL, NULL, NL_PMODS);
       break; }
     case 'r':
       if (!(ns->ns_flags & NS_NESTED_SCOPE))
-        goto UNKNOWN;
+        goto DEFER;
       if (read_num(o, 0, &op->freq)) {
         op->attr |= SGS_ATTR_FREQRATIO;
         op->operator_params |= SGS_P_FREQ;
@@ -1145,17 +1149,18 @@ static bool parse_step(NodeScope *ns) {
           op->attr &= ~(SGS_ATTR_VALITFREQ |
                         SGS_ATTR_VALITFREQRATIO);
       }
-      if (tryc('[', o->f)) {
-        if (read_valit(o, read_note, &op->valitfreq)) {
-          op->attr |= SGS_ATTR_VALITFREQ |
-                      SGS_ATTR_VALITFREQRATIO;
-        }
+      parse_par_list(ns, read_note, &op->valitfreq, NL_REFER);
+      if (ns->ns_flags & NS_SET_SWEEP) {
+        ns->ns_flags &= ~NS_SET_SWEEP;
+        ns->op_sweep = NULL;
+        op->attr |= SGS_ATTR_VALITFREQ |
+                    SGS_ATTR_VALITFREQRATIO;
       }
       if (tryc(',', o->f) && tryc('w', o->f)) {
         if (read_num(o, 0, &op->dynfreq)) {
           op->attr |= SGS_ATTR_DYNFREQRATIO;
         }
-        parse_modlist(ns, NL_FMODS);
+        parse_par_list(ns, read_note, NULL, NL_FMODS);
       }
       break;
     case 's': {
@@ -1197,30 +1202,23 @@ static bool parse_step(NodeScope *ns) {
       op->wave = wave;
       break; }
     default:
-    UNKNOWN:
-      o->nextc = c;
-      return true; /* let parse_level() take care of it */
+      goto DEFER;
     }
-  }
-  return false;
+  PARSE_IN__TAIL()
 }
 
-enum {
-  HANDLE_DEFER = 1<<1,
-  DEFERRED_STEP = 1<<2,
-  DEFERRED_SETTINGS = 1<<4
-};
 static bool parse_level(SGSParser *o, NodeScope *parentns,
-                        uint8_t linktype, char newscope) {
+                        uint8_t linktype, char newscope, char close_c) {
   char c;
   bool endscope = false;
-  uint8_t flags = 0;
   LabelBuf label;
   NodeScope ns;
-  begin_scope(o, &ns, parentns, linktype, newscope);
+  begin_scope(o, &ns, parentns, linktype, newscope, close_c);
   ++o->calllevel;
-  while ((c = read_char(o)) != EOF) {
-    flags &= ~HANDLE_DEFER;
+  for (;;) {
+    /* Use sub-parsing routine? May also happen inside nested calls. */
+    if (ns.sub_f) ns.sub_f(&ns);
+    if ((c = read_char(o)) == EOF) break;
     switch (c) {
     case NEWLINE:
       ++o->line;
@@ -1230,11 +1228,7 @@ static bool parse_level(SGSParser *o, NodeScope *parentns,
          */
         if (o->calllevel > 1)
           goto RETURN;
-        flags = 0;
-        leave_defaults(&ns);
-        if (in_current_node(&ns)) {
-          leave_current_node(&ns);
-        }
+        ns.sub_f = NULL;
         ns.first_operator = NULL;
       }
       break;
@@ -1254,20 +1248,20 @@ static bool parse_level(SGSParser *o, NodeScope *parentns,
         o->nextc = c;
         goto RETURN;
       }
-      if (in_defaults(&ns) || !ns.event)
+      if (ns.sub_f == parse_in_settings || !ns.event)
         goto INVALID;
       begin_node(&ns, ns.operator, NL_REFER, true);
-      flags = parse_step(&ns) ? (HANDLE_DEFER | DEFERRED_STEP) : 0;
+      ns.sub_f = parse_in_op_step;
       break;
     case '@':
-      if (tryc('<', o->f)) {
+      if (tryc('[', o->f)) {
         end_operator(&ns);
-        if (parse_level(o, &ns, ns.linktype, SCOPE_BIND))
+        if (parse_level(o, &ns, ns.linktype, SCOPE_BIND, ']'))
           goto RETURN;
         /*
          * Multiple-operator node now open.
          */
-        flags = parse_step(&ns) ? (HANDLE_DEFER | DEFERRED_STEP) : 0;
+        ns.sub_f = parse_in_op_step;
         break;
       }
       /*
@@ -1277,15 +1271,14 @@ static bool parse_level(SGSParser *o, NodeScope *parentns,
         warning(o, "ignoring label assignment to label reference");
         label_next_node(&ns, NULL);
       }
-      leave_defaults(&ns);
-      leave_current_node(&ns);
+      ns.sub_f = NULL;
       if (read_label(o, label, c)) {
         SGSOperatorNode *ref = SGS_symtab_get(o->st, label);
         if (!ref)
           warning(o, "ignoring reference to undefined label");
         else {
           begin_node(&ns, ref, NL_REFER, false);
-          flags = parse_step(&ns) ? (HANDLE_DEFER | DEFERRED_STEP) : 0;
+          ns.sub_f = parse_in_op_step;
         }
       }
       break;
@@ -1293,44 +1286,44 @@ static bool parse_level(SGSParser *o, NodeScope *parentns,
       int32_t wave = read_wavetype(o);
       if (wave < 0)
         break;
+      if (ns.linktype == NL_REFER) {
+        warning(o, "modulators not supported here");
+        break;
+      }
       begin_node(&ns, 0, ns.linktype, false);
       ns.operator->wave = wave;
-      flags = parse_step(&ns) ? (HANDLE_DEFER | DEFERRED_STEP) : 0;
+      ns.sub_f = parse_in_op_step;
       break; }
     case 'Q':
       goto FINISH;
     case 'S':
-      flags = parse_settings(&ns) ? (HANDLE_DEFER | DEFERRED_SETTINGS) : 0;
+      ns.sub_f = parse_in_settings;
       break;
     case '<':
       warning(o, "opening '<' out of place");
       break;
     case '\\':
-      if (in_defaults(&ns) ||
+      if (ns.sub_f == parse_in_settings ||
           (ns.ns_flags & NS_NESTED_SCOPE && ns.event))
         goto INVALID;
       parse_waittime(&ns);
       break;
     case '>':
-      if (ns.scope == SCOPE_BIND) {
-        endscope = true;
-        goto RETURN;
-      }
-      if (ns.scope == SCOPE_NEST) {
-        end_operator(&ns);
-        endscope = true;
-        goto RETURN;
-      }
       warning(o, "closing '>' without opening '<'");
       break;
     case '[':
       warning(o, "opening '[' out of place");
       break;
     case ']':
+      if (c == close_c) {
+        if (ns.scope == SCOPE_NEST) end_operator(&ns);
+        endscope = true;
+        goto RETURN;
+      }
       warning(o, "closing ']' without opening '['");
       break;
     case '|':
-      if (in_defaults(&ns) ||
+      if (ns.sub_f == parse_in_settings ||
           ((ns.ns_flags & NS_NESTED_SCOPE) != 0 && ns.event != NULL))
         goto INVALID;
       if (newscope == SCOPE_SAME) {
@@ -1343,28 +1336,17 @@ static bool parse_level(SGSParser *o, NodeScope *parentns,
         break;
       }
       flush_durgroup(o);
-      leave_current_node(&ns);
+      ns.sub_f = NULL;
       break;
     default:
     INVALID:
       warning(o, WARN_INVALID);
       break;
     }
-    /* Return to sub-parsing routines. */
-    if (flags != 0 && !(flags & HANDLE_DEFER)) {
-      uint8_t test = flags;
-      flags = 0;
-      if ((test & DEFERRED_STEP) != 0) {
-        if (parse_step(&ns))
-          flags = HANDLE_DEFER | DEFERRED_STEP;
-      } else if ((test & DEFERRED_SETTINGS) != 0)
-        if (parse_settings(&ns))
-          flags = HANDLE_DEFER | DEFERRED_SETTINGS;
-    }
   }
 FINISH:
-  if (newscope == SCOPE_NEST || newscope == SCOPE_BIND)
-    warning(o, "end of file without closing '>'s");
+  if (close_c == ']' && c != close_c)
+    warning(o, "end of file without closing ']'s");
 RETURN:
   end_scope(&ns);
   --o->calllevel;
@@ -1383,7 +1365,7 @@ static bool parse_file(SGSParser *o, const char *filename) {
   }
   o->fn = filename;
   o->line = 1;
-  parse_level(o, 0, NL_GRAPH, SCOPE_TOP);
+  parse_level(o, 0, NL_GRAPH, SCOPE_TOP, 0);
   fclose(o->f);
   o->f = NULL;
   return true;

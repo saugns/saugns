@@ -354,14 +354,14 @@ static void program_convert_enode(ProgramAlloc *pa, SGSEventNode *e) {
   }
 }
 
-static void print_linked(const char *header, const char *footer,
+static void print_linked(const char *header,
 		uint32_t count, const int32_t *nodes) {
   uint32_t i;
   if (!count) return;
-  printf("%s%d", header, nodes[0]);
+  printf("%s[%d", header, nodes[0]);
   for (i = 0; ++i < count; )
     printf(", %d", nodes[i]);
-  printf("%s", footer);
+  printf("]");
 }
 
 /*
@@ -410,7 +410,7 @@ static SGSProgram* build_program(SGSParserResult *pr) {
       const SGSProgramGraph *g = ovo->graph;
       printf("\n\tvo %d", oe->voice_id);
       if (g != NULL)
-        print_linked("\n\t    {", "}", g->opc, g->ops);
+        print_linked("\n\t    ", g->opc, g->ops);
     }
     if (oop != NULL) {
       const SGSProgramGraphAdjcs *ga = oop->adjcs;
@@ -419,9 +419,9 @@ static SGSProgram* build_program(SGSParserResult *pr) {
       else
         printf("\n\top %d \tt=%d \tf=%.f", oop->operator_id, oop->time_ms, oop->freq);
       if (ga != NULL) {
-        print_linked("\n\t    fw<", ">", ga->fmodc, ga->adjcs);
-        print_linked("\n\t    p<", ">", ga->pmodc, &ga->adjcs[ga->fmodc]);
-        print_linked("\n\t    aw<", ">", ga->amodc, &ga->adjcs[ga->fmodc +
+        print_linked("\n\t    f,w", ga->fmodc, ga->adjcs);
+        print_linked("\n\t    p", ga->pmodc, &ga->adjcs[ga->fmodc]);
+        print_linked("\n\t    a,w", ga->amodc, &ga->adjcs[ga->fmodc +
                                                                ga->pmodc]);
       }
     }
