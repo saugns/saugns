@@ -410,6 +410,26 @@ static void block_mix_add(float *restrict buf, size_t buf_len,
 }
 
 /*
+ * Multiply audio layer from \p in_buf into \p buf scaled with \p amp.
+ *
+ * Used to generate output for modulation with value range.
+ */
+static void block_mix_mul(float *restrict buf, size_t buf_len,
+		bool layer,
+		const float *restrict in_buf,
+		const float *restrict amp) {
+	if (layer) {
+		for (size_t i = 0; i < buf_len; ++i) {
+			buf[i] *= in_buf[i] * amp[i];
+		}
+	} else {
+		for (size_t i = 0; i < buf_len; ++i) {
+			buf[i] = in_buf[i] * amp[i];
+		}
+	}
+}
+
+/*
  * Multiply audio layer from \p in_buf into \p buf,
  * after scaling to a 0.0 to 1.0 range multiplied by
  * the absolute value of \p amp, and with the high and
@@ -448,7 +468,8 @@ static void block_mix(GenNode *restrict gen,
 		const float *restrict amp) {
 	(void)gen;
 	(wave_env ?
-	 block_mix_mul_waveenv :
+//	 block_mix_mul_waveenv :
+	 block_mix_mul :
 	 block_mix_add)(buf, buf_len, layer, in_buf, amp);
 }
 
@@ -476,8 +497,10 @@ static void run_param_with_rangemod(sauGenerator *restrict o,
 					&o->operators[n->r_mods->ids[i]],
 					freq, true, i);
 		float *mod_buf = *(bufs + 2);
-		for (i = 0; i < len; ++i)
-			par_buf[i] += (r_par_buf[i] - par_buf[i]) * mod_buf[i];
+		for (i = 0; i < len; ++i) {
+			float mix = mod_buf[i] * 0.5f + 0.5f;
+			par_buf[i] += (r_par_buf[i] - par_buf[i]) * mix;
+		}
 	} else {
 		sauLine_skip(&n->r_par, len);
 	}
