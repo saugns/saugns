@@ -3,6 +3,8 @@
 // The 'saw' & 'eto' LFOs extend rhythm and sound a bit more.
 $bpm?=150 $bpm=$bpm*2
 $strength?=30
+$dist?=15 // makes a tastefully raw, different sound compared to off i.e. 0
+S a.lC*$dist
 Wcat f0[
 	Wsaw f$bpm/240 a$strength p1/2
 	Weto f$bpm/240 a$strength

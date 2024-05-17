@@ -3,6 +3,8 @@
 // The sawtooth LFO wave extends rhythm and sound a bit more.
 $bpm?=150 $bpm=$bpm*2
 $strength?=30
+$dist?=1 // low by default; bpm changes impression, e.g. cli args dist=25 bpm=60
+S a.lC*$dist
 Wsrs f0[
 	Wsaw f$bpm/240 a$strength*2
 ] p[

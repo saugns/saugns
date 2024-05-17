@@ -1,6 +1,8 @@
 // Amplitude shaping creates "ducking" sound, for drum pairs.
 $bpm?=120 $bpm=$bpm*2
 $strength?=20
+$dist?=0 // off by default, adds rough noise between beats (e.g. 10 if wanted)
+S a.lC*$dist
 Wean f$strength/3 p6/93[
 	Rxpe mf f$bpm/120 a$strength*(240/$bpm)
 ] a1/8.r1[
