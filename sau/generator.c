@@ -51,8 +51,7 @@ typedef struct GenNode {
 	sauLine pan;
 	const sauProgramIDArr *camods;
 	float amp_lec;
-	float amp_le_dc;//, amp_le_prev, amp_le_avg;
-	sauButFState amp_le_lp;
+	float amp_le_dc, amp_le_avg;
 } GenNode;
 
 typedef struct AmpNode {
@@ -131,8 +130,7 @@ struct sauGenerator {
 	uint32_t op_count;
 	OperatorNode *operators;
 	sauMempool *mem;
-	float dc_coeff;
-	sauButF le_lp;
+	float dc_coeff, le_coeff;
 };
 
 // maximum number of buffers needed for op nesting depth
@@ -187,7 +185,7 @@ static bool convert_program(sauGenerator *restrict o,
 	int ev_time_carry = 0;
 	o->srate = srate;
 	o->dc_coeff = SAU_RC_TIME_COEFF(5.0 * srate);
-	o->le_lp = ButF_lpf(srate, sau_minf(12000, srate/2));
+	o->le_coeff = SAU_RC_FREQ_COEFF(sau_minf(6000, srate/2) / srate);
 	o->amp_scale = 0.5f * prg->ampmult; // half for panning sum
 	if ((prg->mode & SAU_PMODE_AMP_DIV_VOICES) != 0)
 		o->amp_scale /= o->vo_count;
@@ -359,8 +357,7 @@ static void update_op(sauGenerator *restrict o,
 	if (params & SAU_POPP_AMP_LEC) {
 		gen->amp_lec = od->amp_lec;
 		// reset, prevent burst
-		gen->amp_le_dc = 0.f;
-		gen->amp_le_lp = (sauButFState){0};
+		gen->amp_le_dc = gen->amp_le_avg = 0.f;
 	}
 	sauLine_copy(&gen->amp.par, od->amp, o->srate);
 	sauLine_copy(&gen->amp.r_par, od->amp2, o->srate);
@@ -423,41 +420,35 @@ static void block_mix_add(sauGenerator *restrict o,
 		bool layer,
 		const float *restrict in_buf,
 		const float *restrict amp) {
-	const float lec = - fabsf(gen->amp_lec);
+	const float lec = - fabsf(gen->amp_lec) * 2;
 	if (sau_fnonzero(lec)) {
 		const bool flip = gen->amp_lec < 0.f;
 		const float le_th = - sqrtf(fabsf(gen->amp_lec)) * (1.f/128);
 		const float le_clip = lec * 0.5f * 0.99999988f; // just < 0.5x
 		const float le_gr = 1.f / (1.f + fabsf(gen->amp_lec));
-		float le_dc = gen->amp_le_dc;
 		if (layer) {
 			for (size_t i = 0; i < buf_len; ++i) {
 				float s = in_buf[i] * amp[i];
 				float le_s = (s < le_th) ? lec : 0.f;
-				le_s -= SAU_LE_AVG_NEXT(le_dc, le_s,
+				le_s -= SAU_LE_AVG_NEXT(gen->amp_le_dc, le_s,
 						le_clip, o->dc_coeff);
-				float le_avg = le_s*2;//le_avg = le_s + le_prev;//le_avg = (le_avg + (le_s + le_prev)) * 0.5f;
-				//le_prev = le_s;
-				le_avg = ButF_run(&o->le_lp,
-						&gen->amp_le_lp, le_avg);
-				s = (s + (flip ? -le_avg : le_avg)) * le_gr;
+				le_s = SAU_RC_AVG_NEXT(gen->amp_le_avg, le_s,
+						o->le_coeff);
+				s = (s + (flip ? -le_s : le_s)) * le_gr;
 				buf[i] += s;
 			}
 		} else {
 			for (size_t i = 0; i < buf_len; ++i) {
 				float s = in_buf[i] * amp[i];
 				float le_s = (s < le_th) ? lec : 0.f;
-				le_s -= SAU_LE_AVG_NEXT(le_dc, le_s,
+				le_s -= SAU_LE_AVG_NEXT(gen->amp_le_dc, le_s,
 						le_clip, o->dc_coeff);
-				float le_avg = le_s*2;//le_avg = le_s + le_prev;//le_avg = (le_avg + (le_s + le_prev)) * 0.5f;
-				//le_prev = le_s;
-				le_avg = ButF_run(&o->le_lp,
-						&gen->amp_le_lp, le_avg);
-				s = (s + (flip ? -le_avg : le_avg)) * le_gr;
+				le_s = SAU_RC_AVG_NEXT(gen->amp_le_avg, le_s,
+						o->le_coeff);
+				s = (s + (flip ? -le_s : le_s)) * le_gr;
 				buf[i] = s;
 			}
 		}
-		gen->amp_le_dc = le_dc;
 	} else {
 		if (layer) {
 			for (size_t i = 0; i < buf_len; ++i) {
@@ -490,25 +481,22 @@ static void block_mix_mul_waveenv(sauGenerator *restrict o,
 		bool layer,
 		const float *restrict in_buf,
 		const float *restrict amp) {
-	const float lec = - fabsf(gen->amp_lec) * 0.5f;
+	const float lec = - fabsf(gen->amp_lec);
 	if (sau_fnonzero(lec)) {
 		const bool flip = gen->amp_lec < 0.f;
 		const float le_th = - sqrtf(fabsf(gen->amp_lec)) * (0.5f/128);
 		const float le_clip = lec * 0.5f * 0.99999988f; // just < 0.5x
 		const float le_gr = 1.f / (1.f + fabsf(gen->amp_lec));
-		float le_dc = gen->amp_le_dc;
 		if (layer) {
 			for (size_t i = 0; i < buf_len; ++i) {
 				const float s_amp = amp[i] * 0.5f;
 				float s = in_buf[i] * s_amp;
 				float le_s = (s < le_th) ? lec : 0.f;
-				le_s -= SAU_LE_AVG_NEXT(le_dc, le_s,
+				le_s -= SAU_LE_AVG_NEXT(gen->amp_le_dc, le_s,
 						le_clip, o->dc_coeff);
-				float le_avg = le_s*2;//le_avg = le_s + le_prev;//le_avg = (le_avg + (le_s + le_prev)) * 0.5f;
-				//le_prev = le_s;
-				le_avg = ButF_run(&o->le_lp,
-						&gen->amp_le_lp, le_avg);
-				s = (s + (flip ? -le_avg : le_avg)) * le_gr
+				le_s = SAU_RC_AVG_NEXT(gen->amp_le_avg, le_s,
+						o->le_coeff);
+				s = (s + (flip ? -le_s : le_s)) * le_gr
 					+ fabsf(s_amp);
 				buf[i] *= s;
 			}
@@ -517,18 +505,15 @@ static void block_mix_mul_waveenv(sauGenerator *restrict o,
 				const float s_amp = amp[i] * 0.5f;
 				float s = in_buf[i] * s_amp;
 				float le_s = (s < le_th) ? lec : 0.f;
-				le_s -= SAU_LE_AVG_NEXT(le_dc, le_s,
+				le_s -= SAU_LE_AVG_NEXT(gen->amp_le_dc, le_s,
 						le_clip, o->dc_coeff);
-				float le_avg = le_s*2;//le_avg = le_s + le_prev;//le_avg = (le_avg + (le_s + le_prev)) * 0.5f;
-				//le_prev = le_s;
-				le_avg = ButF_run(&o->le_lp,
-						&gen->amp_le_lp, le_avg);
-				s = (s + (flip ? -le_avg : le_avg)) * le_gr
+				le_s = SAU_RC_AVG_NEXT(gen->amp_le_avg, le_s,
+						o->le_coeff);
+				s = (s + (flip ? -le_s : le_s)) * le_gr
 					+ fabsf(s_amp);
 				buf[i] = s;
 			}
 		}
-		gen->amp_le_dc = le_dc;
 	} else {
 		if (layer) {
 			for (size_t i = 0; i < buf_len; ++i) {
