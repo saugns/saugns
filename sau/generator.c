@@ -46,39 +46,39 @@ enum {
 /*
  * Butterworth lowpass & highpass filter.
  *
- * Algorithm from Csound's "Opcodes/butter.c" file by Paris Smaragdis (1994).
- * Rewritten, state split from coefficients, simplified for LPF and HPF only.
+ * Algorithm from Csound's "Opcodes/butter.c" file by Paris Smaragdis and
+ * John ffitch (1994). Rewritten, with state split from coefficients, and
+ * simplified for LPF and HPF only.
  */
-struct ButF {
-	float freq;
-	float b[3];
+typedef struct sauButF {
+	float b[2]; // for LPF & HPF, don't need [3] as last value equals first
 	float a[2];
-};
+} sauButF;
 
-struct ButFState {
+typedef struct sauButFState {
 	float t[2];
-};
+} sauButFState;
 
-static struct ButF ButF_lpf(uint32_t srate, float freq) {
+static inline sauButF ButF_lpf(uint32_t srate, float freq) {
 	const double pi_sr = SAU_PI / srate;
 	const double c = 1.f / tan(pi_sr * freq);
 	double b0 = 1.f / (1.f + SAU_SQRT_2*c + c*c);
 	double a0 = 2.f * (1.f - c*c) * b0; /* note reverse of (c*c - 1.f) */
 	double a1 = -(1.f - SAU_SQRT_2*c + c*c) * b0;
-	return (struct ButF){.freq = freq, .b = {b0, 2*b0, b0}, .a = {a0, a1}};
+	return (sauButF){.b = {b0, 2*b0}, .a = {a0, a1}};
 }
 
-static struct ButF ButF_hpf(uint32_t srate, float freq) {
+static inline sauButF ButF_hpf(uint32_t srate, float freq) {
 	const double pi_sr = SAU_PI / srate;
 	const double c = 1.f / tan(pi_sr * freq);
 	double b0 = 1.f / (1.f + SAU_SQRT_2*c + c*c);
 	double a0 = 2.f * (c*c - 1.f) * b0; /* note reverse of (1.f - c*c)  */
 	double a1 = -(1.f - SAU_SQRT_2*c + c*c) * b0;
-	return (struct ButF){.freq = freq, .b = {b0, -2*b0, b0}, .a = {a0, a1}};
+	return (sauButF){.b = {b0, -2*b0}, .a = {a0, a1}};
 }
 
-static inline float ButF_run(const struct ButF *restrict o,
-		struct ButFState *restrict s, float x) {
+static inline float ButF_run(const sauButF *restrict o,
+		sauButFState *restrict s, float x) {
 	float t = x - o->a[0] * s->t[0] + o->a[1] * s->t[1];
 	float y = o->b[0] * (t + s->t[1]) + o->b[1] * s->t[0];
 	s->t[1] = s->t[0];
@@ -95,7 +95,7 @@ typedef struct GenNode {
 	const sauProgramIDArr *camods;
 	float amp_lec;
 	float amp_le_dc;//, amp_le_prev, amp_le_avg;
-	struct ButFState amp_le_lp;
+	sauButFState amp_le_lp;
 } GenNode;
 
 typedef struct AmpNode {
@@ -175,7 +175,7 @@ struct sauGenerator {
 	OperatorNode *operators;
 	sauMempool *mem;
 	float dc_coeff;
-	struct ButF le_lp;
+	sauButF le_lp;
 };
 
 // maximum number of buffers needed for op nesting depth
@@ -403,7 +403,7 @@ static void update_op(sauGenerator *restrict o,
 		gen->amp_lec = od->amp_lec;
 		// reset, prevent burst
 		gen->amp_le_dc = 0.f;
-		gen->amp_le_lp = (struct ButFState){0};
+		gen->amp_le_lp = (sauButFState){0};
 	}
 	sauLine_copy(&gen->amp.par, od->amp, o->srate);
 	sauLine_copy(&gen->amp.r_par, od->amp2, o->srate);
