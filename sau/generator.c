@@ -49,7 +49,7 @@ enum {
  * Algorithm from Csound's "Opcodes/butter.c" file by Paris Smaragdis (1994).
  * Rewritten, state split from coefficients, simplified for LPF and HPF only.
  */
-struct ButLP {
+struct ButF {
 	float freq;
 	float b[3];
 	float a[2];
@@ -57,7 +57,7 @@ struct ButLP {
 
 #define CSOUND_ISH 1
 
-struct ButLPState {
+struct ButFState {
 #if CSOUND_ISH
 	float t[2];
 #else
@@ -65,7 +65,7 @@ struct ButLPState {
 #endif
 };
 
-static void init_ButLP(struct ButLP *restrict o, uint32_t srate, float freq) {
+static struct ButF ButF_lpf(uint32_t srate, float freq) {
 	const double pi_sr = SAU_PI / srate;
 	const double c = 1.f / tan(pi_sr * freq);
 	double b0 = 1.f / (1.f + SAU_SQRT_2*c + c*c);
@@ -75,11 +75,24 @@ static void init_ButLP(struct ButLP *restrict o, uint32_t srate, float freq) {
 	double a0 = 2.f * (c*c - 1.f) * b0;
 #endif
 	double a1 = -(1.f - SAU_SQRT_2*c + c*c) * b0;
-	*o = (struct ButLP){.freq = freq, .b = {b0, 2*b0, b0}, .a = {a0, a1}};
+	return (struct ButF){.freq = freq, .b = {b0, 2*b0, b0}, .a = {a0, a1}};
 }
 
-static inline float ButLP_run(const struct ButLP *restrict o,
-		struct ButLPState *restrict s, float x) {
+static struct ButF ButF_hpf(uint32_t srate, float freq) {
+	const double pi_sr = SAU_PI / srate;
+	const double c = 1.f / tan(pi_sr * freq);
+	double b0 = 1.f / (1.f + SAU_SQRT_2*c + c*c);
+#if CSOUND_ISH
+	double a0 = 2.f * (c*c - 1.f) * b0;
+#else
+	double a0 = 2.f * (1.f - c*c) * b0;
+#endif
+	double a1 = -(1.f - SAU_SQRT_2*c + c*c) * b0;
+	return (struct ButF){.freq = freq, .b = {b0, -2*b0, b0}, .a = {a0, a1}};
+}
+
+static inline float ButF_run(const struct ButF *restrict o,
+		struct ButFState *restrict s, float x) {
 #if CSOUND_ISH
 	float t = x - o->a[0] * s->t[0] + o->a[1] * s->t[1];
 	float y = o->b[0] * (t + s->t[1]) + o->b[1] * s->t[0];
@@ -105,7 +118,7 @@ typedef struct GenNode {
 	const sauProgramIDArr *camods;
 	float amp_lec;
 	float amp_le_dc;//, amp_le_prev, amp_le_avg;
-	struct ButLPState amp_le_lp;
+	struct ButFState amp_le_lp;
 } GenNode;
 
 typedef struct AmpNode {
@@ -185,7 +198,7 @@ struct sauGenerator {
 	OperatorNode *operators;
 	sauMempool *mem;
 	float dc_coeff;
-	struct ButLP le_lp;
+	struct ButF le_lp;
 };
 
 // maximum number of buffers needed for op nesting depth
@@ -240,7 +253,7 @@ static bool convert_program(sauGenerator *restrict o,
 	int ev_time_carry = 0;
 	o->srate = srate;
 	o->dc_coeff = SAU_RC_TIME_COEFF(5.0 * srate);
-	init_ButLP(&o->le_lp, srate, sau_minf(12000, srate/2));
+	o->le_lp = ButF_hpf(srate, sau_minf(12000, srate/2));
 	o->amp_scale = 0.5f * prg->ampmult; // half for panning sum
 	if ((prg->mode & SAU_PMODE_AMP_DIV_VOICES) != 0)
 		o->amp_scale /= o->vo_count;
@@ -413,7 +426,7 @@ static void update_op(sauGenerator *restrict o,
 		gen->amp_lec = od->amp_lec;
 		// reset, prevent burst
 		gen->amp_le_dc = 0.f;
-		gen->amp_le_lp = (struct ButLPState){0};
+		gen->amp_le_lp = (struct ButFState){0};
 	}
 	sauLine_copy(&gen->amp.par, od->amp, o->srate);
 	sauLine_copy(&gen->amp.r_par, od->amp2, o->srate);
@@ -491,7 +504,7 @@ static void block_mix_add(sauGenerator *restrict o,
 						le_clip, o->dc_coeff);
 				float le_avg = le_s*2;//le_avg = le_s + le_prev;//le_avg = (le_avg + (le_s + le_prev)) * 0.5f;
 				//le_prev = le_s;
-				le_avg = ButLP_run(&o->le_lp,
+				le_avg = ButF_run(&o->le_lp,
 						&gen->amp_le_lp, le_avg);
 				s = (s + (flip ? -le_avg : le_avg)) * le_gr;
 				buf[i] += s;
@@ -504,7 +517,7 @@ static void block_mix_add(sauGenerator *restrict o,
 						le_clip, o->dc_coeff);
 				float le_avg = le_s*2;//le_avg = le_s + le_prev;//le_avg = (le_avg + (le_s + le_prev)) * 0.5f;
 				//le_prev = le_s;
-				le_avg = ButLP_run(&o->le_lp,
+				le_avg = ButF_run(&o->le_lp,
 						&gen->amp_le_lp, le_avg);
 				s = (s + (flip ? -le_avg : le_avg)) * le_gr;
 				buf[i] = s;
@@ -559,7 +572,7 @@ static void block_mix_mul_waveenv(sauGenerator *restrict o,
 						le_clip, o->dc_coeff);
 				float le_avg = le_s*2;//le_avg = le_s + le_prev;//le_avg = (le_avg + (le_s + le_prev)) * 0.5f;
 				//le_prev = le_s;
-				le_avg = ButLP_run(&o->le_lp,
+				le_avg = ButF_run(&o->le_lp,
 						&gen->amp_le_lp, le_avg);
 				s = (s + (flip ? -le_avg : le_avg)) * le_gr
 					+ fabsf(s_amp);
@@ -574,7 +587,7 @@ static void block_mix_mul_waveenv(sauGenerator *restrict o,
 						le_clip, o->dc_coeff);
 				float le_avg = le_s*2;//le_avg = le_s + le_prev;//le_avg = (le_avg + (le_s + le_prev)) * 0.5f;
 				//le_prev = le_s;
-				le_avg = ButLP_run(&o->le_lp,
+				le_avg = ButF_run(&o->le_lp,
 						&gen->amp_le_lp, le_avg);
 				s = (s + (flip ? -le_avg : le_avg)) * le_gr
 					+ fabsf(s_amp);
