@@ -19,6 +19,7 @@
 #define SAU_PI          3.14159265358979323846
 #define SAU_ASIN_1_2    0.52359877559829887308 // asin(0.5)
 #define SAU_SQRT_1_2    0.70710678118654752440 // sqrt(0.5), 1/sqrt(2)
+#define SAU_SQRT_2      1.41421356237309504880 // sqrt(2)
 #define SAU_HUMMID    632.45553203367586639978 // human hearing range geom.mean
 #define SAU_GLDA        2.39996322972865332223 // golden angle 2*PI*(2.0 - phi)
 #define SAU_GLDA_1_2PI  0.38196601125010515180 // (in cycle %) 2.0 - phi
