@@ -43,33 +43,56 @@ enum {
 	ON_TIME_INF = 1<<2, /* used for SAU_TIMEP_IMPLICIT */
 };
 
+/*
+ * Butterworth lowpass & highpass filter.
+ *
+ * Algorithm from Csound's "Opcodes/butter.c" file by Paris Smaragdis (1994).
+ * Rewritten, state split from coefficients, simplified for LPF and HPF only.
+ */
 struct ButLP {
 	float freq;
 	float b[3];
 	float a[2];
 };
 
+#define CSOUND_ISH 1
+
 struct ButLPState {
+#if CSOUND_ISH
+	float t[2];
+#else
 	float x[2], y[2];
+#endif
 };
 
 static void init_ButLP(struct ButLP *restrict o, uint32_t srate, float freq) {
 	const double pi_sr = SAU_PI / srate;
 	const double c = 1.f / tan(pi_sr * freq);
 	double b0 = 1.f / (1.f + SAU_SQRT_2*c + c*c);
+#if CSOUND_ISH
+	double a0 = 2.f * (1.f - c*c) * b0;
+#else
 	double a0 = 2.f * (c*c - 1.f) * b0;
+#endif
 	double a1 = -(1.f - SAU_SQRT_2*c + c*c) * b0;
 	*o = (struct ButLP){.freq = freq, .b = {b0, 2*b0, b0}, .a = {a0, a1}};
 }
 
 static inline float ButLP_run(const struct ButLP *restrict o,
 		struct ButLPState *restrict s, float x) {
+#if CSOUND_ISH
+	float t = x - o->a[0] * s->t[0] + o->a[1] * s->t[1];
+	float y = o->b[0] * (t + s->t[1]) + o->b[1] * s->t[0];
+	s->t[1] = s->t[0];
+	s->t[0] = t;
+#else
 	float y = o->b[0] * (x + s->x[1]) + o->b[1] * s->x[0]
 		+ o->a[0] * s->y[0] + o->a[1] * s->y[1];
 	s->x[1] = s->x[0];
 	s->x[0] = x;
 	s->y[1] = s->y[0];
 	s->y[0] = y;
+#endif
 	return y;
 }
 
