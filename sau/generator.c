@@ -51,7 +51,7 @@ typedef struct GenNode {
 	sauLine pan;
 	const sauProgramIDArr *camods;
 	float amp_lec;
-	float amp_le_dc, amp_le_avg;
+	float amp_le_dc, amp_le_avg, amp_le_avg2;
 } GenNode;
 
 typedef struct AmpNode {
@@ -130,7 +130,7 @@ struct sauGenerator {
 	uint32_t op_count;
 	OperatorNode *operators;
 	sauMempool *mem;
-	float dc_coeff, le_coeff;
+	float dc_coeff, le_coeff, le_coeff2;
 };
 
 // maximum number of buffers needed for op nesting depth
@@ -185,7 +185,8 @@ static bool convert_program(sauGenerator *restrict o,
 	int ev_time_carry = 0;
 	o->srate = srate;
 	o->dc_coeff = SAU_RC_TIME_COEFF(5.0 * srate);
-	o->le_coeff = SAU_RC_FREQ_COEFF(sau_minf(10000, srate/2) / srate);
+	o->le_coeff = SAU_RC_FREQ_COEFF(sau_minf(7500/2, srate/2) / srate);
+	o->le_coeff2 = SAU_RC_FREQ_COEFF(sau_minf(7500*2, srate/2) / srate);
 	o->amp_scale = 0.5f * prg->ampmult; // half for panning sum
 	if ((prg->mode & SAU_PMODE_AMP_DIV_VOICES) != 0)
 		o->amp_scale /= o->vo_count;
@@ -357,7 +358,7 @@ static void update_op(sauGenerator *restrict o,
 	if (params & SAU_POPP_AMP_LEC) {
 		gen->amp_lec = od->amp_lec;
 		// reset, prevent burst
-		gen->amp_le_dc = gen->amp_le_avg = 0.f;
+		gen->amp_le_dc = gen->amp_le_avg = gen->amp_le_avg2 = 0.f;
 	}
 	sauLine_copy(&gen->amp.par, od->amp, o->srate);
 	sauLine_copy(&gen->amp.r_par, od->amp2, o->srate);
@@ -420,7 +421,7 @@ static void block_mix_add(sauGenerator *restrict o,
 		bool layer,
 		const float *restrict in_buf,
 		const float *restrict amp) {
-	const float lec = - fabsf(gen->amp_lec) * 2;
+	const float lec = - fabsf(gen->amp_lec);
 	if (sau_fnonzero(lec)) {
 		const bool flip = gen->amp_lec < 0.f;
 		const float le_th = - sqrtf(fabsf(gen->amp_lec)) * (1.f/128);
@@ -432,8 +433,11 @@ static void block_mix_add(sauGenerator *restrict o,
 				float le_s = (s < le_th) ? lec : 0.f;
 				le_s -= SAU_LE_AVG_NEXT(gen->amp_le_dc, le_s,
 						le_clip, o->dc_coeff);
-				le_s = SAU_RC_AVG_NEXT(gen->amp_le_avg, le_s,
+				SAU_RC_AVG_NEXT(gen->amp_le_avg, le_s,
 						o->le_coeff);
+				SAU_RC_AVG_NEXT(gen->amp_le_avg2, le_s,
+						o->le_coeff2);
+				le_s = gen->amp_le_avg + gen->amp_le_avg2;
 				s = (s + (flip ? -le_s : le_s)) * le_gr;
 				buf[i] += s;
 			}
@@ -443,8 +447,11 @@ static void block_mix_add(sauGenerator *restrict o,
 				float le_s = (s < le_th) ? lec : 0.f;
 				le_s -= SAU_LE_AVG_NEXT(gen->amp_le_dc, le_s,
 						le_clip, o->dc_coeff);
-				le_s = SAU_RC_AVG_NEXT(gen->amp_le_avg, le_s,
+				SAU_RC_AVG_NEXT(gen->amp_le_avg, le_s,
 						o->le_coeff);
+				SAU_RC_AVG_NEXT(gen->amp_le_avg2, le_s,
+						o->le_coeff2);
+				le_s = gen->amp_le_avg + gen->amp_le_avg2;
 				s = (s + (flip ? -le_s : le_s)) * le_gr;
 				buf[i] = s;
 			}
@@ -481,7 +488,7 @@ static void block_mix_mul_waveenv(sauGenerator *restrict o,
 		bool layer,
 		const float *restrict in_buf,
 		const float *restrict amp) {
-	const float lec = - fabsf(gen->amp_lec);
+	const float lec = - fabsf(gen->amp_lec) * 0.5f;
 	if (sau_fnonzero(lec)) {
 		const bool flip = gen->amp_lec < 0.f;
 		const float le_th = - sqrtf(fabsf(gen->amp_lec)) * (0.5f/128);
@@ -494,8 +501,11 @@ static void block_mix_mul_waveenv(sauGenerator *restrict o,
 				float le_s = (s < le_th) ? lec : 0.f;
 				le_s -= SAU_LE_AVG_NEXT(gen->amp_le_dc, le_s,
 						le_clip, o->dc_coeff);
-				le_s = SAU_RC_AVG_NEXT(gen->amp_le_avg, le_s,
+				SAU_RC_AVG_NEXT(gen->amp_le_avg, le_s,
 						o->le_coeff);
+				SAU_RC_AVG_NEXT(gen->amp_le_avg2, le_s,
+						o->le_coeff2);
+				le_s = gen->amp_le_avg + gen->amp_le_avg2;
 				s = (s + (flip ? -le_s : le_s)) * le_gr
 					+ fabsf(s_amp);
 				buf[i] *= s;
@@ -507,8 +517,11 @@ static void block_mix_mul_waveenv(sauGenerator *restrict o,
 				float le_s = (s < le_th) ? lec : 0.f;
 				le_s -= SAU_LE_AVG_NEXT(gen->amp_le_dc, le_s,
 						le_clip, o->dc_coeff);
-				le_s = SAU_RC_AVG_NEXT(gen->amp_le_avg, le_s,
+				SAU_RC_AVG_NEXT(gen->amp_le_avg, le_s,
 						o->le_coeff);
+				SAU_RC_AVG_NEXT(gen->amp_le_avg2, le_s,
+						o->le_coeff2);
+				le_s = gen->amp_le_avg + gen->amp_le_avg2;
 				s = (s + (flip ? -le_s : le_s)) * le_gr
 					+ fabsf(s_amp);
 				buf[i] = s;
