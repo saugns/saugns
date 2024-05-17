@@ -412,3 +412,51 @@ static inline float sau_sinpi_d5f(float x) {
 /** Run DC blocker for 1 sample, updating and returning state. */
 #define SAU_RC_DCBLOCK_NEXT(state, in, in_prev, coeff) \
 	((state) = (in) - (in_prev) + (coeff)*(state))
+
+/**
+ * Butterworth lowpass & highpass filter. Main struct, with coefficients;
+ * each filter can have several instances using state of a separate type.
+ *
+ * Algorithm from Csound's "Opcodes/butter.c" file by Paris Smaragdis and
+ * John ffitch (1994). Rewritten, with state split from coefficients, and
+ * simplified for LPF and HPF only.
+ */
+typedef struct sauButF {
+	float b[2]; // for LPF & HPF, don't need [3] as last value equals first
+	float a[2];
+} sauButF;
+
+/** State for butterworth LPF or HPF. Initialize to zero before use. */
+typedef struct sauButFState {
+	float t[2];
+} sauButFState;
+
+/** Return butterworth LPF for \p freq, \p srate. */
+static inline sauButF ButF_lpf(uint32_t srate, float freq) {
+	const double pi_sr = SAU_PI / srate;
+	const double c = 1.f / tan(pi_sr * freq);
+	double b0 = 1.f / (1.f + SAU_SQRT_2*c + c*c);
+	double a0 = 2.f * (1.f - c*c) * b0; /* note reverse of (c*c - 1.f) */
+	double a1 = -(1.f - SAU_SQRT_2*c + c*c) * b0;
+	return (sauButF){.b = {b0, 2*b0}, .a = {a0, a1}};
+}
+
+/** Return butterworth HPF for \p freq, \p srate. */
+static inline sauButF ButF_hpf(uint32_t srate, float freq) {
+	const double pi_sr = SAU_PI / srate;
+	const double c = 1.f / tan(pi_sr * freq);
+	double b0 = 1.f / (1.f + SAU_SQRT_2*c + c*c);
+	double a0 = 2.f * (c*c - 1.f) * b0; /* note reverse of (1.f - c*c)  */
+	double a1 = -(1.f - SAU_SQRT_2*c + c*c) * b0;
+	return (sauButF){.b = {b0, -2*b0}, .a = {a0, a1}};
+}
+
+/** Run butterworth filter for 1 sample, returning filter output. */
+static inline float ButF_run(const sauButF *restrict o,
+		sauButFState *restrict s, float x) {
+	float t = x - o->a[0] * s->t[0] + o->a[1] * s->t[1];
+	float y = o->b[0] * (t + s->t[1]) + o->b[1] * s->t[0];
+	s->t[1] = s->t[0];
+	s->t[0] = t;
+	return y;
+}
