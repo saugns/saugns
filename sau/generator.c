@@ -185,7 +185,7 @@ static bool convert_program(sauGenerator *restrict o,
 	int ev_time_carry = 0;
 	o->srate = srate;
 	o->dc_coeff = SAU_RC_TIME_COEFF(5.0 * srate);
-	o->le_coeff = SAU_RC_FREQ_COEFF(sau_minf(6000, srate/2) / srate);
+	o->le_coeff = SAU_RC_FREQ_COEFF(sau_minf(10000, srate/2) / srate);
 	o->amp_scale = 0.5f * prg->ampmult; // half for panning sum
 	if ((prg->mode & SAU_PMODE_AMP_DIV_VOICES) != 0)
 		o->amp_scale /= o->vo_count;
