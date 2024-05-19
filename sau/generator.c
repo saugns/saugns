@@ -185,8 +185,8 @@ static bool convert_program(sauGenerator *restrict o,
 	int ev_time_carry = 0;
 	o->srate = srate;
 	o->dc_coeff = SAU_RC_TIME_COEFF(5.0 * srate);
-	o->le_coeff = SAU_RC_FREQ_COEFF(sau_minf(7500/2, srate/2) / srate);
-	o->le_coeff2 = SAU_RC_FREQ_COEFF(sau_minf(7500*2, srate/2) / srate);
+	o->le_coeff = SAU_RC_FREQ_COEFF(sau_minf(7450/2, srate/2) / srate);
+	o->le_coeff2 = SAU_RC_FREQ_COEFF(sau_minf(7450*2, srate/2) / srate);
 	o->amp_scale = 0.5f * prg->ampmult; // half for panning sum
 	if ((prg->mode & SAU_PMODE_AMP_DIV_VOICES) != 0)
 		o->amp_scale /= o->vo_count;
@@ -424,7 +424,7 @@ static void block_mix_add(sauGenerator *restrict o,
 	const float lec = - fabsf(gen->amp_lec);
 	if (sau_fnonzero(lec)) {
 		const bool flip = gen->amp_lec < 0.f;
-		const float le_th = - sqrtf(fabsf(gen->amp_lec)) * (1.f/128);
+		const float le_th = -0x1p-10; // low, stays on while audible in
 		const float le_clip = lec * 0.5f * 0.99999988f; // just < 0.5x
 		const float le_gr = 1.f / (1.f + fabsf(gen->amp_lec));
 		if (layer) {
@@ -433,11 +433,10 @@ static void block_mix_add(sauGenerator *restrict o,
 				float le_s = (s < le_th) ? lec : 0.f;
 				le_s -= SAU_LE_AVG_NEXT(gen->amp_le_dc, le_s,
 						le_clip, o->dc_coeff);
-				SAU_RC_AVG_NEXT(gen->amp_le_avg, le_s,
-						o->le_coeff);
-				SAU_RC_AVG_NEXT(gen->amp_le_avg2, le_s,
+				le_s = SAU_RC_AVG_NEXT(gen->amp_le_avg, le_s,
+						o->le_coeff)
+				     + SAU_RC_AVG_NEXT(gen->amp_le_avg2, le_s,
 						o->le_coeff2);
-				le_s = gen->amp_le_avg + gen->amp_le_avg2;
 				s = (s + (flip ? -le_s : le_s)) * le_gr;
 				buf[i] += s;
 			}
@@ -447,11 +446,10 @@ static void block_mix_add(sauGenerator *restrict o,
 				float le_s = (s < le_th) ? lec : 0.f;
 				le_s -= SAU_LE_AVG_NEXT(gen->amp_le_dc, le_s,
 						le_clip, o->dc_coeff);
-				SAU_RC_AVG_NEXT(gen->amp_le_avg, le_s,
-						o->le_coeff);
-				SAU_RC_AVG_NEXT(gen->amp_le_avg2, le_s,
+				le_s = SAU_RC_AVG_NEXT(gen->amp_le_avg, le_s,
+						o->le_coeff)
+				     + SAU_RC_AVG_NEXT(gen->amp_le_avg2, le_s,
 						o->le_coeff2);
-				le_s = gen->amp_le_avg + gen->amp_le_avg2;
 				s = (s + (flip ? -le_s : le_s)) * le_gr;
 				buf[i] = s;
 			}
@@ -491,7 +489,7 @@ static void block_mix_mul_waveenv(sauGenerator *restrict o,
 	const float lec = - fabsf(gen->amp_lec) * 0.5f;
 	if (sau_fnonzero(lec)) {
 		const bool flip = gen->amp_lec < 0.f;
-		const float le_th = - sqrtf(fabsf(gen->amp_lec)) * (0.5f/128);
+		const float le_th = -0x1p-10; // low, stays on while audible in
 		const float le_clip = lec * 0.5f * 0.99999988f; // just < 0.5x
 		const float le_gr = 1.f / (1.f + fabsf(gen->amp_lec));
 		if (layer) {
@@ -501,11 +499,10 @@ static void block_mix_mul_waveenv(sauGenerator *restrict o,
 				float le_s = (s < le_th) ? lec : 0.f;
 				le_s -= SAU_LE_AVG_NEXT(gen->amp_le_dc, le_s,
 						le_clip, o->dc_coeff);
-				SAU_RC_AVG_NEXT(gen->amp_le_avg, le_s,
-						o->le_coeff);
-				SAU_RC_AVG_NEXT(gen->amp_le_avg2, le_s,
+				le_s = SAU_RC_AVG_NEXT(gen->amp_le_avg, le_s,
+						o->le_coeff)
+				     + SAU_RC_AVG_NEXT(gen->amp_le_avg2, le_s,
 						o->le_coeff2);
-				le_s = gen->amp_le_avg + gen->amp_le_avg2;
 				s = (s + (flip ? -le_s : le_s)) * le_gr
 					+ fabsf(s_amp);
 				buf[i] *= s;
@@ -517,11 +514,10 @@ static void block_mix_mul_waveenv(sauGenerator *restrict o,
 				float le_s = (s < le_th) ? lec : 0.f;
 				le_s -= SAU_LE_AVG_NEXT(gen->amp_le_dc, le_s,
 						le_clip, o->dc_coeff);
-				SAU_RC_AVG_NEXT(gen->amp_le_avg, le_s,
-						o->le_coeff);
-				SAU_RC_AVG_NEXT(gen->amp_le_avg2, le_s,
+				le_s = SAU_RC_AVG_NEXT(gen->amp_le_avg, le_s,
+						o->le_coeff)
+				     + SAU_RC_AVG_NEXT(gen->amp_le_avg2, le_s,
 						o->le_coeff2);
-				le_s = gen->amp_le_avg + gen->amp_le_avg2;
 				s = (s + (flip ? -le_s : le_s)) * le_gr
 					+ fabsf(s_amp);
 				buf[i] = s;
