@@ -104,7 +104,7 @@ enum {
 #define SAU_LADDERFX_SET 0
 
 /** Classic "ladder effect" intensity. Matches Sega Genesis/Mega Drive I. */
-#define SAU_LADDERFX_CLASSIC 0.01f // corresponds to Aly James's use of 0.02
+#define SAU_LADDERFX_CLASSIC 0.013671875f // 3.5/256 approx. based on MAME ymfm
 
 /* Macro used to declare and define noise type sets of items. */
 #define SAU_NOISE__ITEMS(X) \

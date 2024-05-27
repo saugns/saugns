@@ -424,7 +424,7 @@ static void block_mix_add(sauGenerator *restrict o,
 	const float lec = - fabsf(gen->amp_lec);
 	if (sau_fnonzero(lec)) {
 		const bool flip = gen->amp_lec < 0.f;
-		const float le_th = -0.009f;//-sqrtf(fabsf(gen->amp_lec)) * (1.f/128);
+		const float le_th = -0x1p-7f;//-sqrtf(fabsf(gen->amp_lec)) * (1.f/128);
 		const float le_clip = lec * 0.5f * 0.99999988f; // just < 0.5x
 		const float le_gr = 1.f / (1.f + fabsf(gen->amp_lec));
 		if (layer) {
@@ -491,7 +491,7 @@ static void block_mix_mul_waveenv(sauGenerator *restrict o,
 	const float lec = - fabsf(gen->amp_lec) * 0.5f;
 	if (sau_fnonzero(lec)) {
 		const bool flip = gen->amp_lec < 0.f;
-		const float le_th = -0.009f;//-sqrtf(fabsf(gen->amp_lec)) * (0.5f/128);
+		const float le_th = -0x1p-7f * 0.5f;//-sqrtf(fabsf(gen->amp_lec)) * (0.5f/128);
 		const float le_clip = lec * 0.5f * 0.99999988f; // just < 0.5x
 		const float le_gr = 1.f / (1.f + fabsf(gen->amp_lec));
 		if (layer) {

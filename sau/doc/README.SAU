@@ -573,7 +573,7 @@ Ladder effect distortion values:
 		This is not intended as a fully accurate emulation of Sega
 	sound hardware; mixing and internally applied filtering differs...
 	Noticeably, this effect is applied before panning, not afterwards.
-	C	0.01 (classic, mimics the Sega Genesis/Mega Drive model I)
+	C	7/512 (classic, mimics the Sega Genesis/Mega Drive model 1)
 
 Channel mixing values:
 	Panning, where 0.0 is centered. Named constants can be used in place
