@@ -4,10 +4,10 @@ saugns version changes
 [On the website](https://sau.frama.io/changes.html#saulang)
 is a shorter change log with only the SAU language changes.
 
-Pre-release
------------
+v0.4.4c (2024-06-01)
+--------------------
 
-[rebase in progress]
+Minor parsing bugfix. Refactoring.
 
 Language changes:
  * Nesting syntax.
