@@ -269,7 +269,9 @@ static inline float sauLine_val_nhl(float x, float a, float b) {
 /** Single value from \p a to \p b placing \p x in rough YM2612 attack/decay. */
 static inline float sauLine_val_yme(float x, float a, float b) {
 	float v = x;
-	float x2 = v*v, x4 = x2*x2, x8 = x4*x4;
-	v = (a < b ? x : x8);
+	float v2 = v*v, v4 = v2*v2, v8 = v4*v4 + v*(v2 - v4);
+	v = (a < b) ? x : v8*v8;
 	return a + (b - a) * v;
+	//
+	//return b + (a - b) * expramp2(1.f - x);
 }
