@@ -281,6 +281,28 @@ void sauLine_fill_nhl(float *restrict buf, uint32_t len,
 }
 
 /**
+ * Fill \p buf with \p len values like a too-smooth and
+ * simplified YM2612 attack or decay/release curve (no sustain),
+ * linear for an increase and "exponential" for a decrease,
+ * between \p v0 and \p vt, beginning at position \p pos.
+ */
+void sauLine_fill_yme(float *restrict buf, uint32_t len,
+		float v0, float vt, uint32_t pos, uint32_t time,
+		const float *restrict mulbuf) {
+	const int32_t adj_pos = pos - (time / 2);
+	const float inv_time = 1.f / time;
+	const float vm = (v0 + vt) * 0.5f;
+	const float vd = (vt - v0);
+	for (uint32_t i = 0; i < len; ++i) {
+		float x = ((int32_t)i + adj_pos) * inv_time;
+		float v = vm + vd * x;
+		float x2 = v*v, x4 = x2*x2, x8 = x4*x4;
+		v = (v0 < vt) ? v : x8;
+		buf[i] = mulbuf ? (v * mulbuf[i]) : v;
+	}
+}
+
+/**
  * Copy changes from \p src to the instance,
  * preserving non-overridden parts of state.
  */

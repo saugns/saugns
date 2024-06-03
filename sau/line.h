@@ -29,6 +29,7 @@
 	X(ncl, (.perlin_amp = 2.f)) \
 	X(nhl, (.perlin_amp = 1.89339094650f)) \
 	X(uwh, (.perlin_amp = 1.f)) \
+	X(yme, (.perlin_amp = 1.f)) \
 	//
 #define SAU_LINE__X_ID(NAME, ...) SAU_LINE_N_##NAME,
 #define SAU_LINE__X_NAME(NAME, ...) #NAME,
@@ -263,4 +264,12 @@ static inline float sauLine_val_nhl(float x, float a, float b) {
 	union {float f; int32_t i;} xs = {.f = x};
 	int32_t s = sau_ranfast32(xs.i);
 	return a + (b - a) * (x + xb * s * 0x1p-31f);
+}
+
+/** Single value from \p a to \p b placing \p x in rough YM2612 attack/decay. */
+static inline float sauLine_val_yme(float x, float a, float b) {
+	float v = x;
+	float x2 = v*v, x4 = x2*x2, x8 = x4*x4;
+	v = (a < b ? x : x8);
+	return a + (b - a) * v;
 }
