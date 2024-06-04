@@ -77,7 +77,7 @@ sauNoinline void sauLine_fill_sah(float *restrict buf, uint32_t len,
  * from \p v0 (at position 0) to \p vt (at position \p time),
  * beginning at position \p pos.
  */
-void sauLine_fill_lin(float *restrict buf, uint32_t len,
+sauNoinline void sauLine_fill_lin(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf) {
 	const int32_t adj_pos = pos - (time / 2);
@@ -296,6 +296,10 @@ void sauLine_fill_nhl(float *restrict buf, uint32_t len,
 void sauLine_fill_yme(float *restrict buf, uint32_t len,
 		float v0, float vt, uint32_t pos, uint32_t time,
 		const float *restrict mulbuf) {
+	if (v0 < vt) {
+		sauLine_fill_lin(buf, len, v0, vt, pos, time, mulbuf);
+		return;
+	}
 	const int32_t adj_pos = pos - (time / 2);
 	const float inv_time = 1.f / time;
 	const float vm = (v0 + vt) * 0.5f;
@@ -304,7 +308,14 @@ void sauLine_fill_yme(float *restrict buf, uint32_t len,
 		float x = ((int32_t)i + adj_pos) * inv_time;
 		float v = vm + vd * x;
 		float v2 = v*v, v4 = v2*v2, v8 = v4*v4 + v*(v2 - v4);
-		v = (v0 < vt) ? v : v8*v4;
+		//v = v8*v4;
+//		v = v*(1 + x*(v - v*v));
+//		v = v*v*(v + x*(v*v*v - v*v));
+//		v = v*(1 + x*(v - v*v));
+//		v = v*v;
+//		v = v*v;
+//		v = v*v;
+		v = (exp(v * 8.f) - 1.f) / (2980.95798704172827474359 - 1.f);
 		//
 		/*float x = (i + pos) * inv_time;
 		float v = vt + (v0 - vt) * expramp2(1.f - x);*/
