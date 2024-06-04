@@ -270,7 +270,7 @@ static inline float sauLine_val_nhl(float x, float a, float b) {
 static inline float sauLine_val_yme(float x, float a, float b) {
 	float v = x;
 	float v2 = v*v, v4 = v2*v2, v8 = v4*v4 + v*(v2 - v4);
-	v = (a < b) ? x : v8*v8;
+	v = (a < b) ? x : v8*v4;
 	return a + (b - a) * v;
 	//
 	//return b + (a - b) * expramp2(1.f - x);
