@@ -304,7 +304,7 @@ void sauLine_fill_yme(float *restrict buf, uint32_t len,
 		float x = ((int32_t)i + adj_pos) * inv_time;
 		float v = vm + vd * x;
 		float v2 = v*v, v4 = v2*v2, v8 = v4*v4 + v*(v2 - v4);
-		v = (v0 < vt) ? v : v8*v8;
+		v = (v0 < vt) ? v : v8*v4;
 		//
 		/*float x = (i + pos) * inv_time;
 		float v = vt + (v0 - vt) * expramp2(1.f - x);*/
