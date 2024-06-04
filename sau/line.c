@@ -300,25 +300,16 @@ void sauLine_fill_yme(float *restrict buf, uint32_t len,
 		sauLine_fill_lin(buf, len, v0, vt, pos, time, mulbuf);
 		return;
 	}
-	const int32_t adj_pos = pos - (time / 2);
 	const float inv_time = 1.f / time;
-	const float vm = (v0 + vt) * 0.5f;
-	const float vd = (vt - v0);
 	for (uint32_t i = 0; i < len; ++i) {
-		float x = ((int32_t)i + adj_pos) * inv_time;
-		float v = vm + vd * x;
+		float x = 1.f - (i + pos) * inv_time, v;
+		//v = vt + (v0 - vt) * expramp(x);
+		/*v = x;
 		float v2 = v*v, v4 = v2*v2, v8 = v4*v4 + v*(v2 - v4);
-		//v = v8*v4;
-//		v = v*(1 + x*(v - v*v));
-//		v = v*v*(v + x*(v*v*v - v*v));
-//		v = v*(1 + x*(v - v*v));
-//		v = v*v;
-//		v = v*v;
-//		v = v*v;
-		v = (exp(v * 8.f) - 1.f) / (2980.95798704172827474359 - 1.f);
-		//
-		/*float x = (i + pos) * inv_time;
-		float v = vt + (v0 - vt) * expramp2(1.f - x);*/
+		v = vt + (v0 - vt) * v8*v4;*/
+		//x = (exp(x * 8.f) - 1.f) / (2980.95798704172827474359 - 1.f);
+		v = (exp(x * 11.f) - 1.f) / (59874.14171519781845532648 - 1.f);
+		v = vt + (v0 - vt) * v;
 		buf[i] = mulbuf ? (v * mulbuf[i]) : v;
 	}
 }
