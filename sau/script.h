@@ -114,16 +114,10 @@ typedef struct sauScriptEvData {
  * Set after parsing the setting of script options in a script.
  */
 enum {
-	SAU_SOPT_DEF_AMPMULT    = 1U<<0,
-	SAU_SOPT_DEF_CHANMIX    = 1U<<1,
-	SAU_SOPT_DEF_TIME       = 1U<<2,
-	SAU_SOPT_DEF_FREQ       = 1U<<3,
-	SAU_SOPT_DEF_RELFREQ    = 1U<<4,
-	SAU_SOPT_DEF_LADDERFX   = 1U<<5,
-	SAU_SOPT_AMPMULT        = 1U<<6,
-	SAU_SOPT_A4_FREQ        = 1U<<7,
-	SAU_SOPT_NOTE_KEY       = 1U<<8,
-	SAU_SOPT_NOTE_SCALE     = 1U<<9,
+	SAU_SOPT_AMPMULT        = 1U<<0,
+	SAU_SOPT_A4_FREQ        = 1U<<1,
+	SAU_SOPT_NOTE_KEY       = 1U<<2,
+	SAU_SOPT_NOTE_SCALE     = 1U<<3,
 };
 
 /** String and number pair for predefined values passed as arguments. */
@@ -157,7 +151,8 @@ typedef struct sauScriptOptions {
 	      def_freq,
 	      def_relfreq,
 	      def_chanmix,
-	      def_ladderfx;
+	      def_ladderfx,
+	      def_ladderfx_thr;
 	int8_t note_key;
 	uint8_t key_octave;
 	uint8_t key_system;

@@ -88,6 +88,9 @@ Parameters:
 			of 1.0. Starts at 0.0. Traditionally only used for
 			carriers, and the setting isn't carried over to
 			nested modulator lists, but can be set in them.
+			.t	Default ladder effect threshold for enabling
+				the distortion pulse. Starts at C (2^-13).
+				Is carried over to nested modulator lists.
 		.m	Script-wide gain mix control (multiplier). If used,
 			this disables automatic down-scaling of amplitude
 			by the number of voices (max carrier audio generators
@@ -136,10 +139,14 @@ Generator universal parameters:
 			"Value sweep" values are supported; see section.
 			"Modulation with value range" is supported for AM & RM
 		(amplitude and ring modulation); see section.
-		.l	Ladder effect distortion intensity, as proportion of
-			an added pulse to a fixed amplitude of 1.0. Use a
-			value of C or 0.01 on carriers for the classic effect.
-			See "Ladder effect distortion values" for more.
+		.l	YM2612 "ladder effect" distortion, as proportion of
+			an added pulse to a fixed amplitude of 1.0. A value
+			of C or 7/512 on carriers gives the classic effect.
+			See "Ladder effect intensity values" for more.
+			.t	Threshold amplitude for the distortion pulse.
+				Determines pulse width and fade-out behavior.
+				A value of C or 2^-13 stays true to the chip.
+				See "Ladder effect threshold values" for more.
 	c	(For non-nested generators only.) Channel mixing, mainly
 		(-1.0) to 1.0. See "Channel mixing values" for more.
 			"Value sweep" values are supported; see section.
@@ -559,7 +566,7 @@ Numerical expressions:
 			(Note that the exact value is platform-dependent.)
 			If disabled (deterministic mode), instead gives 0.
 
-Ladder effect distortion values:
+Ladder effect intensity values:
 	Intensity, as proportion of an added pulse to a fixed amplitude of
 	1.0. (The mixing scales the signal plus added pulse down so that a
 	fixed 1.0 value plus the pulse would be brought down to only 1.0.)
@@ -573,7 +580,17 @@ Ladder effect distortion values:
 		This is not intended as a fully accurate emulation of Sega
 	sound hardware; mixing and internally applied filtering differs...
 	Noticeably, this effect is applied before panning, not afterwards.
-	C	7/512 (classic, mimics the Sega Genesis/Mega Drive model 1)
+	C	7/512 (chip, mimic Sega Genesis/Mega Drive model 1 YM2612)
+
+Ladder effect threshold values:
+	Threshold amplitude for the "ladder effect" distortion pulse
+	governing pulse width and fade-out behavior. The default low
+	amplitude makes the pulse practically appear on non-silence.
+		A larger value narrows the pulse at higher amplitude
+	adding even harmonics. The amplitude range too quiet for the
+	pulse given the threshold, instead has a half-wave rectified
+	sound, which sounds almost like a milder narrow-pulse sound.
+	C	2^-13 (chip, mimic Sega Genesis/Mega Drive model 1 YM2612)
 
 Channel mixing values:
 	Panning, where 0.0 is centered. Named constants can be used in place
@@ -711,7 +728,8 @@ Variables:
 	after the '='. Between it and any number or mathematical name after
 	must be whitespace and/or a mathematical symbol, to keep names apart.
 	For example, "$freq=f A4" has the frequency value of the note "A4".
-	a.l	Ladder effect distortion values
+	a.l	Ladder effect intensity values
+	a.l.t	Ladder effect threshold values
 	c	Channel mixing values
 	f	Frequencies as notes
 	p	Cycle position values (phase)
