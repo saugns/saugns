@@ -1179,6 +1179,7 @@ static void begin_operator(sauParser *restrict o,
 					is_nested);
 			op->amp = create_range(o, false, SAU_PSWEEP_AMP);
 			op->amp_lec = o->sl.sopt.def_ladderfx;
+			op->amp_let = SAU_LADDERFX_THRESHOLD;
 			op->freq = create_range(o,
 					is_nested && info->has_osc_parent,
 					SAU_PSWEEP_FREQ);
@@ -1639,6 +1640,16 @@ static uint8_t parse_op_amp(sauParser *restrict o) {
 		if (scan_num(o->sc, scan_ladderfx_const, &val)) {
 			op->amp_lec = val;
 			op->params |= SAU_POPP_AMP_LEC;
+		}
+		switch ((c = sauScanner_getc_after(o->sc, '.'))) {
+		case 't':
+			if (scan_num(o->sc, NULL, &val)) {
+				op->amp_let = val;
+				op->params |= SAU_POPP_AMP_LET;
+			}
+			break;
+		default:
+			return c != 0;
 		}
 		break; }
 	default:

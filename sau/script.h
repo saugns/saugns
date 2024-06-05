@@ -67,7 +67,7 @@ typedef struct sauScriptOpData {
 	sauRange *amp, *pan;
 	sauRange *freq;
 	sauRange *pm_a;
-	float amp_lec;
+	float amp_lec, amp_let;
 	uint32_t phase;
 	uint32_t seed;
 	union sauPOPMode mode;
