@@ -50,7 +50,7 @@ typedef struct GenNode {
 	struct ParWithRangeMod amp;
 	sauLine pan;
 	const sauProgramIDArr *camods;
-	float amp_lec;
+	float amp_lec, amp_let;
 	float amp_le_dc, amp_le_avg, amp_le_avg2;
 } GenNode;
 
@@ -360,6 +360,9 @@ static void update_op(sauGenerator *restrict o,
 		// reset, prevent burst
 		gen->amp_le_dc = gen->amp_le_avg = gen->amp_le_avg2 = 0.f;
 	}
+	if (params & SAU_POPP_AMP_LET) {
+		gen->amp_let = od->amp_let;
+	}
 	sauLine_copy(&gen->amp.par, od->amp, o->srate);
 	sauLine_copy(&gen->amp.r_par, od->amp2, o->srate);
 	sauLine_copy(&gen->pan, od->pan, o->srate);
@@ -424,7 +427,7 @@ static void block_mix_add(sauGenerator *restrict o,
 	const float lec = - fabsf(gen->amp_lec);
 	if (sau_fnonzero(lec)) {
 		const bool flip = gen->amp_lec < 0.f;
-		const float le_th = -0x1p-13f;//-sqrtf(fabsf(gen->amp_lec)) * (1.f/128);
+		const float le_th = gen->amp_let;
 		const float le_clip = lec * 0.5f * 0.99999988f; // just < 0.5x
 		const float le_gr = 1.f / (1.f + fabsf(gen->amp_lec));
 		if (layer) {
@@ -491,7 +494,7 @@ static void block_mix_mul_waveenv(sauGenerator *restrict o,
 	const float lec = - fabsf(gen->amp_lec) * 0.5f;
 	if (sau_fnonzero(lec)) {
 		const bool flip = gen->amp_lec < 0.f;
-		const float le_th = -0x1p-13f * 0.5f;//-sqrtf(fabsf(gen->amp_lec)) * (0.5f/128);
+		const float le_th = gen->amp_let * 0.5f;
 		const float le_clip = lec * 0.5f * 0.99999988f; // just < 0.5x
 		const float le_gr = 1.f / (1.f + fabsf(gen->amp_lec));
 		if (layer) {

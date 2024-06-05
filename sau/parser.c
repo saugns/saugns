@@ -1168,6 +1168,7 @@ static void begin_operator(sauParser *restrict o,
 		op->freq = create_line(o, is_nested, SAU_PSWEEP_FREQ);
 		op->amp = create_line(o, false, SAU_PSWEEP_AMP);
 		op->amp_lec = o->sl.sopt.def_ladderfx;
+		op->amp_let = SAU_LADDERFX_THRESHOLD;
 	NEW_COPY:
 		info = ObjInfoArr_add(&o->obj_arr, &op->ref,
 				SAU_POBJT_OP, type);
@@ -1579,6 +1580,16 @@ static uint8_t parse_op_amp(sauParser *restrict o) {
 		if (scan_num(o->sc, scan_ladderfx_const, &val)) {
 			op->amp_lec = val;
 			op->params |= SAU_POPP_AMP_LEC;
+		}
+		switch ((c = sauScanner_getc_after(o->sc, '.'))) {
+		case 't':
+			if (scan_num(o->sc, NULL, &val)) {
+				op->amp_let = val;
+				op->params |= SAU_POPP_AMP_LET;
+			}
+			break;
+		default:
+			return c != 0;
 		}
 		break; }
 	case 'r':
