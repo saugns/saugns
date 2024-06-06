@@ -1,3 +1,4 @@
 // Do you really wanna climb this ladder?
 
-W a[v0 g1/2 lxpe].l0.84 fG p[W r4/7] t1/8; a[g0] t1.5
+$dist?=0.84
+W a[v0 g1/2 lxpe].l$dist.t$dist/100 fG p[W r4/7] t1/8; a[g0] t1.5
