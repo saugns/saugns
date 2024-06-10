@@ -200,6 +200,16 @@ static inline float sau_expramp6(float x) {
 		(x * (629.f/1792.f) + x2 * (1163.f/1792.f));
 }
 
+/**
+ * 2024 simple exp(11*x)-steep exponential curve approximation, 0 <= x <= 1.
+ *
+ * Approximates "(exp(x * 11.f) - 1.f) / (59874.14171519781845532648 - 1.f)".
+ */
+static inline float sau_expramp11(float x) {
+	float x2 = x*x, x4 = x2*x2;
+	return x4*x*(x4*x2 + (1 - x)*1.f/3);
+}
+
 /** Single value \p x in exponential trajectory from \p a to \p b. */
 static inline float sauLine_val_exp(float x, float a, float b) {
 	return (a > b) ?
@@ -268,12 +278,11 @@ static inline float sauLine_val_nhl(float x, float a, float b) {
 
 /** Single value from \p a to \p b placing \p x in rough YM2612 attack/decay. */
 static inline float sauLine_val_yme(float x, float a, float b) {
-	float v;
 	/*v = x;
 	float v2 = v*v, v4 = v2*v2, v8 = v4*v4 + v*(v2 - v4);
 	v = (a < b) ? x : v8*v4;*/
-	//x = (exp(x * 8.f) - 1.f) / (2980.95798704172827474359 - 1.f);
-	v = (exp(x * 11.f) - 1.f) / (59874.14171519781845532648 - 1.f);
+	//v = (exp(x * 8.f) - 1.f) / (2980.95798704172827474359 - 1.f);
+	float v = sau_expramp11(x);
 	v = (a < b) ? x : v;
 	return a + (b - a) * v;
 	//
