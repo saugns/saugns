@@ -113,13 +113,6 @@ void sauLine_fill_cos(float *restrict buf, uint32_t len,
 	}
 }
 
-static inline float expramp2(float x) {
-	float p2 = x * x;
-	float p4 = p2 * (p2 - x + 1);
-	float p8 = p4 * (p4 - p2 + x);
-	return p8 * (p4 - p2 + x);
-}
-
 /**
  * Fill \p buf with \p len values along an exponential trajectory
  * from \p v0 (at position 0) to \p vt (at position \p time),
@@ -302,14 +295,13 @@ void sauLine_fill_yme(float *restrict buf, uint32_t len,
 	}
 	const float inv_time = 1.f / time;
 	for (uint32_t i = 0; i < len; ++i) {
-		float x = 1.f - (i + pos) * inv_time, v;
+		float x = 1.f - (i + pos) * inv_time;
 		//v = vt + (v0 - vt) * expramp(x);
 		/*v = x;
 		float v2 = v*v, v4 = v2*v2, v8 = v4*v4 + v*(v2 - v4);
 		v = vt + (v0 - vt) * v8*v4;*/
-		//x = (exp(x * 8.f) - 1.f) / (2980.95798704172827474359 - 1.f);
-		v = (exp(x * 11.f) - 1.f) / (59874.14171519781845532648 - 1.f);
-		v = vt + (v0 - vt) * v;
+		//v = (exp(x * 8.f) - 1.f) / (2980.95798704172827474359 - 1.f);
+		float v = vt + (v0 - vt) * sau_expramp11(x);
 		buf[i] = mulbuf ? (v * mulbuf[i]) : v;
 	}
 }
