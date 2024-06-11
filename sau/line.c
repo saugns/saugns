@@ -301,7 +301,7 @@ void sauLine_fill_yme(float *restrict buf, uint32_t len,
 		float v2 = v*v, v4 = v2*v2, v8 = v4*v4 + v*(v2 - v4);
 		v = vt + (v0 - vt) * v8*v4;*/
 		//v = (exp(x * 8.f) - 1.f) / (2980.95798704172827474359 - 1.f);
-		float v = vt + (v0 - vt) * sau_expramp11(x);
+		float v = vt + (v0 - vt) * sau_expramp11b(x);
 		buf[i] = mulbuf ? (v * mulbuf[i]) : v;
 	}
 }
