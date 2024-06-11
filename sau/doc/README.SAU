@@ -384,9 +384,9 @@ Line types:
 	sah
 		Sample and hold until time (then jump to goal).
 	exp
-		Steep "exp(x)-1"-like increase or decrease.
+		Scaled "exp(6x)-1"-like increase or decrease.
 	log
-		Steep "log(x+1)"-like increase or decrease.
+		Scaled "log(6x+1)"-like increase or decrease.
 	xpe
 		Exponential shape envelope (saturate or decay).
 	lge
@@ -400,6 +400,9 @@ Line types:
 		Smoothstep (degree 5). A sinuous curve adding
 		mild odd harmonics like a soft-clipped 'cos'.
 		Traditionally used for Perlin noise.
+	yme
+		Linear increase, scaled "exp(11x)-1"-like decrease.
+		Roughly imitates the YM2612 attack and decay shape.
 	ncl
 		Noise camel line; softer, two noise bulges.
 	nhl
