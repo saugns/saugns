@@ -26,10 +26,10 @@
 	X(sqe, (.perlin_amp = 1.89339094650f)) \
 	X(cub, (.perlin_amp = 2.f)) \
 	X(smo, (.perlin_amp = 2.f)) \
+	X(yme, (.perlin_amp = 1.f)) \
 	X(ncl, (.perlin_amp = 2.f)) \
 	X(nhl, (.perlin_amp = 1.89339094650f)) \
 	X(uwh, (.perlin_amp = 1.f)) \
-	X(yme, (.perlin_amp = 1.f)) \
 	//
 #define SAU_LINE__X_ID(NAME, ...) SAU_LINE_N_##NAME,
 #define SAU_LINE__X_NAME(NAME, ...) #NAME,
