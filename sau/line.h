@@ -201,25 +201,26 @@ static inline float sau_expramp6(float x) {
 }
 
 /**
- * 2024 refined exp(11*x)-steep exponential curve approximation, 0 <= x <= 1.
- * Better curve at lower values at the cost of a very slightly slacker curve.
- *
- * Approximates "(exp(x * 11.f) - 1.f) / (59874.14171519781845532648 - 1.f)".
- */
-static inline float sau_expramp11b(float x) {
-	float x2 = x*x, x4 = x2*x2;
-	float v = (1.f - x), v2 = v*v, v4 = v2*v2;  // use v to interpolate
-	return x4*x*(x4*x2 + v*(v4 + 0.5f*x));      // between 0.5f*v and v4
-}
-
-/**
- * 2024 simple exp(11*x)-steep exponential curve approximation, 0 <= x <= 1.
+ * Precise 2024 exp(11*x)-steep exponential curve approximation, 0 <= x <= 1.
+ * Good enough for an accurate-sounding YM2612 "ladder effect" fade-out test.
  *
  * Approximates "(exp(x * 11.f) - 1.f) / (59874.14171519781845532648 - 1.f)".
  */
 static inline float sau_expramp11(float x) {
+	const float scale[] = {
+		+0.13024440690867607441,
+		+0.55268151857615895232,
+		+0.45847762763470429764,
+	};
 	float x2 = x*x, x4 = x2*x2;
-	return x4*x*(x4*x2 + (1 - x)*1.f/3);
+	float v = (1.f - x);
+	if (x <= 0.5f) {
+		float v_lh4 = (1.f - 2*x); v_lh4 *= v_lh4; v_lh4 *= v_lh4;
+		v = (x*scale[0] + v*v_lh4*scale[1]);
+	} else {
+		v = x2*(x4*x + v*scale[2]); // simpler, adequate for larger half
+	}
+	return x4*v;
 }
 
 /** Single value \p x in exponential trajectory from \p a to \p b. */
@@ -294,7 +295,7 @@ static inline float sauLine_val_yme(float x, float a, float b) {
 	float v2 = v*v, v4 = v2*v2, v8 = v4*v4 + v*(v2 - v4);
 	v = (a < b) ? x : v8*v4;*/
 	//v = (exp(x * 8.f) - 1.f) / (2980.95798704172827474359 - 1.f);
-	float v = sau_expramp11b(x);
+	float v = sau_expramp11(x);
 	v = (a < b) ? x : v;
 	return a + (b - a) * v;
 	//
