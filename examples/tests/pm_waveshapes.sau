@@ -8,3 +8,22 @@ Wsin p[Wsin r1/1 a1/4]
 
 /* Soft pseudo-eventooth wave (excludes every 3rd harmonic) */
 Wsin p[Wsin r3/1 a1/4]
+| /1
+
+/* Medium-hard square wave (odd harmonics) */
+Wsin p[Wsin p.a1/2 r2/1 a1/2]
+| /1
+
+/* Medium-hard sawtooth wave (all harmonics) */
+Wsin p[Wsin p.a1/2 r1/1 a1/2]
+| /1
+
+/* Medium-hard pseudo-eventooth wave (excludes every 3rd harmonic) */
+Wsin p[Wsin p.a1/2 r3/1 a1/2]
+| /1
+
+/* Slightly softer alternatives for the latter three:
+ *
+ * Wsin p.a[Wtri p1/4 r1/1 a1/2] // square wave
+ * Wsin p.a1/2 // sawtooth wave
+ */
