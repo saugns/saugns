@@ -277,6 +277,21 @@ static void prepare_op(sauGenerator *restrict o,
 	gen->flags = ON_INIT;
 }
 
+static void update_ids(OperatorNode *restrict n,
+		const sauProgramIDs *restrict ids) {
+	switch (ids->use) {
+	case SAU_POP_N_carr:	break;
+	case SAU_POP_N_camod:	n->gen.camods   	= &ids->a; break;
+	case SAU_POP_N_amod:	n->gen.amp.mods 	= &ids->a; break;
+	case SAU_POP_N_ramod:	n->gen.amp.r_mods	= &ids->a; break;
+	case SAU_POP_N_fmod:	n->osc.freq.mods	= &ids->a; break;
+	case SAU_POP_N_rfmod:	n->osc.freq.r_mods	= &ids->a; break;
+	case SAU_POP_N_pmod:	n->osc.pmods    	= &ids->a; break;
+	case SAU_POP_N_apmod:	n->osc.apmods   	= &ids->a; break;
+	case SAU_POP_N_fpmod:	n->osc.fpmods   	= &ids->a; break;
+	}
+}
+
 /*
  * Update an operator node with new data from event.
  */
@@ -317,11 +332,6 @@ static void update_op(sauGenerator *restrict o,
 	if (false)
 	OSC_COMMON: {
 		OscNode *osc = &n->osc;
-		if (od->fmods) osc->freq.mods = od->fmods;
-		if (od->rfmods) osc->freq.r_mods = od->rfmods;
-		if (od->pmods) osc->pmods = od->pmods;
-		if (od->apmods) osc->apmods = od->apmods;
-		if (od->fpmods) osc->fpmods = od->fpmods;
 		sauLine_copy(&osc->freq.par, od->freq, o->srate);
 		sauLine_copy(&osc->freq.r_par, od->freq2, o->srate);
 		sauLine_copy(&osc->pm_a, od->pm_a, o->srate);
@@ -338,12 +348,11 @@ static void update_op(sauGenerator *restrict o,
 			gen->flags &= ~ON_TIME_INF;
 		}
 	}
-	if (od->camods) gen->camods = od->camods;
-	if (od->amods) gen->amp.mods = od->amods;
-	if (od->ramods) gen->amp.r_mods = od->ramods;
 	sauLine_copy(&gen->amp.par, od->amp, o->srate);
 	sauLine_copy(&gen->amp.r_par, od->amp2, o->srate);
 	sauLine_copy(&gen->pan, od->pan, o->srate);
+	for (const sauProgramIDs *ids = od->mods; ids; ids = ids->next)
+		update_ids(n, ids);
 }
 
 /*

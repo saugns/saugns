@@ -180,6 +180,12 @@ typedef struct sauProgramIDArr {
 	uint32_t ids[];
 } sauProgramIDArr;
 
+typedef struct sauProgramIDs {
+	struct sauProgramIDs *next;
+	uint8_t use;
+	sauProgramIDArr a;
+} sauProgramIDs;
+
 /* Macro used for operator use type sets of items. */
 #define SAU_POP__ITEMS(X) \
 	X(carr,  0, " CA", NULL) \
@@ -194,6 +200,7 @@ typedef struct sauProgramIDArr {
 	//
 #define SAU_POP__X_ID(NAME, ...) SAU_POP_N_##NAME,
 #define SAU_POP__X_GRAPH(NAME, IS_MOD, LABEL, ...) LABEL,
+#define SAU_POP__X_SYNTAX(NAME, IS_MOD, LABEL, SYNTAX) SYNTAX,
 
 /**
  * Operator use types.
@@ -227,9 +234,7 @@ typedef struct sauProgramOpData {
 		uint8_t main; // holds wave, noise, etc. ID -- what's primary
 		sauRasOpt ras;
 	} mode;
-#define SAU_POP__X_IDARR_PTR(NAME, IS_MOD, ...) \
-	SAU_IF(IS_MOD, const sauProgramIDArr *NAME##s;, )
-	SAU_POP__ITEMS(SAU_POP__X_IDARR_PTR)
+	const sauProgramIDs *mods;
 } sauProgramOpData;
 
 typedef struct sauProgramEvent {

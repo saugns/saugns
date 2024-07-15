@@ -308,6 +308,7 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 	ood->seed = op->seed;
 	ood->mode = op->mode;
 	sauVoAllocState *vas = &o->va.a[o->ev->vo_id];
+	const sauProgramIDArr *mods[SAU_POP_NAMED - 1] = {0}; // node's only
 	for (sauScriptListData *in_list = op->mods;
 			in_list != NULL; in_list = in_list->ref.next) {
 		int type = in_list->use_type - 1;
@@ -321,13 +322,23 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 		} else {
 			if (arr == oas->mods[type]) continue; // omit no-op
 		}
-		oas->mods[type] = arr;
+		mods[type] = oas->mods[type] = arr;
 		vas->flags |= SAU_VAS_SET_GRAPH;
-#define SAU_POP__X_CASE(NAME, IS_MOD, ...) \
-SAU_IF(IS_MOD, case SAU_POP_N_##NAME: ood->NAME##s = oas->mods[type]; break;, )
-		switch (type + 1) {
-		SAU_POP__ITEMS(SAU_POP__X_CASE)
-		}
+	}
+	sauProgramIDs *last_ids = NULL;
+	for (int i = 0; i < SAU_POP_NAMED - 1; ++i) {
+		if (!mods[i]) continue;
+		size_t id_size = sizeof(uint32_t) * mods[i]->count;
+		sauProgramIDs *ids = sau_mpalloc(o->mp, sizeof(*ids) + id_size);
+		if (!ids) goto MEM_ERR;
+		memcpy(&ids->a, mods[i], sizeof(uint32_t) + id_size);
+		ids->a = *mods[i];
+		ids->use = i + 1;
+		if (!ood->mods)
+			ood->mods = ids;
+		else
+			last_ids->next = ids;
+		last_ids = ids;
 	}
 	return true;
 MEM_ERR:
@@ -679,8 +690,9 @@ print_opline(const sauProgramOpData *restrict od) {
 	print_line(od->amp, 'a');
 }
 
-#define SAU_POP__X_PRINT(NAME, IS_MOD, LABEL, SYNTAX) \
-SAU_IF(IS_MOD, print_linked(SYNTAX, od->NAME##s);, )
+static const char *const mods_syntax[SAU_POP_NAMED] = {
+	SAU_POP__ITEMS(SAU_POP__X_SYNTAX)
+};
 
 /**
  * Print information about program contents. Useful for debugging.
@@ -710,7 +722,9 @@ sauProgram_print_info(const sauProgram *restrict o) {
 		for (size_t i = 0; i < ev->op_data_count; ++i) {
 			const sauProgramOpData *od = &ev->op_data[i];
 			print_opline(od);
-			SAU_POP__ITEMS(SAU_POP__X_PRINT)
+			for (const sauProgramIDs *ids = od->mods;
+					ids; ids = ids->next)
+				print_linked(mods_syntax[ids->use], &ids->a);
 		}
 		sau_printf("\n");
 	}
