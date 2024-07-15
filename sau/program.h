@@ -56,6 +56,7 @@ enum {
 	SAU_PSWEEP_AMP2,
 	SAU_PSWEEP_FREQ,
 	SAU_PSWEEP_FREQ2,
+	SAU_PSWEEP_PMA,
 };
 
 enum {
@@ -176,6 +177,7 @@ typedef struct sauProgramIDArr {
 	X(fmod,  1, " FM", "f") \
 	X(rfmod, 1, "rFM", "f.r") \
 	X(pmod,  1, " PM", "p") \
+	X(apmod, 1, "aPM", "p.a") \
 	X(fpmod, 1, "fPM", "p.f") \
 	//
 #define SAU_POP__X_ID(NAME, ...) SAU_POP_N_##NAME,
@@ -203,6 +205,7 @@ typedef struct sauProgramOpData {
 	sauLine *pan;
 	sauLine *amp, *amp2;
 	sauLine *freq, *freq2;
+	sauLine *pm_a;
 	uint32_t phase;
 	uint32_t seed; // TODO: divide containing node type
 	uint8_t use_type; // carrier or modulator use?

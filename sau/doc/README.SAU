@@ -198,6 +198,17 @@ Oscillator common parameters:
 		together with a list in one go, the value then going first
 		after the 'p', for example "p0.25[...]". A subparameter can
 		be used instead or in addition for another kind of PM.
+		.a	Phase self-modulation (a.k.a. "feedback FM") can be
+			set using a value, which is used as a multiplier for
+			adding the previous amplitude back into the phase.
+			(1.0 corresponds to DX7 level 6, and to pi radians.)
+			Non-zero values add sawtooth-like harmonics, morphing
+			the waveform in that direction. Going beyond +/- 1.0
+			may add ripples, aliasing, and then noise and chaos.
+			"Value sweep" values are supported; see section.
+			"Modulator list" values are supported; the separate
+			modulators in it are used to vary the parameter value
+			dynamically, by combining it with the sum of outputs.
 		.f	Frequency-amplified PM modulators can be set in a
 			separate list, as in "p.f[...]". See "Modulator list".
 		The sum of all PM modulator amplitudes will phase-modulate
