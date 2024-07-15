@@ -296,6 +296,7 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 	ood->amp2 = op->amp2;
 	ood->freq = op->freq;
 	ood->freq2 = op->freq2;
+	ood->pm_a = op->pm_a;
 	ood->phase = op->phase;
 	ood->use_type = use_type;
 	/* TODO: separation of types */
