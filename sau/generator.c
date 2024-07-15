@@ -60,6 +60,8 @@ typedef struct OscNode {
 	GenNode gen;
 	struct ParWithRangeMod freq;
 	const sauProgramIDArr *pmods, *fpmods;
+	sauLine pm_a;
+	const sauProgramIDArr *apmods;
 } OscNode;
 
 typedef struct WOscNode {
@@ -265,7 +267,7 @@ static void prepare_op(sauGenerator *restrict o,
 	OSC_COMMON: {
 		OscNode *osc = &n->osc;
 		osc->freq.mods = osc->freq.r_mods =
-		osc->pmods = osc->fpmods = &blank_idarr;
+		osc->pmods = osc->fpmods = osc->apmods = &blank_idarr;
 	}
 	GenNode *gen = &n->gen;
 	gen->amp.mods = gen->amp.r_mods = gen->camods = &blank_idarr;
@@ -307,9 +309,11 @@ static void update_op(sauGenerator *restrict o,
 		if (od->fmods) osc->freq.mods = od->fmods;
 		if (od->rfmods) osc->freq.r_mods = od->rfmods;
 		if (od->pmods) osc->pmods = od->pmods;
+		if (od->apmods) osc->apmods = od->apmods;
 		if (od->fpmods) osc->fpmods = od->fpmods;
 		sauLine_copy(&osc->freq.par, od->freq, o->srate);
 		sauLine_copy(&osc->freq.r_par, od->freq2, o->srate);
+		sauLine_copy(&osc->pm_a, od->pm_a, o->srate);
 	}
 	GenNode *gen = &n->gen;
 	if (params & SAU_POPP_TIME) {
@@ -465,6 +469,27 @@ static void run_param_with_rangemod(sauGenerator *restrict o,
 	}
 }
 
+static bool run_osc_selfmod_param(sauGenerator *restrict o,
+		Buf *restrict bufs, uint32_t len,
+		OscNode *restrict n,
+		float *restrict freq) {
+	uint32_t i;
+	bool buf_filled = false;
+	if (n->pm_a.v0 != 0.f || (n->pm_a.flags & SAU_LINEP_GOAL)) {
+		sauLine_run(&n->pm_a, *bufs, len, NULL);
+		buf_filled = true;
+	} else {
+		sauLine_skip(&n->pm_a, len);
+	}
+	for (i = 0; i < n->apmods->count; ++i) {
+		run_block(o, bufs, len,
+				&o->operators[n->apmods->ids[i]],
+				freq, false, buf_filled);
+		buf_filled = true;
+	}
+	return buf_filled;
+}
+
 /*
  * The NoiseGNode sub-function for run_block().
  *
@@ -536,8 +561,14 @@ static void run_block_wosc(sauGenerator *restrict o,
 	run_param_with_rangemod(o, bufs, len, &n->gen.amp, NULL,
 			freq, false);
 	amp = *(bufs++); // #4 (++) and temporary #5, #6
-	tmp_buf = (*bufs + 0); // #5
-	sauWOsc_run(&n->wo.wosc, tmp_buf, len, phase_buf);
+	tmp_buf = *(bufs++); // #5
+	if (run_osc_selfmod_param(o, bufs, len, &n->wo.osc, freq)) {
+		float *selfmod = *bufs; // #6
+		sauWOsc_run_selfmod(&n->wo.wosc, tmp_buf, len, phase_buf,
+				selfmod);
+	} else {
+		sauWOsc_run(&n->wo.wosc, tmp_buf, len, phase_buf);
+	}
 	block_mix(&n->wo.osc.gen, mix_buf, len, wave_env, layer, tmp_buf, amp);
 }
 
@@ -555,7 +586,6 @@ static void run_block_rasg(sauGenerator *restrict o,
 	float *mix_buf = *(bufs++), *pm_buf = NULL, *fpm_buf = NULL;
 	void *cycle_buf = *(bufs++), *rasg_buf = *(bufs++);
 	float *freq = NULL, *amp = NULL;
-	float *tmp_buf = NULL, *tmp2_buf = NULL;
 	/*
 	 * Handle frequency (alternatively ratio) parameter,
 	 * including frequency modulation if modulators linked.
@@ -591,9 +621,16 @@ static void run_block_rasg(sauGenerator *restrict o,
 	run_param_with_rangemod(o, bufs, len, &n->gen.amp, NULL,
 			freq, false);
 	amp = *(bufs++); // #5 (++) and temporary #6, #7
-	tmp_buf = *(bufs + 0); // #6
-	tmp2_buf = *(bufs + 1); // #7
-	sauRasG_run(&n->rg.rasg, len, rasg_buf, tmp_buf, tmp2_buf, cycle_buf);
+	if (run_osc_selfmod_param(o, bufs, len, &n->wo.osc, freq)) {
+		float *selfmod = *bufs; // #6
+		sauRasG_run_selfmod(&n->rg.rasg, len, rasg_buf,
+				cycle_buf, selfmod);
+	} else {
+		float *tmp_buf = *(bufs + 0); // #6
+		float *tmp2_buf = *(bufs + 1); // #7
+		sauRasG_run(&n->rg.rasg, len, rasg_buf, tmp_buf, tmp2_buf,
+				cycle_buf);
+	}
 	block_mix(&n->rg.osc.gen, mix_buf, len, wave_env, layer, rasg_buf, amp);
 }
 
