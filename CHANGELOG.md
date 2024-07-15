@@ -7,7 +7,25 @@ is a shorter change log with only the SAU language changes.
 Pre-release
 -----------
 
-[rebase in progress]
+Added phase self-modulation a.k.a. "feedback FM".
+
+Language changes:
+ * Add `p.a` amplitude feedback parameter for phase,
+   for phase self-modulation. Accepts both sweep and
+   modulators within `[]`. Default value is 0.0.
+
+This self-PM support requries, to preserve the performance
+when not using the feature, twice as much code for both the
+`W` and `R` implementations. Self-modulation typically takes
+at least 3 times more CPU time, sometimes more than 4 times.
+(Self-modulation precludes use of vectorizing optimations.)
+
+The parameter range uses the simplest scaling possible, like
+multiplying the value by pi. This maps 1.0 to Yamaha feedback
+level 6 in their chips. To avoid excessive ringing at that
+level, stronger filtering than Yamaha used is used: 1-zero
+(their choice) combined with 1-pole (itself a little better
+at dampening self-oscillations than a 1-zero filter alone).
 
 v0.4.4d (2024-07-10)
 --------------------
