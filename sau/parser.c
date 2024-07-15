@@ -859,6 +859,9 @@ static sauLine *create_line(sauParser *restrict o,
 	case SAU_PSWEEP_FREQ2:
 		v0 = 0.f;
 		break;
+	case SAU_PSWEEP_PMA:
+		v0 = 0.f;
+		break;
 	default:
 		return NULL;
 	}
@@ -1603,6 +1606,10 @@ static bool parse_op_phase(sauParser *restrict o) {
 	}
 	parse_par_list(o, NULL, NULL, false, 0, SAU_POP_N_pmod);
 	switch ((c = sauScanner_getc_after(o->sc, '.'))) {
+	case 'a':
+		parse_par_list(o, NULL, &op->pm_a, false,
+				SAU_PSWEEP_PMA, SAU_POP_N_apmod);
+		break;
 	case 'f':
 		parse_par_list(o, NULL, NULL, false, 0, SAU_POP_N_fpmod);
 		break;
@@ -2102,6 +2109,7 @@ static void time_op_lines(sauScriptOpData *restrict op) {
 	time_line(op->amp2, dur_ms);
 	time_line(op->freq, dur_ms);
 	time_line(op->freq2, dur_ms);
+	time_line(op->pm_a, dur_ms);
 }
 
 static uint32_t time_operator(sauScriptOpData *restrict op) {
