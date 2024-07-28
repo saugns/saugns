@@ -283,7 +283,7 @@ Parameters:
 		one or both may be set at a time; the default level is '9'.
 		Roughly, each level above 0 halves what remains of the
 		unshaped underlying randomness. The functions are...
-		r	Uniform random (default). Ignores the level setting.
+		u	Uniform random (default). Ignores the level setting.
 		g	Gaussian random, soft-saturated approximation. On
 			average ~6 dB quieter. Ignores the level setting.
 		b	Binary random. Extreme levels, more repetitive runs.
@@ -291,6 +291,8 @@ Parameters:
 			cycles above or below zero, randomly flips polarity.
 		f	Fixed cycle. Plain naive oscillator at the top level;
 			below it, mixed with randomness at reduced amplitude.
+		a	Additive recurrence low-discrepancy a.k.a. quasirandom
+			sequence. Ignores level digit. Uses subparameter ".a".
 		In addition to the function and level, these flags can be set.
 		h	Half-shape waveform. Use with 'lin' for a decreasing
 			sawtooth instead of a triangle wave; similarly changes
@@ -301,12 +303,19 @@ Parameters:
 			Doesn't affect 'b', 't', nor 'f' with level '9'.
 			Distorts 'v' violet noise toward white, as if mixed.
 		v	Violet rather than white noise version of the function
-			if available; missing for 'g' and 't'. Like high-pass
-			filtering the lower end of the noise, 6 dB per octave.
+			if available; for 'u', 'b', and 'f', missing for
+			'g', 't', and 'a'. Like high-pass filtering
+			the lower end of the noise, 6 dB per octave.
 		z	Zig-zag flip. Swap ends of each half-cycle, adding an
 			inharmonic waveform jaggedness unless using 'h', or
 			'f' level '9'; more difference from these adds larger
 			sharp steps. Always flips the waveform top and bottom.
+		There also exists these subparameters used for specific modes:
+		.a	Multiplier constant used for additive recurrence mode,
+			defaulting to "met(1)". Only the fractional value part
+			is significant and used. Note that values like 0.0 and
+			1.0 result in silence (or DC offset); using irrational
+			numbers gives good results and random ones often work.
 
 Line types:
 	cos

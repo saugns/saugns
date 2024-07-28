@@ -7,12 +7,18 @@ is a shorter change log with only the SAU language changes.
 Pre-release
 -----------
 
-Added phase self-modulation a.k.a. "feedback FM".
+Added self-PM/"feedback FM". New `R` mode `a`.
 
 Language changes:
  * Add `p.a` amplitude feedback parameter for phase,
    for phase self-modulation. Accepts both sweep and
    modulators within `[]`. Default value is 0.0.
+ * Signal generator types. `R` mode `m` noise functions:
+   - Add `a` (additive recurrence, low-discrepancy a.k.a.
+     quasirandom sequence) by default based on the golden
+     ratio. Add mode subparameter `m.a` for changing the
+     multiplier used to the fractional part of a number.
+   - Rename `r` (uniform random, default) to `u`.
 
 This self-PM support requries, to preserve the performance
 when not using the feature, twice as much code for both the

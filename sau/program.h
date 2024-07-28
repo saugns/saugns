@@ -121,15 +121,17 @@ typedef struct sauRasOpt {
 	uint8_t func;
 	uint8_t level;
 	uint8_t flags;
+	uint32_t alpha;
 } sauRasOpt;
 
 /** Random segments functions. */
 enum {
-	SAU_RAS_F_RAND = 0,
+	SAU_RAS_F_URAND = 0,
 	SAU_RAS_F_GAUSS,
 	SAU_RAS_F_BIN,
 	SAU_RAS_F_TERN,
 	SAU_RAS_F_FIXED,
+	SAU_RAS_F_ADDREC,
 	SAU_RAS_FUNCTIONS,
 };
 
@@ -144,11 +146,11 @@ enum {
 	SAU_RAS_O_SQUARE = 1U<<1,
 	SAU_RAS_O_VIOLET = 1U<<2,
 	SAU_RAS_O_ZIGZAG = 1U<<3,
-	/* = 1U<<4, */
-	SAU_RAS_O_FUNC_FLAGS = (1U<<5)-1,
-	SAU_RAS_O_LINE_SET = 1U<<5,
-	SAU_RAS_O_FUNC_SET = 1U<<6,
-	SAU_RAS_O_LEVEL_SET = 1U<<7,
+	SAU_RAS_O_FUNC_FLAGS = (1U<<4)-1,
+	SAU_RAS_O_LINE_SET = 1U<<4,
+	SAU_RAS_O_FUNC_SET = 1U<<5,
+	SAU_RAS_O_LEVEL_SET = 1U<<6,
+	SAU_RAS_O_ASUBVAL_SET = 1U<<7,
 };
 
 /*

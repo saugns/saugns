@@ -1,0 +1,4 @@
+$seed ?= 0.123456789
+R ma.arand(); ma.arand(); ma.arand(); ma.arand(); ma.arand();
+ma.arand(); ma.arand(); ma.arand(); ma.arand(); ma.arand();
+ma.arand(); ma.arand(); ma.arand(); ma.arand(); ma.arand()

@@ -31,6 +31,7 @@ typedef struct sauRasG {
 	sauCyclor cyclor;
 	uint8_t line, func, level, flags;
 	float prev_s, fb_s;
+	uint32_t alpha;
 } sauRasG;
 
 /**
@@ -44,11 +45,13 @@ static inline void sau_init_RasG(sauRasG *restrict o, uint32_t srate) {
 			.rate2x = true,
 		},
 		.line = SAU_LINE_N_lin,
-		.func = SAU_RAS_F_RAND,
+		.func = SAU_RAS_F_URAND,
 		.level = sau_ras_level(9 /* max one-digit number */),
+		.alpha = SAU_FIBH32, // use golden ratio as default
 		.flags = SAU_RAS_O_LINE_SET |
 			SAU_RAS_O_FUNC_SET |
-			SAU_RAS_O_LEVEL_SET,
+			SAU_RAS_O_LEVEL_SET |
+			SAU_RAS_O_ASUBVAL_SET,
 	};
 }
 
@@ -70,6 +73,8 @@ static void sauRasG_set_opt(sauRasG *restrict o,
 		o->func = opt->func;
 	if (opt->flags & SAU_RAS_O_LEVEL_SET)
 		o->level = opt->level;
+	if (opt->flags & SAU_RAS_O_ASUBVAL_SET)
+		o->alpha = opt->alpha;
 	o->flags = opt->flags |
 		SAU_RAS_O_LINE_SET |
 		SAU_RAS_O_FUNC_SET |
@@ -313,7 +318,7 @@ static sauMaybeUnused void sauRasG_map_##loop_for_func##_s(sauRasG *restrict o,\
 /**
  * Run for \p buf_len samples in 'violet random' mode, generating output.
  */
-static sauMaybeUnused void sauRasG_map_v_rand(sauRasG *restrict o,
+static sauMaybeUnused void sauRasG_map_v_urand(sauRasG *restrict o,
 		size_t buf_len,
 		float *restrict end_a_buf,
 		float *restrict end_b_buf,
@@ -321,40 +326,40 @@ static sauMaybeUnused void sauRasG_map_v_rand(sauRasG *restrict o,
 	(void)o;
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t cycle = cycle_buf[i];
-#define RASG_MAP_v_rand \
+#define RASG_MAP_v_urand \
 		uint32_t s0 = sau_ranfast32(cycle - 1) / 2; \
 		uint32_t s1 = sau_ranfast32(cycle) / 2; \
 		uint32_t s2 = sau_ranfast32(cycle + 1) / 2; \
 		float a = sau_fscalei(s1 - s0, 0x1p-31f); \
 		float b = sau_fscalei(s2 - s1, 0x1p-31f); \
 /**/
-		RASG_MAP_v_rand
+		RASG_MAP_v_urand
 		end_a_buf[i] = a;
 		end_b_buf[i] = b;
 	}
 }
 
-RASG_MAP_S_FUNC(v_rand)
+RASG_MAP_S_FUNC(v_urand)
 
 /**
  * Run for \p buf_len samples in 'uniform random' mode, generating output.
  */
-static sauMaybeUnused void sauRasG_map_rand(sauRasG *restrict o,
+static sauMaybeUnused void sauRasG_map_urand(sauRasG *restrict o,
 		size_t buf_len,
 		float *restrict end_a_buf,
 		float *restrict end_b_buf,
 		const uint32_t *restrict cycle_buf) {
 	if (o->flags & SAU_RAS_O_VIOLET) {
-		sauRasG_map_v_rand(o, buf_len, end_a_buf, end_b_buf, cycle_buf);
+		sauRasG_map_v_urand(o, buf_len, end_a_buf,end_b_buf, cycle_buf);
 		return;
 	}
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t cycle = cycle_buf[i];
-#define RASG_MAP_rand \
+#define RASG_MAP_urand \
 		float a = sau_fscalei(sau_ranfast32(cycle), 0x1p-31f); \
 		float b = sau_fscalei(sau_ranfast32(cycle + 1), 0x1p-31f); \
 /**/
-		RASG_MAP_rand
+		RASG_MAP_urand
 		end_a_buf[i] = a;
 		end_b_buf[i] = b;
 	}
@@ -365,18 +370,18 @@ static sauMaybeUnused void sauRasG_map_rand(sauRasG *restrict o,
  *
  * Self-modulation version, slower and more flexible design.
  */
-static sauMaybeUnused void sauRasG_map_rand_s(sauRasG *restrict o,
+static sauMaybeUnused void sauRasG_map_urand_s(sauRasG *restrict o,
 		size_t buf_len,
 		float *restrict main_buf,
 		sauLine_val_f line_f,
 		const uint32_t *restrict cycle_buf,
 		const float *restrict pm_abuf) {
 	if (o->flags & SAU_RAS_O_VIOLET) {
-		sauRasG_map_v_rand_s(o, buf_len, main_buf, line_f,
+		sauRasG_map_v_urand_s(o, buf_len, main_buf, line_f,
 				cycle_buf, pm_abuf);
 		return;
 	}
-	RASG_MAP_S_LOOP(rand)
+	RASG_MAP_S_LOOP(urand)
 }
 
 /**
@@ -662,14 +667,40 @@ static sauMaybeUnused void sauRasG_map_fixed_s(sauRasG *restrict o,
 	RASG_MAP_S_LOOP(fixed)
 }
 
+/**
+ * Run for \p buf_len samples in 'additive recurrence' mode, generating output.
+ */
+static sauMaybeUnused void sauRasG_map_addrec(sauRasG *restrict o,
+		size_t buf_len,
+		float *restrict end_a_buf,
+		float *restrict end_b_buf,
+		const uint32_t *restrict cycle_buf) {
+	(void)o;
+	for (size_t i = 0; i < buf_len; ++i) {
+		uint32_t cycle = cycle_buf[i];
+#define RASG_MAP_addrec \
+		uint32_t s0 = cycle * o->alpha; \
+		uint32_t s1 = (cycle+1) * o->alpha; \
+		float a = sau_fscalei(s0, 0x1p-31f); \
+		float b = sau_fscalei(s1, 0x1p-31f); \
+/**/
+		RASG_MAP_addrec
+		end_a_buf[i] = a;
+		end_b_buf[i] = b;
+	}
+}
+
+RASG_MAP_S_FUNC(addrec)
+
 static inline sauRasG_map_f sauRasG_get_map_f(unsigned func) {
 	switch (func) {
 	default:
-	case SAU_RAS_F_RAND: return sauRasG_map_rand;
+	case SAU_RAS_F_URAND: return sauRasG_map_urand;
 	case SAU_RAS_F_GAUSS: return sauRasG_map_gauss;
 	case SAU_RAS_F_BIN: return sauRasG_map_bin;
 	case SAU_RAS_F_TERN: return sauRasG_map_tern;
 	case SAU_RAS_F_FIXED: return sauRasG_map_fixed;
+	case SAU_RAS_F_ADDREC: return sauRasG_map_addrec;
 	}
 }
 
@@ -715,11 +746,12 @@ static sauMaybeUnused void sauRasG_run(sauRasG *restrict o,
 static inline sauRasG_map_selfmod_f sauRasG_get_map_selfmod_f(unsigned func) {
 	switch (func) {
 	default:
-	case SAU_RAS_F_RAND: return sauRasG_map_rand_s;
+	case SAU_RAS_F_URAND: return sauRasG_map_urand_s;
 	case SAU_RAS_F_GAUSS: return sauRasG_map_gauss_s;
 	case SAU_RAS_F_BIN: return sauRasG_map_bin_s;
 	case SAU_RAS_F_TERN: return sauRasG_map_tern_s;
 	case SAU_RAS_F_FIXED: return sauRasG_map_fixed_s;
+	case SAU_RAS_F_ADDREC: return sauRasG_map_addrec_s;
 	}
 }
 
