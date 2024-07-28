@@ -7,12 +7,54 @@ is a shorter change log with only the SAU language changes.
 Pre-release
 -----------
 
-Added phase self-modulation a.k.a. "feedback FM".
+[rebase in progress]
+
+Language changes:
+ * Signal generator types. `R` mode `m` flags:
+   - Change updating of flags when adjusting mode; now every
+     flag set is kept until setting a function, which clears
+     old flags. Before, any change to mode cleared old flags.
+     (Makes especially the use of parameter `.a` less clunky.)
+     Also fix `m.a... ma`, now handled like `ma.a...`.
+ * Seed parameter. Make `s` recognize the same numerical
+   constants as `p` (phase), currently `G`.
+
+v0.4.5 (2024-08-09)
+-------------------
+
+Added self-PM/"feedback FM". New `R` mode `a`.
 
 Language changes:
  * Add `p.a` amplitude feedback parameter for phase,
    for phase self-modulation. Accepts both sweep and
    modulators within `[]`. Default value is 0.0.
+ * Signal generator types. `R` mode `m` noise functions:
+   - Add `a` (additive recurrence, low-discrepancy a.k.a.
+     quasirandom sequence) by default based on the golden
+     ratio. Add mode subparameter `m.a` for changing the
+     multiplier used to the fractional part of a number.
+   - Rename `r` (uniform random, default) to `u`.
+   - Seeds for all modes not using the `h` flag now differ.
+     Keep the highest bit from the internal 32-bit seed,
+     sacrifice the lowest bit (odd vs. even line segment)
+     as phase extends a bit to take over its role instead.
+ * Numerical expressions. Changes to mathematical functions:
+   - Add `arbf(x)`, additive recurrence base frequency.
+     Returns a multiplier for how much the pitch will
+     change for an `R` instance when `x` is set to `R ma.a`.
+     The value may be negative, corresponding to direction
+     in a sawtooth-like wave which rises rather than falls.
+   - Add `arhf(x)`, additive recurrence higher frequency.
+     Like `arbf(x)`, but for the closest new frequency above
+     the unshifted base frequency, instead of below it.
+   - Add `sgn(x)`, which returns the sign of `x` as +/- 1
+     or 0. (The sign bit is also preserved for 0.)
+   - Remove deprecated `seed(x)` function replaced by `$seed`.
+ * Seedable common parameters. Add `s` common to `N` and `R`,
+   for overriding the default seed (assigned to new instances
+   based on the `$seed` variable and a random sequence
+   derived from it). `s` takes a value modulo 1.0 as the
+   percentage of the state space, so `s0` means beginning, 0.
 
 This self-PM support requries, to preserve the performance
 when not using the feature, twice as much code for both the
@@ -54,9 +96,8 @@ Language changes:
 Rebased down modulator list `-` and concat, and sweep and list
 unification, to v0.2.x (modified sgensys versions pre-saugns).
 Logs kept while scripts in branch have one less syntax change.
-
 Changes in naming and code style built up, working through the
-versions. The new code is tidied similar to old rebasing work.
+versions. The branch tip is cleaned up like old rebasing work.
 Outside the parser, refactoring and more cover some more code.
 
 v0.4.4b (2024-04-16)
