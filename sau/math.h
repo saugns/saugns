@@ -68,8 +68,16 @@ static inline uint64_t sau_ms_in_samples(uint64_t time_ms, uint64_t srate,
  * wrapping around) to 32-bit integer with 0 as the 0% value.
  */
 static inline uint32_t sau_cyclepos_dtoui32(double x) {
-	// needs long(er) range because 0.5 from remainder becomes INT32_MAX+1
 	return sau_ui32rint(remainder(x, 1.f) * 0x1.0p32f);
+}
+
+/**
+ * Convert fractional part of \p x into a Weyl sequence constant.
+ * To be useful, \p x should usually hold some irrational number.
+ */
+static inline uint32_t sau_weylseq_dtoui32(double x) {
+	uint32_t alpha = floor(x * 0x1.0p32f);
+	return alpha | 1; // ensure odd for maximum period
 }
 
 /** Convert an unsigned 64-bit integer to 0.0 to 1.0 value. */
