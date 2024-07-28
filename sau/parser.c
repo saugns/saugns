@@ -1540,16 +1540,17 @@ static bool parse_op_mode(sauParser *restrict o) {
 	uint8_t func = SAU_RAS_FUNCTIONS;
 	uint8_t flags = 0;
 	int32_t level = -1;
+	uint8_t c;
 	for (;;) {
-		char c;
 		int matched = 0;
 		if (!(func < SAU_RAS_FUNCTIONS) && ++matched)
 		switch ((c = sauScanner_getc(sc))) {
-		case 'r': func = SAU_RAS_F_RAND; break;
+		case 'u': func = SAU_RAS_F_URAND; break;
 		case 'g': func = SAU_RAS_F_GAUSS; break;
 		case 'b': func = SAU_RAS_F_BIN; break;
 		case 't': func = SAU_RAS_F_TERN; break;
 		case 'f': func = SAU_RAS_F_FIXED; break;
+		case 'a': func = SAU_RAS_F_ADDREC; break;
 		default:
 			sauScanner_ungetc(sc);
 			--matched;
@@ -1577,7 +1578,8 @@ static bool parse_op_mode(sauParser *restrict o) {
 	}
 	if (func < SAU_RAS_FUNCTIONS) {
 		op->mode.ras.func = func;
-		op->mode.ras.flags &= SAU_RAS_O_LINE_SET;
+		op->mode.ras.flags &=
+			~(SAU_RAS_O_FUNC_FLAGS | SAU_RAS_O_LEVEL_SET);
 		op->mode.ras.flags |= SAU_RAS_O_FUNC_SET;
 		op->params |= SAU_POPP_MODE;
 	}
@@ -1589,6 +1591,21 @@ static bool parse_op_mode(sauParser *restrict o) {
 		op->mode.ras.level = sau_ras_level(level);
 		op->mode.ras.flags |= SAU_RAS_O_LEVEL_SET;
 		op->params |= SAU_POPP_MODE;
+	}
+	/*
+	 * Subparameters under mode for 'R'.
+	 */
+	double val;
+	switch ((c = sauScanner_getc_after(o->sc, '.'))) {
+	case 'a':
+		if (scan_num(o->sc, NULL, &val)) {
+			op->mode.ras.alpha = sau_weylseq_dtoui32(val);
+			op->mode.ras.flags |= SAU_RAS_O_ASUBVAL_SET;
+			op->params |= SAU_POPP_MODE;
+		}
+		break;
+	default:
+		return c != 0;
 	}
 	return false;
 }
