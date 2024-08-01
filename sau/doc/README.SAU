@@ -466,25 +466,39 @@ Numerical expressions:
 	constants) can also be used in any numerical expression; functions
 	require parentheses after the name (and most often require a value
 	inside), while constants are simply written as names:
-		abs(x)	Absolute value.
-		cos(x)	Cosine of value.
-		exp(x)	Base-e exponential value.
-		log(x)	Natural logarithmic value.
+		abs(x)	Absolute value of `x`.
+		arbf(x)	Additive recurrence base frequency. Returns a
+			multiplier from -1 to +1 for how much the pitch will
+			change for an "R" instance when `x` is set as the
+			value for "R ma.a". May be negative, corresponding to
+			direction in a sawtooth-like wave which rises rather
+			than falls; negative frequencies are supported.
+		arhf(x)	Additive recurrence higher frequency. Returns a
+			multiplier from -2 to -1 or +1 to +2, locating the
+			first frequency above the unshifted base frequency,
+			with a value which mirrors arbf(x) around +/- 1.0
+			with the same sign.
+		cos(x)	Cosine of `x`.
+		exp(x)	Base-e exponential value of `x`.
+		log(x)	Natural logarithmic value of `x`.
 		met(x)	Metallic value, e.g. "met(1)" gives the golden ratio.
 			Positive integers give the series of metallic ratios.
 			Other values are also allowed: fractional, 0 giving 1
 			and negative (gives how much the positive value would
 			be increased, approaching zero further from zero).
 			Note that met(-x) is also equal to (1/met(x)).
-		mf	632.45... Geometric mean of 20 and 20000.
+		mf	632.45... Geometric mean of 20 and 20000. Middle
+			frequency in Hz of nominal human hearing range.
 		pi	3.1415...
-		rand()	Pseudo-random number in range 0-1. The value sequence
-			from a series of calls restarts each new script unit.
-			The PRNG is seeded using the magic variable, "$seed".
-		rint(x)	Round value to the nearest integer. Halfway cases are
-			rounded to the nearest even integer.
-		sin(x)	Sine of value.
-		sqrt(x)	Square root.
+		rand()	Pseudo-random number in range 0-1. The PRNG is seeded
+			using the magic variable, "$seed". The value sequence
+			from a series of calls restarts each new script.
+		rint(x)	Round value `x` to the nearest integer. Halfway cases
+			are rounded to the nearest even integer.
+		sin(x)	Sine of `x`.
+		sgn(x)	The sign of `x` as +/- 1 or 0.
+			(The sign bit is also preserved for 0.)
+		sqrt(x)	Square root of `x`.
 		time()	Get a system timestamp number changed each second.
 			It can be used for seeding in a randomized script.
 			(Note that the exact value is platform-dependent.)

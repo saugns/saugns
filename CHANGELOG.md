@@ -19,6 +19,18 @@ Language changes:
      ratio. Add mode subparameter `m.a` for changing the
      multiplier used to the fractional part of a number.
    - Rename `r` (uniform random, default) to `u`.
+ * Numerical expressions. Changes to mathematical functions:
+   - Add `arbf(x)`, additive recurrence base frequency.
+     Returns a multiplier for how much the pitch will
+     change for an `R` instance when `x` is set to `R ma.a`.
+     The value may be negative, corresponding to direction
+     in a sawtooth-like wave which rises rather than falls.
+   - Add `arhf(x)`, additive recurrence higher frequency.
+     Like `arbf(x)`, but for the closest new frequency above
+     the unshifted base frequency, instead of below it.
+   - Add `sgn(x)`, which returns the sign of `x` as +/- 1
+     or 0. (The sign bit is also preserved for 0.)
+   - Remove deprecated `seed(x)` function replaced by `$seed`.
 
 This self-PM support requries, to preserve the performance
 when not using the feature, twice as much code for both the
