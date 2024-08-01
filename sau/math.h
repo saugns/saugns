@@ -141,6 +141,38 @@ static inline float sau_fclampf(float x, float min, float max) {
  */
 
 /**
+ * Additive recurrence base frequency. Return a multiplier from -1.0 to +1.0
+ * for how much the pitch drifts when \p x is used as an additive recurrence
+ * multiplier. May be negative indicating the waveform direction is flipped.
+ *
+ * \return multiplier for pitch
+ */
+static inline double sau_arbf(double x) {
+	/*
+	 * Same frequency for e.g. 0.1 and 0.9, but opposite direction.
+	 * The factor 2 corresponds to 0.5 being the full 1x frequency.
+	 */
+	return remainder(x, 1.f) * -2;
+}
+
+/**
+ * Additive recurrence higher frequency. Return a multiplier from -2.0 to -1.0,
+ * or +1.0 to +2.0, for the first frequency above the unshifted base frequency,
+ * which mirrors the value from sau_arbf() relative to +/- 1.0, with same sign.
+ *
+ * \return multiplier for pitch
+ */
+static inline double sau_arhf(double x) {
+	x = remainder(x, 1.f);
+	/*
+	 * Invert rounded division rounding. For choices like +0.1 and -0.9,
+	 * -0.1 and +0.9, pick opposite i.e. large magnitude beyond +/- 0.5.
+	 */
+	x += (x <= 0.f) ? +1.f : -1.f;
+	return x * +2;
+}
+
+/**
  * Metallic value function. Golden ratio for \p x == 1, silver for x == 2, etc.
  * Also accepts zero (with the result one), and values in-between the integers.
  * (Maps negative infinity to 0.0, 0.0 to 1.0, and positive infinity to itself.
@@ -152,9 +184,20 @@ static inline double sau_met(double x) {
 	return 0.5f * (x + sqrt(x * x + 4.f));
 }
 
+/**
+ * Sign of \p x, in the form of +/- 1 if non-zero and +/- 0 if zero.
+ *
+ * \return -1, -0, +0, or +1
+ */
+static inline double sau_sgn(double x) {
+	return copysign((x == 0.f ? 0.f : 1.f), x);
+}
+
 /* Macro used to declare and define math function sets of items. */
 #define SAU_MATH__ITEMS(X) \
 	X(abs,       VAL_F, {.val = fabs}) \
+	X(arbf,      VAL_F, {.val = sau_arbf}) \
+	X(arhf,      VAL_F, {.val = sau_arhf}) \
 	X(cos,       VAL_F, {.val = cos}) \
 	X(exp,       VAL_F, {.val = exp}) \
 	X(log,       VAL_F, {.val = log}) \
@@ -163,7 +206,7 @@ static inline double sau_met(double x) {
 	X(pi,      NOARG_F, {.noarg = pi_const}) \
 	X(rand,    STATE_F, {.state = sau_rand}) \
 	X(rint,      VAL_F, {.val = rint}) \
-	X(seed, STATEVAL_F, {.stateval = sau_seed_old}) \
+	X(sgn,       VAL_F, {.val = sau_sgn}) \
 	X(sin,       VAL_F, {.val = sin}) \
 	X(sqrt,      VAL_F, {.val = sqrt}) \
 	X(time,    STATE_F, {.state = sau_time}) \

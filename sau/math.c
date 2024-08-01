@@ -40,11 +40,6 @@ static double sau_seed(struct sauMath_state *restrict o, double x) {
 	return 0.f;
 }
 
-static double sau_seed_old(struct sauMath_state *restrict o, double x) {
-	sau_warning("math", "seed() is deprecated, use \"$seed=...\"");
-	return sau_seed(o, x);
-}
-
 static double sau_time(struct sauMath_state *restrict o) {
 	if (o->no_time)
 		return 0.0;
