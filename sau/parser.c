@@ -1071,7 +1071,6 @@ static void begin_operator(sauParser *restrict o,
 		op->time = sauTime_DEFAULT(pop->time.v_ms,
 				pop->time.flags & SAU_TIMEP_IMPLICIT);
 		op->mode.main = pop->mode.main;
-		op->phase = pop->phase;
 		if ((pl->pl_flags & PL_BIND_MULTIPLE) != 0) {
 			sauScriptOpData *mpop = pop;
 			uint32_t max_time = 0;
@@ -1090,8 +1089,8 @@ static void begin_operator(sauParser *restrict o,
 		bool is_nested = pl->use_type != SAU_POP_N_carr;
 		sauScriptObjInfo *info = ObjInfoArr_add(&o->obj_arr, &op->ref,
 				SAU_POBJT_OP, type);
-		if (type == SAU_POPT_N_noise || type == SAU_POPT_N_raseg)
-			info->seed = sau_rand32(&o->sl.math_state);
+		if (sau_pop_has_seed(type))
+			op->seed = info->seed = sau_rand32(&o->sl.math_state);
 		op->time = sauTime_DEFAULT(o->sl.sopt.def_time_ms, is_nested);
 		if (!is_nested) {
 			o->root_op_obj = op->ref.obj_id;
@@ -1635,6 +1634,19 @@ static bool parse_op_phase(sauParser *restrict o) {
 	return false;
 }
 
+static bool parse_op_seed(sauParser *restrict o) {
+	struct ParseLevel *pl = o->cur_pl;
+	sauScriptOpData *op = pl->operator;
+	if (!sau_pop_has_seed(op->ref.op_type))
+		return true; // reject, lacks parameter
+	double val;
+	if (scan_num(o->sc, NULL, &val)) {
+		op->seed = sau_cyclepos_dtoui32(val);
+		op->params |= SAU_POPP_SEED;
+	}
+	return false;
+}
+
 static void parse_in_op_step(sauParser *restrict o) {
 	PARSE_IN__HEAD(parse_in_op_step, pl->operator)
 		sauScriptOpData *op = pl->operator;
@@ -1685,6 +1697,9 @@ static void parse_in_op_step(sauParser *restrict o) {
 			break;
 		case 'r':
 			if (parse_op_freq(o, true)) goto DEFER;
+			break;
+		case 's':
+			if (parse_op_seed(o)) goto DEFER;
 			break;
 		case 't': {
 			uint8_t suffc = sauScanner_get_suffc(sc);

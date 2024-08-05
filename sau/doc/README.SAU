@@ -216,6 +216,15 @@ Oscillator common parameters:
 		the amplitudes are multiplied by the carrier frequency divided
 		by 632.45... Hz (the geometric mean of 20 and 20000 Hz).
 
+Seedable common parameters:
+	Named parameters common to all seedable types,
+	those with randomizable results -- "N" and "R".
+	They also have the "Generator universal parameters".
+	s	Seed as percentage of the state space, i.e. from 0.0 to 1.0,
+		accepting any value taken modulo 1.0. This overrides the
+		default seeds given to new instances, which are randomized
+		using a sequence based on the global "$seed" magic variable.
+
 N: Noise generator
 ------------------
 
@@ -238,7 +247,7 @@ See "Noise types" for the available noise types.
 
 Parameters:
 	The "N" noise generator has the
-	"Generator universal parameters", and additionally:
+	"Seedable common parameters", and additionally:
 	n	Noise type -- see "Noise types" for values.
 
 Noise types:
@@ -271,12 +280,9 @@ as well as a naive oscillator mode. See "Line types" for the
 available line types. The default mode and line shape makes
 the output similar to low-pass-filtered white noise.
 
-The "$seed" magic variable changes
-the starting seed of new "R" instances.
-
 Parameters:
-	The "R" rumble oscillator has the
-	"Oscillator common parameters", and additionally:
+	The "R" rumble oscillator has the "Oscillator common parameters",
+	"Seedable common parameters", and additionally:
 	l	Line type -- see "Line types" for values.
 	m	Mode for line start and goal value variation; consists of
 		a letter (random function) and a digit (0-9 shaping level);

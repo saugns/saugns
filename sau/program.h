@@ -81,14 +81,20 @@ enum {
 /** True if the given program op type is an oscillator type. */
 #define sau_pop_is_osc(type_id) ((type_id) >= SAU_POPT_N_wave)
 
+/** True if the given program op type uses seed values. */
+static inline bool sau_pop_has_seed(unsigned type_id) {
+	return type_id == SAU_POPT_N_noise || type_id == SAU_POPT_N_raseg;
+}
+
 /**
  * Operator parameter flags. For parameters without other tracking only.
  */
 enum {
 	SAU_POPP_TIME = 1<<0,
-	SAU_POPP_PHASE = 1<<1,
-	SAU_POPP_MODE = 1<<2, // type-specific data
-	SAU_POP_PARAMS = (1<<3) - 1,
+	SAU_POPP_MODE = 1<<1, // type-specific data
+	SAU_POPP_PHASE = 1<<2,
+	SAU_POPP_SEED = 1<<3,
+	SAU_POP_PARAMS = (1<<4) - 1,
 };
 
 /* Macro used to declare and define noise type sets of items. */
@@ -209,7 +215,7 @@ typedef struct sauProgramOpData {
 	sauLine *freq, *freq2;
 	sauLine *pm_a;
 	uint32_t phase;
-	uint32_t seed; // TODO: divide containing node type
+	uint32_t seed;
 	uint8_t use_type; // carrier or modulator use?
 	uint8_t type; // type info, for now
 	union sauPOPMode {

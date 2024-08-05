@@ -68,6 +68,7 @@ typedef struct sauScriptOpData {
 	sauLine *freq, *freq2;
 	sauLine *pm_a;
 	uint32_t phase;
+	uint32_t seed;
 	union sauPOPMode mode;
 	/* node adjacents in operator linkage graph */
 	sauScriptListData *mods;

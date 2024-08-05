@@ -31,6 +31,11 @@ Language changes:
    - Add `sgn(x)`, which returns the sign of `x` as +/- 1
      or 0. (The sign bit is also preserved for 0.)
    - Remove deprecated `seed(x)` function replaced by `$seed`.
+ * Seedable common parameters. Add `s` common to `N` and `R`,
+   for overriding the default seed (assigned to new instances
+   based on the `$seed` variable and a random sequence
+   derived from it). `s` takes a value modulo 1.0 as the
+   percentage of the state space, so `s0` means beginning, 0.
 
 This self-PM support requries, to preserve the performance
 when not using the feature, twice as much code for both the
