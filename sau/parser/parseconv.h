@@ -301,7 +301,7 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 	ood->use_type = use_type;
 	/* TODO: separation of types */
 	ood->type = info->op_type;
-	ood->seed = info->seed;
+	ood->seed = op->seed;
 	ood->mode = op->mode;
 	sauVoAllocState *vas = &o->va.a[o->ev->vo_id];
 	for (sauScriptListData *in_list = op->mods;

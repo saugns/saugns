@@ -245,10 +245,8 @@ static void prepare_op(sauGenerator *restrict o,
 	}
 	memset(n, 0, sizeof(*n));
 	switch (od->type) {
-	case SAU_POPT_N_noise: {
-		NoiseGNode *ng = &n->ng;
-		sauNoiseG_set_seed(&ng->noiseg, od->seed);
-		break; }
+	case SAU_POPT_N_noise:
+		break;
 	case SAU_POPT_N_wave: {
 		WOscNode *wo = &n->wo;
 		sau_init_WOsc(&wo->wosc, o->srate);
@@ -258,7 +256,6 @@ static void prepare_op(sauGenerator *restrict o,
 	case SAU_POPT_N_raseg: {
 		RasGNode *rg = &n->rg;
 		sau_init_RasG(&rg->rasg, o->srate);
-		sauRasG_set_cycle(&rg->rasg, od->seed);
 		if (od->use_type == SAU_POP_N_carr) // match run_block_rasg()
 			vn->freq_buf_id = 4 - 1;
 		goto OSC_COMMON; }
@@ -287,20 +284,24 @@ static void update_op(sauGenerator *restrict o,
 		NoiseGNode *ng = &n->ng;
 		if (params & SAU_POPP_MODE)
 			sauNoiseG_set_noise(&ng->noiseg, od->mode.main);
+		if (params & SAU_POPP_SEED)
+			sauNoiseG_set_seed(&ng->noiseg, od->seed);
 		break; }
 	case SAU_POPT_N_wave: {
 		WOscNode *wo = &n->wo;
-		if (params & SAU_POPP_PHASE)
-			sauWOsc_set_phase(&wo->wosc, od->phase);
 		if (params & SAU_POPP_MODE)
 			sauWOsc_set_wave(&wo->wosc, od->mode.main);
+		if (params & SAU_POPP_PHASE)
+			sauWOsc_set_phase(&wo->wosc, od->phase);
 		goto OSC_COMMON; }
 	case SAU_POPT_N_raseg: {
 		RasGNode *rg = &n->rg;
-		if (params & SAU_POPP_PHASE)
-			sauRasG_set_phase(&rg->rasg, od->phase);
 		if (params & SAU_POPP_MODE)
 			sauRasG_set_opt(&rg->rasg, &od->mode.ras);
+		if (params & SAU_POPP_PHASE)
+			sauRasG_set_phase(&rg->rasg, od->phase);
+		if (params & SAU_POPP_SEED)
+			sauRasG_set_cycle(&rg->rasg, od->seed);
 		goto OSC_COMMON; }
 	}
 	if (false)

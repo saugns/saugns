@@ -192,7 +192,7 @@ Oscillator common parameters:
 		other kinds of modulation, if FM is done the result is used.
 	p	Phase in percentage of the wave cycle modulo 1.0. Set to
 		reset the phase, e.g. to change the initial value from 0.0.
-		See "Phase values" for more.
+		See "Cycle position values" for more.
 			"Modulator list" values are supported for PM (phase
 		modulation); see section. A phase percentage value can be set
 		together with a list in one go, the value then going first
@@ -219,6 +219,16 @@ Oscillator common parameters:
 		the amplitudes are multiplied by the carrier frequency divided
 		by 632.45... Hz (the geometric mean of 20 and 20000 Hz).
 
+Seedable common parameters:
+	Named parameters common to all seedable types,
+	those with randomizable results -- "N" and "R".
+	They also have the "Generator universal parameters".
+	s	Seed as percentage of the state space, i.e. from 0.0 to 1.0,
+		accepting any value taken modulo 1.0. This overrides the
+		default seeds given to new instances, which are randomized
+		using a sequence based on the global "$seed" magic variable.
+		See "Cycle position values" for more.
+
 N: Noise generator
 ------------------
 
@@ -241,7 +251,7 @@ See "Noise types" for the available noise types.
 
 Parameters:
 	The "N" noise generator has the
-	"Generator universal parameters", and additionally:
+	"Seedable common parameters", and additionally:
 	n	Noise type -- see "Noise types" for values.
 
 Noise types:
@@ -274,12 +284,9 @@ as well as a naive oscillator mode. See "Line types" for the
 available line types. The default mode and line shape makes
 the output similar to low-pass-filtered white noise.
 
-The "$seed" magic variable changes
-the starting seed of new "R" instances.
-
 Parameters:
-	The "R" rumble oscillator has the
-	"Oscillator common parameters", and additionally:
+	The "R" rumble oscillator has the "Oscillator common parameters",
+	"Seedable common parameters", and additionally:
 	l	Line type -- see "Line types" for values.
 	m	Mode for line start and goal value variation; consists of
 		a letter (random function) and a digit (0-9 shaping level);
@@ -516,11 +523,13 @@ Channel mixing values:
 	L	(-1.0)
 	R	1.0
 
-Phase values:
-	Phase offset as a percentage of the wave cycle. Any value will be used
-	modulo 1.0. For example, (1/4) turns sine into cosine. Named constants
-	provide scaled angles which can be used in expressions, e.g. (G*n) for
-	some whole number n makes for the nth leaf-around-a-stem angle.
+Cycle position values:
+	Phase offset as a percentage of the wave cycle, or seed position as a
+	percentage of the state space. Any value will be used modulo 1.0. For
+	example, for "p" the value 1/4 turns sine into cosine.
+		Named constants provide scaled angles which can be used in
+	expressions, e.g. (G*n) for some whole number n makes for the nth
+	leaf-around-a-stem angle.
 	G	0.3819... (golden angle as cycle percentage)
 
 Value sweep:
@@ -643,7 +652,8 @@ Variables:
 	For example, "$freq=f A4" has the frequency value of the note "A4".
 	c	Channel mixing values
 	f	Frequencies as notes
-	p	Phase values
+	p	Cycle position values (phase)
+	s	Cycle position values (seed)
 		Built-in magic variables exist that perform a procedure when
 	set, beyond holding a value. Like other variables, the initial values
 	can be changed by passing options to a script to assign variables.
