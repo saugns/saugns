@@ -55,16 +55,44 @@ static inline void sau_init_RasG(sauRasG *restrict o, uint32_t srate) {
 	};
 }
 
+static inline uint32_t sauRasG_get_cycle(sauRasG *restrict o) {
+	uint32_t cycle = o->cyclor.cycle_phase >> 32;
+	/*
+	 * Phase in rate2x mode extends to include the lowest cycle bit,
+	 * which then marks even vs. odd half-cycle instead of cycle. To
+	 * keep behavior consistent instead of keeping vs. losing a seed
+	 * bit depending on whether or not mode is toggled, always mask.
+	 */
+	return cycle & ~1;
+}
+
+static inline uint32_t sauRasG_get_phase(sauRasG *restrict o) {
+	return o->cyclor.rate2x ?
+		(o->cyclor.cycle_phase >> 1) :
+		o->cyclor.cycle_phase;
+}
+
 static inline void sauRasG_set_cycle(sauRasG *restrict o, uint32_t cycle) {
-	o->cyclor.cycle_phase =
-		(o->cyclor.cycle_phase & UINT32_MAX) | (((uint64_t)cycle)<<32);
+	uint32_t phase = sauRasG_get_phase(o);
+	uint64_t phase64 = (o->cyclor.rate2x) ? ((uint64_t)phase) << 1 : phase;
+	/*
+	 * Phase in rate2x mode extends to include the lowest cycle bit,
+	 * which then marks even vs. odd half-cycle instead of cycle. To
+	 * keep behavior consistent instead of keeping vs. losing a seed
+	 * bit depending on whether or not mode is toggled, always mask.
+	 */
+	o->cyclor.cycle_phase = ((uint64_t)(cycle & ~1)) << 32 | phase64;
 }
 
 static inline void sauRasG_set_phase(sauRasG *restrict o, uint32_t phase) {
-	o->cyclor.cycle_phase =
-		(o->cyclor.cycle_phase & ~(uint64_t)UINT32_MAX) | phase;
+	uint32_t cycle = sauRasG_get_cycle(o);
+	uint64_t phase64 = (o->cyclor.rate2x) ? ((uint64_t)phase) << 1 : phase;
+	o->cyclor.cycle_phase = ((uint64_t)cycle) << 32 | phase64;
 }
 
+/**
+ * Update mode options. Will adjust settings which are dependent on the mode.
+ */
 static void sauRasG_set_opt(sauRasG *restrict o,
 		const sauRasOpt *restrict opt) {
 	unsigned flags = opt->flags;
@@ -79,7 +107,14 @@ static void sauRasG_set_opt(sauRasG *restrict o,
 	if (opt->flags & SAU_RAS_O_ASUBVAL_SET)
 		o->alpha = opt->alpha;
 	o->flags = flags;
-	o->cyclor.rate2x = !(flags & SAU_RAS_O_HALFSHAPE);
+	bool rate2x = !(flags & SAU_RAS_O_HALFSHAPE);
+	if (rate2x != o->cyclor.rate2x) {
+		uint32_t cycle = sauRasG_get_cycle(o);
+		uint32_t phase = sauRasG_get_phase(o);
+		o->cyclor.rate2x = rate2x;
+		sauRasG_set_cycle(o, cycle);
+		sauRasG_set_phase(o, phase);
+	}
 }
 
 /**
@@ -119,122 +154,6 @@ static inline int32_t sauRasG_cycle_offs(sauRasG *restrict o,
 	ofs + o->cycle_phase; (o->cycle_phase += inc)     /* post-increment */
 
 /**
- * Fill cycle-value and phase-value buffers with 1x frequency rate.
- * Used for sawtooth-like waves needing one line segment per cycle.
- */
-static sauMaybeUnused void sauCyclor_fill_rate1x(sauCyclor *restrict o,
-		uint32_t *restrict cycle_ui32,
-		float *restrict phase_f,
-		size_t buf_len,
-		const float *restrict freq_f,
-		const float *restrict pm_f,
-		const float *restrict fpm_f) {
-	const float inv_int32_max = 0x1p-31f;
-	const float fpm_scale = 1.f / SAU_HUMMID;
-	if (!pm_f && !fpm_f) {
-		for (size_t i = 0; i < buf_len; ++i) {
-			float s_f = freq_f[i];
-			uint64_t cycle_phase = P(sau_ftoi(o->coeff * s_f), 0);
-			uint32_t phase;
-			cycle_ui32[i] = cycle_phase >> 32;
-			phase = (cycle_phase >> 1) & ~(1U<<31);
-			phase_f[i] = ((int32_t) phase) * inv_int32_max;
-		}
-	} else if (!fpm_f) {
-		for (size_t i = 0; i < buf_len; ++i) {
-			float s_f = freq_f[i];
-			float s_pofs = pm_f[i];
-			uint64_t cycle_phase = P(sau_ftoi(o->coeff * s_f),
-					sau_ftoi(s_pofs * 0x1p31f));
-			uint32_t phase;
-			cycle_ui32[i] = cycle_phase >> 32;
-			phase = (cycle_phase >> 1) & ~(1U<<31);
-			phase_f[i] = ((int32_t) phase) * inv_int32_max;
-		}
-	} else if (!pm_f) {
-		for (size_t i = 0; i < buf_len; ++i) {
-			float s_f = freq_f[i];
-			float s_pofs = fpm_f[i] * fpm_scale * s_f;
-			uint64_t cycle_phase = P(sau_ftoi(o->coeff * s_f),
-					sau_ftoi(s_pofs * 0x1p31f));
-			uint32_t phase;
-			cycle_ui32[i] = cycle_phase >> 32;
-			phase = (cycle_phase >> 1) & ~(1U<<31);
-			phase_f[i] = ((int32_t) phase) * inv_int32_max;
-		}
-	} else {
-		for (size_t i = 0; i < buf_len; ++i) {
-			float s_f = freq_f[i];
-			float s_pofs = pm_f[i] + (fpm_f[i] * fpm_scale * s_f);
-			uint64_t cycle_phase = P(sau_ftoi(o->coeff * s_f),
-					sau_ftoi(s_pofs * 0x1p31f));
-			uint32_t phase;
-			cycle_ui32[i] = cycle_phase >> 32;
-			phase = (cycle_phase >> 1) & ~(1U<<31);
-			phase_f[i] = ((int32_t) phase) * inv_int32_max;
-		}
-	}
-}
-
-/**
- * Fill cycle-value and phase-value buffers with 2x frequency rate.
- * Used for waveforms where each real cycle uses two "cycle" lines.
- */
-static sauMaybeUnused void sauCyclor_fill_rate2x(sauCyclor *restrict o,
-		uint32_t *restrict cycle_ui32,
-		float *restrict phase_f,
-		size_t buf_len,
-		const float *restrict freq_f,
-		const float *restrict pm_f,
-		const float *restrict fpm_f) {
-	const float inv_int32_max = 0x1p-31f;
-	const float fpm_scale = 1.f / SAU_HUMMID;
-	if (!pm_f && !fpm_f) {
-		for (size_t i = 0; i < buf_len; ++i) {
-			float s_f = freq_f[i];
-			uint64_t cycle_phase = P(sau_ftoi(o->coeff * s_f), 0);
-			uint32_t phase;
-			cycle_ui32[i] = cycle_phase >> 31;
-			phase = cycle_phase & ~(1U<<31);
-			phase_f[i] = ((int32_t) phase) * inv_int32_max;
-		}
-	} else if (!fpm_f) {
-		for (size_t i = 0; i < buf_len; ++i) {
-			float s_f = freq_f[i];
-			float s_pofs = pm_f[i];
-			uint64_t cycle_phase = P(sau_ftoi(o->coeff * s_f),
-					sau_ftoi(s_pofs * 0x1p31f));
-			uint32_t phase;
-			cycle_ui32[i] = cycle_phase >> 31;
-			phase = cycle_phase & ~(1U<<31);
-			phase_f[i] = ((int32_t) phase) * inv_int32_max;
-		}
-	} else if (!pm_f) {
-		for (size_t i = 0; i < buf_len; ++i) {
-			float s_f = freq_f[i];
-			float s_pofs = fpm_f[i] * fpm_scale * s_f;
-			uint64_t cycle_phase = P(sau_ftoi(o->coeff * s_f),
-					sau_ftoi(s_pofs * 0x1p31f));
-			uint32_t phase;
-			cycle_ui32[i] = cycle_phase >> 31;
-			phase = cycle_phase & ~(1U<<31);
-			phase_f[i] = ((int32_t) phase) * inv_int32_max;
-		}
-	} else {
-		for (size_t i = 0; i < buf_len; ++i) {
-			float s_f = freq_f[i];
-			float s_pofs = pm_f[i] + (fpm_f[i] * fpm_scale * s_f);
-			uint64_t cycle_phase = P(sau_ftoi(o->coeff * s_f),
-					sau_ftoi(s_pofs * 0x1p31f));
-			uint32_t phase;
-			cycle_ui32[i] = cycle_phase >> 31;
-			phase = cycle_phase & ~(1U<<31);
-			phase_f[i] = ((int32_t) phase) * inv_int32_max;
-		}
-	}
-}
-
-/**
  * Fill cycle-value and phase-value buffers for use with sauRasG_run().
  *
  * "Cycles" may have 2x the normal speed while mapped to line sgements.
@@ -249,8 +168,56 @@ static sauMaybeUnused void sauCyclor_fill(sauCyclor *restrict o,
 		const float *restrict freq_f,
 		const float *restrict pm_f,
 		const float *restrict fpm_f) {
-	(o->rate2x ? sauCyclor_fill_rate2x : sauCyclor_fill_rate1x)
-		(o, cycle_ui32, phase_f, buf_len, freq_f, pm_f, fpm_f);
+	const float fpm_scale = 1.f / SAU_HUMMID;
+	float coeff = o->coeff;
+	float phase_scale = 0x1p31f;
+	if (o->rate2x) {
+		coeff *= 2;
+		phase_scale *= 2;
+	}
+	if (!pm_f && !fpm_f) {
+		for (size_t i = 0; i < buf_len; ++i) {
+			float s_f = freq_f[i];
+			uint64_t cycle_phase = P(sau_ftoi(coeff * s_f), 0);
+			uint32_t phase;
+			cycle_ui32[i] = cycle_phase >> 32;
+			phase = ((uint32_t) cycle_phase) >> 1;
+			phase_f[i] = ((int32_t) phase) * 0x1p-31f;
+		}
+	} else if (!fpm_f) {
+		for (size_t i = 0; i < buf_len; ++i) {
+			float s_f = freq_f[i];
+			float s_pofs = pm_f[i];
+			uint64_t cycle_phase = P(sau_ftoi(coeff * s_f),
+					sau_ftoi(s_pofs * phase_scale));
+			uint32_t phase;
+			cycle_ui32[i] = cycle_phase >> 32;
+			phase = ((uint32_t) cycle_phase) >> 1;
+			phase_f[i] = ((int32_t) phase) * 0x1p-31f;
+		}
+	} else if (!pm_f) {
+		for (size_t i = 0; i < buf_len; ++i) {
+			float s_f = freq_f[i];
+			float s_pofs = fpm_f[i] * fpm_scale * s_f;
+			uint64_t cycle_phase = P(sau_ftoi(coeff * s_f),
+					sau_ftoi(s_pofs * phase_scale));
+			uint32_t phase;
+			cycle_ui32[i] = cycle_phase >> 32;
+			phase = ((uint32_t) cycle_phase) >> 1;
+			phase_f[i] = ((int32_t) phase) * 0x1p-31f;
+		}
+	} else {
+		for (size_t i = 0; i < buf_len; ++i) {
+			float s_f = freq_f[i];
+			float s_pofs = pm_f[i] + (fpm_f[i] * fpm_scale * s_f);
+			uint64_t cycle_phase = P(sau_ftoi(coeff * s_f),
+					sau_ftoi(s_pofs * phase_scale));
+			uint32_t phase;
+			cycle_ui32[i] = cycle_phase >> 32;
+			phase = ((uint32_t) cycle_phase) >> 1;
+			phase_f[i] = ((int32_t) phase) * 0x1p-31f;
+		}
+	}
 }
 
 #undef P /* done */
