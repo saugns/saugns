@@ -19,6 +19,10 @@ Language changes:
      ratio. Add mode subparameter `m.a` for changing the
      multiplier used to the fractional part of a number.
    - Rename `r` (uniform random, default) to `u`.
+   - Seeds for all modes not using the `h` flag now differ.
+     Keep the highest bit from the internal 32-bit seed,
+     sacrifice the lowest bit (odd vs. even line segment)
+     as phase extends a bit to take over its role instead.
  * Numerical expressions. Changes to mathematical functions:
    - Add `arbf(x)`, additive recurrence base frequency.
      Returns a multiplier for how much the pitch will
