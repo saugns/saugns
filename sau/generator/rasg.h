@@ -15,6 +15,11 @@
 #include "../line.h"
 #include "noise.h"
 
+#define RASG_MEASURE_LINE_AMP 0
+#if RASG_MEASURE_LINE_AMP
+# include <stdio.h>
+#endif
+
 /**
  * Calculate the coefficent, based on the sample rate, used for
  * the per-sample phase by multiplying with the frequency used.
@@ -29,9 +34,8 @@ typedef struct sauCyclor {
 
 typedef struct sauRasG {
 	sauCyclor cyclor;
-	uint8_t line, func, level, flags;
+	sauRasOpt opt;
 	float prev_s, fb_s;
-	uint32_t alpha;
 } sauRasG;
 
 /**
@@ -44,14 +48,11 @@ static inline void sau_init_RasG(sauRasG *restrict o, uint32_t srate) {
 			.coeff = sauCyclor_COEFF(srate),
 			.rate2x = true,
 		},
-		.line = SAU_LINE_N_lin,
-		.func = SAU_RAS_F_URAND,
-		.level = sau_ras_level(9 /* max one-digit number */),
-		.alpha = SAU_FIBH32, // use golden ratio as default
-		.flags = SAU_RAS_O_LINE_SET |
-			SAU_RAS_O_FUNC_SET |
-			SAU_RAS_O_LEVEL_SET |
-			SAU_RAS_O_ASUBVAL_SET,
+		.opt.line = SAU_LINE_N_lin,
+		.opt.func = SAU_RAS_F_URAND,
+		.opt.level = sau_ras_level(9 /* max one-digit number */),
+		.opt.alpha = SAU_FIBH32, // use golden ratio as default
+		.opt.flags = 0,
 	};
 }
 
@@ -97,16 +98,16 @@ static void sauRasG_set_opt(sauRasG *restrict o,
 		const sauRasOpt *restrict opt) {
 	unsigned flags = opt->flags;
 	if (opt->flags & SAU_RAS_O_LINE_SET)
-		o->line = opt->line;
+		o->opt.line = opt->line;
 	if (opt->flags & SAU_RAS_O_FUNC_SET)
-		o->func = opt->func;
+		o->opt.func = opt->func;
 	else
-		flags |= o->flags; /* keep old modifying flags */
+		flags |= o->opt.flags; /* keep old modifying flags */
 	if (opt->flags & SAU_RAS_O_LEVEL_SET)
-		o->level = opt->level;
+		o->opt.level = opt->level;
 	if (opt->flags & SAU_RAS_O_ASUBVAL_SET)
-		o->alpha = opt->alpha;
-	o->flags = flags;
+		o->opt.alpha = opt->alpha;
+	o->opt.flags = flags;
 	bool rate2x = !(flags & SAU_RAS_O_HALFSHAPE);
 	if (rate2x != o->cyclor.rate2x) {
 		uint32_t cycle = sauRasG_get_cycle(o);
@@ -239,29 +240,39 @@ typedef void (*sauRasG_map_selfmod_f)(sauRasG *restrict o,
  * Define loop body for a sauRasg_map_*_s() function. Expects named macro.
  */
 #define RASG_MAP_S_LOOP(loop_for_func) \
+unsigned flags = o->opt.flags, line = o->opt.line; \
+const float perlin_amp = \
+	(flags & (SAU_RAS_O_HALFSHAPE|SAU_RAS_O_ZIGZAG)) ? \
+	1.f : \
+	sauLine_coeffs[line].perlin_amp; \
 for (size_t i = 0; i < buf_len; ++i) { \
 	float pm_a = o->fb_s * pm_abuf[i] * 0.5f; \
 	float phase = main_buf[i] + pm_a; \
 	int32_t cycle_adj = floorf(phase); \
 	uint32_t cycle = cycle_buf[i] + cycle_adj; \
+	phase -= cycle_adj; \
 	/**/ RASG_MAP_##loop_for_func \
-	if (o->flags & SAU_RAS_O_HALFSHAPE) { \
+	if (flags & SAU_RAS_O_PERLIN) { \
+		a *= perlin_amp*phase; \
+		b *= perlin_amp*(phase-1.f); \
+	} \
+	if (flags & SAU_RAS_O_HALFSHAPE) { \
 		/* sort value-pairs, for a decreasing sawtooth-like waveform */\
 		float max = sau_maxf(a, b); \
 		float min = sau_minf(a, b); \
 		a = max; \
 		b = min; \
 	} \
-	if (o->flags & SAU_RAS_O_SQUARE) { \
+	if (flags & SAU_RAS_O_ZIGZAG) { \
+		/* swap half-cycle ends for jagged shape on random amplitude */\
+		float tmp = a; a = b; b = tmp; \
+	} \
+	if (flags & SAU_RAS_O_SQUARE) { \
 		/* square keeping sign; value uniformity to energy uniformity*/\
 		a *= fabsf(a); \
 		b *= fabsf(b); \
 	} \
-	if (o->flags & SAU_RAS_O_ZIGZAG) { \
-		/* swap half-cycle ends for jagged shape on random amplitude */\
-		float tmp = a; a = b; b = tmp; \
-	} \
-	float s = line_f(phase - cycle_adj, a, b); \
+	float s = line_f(phase, a, b); \
 	main_buf[i] = s; \
 	/* Suppress ringing using 1-pole filter + 1-zero filter. */ \
 	o->fb_s = (o->fb_s + s + o->prev_s) * 0.5f; \
@@ -278,7 +289,7 @@ static sauMaybeUnused void sauRasG_map_##loop_for_func##_s(sauRasG *restrict o,\
 		sauLine_val_f line_f, \
 		const uint32_t *restrict cycle_buf, \
 		const float *restrict pm_abuf) { \
-	int sauMaybeUnused sr = o->level; \
+	int sauMaybeUnused sr = o->opt.level; \
 	RASG_MAP_S_LOOP(loop_for_func) \
 }
 
@@ -316,7 +327,7 @@ static sauMaybeUnused void sauRasG_map_urand(sauRasG *restrict o,
 		float *restrict end_a_buf,
 		float *restrict end_b_buf,
 		const uint32_t *restrict cycle_buf) {
-	if (o->flags & SAU_RAS_O_VIOLET) {
+	if (o->opt.flags & SAU_RAS_O_VIOLET) {
 		sauRasG_map_v_urand(o, buf_len, end_a_buf,end_b_buf, cycle_buf);
 		return;
 	}
@@ -343,7 +354,7 @@ static sauMaybeUnused void sauRasG_map_urand_s(sauRasG *restrict o,
 		sauLine_val_f line_f,
 		const uint32_t *restrict cycle_buf,
 		const float *restrict pm_abuf) {
-	if (o->flags & SAU_RAS_O_VIOLET) {
+	if (o->opt.flags & SAU_RAS_O_VIOLET) {
 		sauRasG_map_v_urand_s(o, buf_len, main_buf, line_f,
 				cycle_buf, pm_abuf);
 		return;
@@ -384,7 +395,7 @@ static sauMaybeUnused void sauRasG_map_v_bin(sauRasG *restrict o,
 		float *restrict end_a_buf,
 		float *restrict end_b_buf,
 		const uint32_t *restrict cycle_buf) {
-	int sr = o->level;
+	int sr = o->opt.level;
 	// TODO: Scaling ends up slightly too low near sr == 1, improve?
 	const float scale_diff = 1.f
 		- (sau_sar32(INT32_MAX, sr) / 0x1p31f);
@@ -420,7 +431,7 @@ static sauMaybeUnused void sauRasG_map_v_bin_s(sauRasG *restrict o,
 		sauLine_val_f line_f,
 		const uint32_t *restrict cycle_buf,
 		const float *restrict pm_abuf) {
-	int sr = o->level;
+	int sr = o->opt.level;
 	// TODO: Scaling ends up slightly too low near sr == 1, improve?
 	const float scale_diff = 1.f
 		- (sau_sar32(INT32_MAX, sr) / 0x1p31f);
@@ -438,11 +449,11 @@ static sauMaybeUnused void sauRasG_map_bin(sauRasG *restrict o,
 		float *restrict end_a_buf,
 		float *restrict end_b_buf,
 		const uint32_t *restrict cycle_buf) {
-	if (o->flags & SAU_RAS_O_VIOLET) {
+	if (o->opt.flags & SAU_RAS_O_VIOLET) {
 		sauRasG_map_v_bin(o, buf_len, end_a_buf, end_b_buf, cycle_buf);
 		return;
 	}
-	int sr = o->level;
+	int sr = o->opt.level;
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t cycle = cycle_buf[i];
 #define RASG_MAP_bin \
@@ -469,12 +480,12 @@ static sauMaybeUnused void sauRasG_map_bin_s(sauRasG *restrict o,
 		sauLine_val_f line_f,
 		const uint32_t *restrict cycle_buf,
 		const float *restrict pm_abuf) {
-	if (o->flags & SAU_RAS_O_VIOLET) {
+	if (o->opt.flags & SAU_RAS_O_VIOLET) {
 		sauRasG_map_v_bin_s(o, buf_len, main_buf, line_f,
 				cycle_buf, pm_abuf);
 		return;
 	}
-	int sr = o->level;
+	int sr = o->opt.level;
 	RASG_MAP_S_LOOP(bin)
 }
 
@@ -492,7 +503,7 @@ static sauMaybeUnused void sauRasG_map_tern(sauRasG *restrict o,
 		float *restrict end_a_buf,
 		float *restrict end_b_buf,
 		const uint32_t *restrict cycle_buf) {
-	int sr = o->level;
+	int sr = o->opt.level;
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t cycle = cycle_buf[i];
 #define RASG_MAP_tern \
@@ -546,7 +557,7 @@ static sauMaybeUnused void sauRasG_map_v_fixed(sauRasG *restrict o,
 		float *restrict end_a_buf,
 		float *restrict end_b_buf,
 		const uint32_t *restrict cycle_buf) {
-	int sr = o->level;
+	int sr = o->opt.level;
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t cycle = cycle_buf[i];
 #define RASG_MAP_v_fixed \
@@ -581,17 +592,17 @@ static sauMaybeUnused void sauRasG_map_fixed(sauRasG *restrict o,
 		float *restrict end_a_buf,
 		float *restrict end_b_buf,
 		const uint32_t *restrict cycle_buf) {
-	if (o->level >= sau_ras_level(9)) {
+	if (o->opt.level >= sau_ras_level(9)) {
 		sauRasG_map_fixed_simple(o, buf_len, end_a_buf, end_b_buf,
 				cycle_buf);
 		return;
 	}
-	if (o->flags & SAU_RAS_O_VIOLET) {
+	if (o->opt.flags & SAU_RAS_O_VIOLET) {
 		sauRasG_map_v_fixed(o, buf_len, end_a_buf, end_b_buf,
 				cycle_buf);
 		return;
 	}
-	int sr = o->level;
+	int sr = o->opt.level;
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t cycle = cycle_buf[i];
 #define RASG_MAP_fixed \
@@ -620,17 +631,17 @@ static sauMaybeUnused void sauRasG_map_fixed_s(sauRasG *restrict o,
 		sauLine_val_f line_f,
 		const uint32_t *restrict cycle_buf,
 		const float *restrict pm_abuf) {
-	if (o->level >= sau_ras_level(9)) {
+	if (o->opt.level >= sau_ras_level(9)) {
 		sauRasG_map_fixed_simple_s(o, buf_len, main_buf, line_f,
 				cycle_buf, pm_abuf);
 		return;
 	}
-	if (o->flags & SAU_RAS_O_VIOLET) {
+	if (o->opt.flags & SAU_RAS_O_VIOLET) {
 		sauRasG_map_v_fixed_s(o, buf_len, main_buf, line_f,
 				cycle_buf, pm_abuf);
 		return;
 	}
-	int sr = o->level;
+	int sr = o->opt.level;
 	RASG_MAP_S_LOOP(fixed)
 }
 
@@ -646,8 +657,8 @@ static sauMaybeUnused void sauRasG_map_addrec(sauRasG *restrict o,
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t cycle = cycle_buf[i];
 #define RASG_MAP_addrec \
-		uint32_t s0 = cycle * o->alpha; \
-		uint32_t s1 = (cycle+1) * o->alpha; \
+		uint32_t s0 = cycle * o->opt.alpha; \
+		uint32_t s1 = (cycle+1) * o->opt.alpha; \
 		float a = sau_fscalei(s0, 0x1p-31f); \
 		float b = sau_fscalei(s1, 0x1p-31f); \
 /**/
@@ -684,9 +695,21 @@ static sauMaybeUnused void sauRasG_run(sauRasG *restrict o,
 		float *restrict end_a_buf,
 		float *restrict end_b_buf,
 		const uint32_t *restrict cycle_buf) {
-	sauRasG_map_f map = sauRasG_get_map_f(o->func);
+	sauRasG_map_f map = sauRasG_get_map_f(o->opt.func);
 	map(o, buf_len, end_a_buf, end_b_buf, cycle_buf);
-	if (o->flags & SAU_RAS_O_HALFSHAPE) {
+	const unsigned flags = o->opt.flags, line = o->opt.line;
+	if (flags & SAU_RAS_O_PERLIN) {
+		const float perlin_amp =
+			(flags & (SAU_RAS_O_HALFSHAPE|SAU_RAS_O_ZIGZAG)) ?
+			1.f :
+			sauLine_coeffs[line].perlin_amp;
+		for (size_t i = 0; i < buf_len; ++i) {
+			float phase = main_buf[i];
+			end_a_buf[i] *= perlin_amp*phase;
+			end_b_buf[i] *= perlin_amp*(phase-1.f);
+		}
+	}
+	if (flags & SAU_RAS_O_HALFSHAPE) {
 		/* sort value-pairs, for a decreasing sawtooth-like waveform */
 		for (size_t i = 0; i < buf_len; ++i) {
 			float a = end_a_buf[i];
@@ -695,19 +718,28 @@ static sauMaybeUnused void sauRasG_run(sauRasG *restrict o,
 			end_b_buf[i] = sau_minf(a, b);
 		}
 	}
-	if (o->flags & SAU_RAS_O_SQUARE) {
+	if (flags & SAU_RAS_O_ZIGZAG) {
+		/* swap half-cycle ends for jagged shape on random amplitude */
+		float *tmp_buf = end_a_buf;
+		end_a_buf = end_b_buf; end_b_buf = tmp_buf;
+	}
+	if (flags & SAU_RAS_O_SQUARE) {
 		/* square keeping sign; value uniformity to energy uniformity */
 		for (size_t i = 0; i < buf_len; ++i) {
 			end_a_buf[i] *= fabsf(end_a_buf[i]);
 			end_b_buf[i] *= fabsf(end_b_buf[i]);
 		}
 	}
-	if (o->flags & SAU_RAS_O_ZIGZAG) {
-		/* swap half-cycle ends for jagged shape on random amplitude */
-		float *tmp_buf = end_a_buf;
-		end_a_buf = end_b_buf; end_b_buf = tmp_buf;
+	sauLine_map_funcs[line](main_buf, buf_len,
+			end_a_buf, end_b_buf);
+#if RASG_MEASURE_LINE_AMP /* measure output, needed for Perlin mode coeff */
+	static float min, max;
+	for (size_t i = 0; i < buf_len; ++i) {
+		min = sau_minf(main_buf[i], min);
+		max = sau_maxf(main_buf[i], max);
 	}
-	sauLine_map_funcs[o->line](main_buf, buf_len, end_a_buf, end_b_buf);
+	printf("%.11f, %.11f\n", min, max);
+#endif
 }
 
 static inline sauRasG_map_selfmod_f sauRasG_get_map_selfmod_f(unsigned func) {
@@ -734,7 +766,7 @@ static sauMaybeUnused void sauRasG_run_selfmod(sauRasG *restrict o,
 		float *restrict main_buf,
 		const uint32_t *restrict cycle_buf,
 		const float *restrict pm_abuf) {
-	sauRasG_map_selfmod_f map = sauRasG_get_map_selfmod_f(o->func);
-	sauLine_val_f line_f = sauLine_val_funcs[o->line];
+	sauRasG_map_selfmod_f map = sauRasG_get_map_selfmod_f(o->opt.func);
+	sauLine_val_f line_f = sauLine_val_funcs[o->opt.line];
 	map(o, buf_len, main_buf, line_f, cycle_buf, pm_abuf);
 }
