@@ -16,22 +16,22 @@
 
 /* Macro used to declare and define line type sets of items. */
 #define SAU_LINE__ITEMS(X) \
-	X(cos) \
-	X(lin) \
-	X(sah) \
-	X(exp) \
-	X(log) \
-	X(xpe) \
-	X(lge) \
-	X(sqe) \
-	X(cub) \
-	X(ncl) \
-	X(nhl) \
-	X(uwh) \
+	X(cos, (.perlin_amp = 2.f)) \
+	X(lin, (.perlin_amp = 2.f)) \
+	X(sah, (.perlin_amp = 1.f)) \
+	X(exp, (.perlin_amp = 1.55845810035f)) \
+	X(log, (.perlin_amp = 1.55845810035f)) \
+	X(xpe, (.perlin_amp = 1.55845810035f)) \
+	X(lge, (.perlin_amp = 1.55845810035f)) \
+	X(sqe, (.perlin_amp = 1.89339094650f)) \
+	X(cub, (.perlin_amp = 2.f)) \
+	X(ncl, (.perlin_amp = 2.f)) \
+	X(nhl, (.perlin_amp = 1.89339094650f)) \
+	X(uwh, (.perlin_amp = 1.f)) \
 	//
-#define SAU_LINE__X_ID(NAME) SAU_LINE_N_##NAME,
-#define SAU_LINE__X_NAME(NAME) #NAME,
-#define SAU_LINE__X_PROTOTYPES(NAME) \
+#define SAU_LINE__X_ID(NAME, ...) SAU_LINE_N_##NAME,
+#define SAU_LINE__X_NAME(NAME, ...) #NAME,
+#define SAU_LINE__X_PROTOTYPES(NAME, ...) \
 void sauLine_fill_##NAME(float *restrict buf, uint32_t len, \
 		float v0, float vt, uint32_t pos, uint32_t time, \
 		const float *restrict mulbuf); \
@@ -39,9 +39,10 @@ void sauLine_map_##NAME(float *restrict buf, uint32_t len, \
 		const float *restrict end0, const float *restrict end1); \
 /*float sauLine_val_##NAME(float x, float a, float b);*/ /* inlined */ \
 /**/
-#define SAU_LINE__X_FILL_ADDR(NAME) sauLine_fill_##NAME,
-#define SAU_LINE__X_MAP_ADDR(NAME) sauLine_map_##NAME,
-#define SAU_LINE__X_VAL_ADDR(NAME) sauLine_val_##NAME,
+#define SAU_LINE__X_FILL_ADDR(NAME, ...) sauLine_fill_##NAME,
+#define SAU_LINE__X_MAP_ADDR(NAME, ...) sauLine_map_##NAME,
+#define SAU_LINE__X_VAL_ADDR(NAME, ...) sauLine_val_##NAME,
+#define SAU_LINE__X_COEFFS(NAME, COEFFS) {SAU_ARGS COEFFS},
 
 /**
  * Line type shapes.
@@ -52,6 +53,14 @@ enum {
 };
 
 SAU_LINE__ITEMS(SAU_LINE__X_PROTOTYPES)
+
+/** Information about or for use with a line type. */
+struct sauLineCoeffs {
+	float perlin_amp; // from 1.0 to 2.0 depending on shape for +/- 1.0 out
+};
+
+/** Extra values for use with line-using algorithms. */
+extern const struct sauLineCoeffs sauLine_coeffs[SAU_LINE_NAMED];
 
 /** Names of line type shapes, with an extra NULL pointer at the end. */
 extern const char *const sauLine_names[SAU_LINE_NAMED + 1];

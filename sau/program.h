@@ -124,9 +124,9 @@ extern const char *const sauNoise_names[SAU_NOISE_NAMED + 1];
 /** Random segments option data. */
 typedef struct sauRasOpt {
 	uint8_t line; // line module type; is first, to match sauPOPMode main
-	uint8_t func;
-	uint8_t level;
-	uint8_t flags;
+	unsigned flags: 10;
+	unsigned func:  6;
+	unsigned level: 8;
 	uint32_t alpha;
 } sauRasOpt;
 
@@ -148,15 +148,17 @@ static inline unsigned int sau_ras_level(unsigned int digit) {
 
 /** Random segments option flags. */
 enum {
-	SAU_RAS_O_HALFSHAPE = 1U<<0,
-	SAU_RAS_O_SQUARE = 1U<<1,
-	SAU_RAS_O_VIOLET = 1U<<2,
-	SAU_RAS_O_ZIGZAG = 1U<<3,
-	SAU_RAS_O_FUNC_FLAGS = (1U<<4)-1,
-	SAU_RAS_O_LINE_SET = 1U<<4,
-	SAU_RAS_O_FUNC_SET = 1U<<5,
-	SAU_RAS_O_LEVEL_SET = 1U<<6,
-	SAU_RAS_O_ASUBVAL_SET = 1U<<7,
+	SAU_RAS_O_PERLIN        = 1U<<0,
+	SAU_RAS_O_HALFSHAPE     = 1U<<1,
+	SAU_RAS_O_ZIGZAG        = 1U<<2,
+	SAU_RAS_O_SQUARE        = 1U<<3,
+	SAU_RAS_O_VIOLET        = 1U<<4,
+	SAU_RAS_O_UNUSED        = 1U<<5,
+	SAU_RAS_O_FUNC_FLAGS    = (1U<<6)-1,
+	SAU_RAS_O_LINE_SET      = 1U<<6,
+	SAU_RAS_O_FUNC_SET      = 1U<<7,
+	SAU_RAS_O_LEVEL_SET     = 1U<<8,
+	SAU_RAS_O_ASUBVAL_SET   = 1U<<9,
 };
 
 /*

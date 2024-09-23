@@ -13,7 +13,7 @@
 
 #include <sau/line.h>
 
-#define LINE_MAP_FUNC(NAME) \
+#define LINE_MAP_FUNC(NAME, ...) \
 void sauLine_map_##NAME(float *restrict buf, uint32_t len, \
 		const float *restrict end0, const float *restrict end1) { \
 	for (uint32_t i = 0; i < len; ++i) \
@@ -22,6 +22,10 @@ void sauLine_map_##NAME(float *restrict buf, uint32_t len, \
 
 // all of them have the same form, so just generate them all
 SAU_LINE__ITEMS(LINE_MAP_FUNC)
+
+const struct sauLineCoeffs sauLine_coeffs[SAU_LINE_NAMED] = {
+	SAU_LINE__ITEMS(SAU_LINE__X_COEFFS)
+};
 
 const char *const sauLine_names[SAU_LINE_NAMED + 1] = {
 	SAU_LINE__ITEMS(SAU_LINE__X_NAME)
