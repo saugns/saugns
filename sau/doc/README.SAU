@@ -267,7 +267,8 @@ R: Rumble oscillator
 --------------------
 
 Rumble oscillator, a.k.a. random line segments oscillator.
-A value noise oscillator, connecting random values generated at a
+An oscillator for both value noise and 1D Perlin noise; it
+connects pseudo-random values generated at a dynamically variable
 frequency with line segments of a selected shape. Two random values and
 line segments are generated each "cycle", so that the base frequency
 matches that of a wave oscillator -- though the spectrum otherwise differs
@@ -307,6 +308,14 @@ Parameters:
 		h	Half-shape waveform. Use with 'lin' for a decreasing
 			sawtooth instead of a triangle wave; similarly changes
 			the shape for all line types and randomness modes.
+		p	Perlin noise mode. This reshapes the waveform so it
+			returns to 0 at each cycle boundary. This removes
+			the lowest frequencies, and shifts the peak of the
+			frequency spectrum to the base frequency. Can be
+			combined with any noise function and other mode flags,
+			including violet noise modes for extra-thin noise.
+			Transforms binary noise into a smoother noise. The
+			amplitude may drop for ternary smooth random mode 't'.
 		s	Square, then restore sign, of the start/goal values.
 			Turns uniform value variation into uniform energy
 			variation; somewhat quieter, and more tremulant.

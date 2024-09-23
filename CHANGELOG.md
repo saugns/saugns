@@ -7,10 +7,11 @@ is a shorter change log with only the SAU language changes.
 Pre-release
 -----------
 
-[rebase in progress]
-
 Language changes:
  * Signal generator types. `R` mode `m` flags:
+   - Add `p` (Perlin noise mode) to reshape the waveform for
+     1D Perlin noise, combinable with all noise functions and
+     other flags.
    - Change updating of flags when adjusting mode; now every
      flag set is kept until setting a function, which clears
      old flags. Before, any change to mode cleared old flags.
