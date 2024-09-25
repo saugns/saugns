@@ -355,6 +355,11 @@ Line types:
 		Square polynomial envelope (saturate or decay).
 	cub
 		Cubic polynomial segment (-1 to +1) trajectory.
+		Spiky ends, the opposite of a sinuous shape.
+	smo
+		Smoothstep (degree 5). A sinuous curve adding
+		mild odd harmonics like a soft-clipped 'cos'.
+		Traditionally used for Perlin noise.
 	ncl
 		Noise camel line; softer, two noise bulges.
 	nhl
@@ -369,8 +374,6 @@ Line types:
 	charges and discharges, natural-sounding for an envelope;
 	and 'lge' increases like 'exp' and decreases like 'log'.
 	For a less-steep alternative to 'xpe', 'sqe' can be used.
-	The 'cos' shape sounds similar to 'lin', except it has a
-	smoothly curved start and stop, and a steeper middle.
 
 W: Wave oscillator
 ------------------
