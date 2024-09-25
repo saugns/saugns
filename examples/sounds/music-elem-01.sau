@@ -1,2 +1,2 @@
 // use richness of tri as PM modulator
-Rcos f5 t60 p[Wtri r0.r25[Wsin f1/30] a1]
+Rsmo f5 t60 p[Wtri r0.r25[Wsin f1/30] a1]
