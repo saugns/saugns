@@ -1,0 +1,5 @@
+Wsin a0[g1 lexp t1/4] f-500.r+500[
+	Rsmo r1.r10[
+		'p Wsin p0/4.a1/2 f1/5
+	]
+] t5 /5 a[g0 lexp] t1.5 @p f0
