@@ -25,6 +25,7 @@
 	X(lge, (.perlin_amp = 1.55845810035f)) \
 	X(sqe, (.perlin_amp = 1.89339094650f)) \
 	X(cub, (.perlin_amp = 2.f)) \
+	X(smo, (.perlin_amp = 2.f)) \
 	X(ncl, (.perlin_amp = 2.f)) \
 	X(nhl, (.perlin_amp = 1.89339094650f)) \
 	X(uwh, (.perlin_amp = 1.f)) \
@@ -232,6 +233,13 @@ static inline float sauLine_val_sqe(float x, float a, float b) {
 static inline float sauLine_val_cub(float x, float a, float b) {
 	x = (0.5f - x)*2;
 	return b + (a - b) * (x * x * x * 0.5f + 0.5f);
+}
+
+/** Single value \p x, smoothstep (degree 5) trajectory from \p a to \p b. */
+static inline float sauLine_val_smo(float x, float a, float b) {
+	return a + (b - a) * x*x*x*(+10.f + x*(-15.f + x*+6.f));
+//	const float x2 = x*x;
+//	return a + (b - a) * x2*x2*(+35.f + x*(-84.f + x*(+70.f + x*-20.f)));
 }
 
 /** Single value from \p a to \p b using \p x as uniform random PRNG seed. */

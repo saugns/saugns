@@ -23,6 +23,19 @@ void sauLine_map_##NAME(float *restrict buf, uint32_t len, \
 // all of them have the same form, so just generate them all
 SAU_LINE__ITEMS(LINE_MAP_FUNC)
 
+// fill functions not written in a different optimized form
+#define LINE_FILL_FUNC(NAME, ...) \
+void sauLine_fill_##NAME(float *restrict buf, uint32_t len, \
+		float v0, float vt, uint32_t pos, uint32_t time, \
+		const float *restrict mulbuf) { \
+	const float inv_time = 1.f / time; \
+	for (uint32_t i = 0; i < len; ++i) { \
+		float x = (i + pos) * inv_time; \
+		float v = sauLine_val_##NAME(x, v0, vt); \
+		buf[i] = mulbuf ? (v * mulbuf[i]) : v; \
+	} \
+}
+
 const struct sauLineCoeffs sauLine_coeffs[SAU_LINE_NAMED] = {
 	SAU_LINE__ITEMS(SAU_LINE__X_COEFFS)
 };
@@ -143,16 +156,7 @@ void sauLine_fill_log(float *restrict buf, uint32_t len,
  * Uses an ear-tuned polynomial, designed to sound natural for
  * frequency sweeping, and symmetric to the "opposite", 'lge' fill type.
  */
-void sauLine_fill_xpe(float *restrict buf, uint32_t len,
-		float v0, float vt, uint32_t pos, uint32_t time,
-		const float *restrict mulbuf) {
-	const float inv_time = 1.f / time;
-	for (uint32_t i = 0; i < len; ++i) {
-		float x = (i + pos) * inv_time;
-		float v = vt + (v0 - vt) * sau_expramp6(1.f - x);
-		buf[i] = mulbuf ? (v * mulbuf[i]) : v;
-	}
-}
+LINE_FILL_FUNC(xpe, )
 
 /**
  * Fill \p buf with \p len values along an "envelope" trajectory
@@ -163,16 +167,7 @@ void sauLine_fill_xpe(float *restrict buf, uint32_t len,
  * Uses an ear-tuned polynomial, designed to sound natural for
  * frequency sweeping, and symmetric to the "opposite", 'xpe' fill type.
  */
-void sauLine_fill_lge(float *restrict buf, uint32_t len,
-		float v0, float vt, uint32_t pos, uint32_t time,
-		const float *restrict mulbuf) {
-	const float inv_time = 1.f / time;
-	for (uint32_t i = 0; i < len; ++i) {
-		float x = (i + pos) * inv_time;
-		float v = v0 + (vt - v0) * sau_expramp6(x);
-		buf[i] = mulbuf ? (v * mulbuf[i]) : v;
-	}
-}
+LINE_FILL_FUNC(lge, )
 
 /**
  * Fill \p buf with \p len values along an x-squared "envelope"
@@ -208,13 +203,20 @@ void sauLine_fill_cub(float *restrict buf, uint32_t len,
 		const float *restrict mulbuf) {
 	const int32_t adj_pos = pos - (time / 2);
 	const float inv_time = 1.f / time;
-	const float scale = 2 * inv_time;
+	const float scale = -2 * inv_time;
 	for (uint32_t i = 0; i < len; ++i) {
-		float x = 0.f - ((int32_t)i + adj_pos) * scale;
+		float x = ((int32_t)i + adj_pos) * scale;
 		float v = vt + (v0 - vt) * (x * x * x * 0.5f + 0.5f);
 		buf[i] = mulbuf ? (v * mulbuf[i]) : v;
 	}
 }
+
+/**
+ * Fill \p buf with \p len smoothstep (degree 5) values,
+ * from \p v0 (at position 0) to \p vt (at position \p time),
+ * beginning at position \p pos.
+ */
+LINE_FILL_FUNC(smo, )
 
 /**
  * Fill \p buf with \p len values of uniform white noise
