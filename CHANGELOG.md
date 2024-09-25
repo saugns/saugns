@@ -17,6 +17,9 @@ Language changes:
      old flags. Before, any change to mode cleared old flags.
      (Makes especially the use of parameter `.a` less clunky.)
      Also fix `m.a... ma`, now handled like `ma.a...`.
+ * Line types.
+    - Add `smo` (Smoothstep degree 5),
+      a sinuous curve traditionally used for Perlin noise.
  * Seed parameter. Make `s` recognize the same numerical
    constants as `p` (phase), currently `G`.
 

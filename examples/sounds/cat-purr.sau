@@ -1,1 +1,8 @@
-Rcos f50 p[Wean r1 a1/2] a1/3[Wsin r1 a0[Wspa f1 a1/3] Wspa f1 a1/3] t30
+Rsmo f50 p[
+	Wean r1 a1/2
+] a1/3[
+	Rsmo r1 a0[
+		Wspa f1 a1/3
+	]
+	Wspa f1 a1/3
+] t30
