@@ -4,8 +4,10 @@ saugns version changes
 [On the website](https://sau.frama.io/changes.html#saulang)
 is a shorter change log with only the SAU language changes.
 
-Pre-release
------------
+v0.4.6 (2024-10-01)
+-------------------
+
+Added `R` flag `p` for 1D Perlin noise modes.
 
 Language changes:
  * Signal generator types. `R` mode `m` flags:

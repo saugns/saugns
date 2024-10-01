@@ -22,7 +22,7 @@
 #define CLINAME_STR "saugns"
 
 /* Version printout string, for -v option. */
-#define VERSION_STR "v0.4-dev"
+#define VERSION_STR "v0.4.6"
 
 /*
  * Configuration.
