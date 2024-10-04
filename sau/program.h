@@ -67,6 +67,7 @@ enum {
 
 /* Macro used to declare and define program op types sets of items. */
 #define SAU_POPT__ITEMS(X) \
+	X(amp,   'A') \
 	X(noise, 'N') \
 	X(wave,  'W') \
 	X(raseg, 'R') \
