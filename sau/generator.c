@@ -51,6 +51,10 @@ typedef struct GenNode {
 	const sauProgramIDArr *camods;
 } GenNode;
 
+typedef struct AmpNode {
+	GenNode gen;
+} AmpNode;
+
 typedef struct NoiseGNode {
 	GenNode gen;
 	sauNoiseG noiseg;
@@ -76,6 +80,7 @@ typedef struct RasGNode {
 
 typedef union OperatorNode {
 	GenNode gen; // generator base type
+	AmpNode ag;
 	NoiseGNode ng;
 	OscNode osc; // oscillator base type
 	WOscNode wo;
@@ -245,8 +250,8 @@ static void prepare_op(sauGenerator *restrict o,
 	}
 	memset(n, 0, sizeof(*n));
 	switch (od->type) {
-	case SAU_POPT_N_noise:
-		break;
+	case SAU_POPT_N_amp: break;
+	case SAU_POPT_N_noise: break;
 	case SAU_POPT_N_wave: {
 		WOscNode *wo = &n->wo;
 		sau_init_WOsc(&wo->wosc, o->srate);
@@ -280,6 +285,7 @@ static void update_op(sauGenerator *restrict o,
 		const sauProgramOpData *restrict od) {
 	uint32_t params = od->params;
 	switch (od->type) {
+	case SAU_POPT_N_amp: break;
 	case SAU_POPT_N_noise: {
 		NoiseGNode *ng = &n->ng;
 		if (params & SAU_POPP_MODE)
@@ -492,6 +498,28 @@ static bool run_osc_selfmod_param(sauGenerator *restrict o,
 }
 
 /*
+ * The AmpNode sub-function for run_block().
+ *
+ * Needs up to 4 buffers for its own node level.
+ */
+static void run_block_amp(sauGenerator *restrict o,
+		Buf *restrict bufs, uint32_t len,
+		OperatorNode *restrict n,
+		float *restrict parent_freq sauMaybeUnused,
+		bool wave_env, bool layer) {
+	float *mix_buf = *(bufs++);
+	float *amp = NULL;
+	float *tmp_buf = NULL;
+	run_param_with_rangemod(o, bufs, len, &n->gen.amp, NULL,
+			NULL, false);
+	amp = *(bufs++); // #2 (++) and temporary #3, #4
+	tmp_buf = (*bufs + 0); // #3
+	for (uint32_t i = 0; i < len; ++i)
+		tmp_buf[i] = 1.f; // scale to amp; TODO: use specialized code
+	block_mix(&n->ag.gen, mix_buf, len, wave_env, layer, tmp_buf, amp);
+}
+
+/*
  * The NoiseGNode sub-function for run_block().
  *
  * Needs up to 4 buffers for its own node level.
@@ -509,7 +537,7 @@ static void run_block_noiseg(sauGenerator *restrict o,
 	amp = *(bufs++); // #2 (++) and temporary #3, #4
 	tmp_buf = (*bufs + 0); // #3
 	sauNoiseG_run(&n->ng.noiseg, tmp_buf, len);
-	block_mix(&n->wo.osc.gen, mix_buf, len, wave_env, layer, tmp_buf, amp);
+	block_mix(&n->ng.gen, mix_buf, len, wave_env, layer, tmp_buf, amp);
 }
 
 /*
@@ -672,6 +700,9 @@ static uint32_t run_block(sauGenerator *restrict o,
 	 * Use sub-function.
 	 */
 	switch (gen->type) {
+	case SAU_POPT_N_amp:
+		run_block_amp(o, bufs, len, n, parent_freq, wave_env, layer);
+		break;
 	case SAU_POPT_N_noise:
 		run_block_noiseg(o, bufs, len, n, parent_freq, wave_env, layer);
 		break;
