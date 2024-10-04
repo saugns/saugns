@@ -1457,11 +1457,14 @@ static void parse_op(sauParser *restrict o, uint8_t op_type,
 		uint8_t sym_type, const char *const* restrict sym_names) {
 	struct ParseLevel *pl = o->cur_pl;
 	size_t id = 0; /* default as fallback value */
-	scan_sym_id(o->sc, &id, sym_type, sym_names);
-	struct NestScope *nest = NestArr_tip(&o->nest);
-	if (!pl->use_type && nest && nest->op_sweep) {
-		sauScanner_warning(o->sc,NULL, "modulators not supported here");
-		return;
+	if (sym_type != 0) {
+		scan_sym_id(o->sc, &id, sym_type, sym_names);
+		struct NestScope *nest = NestArr_tip(&o->nest);
+		if (!pl->use_type && nest && nest->op_sweep) {
+			sauScanner_warning(o->sc, NULL,
+					"modulators not supported here");
+			return;
+		}
 	}
 	begin_operator(o, NULL, false, op_type);
 	pl->operator->mode.main = id;
@@ -1482,7 +1485,7 @@ static bool parse_op_main(sauParser *restrict o, uint8_t op_type,
 	return false;
 }
 
-static bool parse_op_amp(sauParser *restrict o) {
+static uint8_t parse_op_amp(sauParser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
 	sauScriptOpData *op = pl->operator;
 	uint8_t c;
@@ -1494,9 +1497,9 @@ static bool parse_op_amp(sauParser *restrict o) {
 				SAU_PSWEEP_AMP2, SAU_POP_N_ramod);
 		break;
 	default:
-		return c != 0;
+		return c;
 	}
-	return false;
+	return 0;
 }
 
 static bool parse_op_chanmix(sauParser *restrict o) {
@@ -1914,6 +1917,10 @@ static bool parse_level(sauParser *restrict o,
 				}
 			}
 			break; }
+		case 'A':
+			parse_op(o, SAU_POPT_N_amp, 0, NULL);
+			if ((c = parse_op_amp(o))) goto INVALID;
+			break;
 		case 'N':
 			parse_op(o, SAU_POPT_N_noise,
 					SAU_SYM_NOISE_ID, sauNoise_names);

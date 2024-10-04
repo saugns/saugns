@@ -8,6 +8,19 @@ Pre-release
 -----------
 
 Language changes:
+ * Add generator type `A` (Amplitude generator), for
+   sweepable amplitude offsets i.e. DC offsets, plus
+   adding and/or multiplying its AM modulators.
+
+Generator `A` is yet of limited use, but will take a
+greater role when distortion options etc. are added.
+
+v0.4.6 (2024-10-01)
+-------------------
+
+Added `R` flag `p` for 1D Perlin noise modes.
+
+Language changes:
  * Signal generator types. `R` mode `m` flags:
    - Add `p` (Perlin noise mode) to reshape the waveform for
      1D Perlin noise, combinable with all noise functions and

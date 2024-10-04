@@ -2,7 +2,7 @@
 .\"
 .\" This file is licensed under Creative Commons Attribution-ShareAlike 4.0
 .\" <https://creativecommons.org/licenses/by-sa/4.0/>.
-.Dd June 3, 2024
+.Dd October 4, 2024
 .Dt SAUGNS 1
 .Os
 .Sh NAME
@@ -41,15 +41,18 @@ Output is by default to system audio, but may instead be muted and/or
 written to a 16-bit PCM WAV file; it is also possible to stream audio
 data to stdout, either raw (--stdout) or AU (-o -).
 .Pp
-Scripts can use an arbitrary number of audio generators of the types supported.
+Scripts can use an arbitrary number of audio generators of the types supported,
+which can also be connected for modulation.
 .Bl -tag -width Ds
+.It Vt A
+Amplitude generator, makes sweepable amplitude offsets i.e. DC offsets.
+.It Vt N
+Noise generator, makes plain unpitched noises of chosen color and distribution.
+.It Vt R
+Rumble oscillator (a.k.a. random line segments oscillator), produces smooth,
+pitched noises with any of a variety of modes and line types.
 .It Vt W
 Wave oscillator, produces tones with a chosen waveshape.
-.It Vt R
-Rumble oscillator (a.k.a. random line segments oscillator),
-produces pitched noises with a selected line and mode.
-.It Vt N
-Noise generator, makes simple unpitched noises.
 .El
 .Pp
 Synthesis techniques supported include PM, FM, and AM/RM.

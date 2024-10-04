@@ -18,7 +18,7 @@ parameters with arguments. Each main keyword provides an action,
 either at run time (like a function call in other languages),
 or at parse time (like a global script setting).
 
-The keywords "W", "R", and "N" are type names for
+The keywords "A", "N", "R", and "W" are type names for
 signal generators, and are used to add instances of them --
 respectively: wave oscillators, rumble oscillators,
 and plain noise generators. Such objects can be connected for
@@ -59,6 +59,8 @@ Each of these keywords is further described in its own section below.
 	S	Script options (parameter default value or other);
 		runs during parsing. Changes made inside a
 		nested list scope don't apply outside of it.
+	A	Amplitude generator -- "A", optionally followed by
+		amplitude values as for "a", e.g. "A1.0", "A0[...]".
 	N	Noise generator -- "N", optionally followed by
 		the initial "Noise type" value, e.g. "Nre".
 	R	Rumble oscillator -- "R", optionally followed
@@ -116,7 +118,8 @@ Signal generator common parameters
 ----------------------------------
 
 Generator universal parameters:
-	Named parameters common to all generator types -- "N", "R", and "W".
+	Named parameters common to all generator types --
+	"A", "N", "R", and "W".
 	a	Amplitude, where 1.0 corresponds to a level of 0 dB and
 		0.0 is silence. (Note that the "S a" option can be used to
 		set a multiplier for this value. Further options affect mixing
@@ -228,6 +231,25 @@ Seedable common parameters:
 		default seeds given to new instances, which are randomized
 		using a sequence based on the global "$seed" magic variable.
 		See "Cycle position values" for more.
+
+A: Amplitude generator
+----------------------
+
+Generates sweepable amplitude offsets, i.e. DC offsets.
+Can also be used for mixing, as "A0[...]" produces the
+sum of the AM modulators and nothing else. Likewise,
+"Modulation with value range" can be used to multiply AM
+inputs. Instances allow greater mixing flexibility inside
+modulation lists of either type, belonging to any object.
+
+Usage "A", optionally followed directly by amplitude values
+as used the "a" parameter (which for convenience can be set
+directly for "A", e.g. "A1.0", "A0[...]"). Followed by zero
+or more whitespace-separated parameters, each with a value.
+
+Parameters:
+	The "A" amplitude generator has the
+	"Generator universal parameters".
 
 N: Noise generator
 ------------------
