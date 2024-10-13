@@ -4,8 +4,6 @@ saugns version changes
 [On the website](https://sau.frama.io/changes.html#saulang)
 is a shorter change log with only the SAU language changes.
 
-Deprecated things work but will warn to update the scripts.
-
 Pre-release
 -----------
 
