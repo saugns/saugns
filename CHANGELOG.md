@@ -11,6 +11,18 @@ Language changes:
  * Add generator type `A` (Amplitude generator), for
    sweepable amplitude offsets i.e. DC offsets, plus
    adding and/or multiplying its AM modulators.
+ * Frequencies as notes.
+   - Support MIDI note number constants (`M0` to `M127`
+     where `M69` by default corresponds to 440 Hz). All
+     tuning systems are supported, but for just intoned
+     notes, numbers which don't map to any natural note
+     get the average of the two surrounding ones. Other
+     options include flats and sharps (which for a just
+     note are never exactly between two notes) like for
+     C-D-E-F-G-A-B notes.
+   - For just intoned tuning modes, rotate scale ratios
+     with key selection, so that the note for a key has
+     the first ratio. Makes tuning good for non-C keys.
 
 Generator `A` is yet of limited use, but will take a
 greater role when distortion options etc. are added.
