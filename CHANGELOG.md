@@ -4,10 +4,8 @@ saugns version changes
 [On the website](https://sau.frama.io/changes.html#saulang)
 is a shorter change log with only the SAU language changes.
 
-Pre-release
------------
-
-[rebase in progress]
+v0.4.7b (2024-10-26)
+--------------------
 
 Fix error resulting in silence rather than no script
 when script rejected by "$?variable" check. This bug
