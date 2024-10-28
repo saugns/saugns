@@ -9,6 +9,8 @@ Pre-release
 
 Fix default line type for `p.a[]` -- now `lin`, was `cos`.
 
+Major refactoring, mainly of the generator module.
+
 v0.4.8c (2024-11-15)
 --------------------
 
