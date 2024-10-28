@@ -15,21 +15,21 @@
 #include "program.h"
 
 /**
- * Script data operator flags.
+ * Script data generator flags.
  */
 enum {
-	SAU_SDOP_NESTED   = 1U<<0,
-	SAU_SDOP_MULTIPLE = 1U<<1,
+	SAU_SDGEN_NESTED   = 1U<<0,
+	SAU_SDGEN_MULTIPLE = 1U<<1,
 };
 
 /** Info per script data object, shared by all references to the object. */
 typedef struct sauScriptObjInfo {
 	uint8_t obj_type; // type of object described
-	uint8_t op_type; // type of audio operator, if such
+	uint8_t gen_type; // type of audio generator, if such
 	uint16_t last_vo_id; // for voice allocation (objects change voices)
-	uint32_t last_op_id; // ID for audio generator, if such
-	uint32_t root_op_obj; // root op for op
-	uint32_t parent_op_obj; // parent op for any object
+	uint32_t last_gen_id; // ID for audio generator, if such
+	uint32_t root_gen_obj; // root gen for gen
+	uint32_t parent_gen_obj; // parent gen for any object
 	uint32_t seed; // TODO: divide containing node type
 	bool has_osc_parent;
 } sauScriptObjInfo;
@@ -38,7 +38,7 @@ typedef struct sauScriptObjInfo {
 typedef struct sauScriptObjRef {
 	uint32_t obj_id; // shared by all references to an object
 	uint8_t obj_type; // included for quick access
-	uint8_t op_type;  // included for quick access
+	uint8_t gen_type; // included for quick access
 	uint16_t vo_id; // ID for carrier use, or SAU_PVO_NO_ID
 	void *next; // next in set of objects
 } sauScriptObjRef;
@@ -54,14 +54,14 @@ typedef struct sauScriptListData {
 } sauScriptListData;
 
 /**
- * Node type for operator data.
+ * Node type for generator data.
  */
-typedef struct sauScriptOpData {
+typedef struct sauScriptGenData {
 	sauScriptObjRef ref;
 	struct sauScriptEvData *event;
-	struct sauScriptOpData *prev_ref; // preceding for same op(s)
-	uint32_t op_flags;
-	/* operator parameters */
+	struct sauScriptGenData *prev_ref; // preceding for same gen(s)
+	uint32_t gen_flags;
+	/* generator parameters */
 	uint32_t params;
 	sauTime time;
 	sauRange *amp, *pan;
@@ -69,10 +69,10 @@ typedef struct sauScriptOpData {
 	sauRange *pm_a;
 	uint32_t phase;
 	uint32_t seed;
-	union sauPOPMode mode;
-	/* node adjacents in operator linkage graph */
+	union sauPGenMode mode;
+	/* node adjacents in generator linkage graph */
 	sauScriptListData *mods;
-} sauScriptOpData;
+} sauScriptGenData;
 
 /**
  * Script data event flags.
@@ -149,7 +149,7 @@ typedef struct sauScriptOptions {
 	uint32_t set;  // flags (SAU_SOPT_*) set upon change by script
 	float ampmult; // global amplitude multiplier for whole script
 	float A4_freq; // A4 tuning for frequency as note
-	/* operator parameter default values (use depends on context) */
+	/* generator parameter default values (use depends on context) */
 	uint32_t def_time_ms;
 	float def_ampmult,
 	      def_freq,
@@ -167,7 +167,7 @@ typedef struct sauScriptOptions {
  */
 typedef struct sauScript {
 	sauScriptEvData *events;
-	sauScriptObjInfo *objects; // currently also op info array
+	sauScriptObjInfo *objects; // currently also gen info array
 	sauScriptOptions sopt;
 	uint32_t object_count;
 	const char *name; // currently simply set to the filename
