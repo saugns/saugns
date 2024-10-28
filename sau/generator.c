@@ -38,55 +38,55 @@ struct ParWithRangeMod {
 };
 
 /*
- * Operator node flags.
+ * Generator node flags.
  */
 enum {
-	ON_INIT = 1<<0,
-	ON_VISITED = 1<<1,
-	ON_TIME_INF = 1<<2, /* used for SAU_TIMEP_IMPLICIT */
+	GN_INIT = 1<<0,
+	GN_VISITED = 1<<1,
+	GN_TIME_INF = 1<<2, /* used for SAU_TIMEP_IMPLICIT */
 };
 
-typedef struct GenNode {
+typedef struct GenBase {
 	uint32_t time;
 	uint8_t type;
 	uint8_t flags;
 	struct ParWithRangeMod amp, pan;
-} GenNode;
+} GenBase;
 
 typedef struct AmpNode {
-	GenNode gen;
+	GenBase gen;
 } AmpNode;
 
 typedef struct NoiseGNode {
-	GenNode gen;
+	GenBase gen;
 	sauNoiseG noiseg;
 } NoiseGNode;
 
-typedef struct OscNode {
-	GenNode gen;
+typedef struct OscBase {
+	GenBase gen;
 	struct ParWithRangeMod freq;
 	const sauProgramIDArr *pmods, *fpmods;
 	struct ParWithRangeMod pm_a;
-} OscNode;
+} OscBase;
 
 typedef struct WOscNode {
-	OscNode osc;
+	OscBase osc;
 	sauWOsc wosc;
 } WOscNode;
 
 typedef struct RasGNode {
-	OscNode osc;
+	OscBase osc;
 	sauRasG rasg;
 } RasGNode;
 
-typedef union OperatorNode {
-	GenNode gen; // generator base type
+typedef union AnyGen {
+	GenBase gen; // generator base type
 	AmpNode ag;
 	NoiseGNode ng;
-	OscNode osc; // oscillator base type
+	OscBase osc; // oscillator base type
 	WOscNode wo;
 	RasGNode rg;
-} OperatorNode;
+} AnyGen;
 
 /*
  * Voice node flags.
@@ -99,7 +99,7 @@ typedef struct VoiceNode {
 	uint32_t duration;
 	uint8_t flags;
 	uint8_t freq_buf_id; // zero if unused (freq is never main buffer zero)
-	uint32_t carr_op_id;
+	uint32_t carr_gen_id;
 } VoiceNode;
 
 typedef struct EventNode {
@@ -125,13 +125,13 @@ struct sauGenerator {
 	uint16_t voice, vo_count;
 	VoiceNode *voices;
 	float amp_scale;
-	uint32_t op_count;
-	OperatorNode *operators;
+	uint32_t gen_count;
+	AnyGen *gens;
 	sauMempool *mem;
 };
 
-// maximum number of buffers needed for op nesting depth
-#define COUNT_GEN_BUFS(op_nest_depth) ((1 + (op_nest_depth)) * 7)
+// maximum number of buffers needed for generator nesting depth
+#define COUNT_GEN_BUFS(gen_nest_depth) ((1 + (gen_nest_depth)) * 7)
 
 static bool alloc_for_program(sauGenerator *restrict o,
 		const sauProgram *restrict prg) {
@@ -149,13 +149,13 @@ static bool alloc_for_program(sauGenerator *restrict o,
 		if (!o->voices) goto ERROR;
 		o->vo_count = i;
 	}
-	i = prg->op_count;
+	i = prg->gen_count;
 	if (i > 0) {
-		o->operators = sau_mpalloc(o->mem, i * sizeof(OperatorNode));
-		if (!o->operators) goto ERROR;
-		o->op_count = i;
+		o->gens = sau_mpalloc(o->mem, i * sizeof(AnyGen));
+		if (!o->gens) goto ERROR;
+		o->gen_count = i;
 	}
-	i = COUNT_GEN_BUFS(prg->op_nest_depth);
+	i = COUNT_GEN_BUFS(prg->gen_nest_depth);
 	if (i > 0) {
 		o->gen_bufs = calloc(i, sizeof(Buf));
 		if (!o->gen_bufs) goto ERROR;
@@ -229,12 +229,12 @@ void sau_destroy_Generator(sauGenerator *restrict o) {
 }
 
 /*
- * Set voice duration according to the current list of operators.
+ * Set voice duration according to the current list of generators.
  */
 static void set_voice_duration(sauGenerator *restrict o,
 		VoiceNode *restrict vn) {
 	uint32_t time = 0;
-	GenNode *gen = &o->operators[vn->carr_op_id].gen;
+	GenBase *gen = &o->gens[vn->carr_gen_id].gen;
 	if (gen->time > time)
 		time = gen->time;
 	vn->duration = time;
@@ -252,61 +252,61 @@ static void prepare_range(struct ParWithRangeMod *restrict rm, float v0) {
 }
 
 /*
- * Initialize an operator node for use as the given type.
+ * Initialize a generator node for use as the given type.
  */
-static void prepare_op(sauGenerator *restrict o,
-		OperatorNode *restrict n, VoiceNode *restrict vn,
-		const sauProgramOpData *restrict od) {
-	if (od->use_type == SAU_POP_N_carr) {
+static void prepare_gen(sauGenerator *restrict o,
+		AnyGen *restrict n, VoiceNode *restrict vn,
+		const sauProgramGenData *restrict gd) {
+	if (gd->use_type == SAU_MOD_N_carr) {
 		vn->freq_buf_id = 0;
 	}
 	memset(n, 0, sizeof(*n));
-	switch (od->type) {
-	case SAU_POPT_N_amp: break;
-	case SAU_POPT_N_noise: break;
-	case SAU_POPT_N_wave: {
+	switch (gd->type) {
+	case SAU_PGEN_N_amp: break;
+	case SAU_PGEN_N_noise: break;
+	case SAU_PGEN_N_wave: {
 		WOscNode *wo = &n->wo;
 		sau_init_WOsc(&wo->wosc, o->srate);
-		if (od->use_type == SAU_POP_N_carr) // match run_block_wosc()
+		if (gd->use_type == SAU_MOD_N_carr) // match run_block_wosc()
 			vn->freq_buf_id = 3 - 1;
 		goto OSC_COMMON; }
-	case SAU_POPT_N_raseg: {
+	case SAU_PGEN_N_raseg: {
 		RasGNode *rg = &n->rg;
 		sau_init_RasG(&rg->rasg, o->srate);
-		if (od->use_type == SAU_POP_N_carr) // match run_block_rasg()
+		if (gd->use_type == SAU_MOD_N_carr) // match run_block_rasg()
 			vn->freq_buf_id = 4 - 1;
 		goto OSC_COMMON; }
 	}
 	if (false)
 	OSC_COMMON: {
-		OscNode *osc = &n->osc;
+		OscBase *osc = &n->osc;
 		prepare_range(&osc->freq, SAU_PDEF_FREQ);
 		prepare_range(&osc->pm_a, 0.0);
 		osc->pmods = osc->fpmods = &blank_idarr;
 	}
-	GenNode *gen = &n->gen;
+	GenBase *gen = &n->gen;
 	prepare_range(&gen->amp, 1.0);
 	prepare_range(&gen->pan, 0.0);
-	gen->type = od->type;
-	gen->flags = ON_INIT;
+	gen->type = gd->type;
+	gen->flags = GN_INIT;
 }
 
-static void update_ids(OperatorNode *restrict n,
+static void update_ids(AnyGen *restrict n,
 		const sauProgramIDs *restrict ids) {
 #define CASES_4MODS(ID, FIELD) \
-	case SAU_POP_N_##ID:     FIELD.mods_add		= ids->a; break; \
-	case SAU_POP_N_##ID##1:  FIELD.mods1 		= ids->a; break; \
-	case SAU_POP_N_##ID##2:  FIELD.mods2 		= ids->a; break; \
-	case SAU_POP_N_##ID##_r: FIELD.r_mods		= ids->a; break; \
+	case SAU_MOD_N_##ID:     FIELD.mods_add		= ids->a; break; \
+	case SAU_MOD_N_##ID##1:  FIELD.mods1 		= ids->a; break; \
+	case SAU_MOD_N_##ID##2:  FIELD.mods2 		= ids->a; break; \
+	case SAU_MOD_N_##ID##_r: FIELD.r_mods		= ids->a; break; \
 /**/
 	switch (ids->use) {
-	case SAU_POP_N_carr:     break;
-	CASES_4MODS(   camod,    n->gen.pan)
-	CASES_4MODS(   amod,     n->gen.amp)
-	CASES_4MODS(   fmod,     n->osc.freq)
-	case SAU_POP_N_pmod:     n->osc.pmods    	= ids->a; break;
-	CASES_4MODS(   apmod,    n->osc.pm_a)
-	case SAU_POP_N_fpmod:    n->osc.fpmods   	= ids->a; break;
+	case SAU_MOD_N_carr:     break;
+	CASES_4MODS(   c_am,     n->gen.pan)
+	CASES_4MODS(   a_am,     n->gen.amp)
+	CASES_4MODS(   f_fm,     n->osc.freq)
+	case SAU_MOD_N_p_pm:     n->osc.pmods    	= ids->a; break;
+	case SAU_MOD_N_pf_pm:    n->osc.fpmods   	= ids->a; break;
+	CASES_4MODS(   pa_pm,    n->osc.pm_a)
 	}
 }
 
@@ -322,60 +322,60 @@ static void update_range(struct ParWithRangeMod *restrict rm,
 }
 
 /*
- * Update an operator node with new data from event.
+ * Update a generator node with new data from event.
  */
-static void update_op(sauGenerator *restrict o,
-		OperatorNode *restrict n,
-		const sauProgramOpData *restrict od) {
-	uint32_t params = od->params;
-	switch (od->type) {
-	case SAU_POPT_N_amp: break;
-	case SAU_POPT_N_noise: {
+static void update_gen(sauGenerator *restrict o,
+		AnyGen *restrict n,
+		const sauProgramGenData *restrict gd) {
+	uint32_t params = gd->params;
+	switch (gd->type) {
+	case SAU_PGEN_N_amp: break;
+	case SAU_PGEN_N_noise: {
 		NoiseGNode *ng = &n->ng;
-		if (params & SAU_POPP_MODE)
-			sauNoiseG_set_noise(&ng->noiseg, od->mode.main);
-		if (params & SAU_POPP_SEED)
-			sauNoiseG_set_seed(&ng->noiseg, od->seed);
+		if (params & SAU_PGENP_MODE)
+			sauNoiseG_set_noise(&ng->noiseg, gd->mode.main);
+		if (params & SAU_PGENP_SEED)
+			sauNoiseG_set_seed(&ng->noiseg, gd->seed);
 		break; }
-	case SAU_POPT_N_wave: {
+	case SAU_PGEN_N_wave: {
 		WOscNode *wo = &n->wo;
-		if (params & SAU_POPP_MODE)
-			sauWOsc_set_wave(&wo->wosc, od->mode.main);
-		if (params & SAU_POPP_PHASE)
-			sauWOsc_set_phase(&wo->wosc, od->phase);
+		if (params & SAU_PGENP_MODE)
+			sauWOsc_set_wave(&wo->wosc, gd->mode.main);
+		if (params & SAU_PGENP_PHASE)
+			sauWOsc_set_phase(&wo->wosc, gd->phase);
 		goto OSC_COMMON; }
-	case SAU_POPT_N_raseg: {
+	case SAU_PGEN_N_raseg: {
 		RasGNode *rg = &n->rg;
-		if (params & SAU_POPP_MODE)
-			sauRasG_set_opt(&rg->rasg, &od->mode.ras);
-		if (params & SAU_POPP_PHASE)
-			sauRasG_set_phase(&rg->rasg, od->phase);
-		if (params & SAU_POPP_SEED)
-			sauRasG_set_cycle(&rg->rasg, od->seed);
+		if (params & SAU_PGENP_MODE)
+			sauRasG_set_opt(&rg->rasg, &gd->mode.ras);
+		if (params & SAU_PGENP_PHASE)
+			sauRasG_set_phase(&rg->rasg, gd->phase);
+		if (params & SAU_PGENP_SEED)
+			sauRasG_set_cycle(&rg->rasg, gd->seed);
 		goto OSC_COMMON; }
 	}
 	if (false)
 	OSC_COMMON: {
-		OscNode *osc = &n->osc;
-		update_range(&osc->freq, od->freq, o->srate);
-		update_range(&osc->pm_a, od->pm_a, o->srate);
+		OscBase *osc = &n->osc;
+		update_range(&osc->freq, gd->freq, o->srate);
+		update_range(&osc->pm_a, gd->pm_a, o->srate);
 	}
-	GenNode *gen = &n->gen;
-	if (params & SAU_POPP_TIME) {
-		const sauTime *src = &od->time;
+	GenBase *gen = &n->gen;
+	if (params & SAU_PGENP_TIME) {
+		const sauTime *src = &gd->time;
 		if (src->flags & SAU_TIMEP_IMPLICIT) {
 			gen->time = 0;
-			gen->flags |= ON_TIME_INF;
+			gen->flags |= GN_TIME_INF;
 		} else {
 			gen->time = sau_ms_in_samples(src->v_ms,
 					o->srate, NULL);
-			gen->flags &= ~ON_TIME_INF;
+			gen->flags &= ~GN_TIME_INF;
 		}
 	}
-	update_range(&gen->amp, od->amp, o->srate);
-	update_range(&gen->pan, od->pan, o->srate);
-	for (uint32_t i = 0; i < od->mod_count; ++i)
-		update_ids(n, &od->mods[i]);
+	update_range(&gen->amp, gd->amp, o->srate);
+	update_range(&gen->pan, gd->pan, o->srate);
+	for (uint32_t i = 0; i < gd->mod_count; ++i)
+		update_ids(n, &gd->mods[i]);
 }
 
 /*
@@ -385,23 +385,23 @@ static void handle_event(sauGenerator *restrict o, EventNode *restrict e) {
 	if (1) /* more types to be added in the future */ {
 		const sauProgramEvent *pe = e->prg_event;
 		/*
-		 * Set state of operator and/or voice.
+		 * Set state of generator and/or voice.
 		 *
 		 * Voice updates must be done last, to take into account
-		 * updates for their operators.
+		 * updates for their generators.
 		 */
 		VoiceNode *vn = NULL;
 		if (pe->vo_id != SAU_PVO_NO_ID)
 			vn = &o->voices[pe->vo_id];
-		for (size_t i = 0; i < pe->op_data_count; ++i) {
-			const sauProgramOpData *od = &pe->op_data[i];
-			OperatorNode *n = &o->operators[od->id];
-			if (!(n->gen.flags & ON_INIT))
-				prepare_op(o, n, vn, od);
-			update_op(o, n, od);
+		for (size_t i = 0; i < pe->gen_data_count; ++i) {
+			const sauProgramGenData *gd = &pe->gen_data[i];
+			AnyGen *n = &o->gens[gd->id];
+			if (!(n->gen.flags & GN_INIT))
+				prepare_gen(o, n, vn, gd);
+			update_gen(o, n, gd);
 		}
 		if (vn) {
-			vn->carr_op_id = pe->carr_op_id;
+			vn->carr_gen_id = pe->carr_gen_id;
 			vn->flags |= VN_INIT;
 			if (o->voice > pe->vo_id) {
 				/* go back to re-activated node */
@@ -468,7 +468,7 @@ static void block_mix_mul_waveenv(float *restrict buf, size_t buf_len,
 /*
  * Handle audio layer according to options.
  */
-static void block_mix(GenNode *restrict gen,
+static void block_mix(GenBase *restrict gen,
 		float *restrict buf, size_t buf_len,
 		bool wave_env, bool layer,
 		float *restrict in_buf,
@@ -481,7 +481,7 @@ static void block_mix(GenNode *restrict gen,
 
 static uint32_t run_block(sauGenerator *restrict o,
 		Buf *restrict bufs, uint32_t buf_len,
-		OperatorNode *restrict n,
+		AnyGen *restrict n,
 		float *restrict parent_freq,
 		bool wave_env, bool layer);
 
@@ -501,7 +501,7 @@ static bool run_line_plus_mods(sauGenerator *restrict o,
 	}
 	for (uint32_t i = 0; i < mods->count; ++i) {
 		run_block(o, bufs, len,
-				&o->operators[mods->ids[i]],
+				&o->gens[mods->ids[i]],
 				freq, false, buf_filled);
 		buf_filled = true;
 	}
@@ -533,7 +533,7 @@ static bool run_param_with_rangemod(sauGenerator *restrict o,
 		float *mod_buf = *(bufs + 2);
 		for (i = 0; i < n->r_mods->count; ++i) {
 			run_block(o, (bufs + 2), len,
-					&o->operators[n->r_mods->ids[i]],
+					&o->gens[n->r_mods->ids[i]],
 					freq, true, i);
 		}
 		if (buf_filled && buf2_filled) for (i = 0; i < len; ++i)
@@ -549,13 +549,13 @@ static bool run_param_with_rangemod(sauGenerator *restrict o,
 		// to keep timing in sync, run mods2 despite discarding result
 		for (i = 0; i < n->mods2->count; ++i) {
 			run_block(o, (bufs + 1), len,
-					&o->operators[n->mods2->ids[i]],
+					&o->gens[n->mods2->ids[i]],
 					freq, false, true);
 		}
 	}
 	for (i = 0; i < n->mods_add->count; ++i) {
 		run_block(o, (bufs + 0), len,
-				&o->operators[n->mods_add->ids[i]],
+				&o->gens[n->mods_add->ids[i]],
 				freq, false, buf_filled);
 		buf_filled = true;
 	}
@@ -569,7 +569,7 @@ static bool run_param_with_rangemod(sauGenerator *restrict o,
  */
 static void run_block_amp(sauGenerator *restrict o,
 		Buf *restrict bufs, uint32_t len,
-		OperatorNode *restrict n,
+		AnyGen *restrict n,
 		float *restrict parent_freq sauMaybeUnused,
 		bool wave_env, bool layer) {
 	float *mix_buf = *(bufs++);
@@ -591,7 +591,7 @@ static void run_block_amp(sauGenerator *restrict o,
  */
 static void run_block_noiseg(sauGenerator *restrict o,
 		Buf *restrict bufs, uint32_t len,
-		OperatorNode *restrict n,
+		AnyGen *restrict n,
 		float *restrict parent_freq sauMaybeUnused,
 		bool wave_env, bool layer) {
 	float *mix_buf = *(bufs++);
@@ -612,7 +612,7 @@ static void run_block_noiseg(sauGenerator *restrict o,
  */
 static void run_block_wosc(sauGenerator *restrict o,
 		Buf *restrict bufs, uint32_t len,
-		OperatorNode *restrict n,
+		AnyGen *restrict n,
 		float *restrict parent_freq,
 		bool wave_env, bool layer) {
 	uint32_t i;
@@ -635,14 +635,14 @@ static void run_block_wosc(sauGenerator *restrict o,
 	if (n->osc.pmods->count > 0) {
 		for (i = 0; i < n->osc.pmods->count; ++i)
 			run_block(o, (bufs + 0), len,
-					&o->operators[n->osc.pmods->ids[i]],
+					&o->gens[n->osc.pmods->ids[i]],
 					freq, false, i);
 		pm_buf = *(bufs + 0); // #4
 	}
 	if (n->osc.fpmods->count > 0) {
 		for (i = 0; i < n->osc.fpmods->count; ++i)
 			run_block(o, (bufs + 1), len,
-					&o->operators[n->osc.fpmods->ids[i]],
+					&o->gens[n->osc.fpmods->ids[i]],
 					freq, false, i);
 		fpm_buf = *(bufs + 1); // #5
 	}
@@ -674,7 +674,7 @@ static void run_block_wosc(sauGenerator *restrict o,
  */
 static void run_block_rasg(sauGenerator *restrict o,
 		Buf *restrict bufs, uint32_t len,
-		OperatorNode *restrict n,
+		AnyGen *restrict n,
 		float *restrict parent_freq,
 		bool wave_env, bool layer) {
 	uint32_t i;
@@ -696,14 +696,14 @@ static void run_block_rasg(sauGenerator *restrict o,
 	if (n->osc.pmods->count > 0) {
 		for (i = 0; i < n->osc.pmods->count; ++i)
 			run_block(o, (bufs + 0), len,
-					&o->operators[n->osc.pmods->ids[i]],
+					&o->gens[n->osc.pmods->ids[i]],
 					freq, false, i);
 		pm_buf = *(bufs + 0); // #5
 	}
 	if (n->osc.fpmods->count > 0) {
 		for (i = 0; i < n->osc.fpmods->count; ++i)
 			run_block(o, (bufs + 1), len,
-					&o->operators[n->osc.fpmods->ids[i]],
+					&o->gens[n->osc.fpmods->ids[i]],
 					freq, false, i);
 		fpm_buf = *(bufs + 1); // #6
 	}
@@ -731,34 +731,34 @@ static void run_block_rasg(sauGenerator *restrict o,
 }
 
 /*
- * Generate up to \p buf_len samples for an operator node,
+ * Generate up to \p buf_len samples for an generator node,
  * the remainder (if any) zero-filled when \p layer false.
  *
- * Recursively visits the subnodes of the operator node,
+ * Recursively visits the subnodes of the generator node,
  * if any. The first buffer will be used for the output.
  *
  * \return number of samples generated
  */
 static uint32_t run_block(sauGenerator *restrict o,
 		Buf *restrict bufs, uint32_t buf_len,
-		OperatorNode *restrict n,
+		AnyGen *restrict n,
 		float *restrict parent_freq,
 		bool wave_env, bool layer) {
-	GenNode *gen = &n->gen;
+	GenBase *gen = &n->gen;
 	float *mix_buf = *bufs;
 	/*
 	 * Guard against circular references.
 	 */
-	if ((gen->flags & ON_VISITED) != 0) {
+	if ((gen->flags & GN_VISITED) != 0) {
 		sau_nzerof(mix_buf, buf_len);
 		return buf_len;
 	}
-	gen->flags |= ON_VISITED;
+	gen->flags |= GN_VISITED;
 	/*
-	 * Limit length to time duration of operator.
+	 * Limit length to time duration of generator.
 	 */
 	uint32_t len = buf_len, skip_len = 0;
-	if (gen->time < len && !(gen->flags & ON_TIME_INF)) {
+	if (gen->time < len && !(gen->flags & GN_TIME_INF)) {
 		skip_len = len - gen->time;
 		len = gen->time;
 	}
@@ -766,27 +766,27 @@ static uint32_t run_block(sauGenerator *restrict o,
 	 * Use sub-function.
 	 */
 	switch (gen->type) {
-	case SAU_POPT_N_amp:
+	case SAU_PGEN_N_amp:
 		run_block_amp(o, bufs, len, n, parent_freq, wave_env, layer);
 		break;
-	case SAU_POPT_N_noise:
+	case SAU_PGEN_N_noise:
 		run_block_noiseg(o, bufs, len, n, parent_freq, wave_env, layer);
 		break;
-	case SAU_POPT_N_wave:
+	case SAU_PGEN_N_wave:
 		run_block_wosc(o, bufs, len, n, parent_freq, wave_env, layer);
 		break;
-	case SAU_POPT_N_raseg:
+	case SAU_PGEN_N_raseg:
 		run_block_rasg(o, bufs, len, n, parent_freq, wave_env, layer);
 		break;
 	}
 	/*
 	 * Update time duration left, zero rest of buffer if unfilled.
 	 */
-	if (!(gen->flags & ON_TIME_INF)) {
+	if (!(gen->flags & GN_TIME_INF)) {
 		if (!layer) sau_nzerof(mix_buf+len, skip_len);
 		gen->time -= len;
 	}
-	gen->flags &= ~ON_VISITED;
+	gen->flags &= ~GN_VISITED;
 	return len;
 }
 
@@ -810,7 +810,7 @@ static void mix_clear(sauGenerator *restrict o) {
  * as temporary storage.
  */
 static void mix_add(sauGenerator *restrict o,
-		OperatorNode *restrict n,
+		AnyGen *restrict n,
 		VoiceNode *restrict vn, uint32_t len) {
 	float *s_buf = o->gen_bufs[0];
 	Buf *in_bufs = o->gen_bufs + vn->freq_buf_id;
@@ -881,7 +881,7 @@ static void mix_write_stereo(sauGenerator *restrict o,
  */
 static uint32_t run_voice(sauGenerator *restrict o,
 		VoiceNode *restrict vn, uint32_t len) {
-	OperatorNode *n = &o->operators[vn->carr_op_id];
+	AnyGen *n = &o->gens[vn->carr_gen_id];
 	uint32_t time = vn->duration, out_len = 0;
 	if (len > BUF_LEN) len = BUF_LEN;
 	if (time > len) time = len;
