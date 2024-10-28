@@ -71,41 +71,41 @@ enum {
 
 enum {
 	SAU_POBJT_LIST = 0,
-	SAU_POBJT_OP,
+	SAU_POBJT_GEN,
 	SAU_POBJT_TYPES,
 };
 
-/* Macro used to declare and define program op types sets of items. */
-#define SAU_POPT__ITEMS(X) \
+/* Macro used to declare and define program generator types sets of items. */
+#define SAU_PGEN__ITEMS(X) \
 	X(amp,   'A') \
 	X(noise, 'N') \
 	X(wave,  'W') \
 	X(raseg, 'R') \
 	//
-#define SAU_POPT__X_ID(NAME, LABELC) SAU_POPT_N_##NAME,
+#define SAU_PGEN__X_ID(NAME, LABELC) SAU_PGEN_N_##NAME,
 
 enum {
-	SAU_POPT__ITEMS(SAU_POPT__X_ID)
-	SAU_POPT_TYPES,
+	SAU_PGEN__ITEMS(SAU_PGEN__X_ID)
+	SAU_PGEN_TYPES,
 };
 
-/** True if the given program op type is an oscillator type. */
-#define sau_pop_is_osc(type_id) ((type_id) >= SAU_POPT_N_wave)
+/** True if the given program generator type is an oscillator type. */
+#define sau_pgen_is_osc(type_id) ((type_id) >= SAU_PGEN_N_wave)
 
-/** True if the given program op type uses seed values. */
-static inline bool sau_pop_has_seed(unsigned type_id) {
-	return type_id == SAU_POPT_N_noise || type_id == SAU_POPT_N_raseg;
+/** True if the given program generator type uses seed values. */
+static inline bool sau_pgen_has_seed(unsigned type_id) {
+	return type_id == SAU_PGEN_N_noise || type_id == SAU_PGEN_N_raseg;
 }
 
 /**
- * Operator parameter flags. For parameters without other tracking only.
+ * Generator parameter flags. For parameters without other tracking only.
  */
 enum {
-	SAU_POPP_TIME = 1<<0,
-	SAU_POPP_MODE = 1<<1, // type-specific data
-	SAU_POPP_PHASE = 1<<2,
-	SAU_POPP_SEED = 1<<3,
-	SAU_POP_PARAMS = (1<<4) - 1,
+	SAU_PGENP_TIME = 1<<0,
+	SAU_PGENP_MODE = 1<<1, // type-specific data
+	SAU_PGENP_PHASE = 1<<2,
+	SAU_PGENP_SEED = 1<<3,
+	SAU_PGEN_PARAMS = (1<<4) - 1,
 };
 
 /* Macro used to declare and define noise type sets of items. */
@@ -134,7 +134,7 @@ extern const char *const sauNoise_names[SAU_NOISE_NAMED + 1];
 
 /** Random segments option data. */
 typedef struct sauRasOpt {
-	uint8_t line; // line module type; is first, to match sauPOPMode main
+	uint8_t line; // line module type; is first, to match sauPGenMode main
 	unsigned flags: 10;
 	unsigned func:  6;
 	unsigned level: 8;
@@ -179,10 +179,10 @@ enum {
 #define SAU_PVO_MAX_ID (UINT16_MAX - 1) /* error if exceeded */
 
 /*
- * Operator ID constants.
+ * Generator ID constants.
  */
-#define SAU_POP_NO_ID  UINT32_MAX       /* operator ID missing */
-#define SAU_POP_MAX_ID (UINT32_MAX - 1) /* error if exceeded */
+#define SAU_PGEN_NO_ID  UINT32_MAX       /* generator ID missing */
+#define SAU_PGEN_MAX_ID (UINT32_MAX - 1) /* error if exceeded */
 
 typedef struct sauProgramIDArr {
 	uint32_t count;
@@ -194,42 +194,42 @@ typedef struct sauProgramIDs {
 	uint8_t use;
 } sauProgramIDs;
 
-/* Macro used for operator use type sets of items. */
-#define SAU_POP__ITEMS(X) \
+/* Macro used for generator modulation or use type sets of items. */
+#define SAU_MOD__ITEMS(X) \
 	X(  carr,  0, " CA ", NULL) \
-SAU_POP__4M(camod, X, "cAM",  "c") /* channel mix i.e. panning modulation */ \
-SAU_POP__4M(amod,  X, " AM",  "a") \
-SAU_POP__4M(fmod,  X, " FM",  "f") \
-	X(  pmod,  1, " PM ", "p") \
-SAU_POP__4M(apmod, X, "aPM",  "p.a") \
-	X(  fpmod, 1, "fPM ", "p.f") \
+SAU_MOD__4M(c_am,  X, "cAM",  "c") /* channel mix i.e. panning modulation */ \
+SAU_MOD__4M(a_am,  X, " AM",  "a") \
+SAU_MOD__4M(f_fm,  X, " FM",  "f") \
+	X(  p_pm,  1, " PM ", "p") \
+	X(  pf_pm, 1, "fPM ", "p.f") \
+SAU_MOD__4M(pa_pm, X, "aPM",  "p.a") \
 	//
-#define SAU_POP__4M(NAME, X, LABEL, SYNTAX) /* 4 valrange modulator types */ \
+#define SAU_MOD__4M(NAME, X, LABEL, SYNTAX) /* 4 valrange modulator types */ \
 	X(NAME,     1, LABEL " ", SYNTAX) \
 	X(NAME##1,  1, LABEL "1", SYNTAX "..") \
 	X(NAME##2,  1, LABEL "2", SYNTAX "..") \
 	X(NAME##_r, 1, LABEL "r", SYNTAX ".r") \
 	//
-#define SAU_POP__X_ID(NAME, ...) SAU_POP_N_##NAME,
-#define SAU_POP__X_GRAPH(NAME, IS_MOD, LABEL, ...) LABEL,
-#define SAU_POP__X_SYNTAX(NAME, IS_MOD, LABEL, SYNTAX) SYNTAX,
+#define SAU_MOD__X_ID(NAME, ...) SAU_MOD_N_##NAME,
+#define SAU_MOD__X_GRAPH(NAME, IS_MOD, LABEL, ...) LABEL,
+#define SAU_MOD__X_SYNTAX(NAME, IS_MOD, LABEL, SYNTAX) SYNTAX,
 
 /**
- * Operator use types.
+ * Generator modulation or use types.
  */
 enum {
-	SAU_POP__ITEMS(SAU_POP__X_ID)
-	SAU_POP_NAMED,
-	SAU_POP_N_default = 0, // shares value with carrier
+	SAU_MOD__ITEMS(SAU_MOD__X_ID)
+	SAU_MOD_NAMED,
+	SAU_MOD_N_default = 0, // shares value with carrier
 };
 
-typedef struct sauProgramOpRef {
+typedef struct sauProgramGenRef {
 	uint32_t id;
 	uint8_t use;
 	uint8_t level; /* > 0 if used as a modulator */
-} sauProgramOpRef;
+} sauProgramGenRef;
 
-typedef struct sauProgramOpData {
+typedef struct sauProgramGenData {
 	uint32_t id;
 	uint32_t params;
 	sauTime time;
@@ -238,7 +238,7 @@ typedef struct sauProgramOpData {
 	sauRange *pm_a;
 	uint32_t phase;
 	uint32_t seed;
-	union sauPOPMode {
+	union sauPGenMode {
 		uint8_t main; // holds wave, noise, etc. ID -- what's primary
 		sauRasOpt ras;
 	} mode;
@@ -246,16 +246,16 @@ typedef struct sauProgramOpData {
 	uint8_t type; // type info, for now
 	uint32_t mod_count;
 	const sauProgramIDs *mods;
-} sauProgramOpData;
+} sauProgramGenData;
 
 typedef struct sauProgramEvent {
 	uint32_t wait_ms;
 	uint16_t vo_id;
-	uint32_t carr_op_id;
-	uint32_t op_count;
-	uint32_t op_data_count;
-	const sauProgramOpRef *op_list; // used for printout
-	const sauProgramOpData *op_data;
+	uint32_t carr_gen_id;
+	uint32_t gen_count;
+	uint32_t gen_data_count;
+	const sauProgramGenRef *gen_list; // used for printout
+	const sauProgramGenData *gen_data;
 } sauProgramEvent;
 
 /**
@@ -273,8 +273,8 @@ typedef struct sauProgram {
 	size_t ev_count;
 	uint16_t mode;
 	uint16_t vo_count;
-	uint32_t op_count;
-	uint8_t op_nest_depth;
+	uint32_t gen_count;
+	uint8_t gen_nest_depth;
 	uint32_t duration_ms;
 	float ampmult;
 	const char *name;
