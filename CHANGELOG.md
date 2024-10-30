@@ -4,10 +4,8 @@ saugns version changes
 [On the website](https://sau.frama.io/changes.html#saulang)
 is a shorter change log with only the SAU language changes.
 
-Pre-release
------------
-
-[rebase in progress]
+v0.4.7c (2024-10-30)
+--------------------
 
 Fix bugs for `r...` relative frequency parameters in
 AM modulators when placed inside `A` or `N`. (Latter
