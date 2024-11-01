@@ -29,8 +29,8 @@
 typedef float Buf[BUF_LEN];
 
 struct ParWithRangeMod {
-	sauLine par, r_par;
-	const sauProgramIDArr *mods, *r_mods;
+	sauLine par, par2;
+	const sauProgramIDArr *mods1, *mods2, *r_mods, *mods_add;
 };
 
 /*
@@ -268,13 +268,35 @@ static void prepare_op(sauGenerator *restrict o,
 	if (false)
 	OSC_COMMON: {
 		OscNode *osc = &n->osc;
-		osc->freq.mods = osc->freq.r_mods =
+		osc->freq.mods1 = osc->freq.mods2 =
+		osc->freq.r_mods = osc->freq.mods_add =
 		osc->pmods = osc->fpmods = osc->apmods = &blank_idarr;
 	}
 	GenNode *gen = &n->gen;
-	gen->amp.mods = gen->amp.r_mods = gen->camods = &blank_idarr;
+	gen->amp.mods1 = gen->amp.mods2 =
+	gen->amp.r_mods = gen->amp.mods_add =
+	gen->camods = &blank_idarr;
 	gen->type = od->type;
 	gen->flags = ON_INIT;
+}
+
+static void update_ids(OperatorNode *restrict n,
+		const sauProgramIDs *restrict ids) {
+	switch (ids->use) {
+	case SAU_POP_N_carr:     break;
+	case SAU_POP_N_camod:    n->gen.camods   	= ids->a; break;
+	case SAU_POP_N_amod:     n->gen.amp.mods_add	= ids->a; break;
+	case SAU_POP_N_amod1:    n->gen.amp.mods1 	= ids->a; break;
+	case SAU_POP_N_amod2:    n->gen.amp.mods2 	= ids->a; break;
+	case SAU_POP_N_amod_r:   n->gen.amp.r_mods	= ids->a; break;
+	case SAU_POP_N_fmod:     n->osc.freq.mods_add	= ids->a; break;
+	case SAU_POP_N_fmod1:    n->osc.freq.mods1 	= ids->a; break;
+	case SAU_POP_N_fmod2:    n->osc.freq.mods2 	= ids->a; break;
+	case SAU_POP_N_fmod_r:   n->osc.freq.r_mods	= ids->a; break;
+	case SAU_POP_N_pmod:     n->osc.pmods    	= ids->a; break;
+	case SAU_POP_N_apmod:    n->osc.apmods   	= ids->a; break;
+	case SAU_POP_N_fpmod:    n->osc.fpmods   	= ids->a; break;
+	}
 }
 
 /*
@@ -313,13 +335,8 @@ static void update_op(sauGenerator *restrict o,
 	if (false)
 	OSC_COMMON: {
 		OscNode *osc = &n->osc;
-		if (od->fmods) osc->freq.mods = od->fmods;
-		if (od->rfmods) osc->freq.r_mods = od->rfmods;
-		if (od->pmods) osc->pmods = od->pmods;
-		if (od->apmods) osc->apmods = od->apmods;
-		if (od->fpmods) osc->fpmods = od->fpmods;
 		sauLine_copy(&osc->freq.par, od->freq, o->srate);
-		sauLine_copy(&osc->freq.r_par, od->freq2, o->srate);
+		sauLine_copy(&osc->freq.par2, od->freq2, o->srate);
 		sauLine_copy(&osc->pm_a, od->pm_a, o->srate);
 	}
 	GenNode *gen = &n->gen;
@@ -334,12 +351,11 @@ static void update_op(sauGenerator *restrict o,
 			gen->flags &= ~ON_TIME_INF;
 		}
 	}
-	if (od->camods) gen->camods = od->camods;
-	if (od->amods) gen->amp.mods = od->amods;
-	if (od->ramods) gen->amp.r_mods = od->ramods;
 	sauLine_copy(&gen->amp.par, od->amp, o->srate);
-	sauLine_copy(&gen->amp.r_par, od->amp2, o->srate);
+	sauLine_copy(&gen->amp.par2, od->amp2, o->srate);
 	sauLine_copy(&gen->pan, od->pan, o->srate);
+	for (uint32_t i = 0; i < od->mods_count; ++i)
+		update_ids(n, &od->mods[i]);
 }
 
 /*
@@ -455,24 +471,40 @@ static void run_param_with_rangemod(sauGenerator *restrict o,
 	float *par_buf = *(bufs + 0);
 	float *freq = (reused_freq ? reused_freq : is_freq ? par_buf : NULL);
 	sauLine_run(&n->par, par_buf, len, param_mulbuf);
+	for (i = 0; i < n->mods1->count; ++i) {
+		run_block(o, (bufs + 0), len,
+				&o->operators[n->mods1->ids[i]],
+				freq, false, true);
+	}
 	if (n->r_mods->count > 0) {
-		float *r_par_buf = *(bufs + 1);
-		sauLine_run(&n->r_par, r_par_buf, len, param_mulbuf);
-		for (i = 0; i < n->r_mods->count; ++i)
+		float *par2_buf = *(bufs + 1);
+		float *mod_buf = *(bufs + 2);
+		sauLine_run(&n->par2, par2_buf, len, param_mulbuf);
+		for (i = 0; i < n->mods2->count; ++i) {
+			run_block(o, (bufs + 1), len,
+					&o->operators[n->mods2->ids[i]],
+					freq, false, true);
+		}
+		for (i = 0; i < n->r_mods->count; ++i) {
 			run_block(o, (bufs + 2), len,
 					&o->operators[n->r_mods->ids[i]],
 					freq, true, i);
-		float *mod_buf = *(bufs + 2);
+		}
 		for (i = 0; i < len; ++i)
-			par_buf[i] += (r_par_buf[i] - par_buf[i]) * mod_buf[i];
+			par_buf[i] += (par2_buf[i] - par_buf[i]) * mod_buf[i];
 	} else {
-		sauLine_skip(&n->r_par, len);
-	}
-	if (n->mods->count > 0) {
-		for (i = 0; i < n->mods->count; ++i)
-			run_block(o, (bufs + 0), len,
-					&o->operators[n->mods->ids[i]],
+		sauLine_skip(&n->par2, len);
+		// to keep timing in sync, run mods2 despite discarding result
+		for (i = 0; i < n->mods2->count; ++i) {
+			run_block(o, (bufs + 1), len,
+					&o->operators[n->mods2->ids[i]],
 					freq, false, true);
+		}
+	}
+	for (i = 0; i < n->mods_add->count; ++i) {
+		run_block(o, (bufs + 0), len,
+				&o->operators[n->mods_add->ids[i]],
+				freq, false, true);
 	}
 }
 
