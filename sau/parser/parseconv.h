@@ -180,6 +180,8 @@ sauOpAlloc_clear(sauOpAlloc *restrict o) {
 
 sauArrType(sauPEvArr, sauProgramEvent, )
 
+sauArrType(IDsArr, sauProgramIDs, )
+
 sauArrType(OpRefArr, sauProgramOpRef, )
 
 /*
@@ -218,6 +220,7 @@ typedef struct ParseConv {
 	sauProgramEvent *ev;
 	sauVoiceGraph ev_vo_graph;
 	OpDataArr ev_op_data;
+	IDsArr ev_ids;
 	sauMempool *mp;
 	sauVoAlloc va;
 	uint32_t tot_dur_ms;
@@ -304,6 +307,7 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 	ood->seed = op->seed;
 	ood->mode = op->mode;
 	sauVoAllocState *vas = &o->va.a[o->ev->vo_id];
+	const sauProgramIDArr *mods[SAU_POP_NAMED - 1] = {0}; // node's only
 	for (sauScriptListData *in_list = op->mods;
 			in_list != NULL; in_list = in_list->ref.next) {
 		int type = in_list->use_type - 1;
@@ -317,14 +321,19 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 		} else {
 			if (arr == oas->mods[type]) continue; // omit no-op
 		}
-		oas->mods[type] = arr;
+		mods[type] = oas->mods[type] = arr;
 		vas->flags |= SAU_VAS_SET_GRAPH;
-#define SAU_POP__X_CASE(NAME, IS_MOD, ...) \
-SAU_IF(IS_MOD, case SAU_POP_N_##NAME: ood->NAME##s = oas->mods[type]; break;, )
-		switch (type + 1) {
-		SAU_POP__ITEMS(SAU_POP__X_CASE)
-		}
 	}
+	o->ev_ids.count = 0; // reuse allocation
+	for (int i = 0; i < SAU_POP_NAMED - 1; ++i) {
+		sauProgramIDs *ids;
+		if (!mods[i]) continue;
+		if (!(ids = IDsArr_add(&o->ev_ids))) goto MEM_ERR;
+		ids->a = mods[i];
+		ids->use = i + 1;
+	}
+	ood->mod_count = o->ev_ids.count;
+	IDsArr_mpmemdup(&o->ev_ids, (sauProgramIDs**) &ood->mods, o->mp);
 	return true;
 MEM_ERR:
 	return false;
@@ -594,6 +603,7 @@ fini_ParseConv(ParseConv *restrict o,
 	}
 	sau_fini_VoiceGraph(&o->ev_vo_graph);
 	_OpDataArr_clear(&o->ev_op_data);
+	IDsArr_clear(&o->ev_ids);
 	sauOpAlloc_clear(&o->oa);
 	_sauVoAlloc_clear(&o->va);
 	sauPEvArr_clear(&o->ev_arr);
@@ -675,8 +685,9 @@ print_opline(const sauProgramOpData *restrict od) {
 	print_line(od->amp, 'a');
 }
 
-#define SAU_POP__X_PRINT(NAME, IS_MOD, LABEL, SYNTAX) \
-SAU_IF(IS_MOD, print_linked(SYNTAX, od->NAME##s);, )
+static const char *const mods_syntax[SAU_POP_NAMED] = {
+	SAU_POP__ITEMS(SAU_POP__X_SYNTAX)
+};
 
 /**
  * Print information about program contents. Useful for debugging.
@@ -706,7 +717,10 @@ sauProgram_print_info(const sauProgram *restrict o) {
 		for (size_t i = 0; i < ev->op_data_count; ++i) {
 			const sauProgramOpData *od = &ev->op_data[i];
 			print_opline(od);
-			SAU_POP__ITEMS(SAU_POP__X_PRINT)
+			for (uint32_t i = 0; i < od->mod_count; ++i) {
+				const sauProgramIDs *ids = &od->mods[i];
+				print_linked(mods_syntax[ids->use], ids->a);
+			}
 		}
 		sau_printf("\n");
 	}
