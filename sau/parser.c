@@ -1240,7 +1240,8 @@ static void enter_level(sauParser *restrict o,
 			nest->sopt_save = o->sl.sopt;
 			o->sl.sopt.set = 0;
 			if (use_type != SAU_POP_N_carr &&
-			    use_type != SAU_POP_N_amod)
+			    !(use_type >= SAU_POP_N_amod_add &&
+			      use_type < SAU_POP_N_r_amod))
 				o->sl.sopt.def_ampmult = def_sopt.def_ampmult;
 		}
 	}
@@ -1307,8 +1308,9 @@ static bool parse_so_amp(sauParser *restrict o) {
 	double val;
 	int c;
 	if (scan_num(sc, NULL, &val)) {
-		// amod lists inherit outer value
-		if (pl->use_type == SAU_POP_N_amod)
+		// amod lists with summing inherit outer value
+		if (pl->use_type >= SAU_POP_N_amod_add &&
+		    pl->use_type < SAU_POP_N_r_amod)
 			val *= nest->sopt_save.ampmult;
 		o->sl.sopt.def_ampmult = val;
 		o->sl.sopt.set |= SAU_SOPT_DEF_AMPMULT;
@@ -1507,7 +1509,7 @@ static bool prepare_sweep(sauParser *restrict o,
 	return true;
 }
 
-static void parse_par_list(sauParser *restrict o,
+static sauScriptListData *parse_par_list(sauParser *restrict o,
 		sauScanNumConst_f numconst_f,
 		sauLine **restrict op_sweep, bool ratio,
 		uint8_t sweep_id, uint8_t use_type) {
@@ -1516,14 +1518,17 @@ static void parse_par_list(sauParser *restrict o,
 	if (op_sweep)
 		scan_line_state(o->sc, numconst_f, *op_sweep, ratio);
 	bool clear = sauScanner_tryc(o->sc, '-');
+	sauScriptListData *first_list = NULL;
 	while (sauScanner_tryc(o->sc, '[')) {
 		parse_level(o, use_type, SCOPE_NEST, ']');
 		nest = NestArr_tip(&o->nest); // re-get, array may have changed
 		if (clear) clear = false;
 		else nest->list->append = true;
+		if (!first_list) first_list = nest->list;
 	}
 	nest->op_sweep = NULL;
 	NestArr_pop(&o->nest);
+	return first_list;
 }
 
 static bool parse_op(sauParser *restrict o, uint8_t op_type,
@@ -1558,16 +1563,47 @@ static bool parse_op_main(sauParser *restrict o, uint8_t op_type,
 	return false;
 }
 
+static void change_list_use(sauScriptListData *first_list, uint8_t use_type) {
+	for (sauScriptListData *list = first_list; list; list = list->ref.next)
+		list->use_type = use_type;
+}
+
+static uint8_t parse_par_dotdot(sauParser *restrict o,
+		sauScriptListData *first_list, sauScanNumConst_f num_f,
+		sauLine **restrict line2, bool ratio, uint8_t line2_id,
+		uint8_t mod_add) {
+	const uint8_t mod1 = mod_add+1, mod2 = mod_add+2, r_mod = mod_add+3;
+	uint8_t c = 0;
+	change_list_use(first_list, mod1);
+	parse_par_list(o, num_f, line2, ratio, line2_id, mod2);
+	if ((c = sauScanner_getc_after(o->sc, '.'))) {
+		if (c == 'r') parse_par_list(o, NULL, NULL, false, 0, r_mod);
+		else sauScanner_warning(o->sc, NULL,
+"expected '.r' or nothing after '..' and second value");
+	}
+	if ((c = sauScanner_getc_after(o->sc, '.'))) {
+		if (c == 'a') parse_par_list(o, NULL, NULL, false, 0, mod_add);
+		else sauScanner_warning(o->sc, NULL,
+"expected '.a' or nothing after '.r' after '..'");
+	}
+	return 0;
+}
+
 static uint8_t parse_op_amp(sauParser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
 	sauScriptOpData *op = pl->operator;
 	uint8_t c;
-	parse_par_list(o, NULL, &op->amp, false,
-			SAU_PSWEEP_AMP, SAU_POP_N_amod);
+	sauScriptListData *first_list =
+		parse_par_list(o, NULL, &op->amp, false,
+			SAU_PSWEEP_AMP, SAU_POP_N_amod_add);
 	switch ((c = sauScanner_getc_after(o->sc, '.'))) {
+	case '.':
+		return parse_par_dotdot(o, first_list,
+				NULL, &op->amp2, false,
+				SAU_PSWEEP_AMP2, SAU_POP_N_amod_add);
 	case 'r':
 		parse_par_list(o, NULL, &op->amp2, false,
-				SAU_PSWEEP_AMP2, SAU_POP_N_ramod);
+				SAU_PSWEEP_AMP2, SAU_POP_N_r_amod);
 		break;
 	default:
 		return c;
@@ -1594,12 +1630,17 @@ static bool parse_op_freq(sauParser *restrict o, bool rel_freq) {
 		return true; // reject, lacks parameter
 	uint8_t c;
 	sauScanNumConst_f num_f = rel_freq ? NULL : scan_note_const;
-	parse_par_list(o, num_f, &op->freq, rel_freq,
-			SAU_PSWEEP_FREQ, SAU_POP_N_fmod);
+	sauScriptListData *first_list =
+		parse_par_list(o, num_f, &op->freq, rel_freq,
+			SAU_PSWEEP_FREQ, SAU_POP_N_fmod_add);
 	switch ((c = sauScanner_getc_after(o->sc, '.'))) {
+	case '.':
+		return parse_par_dotdot(o, first_list,
+				num_f, &op->freq2, rel_freq,
+				SAU_PSWEEP_FREQ2, SAU_POP_N_fmod_add);
 	case 'r':
 		parse_par_list(o, num_f, &op->freq2, rel_freq,
-				SAU_PSWEEP_FREQ2, SAU_POP_N_rfmod);
+				SAU_PSWEEP_FREQ2, SAU_POP_N_r_fmod);
 		break;
 	default:
 		return c != 0;

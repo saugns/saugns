@@ -7,24 +7,41 @@ is a shorter change log with only the SAU language changes.
 Pre-release
 -----------
 
-[rebase in progress]
+Add long-form value range modulation syntax.
 
-Fix bugs for `r...` relative frequency parameters in
-AM modulators when placed inside `A` or `N`. (Latter
-types don't have frequency parameters, so use of `r`
-inside can't apply to them as the carriers outside.)
-When possible, make `r1` be better than `f1`.
- * A script `N a0[W]` now has a default frequency of
-   `f440` for the inner `W`, not `r1` (which is like
-   `f1` here, as there's no carrier frequency). But,
-   in `W a0.r1[N[W]]` it's `r1`, effectively `f440`.
- * A separate bug affected e.g. `W a0.r1[A0[W r1]]`,
-   where the `r1` acted like `f1` instead of passing
-   the nearest outer frequency from the other `W`. A
-   pointer wasn't passed along, a typo made it NULL.
- * Don't allow `r` for a modulator with all carriers
-   being of types lacking a frequency parameter. Now
-   such modulators are more like 1st level carriers.
+Modulation with value range. Add a new variation on
+the syntax with greater flexibility, for both `a`
+(amplitude) and `f`/`r` (frequency) parameters.
+
+Below `X` and `Y` denote optionally included range
+endpoint values, while `A` and `B` are the newly
+introduced modulator lists whose outputs are added
+for the endpoints only. The `C` and `D` modulator
+lists work as before. The old syntaxes remain as
+short forms unchanged:
+ - `X[A]..Y[B].r[C].a[D]`
+ - `X[D].rY[C]`
+ - `X[D]`
+
+The use of the '..' changes the meaning of the first
+modulator list prior if included, so that it plays
+the part of `A` rather than of `D`. (If no `C` list
+is used for the generator the results of `A` and `D`
+modulators are identical, but the lists are built
+and cleared separately.)
+
+v0.4.7c (2024-10-30)
+--------------------
+
+Fix modulators using the `r` frequency ratio a.k.a.
+relative frequency parameter, when linked to a carrier
+of type `A` or `N` (which have no frequency parameter).
+This used to behave as if the latter had a frequency
+of 1 Hz set. Now the behavior is as if the `A` or `N`
+didn't exist, so that only the object using `r` and
+any other carriers for it are considered. If there's
+no such other carrier, `r` can't be used, just like
+it can't for a top-level carrier.
 
 Clarify `r` behavior fully in the `README.SAU` file.
 
