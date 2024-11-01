@@ -1,0 +1,6 @@
+// Use nested "A" to half-rectify a sine wave, with "R mt" varying the extent.
+A-1.r+1[A-1[
+	R mt f8
+]..+1.r[
+	W f440
+]] t8
