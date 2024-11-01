@@ -179,20 +179,30 @@ typedef struct sauProgramIDArr {
 	uint32_t ids[];
 } sauProgramIDArr;
 
+typedef struct sauProgramIDs {
+	const sauProgramIDArr *a;
+	uint8_t use;
+} sauProgramIDs;
+
 /* Macro used for operator use type sets of items. */
 #define SAU_POP__ITEMS(X) \
-	X(carr,  0, " CA", NULL) \
-	X(camod, 1, "cAM", "c") /* channel mix i.e. panning modulation */ \
-	X(amod,  1, " AM", "a") \
-	X(ramod, 1, "rAM", "a.r") \
-	X(fmod,  1, " FM", "f") \
-	X(rfmod, 1, "rFM", "f.r") \
-	X(pmod,  1, " PM", "p") \
-	X(apmod, 1, "aPM", "p.a") \
-	X(fpmod, 1, "fPM", "p.f") \
+	X(carr,     0, " CA ", NULL) \
+	X(camod,    1, "cAM ", "c") /* channel mix i.e. panning modulation */ \
+	X(amod,     1, " AM ", "a") \
+	X(amod1,    1, " AM1", "a..") \
+	X(amod2,    1, " AM2", "a..") \
+	X(amod_r,   1, "rAM ", "a.r") \
+	X(fmod,     1, " FM ", "f") \
+	X(fmod1,    1, " FM1", "f..") \
+	X(fmod2,    1, " FM2", "f..") \
+	X(fmod_r,   1, "rFM ", "f.r") \
+	X(pmod,     1, " PM ", "p") \
+	X(apmod,    1, "aPM ", "p.a") \
+	X(fpmod,    1, "fPM ", "p.f") \
 	//
 #define SAU_POP__X_ID(NAME, ...) SAU_POP_N_##NAME,
 #define SAU_POP__X_GRAPH(NAME, IS_MOD, LABEL, ...) LABEL,
+#define SAU_POP__X_SYNTAX(NAME, IS_MOD, LABEL, SYNTAX) SYNTAX,
 
 /**
  * Operator use types.
@@ -219,15 +229,14 @@ typedef struct sauProgramOpData {
 	sauLine *pm_a;
 	uint32_t phase;
 	uint32_t seed;
-	uint8_t use_type; // carrier or modulator use?
-	uint8_t type; // type info, for now
 	union sauPOPMode {
 		uint8_t main; // holds wave, noise, etc. ID -- what's primary
 		sauRasOpt ras;
 	} mode;
-#define SAU_POP__X_IDARR_PTR(NAME, IS_MOD, ...) \
-	SAU_IF(IS_MOD, const sauProgramIDArr *NAME##s;, )
-	SAU_POP__ITEMS(SAU_POP__X_IDARR_PTR)
+	uint8_t use_type; // carrier or modulator use?
+	uint8_t type; // type info, for now
+	uint32_t mod_count;
+	const sauProgramIDs *mods;
 } sauProgramOpData;
 
 typedef struct sauProgramEvent {

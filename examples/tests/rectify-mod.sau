@@ -1,0 +1,7 @@
+// 1 Hz variation between innermost being +/- half-wave and full-wave rectified
+// (resulting from the ".r" value range-specific quirky handling of nested AM).
+A-1.r+1[W f1 a-1..+1.r[W f440]] t8
+
+/* This is clean, meanwhile, as the AM done isn't nested inside any outer ".r":
+W f1 a-1..+1.r[W f440] t8
+ */
