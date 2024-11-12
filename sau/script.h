@@ -64,10 +64,9 @@ typedef struct sauScriptOpData {
 	/* operator parameters */
 	uint32_t params;
 	sauTime time;
-	sauLine *pan;
-	sauLine *amp, *amp2;
-	sauLine *freq, *freq2;
-	sauLine *pm_a;
+	sauRange *amp, *pan;
+	sauRange *freq;
+	sauRange *pm_a;
 	uint32_t phase;
 	uint32_t seed;
 	union sauPOPMode mode;
