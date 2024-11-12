@@ -7,7 +7,28 @@ is a shorter change log with only the SAU language changes.
 Pre-release
 -----------
 
-[rebase in progress]
+Fix v0.4.8b bug which gave junk results when a
+0 Hz oscillator has an `f` modulator with `r`
+frequency ratio. (Normally useless, but valid
+in scripts.) Was due to use of uninitialized
+data for that specific case only.
+
+This script made noise with the buggy v0.4.8b,
+is correctly silent now:
+
+`W f0[W r10 a1000] t10`
+
+v0.4.8b (2024-11-12)
+--------------------
+
+Value range modulation for more parameters.
+
+For consistency, allow "Modulation with value ranges" for
+every parameter which accepts value sweeps. That's all with
+modulators, except the main phase & PM parameter `p` and its
+frequency-scaled PM subparameter `p.f`, where range-mapping
+doesn't make sense. This means it's now supported for `c`
+(channel mixing) and for self-PM `p.a` as well.
 
 v0.4.8 (2024-11-03)
 -------------------
