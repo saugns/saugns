@@ -79,7 +79,7 @@ static const sauScriptOptions def_sopt = {
 	.A4_freq = 440.f,
 	.def_time_ms = 1000,
 	.def_ampmult = 1.f,
-	.def_freq = 440.f,
+	.def_freq = SAU_PDEF_FREQ,
 	.def_relfreq = 1.f,
 	.def_chanmix = 0.f,
 	.note_key = MUSKEY(0, 0),
@@ -789,9 +789,10 @@ struct NestScope {
 	sauScriptObjRef *last_item;
 	sauScriptOptions sopt_save; /* save/restore on nesting */
 	/* values passed for outer parameter */
-	sauLine *op_sweep;
+	sauRange *op_sweep;
 	sauScanNumConst_f numconst_f;
-	bool num_ratio;
+	bool num_ratio : 1;
+	unsigned sweep_line : 1;
 };
 
 sauArrType(NestArr, struct NestScope, )
@@ -914,48 +915,35 @@ static sauScriptObjInfo *ObjInfoArr_add(ObjInfoArr *restrict o,
 	return info;
 }
 
-static sauLine *create_line(sauParser *restrict o,
+static sauRange *create_range(sauParser *restrict o,
 		bool mult, uint32_t par_flag) {
 	struct ScanLookup *sl = &o->sl;
-	sauLine *line = sau_mpalloc(o->mp, sizeof(*line));
-	float v0 = 0.f;
-	if (!line)
+	sauRange *r = sau_mpalloc(o->mp, sizeof(*r));
+	if (!r)
 		return NULL;
-	line->type = SAU_LINE_N_lin; // default if goal enabled
+	r->a.time_ms = sl->sopt.def_time_ms; // initial default
+	r->a.flags = SAU_LINEP_TIME |
+		SAU_LINEP_TIME_IF_NEW; // default implicit value is flexible
+	r->b = r->a;
+	float a;
 	switch (par_flag) {
 	case SAU_PSWEEP_PAN:
-		v0 = sl->sopt.def_chanmix;
+		a = sl->sopt.def_chanmix;
 		break;
 	case SAU_PSWEEP_AMP:
-		v0 = 1.0f; /* multiplied with sl->sopt.def_ampmult separately */
-		break;
-	case SAU_PSWEEP_AMP2:
-		v0 = 0.f;
+		a = 1.0f; // multiplied by sl->sopt.def_ampmult separately
 		break;
 	case SAU_PSWEEP_FREQ:
-		v0 = mult ?
-			sl->sopt.def_relfreq :
-			sl->sopt.def_freq;
-		break;
-	case SAU_PSWEEP_FREQ2:
-		v0 = 0.f;
-		break;
-	case SAU_PSWEEP_PMA:
-		v0 = 0.f;
+		a = mult ? sl->sopt.def_relfreq : sl->sopt.def_freq;
 		break;
 	default:
-		return NULL;
+		return r;
 	}
-	line->v0 = v0;
-	line->time_ms = sl->sopt.def_time_ms; /* initial default */
-	line->flags |= SAU_LINEP_STATE |
-		SAU_LINEP_TYPE |
-		SAU_LINEP_TIME |
-		SAU_LINEP_TIME_IF_NEW; /* default implicit value is flexible */
-	if (mult) {
-		line->flags |= SAU_LINEP_STATE_RATIO;
-	}
-	return line;
+	r->a.v0 = a;
+	r->a.flags |= SAU_LINEP_STATE;
+	if (mult)
+		r->a.flags |= SAU_LINEP_STATE_RATIO;
+	return r;
 }
 
 static bool parse_waittime(sauParser *restrict o) {
@@ -978,12 +966,10 @@ static void end_operator(sauParser *restrict o) {
 	pl->pl_flags &= ~PL_OWN_OP;
 	sauScriptOpData *op = pl->operator;
 	if (op->amp) {
-		op->amp->v0 *= pl->used_ampmult;
-		op->amp->vt *= pl->used_ampmult;
-	}
-	if (op->amp2) {
-		op->amp2->v0 *= pl->used_ampmult;
-		op->amp2->vt *= pl->used_ampmult;
+		op->amp->a.v0 *= pl->used_ampmult;
+		op->amp->a.vt *= pl->used_ampmult;
+		op->amp->b.v0 *= pl->used_ampmult;
+		op->amp->b.vt *= pl->used_ampmult;
 	}
 	sauScriptOpData *pop = op->prev_ref;
 	if (!pop) {
@@ -1166,6 +1152,8 @@ static void begin_operator(sauParser *restrict o,
 	} else {
 		/*
 		 * New operator with initial parameter values.
+		 *
+		 * Defaults not handled during parsing are not set here.
 		 */
 		bool is_nested = pl->use_type != SAU_POP_N_carr;
 		sauScriptObjInfo *info = ObjInfoArr_add(&o->obj_arr, &op->ref,
@@ -1184,15 +1172,21 @@ static void begin_operator(sauParser *restrict o,
 		}
 		if (!is_nested) {
 			o->root_op_obj = op->ref.obj_id;
-			op->pan = create_line(o, false, SAU_PSWEEP_PAN);
-			op->freq = create_line(o, false, SAU_PSWEEP_FREQ);
+			if (o->sl.sopt.def_chanmix != 0.f)
+				op->pan = create_range(o,
+						false, SAU_PSWEEP_PAN);
 		} else {
 			op->op_flags |= SAU_SDOP_NESTED;
-			op->freq = create_line(o, info->has_osc_parent,
-					SAU_PSWEEP_FREQ);
 		}
 		info->root_op_obj = o->root_op_obj;
-		op->amp = create_line(o, false, SAU_PSWEEP_AMP);
+		if (pl->used_ampmult != 1.f)
+			op->amp = create_range(o, false, SAU_PSWEEP_AMP);
+		if (sau_pop_is_osc(type)) {
+			bool freq_ratio = is_nested && info->has_osc_parent;
+			if (freq_ratio || o->sl.sopt.def_freq != SAU_PDEF_FREQ)
+				op->freq = create_range(o,
+						freq_ratio, SAU_PSWEEP_FREQ);
+		}
 	}
 	link_ev_obj(pl, nest, &op->ref, &pop->ref);
 	op->event = e;
@@ -1455,8 +1449,9 @@ static bool parse_level(sauParser *restrict o,
 
 static void parse_in_par_sweep(sauParser *restrict o) {
 	struct NestScope *nest = NestArr_tip(&o->nest);
-	sauLine *line = nest->op_sweep;
-	PARSE_IN__HEAD(parse_in_par_sweep, true)
+	sauRange *range = nest->op_sweep;
+	sauLine *line = nest->sweep_line ? &range->b : &range->a;
+	PARSE_IN__HEAD(parse_in_par_sweep, range)
 		double val;
 		switch (c) {
 		case 'g':
@@ -1497,30 +1492,35 @@ static void parse_in_par_sweep(sauParser *restrict o) {
 static bool prepare_sweep(sauParser *restrict o,
 		struct NestScope *restrict nest,
 		sauScanNumConst_f numconst_f,
-		sauLine **restrict op_sweep, bool ratio,
-		uint8_t sweep_id) {
+		sauRange **restrict op_sweep, bool ratio,
+		uint8_t sweep_id, int sweep_line) {
 	if (!op_sweep) { /* clear when not provided */
 		nest->op_sweep = NULL;
 		return true;
 	}
 	if (!*op_sweep) { /* create for updating, unparsed values kept unset */
-		*op_sweep = create_line(o, ratio, sweep_id);
-		(*op_sweep)->flags &= ~(SAU_LINEP_STATE | SAU_LINEP_TYPE);
+		*op_sweep = create_range(o, ratio, sweep_id);
+		(*op_sweep)->a.flags &= ~SAU_LINEP_STATE;
+		(*op_sweep)->b.flags &= ~SAU_LINEP_STATE;
 	}
 	nest->op_sweep = *op_sweep;
 	nest->numconst_f = numconst_f;
 	nest->num_ratio = ratio;
+	nest->sweep_line = sweep_line;
 	return true;
 }
 
 static sauScriptListData *parse_par_list(sauParser *restrict o,
 		sauScanNumConst_f numconst_f,
-		sauLine **restrict op_sweep, bool ratio,
-		uint8_t sweep_id, uint8_t use_type) {
+		sauRange **restrict op_sweep, bool ratio,
+		uint8_t sweep_id, uint8_t use_type, int sweep_line) {
 	struct NestScope *nest = NestArr_add(&o->nest);
-	prepare_sweep(o, nest, numconst_f, op_sweep, ratio, sweep_id);
-	if (op_sweep)
-		scan_line_state(o->sc, numconst_f, *op_sweep, ratio);
+	prepare_sweep(o, nest, numconst_f,
+			op_sweep, ratio, sweep_id, sweep_line);
+	if (op_sweep) {
+		sauLine *line = sweep_line ? &(*op_sweep)->b : &(*op_sweep)->a;
+		scan_line_state(o->sc, numconst_f, line, ratio);
+	}
 	bool clear = sauScanner_tryc(o->sc, '-');
 	sauScriptListData *first_list = NULL;
 	while (sauScanner_tryc(o->sc, '[')) {
@@ -1574,40 +1574,39 @@ static void change_list_use(sauScriptListData *first_list, uint8_t use_type) {
 
 static uint8_t parse_par_dotdot(sauParser *restrict o,
 		sauScriptListData *first_list, sauScanNumConst_f num_f,
-		sauLine **restrict line2, bool ratio, uint8_t line2_id,
-		uint8_t mod_add) {
-	const uint8_t mod1 = mod_add+1, mod2 = mod_add+2, r_mod = mod_add+3;
+		sauRange **restrict range, bool ratio,
+		uint8_t sweep_id, uint8_t mod) {
+	const uint8_t mod1 = mod+1, mod2 = mod+2, mod_r = mod+3;
 	uint8_t c = 0;
 	change_list_use(first_list, mod1);
-	parse_par_list(o, num_f, line2, ratio, line2_id, mod2);
+	parse_par_list(o, num_f, range, ratio, sweep_id, mod2, 1);
 	if ((c = sauScanner_getc_after(o->sc, '.'))) {
-		if (c == 'r') parse_par_list(o, NULL, NULL, false, 0, r_mod);
+		if (c == 'r') parse_par_list(o, NULL, NULL, false, 0, mod_r, 0);
 		else sauScanner_warning(o->sc, NULL,
 "expected '.r' or nothing after '..' and second value");
 	}
 	if ((c = sauScanner_getc_after(o->sc, '.'))) {
-		if (c == 'a') parse_par_list(o, NULL, NULL, false, 0, mod_add);
+		if (c == 'a') parse_par_list(o, NULL, NULL, false, 0, mod, 0);
 		else sauScanner_warning(o->sc, NULL,
 "expected '.a' or nothing after '.r' after '..'");
 	}
 	return 0;
 }
 
-static uint8_t parse_op_amp(sauParser *restrict o) {
-	struct ParseLevel *pl = o->cur_pl;
-	sauScriptOpData *op = pl->operator;
+// does it all for parameters with these and no other subparameters
+static uint8_t parse_par_modranges(sauParser *restrict o,
+		sauScanNumConst_f num_f,
+		sauRange **restrict range, bool ratio,
+		uint8_t sweep_id, uint8_t mod) {
 	uint8_t c;
 	sauScriptListData *first_list =
-		parse_par_list(o, NULL, &op->amp, false,
-			SAU_PSWEEP_AMP, SAU_POP_N_amod);
+		parse_par_list(o, num_f, range, ratio, sweep_id, mod, 0);
 	switch ((c = sauScanner_getc_after(o->sc, '.'))) {
 	case '.':
 		return parse_par_dotdot(o, first_list,
-				NULL, &op->amp2, false,
-				SAU_PSWEEP_AMP2, SAU_POP_N_amod);
+				num_f, range, ratio, sweep_id, mod);
 	case 'r':
-		parse_par_list(o, NULL, &op->amp2, false,
-				SAU_PSWEEP_AMP2, SAU_POP_N_amod_r);
+		parse_par_list(o, num_f, range, ratio, sweep_id, mod+3, 1);
 		break;
 	default:
 		return c;
@@ -1615,14 +1614,20 @@ static uint8_t parse_op_amp(sauParser *restrict o) {
 	return 0;
 }
 
+static uint8_t parse_op_amp(sauParser *restrict o) {
+	struct ParseLevel *pl = o->cur_pl;
+	sauScriptOpData *op = pl->operator;
+	return parse_par_modranges(o, NULL, &op->amp, false,
+			SAU_PSWEEP_AMP, SAU_POP_N_amod);
+}
+
 static bool parse_op_chanmix(sauParser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
 	sauScriptOpData *op = pl->operator;
 	if (op->op_flags & SAU_SDOP_NESTED)
 		return true; // reject, lacks parameter
-	parse_par_list(o, scan_chanmix_const, &op->pan, false,
+	return parse_par_modranges(o, scan_chanmix_const, &op->pan, false,
 			SAU_PSWEEP_PAN, SAU_POP_N_camod);
-	return false;
 }
 
 static bool parse_op_freq(sauParser *restrict o, bool rel_freq) {
@@ -1632,24 +1637,9 @@ static bool parse_op_freq(sauParser *restrict o, bool rel_freq) {
 	if (!sau_pop_is_osc(op->ref.op_type) ||
 	    (rel_freq && !info->has_osc_parent))
 		return true; // reject, lacks parameter
-	uint8_t c;
 	sauScanNumConst_f num_f = rel_freq ? NULL : scan_note_const;
-	sauScriptListData *first_list =
-		parse_par_list(o, num_f, &op->freq, rel_freq,
+	return parse_par_modranges(o, num_f, &op->freq, rel_freq,
 			SAU_PSWEEP_FREQ, SAU_POP_N_fmod);
-	switch ((c = sauScanner_getc_after(o->sc, '.'))) {
-	case '.':
-		return parse_par_dotdot(o, first_list,
-				num_f, &op->freq2, rel_freq,
-				SAU_PSWEEP_FREQ2, SAU_POP_N_fmod);
-	case 'r':
-		parse_par_list(o, num_f, &op->freq2, rel_freq,
-				SAU_PSWEEP_FREQ2, SAU_POP_N_fmod_r);
-		break;
-	default:
-		return c != 0;
-	}
-	return false;
 }
 
 static bool parse_op_mode(sauParser *restrict o) {
@@ -1743,14 +1733,13 @@ static bool parse_op_phase(sauParser *restrict o) {
 		op->phase = sau_cyclepos_dtoui32(val);
 		op->params |= SAU_POPP_PHASE;
 	}
-	parse_par_list(o, NULL, NULL, false, 0, SAU_POP_N_pmod);
+	parse_par_list(o, NULL, NULL, false, 0, SAU_POP_N_pmod, 0);
 	switch ((c = sauScanner_getc_after(o->sc, '.'))) {
 	case 'a':
-		parse_par_list(o, NULL, &op->pm_a, false,
+		return parse_par_modranges(o, NULL, &op->pm_a, false,
 				SAU_PSWEEP_PMA, SAU_POP_N_apmod);
-		break;
 	case 'f':
-		parse_par_list(o, NULL, NULL, false, 0, SAU_POP_N_fpmod);
+		parse_par_list(o, NULL, NULL, false, 0, SAU_POP_N_fpmod, 0);
 		break;
 	default:
 		return c != 0;
@@ -2179,13 +2168,17 @@ sau_discard_Program(sauProgram *restrict o) {
 	sau_destroy_Mempool(o->mp);
 }
 
-static inline void time_line(sauLine *restrict line,
+static inline void time_range(sauRange *restrict r,
 		uint32_t default_time_ms) {
-	if (!line)
+	if (!r)
 		return;
-	if (line->flags & SAU_LINEP_TIME_IF_NEW) { /* update fallback value */
-		line->time_ms = default_time_ms;
-		line->flags |= SAU_LINEP_TIME;
+	if (r->a.flags & SAU_LINEP_TIME_IF_NEW) { // update fallback value
+		r->a.time_ms = default_time_ms;
+		r->a.flags |= SAU_LINEP_TIME;
+	}
+	if (r->b.flags & SAU_LINEP_TIME_IF_NEW) { // update fallback value
+		r->b.time_ms = default_time_ms;
+		r->b.flags |= SAU_LINEP_TIME;
 	}
 }
 
@@ -2264,12 +2257,10 @@ static sauScriptEvData *time_durgroup(sauParser *restrict o,
 
 static void time_op_lines(sauScriptOpData *restrict op) {
 	uint32_t dur_ms = op->time.v_ms;
-	time_line(op->pan, dur_ms);
-	time_line(op->amp, dur_ms);
-	time_line(op->amp2, dur_ms);
-	time_line(op->freq, dur_ms);
-	time_line(op->freq2, dur_ms);
-	time_line(op->pm_a, dur_ms);
+	time_range(op->pan, dur_ms);
+	time_range(op->amp, dur_ms);
+	time_range(op->freq, dur_ms);
+	time_range(op->pm_a, dur_ms);
 }
 
 static uint32_t time_operator(sauScriptOpData *restrict op) {
