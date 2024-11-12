@@ -294,11 +294,9 @@ ParseConv_convert_opdata(ParseConv *restrict o,
 	ood->id = op_id;
 	ood->params = op->params;
 	ood->time = op->time;
-	ood->pan = op->pan;
 	ood->amp = op->amp;
-	ood->amp2 = op->amp2;
+	ood->pan = op->pan;
 	ood->freq = op->freq;
-	ood->freq2 = op->freq2;
 	ood->pm_a = op->pm_a;
 	ood->phase = op->phase;
 	ood->use_type = use_type;
@@ -650,9 +648,10 @@ print_oplist(const sauProgramOpRef *restrict list,
 }
 
 static sauNoinline void
-print_line(const sauLine *restrict line, char c) {
-	if (!line)
+print_range(const sauRange *restrict r, char c) {
+	if (!r)
 		return;
+	const sauLine *line = &r->a; // currently prints only the first line
 	if ((line->flags & SAU_LINEP_STATE) != 0) {
 		if ((line->flags & SAU_LINEP_GOAL) != 0)
 			sau_printf("\t%c=%-6.2f->%-6.2f", c, line->v0, line->vt);
@@ -681,8 +680,8 @@ print_opline(const sauProgramOpData *restrict od) {
 		sau_printf("\n\top %-2u %c t=%-6u",
 				od->id, type, od->time.v_ms);
 	}
-	if (sau_pop_is_osc(od->type)) print_line(od->freq, 'f');
-	print_line(od->amp, 'a');
+	print_range(od->freq, 'f');
+	print_range(od->amp, 'a');
 }
 
 static const char *const mods_syntax[SAU_POP_NAMED] = {
