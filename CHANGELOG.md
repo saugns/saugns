@@ -4,8 +4,8 @@ saugns version changes
 [On the website](https://sau.frama.io/changes.html#saulang)
 is a shorter change log with only the SAU language changes.
 
-Pre-release
------------
+v0.4.8b (2024-11-12)
+--------------------
 
 Value range modulation for more parameters.
 
