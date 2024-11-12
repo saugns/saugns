@@ -48,16 +48,26 @@ typedef struct sauTime {
 }
 
 /**
+ * Range parameter type.
+ *
+ * Holds pair of lines, allowing sweeps alongside modulation with value ranges.
+ */
+typedef struct sauRange {
+	sauLine a, b;
+} sauRange;
+
+/**
  * Swept parameter IDs.
  */
 enum {
 	SAU_PSWEEP_PAN = 0,
 	SAU_PSWEEP_AMP,
-	SAU_PSWEEP_AMP2,
 	SAU_PSWEEP_FREQ,
-	SAU_PSWEEP_FREQ2,
 	SAU_PSWEEP_PMA,
 };
+
+/** Frequency parameter default value, when default not changed in a script. */
+#define SAU_PDEF_FREQ 440.0
 
 enum {
 	SAU_POBJT_LIST = 0,
@@ -186,19 +196,19 @@ typedef struct sauProgramIDs {
 
 /* Macro used for operator use type sets of items. */
 #define SAU_POP__ITEMS(X) \
-	X(carr,     0, " CA ", NULL) \
-	X(camod,    1, "cAM ", "c") /* channel mix i.e. panning modulation */ \
-	X(amod,     1, " AM ", "a") \
-	X(amod1,    1, " AM1", "a..") \
-	X(amod2,    1, " AM2", "a..") \
-	X(amod_r,   1, "rAM ", "a.r") \
-	X(fmod,     1, " FM ", "f") \
-	X(fmod1,    1, " FM1", "f..") \
-	X(fmod2,    1, " FM2", "f..") \
-	X(fmod_r,   1, "rFM ", "f.r") \
-	X(pmod,     1, " PM ", "p") \
-	X(apmod,    1, "aPM ", "p.a") \
-	X(fpmod,    1, "fPM ", "p.f") \
+	X(  carr,  0, " CA ", NULL) \
+SAU_POP__4M(camod, X, "cAM",  "c") /* channel mix i.e. panning modulation */ \
+SAU_POP__4M(amod,  X, " AM",  "a") \
+SAU_POP__4M(fmod,  X, " FM",  "f") \
+	X(  pmod,  1, " PM ", "p") \
+SAU_POP__4M(apmod, X, "aPM",  "p.a") \
+	X(  fpmod, 1, "fPM ", "p.f") \
+	//
+#define SAU_POP__4M(NAME, X, LABEL, SYNTAX) /* 4 valrange modulator types */ \
+	X(NAME,     1, LABEL " ", SYNTAX) \
+	X(NAME##1,  1, LABEL "1", SYNTAX "..") \
+	X(NAME##2,  1, LABEL "2", SYNTAX "..") \
+	X(NAME##_r, 1, LABEL "r", SYNTAX ".r") \
 	//
 #define SAU_POP__X_ID(NAME, ...) SAU_POP_N_##NAME,
 #define SAU_POP__X_GRAPH(NAME, IS_MOD, LABEL, ...) LABEL,
@@ -223,10 +233,9 @@ typedef struct sauProgramOpData {
 	uint32_t id;
 	uint32_t params;
 	sauTime time;
-	sauLine *pan;
-	sauLine *amp, *amp2;
-	sauLine *freq, *freq2;
-	sauLine *pm_a;
+	sauRange *amp, *pan;
+	sauRange *freq;
+	sauRange *pm_a;
 	uint32_t phase;
 	uint32_t seed;
 	union sauPOPMode {

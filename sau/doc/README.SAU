@@ -146,10 +146,11 @@ Generator universal parameters:
 	c	(For non-nested generators only.) Channel mixing, mainly
 		(-1.0) to 1.0. See "Channel mixing values" for more.
 			"Value sweep" values are supported; see section.
-			"Modulator list" values are supported for panning-AM
-		(stereo placement amplitude modulation); see section. The sum
-		of modulator amplitudes is added to the channel mixing used.
-		(If you downmix the result to mono the effect will disappear.)
+			"Modulation with value ranges" values are supported
+		for panning-AM (stereo placement amplitude modulation); see
+		section. The result of modulation is added to the channel
+		mixing used. (If you downmix the result to mono, the effect
+		will disappear, provided there's no clipping etc. first.)
 	t	Time duration in seconds. If no "t" setting is given, the
 		time set depends on the context.
 			For a single non-nested generator, 1.0 is used unless
@@ -226,9 +227,8 @@ Oscillator common parameters:
 			the number to step up or down by one in such level.
 			1.0 also corresponds to pi radians.)
 			"Value sweep" values are supported; see section.
-			"Modulator list" values are supported; the separate
-			modulators in it are used to vary the parameter value
-			dynamically, by combining it with the sum of outputs.
+			"Modulation with value ranges" values are supported;
+			see section.
 		.f	Frequency-scaled PM modulators can be set in a
 			separate list, as in "p.f[...]". See "Modulator list".
 		The sum of all PM modulator amplitudes will phase-modulate
@@ -627,13 +627,16 @@ Modulator list:
 	This also allows placing sweep subparameters in a later list.
 
 Modulation with value ranges:
-	Amplitude ('a'), frequency ('f'), and relative frequency ('r')
-	parameters all support modulation of the parameter values in the
-	same ways. For amplitude, whether the result is called amplitude
-	modulation (AM), or ring modulation (RM), depends on how carrier
-	and modulator amplitude are set up relative to one another. (For
-	frequency modulation, the result is however always the "real FM"
-	related to yet distinct from PM, whenever modulation happens.)
+	Amplitude ('a'), frequency ('f' and relative frequency 'r'), and
+	various other parameters all support modulation with subparameters
+	for value range mapping. (These parameters refer to this section.)
+		For every parameter supporting this, the result of modulation
+	is used in place of the main value for the parameter. For amplitude,
+	whether the result is called amplitude modulation (AM), or ring
+	modulation (RM), depends on how carrier and modulator amplitude are
+	set up relative to one another. (For frequency modulation, the result
+	is however always the "real FM" related to yet distinct from PM,
+	whenever modulation happens.)
 		Following a parameter name and optionally its main value(s),
 	lists can be used (see "Modulator list") to assign modulators whose
 	amplitudes are simply added to the result. For example "a0[...]"
