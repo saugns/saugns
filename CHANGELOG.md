@@ -7,7 +7,14 @@ is a shorter change log with only the SAU language changes.
 Pre-release
 -----------
 
-[rebase in progress]
+Value range modulation for more parameters.
+
+For consistency, allow "Modulation with value ranges" for
+every parameter which accepts value sweeps. That's all with
+modulators, except the main phase & PM parameter `p` and its
+frequency-scaled PM subparameter `p.f`, where range-mapping
+doesn't make sense. This means it's now supported for `c`
+(channel mixing) and for self-PM `p.a` as well.
 
 v0.4.8 (2024-11-03)
 -------------------
