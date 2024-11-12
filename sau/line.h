@@ -120,23 +120,20 @@ typedef struct sauLine {
 	uint8_t flags;
 } sauLine;
 
-/**
- * Get the main flags showing whether state and/or goal are enabled.
- * Zero implies that the instance is unused.
- *
- * \return flag values
- */
-#define sauLine_ENABLED(o) \
-	((o)->flags & (SAU_LINEP_STATE | SAU_LINEP_GOAL))
+/** Set default values for audio generator use. */
+static inline void sauLine_init(sauLine *restrict o, float v0) {
+	o->v0 = v0;
+	o->type = SAU_LINE_N_lin;
+	o->flags = SAU_LINEP_STATE | SAU_LINEP_TYPE;
+}
 
 /** Needed before get, run, or skip when a line is not copy-initialized. */
 static inline void sauLine_setup(sauLine *restrict o, uint32_t srate) {
 	o->end = sau_ms_in_samples(o->time_ms, srate, NULL);
 }
-void sauLine_copy(sauLine *restrict o,
-		const sauLine *restrict src,
-		uint32_t srate);
 
+void sauLine_copy(sauLine *restrict o,
+		const sauLine *restrict src, uint32_t srate);
 uint32_t sauLine_get(sauLine *restrict o,
 		float *restrict buf, uint32_t buf_len,
 		const float *restrict mulbuf);
