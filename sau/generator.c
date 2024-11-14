@@ -412,21 +412,24 @@ static void handle_event(sauGenerator *restrict o, EventNode *restrict e) {
  *
  * Used to generate output for carrier or additive modulator.
  */
-static void block_mix_add(float *restrict buf, size_t buf_len,
+static void block_mix_add(GenBase *restrict n,
+		float *restrict buf, size_t buf_len,
 		bool layer,
 		const float *restrict in_buf,
 		const float *restrict amp) {
-	if (!amp) {
-		if (!layer) sau_nzerof(buf, buf_len);
-	} else if (layer) {
-		for (size_t i = 0; i < buf_len; ++i) {
-			buf[i] += in_buf[i] * amp[i];
-		}
+#define MIX(OP, AMP) \
+	for (size_t i = 0; i < buf_len; ++i) { \
+		buf[i] OP in_buf[i] * (AMP); \
+	} \
+/**/
+	if (layer) {
+		if (amp) MIX(+=, amp[i])
+		else     MIX(+=, n->amp.par.v0)
 	} else {
-		for (size_t i = 0; i < buf_len; ++i) {
-			buf[i] = in_buf[i] * amp[i];
-		}
+		if (amp) MIX(=, amp[i])
+		else     MIX(=, n->amp.par.v0)
 	}
+#undef MIX
 }
 
 /*
@@ -437,41 +440,40 @@ static void block_mix_add(float *restrict buf, size_t buf_len,
  *
  * Used to generate output for modulation with value range.
  */
-static void block_mix_mul_waveenv(float *restrict buf, size_t buf_len,
+static void block_mix_mul_waveenv(GenBase *restrict n,
+		float *restrict buf, size_t buf_len,
 		bool layer,
 		const float *restrict in_buf,
 		const float *restrict amp) {
-	if (!amp) {
-		sau_nzerof(buf, buf_len);
-	} else if (layer) {
-		for (size_t i = 0; i < buf_len; ++i) {
-			float s = in_buf[i];
-			float s_amp = amp[i] * 0.5f;
-			s = (s * s_amp) + fabsf(s_amp);
-			buf[i] *= s;
-		}
+#define MIX(OP, AMP) \
+	for (size_t i = 0; i < buf_len; ++i) { \
+		float s = in_buf[i]; \
+		float s_amp = (AMP) * 0.5f; \
+		s = (s * s_amp) + fabsf(s_amp); \
+		buf[i] OP s; \
+	} \
+/**/
+	if (layer) {
+		if (amp) MIX(*=, amp[i])
+		else     MIX(*=, n->amp.par.v0)
 	} else {
-		for (size_t i = 0; i < buf_len; ++i) {
-			float s = in_buf[i];
-			float s_amp = amp[i] * 0.5f;
-			s = (s * s_amp) + fabsf(s_amp);
-			buf[i] = s;
-		}
+		if (amp) MIX(=, amp[i])
+		else     MIX(=, n->amp.par.v0)
 	}
+#undef MIX
 }
 
 /*
  * Handle audio layer according to options.
  */
-static void block_mix(GenBase *restrict gen,
+static void block_mix(GenBase *restrict n,
 		float *restrict buf, size_t buf_len,
 		bool wave_env, bool layer,
 		float *restrict in_buf,
 		const float *restrict amp) {
-	(void)gen;
 	(wave_env ?
 	 block_mix_mul_waveenv :
-	 block_mix_add)(buf, buf_len, layer, in_buf, amp);
+	 block_mix_add)(n, buf, buf_len, layer, in_buf, amp);
 }
 
 static struct BlockBufIDs
@@ -487,31 +489,55 @@ static float *run_mods(sauGenerator *restrict o,
 		float *restrict freq,
 		bool wave_env, bool buf_filled) {
 	for (uint32_t i = 0; i < mods->count; ++i) {
-		run_block(o, bufs, &(uint32_t){len},
-				&o->gens[mods->ids[i]],
+		run_block(o, bufs, &(uint32_t){len}, &o->gens[mods->ids[i]],
 				freq, wave_env, buf_filled);
 		buf_filled = true;
 	}
 	return buf_filled ? *bufs : NULL;
 }
 
-#define NEED_FILL(line) ((line)->v0 != 0.f || ((line)->flags & SAU_LINEP_GOAL))
+#define NEED_FILL(line, mods) \
+	(((line)->flags & SAU_LINEP_GOAL) || (mods)->count > 0)
 
 static float *run_line_plus_mods(sauGenerator *restrict o,
 		Buf *restrict bufs, uint32_t len,
 		sauLine *restrict par,
 		const sauProgramIDArr *restrict mods,
 		float *restrict mulbuf,
-		float *restrict freq) {
-	bool buf_filled;
-	if ((buf_filled = (NEED_FILL(par) || freq == *bufs))) {
-		sauLine_run(par, *bufs, len, mulbuf);
-	} else {
+		float *restrict freq, bool force_fill) {
+	if (!NEED_FILL(par, mods) && !force_fill && !mulbuf) {
 		sauLine_skip(par, len);
+		return NULL;
 	}
-	if (run_mods(o, bufs, len, mods, freq, false, buf_filled))
-		buf_filled = true;
-	return buf_filled ? *bufs : NULL;
+	sauLine_run(par, *bufs, len, mulbuf);
+	return run_mods(o, bufs, len, mods, freq, false, true);
+}
+
+static float *run_valrange_mix(Buf *restrict bufs,
+		float *restrict a, float aval,
+		const float *restrict b, float bval,
+		const float *restrict x, uint32_t len) {
+	uint32_t i;
+	if (a) {
+		if (b) for (i = 0; i < len; ++i)
+			a[i] += (b[i] - a[i]) * x[i];
+		else   for (i = 0; i < len; ++i)
+			a[i] += (bval - a[i]) * x[i];
+	} else {
+		a = bufs[0];
+		if (aval != 0.f) {
+			if (b) for (i = 0; i < len; ++i)
+				a[i] = aval + (b[i] - aval) * x[i];
+			else   for (i = 0; i < len; ++i)
+				a[i] = aval + (bval - aval) * x[i];
+		} else {
+			if (b) for (i = 0; i < len; ++i)
+				a[i] = b[i] * x[i];
+			else   for (i = 0; i < len; ++i)
+				a[i] = bval * x[i];
+		}
+	}
+	return a;
 }
 
 /*
@@ -521,39 +547,46 @@ static float *run_line_plus_mods(sauGenerator *restrict o,
  * the last of these is purely the output for the next level, so
  * only 1 extra buffer counts as a current-level requirement.
  */
-static float *run_param_with_rangemod(sauGenerator *restrict o,
+static float *run_valrange_param(sauGenerator *restrict o,
 		Buf *restrict bufs, uint32_t len,
 		struct ParWithRangeMod *restrict n,
 		float *restrict param_mulbuf,
 		float *restrict reused_freq,
-		bool is_freq) {
-	uint32_t i;
-	float *par_buf = *(bufs + 0);
-	float *freq = (reused_freq ? reused_freq : is_freq ? par_buf : NULL);
-	bool buf_filled = run_line_plus_mods(o, (bufs + 0), len,
-			&n->par, n->mods1, param_mulbuf, freq);
+		bool is_freq, bool force_fill) {
+	float *freq = (reused_freq ? reused_freq : is_freq ? bufs[0] : NULL);
+	float *par_buf = run_line_plus_mods(o, (bufs+0), len,
+			&n->par, n->mods1, param_mulbuf, freq,
+			force_fill || (n->mods_add->count > 0));
 	if (n->r_mods->count > 0) {
-		float *par2_buf = *(bufs + 1);
-		bool buf2_filled = run_line_plus_mods(o, (bufs + 1), len,
-				&n->par2, n->mods2, param_mulbuf, freq);
-		float *mod_buf = *(bufs + 2);
-		run_mods(o, (bufs + 2), len, n->r_mods, freq, true, false);
-		if (buf_filled && buf2_filled) for (i = 0; i < len; ++i)
-			par_buf[i] += (par2_buf[i] - par_buf[i]) * mod_buf[i];
-		else if (buf_filled) for (i = 0; i < len; ++i)
-			par_buf[i] *= 1.f - mod_buf[i];
-		else if (buf2_filled) for (i = 0; i < len; ++i) {
-			par_buf[i] = par2_buf[i] * mod_buf[i];
-			buf_filled = true;
-		}
+		float *par2_buf = run_line_plus_mods(o, (bufs+1), len,
+				&n->par2, n->mods2, param_mulbuf, freq, false);
+		float *mod_buf = run_mods(o, (bufs+2), len, n->r_mods, freq,
+				true, false);
+		par_buf = run_valrange_mix((bufs+0), par_buf, n->par.v0,
+				par2_buf, n->par2.v0, mod_buf, len);
 	} else {
 		sauLine_skip(&n->par2, len);
 		// to keep timing in sync, run mods2 despite discarding result
-		run_mods(o, (bufs + 1), len, n->mods2, freq, false, true);
+		run_mods(o, (bufs+1), len, n->mods2, freq, false, true);
 	}
-	if (run_mods(o, (bufs + 0), len, n->mods_add, freq, false, buf_filled))
-		buf_filled = true;
-	return buf_filled ? *bufs : NULL;
+	return run_mods(o, (bufs+0), len, n->mods_add, freq, false, !!par_buf);
+}
+
+/*
+ * Run PM and frequency-scaled PM modulators, filling the main PM input buffer.
+ */
+static float *run_pm_main_params(sauGenerator *restrict o,
+		Buf *restrict bufs, uint32_t len,
+		AnyGen *restrict n,
+		float *restrict freq) {
+	bool fpm = n->osc.fpmods->count > 0;
+	if (fpm) {
+		run_mods(o, bufs, len, n->osc.fpmods, freq, false, false);
+		const float fpm_scale = 1.f / SAU_HUMMID;
+		for (uint32_t i = 0; i < len; ++i)
+			(*bufs)[i] *= fpm_scale * freq[i];
+	}
+	return run_mods(o, bufs, len, n->osc.pmods, freq, false, fpm);
 }
 
 /*
@@ -598,36 +631,24 @@ run_block_wosc(sauGenerator *restrict o,
 		Buf *restrict bufs, uint32_t len,
 		AnyGen *restrict n,
 		float *restrict parent_freq) {
-	float *pm_buf = NULL, *fpm_buf = NULL;
-	void *phase_buf = *(bufs++);
-	float *freq = NULL;
-	float *out_buf = NULL;
-	/*
-	 * Handle frequency (alternatively ratio) parameter & FM.
-	 */
-	run_param_with_rangemod(o, bufs, len, &n->osc.freq, parent_freq,
-				NULL, true);
-	freq = *(bufs++); // #2 (++), tmp #3, sub #4
-	/*
-	 * Pre-fill phase buffers.
-	 */
-	pm_buf = run_mods(o, (bufs + 0), len, n->osc.pmods, freq,
-			false, false); // #3
-	fpm_buf = run_mods(o, (bufs + 1), len, n->osc.fpmods, freq,
-			false, false); // #4
+	// freq #1 (++), tmp #2, sub #3
+	float *freq = run_valrange_param(o, bufs++, len, &n->osc.freq,
+			parent_freq, NULL, true, true);
+	void *phase_buf = *(bufs++); // #2 (++)
+	float *pm_buf = run_pm_main_params(o, bufs, len, n, freq); // #3
 	sauPhasor_fill(&n->wo.wosc.phasor, phase_buf, len,
-			freq, pm_buf, fpm_buf);
-	out_buf = *(bufs++); // #3
+			freq, pm_buf); // #2 <- #3
+	float *out_buf = *(bufs++); // #3 (++)
 	bufs++; // amp #4 (++), tmp #5, sub #6 (reserved highest ID returned)
-	if (run_param_with_rangemod(o, bufs, len, &n->osc.pm_a, NULL,
-				freq, false)) {
+	if (run_valrange_param(o, bufs, len, &n->osc.pm_a, NULL, freq, false,
+				n->osc.pm_a.par.v0 != 0.f)) {
 		float *selfmod = *bufs; // #5, tmp #6, sub #7
 		sauWOsc_run_selfmod(&n->wo.wosc, out_buf, len, phase_buf,
 				selfmod);
 	} else {
 		sauWOsc_run(&n->wo.wosc, out_buf, len, phase_buf);
 	}
-	return (struct BlockBufIDs){.out_id = 3, .freq_id = 2, .amp_id = 4};
+	return (struct BlockBufIDs){.out_id = 3, .freq_id = 1, .amp_id = 4};
 }
 
 /*
@@ -640,37 +661,25 @@ run_block_rasg(sauGenerator *restrict o,
 		Buf *restrict bufs, uint32_t len,
 		AnyGen *restrict n,
 		float *restrict parent_freq) {
-	float *pm_buf = NULL, *fpm_buf = NULL;
-	void *cycle_buf = *(bufs++), *rasg_buf = *(bufs++); // rasg #2
-	float *freq = NULL;
-	/*
-	 * Handle frequency (alternatively ratio) parameter & FM.
-	 */
-	run_param_with_rangemod(o, bufs, len, &n->osc.freq, parent_freq,
-				NULL, true);
-	freq = *(bufs++); // #3 (++), tmp #4, sub #5
-	/*
-	 * Pre-fill cycle & phase buffers.
-	 */
-	pm_buf = run_mods(o, (bufs + 0), len, n->osc.pmods, freq,
-			false, false); // #4
-	fpm_buf = run_mods(o, (bufs + 1), len, n->osc.fpmods, freq,
-			false, false); // #5
+	// freq #1 (++), tmp #2, sub #3
+	float *freq = run_valrange_param(o, bufs++, len, &n->osc.freq,
+			parent_freq, NULL, true, true);
+	void *cycle_buf = *(bufs++); // cycle #2 (++)
+	void *rasg_buf = *(bufs++);  // phase #3 (++) later reused for output
+	float *pm_buf = run_pm_main_params(o, bufs, len, n, freq); // #4
 	sauCyclor_fill(&n->rg.rasg.cyclor, cycle_buf, rasg_buf, len,
-			freq, pm_buf, fpm_buf);
+			freq, pm_buf); // #2 and #3 <- #4
 	bufs++; // amp #4 (++), tmp #5, sub #6 (reserved highest ID returned)
-	if (run_param_with_rangemod(o, bufs, len, &n->osc.pm_a, NULL,
-				freq, false)) {
+	if (run_valrange_param(o, bufs, len, &n->osc.pm_a, NULL, freq, false,
+				n->osc.pm_a.par.v0 != 0.f)) {
 		float *selfmod = *bufs; // #5, tmp #6, sub #7
 		sauRasG_run_selfmod(&n->rg.rasg, len, rasg_buf,
 				cycle_buf, selfmod);
 	} else {
-		float *tmp_buf = *(bufs + 0); // #5
-		float *tmp2_buf = *(bufs + 1); // #6
-		sauRasG_run(&n->rg.rasg, len, rasg_buf, tmp_buf, tmp2_buf,
-				cycle_buf);
+		sauRasG_run(&n->rg.rasg, len, rasg_buf, bufs[0], bufs[1],
+				cycle_buf); // tmp #5 and #6
 	}
-	return (struct BlockBufIDs){.out_id = 2, .freq_id = 3, .amp_id = 4};
+	return (struct BlockBufIDs){.out_id = 3, .freq_id = 1, .amp_id = 4};
 }
 
 /*
@@ -731,8 +740,8 @@ run_block(sauGenerator *restrict o,
 	}
 	float *gen_buf = bufs[buf_ids.out_id - 1];
 	float *freq_buf = buf_ids.freq_id ? bufs[buf_ids.freq_id - 1] : NULL;
-	float *amp_buf = run_param_with_rangemod(o, (bufs + buf_ids.amp_id - 1),
-				len, &n->gen.amp, NULL, freq_buf, false);
+	float *amp_buf = run_valrange_param(o, (bufs + buf_ids.amp_id - 1),
+				len, &n->gen.amp, NULL, freq_buf, false, false);
 	block_mix(&n->gen, out_buf, len, wave_env, layer, gen_buf, amp_buf);
 	buf_ids.out_id = 0;
 	/*
@@ -773,8 +782,9 @@ static void mix_add(sauGenerator *restrict o,
 	float *freq_buf = buf_ids.freq_id ? in_bufs[0] : NULL;
 	float *mix_l = o->bufs[0 - MIX_BUFS];
 	float *mix_r = o->bufs[1 - MIX_BUFS];
-	if (run_param_with_rangemod(o, (in_bufs + 1), len, &n->gen.pan,
-				NULL, freq_buf, false)) {
+	if (run_valrange_param(o, (in_bufs + 1), len, &n->gen.pan,
+				NULL, freq_buf, false,
+				n->gen.pan.par.v0 != 0.f)) {
 		float *pan_buf = *(in_bufs + 1);
 		for (uint32_t i = 0; i < len; ++i) {
 			float s = s_buf[i] * o->amp_scale;
