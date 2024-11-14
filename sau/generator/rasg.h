@@ -167,58 +167,25 @@ static sauMaybeUnused void sauCyclor_fill(sauCyclor *restrict o,
 		float *restrict phase_f,
 		size_t buf_len,
 		const float *restrict freq_f,
-		const float *restrict pm_f,
-		const float *restrict fpm_f) {
-	const float fpm_scale = 1.f / SAU_HUMMID;
+		const float *restrict pm_f) {
 	float coeff = o->coeff;
 	float phase_scale = 0x1p31f;
 	if (o->rate2x) {
 		coeff *= 2;
 		phase_scale *= 2;
 	}
-	if (!pm_f && !fpm_f) {
-		for (size_t i = 0; i < buf_len; ++i) {
-			float s_f = freq_f[i];
-			uint64_t cycle_phase = P(sau_ftoi(coeff * s_f), 0);
-			uint32_t phase;
-			cycle_ui32[i] = cycle_phase >> 32;
-			phase = ((uint32_t) cycle_phase) >> 1;
-			phase_f[i] = ((int32_t) phase) * 0x1p-31f;
-		}
-	} else if (!fpm_f) {
-		for (size_t i = 0; i < buf_len; ++i) {
-			float s_f = freq_f[i];
-			float s_pofs = pm_f[i];
-			uint64_t cycle_phase = P(sau_ftoi(coeff * s_f),
-					sau_ftoi(s_pofs * phase_scale));
-			uint32_t phase;
-			cycle_ui32[i] = cycle_phase >> 32;
-			phase = ((uint32_t) cycle_phase) >> 1;
-			phase_f[i] = ((int32_t) phase) * 0x1p-31f;
-		}
-	} else if (!pm_f) {
-		for (size_t i = 0; i < buf_len; ++i) {
-			float s_f = freq_f[i];
-			float s_pofs = fpm_f[i] * fpm_scale * s_f;
-			uint64_t cycle_phase = P(sau_ftoi(coeff * s_f),
-					sau_ftoi(s_pofs * phase_scale));
-			uint32_t phase;
-			cycle_ui32[i] = cycle_phase >> 32;
-			phase = ((uint32_t) cycle_phase) >> 1;
-			phase_f[i] = ((int32_t) phase) * 0x1p-31f;
-		}
-	} else {
-		for (size_t i = 0; i < buf_len; ++i) {
-			float s_f = freq_f[i];
-			float s_pofs = pm_f[i] + (fpm_f[i] * fpm_scale * s_f);
-			uint64_t cycle_phase = P(sau_ftoi(coeff * s_f),
-					sau_ftoi(s_pofs * phase_scale));
-			uint32_t phase;
-			cycle_ui32[i] = cycle_phase >> 32;
-			phase = ((uint32_t) cycle_phase) >> 1;
-			phase_f[i] = ((int32_t) phase) * 0x1p-31f;
-		}
-	}
+#define FILL(FREQ, PM_IN) \
+	for (size_t i = 0; i < buf_len; ++i) { \
+		uint64_t cycle_phase = P(sau_ftoi(coeff * (FREQ)), (PM_IN)); \
+		uint32_t phase; \
+		cycle_ui32[i] = cycle_phase >> 32; \
+		phase = ((uint32_t) cycle_phase) >> 1; \
+		phase_f[i] = ((int32_t) phase) * 0x1p-31f; \
+	} \
+/**/
+	if (!pm_f) FILL(freq_f[i], 0)
+	else       FILL(freq_f[i], sau_ftoi(pm_f[i] * phase_scale))
+#undef FILL
 }
 
 #undef P /* done */
