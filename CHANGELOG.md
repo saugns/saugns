@@ -4,8 +4,8 @@ saugns version changes
 [On the website](https://sau.frama.io/changes.html#saulang)
 is a shorter change log with only the SAU language changes.
 
-Pre-release
------------
+v0.4.8c (2014-11-15)
+--------------------
 
 Fix v0.4.8b bug which gave junk results when a
 0 Hz oscillator has an `f` modulator with `r`
