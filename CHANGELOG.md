@@ -7,6 +7,13 @@ is a shorter change log with only the SAU language changes.
 Pre-release
 -----------
 
+Implement `W` cycle length distortion and modulation:
+ * The new cycle length parameter `w.c` defaults to 1.
+   Values closer to 0 "zoom in" -- sawtooth-like edges
+   may form. Values larger than 1 "zoom out", with the
+   new area filled with a "blank" (the cycle beginning
+   and end amplitude).
+
 Fix default line type for `p.a[]` -- now `lin`, was `cos`.
 
 Major refactoring, mainly of the generator module.
