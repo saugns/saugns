@@ -300,6 +300,7 @@ ParseConv_convert_gendata(ParseConv *restrict o,
 	ogd->pan = gen->pan;
 	ogd->freq = gen->freq;
 	ogd->pm_a = gen->pm_a;
+	ogd->pd_c = gen->pd_c;
 	ogd->phase = gen->phase;
 	ogd->use_type = use_type;
 	/* TODO: separation of types */
