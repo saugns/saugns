@@ -421,15 +421,28 @@ can be a little lower for frequencies close to half the sample rate.
 As a signal generator, if not enclosed within a "[]" list, then
 it will run and output at the current time, for its duration.
 
-Usage: "W", optionally followed by a wave type (e.g. "Wtri"),
-by the default the same as "Wsin". Followed by zero or more
-whitespace-separated parameters, each with a value.
-See "Wave types" for the available wave types.
+Usage: "W", optionally followed by a wave type (e.g. "Wtri"), by
+the default the same as "Wsin", and optionally a "w" subparameter.
+Followed by zero or more whitespace-separated parameters, each with
+a value. See "Wave types" for the available wave types.
 
 Parameters:
 	The "W" wave oscillator has the
 	"Oscillator common parameters", and additionally:
 	w	Wave type -- see "Wave types" for values.
+		.c	Cycle length phase distortion; the default value 1.0
+			does nothing. Values closer to 0 "zoom in", e.g. 1/4
+			reduces a sine to the first quarter. In the opposite
+			direction, a value of 2 doubles the cycle length, so
+			the full wave then takes up the first half, followed
+			by padding with a horizontal line. (The line has the
+			amplitude of the undistorted wave cycle boundaries.)
+				Negative values work like positive ones, but
+			also flip the direction of the waveform, in the same
+			way as changing the sign of the frequency used does.
+			"Value sweep" values are supported; see section.
+			"Modulation with value ranges" values are supported;
+			see section.
 
 Wave types:
 	Beyond 'sin', there's 3 times 3 complementary wave types, in terms
