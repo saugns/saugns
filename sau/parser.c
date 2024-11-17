@@ -1533,38 +1533,6 @@ static sauScriptListData *parse_par_list(sauParser *restrict o,
 	return first_list;
 }
 
-static bool parse_gen(sauParser *restrict o, uint8_t gen_type,
-		uint8_t sym_type, const char *const* restrict sym_names) {
-	struct ParseLevel *pl = o->cur_pl;
-	size_t id = 0; /* default as fallback value */
-	if (sym_type != 0)
-		scan_sym_id(o->sc, &id, sym_type, sym_names);
-	struct NestScope *nest = NestArr_tip(&o->nest);
-	if (!pl->use_type && nest && nest->gen_sweep) {
-		sauScanner_warning(o->sc, NULL,
-				"modulators not supported here");
-		return true;
-	}
-	begin_gen(o, NULL, false, gen_type);
-	pl->gen->mode.main = id;
-	pl->sub_f = parse_in_gen_step;
-	return false;
-}
-
-static bool parse_gen_main(sauParser *restrict o, uint8_t gen_type,
-	uint8_t sym_type, const char *const* restrict sym_names) {
-	struct ParseLevel *pl = o->cur_pl;
-	sauScriptGenData *gen = pl->gen;
-	if (gen->ref.gen_type != gen_type)
-		return true; // reject, lacks parameter
-	size_t id;
-	if (scan_sym_id(o->sc, &id, sym_type, sym_names)) {
-		gen->mode.main = id;
-		gen->params |= SAU_PGENP_MODE;
-	}
-	return false;
-}
-
 static void change_list_use(sauScriptListData *first_list, uint8_t use_type) {
 	for (sauScriptListData *list = first_list; list; list = list->ref.next)
 		list->use_type = use_type;
@@ -1612,6 +1580,45 @@ static uint8_t parse_par_modranges(sauParser *restrict o,
 	return 0;
 }
 
+static bool parse_gen_main(sauParser *restrict o, uint8_t gen_type,
+	uint8_t sym_type, const char *const* restrict sym_names) {
+	struct ParseLevel *pl = o->cur_pl;
+	sauScriptGenData *gen = pl->gen;
+	if (gen->ref.gen_type != gen_type)
+		return true; // reject, lacks parameter
+	size_t id = 0; /* default as fallback value */
+	if (sym_type != 0 && scan_sym_id(o->sc, &id, sym_type, sym_names)) {
+		gen->mode.main = id;
+		gen->params |= SAU_PGENP_MODE;
+	}
+	uint8_t c;
+	switch (gen_type) {
+	case SAU_PGEN_N_wave:
+		switch ((c = sauScanner_getc_after(o->sc, '.'))) {
+		case 'c':
+			return parse_par_modranges(o, NULL, &gen->pd_c, false,
+					SAU_PSWEEP_PDC, SAU_MOD_N_wc_pd);
+		default:
+			return c != 0;
+		}
+	}
+	return false;
+}
+
+static bool parse_gen(sauParser *restrict o, uint8_t gen_type,
+		uint8_t sym_type, const char *const* restrict sym_names) {
+	struct ParseLevel *pl = o->cur_pl;
+	struct NestScope *nest = NestArr_tip(&o->nest);
+	if (!pl->use_type && nest && nest->gen_sweep) {
+		sauScanner_warning(o->sc, NULL,
+				"modulators not supported here");
+		return true;
+	}
+	begin_gen(o, NULL, false, gen_type);
+	pl->sub_f = parse_in_gen_step;
+	return parse_gen_main(o, gen_type, sym_type, sym_names);
+}
+
 static uint8_t parse_gen_amp(sauParser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
 	sauScriptGenData *gen = pl->gen;
@@ -1644,7 +1651,7 @@ static bool parse_gen_mode(sauParser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
 	sauScanner *sc = o->sc;
 	sauScriptGenData *gen = pl->gen;
-	if (gen->ref.gen_type != SAU_PGEN_N_raseg)
+	if (!sau_pgen_is(gen->ref.gen_type, raseg))
 		return true; // reject
 	uint8_t func = SAU_RAS_FUNCTIONS;
 	uint8_t flags = 0;
@@ -2259,6 +2266,7 @@ static void time_gen_lines(sauScriptGenData *restrict gen) {
 	time_range(gen->amp, dur_ms);
 	time_range(gen->freq, dur_ms);
 	time_range(gen->pm_a, dur_ms);
+	time_range(gen->pd_c, dur_ms);
 }
 
 static uint32_t time_gen(sauScriptGenData *restrict gen) {
