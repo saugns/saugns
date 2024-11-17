@@ -77,6 +77,7 @@ typedef struct OscBase {
 
 typedef struct WOscNode {
 	OscBase osc;
+	struct ParWithRangeMod pd_c;
 	sauWOsc wosc;
 } WOscNode;
 
@@ -266,6 +267,7 @@ static void prepare_gen(sauGenerator *restrict o,
 	case SAU_PGEN_N_wave: {
 		WOscNode *wo = &n->wo;
 		sau_init_WOsc(&wo->wosc, o->srate);
+		prepare_range(&wo->pd_c, 1.0);
 		goto OSC_COMMON; }
 	case SAU_PGEN_N_raseg: {
 		RasGNode *rg = &n->rg;
@@ -302,6 +304,7 @@ static void update_ids(AnyGen *restrict n,
 	case SAU_MOD_N_p_pm:     n->osc.pmods    	= ids->a; break;
 	case SAU_MOD_N_pf_pm:    n->osc.fpmods   	= ids->a; break;
 	CASES_4MODS(   pa_pm,    n->osc.pm_a)
+	CASES_4MODS(   wc_pd,    n->wo.pd_c)
 	}
 }
 
@@ -338,6 +341,7 @@ static void update_gen(sauGenerator *restrict o,
 			sauWOsc_set_wave(&wo->wosc, gd->mode.main);
 		if (params & SAU_PGENP_PHASE)
 			sauWOsc_set_phase(&wo->wosc, gd->phase);
+		update_range(&wo->pd_c, gd->pd_c, o->srate);
 		goto OSC_COMMON; }
 	case SAU_PGEN_N_raseg: {
 		RasGNode *rg = &n->rg;
@@ -638,13 +642,17 @@ run_block_wosc(sauGenerator *restrict o,
 	float *pm_buf = run_pm_main_params(o, bufs, len, n, freq); // #3
 	sauPhasor_fill(&n->wo.wosc.phasor, phase_buf, len,
 			freq, pm_buf); // #2 <- #3
+	if (run_valrange_param(o, bufs, len, &n->wo.pd_c, NULL, freq, false,
+				n->wo.pd_c.par.v0 != 1.f)) {
+		sauWOsc_dist_length(&n->wo.wosc, phase_buf, len,
+				bufs[0]); // #2 <- #3, tmp #4, sub #5
+	}
 	float *out_buf = *(bufs++); // #3 (++)
 	bufs++; // amp #4 (++), tmp #5, sub #6 (reserved highest ID returned)
 	if (run_valrange_param(o, bufs, len, &n->osc.pm_a, NULL, freq, false,
 				n->osc.pm_a.par.v0 != 0.f)) {
-		float *selfmod = *bufs; // #5, tmp #6, sub #7
 		sauWOsc_run_selfmod(&n->wo.wosc, out_buf, len, phase_buf,
-				selfmod);
+				bufs[0]); // #3 <- #2; #5, tmp #6, sub #7
 	} else {
 		sauWOsc_run(&n->wo.wosc, out_buf, len, phase_buf);
 	}
@@ -672,12 +680,11 @@ run_block_rasg(sauGenerator *restrict o,
 	bufs++; // amp #4 (++), tmp #5, sub #6 (reserved highest ID returned)
 	if (run_valrange_param(o, bufs, len, &n->osc.pm_a, NULL, freq, false,
 				n->osc.pm_a.par.v0 != 0.f)) {
-		float *selfmod = *bufs; // #5, tmp #6, sub #7
-		sauRasG_run_selfmod(&n->rg.rasg, len, rasg_buf,
-				cycle_buf, selfmod);
+		sauRasG_run_selfmod(&n->rg.rasg, len, rasg_buf, cycle_buf,
+				bufs[0]); // #3 <- #2; #5, tmp #6, sub #7
 	} else {
 		sauRasG_run(&n->rg.rasg, len, rasg_buf, bufs[0], bufs[1],
-				cycle_buf); // tmp #5 and #6
+				cycle_buf); // #3 <- #2; tmp #5 and #6
 	}
 	return (struct BlockBufIDs){.out_id = 3, .freq_id = 1, .amp_id = 4};
 }
