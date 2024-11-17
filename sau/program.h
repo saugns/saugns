@@ -64,6 +64,7 @@ enum {
 	SAU_PSWEEP_AMP,
 	SAU_PSWEEP_FREQ,
 	SAU_PSWEEP_PMA,
+	SAU_PSWEEP_PDC,
 };
 
 /** Frequency parameter default value, when default not changed in a script. */
@@ -91,6 +92,9 @@ enum {
 
 /** True if the given program generator type is an oscillator type. */
 #define sau_pgen_is_osc(type_id) ((type_id) >= SAU_PGEN_N_wave)
+
+/** True if the given program generator type is the given type. */
+#define sau_pgen_is(type_id, N_ID) ((type_id) == SAU_PGEN_N_##N_ID)
 
 /** True if the given program generator type uses seed values. */
 static inline bool sau_pgen_has_seed(unsigned type_id) {
@@ -203,6 +207,7 @@ SAU_MOD__4M(f_fm,  X, " FM",  "f") \
 	X(  p_pm,  1, " PM ", "p") \
 	X(  pf_pm, 1, "fPM ", "p.f") \
 SAU_MOD__4M(pa_pm, X, "aPM",  "p.a") \
+SAU_MOD__4M(wc_pd, X, "CLM",  "w.c") \
 	//
 #define SAU_MOD__4M(NAME, X, LABEL, SYNTAX) /* 4 valrange modulator types */ \
 	X(NAME,     1, LABEL " ", SYNTAX) \
@@ -236,6 +241,7 @@ typedef struct sauProgramGenData {
 	sauRange *amp, *pan;
 	sauRange *freq;
 	sauRange *pm_a;
+	sauRange *pd_c;
 	uint32_t phase;
 	uint32_t seed;
 	union sauPGenMode {
