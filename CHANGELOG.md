@@ -7,12 +7,19 @@ is a shorter change log with only the SAU language changes.
 Pre-release
 -----------
 
-Implement `W` cycle length distortion and modulation:
+Implement `W` phase distortions and their modulation:
  * The new cycle length parameter `w.c` defaults to 1.
    Values closer to 0 "zoom in" -- sawtooth-like edges
    may form. Values larger than 1 "zoom out", with the
    new area filled with a "blank" (the cycle beginning
    and end amplitude).
+ * The new `w.p` and `w.y` parameters allow a PWM-like
+   phase distortion, which changes the size proportion
+   of the 1st and 2nd halves of a cycle. Use `w.p` for
+   "PWM" generalized to any wave type. Meanwhile `w.y`
+   is the inverse, a kind of shape-squash changing how
+   much phase moves in each half, making one "slower",
+   the other "faster".
  * Tweak the `W` oscillator's behavior for 0 Hz and on
    no phase increment generally. It used to repeat the
    last sample which had phase increment, generally OK
