@@ -430,6 +430,7 @@ Parameters:
 	The "W" wave oscillator has the
 	"Oscillator common parameters", and additionally:
 	w	Wave type -- see "Wave types" for values.
+		The phase distortions below are performed in the listed order.
 		.c	Cycle length phase distortion; the default value 1.0
 			does nothing. Values closer to 0 "zoom in", e.g. 1/4
 			reduces a sine to the first quarter. In the opposite
@@ -440,6 +441,25 @@ Parameters:
 				Negative values work like positive ones, but
 			also flip the direction of the waveform, in the same
 			way as changing the sign of the frequency used does.
+			"Value sweep" values are supported; see section.
+			"Modulation with value ranges" values are supported;
+			see section.
+		.p	PWM (pulse-width modulation), as a phase distortion.
+			Usable for any wave type, it changes size proportion
+			of the first and second halves, with 1/2 the default
+			and 0 and 1 the extremes -- though values beyond are
+			allowed, creating different distorted shapes.
+			"Value sweep" values are supported; see section.
+			"Modulation with value ranges" values are supported;
+			see section.
+		.y	Inverse of the PWM-like phase distortion ".p". Where
+			generalized PWM changes relative sizes of the halves
+			of a waveform while preserving their shapes, instead
+			this distortion squashes one half by reducing change
+			in phase inside it, the other half being accelerated
+			and displaced to compensate. Default 1/2, meaning no
+			change, with 0 and 1 extremes -- with values allowed
+			beyond as well, creating different distorted shapes.
 			"Value sweep" values are supported; see section.
 			"Modulation with value ranges" values are supported;
 			see section.
