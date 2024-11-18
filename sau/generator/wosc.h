@@ -170,6 +170,52 @@ static sauMaybeUnused void sauWOsc_dist_length(sauWOsc *restrict o,
 	}
 }
 
+/*
+ * Phase distortion: half-cycle width a.k.a. size proportion of each half.
+ */
+static sauMaybeUnused void sauWOsc_dist_width(sauWOsc *restrict o,
+		uint32_t *restrict phase_ui32,
+		size_t buf_len,
+		const float *restrict pd_f) {
+#if USE_PILUT
+	int32_t c = sauWave_picoeffs[o->wave].phase_adj;
+#else
+	int32_t c = 0;
+#endif
+	for (size_t i = 0; i < buf_len; ++i) {
+		uint32_t p_i = phase_ui32[i] - c;
+		float a = pd_f[i], b = 0x1p32f*a, h = 0x1p32f*0.5f;
+		float x = p_i;
+		x = x < b ?
+			x*(0.5f/a) :
+			(x-b)*(0.5f/(1.f-a)) + h;
+		phase_ui32[i] = sau_ftoi(x) + c;
+	}
+}
+
+/*
+ * Phase distortion: half-cycle height a.k.a. change proportion of each half.
+ */
+static sauMaybeUnused void sauWOsc_dist_height(sauWOsc *restrict o,
+		uint32_t *restrict phase_ui32,
+		size_t buf_len,
+		const float *restrict pd_f) {
+#if USE_PILUT
+	int32_t c = sauWave_picoeffs[o->wave].phase_adj;
+#else
+	int32_t c = 0;
+#endif
+	for (size_t i = 0; i < buf_len; ++i) {
+		uint32_t p_i = phase_ui32[i] - c;
+		float a = pd_f[i], b = 0x1p32f*a, h = 0x1p32f*0.5f;
+		float x = p_i;
+		x = x < h ?
+			x*(a*2) :
+			(x-h)*((1.f-a)*2) + b;
+		phase_ui32[i] = sau_ftoi(x) + c;
+	}
+}
+
 #if !USE_PILUT
 /*
  * Naive LUTs sauWOsc_run().
