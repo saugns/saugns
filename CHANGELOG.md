@@ -13,6 +13,13 @@ Implement `W` cycle length distortion and modulation:
    may form. Values larger than 1 "zoom out", with the
    new area filled with a "blank" (the cycle beginning
    and end amplitude).
+ * Tweak the `W` oscillator's behavior for 0 Hz and on
+   no phase increment generally. It used to repeat the
+   last sample which had phase increment, generally OK
+   but resulting in some fluctuations and raised noise
+   floor with the new "zoom out" distortion. Instead a
+   fresh naive sample is now output (no anti-alias for
+   this special case).
 
 Fix default line type for `p.a[]` -- now `lin`, was `cos`.
 
