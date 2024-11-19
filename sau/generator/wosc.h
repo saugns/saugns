@@ -44,8 +44,9 @@ typedef struct sauWOsc {
 #if USE_PILUT
 	uint32_t prev_phase;
 	double prev_Is;
-#endif
+#else
 	float prev_s;
+#endif
 	float fb_s;
 } sauWOsc;
 
@@ -213,16 +214,8 @@ static void sauWOsc_naive_run_selfmod(sauWOsc *restrict o,
 /* Set up for differentiation (re)start with usable state. */
 static void sauWOsc_reset(sauWOsc *restrict o, uint32_t phase) {
 	const float *const lut = sauWave_piluts[o->wave];
-	const float diff_scale = sauWave_DVSCALE(o->wave);
-	const float diff_offset = sauWave_DVOFFSET(o->wave);
 	if (o->flags & SAU_OSC_RESET_DIFF) {
-		/* one-LUT-value diff works fine for any freq, 0 Hz included */
-		int32_t phase_diff = sauWave_SLEN;
-		o->prev_Is = sauWave_get_herp(lut, phase - phase_diff);
-		double Is = sauWave_get_herp(lut, phase);
-		double x = (diff_scale / phase_diff);
-		o->prev_s = (Is - o->prev_Is) * x + diff_offset;
-		o->prev_Is = Is;
+		o->prev_Is = sauWave_get_herp(lut, phase);
 		o->prev_phase = phase;
 	}
 	o->flags &= ~SAU_OSC_RESET;
@@ -239,6 +232,8 @@ static sauMaybeUnused void sauWOsc_run(sauWOsc *restrict o,
 		const uint32_t *restrict phase_buf) {
 #if USE_PILUT // higher-quality audio (reduce wave, FM & PM aliasing)
 	const float *const lut = sauWave_piluts[o->wave];
+	const float *const lut_backup = sauWave_luts[o->wave];
+	const int32_t lut_offset = sauWave_picoeffs[o->wave].phase_adj;
 	const float diff_scale = sauWave_DVSCALE(o->wave);
 	const float diff_offset = sauWave_DVOFFSET(o->wave);
 	if (buf_len > 0 && o->flags & SAU_OSC_RESET)
@@ -248,13 +243,16 @@ static sauMaybeUnused void sauWOsc_run(sauWOsc *restrict o,
 		uint32_t phase = phase_buf[i];
 		int32_t phase_diff = phase - o->prev_phase;
 		if (phase_diff == 0) {
-			s = o->prev_s;
+			/*
+			 * Use instead of "s = o->prev_s;" to avoid LF noise.
+			 * This matters for phase distortion uses especially.
+			 */
+			s = sauWave_get_lerp(lut_backup, phase - lut_offset);
 		} else {
 			double Is = sauWave_get_herp(lut, phase);
 			double x = (diff_scale / phase_diff);
 			s = (Is - o->prev_Is) * x + diff_offset;
 			o->prev_Is = Is;
-			o->prev_s = s;
 			o->prev_phase = phase;
 		}
 		buf[i] = s;
@@ -275,6 +273,8 @@ static void sauWOsc_run_selfmod(sauWOsc *restrict o,
 		const float *restrict pm_abuf) {
 #if USE_PILUT // higher-quality audio (reduce wave, FM & PM, feedback aliasing)
 	const float *const lut = sauWave_piluts[o->wave];
+	const float *const lut_backup = sauWave_luts[o->wave];
+	const int32_t lut_offset = sauWave_picoeffs[o->wave].phase_adj;
 	const float diff_scale = sauWave_DVSCALE(o->wave);
 	const float diff_offset = sauWave_DVOFFSET(o->wave);
 	const float fb_scale = 0x1p31f; // like level 6 in Yamaha chips
@@ -286,13 +286,16 @@ static void sauWOsc_run_selfmod(sauWOsc *restrict o,
 			sau_ftoi(o->fb_s * pm_abuf[i] * fb_scale);
 		int32_t phase_diff = phase - o->prev_phase;
 		if (phase_diff == 0) {
-			s = o->prev_s;
+			/*
+			 * Use instead of "s = o->prev_s;" to avoid LF noise.
+			 * This matters for phase distortion uses especially.
+			 */
+			s = sauWave_get_lerp(lut_backup, phase - lut_offset);
 		} else {
 			double Is = sauWave_get_herp(lut, phase);
 			double x = (diff_scale / phase_diff);
 			s = (Is - o->prev_Is) * x + diff_offset;
 			o->prev_Is = Is;
-			o->prev_s = s;
 			o->prev_phase = phase;
 		}
 		buf[i] = s;
