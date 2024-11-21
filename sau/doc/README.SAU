@@ -444,6 +444,15 @@ Parameters:
 			"Value sweep" values are supported; see section.
 			"Modulation with value ranges" values are supported;
 			see section.
+		.h	Hold for cycle portion phase distortion; the default
+			value 0.0 does nothing. A positive value like 1/4 is
+			used to extend a horizontal line from the beginning,
+			overwriting e.g. 1/4 of the cycle. A negative value,
+			by contrast, extends the line from the end backward,
+			so that -1/4 overwrites the last 1/4 of the cycle.
+			"Value sweep" values are supported; see section.
+			"Modulation with value ranges" values are supported;
+			see section.
 		.p	PWM (pulse-width modulation), as a phase distortion.
 			Usable for any wave type, it changes size proportion
 			of the first and second halves, with 1/2 the default
