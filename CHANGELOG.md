@@ -13,6 +13,12 @@ Implement `W` phase distortions and their modulation:
    may form. Values larger than 1 "zoom out", with the
    new area filled with a "blank" (the cycle beginning
    and end amplitude).
+ * The new hold phase distortion with parameter `w.h`,
+   a way to overwrite a portion of a wave cycle. Using
+   a positive value draws a horizontal line up to that
+   phase position, e.g. 1/4 for the first 1/4; using a
+   negative value the line is drawn backward (for -1/4
+   over the last 1/4).
  * The new `w.p` and `w.y` parameters allow a PWM-like
    phase distortion, which changes the size proportion
    of the 1st and 2nd halves of a cycle. Use `w.p` for
