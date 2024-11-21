@@ -77,7 +77,7 @@ typedef struct OscBase {
 
 typedef struct WOscNode {
 	OscBase osc;
-	struct ParWithRangeMod pd_c, pd_p, pd_y;
+	struct ParWithRangeMod pd_c, pd_h, pd_p, pd_y;
 	sauWOsc wosc;
 } WOscNode;
 
@@ -268,6 +268,7 @@ static void prepare_gen(sauGenerator *restrict o,
 		WOscNode *wo = &n->wo;
 		sau_init_WOsc(&wo->wosc, o->srate);
 		prepare_range(&wo->pd_c, 1.0);
+		prepare_range(&wo->pd_h, 0.0);
 		prepare_range(&wo->pd_p, 0.5);
 		prepare_range(&wo->pd_y, 0.5);
 		goto OSC_COMMON; }
@@ -307,6 +308,7 @@ static void update_ids(AnyGen *restrict n,
 	case SAU_MOD_N_pf_pm:    n->osc.fpmods   	= ids->a; break;
 	CASES_4MODS(   pa_pm,    n->osc.pm_a)
 	CASES_4MODS(   wc_pd,    n->wo.pd_c)
+	CASES_4MODS(   wh_pd,    n->wo.pd_h)
 	CASES_4MODS(   wp_pd,    n->wo.pd_p)
 	CASES_4MODS(   wy_pd,    n->wo.pd_y)
 	}
@@ -346,6 +348,7 @@ static void update_gen(sauGenerator *restrict o,
 		if (params & SAU_PGENP_PHASE)
 			sauWOsc_set_phase(&wo->wosc, gd->phase);
 		update_range(&wo->pd_c, gd->pd_c, o->srate);
+		update_range(&wo->pd_h, gd->pd_h, o->srate);
 		update_range(&wo->pd_p, gd->pd_p, o->srate);
 		update_range(&wo->pd_y, gd->pd_y, o->srate);
 		goto OSC_COMMON; }
@@ -651,6 +654,11 @@ run_block_wosc(sauGenerator *restrict o,
 	if (run_valrange_param(o, bufs, len, &n->wo.pd_c, NULL, freq, false,
 				n->wo.pd_c.par.v0 != 1.f)) {
 		sauWOsc_dist_length(&n->wo.wosc, phase_buf, len,
+				bufs[0]); // #2 <- #3, tmp #4, sub #5
+	}
+	if (run_valrange_param(o, bufs, len, &n->wo.pd_h, NULL, freq, false,
+				n->wo.pd_h.par.v0 != 0.f)) {
+		sauWOsc_dist_hold(&n->wo.wosc, phase_buf, len,
 				bufs[0]); // #2 <- #3, tmp #4, sub #5
 	}
 	if (run_valrange_param(o, bufs, len, &n->wo.pd_p, NULL, freq, false,

@@ -67,7 +67,7 @@ typedef struct sauScriptGenData {
 	sauRange *amp, *pan;
 	sauRange *freq;
 	sauRange *pm_a;
-	sauRange *pd_c, *pd_p, *pd_y;
+	sauRange *pd_c, *pd_h, *pd_p, *pd_y;
 	uint32_t phase;
 	uint32_t seed;
 	union sauPGenMode mode;

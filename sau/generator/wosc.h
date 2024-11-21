@@ -154,7 +154,8 @@ static sauMaybeUnused void sauPhasor_fill(sauPhasor *restrict o,
  * Phase distortion: cycle length. Below 1 zooms in resulting in jagged shapes,
  * above 1 zooms out adding padding (the amplitude at the cycle beginning/end).
  */
-static sauMaybeUnused void sauWOsc_dist_length(sauWOsc *restrict o,
+static sauMaybeUnused void
+sauWOsc_dist_length(sauWOsc *restrict o sauMaybeUnused,
 		uint32_t *restrict phase_ui32,
 		size_t buf_len,
 		const float *restrict pd_f) {
@@ -171,9 +172,34 @@ static sauMaybeUnused void sauWOsc_dist_length(sauWOsc *restrict o,
 }
 
 /*
+ * Phase distortion: hold from beginning/end for part of a cycle.
+ * Positive values hold forwards, negative values hold backwards.
+ */
+static sauMaybeUnused void
+sauWOsc_dist_hold(sauWOsc *restrict o sauMaybeUnused,
+		uint32_t *restrict phase_ui32,
+		size_t buf_len,
+		const float *restrict pd_f) {
+#if USE_PILUT
+	int32_t c = sauWave_picoeffs[o->wave].phase_adj;
+#else
+	int32_t c = 0;
+#endif
+	for (size_t i = 0; i < buf_len; ++i) {
+		uint32_t p_i = phase_ui32[i] - c;
+		float x = p_i, a = pd_f[i] * 0x1p32f;
+		x = a >= 0.f ?
+			(x >= a ? x : 0.f) :
+			(x <= a + 0x1p32f ? x : 0.f);
+		phase_ui32[i] = sau_ftoi(x) + c;
+	}
+}
+
+/*
  * Phase distortion: half-cycle width a.k.a. size proportion of each half.
  */
-static sauMaybeUnused void sauWOsc_dist_width(sauWOsc *restrict o,
+static sauMaybeUnused void
+sauWOsc_dist_width(sauWOsc *restrict o sauMaybeUnused,
 		uint32_t *restrict phase_ui32,
 		size_t buf_len,
 		const float *restrict pd_f) {
@@ -196,7 +222,8 @@ static sauMaybeUnused void sauWOsc_dist_width(sauWOsc *restrict o,
 /*
  * Phase distortion: half-cycle height a.k.a. change proportion of each half.
  */
-static sauMaybeUnused void sauWOsc_dist_height(sauWOsc *restrict o,
+static sauMaybeUnused void
+sauWOsc_dist_height(sauWOsc *restrict o sauMaybeUnused,
 		uint32_t *restrict phase_ui32,
 		size_t buf_len,
 		const float *restrict pd_f) {
