@@ -27,12 +27,20 @@ Implement `W` phase distortions and their modulation:
    much phase moves in each half, making one "slower",
    the other "faster".
  * Tweak the `W` oscillator's behavior for 0 Hz and on
-   no phase increment generally. It used to repeat the
+   no phase increment, for ADAA. It used to repeat the
    last sample which had phase increment, generally OK
    but resulting in some fluctuations and raised noise
    floor with the new "zoom out" distortion. Instead a
    fresh naive sample is now output (no anti-alias for
    this special case).
+
+Allow use of `W` as a naive oscillator using a new mode `m`
+switch. (The `W m` option is similar to `R m`, but simpler,
+having only 2 letters for modes as yet.) The default is `a`
+(ADAA, antiderivative anti-aliasing) preserving the current
+behavior. Using `n` switches to the naive implementation in
+the codebase that gives results like pre-v0.3.9 saugns, but
+with the current wave types -- not rounded like v0.3.3 had.
 
 Fix default line type for `p.a[]` -- now `lin`, was `cos`.
 

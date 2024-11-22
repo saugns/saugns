@@ -74,8 +74,7 @@ struct ScanLookup {
  * Default script options, used until changed in a script.
  */
 static const sauScriptOptions def_sopt = {
-	.set = 0,
-	.ampmult = 1.f,
+	.ampmult = NAN,
 	.A4_freq = 440.f,
 	.def_time_ms = 1000,
 	.def_ampmult = 1.f,
@@ -85,6 +84,8 @@ static const sauScriptOptions def_sopt = {
 	.note_key = MUSKEY(0, 0),
 	.key_octave = 4,
 	.key_system = 0,
+	.def_ras = {0},
+	.def_woo = {.func = SAU_WAVE_F_ADAA, .flags = SAU_WAVE_O_FUNC_SET},
 };
 
 static bool init_ScanLookup(struct ScanLookup *restrict o,
@@ -1178,6 +1179,12 @@ static void begin_gen(sauParser *restrict o,
 		if (pl->used_ampmult != 1.f)
 			gen->amp = create_range(o, false, SAU_PSWEEP_AMP);
 		if (sau_pgen_is_osc(type)) {
+			switch (type) {
+			case SAU_PGEN_N_raseg:
+				gen->mode.ras = o->sl.sopt.def_ras; break;
+			case SAU_PGEN_N_wave:
+				gen->mode.woo = o->sl.sopt.def_woo; break;
+			}
 			bool freq_ratio = is_nested && info->has_osc_parent;
 			if (freq_ratio || o->sl.sopt.def_freq != SAU_PDEF_FREQ)
 				gen->freq = create_range(o,
@@ -1232,7 +1239,6 @@ static void enter_level(sauParser *restrict o,
 			 * an amod list (where the value builds on the outer).
 			 */
 			nest->sopt_save = o->sl.sopt;
-			o->sl.sopt.set = 0;
 			if (use_type != SAU_MOD_N_carr &&
 			    !(use_type >= SAU_MOD_N_a_am &&
 			      use_type < SAU_MOD_N_a_am_r))
@@ -1307,18 +1313,16 @@ static bool parse_so_amp(sauParser *restrict o) {
 		    pl->use_type < SAU_MOD_N_a_am_r)
 			val *= nest->sopt_save.ampmult;
 		o->sl.sopt.def_ampmult = val;
-		o->sl.sopt.set |= SAU_SOPT_DEF_AMPMULT;
 	}
 	switch ((c = sauScanner_getc_after(sc, '.'))) {
 	case 'm':
 		if (nest)
 			return true; // only allow in global scope
-		if (o->sl.sopt.set & SAU_SOPT_AMPMULT)
+		if (!isnan(o->sl.sopt.ampmult))
 			sauScanner_warning(sc, NULL,
 "'a.m' script-wide gain mix control already set");
 		if (scan_num(sc, NULL, &val)) {
 			o->sl.sopt.ampmult = val;
-			o->sl.sopt.set |= SAU_SOPT_AMPMULT;
 		}
 		break;
 	default:
@@ -1334,13 +1338,11 @@ static bool parse_so_freq(sauParser *restrict o, bool rel_freq) {
 	if (rel_freq) {
 		if (scan_num(sc, NULL, &val)) {
 			o->sl.sopt.def_relfreq = val;
-			o->sl.sopt.set |= SAU_SOPT_DEF_RELFREQ;
 		}
 		return false;
 	}
 	if (scan_num(sc, scan_note_const, &val)) {
 		o->sl.sopt.def_freq = val;
-		o->sl.sopt.set |= SAU_SOPT_DEF_FREQ;
 	}
 	switch ((c = sauScanner_getc_after(sc, '.'))) {
 	case 'k': {
@@ -1375,27 +1377,14 @@ static bool parse_so_freq(sauParser *restrict o, bool rel_freq) {
 				break;
 			}
 			o->sl.sopt.A4_freq = val;
-			o->sl.sopt.set |= SAU_SOPT_A4_FREQ;
 		}
 		break;
 	case 's':
 		switch ((c = sauScanner_get_suffc(sc))) {
-		case 'e':
-			o->sl.sopt.key_system = 0;
-			o->sl.sopt.set |= SAU_SOPT_NOTE_SCALE;
-			break;
-		case 'c':
-			o->sl.sopt.key_system = 1;
-			o->sl.sopt.set |= SAU_SOPT_NOTE_SCALE;
-			break;
-		case 'p':
-			o->sl.sopt.key_system = 2;
-			o->sl.sopt.set |= SAU_SOPT_NOTE_SCALE;
-			break;
-		case 'j':
-			o->sl.sopt.key_system = 3;
-			o->sl.sopt.set |= SAU_SOPT_NOTE_SCALE;
-			break;
+		case 'e': o->sl.sopt.key_system = 0; break;
+		case 'c': o->sl.sopt.key_system = 1; break;
+		case 'p': o->sl.sopt.key_system = 2; break;
+		case 'j': o->sl.sopt.key_system = 3; break;
 		default:
 			if (!c)
 				return false;
@@ -1421,7 +1410,6 @@ static void parse_in_settings(sauParser *restrict o) {
 		case 'c':
 			if (scan_num(sc, scan_chanmix_const, &val)) {
 				o->sl.sopt.def_chanmix = val;
-				o->sl.sopt.set |= SAU_SOPT_DEF_CHANMIX;
 			}
 			break;
 		case 'f':
@@ -1432,7 +1420,6 @@ static void parse_in_settings(sauParser *restrict o) {
 			break;
 		case 't':
 			if (scan_time_val(sc, &o->sl.sopt.def_time_ms))
-				o->sl.sopt.set |= SAU_SOPT_DEF_TIME;
 			break;
 		default:
 			goto DEFER;
@@ -1654,12 +1641,8 @@ static bool parse_gen_freq(sauParser *restrict o, bool rel_freq) {
 			SAU_PSWEEP_FREQ, SAU_MOD_N_f_fm);
 }
 
-static bool parse_gen_mode(sauParser *restrict o) {
-	struct ParseLevel *pl = o->cur_pl;
-	sauScanner *sc = o->sc;
-	sauScriptGenData *gen = pl->gen;
-	if (!sau_pgen_is(gen->ref.gen_type, raseg))
-		return true; // reject
+static bool parse_gen_mode_raseg(sauScanner *restrict sc,
+		sauScriptGenData *restrict gen) {
 	uint8_t func = SAU_RAS_FUNCTIONS;
 	uint8_t flags = 0;
 	int32_t level = -1;
@@ -1720,9 +1703,9 @@ static bool parse_gen_mode(sauParser *restrict o) {
 	 * Subparameters under mode for 'R'.
 	 */
 	double val;
-	switch ((c = sauScanner_getc_after(o->sc, '.'))) {
+	switch ((c = sauScanner_getc_after(sc, '.'))) {
 	case 'a':
-		if (scan_num(o->sc, NULL, &val)) {
+		if (scan_num(sc, NULL, &val)) {
 			gen->mode.ras.alpha = sau_weylseq_dtoui32(val);
 			gen->mode.ras.flags |= SAU_RAS_O_ASUBVAL_SET;
 			gen->params |= SAU_PGENP_MODE;
@@ -1732,6 +1715,43 @@ static bool parse_gen_mode(sauParser *restrict o) {
 		return c != 0;
 	}
 	return false;
+}
+
+static bool parse_gen_mode_wave(sauScanner *restrict sc,
+		sauScriptGenData *restrict gen) {
+	uint8_t func = SAU_WAVE_FUNCTIONS;
+	uint8_t c;
+	for (;;) {
+		int matched = 0;
+		if (!(func < SAU_WAVE_FUNCTIONS) && ++matched)
+		switch ((c = sauScanner_getc(sc))) {
+		case 'n': func = SAU_WAVE_F_NAIVE; break;
+		case 'a': func = SAU_WAVE_F_ADAA; break;
+		default:
+			sauScanner_ungetc(sc);
+			--matched;
+			break;
+		}
+		if (matched == 0)
+			break;
+	}
+	if (func < SAU_WAVE_FUNCTIONS) {
+		gen->mode.woo.func = func;
+		gen->mode.woo.flags |= SAU_WAVE_O_FUNC_SET;
+		gen->params |= SAU_PGENP_MODE;
+	}
+	return false;
+}
+
+static bool parse_gen_mode(sauParser *restrict o) {
+	struct ParseLevel *pl = o->cur_pl;
+	sauScanner *sc = o->sc;
+	sauScriptGenData *gen = pl->gen;
+	switch (gen->ref.gen_type) {
+	case SAU_PGEN_N_raseg:  return parse_gen_mode_raseg(sc, gen);
+	case SAU_PGEN_N_wave:   return parse_gen_mode_wave(sc, gen);
+	default:                return true; // reject
+	}
 }
 
 static bool parse_gen_phase(sauParser *restrict o) {
@@ -1808,7 +1828,7 @@ static void parse_in_gen_step(sauParser *restrict o) {
 		case 'l':
 			if (parse_gen_main(o, SAU_PGEN_N_raseg, SAU_SYM_LINE_ID,
 						sauLine_names)) goto DEFER;
-			pl->gen->mode.ras.flags |= SAU_RAS_O_LINE_SET;
+			gen->mode.ras.flags |= SAU_RAS_O_LINE_SET;
 			break;
 		case 'm':
 			if (parse_gen_mode(o)) goto DEFER;
@@ -1856,6 +1876,7 @@ static void parse_in_gen_step(sauParser *restrict o) {
 		case 'w':
 			if (parse_gen_main(o, SAU_PGEN_N_wave, SAU_SYM_WAVE_ID,
 						sauWave_names)) goto DEFER;
+			gen->mode.woo.flags |= SAU_WAVE_O_WAVE_SET;
 			break;
 		default:
 			goto DEFER;
@@ -2058,6 +2079,7 @@ static bool parse_level(sauParser *restrict o,
 		case 'W':
 			parse_gen(o, SAU_PGEN_N_wave,
 					SAU_SYM_WAVE_ID, sauWave_names);
+			pl.gen->mode.woo.flags |= SAU_WAVE_O_WAVE_SET;
 			break;
 		case '[':
 			prepare_event(o, NULL, false);
