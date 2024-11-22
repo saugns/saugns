@@ -94,19 +94,18 @@ static inline void sauRasG_set_phase(sauRasG *restrict o, uint32_t phase) {
 /**
  * Update mode options. Will adjust settings which are dependent on the mode.
  */
-static void sauRasG_set_opt(sauRasG *restrict o,
-		const sauRasOpt *restrict opt) {
-	unsigned flags = opt->flags;
-	if (opt->flags & SAU_RAS_O_LINE_SET)
-		o->opt.line = opt->line;
-	if (opt->flags & SAU_RAS_O_FUNC_SET)
-		o->opt.func = opt->func;
+static void sauRasG_set_opt(sauRasG *restrict o, const sauRasOpt opt) {
+	unsigned flags = opt.flags;
+	if (opt.flags & SAU_RAS_O_LINE_SET)
+		o->opt.line = opt.line;
+	if (opt.flags & SAU_RAS_O_FUNC_SET)
+		o->opt.func = opt.func;
 	else
 		flags |= o->opt.flags; /* keep old modifying flags */
-	if (opt->flags & SAU_RAS_O_LEVEL_SET)
-		o->opt.level = opt->level;
-	if (opt->flags & SAU_RAS_O_ASUBVAL_SET)
-		o->opt.alpha = opt->alpha;
+	if (opt.flags & SAU_RAS_O_LEVEL_SET)
+		o->opt.level = opt.level;
+	if (opt.flags & SAU_RAS_O_ASUBVAL_SET)
+		o->opt.alpha = opt.alpha;
 	o->opt.flags = flags;
 	bool rate2x = !(flags & SAU_RAS_O_HALFSHAPE);
 	if (rate2x != o->cyclor.rate2x) {

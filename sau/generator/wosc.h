@@ -15,14 +15,6 @@
 #include <sau/wave.h>
 #include <sau/math.h>
 
-/*
- * Use pre-integrated LUTs ("PILUTs")?
- *
- * Turn off to use the raw naive LUTs,
- * kept for testing/"viewing" of them.
- */
-#define USE_PILUT 1
-
 /**
  * Calculate the coefficent, based on the sample rate, used for
  * the per-sample phase by multiplying with the frequency used.
@@ -39,14 +31,10 @@ typedef struct sauPhasor {
 
 typedef struct sauWOsc {
 	sauPhasor phasor;
-	uint8_t wave;
-	uint8_t flags;
-#if USE_PILUT
+	sauWaveOpt opt;
 	uint32_t prev_phase;
 	double prev_Is;
-#else
 	float prev_s;
-#endif
 	float fb_s;
 } sauWOsc;
 
@@ -55,40 +43,49 @@ typedef struct sauWOsc {
  */
 static inline void sau_init_WOsc(sauWOsc *restrict o, uint32_t srate) {
 	*o = (sauWOsc){
-#if USE_PILUT
-		.phasor = (sauPhasor){
-			.phase = sauWave_picoeffs[SAU_WAVE_N_sin].phase_adj,
-			.coeff = sauPhasor_COEFF(srate),
-		},
-#else
 		.phasor = (sauPhasor){
 			.phase = 0,
 			.coeff = sauPhasor_COEFF(srate),
 		},
-#endif
-		.wave = SAU_WAVE_N_sin,
-		.flags = SAU_OSC_RESET,
+		.opt.wave = SAU_WAVE_N_sin,
+		.opt.func = SAU_WAVE_F_NAIVE,
+		.opt.flags = 0,
 	};
 }
 
 static inline void sauWOsc_set_phase(sauWOsc *restrict o, uint32_t phase) {
-#if USE_PILUT
-	o->phasor.phase = phase + sauWave_picoeffs[o->wave].phase_adj;
-#else
+	if (o->opt.func == SAU_WAVE_F_ADAA) {
+		phase += sauWave_picoeffs[o->opt.wave].phase_adj;
+	}
 	o->phasor.phase = phase;
-#endif
 }
 
 static inline void sauWOsc_set_wave(sauWOsc *restrict o, uint8_t wave) {
-#if USE_PILUT
-	uint32_t old_offset = sauWave_picoeffs[o->wave].phase_adj;
-	uint32_t offset = sauWave_picoeffs[wave].phase_adj;
-	o->phasor.phase += offset - old_offset;
-	o->wave = wave;
-	o->flags |= SAU_OSC_RESET_DIFF;
-#else
-	o->wave = wave;
-#endif
+	if (o->opt.func == SAU_WAVE_F_ADAA) {
+		uint32_t old_offset = sauWave_picoeffs[o->opt.wave].phase_adj;
+		uint32_t offset = sauWave_picoeffs[wave].phase_adj;
+		o->phasor.phase += offset - old_offset;
+		o->opt.wave = wave;
+		o->opt.flags |= SAU_OSC_RESET_DIFF;
+	} else {
+		o->opt.wave = wave;
+	}
+}
+
+/**
+ * Update mode options. Will adjust settings which are dependent on the mode.
+ */
+static void sauWOsc_set_opt(sauWOsc *restrict o, const sauWaveOpt opt) {
+	unsigned flags = opt.flags;
+	if (opt.flags & SAU_WAVE_O_FUNC_SET) {
+		uint32_t offset = sauWave_picoeffs[o->opt.wave].phase_adj;
+		if (o->opt.func == SAU_WAVE_F_ADAA) o->phasor.phase -= offset;
+		o->opt.func = opt.func;
+		if (o->opt.func == SAU_WAVE_F_ADAA) o->phasor.phase += offset;
+	}
+	if (opt.flags & SAU_WAVE_O_WAVE_SET)
+		sauWOsc_set_wave(o, opt.wave);
+	o->opt.flags = flags;
 }
 
 /**
@@ -124,31 +121,33 @@ static inline int32_t sauWOsc_cycle_offs(sauWOsc *restrict o,
 	return (phs - sauWave_SLEN) / inc;
 }
 
-#if !USE_PILUT
-# define P(inc, ofs) ofs + o->phase; (o->phase += inc)     /* post-increment */
-#else
-# define P(inc, ofs) ofs + (o->phase += inc)               /* pre-increment */
-#endif
-
 /**
  * Fill phase-value buffer for use with sauWOsc_run().
  */
-static sauMaybeUnused void sauPhasor_fill(sauPhasor *restrict o,
+static sauMaybeUnused void sauWOsc_fill(sauWOsc *restrict o,
 		uint32_t *restrict phase_ui32,
 		size_t buf_len,
 		const float *restrict freq_f,
 		const float *restrict pm_f) {
-#define FILL(FREQ, PM_IN) \
+#define PRE(inc, ofs)  ofs + (o->phasor.phase += inc) // be ahead one sample
+#define POST(inc, ofs) ofs + o->phasor.phase; (o->phasor.phase += inc)
+#define FILL(FREQ, P, PM_IN) \
 	for (size_t i = 0; i < buf_len; ++i) { \
-		phase_ui32[i] = P(sau_ftoi(o->coeff * (FREQ)), (PM_IN)); \
+		phase_ui32[i] = \
+			P(sau_ftoi(o->phasor.coeff * (FREQ)), (PM_IN)); \
 	} \
 /**/
-	if (!pm_f) FILL(freq_f[i], 0)
-	else       FILL(freq_f[i], sau_ftoi(pm_f[i] * 0x1p31f))
+	if (o->opt.func == SAU_WAVE_F_ADAA) { // compensate for 1-sample off
+		if (!pm_f) FILL(freq_f[i], PRE, 0)
+		else       FILL(freq_f[i], PRE, sau_ftoi(pm_f[i] * 0x1p31f))
+	} else {
+		if (!pm_f) FILL(freq_f[i], POST, 0)
+		else       FILL(freq_f[i], POST, sau_ftoi(pm_f[i] * 0x1p31f))
+	}
+#undef PRE
+#undef POST
 #undef FILL
 }
-
-#undef P /* done */
 
 /*
  * Phase distortion: cycle length. Below 1 zooms in resulting in jagged shapes,
@@ -159,11 +158,10 @@ sauWOsc_dist_length(sauWOsc *restrict o sauMaybeUnused,
 		uint32_t *restrict phase_ui32,
 		size_t buf_len,
 		const float *restrict pd_f) {
-#if USE_PILUT
-	int32_t c = sauWave_picoeffs[o->wave].phase_adj;
-#else
 	int32_t c = 0;
-#endif
+	if (o->opt.func == SAU_WAVE_F_ADAA) {
+		c = sauWave_picoeffs[o->opt.wave].phase_adj;
+	}
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t p_i = phase_ui32[i] - c;
 		float x = sau_fclampf(p_i * pd_f[i], -0x1p32f, 0x1p32f);
@@ -180,11 +178,10 @@ sauWOsc_dist_hold(sauWOsc *restrict o sauMaybeUnused,
 		uint32_t *restrict phase_ui32,
 		size_t buf_len,
 		const float *restrict pd_f) {
-#if USE_PILUT
-	int32_t c = sauWave_picoeffs[o->wave].phase_adj;
-#else
 	int32_t c = 0;
-#endif
+	if (o->opt.func == SAU_WAVE_F_ADAA) {
+		c = sauWave_picoeffs[o->opt.wave].phase_adj;
+	}
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t p_i = phase_ui32[i] - c;
 		float x = p_i, a = pd_f[i] * 0x1p32f;
@@ -203,11 +200,10 @@ sauWOsc_dist_width(sauWOsc *restrict o sauMaybeUnused,
 		uint32_t *restrict phase_ui32,
 		size_t buf_len,
 		const float *restrict pd_f) {
-#if USE_PILUT
-	int32_t c = sauWave_picoeffs[o->wave].phase_adj;
-#else
 	int32_t c = 0;
-#endif
+	if (o->opt.func == SAU_WAVE_F_ADAA) {
+		c = sauWave_picoeffs[o->opt.wave].phase_adj;
+	}
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t p_i = phase_ui32[i] - c;
 		float a = pd_f[i], b = 0x1p32f*a, h = 0x1p32f*0.5f;
@@ -227,11 +223,10 @@ sauWOsc_dist_height(sauWOsc *restrict o sauMaybeUnused,
 		uint32_t *restrict phase_ui32,
 		size_t buf_len,
 		const float *restrict pd_f) {
-#if USE_PILUT
-	int32_t c = sauWave_picoeffs[o->wave].phase_adj;
-#else
 	int32_t c = 0;
-#endif
+	if (o->opt.func == SAU_WAVE_F_ADAA) {
+		c = sauWave_picoeffs[o->opt.wave].phase_adj;
+	}
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t p_i = phase_ui32[i] - c;
 		float a = pd_f[i], b = 0x1p32f*a, h = 0x1p32f*0.5f;
@@ -243,7 +238,6 @@ sauWOsc_dist_height(sauWOsc *restrict o sauMaybeUnused,
 	}
 }
 
-#if !USE_PILUT
 /*
  * Naive LUTs sauWOsc_run().
  *
@@ -252,7 +246,7 @@ sauWOsc_dist_height(sauWOsc *restrict o sauMaybeUnused,
 static void sauWOsc_naive_run(sauWOsc *restrict o,
 		float *restrict buf, size_t buf_len,
 		const uint32_t *restrict phase_buf) {
-	const float *const lut = sauWave_luts[o->wave];
+	const float *const lut = sauWave_luts[o->opt.wave];
 	for (size_t i = 0; i < buf_len; ++i) {
 		buf[i] = sauWave_get_lerp(lut, phase_buf[i]);
 	}
@@ -268,7 +262,7 @@ static void sauWOsc_naive_run_selfmod(sauWOsc *restrict o,
 		const uint32_t *restrict phase_buf,
 		const float *restrict pm_abuf) {
 	const float fb_scale = 0x1p31f * 0.5f; // like level 6 in Yamaha chips
-	const float *const lut = sauWave_luts[o->wave];
+	const float *const lut = sauWave_luts[o->opt.wave];
 	for (size_t i = 0; i < buf_len; ++i) {
 		float s = buf[i] = sauWave_get_lerp(lut, phase_buf[i]
 				+ sau_ftoi(o->fb_s * pm_abuf[i] * fb_scale));
@@ -281,19 +275,16 @@ static void sauWOsc_naive_run_selfmod(sauWOsc *restrict o,
 		o->prev_s = s;
 	}
 }
-#endif
 
-#if USE_PILUT
 /* Set up for differentiation (re)start with usable state. */
-static void sauWOsc_reset(sauWOsc *restrict o, uint32_t phase) {
-	const float *const lut = sauWave_piluts[o->wave];
-	if (o->flags & SAU_OSC_RESET_DIFF) {
+static void sauWOsc_adaa_reset(sauWOsc *restrict o, uint32_t phase) {
+	const float *const lut = sauWave_piluts[o->opt.wave];
+	if (o->opt.flags & SAU_OSC_RESET_DIFF) {
 		o->prev_Is = sauWave_get_herp(lut, phase);
 		o->prev_phase = phase;
 	}
-	o->flags &= ~SAU_OSC_RESET;
+	o->opt.flags &= ~SAU_OSC_RESET;
 }
-#endif
 
 /**
  * Run for \p buf_len samples, generating output.
@@ -303,14 +294,19 @@ static void sauWOsc_reset(sauWOsc *restrict o, uint32_t phase) {
 static sauMaybeUnused void sauWOsc_run(sauWOsc *restrict o,
 		float *restrict buf, size_t buf_len,
 		const uint32_t *restrict phase_buf) {
-#if USE_PILUT // higher-quality audio (reduce wave, FM & PM aliasing)
-	const float *const lut = sauWave_piluts[o->wave];
-	const float *const lut_backup = sauWave_luts[o->wave];
-	const int32_t lut_offset = sauWave_picoeffs[o->wave].phase_adj;
-	const float diff_scale = sauWave_DVSCALE(o->wave);
-	const float diff_offset = sauWave_DVOFFSET(o->wave);
-	if (buf_len > 0 && o->flags & SAU_OSC_RESET)
-		sauWOsc_reset(o, phase_buf[0]);
+	if (o->opt.func == SAU_WAVE_F_NAIVE) {
+		sauWOsc_naive_run(o, buf, buf_len, phase_buf);
+		return;
+	}
+	// Higher-quality audio (reduce wave, FM & PM aliasing).
+	unsigned wave = o->opt.wave;
+	const float *const lut = sauWave_piluts[wave];
+	const float *const lut_backup = sauWave_luts[wave];
+	const int32_t lut_offset = sauWave_picoeffs[wave].phase_adj;
+	const float diff_scale = sauWave_DVSCALE(wave);
+	const float diff_offset = sauWave_DVOFFSET(wave);
+	if (buf_len > 0 && o->opt.flags & SAU_OSC_RESET)
+		sauWOsc_adaa_reset(o, phase_buf[0]);
 	for (size_t i = 0; i < buf_len; ++i) {
 		float s;
 		uint32_t phase = phase_buf[i];
@@ -330,9 +326,6 @@ static sauMaybeUnused void sauWOsc_run(sauWOsc *restrict o,
 		}
 		buf[i] = s;
 	}
-#else // test naive LUT
-	sauWOsc_naive_run(o, buf, buf_len, phase_buf);
-#endif
 }
 
 /**
@@ -344,15 +337,20 @@ static void sauWOsc_run_selfmod(sauWOsc *restrict o,
 		float *restrict buf, size_t buf_len,
 		const uint32_t *restrict phase_buf,
 		const float *restrict pm_abuf) {
-#if USE_PILUT // higher-quality audio (reduce wave, FM & PM, feedback aliasing)
-	const float *const lut = sauWave_piluts[o->wave];
-	const float *const lut_backup = sauWave_luts[o->wave];
-	const int32_t lut_offset = sauWave_picoeffs[o->wave].phase_adj;
-	const float diff_scale = sauWave_DVSCALE(o->wave);
-	const float diff_offset = sauWave_DVOFFSET(o->wave);
+	if (o->opt.func == SAU_WAVE_F_NAIVE) {
+		sauWOsc_naive_run_selfmod(o, buf, buf_len, phase_buf, pm_abuf);
+		return;
+	}
+	// Higher-quality audio (reduce wave, FM & PM, feedback aliasing).
+	unsigned wave = o->opt.wave;
+	const float *const lut = sauWave_piluts[wave];
+	const float *const lut_backup = sauWave_luts[wave];
+	const int32_t lut_offset = sauWave_picoeffs[wave].phase_adj;
+	const float diff_scale = sauWave_DVSCALE(wave);
+	const float diff_offset = sauWave_DVOFFSET(wave);
 	const float fb_scale = 0x1p31f; // like level 6 in Yamaha chips
-	if (buf_len > 0 && o->flags & SAU_OSC_RESET)
-		sauWOsc_reset(o, phase_buf[0]);
+	if (buf_len > 0 && o->opt.flags & SAU_OSC_RESET)
+		sauWOsc_adaa_reset(o, phase_buf[0]);
 	for (size_t i = 0; i < buf_len; ++i) {
 		float s;
 		uint32_t phase = phase_buf[i] +
@@ -379,7 +377,4 @@ static void sauWOsc_run_selfmod(sauWOsc *restrict o,
 		 */
 		o->fb_s = (o->fb_s + s) * 0.5f;
 	}
-#else // test naive LUT
-	sauWOsc_naive_run_selfmod(o, buf, buf_len, phase_buf, pm_abuf);
-#endif
 }

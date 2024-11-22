@@ -253,6 +253,7 @@ typedef struct sauProgramGenData {
 	union sauPGenMode {
 		uint8_t main; // holds wave, noise, etc. ID -- what's primary
 		sauRasOpt ras;
+		sauWaveOpt woo;
 	} mode;
 	uint8_t use_type; // carrier or modulator use?
 	uint8_t type; // type info, for now
