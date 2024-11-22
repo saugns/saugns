@@ -415,8 +415,8 @@ W: Wave oscillator
 ------------------
 
 Wave oscillator. The sine variety is a fairly typical "FM synth operator".
-Producing a (weakly) anti-aliased signal, including for FM/PM, amplitude
-can be a little lower for frequencies close to half the sample rate.
+By default (see the 'm' parameter) it produces a (weakly) anti-aliased
+signal, including for FM/PM.
 
 As a signal generator, if not enclosed within a "[]" list, then
 it will run and output at the current time, for its duration.
@@ -429,6 +429,14 @@ a value. See "Wave types" for the available wave types.
 Parameters:
 	The "W" wave oscillator has the
 	"Oscillator common parameters", and additionally:
+	m	Mode for further behavior variation.
+		A letter (implementation type) below can be set...
+		a	Antiderivative anti-aliasing (default). Weakly
+			anti-aliased result for any combination of wave
+			type, FM, PM, and phase distortion -- but may give
+			unwanted results for some PD variations. Dampens
+			frequencies close to half the sample rate a little.
+		n	Naive. Gives the most classic "FM operator" behavior.
 	w	Wave type -- see "Wave types" for values.
 		The phase distortions below are performed in the listed order.
 		.c	Cycle length phase distortion; the default value 1.0

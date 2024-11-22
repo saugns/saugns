@@ -563,11 +563,12 @@ ParseConv_create_program(ParseConv *restrict o,
 		goto MEM_ERR;
 	prg->ev_count = o->ev_arr.count;
 	prg->ampmult = parse->sopt.ampmult;
-	if (!(parse->sopt.set & SAU_SOPT_AMPMULT)) {
+	if (isnan(parse->sopt.ampmult)) {
 		/*
 		 * Enable amplitude scaling (division) by voice count,
 		 * handled by audio generator.
 		 */
+		prg->ampmult = 1.f;
 		prg->mode |= SAU_PMODE_AMP_DIV_VOICES;
 	}
 	prg->vo_count = o->va.count;

@@ -1,5 +1,5 @@
 /* SAU library: Wave module.
- * Copyright (c) 2011-2012, 2017-2023 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2024 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
@@ -151,3 +151,23 @@ static inline double sauWave_get_herp(const float *restrict lut,
 void sau_global_init_Wave(void);
 
 void sauWave_print(uint8_t id, bool verbose);
+
+/** Wave oscillator functions. */
+enum {
+	SAU_WAVE_F_NAIVE = 0,
+	SAU_WAVE_F_ADAA,
+	SAU_WAVE_FUNCTIONS,
+};
+
+/** Wave oscillator option flags. */
+enum {
+	SAU_WAVE_O_WAVE_SET = 1U<<0,
+	SAU_WAVE_O_FUNC_SET = 1U<<1,
+};
+
+/** Wave oscillator option data. */
+typedef struct sauWaveOpt {
+	uint8_t wave; // wave type; is first, to match sauPGenMode main
+	uint8_t flags;
+	uint8_t func; // select implementation
+} sauWaveOpt;

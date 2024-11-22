@@ -344,7 +344,7 @@ static void update_gen(sauGenerator *restrict o,
 	case SAU_PGEN_N_wave: {
 		WOscNode *wo = &n->wo;
 		if (params & SAU_PGENP_MODE)
-			sauWOsc_set_wave(&wo->wosc, gd->mode.main);
+			sauWOsc_set_opt(&wo->wosc, gd->mode.woo);
 		if (params & SAU_PGENP_PHASE)
 			sauWOsc_set_phase(&wo->wosc, gd->phase);
 		update_range(&wo->pd_c, gd->pd_c, o->srate);
@@ -355,7 +355,7 @@ static void update_gen(sauGenerator *restrict o,
 	case SAU_PGEN_N_raseg: {
 		RasGNode *rg = &n->rg;
 		if (params & SAU_PGENP_MODE)
-			sauRasG_set_opt(&rg->rasg, &gd->mode.ras);
+			sauRasG_set_opt(&rg->rasg, gd->mode.ras);
 		if (params & SAU_PGENP_PHASE)
 			sauRasG_set_phase(&rg->rasg, gd->phase);
 		if (params & SAU_PGENP_SEED)
@@ -649,7 +649,7 @@ run_block_wosc(sauGenerator *restrict o,
 			parent_freq, NULL, true, true);
 	void *phase_buf = *(bufs++); // #2 (++)
 	float *pm_buf = run_pm_main_params(o, bufs, len, n, freq); // #3
-	sauPhasor_fill(&n->wo.wosc.phasor, phase_buf, len,
+	sauWOsc_fill(&n->wo.wosc, phase_buf, len,
 			freq, pm_buf); // #2 <- #3
 	if (run_valrange_param(o, bufs, len, &n->wo.pd_c, NULL, freq, false,
 				n->wo.pd_c.par.v0 != 1.f)) {
