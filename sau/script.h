@@ -108,23 +108,6 @@ typedef struct sauScriptEvData {
 	uint8_t ev_flags;
 } sauScriptEvData;
 
-/**
- * Script data option flags.
- *
- * Set after parsing the setting of script options in a script.
- */
-enum {
-	SAU_SOPT_DEF_AMPMULT    = 1U<<0,
-	SAU_SOPT_DEF_CHANMIX    = 1U<<1,
-	SAU_SOPT_DEF_TIME       = 1U<<2,
-	SAU_SOPT_DEF_FREQ       = 1U<<3,
-	SAU_SOPT_DEF_RELFREQ    = 1U<<4,
-	SAU_SOPT_AMPMULT        = 1U<<5,
-	SAU_SOPT_A4_FREQ        = 1U<<6,
-	SAU_SOPT_NOTE_KEY       = 1U<<7,
-	SAU_SOPT_NOTE_SCALE     = 1U<<8,
-};
-
 /** String and number pair for predefined values passed as arguments. */
 typedef struct sauScriptPredef {
 	const char *key;
@@ -147,7 +130,6 @@ typedef struct sauScriptArg {
  * The final state is included in the parse result.
  */
 typedef struct sauScriptOptions {
-	uint32_t set;  // flags (SAU_SOPT_*) set upon change by script
 	float ampmult; // global amplitude multiplier for whole script
 	float A4_freq; // A4 tuning for frequency as note
 	/* generator parameter default values (use depends on context) */
@@ -159,6 +141,8 @@ typedef struct sauScriptOptions {
 	int8_t note_key;
 	uint8_t key_octave;
 	uint8_t key_system;
+	sauRasOpt def_ras;
+	sauWaveOpt def_woo;
 } sauScriptOptions;
 
 /**
