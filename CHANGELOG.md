@@ -26,13 +26,14 @@ Implement `W` phase distortions and their modulation:
    is the inverse, a kind of shape-squash changing how
    much phase moves in each half, making one "slower",
    the other "faster".
- * Tweak the `W` oscillator's behavior for 0 Hz and on
-   no phase increment, for ADAA. It used to repeat the
-   last sample which had phase increment, generally OK
-   but resulting in some fluctuations and raised noise
-   floor with the new "zoom out" distortion. Instead a
-   fresh naive sample is now output (no anti-alias for
-   this special case).
+ * Tweak the `W` oscillator's LFO behavior for ADAA to
+   remove overshoots, also fix PD glitches. For 0 Hz a
+   prior value was (re-)used instead of a new, causing
+   some LF noise with the new zoom-out PD. Instead, in
+   case of phase difference at most 1 LUT value large,
+   produce a naive sample instead. More glitches fixed
+   for extreme PD where one sample pops up or down but
+   some issues remain.
 
 Allow use of `W` as a naive oscillator using a new mode `m`
 switch. (The `W m` option is similar to `R m`, but simpler,
