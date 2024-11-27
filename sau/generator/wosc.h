@@ -28,6 +28,7 @@ typedef struct sauPhasor {
 
 #define SAU_OSC_RESET_DIFF  (1<<0)
 #define SAU_OSC_RESET       ((1<<1) - 1)
+#define SAU_OSC_SKIPPED_I   (1<<1)
 
 typedef struct sauWOsc {
 	sauPhasor phasor;
@@ -280,7 +281,7 @@ static void sauWOsc_naive_run_selfmod(sauWOsc *restrict o,
 static void sauWOsc_adaa_reset(sauWOsc *restrict o, uint32_t phase) {
 	const float *const lut = sauWave_piluts[o->opt.wave];
 	if (o->opt.flags & SAU_OSC_RESET_DIFF) {
-		o->prev_Is = sauWave_get_herp(lut, phase);
+		o->prev_Is = sauWave_get_berp(lut, phase);
 		o->prev_phase = phase;
 	}
 	o->opt.flags &= ~SAU_OSC_RESET;
@@ -299,33 +300,46 @@ static sauMaybeUnused void sauWOsc_run(sauWOsc *restrict o,
 		return;
 	}
 	// Higher-quality audio (reduce wave, FM & PM aliasing).
-	unsigned wave = o->opt.wave;
-	const float *const lut = sauWave_piluts[wave];
-	const float *const lut_backup = sauWave_luts[wave];
+	unsigned wave = o->opt.wave, flags = o->opt.flags;
+	const float *const Ilut = sauWave_piluts[wave];
+	const float *const lut = sauWave_luts[wave];
 	const int32_t lut_offset = sauWave_picoeffs[wave].phase_adj;
 	const float diff_scale = sauWave_DVSCALE(wave);
 	const float diff_offset = sauWave_DVOFFSET(wave);
-	if (buf_len > 0 && o->opt.flags & SAU_OSC_RESET)
+	if (buf_len > 0 && flags & SAU_OSC_RESET)
 		sauWOsc_adaa_reset(o, phase_buf[0]);
+	bool skipped_Is = flags & SAU_OSC_SKIPPED_I;
 	for (size_t i = 0; i < buf_len; ++i) {
 		float s;
 		uint32_t phase = phase_buf[i];
-		int32_t phase_diff = phase - o->prev_phase;
-		if (phase_diff == 0) {
+		uint32_t phase_diff = phase - o->prev_phase;
+		if (phase_diff + sauWave_SLEN < 2 * sauWave_SLEN) {
 			/*
-			 * Use instead of "s = o->prev_s;" to avoid LF noise.
-			 * This matters for phase distortion uses especially.
+			 * Phase difference in 1 LUT value range. No aliasing,
+			 * naive lookup for reliable LFO and phase distortion.
 			 */
-			s = sauWave_get_lerp(lut_backup, phase - lut_offset);
+			s = sauWave_get_berp(lut, phase - lut_offset);
+			skipped_Is = true;
+		} else if (skipped_Is) {
+			double prev_Is = sauWave_get_berp(Ilut, o->prev_phase);
+			double Is = sauWave_get_berp(Ilut, phase);
+			double x = diff_scale / (int32_t) phase_diff;
+			s = (Is - prev_Is) * x + diff_offset;
+			o->prev_Is = Is;
+			skipped_Is = false;
 		} else {
-			double Is = sauWave_get_herp(lut, phase);
-			double x = (diff_scale / phase_diff);
+			double Is = sauWave_get_berp(Ilut, phase);
+			double x = diff_scale / (int32_t) phase_diff;
 			s = (Is - o->prev_Is) * x + diff_offset;
 			o->prev_Is = Is;
-			o->prev_phase = phase;
 		}
+		o->prev_phase = phase;
 		buf[i] = s;
 	}
+	if (skipped_Is)
+		o->opt.flags |= SAU_OSC_SKIPPED_I;
+	else
+		o->opt.flags &= ~SAU_OSC_SKIPPED_I;
 }
 
 /**
@@ -342,33 +356,42 @@ static void sauWOsc_run_selfmod(sauWOsc *restrict o,
 		return;
 	}
 	// Higher-quality audio (reduce wave, FM & PM, feedback aliasing).
-	unsigned wave = o->opt.wave;
-	const float *const lut = sauWave_piluts[wave];
-	const float *const lut_backup = sauWave_luts[wave];
+	unsigned wave = o->opt.wave, flags = o->opt.flags;
+	const float *const Ilut = sauWave_piluts[wave];
+	const float *const lut = sauWave_luts[wave];
 	const int32_t lut_offset = sauWave_picoeffs[wave].phase_adj;
 	const float diff_scale = sauWave_DVSCALE(wave);
 	const float diff_offset = sauWave_DVOFFSET(wave);
 	const float fb_scale = 0x1p31f; // like level 6 in Yamaha chips
-	if (buf_len > 0 && o->opt.flags & SAU_OSC_RESET)
+	if (buf_len > 0 && flags & SAU_OSC_RESET)
 		sauWOsc_adaa_reset(o, phase_buf[0]);
+	bool skipped_Is = flags & SAU_OSC_SKIPPED_I;
 	for (size_t i = 0; i < buf_len; ++i) {
 		float s;
 		uint32_t phase = phase_buf[i] +
 			sau_ftoi(o->fb_s * pm_abuf[i] * fb_scale);
-		int32_t phase_diff = phase - o->prev_phase;
-		if (phase_diff == 0) {
+		uint32_t phase_diff = phase - o->prev_phase;
+		if (phase_diff + sauWave_SLEN < 2 * sauWave_SLEN) {
 			/*
-			 * Use instead of "s = o->prev_s;" to avoid LF noise.
-			 * This matters for phase distortion uses especially.
+			 * Phase difference in 1 LUT value range. No aliasing,
+			 * naive lookup for reliable LFO and phase distortion.
 			 */
-			s = sauWave_get_lerp(lut_backup, phase - lut_offset);
+			s = sauWave_get_berp(lut, phase - lut_offset);
+			skipped_Is = true;
+		} else if (skipped_Is) {
+			double prev_Is = sauWave_get_berp(Ilut, o->prev_phase);
+			double Is = sauWave_get_berp(Ilut, phase);
+			double x = diff_scale / (int32_t) phase_diff;
+			s = (Is - prev_Is) * x + diff_offset;
+			o->prev_Is = Is;
+			skipped_Is = false;
 		} else {
-			double Is = sauWave_get_herp(lut, phase);
-			double x = (diff_scale / phase_diff);
+			double Is = sauWave_get_berp(Ilut, phase);
+			double x = diff_scale / (int32_t) phase_diff;
 			s = (Is - o->prev_Is) * x + diff_offset;
 			o->prev_Is = Is;
-			o->prev_phase = phase;
 		}
+		o->prev_phase = phase;
 		buf[i] = s;
 		/*
 		 * Suppress ringing. 1-pole filter is a little better than
@@ -377,4 +400,8 @@ static void sauWOsc_run_selfmod(sauWOsc *restrict o,
 		 */
 		o->fb_s = (o->fb_s + s) * 0.5f;
 	}
+	if (skipped_Is)
+		o->opt.flags |= SAU_OSC_SKIPPED_I;
+	else
+		o->opt.flags &= ~SAU_OSC_SKIPPED_I;
 }
