@@ -120,11 +120,11 @@ static inline double sauWave_get_lerp(const float *restrict lut,
 }
 
 /**
- * Get LUT value for 32-bit unsigned phase using Hermite interpolation.
+ * Get LUT value for 32-bit unsigned phase using B-spline interpolation.
  *
  * \return sample
  */
-static inline double sauWave_get_herp(const float *restrict lut,
+static inline double sauWave_get_berp(const float *restrict lut,
 		uint32_t phase) {
 	uint32_t ind = sauWave_INDEX(phase);
 	float s0 = lut[(ind - 1) & sauWave_LENMASK];
@@ -132,11 +132,12 @@ static inline double sauWave_get_herp(const float *restrict lut,
 	float s2 = lut[(ind + 1) & sauWave_LENMASK];
 	float s3 = lut[(ind + 2) & sauWave_LENMASK];
 	double x = ((phase & sauWave_SLENMASK) * (1.f / sauWave_SLEN));
-	// 4-point, 3rd-order Hermite (x-form)
-	double c0 = s1;
+	// 4-point, 3rd-order B-spline (x-form)
+	double s0ps2 = s0+s2;
+	double c0 = 1/6.0*s0ps2 + 2/3.0*s1;
 	double c1 = 1/2.0*(s2-s0);
-	double c2 = s0 - 5/2.0*s1 + 2*s2 - 1/2.0*s3;
-	double c3 = 1/2.0*(s3-s0) + 3/2.0*(s1-s2);
+	double c2 = 1/2.0*s0ps2 - s1;
+	double c3 = 1/2.0*(s1-s2) + 1/6.0*(s3-s0);
 	return ((c3*x+c2)*x+c1)*x+c0;
 }
 
