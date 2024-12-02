@@ -214,27 +214,93 @@ Oscillator common parameters:
 			"Modulator list" values are supported for PM (phase
 		modulation); see section. A phase percentage value can be set
 		together with a list in one go, the value then going first
-		after the 'p', for example "p0.25[...]". A subparameter can
-		be used instead or in addition for another kind of PM.
-		.a	Phase self-modulation (a.k.a. "feedback FM") can be
-			set using a value, which is used as a multiplier for
-			adding the previous amplitude back into the phase.
-			Non-zero values add sawtooth-like harmonics, morphing
-			the waveform in that direction. Going beyond +/- 0.5
-			may add ripples, ringing, and finally noise and chaos.
-			(1.0 corresponds to Yamaha DX7 and chips level 6, but
-			filtering differs so it's less noisy. Double or halve
-			the number to step up or down by one in such level.
-			1.0 also corresponds to pi radians.)
-			"Value sweep" values are supported; see section.
-			"Modulation with value ranges" values are supported;
-			see section.
+		after the 'p', for example "p0.25[...]".
+			A subparameter can be used instead or in addition
+		to set up another kind of PM. Phase distortion can also be
+		used; see the "Phase distortion subparameters" section for
+		those options. There you'll also find the ".a" self-PM
+		a.k.a.  "feedback FM" subparameter described.
 		.f	Frequency-scaled PM modulators can be set in a
 			separate list, as in "p.f[...]". See "Modulator list".
 		The sum of all PM modulator amplitudes will phase-modulate
 		the carrier(s). For frequency-scaled PM modulators, first the
 		amplitudes are multiplied by the carrier frequency divided
 		by 632.45... Hz (the geometric mean of 20 and 20000 Hz).
+
+Phase distortion subparameters:
+	These subparameters can be written after the phase parameter "p".
+	They can also be used after the oscillator type names "W" and "R"
+	(since they accept "p" values as a shorthand syntax), e.g. "W.c2".
+		The phase distortions below are performed in the listed
+	order. Self-PM a.k.a. "feedback FM" is listed among them as it can
+	be used in the same places (and likewise distorts waveform through
+	distorting phase) though it isn't conventionally grouped under
+	the same heading. The PD options allow modulator lists, and non-LFO
+	modulation of PD variations give spectrally richer alternatives to
+	PM that behave differently.
+		"Value sweep" values and "Modulation with value ranges"
+	values are supported for all of these; see those sections for more.
+	.c	Cycle length or "zoom out" PD; the default value 1.0
+		does nothing. Values above 1 "zoom out", e.g. 2 will
+		double the cycle length, so the old shape then takes
+		up the first half with horizontal line padding after
+		(the line having the cycle boundary amplitude). With
+		a value below 1, the effect is to "zoom in", such as
+		reducing a sine to the first quarter with 1/4.
+			Amounts to a basic form of Pulsar Synthesis;
+		waveforms for "zoom in" differ, and further options,
+		for PS-specific waveform shaping, are missing.
+			Negative values work like positive ones, but
+		also flip the direction of the waveform, in the same
+		way as changing the sign of the frequency used does.
+			Using modulators with audible frequency will
+		often sound somewhat like PM but bright and buzzier.
+	.h	Hold for cycle portion phase distortion; the default
+		value 0.0 does nothing. A positive value like 1/4 is
+		used to extend a horizontal line from the beginning,
+		overwriting e.g. 1/4 of the cycle. A negative value,
+		by contrast, extends the line from the end backward,
+		so that -1/4 overwrites the last 1/4 of the cycle.
+			Using modulators with audible frequency will
+		often sound a little like PM, thinner and sharper.
+	.x	An x-axis half-cycle length PWM-like PD. Generalized
+		PWM (pulse-width modulation) in this way makes pulse
+		waves out of square waves. It makes other wave types
+		take on related shapes too, stretching/squeezing the
+		waveform around its "center" in a cycle. The default
+		value 1/2 does nothing. 0 shrinks to nothing the 1st
+		waveform half, 1 the 2nd; values beyond these bounds
+		are allowed, creating different distorted shapes.
+			Using modulators with audible frequency will
+		often sound somewhat like PM but warmer, fat, buzzy.
+	.y      Inverse of the x-axis half-cycle lenght PWM-like PD,
+		".x". Where PWM changes length proportions of halves
+		of a waveform while preserving their shapes, instead
+		this distortion deforms one half, by reducing change
+		in phase inside it, the other half being accelerated
+		and displaced to compensate. Default 1/2, meaning no
+		change, with 0 and 1 extremes -- with values allowed
+		beyond as well, creating different distorted shapes.
+			Using modulators with audible frequency will
+		often sound somewhat like PM but brighter, yet smooth.
+	.a	Phase self-modulation (a.k.a. "feedback FM") can be set
+		using a value, which is used as a multiplier for adding
+		the previous amplitude back into the phase. Non-zero values
+		add sawtooth-like harmonics, morphing the waveform in that
+		manner. Positive values make for an increasing sawtooth
+		shape, negative values make it a decreasing sawtooth.
+			Going beyond +/- 0.5 may add ripples, ringing,
+		and finally noise and chaos. (1.0 corresponds to Yamaha
+		DX7 and chips level 6, but filtering differs so it's less
+		noisy. Double or halve the number to step up or down by one
+		in Yamaha's level 1-7 scale. In relation to how self-PM is
+		usually mathematically described, the value 1.0 translates
+		into the formula's modulation index at pi radians.)
+			When combined with more modulation, self-PM is most
+		useful for innermost PM or similar modulators, which can
+		have frequency ratio etc. changed to vary what it causes.
+		For example, "W[W.a1/2 r2]" gives a soft square-like wave
+		because of the 2:1 modulator:carrier frequency ratio.
 
 Seedable common parameters:
 	Named parameters common to all seedable types,
@@ -258,8 +324,10 @@ modulation lists of either type, belonging to any object.
 
 Usage "A", optionally followed directly by amplitude values
 used by the "a" parameter (which for convenience can be set
-directly for "A", e.g. "A1.0", "A0[...]"). Followed by zero
-or more whitespace-separated parameters, each with a value.
+directly for "A", e.g. "A1.0", "A0[...]").
+
+Followed by zero or more whitespace-separated parameters, each
+with a value.
 
 Parameters:
 	The "A" amplitude generator has the
@@ -280,10 +348,13 @@ noise at a per-sound rate of your choice, other means are needed.
 A violet noise that always peaks at a frequency of your choice can use
 the "R" oscillator with mode "mv", and the chosen frequency set to "f".
 
-Usage "N", optionally followed by the noise type (e.g. "Nre"),
-by default the same as "Nwh". Followed by zero or more
-whitespace-separated parameters, each with a value.
-See "Noise types" for the available noise types.
+Usage "N", optionally followed by a noise type (e.g. "Nre", if none by
+by default the same as "Nwh"), and optionally followed by amplitude "a"
+values. For example "Nwh(1/2)" (equivalent to "Nwh a1/2"), and "N(0)[R]"
+(equivalent to "N a0[R]").
+
+Followed by zero or more whitespace-separated parameters, each
+with a value. See "Noise types" for the available noise types.
 
 Parameters:
 	The "N" noise generator has the
@@ -313,12 +384,16 @@ in most modes. Fully supports FM & PM like a wave oscillator does.
 As a signal generator, if not enclosed within a "[]" list, then
 it will run and output at the current time, for its duration.
 
-Usage: "R", optionally followed by a line type (e.g. "Rlin"),
-by the default the same as "Rcos". Followed by zero or more
-whitespace-separated parameters, each with a value. Several 'm'
-modes are available, for several types of random distribution,
-as well as a naive oscillator mode. See "Line types" for the
-available line types. The default mode and line shape makes
+Usage: "R", optionally followed by a line type (e.g. "Rlin", if none by
+default the same as "Rcos"), and optionally followed by phase "p" values
+(number and/or modulators) and a subparameter (including but not limited
+to "Phase distortion subparameters"). For example "R[W]" (equivalent to
+"R p[W]"), and "Rcos(-1/4)[W]" (equivalent to "Rcos p-1/4[W]").
+
+Followed by zero or more whitespace-separated parameters, each with a
+value. Several 'm' modes are available, for several types of random
+distribution, as well as a naive oscillator mode. See "Line types" for
+the available line types. The default mode and line shape makes
 the output similar to low-pass-filtered white noise.
 
 Parameters:
@@ -421,8 +496,12 @@ signal, including for FM/PM.
 As a signal generator, if not enclosed within a "[]" list, then
 it will run and output at the current time, for its duration.
 
-Usage: "W", optionally followed by a wave type (e.g. "Wtri"), by
-the default the same as "Wsin", and optionally a "w" subparameter.
+Usage: "W", optionally followed by a wave type (e.g. "Wtri", if none by
+default the same as "Wsin"), and optionally followed by phase "p" values
+(number and/or modulators) and a subparameter (including but not limited
+to "Phase distortion subparameters"). For example "W[W]" (equivalent to
+"W p[W]"), and "Wsin(1/4)[W]" (equivalent to "Wsin p1/4[W]").
+
 Followed by zero or more whitespace-separated parameters, each with
 a value. See "Wave types" for the available wave types.
 
@@ -438,48 +517,6 @@ Parameters:
 			frequencies close to half the sample rate a little.
 		n	Naive. Gives the most classic "FM operator" behavior.
 	w	Wave type -- see "Wave types" for values.
-		The phase distortions below are performed in the listed order.
-		.c	Cycle length phase distortion; the default value 1.0
-			does nothing. Values closer to 0 "zoom in", e.g. 1/4
-			reduces a sine to the first quarter. In the opposite
-			direction, a value of 2 doubles the cycle length, so
-			the full wave then takes up the first half, followed
-			by padding with a horizontal line. (The line has the
-			amplitude of the undistorted wave cycle boundaries.)
-				Negative values work like positive ones, but
-			also flip the direction of the waveform, in the same
-			way as changing the sign of the frequency used does.
-			"Value sweep" values are supported; see section.
-			"Modulation with value ranges" values are supported;
-			see section.
-		.h	Hold for cycle portion phase distortion; the default
-			value 0.0 does nothing. A positive value like 1/4 is
-			used to extend a horizontal line from the beginning,
-			overwriting e.g. 1/4 of the cycle. A negative value,
-			by contrast, extends the line from the end backward,
-			so that -1/4 overwrites the last 1/4 of the cycle.
-			"Value sweep" values are supported; see section.
-			"Modulation with value ranges" values are supported;
-			see section.
-		.p	PWM (pulse-width modulation), as a phase distortion.
-			Usable for any wave type, it changes size proportion
-			of the first and second halves, with 1/2 the default
-			and 0 and 1 the extremes -- though values beyond are
-			allowed, creating different distorted shapes.
-			"Value sweep" values are supported; see section.
-			"Modulation with value ranges" values are supported;
-			see section.
-		.y	Inverse of the PWM-like phase distortion ".p". Where
-			generalized PWM changes relative sizes of the halves
-			of a waveform while preserving their shapes, instead
-			this distortion squashes one half by reducing change
-			in phase inside it, the other half being accelerated
-			and displaced to compensate. Default 1/2, meaning no
-			change, with 0 and 1 extremes -- with values allowed
-			beyond as well, creating different distorted shapes.
-			"Value sweep" values are supported; see section.
-			"Modulation with value ranges" values are supported;
-			see section.
 
 Wave types:
 	Beyond 'sin', there's 3 times 3 complementary wave types, in terms
@@ -707,7 +744,7 @@ Modulation with value ranges:
 	The description below begins with the long-form "..", which sets it
 	apart from the short form.
 		The second value always defaults to 0.0, and "Value sweep"
-	is supported for it whenever for the main value.
+	is always supported for both it and the first value.
 	..	The "name" for the subparameter where the second value goes
 		for the other end of the range. A number and/or modulator
 		list after can optionally be set here; any modulators have
