@@ -189,6 +189,121 @@ static sauMaybeUnused void sauCyclor_fill(sauCyclor *restrict o,
 
 #undef P /* done */
 
+/*
+ * Phase distortion: cycle length. Below 1 zooms in resulting in jagged shapes,
+ * above 1 zooms out adding padding (the amplitude at the cycle beginning/end).
+ */
+static sauMaybeUnused void
+sauRasG_dist_length(sauRasG *restrict o sauMaybeUnused,
+		float *restrict phase_f,
+		uint32_t *restrict cycle_ui32,
+		size_t buf_len,
+		const float *restrict pd_f) {
+	if (o->cyclor.rate2x) for (size_t i = 0; i < buf_len; ++i) {
+		int32_t cycle = (cycle_ui32[i] & 1);
+		float x = phase_f[i] + cycle;
+		x = sau_fclampf(x * pd_f[i], -2.f, 2.f);
+		int32_t cycle_adj = floorf(x);
+		cycle_ui32[i] += cycle_adj - cycle;
+		phase_f[i] = x - cycle_adj;
+	} else for (size_t i = 0; i < buf_len; ++i) {
+		float x = phase_f[i];
+		x = sau_fclampf(x * pd_f[i], -1.f, 1.f);
+		if (x < 0.f) x += 1.f;
+		phase_f[i] = x;
+	}
+}
+
+/*
+ * Phase distortion: hold from beginning/end for part of a cycle.
+ * Positive values hold forwards, negative values hold backwards.
+ */
+static sauMaybeUnused void
+sauRasG_dist_hold(sauRasG *restrict o sauMaybeUnused,
+		float *restrict phase_f,
+		uint32_t *restrict cycle_ui32,
+		size_t buf_len,
+		const float *restrict pd_f) {
+	if (o->cyclor.rate2x) for (size_t i = 0; i < buf_len; ++i) {
+		int32_t cycle = (cycle_ui32[i] & 1);
+		float x = phase_f[i] + cycle, a = pd_f[i] * 2;
+		x = a >= 0.f ?
+			(x >= a ? x : 0.f) :
+			(x <= a + 2.f ? x : 2.f);
+		int32_t cycle_adj = floorf(x);
+		cycle_ui32[i] += cycle_adj - cycle;
+		phase_f[i] = x - cycle_adj;
+	} else for (size_t i = 0; i < buf_len; ++i) {
+		float x = phase_f[i], a = pd_f[i];
+		x = a >= 0.f ?
+			(x >= a ? x : 0.f) :
+			(x <= a + 1.f ? x : 1.f);
+		phase_f[i] = x;
+	}
+}
+
+/*
+ * Phase distortion: half-cycle width a.k.a. size proportion of each half.
+ */
+static sauMaybeUnused void
+sauRasG_dist_halfx(sauRasG *restrict o sauMaybeUnused,
+		float *restrict phase_f,
+		uint32_t *restrict cycle_ui32,
+		size_t buf_len,
+		const float *restrict pd_f) {
+	if (o->cyclor.rate2x) for (size_t i = 0; i < buf_len; ++i) {
+		int32_t cycle = (cycle_ui32[i] & 1);
+		float a = pd_f[i], b = 2*a, h = 2*0.5f;
+		float x = phase_f[i] + cycle;
+		x = x < b ?
+			x*(0.5f/a) :
+			(x-b)*(0.5f/(1.f-a)) + h;
+		int32_t cycle_adj = floorf(x);
+		cycle_ui32[i] += cycle_adj - cycle;
+		phase_f[i] = x - cycle_adj;
+	} else for (size_t i = 0; i < buf_len; ++i) {
+		float a = pd_f[i], b = 1*a, h = 1*0.5f;
+		float x = phase_f[i];
+		x = x < b ?
+			x*(0.5f/a) :
+			(x-b)*(0.5f/(1.f-a)) + h;
+		int32_t cycle_adj = floorf(x);
+		cycle_ui32[i] += cycle_adj;
+		phase_f[i] = x - cycle_adj;
+	}
+}
+
+/*
+ * Phase distortion: half-cycle height a.k.a. change proportion of each half.
+ */
+static sauMaybeUnused void
+sauRasG_dist_halfy(sauRasG *restrict o sauMaybeUnused,
+		float *restrict phase_f,
+		uint32_t *restrict cycle_ui32,
+		size_t buf_len,
+		const float *restrict pd_f) {
+	if (o->cyclor.rate2x) for (size_t i = 0; i < buf_len; ++i) {
+		int32_t cycle = (cycle_ui32[i] & 1);
+		float a = pd_f[i], b = 2*a, h = 2*0.5f;
+		float x = phase_f[i] + cycle;
+		x = x < h ?
+			x*(a*2) :
+			(x-h)*((1.f-a)*2) + b;
+		int32_t cycle_adj = floorf(x);
+		cycle_ui32[i] += cycle_adj - cycle;
+		phase_f[i] = x - cycle_adj;
+	} else for (size_t i = 0; i < buf_len; ++i) {
+		float a = pd_f[i], b = 1*a, h = 1*0.5f;
+		float x = phase_f[i];
+		x = x < h ?
+			x*(a*2) :
+			(x-h)*((1.f-a)*2) + b;
+		int32_t cycle_adj = floorf(x);
+		cycle_ui32[i] += cycle_adj;
+		phase_f[i] = x - cycle_adj;
+	}
+}
+
 typedef void (*sauRasG_map_f)(sauRasG *restrict o,
 		size_t buf_len,
 		float *restrict end_a_buf,

@@ -66,7 +66,7 @@ enum {
 	SAU_PSWEEP_PMA,
 	SAU_PSWEEP_PDC,
 	SAU_PSWEEP_PDH,
-	SAU_PSWEEP_PDP,
+	SAU_PSWEEP_PDX,
 	SAU_PSWEEP_PDY,
 };
 
@@ -203,17 +203,17 @@ typedef struct sauProgramIDs {
 
 /* Macro used for generator modulation or use type sets of items. */
 #define SAU_MOD__ITEMS(X) \
-	X(  carr,  0, " CA ", NULL) \
-SAU_MOD__4M(c_am,  X, "cAM",  "c") /* channel mix i.e. panning modulation */ \
-SAU_MOD__4M(a_am,  X, " AM",  "a") \
-SAU_MOD__4M(f_fm,  X, " FM",  "f") \
-	X(  p_pm,  1, " PM ", "p") \
-	X(  pf_pm, 1, "fPM ", "p.f") \
-SAU_MOD__4M(pa_pm, X, "aPM",  "p.a") \
-SAU_MOD__4M(wc_pd, X, "CLM",  "w.c") \
-SAU_MOD__4M(wh_pd, X, "hPD",  "w.h") \
-SAU_MOD__4M(wp_pd, X, "PWM",  "w.p") \
-SAU_MOD__4M(wy_pd, X, "yPD",  "w.y") \
+	X(  carr,   0, " CA ", NULL) \
+SAU_MOD__4M(c_am,   X, "cAM",  "c") /* channel mix i.e. panning modulation */ \
+SAU_MOD__4M(a_am,   X, " AM",  "a") \
+SAU_MOD__4M(f_fm,   X, " FM",  "f") \
+	X(  p_pm,   1, " PM ", "p") \
+	X(  pf_pm,  1, "fPM ", "p.f") \
+SAU_MOD__4M(pa_pm,  X, "aPM",  "p.a") \
+SAU_MOD__4M(pd_c,   X, "cPD",  "p.c") \
+SAU_MOD__4M(pd_h,   X, "hPD",  "p.h") \
+SAU_MOD__4M(pd_x,   X, "xPD",  "p.x") \
+SAU_MOD__4M(pd_y,   X, "yPD",  "p.y") \
 	//
 #define SAU_MOD__4M(NAME, X, LABEL, SYNTAX) /* 4 valrange modulator types */ \
 	X(NAME,     1, LABEL " ", SYNTAX) \
@@ -247,7 +247,7 @@ typedef struct sauProgramGenData {
 	sauRange *amp, *pan;
 	sauRange *freq;
 	sauRange *pm_a;
-	sauRange *pd_c, *pd_h, *pd_p, *pd_y;
+	sauRange *pd_c, *pd_h, *pd_x, *pd_y;
 	uint32_t phase;
 	uint32_t seed;
 	union sauPGenMode {
