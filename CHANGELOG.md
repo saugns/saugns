@@ -7,23 +7,39 @@ is a shorter change log with only the SAU language changes.
 Pre-release
 -----------
 
-Implement `W` phase distortions and their modulation:
- * The new cycle length parameter `w.c` defaults to 1.
+Language changes:
+ * Signal generator types. Add `W` mode toggle. (See below.)
+ * Accept phase `p` values directly after `W` and `R` (a
+   phase number requires e.g. parentheses around to set it
+   apart from a wave or line type). This is mostly a shortcut
+   to using phase subparameters (`W.a1/2`) and/or PM (`W[W]`).
+ * Accept amplitude `a` values directly after `N` (not only
+   after `A` as before); an amplitude number requries e.g.
+   parentheses around to set it apart from the noise type.
+   This is more for consistency and as a shortcut for AM.
+ * Expand phase `p` subparameters with a set of phase
+   distortion options. Each has a distortion function which
+   can also be modulated (similarly to PM, but with full
+   value ranges features). Used with constant numbers, they
+   derive new wave types, e.g. `W.c2`. (See below.)
+
+Implement `R` and `W` phase distortions and their modulation:
+ * The new cycle length parameter `p.c` defaults to 1.
    Values closer to 0 "zoom in" -- sawtooth-like edges
    may form. Values larger than 1 "zoom out", with the
    new area filled with a "blank" (the cycle beginning
    and end amplitude).
- * The new hold phase distortion with parameter `w.h`,
+ * The new hold phase distortion with parameter `p.h`,
    a way to overwrite a portion of a wave cycle. Using
    a positive value draws a horizontal line up to that
    phase position, e.g. 1/4 for the first 1/4; using a
    negative value the line is drawn backward (for -1/4
    over the last 1/4).
- * The new `w.p` and `w.y` parameters allow a PWM-like
+ * The new `p.x` and `p.y` parameters allow a PWM-like
    phase distortion, which changes the size proportion
-   of the 1st and 2nd halves of a cycle. Use `w.p` for
-   "PWM" generalized to any wave type. Meanwhile `w.y`
-   is the inverse, a kind of shape-squash changing how
+   of the 1st and 2nd halves of a cycle. Use `p.x` for
+   "PWM" generalized to any wave type. Meanwhile `p.y`
+   is the inverse, a rate-of-change distortion for how
    much phase moves in each half, making one "slower",
    the other "faster".
  * Tweak the `W` oscillator's LFO behavior for ADAA to
