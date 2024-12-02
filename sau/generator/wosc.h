@@ -197,7 +197,7 @@ sauWOsc_dist_hold(sauWOsc *restrict o sauMaybeUnused,
  * Phase distortion: half-cycle width a.k.a. size proportion of each half.
  */
 static sauMaybeUnused void
-sauWOsc_dist_width(sauWOsc *restrict o sauMaybeUnused,
+sauWOsc_dist_halfx(sauWOsc *restrict o sauMaybeUnused,
 		uint32_t *restrict phase_ui32,
 		size_t buf_len,
 		const float *restrict pd_f) {
@@ -220,7 +220,7 @@ sauWOsc_dist_width(sauWOsc *restrict o sauMaybeUnused,
  * Phase distortion: half-cycle height a.k.a. change proportion of each half.
  */
 static sauMaybeUnused void
-sauWOsc_dist_height(sauWOsc *restrict o sauMaybeUnused,
+sauWOsc_dist_halfy(sauWOsc *restrict o sauMaybeUnused,
 		uint32_t *restrict phase_ui32,
 		size_t buf_len,
 		const float *restrict pd_f) {

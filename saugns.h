@@ -1,5 +1,5 @@
 /* saugns: Main header and definitions for cli programs.
- * Copyright (c) 2011-2013, 2017-2024 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2025 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -22,7 +22,7 @@
 #define CLINAME_STR "saugns"
 
 /* Version printout string, for -v option. */
-#define VERSION_STR "v0.4-dev"
+#define VERSION_STR "v0.5-dev"
 
 /*
  * Configuration.
