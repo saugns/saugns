@@ -302,7 +302,7 @@ ParseConv_convert_gendata(ParseConv *restrict o,
 	ogd->pm_a = gen->pm_a;
 	ogd->pd_c = gen->pd_c;
 	ogd->pd_h = gen->pd_h;
-	ogd->pd_p = gen->pd_p;
+	ogd->pd_x = gen->pd_x;
 	ogd->pd_y = gen->pd_y;
 	ogd->phase = gen->phase;
 	ogd->use_type = use_type;
