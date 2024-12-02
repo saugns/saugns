@@ -1567,6 +1567,8 @@ static uint8_t parse_par_modranges(sauParser *restrict o,
 	return 0;
 }
 
+static uint8_t parse_gen_phase(sauParser *restrict o);
+
 static bool parse_gen_main(sauParser *restrict o, uint8_t gen_type,
 	uint8_t sym_type, const char *const* restrict sym_names) {
 	struct ParseLevel *pl = o->cur_pl;
@@ -1577,26 +1579,6 @@ static bool parse_gen_main(sauParser *restrict o, uint8_t gen_type,
 	if (sym_type != 0 && scan_sym_id(o->sc, &id, sym_type, sym_names)) {
 		gen->mode.main = id;
 		gen->params |= SAU_PGENP_MODE;
-	}
-	uint8_t c;
-	switch (gen_type) {
-	case SAU_PGEN_N_wave:
-		switch ((c = sauScanner_getc_after(o->sc, '.'))) {
-		case 'c':
-			return parse_par_modranges(o, NULL, &gen->pd_c, false,
-					SAU_PSWEEP_PDC, SAU_MOD_N_wc_pd);
-		case 'h':
-			return parse_par_modranges(o, NULL, &gen->pd_h, false,
-					SAU_PSWEEP_PDH, SAU_MOD_N_wh_pd);
-		case 'p':
-			return parse_par_modranges(o, NULL, &gen->pd_p, false,
-					SAU_PSWEEP_PDP, SAU_MOD_N_wp_pd);
-		case 'y':
-			return parse_par_modranges(o, NULL, &gen->pd_y, false,
-					SAU_PSWEEP_PDY, SAU_MOD_N_wy_pd);
-		default:
-			return c != 0;
-		}
 	}
 	return false;
 }
@@ -1756,7 +1738,7 @@ static bool parse_gen_mode(sauParser *restrict o) {
 	}
 }
 
-static bool parse_gen_phase(sauParser *restrict o) {
+static uint8_t parse_gen_phase(sauParser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
 	sauScriptGenData *gen = pl->gen;
 	if (!sau_pgen_is_osc(gen->ref.gen_type))
@@ -1772,13 +1754,25 @@ static bool parse_gen_phase(sauParser *restrict o) {
 	case 'a':
 		return parse_par_modranges(o, NULL, &gen->pm_a, false,
 				SAU_PSWEEP_PMA, SAU_MOD_N_pa_pm);
+	case 'c':
+		return parse_par_modranges(o, NULL, &gen->pd_c, false,
+				SAU_PSWEEP_PDC, SAU_MOD_N_pd_c);
 	case 'f':
 		parse_par_list(o, NULL, NULL, false, 0, SAU_MOD_N_pf_pm, 0);
 		break;
+	case 'h':
+		return parse_par_modranges(o, NULL, &gen->pd_h, false,
+				SAU_PSWEEP_PDH, SAU_MOD_N_pd_h);
+	case 'x':
+		return parse_par_modranges(o, NULL, &gen->pd_x, false,
+				SAU_PSWEEP_PDX, SAU_MOD_N_pd_x);
+	case 'y':
+		return parse_par_modranges(o, NULL, &gen->pd_y, false,
+				SAU_PSWEEP_PDY, SAU_MOD_N_pd_y);
 	default:
-		return c != 0;
+		return c;
 	}
-	return false;
+	return 0;
 }
 
 static bool parse_gen_seed(sauParser *restrict o) {
@@ -2064,13 +2058,15 @@ static bool parse_level(sauParser *restrict o,
 			if ((c = parse_gen_amp(o))) goto INVALID;
 			break;
 		case 'N':
-			parse_gen(o, SAU_PGEN_N_noise,
-					SAU_SYM_NOISE_ID, sauNoise_names);
+			if (parse_gen(o, SAU_PGEN_N_noise, SAU_SYM_NOISE_ID,
+						sauNoise_names)) break;
+			if ((c = parse_gen_amp(o))) goto INVALID;
 			break;
 		case 'R':
-			if (parse_gen(o, SAU_PGEN_N_raseg,
-					SAU_SYM_LINE_ID, sauLine_names)) break;
+			if (parse_gen(o, SAU_PGEN_N_raseg, SAU_SYM_LINE_ID,
+						sauLine_names)) break;
 			pl.gen->mode.ras.flags = SAU_RAS_O_LINE_SET;
+			if ((c = parse_gen_phase(o))) goto INVALID;
 			break;
 		case 'S':
 			pl.sub_f = parse_in_settings;
@@ -2079,9 +2075,10 @@ static bool parse_level(sauParser *restrict o,
 			warn_deprecated(sc, "type 'O'", "name 'W'");
 			/* fall-through */
 		case 'W':
-			parse_gen(o, SAU_PGEN_N_wave,
-					SAU_SYM_WAVE_ID, sauWave_names);
+			if (parse_gen(o, SAU_PGEN_N_wave, SAU_SYM_WAVE_ID,
+					sauWave_names)) break;
 			pl.gen->mode.woo.flags |= SAU_WAVE_O_WAVE_SET;
+			if ((c = parse_gen_phase(o))) goto INVALID;
 			break;
 		case '[':
 			prepare_event(o, NULL, false);
@@ -2299,7 +2296,7 @@ static void time_gen_lines(sauScriptGenData *restrict gen) {
 	time_range(gen->pm_a, dur_ms);
 	time_range(gen->pd_c, dur_ms);
 	time_range(gen->pd_h, dur_ms);
-	time_range(gen->pd_p, dur_ms);
+	time_range(gen->pd_x, dur_ms);
 	time_range(gen->pd_y, dur_ms);
 }
 
