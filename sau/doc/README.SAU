@@ -255,6 +255,19 @@ Phase distortion subparameters:
 		way as changing the sign of the frequency used does.
 			Using modulators with audible frequency will
 		often sound somewhat like PM but bright and buzzier.
+	.d	Duty cycle or "zoom in" PD; the default value of 1.0
+		does nothing, values close to 0 "zoom out" and above
+		1 values "zoom in".
+			This is the multiplicative inverse of "p.c",
+		but both are set and applied independently. It's the
+		"PulWM" of Pulsar Synthesis. Compared to "p.c", this
+		is the option allowing a full "zoom out", instead of
+		a full "zoom in". When sweeping or modulating one of
+		them, the part of the range close to 0 is that which
+		will audibly come and go quickly.
+			Using modulators with audible frequency will
+		sound somewhat like doing it with "p.c", except both
+		more deep and brightly buzzy. Has the richest sound.
 	.h	Hold for cycle portion phase distortion; the default
 		value 0.0 does nothing. A positive value like 1/4 is
 		used to extend a horizontal line from the beginning,
@@ -273,6 +286,7 @@ Phase distortion subparameters:
 		are allowed, creating different distorted shapes.
 			Using modulators with audible frequency will
 		often sound somewhat like PM but warmer, fat, buzzy.
+		This and "p.d" both sound deep, this sounds less bright.
 	.y      Inverse of the x-axis half-cycle lenght PWM-like PD,
 		".x". Where PWM changes length proportions of halves
 		of a waveform while preserving their shapes, instead
@@ -281,6 +295,9 @@ Phase distortion subparameters:
 		and displaced to compensate. Default 1/2, meaning no
 		change, with 0 and 1 extremes -- with values allowed
 		beyond as well, creating different distorted shapes.
+			The effect is identical to that of using a PM
+		modulator which is a triangle wave (especially with
+		frequency ratio 1:1).
 			Using modulators with audible frequency will
 		often sound somewhat like PM but brighter, yet smooth.
 	.a	Phase self-modulation (a.k.a. "feedback FM") can be set

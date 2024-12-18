@@ -65,6 +65,7 @@ enum {
 	SAU_PSWEEP_FREQ,
 	SAU_PSWEEP_PMA,
 	SAU_PSWEEP_PDC,
+	SAU_PSWEEP_PDD,
 	SAU_PSWEEP_PDH,
 	SAU_PSWEEP_PDX,
 	SAU_PSWEEP_PDY,
@@ -211,6 +212,7 @@ SAU_MOD__4M(f_fm,   X, " FM",  "f") \
 	X(  pf_pm,  1, "fPM ", "p.f") \
 SAU_MOD__4M(pa_pm,  X, "aPM",  "p.a") \
 SAU_MOD__4M(pd_c,   X, "cPD",  "p.c") \
+SAU_MOD__4M(pd_d,   X, "dPD",  "p.d") \
 SAU_MOD__4M(pd_h,   X, "hPD",  "p.h") \
 SAU_MOD__4M(pd_x,   X, "xPD",  "p.x") \
 SAU_MOD__4M(pd_y,   X, "yPD",  "p.y") \
@@ -247,7 +249,7 @@ typedef struct sauProgramGenData {
 	sauRange *amp, *pan;
 	sauRange *freq;
 	sauRange *pm_a;
-	sauRange *pd_c, *pd_h, *pd_x, *pd_y;
+	sauRange *pd_c, *pd_d, *pd_h, *pd_x, *pd_y;
 	uint32_t phase;
 	uint32_t seed;
 	union sauPGenMode {
