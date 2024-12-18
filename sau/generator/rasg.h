@@ -194,7 +194,7 @@ static sauMaybeUnused void sauCyclor_fill(sauCyclor *restrict o,
  * above 1 zooms out adding padding (the amplitude at the cycle beginning/end).
  */
 static sauMaybeUnused void
-sauRasG_dist_length(sauRasG *restrict o sauMaybeUnused,
+sauRasG_dist_pulwm_mul(sauRasG *restrict o sauMaybeUnused,
 		float *restrict phase_f,
 		uint32_t *restrict cycle_ui32,
 		size_t buf_len,
@@ -209,6 +209,31 @@ sauRasG_dist_length(sauRasG *restrict o sauMaybeUnused,
 	} else for (size_t i = 0; i < buf_len; ++i) {
 		float x = phase_f[i];
 		x = sau_fclampf(x * pd_f[i], -1.f, 1.f);
+		if (x < 0.f) x += 1.f;
+		phase_f[i] = x;
+	}
+}
+
+/*
+ * Phase distortion: duty cycle. Below 1 zooms out adding padding,
+ * above 1 zooms in resulting in jagged shapes.
+ */
+static sauMaybeUnused void
+sauRasG_dist_pulwm_div(sauRasG *restrict o sauMaybeUnused,
+		float *restrict phase_f,
+		uint32_t *restrict cycle_ui32,
+		size_t buf_len,
+		const float *restrict pd_f) {
+	if (o->cyclor.rate2x) for (size_t i = 0; i < buf_len; ++i) {
+		int32_t cycle = (cycle_ui32[i] & 1);
+		float x = phase_f[i] + cycle;
+		x = sau_fclampf(x / pd_f[i], -2.f, 2.f);
+		int32_t cycle_adj = floorf(x);
+		cycle_ui32[i] += cycle_adj - cycle;
+		phase_f[i] = x - cycle_adj;
+	} else for (size_t i = 0; i < buf_len; ++i) {
+		float x = phase_f[i];
+		x = sau_fclampf(x / pd_f[i], -1.f, 1.f);
 		if (x < 0.f) x += 1.f;
 		phase_f[i] = x;
 	}
