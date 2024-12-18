@@ -24,6 +24,10 @@ Language changes:
    derive new wave types, e.g. `W.c2`. (See below.)
 
 Implement `R` and `W` phase distortions and their modulation:
+ * The new duty cycle parameter `p.d` defaults to 1; a
+   zoom phase distortion which is the inverse of `p.c`
+   and corresponds to "PulWM", implemented through PD.
+   Full zoom-out at 0.
  * The new cycle length parameter `p.c` defaults to 1.
    Values closer to 0 "zoom in" -- sawtooth-like edges
    may form. Values larger than 1 "zoom out", with the

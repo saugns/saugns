@@ -1755,6 +1755,9 @@ static uint8_t parse_gen_phase(sauParser *restrict o) {
 	case 'c':
 		return parse_par_modranges(o, NULL, &gen->pd_c, false,
 				SAU_PSWEEP_PDC, SAU_MOD_N_pd_c);
+	case 'd':
+		return parse_par_modranges(o, NULL, &gen->pd_d, false,
+				SAU_PSWEEP_PDD, SAU_MOD_N_pd_d);
 	case 'f':
 		parse_par_list(o, NULL, NULL, false, 0, SAU_MOD_N_pf_pm, 0);
 		break;
@@ -2293,6 +2296,7 @@ static void time_gen_lines(sauScriptGenData *restrict gen) {
 	time_range(gen->freq, dur_ms);
 	time_range(gen->pm_a, dur_ms);
 	time_range(gen->pd_c, dur_ms);
+	time_range(gen->pd_d, dur_ms);
 	time_range(gen->pd_h, dur_ms);
 	time_range(gen->pd_x, dur_ms);
 	time_range(gen->pd_y, dur_ms);

@@ -155,7 +155,7 @@ static sauMaybeUnused void sauWOsc_fill(sauWOsc *restrict o,
  * above 1 zooms out adding padding (the amplitude at the cycle beginning/end).
  */
 static sauMaybeUnused void
-sauWOsc_dist_length(sauWOsc *restrict o sauMaybeUnused,
+sauWOsc_dist_pulwm_mul(sauWOsc *restrict o sauMaybeUnused,
 		uint32_t *restrict phase_ui32,
 		size_t buf_len,
 		const float *restrict pd_f) {
@@ -166,6 +166,26 @@ sauWOsc_dist_length(sauWOsc *restrict o sauMaybeUnused,
 	for (size_t i = 0; i < buf_len; ++i) {
 		uint32_t p_i = phase_ui32[i] - c;
 		float x = sau_fclampf(p_i * pd_f[i], -0x1p32f, 0x1p32f);
+		phase_ui32[i] = sau_ftoi(x) + c;
+	}
+}
+
+/*
+ * Phase distortion: duty cycle. Below 1 zooms out adding padding,
+ * above 1 zooms in resulting in jagged shapes.
+ */
+static sauMaybeUnused void
+sauWOsc_dist_pulwm_div(sauWOsc *restrict o sauMaybeUnused,
+		uint32_t *restrict phase_ui32,
+		size_t buf_len,
+		const float *restrict pd_f) {
+	int32_t c = 0;
+	if (o->opt.func == SAU_WAVE_F_ADAA) {
+		c = sauWave_picoeffs[o->opt.wave].phase_adj;
+	}
+	for (size_t i = 0; i < buf_len; ++i) {
+		uint32_t p_i = phase_ui32[i] - c;
+		float x = sau_fclampf(p_i / pd_f[i], -0x1p32f, 0x1p32f);
 		phase_ui32[i] = sau_ftoi(x) + c;
 	}
 }
