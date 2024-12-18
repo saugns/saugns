@@ -72,7 +72,7 @@ typedef struct OscBase {
 	GenBase gen;
 	struct ParWithRangeMod freq;
 	const sauProgramIDArr *pmods, *fpmods;
-	struct ParWithRangeMod pd_c, pd_h, pd_x, pd_y;
+	struct ParWithRangeMod pd_c, pd_d, pd_h, pd_x, pd_y;
 	struct ParWithRangeMod pm_a;
 } OscBase;
 
@@ -278,6 +278,7 @@ static void prepare_gen(sauGenerator *restrict o,
 		OscBase *osc = &n->osc;
 		prepare_range(&osc->freq, SAU_PDEF_FREQ);
 		prepare_range(&osc->pd_c, 1.0);
+		prepare_range(&osc->pd_d, 1.0);
 		prepare_range(&osc->pd_h, 0.0);
 		prepare_range(&osc->pd_x, 0.5);
 		prepare_range(&osc->pd_y, 0.5);
@@ -308,6 +309,7 @@ static void update_ids(AnyGen *restrict n,
 	case SAU_MOD_N_pf_pm:    n->osc.fpmods   	= ids->a; break;
 	CASES_4MODS(   pa_pm,    n->osc.pm_a)
 	CASES_4MODS(   pd_c,     n->osc.pd_c)
+	CASES_4MODS(   pd_d,     n->osc.pd_d)
 	CASES_4MODS(   pd_h,     n->osc.pd_h)
 	CASES_4MODS(   pd_x,     n->osc.pd_x)
 	CASES_4MODS(   pd_y,     n->osc.pd_y)
@@ -363,6 +365,7 @@ static void update_gen(sauGenerator *restrict o,
 		OscBase *osc = &n->osc;
 		update_range(&osc->freq, gd->freq, o->srate);
 		update_range(&osc->pd_c, gd->pd_c, o->srate);
+		update_range(&osc->pd_d, gd->pd_d, o->srate);
 		update_range(&osc->pd_h, gd->pd_h, o->srate);
 		update_range(&osc->pd_x, gd->pd_x, o->srate);
 		update_range(&osc->pd_y, gd->pd_y, o->srate);
@@ -653,7 +656,12 @@ run_block_wosc(sauGenerator *restrict o,
 			freq, pm_buf); // #2 <- #3
 	if (run_valrange_param(o, bufs, len, &n->osc.pd_c, NULL, freq, false,
 				n->osc.pd_c.par.v0 != 1.f)) {
-		sauWOsc_dist_length(&n->wo.wosc, phase_buf, len,
+		sauWOsc_dist_pulwm_mul(&n->wo.wosc, phase_buf, len,
+				bufs[0]); // #2 <- #3, tmp #4, sub #5
+	}
+	if (run_valrange_param(o, bufs, len, &n->osc.pd_d, NULL, freq, false,
+				n->osc.pd_d.par.v0 != 1.f)) {
+		sauWOsc_dist_pulwm_div(&n->wo.wosc, phase_buf, len,
 				bufs[0]); // #2 <- #3, tmp #4, sub #5
 	}
 	if (run_valrange_param(o, bufs, len, &n->osc.pd_h, NULL, freq, false,
@@ -703,7 +711,12 @@ run_block_rasg(sauGenerator *restrict o,
 			freq, pm_buf); // #2 and #3 <- #4
 	if (run_valrange_param(o, bufs, len, &n->osc.pd_c, NULL, freq, false,
 				n->osc.pd_c.par.v0 != 1.f)) {
-		sauRasG_dist_length(&n->rg.rasg, rasg_buf, cycle_buf, len,
+		sauRasG_dist_pulwm_mul(&n->rg.rasg, rasg_buf, cycle_buf, len,
+				bufs[0]); // #2 and #3 <- #4, tmp #5, sub #6
+	}
+	if (run_valrange_param(o, bufs, len, &n->osc.pd_d, NULL, freq, false,
+				n->osc.pd_d.par.v0 != 1.f)) {
+		sauRasG_dist_pulwm_div(&n->rg.rasg, rasg_buf, cycle_buf, len,
 				bufs[0]); // #2 and #3 <- #4, tmp #5, sub #6
 	}
 	if (run_valrange_param(o, bufs, len, &n->osc.pd_h, NULL, freq, false,
