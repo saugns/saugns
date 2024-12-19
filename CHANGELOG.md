@@ -7,6 +7,27 @@ is a shorter change log with only the SAU language changes.
 Pre-release
 -----------
 
+[rebase in progress]
+
+Fix sweeps for PD parameters. These were meant to
+work, but were broken by v0.5.0 refactoring; time
+flags lacked initialization.
+
+Correct polarity of PD `.p` phase offset for `R`,
+was flipped relative to `W`.
+
+Fix mis-scaling of the `.p` phase offset for `.c`
+and `.d`, when using `R mh`, and for `R` whenever
+the `.f` multiplier is used.
+
+Refactor, unify "phasor" (phase signal generator,
+including PD) for `W` & `R`.
+
+v0.5.0 (2025-01-06)
+-------------------
+
+Add a set of PD synthesis & PS options.
+
 Language changes:
  * Signal generator types. Add `W` mode toggle. (See below.)
  * Accept phase `p` values directly after `W` and `R` (a
@@ -17,13 +38,25 @@ Language changes:
    after `A` as before); an amplitude number requries e.g.
    parentheses around to set it apart from the noise type.
    This is more for consistency and as a shortcut for AM.
- * Expand phase `p` subparameters with a set of phase
-   distortion options. Each has a distortion function which
-   can also be modulated (similarly to PM, but with full
-   value ranges features). Used with constant numbers, they
-   derive new wave types, e.g. `W.c2`. (See below.)
+ * Implement phase distortion synthesis, and some forms of
+   pulsar synthesis as well. Add a set of phase `p`
+   subparameters for this; each is for a distortion function,
+   with main and subvalues which can be set, swept, and
+   modulated. Used with constant numbers, they derive new wave
+   types, e.g. `W.c2` is a sine alternating between on and off
+   every other cycle with preserved base frequency.
+ * Accept phase `p` subparameters for PD and for self-PM as
+   `p[]` list heading subparameters. The main `p` parameter
+   doesn't support value sweeps etc., so there was nothing
+   else being parsed in such a way. This combines with the
+   new support for `p` values right after `R` or `W`.
 
-Implement `R` and `W` phase distortions and their modulation:
+Implement `R` and `W` PD options, each such subparameter
+(including its 2 subparameters) having full value ranges
+support.
+ * Each PD option under `p` subparameters has in turn:
+   - Subfrequency `.f`.
+   - Phase offset `.p`.
  * The new duty cycle parameter `p.d` defaults to 1; a
    zoom phase distortion which is the inverse of `p.c`
    and corresponds to "PulWM", implemented through PD.
