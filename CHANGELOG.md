@@ -24,6 +24,9 @@ Language changes:
    derive new wave types, e.g. `W.c2`. (See below.)
 
 Implement `R` and `W` phase distortions and their modulation:
+ * Each PD option under `p` subparameters has in turn:
+   - Subfrequency `.f`.
+   - Phase offset `.p`.
  * The new duty cycle parameter `p.d` defaults to 1; a
    zoom phase distortion which is the inverse of `p.c`
    and corresponds to "PulWM", implemented through PD.

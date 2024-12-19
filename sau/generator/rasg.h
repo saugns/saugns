@@ -189,6 +189,13 @@ static sauMaybeUnused void sauCyclor_fill(sauCyclor *restrict o,
 
 #undef P /* done */
 
+typedef void (*sauRasG_pdist_f)(sauRasG *restrict o,
+		float *restrict phase_f,
+		uint32_t *restrict cycle_ui32,
+		size_t buf_len,
+		const float *restrict pd_f,
+		float f_mul);
+
 /*
  * Phase distortion: cycle length. Below 1 zooms in resulting in jagged shapes,
  * above 1 zooms out adding padding (the amplitude at the cycle beginning/end).
@@ -198,19 +205,25 @@ sauRasG_dist_pulwm_mul(sauRasG *restrict o sauMaybeUnused,
 		float *restrict phase_f,
 		uint32_t *restrict cycle_ui32,
 		size_t buf_len,
-		const float *restrict pd_f) {
+		const float *restrict pd_f,
+		float f_mul) {
+	int32_t cycle_mul = floorf(f_mul);
+	if (!cycle_mul) cycle_mul = 1;
 	if (o->cyclor.rate2x) for (size_t i = 0; i < buf_len; ++i) {
 		int32_t cycle = (cycle_ui32[i] & 1);
 		float x = phase_f[i] + cycle;
 		x = sau_fclampf(x * pd_f[i], -2.f, 2.f);
+		x *= f_mul;
 		int32_t cycle_adj = floorf(x);
-		cycle_ui32[i] += cycle_adj - cycle;
+		cycle_ui32[i] = cycle_mul * (cycle_ui32[i] - cycle) + cycle_adj;
 		phase_f[i] = x - cycle_adj;
 	} else for (size_t i = 0; i < buf_len; ++i) {
 		float x = phase_f[i];
 		x = sau_fclampf(x * pd_f[i], -1.f, 1.f);
-		if (x < 0.f) x += 1.f;
-		phase_f[i] = x;
+		x *= f_mul;
+		int32_t cycle_adj = floorf(x);
+		cycle_ui32[i] = cycle_mul * cycle_ui32[i] + cycle_adj;
+		phase_f[i] = x - cycle_adj;
 	}
 }
 
@@ -223,19 +236,25 @@ sauRasG_dist_pulwm_div(sauRasG *restrict o sauMaybeUnused,
 		float *restrict phase_f,
 		uint32_t *restrict cycle_ui32,
 		size_t buf_len,
-		const float *restrict pd_f) {
+		const float *restrict pd_f,
+		float f_mul) {
+	int32_t cycle_mul = floorf(f_mul);
+	if (!cycle_mul) cycle_mul = 1;
 	if (o->cyclor.rate2x) for (size_t i = 0; i < buf_len; ++i) {
 		int32_t cycle = (cycle_ui32[i] & 1);
 		float x = phase_f[i] + cycle;
 		x = sau_fclampf(x / pd_f[i], -2.f, 2.f);
+		x *= f_mul;
 		int32_t cycle_adj = floorf(x);
-		cycle_ui32[i] += cycle_adj - cycle;
+		cycle_ui32[i] = cycle_mul * (cycle_ui32[i] - cycle) + cycle_adj;
 		phase_f[i] = x - cycle_adj;
 	} else for (size_t i = 0; i < buf_len; ++i) {
 		float x = phase_f[i];
 		x = sau_fclampf(x / pd_f[i], -1.f, 1.f);
-		if (x < 0.f) x += 1.f;
-		phase_f[i] = x;
+		x *= f_mul;
+		int32_t cycle_adj = floorf(x);
+		cycle_ui32[i] = cycle_mul * cycle_ui32[i] + cycle_adj;
+		phase_f[i] = x - cycle_adj;
 	}
 }
 
@@ -248,21 +267,34 @@ sauRasG_dist_hold(sauRasG *restrict o sauMaybeUnused,
 		float *restrict phase_f,
 		uint32_t *restrict cycle_ui32,
 		size_t buf_len,
-		const float *restrict pd_f) {
+		const float *restrict pd_f,
+		float f_mul) {
+	const float f_mul_inv = 1.f / f_mul;
 	if (o->cyclor.rate2x) for (size_t i = 0; i < buf_len; ++i) {
 		int32_t cycle = (cycle_ui32[i] & 1);
 		float x = phase_f[i] + cycle, a = pd_f[i] * 2;
+		x *= f_mul;
+		int32_t f_adj = floorf(x);
+		if (f_adj & 1) --f_adj;
+		x -= f_adj;
 		x = a >= 0.f ?
 			(x >= a ? x : 0.f) :
 			(x <= a + 2.f ? x : 2.f);
+		x += f_adj;
+		x *= f_mul_inv;
 		int32_t cycle_adj = floorf(x);
 		cycle_ui32[i] += cycle_adj - cycle;
 		phase_f[i] = x - cycle_adj;
 	} else for (size_t i = 0; i < buf_len; ++i) {
 		float x = phase_f[i], a = pd_f[i];
+		x *= f_mul;
+		int32_t f_adj = floorf(x);
+		x -= f_adj;
 		x = a >= 0.f ?
 			(x >= a ? x : 0.f) :
 			(x <= a + 1.f ? x : 1.f);
+		x += f_adj;
+		x *= f_mul_inv;
 		phase_f[i] = x;
 	}
 }
@@ -275,23 +307,36 @@ sauRasG_dist_halfx(sauRasG *restrict o sauMaybeUnused,
 		float *restrict phase_f,
 		uint32_t *restrict cycle_ui32,
 		size_t buf_len,
-		const float *restrict pd_f) {
+		const float *restrict pd_f,
+		float f_mul) {
+	const float f_mul_inv = 1.f / f_mul;
 	if (o->cyclor.rate2x) for (size_t i = 0; i < buf_len; ++i) {
 		int32_t cycle = (cycle_ui32[i] & 1);
 		float a = pd_f[i], b = 2*a, h = 2*0.5f;
 		float x = phase_f[i] + cycle;
+		x *= f_mul;
+		int32_t f_adj = floorf(x);
+		if (f_adj & 1) --f_adj;
+		x -= f_adj;
 		x = x < b ?
 			x*(0.5f/a) :
 			(x-b)*(0.5f/(1.f-a)) + h;
+		x += f_adj;
+		x *= f_mul_inv;
 		int32_t cycle_adj = floorf(x);
 		cycle_ui32[i] += cycle_adj - cycle;
 		phase_f[i] = x - cycle_adj;
 	} else for (size_t i = 0; i < buf_len; ++i) {
 		float a = pd_f[i], b = 1*a, h = 1*0.5f;
 		float x = phase_f[i];
+		x *= f_mul;
+		int32_t f_adj = floorf(x);
+		x -= f_adj;
 		x = x < b ?
 			x*(0.5f/a) :
 			(x-b)*(0.5f/(1.f-a)) + h;
+		x += f_adj;
+		x *= f_mul_inv;
 		int32_t cycle_adj = floorf(x);
 		cycle_ui32[i] += cycle_adj;
 		phase_f[i] = x - cycle_adj;
@@ -306,26 +351,50 @@ sauRasG_dist_halfy(sauRasG *restrict o sauMaybeUnused,
 		float *restrict phase_f,
 		uint32_t *restrict cycle_ui32,
 		size_t buf_len,
-		const float *restrict pd_f) {
+		const float *restrict pd_f,
+		float f_mul) {
+	const float f_mul_inv = 1.f / f_mul;
 	if (o->cyclor.rate2x) for (size_t i = 0; i < buf_len; ++i) {
 		int32_t cycle = (cycle_ui32[i] & 1);
 		float a = pd_f[i], b = 2*a, h = 2*0.5f;
 		float x = phase_f[i] + cycle;
+		x *= f_mul;
+		int32_t f_adj = floorf(x);
+		if (f_adj & 1) --f_adj;
+		x -= f_adj;
 		x = x < h ?
 			x*(a*2) :
 			(x-h)*((1.f-a)*2) + b;
+		x += f_adj;
+		x *= f_mul_inv;
 		int32_t cycle_adj = floorf(x);
 		cycle_ui32[i] += cycle_adj - cycle;
 		phase_f[i] = x - cycle_adj;
 	} else for (size_t i = 0; i < buf_len; ++i) {
 		float a = pd_f[i], b = 1*a, h = 1*0.5f;
 		float x = phase_f[i];
+		x *= f_mul;
+		int32_t f_adj = floorf(x);
+		x -= f_adj;
 		x = x < h ?
 			x*(a*2) :
 			(x-h)*((1.f-a)*2) + b;
+		x += f_adj;
+		x *= f_mul_inv;
 		int32_t cycle_adj = floorf(x);
 		cycle_ui32[i] += cycle_adj;
 		phase_f[i] = x - cycle_adj;
+	}
+}
+
+static inline sauRasG_pdist_f sauRasG_get_pdist_f(unsigned func) {
+	switch (func) {
+	default:        return NULL;
+	case SAU_PPD_C: return sauRasG_dist_pulwm_mul;
+	case SAU_PPD_D: return sauRasG_dist_pulwm_div;
+	case SAU_PPD_H: return sauRasG_dist_hold;
+	case SAU_PPD_X: return sauRasG_dist_halfx;
+	case SAU_PPD_Y: return sauRasG_dist_halfy;
 	}
 }
 
