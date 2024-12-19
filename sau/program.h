@@ -71,6 +71,32 @@ enum {
 	SAU_PSWEEP_PDY,
 };
 
+/**
+ * Phase distortion parameter set type.
+ *
+ * Holds main range, phase offset range, frequency multiplier, and flags.
+ */
+typedef struct sauPDSet {
+	sauRange v;
+	float f_mul;
+	bool has_f_mul;
+} sauPDSet;
+
+/**
+ * Phase distortion parameter set IDs.
+ */
+enum {
+	SAU_PPD_C = 0,
+	SAU_PPD_D,
+	SAU_PPD_H,
+	SAU_PPD_X,
+	SAU_PPD_Y,
+	SAU_PPD_TYPES,
+};
+
+/** Is PD cycle zoom a.k.a. pulsar synthesis, '.f' multiplying frequency? */
+#define sau_pd_f_is_fmul(id) ((id) <= SAU_PPD_D)
+
 /** Frequency parameter default value, when default not changed in a script. */
 #define SAU_PDEF_FREQ 440.0
 
@@ -211,17 +237,20 @@ SAU_MOD__4M(f_fm,   X, " FM",  "f") \
 	X(  p_pm,   1, " PM ", "p") \
 	X(  pf_pm,  1, "fPM ", "p.f") \
 SAU_MOD__4M(pa_pm,  X, "aPM",  "p.a") \
-SAU_MOD__4M(pd_c,   X, "cPD",  "p.c") \
-SAU_MOD__4M(pd_d,   X, "dPD",  "p.d") \
-SAU_MOD__4M(pd_h,   X, "hPD",  "p.h") \
-SAU_MOD__4M(pd_x,   X, "xPD",  "p.x") \
-SAU_MOD__4M(pd_y,   X, "yPD",  "p.y") \
+SAU_MOD__PD(pd_c,   X, "cPD",  "p.c") \
+SAU_MOD__PD(pd_d,   X, "dPD",  "p.d") \
+SAU_MOD__PD(pd_h,   X, "hPD",  "p.h") \
+SAU_MOD__PD(pd_x,   X, "xPD",  "p.x") \
+SAU_MOD__PD(pd_y,   X, "yPD",  "p.y") \
 	//
 #define SAU_MOD__4M(NAME, X, LABEL, SYNTAX) /* 4 valrange modulator types */ \
 	X(NAME,     1, LABEL " ", SYNTAX) \
 	X(NAME##1,  1, LABEL "1", SYNTAX "..") \
 	X(NAME##2,  1, LABEL "2", SYNTAX "..") \
 	X(NAME##_r, 1, LABEL "r", SYNTAX ".r") \
+	//
+#define SAU_MOD__PD(NAME, X, LABEL, SYNTAX) /* 4*2 PD valrange modulators */ \
+SAU_MOD__4M(NAME,   X, LABEL,     SYNTAX) \
 	//
 #define SAU_MOD__X_ID(NAME, ...) SAU_MOD_N_##NAME,
 #define SAU_MOD__X_GRAPH(NAME, IS_MOD, LABEL, ...) LABEL,
@@ -249,7 +278,7 @@ typedef struct sauProgramGenData {
 	sauRange *amp, *pan;
 	sauRange *freq;
 	sauRange *pm_a;
-	sauRange *pd_c, *pd_d, *pd_h, *pd_x, *pd_y;
+	sauPDSet *pd;
 	uint32_t phase;
 	uint32_t seed;
 	union sauPGenMode {
