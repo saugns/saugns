@@ -916,16 +916,19 @@ static sauScriptObjInfo *ObjInfoArr_add(ObjInfoArr *restrict o,
 	return info;
 }
 
+static void init_range(sauParser *restrict o, sauRange *restrict r) {
+	// default implicit time value is flexible
+	r->a.time_ms = r->b.time_ms = o->sl.sopt.def_time_ms;
+	r->a.flags = r->b.flags = SAU_LINEP_TIME | SAU_LINEP_TIME_IF_NEW;
+}
+
 static sauRange *create_range(sauParser *restrict o,
 		bool mult, uint32_t par_flag) {
 	struct ScanLookup *sl = &o->sl;
 	sauRange *r = sau_mpalloc(o->mp, sizeof(*r));
 	if (!r)
 		return NULL;
-	r->a.time_ms = sl->sopt.def_time_ms; // initial default
-	r->a.flags = SAU_LINEP_TIME |
-		SAU_LINEP_TIME_IF_NEW; // default implicit value is flexible
-	r->b = r->a;
+	init_range(o, r);
 	float a;
 	switch (par_flag) {
 	case SAU_PSWEEP_PAN:
@@ -1569,6 +1572,32 @@ static uint8_t parse_par_modranges(sauParser *restrict o,
 	return 0;
 }
 
+static uint8_t parse_par_pdset(sauParser *restrict o,
+		sauPDSet **restrict pdset,
+		uint8_t pdset_id, uint8_t mod) {
+	if (!*pdset) {
+		*pdset = sau_mpalloc(o->mp,
+				sizeof(sauPDSet) * SAU_PPD_TYPES);
+		for (uint32_t i = 0; i < SAU_PPD_TYPES; ++i)
+			init_range(o, &(*pdset)[i].v);
+	}
+	sauPDSet *p = &(*pdset)[pdset_id];
+	sauRange *range_v = &p->v;
+	uint8_t c;
+	switch ((c = parse_par_modranges(o, NULL, &range_v, false, 0, mod))) {
+	case 'f': {
+		double val;
+		if (scan_num(o->sc, NULL, &val)) {
+			p->f_mul = val;
+			p->has_f_mul = true;
+		}
+		break; }
+	default:
+		return c;
+	}
+	return 0;
+}
+
 static uint8_t parse_gen_phase(sauParser *restrict o);
 
 static bool parse_gen_main(sauParser *restrict o, uint8_t gen_type,
@@ -1757,23 +1786,18 @@ static uint8_t parse_gen_phase(sauParser *restrict o) {
 		return parse_par_modranges(o, NULL, &gen->pm_a, false,
 				SAU_PSWEEP_PMA, SAU_MOD_N_pa_pm);
 	case 'c':
-		return parse_par_modranges(o, NULL, &gen->pd_c, false,
-				SAU_PSWEEP_PDC, SAU_MOD_N_pd_c);
+		return parse_par_pdset(o, &gen->pd, SAU_PPD_C, SAU_MOD_N_pd_c);
 	case 'd':
-		return parse_par_modranges(o, NULL, &gen->pd_d, false,
-				SAU_PSWEEP_PDD, SAU_MOD_N_pd_d);
+		return parse_par_pdset(o, &gen->pd, SAU_PPD_D, SAU_MOD_N_pd_d);
 	case 'f':
 		parse_par_list(o, NULL, NULL, false, 0, SAU_MOD_N_pf_pm, 0);
 		break;
 	case 'h':
-		return parse_par_modranges(o, NULL, &gen->pd_h, false,
-				SAU_PSWEEP_PDH, SAU_MOD_N_pd_h);
+		return parse_par_pdset(o, &gen->pd, SAU_PPD_H, SAU_MOD_N_pd_h);
 	case 'x':
-		return parse_par_modranges(o, NULL, &gen->pd_x, false,
-				SAU_PSWEEP_PDX, SAU_MOD_N_pd_x);
+		return parse_par_pdset(o, &gen->pd, SAU_PPD_X, SAU_MOD_N_pd_x);
 	case 'y':
-		return parse_par_modranges(o, NULL, &gen->pd_y, false,
-				SAU_PSWEEP_PDY, SAU_MOD_N_pd_y);
+		return parse_par_pdset(o, &gen->pd, SAU_PPD_Y, SAU_MOD_N_pd_y);
 	default:
 		return c;
 	}
@@ -2219,6 +2243,14 @@ static inline void time_range(sauRange *restrict r,
 	}
 }
 
+static inline void time_pdset(sauPDSet *restrict p,
+		uint32_t default_time_ms) {
+	if (!p)
+		return;
+	for (uint32_t i = 0; i < SAU_PPD_TYPES; ++i)
+		time_range(&p[i].v, default_time_ms);
+}
+
 static void time_gen_lines(sauScriptGenData *restrict gen);
 static uint32_t time_event(sauScriptEvData *restrict e);
 static void flatten_events(sauScriptEvData *restrict e);
@@ -2299,11 +2331,7 @@ static void time_gen_lines(sauScriptGenData *restrict gen) {
 	time_range(gen->amp, dur_ms);
 	time_range(gen->freq, dur_ms);
 	time_range(gen->pm_a, dur_ms);
-	time_range(gen->pd_c, dur_ms);
-	time_range(gen->pd_d, dur_ms);
-	time_range(gen->pd_h, dur_ms);
-	time_range(gen->pd_x, dur_ms);
-	time_range(gen->pd_y, dur_ms);
+	time_pdset(gen->pd, dur_ms);
 }
 
 static uint32_t time_gen(sauScriptGenData *restrict gen) {
