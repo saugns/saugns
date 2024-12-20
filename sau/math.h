@@ -384,3 +384,41 @@ static inline float sau_sinpi_d5f(float x) {
 
 /** Inverse frequency coefficient with \p po2 power of two multiplier. */
 #define SAU_INV_FREQ(po2, freq) (SAU_PASTE(0x1.0p, po2) / (freq))
+
+/*
+ * Generic waveshaping, phaseshaping, etc.
+ */
+
+/**
+ * Casio-style phase distortion transfer function, knee on x-axis at \p a.
+ *
+ * Can warp the length proportion of half-cycles. Inverse of sau_pdist_halfy().
+ */
+static inline float sau_pdist_halfx(float x, float a, float scale) {
+	const float b = scale*a, h = scale*0.5f;
+	return x < b ?
+		x*(0.5f/a) :
+		(x-b)*(0.5f/(1.f-a)) + h;
+}
+
+/**
+ * Casio-style phase distortion transfer function, knee on y-axis at \p a.
+ *
+ * Can warp the change proportion in half-cycles. Inverse of sau_pdist_halfx().
+ */
+static inline float sau_pdist_halfy(float x, float a, float scale) {
+	const float b = scale*a, h = scale*0.5f;
+	return x < h ?
+		x*(a*2) :
+		(x-h)*((1.f-a)*2) + b;
+}
+
+/**
+ * Phase distortion transfer function, hold cycle portion to left or right.
+ */
+static inline float sau_pdist_hold(float x, float a, float scale) {
+	a *= scale;
+	return a >= 0.f ?
+		(x >= a ? x : 0.f) :
+		(x <= a + scale ? x : scale);
+}
