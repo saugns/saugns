@@ -153,23 +153,25 @@ static sauMaybeUnused void sauWOsc_fill(sauWOsc *restrict o,
 typedef void (*sauWOsc_pdist_f)(sauWOsc *restrict o,
 		uint32_t *restrict phase_ui32,
 		size_t buf_len,
-		const float *restrict pd_f,
-		float f_mul);
+		const float *restrict v_f,
+		const float *restrict f_f,
+		float f_fval);
 
 /*
  * PD get/set phase macros, for use inside loops.
  */
 #define PD_GET_SUBF(x, phase_ui32, offset, f_mul) \
-	uint32_t p_i = phase_ui32 - (offset); \
-	float x = p_i; \
-	x *= f_mul; \
-	int32_t f_adj = floorf(x); \
-	x -= f_adj; \
+	uint32_t c_i = (offset);         \
+	uint32_t p_i = phase_ui32 - c_i; \
+	float x = p_i;                   \
+	x *= f_mul;                      \
+	int32_t f_adj = floorf(x);       \
+	x -= f_adj;                      \
 //
-#define PD_SET_SUBF(x, phase_ui32, offset, f_mul_inv) \
-	x += f_adj; \
-	x *= f_mul_inv; \
-	phase_ui32 = sau_ftoi(x) + (offset); \
+#define PD_SET_SUBF(x, phase_ui32, f_mul_inv) \
+	x += f_adj;                      \
+	x *= f_mul_inv;                  \
+	phase_ui32 = sau_ftoi(x) + c_i;  \
 //
 
 /*
@@ -179,15 +181,28 @@ typedef void (*sauWOsc_pdist_f)(sauWOsc *restrict o,
 #define PD_SIMPLE(offset, VAL_EXPR) PD_FMUL(offset, 1, VAL_EXPR)
 
 /*
- * Generate a a PD loop with frequency multiplier as for zoom-PDs,
+ * Generate a PD loop with frequency multiplier as for zoom-PDs,
  * having \p VAL_EXPR at its heart.
  */
 #define PD_FMUL(offset, f_mul, VAL_EXPR) \
-	for (size_t i = 0; i < buf_len; ++i) {                   \
-		uint32_t p_i = phase_ui32[i] - (offset);         \
-		float x = p_i;                                   \
-		x = (VAL_EXPR);                                  \
-		phase_ui32[i] = sau_ftoi(x * f_mul) + (offset);  \
+	for (size_t i = 0; i < buf_len; ++i) {             \
+		uint32_t c_i = (offset);                   \
+		uint32_t p_i = phase_ui32[i] - c_i;        \
+		float x = p_i;                             \
+		x = (VAL_EXPR);                            \
+		phase_ui32[i] = sau_ftoi(x * f_mul) + c_i; \
+	}
+
+/*
+ * Generate a PD loop with subfrequency control acting like modulator ratio,
+ * having \p VAL_EXPR at its heart.
+ */
+#define PD_SUBF(offset, f_mul, VAL_EXPR) \
+	for (size_t i = 0; i < buf_len; ++i) {               \
+		float fnorm = f_mul * 0x1p-32f;              \
+		PD_GET_SUBF(x, phase_ui32[i], offset, fnorm) \
+		x = (VAL_EXPR);                              \
+		PD_SET_SUBF(x, phase_ui32[i], 1 / fnorm)     \
 	}
 
 /*
@@ -195,12 +210,25 @@ typedef void (*sauWOsc_pdist_f)(sauWOsc *restrict o,
  * having \p VAL_EXPR at its heart.
  */
 #define PD_SUBF_CONST(offset, f_mul, VAL_EXPR) \
-	f_mul *= 0x1p-32f; /* factor out, use for scaling */     \
-	const float f_mul_inv = 1.f / f_mul;                     \
-	for (size_t i = 0; i < buf_len; ++i) {                   \
-		PD_GET_SUBF(x, phase_ui32[i], offset, f_mul)     \
-		x = (VAL_EXPR);                                  \
-		PD_SET_SUBF(x, phase_ui32[i], offset, f_mul_inv) \
+	f_mul *= 0x1p-32f; /* factor out, use for scaling */ \
+	const float f_mul_inv = 1.f / f_mul;                 \
+	for (size_t i = 0; i < buf_len; ++i) {               \
+		PD_GET_SUBF(x, phase_ui32[i], offset, f_mul) \
+		x = (VAL_EXPR);                              \
+		PD_SET_SUBF(x, phase_ui32[i], f_mul_inv)     \
+	}
+
+/* Loop bodies for sauWOsc_pdist_pulwm_mul() and sauWOsc_pdist_pulwm_div(). */
+#define PULWM_APPLY(OP, c) \
+	if (f_f) {                                                           \
+		PD_FMUL(c, f_f[i],                                           \
+				sau_fclampf(x OP v_f[i], -0x1p32f, 0x1p32f)) \
+	} else if (f_fval != 1.f) {                                          \
+		PD_FMUL(c, f_fval,                                           \
+				sau_fclampf(x OP v_f[i], -0x1p32f, 0x1p32f)) \
+	} else {                                                             \
+		PD_SIMPLE(c,                                                 \
+				sau_fclampf(x OP v_f[i], -0x1p32f, 0x1p32f)) \
 	}
 
 /*
@@ -211,18 +239,14 @@ static sauMaybeUnused void
 sauWOsc_pdist_pulwm_mul(sauWOsc *restrict o sauMaybeUnused,
 		uint32_t *restrict phase_ui32,
 		size_t buf_len,
-		const float *restrict pd_f,
-		float f_mul) {
-	int32_t c = 0;
+		const float *restrict v_f,
+		const float *restrict f_f,
+		float f_fval) {
+	uint32_t c = 0;
 	if (o->opt.func == SAU_WAVE_F_ADAA) {
 		c = sauWave_picoeffs[o->opt.wave].phase_adj;
 	}
-	if (f_mul == 1.f) {
-		PD_SIMPLE(c, sau_fclampf(p_i * pd_f[i], -0x1p32f, 0x1p32f))
-	} else {
-		PD_FMUL(c, f_mul,
-		        sau_fclampf(p_i * pd_f[i], -0x1p32f, 0x1p32f))
-	}
+	PULWM_APPLY(*, c)
 }
 
 /*
@@ -233,19 +257,27 @@ static sauMaybeUnused void
 sauWOsc_pdist_pulwm_div(sauWOsc *restrict o sauMaybeUnused,
 		uint32_t *restrict phase_ui32,
 		size_t buf_len,
-		const float *restrict pd_f,
-		float f_mul) {
-	int32_t c = 0;
+		const float *restrict v_f,
+		const float *restrict f_f,
+		float f_fval) {
+	uint32_t c = 0;
 	if (o->opt.func == SAU_WAVE_F_ADAA) {
 		c = sauWave_picoeffs[o->opt.wave].phase_adj;
 	}
-	if (f_mul == 1.f) {
-		PD_SIMPLE(c, sau_fclampf(p_i / pd_f[i], -0x1p32f, 0x1p32f))
-	} else {
-		PD_FMUL(c, f_mul,
-		        sau_fclampf(p_i / pd_f[i], -0x1p32f, 0x1p32f))
-	}
+	PULWM_APPLY(/, c)
 }
+
+#undef PULWM_APPLY
+
+/* Loop bodies for sauWOsc_pdist_hold() and others of the same form. */
+#define SUBF_APPLY(val_pdist_f, c) \
+	if (f_f) {                                                  \
+		PD_SUBF(c, f_f[i], val_pdist_f(x, v_f[i], 1))       \
+	} else if (f_fval != 1.f) {                                 \
+		PD_SUBF_CONST(c, f_fval, val_pdist_f(x, v_f[i], 1)) \
+	} else {                                                    \
+		PD_SIMPLE(c, val_pdist_f(x, v_f[i], 0x1p32f))       \
+	}
 
 /*
  * Phase distortion: hold from beginning/end for part of a cycle.
@@ -255,17 +287,14 @@ static sauMaybeUnused void
 sauWOsc_pdist_hold(sauWOsc *restrict o sauMaybeUnused,
 		uint32_t *restrict phase_ui32,
 		size_t buf_len,
-		const float *restrict pd_f,
-		float f_mul) {
-	int32_t c = 0;
+		const float *restrict v_f,
+		const float *restrict f_f,
+		float f_fval) {
+	uint32_t c = 0;
 	if (o->opt.func == SAU_WAVE_F_ADAA) {
 		c = sauWave_picoeffs[o->opt.wave].phase_adj;
 	}
-	if (f_mul == 1.f) {
-		PD_SIMPLE(c, sau_pdist_hold(x, pd_f[i], 0x1p32f))
-	} else {
-		PD_SUBF_CONST(c, f_mul, sau_pdist_hold(x, pd_f[i], 1))
-	}
+	SUBF_APPLY(sau_pdist_hold, c)
 }
 
 /*
@@ -275,17 +304,14 @@ static sauMaybeUnused void
 sauWOsc_pdist_halfx(sauWOsc *restrict o sauMaybeUnused,
 		uint32_t *restrict phase_ui32,
 		size_t buf_len,
-		const float *restrict pd_f,
-		float f_mul) {
-	int32_t c = 0;
+		const float *restrict v_f,
+		const float *restrict f_f,
+		float f_fval) {
+	uint32_t c = 0;
 	if (o->opt.func == SAU_WAVE_F_ADAA) {
 		c = sauWave_picoeffs[o->opt.wave].phase_adj;
 	}
-	if (f_mul == 1.f) {
-		PD_SIMPLE(c, sau_pdist_halfx(x, pd_f[i], 0x1p32f))
-	} else {
-		PD_SUBF_CONST(c, f_mul, sau_pdist_halfx(x, pd_f[i], 1))
-	}
+	SUBF_APPLY(sau_pdist_halfx, c)
 }
 
 /*
@@ -295,23 +321,24 @@ static sauMaybeUnused void
 sauWOsc_pdist_halfy(sauWOsc *restrict o sauMaybeUnused,
 		uint32_t *restrict phase_ui32,
 		size_t buf_len,
-		const float *restrict pd_f,
-		float f_mul) {
-	int32_t c = 0;
+		const float *restrict v_f,
+		const float *restrict f_f,
+		float f_fval) {
+	uint32_t c = 0;
 	if (o->opt.func == SAU_WAVE_F_ADAA) {
 		c = sauWave_picoeffs[o->opt.wave].phase_adj;
 	}
-	if (f_mul == 1.f) {
-		PD_SIMPLE(c, sau_pdist_halfy(x, pd_f[i], 0x1p32f))
-	} else {
-		PD_SUBF_CONST(c, f_mul, sau_pdist_halfy(x, pd_f[i], 1))
-	}
+	SUBF_APPLY(sau_pdist_halfy, c)
 }
+
+#undef SUBF_APPLY
 
 #undef PD_GET_SUBF
 #undef PD_SET_SUBF
+
 #undef PD_SIMPLE
 #undef PD_FMUL
+#undef PD_SUBF
 #undef PD_SUBF_CONST
 
 static inline sauWOsc_pdist_f sauWOsc_get_pdist_f(unsigned func) {
