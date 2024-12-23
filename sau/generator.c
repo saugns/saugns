@@ -39,8 +39,7 @@ struct ParWithRangeMod {
 };
 
 struct ParPDSet {
-	struct ParWithRangeMod main;
-	float f_mul;
+	struct ParWithRangeMod main, freq;
 };
 
 struct BlockBufIDs {
@@ -293,7 +292,7 @@ static void prepare_gen(sauGenerator *restrict o,
 		prepare_range(&osc->freq, SAU_PDEF_FREQ);
 		for (uint32_t i = 0; i < SAU_PPD_TYPES; ++i) {
 			prepare_range(&osc->pd[i].main, pd_v_default[i]);
-			osc->pd[i].f_mul = 1.0;
+			prepare_range(&osc->pd[i].freq, 1.0);
 		}
 		prepare_range(&osc->pm_a, 0.0);
 		osc->pmods = osc->fpmods = &blank_idarr;
@@ -315,6 +314,7 @@ static void update_ids(AnyGen *restrict n,
 /**/
 #define CASES_PDMODS(ID, FIELD) \
 	CASES_4MODS(ID, FIELD.main) \
+	CASES_4MODS(ID##f, FIELD.freq) \
 /**/
 	switch (ids->use) {
 	case SAU_MOD_N_carr:     break;
@@ -383,8 +383,8 @@ static void update_gen(sauGenerator *restrict o,
 		if (gd->pd) for (uint32_t i = 0; i < SAU_PPD_TYPES; ++i) {
 			update_range(&osc->pd[i].main,
 					&gd->pd[i].v, o->srate);
-			if (gd->pd[i].has_f_mul)
-				osc->pd[i].f_mul = gd->pd[i].f_mul;
+			update_range(&osc->pd[i].freq,
+					&gd->pd[i].f, o->srate);
 		}
 		update_range(&osc->pm_a, gd->pm_a, o->srate);
 	}
@@ -674,14 +674,17 @@ run_block_wosc(sauGenerator *restrict o,
 	for (unsigned i = 0; i < SAU_PPD_TYPES; ++i) {
 		struct ParPDSet *pd = &n->osc.pd[i];
 		const float nop_value = pd_v_default[i];
+		float *pd_f = run_valrange_param(o, bufs, len, &pd->freq, NULL,
+				freq, false, false); // #2 <- #3, tmp #4, sub #5
 		bool force_use = pd->main.par.v0 != nop_value ||
-			(sau_pd_f_is_fmul(i) && pd->f_mul != 1.f);
-		if (run_valrange_param(o, bufs, len, &pd->main, NULL, freq,
+			(sau_pd_f_is_fmul(i) &&
+			 (pd_f || pd->freq.par.v0 != 1.f));
+		if (run_valrange_param(o, bufs+1, len, &pd->main, NULL, freq,
 					false, force_use)) {
-			// #2 <- #3, tmp #4, sub #5
+			// #2 <- #3; #4, tmp #5, sub #6
 			sauWOsc_pdist_f pdist_f = sauWOsc_get_pdist_f(i);
 			pdist_f(&n->wo.wosc, phase_buf, len,
-					bufs[0], pd->f_mul);
+					bufs[1], pd_f, pd->freq.par.v0);
 		}
 	}
 	float *out_buf = *(bufs++); // #3 (++)
@@ -717,14 +720,17 @@ run_block_rasg(sauGenerator *restrict o,
 	for (unsigned i = 0; i < SAU_PPD_TYPES; ++i) {
 		struct ParPDSet *pd = &n->osc.pd[i];
 		const float nop_value = pd_v_default[i];
+		float *pd_f = run_valrange_param(o, bufs, len, &pd->freq, NULL,
+				freq, false, false); // #2 <- #4, tmp #5, sub #6
 		bool force_use = pd->main.par.v0 != nop_value ||
-			(sau_pd_f_is_fmul(i) && pd->f_mul != 1.f);
-		if (run_valrange_param(o, bufs, len, &pd->main, NULL, freq,
+			(sau_pd_f_is_fmul(i) &&
+			 (pd_f || pd->freq.par.v0 != 1.f));
+		if (run_valrange_param(o, bufs+1, len, &pd->main, NULL, freq,
 					false, force_use)) {
-			// #2 and #3 <- #4, tmp #5, sub #6
+			// #2 and #3 <- #4; #5, tmp #6, sub #7
 			sauRasG_pdist_f pdist_f = sauRasG_get_pdist_f(i);
 			pdist_f(&n->rg.rasg, rasg_buf, cycle_buf, len,
-					bufs[0], pd->f_mul);
+					bufs[1], pd_f, pd->freq.par.v0);
 		}
 	}
 	bufs++; // amp #4 (++), tmp #5, sub #6 (reserved highest ID returned)
