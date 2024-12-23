@@ -72,9 +72,7 @@ enum {
  * Holds main range, phase offset range, frequency multiplier, and flags.
  */
 typedef struct sauPDSet {
-	sauRange v;
-	float f_mul;
-	bool has_f_mul;
+	sauRange v, f;
 } sauPDSet;
 
 /**
@@ -246,6 +244,7 @@ SAU_MOD__PD(pd_y,   X, "yPD",  "p.y") \
 	//
 #define SAU_MOD__PD(NAME, X, LABEL, SYNTAX) /* 4*2 PD valrange modulators */ \
 SAU_MOD__4M(NAME,   X, LABEL,     SYNTAX) \
+SAU_MOD__4M(NAME##f,X, LABEL "f", SYNTAX ".f") \
 	//
 #define SAU_MOD__X_ID(NAME, ...) SAU_MOD_N_##NAME,
 #define SAU_MOD__X_GRAPH(NAME, IS_MOD, LABEL, ...) LABEL,
