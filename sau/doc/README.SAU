@@ -263,6 +263,11 @@ Phase distortion subparameters:
 			terms.) Defaults to 1.0, no change.
 				Non-integers cause discontinuities,
 			as each cycle is morphed independently.
+		.p	Phase offset for the cycle boundary position.
+			This changes where the padding line is placed.
+			See "Cycle position values" for more. (This
+			parameter differs in that an integer multiple
+			of 1.0 shifts position for the "R" oscillator.)
 	.d	Duty cycle or "zoom in" PD; the default value of 1.0
 		does nothing, values close to 0 "zoom out" and above
 		1 values "zoom in".
@@ -284,6 +289,11 @@ Phase distortion subparameters:
 			terms.) Defaults to 1.0, no change.
 				Non-integers cause discontinuities,
 			as each cycle is morphed independently.
+		.p	Phase offset for the cycle boundary position.
+			This changes where the padding line is placed.
+			See "Cycle position values" for more. (This
+			parameter differs in that an integer multiple
+			of 1.0 shifts position for the "R" oscillator.)
 	.h	Hold for cycle portion phase distortion; the default
 		value 0.0 does nothing. A positive value like 1/4 is
 		used to extend a horizontal line from the beginning,
@@ -300,6 +310,11 @@ Phase distortion subparameters:
 			area of the distortion, making it lopsided
 			relative to the cycle length.
 				Non-integers cause discontinuities.
+		.p	Phase offset for the cycle boundary position.
+			This rotates where the distortion is applied.
+			See "Cycle position values" for more. (This
+			parameter differs in that an integer multiple
+			of 1.0 shifts position for the "R" oscillator.)
 	.x	An x-axis half-cycle length PWM-like PD. Generalized
 		PWM (pulse-width modulation) in this way makes pulse
 		waves out of square waves. It makes other wave types
@@ -319,6 +334,11 @@ Phase distortion subparameters:
 			area of the distortion, making it lopsided
 			relative to the cycle length.
 				Non-integers cause discontinuities.
+		.p	Phase offset for the cycle boundary position.
+			This rotates where the distortion is applied.
+			See "Cycle position values" for more. (This
+			parameter differs in that an integer multiple
+			of 1.0 shifts position for the "R" oscillator.)
 	.y      Inverse of the x-axis half-cycle lenght PWM-like PD,
 		".x". Where PWM changes length proportions of halves
 		of a waveform while preserving their shapes, instead
@@ -340,6 +360,11 @@ Phase distortion subparameters:
 			area of the distortion, making it lopsided
 			relative to the cycle length.
 				Non-integers cause discontinuities.
+		.p	Phase offset for the cycle boundary position.
+			This rotates where the distortion is applied.
+			See "Cycle position values" for more. (This
+			parameter differs in that an integer multiple
+			of 1.0 shifts position for the "R" oscillator.)
 	.a	Phase self-modulation (a.k.a. "feedback FM") can be set
 		using a value, which is used as a multiplier for adding
 		the previous amplitude back into the phase. Non-zero values
