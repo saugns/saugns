@@ -1,5 +1,5 @@
 /* SAU library: Audio generator module.
- * Copyright (c) 2011-2012, 2017-2024 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2025 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
@@ -39,7 +39,7 @@ struct ParWithRangeMod {
 };
 
 struct ParPDSet {
-	struct ParWithRangeMod main, freq;
+	struct ParWithRangeMod main, freq, offset;
 };
 
 struct BlockBufIDs {
@@ -141,7 +141,7 @@ struct sauGenerator {
 };
 
 // maximum number of buffers needed for generator nesting depth
-#define COUNT_GEN_BUFS(gen_nest_depth) ((1 + (gen_nest_depth)) * 7)
+#define COUNT_GEN_BUFS(gen_nest_depth) ((1 + (gen_nest_depth)) * 8)
 
 #define MIX_BUFS 2
 
@@ -293,6 +293,7 @@ static void prepare_gen(sauGenerator *restrict o,
 		for (uint32_t i = 0; i < SAU_PPD_TYPES; ++i) {
 			prepare_range(&osc->pd[i].main, pd_v_default[i]);
 			prepare_range(&osc->pd[i].freq, 1.0);
+			prepare_range(&osc->pd[i].offset, 0.0);
 		}
 		prepare_range(&osc->pm_a, 0.0);
 		osc->pmods = osc->fpmods = &blank_idarr;
@@ -315,6 +316,7 @@ static void update_ids(AnyGen *restrict n,
 #define CASES_PDMODS(ID, FIELD) \
 	CASES_4MODS(ID, FIELD.main) \
 	CASES_4MODS(ID##f, FIELD.freq) \
+	CASES_4MODS(ID##p, FIELD.offset) \
 /**/
 	switch (ids->use) {
 	case SAU_MOD_N_carr:     break;
@@ -385,6 +387,8 @@ static void update_gen(sauGenerator *restrict o,
 					&gd->pd[i].v, o->srate);
 			update_range(&osc->pd[i].freq,
 					&gd->pd[i].f, o->srate);
+			update_range(&osc->pd[i].offset,
+					&gd->pd[i].p, o->srate);
 		}
 		update_range(&osc->pm_a, gd->pm_a, o->srate);
 	}
@@ -674,17 +678,20 @@ run_block_wosc(sauGenerator *restrict o,
 	for (unsigned i = 0; i < SAU_PPD_TYPES; ++i) {
 		struct ParPDSet *pd = &n->osc.pd[i];
 		const float nop_value = pd_v_default[i];
-		float *pd_f = run_valrange_param(o, bufs, len, &pd->freq, NULL,
-				freq, false, false); // #2 <- #3, tmp #4, sub #5
+		float *pd_f = run_valrange_param(o, bufs, len, &pd->freq,
+				NULL, freq, false, false); // #2 <- #3..4 sub #5
+		float *pd_p = run_valrange_param(o, bufs+1, len, &pd->offset,
+				NULL, freq, false, false); // #3 <- #4..5 sub #6
 		bool force_use = pd->main.par.v0 != nop_value ||
 			(sau_pd_f_is_fmul(i) &&
 			 (pd_f || pd->freq.par.v0 != 1.f));
-		if (run_valrange_param(o, bufs+1, len, &pd->main, NULL, freq,
+		if (run_valrange_param(o, bufs+2, len, &pd->main, NULL, freq,
 					false, force_use)) {
-			// #2 <- #3; #4, tmp #5, sub #6
+			// #2 <- #3; #4; #5..6 sub #7
 			sauWOsc_pdist_f pdist_f = sauWOsc_get_pdist_f(i);
-			pdist_f(&n->wo.wosc, phase_buf, len,
-					bufs[1], pd_f, pd->freq.par.v0);
+			pdist_f(&n->wo.wosc, phase_buf, len, bufs[2],
+					pd_f, pd->freq.par.v0,
+					pd_p, pd->offset.par.v0);
 		}
 	}
 	float *out_buf = *(bufs++); // #3 (++)
@@ -702,7 +709,7 @@ run_block_wosc(sauGenerator *restrict o,
 /*
  * The RasGNode sub-function for run_block().
  *
- * Needs up to 7 buffers (IDs from 0) for its own node level.
+ * Needs up to 8 buffers (IDs from 0) for its own node level.
  */
 static struct BlockBufIDs
 run_block_rasg(sauGenerator *restrict o,
@@ -720,17 +727,20 @@ run_block_rasg(sauGenerator *restrict o,
 	for (unsigned i = 0; i < SAU_PPD_TYPES; ++i) {
 		struct ParPDSet *pd = &n->osc.pd[i];
 		const float nop_value = pd_v_default[i];
-		float *pd_f = run_valrange_param(o, bufs, len, &pd->freq, NULL,
-				freq, false, false); // #2 <- #4, tmp #5, sub #6
+		float *pd_f = run_valrange_param(o, bufs, len, &pd->freq,
+				NULL, freq, false, false); // #3 <- #4..5 sub #6
+		float *pd_p = run_valrange_param(o, bufs+1, len, &pd->offset,
+				NULL, freq, false, false); // #4 <- #5..6 sub #7
 		bool force_use = pd->main.par.v0 != nop_value ||
 			(sau_pd_f_is_fmul(i) &&
 			 (pd_f || pd->freq.par.v0 != 1.f));
-		if (run_valrange_param(o, bufs+1, len, &pd->main, NULL, freq,
+		if (run_valrange_param(o, bufs+2, len, &pd->main, NULL, freq,
 					false, force_use)) {
-			// #2 and #3 <- #4; #5, tmp #6, sub #7
+			// #2 and #3 <- #4; #5; #6..7 sub #8
 			sauRasG_pdist_f pdist_f = sauRasG_get_pdist_f(i);
-			pdist_f(&n->rg.rasg, rasg_buf, cycle_buf, len,
-					bufs[1], pd_f, pd->freq.par.v0);
+			pdist_f(&n->rg.rasg, rasg_buf, cycle_buf, len, bufs[2],
+					pd_f, pd->freq.par.v0,
+					pd_p, pd->offset.par.v0);
 		}
 	}
 	bufs++; // amp #4 (++), tmp #5, sub #6 (reserved highest ID returned)

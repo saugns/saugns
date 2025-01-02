@@ -1,5 +1,5 @@
 /* SAU library: Wave oscillator implementation.
- * Copyright (c) 2011, 2017-2024 Joel K. Pettersson
+ * Copyright (c) 2011, 2017-2025 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
@@ -155,7 +155,9 @@ typedef void (*sauWOsc_pdist_f)(sauWOsc *restrict o,
 		size_t buf_len,
 		const float *restrict v_f,
 		const float *restrict f_f,
-		float f_fval);
+		float f_fval,
+		const float *restrict p_f,
+		float p_fval);
 
 /*
  * PD get/set phase macros, for use inside loops.
@@ -241,12 +243,19 @@ sauWOsc_pdist_pulwm_mul(sauWOsc *restrict o sauMaybeUnused,
 		size_t buf_len,
 		const float *restrict v_f,
 		const float *restrict f_f,
-		float f_fval) {
+		float f_fval,
+		const float *restrict p_f,
+		float p_fval) {
 	uint32_t c = 0;
 	if (o->opt.func == SAU_WAVE_F_ADAA) {
 		c = sauWave_picoeffs[o->opt.wave].phase_adj;
 	}
-	PULWM_APPLY(*, c)
+	if (p_f) {
+		PULWM_APPLY(*, (sau_ftoi(p_f[i] * 0x1p32f) + c))
+	} else {
+		c = sau_ftoi(p_fval * 0x1p32f) + c;
+		PULWM_APPLY(*, c)
+	}
 }
 
 /*
@@ -259,12 +268,19 @@ sauWOsc_pdist_pulwm_div(sauWOsc *restrict o sauMaybeUnused,
 		size_t buf_len,
 		const float *restrict v_f,
 		const float *restrict f_f,
-		float f_fval) {
+		float f_fval,
+		const float *restrict p_f,
+		float p_fval) {
 	uint32_t c = 0;
 	if (o->opt.func == SAU_WAVE_F_ADAA) {
 		c = sauWave_picoeffs[o->opt.wave].phase_adj;
 	}
-	PULWM_APPLY(/, c)
+	if (p_f) {
+		PULWM_APPLY(/, (sau_ftoi(p_f[i] * 0x1p32f) + c))
+	} else {
+		c = sau_ftoi(p_fval * 0x1p32f) + c;
+		PULWM_APPLY(/, c)
+	}
 }
 
 #undef PULWM_APPLY
@@ -289,12 +305,19 @@ sauWOsc_pdist_hold(sauWOsc *restrict o sauMaybeUnused,
 		size_t buf_len,
 		const float *restrict v_f,
 		const float *restrict f_f,
-		float f_fval) {
+		float f_fval,
+		const float *restrict p_f,
+		float p_fval) {
 	uint32_t c = 0;
 	if (o->opt.func == SAU_WAVE_F_ADAA) {
 		c = sauWave_picoeffs[o->opt.wave].phase_adj;
 	}
-	SUBF_APPLY(sau_pdist_hold, c)
+	if (p_f) {
+		SUBF_APPLY(sau_pdist_hold, (sau_ftoi(p_f[i] * 0x1p32f) + c))
+	} else {
+		c = sau_ftoi(p_fval * 0x1p32f) + c;
+		SUBF_APPLY(sau_pdist_hold, c)
+	}
 }
 
 /*
@@ -306,12 +329,19 @@ sauWOsc_pdist_halfx(sauWOsc *restrict o sauMaybeUnused,
 		size_t buf_len,
 		const float *restrict v_f,
 		const float *restrict f_f,
-		float f_fval) {
+		float f_fval,
+		const float *restrict p_f,
+		float p_fval) {
 	uint32_t c = 0;
 	if (o->opt.func == SAU_WAVE_F_ADAA) {
 		c = sauWave_picoeffs[o->opt.wave].phase_adj;
 	}
-	SUBF_APPLY(sau_pdist_halfx, c)
+	if (p_f) {
+		SUBF_APPLY(sau_pdist_halfx, (sau_ftoi(p_f[i] * 0x1p32f) + c))
+	} else {
+		c = sau_ftoi(p_fval * 0x1p32f) + c;
+		SUBF_APPLY(sau_pdist_halfx, c)
+	}
 }
 
 /*
@@ -323,12 +353,19 @@ sauWOsc_pdist_halfy(sauWOsc *restrict o sauMaybeUnused,
 		size_t buf_len,
 		const float *restrict v_f,
 		const float *restrict f_f,
-		float f_fval) {
+		float f_fval,
+		const float *restrict p_f,
+		float p_fval) {
 	uint32_t c = 0;
 	if (o->opt.func == SAU_WAVE_F_ADAA) {
 		c = sauWave_picoeffs[o->opt.wave].phase_adj;
 	}
-	SUBF_APPLY(sau_pdist_halfy, c)
+	if (p_f) {
+		SUBF_APPLY(sau_pdist_halfy, (sau_ftoi(p_f[i] * 0x1p32f) + c))
+	} else {
+		c = sau_ftoi(p_fval * 0x1p32f) + c;
+		SUBF_APPLY(sau_pdist_halfy, c)
+	}
 }
 
 #undef SUBF_APPLY
