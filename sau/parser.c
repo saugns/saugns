@@ -1579,15 +1579,20 @@ static uint8_t parse_par_pdset(sauParser *restrict o,
 		for (uint32_t i = 0; i < SAU_PPD_TYPES; ++i) {
 			init_range(o, &(*pdset)[i].v);
 			init_range(o, &(*pdset)[i].f);
+			init_range(o, &(*pdset)[i].p);
 		}
 	}
 	sauPDSet *p = &(*pdset)[pdset_id];
-	sauRange *range_v = &p->v, *range_f = &p->f;
+	sauRange *range_v = &p->v, *range_f = &p->f, *range_p = &p->p;
 	uint8_t c;
 	switch ((c = parse_par_modranges(o, NULL, &range_v, false, 0, mod))) {
 	case 'f':
 		parse_par_modranges(o, scan_note_const, &range_f,
 				false, 0, mod+4);
+		break;
+	case 'p':
+		parse_par_modranges(o, scan_cyclepos_const, &range_p,
+				false, 0, mod+8);
 		break;
 	default:
 		return c;
@@ -2247,6 +2252,7 @@ static inline void time_pdset(sauPDSet *restrict p,
 	for (uint32_t i = 0; i < SAU_PPD_TYPES; ++i) {
 		time_range(&p[i].v, default_time_ms);
 		time_range(&p[i].f, default_time_ms);
+		time_range(&p[i].p, default_time_ms);
 	}
 }
 
