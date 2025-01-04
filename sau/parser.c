@@ -1,5 +1,5 @@
 /* SAU library: Script parser module.
- * Copyright (c) 2011-2012, 2017-2024 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2025 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
@@ -783,7 +783,7 @@ static bool scan_line_state(sauScanner *restrict o,
 
 struct NestScope {
 	sauScriptListData *list, *last_mods;
-	sauScriptObjRef *last_item;
+	sauScriptObjRef *last_item, *owner_item;
 	sauScriptOptions sopt_save; /* save/restore on nesting */
 	/* values passed for outer parameter */
 	sauRange *gen_sweep;
@@ -860,6 +860,7 @@ enum {
 typedef void (*ParseLevel_sub_f)(sauParser *restrict o);
 static void parse_in_settings(sauParser *restrict o);
 static void parse_in_gen_step(sauParser *restrict o);
+static void parse_in_phase_par(sauParser *restrict o);
 static void parse_in_par_sweep(sauParser *restrict o);
 
 /*
@@ -1087,26 +1088,44 @@ static void begin_list(sauParser *restrict o,
 	(void)plist;
 	struct ParseLevel *pl = o->cur_pl, *parent_pl = pl->parent;
 	struct NestScope *nest = NestArr_tip(&o->nest);
-	nest->list = sau_mpalloc(o->mp, sizeof(*nest->list));
-	pl->sub_f = nest->gen_sweep ? parse_in_par_sweep : NULL;
-	nest->list->use_type = use_type;
+	sauScriptListData *list = sau_mpalloc(o->mp, sizeof(*nest->list));
+	nest->list = list;
+	if (use_type == SAU_MOD_N_p_pm)
+		pl->sub_f = parse_in_phase_par;
+	else
+		pl->sub_f = nest->gen_sweep ? parse_in_par_sweep : NULL;
+	list->use_type = use_type;
 	sauScriptObjInfo *info;
 	//if (plist != NULL) {
 	//	list->ref.prev = plist;
 	//} else {
-		info = ObjInfoArr_add(&o->obj_arr, &nest->list->ref,
+		info = ObjInfoArr_add(&o->obj_arr, &list->ref,
 				SAU_POBJT_LIST, 0);
 	//}
+	struct NestScope *parent_nest = NestArr_getrev(&o->nest, 1);
 	if (use_type == SAU_MOD_N_carr) {
-		link_ev_obj(parent_pl, NestArr_getrev(&o->nest, 1),
-				&nest->list->ref, &plist->ref);
+		link_ev_obj(parent_pl, parent_nest, &list->ref, &plist->ref);
 	} else {
+		/*
+		 * Maintain linked list of modulator lists per owner (carrier).
+		 */
 		sauScriptGenData *parent_on = parent_pl->gen;
+		if (nest->owner_item != &parent_on->ref)
+			nest->last_mods = NULL;
+		nest->owner_item = &parent_on->ref;
 		if (!parent_on->mods)
-			parent_on->mods = nest->list;
-		else
-			nest->last_mods->ref.next = nest->list;
-		nest->last_mods = nest->list;
+			parent_on->mods = list;
+		else {
+			/*
+			 * If this list is set for a heading subparameter,
+			 * instead of above for a parameter for an object,
+			 * then we're here with last_mods unset. Append to
+			 * the list of lists one level above in this case.
+			 */
+			if (!nest->last_mods) nest = parent_nest;
+			nest->last_mods->ref.next = list;
+		}
+		nest->last_mods = list;
 		info->parent_gen_obj = parent_on->ref.obj_id;
 	}
 }
@@ -1761,19 +1780,9 @@ static bool parse_gen_mode(sauParser *restrict o) {
 	}
 }
 
-static uint8_t parse_gen_phase(sauParser *restrict o) {
-	struct ParseLevel *pl = o->cur_pl;
-	sauScriptGenData *gen = pl->gen;
-	if (!sau_pgen_is_osc(gen->ref.gen_type))
-		return true; // reject, lacks parameter
-	uint8_t c;
-	double val;
-	if (scan_num(o->sc, scan_cyclepos_const, &val)) {
-		gen->phase = sau_cyclepos_dtoui32(val);
-		gen->params |= SAU_PGENP_PHASE;
-	}
-	parse_par_list(o, NULL, NULL, false, 0, SAU_MOD_N_p_pm, 0);
-	switch ((c = sauScanner_getc_after(o->sc, '.'))) {
+static uint8_t parse_gen_phase_pdpar(sauParser *restrict o,
+		sauScriptGenData *restrict gen, uint8_t c) {
+	switch (c) {
 	case 'a':
 		return parse_par_modranges(o, NULL, &gen->pm_a, false,
 				SAU_PSWEEP_PMA, SAU_MOD_N_pa_pm);
@@ -1781,15 +1790,40 @@ static uint8_t parse_gen_phase(sauParser *restrict o) {
 		return parse_par_pdset(o, &gen->pd, SAU_PPD_C, SAU_MOD_N_pd_c);
 	case 'd':
 		return parse_par_pdset(o, &gen->pd, SAU_PPD_D, SAU_MOD_N_pd_d);
-	case 'f':
-		parse_par_list(o, NULL, NULL, false, 0, SAU_MOD_N_pf_pm, 0);
-		break;
 	case 'h':
 		return parse_par_pdset(o, &gen->pd, SAU_PPD_H, SAU_MOD_N_pd_h);
 	case 'x':
 		return parse_par_pdset(o, &gen->pd, SAU_PPD_X, SAU_MOD_N_pd_x);
 	case 'y':
 		return parse_par_pdset(o, &gen->pd, SAU_PPD_Y, SAU_MOD_N_pd_y);
+	default:
+		return c;
+	}
+}
+
+static void parse_in_phase_par(sauParser *restrict o) {
+	PARSE_IN__HEAD(parse_in_phase_par, pl->gen)
+		if (!c || parse_gen_phase_pdpar(o, pl->gen, c)) goto DEFER;
+	PARSE_IN__TAIL()
+}
+
+static uint8_t parse_gen_phase(sauParser *restrict o) {
+	struct ParseLevel *pl = o->cur_pl;
+	sauScriptGenData *gen = pl->gen;
+	if (!sau_pgen_is_osc(gen->ref.gen_type))
+		return true; // reject, lacks parameter
+	double val;
+	if (scan_num(o->sc, scan_cyclepos_const, &val)) {
+		gen->phase = sau_cyclepos_dtoui32(val);
+		gen->params |= SAU_PGENP_PHASE;
+	}
+	parse_par_list(o, NULL, NULL, false, 0, SAU_MOD_N_p_pm, 0);
+	uint8_t c = parse_gen_phase_pdpar(o, gen,
+			sauScanner_getc_after(o->sc, '.'));
+	switch (c) {
+	case 'f':
+		parse_par_list(o, NULL, NULL, false, 0, SAU_MOD_N_pf_pm, 0);
+		break;
 	default:
 		return c;
 	}
