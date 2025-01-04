@@ -228,9 +228,11 @@ Oscillator common parameters:
 		by 632.45... Hz (the geometric mean of 20 and 20000 Hz).
 
 Phase distortion subparameters:
-	These subparameters can be written after the phase parameter "p".
-	They can also be used after the oscillator type names "W" and "R"
-	(since they accept "p" values as a shorthand syntax), e.g. "W.c2".
+	These phase "p" subparameters can be written each with a "p."-prefix.
+	Alternatively, they can be written inside a "p[]" list, as heading
+	subparameters. Both forms can also be used after the oscillator
+	type names "W" and "R" (since they accept "p" values as a shorthand
+	syntax), e.g. "W.c2" or "W[c2.f2 d2]".
 		The phase distortions below are performed in the listed
 	order. Self-PM a.k.a. "feedback FM" is listed among them as it can
 	be used in the same places (and likewise distorts waveform through
@@ -240,82 +242,45 @@ Phase distortion subparameters:
 	PM that behave differently.
 		"Value sweep" values and "Modulation with value ranges"
 	values are supported for all of these; see those sections for more.
-	.c	Cycle length or "zoom out" PD; the default value 1.0
+	c	Cycle length or "zoom out" PD; the default value 1.0
 		does nothing. Values above 1 "zoom out", e.g. 2 will
 		double the cycle length, so the old shape then takes
 		up the first half with horizontal line padding after
 		(the line having the cycle boundary amplitude). With
 		a value below 1, the effect is to "zoom in", such as
 		reducing a sine to the first quarter with 1/4.
-			Amounts to a basic form of Pulsar Synthesis;
-		waveforms for "zoom in" differ, and further options,
-		for PS-specific waveform shaping, are missing.
 			Negative values work like positive ones, but
 		also flip the direction of the waveform, in the same
 		way as changing the sign of the frequency used does.
-			Using modulators with audible frequency will
-		often sound somewhat like PM but bright and buzzier.
-		.f	Frequency multiplier, applies to the part of
-			the waveform which is not horizontal padding
-			(either shifting frequency if no padding -- or
-			if there's padding, preserves base frequency
-			while changing the "pulsaret" waveform in PS
-			terms.) Defaults to 1.0, no change.
-				Non-integers cause discontinuities,
-			as each cycle is morphed independently.
-		.p	Phase offset for the cycle boundary position.
-			This changes where the padding line is placed.
-			See "Cycle position values" for more. (This
-			parameter differs in that an integer multiple
-			of 1.0 shifts position for the "R" oscillator.)
-	.d	Duty cycle or "zoom in" PD; the default value of 1.0
+			Amounts to a basic form of Pulsar Synthesis;
+		waveforms for "zoom in" differ, and further options,
+		for PS-specific waveform shaping, are missing.
+			Using modulators with audible frequency for
+		this value will often sound somewhat like PM but bright
+		and buzzier.
+	d	Duty cycle or "zoom in" PD; the default value of 1.0
 		does nothing, values close to 0 "zoom out" and above
-		1 values "zoom in".
-			This is the multiplicative inverse of "p.c",
-		but both are set and applied independently. It's the
-		"PulWM" of Pulsar Synthesis. Compared to "p.c", this
-		is the option allowing a full "zoom out", instead of
+		1 values "zoom in". This is the multiplicative inverse
+		of "c", but both are set and applied independently.
+		It's the "PulWM" of Pulsar Synthesis. Compared to "c",
+		this is the option allowing a full "zoom out", instead of
 		a full "zoom in". When sweeping or modulating one of
 		them, the part of the range close to 0 is that which
 		will audibly come and go quickly.
-			Using modulators with audible frequency will
-		sound somewhat like doing it with "p.c", except both
-		more deep and brightly buzzy. Has the richest sound.
-		.f	Frequency multiplier, applies to the part of
-			the waveform which is not horizontal padding
-			(either shifting frequency if no padding -- or
-			if there's padding, preserves base frequency
-			while changing the "pulsaret" waveform in PS
-			terms.) Defaults to 1.0, no change.
-				Non-integers cause discontinuities,
-			as each cycle is morphed independently.
-		.p	Phase offset for the cycle boundary position.
-			This changes where the padding line is placed.
-			See "Cycle position values" for more. (This
-			parameter differs in that an integer multiple
-			of 1.0 shifts position for the "R" oscillator.)
-	.h	Hold for cycle portion phase distortion; the default
+			Using modulators with audible frequency for this
+		value will sound somewhat like doing it with "c", except for
+		being both more deep and brightly buzzy. It has the richest
+		sound on being modulated compared to the other PD types.
+	h	Hold for cycle portion phase distortion; the default
 		value 0.0 does nothing. A positive value like 1/4 is
 		used to extend a horizontal line from the beginning,
 		overwriting e.g. 1/4 of the cycle. A negative value,
 		by contrast, extends the line from the end backward,
 		so that -1/4 overwrites the last 1/4 of the cycle.
-			Using modulators with audible frequency will
-		often sound a little like PM, thinner and sharper.
-		.f	Subfrequency, default 1. A larger value will
-			subdivide the cycle into more than one area,
-			applying the distortion to each area. Values
-			that are even integers produce odd harmonics
-			only. Values smaller than 1 will "zoom in" the
-			area of the distortion, making it lopsided
-			relative to the cycle length.
-				Non-integers cause discontinuities.
-		.p	Phase offset for the cycle boundary position.
-			This rotates where the distortion is applied.
-			See "Cycle position values" for more. (This
-			parameter differs in that an integer multiple
-			of 1.0 shifts position for the "R" oscillator.)
-	.x	An x-axis half-cycle length PWM-like PD. Generalized
+			Using modulators with audible frequency for this
+		value will often sound a little like PM, but much thinner
+		and sharper -- and large amplitudes result in silence.
+	x	An x-axis half-cycle length PWM-like PD. Generalized
 		PWM (pulse-width modulation) in this way makes pulse
 		waves out of square waves. It makes other wave types
 		take on related shapes too, stretching/squeezing the
@@ -323,23 +288,11 @@ Phase distortion subparameters:
 		value 1/2 does nothing. 0 shrinks to nothing the 1st
 		waveform half, 1 the 2nd; values beyond these bounds
 		are allowed, creating different distorted shapes.
-			Using modulators with audible frequency will
-		often sound somewhat like PM but warmer, fat, buzzy.
-		This and "p.d" both sound deep, this sounds less bright.
-		.f	Subfrequency, default 1. A larger value will
-			subdivide the cycle into more than one area,
-			applying the distortion to each area. Values
-			that are even integers produce odd harmonics
-			only. Values smaller than 1 will "zoom in" the
-			area of the distortion, making it lopsided
-			relative to the cycle length.
-				Non-integers cause discontinuities.
-		.p	Phase offset for the cycle boundary position.
-			This rotates where the distortion is applied.
-			See "Cycle position values" for more. (This
-			parameter differs in that an integer multiple
-			of 1.0 shifts position for the "R" oscillator.)
-	.y      Inverse of the x-axis half-cycle lenght PWM-like PD,
+			Using modulators with audible frequency for this
+		value will often sound somewhat like PM but warmer, fat,
+		and buzzy. This and "d" both tend to sound deep when
+		modulated, but this sounds less bright.
+	y	Inverse of the x-axis half-cycle lenght PWM-like PD,
 		".x". Where PWM changes length proportions of halves
 		of a waveform while preserving their shapes, instead
 		this distortion deforms one half, by reducing change
@@ -349,23 +302,11 @@ Phase distortion subparameters:
 		beyond as well, creating different distorted shapes.
 			The effect is identical to that of using a PM
 		modulator which is a triangle wave (especially with
-		frequency ratio 1:1).
-			Using modulators with audible frequency will
-		often sound somewhat like PM but brighter, yet smooth.
-		.f	Subfrequency, default 1. A larger value will
-			subdivide the cycle into more than one area,
-			applying the distortion to each area. Values
-			that are even integers produce odd harmonics
-			only. Values smaller than 1 will "zoom in" the
-			area of the distortion, making it lopsided
-			relative to the cycle length.
-				Non-integers cause discontinuities.
-		.p	Phase offset for the cycle boundary position.
-			This rotates where the distortion is applied.
-			See "Cycle position values" for more. (This
-			parameter differs in that an integer multiple
-			of 1.0 shifts position for the "R" oscillator.)
-	.a	Phase self-modulation (a.k.a. "feedback FM") can be set
+		frequency ratio 1:1). Using modulators with audible
+		frequency for this value corresponds to PM nested a level
+		deeper, under such a modulator. It will often sound
+		somewhat like less-nested PM but brighter, yet smooth.
+	a	Phase self-modulation (a.k.a. "feedback FM") can be set
 		using a value, which is used as a multiplier for adding
 		the previous amplitude back into the phase. Non-zero values
 		add sawtooth-like harmonics, morphing the waveform in that
@@ -383,6 +324,21 @@ Phase distortion subparameters:
 		have frequency ratio etc. changed to vary what it causes.
 		For example, "W[W.a1/2 r2]" gives a soft square-like wave
 		because of the 2:1 modulator:carrier frequency ratio.
+	The following subparameters are available for all PD options, i.e.
+	all but the self-PM "a" option.
+	.f	Subfrequency, default 1. For "c" and "d", this is a
+		frequency multiplier for the non-padding part of the
+		waveform, applied independently for each cycle. For the
+		other PD types, it instead subdivides the cycle into a
+		number of regions, the distortion being applied to each;
+		using an even integer for the value will make the
+		distortion produce odd harmonics only.
+			Non-integers cause discontinuities.
+	.p	Phase offset for the cycle boundary position. This rotates
+		where the distortion is applied. See "Cycle position values"
+		for more. (This parameter differs in that values reaching
+		integer multiples of 1.0 shift seed position for the "R"
+		oscillator, much like strong PM inputs.)
 
 Seedable common parameters:
 	Named parameters common to all seedable types,
@@ -789,11 +745,13 @@ Modulator list:
 		"Value sweep" for a parameter can use the same list as one
 	which contains modulators; the modulators simply need to be listed
 	after any sweep subparameters (see section) which head the list.
+	The parameter phase "p" instead supports other heading subparameters
+	inside a list (see "Phase distortion subparameters").
 		It's also possible to write multiple lists directly after
 	one another when setting to a parameter (with or without the one
 	leading '-'). These lists will be joined into one, meaning that
 	"[X][Y]" for some contents "X" and "Y" is the same as "[X Y]".
-	This also allows placing sweep subparameters in a later list.
+	This also allows placing heading subparameters in a later list.
 
 Modulation with value ranges:
 	Amplitude ('a'), frequency ('f' and relative frequency 'r'), and
