@@ -1,0 +1,11 @@
+// Use sine, square, and PD options to bring about 7 of the 8 OPL3 waveforms
+// (Oscillators are in naive oscillator mode to avoid impurities in waveform.)
+S t2
+W mn           | // sine
+W[h-1/2] mn    | // half sine
+W[d2] mn       | // abs sine (with corrected base frequency)
+W[c2 d4] mn    | // pulse sine
+W[c2] mn       | // on/off sine
+W[c2.f2 d2] mn | // camel sine
+Wsqr mn        | // square
+                 /* logarithmic sawtooth missing */
