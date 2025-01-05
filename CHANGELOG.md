@@ -4,8 +4,10 @@ saugns version changes
 [On the website](https://sau.frama.io/changes.html#saulang)
 is a shorter change log with only the SAU language changes.
 
-Pre-release
------------
+v0.5.0 (2025-01-06)
+-------------------
+
+Add a set of PD synthesis & PS options.
 
 Language changes:
  * Signal generator types. Add `W` mode toggle. (See below.)
