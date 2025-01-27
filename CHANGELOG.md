@@ -7,8 +7,6 @@ is a shorter change log with only the SAU language changes.
 Pre-release
 -----------
 
-[rebase in progress]
-
 Fix sweeps for PD parameters. These were meant to
 work, but were broken by v0.5.0 refactoring; time
 flags lacked initialization.
