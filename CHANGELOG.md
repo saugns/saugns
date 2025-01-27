@@ -4,8 +4,8 @@ saugns version changes
 [On the website](https://sau.frama.io/changes.html#saulang)
 is a shorter change log with only the SAU language changes.
 
-Pre-release
------------
+v0.5.0b (2025-01-28)
+--------------------
 
 Fix sweeps for PD parameters. These were meant to
 work, but were broken by v0.5.0 refactoring; time
