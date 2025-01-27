@@ -14,17 +14,7 @@
 #pragma once
 #include "../wave.h"
 #include "../math.h"
-
-/**
- * Calculate the coefficent, based on the sample rate, used for
- * the per-sample phase by multiplying with the frequency used.
- */
-#define sauPhasor_COEFF(srate) SAU_INV_FREQ(32, srate)
-
-typedef struct sauPhasor {
-	uint32_t phase;
-	float coeff;
-} sauPhasor;
+#include "phasor.h"
 
 #define SAU_OSC_RESET_DIFF  (1<<0)
 #define SAU_OSC_RESET       ((1<<1) - 1)
@@ -45,7 +35,7 @@ typedef struct sauWOsc {
 static inline void sau_init_WOsc(sauWOsc *restrict o, uint32_t srate) {
 	*o = (sauWOsc){
 		.phasor = (sauPhasor){
-			.phase = 0,
+			.cycle_phase = 0,
 			.coeff = sauPhasor_COEFF(srate),
 		},
 		.opt.wave = SAU_WAVE_N_sin,
@@ -55,17 +45,17 @@ static inline void sau_init_WOsc(sauWOsc *restrict o, uint32_t srate) {
 }
 
 static inline void sauWOsc_set_phase(sauWOsc *restrict o, uint32_t phase) {
-	if (o->opt.func == SAU_WAVE_F_ADAA) {
-		phase += sauWave_picoeffs[o->opt.wave].phase_adj;
-	}
-	o->phasor.phase = phase;
+	uint32_t offset = sauWave_picoeffs[o->opt.wave].phase_adj;
+	if (o->opt.func == SAU_WAVE_F_ADAA) o->phasor.cycle_phase -= offset;
+	sauPhasor_set_phase(&o->phasor, phase);
+	if (o->opt.func == SAU_WAVE_F_ADAA) o->phasor.cycle_phase += offset;
 }
 
 static inline void sauWOsc_set_wave(sauWOsc *restrict o, uint8_t wave) {
 	if (o->opt.func == SAU_WAVE_F_ADAA) {
 		uint32_t old_offset = sauWave_picoeffs[o->opt.wave].phase_adj;
 		uint32_t offset = sauWave_picoeffs[wave].phase_adj;
-		o->phasor.phase += offset - old_offset;
+		o->phasor.cycle_phase += offset - old_offset;
 		o->opt.wave = wave;
 		o->opt.flags |= SAU_OSC_RESET_DIFF;
 	} else {
@@ -80,9 +70,12 @@ static void sauWOsc_set_opt(sauWOsc *restrict o, const sauWaveOpt opt) {
 	unsigned flags = opt.flags;
 	if (opt.flags & SAU_WAVE_O_FUNC_SET) {
 		uint32_t offset = sauWave_picoeffs[o->opt.wave].phase_adj;
-		if (o->opt.func == SAU_WAVE_F_ADAA) o->phasor.phase -= offset;
+		if (o->opt.func == SAU_WAVE_F_ADAA)
+			o->phasor.cycle_phase -= offset;
 		o->opt.func = opt.func;
-		if (o->opt.func == SAU_WAVE_F_ADAA) o->phasor.phase += offset;
+		if (o->opt.func == SAU_WAVE_F_ADAA)
+			o->phasor.cycle_phase += offset;
+		o->phasor.preinc = (o->opt.func == SAU_WAVE_F_ADAA);
 	}
 	if (opt.flags & SAU_WAVE_O_WAVE_SET)
 		sauWOsc_set_wave(o, opt.wave);
@@ -123,269 +116,60 @@ static inline int32_t sauWOsc_cycle_offs(sauWOsc *restrict o,
 }
 
 /**
- * Fill phase-value buffer for use with sauWOsc_run().
+ * Wrapper for applying PD synthesis distortion with proper phase offset.
+ *
+ * A NULL \p cycle_ui32 is allowed, skipping some work and handling phase
+ * offsets in a cheaper way.
  */
-static sauMaybeUnused void sauWOsc_fill(sauWOsc *restrict o,
-		uint32_t *restrict phase_ui32,
-		size_t buf_len,
-		const float *restrict freq_f,
-		const float *restrict pm_f) {
-#define PRE(inc, ofs)  ofs + (o->phasor.phase += inc) // be ahead one sample
-#define POST(inc, ofs) ofs + o->phasor.phase; (o->phasor.phase += inc)
-#define FILL(FREQ, P, PM_IN) \
-	for (size_t i = 0; i < buf_len; ++i) { \
-		phase_ui32[i] = \
-			P(sau_ftoi(o->phasor.coeff * (FREQ)), (PM_IN)); \
-	} \
-/**/
-	if (o->opt.func == SAU_WAVE_F_ADAA) { // compensate for 1-sample off
-		if (!pm_f) FILL(freq_f[i], PRE, 0)
-		else       FILL(freq_f[i], PRE, sau_ftoi(pm_f[i] * 0x1p31f))
-	} else {
-		if (!pm_f) FILL(freq_f[i], POST, 0)
-		else       FILL(freq_f[i], POST, sau_ftoi(pm_f[i] * 0x1p31f))
-	}
-#undef PRE
-#undef POST
-#undef FILL
-}
-
-typedef void (*sauWOsc_pdist_f)(sauWOsc *restrict o,
-		uint32_t *restrict phase_ui32,
-		size_t buf_len,
+void sauWOsc_pdist(sauWOsc *restrict o,
+		unsigned pdist_fn,
+		void *restrict phase_buf,
+		uint32_t *restrict cycle_ui32,
+		size_t len,
 		const float *restrict v_f,
 		const float *restrict f_f,
 		float f_fval,
-		const float *restrict p_f,
-		float p_fval);
-
-/*
- * PD get/set phase macros, for use inside loops.
- */
-#define PD_GET_SUBF(x, phase_ui32, offset, f_mul) \
-	uint32_t c_i = (offset);         \
-	uint32_t p_i = phase_ui32 - c_i; \
-	float x = p_i;                   \
-	x *= f_mul;                      \
-	int32_t f_adj = floorf(x);       \
-	x -= f_adj;                      \
-//
-#define PD_SET_SUBF(x, phase_ui32, f_mul_inv) \
-	x += f_adj;                      \
-	x *= f_mul_inv;                  \
-	phase_ui32 = sau_ftoi(x) + c_i;  \
-//
-
-/*
- * Generate a simple version of a PD loop, with no extra frequency control,
- * having \p VAL_EXPR at its heart.
- */
-#define PD_SIMPLE(offset, VAL_EXPR) PD_FMUL(offset, 1, VAL_EXPR)
-
-/*
- * Generate a PD loop with frequency multiplier as for zoom-PDs,
- * having \p VAL_EXPR at its heart.
- */
-#define PD_FMUL(offset, f_mul, VAL_EXPR) \
-	for (size_t i = 0; i < buf_len; ++i) {             \
-		uint32_t c_i = (offset);                   \
-		uint32_t p_i = phase_ui32[i] - c_i;        \
-		float x = p_i;                             \
-		x = (VAL_EXPR);                            \
-		phase_ui32[i] = sau_ftoi(x * f_mul) + c_i; \
-	}
-
-/*
- * Generate a PD loop with subfrequency control acting like modulator ratio,
- * having \p VAL_EXPR at its heart.
- */
-#define PD_SUBF(offset, f_mul, VAL_EXPR) \
-	for (size_t i = 0; i < buf_len; ++i) {               \
-		float fnorm = f_mul * 0x1p-32f;              \
-		PD_GET_SUBF(x, phase_ui32[i], offset, fnorm) \
-		x = (VAL_EXPR);                              \
-		PD_SET_SUBF(x, phase_ui32[i], 1 / fnorm)     \
-	}
-
-/*
- * Generate a PD loop with a constant value for subfrequency control,
- * having \p VAL_EXPR at its heart.
- */
-#define PD_SUBF_CONST(offset, f_mul, VAL_EXPR) \
-	f_mul *= 0x1p-32f; /* factor out, use for scaling */ \
-	const float f_mul_inv = 1.f / f_mul;                 \
-	for (size_t i = 0; i < buf_len; ++i) {               \
-		PD_GET_SUBF(x, phase_ui32[i], offset, f_mul) \
-		x = (VAL_EXPR);                              \
-		PD_SET_SUBF(x, phase_ui32[i], f_mul_inv)     \
-	}
-
-/* Loop bodies for sauWOsc_pdist_pulwm_mul() and sauWOsc_pdist_pulwm_div(). */
-#define PULWM_APPLY(OP, c) \
-	if (f_f) {                                                           \
-		PD_FMUL(c, f_f[i],                                           \
-				sau_fclampf(x OP v_f[i], -0x1p32f, 0x1p32f)) \
-	} else if (f_fval != 1.f) {                                          \
-		PD_FMUL(c, f_fval,                                           \
-				sau_fclampf(x OP v_f[i], -0x1p32f, 0x1p32f)) \
-	} else {                                                             \
-		PD_SIMPLE(c,                                                 \
-				sau_fclampf(x OP v_f[i], -0x1p32f, 0x1p32f)) \
-	}
-
-/*
- * Phase distortion: cycle length. Below 1 zooms in resulting in jagged shapes,
- * above 1 zooms out adding padding (the amplitude at the cycle beginning/end).
- */
-static sauMaybeUnused void
-sauWOsc_pdist_pulwm_mul(sauWOsc *restrict o sauMaybeUnused,
-		uint32_t *restrict phase_ui32,
-		size_t buf_len,
-		const float *restrict v_f,
-		const float *restrict f_f,
-		float f_fval,
-		const float *restrict p_f,
+		float *restrict p_f,
 		float p_fval) {
-	uint32_t c = 0;
-	if (o->opt.func == SAU_WAVE_F_ADAA) {
-		c = sauWave_picoeffs[o->opt.wave].phase_adj;
-	}
-	if (p_f) {
-		PULWM_APPLY(*, (sau_ftoi(p_f[i] * 0x1p32f) + c))
+	uint32_t offset = (o->opt.func == SAU_WAVE_F_ADAA) ?
+		sauWave_picoeffs[o->opt.wave].phase_adj :
+		0;
+	sauPhasor_pdist_fn fn = sauPhasor_get_pdist_fn(pdist_fn);
+	if (cycle_ui32) {
+		float offset_f = offset * 0x1p-32f;
+		p_fval += offset_f;
+		if (p_f) for (size_t i = 0; i < len; ++i)
+			p_f[i] += offset_f;
+		sauPhasor_ui32tof(&o->phasor, phase_buf, len);
+		fn(&o->phasor, phase_buf, cycle_ui32, len,
+				v_f, f_f, f_fval, p_f, p_fval);
 	} else {
-		c = sau_ftoi(p_fval * 0x1p32f) + c;
-		PULWM_APPLY(*, c)
-	}
-}
-
-/*
- * Phase distortion: duty cycle. Below 1 zooms out adding padding,
- * above 1 zooms in resulting in jagged shapes.
- */
-static sauMaybeUnused void
-sauWOsc_pdist_pulwm_div(sauWOsc *restrict o sauMaybeUnused,
-		uint32_t *restrict phase_ui32,
-		size_t buf_len,
-		const float *restrict v_f,
-		const float *restrict f_f,
-		float f_fval,
-		const float *restrict p_f,
-		float p_fval) {
-	uint32_t c = 0;
-	if (o->opt.func == SAU_WAVE_F_ADAA) {
-		c = sauWave_picoeffs[o->opt.wave].phase_adj;
-	}
-	if (p_f) {
-		PULWM_APPLY(/, (sau_ftoi(p_f[i] * 0x1p32f) + c))
-	} else {
-		c = sau_ftoi(p_fval * 0x1p32f) + c;
-		PULWM_APPLY(/, c)
-	}
-}
-
-#undef PULWM_APPLY
-
-/* Loop bodies for sauWOsc_pdist_hold() and others of the same form. */
-#define SUBF_APPLY(val_pdist_f, c) \
-	if (f_f) {                                                  \
-		PD_SUBF(c, f_f[i], val_pdist_f(x, v_f[i], 1))       \
-	} else if (f_fval != 1.f) {                                 \
-		PD_SUBF_CONST(c, f_fval, val_pdist_f(x, v_f[i], 1)) \
-	} else {                                                    \
-		PD_SIMPLE(c, val_pdist_f(x, v_f[i], 0x1p32f))       \
-	}
-
-/*
- * Phase distortion: hold from beginning/end for part of a cycle.
- * Positive values hold forwards, negative values hold backwards.
- */
-static sauMaybeUnused void
-sauWOsc_pdist_hold(sauWOsc *restrict o sauMaybeUnused,
-		uint32_t *restrict phase_ui32,
-		size_t buf_len,
-		const float *restrict v_f,
-		const float *restrict f_f,
-		float f_fval,
-		const float *restrict p_f,
-		float p_fval) {
-	uint32_t c = 0;
-	if (o->opt.func == SAU_WAVE_F_ADAA) {
-		c = sauWave_picoeffs[o->opt.wave].phase_adj;
-	}
-	if (p_f) {
-		SUBF_APPLY(sau_pdist_hold, (sau_ftoi(p_f[i] * 0x1p32f) + c))
-	} else {
-		c = sau_ftoi(p_fval * 0x1p32f) + c;
-		SUBF_APPLY(sau_pdist_hold, c)
-	}
-}
-
-/*
- * Phase distortion: half-cycle width a.k.a. size proportion of each half.
- */
-static sauMaybeUnused void
-sauWOsc_pdist_halfx(sauWOsc *restrict o sauMaybeUnused,
-		uint32_t *restrict phase_ui32,
-		size_t buf_len,
-		const float *restrict v_f,
-		const float *restrict f_f,
-		float f_fval,
-		const float *restrict p_f,
-		float p_fval) {
-	uint32_t c = 0;
-	if (o->opt.func == SAU_WAVE_F_ADAA) {
-		c = sauWave_picoeffs[o->opt.wave].phase_adj;
-	}
-	if (p_f) {
-		SUBF_APPLY(sau_pdist_halfx, (sau_ftoi(p_f[i] * 0x1p32f) + c))
-	} else {
-		c = sau_ftoi(p_fval * 0x1p32f) + c;
-		SUBF_APPLY(sau_pdist_halfx, c)
-	}
-}
-
-/*
- * Phase distortion: half-cycle height a.k.a. change proportion of each half.
- */
-static sauMaybeUnused void
-sauWOsc_pdist_halfy(sauWOsc *restrict o sauMaybeUnused,
-		uint32_t *restrict phase_ui32,
-		size_t buf_len,
-		const float *restrict v_f,
-		const float *restrict f_f,
-		float f_fval,
-		const float *restrict p_f,
-		float p_fval) {
-	uint32_t c = 0;
-	if (o->opt.func == SAU_WAVE_F_ADAA) {
-		c = sauWave_picoeffs[o->opt.wave].phase_adj;
-	}
-	if (p_f) {
-		SUBF_APPLY(sau_pdist_halfy, (sau_ftoi(p_f[i] * 0x1p32f) + c))
-	} else {
-		c = sau_ftoi(p_fval * 0x1p32f) + c;
-		SUBF_APPLY(sau_pdist_halfy, c)
-	}
-}
-
-#undef SUBF_APPLY
-
-#undef PD_GET_SUBF
-#undef PD_SET_SUBF
-
-#undef PD_SIMPLE
-#undef PD_FMUL
-#undef PD_SUBF
-#undef PD_SUBF_CONST
-
-static inline sauWOsc_pdist_f sauWOsc_get_pdist_f(unsigned func) {
-	switch (func) {
-	default:        return NULL;
-	case SAU_PPD_C: return sauWOsc_pdist_pulwm_mul;
-	case SAU_PPD_D: return sauWOsc_pdist_pulwm_div;
-	case SAU_PPD_H: return sauWOsc_pdist_hold;
-	case SAU_PPD_X: return sauWOsc_pdist_halfx;
-	case SAU_PPD_Y: return sauWOsc_pdist_halfy;
+		/*
+		 * Faster to use in-place int-float-int conversions, than
+		 * the internal handling of phase offset as float values.
+		 */
+		uint32_t *x = phase_buf;
+		float *y = phase_buf;
+		uint32_t p_i = offset+sau_ftoi(p_fval*0x1p32f);
+		if (p_f) {
+			sau_phase_nftoui32(p_f, len);
+			uint32_t *p_i = (void*)p_f;
+			for (size_t i = 0; i < len; ++i)
+				y[i] = (x[i]-(offset+p_i[i]))*0x1p-32f;
+		} else {
+			for (size_t i = 0; i < len; ++i)
+				y[i] = (x[i]-p_i)*0x1p-32f;
+		}
+		fn(&o->phasor, phase_buf, NULL, len,
+				v_f, f_f, f_fval, NULL, 0.f);
+		if (p_f) {
+			uint32_t *p_i = (void*)p_f;
+			for (size_t i = 0; i < len; ++i)
+				x[i] = sau_ftoi(y[i]*0x1p32f)+(offset+p_i[i]);
+		} else {
+			for (size_t i = 0; i < len; ++i)
+				x[i] = sau_ftoi(y[i]*0x1p32f)+p_i;
+		}
 	}
 }
 
@@ -395,8 +179,9 @@ static inline sauWOsc_pdist_f sauWOsc_get_pdist_f(unsigned func) {
  * Uses post-incremented phase each sample.
  */
 static void sauWOsc_naive_run(sauWOsc *restrict o,
-		float *restrict buf, size_t buf_len,
-		const uint32_t *restrict phase_buf) {
+		void *restrict main_buf, size_t buf_len) {
+	float *buf = main_buf;
+	const uint32_t *phase_buf = main_buf;
 	const float *const lut = sauWave_luts[o->opt.wave];
 	for (size_t i = 0; i < buf_len; ++i) {
 		buf[i] = sauWave_get_lerp(lut, phase_buf[i]);
@@ -409,9 +194,10 @@ static void sauWOsc_naive_run(sauWOsc *restrict o,
  * Uses post-incremented phase each sample.
  */
 static void sauWOsc_naive_run_selfmod(sauWOsc *restrict o,
-		float *restrict buf, size_t buf_len,
-		const uint32_t *restrict phase_buf,
+		void *restrict main_buf, size_t buf_len,
 		const float *restrict pm_abuf) {
+	float *buf = main_buf;
+	const uint32_t *phase_buf = main_buf;
 	const float fb_scale = 0x1p31f * 0.5f; // like level 6 in Yamaha chips
 	const float *const lut = sauWave_luts[o->opt.wave];
 	for (size_t i = 0; i < buf_len; ++i) {
@@ -431,8 +217,8 @@ static void sauWOsc_naive_run_selfmod(sauWOsc *restrict o,
 static void sauWOsc_adaa_reset(sauWOsc *restrict o, uint32_t phase) {
 	const float *const lut = sauWave_piluts[o->opt.wave];
 	if (o->opt.flags & SAU_OSC_RESET_DIFF) {
-		o->prev_Is = sauWave_get_berp(lut, phase);
 		o->prev_phase = phase;
+		o->prev_Is = sauWave_get_berp(lut, o->prev_phase);
 	}
 	o->opt.flags &= ~SAU_OSC_RESET;
 }
@@ -443,12 +229,14 @@ static void sauWOsc_adaa_reset(sauWOsc *restrict o, uint32_t phase) {
  * Uses pre-incremented phase each sample.
  */
 static sauMaybeUnused void sauWOsc_run(sauWOsc *restrict o,
-		float *restrict buf, size_t buf_len,
-		const uint32_t *restrict phase_buf) {
+		void *restrict main_buf, size_t buf_len) {
+	sauPhasor_ftoui32(&o->phasor, main_buf, buf_len);
 	if (o->opt.func == SAU_WAVE_F_NAIVE) {
-		sauWOsc_naive_run(o, buf, buf_len, phase_buf);
+		sauWOsc_naive_run(o, main_buf, buf_len);
 		return;
 	}
+	float *buf = main_buf;
+	const uint32_t *phase_buf = main_buf;
 	// Higher-quality audio (reduce wave, FM & PM aliasing).
 	unsigned wave = o->opt.wave, flags = o->opt.flags;
 	const float *const Ilut = sauWave_piluts[wave];
@@ -498,13 +286,15 @@ static sauMaybeUnused void sauWOsc_run(sauWOsc *restrict o,
  * Uses pre-incremented phase each sample.
  */
 static void sauWOsc_run_selfmod(sauWOsc *restrict o,
-		float *restrict buf, size_t buf_len,
-		const uint32_t *restrict phase_buf,
+		void *restrict main_buf, size_t buf_len,
 		const float *restrict pm_abuf) {
+	sauPhasor_ftoui32(&o->phasor, main_buf, buf_len);
 	if (o->opt.func == SAU_WAVE_F_NAIVE) {
-		sauWOsc_naive_run_selfmod(o, buf, buf_len, phase_buf, pm_abuf);
+		sauWOsc_naive_run_selfmod(o, main_buf, buf_len, pm_abuf);
 		return;
 	}
+	float *buf = main_buf;
+	const uint32_t *phase_buf = main_buf;
 	// Higher-quality audio (reduce wave, FM & PM, feedback aliasing).
 	unsigned wave = o->opt.wave, flags = o->opt.flags;
 	const float *const Ilut = sauWave_piluts[wave];

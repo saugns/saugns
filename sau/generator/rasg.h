@@ -14,26 +14,15 @@
 #pragma once
 #include "../line.h"
 #include "noise.h"
+#include "phasor.h"
 
 #define RASG_MEASURE_LINE_AMP 0
 #if RASG_MEASURE_LINE_AMP
 # include <stdio.h>
 #endif
 
-/**
- * Calculate the coefficent, based on the sample rate, used for
- * the per-sample phase by multiplying with the frequency used.
- */
-#define sauCyclor_COEFF(srate) SAU_INV_FREQ(32, srate)
-
-typedef struct sauCyclor {
-	uint64_t cycle_phase; /* cycle counter upper 32 bits, phase lower */
-	float coeff;
-	bool rate2x;
-} sauCyclor;
-
 typedef struct sauRasG {
-	sauCyclor cyclor;
+	sauPhasor phasor;
 	sauRasOpt opt;
 	float prev_s, fb_s;
 } sauRasG;
@@ -43,9 +32,9 @@ typedef struct sauRasG {
  */
 static inline void sau_init_RasG(sauRasG *restrict o, uint32_t srate) {
 	*o = (sauRasG){
-		.cyclor = (sauCyclor){
+		.phasor = (sauPhasor){
 			.cycle_phase = 0,
-			.coeff = sauCyclor_COEFF(srate),
+			.coeff = sauPhasor_COEFF(srate),
 			.rate2x = true,
 		},
 		.opt.line = SAU_LINE_N_lin,
@@ -56,39 +45,12 @@ static inline void sau_init_RasG(sauRasG *restrict o, uint32_t srate) {
 	};
 }
 
-static inline uint32_t sauRasG_get_cycle(sauRasG *restrict o) {
-	uint32_t cycle = o->cyclor.cycle_phase >> 32;
-	/*
-	 * Phase in rate2x mode extends to include the lowest cycle bit,
-	 * which then marks even vs. odd half-cycle instead of cycle. To
-	 * keep behavior consistent instead of keeping vs. losing a seed
-	 * bit depending on whether or not mode is toggled, always mask.
-	 */
-	return cycle & ~1;
-}
-
-static inline uint32_t sauRasG_get_phase(sauRasG *restrict o) {
-	return o->cyclor.rate2x ?
-		(o->cyclor.cycle_phase >> 1) :
-		o->cyclor.cycle_phase;
+static inline void sauRasG_set_phase(sauRasG *restrict o, uint32_t phase) {
+	sauPhasor_set_phase(&o->phasor, phase);
 }
 
 static inline void sauRasG_set_cycle(sauRasG *restrict o, uint32_t cycle) {
-	uint32_t phase = sauRasG_get_phase(o);
-	uint64_t phase64 = (o->cyclor.rate2x) ? ((uint64_t)phase) << 1 : phase;
-	/*
-	 * Phase in rate2x mode extends to include the lowest cycle bit,
-	 * which then marks even vs. odd half-cycle instead of cycle. To
-	 * keep behavior consistent instead of keeping vs. losing a seed
-	 * bit depending on whether or not mode is toggled, always mask.
-	 */
-	o->cyclor.cycle_phase = ((uint64_t)(cycle & ~1)) << 32 | phase64;
-}
-
-static inline void sauRasG_set_phase(sauRasG *restrict o, uint32_t phase) {
-	uint32_t cycle = sauRasG_get_cycle(o);
-	uint64_t phase64 = (o->cyclor.rate2x) ? ((uint64_t)phase) << 1 : phase;
-	o->cyclor.cycle_phase = ((uint64_t)cycle) << 32 | phase64;
+	sauPhasor_set_cycle(&o->phasor, cycle);
 }
 
 /**
@@ -108,12 +70,12 @@ static void sauRasG_set_opt(sauRasG *restrict o, const sauRasOpt opt) {
 		o->opt.alpha = opt.alpha;
 	o->opt.flags = flags;
 	bool rate2x = !(flags & SAU_RAS_O_HALFSHAPE);
-	if (rate2x != o->cyclor.rate2x) {
-		uint32_t cycle = sauRasG_get_cycle(o);
-		uint32_t phase = sauRasG_get_phase(o);
-		o->cyclor.rate2x = rate2x;
-		sauRasG_set_cycle(o, cycle);
-		sauRasG_set_phase(o, phase);
+	if (rate2x != o->phasor.rate2x) {
+		uint32_t cycle = sauPhasor_get_cycle(&o->phasor);
+		uint32_t phase = sauPhasor_get_phase(&o->phasor);
+		o->phasor.rate2x = rate2x;
+		sauPhasor_set_cycle(&o->phasor, cycle);
+		sauPhasor_set_phase(&o->phasor, phase);
 	}
 }
 
@@ -123,7 +85,7 @@ static void sauRasG_set_opt(sauRasG *restrict o, const sauRasOpt opt) {
  * \return number of samples
  */
 static inline uint32_t sauRasG_cycle_len(sauRasG *restrict o, float freq) {
-	return sau_ftoi(SAU_INV_FREQ(32, o->cyclor.coeff * freq));
+	return sau_ftoi(SAU_INV_FREQ(32, o->phasor.coeff * freq));
 }
 
 /**
@@ -133,7 +95,7 @@ static inline uint32_t sauRasG_cycle_len(sauRasG *restrict o, float freq) {
  */
 static inline uint32_t sauRasG_cycle_pos(sauRasG *restrict o,
 		float freq, uint32_t pos) {
-	uint32_t inc = sau_ftoi(o->cyclor.coeff * freq);
+	uint32_t inc = sau_ftoi(o->phasor.coeff * freq);
 	uint32_t phs = inc * pos;
 	return phs / inc;
 }
@@ -145,445 +107,28 @@ static inline uint32_t sauRasG_cycle_pos(sauRasG *restrict o,
  */
 static inline int32_t sauRasG_cycle_offs(sauRasG *restrict o,
 		float freq, uint32_t pos) {
-	uint32_t inc = sau_ftoi(o->cyclor.coeff * freq);
+	uint32_t inc = sau_ftoi(o->phasor.coeff * freq);
 	uint32_t phs = inc * pos;
 	return (phs - sauWave_SLEN) / inc;
 }
 
-#define P(inc, ofs) \
-	ofs + o->cycle_phase; (o->cycle_phase += inc)     /* post-increment */
-
 /**
- * Fill cycle-value and phase-value buffers for use with sauRasG_run().
- *
- * "Cycles" may have 2x the normal speed while mapped to line sgements.
- * Most simple waveforms need two line segments per cycle, sawtooth and
- * similar being the one-segment exceptions. Randomization maps a cycle
- * to a PRNG state with two neighboring states used for a line segment.
+ * Wrapper for applying PD synthesis distortion.
  */
-static sauMaybeUnused void sauCyclor_fill(sauCyclor *restrict o,
-		uint32_t *restrict cycle_ui32,
-		float *restrict phase_f,
-		size_t buf_len,
-		const float *restrict freq_f,
-		const float *restrict pm_f) {
-	float coeff = o->coeff;
-	float phase_scale = 0x1p31f;
-	if (o->rate2x) {
-		coeff *= 2;
-		phase_scale *= 2;
-	}
-#define FILL(FREQ, PM_IN) \
-	for (size_t i = 0; i < buf_len; ++i) { \
-		uint64_t cycle_phase = P(sau_ftoi(coeff * (FREQ)), (PM_IN)); \
-		uint32_t phase; \
-		cycle_ui32[i] = cycle_phase >> 32; \
-		phase = ((uint32_t) cycle_phase) >> 1; \
-		phase_f[i] = ((int32_t) phase) * 0x1p-31f; \
-	} \
-/**/
-	if (!pm_f) FILL(freq_f[i], 0)
-	else       FILL(freq_f[i], sau_ftoi(pm_f[i] * phase_scale))
-#undef FILL
-}
-
-#undef P /* done */
-
-typedef void (*sauRasG_pdist_f)(sauRasG *restrict o,
-		float *restrict phase_f,
+void sauRasG_pdist(sauRasG *restrict o,
+		unsigned pdist_fn,
+		void *restrict phase_buf,
 		uint32_t *restrict cycle_ui32,
 		size_t buf_len,
 		const float *restrict v_f,
 		const float *restrict f_f,
 		float f_fval,
-		const float *restrict p_f,
-		float p_fval);
-
-/*
- * PD get/set phase macros. The versions differ as follows:
- * - _FMUL: Multiply frequency as last step, used to rescale it.
- * - _POFS: Phase offset parameter is supported.
- * - _SUBF: Apply subfrequency, dividing phase into sub-areas,
- *   e.g. resulting in odd harmonics for distortion when using
- *   even integers. Phase offset parameter is also supported.
- * - _RATE2X: Use twice the phase range, borrowing a cycle bit.
- *
- * Some functions use simpler code than these macros,
- * if it's trivial and works faster than a more complex macro.
- */
-#define PD_GET_POFS(x, phase_f, offset) PD_GET_SUBF(x, phase_f, offset, 1)
-#define PD_GET_SUBF(x, phase_f, offset, f_mul) \
-	float c_f = (offset);                                      \
-	float x = (phase_f - c_f) * f_mul;                         \
-	int32_t f_adj = floorf(x);                                 \
-	x -= f_adj;                                                \
-//
-#define PD_GET_RATE2X(x, phase_f, cycle_ui32) \
-	int32_t cycle = (cycle_ui32 & 1);                          \
-	float x = (phase_f + cycle) * 0.5f;                        \
-//
-#define PD_GET_RATE2X_POFS(x, phase_f, cycle_ui32, offset) \
-	float c_f = (offset);                                      \
-	int32_t cycle = (cycle_ui32 & 1);                          \
-	float x = (phase_f + cycle) * 0.5f - c_f;                  \
-	int32_t f_adj = floorf(x);                                 \
-	x -= f_adj;                                                \
-//
-#define PD_GET_RATE2X_SUBF(x, phase_f, cycle_ui32, offset, fhalf) \
-	float c_f = (offset)*2;                                    \
-	int32_t cycle = (cycle_ui32 & 1);                          \
-	float x = (phase_f + cycle - c_f) * fhalf;                 \
-	int32_t f_adj = floorf(x);                                 \
-	x -= f_adj;                                                \
-//
-#define PD_SET(x, phase_f, cycle_ui32) \
-	int32_t cycle_adj = floorf(x);                             \
-	cycle_ui32 += cycle_adj;                                   \
-	phase_f = x - cycle_adj;                                   \
-//
-#define PD_SET_FMUL(x, phase_f, cycle_ui32, f_mul) \
-	x *= f_mul;                                                \
-	int32_t cycle_adj = floorf(x), cycle_mul = floorf(f_mul);  \
-	if (!cycle_mul) cycle_mul = 1;                             \
-	cycle_ui32 = cycle_mul * cycle_ui32 + cycle_adj;           \
-	phase_f = x - cycle_adj;                                   \
-//
-#define PD_SET_FMUL_POFS(x, phase_f, cycle_ui32, f_mul) \
-	x = (x + f_adj) * f_mul + c_f;                             \
-	int32_t cycle_adj = floorf(x), cycle_mul = floorf(f_mul);  \
-	if (!cycle_mul) cycle_mul = 1;                             \
-	cycle_ui32 = cycle_mul * cycle_ui32 + cycle_adj;           \
-	phase_f = x - cycle_adj;                                   \
-//
-#define PD_SET_SUBF(x, phase_f, cycle_ui32, f_mul_inv) \
-	x = (x + f_adj) * f_mul_inv + c_f;                         \
-	int32_t cycle_adj = floorf(x);                             \
-	cycle_ui32 += cycle_adj;                                   \
-	phase_f = x - cycle_adj;                                   \
-//
-#define PD_SET_RATE2X(x, phase_f, cycle_ui32) \
-	x += x;                                                    \
-	int32_t cycle_adj = floorf(x);                             \
-	cycle_ui32 += cycle_adj - cycle;                           \
-	phase_f = x - cycle_adj;                                   \
-//
-#define PD_SET_RATE2X_FMUL(x, phase_f, cycle_ui32, f_f) \
-	x *= f_f*2;                                                \
-	int32_t cycle_adj = floorf(x), cycle_mul = floorf(f_f);    \
-	if (!cycle_mul) cycle_mul = 1;                             \
-	cycle_ui32 = cycle_mul * (cycle_ui32 - cycle) + cycle_adj; \
-	phase_f = x - cycle_adj;                                   \
-//
-#define PD_SET_RATE2X_FMUL_POFS(x, phase_f, cycle_ui32, f_f) \
-	x = ((x + f_adj) * f_f + c_f)*2;                           \
-	int32_t cycle_adj = floorf(x), cycle_mul = floorf(f_f);    \
-	if (!cycle_mul) cycle_mul = 1;                             \
-	cycle_ui32 = cycle_mul * (cycle_ui32 - cycle) + cycle_adj; \
-	phase_f = x - cycle_adj;                                   \
-//
-#define PD_SET_RATE2X_SUBF(x, phase_f, cycle_ui32, fhalf_inv) \
-	x = (x + f_adj) * fhalf_inv + c_f;                         \
-	int32_t cycle_adj = floorf(x);                             \
-	cycle_ui32 += cycle_adj - cycle;                           \
-	phase_f = x - cycle_adj;                                   \
-//
-
-/*
- * Generate simple versions of PD loops, with no extra frequency control,
- * using \p VAL_EXPR.
- */
-#define PD_SIMPLE(VAL_EXPR) \
-	if (o->cyclor.rate2x) for (size_t i = 0; i < buf_len; ++i) {    \
-		PD_GET_RATE2X(x, phase_f[i], cycle_ui32[i])             \
-		x = (VAL_EXPR);                                         \
-		PD_SET_RATE2X(x, phase_f[i], cycle_ui32[i])             \
-	} else for (size_t i = 0; i < buf_len; ++i) {                   \
-		float x = phase_f[i];                                   \
-		x = (VAL_EXPR);                                         \
-		PD_SET(x, phase_f[i], cycle_ui32[i])                    \
-	}
-
-/*
- * Generate PD loops with frequency multiplier as for zoom-PDs,
- * using \p VAL_EXPR, with no phase offset parameter.
- */
-#define PD_FMUL(f_f, VAL_EXPR) \
-	if (o->cyclor.rate2x) for (size_t i = 0; i < buf_len; ++i) {    \
-		PD_GET_RATE2X(x, phase_f[i], cycle_ui32[i])             \
-		x = (VAL_EXPR);                                         \
-		PD_SET_RATE2X_FMUL(x, phase_f[i], cycle_ui32[i], f_f)   \
-	} else for (size_t i = 0; i < buf_len; ++i) {                   \
-		float x = phase_f[i];                                   \
-		x = (VAL_EXPR);                                         \
-		PD_SET_FMUL(x, phase_f[i], cycle_ui32[i], f_f)          \
-	}
-
-/*
- * Generate PD loops with frequency multiplier as for zoom-PDs,
- * using \p VAL_EXPR, and supporting the phase offset parameter (slower).
- */
-#define PD_FMUL_POFS(offset, f_f, VAL_EXPR) \
-	if (o->cyclor.rate2x) for (size_t i = 0; i < buf_len; ++i) {    \
-		PD_GET_RATE2X_POFS(x, phase_f[i], cycle_ui32[i],        \
-				offset)                                 \
-		x = (VAL_EXPR);                                         \
-		PD_SET_RATE2X_FMUL_POFS(x, phase_f[i], cycle_ui32[i],   \
-				f_f)                                    \
-	} else for (size_t i = 0; i < buf_len; ++i) {                   \
-		PD_GET_POFS(x, phase_f[i], offset)                      \
-		x = (VAL_EXPR);                                         \
-		PD_SET_FMUL_POFS(x, phase_f[i], cycle_ui32[i], f_f)     \
-	}
-
-/*
- * Generate PD loops with subfrequency control acting like modulator ratio,
- * using \p VAL_EXPR.
- */
-#define PD_SUBF(offset, f_f, VAL_EXPR) \
-	if (o->cyclor.rate2x) for (size_t i = 0; i < buf_len; ++i) {        \
-		float fmul = f_f * 0.5f;                                    \
-		PD_GET_RATE2X_SUBF(x, phase_f[i], cycle_ui32[i],            \
-				offset, fmul)                               \
-		x = (VAL_EXPR);                                             \
-		PD_SET_RATE2X_SUBF(x, phase_f[i], cycle_ui32[i], 1 / fmul)  \
-	} else for (size_t i = 0; i < buf_len; ++i) {                       \
-		PD_GET_SUBF(x, phase_f[i], offset, f_f)                     \
-		x = (VAL_EXPR);                                             \
-		PD_SET_SUBF(x, phase_f[i], cycle_ui32[i], 1 / f_f)          \
-	}
-
-/*
- * Generate PD loops with a constant value for subfrequency control,
- * using \p VAL_EXPR.
- */
-#define PD_SUBF_CONST(offset, f_f, VAL_EXPR) \
-if (o->cyclor.rate2x) {                                                     \
-	const float fmul = f_f * 0.5f;                                      \
-	const float fmul_inv = 1.f / fmul;                                  \
-	for (size_t i = 0; i < buf_len; ++i) {                              \
-		PD_GET_RATE2X_SUBF(x, phase_f[i], cycle_ui32[i],            \
-				offset, fmul)                               \
-		x = (VAL_EXPR);                                             \
-		PD_SET_RATE2X_SUBF(x, phase_f[i], cycle_ui32[i], fmul_inv)  \
-	}                                                                   \
-} else {                                                                    \
-	const float fmul = f_f;                                             \
-	const float fmul_inv = 1.f / fmul;                                  \
-	for (size_t i = 0; i < buf_len; ++i) {                              \
-		PD_GET_SUBF(x, phase_f[i], offset, fmul)                    \
-		x = (VAL_EXPR);                                             \
-		PD_SET_SUBF(x, phase_f[i], cycle_ui32[i], fmul_inv)         \
-	}                                                                   \
-}
-
-/* Loop bodies for sauRasG_pdist_pulwm_mul() and sauRasG_pdist_pulwm_div(). */
-#define PULWM_APPLY(OP) \
-if (p_f) {                                                                   \
-	if (f_f) {                                                           \
-		PD_FMUL_POFS(p_f[i], f_f[i],                                 \
-				sau_fclampf(x OP v_f[i], -1.f, 1.f))         \
-	} else {                                                             \
-		PD_FMUL_POFS(p_f[i], f_fval,                                 \
-				sau_fclampf(x OP v_f[i], -1.f, 1.f))         \
-	}                                                                    \
-} else if (p_fval != 0.f) {                                                  \
-	if (f_f) {                                                           \
-		PD_FMUL_POFS(p_fval, f_f[i],                                 \
-				sau_fclampf(x OP v_f[i], -1.f, 1.f))         \
-	} else {                                                             \
-		PD_FMUL_POFS(p_fval, f_fval,                                 \
-				sau_fclampf(x OP v_f[i], -1.f, 1.f))         \
-	}                                                                    \
-} else {                                                                     \
-	if (f_f) {                                                           \
-		PD_FMUL(f_f[i], sau_fclampf(x OP v_f[i], -1.f, 1.f))         \
-	} else if (f_fval != 1.f) {                                          \
-		PD_FMUL(f_fval, sau_fclampf(x OP v_f[i], -1.f, 1.f))         \
-	} else {                                                             \
-		if (o->cyclor.rate2x) for (size_t i = 0; i < buf_len; ++i) { \
-			PD_GET_RATE2X(x, phase_f[i], cycle_ui32[i])          \
-			x = sau_fclampf(x OP v_f[i], -1.f, 1.f);             \
-			PD_SET_RATE2X(x, phase_f[i], cycle_ui32[i])          \
-		} else for (size_t i = 0; i < buf_len; ++i) {                \
-			float x = phase_f[i];                                \
-			x = sau_fclampf(x OP v_f[i], -1.f, 1.f);             \
-			phase_f[i] = x < 0.f ? x + 1.f : x;                  \
-		}                                                            \
-	}                                                                    \
-}
-
-/*
- * Phase distortion: cycle length. Below 1 zooms in resulting in jagged shapes,
- * above 1 zooms out adding padding (the amplitude at the cycle beginning/end).
- */
-static sauMaybeUnused void
-sauRasG_pdist_pulwm_mul(sauRasG *restrict o sauMaybeUnused,
-		float *restrict phase_f,
-		uint32_t *restrict cycle_ui32,
-		size_t buf_len,
-		const float *restrict v_f,
-		const float *restrict f_f,
-		float f_fval,
-		const float *restrict p_f,
+		float *restrict p_f,
 		float p_fval) {
-	PULWM_APPLY(*)
-}
-
-/*
- * Phase distortion: duty cycle. Below 1 zooms out adding padding,
- * above 1 zooms in resulting in jagged shapes.
- */
-static sauMaybeUnused void
-sauRasG_pdist_pulwm_div(sauRasG *restrict o sauMaybeUnused,
-		float *restrict phase_f,
-		uint32_t *restrict cycle_ui32,
-		size_t buf_len,
-		const float *restrict v_f,
-		const float *restrict f_f,
-		float f_fval,
-		const float *restrict p_f,
-		float p_fval) {
-	PULWM_APPLY(/)
-}
-
-#undef PULWM_APPLY
-
-/* Loop bodies for sauRasG_pdist_hold() and others of the same form. */
-#define SUBF_APPLY(val_pdist_f) \
-if (p_f) {                                                                   \
-	if (f_f) {                                                           \
-		PD_SUBF(p_f[i], f_f[i], val_pdist_f(x, v_f[i], 1))           \
-	} else {                                                             \
-		PD_SUBF_CONST(p_f[i], f_fval, val_pdist_f(x, v_f[i], 1))     \
-	}                                                                    \
-} else if (p_fval != 0.f) {                                                  \
-	if (f_f) {                                                           \
-		PD_SUBF(p_fval, f_f[i], val_pdist_f(x, v_f[i], 1))           \
-	} else {                                                             \
-		PD_SUBF_CONST(p_fval, f_fval, val_pdist_f(x, v_f[i], 1))     \
-	}                                                                    \
-} else {                                                                     \
-	if (f_f) {                                                           \
-		PD_SUBF(0, f_f[i], val_pdist_f(x, v_f[i], 1))                \
-	} else if (f_fval != 1.f) {                                          \
-		PD_SUBF_CONST(0, f_fval, val_pdist_f(x, v_f[i], 1))          \
-	} else {                                                             \
-		if (o->cyclor.rate2x) for (size_t i = 0; i < buf_len; ++i) { \
-			PD_GET_RATE2X(x, phase_f[i], cycle_ui32[i])          \
-			x = val_pdist_f(x, v_f[i], 1);                       \
-			PD_SET_RATE2X(x, phase_f[i], cycle_ui32[i])          \
-		} else for (size_t i = 0; i < buf_len; ++i) {                \
-			float x = phase_f[i];                                \
-			x = val_pdist_f(x, v_f[i], 1);                       \
-			phase_f[i] = x;                                      \
-		}                                                            \
-	}                                                                    \
-}
-
-/*
- * Phase distortion: hold from beginning/end for part of a cycle.
- * Positive values hold forwards, negative values hold backwards.
- */
-static sauMaybeUnused void
-sauRasG_pdist_hold(sauRasG *restrict o sauMaybeUnused,
-		float *restrict phase_f,
-		uint32_t *restrict cycle_ui32,
-		size_t buf_len,
-		const float *restrict v_f,
-		const float *restrict f_f,
-		float f_fval,
-		const float *restrict p_f,
-		float p_fval) {
-	SUBF_APPLY(sau_pdist_hold)
-}
-
-#undef SUBF_APPLY
-
-/* Loop bodies for sauRasG_pdist_xhalf() and others of the same form. */
-#define SUBF_APPLY(val_pdist_f) \
-if (p_f) {                                                                   \
-	if (f_f) {                                                           \
-		PD_SUBF(p_f[i], f_f[i], val_pdist_f(x, v_f[i], 1))           \
-	} else {                                                             \
-		PD_SUBF_CONST(p_f[i], f_fval, val_pdist_f(x, v_f[i], 1))     \
-	}                                                                    \
-} else if (p_fval != 0.f) {                                                  \
-	if (f_f) {                                                           \
-		PD_SUBF(p_fval, f_f[i], val_pdist_f(x, v_f[i], 1))           \
-	} else {                                                             \
-		PD_SUBF_CONST(p_fval, f_fval, val_pdist_f(x, v_f[i], 1))     \
-	}                                                                    \
-} else {                                                                     \
-	if (f_f) {                                                           \
-		PD_SUBF(0, f_f[i], val_pdist_f(x, v_f[i], 1))                \
-	} else if (f_fval != 1.f) {                                          \
-		PD_SUBF_CONST(0, f_fval, val_pdist_f(x, v_f[i], 1))          \
-	} else {                                                             \
-		PD_SIMPLE(val_pdist_f(x, v_f[i], 1))                         \
-	}                                                                    \
-}
-
-/*
- * Phase distortion: half-cycle width a.k.a. size proportion of each half.
- */
-static sauMaybeUnused void
-sauRasG_pdist_halfx(sauRasG *restrict o sauMaybeUnused,
-		float *restrict phase_f,
-		uint32_t *restrict cycle_ui32,
-		size_t buf_len,
-		const float *restrict v_f,
-		const float *restrict f_f,
-		float f_fval,
-		const float *restrict p_f,
-		float p_fval) {
-	SUBF_APPLY(sau_pdist_halfx)
-}
-
-/*
- * Phase distortion: half-cycle height a.k.a. change proportion of each half.
- */
-static sauMaybeUnused void
-sauRasG_pdist_halfy(sauRasG *restrict o sauMaybeUnused,
-		float *restrict phase_f,
-		uint32_t *restrict cycle_ui32,
-		size_t buf_len,
-		const float *restrict v_f,
-		const float *restrict f_f,
-		float f_fval,
-		const float *restrict p_f,
-		float p_fval) {
-	SUBF_APPLY(sau_pdist_halfy)
-}
-
-#undef SUBF_APPLY
-
-#undef PD_GET_SUBF
-#undef PD_GET_RATE2X
-#undef PD_GET_RATE2X_SUBF
-#undef PD_SET
-#undef PD_SET_FMUL
-#undef PD_SET_FMUL_POFS
-#undef PD_SET_SUBF
-#undef PD_SET_RATE2X
-#undef PD_SET_RATE2X_FMUL
-#undef PD_SET_RATE2X_FMUL_POFS
-#undef PD_SET_RATE2X_SUBF
-
-#undef PD_SIMPLE
-#undef PD_FMUL
-#undef PD_FMUL_POFS
-#undef PD_SUBF
-#undef PD_SUBF_CONST
-
-static inline sauRasG_pdist_f sauRasG_get_pdist_f(unsigned func) {
-	switch (func) {
-	default:        return NULL;
-	case SAU_PPD_C: return sauRasG_pdist_pulwm_mul;
-	case SAU_PPD_D: return sauRasG_pdist_pulwm_div;
-	case SAU_PPD_H: return sauRasG_pdist_hold;
-	case SAU_PPD_X: return sauRasG_pdist_halfx;
-	case SAU_PPD_Y: return sauRasG_pdist_halfy;
-	}
+	sauPhasor_ui32tof(&o->phasor, phase_buf, buf_len);
+	sauPhasor_get_pdist_fn(pdist_fn)(&o->phasor,
+			phase_buf, cycle_ui32, buf_len,
+			v_f, f_f, f_fval, p_f, p_fval);
 }
 
 typedef void (*sauRasG_map_f)(sauRasG *restrict o,
@@ -1054,20 +599,22 @@ static inline sauRasG_map_f sauRasG_get_map_f(unsigned func) {
  */
 static sauMaybeUnused void sauRasG_run(sauRasG *restrict o,
 		size_t buf_len,
-		float *restrict main_buf,
+		void *restrict main_buf,
 		float *restrict end_a_buf,
 		float *restrict end_b_buf,
 		const uint32_t *restrict cycle_buf) {
 	sauRasG_map_f map = sauRasG_get_map_f(o->opt.func);
 	map(o, buf_len, end_a_buf, end_b_buf, cycle_buf);
+	sauPhasor_ui32tof(&o->phasor, main_buf, buf_len);
 	const unsigned flags = o->opt.flags, line = o->opt.line;
+	float *buf = main_buf;
 	if (flags & SAU_RAS_O_PERLIN) {
 		const float perlin_amp =
 			(flags & (SAU_RAS_O_HALFSHAPE|SAU_RAS_O_ZIGZAG)) ?
 			1.f :
 			sauLine_coeffs[line].perlin_amp;
 		for (size_t i = 0; i < buf_len; ++i) {
-			float phase = main_buf[i];
+			float phase = buf[i];
 			end_a_buf[i] *= perlin_amp*phase;
 			end_b_buf[i] *= perlin_amp*(phase-1.f);
 		}
@@ -1093,13 +640,13 @@ static sauMaybeUnused void sauRasG_run(sauRasG *restrict o,
 			end_b_buf[i] *= fabsf(end_b_buf[i]);
 		}
 	}
-	sauLine_map_funcs[line](main_buf, buf_len,
+	sauLine_map_funcs[line](buf, buf_len,
 			end_a_buf, end_b_buf);
 #if RASG_MEASURE_LINE_AMP /* measure output, needed for Perlin mode coeff */
 	static float min, max;
 	for (size_t i = 0; i < buf_len; ++i) {
-		min = sau_minf(main_buf[i], min);
-		max = sau_maxf(main_buf[i], max);
+		min = sau_minf(buf[i], min);
+		max = sau_maxf(buf[i], max);
 	}
 	printf("%.11f, %.11f\n", min, max);
 #endif
@@ -1126,9 +673,10 @@ static inline sauRasG_map_selfmod_f sauRasG_get_map_selfmod_f(unsigned func) {
  */
 static sauMaybeUnused void sauRasG_run_selfmod(sauRasG *restrict o,
 		size_t buf_len,
-		float *restrict main_buf,
+		void *restrict main_buf,
 		const uint32_t *restrict cycle_buf,
 		const float *restrict pm_abuf) {
+	sauPhasor_ui32tof(&o->phasor, main_buf, buf_len);
 	sauRasG_map_selfmod_f map = sauRasG_get_map_selfmod_f(o->opt.func);
 	sauLine_val_f line_f = sauLine_val_funcs[o->opt.line];
 	map(o, buf_len, main_buf, line_f, cycle_buf, pm_abuf);
