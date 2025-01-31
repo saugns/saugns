@@ -7,6 +7,19 @@ is a shorter change log with only the SAU language changes.
 Pre-release
 -----------
 
+Fix for builds with the clang 19 compiler.
+This is for an issue known to have affected x86-64.
+
+No difference for gcc nor for clang 18 and older.
+With clang 19, to keep -ffast-math builds from having
+broken FM and PM, never use lrint()/lrintf(), always
+use llrint()/llrintf() even when C type `long` is 64-bit.
+(Otherwise the former turn into 32-bit result instructions
+that clip values in some places.)
+
+v0.5.0b (2025-01-28)
+--------------------
+
 Fix sweeps for PD parameters. These were meant to
 work, but were broken by v0.5.0 refactoring; time
 flags lacked initialization.
