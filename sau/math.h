@@ -45,23 +45,25 @@ static inline uint64_t sau_ms_in_samples(uint64_t time_ms, uint64_t srate,
 	return time;
 }
 
-/** Apply lrint() if long can hold UINT32_MAX, otherwise llrint(). */
-#define sau_ui32rint(x) ((uint32_t) \
-	(LONG_MAX >= UINT32_MAX ? lrint(x) : llrint(x)))
+/** Portable lrint() which will allow/convert \p x at least UINT32_MAX large.
+    Always use llrint(), clang 19 may "optimize" 64-bit lrint() to 32-bit;
+    32-bit instructions may saturate the value to signed 32-bit int bounds. */
+#define sau_ui32rint(x) ((uint32_t) llrint(x))
 
-/** Apply lrintf() if long can hold UINT32_MAX, otherwise llrintf(). */
-#define sau_ui32rintf(x) ((uint32_t) \
-	(LONG_MAX >= UINT32_MAX ? lrintf(x) : llrintf(x)))
+/** Portable lrintf() which will allow/convert \p x at least UINT32_MAX large.
+    Always use llrintf(), clang 19 may "optimize" 64-bit lrintf() to 32-bit;
+    32-bit instructions may saturate the value to signed 32-bit int bounds. */
+#define sau_ui32rintf(x) ((uint32_t) llrintf(x))
 
 /** Portably wrap-around behaving lrint() within 64-bit int boundaries.
-    Apply lrint() if long can hold INT64_MAX, otherwise llrint(). */
-#define sau_i64rint(x) ((int64_t) \
-	(LONG_MAX >= INT64_MAX ? lrint(x) : llrint(x)))
+    Always use llrint(), clang 19 may "optimize" 64-bit lrint() to 32-bit;
+    32-bit instructions may saturate the value to signed 32-bit int bounds. */
+#define sau_i64rint(x) ((int64_t) llrint(x))
 
 /** Portably wrap-around behaving lrintf() within 64-bit int boundaries.
-    Apply lrintf() if long can hold INT64_MAX, otherwise llrintf(). */
-#define sau_i64rintf(x) ((int64_t) \
-	(LONG_MAX >= INT64_MAX ? lrintf(x) : llrintf(x)))
+    Always use llrintf(), clang 19 may "optimize" 64-bit lrintf() to 32-bit;
+    32-bit instructions may saturate the value to signed 32-bit int bounds. */
+#define sau_i64rintf(x) ((int64_t) llrintf(x))
 
 /**
  * Convert cyclical value (0.0 = 0% and 1.0 = 100%, with ends
