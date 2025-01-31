@@ -4,8 +4,8 @@ saugns version changes
 [On the website](https://sau.frama.io/changes.html#saulang)
 is a shorter change log with only the SAU language changes.
 
-Pre-release
------------
+v0.5.0c (2025-01-31)
+--------------------
 
 Fix for builds with the clang 19 compiler.
 This is for an issue known to have affected x86-64.
