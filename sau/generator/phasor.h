@@ -165,7 +165,7 @@ typedef void (*sauPhasor_pdist_fn)(sauPhasor *restrict o,
 #define PD_GET_SUBF(x, phase_f, offset, f_mul) \
 	float c_f = (offset);                                      \
 	float x = (phase_f - c_f) * f_mul;                         \
-	float f_adj = floorf(x);                                   \
+	float f_adj = sau_i32floorf(x);                            \
 	x -= f_adj;                                                \
 //
 #define PD_GET_RATE2X(x, phase_f, cycle_ui32) \
@@ -176,14 +176,14 @@ typedef void (*sauPhasor_pdist_fn)(sauPhasor *restrict o,
 	float c_f = (offset);                                      \
 	int32_t cycle = (cycle_ui32 & 1);                          \
 	float x = (phase_f + cycle) * 0.5f - c_f;                  \
-	float f_adj = floorf(x);                                   \
+	float f_adj = sau_i32floorf(x);                            \
 	x -= f_adj;                                                \
 //
 #define PD_GET_RATE2X_SUBF(x, phase_f, cycle_ui32, offset, fhalf) \
 	float c_f = (offset)*2;                                    \
 	int32_t cycle = (cycle_ui32 & 1);                          \
 	float x = (phase_f + cycle - c_f) * fhalf;                 \
-	float f_adj = floorf(x);                                   \
+	float f_adj = sau_i32floorf(x);                            \
 	x -= f_adj;                                                \
 //
 #define PD_SET(x, phase_f) \
@@ -230,11 +230,11 @@ static void pd_set_tail_rate2x_fmul_val(float *restrict phase_f,
 		uint32_t *restrict cycle_ui32,
 		float f_fval,
 		size_t n) {
-	int32_t cycle_mul = floorf(f_fval);
+	int32_t cycle_mul = sau_i32floorf(f_fval);
 	if (!cycle_mul) cycle_mul = 1;
 	for (size_t i = 0; i < n; ++i) {
 		int32_t cycle = cycle_ui32[i] & 1;
-		int32_t cycle_adj = floorf(phase_f[i]);
+		int32_t cycle_adj = sau_i32floorf(phase_f[i]);
 		cycle_ui32[i] = cycle_mul * (cycle_ui32[i] - cycle) + cycle_adj;
 		phase_f[i] -= cycle_adj;
 	}
@@ -246,8 +246,8 @@ static void pd_set_tail_rate2x_fmul_arr(float *restrict phase_f,
 		size_t n) {
 	for (size_t i = 0; i < n; ++i) {
 		int32_t cycle = cycle_ui32[i] & 1;
-		int32_t cycle_adj = floorf(phase_f[i]);
-		int32_t cycle_mul = floorf(f_f[i]);
+		int32_t cycle_adj = sau_i32floorf(phase_f[i]);
+		int32_t cycle_mul = sau_i32floorf(f_f[i]);
 		if (!cycle_mul) cycle_mul = 1;
 		cycle_ui32[i] = cycle_mul * (cycle_ui32[i] - cycle) + cycle_adj;
 		phase_f[i] -= cycle_adj;
@@ -269,10 +269,10 @@ static void pd_set_tail_fmul_val(float *restrict phase_f,
 		uint32_t *restrict cycle_ui32,
 		float f_fval,
 		size_t n) {
-	int32_t cycle_mul = floorf(f_fval);
+	int32_t cycle_mul = sau_i32floorf(f_fval);
 	if (!cycle_mul) cycle_mul = 1;
 	for (size_t i = 0; i < n; ++i) {
-		int32_t cycle_adj = floorf(phase_f[i]);
+		int32_t cycle_adj = sau_i32floorf(phase_f[i]);
 		cycle_ui32[i] = cycle_mul * cycle_ui32[i] + cycle_adj;
 		phase_f[i] -= cycle_adj;
 	}
@@ -283,8 +283,8 @@ static void pd_set_tail_fmul_arr(float *restrict phase_f,
 		const float *restrict f_f,
 		size_t n) {
 	for (size_t i = 0; i < n; ++i) {
-		int32_t cycle_adj = floorf(phase_f[i]);
-		int32_t cycle_mul = floorf(f_f[i]);
+		int32_t cycle_adj = sau_i32floorf(phase_f[i]);
+		int32_t cycle_mul = sau_i32floorf(f_f[i]);
 		if (!cycle_mul) cycle_mul = 1;
 		cycle_ui32[i] = cycle_mul * cycle_ui32[i] + cycle_adj;
 		phase_f[i] -= cycle_adj;
@@ -309,7 +309,7 @@ static sauNoinline void pd_set_tail_rate2x(float *restrict phase_f,
 		return; // skip if no cycle data (phase may be wrapped later)
 	for (size_t i = 0; i < n; ++i) {
 		int32_t cycle = cycle_ui32[i] & 1;
-		int32_t cycle_adj = floorf(phase_f[i]);
+		int32_t cycle_adj = sau_i32floorf(phase_f[i]);
 		cycle_ui32[i] += cycle_adj - cycle;
 		phase_f[i] -= cycle_adj;
 	}
@@ -321,7 +321,7 @@ static sauNoinline void pd_set_tail(float *restrict phase_f,
 	if (!cycle_ui32)
 		return; // skip if no cycle data (phase may be wrapped later)
 	for (size_t i = 0; i < n; ++i) {
-		int32_t cycle_adj = floorf(phase_f[i]);
+		int32_t cycle_adj = sau_i32floorf(phase_f[i]);
 		cycle_ui32[i] += cycle_adj;
 		phase_f[i] -= cycle_adj;
 	}
