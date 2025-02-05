@@ -1,5 +1,5 @@
 /* SAU library: Math definitions.
- * Copyright (c) 2011-2012, 2017-2024 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2025 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
@@ -44,6 +44,30 @@ static inline uint64_t sau_ms_in_samples(uint64_t time_ms, uint64_t srate,
 	time /= 1000;
 	return time;
 }
+
+/** Fast ceil() for values in signed 32-bit int range. */
+static inline int32_t sau_i32ceil(double x) { int32_t i=x; return i + (x>i); }
+
+/** Fast ceilf() for values in signed 32-bit int range. */
+static inline int32_t sau_i32ceilf(float x) { int32_t i=x; return i + (x>i); }
+
+/** Fast ceil() for values in signed 64-bit int range. */
+static inline int64_t sau_i64ceil(double x) { int64_t i=x; return i + (x>i); }
+
+/** Fast ceilf() for values in signed 64-bit int range. */
+static inline int64_t sau_i64ceilf(float x) { int64_t i=x; return i + (x>i); }
+
+/** Fast floor() for values in signed 32-bit int range. */
+static inline int32_t sau_i32floor(double x) { int32_t i=x; return i - (x<i); }
+
+/** Fast floorf() for values in signed 32-bit int range. */
+static inline int32_t sau_i32floorf(float x) { int32_t i=x; return i - (x<i); }
+
+/** Fast floor() for values in signed 64-bit int range. */
+static inline int64_t sau_i64floor(double x) { int64_t i=x; return i - (x<i); }
+
+/** Fast floorf() for values in signed 64-bit int range. */
+static inline int64_t sau_i64floorf(float x) { int64_t i=x; return i - (x<i); }
 
 /** Portable lrint() which will allow/convert \p x at least UINT32_MAX large.
     Always use llrint(), clang 19 may "optimize" 64-bit lrint() to 32-bit;
