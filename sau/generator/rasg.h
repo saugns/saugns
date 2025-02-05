@@ -156,7 +156,7 @@ const float perlin_amp = \
 for (size_t i = 0; i < buf_len; ++i) { \
 	float pm_a = o->fb_s * pm_abuf[i] * 0.5f; \
 	float phase = main_buf[i] + pm_a; \
-	int32_t cycle_adj = floorf(phase); \
+	int32_t cycle_adj = sau_i32floorf(phase); \
 	uint32_t cycle = cycle_buf[i] + cycle_adj; \
 	phase -= cycle_adj; \
 	/**/ RASG_MAP_##loop_for_func \
