@@ -7,7 +7,7 @@ is a shorter change log with only the SAU language changes.
 Pre-release
 -----------
 
-[rebase in progress]
+Performance tweaks to phaseshaping code, replace floorf().
 
 v0.5.0c (2025-01-31)
 --------------------
