@@ -768,7 +768,7 @@ static bool scan_sym_id(sauScanner *restrict o,
 
 static bool scan_line_state(sauScanner *restrict o,
 		sauScanNumConst_f scan_numconst,
-		sauLine *restrict line, bool ratio) {
+		sauLinePar *restrict line, bool ratio) {
 	double v0;
 	if (!scan_num(o, scan_numconst, &v0))
 		return false;
@@ -790,10 +790,10 @@ struct NestScope {
 	sauScriptObjRef *last_item, *owner_item;
 	sauScriptOptions sopt_save; /* save/restore on nesting */
 	/* values passed for outer parameter */
-	sauRange *gen_sweep;
+	sauRange *gen_valr;
 	sauScanNumConst_f numconst_f;
 	bool num_ratio : 1;
-	unsigned sweep_line : 1;
+	uint8_t valr_parts;
 };
 
 sauArrType(NestArr, struct NestScope, )
@@ -866,6 +866,35 @@ static void parse_in_settings(sauParser *restrict o);
 static void parse_in_gen_step(sauParser *restrict o);
 static void parse_in_phase_par(sauParser *restrict o);
 static void parse_in_par_sweep(sauParser *restrict o);
+static void parse_in_par_env(sauParser *restrict o);
+static void parse_in_par_env_and_sweep(sauParser *restrict o);
+
+/* Indexing of parts of a value range struct. */
+enum {
+	RANGE_A = 0,
+	RANGE_B,
+	RANGE_ENV,
+	RANGE_ENV_AND_B,
+};
+
+static inline sauLinePar *get_valr_line(sauRange *restrict r, unsigned parts) {
+	switch (parts) {
+	case RANGE_A: return &r->a;
+	case RANGE_B:
+	case RANGE_ENV_AND_B: return &r->b;
+	default: return NULL;
+	}
+}
+
+static inline ParseLevel_sub_f get_valr_sub_f(unsigned parts) {
+	switch (parts) {
+	case RANGE_A:
+	case RANGE_B: return parse_in_par_sweep;
+	case RANGE_ENV: return parse_in_par_env;
+	case RANGE_ENV_AND_B: return parse_in_par_env_and_sweep;
+	default: return NULL;
+	}
+}
 
 /*
  * Parse level flags.
@@ -1100,7 +1129,9 @@ static void begin_list(sauParser *restrict o,
 	if (use_type == SAU_MOD_N_p_pm)
 		pl->sub_f = parse_in_phase_par;
 	else
-		pl->sub_f = nest->gen_sweep ? parse_in_par_sweep : NULL;
+		pl->sub_f = nest->gen_valr ?
+			get_valr_sub_f(nest->valr_parts) :
+			NULL;
 	list->use_type = use_type;
 	sauScriptObjInfo *info;
 	//if (plist != NULL) {
@@ -1456,79 +1487,128 @@ static void parse_in_settings(sauParser *restrict o) {
 static bool parse_level(sauParser *restrict o,
 		uint8_t use_type, uint8_t newscope, uint8_t close_c);
 
+static uint8_t scan_par_sweep(sauScanner *restrict o,
+		sauLinePar *restrict line,
+		struct NestScope *restrict nest, uint8_t c) {
+	double val;
+	size_t id;
+	switch (c) {
+	case 'g':
+		if (scan_num(o, nest->numconst_f, &val)) {
+			line->vt = val;
+			line->flags |= SAU_LINEP_GOAL;
+			if (nest->num_ratio)
+				line->flags |= SAU_LINEP_GOAL_RATIO;
+			else
+				line->flags &= ~SAU_LINEP_GOAL_RATIO;
+		}
+		break;
+	case 'l':
+		if (!scan_sym_id(o, &id, SAU_SYM_LINE_ID, sauLine_names))
+			break;
+		line->type = id;
+		line->flags |= SAU_LINEP_TYPE;
+		break;
+	case 't':
+		if (scan_time_val(o, &line->time_ms))
+			line->flags &= ~SAU_LINEP_TIME_IF_NEW;
+		break;
+	case 'v':
+		scan_line_state(o, nest->numconst_f, line, nest->num_ratio);
+		break;
+	default:
+		return c;
+	}
+	return 0;
+}
+
+static uint8_t scan_par_env(sauScanner *restrict o, sauRange *restrict range,
+		uint8_t c) {
+	double val;
+	switch (c) {
+	case 'a':
+		if (scan_time_val(o, &range->env.time_ms[SAU_ENV_TIME_A]))
+			range->env.flags |= SAU_ENVP_A;
+		break;
+	case 'd':
+		if (scan_time_val(o, &range->env.time_ms[SAU_ENV_TIME_D]))
+			range->env.flags |= SAU_ENVP_D;
+		break;
+	case 'r':
+		if (scan_time_val(o, &range->env.time_ms[SAU_ENV_TIME_R]))
+			range->env.flags |= SAU_ENVP_R;
+		break;
+	case 's':
+		if (scan_num(o, NULL, &val)) {
+			range->env.s_val = val;
+			range->env.flags |= SAU_ENVP_S;
+		}
+		break;
+	default:
+		return c;
+	}
+	return 0;
+}
+
 static void parse_in_par_sweep(sauParser *restrict o) {
 	struct NestScope *nest = NestArr_tip(&o->nest);
-	sauRange *range = nest->gen_sweep;
-	sauLine *line = nest->sweep_line ? &range->b : &range->a;
+	sauRange *range = nest->gen_valr;
+	sauLinePar *line = get_valr_line(nest->gen_valr, nest->valr_parts);
 	PARSE_IN__HEAD(parse_in_par_sweep, range)
-		double val;
-		switch (c) {
-		case 'g':
-			if (scan_num(sc, nest->numconst_f, &val)) {
-				line->vt = val;
-				line->flags |= SAU_LINEP_GOAL;
-				if (nest->num_ratio)
-					line->flags |= SAU_LINEP_GOAL_RATIO;
-				else
-					line->flags &= ~SAU_LINEP_GOAL_RATIO;
-			}
-			break;
-		case 'r':
-			warn_deprecated(sc, "sweep parameter 'r'", "name 'l'");
-			/* fall-through */
-		case 'l': {
-			size_t id;
-			if (!scan_sym_id(sc, &id, SAU_SYM_LINE_ID,
-						sauLine_names))
-				break;
-			line->type = id;
-			line->flags |= SAU_LINEP_TYPE;
-			break; }
-		case 't':
-			if (scan_time_val(sc, &line->time_ms))
-				line->flags &= ~SAU_LINEP_TIME_IF_NEW;
-			break;
-		case 'v':
-			scan_line_state(sc, nest->numconst_f, line,
-					nest->num_ratio);
-			break;
-		default:
-			goto DEFER;
-		}
+		if (!c || scan_par_sweep(sc, line, nest, c)) goto DEFER;
+	PARSE_IN__TAIL()
+}
+
+static void parse_in_par_env(sauParser *restrict o) {
+	struct NestScope *nest = NestArr_tip(&o->nest);
+	sauRange *range = nest->gen_valr;
+	PARSE_IN__HEAD(parse_in_par_env, range)
+		if (!c || scan_par_env(sc, range, c)) goto DEFER;
+	PARSE_IN__TAIL()
+}
+
+static void parse_in_par_env_and_sweep(sauParser *restrict o) {
+	struct NestScope *nest = NestArr_tip(&o->nest);
+	sauRange *range = nest->gen_valr;
+	sauLinePar *line = get_valr_line(nest->gen_valr, nest->valr_parts);
+	PARSE_IN__HEAD(parse_in_par_env_and_sweep, range)
+		if (!c ||
+		    (scan_par_sweep(sc, line, nest, c) &&
+		     scan_par_env(sc, range, c))) goto DEFER;
 	PARSE_IN__TAIL()
 }
 
 static bool prepare_sweep(sauParser *restrict o,
 		struct NestScope *restrict nest,
 		sauScanNumConst_f numconst_f,
-		sauRange **restrict gen_sweep, bool ratio,
-		uint8_t sweep_id, int sweep_line) {
-	if (!gen_sweep) { /* clear when not provided */
-		nest->gen_sweep = NULL;
+		sauRange **restrict gen_valr, bool ratio,
+		uint8_t valr_id, unsigned valr_parts) {
+	if (!gen_valr) { /* clear when not provided */
+		nest->gen_valr = NULL;
 		return true;
 	}
-	if (!*gen_sweep) { /* create for updating, unparsed values kept unset */
-		*gen_sweep = create_range(o, ratio, sweep_id);
-		(*gen_sweep)->a.flags &= ~SAU_LINEP_STATE;
-		(*gen_sweep)->b.flags &= ~SAU_LINEP_STATE;
+	if (!*gen_valr) { /* create for updating, unparsed values kept unset */
+		*gen_valr = create_range(o, ratio, valr_id);
+		(*gen_valr)->a.flags &= ~SAU_LINEP_STATE;
+		(*gen_valr)->b.flags &= ~SAU_LINEP_STATE;
 	}
-	nest->gen_sweep = *gen_sweep;
+	nest->gen_valr = *gen_valr;
 	nest->numconst_f = numconst_f;
 	nest->num_ratio = ratio;
-	nest->sweep_line = sweep_line;
+	nest->valr_parts = valr_parts;
 	return true;
 }
 
 static sauScriptListData *parse_par_list(sauParser *restrict o,
 		sauScanNumConst_f numconst_f,
-		sauRange **restrict gen_sweep, bool ratio,
-		uint8_t sweep_id, uint8_t use_type, int sweep_line) {
+		sauRange **restrict gen_valr, bool ratio,
+		uint8_t valr_id, uint8_t use_type, unsigned valr_parts) {
 	struct NestScope *nest = NestArr_add(&o->nest);
 	prepare_sweep(o, nest, numconst_f,
-			gen_sweep, ratio, sweep_id, sweep_line);
-	if (gen_sweep) {
-		sauLine *line = sweep_line? &(*gen_sweep)->b: &(*gen_sweep)->a;
-		scan_line_state(o->sc, numconst_f, line, ratio);
+			gen_valr, ratio, valr_id, valr_parts);
+	if (gen_valr) {
+		sauLinePar *line = get_valr_line(*gen_valr, valr_parts);
+		if (line) scan_line_state(o->sc, numconst_f, line, ratio);
 	}
 	bool clear = sauScanner_tryc(o->sc, '-');
 	sauScriptListData *first_list = NULL;
@@ -1539,7 +1619,7 @@ static sauScriptListData *parse_par_list(sauParser *restrict o,
 		else nest->list->append = true;
 		if (!first_list) first_list = nest->list;
 	}
-	nest->gen_sweep = NULL;
+	nest->gen_valr = NULL;
 	NestArr_pop(&o->nest);
 	return first_list;
 }
@@ -1552,13 +1632,14 @@ static void change_list_use(sauScriptListData *first_list, uint8_t use_type) {
 static uint8_t parse_par_dotdot(sauParser *restrict o,
 		sauScriptListData *first_list, sauScanNumConst_f num_f,
 		sauRange **restrict range, bool ratio,
-		uint8_t sweep_id, uint8_t mod) {
+		uint8_t valr_id, uint8_t mod) {
 	const uint8_t mod1 = mod+1, mod2 = mod+2, mod_r = mod+3;
 	uint8_t c = 0;
 	change_list_use(first_list, mod1);
-	parse_par_list(o, num_f, range, ratio, sweep_id, mod2, 1);
+	parse_par_list(o, num_f, range, ratio, valr_id, mod2, RANGE_B);
 	if ((c = sauScanner_getc_after(o->sc, '.'))) {
-		if (c == 'r') parse_par_list(o, NULL, NULL, false, 0, mod_r, 0);
+		if (c == 'r') parse_par_list(o, NULL, range, false, valr_id,
+				mod_r, RANGE_ENV);
 		else sauScanner_warning(o->sc, NULL,
 "expected '.r' or nothing after '..' and second value");
 	}
@@ -1574,29 +1655,28 @@ static uint8_t parse_par_dotdot(sauParser *restrict o,
 static uint8_t parse_par_modranges(sauParser *restrict o,
 		sauScanNumConst_f num_f,
 		sauRange **restrict range, bool ratio,
-		uint8_t sweep_id, uint8_t mod) {
+		uint8_t valr_id, uint8_t mod) {
 	uint8_t c;
 	sauScriptListData *first_list =
-		parse_par_list(o, num_f, range, ratio, sweep_id, mod, 0);
+		parse_par_list(o, num_f, range, ratio, valr_id, mod, RANGE_A);
 	switch ((c = sauScanner_getc_after(o->sc, '.'))) {
 	case '.':
 		return parse_par_dotdot(o, first_list,
-				num_f, range, ratio, sweep_id, mod);
+				num_f, range, ratio, valr_id, mod);
 	case 'r':
-		parse_par_list(o, num_f, range, ratio, sweep_id, mod+3, 1);
+		parse_par_list(o, num_f, range, ratio, valr_id, mod+3,
+				RANGE_ENV_AND_B);
 		break;
 	default:
 		return c;
 	}
 	return 0;
 }
-
 static uint8_t parse_par_pdset(sauParser *restrict o,
 		sauPDSet **restrict pdset,
 		uint8_t pdset_id, uint8_t mod) {
 	if (!*pdset) {
-		*pdset = sau_mpalloc(o->mp,
-				sizeof(sauPDSet) * SAU_PPD_TYPES);
+		*pdset = sau_mpalloc(o->mp, sizeof(sauPDSet) * SAU_PPD_TYPES);
 		for (uint32_t i = 0; i < SAU_PPD_TYPES; ++i) {
 			init_range(o, &(*pdset)[i].v);
 			init_range(o, &(*pdset)[i].f);
@@ -1641,7 +1721,7 @@ static bool parse_gen(sauParser *restrict o, uint8_t gen_type,
 		uint8_t sym_type, const char *const* restrict sym_names) {
 	struct ParseLevel *pl = o->cur_pl;
 	struct NestScope *nest = NestArr_tip(&o->nest);
-	if (!pl->use_type && nest && nest->gen_sweep) {
+	if (!pl->use_type && nest && nest->gen_valr) {
 		sauScanner_warning(o->sc, NULL,
 				"modulators not supported here");
 		return true;

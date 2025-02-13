@@ -1,5 +1,5 @@
 /* SAU library: Value line module.
- * Copyright (c) 2011-2013, 2017-2024 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2025 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
@@ -285,27 +285,27 @@ void sauLine_fill_nhl(float *restrict buf, uint32_t len,
  * preserving non-overridden parts of state.
  */
 void sauLine_copy(sauLine *restrict o,
-		const sauLine *restrict src,
+		const sauLinePar *restrict src,
 		uint32_t srate) {
 	if (!src)
 		return;
 	uint8_t mask = 0;
 	if ((src->flags & SAU_LINEP_STATE) != 0) {
-		o->v0 = src->v0;
+		o->par.v0 = src->v0;
 		mask |= SAU_LINEP_STATE
 			| SAU_LINEP_STATE_RATIO;
-	} else if ((o->flags & SAU_LINEP_GOAL) != 0) {
+	} else if ((o->par.flags & SAU_LINEP_GOAL) != 0) {
 		/*
 		 * If old goal not reached, pick value at its current position.
 		 */
 		if ((src->flags & SAU_LINEP_GOAL) != 0) {
 			float f;
 			sauLine_get(o, &f, 1, NULL);
-			o->v0 = f;
+			o->par.v0 = f;
 		}
 	}
 	if ((src->flags & SAU_LINEP_GOAL) != 0) {
-		o->vt = src->vt;
+		o->par.vt = src->vt;
 		if (src->flags & SAU_LINEP_TIME_IF_NEW)
 			o->end -= o->pos;
 		o->pos = 0;
@@ -313,22 +313,22 @@ void sauLine_copy(sauLine *restrict o,
 			| SAU_LINEP_GOAL_RATIO;
 	}
 	if ((src->flags & SAU_LINEP_TYPE) != 0) {
-		o->type = src->type;
+		o->par.type = src->type;
 		mask |= SAU_LINEP_TYPE;
 	}
-	if (!(o->flags & SAU_LINEP_TIME) ||
+	if (!(o->par.flags & SAU_LINEP_TIME) ||
 	    !(src->flags & SAU_LINEP_TIME_IF_NEW)) {
 		/*
 		 * Time overridden.
 		 */
 		if ((src->flags & SAU_LINEP_TIME) != 0) {
 			o->end = sau_ms_in_samples(src->time_ms, srate, NULL);
-			o->time_ms = src->time_ms;
+			o->par.time_ms = src->time_ms;
 			mask |= SAU_LINEP_TIME;
 		}
 	}
-	o->flags &= ~mask;
-	o->flags |= (src->flags & mask);
+	o->par.flags &= ~mask;
+	o->par.flags |= (src->flags & mask);
 }
 
 /**
@@ -349,22 +349,22 @@ void sauLine_copy(sauLine *restrict o,
 sauNoinline uint32_t sauLine_get(sauLine *restrict o,
 		float *restrict buf, uint32_t buf_len,
 		const float *restrict mulbuf) {
-	if (!(o->flags & SAU_LINEP_GOAL))
+	if (!(o->par.flags & SAU_LINEP_GOAL))
 		return 0;
 	/*
 	 * If only one of state and goal is a ratio value,
 	 * adjust state value used for state-to-goal fill.
 	 */
-	if ((o->flags & SAU_LINEP_GOAL_RATIO) != 0) {
-		if (!(o->flags & SAU_LINEP_STATE_RATIO)) {
-			if (mulbuf != NULL) o->v0 /= mulbuf[0];
-			o->flags |= SAU_LINEP_STATE_RATIO;
+	if ((o->par.flags & SAU_LINEP_GOAL_RATIO) != 0) {
+		if (!(o->par.flags & SAU_LINEP_STATE_RATIO)) {
+			if (mulbuf != NULL) o->par.v0 /= mulbuf[0];
+			o->par.flags |= SAU_LINEP_STATE_RATIO;
 		}
 		/* allow a missing mulbuf */
 	} else {
-		if ((o->flags & SAU_LINEP_STATE_RATIO) != 0) {
-			if (mulbuf != NULL) o->v0 *= mulbuf[0];
-			o->flags &= ~SAU_LINEP_STATE_RATIO;
+		if ((o->par.flags & SAU_LINEP_STATE_RATIO) != 0) {
+			if (mulbuf != NULL) o->par.v0 *= mulbuf[0];
+			o->par.flags &= ~SAU_LINEP_STATE_RATIO;
 		}
 		mulbuf = NULL; /* no ratio handling past first value */
 	}
@@ -372,8 +372,8 @@ sauNoinline uint32_t sauLine_get(sauLine *restrict o,
 		return 0;
 	uint32_t len = o->end - o->pos;
 	if (len > buf_len) len = buf_len;
-	sauLine_fill_funcs[o->type](buf, len,
-			o->v0, o->vt, o->pos, o->end, mulbuf);
+	sauLine_fill_funcs[o->par.type](buf, len,
+			o->par.v0, o->par.vt, o->pos, o->end, mulbuf);
 	return len;
 }
 
@@ -391,7 +391,7 @@ static bool advance_len(sauLine *restrict o, uint32_t buf_len) {
 	}
 	if (o->pos >= o->end) {
 		o->pos = 0;
-		o->flags &= ~SAU_LINEP_TIME;
+		o->par.flags &= ~SAU_LINEP_TIME;
 		return false;
 	}
 	return true;
@@ -418,7 +418,7 @@ bool sauLine_run(sauLine *restrict o,
 		float *restrict buf, uint32_t buf_len,
 		const float *restrict mulbuf) {
 	uint32_t len = 0;
-	if (!(o->flags & SAU_LINEP_GOAL)) {
+	if (!(o->par.flags & SAU_LINEP_GOAL)) {
 		advance_len(o, buf_len);
 		goto FILL;
 	}
@@ -429,16 +429,17 @@ bool sauLine_run(sauLine *restrict o,
 		 * Goal reached; turn into new state value,
 		 * filling remaining buffer values with it.
 		 */
-		o->v0 = o->vt;
+		o->par.v0 = o->par.vt;
 		o->pos = 0;
-		o->flags&=~(SAU_LINEP_GOAL|SAU_LINEP_GOAL_RATIO|SAU_LINEP_TIME);
+		o->par.flags &=
+			~(SAU_LINEP_GOAL|SAU_LINEP_GOAL_RATIO|SAU_LINEP_TIME);
 	FILL:
-		if (!(o->flags & SAU_LINEP_STATE_RATIO))
+		if (!(o->par.flags & SAU_LINEP_STATE_RATIO))
 			mulbuf = NULL;
 		else if (mulbuf != NULL)
 			mulbuf += len;
 		sauLine_fill_sah(buf + len, buf_len - len,
-				o->v0, o->v0, 0, 0, mulbuf);
+				o->par.v0, o->par.v0, 0, 0, mulbuf);
 		return false;
 	}
 	return true;
@@ -455,19 +456,19 @@ bool sauLine_run(sauLine *restrict o,
  */
 bool sauLine_skip(sauLine *restrict o, uint32_t skip_len) {
 	if (!advance_len(o, skip_len)) {
-		if (!(o->flags & SAU_LINEP_GOAL))
+		if (!(o->par.flags & SAU_LINEP_GOAL))
 			return false;
 		/*
 		 * Goal reached; turn into new state value.
 		 */
-		o->v0 = o->vt;
-		if ((o->flags & SAU_LINEP_GOAL_RATIO) != 0) {
-			o->flags |= SAU_LINEP_STATE_RATIO;
+		o->par.v0 = o->par.vt;
+		if ((o->par.flags & SAU_LINEP_GOAL_RATIO) != 0) {
+			o->par.flags |= SAU_LINEP_STATE_RATIO;
 		} else {
-			o->flags &= ~SAU_LINEP_STATE_RATIO;
+			o->par.flags &= ~SAU_LINEP_STATE_RATIO;
 		}
-		o->flags &= ~(SAU_LINEP_GOAL | SAU_LINEP_GOAL_RATIO);
+		o->par.flags &= ~(SAU_LINEP_GOAL | SAU_LINEP_GOAL_RATIO);
 		return false;
 	}
-	return (o->flags & SAU_LINEP_GOAL) != 0;
+	return (o->par.flags & SAU_LINEP_GOAL) != 0;
 }
