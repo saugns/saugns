@@ -1,5 +1,5 @@
 /* SAU library: Audio program data and functions.
- * Copyright (c) 2011-2013, 2017-2024 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2025 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
@@ -48,12 +48,43 @@ typedef struct sauTime {
 }
 
 /**
+ * Envelope time parameters.
+ */
+enum {
+	SAU_ENV_TIME_A = 0,
+	SAU_ENV_TIME_D,
+	SAU_ENV_TIME_R,
+	SAU_ENV_TIMES /* stages except the sustain stage */
+};
+
+/**
+ * Envelope parameter flags. The time parameters head the sequence.
+ */
+enum {
+	SAU_ENVP_A = 1U<<0,
+	SAU_ENVP_D = 1U<<1,
+	SAU_ENVP_R = 1U<<2,
+	SAU_ENVP_S = 1U<<3,
+};
+
+/**
+ * Envelope parameter type.
+ */
+typedef struct sauEnvPar {
+	uint32_t time_ms[SAU_ENV_TIMES];
+	float s_val;
+	uint32_t flags;
+} sauEnvPar;
+
+/**
  * Range parameter type.
  *
  * Holds pair of lines, allowing sweeps alongside modulation with value ranges.
+ * Also holds envelope parameter data, for use with a separate triggered timer.
  */
 typedef struct sauRange {
-	sauLine a, b;
+	sauLinePar a, b;
+	sauEnvPar env;
 } sauRange;
 
 /**
