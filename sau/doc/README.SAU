@@ -42,7 +42,7 @@ Scopes
 
 The flow of time and the nesting of scopes are like two dimensions
 in which things are arranged. For altering the time-arrangement,
-see 'Timing'; that includes sub-steps, which are considered part
+see 'Timing'; that includes substeps, which are considered part
 of the same larger step involving the same reference to an object.
 
 Beginning a new step, by introducing a new object or new reference
@@ -140,14 +140,12 @@ Generator universal parameters:
 		and the final output level afterwards; this includes panning,
 		which reduces output level unless fully left or right.)
 		Can be negative to flip the sign of the signal.
-			"Value sweep" values are supported; see section.
-			"Modulation with value ranges" is supported for AM &
+			"Value ranges and envelopes" is supported for AM &
 		RM (amplitude and ring modulation); see section.
 	c	(For non-nested generators only.) Channel mixing, mainly
 		(-1.0) to 1.0. See "Channel mixing values" for more.
-			"Value sweep" values are supported; see section.
-			"Modulation with value ranges" values are supported
-		for panning-AM (stereo placement amplitude modulation); see
+			"Value ranges and envelopes" is supported for
+		panning-AM (stereo placement amplitude modulation); see
 		section. The result of modulation is added to the channel
 		mixing used. (If you downmix the result to mono, the effect
 		will disappear, provided there's no clipping etc. first.)
@@ -170,11 +168,11 @@ Generator universal parameters:
 		length is retrieved as part of setting the default time for
 		something else, a definite default time in seconds (e.g. 1
 		second) is however used instead.
-			For a compound step, the first sub-step is however
+			For a compound step, the first substep is however
 		simply given the "S t" default value if no time is set.
-		The following sub-steps in turn each have the time of the
+		The following substeps in turn each have the time of the
 		previous as its default time. The exception is modulators,
-		for which the last sub-step has implicit time ('i', "ti")
+		for which the last substep has implicit time ('i', "ti")
 		by default, just like for undivided steps for modulators.
 			Special non-number literals can also specify time:
 		d	Definite default time can be set using "td", always.
@@ -184,8 +182,7 @@ Oscillator common parameters:
 	Named parameters common to types "R" and "W".
 	They also have the "Generator universal parameters".
 	f	Frequency in Hz. Can be negative to flip wave shape timewise.
-			"Value sweep" values are supported; see section.
-			"Modulation with value ranges" is supported for FM
+			"Value ranges and envelopes" is supported for FM
 		(frequency modulation); see section. Note that the modulator
 		lists for "f" and "r" expressions are shared and identical.
 	r	(Only for modulators with an oscillator carrier.) Relative
@@ -199,8 +196,7 @@ Oscillator common parameters:
 		by carrier frequency is switched on or off. Specific values
 		like the main value or the ".r" second value can be set again
 		under "f" or "r" to toggle just that value.
-			"Value sweep" values are supported; see section.
-			"Modulation with value ranges" is supported for FM
+			"Value ranges and envelopes" is supported for FM
 		(frequency modulation); see section. Note that the modulator
 		lists for "f" and "r" expressions are shared and identical.
 			Note that for FM modulators, the carrier frequency
@@ -240,8 +236,9 @@ Phase distortion subparameters:
 	the same heading. The PD options allow modulator lists, and non-LFO
 	modulation of PD variations give spectrally richer alternatives to
 	PM that behave differently.
-		"Value sweep" values and "Modulation with value ranges"
-	values are supported for all of these; see those sections for more.
+		"Value ranges and envelopes" (and in turn "Value sweep"
+	and "Modulation with value ranges") is supported for all of these;
+	see the section for more.
 	c	Cycle length or "zoom out" PD; the default value 1.0
 		does nothing. Values above 1 "zoom out", e.g. 2 will
 		double the cycle length, so the old shape then takes
@@ -705,6 +702,49 @@ Cycle position values:
 	leaf-around-a-stem angle.
 	G	0.3819... (golden angle as cycle percentage)
 
+Value ranges and envelopes:
+	Various parameters support dynamic changes to their values. Apart
+	from the basic plugging in of modulators (see "Modulator list"),
+	there's also sweeps (see "Value sweep"), envelopes -- described in
+	more detail below -- and "Modulation with value ranges".
+		The envelope has timed ADSR stages (attack, decay, sustain,
+	and release), which rotate and each adjust the resulting level in
+	sequence. It begins with the attack stage when "t" (time, among
+	"Generator universal parameters") is set for the generator which has
+	the envelope. When the envelope reaches the end of the release stage,
+	the "t" time will have elapsed. In-between, the sustain stage takes
+	up however much time you get, if any, when subtracting the ADR times
+	from the time set to the generator "t" parameter.
+		If the envelope belongs to a modulator which has implicit
+	time ("ti", the default), then it will base its timing on the time
+	set for the carrier instead. (That is, the nearest carrier, going
+	outward from the modulator -- however many levels of nesting until
+	a definite "t" time is found.)
+		Note that the ';' substep separator timing syntax, if used,
+	always implicitly sets a new "t" value for a generator after the end
+	of the old, and therefore triggers a new use of envelopes. This makes
+	it easy to make a sequence of sounds using envelopes. If instead you
+	want to adjust a generator after a time without re-running envelopes,
+	you can use an alternative timing syntax (see "Timing modifiers").
+		Envelope subparameters for ADSR can be set inside a value
+	range modulation ".r[]" list, and will then apply for the same value
+	range. If one or more envelope time is non-zero, the envelope will
+	run. The envelope is applied similarly to value range modulators --
+	except that the envelope has the second value as the state before
+	attack and after release (the "bottom") and the main value as the
+	state between attack and decay. I.e., the main and second value
+	are used the other way around.
+	a	Attack time (default 0 seconds). If above zero, the result
+		will "fade in" towards the main value.
+	d	Decay time (default 0 seconds). If above zero, the result
+		will take time moving to the sustain level (or staying there
+		if it's 1.0),
+	s	Sustain level (default 1.0). If not equal to one, the decay
+		stage will change the level. 1.0 is mapped to the main value
+		and 0.0 to the second value.
+	r	Release time (default 0 seconds). If above zero, the result
+		will "fade out" from the sustain level to the second value.
+
 Value sweep:
 	To sweep a parameter which supports sweep subparameters towards a
 	goal value -- the ordinary value being the start for a trajectory --
@@ -754,9 +794,9 @@ Modulator list:
 	This also allows placing heading subparameters in a later list.
 
 Modulation with value ranges:
-	Amplitude ('a'), frequency ('f' and relative frequency 'r'), and
-	various other parameters all support modulation with subparameters
-	for value range mapping. (These parameters refer to this section.)
+	This is one of the value range features common to all parameters
+	supporting "Value ranges and envelopes", apart from the similar
+	envelopes that can be used at the same time, and the "Value sweep".
 		For every parameter supporting this, the result of modulation
 	is used in place of the main value for the parameter. For amplitude,
 	whether the result is called amplitude modulation (AM), or ring
@@ -968,13 +1008,13 @@ Timing modifiers:
 Compound steps:
 	For a step written for some object, timing can be changed locally,
 	within only the step and for lists nested under it. Two varieties
-	of the ';' sub-step separator allow this. Their use can be repeated.
+	of the ';' substep separator allow this. Their use can be repeated.
 	;	The numberless ';' step split can be written after a step for
 		an object (on a new line or the same), to specify a new time
 		duration and new parameter arguments which apply just after
 		the previous time duration. The new duration generally has
 		the length of the previous by default. (For the default time
-		of the first sub-step, and special handling for the last, see
+		of the first substep, and special handling for the last, see
 		"t" under each "Parameters" for more).
 			The time handling is designed to simplify writing a
 		sequence of connected, non-overlapping timed updates for a
@@ -984,13 +1024,13 @@ Compound steps:
 			For more flexibility, especially for adding "silent"
 		gaps between parts, the numberless ';' can be combined with,
 		or replaced by, the ';number' gapshift. Combination is easy,
-		as "; ;number" will subdivide and shift the second sub-step
+		as "; ;number" will subdivide and shift the second substep
 		by "number" of seconds, and move the active time duration for
-		the second sub-step past the second split, creating a gap
+		the second substep past the second split, creating a gap
 		"number" of seconds long. For example (1 second of silence
 		between frequency changes): "Wsin f100 t1;;1 f200;;1 f300".
 	;number	Gapshift, time in seconds. When a number immediately follows
-		the ';', then the new sub-step is placed in time that number
+		the ';', then the new substep is placed in time that number
 		of seconds after the previous, instead of after the duration
 		of the previous. Depending on usage, may move, alternatively
 		extend, the current sound in time.
@@ -999,7 +1039,7 @@ Compound steps:
 		is changed to 0, so that any time value automatically set
 		there will be 0. After the ";number" part, a time value is
 		always set, the last "t" or default (before zeroing) value.
-			Several uses of ";number" to separate sub-steps in
+			Several uses of ";number" to separate substeps in
 		a row (no numberless ';' in-between!) will only zero the
 		default time before the first ";number", allowing e.g. to
 		extend the whole time rather than to move it by adding a

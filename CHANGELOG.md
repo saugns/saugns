@@ -7,6 +7,24 @@ is a shorter change log with only the SAU language changes.
 Pre-release
 -----------
 
+Language changes:
+ * Parameter envelopes. Implement ADSR envelope, add to every
+   sweepable parameter. This uses list heading subparameters.
+   Add `a`, `d`, `s`, `r` subparameters to `.r` (short-hand
+   and long-hand variations). These are assigned as heading
+   subparameters in `.r[...]` the same as sweep subparameters.
+ * Remove long-deprecated sweep subparameter `r` (now `l`).
+
+Support linear ADSR envelope, which triggers and runs anew
+for each new time duration set to the main `t` parameter for
+a generator; each `;` implicitly sets `t` and thus triggers
+the envelope.
+
+For modulators, if time is implicit/indefinite (default `ti`)
+then the envelopes for parameters trigger with the closest
+carrier having its time set. Thus a single `;` for a carrier
+can trigger envelopes for a nested structure of oscillators.
+
 Performance tweaks to phaseshaping code, replace floorf().
 
 v0.5.0c (2025-01-31)
