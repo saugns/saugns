@@ -1,5 +1,5 @@
 /* SAU library: Parse result to audio program converter.
- * Copyright (c) 2011-2012, 2017-2024 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2025 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
@@ -655,7 +655,7 @@ static sauNoinline void
 print_range(const sauRange *restrict r, char c) {
 	if (!r)
 		return;
-	const sauLine *line = &r->a; // currently prints only the first line
+	const sauLinePar *line = &r->a; // currently prints only the first line
 	if ((line->flags & SAU_LINEP_STATE) != 0) {
 		if ((line->flags & SAU_LINEP_GOAL) != 0)
 			sau_printf("\t%c=%-6.2f->%-6.2f", c, line->v0, line->vt);
