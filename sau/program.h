@@ -57,14 +57,13 @@ enum {
 	SAU_ENV_TIMES /* stages except the sustain stage */
 };
 
-/**
- * Envelope parameter flags. The time parameters head the sequence.
- */
+/** Envelope time parameter flag; see envelope time enums for \p i range. */
+#define SAU_ENVP_TIME(i) (1U<<(i))
+
+/** Envelope other parameter flags. */
 enum {
-	SAU_ENVP_A = 1U<<0,
-	SAU_ENVP_D = 1U<<1,
-	SAU_ENVP_R = 1U<<2,
-	SAU_ENVP_S = 1U<<3,
+	SAU_ENVP_S   = 1U<<0,
+	SAU_ENVP_ALL = 1U<<SAU_ENV_TIMES, /* used for line flags */
 };
 
 /**
@@ -72,18 +71,20 @@ enum {
  */
 typedef struct sauEnvPar {
 	uint32_t time_ms[SAU_ENV_TIMES];
+	uint8_t line[SAU_ENV_TIMES], line_all;
 	float s_val;
-	uint32_t flags;
+	uint8_t time_flags, line_flags;
+	uint8_t flags;
 } sauEnvPar;
 
 /**
  * Range parameter type.
  *
- * Holds pair of lines, allowing sweeps alongside modulation with value ranges.
+ * Holds lines for sweep and value range modulation pair, and envelope pairing.
  * Also holds envelope parameter data, for use with a separate triggered timer.
  */
 typedef struct sauRange {
-	sauLinePar a, b;
+	sauLinePar a, b, e;
 	sauEnvPar env;
 } sauRange;
 
@@ -255,32 +256,36 @@ typedef struct sauProgramIDs {
 /* Macro used for generator modulation or use type sets of items. */
 #define SAU_MOD__ITEMS(X) \
 	X(  carr,   0, " CA ", NULL) \
-SAU_MOD__4M(c_am,   X, "cAM",  "c") /* channel mix i.e. panning modulation */ \
-SAU_MOD__4M(a_am,   X, " AM",  "a") \
-SAU_MOD__4M(f_fm,   X, " FM",  "f") \
+SAU_MOD__VR(c_am,   X, "cAM",  "c") /* channel mix i.e. panning modulation */ \
+SAU_MOD__VR(a_am,   X, " AM",  "a") \
+SAU_MOD__VR(f_fm,   X, " FM",  "f") \
 	X(  p_pm,   1, " PM ", "p") \
 	X(  pf_pm,  1, "fPM ", "p.f") \
-SAU_MOD__4M(pa_pm,  X, "aPM",  "p.a") \
+SAU_MOD__VR(pa_pm,  X, "aPM",  "p.a") \
 SAU_MOD__PD(pd_c,   X, "cPD",  "p.c") \
 SAU_MOD__PD(pd_d,   X, "dPD",  "p.d") \
 SAU_MOD__PD(pd_h,   X, "hPD",  "p.h") \
 SAU_MOD__PD(pd_x,   X, "xPD",  "p.x") \
 SAU_MOD__PD(pd_y,   X, "yPD",  "p.y") \
 	//
-#define SAU_MOD__4M(NAME, X, LABEL, SYNTAX) /* 4 valrange modulator types */ \
+#define SAU_MOD__VR(NAME, X, LABEL, SYNTAX) /* 5 valrange modulator types */ \
 	X(NAME,     1, LABEL " ", SYNTAX) \
 	X(NAME##1,  1, LABEL "1", SYNTAX "..") \
 	X(NAME##2,  1, LABEL "2", SYNTAX "..") \
 	X(NAME##_r, 1, LABEL "r", SYNTAX ".r") \
+	X(NAME##_e, 1, LABEL "e", SYNTAX ".e") \
 	//
-#define SAU_MOD__PD(NAME, X, LABEL, SYNTAX) /* 4*3 PD valrange modulators */ \
-SAU_MOD__4M(NAME,   X, LABEL,     SYNTAX) \
-SAU_MOD__4M(NAME##f,X, LABEL "f", SYNTAX ".f") \
-SAU_MOD__4M(NAME##p,X, LABEL "p", SYNTAX ".p") \
+#define SAU_MOD__PD(NAME, X, LABEL, SYNTAX) /* 5*3 PD valrange modulators */ \
+SAU_MOD__VR(NAME,   X, LABEL,     SYNTAX) \
+SAU_MOD__VR(NAME##f,X, LABEL "f", SYNTAX ".f") \
+SAU_MOD__VR(NAME##p,X, LABEL "p", SYNTAX ".p") \
 	//
 #define SAU_MOD__X_ID(NAME, ...) SAU_MOD_N_##NAME,
 #define SAU_MOD__X_GRAPH(NAME, IS_MOD, LABEL, ...) LABEL,
 #define SAU_MOD__X_SYNTAX(NAME, IS_MOD, LABEL, SYNTAX) SYNTAX,
+
+/* Number of modulators in sequence for a value range with envelope and all. */
+#define SAU_MODS_VALR 5
 
 /**
  * Generator modulation or use types.

@@ -873,15 +873,17 @@ static void parse_in_par_env_and_sweep(sauParser *restrict o);
 enum {
 	RANGE_A = 0,
 	RANGE_B,
+	RANGE_E,
 	RANGE_ENV,
-	RANGE_ENV_AND_B,
+	RANGE_ENV_AND_E,
 };
 
 static inline sauLinePar *get_valr_line(sauRange *restrict r, unsigned parts) {
 	switch (parts) {
 	case RANGE_A: return &r->a;
-	case RANGE_B:
-	case RANGE_ENV_AND_B: return &r->b;
+	case RANGE_B: return &r->b;
+	case RANGE_E:
+	case RANGE_ENV_AND_E: return &r->e;
 	default: return NULL;
 	}
 }
@@ -889,11 +891,18 @@ static inline sauLinePar *get_valr_line(sauRange *restrict r, unsigned parts) {
 static inline ParseLevel_sub_f get_valr_sub_f(unsigned parts) {
 	switch (parts) {
 	case RANGE_A:
-	case RANGE_B: return parse_in_par_sweep;
+	case RANGE_B:
+	case RANGE_E: return parse_in_par_sweep;
 	case RANGE_ENV: return parse_in_par_env;
-	case RANGE_ENV_AND_B: return parse_in_par_env_and_sweep;
+	case RANGE_ENV_AND_E: return parse_in_par_env_and_sweep;
 	default: return NULL;
 	}
+}
+
+static inline bool is_valr_mod_additive(unsigned mod, unsigned valr_first) {
+	unsigned valr_r = valr_first+3;
+	unsigned valr_last = valr_first+SAU_MODS_VALR;
+	return mod >= valr_first && mod != valr_r && mod <= valr_last;
 }
 
 /*
@@ -947,8 +956,10 @@ static sauScriptObjInfo *ObjInfoArr_add(ObjInfoArr *restrict o,
 
 static void init_range(sauParser *restrict o, sauRange *restrict r) {
 	// default implicit time value is flexible
-	r->a.time_ms = r->b.time_ms = o->sl.sopt.def_time_ms;
-	r->a.flags = r->b.flags = SAU_LINEP_TIME | SAU_LINEP_TIME_IF_NEW;
+	r->a.time_ms = r->b.time_ms = r->e.time_ms =
+		o->sl.sopt.def_time_ms;
+	r->a.flags = r->b.flags = r->e.flags =
+		SAU_LINEP_TIME | SAU_LINEP_TIME_IF_NEW;
 }
 
 static sauRange *create_range(sauParser *restrict o,
@@ -1003,6 +1014,8 @@ static void end_gen(sauParser *restrict o) {
 		gen->amp->a.vt *= pl->used_ampmult;
 		gen->amp->b.v0 *= pl->used_ampmult;
 		gen->amp->b.vt *= pl->used_ampmult;
+		gen->amp->e.v0 *= pl->used_ampmult;
+		gen->amp->e.vt *= pl->used_ampmult;
 	}
 	sauScriptGenData *pgen = gen->prev_ref;
 	if (!pgen) {
@@ -1295,8 +1308,7 @@ static void enter_level(sauParser *restrict o,
 			 */
 			nest->sopt_save = o->sl.sopt;
 			if (use_type != SAU_MOD_N_carr &&
-			    !(use_type >= SAU_MOD_N_a_am &&
-			      use_type < SAU_MOD_N_a_am_r))
+			    !is_valr_mod_additive(use_type, SAU_MOD_N_a_am))
 				o->sl.sopt.def_ampmult = def_sopt.def_ampmult;
 		}
 	}
@@ -1364,8 +1376,7 @@ static bool parse_so_amp(sauParser *restrict o) {
 	int c;
 	if (scan_num(sc, NULL, &val)) {
 		// amod lists with summing inherit outer value
-		if (pl->use_type >= SAU_MOD_N_a_am &&
-		    pl->use_type < SAU_MOD_N_a_am_r)
+		if (is_valr_mod_additive(pl->use_type, SAU_MOD_N_a_am))
 			val *= nest->sopt_save.def_ampmult;
 		o->sl.sopt.def_ampmult = val;
 	}
@@ -1520,26 +1531,54 @@ static uint8_t scan_par_sweep(sauScanner *restrict o,
 	return 0;
 }
 
-static uint8_t scan_par_env(sauScanner *restrict o, sauRange *restrict range,
-		uint8_t c) {
+static void scan_env_time(sauScanner *restrict o,
+		sauEnvPar *restrict env, unsigned i) {
+	if (scan_time_val(o, &env->time_ms[i]))
+		env->time_flags |= SAU_ENVP_TIME(i);
+	uint8_t c;
+	size_t id;
+	switch ((c = sauScanner_getc_after(o, '.'))) {
+	case 'l':
+		if (!scan_sym_id(o, &id, SAU_SYM_LINE_ID, sauLine_names))
+			break;
+		env->line[i] = id;
+		env->line_flags |= SAU_ENVP_TIME(i);
+		break;
+	default:
+		if (c) sauScanner_ungetc(o);
+	}
+}
+
+static uint8_t scan_par_env(sauScanner *restrict o,
+		sauEnvPar *restrict env, uint8_t c) {
 	double val;
+	size_t id;
 	switch (c) {
 	case 'a':
-		if (scan_time_val(o, &range->env.time_ms[SAU_ENV_TIME_A]))
-			range->env.flags |= SAU_ENVP_A;
+		scan_env_time(o, env, SAU_ENV_TIME_A);
 		break;
 	case 'd':
-		if (scan_time_val(o, &range->env.time_ms[SAU_ENV_TIME_D]))
-			range->env.flags |= SAU_ENVP_D;
+		scan_env_time(o, env, SAU_ENV_TIME_D);
+		break;
+	case 'e':
+		switch ((c = sauScanner_getc_after(o, '.'))) {
+		case 'l':
+			if (!scan_sym_id(o, &id, SAU_SYM_LINE_ID,
+			                 sauLine_names)) break;
+			env->line_all = id;
+			env->line_flags |= SAU_ENVP_ALL;
+			break;
+		default:
+			if (c) sauScanner_ungetc(o);
+		}
 		break;
 	case 'r':
-		if (scan_time_val(o, &range->env.time_ms[SAU_ENV_TIME_R]))
-			range->env.flags |= SAU_ENVP_R;
+		scan_env_time(o, env, SAU_ENV_TIME_R);
 		break;
 	case 's':
 		if (scan_num(o, NULL, &val)) {
-			range->env.s_val = val;
-			range->env.flags |= SAU_ENVP_S;
+			env->s_val = val;
+			env->flags |= SAU_ENVP_S;
 		}
 		break;
 	default:
@@ -1561,7 +1600,7 @@ static void parse_in_par_env(sauParser *restrict o) {
 	struct NestScope *nest = NestArr_tip(&o->nest);
 	sauRange *range = nest->gen_valr;
 	PARSE_IN__HEAD(parse_in_par_env, range)
-		if (!c || scan_par_env(sc, range, c)) goto DEFER;
+		if (!c || scan_par_env(sc, &range->env, c)) goto DEFER;
 	PARSE_IN__TAIL()
 }
 
@@ -1572,7 +1611,7 @@ static void parse_in_par_env_and_sweep(sauParser *restrict o) {
 	PARSE_IN__HEAD(parse_in_par_env_and_sweep, range)
 		if (!c ||
 		    (scan_par_sweep(sc, line, nest, c) &&
-		     scan_par_env(sc, range, c))) goto DEFER;
+		     scan_par_env(sc, &range->env, c))) goto DEFER;
 	PARSE_IN__TAIL()
 }
 
@@ -1589,6 +1628,7 @@ static bool prepare_sweep(sauParser *restrict o,
 		*gen_valr = create_range(o, ratio, valr_id);
 		(*gen_valr)->a.flags &= ~SAU_LINEP_STATE;
 		(*gen_valr)->b.flags &= ~SAU_LINEP_STATE;
+		(*gen_valr)->e.flags &= ~SAU_LINEP_STATE;
 	}
 	nest->gen_valr = *gen_valr;
 	nest->numconst_f = numconst_f;
@@ -1636,8 +1676,7 @@ static uint8_t parse_par_dotdot(sauParser *restrict o,
 	change_list_use(first_list, mod1);
 	parse_par_list(o, num_f, range, ratio, valr_id, mod2, RANGE_B);
 	if ((c = sauScanner_getc_after(o->sc, '.'))) {
-		if (c == 'r') parse_par_list(o, NULL, range, false, valr_id,
-				mod_r, RANGE_ENV);
+		if (c == 'r') parse_par_list(o, NULL, NULL, false, 0, mod_r, 0);
 		else sauScanner_warning(o->sc, NULL,
 "expected '.r' or nothing after '..' and second value");
 	}
@@ -1661,9 +1700,12 @@ static uint8_t parse_par_modranges(sauParser *restrict o,
 	case '.':
 		return parse_par_dotdot(o, first_list,
 				num_f, range, ratio, valr_id, mod);
+	case 'e':
+		parse_par_list(o, num_f, range, ratio, valr_id, mod+4,
+				RANGE_ENV_AND_E);
+		break;
 	case 'r':
-		parse_par_list(o, num_f, range, ratio, valr_id, mod+3,
-				RANGE_ENV_AND_B);
+		parse_par_list(o, num_f, range, ratio, valr_id, mod+3, RANGE_B);
 		break;
 	default:
 		return c;
@@ -1687,11 +1729,11 @@ static uint8_t parse_par_pdset(sauParser *restrict o,
 	switch ((c = parse_par_modranges(o, NULL, &range_v, false, 0, mod))) {
 	case 'f':
 		parse_par_modranges(o, scan_note_const, &range_f,
-				false, 0, mod+4);
+				false, 0, mod+SAU_MODS_VALR);
 		break;
 	case 'p':
 		parse_par_modranges(o, scan_cyclepos_const, &range_p,
-				false, 0, mod+8);
+				false, 0, mod+SAU_MODS_VALR*2);
 		break;
 	default:
 		return c;
@@ -2345,18 +2387,21 @@ sau_discard_Program(sauProgram *restrict o) {
 	sau_destroy_Mempool(o->mp);
 }
 
-static inline void time_range(sauRange *restrict r,
+static inline void time_line(sauLinePar *restrict line,
+		uint32_t default_time_ms) {
+	if (line->flags & SAU_LINEP_TIME_IF_NEW) { // update fallback value
+		line->time_ms = default_time_ms;
+		line->flags |= SAU_LINEP_TIME;
+	}
+}
+
+static void time_range(sauRange *restrict r,
 		uint32_t default_time_ms) {
 	if (!r)
 		return;
-	if (r->a.flags & SAU_LINEP_TIME_IF_NEW) { // update fallback value
-		r->a.time_ms = default_time_ms;
-		r->a.flags |= SAU_LINEP_TIME;
-	}
-	if (r->b.flags & SAU_LINEP_TIME_IF_NEW) { // update fallback value
-		r->b.time_ms = default_time_ms;
-		r->b.flags |= SAU_LINEP_TIME;
-	}
+	time_line(&r->a, default_time_ms);
+	time_line(&r->b, default_time_ms);
+	time_line(&r->e, default_time_ms);
 }
 
 static inline void time_pdset(sauPDSet *restrict p,
