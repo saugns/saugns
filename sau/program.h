@@ -75,6 +75,7 @@ typedef struct sauEnvPar {
 	float s_val;
 	uint8_t time_flags, line_flags;
 	uint8_t flags;
+	bool r_stretch : 1; // stretch release to take over sustain?
 } sauEnvPar;
 
 /**
