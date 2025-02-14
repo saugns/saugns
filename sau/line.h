@@ -120,6 +120,18 @@ static inline void sau_init_LinePar(sauLinePar *restrict o, float v0) {
 }
 
 /**
+ * Switch 'log' and 'exp' line types. These differ by a conditional
+ * selecting rising vs. falling behavior.
+ */
+static inline uint8_t sauLine_flip_exp_log(uint8_t type) {
+	if (type >= SAU_LINE_N_exp && type < SAU_LINE_N_log)
+		return type + (SAU_LINE_N_log - SAU_LINE_N_exp);
+	if (type >= SAU_LINE_N_log && type < SAU_LINE_N_xpe)
+		return type + (SAU_LINE_N_exp - SAU_LINE_N_log);
+	return type;
+}
+
+/**
  * Line state type. Used during audio rendering.
  */
 typedef struct sauLine {
