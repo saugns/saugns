@@ -35,9 +35,9 @@ static void sau_nzerof(float *restrict a, size_t n) {
 typedef float Buf[BUF_LEN];
 
 struct ParWithRangeMod {
-	sauLine a, b;
+	sauLine a, b, e;
 	sauEnvGen env;
-	const sauProgramIDArr *mods1, *mods2, *r_mods, *mods_add;
+	const sauProgramIDArr *mods1, *mods2, *r_mods, *e_mods, *mods_add;
 };
 
 struct ParPDSet {
@@ -274,11 +274,14 @@ static float *run_valrange_param(sauGenerator *restrict o,
  * The \p v0 value is a fallback which may differ from script defaults.
  */
 static sauNoinline void
-prepare_range(struct ParWithRangeMod *restrict rm, float v0) {
+prepare_range(struct ParWithRangeMod *restrict rm, float v0, float vt) {
 	sau_init_LinePar(&rm->a.par, v0);
-	sau_init_LinePar(&rm->b.par, 0.f);
+	sau_init_LinePar(&rm->b.par, vt);
+	sau_init_LinePar(&rm->e.par, vt);
 	rm->env.s_val = 1.f;
-	rm->mods1 = rm->mods2 = rm->r_mods = rm->mods_add = &blank_idarr;
+	sauEnvGen_set_lines(&rm->env, rm->e.par.type);
+	rm->mods1 = rm->mods2 = rm->r_mods = rm->e_mods = rm->mods_add =
+		&blank_idarr;
 }
 
 /*
@@ -303,43 +306,45 @@ static void prepare_gen(sauGenerator *restrict o,
 	if (false)
 	OSC_COMMON: {
 		OscBase *osc = &n->osc;
-		prepare_range(&osc->freq, SAU_PDEF_FREQ);
+		prepare_range(&osc->freq, SAU_PDEF_FREQ, 0.0);
 		for (uint32_t i = 0; i < SAU_PPD_TYPES; ++i) {
-			prepare_range(&osc->pd[i].main, pd_v_default[i]);
-			prepare_range(&osc->pd[i].freq, 1.0);
-			prepare_range(&osc->pd[i].offset, 0.0);
+			float def = pd_v_default[i];
+			prepare_range(&osc->pd[i].main, def, def);
+			prepare_range(&osc->pd[i].freq, 1.0, 0.0);
+			prepare_range(&osc->pd[i].offset, 0.0, 0.0);
 		}
-		prepare_range(&osc->pm_a, 0.0);
+		prepare_range(&osc->pm_a, 0.0, 0.0);
 		osc->pmods = osc->fpmods = &blank_idarr;
 	}
 	GenBase *gen = &n->gen;
-	prepare_range(&gen->amp, 1.0);
-	prepare_range(&gen->pan, 0.0);
+	prepare_range(&gen->amp, 1.0, 0.0);
+	prepare_range(&gen->pan, 0.0, 0.0);
 	gen->type = gd->type;
 	gen->flags = GN_INIT;
 }
 
 static void update_ids(AnyGen *restrict n,
 		const sauProgramIDs *restrict ids) {
-#define CASES_4MODS(ID, FIELD) \
+#define CASES_VALR(ID, FIELD) \
 	case SAU_MOD_N_##ID:     FIELD.mods_add		= ids->a; break; \
 	case SAU_MOD_N_##ID##1:  FIELD.mods1 		= ids->a; break; \
 	case SAU_MOD_N_##ID##2:  FIELD.mods2 		= ids->a; break; \
 	case SAU_MOD_N_##ID##_r: FIELD.r_mods		= ids->a; break; \
+	case SAU_MOD_N_##ID##_e: FIELD.e_mods		= ids->a; break; \
 /**/
 #define CASES_PDMODS(ID, FIELD) \
-	CASES_4MODS(ID, FIELD.main) \
-	CASES_4MODS(ID##f, FIELD.freq) \
-	CASES_4MODS(ID##p, FIELD.offset) \
+	CASES_VALR(    ID,       FIELD.main) \
+	CASES_VALR(    ID##f,    FIELD.freq) \
+	CASES_VALR(    ID##p,    FIELD.offset) \
 /**/
 	switch (ids->use) {
 	case SAU_MOD_N_carr:     break;
-	CASES_4MODS(   c_am,     n->gen.pan)
-	CASES_4MODS(   a_am,     n->gen.amp)
-	CASES_4MODS(   f_fm,     n->osc.freq)
+	CASES_VALR(    c_am,     n->gen.pan)
+	CASES_VALR(    a_am,     n->gen.amp)
+	CASES_VALR(    f_fm,     n->osc.freq)
 	case SAU_MOD_N_p_pm:     n->osc.pmods    	= ids->a; break;
 	case SAU_MOD_N_pf_pm:    n->osc.fpmods   	= ids->a; break;
-	CASES_4MODS(   pa_pm,    n->osc.pm_a)
+	CASES_VALR(    pa_pm,    n->osc.pm_a)
 	CASES_PDMODS(  pd_c,     n->osc.pd[SAU_PPD_C])
 	CASES_PDMODS(  pd_d,     n->osc.pd[SAU_PPD_D])
 	CASES_PDMODS(  pd_h,     n->osc.pd[SAU_PPD_H])
@@ -358,6 +363,7 @@ update_range(struct ParWithRangeMod *restrict rm,
 		return;
 	sauLine_copy(&rm->a, &r->a, srate);
 	sauLine_copy(&rm->b, &r->b, srate);
+	sauLine_copy(&rm->e, &r->e, srate);
 	sauEnvGen_set_par(&rm->env, &r->env, srate);
 }
 
@@ -614,27 +620,24 @@ static float *run_valrange_mix(Buf *restrict bufs,
 /*
  * Run lines and modulators as needed for a parameter with them.
  *
- * Uses up to 2 extra buffers beyond the main output buffer.
+ * Uses up to 1 extra buffers beyond the main output buffer for this level;
+ * the buffer after the first doesn't count, as it belongs to a
+ * next level of generator nesting, and so counts as its first.
  */
-static float *run_valrange_param(sauGenerator *restrict o,
+static inline float *run_valrange_mods(sauGenerator *restrict o,
 		Buf *restrict bufs, uint32_t len, uint32_t note_dur,
 		struct ParWithRangeMod *restrict n,
 		float *restrict param_mulbuf,
-		float *restrict reused_freq,
-		bool is_freq, bool force_fill) {
-	float *freq = (reused_freq ? reused_freq : is_freq ? bufs[0] : NULL);
+		float *restrict freq,
+		bool force_fill) {
 	float *par_buf = run_line_plus_mods(o, (bufs+0), len, note_dur,
 			&n->a, n->mods1, param_mulbuf, freq,
 			force_fill || (n->mods_add->count > 0));
-	bool rmod_fill = n->r_mods->count > 0, env_fill = n->env.type > 0;
-	if (rmod_fill || env_fill) {
+	if (n->r_mods->count > 0) {
 		float *par2_buf = run_line_plus_mods(o, (bufs+1), len, note_dur,
 				&n->b, n->mods2, param_mulbuf, freq, false);
-		float *mod_buf = bufs[2];
-		if (rmod_fill) run_mods(o, (bufs+2), len, note_dur,
+		float *mod_buf = run_mods(o, (bufs+2), len, note_dur,
 				n->r_mods, freq, true, false);
-		else sau_nzerof(mod_buf, len);
-		if (env_fill) sauEnvGen_run(&n->env, mod_buf, len, note_dur);
 		par_buf = run_valrange_mix((bufs+0), par_buf, n->a.par.v0,
 				par2_buf, n->b.par.v0, mod_buf, len);
 	} else {
@@ -643,6 +646,54 @@ static float *run_valrange_param(sauGenerator *restrict o,
 		run_mods(o, (bufs+1), len, note_dur,
 				n->mods2, freq, false, true);
 	}
+	return par_buf;
+}
+
+/*
+ * Run envelope and its extra line as needed for a parameter with them.
+ *
+ * Uses up to 2 extra buffers beyond the main output buffer for this level.
+ */
+static float *run_valrange_env(sauGenerator *restrict o,
+		Buf *restrict bufs, uint32_t len, uint32_t note_dur,
+		struct ParWithRangeMod *restrict n,
+		float *restrict param_mulbuf,
+		float *restrict freq,
+		float *restrict par_buf) {
+	if (n->env.type > 0) {
+		float *par2_buf = run_line_plus_mods(o, (bufs+1), len, note_dur,
+				&n->e, n->e_mods, param_mulbuf, freq, false);
+		float *env_buf = bufs[2];
+		sauEnvGen_run(&n->env, env_buf, len, note_dur);
+		par_buf = run_valrange_mix((bufs+0), par_buf, n->a.par.v0,
+				par2_buf, n->e.par.v0, env_buf, len);
+	} else {
+		sauLine_skip(&n->e, len);
+		// to keep timing in sync, run e_mods despite discarding result
+		run_mods(o, (bufs+1), len, note_dur,
+				n->e_mods, freq, false, true);
+	}
+	return par_buf;
+}
+
+/*
+ * Run lines and modulators, with any envelope applied on top,
+ * for a parameter with these.
+ *
+ * Uses up to 2 extra buffers beyond the main output buffer for this level.
+ */
+static sauNoinline float *
+run_valrange_param(sauGenerator *restrict o,
+		Buf *restrict bufs, uint32_t len, uint32_t note_dur,
+		struct ParWithRangeMod *restrict n,
+		float *restrict param_mulbuf,
+		float *restrict reused_freq,
+		bool is_freq, bool force_fill) {
+	float *freq = (reused_freq ? reused_freq : is_freq ? bufs[0] : NULL);
+	float *par_buf = run_valrange_mods(o, bufs, len, note_dur,
+			n, param_mulbuf, freq, force_fill);
+	par_buf = run_valrange_env(o, bufs, len, note_dur,
+			n, param_mulbuf, freq, par_buf);
 	return run_mods(o, (bufs+0), len, note_dur,
 			n->mods_add, freq, false, !!par_buf);
 }
