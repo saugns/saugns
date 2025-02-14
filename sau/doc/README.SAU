@@ -86,11 +86,11 @@ parameters work. Below the focus is on the script options handling.
 Parameters:
 	a	Multiplier for amplitude "a" values after, in the current
 		scope of "[]" nesting. Starts at 1.0. The multiplier also
-		applies to the second value for value range modulation, and
-		to the multiplier inside any AM modulator list except the
-		range-mapping ".r[]" list. It does not apply to other nested
-		lists for modulators, that is modulators for other paramters;
-		their multipliers apply unchanged.
+		applies to the second value for value range modulation, that
+		for envelopes, and to the multiplier inside any AM modulator
+		list except the range-mapping ".r[]" list. It does not apply
+		to other nested lists for modulators, that is modulators for
+		other paramters; their multipliers apply unchanged.
 		.m	Script-wide gain mix control (multiplier). If used,
 			this disables automatic down-scaling of amplitude
 			by the number of voices (max carrier audio generators
@@ -707,6 +707,19 @@ Value ranges and envelopes:
 	from the basic plugging in of modulators (see "Modulator list"),
 	there's also sweeps (see "Value sweep"), envelopes -- described in
 	more detail below -- and "Modulation with value ranges".
+		These features can be combined. A sweep is a one-off timed
+	gradual change for a value, often available for a subparameter along
+	with the option of a modulator list to mix a signal with its value.
+	An envelope uses a range of values with two bounds, with parameters
+	to set up a repeating pattern of change. Value ranges can also be
+	used with modulators to pick values in a (possibly dynamic) bounds.
+		At the language level, the sweep is the lowest-level thing
+	that happens first. Thereafter, a value range for modulation can
+	enter, having two bounds (and possibly two sweeps), and various
+	modulator lists. Finally, an envelope if used is applied on top of
+	the result of that; it uses that intermediate result as one boundary
+	for another value range, and has settings for another one (which can
+	be swept and modulated) along with special envelope parameters.
 		The envelope has timed ADSR stages (attack, decay, sustain,
 	and release), which rotate and each adjust the resulting level in
 	sequence. It begins with the attack stage when "t" (time, among
@@ -726,14 +739,27 @@ Value ranges and envelopes:
 	it easy to make a sequence of sounds using envelopes. If instead you
 	want to adjust a generator after a time without re-running envelopes,
 	you can use an alternative timing syntax (see "Timing modifiers").
-		Envelope subparameters for ADSR can be set inside a value
-	range modulation ".r[]" list, and will then apply for the same value
-	range. If one or more envelope time is non-zero, the envelope will
-	run. The envelope is applied similarly to value range modulators --
-	except that the envelope has the second value as the state before
-	attack and after release (the "bottom") and the main value as the
-	state between attack and decay. I.e., the main and second value
-	are used the other way around.
+		Envelope subparameters for ADSR etc. can be set inside an
+	envelope ".e[]" list, where ".e" is in turn a main envelope
+	subparameter for parameters. If one or more of the envelope time
+	subparameters are non-zero, the envelope will run.
+		Where parameters take a main value, the ".e" subparameter
+	takes a second value, similarly to the ".r" short-form syntax. The
+	envelope then maps the result to a range between what you'd have
+	without the envelope, and the second value. (Like the ".r" short-form
+	syntax, the second value can be swept inside ".e[]", but modulators
+	there are summed to mix them with the second value, more like the
+	"..[].r" long-form syntax. Again, the ".e" and ".r" second values
+	are separate, and ".e" runs after ".r" range-mapping.)
+		Note that any modulators directly set for the main value
+	(alias "...r.a" long-form value ranges final additive mix parameter)
+	will be mixed in after the envelope runs, not before. However, any
+	set for "[]..", the main value with value range ".." after, apply
+	before the envelope is used.
+		The envelope treats the second value as the internal "low"
+	level before attack and after release (usually the "bottom" for an
+	amplitude envelope) and the main value as the "high" level between
+	attack and decay. (This is the other way around compared to ".r".)
 	a	Attack time (default 0 seconds). If above zero, the result
 		will "fade in" towards the main value.
 	d	Decay time (default 0 seconds). If above zero, the result
@@ -742,8 +768,18 @@ Value ranges and envelopes:
 	s	Sustain level (default 1.0). If not equal to one, the decay
 		stage will change the level. 1.0 is mapped to the main value
 		and 0.0 to the second value.
+			Values outside the range of 0.0 to 1.0 are allowed.
+		If below 0.0, the level goes beyond the second value, and the
+		release then returns to it the other way around. If above 1.0,
+		the level goes beyond the main value, like a second attack.
 	r	Release time (default 0 seconds). If above zero, the result
 		will "fade out" from the sustain level to the second value.
+	e	Envelope settings. The following subparameters exist.
+		.l	Set line type for every stage at once. If set at the
+			same time as the line type for a specific stage,
+			the stage-specific setting overrides this.
+		Each of 'a', 'd' and 'r' have the following subparameters.
+		.l	Line fill shape (default 'lin'); see "Line types".
 
 Value sweep:
 	To sweep a parameter which supports sweep subparameters towards a
