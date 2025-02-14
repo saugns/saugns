@@ -1494,14 +1494,14 @@ static void parse_in_settings(sauParser *restrict o) {
 static bool parse_level(sauParser *restrict o,
 		uint8_t use_type, uint8_t newscope, uint8_t close_c);
 
-static uint8_t scan_par_sweep(sauScanner *restrict o,
+static uint8_t parse_par_sweep(sauScanner *restrict sc,
 		sauLinePar *restrict line,
 		struct NestScope *restrict nest, uint8_t c) {
 	double val;
 	size_t id;
 	switch (c) {
 	case 'g':
-		if (scan_num(o, nest->numconst_f, &val)) {
+		if (scan_num(sc, nest->numconst_f, &val)) {
 			line->vt = val;
 			line->flags |= SAU_LINEP_GOAL;
 			if (nest->num_ratio)
@@ -1511,17 +1511,17 @@ static uint8_t scan_par_sweep(sauScanner *restrict o,
 		}
 		break;
 	case 'l':
-		if (!scan_sym_id(o, &id, SAU_SYM_LINE_ID, sauLine_names))
+		if (!scan_sym_id(sc, &id, SAU_SYM_LINE_ID, sauLine_names))
 			break;
 		line->type = id;
 		line->flags |= SAU_LINEP_TYPE;
 		break;
 	case 't':
-		if (scan_time_val(o, &line->time_ms))
+		if (scan_time_val(sc, &line->time_ms))
 			line->flags &= ~SAU_LINEP_TIME_IF_NEW;
 		break;
 	case 'v':
-		scan_line_state(o, nest->numconst_f, line, nest->num_ratio);
+		scan_line_state(sc, nest->numconst_f, line, nest->num_ratio);
 		break;
 	default:
 		return c;
@@ -1529,52 +1529,72 @@ static uint8_t scan_par_sweep(sauScanner *restrict o,
 	return 0;
 }
 
-static void scan_env_time(sauScanner *restrict o,
+static void parse_env_line(sauScanner *restrict sc,
 		sauEnvPar *restrict env, unsigned i) {
-	if (scan_time_val(o, &env->time_ms[i]))
-		env->time_flags |= SAU_ENVP_TIME(i);
 	uint8_t c;
 	size_t id;
-	switch ((c = sauScanner_getc_after(o, '.'))) {
+	switch ((c = sauScanner_getc_after(sc, '.'))) {
 	case 'l':
-		if (!scan_sym_id(o, &id, SAU_SYM_LINE_ID, sauLine_names))
+		if (!scan_sym_id(sc, &id, SAU_SYM_LINE_ID, sauLine_names))
 			break;
 		env->line[i] = id;
 		env->line_flags |= SAU_ENVP_TIME(i);
 		break;
 	default:
-		if (c) sauScanner_ungetc(o);
+		if (c) sauScanner_ungetc(sc);
 	}
 }
 
-static uint8_t scan_par_env(sauScanner *restrict o,
+static bool parse_env_time(sauScanner *restrict sc,
+		sauEnvPar *restrict env, unsigned i) {
+	bool has_time = false;
+	if (scan_time_val(sc, &env->time_ms[i])) {
+		env->time_flags |= SAU_ENVP_TIME(i);
+		has_time = true;
+	}
+	parse_env_line(sc, env, i);
+	return has_time;
+}
+
+static uint8_t parse_par_env(sauScanner *restrict sc,
 		sauEnvPar *restrict env, uint8_t c) {
 	double val;
 	size_t id;
+	uint8_t suffc;
 	switch (c) {
 	case 'a':
-		scan_env_time(o, env, SAU_ENV_TIME_A);
+		parse_env_time(sc, env, SAU_ENV_TIME_A);
 		break;
 	case 'd':
-		scan_env_time(o, env, SAU_ENV_TIME_D);
+		parse_env_time(sc, env, SAU_ENV_TIME_D);
 		break;
 	case 'e':
-		switch ((c = sauScanner_getc_after(o, '.'))) {
+		switch ((c = sauScanner_getc_after(sc, '.'))) {
 		case 'l':
-			if (!scan_sym_id(o, &id, SAU_SYM_LINE_ID,
+			if (!scan_sym_id(sc, &id, SAU_SYM_LINE_ID,
 			                 sauLine_names)) break;
 			env->line_all = id;
 			env->line_flags |= SAU_ENVP_ALL;
 			break;
 		default:
-			if (c) sauScanner_ungetc(o);
+			if (c) sauScanner_ungetc(sc);
 		}
 		break;
 	case 'r':
-		scan_env_time(o, env, SAU_ENV_TIME_R);
+		switch ((suffc = sauScanner_get_suffc(sc))) {
+		case 's':
+			env->time_flags |= SAU_ENVP_TIME(SAU_ENV_TIME_R);
+			env->r_stretch = true;
+			parse_env_line(sc, env, SAU_ENV_TIME_R);
+			break;
+		default:
+			if (suffc) { sauScanner_ungetc(sc); break; }
+			if (parse_env_time(sc, env, SAU_ENV_TIME_R))
+				env->r_stretch = false;
+		}
 		break;
 	case 's':
-		if (scan_num(o, NULL, &val)) {
+		if (scan_num(sc, NULL, &val)) {
 			env->s_val = val;
 			env->flags |= SAU_ENVP_S;
 		}
@@ -1590,7 +1610,7 @@ static void parse_in_par_sweep(sauParser *restrict o) {
 	sauRange *range = nest->gen_valr;
 	sauLinePar *line = get_valr_line(nest->gen_valr, nest->valr_parts);
 	PARSE_IN__HEAD(parse_in_par_sweep, range)
-		if (!c || scan_par_sweep(sc, line, nest, c)) goto DEFER;
+		if (!c || parse_par_sweep(sc, line, nest, c)) goto DEFER;
 	PARSE_IN__TAIL()
 }
 
@@ -1598,7 +1618,7 @@ static void parse_in_par_env(sauParser *restrict o) {
 	struct NestScope *nest = NestArr_tip(&o->nest);
 	sauRange *range = nest->gen_valr;
 	PARSE_IN__HEAD(parse_in_par_env, range)
-		if (!c || scan_par_env(sc, &range->env, c)) goto DEFER;
+		if (!c || parse_par_env(sc, &range->env, c)) goto DEFER;
 	PARSE_IN__TAIL()
 }
 
@@ -1608,8 +1628,8 @@ static void parse_in_par_env_and_sweep(sauParser *restrict o) {
 	sauLinePar *line = get_valr_line(nest->gen_valr, nest->valr_parts);
 	PARSE_IN__HEAD(parse_in_par_env_and_sweep, range)
 		if (!c ||
-		    (scan_par_sweep(sc, line, nest, c) &&
-		     scan_par_env(sc, &range->env, c))) goto DEFER;
+		    (parse_par_sweep(sc, line, nest, c) &&
+		     parse_par_env(sc, &range->env, c))) goto DEFER;
 	PARSE_IN__TAIL()
 }
 
