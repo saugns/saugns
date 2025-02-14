@@ -1,0 +1,16 @@
+Wsin	f220 t1.0 p[
+		Wsin r(7/2).r(7/5)[Wtri r(5/2)] a0.5.e[a0.5 rs]
+		Wsin r(7/2) a0.5.e[a0.2 d0.2 s1/2 rs.lxpe]
+		Wsin r(7/1) a0.5.e[a0.2 d0.3 s1/4 rs e.lxpe]
+	] a.e[a0.1 r0.1.lxpe]
+;	f440 t1.5
+;	f400 t0.5
+;	f350
+;	f325 t1.5
+;;1	f220 t1
+;	f440 t1.5
+;	f415 t0.5
+;	f445
+;	f490 t1.0
+;	f420
+;	f440 t1.5
