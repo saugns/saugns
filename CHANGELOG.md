@@ -9,21 +9,36 @@ Pre-release
 
 Language changes:
  * Parameter envelopes. Implement ADSR envelope, add to every
-   sweepable parameter. This uses list heading subparameters.
-   Add `a`, `d`, `s`, `r` subparameters to `.r` (short-hand
-   and long-hand variations). These are assigned as heading
-   subparameters in `.r[...]` the same as sweep subparameters.
+   sweepable parameter. This uses list heading subparameters,
+   under the new `.e` (envelope) subparameter which has a new
+   sweepable secondary value (like that for value range `.r`,
+   but for an envelope as a stage applied after, similarly).
+   The envelope secondary value also accepts modulators in
+   the list as does the long-form value range secondary value.
+   - Add `a`, `d`, `s`, `r` subparameters within `.e[...]` --
+     these can be used alongside the sweep subparameters.
+     Also add `e` for further envelope-specific settings.
+   - Add line selection `.l` sub-subparameter for each timed
+     subparameter (`a`, `d`, and `r`), as well as `e` for
+     setting all of them (overridden by the others if used
+     at the same time) as in `e.lcos`.
  * Remove long-deprecated sweep subparameter `r` (now `l`).
+ * Phase distortion synthesis. Make the secondary parameter
+   values default to the do-nothing values if not zero. Makes
+   PD envelopes and value range modulation simpler to use.
 
-Support linear ADSR envelope, which triggers and runs anew
-for each new time duration set to the main `t` parameter for
-a generator; each `;` implicitly sets `t` and thus triggers
-the envelope.
+Support an ADSR envelope for each of the parameters allowing
+value ranges and sweeps (most). It triggers and runs anew with
+each new time duration set to the main `t` parameter for the
+generator the parameter belongs to. Each `;` for the generator
+implicitly sets `t` and thus triggers the envelope.
 
 For modulators, if time is implicit/indefinite (default `ti`)
 then the envelopes for parameters trigger with the closest
 carrier having its time set. Thus a single `;` for a carrier
 can trigger envelopes for a nested structure of oscillators.
+
+Prune example scripts, tweak some old ones adding envelopes.
 
 Performance tweaks to phaseshaping code, replace floorf().
 

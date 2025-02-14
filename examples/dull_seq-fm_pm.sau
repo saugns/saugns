@@ -1,6 +1,7 @@
 S f.n111
-'a	Wsin	fA4.r222[Wsin f211] t1
-	;	fA3
-	;	fA2
-	;	fA1
-	;	fA0 t2 p[Wsin f112]
+'a
+Wsin	fA4.r222[Wsin f211 a.e[a0.2 r0.01]] a.e[a0.1 r0.02] t1
+;	fA3
+;	fA2
+;	fA1
+;	fA0 t2 p[Wsin f112]
