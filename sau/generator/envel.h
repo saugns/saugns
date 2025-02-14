@@ -19,13 +19,24 @@ typedef struct sauEnvGen {
 	uint8_t line[SAU_ENV_TIMES];
 	uint8_t type; // 0 if unused, otherwise indicates what to run
 	uint8_t stage;
+	bool r_stretch : 1; // stretch release to take over sustain?
 	float s_val;
 	uint32_t i;
 } sauEnvGen;
 
+static bool sauEnvGen_has_time(sauEnvGen *restrict o) {
+	if (o->r_stretch)
+		return true;
+	for (int i = 0; i < SAU_ENV_TIMES; ++i) if (o->time[i] > 0)
+		return true;
+	return false;
+}
+
 static uint32_t sauEnvGen_get_min_time(sauEnvGen *restrict o) {
 	uint32_t e_total = 0;
-	for (int i = 0; i < SAU_ENV_TIMES; ++i) e_total += o->time[i];
+	// ignore release time if release has no time, is fit to this total
+	for (int i = 0; i < (SAU_ENV_TIMES - o->r_stretch); ++i)
+		e_total += o->time[i];
 	return e_total;
 }
 
@@ -49,6 +60,8 @@ static void sauEnvGen_set_par(sauEnvGen *restrict o,
 		if (!(src->time_flags & SAU_ENVP_TIME(i))) continue;
 		o->time[i] = sau_ms_in_samples(src->time_ms[i], srate, NULL);
 	}
+	if (src->time_flags & SAU_ENVP_TIME(SAU_ENV_TIME_R))
+		o->r_stretch = src->r_stretch;
 	if (src->line_flags & SAU_ENVP_ALL)
 		sauEnvGen_set_lines(o, src->line_all);
 	for (int i = 0; i < SAU_ENV_TIMES; ++i) {
@@ -57,7 +70,7 @@ static void sauEnvGen_set_par(sauEnvGen *restrict o,
 	}
 	if (src->flags & SAU_ENVP_S)
 		o->s_val = src->s_val;
-	o->type = sauEnvGen_get_min_time(o) > 0; // TODO: more than just if used
+	o->type = sauEnvGen_has_time(o); // TODO: more than just if used
 }
 
 static uint32_t sauEnvGen_run_line(sauEnvGen *restrict o,
@@ -82,8 +95,16 @@ static uint32_t sauEnvGen_run_line(sauEnvGen *restrict o,
 static uint32_t sauEnvGen_run_sustain(sauEnvGen *restrict o,
 		float *restrict buf, uint32_t len, uint32_t note_dur) {
 	uint32_t e_total = sauEnvGen_get_min_time(o);
-	if (e_total > note_dur) e_total = note_dur; // better handling?
+	if (e_total > note_dur) e_total = note_dur;
 	uint32_t n = len, rem = 0, time = note_dur - e_total;
+	if (o->r_stretch) {
+		/*
+		 * Yield the sustain to a stretched release stage.
+		 */
+		o->time[SAU_ENV_TIME_R] = time;
+		++o->stage;
+		return len;
+	}
 	if (o->i + n > time) {
 		rem = (o->i + n) - time;
 		if (rem > len) rem = len;

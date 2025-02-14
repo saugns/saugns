@@ -774,6 +774,11 @@ Value ranges and envelopes:
 		the level goes beyond the main value, like a second attack.
 	r	Release time (default 0 seconds). If above zero, the result
 		will "fade out" from the sustain level to the second value.
+			The special non-number literal 's' can also be set,
+		to "stretch" the release to fill all available time, making
+		it replace and so remove the S (sustain) stage. The sustain
+		setting then still applies for setting the level from which
+		the release stage starts.
 	e	Envelope settings. The following subparameters exist.
 		.l	Set line type for every stage at once. If set at the
 			same time as the line type for a specific stage,
