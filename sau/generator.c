@@ -278,8 +278,7 @@ prepare_range(struct ParWithRangeMod *restrict rm, float v0, float vt) {
 	sau_init_LinePar(&rm->a.par, v0);
 	sau_init_LinePar(&rm->b.par, vt);
 	sau_init_LinePar(&rm->e.par, vt);
-	rm->env.s_val = 1.f;
-	sauEnvGen_set_lines(&rm->env, rm->e.par.type);
+	sau_init_EnvGen(&rm->env);
 	rm->mods1 = rm->mods2 = rm->r_mods = rm->e_mods = rm->mods_add =
 		&blank_idarr;
 }
@@ -660,7 +659,7 @@ static float *run_valrange_env(sauGenerator *restrict o,
 		float *restrict param_mulbuf,
 		float *restrict freq,
 		float *restrict par_buf) {
-	if (n->env.type > 0) {
+	if (n->env.stage > 0) {
 		float *par2_buf = run_line_plus_mods(o, (bufs+1), len, note_dur,
 				&n->e, n->e_mods, param_mulbuf, freq, false);
 		float *env_buf = bufs[2];
