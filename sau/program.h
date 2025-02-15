@@ -48,7 +48,18 @@ typedef struct sauTime {
 }
 
 /**
- * Envelope time parameters.
+ * Envelope modes a.k.a. functions.
+ */
+enum {
+	SAU_ENV_FN_OFF = 0,
+	SAU_ENV_FN_CLAMP,
+	SAU_ENV_FN_LOOP,
+	SAU_ENV_FN_TRUNC,
+	SAU_ENV_FUNCTIONS
+};
+
+/**
+ * Envelope time parameters. Used as indices for time and line arrays.
  */
 enum {
 	SAU_ENV_TIME_A = 0,
@@ -62,8 +73,9 @@ enum {
 
 /** Envelope other parameter flags. */
 enum {
-	SAU_ENVP_S   = 1U<<0,
-	SAU_ENVP_ALL = 1U<<SAU_ENV_TIMES, /* used for line flags */
+	SAU_ENVP_S         = 1U<<0,
+	SAU_ENVP_MODE      = 1U<<1,
+	SAU_ENVP_R_STRETCH = 1U<<2,
 };
 
 /**
@@ -71,11 +83,10 @@ enum {
  */
 typedef struct sauEnvPar {
 	uint32_t time_ms[SAU_ENV_TIMES];
-	uint8_t line[SAU_ENV_TIMES], line_all;
+	uint8_t line_p1[SAU_ENV_TIMES], line_all_p1; // set +1 the value
 	float s_val;
-	uint8_t time_flags, line_flags;
-	uint8_t flags;
-	bool r_stretch : 1; // stretch release to take over sustain?
+	uint8_t flags, time_flags;
+	uint8_t mode;
 } sauEnvPar;
 
 /**
