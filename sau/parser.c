@@ -1537,8 +1537,7 @@ static void parse_env_line(sauScanner *restrict sc,
 	case 'l':
 		if (!scan_sym_id(sc, &id, SAU_SYM_LINE_ID, sauLine_names))
 			break;
-		env->line[i] = id;
-		env->line_flags |= SAU_ENVP_TIME(i);
+		env->line_p1[i] = id + 1; // != 0 if set
 		break;
 	default:
 		if (c) sauScanner_ungetc(sc);
@@ -1556,6 +1555,32 @@ static bool parse_env_time(sauScanner *restrict sc,
 	return has_time;
 }
 
+static bool parse_env_mode(sauScanner *restrict sc, sauEnvPar *restrict env) {
+	uint8_t func = SAU_ENV_FUNCTIONS;
+	uint8_t c;
+	for (;;) {
+		int matched = 0;
+		if (!(func < SAU_ENV_FUNCTIONS) && ++matched)
+		switch ((c = sauScanner_getc(sc))) {
+		case '0': func = SAU_ENV_FN_OFF; break;
+		case 'c': func = SAU_ENV_FN_CLAMP; break;
+		case 'l': func = SAU_ENV_FN_LOOP; break;
+		case 't': func = SAU_ENV_FN_TRUNC; break;
+		default:
+			sauScanner_ungetc(sc);
+			--matched;
+			break;
+		}
+		if (matched == 0)
+			break;
+	}
+	if (func < SAU_ENV_FUNCTIONS) {
+		env->mode = func;
+		env->flags |= SAU_ENVP_MODE;
+	}
+	return false;
+}
+
 static uint8_t parse_par_env(sauScanner *restrict sc,
 		sauEnvPar *restrict env, uint8_t c) {
 	double val;
@@ -1569,12 +1594,12 @@ static uint8_t parse_par_env(sauScanner *restrict sc,
 		parse_env_time(sc, env, SAU_ENV_TIME_D);
 		break;
 	case 'e':
+		parse_env_mode(sc, env);
 		switch ((c = sauScanner_getc_after(sc, '.'))) {
 		case 'l':
 			if (!scan_sym_id(sc, &id, SAU_SYM_LINE_ID,
 			                 sauLine_names)) break;
-			env->line_all = id;
-			env->line_flags |= SAU_ENVP_ALL;
+			env->line_all_p1 = id + 1; // != 0 if set
 			break;
 		default:
 			if (c) sauScanner_ungetc(sc);
@@ -1584,13 +1609,13 @@ static uint8_t parse_par_env(sauScanner *restrict sc,
 		switch ((suffc = sauScanner_get_suffc(sc))) {
 		case 's':
 			env->time_flags |= SAU_ENVP_TIME(SAU_ENV_TIME_R);
-			env->r_stretch = true;
+			env->flags |= SAU_ENVP_R_STRETCH;
 			parse_env_line(sc, env, SAU_ENV_TIME_R);
 			break;
 		default:
 			if (suffc) sauScanner_ungetc(sc);
 			if (parse_env_time(sc, env, SAU_ENV_TIME_R))
-				env->r_stretch = false;
+				env->flags &= ~SAU_ENVP_R_STRETCH;
 			break;
 		}
 		break;
