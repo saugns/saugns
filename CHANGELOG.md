@@ -22,6 +22,11 @@ Language changes:
      subparameter (`a`, `d`, and `r`), as well as `e` for
      setting all of them (overridden by the others if used
      at the same time) as in `e.lcos`.
+   - Add 4 modes which can be toggled under `e`, default `ec`:
+     `0` (off), `c` (clamp stage times to fit note duration,
+     shortening stage trajectories without cutting them off),
+     `l` (loop envelope instead of triggering when time set),
+     `t` (truncate envelope trajectory if times are too long).
  * Remove long-deprecated sweep subparameter `r` (now `l`).
  * Phase distortion synthesis. Make the secondary parameter
    values default to the do-nothing values if not zero. Makes

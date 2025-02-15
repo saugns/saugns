@@ -356,6 +356,9 @@ sum of the AM modulators and nothing else. Likewise,
 "Modulation with value ranges" can be used to multiply AM
 inputs. Instances allow greater mixing flexibility inside
 modulation lists of either type, belonging to any object.
+	It's also possible to use it with an amplitude
+envelope in order to produce a periodic waveform, using
+the loop envelope mode "el", as in "A1.e-1[el ...]".
 
 Usage "A", optionally followed directly by amplitude values
 used by the "a" parameter (which for convenience can be set
@@ -741,8 +744,7 @@ Value ranges and envelopes:
 	you can use an alternative timing syntax (see "Timing modifiers").
 		Envelope subparameters for ADSR etc. can be set inside an
 	envelope ".e[]" list, where ".e" is in turn a main envelope
-	subparameter for parameters. If one or more of the envelope time
-	subparameters are non-zero, the envelope will run.
+	subparameter for parameters.
 		Where parameters take a main value, the ".e" subparameter
 	takes a second value, similarly to the ".r" short-form syntax. The
 	envelope then maps the result to a range between what you'd have
@@ -779,12 +781,30 @@ Value ranges and envelopes:
 		it replace and so remove the S (sustain) stage. The sustain
 		setting then still applies for setting the level from which
 		the release stage starts.
-	e	Envelope settings. The following subparameters exist.
+	e	Envelope settings. A letter or digit can be set to toggle
+		behavior for the envelope.
+		0	Off. The envelope does nothing.
+		c	Clamp stage times (default). Each time the envelope
+			is triggered, adjust stages to fit their combined
+			duration to the linked generator time "t" value.
+			This lets the envelope always finish the release.
+				Release time is reduced first, then the times
+			of earlier stages if still needed.
+		l	Loop envelope. This changes the behavior into that of
+			a periodic waveform generator. Attack immediately
+			follows release, and there's no sustain time. In
+			terms of timing, the envelope runs like a modulator.
+		t	Truncate envelope trajectory. If the generator "t"
+			time linked to the envelope is too short for all
+			stages, cut off the envelope trajectory. Release and
+			maybe earlier stages may go unfinished before any
+			retriggering and abrupt return to the attack stage.
+		The following 'e' subparameters exist.
 		.l	Set line type for every stage at once. If set at the
 			same time as the line type for a specific stage,
 			the stage-specific setting overrides this.
-		Each of 'a', 'd' and 'r' have the following subparameters.
-		.l	Line fill shape (default 'lin'); see "Line types".
+	Each of 'a', 'd' and 'r' have the following subparameters.
+	.l	Line fill shape (default 'lin'); see "Line types".
 
 Value sweep:
 	To sweep a parameter which supports sweep subparameters towards a
