@@ -4,6 +4,9 @@ saugns version changes
 [On the website](https://sau.frama.io/changes.html#saulang)
 is a shorter change log with only the SAU language changes.
 
+Pre-release
+-----------
+
 v0.5.1 (2025-02-16)
 -------------------
 
