@@ -138,7 +138,7 @@ typedef struct sauScriptOptions {
 	      def_freq,
 	      def_relfreq,
 	      def_chanmix;
-	int8_t note_key;
+	uint8_t note_key;
 	uint8_t key_octave;
 	uint8_t key_system;
 	sauRasOpt def_ras;

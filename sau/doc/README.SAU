@@ -115,9 +115,9 @@ Parameters:
 		.n	A4 tuning frequency in Hz for "f" values
 			using note syntax. Starts at 440.
 			For example, use "S f.n432" for 432 Hz.
-		.s	Tuning system, either 'e' (24-EDO, default),
+		.s	Tuning system, either 'e' (48-EDO, default),
 			'p' (Pythagorean JI), 'c' (classic 5-limit JI),
-			or 'j' (SAU 7-limit JI).
+			or 'j' (SAU JI -- currently 5-limit JI, may change).
 	r	Default relative frequency "r" value, a modulator:carrier
 		ratio. Starts at 1, meaning 1/1 times the carrier's frequency
 		parameter is used. (For an n:m ratio, use a n/m value.)
@@ -1015,10 +1015,10 @@ Frequencies as notes:
 	frequency, by default 440 Hz. The tuning system can also be changed
 	using "S f.s", to use just intonation instead of equal temperament.
 		By default, notes use the 24-tone equal temperament or equal
-	divisons of the octave (24-EDO) system, a superset of 12-EDO. There
-	are also three justly intoned systems (Pythagorean JI, classic
-	5-limit JI, SAU 7-limit JI), in all of which each of the 7 notes
-	have a natural, 3 flat, and 3 sharp variations, all of them unique.
+	divisons of the octave (48-EDO) system, a superset of 12-EDO. There
+	are also two justly intoned systems (Pythagorean JI, classic
+	5-limit JI), in all of which each of the 7 notes have a natural,
+	3 flat, and 3 sharp variations, all of them unique.
 		For MIDI note numbers, each number which doesn't correspond
 	to some natural C-D-E-F-G-A-B note (i.e. 1, 3, 6, 8, and 10, for
 	some note number modulo 12) is given a value exactly between the
@@ -1027,14 +1027,27 @@ Frequencies as notes:
 	of which will also differ. For equal temperament all are the same.)
 	Note suffixes for flats and sharps (including microtonal ones) can
 	be used as for C-D-E-F-G-A-B notes.
-		Each named note is written with a C, D, E, F, G, A, or B. As a
-	first optional suffix, a 'b'/'f' (flat) or 's' (sharp) can be added --
-	or a quartertone alternative: 'd' (half-flat), 'z' (half-sharp),
-	'v' (flat-and-a-half), or 'k' (sharp-and-a-half). There's also
-	'w' (double-flat) and 'x' (double-sharp). The flats and sharps
-	differ for EDO and the three JI systems -- making a smaller
-	difference in the JI systems than for EDO, except for the
-	Pythagorean JI which very slighly exaggerates it instead.
+		Each named note is written with a C, D, E, F, G, A, or B. It
+	can also use an optional suffix to make the note flat or sharp.
+	A second suffix letter 'h' halves the impact of the first; some things
+	can be written in more ways using it.
+	dh	Quarter-flat. (For JI, a factor close to halving 'd'.)
+	zh	Quarter-sharp. (For JI, a factor close to halving 'z'.)
+	d	Half-flat. (For JI, a 35/36 factor. Using 'bh'/'fh' instead
+		halves the size of 'b'/'f', which for 5-limit makes 48/49.)
+	z	Half-sharp. (For JI, a 36/35 factor. Using 'sh' instead
+		halves the size of 's', which for 5-limit makes 49/48.)
+	vh	3/4-flat. (For JI, halved 'v' or close.)
+	kh	3/4-sharp. (For JI, halved 'k' or close.)
+	b/f	Flat.
+	s	Sharp.
+	v	Flat-and-a-half. (Product of 'b'/'f' and 'd'.)
+	k	Sharp-and-a-half. (Product of 's' and 'z'.)
+	w	Double-flat. (Squared 'b'/'f'.)
+	x	Double-sharp. (Squared 's'.)
+	The flats and sharps differ for EDO and the three JI systems --
+	making a smaller difference in the JI systems than for EDO, except
+	for the Pythagorean JI which very slighly exaggerates it instead.
 		An octave number (0-10) can be written as a final suffix,
 	e.g. "A5" matches twice the tuning frequency, "Ad5" a little below
 	that. With no number, the octave for the note will be relative to the
