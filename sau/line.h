@@ -18,19 +18,23 @@
  * Macro used to declare and define line type sets of items.
  */
 #define SAU_LINE__ITEMS(X) \
-	X(cos, (.perlin_amp = 2.f)) \
-	X(lin, (.perlin_amp = 2.f)) \
-	X(sah, (.perlin_amp = 1.f)) \
-	X(exp, (.perlin_amp = 1.55845810035f)) \
-	X(log, (.perlin_amp = 1.55845810035f)) \
-	X(xpe, (.perlin_amp = 1.55845810035f)) \
-	X(lge, (.perlin_amp = 1.55845810035f)) \
-	X(sqe, (.perlin_amp = 1.89339094650f)) \
-	X(cub, (.perlin_amp = 2.f)) \
-	X(smo, (.perlin_amp = 2.f)) \
-	X(ncl, (.perlin_amp = 2.f)) \
-	X(nhl, (.perlin_amp = 1.89339094650f)) \
-	X(uwh, (.perlin_amp = 1.f)) \
+	X(cos,   (.perlin_amp = 2.f)) \
+	X(lin,   (.perlin_amp = 2.f)) \
+	X(sah,   (.perlin_amp = 1.f)) \
+	X(exp,   (.perlin_amp = 1.55845810035f)) \
+	X(exp11, (.perlin_amp = 1.36224168327f)) \
+	X(log,   (.perlin_amp = 1.55845810035f)) \
+	X(log11, (.perlin_amp = 1.36224168327f)) \
+	X(xpe,   (.perlin_amp = 1.55845810035f)) \
+	X(xpe11, (.perlin_amp = 1.36224168327f)) \
+	X(lge,   (.perlin_amp = 1.55845810035f)) \
+	X(lge11, (.perlin_amp = 1.36224168327f)) \
+	X(sqe,   (.perlin_amp = 1.89339094650f)) \
+	X(cub,   (.perlin_amp = 2.f)) \
+	X(smo,   (.perlin_amp = 2.f)) \
+	X(ncl,   (.perlin_amp = 2.f)) \
+	X(nhl,   (.perlin_amp = 1.89339094650f)) \
+	X(uwh,   (.perlin_amp = 1.f)) \
 	//
 #define SAU_LINE__X_ID(NAME, ...) SAU_LINE_N_##NAME,
 #define SAU_LINE__X_NAME(NAME, ...) #NAME,
@@ -208,28 +212,102 @@ static inline float sau_expramp6(float x) {
 		(x * (629.f/1792.f) + x2 * (1163.f/1792.f));
 }
 
-/** Single value \p x in exponential trajectory from \p a to \p b. */
+/**
+ * Precise 2024 exp(11*x)-steep exponential curve approximation, 0 <= x <= 1.
+ *
+ * Matches steepness for a YM2612 sample comparison well enough that it could
+ * be used for an accurate-sounding "ladder effect" fade-out test. (The slack
+ * or tail end needs to match more closely than the steep end.)
+ *
+ * Approximates "(exp(x * 11.f) - 1.f) / (59874.14171519781845532648 - 1.f)".
+ */
+static inline float sau_expramp11(float x) {
+	const float scale[] = {
+		+0.13024440690867607441,
+		+0.55268151857615895232,
+		+0.45847762763470429764,
+	};
+	float x2 = x*x, x4 = x2*x2;
+	float v = (1.f - x);
+	if (x <= 0.5f) {
+		float v_lh4 = (1.f - 2*x); v_lh4 *= v_lh4; v_lh4 *= v_lh4;
+		v = (x*scale[0] + v*v_lh4*scale[1]);
+	} else {
+		v = x2*(x4*x + v*scale[2]); // simpler, adequate for larger half
+	}
+	return x4*v;
+}
+
+/**
+ * Single value \p x in exponential trajectory (steepness 6)
+ * from \p a to \p b.
+ */
 static inline float sauLine_val_exp(float x, float a, float b) {
 	return (a > b) ?
 		b + (a - b) * sau_expramp6(1.f-x) :
 		a + (b - a) * sau_expramp6(x);
 }
 
-/** Single value \p x in logarithmic trajectory from \p a to \p b. */
+/**
+ * Single value \p x in exponential trajectory (steepness 11)
+ * from \p a to \p b.
+ */
+static inline float sauLine_val_exp11(float x, float a, float b) {
+	return (a > b) ?
+		b + (a - b) * sau_expramp11(1.f-x) :
+		a + (b - a) * sau_expramp11(x);
+}
+
+/**
+ * Single value \p x in logarithmic trajectory (steepness 6)
+ * from \p a to \p b.
+ */
 static inline float sauLine_val_log(float x, float a, float b) {
 	return (a < b) ?
 		b + (a - b) * sau_expramp6(1.f-x) :
 		a + (b - a) * sau_expramp6(x);
 }
 
-/** Single value \p x, exponential saturate or decay curve from \p a to \p b. */
+/**
+ * Single value \p x in logarithmic trajectory (steepness 11)
+ * from \p a to \p b.
+ */
+static inline float sauLine_val_log11(float x, float a, float b) {
+	return (a < b) ?
+		b + (a - b) * sau_expramp11(1.f-x) :
+		a + (b - a) * sau_expramp11(x);
+}
+
+/**
+ * Single value \p x, exponential saturate or decay curve (steepness 6)
+ * from \p a to \p b.
+ */
 static inline float sauLine_val_xpe(float x, float a, float b) {
 	return b + (a - b) * sau_expramp6(1.f-x);
 }
 
-/** Single value \p x, logarithmic saturate or decay curve from \p a to \p b. */
+/**
+ * Single value \p x, exponential saturate or decay curve (steepness 11)
+ * from \p a to \p b.
+ */
+static inline float sauLine_val_xpe11(float x, float a, float b) {
+	return b + (a - b) * sau_expramp11(1.f-x);
+}
+
+/**
+ * Single value \p x, logarithmic saturate or decay curve (steepness 6)
+ * from \p a to \p b.
+ */
 static inline float sauLine_val_lge(float x, float a, float b) {
 	return a + (b - a) * sau_expramp6(x);
+}
+
+/**
+ * Single value \p x, logarithmic saturate or decay curve (steepness 11)
+ * from \p a to \p b.
+ */
+static inline float sauLine_val_lge11(float x, float a, float b) {
+	return a + (b - a) * sau_expramp11(x);
 }
 
 /** Single value \p x, x-squared envelope trajectory from \p a to \p b. */
