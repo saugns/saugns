@@ -493,13 +493,21 @@ Line types:
 	sah
 		Sample and hold until time (then jump to goal).
 	exp
-		Steep "exp(x)-1"-like increase or decrease.
+		Scaled "exp(6x)-1"-like increase or decrease.
+	exp11
+		Scaled "exp(11x)-1"-like increase or decrease.
 	log
-		Steep "log(x+1)"-like increase or decrease.
+		Scaled "log(6x+1)"-like increase or decrease.
+	log11
+		Scaled "log(11x+1)"-like increase or decrease.
 	xpe
-		Exponential shape envelope (saturate or decay).
+		Exponential shape (saturate or decay), steep as 'exp'.
+	xpe11
+		Exponential shape (saturate or decay), steep as 'exp11'.
 	lge
-		Logarithmic shape envelope (saturate or decay).
+		Logarithmic shape (saturate or decay), steep as 'log'.
+	lge11
+		Logarithmic shape (saturate or decay), steep as 'log11'.
 	sqe
 		Square polynomial envelope (saturate or decay).
 	cub
@@ -515,14 +523,10 @@ Line types:
 		Noise hump line; harder, one broad noise bulge.
 	uwh
 		Uniform random white noise in start-goal range.
-	The 'exp' and 'log' shapes use ear-tuned polynomial
-	approximations with definite beginnings and ends,
-	designed to sound natural for frequency sweeping,
-	and symmetric one to the other. The 'xpe' shape increases
-	like 'log' and decreases like 'exp', much like a capacitor
-	charges and discharges, natural-sounding for an envelope;
-	and 'lge' increases like 'exp' and decreases like 'log'.
-	For a less-steep alternative to 'xpe', 'sqe' can be used.
+	The 'xpe' shape was originally mainly for frequency sweeps;
+	it may be too soft for some uses. For percussive use, 'xpe11'
+	is normally sharp enough. For amplitude sharping, a less steep
+	shape may be needed; 'sqe' is way softer than 'xpe'.
 
 W: Wave oscillator
 ------------------
