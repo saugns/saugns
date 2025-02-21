@@ -36,6 +36,16 @@ void sauLine_fill_##NAME(float *restrict buf, uint32_t len, \
 	} \
 }
 
+// fill function which selects one of two other fill functions
+#define LINE_FILL_FUNC_SELECT(NAME, COND, SEL1, SEL2) \
+void sauLine_fill_##NAME(float *restrict buf, uint32_t len, \
+		float v0, float vt, uint32_t pos, uint32_t time, \
+		const float *restrict mulbuf) { \
+	(COND ? \
+		sauLine_fill_##SEL1 : \
+		sauLine_fill_##SEL2)(buf, len, v0, vt, pos, time, mulbuf); \
+}
+
 const struct sauLineCoeffs sauLine_coeffs[SAU_LINE_NAMED] = {
 	SAU_LINE__ITEMS(SAU_LINE__X_COEFFS)
 };
@@ -115,59 +125,51 @@ void sauLine_fill_cos(float *restrict buf, uint32_t len,
 
 /**
  * Fill \p buf with \p len values along an exponential trajectory
- * from \p v0 (at position 0) to \p vt (at position \p time),
- * beginning at position \p pos.
- *
- * Unlike a real exponential curve, it has a definite beginning
- * and end. (Uses one of 'xpe' or 'lge', depending on whether
- * the curve rises or falls.)
+ * (steepness 6) from \p v0 (at position 0) to \p vt (at position \p time),
  */
-void sauLine_fill_exp(float *restrict buf, uint32_t len,
-		float v0, float vt, uint32_t pos, uint32_t time,
-		const float *restrict mulbuf) {
-	(v0 > vt ?
-		sauLine_fill_xpe :
-		sauLine_fill_lge)(buf, len, v0, vt, pos, time, mulbuf);
-}
+LINE_FILL_FUNC_SELECT(exp, v0 > vt, xpe, lge)
+
+/**
+ * Fill \p buf with \p len values along an exponential trajectory
+ * (steepness 11) from \p v0 (at position 0) to \p vt (at position \p time),
+ */
+LINE_FILL_FUNC_SELECT(exp11, v0 > vt, xpe11, lge11)
 
 /**
  * Fill \p buf with \p len values along a logarithmic trajectory
- * from \p v0 (at position 0) to \p vt (at position \p time),
- * beginning at position \p pos.
- *
- * Unlike a real "log(1 + x)" curve, it has a definite beginning
- * and end. (Uses one of 'xpe' or 'lge', depending on whether
- * the curve rises or falls.)
+ * (steepness 6) from \p v0 (at position 0) to \p vt (at position \p time),
  */
-void sauLine_fill_log(float *restrict buf, uint32_t len,
-		float v0, float vt, uint32_t pos, uint32_t time,
-		const float *restrict mulbuf) {
-	(v0 < vt ?
-		sauLine_fill_xpe :
-		sauLine_fill_lge)(buf, len, v0, vt, pos, time, mulbuf);
-}
+LINE_FILL_FUNC_SELECT(log, v0 < vt, xpe, lge)
 
 /**
- * Fill \p buf with \p len values along an "envelope" trajectory
- * which exponentially saturates and decays (like a capacitor),
- * from \p v0 (at position 0) to \p vt (at position \p time),
- * beginning at position \p pos.
- *
- * Uses an ear-tuned polynomial, designed to sound natural for
- * frequency sweeping, and symmetric to the "opposite", 'lge' fill type.
+ * Fill \p buf with \p len values along a logarithmic trajectory
+ * (steepness 11) from \p v0 (at position 0) to \p vt (at position \p time),
+ */
+LINE_FILL_FUNC_SELECT(log11, v0 < vt, xpe11, lge11)
+
+/**
+ * Fill \p buf with \p len values along an exponential saturate or decay curve
+ * (steepness 6) from \p v0 (at position 0) to \p vt (at position \p time),
  */
 LINE_FILL_FUNC(xpe, )
 
 /**
- * Fill \p buf with \p len values along an "envelope" trajectory
- * which logarithmically saturates and decays (opposite of a capacitor),
- * from \p v0 (at position 0) to \p vt (at position \p time),
- * beginning at position \p pos.
- *
- * Uses an ear-tuned polynomial, designed to sound natural for
- * frequency sweeping, and symmetric to the "opposite", 'xpe' fill type.
+ * Fill \p buf with \p len values along an exponential saturate or decay curve
+ * (steepness 11) from \p v0 (at position 0) to \p vt (at position \p time),
+ */
+LINE_FILL_FUNC(xpe11, )
+
+/**
+ * Fill \p buf with \p len values along a logarithmic saturate or decay curve
+ * (steepness 6) from \p v0 (at position 0) to \p vt (at position \p time),
  */
 LINE_FILL_FUNC(lge, )
+
+/**
+ * Fill \p buf with \p len values along a logarithmic saturate or decay curve
+ * (steepness 11) from \p v0 (at position 0) to \p vt (at position \p time),
+ */
+LINE_FILL_FUNC(lge11, )
 
 /**
  * Fill \p buf with \p len values along an x-squared "envelope"
