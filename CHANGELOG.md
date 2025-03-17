@@ -18,6 +18,7 @@ Language changes:
    options `.r`, `.e`, and/or `.a` can be used -- concatenated
    in the order listed, with any left out. For example, just
    one of them, or `.r.e`.
+ * Frequencies as notes. Slightly tweak JI quartertones used.
 
 v0.5.1 (2025-02-16)
 -------------------

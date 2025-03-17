@@ -619,15 +619,15 @@ static double get_note_freq(struct ScanLookup *restrict sl,
 			1.1224620483093729814f, // 2	x/w, tone
 		},
 		{ /* 5-limit JI a.k.a. Ptolemy's intense diatonic scale */
-			36.f/35,      // z/d, septimal quarter tone
+			49.f/48,      // z/d, large septimal / slendro diesis
 			25.f/24,      // s/b, augmented unison (sharp)
-			25.f/24 * 36.f/35, // k/v
+			25.f/24 * 49.f/48, // k/v
 			25.f/24 * 25.f/24, // x/w
 		},
 		{ /* 3-limit JI a.k.a. Pythagorean tuning */
-			36.f/35,       // z/d, septimal quarter tone
+			4235.f/4096,   // z/d, halved Pyth. chrom. semitone
 			2187.f/2048,   // s/b, Pythagorean chromatic semitone
-			2187.f/2048 * 36.f/35, // k/v
+			2187.f/2048 * 4235.f/4096, // k/v
 			2187.f/2048 * 2187.f/2048, // x/w
 		},
 	};
