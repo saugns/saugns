@@ -131,6 +131,12 @@ LINE_FILL_FUNC_SELECT(exp, v0 > vt, xpe, lge)
 
 /**
  * Fill \p buf with \p len values along an exponential trajectory
+ * (steepness 8) from \p v0 (at position 0) to \p vt (at position \p time),
+ */
+LINE_FILL_FUNC_SELECT(exp8, v0 > vt, xpe8, lge8)
+
+/**
+ * Fill \p buf with \p len values along an exponential trajectory
  * (steepness 11) from \p v0 (at position 0) to \p vt (at position \p time),
  */
 LINE_FILL_FUNC_SELECT(exp11, v0 > vt, xpe11, lge11)
@@ -140,6 +146,12 @@ LINE_FILL_FUNC_SELECT(exp11, v0 > vt, xpe11, lge11)
  * (steepness 6) from \p v0 (at position 0) to \p vt (at position \p time),
  */
 LINE_FILL_FUNC_SELECT(log, v0 < vt, xpe, lge)
+
+/**
+ * Fill \p buf with \p len values along a logarithmic trajectory
+ * (steepness 8) from \p v0 (at position 0) to \p vt (at position \p time),
+ */
+LINE_FILL_FUNC_SELECT(log8, v0 < vt, xpe8, lge8)
 
 /**
  * Fill \p buf with \p len values along a logarithmic trajectory
@@ -155,6 +167,12 @@ LINE_FILL_FUNC(xpe, )
 
 /**
  * Fill \p buf with \p len values along an exponential saturate or decay curve
+ * (steepness 8) from \p v0 (at position 0) to \p vt (at position \p time),
+ */
+LINE_FILL_FUNC(xpe8, )
+
+/**
+ * Fill \p buf with \p len values along an exponential saturate or decay curve
  * (steepness 11) from \p v0 (at position 0) to \p vt (at position \p time),
  */
 LINE_FILL_FUNC(xpe11, )
@@ -164,6 +182,12 @@ LINE_FILL_FUNC(xpe11, )
  * (steepness 6) from \p v0 (at position 0) to \p vt (at position \p time),
  */
 LINE_FILL_FUNC(lge, )
+
+/**
+ * Fill \p buf with \p len values along a logarithmic saturate or decay curve
+ * (steepness 8) from \p v0 (at position 0) to \p vt (at position \p time),
+ */
+LINE_FILL_FUNC(lge8, )
 
 /**
  * Fill \p buf with \p len values along a logarithmic saturate or decay curve

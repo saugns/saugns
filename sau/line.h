@@ -22,12 +22,16 @@
 	X(lin,   (.perlin_amp = 2.f)) \
 	X(sah,   (.perlin_amp = 1.f)) \
 	X(exp,   (.perlin_amp = 1.55845810035f)) \
+	X(exp8,  (.perlin_amp = 1.46275868009f)) \
 	X(exp11, (.perlin_amp = 1.36224168327f)) \
 	X(log,   (.perlin_amp = 1.55845810035f)) \
+	X(log8,  (.perlin_amp = 1.46275868009f)) \
 	X(log11, (.perlin_amp = 1.36224168327f)) \
 	X(xpe,   (.perlin_amp = 1.55845810035f)) \
+	X(xpe8,  (.perlin_amp = 1.46275868009f)) \
 	X(xpe11, (.perlin_amp = 1.36224168327f)) \
 	X(lge,   (.perlin_amp = 1.55845810035f)) \
+	X(lge8,  (.perlin_amp = 1.46275868009f)) \
 	X(lge11, (.perlin_amp = 1.36224168327f)) \
 	X(sqe,   (.perlin_amp = 1.89339094650f)) \
 	X(cub,   (.perlin_amp = 2.f)) \
@@ -213,6 +217,30 @@ static inline float sau_expramp6(float x) {
 }
 
 /**
+ * Decent exp(8*x)-steep exponential curve approximation, 0 <= x <= 1.
+ * (Larger error than the very cost-effective sau_expramp11(), but still
+ * good compared to the old cruder sau_expramp6().)
+ *
+ * Approximates "(exp(x * 8.f) - 1.f) / (2980.95798704172827474359 - 1.f)".
+ */
+static inline float sau_expramp8(float x) {
+	const float scale[] = {
+		+0.01798620996209155803 * 16,
+		+0.0875, // +0.10,
+		+0.01798620996209155803 * 25.0502312458,
+	};
+	float x2 = x*x, x4 = x2*x2;
+	float v = (1.f - x);
+	if (x <= 0.5f) {
+		float v_lh2 = (1.f - 2*x); v_lh2 *= v_lh2;
+		v = x2*(x2*scale[0] + v*v_lh2*scale[1]);
+	} else {
+		v = x4*(x4 + v*scale[2]); // simpler, adequate for larger half
+	}
+	return v;
+}
+
+/**
  * Precise 2024 exp(11*x)-steep exponential curve approximation, 0 <= x <= 1.
  *
  * Matches steepness for a YM2612 sample comparison well enough that it could
@@ -249,6 +277,16 @@ static inline float sauLine_val_exp(float x, float a, float b) {
 }
 
 /**
+ * Single value \p x in exponential trajectory (steepness 8)
+ * from \p a to \p b.
+ */
+static inline float sauLine_val_exp8(float x, float a, float b) {
+	return (a > b) ?
+		b + (a - b) * sau_expramp8(1.f-x) :
+		a + (b - a) * sau_expramp8(x);
+}
+
+/**
  * Single value \p x in exponential trajectory (steepness 11)
  * from \p a to \p b.
  */
@@ -266,6 +304,16 @@ static inline float sauLine_val_log(float x, float a, float b) {
 	return (a < b) ?
 		b + (a - b) * sau_expramp6(1.f-x) :
 		a + (b - a) * sau_expramp6(x);
+}
+
+/**
+ * Single value \p x in logarithmic trajectory (steepness 8)
+ * from \p a to \p b.
+ */
+static inline float sauLine_val_log8(float x, float a, float b) {
+	return (a < b) ?
+		b + (a - b) * sau_expramp8(1.f-x) :
+		a + (b - a) * sau_expramp8(x);
 }
 
 /**
@@ -287,6 +335,14 @@ static inline float sauLine_val_xpe(float x, float a, float b) {
 }
 
 /**
+ * Single value \p x, exponential saturate or decay curve (steepness 8)
+ * from \p a to \p b.
+ */
+static inline float sauLine_val_xpe8(float x, float a, float b) {
+	return b + (a - b) * sau_expramp8(1.f-x);
+}
+
+/**
  * Single value \p x, exponential saturate or decay curve (steepness 11)
  * from \p a to \p b.
  */
@@ -300,6 +356,14 @@ static inline float sauLine_val_xpe11(float x, float a, float b) {
  */
 static inline float sauLine_val_lge(float x, float a, float b) {
 	return a + (b - a) * sau_expramp6(x);
+}
+
+/**
+ * Single value \p x, logarithmic saturate or decay curve (steepness 8)
+ * from \p a to \p b.
+ */
+static inline float sauLine_val_lge8(float x, float a, float b) {
+	return a + (b - a) * sau_expramp8(x);
 }
 
 /**

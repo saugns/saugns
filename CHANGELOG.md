@@ -9,6 +9,7 @@ Pre-release
 
 Language changes:
  * Line types. More exp/log types with steepness not 6.
+    - Add `exp8`, `log8`, `xpe8`, `lge8`. Steepness 8.
     - Add `exp11`, `log11`, `xpe11`, `lge11`. Steepness 11.
 
 v0.5.1 (2025-02-16)

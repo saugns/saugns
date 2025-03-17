@@ -494,20 +494,24 @@ Line types:
 		Sample and hold until time (then jump to goal).
 	exp
 		Scaled "exp(6x)-1"-like increase or decrease.
-	exp11
-		Scaled "exp(11x)-1"-like increase or decrease.
+	expN
+		For the numbers 8, 11 in place of N.
+		Scaled "exp(Nx)-1"-like increase or decrease.
 	log
 		Scaled "log(6x+1)"-like increase or decrease.
-	log11
-		Scaled "log(11x+1)"-like increase or decrease.
+	logN
+		For the numbers 8, 11 in place of N.
+		Scaled "log(Nx+1)"-like increase or decrease.
 	xpe
 		Exponential shape (saturate or decay), steep as 'exp'.
-	xpe11
-		Exponential shape (saturate or decay), steep as 'exp11'.
+	xpeN
+		For the numbers 8, 11 in place of N.
+		Exponential shape (saturate or decay), steep as 'expN'.
 	lge
 		Logarithmic shape (saturate or decay), steep as 'log'.
-	lge11
-		Logarithmic shape (saturate or decay), steep as 'log11'.
+	lgeN
+		For the numbers 8, 11 in place of N.
+		Logarithmic shape (saturate or decay), steep as 'logN'.
 	sqe
 		Square polynomial envelope (saturate or decay).
 	cub
