@@ -287,10 +287,10 @@ SAU_MOD__PD(pd_y,   X, "yPD",  "p.y") \
 	//
 #define SAU_MOD__VR(NAME, X, LABEL, SYNTAX) /* 5 valrange modulator types */ \
 	X(NAME,     1, LABEL " ", SYNTAX) \
-	X(NAME##1,  1, LABEL "1", SYNTAX "..") \
 	X(NAME##2,  1, LABEL "2", SYNTAX "..") \
 	X(NAME##_r, 1, LABEL "r", SYNTAX ".r") \
 	X(NAME##_e, 1, LABEL "e", SYNTAX ".e") \
+	X(NAME##_a, 1, LABEL "a", SYNTAX ".a") \
 	//
 #define SAU_MOD__PD(NAME, X, LABEL, SYNTAX) /* 5*3 PD valrange modulators */ \
 SAU_MOD__VR(NAME,   X, LABEL,     SYNTAX) \

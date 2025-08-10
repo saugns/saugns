@@ -750,18 +750,15 @@ Value ranges and envelopes:
 	envelope ".e[]" list, where ".e" is in turn a main envelope
 	subparameter for parameters.
 		Where parameters take a main value, the ".e" subparameter
-	takes a second value, similarly to the ".r" short-form syntax. The
-	envelope then maps the result to a range between what you'd have
-	without the envelope, and the second value. (Like the ".r" short-form
-	syntax, the second value can be swept inside ".e[]", but modulators
-	there are summed to mix them with the second value, more like the
-	"..[].r" long-form syntax. Again, the ".e" and ".r" second values
-	are separate, and ".e" runs after ".r" range-mapping.)
-		Note that any modulators directly set for the main value
-	(alias "...r.a" long-form value ranges final additive mix parameter)
-	will be mixed in after the envelope runs, not before. However, any
-	set for "[]..", the main value with value range ".." after, apply
-	before the envelope is used.
+	takes a second value, similarly to the ".r" short-form syntax. Either
+	can be written either in a short form just after the main value, or
+	in a long form following the long-form ".." (see "Modulation with
+	value ranges"). Again, the ".r" and ".e" second values are separate,
+	and ".e" envelope processing runs after ".r" range-mapping.
+		Note that when the short-form ".r" or ".e" are used, the
+	meaning of setting modulators for the main value just before will
+	change; such list changes are then moved to the list corresponding
+	to the long-form final mix addition modulators, ".a[]" after "..".
 		The envelope treats the second value as the internal "low"
 	level before attack and after release (usually the "bottom" for an
 	amplitude envelope) and the main value as the "high" level between
@@ -870,19 +867,19 @@ Modulation with value ranges:
 	is however always the "real FM" related to yet distinct from PM,
 	whenever modulation happens.)
 		Following a parameter name and optionally its main value(s),
-	lists can be used (see "Modulator list") to assign modulators whose
-	amplitudes are simply added to the result. For example "a0[...]"
-	will set amplitude to 0, and the modulators within "[...]" will have
+	modulators can be set in a list (see "Modulator list") to mix their
+	output into the main value. (The result may be more complex if more
+	options are used along with this.) For example "a0[...]" will set
+	amplitude to 0, and the modulators within "[...]" will have
 	the effect of ring modulating, while with "a1" set the result is AM.
-		Subparameters can be used for greater flexibility than this,
-	setting up a value range with two bounds (the main value for the
-	parameter, and a second value playing the part of the other bound).
-	Another set of modulators, called "range mapping" modulators, are
-	then used to pick values in the range. There's both a long-form and
-	a short-form syntax for this, where the long form allows modulator
-	lists that add things to all of the main value, the second value,
-	and finally to the ultimate result after using the two values with
-	the range mapping modulators.
+		Subparameters can be used for greater flexibility, to set up
+	a value range with two bounds (the main value for the parameter, and
+	a second value playing the part of the other bound). Another set of
+	modulators, called "range mapping" modulators, are then used to pick
+	values in the range. There's both a long-form and a short-form syntax
+	for this, where the long form allows modulator lists which add things
+	to all of the main value, the second value, and to the final result
+	after using the two values with the range mapping modulators.
 		An example of how to vary frequency with the short form is
 	"f200.r(200 * 2)[...]", where the expression for ".r" is the second
 	value and the list after contains the range mapping modulators.
@@ -896,31 +893,36 @@ Modulation with value ranges:
 		their output applied to the second value, shifting that
 		endpoint of the range around. (In turn the second endpoint is
 		used only when range mapping modulators bring it into use.)
-			When ".." is written after a main value modulator
-		list, this changes which list is set there beforehand. With
-		".." after, modulators for the main value before it work just
-		like those for the second value after the "..", being applied
-		to shift the respective endpoint of the range, before range
-		mapping modulators are used to pick points in the range.
-			Without any "..", modulators in the first position
-		are instead taken to be those which have their outputs added
-		to the final result, after any range mapping use. That list
-		is moved to a different subparameter after when ".." is used.
+			After "..", the following options can be used -- their
+		use can be concatenated in the order listed -- with any left
+		out. For example, just ".r", ".e", or ".a" -- or ".r.e".
 		.r	The long-form range mapping subparameter, which sets
 			the mapping to the range, modulator outputs used to
 			pick values in it. It only accepts a modulator list
 			(or nothing). This modulator list works as described
 			below for ".r" (the short-form parameter).
-			.a	This is the final subparameter, to which the
-				short-form main value modulator list is moved
-				in the long-form syntax. Optionally written,
-				accepts only a modulator list (or nothing),
-				with outputs added to the final result.
+		.e	Envelope options; see "Value ranges and envelopes".
+			This is the second value for an envelope; envelope
+			processing runs after ".r" value range mapping, so
+			the result of ".r" becomes the first value for the
+			envelope.
+		.a	The final mix addition subparameter, which takes
+			modulators whose output is added to the result after
+			value range mapping and any envelope processing.
+				The short-form ".r" (see below) and ".e" (see
+			"Value ranges and envelopes") parameters, when used,
+			move this option to the modulator list placement for
+			the main value, as a shortcut for accessing this.
 	.r	The short-form range mapping subparameter, which accepts the
 		second value, and a list of modulators whose outputs are
 		used to pick values in the range. The value is optional, as
 		is setting a list. (If there's nothing used in this list,
 		mapping is stuck at the main value only.)
+			When ".r" is written just after a main value modulator
+		list, this changes the meaning of that list. Changes to it are
+		then considered to be changes to the ".a" final mix addition
+		in the long-form syntax, nested under ".." -- as a shortcut
+		for tweaking that instead of main value endpoint modulators.
 			Range mapping modulators have their results combined
 		differently from other modulator lists. Each modulator here
 		produces a result in the range of 0.0 to 1.0 (i.e. a positive
