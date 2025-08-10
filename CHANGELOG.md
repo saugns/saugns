@@ -9,6 +9,73 @@ Pre-release
 
 [rebase in progress]
 
+Fix v0.5.2 bug which caused `S a` behavior when an affected
+generator uses AM lists to go wrong (scaling was wrongly
+applied to `.r[]` too, and not to `.e[]` which it should be).
+
+v0.5.3e (2025-10-23)
+--------------------
+
+Fix v0.5.3 use-after-free when cloning into modulator lists,
+as triggered by scripts such as: `'a W[R] | N[A :a N :a :a]`
+
+Fix time placement of `@name` inside modulator list assigned
+for a `;` compound step. This never worked correctly before;
+it used to be placed before the `;` in time from v0.3.12, in
+older versions being placed an extra time after `;` instead.
+
+Also fix behavior of the undocumented `{}` grouping feature,
+specifically it mixed with the `;` compound step, `{; ...}`.
+
+v0.5.3d (2025-10-22)
+--------------------
+
+Fix v0.5.3 bug not caught by test scripts, which may prevent
+correct generator ID reuse in scripts which use more voices.
+
+v0.5.3c (2025-10-17)
+--------------------
+
+Fix v0.5.3 bug causing crash (occasionally hang) when saugns
+fails to open a file to parse (for example, bogus filename).
+
+v0.5.3b (2025-10-16)
+--------------------
+
+Fix bug in object ID allocation for cloned modulators.
+
+In v0.5.3 object IDs alongside generator IDs were made
+to be reused. Object ID reuse code missed an edge case
+(to treat cloned modulators as labeled/non-reusable if
+the main/carrier generator cloned is freshly labeled).
+A crash could happen for scripts triggering the error.
+
+v0.5.3 (2025-10-09)
+-------------------
+
+Language changes:
+ * Time values. Replace non-number literal `d` for
+   the main time `t` parameter with a constant `D`
+   usable for every time length parameter.
+ * Label syntax.
+   - Add `:name` expression, for copying the object
+     pointed to by "name". A generator copy will be
+     inserted where the reference is placed, unlike
+     with an `@name` reference which merely touches
+     the original object. A copy has separate time.
+     All modulators are also cloned, once per copy.
+   - Remove the deprecated syntax for num. variable
+     assignment, `'name=`.
+
+Simplify parsing code and semantics before audio generation.
+One less set of data structures, don't copy and "convert".
+The code formerly called "parseconv" is now parser/semantics.
+
+Write generator number allocation code in parser semantics to
+reuse generators when their durations expire in scripts. The
+printouts from `saugns -p` reflect the new scheduling, the
+audio output is (of course) identical.
+
 v0.5.2 (2025-08-27)
 -------------------
 

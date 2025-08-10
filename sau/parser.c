@@ -862,7 +862,6 @@ static void parse_in_settings(sauParser *restrict o);
 static void parse_in_gen_step(sauParser *restrict o);
 static void parse_in_phase_par(sauParser *restrict o);
 static void parse_in_par_sweep(sauParser *restrict o);
-static void parse_in_par_env(sauParser *restrict o);
 static void parse_in_par_env_and_sweep(sauParser *restrict o);
 
 /* Indexing of parts of a value range struct. */
@@ -870,16 +869,13 @@ enum {
 	RANGE_A = 0,
 	RANGE_B,
 	RANGE_E,
-	RANGE_ENV,
-	RANGE_ENV_AND_E,
 };
 
 static inline sauLinePar *get_valr_line(sauRange *restrict r, unsigned parts) {
 	switch (parts) {
 	case RANGE_A: return &r->a;
 	case RANGE_B: return &r->b;
-	case RANGE_E:
-	case RANGE_ENV_AND_E: return &r->e;
+	case RANGE_E: return &r->e;
 	default: return NULL;
 	}
 }
@@ -887,16 +883,14 @@ static inline sauLinePar *get_valr_line(sauRange *restrict r, unsigned parts) {
 static inline ParseLevel_sub_f get_valr_sub_f(unsigned parts) {
 	switch (parts) {
 	case RANGE_A:
-	case RANGE_B:
-	case RANGE_E: return parse_in_par_sweep;
-	case RANGE_ENV: return parse_in_par_env;
-	case RANGE_ENV_AND_E: return parse_in_par_env_and_sweep;
+	case RANGE_B: return parse_in_par_sweep;
+	case RANGE_E: return parse_in_par_env_and_sweep;
 	default: return NULL;
 	}
 }
 
 static inline bool is_valr_mod_additive(unsigned mod, unsigned valr_first) {
-	unsigned valr_r = valr_first+3;
+	unsigned valr_r = valr_first+SAU_MOD_VALR_r;
 	unsigned valr_last = valr_first+SAU_MODS_VALR;
 	return mod >= valr_first && mod != valr_r && mod <= valr_last;
 }
@@ -1640,14 +1634,6 @@ static void parse_in_par_sweep(sauParser *restrict o) {
 	PARSE_IN__TAIL()
 }
 
-static void parse_in_par_env(sauParser *restrict o) {
-	struct NestScope *nest = NestArr_tip(&o->nest);
-	sauRange *range = nest->gen_valr;
-	PARSE_IN__HEAD(parse_in_par_env, range)
-		if (!c || parse_par_env(sc, &range->env, c)) goto DEFER;
-	PARSE_IN__TAIL()
-}
-
 static void parse_in_par_env_and_sweep(sauParser *restrict o) {
 	struct NestScope *nest = NestArr_tip(&o->nest);
 	sauRange *range = nest->gen_valr;
@@ -1663,7 +1649,7 @@ static bool prepare_sweep(sauParser *restrict o,
 		struct NestScope *restrict nest,
 		sauScanNumConst_f numconst_f,
 		sauRange **restrict gen_valr, bool ratio,
-		uint8_t valr_id, unsigned valr_parts) {
+		unsigned valr_id, unsigned valr_parts) {
 	if (!gen_valr) { /* clear when not provided */
 		nest->gen_valr = NULL;
 		return true;
@@ -1684,7 +1670,7 @@ static bool prepare_sweep(sauParser *restrict o,
 static sauScriptListData *parse_par_list(sauParser *restrict o,
 		sauScanNumConst_f numconst_f,
 		sauRange **restrict gen_valr, bool ratio,
-		uint8_t valr_id, uint8_t use_type, unsigned valr_parts) {
+		unsigned valr_id, uint8_t use_type, unsigned valr_parts) {
 	struct NestScope *nest = NestArr_add(&o->nest);
 	prepare_sweep(o, nest, numconst_f,
 			gen_valr, ratio, valr_id, valr_parts);
@@ -1712,22 +1698,48 @@ static void change_list_use(sauScriptListData *first_list, uint8_t use_type) {
 }
 
 static uint8_t parse_par_dotdot(sauParser *restrict o,
-		sauScriptListData *first_list, sauScanNumConst_f num_f,
+		sauScanNumConst_f num_f,
 		sauRange **restrict range, bool ratio,
-		uint8_t valr_id, uint8_t mod) {
-	const uint8_t mod1 = mod+1, mod2 = mod+2, mod_r = mod+3;
+		unsigned valr_id, uint8_t mod) {
+	parse_par_list(o, num_f, range, ratio, valr_id,
+			mod+SAU_MOD_VALR2, RANGE_B);
 	uint8_t c = 0;
-	change_list_use(first_list, mod1);
-	parse_par_list(o, num_f, range, ratio, valr_id, mod2, RANGE_B);
-	if ((c = sauScanner_getc_after(o->sc, '.'))) {
-		if (c == 'r') parse_par_list(o, NULL, NULL, false, 0, mod_r, 0);
-		else sauScanner_warning(o->sc, NULL,
-"expected '.r' or nothing after '..' and second value");
-	}
-	if ((c = sauScanner_getc_after(o->sc, '.'))) {
-		if (c == 'a') parse_par_list(o, NULL, NULL, false, 0, mod, 0);
-		else sauScanner_warning(o->sc, NULL,
-"expected '.a' or nothing after '.r' after '..'");
+	const char *opt_expected =
+		"'.r', '.e', '.a' or nothing after '..' and second value";
+	int opt_at = 0;
+	while (opt_at >= 0) {
+		if (!(c = sauScanner_getc_after(o->sc, '.'))) break;
+		switch (opt_at) {
+		case 0:
+			opt_at = 1;
+			if (c == 'r') {
+				parse_par_list(o, NULL, NULL, false, 0,
+						mod+SAU_MOD_VALR_r, 0);
+				opt_expected =
+					"'.e', '.a' or nothing after '.r'";
+				break;
+			} /* fall-through */
+		case 1:
+			opt_at = 2;
+			if (c == 'e') {
+				parse_par_list(o, num_f, range, ratio, valr_id,
+						mod+SAU_MOD_VALR_e, RANGE_E);
+				opt_expected = "'.a' or nothing after '.e'";
+				break;
+			} /* fall-through */
+		case 2:
+			opt_at = 3;
+			if (c == 'a') {
+				parse_par_list(o, NULL, NULL, false, 0,
+						mod+SAU_MOD_VALR_a, 0);
+				opt_expected = "nothing after '.a'";
+				break;
+			} /* fall-through */
+		default:
+			sauScanner_warning(o->sc, NULL,
+					"expected %s", opt_expected);
+			break;
+		}
 	}
 	return 0;
 }
@@ -1736,20 +1748,22 @@ static uint8_t parse_par_dotdot(sauParser *restrict o,
 static uint8_t parse_par_modranges(sauParser *restrict o,
 		sauScanNumConst_f num_f,
 		sauRange **restrict range, bool ratio,
-		uint8_t valr_id, uint8_t mod) {
+		unsigned valr_id, uint8_t mod) {
 	uint8_t c;
 	sauScriptListData *first_list =
 		parse_par_list(o, num_f, range, ratio, valr_id, mod, RANGE_A);
 	switch ((c = sauScanner_getc_after(o->sc, '.'))) {
 	case '.':
-		return parse_par_dotdot(o, first_list,
-				num_f, range, ratio, valr_id, mod);
+		return parse_par_dotdot(o, num_f, range, ratio, valr_id, mod);
 	case 'e':
-		parse_par_list(o, num_f, range, ratio, valr_id, mod+4,
-				RANGE_ENV_AND_E);
+		change_list_use(first_list, mod+4);
+		parse_par_list(o, num_f, range, ratio, valr_id,
+				mod+SAU_MOD_VALR_e, RANGE_E);
 		break;
 	case 'r':
-		parse_par_list(o, num_f, range, ratio, valr_id, mod+3, RANGE_B);
+		change_list_use(first_list, mod+4);
+		parse_par_list(o, num_f, range, ratio, valr_id,
+				mod+SAU_MOD_VALR_r, RANGE_B);
 		break;
 	default:
 		return c;
