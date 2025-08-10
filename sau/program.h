@@ -282,10 +282,10 @@ SAU_MOD__PD(pd_y,   X, "yPD",  "p.y") \
 	//
 #define SAU_MOD__VR(NAME, X, LABEL, SYNTAX) /* 5 valrange modulator types */ \
 	X(NAME,     1, LABEL " ", SYNTAX) \
-	X(NAME##1,  1, LABEL "1", SYNTAX "..") \
 	X(NAME##2,  1, LABEL "2", SYNTAX "..") \
 	X(NAME##_r, 1, LABEL "r", SYNTAX ".r") \
 	X(NAME##_e, 1, LABEL "e", SYNTAX ".e") \
+	X(NAME##_a, 1, LABEL "a", SYNTAX ".a") \
 	//
 #define SAU_MOD__PD(NAME, X, LABEL, SYNTAX) /* 5*3 PD valrange modulators */ \
 SAU_MOD__VR(NAME,   X, LABEL,     SYNTAX) \
@@ -298,6 +298,11 @@ SAU_MOD__VR(NAME##p,X, LABEL "p", SYNTAX ".p") \
 
 /* Number of modulators in sequence for a value range with envelope and all. */
 #define SAU_MODS_VALR 5
+#define SAU_MOD_VALR   0
+#define SAU_MOD_VALR2  1
+#define SAU_MOD_VALR_r 2
+#define SAU_MOD_VALR_e 3
+#define SAU_MOD_VALR_a 4
 
 /**
  * Generator modulation or use types.
