@@ -10,6 +10,14 @@ Pre-release
 Language changes:
  * Line types. More exp/log types with steepness not 6.
     - Add `exp11`, `log11`, `xpe11`, `lge11`. Steepness 11.
+ * Modulation with value ranges. Tweak semantics, and add
+   envelope options `.e` to long-form, for completeness. Don't
+   switch list behavior for the very first list when the `..`
+   long-form syntax is written just after, instead do it when
+   short-form `.r` or `.e` are written after. After `..`, the
+   options `.r`, `.e`, and/or `.a` can be used -- concatenated
+   in the order listed, with any left out. For example, just
+   one of them, or `.r.e`.
 
 v0.5.1 (2025-02-16)
 -------------------
