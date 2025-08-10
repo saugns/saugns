@@ -325,11 +325,11 @@ static void prepare_gen(sauGenerator *restrict o,
 static void update_ids(AnyGen *restrict n,
 		const sauProgramIDs *restrict ids) {
 #define CASES_VALR(ID, FIELD) \
-	case SAU_MOD_N_##ID:     FIELD.mods_add		= ids->a; break; \
-	case SAU_MOD_N_##ID##1:  FIELD.mods1 		= ids->a; break; \
+	case SAU_MOD_N_##ID:     FIELD.mods1		= ids->a; break; \
 	case SAU_MOD_N_##ID##2:  FIELD.mods2 		= ids->a; break; \
 	case SAU_MOD_N_##ID##_r: FIELD.r_mods		= ids->a; break; \
 	case SAU_MOD_N_##ID##_e: FIELD.e_mods		= ids->a; break; \
+	case SAU_MOD_N_##ID##_a: FIELD.mods_add		= ids->a; break; \
 /**/
 #define CASES_PDMODS(ID, FIELD) \
 	CASES_VALR(    ID,       FIELD.main) \
