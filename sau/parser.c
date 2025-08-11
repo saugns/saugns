@@ -853,7 +853,6 @@ ERROR:
 enum {
 	SCOPE_SAME = 0, // specially handled inner copy of parent scope (unused)
 	SCOPE_GROUP,    // '{...}' or top scope
-	SCOPE_BIND,     // '@[...]'
 	SCOPE_NEST,     // '[...]'
 };
 
@@ -899,11 +898,10 @@ static inline bool is_valr_mod_additive(unsigned mod, unsigned valr_first) {
  * Parse level flags.
  */
 enum {
-	PL_BIND_MULTIPLE  = 1<<0, // previous node interpreted as set of nodes
-	PL_NEW_EVENT_FORK = 1<<1,
-	PL_OWN_EV         = 1<<2,
-	PL_OWN_GEN        = 1<<3,
-	PL_WARN_NOSPACE   = 1<<4,
+	PL_NEW_EVENT_FORK = 1<<0,
+	PL_OWN_EV         = 1<<1,
+	PL_OWN_GEN        = 1<<2,
+	PL_WARN_NOSPACE   = 1<<3,
 };
 
 /*
@@ -1040,7 +1038,7 @@ static void begin_event(sauParser *restrict o,
 	pl->add_wait_ms = pl->carry_wait_ms = 0;
 	if (prev_data != NULL) {
 		sauScriptEvData *pve = prev_data->event;
-		if (prev_data->gen_flags & SAU_SDGEN_NESTED)
+		if (prev_data->is_nested)
 			e->ev_flags |= SAU_SDEV_IMPLICIT_TIME;
 		if (is_compstep) {
 			if (pl->pl_flags & PL_NEW_EVENT_FORK) {
@@ -1136,12 +1134,10 @@ static void begin_list(sauParser *restrict o,
 			get_valr_sub_f(nest->valr_parts) :
 			NULL;
 	list->use_type = use_type;
-	sauScriptObjInfo *info;
 	//if (plist != NULL) {
 	//	list->ref.prev = plist;
 	//} else {
-		info = ObjInfoArr_add(&o->obj_arr, &list->ref,
-				SAU_POBJT_LIST, 0);
+		ObjInfoArr_add(&o->obj_arr, &list->ref, SAU_POBJT_LIST, 0);
 	//}
 	struct NestScope *parent_nest = NestArr_getrev(&o->nest, 1);
 	if (use_type == SAU_MOD_N_carr) {
@@ -1167,7 +1163,6 @@ static void begin_list(sauParser *restrict o,
 			nest->last_mods->ref.next = list;
 		}
 		nest->last_mods = list;
-		info->parent_gen_obj = parent_on->ref.obj_id;
 	}
 }
 
@@ -1190,22 +1185,10 @@ static void begin_gen(sauParser *restrict o,
 	if (pgen != NULL) {
 		gen->ref = pgen->ref;
 		gen->prev_ref = pgen;
-		gen->gen_flags = pgen->gen_flags &
-			(SAU_SDGEN_NESTED | SAU_SDGEN_MULTIPLE);
+		gen->is_nested = pgen->is_nested;
 		gen->time = sauTime_DEFAULT(pgen->time.v_ms,
 				pgen->time.flags & SAU_TIMEP_IMPLICIT);
 		gen->mode.main = pgen->mode.main;
-		if ((pl->pl_flags & PL_BIND_MULTIPLE) != 0) {
-			sauScriptGenData *mpgen = pgen;
-			uint32_t max_time = 0;
-			do {
-				if (max_time < mpgen->time.v_ms)
-					max_time = mpgen->time.v_ms;
-			} while ((mpgen = mpgen->ref.next) != NULL);
-			gen->gen_flags |= SAU_SDGEN_MULTIPLE;
-			gen->time.v_ms = max_time;
-			pl->pl_flags &= ~PL_BIND_MULTIPLE;
-		}
 	} else {
 		/*
 		 * New generator with initial parameter values.
@@ -1213,28 +1196,17 @@ static void begin_gen(sauParser *restrict o,
 		 * Defaults not handled during parsing are not set here.
 		 */
 		bool is_nested = pl->use_type != SAU_MOD_N_carr;
+		gen->is_nested = is_nested;
 		sauScriptObjInfo *info = ObjInfoArr_add(&o->obj_arr, &gen->ref,
 				SAU_POBJT_GEN, type);
 		if (sau_pgen_has_seed(type))
 			gen->seed = info->seed = sau_rand32(&o->sl.math_state);
 		gen->time = sauTime_DEFAULT(o->sl.sopt.def_time_ms, is_nested);
-		info->parent_gen_obj = gen->ref.obj_id;
-		if (is_nested && nest) {
-			sauScriptObjInfo *parent_info =
-				&o->obj_arr.a[nest->list->ref.obj_id];
-			info->parent_gen_obj = parent_info->parent_gen_obj;
-			parent_info = &o->obj_arr.a[info->parent_gen_obj];
-			/* TODO: Not used, is this needed later? */
-			info->has_osc_parent = parent_info->has_osc_parent
-				| sau_pgen_is_osc(parent_info->gen_type);
-		}
 		if (!is_nested) {
 			o->root_gen_obj = gen->ref.obj_id;
 			if (o->sl.sopt.def_chanmix != 0.f)
 				gen->pan = create_range(o,
 						false, SAU_PSWEEP_PAN);
-		} else {
-			gen->gen_flags |= SAU_SDGEN_NESTED;
 		}
 		info->root_gen_obj = o->root_gen_obj;
 		if (pl->used_ampmult != 1.f)
@@ -1288,11 +1260,7 @@ static void enter_level(sauParser *restrict o,
 			pl->scope = parent_pl->scope;
 		pl->event = parent_pl->event;
 		pl->gen = parent_pl->gen;
-		if (newscope == SCOPE_BIND) {
-			struct NestScope *nest = NestArr_tip(&o->nest);
-			nest->list = sau_mpalloc(o->mp, sizeof(*nest->list));
-			pl->sub_f = NULL;
-		} else if (newscope == SCOPE_NEST) {
+		if (newscope == SCOPE_NEST) {
 			struct NestScope *nest = NestArr_tip(&o->nest);
 			begin_list(o, NULL, use_type);
 			/*
@@ -1328,7 +1296,6 @@ static void leave_level(sauParser *restrict o) {
 	}
 	if (pl->scope == SCOPE_GROUP) {
 		end_event(o);
-	} else if (pl->scope == SCOPE_BIND) {
 	} else if (pl->scope == SCOPE_NEST) {
 		struct NestScope *nest = NestArr_tip(&o->nest);
 		/*
@@ -1840,7 +1807,7 @@ static uint8_t parse_gen_amp(sauParser *restrict o) {
 static bool parse_gen_chanmix(sauParser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
 	sauScriptGenData *gen = pl->gen;
-	if (gen->gen_flags & SAU_SDGEN_NESTED)
+	if (gen->is_nested)
 		return true; // reject, lacks parameter
 	return parse_par_modranges(o, scan_chanmix_const, &gen->pan, false,
 			SAU_PSWEEP_PAN, SAU_MOD_N_c_am);
@@ -1854,7 +1821,7 @@ static bool parse_gen_chanmix(sauParser *restrict o) {
 static bool parse_gen_freq(sauParser *restrict o, bool rel_freq) {
 	struct ParseLevel *pl = o->cur_pl;
 	sauScriptGenData *gen = pl->gen;
-	if (rel_freq && !(gen->gen_flags & SAU_SDGEN_NESTED))
+	if (rel_freq && !gen->is_nested)
 		return true; // reject, lacks parameter
 	sauScanNumConst_f num_f = rel_freq ? NULL : scan_note_const;
 	return parse_par_modranges(o, num_f, &gen->freq, rel_freq,
@@ -2099,7 +2066,7 @@ static void parse_in_gen_step(sauParser *restrict o) {
 						o->sl.sopt.def_time_ms, 0);
 				break;
 			case 'i':
-				if (!(gen->gen_flags & SAU_SDGEN_NESTED)) {
+				if (!gen->is_nested) {
 					sauScanner_warning(sc, NULL,
 "ignoring 'ti' (implicit time) for non-nested generator");
 					break;
@@ -2266,21 +2233,6 @@ static bool parse_level(sauParser *restrict o,
 			warn_closing_without_opening(sc, '>', '<');
 			break;
 		case '@': {
-			if (sauScanner_tryc(sc, '[')) {
-				end_gen(o);
-				NestArr_add(&o->nest);
-				if (parse_level(o, pl.use_type, SCOPE_BIND,']'))
-					goto RETURN;
-				struct NestScope *nest = NestArr_pop(&o->nest);
-				if (!nest || !nest->list->first_item) break;
-				pl.pl_flags |= PL_BIND_MULTIPLE;
-				begin_gen(o, nest->list->first_item, false, 0);
-				/*
-				 * Multiple-generator node now open.
-				 */
-				pl.sub_f = parse_in_gen_step;
-				break;
-			}
 			/*
 			 * Label reference (get and use object).
 			 */
@@ -2569,7 +2521,7 @@ static uint32_t time_gen(sauScriptGenData *restrict gen) {
 			gen->time.flags |= SAU_TIMEP_SET; /* use, may adjust */
 		else
 			gen->time.flags |= SAU_TIMEP_DEFAULT;
-	} else if (!(gen->gen_flags & SAU_SDGEN_NESTED)) {
+	} else if (!gen->is_nested) {
 		gen->event->ev_flags |= SAU_SDEV_LOCK_DUR_SCOPE;
 	}
 	for (sauScriptListData *list = gen->mods;
@@ -2655,7 +2607,7 @@ static uint32_t time_event(sauScriptEvData *restrict e) {
 		 * new events for everything), or sublist into event nodes?
 		 */
 		if (!(e->ev_flags & SAU_SDEV_LOCK_DUR_SCOPE)
-		    || !(e_gen->gen_flags & SAU_SDGEN_NESTED)) {
+		    || !e_gen->is_nested) {
 			if (dur_ms < first_time_ms)
 				dur_ms = first_time_ms;
 //			if (dur_ms < nest_dur_ms)
