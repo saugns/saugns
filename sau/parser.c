@@ -1224,6 +1224,7 @@ static void begin_gen(sauParser *restrict o,
 				&o->obj_arr.a[nest->list->ref.obj_id];
 			info->parent_gen_obj = parent_info->parent_gen_obj;
 			parent_info = &o->obj_arr.a[info->parent_gen_obj];
+			/* TODO: Not used, is this needed later? */
 			info->has_osc_parent = parent_info->has_osc_parent
 				| sau_pgen_is_osc(parent_info->gen_type);
 		}
@@ -1245,11 +1246,13 @@ static void begin_gen(sauParser *restrict o,
 			case SAU_PGEN_N_wave:
 				gen->mode.woo = o->sl.sopt.def_woo; break;
 			}
-			bool freq_ratio = is_nested && info->has_osc_parent;
-			if (freq_ratio || o->sl.sopt.def_freq != SAU_PDEF_FREQ)
-				gen->freq = create_range(o,
-						freq_ratio, SAU_PSWEEP_FREQ);
 		}
+		/*
+		 * All audio generators have frequency, not only oscillators.
+		 */
+		if (is_nested || o->sl.sopt.def_freq != SAU_PDEF_FREQ)
+			gen->freq = create_range(o,
+					is_nested, SAU_PSWEEP_FREQ);
 	}
 	link_ev_obj(pl, nest, &gen->ref, &pgen->ref);
 	gen->event = e;
@@ -1843,12 +1846,15 @@ static bool parse_gen_chanmix(sauParser *restrict o) {
 			SAU_PSWEEP_PAN, SAU_MOD_N_c_am);
 }
 
+/*
+ * Parse frequency parameter.
+ *
+ * Accepted for all audio generators, whether oscillators or not.
+ */
 static bool parse_gen_freq(sauParser *restrict o, bool rel_freq) {
 	struct ParseLevel *pl = o->cur_pl;
 	sauScriptGenData *gen = pl->gen;
-	const sauScriptObjInfo *info = &o->obj_arr.a[gen->ref.obj_id];
-	if (!sau_pgen_is_osc(gen->ref.gen_type) ||
-	    (rel_freq && !info->has_osc_parent))
+	if (rel_freq && !(gen->gen_flags & SAU_SDGEN_NESTED))
 		return true; // reject, lacks parameter
 	sauScanNumConst_f num_f = rel_freq ? NULL : scan_note_const;
 	return parse_par_modranges(o, num_f, &gen->freq, rel_freq,
