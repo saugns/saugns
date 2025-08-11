@@ -63,8 +63,9 @@ typedef struct GenBase {
 	uint32_t note_dur; /* time without countdown, from here or carrier */
 	uint8_t type;
 	uint8_t flags;
-	uint8_t cycle_used; /* stored here, used for oscillator only */
+	//uint8_t cycle_used; /* stored here, used for oscillator only */
 	struct ParWithRangeMod amp, pan;
+	struct ParWithRangeMod freq; // here so wrapper gens can pass to nested
 } GenBase;
 
 typedef struct AmpNode {
@@ -78,7 +79,6 @@ typedef struct NoiseGNode {
 
 typedef struct OscBase {
 	GenBase gen;
-	struct ParWithRangeMod freq;
 	const sauProgramIDArr *pmods, *fpmods;
 	struct ParPDSet pd[SAU_PPD_TYPES];
 	struct ParWithRangeMod pm_a;
@@ -305,7 +305,6 @@ static void prepare_gen(sauGenerator *restrict o,
 	if (false)
 	OSC_COMMON: {
 		OscBase *osc = &n->osc;
-		prepare_range(&osc->freq, SAU_PDEF_FREQ, 0.0);
 		for (uint32_t i = 0; i < SAU_PPD_TYPES; ++i) {
 			float def = pd_v_default[i];
 			prepare_range(&osc->pd[i].main, def, def);
@@ -318,6 +317,7 @@ static void prepare_gen(sauGenerator *restrict o,
 	GenBase *gen = &n->gen;
 	prepare_range(&gen->amp, 1.0, 0.0);
 	prepare_range(&gen->pan, 0.0, 0.0);
+	prepare_range(&gen->freq, SAU_PDEF_FREQ, 0.0);
 	gen->type = gd->type;
 	gen->flags = GN_INIT;
 }
@@ -340,7 +340,7 @@ static void update_ids(AnyGen *restrict n,
 	case SAU_MOD_N_carr:     break;
 	CASES_VALR(    c_am,     n->gen.pan)
 	CASES_VALR(    a_am,     n->gen.amp)
-	CASES_VALR(    f_fm,     n->osc.freq)
+	CASES_VALR(    f_fm,     n->gen.freq)
 	case SAU_MOD_N_p_pm:     n->osc.pmods    	= ids->a; break;
 	case SAU_MOD_N_pf_pm:    n->osc.fpmods   	= ids->a; break;
 	CASES_VALR(    pa_pm,    n->osc.pm_a)
@@ -404,7 +404,6 @@ static void update_gen(sauGenerator *restrict o,
 	if (false)
 	OSC_COMMON: {
 		OscBase *osc = &n->osc;
-		update_range(&osc->freq, gd->freq, o->srate);
 		if (gd->pd) for (uint32_t i = 0; i < SAU_PPD_TYPES; ++i) {
 			update_range(&osc->pd[i].main,
 					&gd->pd[i].v, o->srate);
@@ -414,22 +413,6 @@ static void update_gen(sauGenerator *restrict o,
 					&gd->pd[i].p, o->srate);
 		}
 		update_range(&osc->pm_a, gd->pm_a, o->srate);
-		/*for (uint32_t i = 0; i < SAU_PPD_TYPES; ++i) {
-			if (sau_pd_f_is_fmul(i)) continue;
-			struct ParPDSet *pd = &osc->pd[i];
-			const float nop_value = pd_v_default[i];
-			bool pd_f = run_valrange_param(o, o->bufs,
-						0, 0, &pd->freq,
-						NULL, NULL, false, false);
-			bool force_use = pd->main.a.par.v0 != nop_value &&
-				(pd_f ||
-				 pd->freq.a.par.v0 != sau_ftoi(pd->freq.a.par.v0));
-			bool used = run_valrange_param(o, o->bufs,
-						0, 0, &pd->main,
-						NULL, NULL, false, force_use);
-			if (used) n->gen.cycle_used |= 1<<i;
-			else      n->gen.cycle_used &= ~(1<<i);
-		}*/
 	}
 	GenBase *gen = &n->gen;
 	if (params & SAU_PGENP_TIME) {
@@ -446,6 +429,7 @@ static void update_gen(sauGenerator *restrict o,
 	}
 	update_range(&gen->amp, gd->amp, o->srate);
 	update_range(&gen->pan, gd->pan, o->srate);
+	update_range(&gen->freq, gd->freq, o->srate);
 }
 
 /*
@@ -727,10 +711,13 @@ run_block_amp(sauGenerator *restrict o sauMaybeUnused,
 		Buf *restrict bufs, uint32_t len,
 		AnyGen *restrict n sauMaybeUnused,
 		float *restrict parent_freq sauMaybeUnused) {
-	float *out_buf = *(bufs++); // #1
+	// freq #1 (++), tmp #2..3
+	/*float *freq =*/ run_valrange_param(o, bufs++, len, n->gen.note_dur,
+			&n->gen.freq, parent_freq, NULL, true, true);
+	float *out_buf = *(bufs++); // #2
 	for (uint32_t i = 0; i < len; ++i) out_buf[i] = 1.f;
-	bufs++; // amp #2 (++), tmp #3..4 (reserved highest ID returned)
-	return (struct BlockBufIDs){.out_id = 1, .amp_id = 2};
+	bufs++; // amp #3 (++), tmp #4..5 (reserved highest ID returned)
+	return (struct BlockBufIDs){.out_id = 2, .freq_id = 1, .amp_id = 3};
 }
 
 /*
@@ -743,10 +730,13 @@ run_block_noiseg(sauGenerator *restrict o sauMaybeUnused,
 		Buf *restrict bufs, uint32_t len,
 		AnyGen *restrict n,
 		float *restrict parent_freq sauMaybeUnused) {
-	float *out_buf = *(bufs++); // #1
+	// freq #1 (++), tmp #2..3
+	/*float *freq =*/ run_valrange_param(o, bufs++, len, n->gen.note_dur,
+			&n->gen.freq, parent_freq, NULL, true, true);
+	float *out_buf = *(bufs++); // #2
 	sauNoiseG_run(&n->ng.noiseg, out_buf, len);
-	bufs++; // amp #2 (++), tmp #3..4 (reserved highest ID returned)
-	return (struct BlockBufIDs){.out_id = 1, .amp_id = 2};
+	bufs++; // amp #3 (++), tmp #4..5 (reserved highest ID returned)
+	return (struct BlockBufIDs){.out_id = 2, .freq_id = 1, .amp_id = 3};
 }
 
 /*
@@ -761,11 +751,11 @@ run_block_wosc(sauGenerator *restrict o,
 		float *restrict parent_freq) {
 	// freq #1 (++), tmp #2..3
 	float *freq = run_valrange_param(o, bufs++, len, n->gen.note_dur,
-			&n->osc.freq, parent_freq, NULL, true, true);
+			&n->gen.freq, parent_freq, NULL, true, true);
 	void *cycle_buf = *(bufs++); // cycle #2 (++)
 	void *main_buf = *(bufs++); // phase #3 (++) later reused for output
 	float *pm_buf = run_pm_main_params(o, bufs, len, n, freq); // #4
-	if (!n->gen.cycle_used) cycle_buf = NULL;
+	/*if (!n->gen.cycle_used)*/ cycle_buf = NULL;
 	sauPhasor_fill(&n->wo.wosc.phasor, cycle_buf, main_buf, len,
 			freq, pm_buf); // #2 and #3 <- #4
 	for (unsigned i = 0; i < SAU_PPD_TYPES; ++i) {
@@ -813,9 +803,8 @@ run_block_rasg(sauGenerator *restrict o,
 		AnyGen *restrict n,
 		float *restrict parent_freq) {
 	// freq #1 (++), tmp #2..3
-	float *freq = run_valrange_param(o, bufs++,
-			len, n->gen.note_dur, &n->osc.freq,
-			parent_freq, NULL, true, true);
+	float *freq = run_valrange_param(o, bufs++, len, n->gen.note_dur,
+			&n->gen.freq, parent_freq, NULL, true, true);
 	void *cycle_buf = *(bufs++); // cycle #2 (++)
 	void *main_buf = *(bufs++);  // phase #3 (++) later reused for output
 	float *pm_buf = run_pm_main_params(o, bufs, len, n, freq); // #4
