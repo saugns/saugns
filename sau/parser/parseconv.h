@@ -354,8 +354,6 @@ ParseConv_convert_gens(ParseConv *restrict o,
 	if (gen_list) for (sauScriptGenData *gen = gen_list->first_item;
 			gen; gen = gen->ref.next) {
 		if (gen->ref.obj_type != SAU_POBJT_GEN) continue;
-		// TODO: handle multiple generator nodes
-		if ((gen->gen_flags & SAU_SDGEN_MULTIPLE) != 0) continue;
 		sauScriptObjInfo *info;
 		if (!(info = sauGenAlloc_update(&o->ga, objects, gen)))
 			return false;

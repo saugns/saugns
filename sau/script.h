@@ -1,5 +1,5 @@
 /* SAU library: Script file data and functions.
- * Copyright (c) 2011-2012, 2017-2024 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2025 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
@@ -14,14 +14,6 @@
 #pragma once
 #include "program.h"
 
-/**
- * Script data generator flags.
- */
-enum {
-	SAU_SDGEN_NESTED   = 1U<<0,
-	SAU_SDGEN_MULTIPLE = 1U<<1,
-};
-
 /** Info per script data object, shared by all references to the object. */
 typedef struct sauScriptObjInfo {
 	uint8_t obj_type; // type of object described
@@ -29,9 +21,7 @@ typedef struct sauScriptObjInfo {
 	uint16_t last_vo_id; // for voice allocation (objects change voices)
 	uint32_t last_gen_id; // ID for audio generator, if such
 	uint32_t root_gen_obj; // root gen for gen
-	uint32_t parent_gen_obj; // parent gen for any object
 	uint32_t seed; // TODO: divide containing node type
-	bool has_osc_parent;
 } sauScriptObjInfo;
 
 /** Reference to script data object, common data for all subtypes. */
@@ -60,7 +50,7 @@ typedef struct sauScriptGenData {
 	sauScriptObjRef ref;
 	struct sauScriptEvData *event;
 	struct sauScriptGenData *prev_ref; // preceding for same gen(s)
-	uint32_t gen_flags;
+	bool is_nested;
 	/* generator parameters */
 	uint32_t params;
 	sauTime time;
