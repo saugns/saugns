@@ -8,6 +8,12 @@ Pre-release
 -----------
 
 Language changes:
+ * Signal generator types. Allow frequency `f` (and ratio `r`)
+   for all generators, not only oscillators. This allows using
+   `A0[...]` (or `N[...]`) as a wrapper generator and giving
+   it timed pitch changes, to control nested oscillators
+   inside (which can use `r`). Useful for FM and additive
+   sound design, with several carriers per voice.
  * Line types. More exp/log types with steepness not 6.
     - Add `exp11`, `log11`, `xpe11`, `lge11`. Steepness 11.
  * Modulation with value ranges. Tweak semantics, and add
