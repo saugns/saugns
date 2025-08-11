@@ -962,14 +962,6 @@ Modulation with value ranges:
 		If `a` has a higher frequency it may be audibly half-wave
 		rectified, full-wave rectified, or some blend of the two.)
 
-Parameters and object binding:
-	When specifying or referencing objects within "@[...]", any
-	parameters set following the closing ']' will be bound to and apply
-	to all of them.
-		Significantly, this allows multiple carriers (given within
-	the []) to be linked to the same modulator(s), whether for FM, PM,
-	or AM/RM. (Note: Support for this is experimental and incomplete.)
-
 Variables:
 	Variables hold numbers and can be used in numerical expressions.
 	They can be assigned to several times.
