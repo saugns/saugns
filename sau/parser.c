@@ -899,11 +899,10 @@ static inline bool is_valr_mod_additive(unsigned mod, unsigned valr_first) {
  * Parse level flags.
  */
 enum {
-	PL_BIND_MULTIPLE  = 1<<0, // previous node interpreted as set of nodes
-	PL_NEW_EVENT_FORK = 1<<1,
-	PL_OWN_EV         = 1<<2,
-	PL_OWN_GEN        = 1<<3,
-	PL_WARN_NOSPACE   = 1<<4,
+	PL_NEW_EVENT_FORK = 1<<0,
+	PL_OWN_EV         = 1<<1,
+	PL_OWN_GEN        = 1<<2,
+	PL_WARN_NOSPACE   = 1<<3,
 };
 
 /*
@@ -1190,22 +1189,10 @@ static void begin_gen(sauParser *restrict o,
 	if (pgen != NULL) {
 		gen->ref = pgen->ref;
 		gen->prev_ref = pgen;
-		gen->gen_flags = pgen->gen_flags &
-			(SAU_SDGEN_NESTED | SAU_SDGEN_MULTIPLE);
+		gen->gen_flags = pgen->gen_flags & (SAU_SDGEN_NESTED);
 		gen->time = sauTime_DEFAULT(pgen->time.v_ms,
 				pgen->time.flags & SAU_TIMEP_IMPLICIT);
 		gen->mode.main = pgen->mode.main;
-		if ((pl->pl_flags & PL_BIND_MULTIPLE) != 0) {
-			sauScriptGenData *mpgen = pgen;
-			uint32_t max_time = 0;
-			do {
-				if (max_time < mpgen->time.v_ms)
-					max_time = mpgen->time.v_ms;
-			} while ((mpgen = mpgen->ref.next) != NULL);
-			gen->gen_flags |= SAU_SDGEN_MULTIPLE;
-			gen->time.v_ms = max_time;
-			pl->pl_flags &= ~PL_BIND_MULTIPLE;
-		}
 	} else {
 		/*
 		 * New generator with initial parameter values.
@@ -2265,21 +2252,6 @@ static bool parse_level(sauParser *restrict o,
 			warn_closing_without_opening(sc, '>', '<');
 			break;
 		case '@': {
-			if (sauScanner_tryc(sc, '[')) {
-				end_gen(o);
-				NestArr_add(&o->nest);
-				if (parse_level(o, pl.use_type, SCOPE_BIND,']'))
-					goto RETURN;
-				struct NestScope *nest = NestArr_pop(&o->nest);
-				if (!nest || !nest->list->first_item) break;
-				pl.pl_flags |= PL_BIND_MULTIPLE;
-				begin_gen(o, nest->list->first_item, false, 0);
-				/*
-				 * Multiple-generator node now open.
-				 */
-				pl.sub_f = parse_in_gen_step;
-				break;
-			}
 			/*
 			 * Label reference (get and use object).
 			 */

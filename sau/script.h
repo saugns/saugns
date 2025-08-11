@@ -19,7 +19,6 @@
  */
 enum {
 	SAU_SDGEN_NESTED   = 1U<<0,
-	SAU_SDGEN_MULTIPLE = 1U<<1,
 };
 
 /** Info per script data object, shared by all references to the object. */
