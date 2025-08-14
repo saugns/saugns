@@ -1359,7 +1359,7 @@ static bool parse_so_amp(sauParser *restrict o) {
 	if (scan_num(sc, NULL, &val)) {
 		// amod lists with summing inherit outer value
 		if (is_valr_mod_additive(pl->use_type, SAU_MOD_N_a_am))
-			val *= nest->sopt_save.ampmult;
+			val *= nest->sopt_save.def_ampmult;
 		o->sl.sopt.def_ampmult = val;
 	}
 	switch ((c = sauScanner_getc_after(sc, '.'))) {

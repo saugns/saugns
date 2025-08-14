@@ -24,6 +24,10 @@ Language changes:
    options `.r`, `.e`, and/or `.a` can be used -- concatenated
    in the order listed, with any left out. For example, just
    one of them, or `.r.e`.
+ * Fix `S a` when placed in additive AM list. (A typo in the
+   code prevented multiplication by outer level setting from
+   working, muting sound for generators after in scope
+   instead.)
  * Frequencies as notes. Slightly tweak JI quartertones used.
 
 v0.5.1 (2025-02-16)
