@@ -4,8 +4,8 @@ saugns version changes
 [On the website](https://sau.frama.io/changes.html#saulang)
 is a shorter change log with only the SAU language changes.
 
-Pre-release
------------
+v0.5.2 (2025-08-27)
+-------------------
 
 Language changes:
  * Signal generator types. Allow frequency `f` (and ratio `r`)
