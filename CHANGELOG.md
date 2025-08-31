@@ -7,7 +7,9 @@ is a shorter change log with only the SAU language changes.
 Pre-release
 -----------
 
-[rebase in progress]
+Simplify parsing code and semantics before audio generation.
+One less set of data structures, don't copy and "convert".
+No functional change.
 
 v0.5.2 (2025-08-27)
 -------------------

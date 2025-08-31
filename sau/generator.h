@@ -12,12 +12,12 @@
  */
 
 #pragma once
-#include "program.h"
+#include "parse.h"
 
 struct sauGenerator;
 typedef struct sauGenerator sauGenerator;
 
-sauGenerator* sau_create_Generator(const sauProgram *restrict prg,
+sauGenerator* sau_create_Generator(const sauParse *restrict prg,
 		uint32_t srate) sauMalloclike;
 void sau_destroy_Generator(sauGenerator *restrict o);
 

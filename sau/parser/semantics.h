@@ -1,4 +1,4 @@
-/* SAU library: Parse result to audio program converter.
+/* SAU library: Extra semantics handling code for parser.
  * Copyright (c) 2011-2012, 2017-2025 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
@@ -15,7 +15,7 @@
 #include <stdio.h>
 
 /*
- * Program construction from parse data.
+ * Handle and calculate some info from part of parsed data.
  *
  * Allocation of events, voices, generators.
  */
@@ -71,8 +71,8 @@ sauArrType(sauVoAlloc, sauVoAllocState, _)
  */
 static sauVoAllocState *
 sauVoAlloc_update(sauVoAlloc *restrict va,
-		sauScriptObjInfo *restrict info_a,
-		sauScriptEvData *restrict e) {
+		sauParseObjInfo *restrict info_a,
+		sauParseEvData *restrict e) {
 	uint32_t vo_id, obj_id;
 	/*
 	 * Count down remaining durations before voice reuse.
@@ -86,8 +86,8 @@ sauVoAlloc_update(sauVoAlloc *restrict va,
 	/*
 	 * Use voice without change if possible.
 	 */
-	sauScriptGenData *obj = e->main_obj;
-	sauScriptObjInfo *info = &info_a[(obj_id = obj->ref.obj_id)];
+	sauParseGenData *obj = e->main_obj;
+	sauParseObjInfo *info = &info_a[(obj_id = obj->ref.obj_id)];
 	sauVoAllocState *vas;
 	if (obj->prev_ref) {
 		info = &info_a[(obj_id = info->root_gen_obj)];
@@ -97,14 +97,14 @@ sauVoAlloc_update(sauVoAlloc *restrict va,
 			goto PRESERVED;
 		}
 	}
-	e->ev_flags |= SAU_SDEV_ASSIGN_VOICE; // now new, renumbered, or reused
+	e->ev_flags |= SAU_PEV_ASSIGN_VOICE; // now new, renumbered, or reused
 	/*
 	 * Reuse first lowest free voice (duration expired), if any.
 	 */
 	for (size_t id = 0; id < va->count; ++id) {
 		vas = &va->a[id];
 		if (vas->duration_ms == 0) {
-			sauScriptObjInfo *old_info = &info_a[vas->obj_id];
+			sauParseObjInfo *old_info = &info_a[vas->obj_id];
 			old_info->last_vo_id = SAU_PVO_NO_ID; // renumber on use
 			*vas = (sauVoAllocState){0};
 			vo_id = id;
@@ -118,7 +118,7 @@ RECYCLED:
 	info->last_vo_id = vo_id;
 	vas->obj_id = obj_id;
 PRESERVED:
-	if ((e->ev_flags & SAU_SDEV_VOICE_SET_DUR) != 0)
+	if ((e->ev_flags & SAU_PEV_VOICE_SET_DUR) != 0)
 		vas->duration_ms = e->dur_ms;
 	obj->ref.vo_id = vo_id;
 	return vas;
@@ -150,13 +150,13 @@ sauArrType(sauGenAlloc, sauGenAllocState, _)
  *
  * Only valid to call for single-generator nodes.
  *
- * \return sauScriptObjInfo, or NULL on allocation failure
+ * \return sauParseObjInfo, or NULL on allocation failure
  */
-static sauScriptObjInfo *
+static sauParseObjInfo *
 sauGenAlloc_update(sauGenAlloc *restrict o,
-		sauScriptObjInfo *restrict info_a,
-		const sauScriptGenData *restrict gd) {
-	sauScriptObjInfo *info = &info_a[gd->ref.obj_id];
+		sauParseObjInfo *restrict info_a,
+		const sauParseGenData *restrict gd) {
+	sauParseObjInfo *info = &info_a[gd->ref.obj_id];
 	if (!gd->prev_ref) {
 		uint32_t gen_id = o->count;
 		sauGenAllocState *gas = _sauGenAlloc_add(o);
@@ -177,8 +177,6 @@ static inline void
 sauGenAlloc_clear(sauGenAlloc *restrict o) {
 	_sauGenAlloc_clear(o);
 }
-
-sauArrType(sauPEvArr, sauProgramEvent, )
 
 sauArrType(IDsArr, sauProgramIDs, )
 
@@ -209,24 +207,24 @@ sau_fini_VoiceGraph(sauVoiceGraph *restrict o);
 
 static bool
 sauVoiceGraph_set(sauVoiceGraph *restrict o,
-		sauProgramEvent *restrict ev,
+		sauParseEvData *restrict ev,
 		sauMempool *restrict mp);
 
-sauArrType(GenDataArr, sauProgramGenData, _)
+sauArrType(GenDataArr, sauParseGenData*, _)
 
-typedef struct ParseConv {
-	sauPEvArr ev_arr;
+typedef struct ParseSem {
 	sauGenAlloc ga;
-	sauProgramEvent *ev;
+	sauParseEvData *ev;
+	size_t ev_count;
 	sauVoiceGraph ev_vo_graph;
 	GenDataArr ev_gen_data;
 	IDsArr ev_ids;
 	sauMempool *mp;
 	sauVoAlloc va;
 	uint32_t tot_dur_ms;
-} ParseConv;
+} ParseSem;
 
-#define ParseConv_sum_dur_ms(o, add_ms) ((o)->tot_dur_ms += (add_ms))
+#define ParseSem_sum_dur_ms(o, add_ms) ((o)->tot_dur_ms += (add_ms))
 
 /*
  * Add last duration (greatest remaining duration for a voice) to counter.
@@ -234,20 +232,20 @@ typedef struct ParseConv {
  * \return duration in ms
  */
 static uint32_t
-ParseConv_end_dur_ms(ParseConv *restrict o) {
+ParseSem_end_dur_ms(ParseSem *restrict o) {
 	uint32_t remaining_ms = 0;
 	for (size_t i = 0; i < o->va.count; ++i) {
 		sauVoAllocState *vas = &o->va.a[i];
 		if (vas->duration_ms > remaining_ms)
 			remaining_ms = vas->duration_ms;
 	}
-	return ParseConv_sum_dur_ms(o, remaining_ms);
+	return ParseSem_sum_dur_ms(o, remaining_ms);
 }
 
 static uint32_t
-ParseConv_count_list(const sauScriptListData *restrict list_in) {
+ParseSem_count_list(const sauParseListData *restrict list_in) {
 	uint32_t count = 0;
-	for (sauScriptGenData *gen = list_in->first_item;
+	for (sauParseGenData *gen = list_in->first_item;
 			gen; gen = gen->ref.next) {
 		if (gen->ref.obj_type != SAU_POBJT_GEN) continue;
 		++count;
@@ -256,10 +254,10 @@ ParseConv_count_list(const sauScriptListData *restrict list_in) {
 }
 
 static sauNoinline const sauProgramIDArr *
-ParseConv_convert_list(ParseConv *restrict o,
-		sauScriptObjInfo *restrict objects,
-		const sauScriptListData *restrict list_in) {
-	uint32_t count = ParseConv_count_list(list_in);
+ParseSem_handle_list(ParseSem *restrict o,
+		sauParseObjInfo *restrict objects,
+		const sauParseListData *restrict list_in) {
+	uint32_t count = ParseSem_count_list(list_in);
 	if (!count)
 		return &blank_idarr;
 	sauProgramIDArr *idarr = sau_mpalloc(o->mp,
@@ -268,52 +266,39 @@ ParseConv_convert_list(ParseConv *restrict o,
 		return NULL;
 	idarr->count = count;
 	uint32_t i = 0;
-	for (sauScriptGenData *gen = list_in->first_item;
+	for (sauParseGenData *gen = list_in->first_item;
 			gen; gen = gen->ref.next) {
 		if (gen->ref.obj_type != SAU_POBJT_GEN) continue;
-		sauScriptObjInfo *info = &objects[gen->ref.obj_id];
+		sauParseObjInfo *info = &objects[gen->ref.obj_id];
 		idarr->ids[i++] = info->last_gen_id;
 	}
 	return idarr;
 }
 
 /*
- * Convert data for a generator node to program generator data,
- * adding it to the list to be used for the current program event.
+ * Handle generator data node (and recurse for its lists in turn),
+ * listing it among those in the current event.
  *
  * \return true, or false on allocation failure
  */
 static bool
-ParseConv_convert_gendata(ParseConv *restrict o,
-		sauScriptObjInfo *restrict objects,
-		const sauScriptGenData *restrict gen,
-		uint8_t use_type,
-		const sauScriptObjInfo *restrict info) {
+ParseSem_handle_gendata(ParseSem *restrict o,
+		sauParseObjInfo *restrict objects,
+		sauParseGenData *restrict gen,
+		const sauParseObjInfo *restrict info) {
 	uint32_t gen_id = info->last_gen_id;
+	gen->id = gen_id;
+	sauParseGenData **gen_a = _GenDataArr_add(&o->ev_gen_data);
+	if (!gen_a) goto MEM_ERR;
+	*gen_a = gen;
 	sauGenAllocState *gas = &o->ga.a[gen_id];
-	sauProgramGenData *ogd = _GenDataArr_push(&o->ev_gen_data, NULL);
-	if (!ogd) goto MEM_ERR;
-	ogd->id = gen_id;
-	ogd->params = gen->params;
-	ogd->time = gen->time;
-	ogd->amp = gen->amp;
-	ogd->pan = gen->pan;
-	ogd->freq = gen->freq;
-	ogd->pm_a = gen->pm_a;
-	ogd->pd = gen->pd;
-	ogd->phase = gen->phase;
-	ogd->use_type = use_type;
-	/* TODO: separation of types */
-	ogd->type = info->gen_type;
-	ogd->seed = gen->seed;
-	ogd->mode = gen->mode;
 	sauVoAllocState *vas = &o->va.a[o->ev->vo_id];
 	const sauProgramIDArr *mods[SAU_MOD_NAMED - 1] = {0}; // node's only
-	for (sauScriptListData *in_list = gen->mods;
+	for (sauParseListData *in_list = gen->mods;
 			in_list != NULL; in_list = in_list->ref.next) {
 		int type = in_list->use_type - 1;
 		const sauProgramIDArr *arr;
-		if (!(arr = ParseConv_convert_list(o, objects, in_list)))
+		if (!(arr = ParseSem_handle_list(o, objects, in_list)))
 			goto MEM_ERR;
 		if (in_list->append) {
 			if (arr == &blank_idarr) continue; // omit no-op
@@ -333,8 +318,8 @@ ParseConv_convert_gendata(ParseConv *restrict o,
 		ids->a = mods[i];
 		ids->use = i + 1;
 	}
-	ogd->mod_count = o->ev_ids.count;
-	IDsArr_mpmemdup(&o->ev_ids, (sauProgramIDs**) &ogd->mods, o->mp);
+	gen->mod_count = o->ev_ids.count;
+	IDsArr_mpmemdup(&o->ev_ids, (sauProgramIDs**) &gen->mods_idarr, o->mp);
 	return true;
 MEM_ERR:
 	return false;
@@ -348,23 +333,22 @@ MEM_ERR:
  * \return true, or false on allocation failure
  */
 static bool
-ParseConv_convert_gens(ParseConv *restrict o,
-		sauScriptObjInfo *restrict objects,
-		sauScriptListData *restrict gen_list, bool link) {
-	if (gen_list) for (sauScriptGenData *gen = gen_list->first_item;
+ParseSem_handle_gens(ParseSem *restrict o,
+		sauParseObjInfo *restrict objects,
+		sauParseListData *restrict gen_list, bool link) {
+	if (gen_list) for (sauParseGenData *gen = gen_list->first_item;
 			gen; gen = gen->ref.next) {
 		if (gen->ref.obj_type != SAU_POBJT_GEN) continue;
-		sauScriptObjInfo *info;
+		sauParseObjInfo *info;
 		if (!(info = sauGenAlloc_update(&o->ga, objects, gen)))
 			return false;
-		for (sauScriptListData *in_list = gen->mods;
+		for (sauParseListData *in_list = gen->mods;
 				in_list != NULL; in_list = in_list->ref.next) {
-			if (!ParseConv_convert_gens(o, objects, in_list, link))
+			if (!ParseSem_handle_gens(o, objects, in_list, link))
 				return false;
 		}
 		if (link &&
-		    !ParseConv_convert_gendata(o, objects, gen,
-			    gen_list->use_type, info))
+		    !ParseSem_handle_gendata(o, objects, gen, info))
 			return false;
 	}
 	return true;
@@ -375,7 +359,7 @@ ParseConv_convert_gens(ParseConv *restrict o,
  */
 static sauVoAllocState *
 sauVoiceGraph_prepare(sauVoiceGraph *restrict o,
-		sauScriptObjRef *restrict obj) {
+		sauParseObjRef *restrict obj) {
 	sauVoAllocState *vas = &o->va->a[obj->vo_id];
 	vas->flags &= ~SAU_VAS_SET_GRAPH;
 	return vas;
@@ -445,7 +429,7 @@ sauVoiceGraph_handle_gen_node(sauVoiceGraph *restrict o,
  */
 static bool
 sauVoiceGraph_set(sauVoiceGraph *restrict o,
-		sauProgramEvent *restrict ev,
+		sauParseEvData *restrict ev,
 		sauMempool *restrict mp) {
 	sauVoAllocState *vas = &o->va->a[ev->vo_id];
 	if (!(vas->flags & SAU_VAS_HAS_CARR)) goto DONE;
@@ -470,21 +454,20 @@ sau_fini_VoiceGraph(sauVoiceGraph *restrict o) {
 }
 
 /*
- * Convert all voice and generator data for a parse event node into a
- * series of output events.
+ * Handle all voice and generator data for a parse event node.
  *
- * This is the "main" per-event conversion function.
+ * This is the "main" per-event semantics handling function.
  *
  * \return true, or false on allocation failure
  */
 static bool
-ParseConv_convert_event(ParseConv *restrict o,
-		sauScriptObjInfo *restrict objects,
-		sauScriptEvData *restrict e) {
-	sauScriptObjRef *obj = e->main_obj;
+ParseSem_handle_event(ParseSem *restrict o,
+		sauParseObjInfo *restrict objects,
+		sauParseEvData *restrict e) {
+	sauParseObjRef *obj = e->main_obj;
 	switch (obj->obj_type) {
 	case SAU_POBJT_LIST:
-		if (!ParseConv_convert_gens(o, objects, (void*)obj, false))
+		if (!ParseSem_handle_gens(o, objects, (void*)obj, false))
 			goto MEM_ERR;
 		return true;
 	case SAU_POBJT_GEN:
@@ -493,30 +476,28 @@ ParseConv_convert_event(ParseConv *restrict o,
 		return true; /* no handling yet */
 	}
 	sauVoAllocState *vas = sauVoiceGraph_prepare(&o->ev_vo_graph, obj);
-	sauProgramEvent *out_ev = sauPEvArr_add(&o->ev_arr);
-	if (!out_ev) goto MEM_ERR;
-	out_ev->wait_ms = e->wait_ms;
-	out_ev->vo_id = obj->vo_id;
-	o->ev = out_ev;
-	sauScriptListData e_objs = {0};
+	e->vo_id = obj->vo_id;
+	o->ev = e;
+	++o->ev_count;
+	sauParseListData e_objs = {0};
 	e_objs.first_item = obj;
-	if (!ParseConv_convert_gens(o, objects, &e_objs, true)) goto MEM_ERR;
+	if (!ParseSem_handle_gens(o, objects, &e_objs, true)) goto MEM_ERR;
 	if (o->ev_gen_data.count > 0) {
 		if (!_GenDataArr_mpmemdup(&o->ev_gen_data,
-					(sauProgramGenData**) &out_ev->gen_data,
+					(sauParseGenData***) &e->gen_data,
 					o->mp)) goto MEM_ERR;
-		out_ev->gen_data_count = o->ev_gen_data.count;
+		e->gen_data_count = o->ev_gen_data.count;
 		o->ev_gen_data.count = 0; // reuse allocation
 	}
-	if (e->ev_flags & SAU_SDEV_ASSIGN_VOICE) {
-		sauScriptObjInfo *info = &objects[obj->obj_id];
+	if (e->ev_flags & SAU_PEV_ASSIGN_VOICE) {
+		sauParseObjInfo *info = &objects[obj->obj_id];
 		info = &objects[info->root_gen_obj]; // for carrier
 		vas->flags |= SAU_VAS_HAS_CARR | SAU_VAS_SET_GRAPH;
 		vas->carr_gen_id = info->last_gen_id;
 	}
-	out_ev->carr_gen_id = vas->carr_gen_id;
+	e->carr_gen_id = vas->carr_gen_id;
 	if ((vas->flags & SAU_VAS_SET_GRAPH) != 0) {
-		if (!sauVoiceGraph_set(&o->ev_vo_graph, out_ev, o->mp))
+		if (!sauVoiceGraph_set(&o->ev_vo_graph, e, o->mp))
 			goto MEM_ERR;
 	}
 	return true;
@@ -530,8 +511,8 @@ MEM_ERR:
  * \return true, unless invalid data detected
  */
 static bool
-ParseConv_check_validity(ParseConv *restrict o,
-		sauScript *restrict parse) {
+ParseSem_check_validity(ParseSem *restrict o,
+		sauParse *restrict parse) {
 	bool error = false;
 	if (o->va.count > SAU_PVO_MAX_ID) {
 		fprintf(stderr,
@@ -548,39 +529,8 @@ ParseConv_check_validity(ParseConv *restrict o,
 	return !error;
 }
 
-static sauProgram *
-ParseConv_create_program(ParseConv *restrict o,
-		sauScript *restrict parse) {
-	sauProgram *prg = sau_mpalloc(o->mp, sizeof(sauProgram));
-	if (!prg) goto MEM_ERR;
-	if (!sauPEvArr_mpmemdup(&o->ev_arr,
-				(sauProgramEvent**) &prg->events, o->mp))
-		goto MEM_ERR;
-	prg->ev_count = o->ev_arr.count;
-	prg->ampmult = parse->sopt.ampmult;
-	if (isnan(parse->sopt.ampmult)) {
-		/*
-		 * Enable amplitude scaling (division) by voice count,
-		 * handled by audio generator.
-		 */
-		prg->ampmult = 1.f;
-		prg->mode |= SAU_PMODE_AMP_DIV_VOICES;
-	}
-	prg->vo_count = o->va.count;
-	prg->gen_count = o->ga.count;
-	prg->gen_nest_depth = o->ev_vo_graph.gen_nest_max;
-	prg->duration_ms = o->tot_dur_ms;
-	prg->name = parse->name;
-	prg->mp = o->mp;
-	prg->parse = parse;
-	o->mp = NULL; // don't destroy
-	return prg;
-MEM_ERR:
-	return NULL;
-}
-
 static bool
-init_ParseConv(ParseConv *restrict o,
+init_ParseSem(ParseSem *restrict o,
 		sauMempool *restrict mp) {
 	o->mp = mp;
 	sau_init_VoiceGraph(&o->ev_vo_graph, &o->va, &o->ga);
@@ -588,26 +538,35 @@ init_ParseConv(ParseConv *restrict o,
 }
 
 /*
- * Build program using the gathered data, after conversion calls.
+ * Fill in final data, and clean up.
  */
-static sauProgram *
-fini_ParseConv(ParseConv *restrict o,
-		sauScript *restrict parse) {
-	sauProgram *prg = NULL;
-	if (ParseConv_check_validity(o, parse)) {
-		if (!(prg = ParseConv_create_program(o, parse))) goto MEM_ERR;
-	}
-	if (false)
-	MEM_ERR: {
-		sau_error("parseconv", "memory allocation failure");
+static sauParse *
+fini_ParseSem(ParseSem *restrict o,
+		sauParse *restrict parse) {
+	bool ok;
+	if ((ok = ParseSem_check_validity(o, parse))) {
+		parse->ev_count = o->ev_count;
+		if (isnan(parse->sopt.ampmult)) {
+			/*
+			 * Enable amplitude scaling (division) by voice count,
+			 * handled by audio generator.
+			 */
+			parse->is_amp_autoscaled = true;
+		} else {
+			parse->is_ampmult_set = true;
+		}
+		parse->vo_count = o->va.count;
+		parse->gen_count = o->ga.count;
+		parse->gen_nest_depth = o->ev_vo_graph.gen_nest_max;
+		parse->duration_ms = o->tot_dur_ms;
+		parse->mp = o->mp;
 	}
 	sau_fini_VoiceGraph(&o->ev_vo_graph);
 	_GenDataArr_clear(&o->ev_gen_data);
 	IDsArr_clear(&o->ev_ids);
 	sauGenAlloc_clear(&o->ga);
 	_sauVoAlloc_clear(&o->va);
-	sauPEvArr_clear(&o->ev_arr);
-	return prg;
+	return ok ? parse : NULL;
 }
 
 static sauNoinline void
@@ -671,9 +630,9 @@ print_range(const sauRange *restrict r, char c) {
 	case SAU_PGEN_N_##NAME: type = LABELC; break;
 
 static void
-print_genline(const sauProgramGenData *restrict gd) {
+print_genline(const sauParseGenData *restrict gd) {
 	char type = '?';
-	switch (gd->type) {
+	switch (gd->ref.gen_type) {
 	SAU_PGEN__ITEMS(SAU_PGEN__X_CASE)
 	}
 	if (gd->time.flags & SAU_TIMEP_IMPLICIT) {
@@ -694,7 +653,7 @@ static const char *const mods_syntax[SAU_MOD_NAMED] = {
  * Print information about program contents. Useful for debugging.
  */
 void
-sauProgram_print_info(const sauProgram *restrict o) {
+sauParse_print_info(const sauParse *restrict o) {
 	sau_printf("Program: \"%s\"\n"
 		"\tDuration:\t%u ms\n"
 		"\tEvents:  \t%zu\n"
@@ -705,8 +664,8 @@ sauProgram_print_info(const sauProgram *restrict o) {
 		o->ev_count,
 		o->vo_count,
 		o->gen_count);
-	for (size_t ev_id = 0; ev_id < o->ev_count; ++ev_id) {
-		const sauProgramEvent *ev = &o->events[ev_id];
+	size_t ev_id = 0;
+	for (const sauParseEvData *ev = o->events; ev; ev = ev->next) {
 		sau_printf(
 			"/%u \tEV %zu \t(VO %hu)",
 			ev->wait_ms, ev_id, ev->vo_id);
@@ -716,13 +675,14 @@ sauProgram_print_info(const sauProgram *restrict o) {
 			print_genlist(ev->gen_list, ev->gen_count);
 		}
 		for (size_t i = 0; i < ev->gen_data_count; ++i) {
-			const sauProgramGenData *gd = &ev->gen_data[i];
+			const sauParseGenData *gd = ev->gen_data[i];
 			print_genline(gd);
 			for (uint32_t i = 0; i < gd->mod_count; ++i) {
-				const sauProgramIDs *ids = &gd->mods[i];
+				const sauProgramIDs *ids = &gd->mods_idarr[i];
 				print_linked(mods_syntax[ids->use], ids->a);
 			}
 		}
 		sau_printf("\n");
+		++ev_id;
 	}
 }

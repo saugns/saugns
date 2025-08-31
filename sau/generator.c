@@ -118,7 +118,7 @@ typedef struct VoiceNode {
 
 typedef struct EventNode {
 	uint32_t wait;
-	const sauProgramEvent *prg_event;
+	const sauParseEvData *prg_event;
 } EventNode;
 
 /*
@@ -150,7 +150,7 @@ struct sauGenerator {
 #define MIX_BUFS 2
 
 static bool alloc_for_program(sauGenerator *restrict o,
-		const sauProgram *restrict prg) {
+		const sauParse *restrict prg) {
 	size_t i;
 
 	i = prg->ev_count;
@@ -192,7 +192,7 @@ static const float pd_v_default[SAU_PPD_TYPES] = {
 };
 
 static bool convert_program(sauGenerator *restrict o,
-		const sauProgram *restrict prg, uint32_t srate) {
+		const sauParse *restrict prg, uint32_t srate) {
 	if (!alloc_for_program(o, prg))
 		return false;
 
@@ -202,15 +202,16 @@ static bool convert_program(sauGenerator *restrict o,
 	 */
 	int ev_time_carry = 0;
 	o->srate = srate;
-	o->amp_scale = 0.5f * prg->ampmult; // half for panning sum
-	if ((prg->mode & SAU_PMODE_AMP_DIV_VOICES) != 0)
-		o->amp_scale /= o->vo_count;
+	float ampmult = prg->is_ampmult_set ? prg->sopt.ampmult : 1.f;
+	o->amp_scale = 0.5f * ampmult; // half for panning sum
+	if (prg->is_amp_autoscaled) o->amp_scale /= o->vo_count;
+	const sauParseEvData *prg_e = prg->events;
 	for (size_t i = 0; i < prg->ev_count; ++i) {
-		const sauProgramEvent *prg_e = &prg->events[i];
 		EventNode *e = &o->events[i];
 		e->wait = sau_ms_in_samples(prg_e->wait_ms, srate,
 				&ev_time_carry);
 		e->prg_event = prg_e;
+		prg_e = prg_e->next;
 	}
 
 	return true;
@@ -219,7 +220,7 @@ static bool convert_program(sauGenerator *restrict o,
 /**
  * Create instance for program \p prg and sample rate \p srate.
  */
-sauGenerator* sau_create_Generator(const sauProgram *restrict prg,
+sauGenerator* sau_create_Generator(const sauParse *restrict prg,
 		uint32_t srate) {
 	sauMempool *mem = sau_create_Mempool(0);
 	if (!mem)
@@ -288,9 +289,9 @@ prepare_range(struct ParWithRangeMod *restrict rm, float v0, float vt) {
  */
 static void prepare_gen(sauGenerator *restrict o,
 		AnyGen *restrict n,
-		const sauProgramGenData *restrict gd) {
+		const sauParseGenData *restrict gd) {
 	*n = (AnyGen){0};
-	switch (gd->type) {
+	switch (gd->ref.gen_type) {
 	case SAU_PGEN_N_amp: break;
 	case SAU_PGEN_N_noise: break;
 	case SAU_PGEN_N_wave: {
@@ -318,7 +319,7 @@ static void prepare_gen(sauGenerator *restrict o,
 	prepare_range(&gen->amp, 1.0, 0.0);
 	prepare_range(&gen->pan, 0.0, 0.0);
 	prepare_range(&gen->freq, SAU_PDEF_FREQ, 0.0);
-	gen->type = gd->type;
+	gen->type = gd->ref.gen_type;
 	gen->flags = GN_INIT;
 }
 
@@ -371,11 +372,11 @@ update_range(struct ParWithRangeMod *restrict rm,
  */
 static void update_gen(sauGenerator *restrict o,
 		AnyGen *restrict n,
-		const sauProgramGenData *restrict gd) {
+		const sauParseGenData *restrict gd) {
 	uint32_t params = gd->params;
 	for (uint32_t i = 0; i < gd->mod_count; ++i)
-		update_ids(n, &gd->mods[i]);
-	switch (gd->type) {
+		update_ids(n, &gd->mods_idarr[i]);
+	switch (gd->ref.gen_type) {
 	case SAU_PGEN_N_amp: break;
 	case SAU_PGEN_N_noise: {
 		NoiseGNode *ng = &n->ng;
@@ -437,7 +438,7 @@ static void update_gen(sauGenerator *restrict o,
  */
 static void handle_event(sauGenerator *restrict o, EventNode *restrict e) {
 	if (1) /* more types to be added in the future */ {
-		const sauProgramEvent *pe = e->prg_event;
+		const sauParseEvData *pe = e->prg_event;
 		/*
 		 * Set state of generator and/or voice.
 		 *
@@ -448,7 +449,7 @@ static void handle_event(sauGenerator *restrict o, EventNode *restrict e) {
 		if (pe->vo_id != SAU_PVO_NO_ID)
 			vn = &o->voices[pe->vo_id];
 		for (size_t i = 0; i < pe->gen_data_count; ++i) {
-			const sauProgramGenData *gd = &pe->gen_data[i];
+			const sauParseGenData *gd = pe->gen_data[i];
 			AnyGen *n = &o->gens[gd->id];
 			if (!(n->gen.flags & GN_INIT))
 				prepare_gen(o, n, gd);
