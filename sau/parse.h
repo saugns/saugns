@@ -319,8 +319,45 @@ typedef struct sauProgramGenRef {
 	uint8_t level; /* > 0 if used as a modulator */
 } sauProgramGenRef;
 
-typedef struct sauProgramGenData {
-	uint32_t id;
+/** Info per script data object, shared by all references to the object. */
+typedef struct sauParseObjInfo {
+	uint8_t obj_type; // type of object described
+	uint8_t gen_type; // type of audio generator, if such
+	uint16_t last_vo_id; // for voice allocation (objects change voices)
+	uint32_t last_gen_id; // ID for audio generator, if such
+	uint32_t root_gen_obj; // root gen for gen
+	uint32_t seed; // TODO: divide containing node type
+} sauParseObjInfo;
+
+/** Reference to script data object, common data for all subtypes. */
+typedef struct sauParseObjRef {
+	uint32_t obj_id; // shared by all references to an object
+	uint8_t obj_type; // included for quick access
+	uint8_t gen_type; // included for quick access
+	uint16_t vo_id; // ID for carrier use, or SAU_PVO_NO_ID
+	void *next; // next in set of objects
+} sauParseObjRef;
+
+/**
+ * Container node for linked list, used for nesting.
+ */
+typedef struct sauParseListData {
+	sauParseObjRef ref;
+	void *first_item;
+	uint8_t use_type;
+	bool append;
+} sauParseListData;
+
+/**
+ * Node type for generator data.
+ */
+typedef struct sauParseGenData {
+	sauParseObjRef ref;
+	struct sauParseEvData *event;
+	struct sauParseGenData *prev_ref; // preceding for same gen(s)
+	bool is_nested;
+	/* generator parameters */
+	uint32_t id; // moved here from old Program type
 	uint32_t params;
 	sauTime time;
 	sauRange *amp, *pan;
@@ -334,49 +371,112 @@ typedef struct sauProgramGenData {
 		sauRasOpt ras;
 		sauWaveOpt woo;
 	} mode;
-	uint8_t use_type; // carrier or modulator use?
-	uint8_t type; // type info, for now
+	sauParseListData *mods; // node adjacents updates
+	/* ID arrays as used by audio generator code */
+	const sauProgramIDs *mods_idarr;
 	uint32_t mods_count; // number of ID arrays
-	const sauProgramIDs *mods;
-} sauProgramGenData;
-
-typedef struct sauProgramEvent {
-	uint32_t wait_ms;
-	uint16_t vo_id;
-	uint32_t carr_gen_id;
-	uint32_t gen_count;
-	uint32_t gen_data_count;
-	const sauProgramGenRef *gen_list; // used for printout
-	const sauProgramGenData *gen_data;
-} sauProgramEvent;
+} sauParseGenData;
 
 /**
- * Program flags affecting interpretation.
+ * Script data event flags.
  */
 enum {
-	SAU_PMODE_AMP_DIV_VOICES = 1<<0,
+	SAU_PEV_ASSIGN_VOICE     = 1U<<0, // numbered voice has new carrier
+	SAU_PEV_VOICE_SET_DUR    = 1U<<1,
+	SAU_PEV_IMPLICIT_TIME    = 1U<<2,
+	SAU_PEV_WAIT_PREV_DUR    = 1U<<3, // compound step timing
+	SAU_PEV_FROM_GAPSHIFT    = 1U<<4, // gapshift follow-on event
+	SAU_PEV_LOCK_DUR_SCOPE   = 1U<<5, // nested data can't lengthen dur
 };
 
+struct sauParseEvBranch;
+
 /**
- * Main program type. Contains everything needed for interpretation.
+ * Node type for event data. Events are placed in time per script contents,
+ * in a nested way during parsing and flattened after for later processing.
+ *
+ * The flow of time and nesting in a script end up two different dimensions
+ * of data. Attached objects introduce (sub)trees of script contents, after
+ * which they may also refer back to just parts of them in follow-on nodes.
+ * (E.g. a tree of carriers and modulators in one event, and then an update
+ * node for a modulator in the next event. An update could add a sub-tree.)
  */
-typedef struct sauProgram {
-	const sauProgramEvent *events;
+typedef struct sauParseEvData {
+	struct sauParseEvData *next;
+	struct sauParseEvBranch *forks;
+	void *main_obj;
+	uint32_t wait_ms;
+	uint32_t dur_ms; // for level at which main object is included
+	uint8_t ev_flags;
+	uint16_t vo_id;
+	uint32_t carr_gen_id;
+	const sauParseGenData **gen_data; // flat per-event list
+	uint32_t gen_data_count;
+	/* for -p printout format (voice graph blocks) */
+	uint32_t gen_count;
+	const sauProgramGenRef *gen_list;
+} sauParseEvData;
+
+/** String and number pair for predefined values passed as arguments. */
+typedef struct sauScriptPredef {
+	const char *key;
+	uint32_t len;
+	double val;
+} sauScriptPredef;
+
+/** Specifies a script to parse (and possibly process further). */
+typedef struct sauScriptArg {
+	const char *str;
+	bool is_path : 1;
+	bool no_time : 1;
+	sauScriptPredef *predef;
+	size_t predef_count;
+} sauScriptArg;
+
+/**
+ * Options set for a script, affecting parsing.
+ *
+ * The final state is included in the parse result.
+ */
+typedef struct sauParseSetOptions {
+	float ampmult; // global amplitude multiplier for whole script
+	float A4_freq; // A4 tuning for frequency as note
+	/* generator parameter default values (use depends on context) */
+	uint32_t def_time_ms;
+	float def_ampmult,
+	      def_freq,
+	      def_relfreq,
+	      def_chanmix;
+	int8_t note_key;
+	uint8_t key_octave;
+	uint8_t key_system;
+	sauRasOpt def_ras;
+	sauWaveOpt def_woo;
+} sauParseSetOptions;
+
+/**
+ * Type returned after processing a file. The data is divided into
+ * two mempools, one specific to the parse and one shared with any
+ * later program data (sauProgram), if built from the same parse.
+ */
+typedef struct sauParse {
+	sauParseEvData *events;
+	sauParseObjInfo *objects; // currently also gen info array
+	sauParseSetOptions sopt;
+	const char *name; // currently simply set to the filename
+	struct sauSymtab *st;
 	size_t ev_count;
-	uint16_t mode;
+	bool is_ampmult_set : 1;
+	bool is_amp_autoscaled : 1;
+	uint8_t gen_nest_depth;
 	uint16_t vo_count;
 	uint32_t gen_count;
-	uint8_t gen_nest_depth;
+	uint32_t object_count;
 	uint32_t duration_ms;
-	float ampmult;
-	const char *name;
 	struct sauMempool *mp; // holds memory for the specific program
-	struct sauScript *parse; // parser output used to build program
-} sauProgram;
+} sauParse;
 
-struct sauScript;
-struct sauScriptArg;
-sauProgram* sau_build_Program(const struct sauScriptArg *restrict arg) sauMalloclike;
-void sau_discard_Program(sauProgram *restrict o);
+sauParse* sau_build_Parse(const sauScriptArg *restrict arg) sauMalloclike;
+void sau_discard_Parse(sauParse *restrict o);
 
-void sauProgram_print_info(const sauProgram *restrict o);
+void sauParse_print_info(const sauParse *restrict o);
