@@ -1,5 +1,5 @@
 /* SAU library: Noise generator implementation.
- * Copyright (c) 2022-2024 Joel K. Pettersson
+ * Copyright (c) 2022-2025 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
@@ -12,7 +12,7 @@
  */
 
 #pragma once
-#include "../program.h"
+#include "../parse.h"
 
 // kept here, since there's nothing else to place in a separate noise module
 const char *const sauNoise_names[SAU_NOISE_NAMED + 1] = {

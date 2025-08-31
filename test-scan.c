@@ -1,5 +1,5 @@
 /* saugns: Test program for experimental reader code.
- * Copyright (c) 2017-2023 Joel K. Pettersson
+ * Copyright (c) 2017-2025 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -16,7 +16,7 @@
  */
 
 #include "saugns.h"
-#include <sau/program.h>
+#include <sau/parse.h>
 #include <sau/arrtype.h>
 #if TEST_SCANNER
 # include <sau/scanner.h>
@@ -41,11 +41,8 @@ enum {
 	OPT_EVAL_STRING   = 1<<5,
 };
 
-struct sauScriptArg {
-	const char *str;
-};
 sauArrType(sauScriptArgArr, struct sauScriptArg, )
-sauArrType(sauProgramArr, sauProgram*, )
+sauArrType(sauParseArr, sauParse*, )
 
 /*
  * Print command line usage instructions.
@@ -90,7 +87,7 @@ static bool parse_args(int argc, char **restrict argv,
 		}
 		arg = *argv;
 		if (*arg != '-') {
-			struct sauScriptArg entry = {arg};
+			struct sauScriptArg entry = {arg, false, false, 0, 0};
 			sauScriptArgArr_push(script_args, &entry);
 			continue;
 		}
@@ -128,14 +125,14 @@ ABORT:
 }
 
 /*
- * Discard the programs in the list, ignoring NULL entries,
+ * Discard the parses in the list, ignoring NULL entries,
  * and clearing the list.
  */
-static void discard(sauProgramArr *restrict prg_objs) {
-	for (size_t i = 0; i < prg_objs->count; ++i) {
-		free(prg_objs->a[i]); // for placeholder
+static void discard(sauParseArr *restrict parse_objs) {
+	for (size_t i = 0; i < parse_objs->count; ++i) {
+		free(parse_objs->a[i]); // for placeholder
 	}
-	sauProgramArr_clear(prg_objs);
+	sauParseArr_clear(parse_objs);
 }
 
 #if TEST_SCANNER
@@ -192,11 +189,11 @@ static inline void scan_with_undo(sauScanner *o) {
 /*
  * Run script through test code.
  *
- * \return sauProgram or NULL on error
+ * \return sauParse or NULL on error
  */
-static sauProgram *build_program(const char *restrict script_arg,
+static sauParse *build_parse(const char *restrict script_arg,
 		bool is_path) {
-	sauProgram *o = NULL;
+	sauParse *o = NULL;
 	sauMempool *mempool = sau_create_Mempool(0);
 	sauSymtab *symtab = sau_create_Symtab(mempool);
 	if (!symtab)
@@ -208,7 +205,7 @@ static sauProgram *build_program(const char *restrict script_arg,
 	/* print file contents with whitespace and comment filtering */
 	//scan_simple(scanner);
 	scan_with_undo(scanner);
-	o = (sauProgram*) calloc(1, sizeof(sauProgram)); // placeholder
+	o = (sauParse*) calloc(1, sizeof(sauParse)); // placeholder
 CLOSE:
 	sau_destroy_Scanner(scanner);
 #else
@@ -219,7 +216,7 @@ CLOSE:
 		sauScriptToken token;
 		if (!sauLexer_get(lexer, &token)) break;
 	}
-	o = (sauProgram*) calloc(1, sizeof(sauProgram)); // placeholder
+	o = (sauParse*) calloc(1, sizeof(sauParse)); // placeholder
 CLOSE:
 	sau_destroy_Lexer(lexer);
 #endif
@@ -228,20 +225,20 @@ CLOSE:
 }
 
 /*
- * Load the listed scripts and build inner programs for them,
- * adding each result (even if NULL) to the program list.
+ * Parse the listed scripts, adding each result
+ * (even if NULL) to the parse list.
  *
  * \return number of items successfully processed
  */
 static size_t read_scripts(const sauScriptArgArr *restrict script_args,
-		uint32_t options, sauProgramArr *restrict prg_objs) {
+		uint32_t options, sauParseArr *restrict parse_objs) {
 	bool are_paths = !(options & OPT_EVAL_STRING);
 	size_t built = 0;
 	for (size_t i = 0; i < script_args->count; ++i) {
-		const sauProgram *prg = build_program(script_args->a[i].str,
+		const sauParse *parse = build_parse(script_args->a[i].str,
 				are_paths);
-		if (prg != NULL) ++built;
-		sauProgramArr_push(prg_objs, &prg);
+		if (parse != NULL) ++built;
+		sauParseArr_push(parse_objs, &parse);
 	}
 	return built;
 }
@@ -251,17 +248,17 @@ static size_t read_scripts(const sauScriptArgArr *restrict script_args,
  */
 int main(int argc, char **restrict argv) {
 	sauScriptArgArr script_args = (sauScriptArgArr){0};
-	sauProgramArr prg_objs = (sauProgramArr){0};
+	sauParseArr parse_objs = (sauParseArr){0};
 	uint32_t options = 0;
 	if (!parse_args(argc, argv, &options, &script_args))
 		return 0;
-	bool error = !read_scripts(&script_args, options, &prg_objs);
+	bool error = !read_scripts(&script_args, options, &parse_objs);
 	sauScriptArgArr_clear(&script_args);
 	if (error)
 		return 1;
-	if (prg_objs.count > 0) {
+	if (parse_objs.count > 0) {
 		// no audio output
-		discard(&prg_objs);
+		discard(&parse_objs);
 	}
 	return 0;
 }

@@ -1,5 +1,5 @@
 /* SAU library: Help data and printout code.
- * Copyright (c) 2020-2024 Joel K. Pettersson
+ * Copyright (c) 2020-2025 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
