@@ -1,5 +1,5 @@
 /* saugns: Main module / Command-line interface.
- * Copyright (c) 2011-2013, 2017-2024 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2025 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -16,7 +16,6 @@
  */
 
 #include "saugns.h"
-#include <sau/script.h>
 #include <sau/scanner.h> // character tests
 #include <sau/arrtype.h>
 #include <sau/generator.h>
@@ -72,7 +71,7 @@ static void print_help(const char *restrict topic,
 
 sauArrType(sauScriptPredefArr, sauScriptPredef, )
 sauArrType(sauScriptArgArr, sauScriptArg, )
-sauArrType(sauProgramArr, sauProgram*, )
+sauArrType(sauParseArr, sauParse*, )
 
 /*
  * Print command line usage instructions.
@@ -447,12 +446,12 @@ ABORT:
  * \return number of items successfully processed
  */
 static size_t read_scripts(const sauScriptArgArr *restrict script_args,
-		sauProgramArr *restrict prg_objs) {
+		sauParseArr *restrict parse_objs) {
 	size_t built = 0;
 	for (size_t i = 0; i < script_args->count; ++i) {
-		const sauProgram *prg = sau_build_Program(&script_args->a[i]);
-		if (prg != NULL) ++built;
-		sauProgramArr_push(prg_objs, &prg);
+		const sauParse *parse = sau_build_Parse(&script_args->a[i]);
+		if (parse != NULL) ++built;
+		sauParseArr_push(parse_objs, &parse);
 	}
 	return built;
 }
@@ -461,11 +460,11 @@ static size_t read_scripts(const sauScriptArgArr *restrict script_args,
  * Discard the programs in the list, ignoring NULL entries,
  * and clearing the list.
  */
-static void discard(sauProgramArr *restrict prg_objs) {
-	for (size_t i = 0; i < prg_objs->count; ++i) {
-		sau_discard_Program(prg_objs->a[i]);
+static void discard(sauParseArr *restrict parse_objs) {
+	for (size_t i = 0; i < parse_objs->count; ++i) {
+		sau_discard_Parse(parse_objs->a[i]);
 	}
-	sauProgramArr_clear(prg_objs);
+	sauParseArr_clear(parse_objs);
 }
 
 #define BUF_TIME_MS  256
@@ -567,22 +566,22 @@ static bool raw_audio_write(FILE *restrict f, uint32_t channels,
 }
 
 /*
- * Produce audio for program \p prg, optionally sending it
+ * Produce audio for program \p parse, optionally sending it
  * to the audio device and/or WAV file.
  *
  * \return true unless error occurred
  */
 static bool Player_run(struct Player *restrict o,
-		const sauProgram *restrict prg) {
+		const sauParse *restrict parse) {
 	bool use_stereo = !(o->options & OPT_AUDIO_MONO);
 	bool use_stdout = (o->options & OPT_AUDIO_STDOUT);
 	bool split_gen = o->ad_buf;
 	bool run = !(o->options & OPT_MODE_CHECK);
 	bool error = false;
 	sauGenerator *gen = NULL, *ad_gen = NULL;
-	if (!(gen = sau_create_Generator(prg, o->srate)))
+	if (!(gen = sau_create_Generator(parse, o->srate)))
 		return false;
-	if (split_gen && !(ad_gen = sau_create_Generator(prg, o->ad_srate))) {
+	if (split_gen && !(ad_gen = sau_create_Generator(parse, o->ad_srate))) {
 		error = true;
 		goto ERROR;
 	}
@@ -631,9 +630,9 @@ ERROR:
  *
  * \return true unless error occurred
  */
-static bool play(const sauProgramArr *restrict prg_objs, uint32_t srate,
+static bool play(const sauParseArr *restrict parse_objs, uint32_t srate,
 		uint32_t options, const char *restrict wav_path) {
-	if (!prg_objs->count)
+	if (!parse_objs->count)
 		return true;
 
 	struct Player out;
@@ -645,16 +644,16 @@ static bool play(const sauProgramArr *restrict prg_objs, uint32_t srate,
 	bool split_gen = out.ad_buf;
 	if (split_gen) sau_warning(NULL,
 			"generating audio twice, using different sample rates");
-	for (size_t i = 0; i < prg_objs->count; ++i) {
-		const sauProgram *prg = prg_objs->a[i];
-		if (!prg) continue;
+	for (size_t i = 0; i < parse_objs->count; ++i) {
+		const sauParse *parse = parse_objs->a[i];
+		if (!parse) continue;
 		if ((options & OPT_PRINT_INFO) != 0)
-			sauProgram_print_info(prg);
+			sauParse_print_info(parse);
 		if ((options & OPT_PRINT_VERBOSE) != 0)
 			sau_printf((options & OPT_MODE_CHECK) != 0 ?
 					"Checked \"%s\".\n" :
-					"Playing \"%s\".\n", prg->name);
-		if (!Player_run(&out, prg))
+					"Playing \"%s\".\n", parse->name);
+		if (!Player_run(&out, parse))
 			status = false;
 	}
 
@@ -670,21 +669,21 @@ CLEANUP:
 int main(int argc, char **restrict argv) {
 	sauScriptPredefArr predef_args = {0};
 	sauScriptArgArr script_args = {0};
-	sauProgramArr prg_objs = {0};
+	sauParseArr parse_objs = {0};
 	const char *wav_path = NULL;
 	uint32_t options = 0;
 	uint32_t srate = 0;
 	if (!parse_args(argc, argv, &options, &script_args, &predef_args,
 				&wav_path, &srate))
 		return 0;
-	bool error = !read_scripts(&script_args, &prg_objs);
+	bool error = !read_scripts(&script_args, &parse_objs);
 	sauScriptPredefArr_clear(&predef_args);
 	sauScriptArgArr_clear(&script_args);
 	if (error)
 		return 1;
-	if (prg_objs.count > 0) {
-		error = !play(&prg_objs, srate, options, wav_path);
-		discard(&prg_objs);
+	if (parse_objs.count > 0) {
+		error = !play(&parse_objs, srate, options, wav_path);
+		discard(&parse_objs);
 		if (error)
 			return 1;
 	}
