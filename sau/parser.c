@@ -12,11 +12,11 @@
  */
 
 #include <sau/scanner.h>
-#include <sau/script.h>
+#include <sau/parse.h>
 #include <sau/help.h>
 #include <sau/math.h>
 #include <sau/arrtype.h>
-#include "parser/parseconv.h"
+#include "parser/semantics.h"
 
 /*
  * File-reading code
@@ -66,14 +66,14 @@ static const char *const scan_sym_typelabels[SAU_SYM_TYPES] = {
 };
 
 struct ScanLookup {
-	sauScriptOptions sopt;
+	sauParseSetOptions sopt;
 	struct sauMath_state math_state;
 };
 
 /*
  * Default script options, used until changed in a script.
  */
-static const sauScriptOptions def_sopt = {
+static const sauParseSetOptions def_sopt = {
 	.ampmult = NAN,
 	.A4_freq = 440.f,
 	.def_time_ms = 1000,
@@ -782,9 +782,9 @@ static bool scan_line_state(sauScanner *restrict o,
  */
 
 struct NestScope {
-	sauScriptListData *list, *last_mods;
-	sauScriptObjRef *last_item, *owner_item;
-	sauScriptOptions sopt_save; /* save/restore on nesting */
+	sauParseListData *list, *last_mods;
+	sauParseObjRef *last_item, *owner_item;
+	sauParseSetOptions sopt_save; /* save/restore on nesting */
 	/* values passed for outer parameter */
 	sauRange *gen_valr;
 	sauScanNumConst_f numconst_f;
@@ -793,7 +793,7 @@ struct NestScope {
 };
 
 sauArrType(NestArr, struct NestScope, )
-sauArrType(ObjInfoArr, sauScriptObjInfo, _)
+sauArrType(ObjInfoArr, sauParseObjInfo, _)
 
 typedef struct sauParser {
 	struct ScanLookup sl;
@@ -803,11 +803,11 @@ typedef struct sauParser {
 	NestArr nest;
 	/* node state */
 	struct ParseLevel *cur_pl;
-	sauScriptEvData *events, *last_event, *group_event;
+	sauParseEvData *events, *last_event, *group_event;
 	bool script_fail;
 	uint32_t root_gen_obj;
 	ObjInfoArr obj_arr;
-	ParseConv pc;
+	ParseSem ps;
 } sauParser;
 
 /*
@@ -836,7 +836,7 @@ static bool init_Parser(sauParser *restrict o,
 	sauSymtab *st = sau_create_Symtab(mp);
 	sauScanner *sc = sau_create_Scanner(st);
 	*o = (sauParser){.sc = sc, .st = st, .mp = mp, .tmp_mp = tmp_mp,
-		.pc = {.mp = mp}};
+		.ps = {.mp = mp}};
 	if (!sc || !tmp_mp) goto ERROR;
 	if (!init_ScanLookup(&o->sl, script_arg, st)) goto ERROR;
 	sc->filters['#'] = scan_filter_hashcommands;
@@ -915,26 +915,26 @@ struct ParseLevel {
 	ParseLevel_sub_f sub_f;
 	uint8_t pl_flags, scope, close_c;
 	uint8_t use_type;
-	sauScriptEvData *event;
-	sauScriptGenData *gen;
-	sauScriptObjRef *ev_last;
+	sauParseEvData *event;
+	sauParseGenData *gen;
+	sauParseObjRef *ev_last;
 	sauSymitem *set_label;
 	/* timing/delay */
-	sauScriptEvData *main_ev; /* if events are nested, for grouping... */
+	sauParseEvData *main_ev; /* if events are nested, for grouping... */
 	uint32_t add_wait_ms, carry_wait_ms; /* added for next event */
 	float used_ampmult; /* update on node creation */
 };
 
-typedef struct sauScriptEvBranch {
-	sauScriptEvData *events;
-	struct sauScriptEvBranch *prev;
-} sauScriptEvBranch;
+typedef struct sauParseEvBranch {
+	sauParseEvData *events;
+	struct sauParseEvBranch *prev;
+} sauParseEvBranch;
 
-static sauScriptObjInfo *ObjInfoArr_add(ObjInfoArr *restrict o,
-		sauScriptObjRef *restrict ref,
+static sauParseObjInfo *ObjInfoArr_add(ObjInfoArr *restrict o,
+		sauParseObjRef *restrict ref,
 		uint8_t obj_type, uint8_t gen_type) {
 	uint32_t count = o->count;
-	sauScriptObjInfo *info = _ObjInfoArr_add(o);
+	sauParseObjInfo *info = _ObjInfoArr_add(o);
 	if (!info)
 		return NULL;
 	ref->obj_id = count;
@@ -998,7 +998,7 @@ static void end_gen(sauParser *restrict o) {
 	if (!(pl->pl_flags & PL_OWN_GEN))
 		return;
 	pl->pl_flags &= ~PL_OWN_GEN;
-	sauScriptGenData *gen = pl->gen;
+	sauParseGenData *gen = pl->gen;
 	if (gen->amp) {
 		gen->amp->a.v0 *= pl->used_ampmult;
 		gen->amp->a.vt *= pl->used_ampmult;
@@ -1007,7 +1007,7 @@ static void end_gen(sauParser *restrict o) {
 		gen->amp->e.v0 *= pl->used_ampmult;
 		gen->amp->e.vt *= pl->used_ampmult;
 	}
-	sauScriptGenData *pgen = gen->prev_ref;
+	sauParseGenData *pgen = gen->prev_ref;
 	if (!pgen) {
 		/*
 		 * Reset all generator state for initial event.
@@ -1028,22 +1028,22 @@ static void end_event(sauParser *restrict o) {
 }
 
 static void begin_event(sauParser *restrict o,
-		sauScriptGenData *restrict prev_data,
+		sauParseGenData *restrict prev_data,
 		bool is_compstep) {
 	struct ParseLevel *pl = o->cur_pl;
-	sauScriptEvData *e;
+	sauParseEvData *e;
 	end_event(o);
-	pl->event = sau_mpalloc(o->mp, sizeof(sauScriptEvData));
+	pl->event = sau_mpalloc(o->mp, sizeof(sauParseEvData));
 	e = pl->event;
 	e->wait_ms = pl->add_wait_ms + pl->carry_wait_ms;
 	pl->add_wait_ms = pl->carry_wait_ms = 0;
 	if (prev_data != NULL) {
-		sauScriptEvData *pve = prev_data->event;
+		sauParseEvData *pve = prev_data->event;
 		if (prev_data->is_nested)
-			e->ev_flags |= SAU_SDEV_IMPLICIT_TIME;
+			e->ev_flags |= SAU_PEV_IMPLICIT_TIME;
 		if (is_compstep) {
 			if (pl->pl_flags & PL_NEW_EVENT_FORK) {
-				sauScriptEvBranch *fork =
+				sauParseEvBranch *fork =
 					sau_mpalloc(o->tmp_mp, sizeof(*fork));
 				fork->events = e;
 				if (!pl->main_ev)
@@ -1090,9 +1090,9 @@ static void prepare_event(sauParser *restrict o,
  */
 static void link_ev_obj(struct ParseLevel *restrict pl,
 		struct NestScope *restrict nest,
-		sauScriptObjRef *restrict obj,
-		sauScriptObjRef *restrict prev) {
-	sauScriptEvData *e = pl->event;
+		sauParseObjRef *restrict obj,
+		sauParseObjRef *restrict prev) {
+	sauParseEvData *e = pl->event;
 	obj->next = NULL; /* ensure NULL when new, may have been copied */
 	if (prev || !nest) {
 		if (!e->main_obj)
@@ -1121,12 +1121,12 @@ static void link_ev_obj(struct ParseLevel *restrict pl,
  * Create a new list inside a NestScope. \p last_mods may point to a prior one.
  */
 static void begin_list(sauParser *restrict o,
-		sauScriptListData *restrict plist,
+		sauParseListData *restrict plist,
 		uint8_t use_type) {
 	(void)plist;
 	struct ParseLevel *pl = o->cur_pl, *parent_pl = pl->parent;
 	struct NestScope *nest = NestArr_tip(&o->nest);
-	sauScriptListData *list = sau_mpalloc(o->mp, sizeof(*nest->list));
+	sauParseListData *list = sau_mpalloc(o->mp, sizeof(*nest->list));
 	nest->list = list;
 	if (use_type == SAU_MOD_N_p_pm)
 		pl->sub_f = parse_in_phase_par;
@@ -1147,7 +1147,7 @@ static void begin_list(sauParser *restrict o,
 		/*
 		 * Maintain linked list of modulator lists per owner (carrier).
 		 */
-		sauScriptGenData *parent_on = parent_pl->gen;
+		sauParseGenData *parent_on = parent_pl->gen;
 		if (nest->owner_item != &parent_on->ref)
 			nest->last_mods = NULL;
 		nest->owner_item = &parent_on->ref;
@@ -1168,15 +1168,15 @@ static void begin_list(sauParser *restrict o,
 }
 
 static void begin_gen(sauParser *restrict o,
-		sauScriptGenData *restrict pgen, bool is_compstep,
+		sauParseGenData *restrict pgen, bool is_compstep,
 		uint32_t type) {
 	prepare_event(o, pgen, is_compstep);
 	struct ParseLevel *pl = o->cur_pl;
 	struct NestScope *nest = NestArr_tip(&o->nest);
-	sauScriptEvData *e = pl->event;
-	sauScriptGenData *gen;
+	sauParseEvData *e = pl->event;
+	sauParseGenData *gen;
 	end_gen(o);
-	pl->gen = gen = sau_mpalloc(o->mp, sizeof(sauScriptGenData));
+	pl->gen = gen = sau_mpalloc(o->mp, sizeof(sauParseGenData));
 	if (!is_compstep)
 		pl->pl_flags |= PL_NEW_EVENT_FORK;
 	pl->used_ampmult = o->sl.sopt.def_ampmult;
@@ -1198,7 +1198,7 @@ static void begin_gen(sauParser *restrict o,
 		 */
 		bool is_nested = pl->use_type != SAU_MOD_N_carr;
 		gen->is_nested = is_nested;
-		sauScriptObjInfo *info = ObjInfoArr_add(&o->obj_arr, &gen->ref,
+		sauParseObjInfo *info = ObjInfoArr_add(&o->obj_arr, &gen->ref,
 				SAU_POBJT_GEN, type);
 		if (sau_pgen_has_seed(type))
 			gen->seed = info->seed = sau_rand32(&o->sl.math_state);
@@ -1232,8 +1232,8 @@ static void begin_gen(sauParser *restrict o,
 	pl->pl_flags |= PL_OWN_GEN;
 }
 
-static sauScriptEvData *time_durgroup(sauParser *restrict o,
-		sauScriptEvData *restrict e_from,
+static sauParseEvData *time_durgroup(sauParser *restrict o,
+		sauParseEvData *restrict e_from,
 		uint32_t *restrict wait_after);
 
 static void finish_durgroup(sauParser *restrict o) {
@@ -1297,7 +1297,7 @@ static void leave_level(sauParser *restrict o) {
 		 */
 		end_event(o);
 		finish_durgroup(o);
-		ParseConv_end_dur_ms(&o->pc);
+		ParseSem_end_dur_ms(&o->ps);
 	}
 	if (pl->scope == SCOPE_GROUP) {
 		end_event(o);
@@ -1643,7 +1643,7 @@ static bool prepare_sweep(sauParser *restrict o,
 	return true;
 }
 
-static sauScriptListData *parse_par_list(sauParser *restrict o,
+static sauParseListData *parse_par_list(sauParser *restrict o,
 		sauScanNumConst_f numconst_f,
 		sauRange **restrict gen_valr, bool ratio,
 		uint8_t valr_id, uint8_t use_type, unsigned valr_parts) {
@@ -1655,7 +1655,7 @@ static sauScriptListData *parse_par_list(sauParser *restrict o,
 		if (line) scan_line_state(o->sc, numconst_f, line, ratio);
 	}
 	bool clear = sauScanner_tryc(o->sc, '-');
-	sauScriptListData *first_list = NULL;
+	sauParseListData *first_list = NULL;
 	while (sauScanner_tryc(o->sc, '[')) {
 		parse_level(o, use_type, SCOPE_NEST, ']');
 		nest = NestArr_tip(&o->nest); // re-get, array may have changed
@@ -1668,8 +1668,8 @@ static sauScriptListData *parse_par_list(sauParser *restrict o,
 	return first_list;
 }
 
-static void change_list_use(sauScriptListData *first_list, uint8_t use_type) {
-	for (sauScriptListData *list = first_list; list; list = list->ref.next)
+static void change_list_use(sauParseListData *first_list, uint8_t use_type) {
+	for (sauParseListData *list = first_list; list; list = list->ref.next)
 		list->use_type = use_type;
 }
 
@@ -1726,7 +1726,7 @@ static uint8_t parse_par_modranges(sauParser *restrict o,
 		sauRange **restrict range, bool ratio,
 		uint8_t valr_id, uint8_t mod) {
 	uint8_t c;
-	sauScriptListData *first_list =
+	sauParseListData *first_list =
 		parse_par_list(o, num_f, range, ratio, valr_id, mod, RANGE_A);
 	switch ((c = sauScanner_getc_after(o->sc, '.'))) {
 	case '.':
@@ -1778,7 +1778,7 @@ static uint8_t parse_gen_phase(sauParser *restrict o);
 static bool parse_gen_main(sauParser *restrict o, uint8_t gen_type,
 	uint8_t sym_type, const char *const* restrict sym_names) {
 	struct ParseLevel *pl = o->cur_pl;
-	sauScriptGenData *gen = pl->gen;
+	sauParseGenData *gen = pl->gen;
 	if (gen->ref.gen_type != gen_type)
 		return true; // reject, lacks parameter
 	size_t id = 0; /* default as fallback value */
@@ -1805,14 +1805,14 @@ static bool parse_gen(sauParser *restrict o, uint8_t gen_type,
 
 static uint8_t parse_gen_amp(sauParser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
-	sauScriptGenData *gen = pl->gen;
+	sauParseGenData *gen = pl->gen;
 	return parse_par_modranges(o, NULL, &gen->amp, false,
 			SAU_PSWEEP_AMP, SAU_MOD_N_a_am);
 }
 
 static bool parse_gen_chanmix(sauParser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
-	sauScriptGenData *gen = pl->gen;
+	sauParseGenData *gen = pl->gen;
 	if (gen->is_nested)
 		return true; // reject, lacks parameter
 	return parse_par_modranges(o, scan_chanmix_const, &gen->pan, false,
@@ -1826,7 +1826,7 @@ static bool parse_gen_chanmix(sauParser *restrict o) {
  */
 static bool parse_gen_freq(sauParser *restrict o, bool rel_freq) {
 	struct ParseLevel *pl = o->cur_pl;
-	sauScriptGenData *gen = pl->gen;
+	sauParseGenData *gen = pl->gen;
 	if (rel_freq && !gen->is_nested)
 		return true; // reject, lacks parameter
 	sauScanNumConst_f num_f = rel_freq ? NULL : scan_note_const;
@@ -1835,7 +1835,7 @@ static bool parse_gen_freq(sauParser *restrict o, bool rel_freq) {
 }
 
 static bool parse_gen_mode_raseg(sauScanner *restrict sc,
-		sauScriptGenData *restrict gen) {
+		sauParseGenData *restrict gen) {
 	uint8_t func = SAU_RAS_FUNCTIONS;
 	uint8_t flags = 0;
 	int32_t level = -1;
@@ -1911,7 +1911,7 @@ static bool parse_gen_mode_raseg(sauScanner *restrict sc,
 }
 
 static bool parse_gen_mode_wave(sauScanner *restrict sc,
-		sauScriptGenData *restrict gen) {
+		sauParseGenData *restrict gen) {
 	uint8_t func = SAU_WAVE_FUNCTIONS;
 	uint8_t c;
 	for (;;) {
@@ -1939,7 +1939,7 @@ static bool parse_gen_mode_wave(sauScanner *restrict sc,
 static bool parse_gen_mode(sauParser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
 	sauScanner *sc = o->sc;
-	sauScriptGenData *gen = pl->gen;
+	sauParseGenData *gen = pl->gen;
 	switch (gen->ref.gen_type) {
 	case SAU_PGEN_N_raseg:  return parse_gen_mode_raseg(sc, gen);
 	case SAU_PGEN_N_wave:   return parse_gen_mode_wave(sc, gen);
@@ -1948,7 +1948,7 @@ static bool parse_gen_mode(sauParser *restrict o) {
 }
 
 static uint8_t parse_gen_phase_pdpar(sauParser *restrict o,
-		sauScriptGenData *restrict gen, uint8_t c) {
+		sauParseGenData *restrict gen, uint8_t c) {
 	switch (c) {
 	case 'a':
 		return parse_par_modranges(o, NULL, &gen->pm_a, false,
@@ -1976,7 +1976,7 @@ static void parse_in_phase_par(sauParser *restrict o) {
 
 static uint8_t parse_gen_phase(sauParser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
-	sauScriptGenData *gen = pl->gen;
+	sauParseGenData *gen = pl->gen;
 	if (!sau_pgen_is_osc(gen->ref.gen_type))
 		return true; // reject, lacks parameter
 	double val;
@@ -1999,7 +1999,7 @@ static uint8_t parse_gen_phase(sauParser *restrict o) {
 
 static bool parse_gen_seed(sauParser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
-	sauScriptGenData *gen = pl->gen;
+	sauParseGenData *gen = pl->gen;
 	if (!sau_pgen_has_seed(gen->ref.gen_type))
 		return true; // reject, lacks parameter
 	double val;
@@ -2012,7 +2012,7 @@ static bool parse_gen_seed(sauParser *restrict o) {
 
 static void parse_in_gen_step(sauParser *restrict o) {
 	PARSE_IN__HEAD(parse_in_gen_step, pl->gen)
-		sauScriptGenData *gen = pl->gen;
+		sauParseGenData *gen = pl->gen;
 		switch (c) {
 		case '/':
 			if (parse_waittime(o)) {
@@ -2023,7 +2023,7 @@ static void parse_in_gen_step(sauParser *restrict o) {
 			pl->pl_flags &= ~PL_WARN_NOSPACE; /* OK before */
 			if (parse_waittime(o)) {
 				begin_gen(o, pl->gen, true, 0);
-				pl->event->ev_flags |= SAU_SDEV_FROM_GAPSHIFT;
+				pl->event->ev_flags |= SAU_PEV_FROM_GAPSHIFT;
 			} else {
 				if ((gen->time.flags &
 				     (SAU_TIMEP_SET|SAU_TIMEP_IMPLICIT)) ==
@@ -2031,7 +2031,7 @@ static void parse_in_gen_step(sauParser *restrict o) {
 					sauScanner_warning(sc, NULL,
 "ignoring 'ti' (implicit time) before ';' without number");
 				begin_gen(o, pl->gen, true, 0);
-				pl->event->ev_flags |= SAU_SDEV_WAIT_PREV_DUR;
+				pl->event->ev_flags |= SAU_PEV_WAIT_PREV_DUR;
 			}
 			break;
 		case 'a':
@@ -2247,7 +2247,7 @@ static bool parse_level(sauParser *restrict o,
 					NULL, false);
 			if (label != NULL) {
 				if (label->data_use == SAU_SYM_DATA_OBJ) {
-					sauScriptGenData *gen = label->data.obj;
+					sauParseGenData *gen = label->data.obj;
 					if (gen->ref.obj_type == SAU_POBJT_GEN){
 						begin_gen(o, gen, false, 0);
 						gen = pl.gen;
@@ -2365,43 +2365,43 @@ static const char *parse_file(sauParser *restrict o,
 }
 
 /**
- * Create internal program for the given script file. Includes a pointer
- * to \p parse as \a parse, unless \p keep_parse is false, in which case
- * the parse is destroyed after the conversion regardless of the result.
+ * Create parse data for the given script file.
  *
  * \return instance or NULL on error preventing parse
  */
-sauProgram *
-sau_build_Program(const sauScriptArg *restrict arg) {
+sauParse *
+sau_build_Parse(const sauScriptArg *restrict arg) {
 	if (!arg)
 		return NULL;
 	sauParser pr;
-	sauProgram *o = NULL;
-	sauScript *parse;
+	sauParse *parse;
 	if (!init_Parser(&pr, arg))
 		return NULL;
 	if (!(parse = sau_mpalloc(pr.mp, sizeof(*parse))) ||
-	    !init_ParseConv(&pr.pc, pr.mp)) goto DONE;
+	    !init_ParseSem(&pr.ps, pr.mp)) goto DONE;
 	const char *name = parse_file(&pr, arg);
-	if (!name || !_ObjInfoArr_mpmemdup(&pr.obj_arr, &parse->objects, pr.mp))
+	if (!name ||
+	    !_ObjInfoArr_mpmemdup(&pr.obj_arr, &parse->objects, pr.mp)) {
+		parse = NULL;
 		goto DONE;
+	}
 	parse->st = pr.st;
 	parse->events = pr.events;
 	parse->name = name;
 	parse->sopt = pr.sl.sopt;
 	parse->object_count = pr.obj_arr.count;
-	if ((o = fini_ParseConv(&pr.pc, parse)) != NULL)
+	if ((parse = fini_ParseSem(&pr.ps, parse)) != NULL)
 		pr.mp = NULL; // keep with result
 DONE:
 	fini_Parser(&pr);
-	return o;
+	return parse;
 }
 
 /**
  * Destroy instance.
  */
 void
-sau_discard_Program(sauProgram *restrict o) {
+sau_discard_Parse(sauParse *restrict o) {
 	if (!o)
 		return;
 	sau_destroy_Mempool(o->mp);
@@ -2435,26 +2435,26 @@ static inline void time_pdset(sauPDSet *restrict p,
 	}
 }
 
-static void time_gen_lines(sauScriptGenData *restrict gen);
-static uint32_t time_event(sauScriptEvData *restrict e);
-static void flatten_events(sauScriptEvData *restrict e);
+static void time_gen_lines(sauParseGenData *restrict gen);
+static uint32_t time_event(sauParseEvData *restrict e);
+static void flatten_events(sauParseEvData *restrict e);
 
 /*
  * Adjust timing for a duration group; the script syntax for time grouping is
  * only allowed on the "top" generator level, so the algorithm only deals with
  * this for the events involved.
  */
-static sauScriptEvData *time_durgroup(sauParser *restrict o,
-		sauScriptEvData *restrict e_from,
+static sauParseEvData *time_durgroup(sauParser *restrict o,
+		sauParseEvData *restrict e_from,
 		uint32_t *restrict wait_after) {
-	sauScriptEvData *e, *e_subtract_after = e_from;
+	sauParseEvData *e, *e_subtract_after = e_from;
 	uint32_t cur_longest = 0, wait_sum = 0, group_carry = 0;
 	bool subtract = false;
 	for (e = e_from; e; ) {
-		if (!(e->ev_flags & SAU_SDEV_IMPLICIT_TIME))
-			e->ev_flags |= SAU_SDEV_VOICE_SET_DUR;
+		if (!(e->ev_flags & SAU_PEV_IMPLICIT_TIME))
+			e->ev_flags |= SAU_PEV_VOICE_SET_DUR;
 		time_event(e);
-		if ((e->ev_flags & SAU_SDEV_VOICE_SET_DUR) != 0 &&
+		if ((e->ev_flags & SAU_PEV_VOICE_SET_DUR) != 0 &&
 		    cur_longest < e->dur_ms) {
 			cur_longest = e->dur_ms;
 			group_carry = cur_longest;
@@ -2477,9 +2477,9 @@ static sauScriptEvData *time_durgroup(sauParser *restrict o,
 	 */
 	for (e = e_from; e; ) {
 		while (e->forks != NULL) flatten_events(e);
-		sauScriptObjRef *obj = e->main_obj;
+		sauParseObjRef *obj = e->main_obj;
 		if (obj->obj_type == SAU_POBJT_GEN) {
-			sauScriptGenData *gen = (sauScriptGenData*)obj;
+			sauParseGenData *gen = (sauParseGenData*)obj;
 			if ((gen->time.flags &
 			     (SAU_TIMEP_SET|SAU_TIMEP_DEFAULT))
 			    != SAU_TIMEP_SET) {
@@ -2490,10 +2490,10 @@ static sauScriptEvData *time_durgroup(sauParser *restrict o,
 					e->dur_ms = gen->time.v_ms;
 				time_gen_lines(gen);
 			}
-			sauVoAlloc_update(&o->pc.va, o->obj_arr.a, e);
+			sauVoAlloc_update(&o->ps.va, o->obj_arr.a, e);
 		}
-		ParseConv_convert_event(&o->pc, o->obj_arr.a, e);
-		ParseConv_sum_dur_ms(&o->pc, e->wait_ms);
+		ParseSem_handle_event(&o->ps, o->obj_arr.a, e);
+		ParseSem_sum_dur_ms(&o->ps, e->wait_ms);
 		if (!e->next) break;
 		if (e == e_subtract_after) subtract = true;
 		e = e->next;
@@ -2509,7 +2509,7 @@ static sauScriptEvData *time_durgroup(sauParser *restrict o,
 	return e;
 }
 
-static void time_gen_lines(sauScriptGenData *restrict gen) {
+static void time_gen_lines(sauParseGenData *restrict gen) {
 	uint32_t dur_ms = gen->time.v_ms;
 	time_range(gen->pan, dur_ms);
 	time_range(gen->amp, dur_ms);
@@ -2518,24 +2518,24 @@ static void time_gen_lines(sauScriptGenData *restrict gen) {
 	time_pdset(gen->pd, dur_ms);
 }
 
-static uint32_t time_gen(sauScriptGenData *restrict gen) {
+static uint32_t time_gen(sauParseGenData *restrict gen) {
 	uint32_t dur_ms = gen->time.v_ms;
 	if (!(gen->params & SAU_PGENP_TIME))
-		gen->event->ev_flags &= ~SAU_SDEV_VOICE_SET_DUR;
+		gen->event->ev_flags &= ~SAU_PEV_VOICE_SET_DUR;
 	if (!(gen->time.flags & SAU_TIMEP_SET)) {
 		if (gen->time.flags & SAU_TIMEP_DEFAULT)
 			gen->time.flags |= SAU_TIMEP_SET; /* use, may adjust */
 		else
 			gen->time.flags |= SAU_TIMEP_DEFAULT;
 	} else if (!gen->is_nested) {
-		gen->event->ev_flags |= SAU_SDEV_LOCK_DUR_SCOPE;
+		gen->event->ev_flags |= SAU_PEV_LOCK_DUR_SCOPE;
 	}
-	for (sauScriptListData *list = gen->mods;
+	for (sauParseListData *list = gen->mods;
 			list != NULL; list = list->ref.next) {
-		for (sauScriptObjRef *obj = list->first_item;
+		for (sauParseObjRef *obj = list->first_item;
 				obj; obj = obj->next) {
 			if (obj->obj_type != SAU_POBJT_GEN) continue;
-			sauScriptGenData *sub_gen = (sauScriptGenData*)obj;
+			sauParseGenData *sub_gen = (sauParseGenData*)obj;
 			uint32_t sub_dur_ms = time_gen(sub_gen);
 			if (dur_ms < sub_dur_ms
 			    && (gen->time.flags & SAU_TIMEP_DEFAULT) != 0)
@@ -2547,46 +2547,46 @@ static uint32_t time_gen(sauScriptGenData *restrict gen) {
 	return dur_ms;
 }
 
-static uint32_t time_event(sauScriptEvData *restrict e) {
+static uint32_t time_event(sauParseEvData *restrict e) {
 	uint32_t dur_ms = 0;
 	if (e->main_obj) {
-		sauScriptObjRef *obj = e->main_obj;
+		sauParseObjRef *obj = e->main_obj;
 		if (obj->obj_type == SAU_POBJT_GEN) {
-			sauScriptGenData *gen = (sauScriptGenData*)obj;
+			sauParseGenData *gen = (sauParseGenData*)obj;
 			dur_ms = time_gen(gen);
 		}
 	}
 	/*
 	 * Timing for sub-events - done before event list flattened.
 	 */
-	sauScriptEvBranch *fork = e->forks;
+	sauParseEvBranch *fork = e->forks;
 	while (fork != NULL) {
 		uint32_t nest_dur_ms = 0, wait_sum_ms = 0;
-		sauScriptEvData *ne = fork->events, *ne_prev = e;
-		sauScriptGenData *ne_gen = ne->main_obj,
+		sauParseEvData *ne = fork->events, *ne_prev = e;
+		sauParseGenData *ne_gen = ne->main_obj,
 				 *ne_gen_prev = ne_gen->prev_ref,
 				 *e_gen = ne_gen_prev;
 		uint32_t first_time_ms = e_gen->time.v_ms;
 		uint32_t def_time_ms = e_gen->time.v_ms;
 		e->dur_ms = first_time_ms; /* for first value in series */
-		if (!(e->ev_flags & SAU_SDEV_IMPLICIT_TIME))
-			e->ev_flags |= SAU_SDEV_VOICE_SET_DUR;
+		if (!(e->ev_flags & SAU_PEV_IMPLICIT_TIME))
+			e->ev_flags |= SAU_PEV_VOICE_SET_DUR;
 		for (;;) {
 			wait_sum_ms += ne->wait_ms;
 			if (!(ne_gen->time.flags & SAU_TIMEP_SET)) {
 				ne_gen->time.v_ms = def_time_ms;
-				if (ne->ev_flags & SAU_SDEV_FROM_GAPSHIFT)
+				if (ne->ev_flags & SAU_PEV_FROM_GAPSHIFT)
 					ne_gen->time.flags |= SAU_TIMEP_SET;
 			}
 			time_event(ne);
 			def_time_ms = ne_gen->time.v_ms;
-			if (ne->ev_flags & SAU_SDEV_FROM_GAPSHIFT) {
+			if (ne->ev_flags & SAU_PEV_FROM_GAPSHIFT) {
 				if (ne_gen_prev->time.flags & SAU_TIMEP_DEFAULT
 				    && !(ne_prev->ev_flags &
-					    SAU_SDEV_FROM_GAPSHIFT)) /* gap */
+					    SAU_PEV_FROM_GAPSHIFT)) /* gap */
 					ne_gen_prev->time = sauTime_VALUE(0, 0);
 			}
-			if (ne->ev_flags & SAU_SDEV_WAIT_PREV_DUR) {
+			if (ne->ev_flags & SAU_PEV_WAIT_PREV_DUR) {
 				ne->wait_ms += ne_gen_prev->time.v_ms;
 				ne_gen_prev->time.flags &= ~SAU_TIMEP_IMPLICIT;
 			}
@@ -2612,7 +2612,7 @@ static uint32_t time_event(sauScriptEvData *restrict e) {
 		 * their own event. Merge event and data nodes (always make
 		 * new events for everything), or sublist into event nodes?
 		 */
-		if (!(e->ev_flags & SAU_SDEV_LOCK_DUR_SCOPE)
+		if (!(e->ev_flags & SAU_PEV_LOCK_DUR_SCOPE)
 		    || !e_gen->is_nested) {
 			if (dur_ms < first_time_ms)
 				dur_ms = first_time_ms;
@@ -2632,10 +2632,10 @@ static uint32_t time_event(sauScriptEvData *restrict e) {
  * Such events, if attached to the passed event, will be given their place in
  * the ordinary event list.
  */
-static void flatten_events(sauScriptEvData *restrict e) {
-	sauScriptEvBranch *fork = e->forks;
-	sauScriptEvData *ne = fork->events;
-	sauScriptEvData *fe = e->next, *fe_prev = e;
+static void flatten_events(sauParseEvData *restrict e) {
+	sauParseEvBranch *fork = e->forks;
+	sauParseEvData *ne = fork->events;
+	sauParseEvData *fe = e->next, *fe_prev = e;
 	while (ne != NULL) {
 		if (!fe) {
 			/*
@@ -2649,7 +2649,7 @@ static void flatten_events(sauScriptEvData *restrict e) {
 		 * Insert next sub-event before or after
 		 * the next events of the flat sequence.
 		 */
-		sauScriptEvData *ne_next = ne->next;
+		sauParseEvData *ne_next = ne->next;
 		if (fe->wait_ms >= ne->wait_ms) {
 			fe->wait_ms -= ne->wait_ms;
 			fe_prev->next = ne;
@@ -2665,7 +2665,7 @@ static void flatten_events(sauScriptEvData *restrict e) {
 				fe = fe->next;
 				ne->wait_ms -= fe->wait_ms;
 			}
-			sauScriptEvData *fe_next = fe->next;
+			sauParseEvData *fe_next = fe->next;
 			fe->next = ne;
 			ne->next = fe_next;
 			fe = fe_next;
