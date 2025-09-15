@@ -23,6 +23,20 @@
 static const sauProgramIDArr blank_idarr = {0};
 
 static const sauProgramIDArr *
+create_ProgramIDArr(sauMempool *restrict mp,
+		const uint32_t *restrict ids, uint32_t count) {
+	if (!count)
+		return &blank_idarr;
+	size_t size = count * sizeof(uint32_t);
+	sauProgramIDArr *idarr = NULL;
+	if (!(idarr = sau_mpalloc(mp, sizeof(sauProgramIDArr) + size)))
+		return NULL;
+	idarr->count = count;
+	memcpy(idarr->ids, ids, size);
+	return idarr;
+}
+
+static const sauProgramIDArr *
 concat_ProgramIDArr(sauMempool *restrict mp,
 		const sauProgramIDArr *arr0, const sauProgramIDArr *arr1) {
 	if (!arr0 || arr0->count == 0)
@@ -211,10 +225,11 @@ sauVoiceGraph_set(sauVoiceGraph *restrict o,
 		sauMempool *restrict mp);
 
 sauArrType(GenDataArr, sauParseGenData*, _)
+sauArrType(IDBuf, uint32_t, )
 
 typedef struct ParseSem {
 	sauGenAlloc ga;
-	sauParseEvData *ev;
+	IDBuf idbuf;
 	size_t ev_count;
 	sauVoiceGraph ev_vo_graph;
 	GenDataArr ev_gen_data;
@@ -242,38 +257,10 @@ ParseSem_end_dur_ms(ParseSem *restrict o) {
 	return ParseSem_sum_dur_ms(o, remaining_ms);
 }
 
-static uint32_t
-ParseSem_count_list(const sauParseListData *restrict list_in) {
-	uint32_t count = 0;
-	for (sauParseGenData *gen = list_in->first_item;
-			gen; gen = gen->ref.next) {
-		if (gen->ref.obj_type != SAU_POBJT_GEN) continue;
-		++count;
-	}
-	return count;
-}
-
 static sauNoinline const sauProgramIDArr *
 ParseSem_handle_list(ParseSem *restrict o,
 		sauParseObjInfo *restrict objects,
-		const sauParseListData *restrict list_in) {
-	uint32_t count = ParseSem_count_list(list_in);
-	if (!count)
-		return &blank_idarr;
-	sauProgramIDArr *idarr = sau_mpalloc(o->mp,
-			sizeof(sauProgramIDArr) + sizeof(uint32_t) * count);
-	if (!idarr)
-		return NULL;
-	idarr->count = count;
-	uint32_t i = 0;
-	for (sauParseGenData *gen = list_in->first_item;
-			gen; gen = gen->ref.next) {
-		if (gen->ref.obj_type != SAU_POBJT_GEN) continue;
-		sauParseObjInfo *info = &objects[gen->ref.obj_id];
-		idarr->ids[i++] = info->last_gen_id;
-	}
-	return idarr;
-}
+		const sauParseListData *restrict list_in);
 
 /*
  * Handle generator data node (and recurse for its lists in turn),
@@ -284,15 +271,13 @@ ParseSem_handle_list(ParseSem *restrict o,
 static bool
 ParseSem_handle_gendata(ParseSem *restrict o,
 		sauParseObjInfo *restrict objects,
-		sauParseGenData *restrict gen,
-		const sauParseObjInfo *restrict info) {
-	uint32_t gen_id = info->last_gen_id;
-	gen->id = gen_id;
+		sauParseGenData *restrict gen, uint32_t *restrict gen_id) {
 	sauParseGenData **gen_a = _GenDataArr_add(&o->ev_gen_data);
 	if (!gen_a) goto MEM_ERR;
 	*gen_a = gen;
-	sauGenAllocState *gas = &o->ga.a[gen_id];
-	sauVoAllocState *vas = &o->va.a[o->ev->vo_id];
+	sauParseObjInfo *info = sauGenAlloc_update(&o->ga, objects, gen);
+	if (!info) goto MEM_ERR;
+	*gen_id = gen->id = info->last_gen_id;
 	const sauProgramIDArr *mods[SAU_MOD_NAMED - 1] = {0}; // node's only
 	for (sauParseListData *in_list = gen->mods;
 			in_list != NULL; in_list = in_list->ref.next) {
@@ -300,6 +285,14 @@ ParseSem_handle_gendata(ParseSem *restrict o,
 		const sauProgramIDArr *arr;
 		if (!(arr = ParseSem_handle_list(o, objects, in_list)))
 			goto MEM_ERR;
+		/*
+		 * Addresses in resized arrays got here, after maybe changing.
+		 */
+		uint32_t vo_id = gen->event->vo_id; // TODO: need more tracking?
+		sauVoAllocState *vas = vo_id != SAU_PVO_NO_ID ?
+			&o->va.a[vo_id] :
+			NULL;
+		sauGenAllocState *gas = &o->ga.a[*gen_id];
 		if (in_list->append) {
 			if (arr == &blank_idarr) continue; // omit no-op
 			if (!(arr = concat_ProgramIDArr(o->mp,
@@ -308,7 +301,7 @@ ParseSem_handle_gendata(ParseSem *restrict o,
 			if (arr == gas->mods[type]) continue; // omit no-op
 		}
 		mods[type] = gas->mods[type] = arr;
-		vas->flags |= SAU_VAS_SET_GRAPH;
+		if (vas) vas->flags |= SAU_VAS_SET_GRAPH;
 	}
 	o->ev_ids.count = 0; // reuse allocation
 	for (int i = 0; i < SAU_MOD_NAMED - 1; ++i) {
@@ -326,32 +319,47 @@ MEM_ERR:
 }
 
 /*
- * Visit each generator node in the list and recurse through each node's
- * sublists in turn, creating new output events as needed for the
- * generator data.
+ * Loop and handle list and its contents, creating ID array for it.
+ * The IDBuf is used like a stack in this function on recursion.
  *
- * \return true, or false on allocation failure
+ * \return result, or NULL on allocation failure
  */
-static bool
-ParseSem_handle_gens(ParseSem *restrict o,
+static sauNoinline const sauProgramIDArr *
+ParseSem_handle_list(ParseSem *restrict o,
 		sauParseObjInfo *restrict objects,
-		sauParseListData *restrict gen_list, bool link) {
-	if (gen_list) for (sauParseGenData *gen = gen_list->first_item;
-			gen; gen = gen->ref.next) {
-		if (gen->ref.obj_type != SAU_POBJT_GEN) continue;
-		sauParseObjInfo *info;
-		if (!(info = sauGenAlloc_update(&o->ga, objects, gen)))
-			return false;
-		for (sauParseListData *in_list = gen->mods;
-				in_list != NULL; in_list = in_list->ref.next) {
-			if (!ParseSem_handle_gens(o, objects, in_list, link))
-				return false;
+		const sauParseListData *restrict list_in) {
+	const sauProgramIDArr *idarr = NULL;
+	size_t offset = o->idbuf.count;
+	if (list_in) for (sauParseObjRef *ref = list_in->first_item;
+			ref; ref = ref->next) {
+		if (ref->obj_type == SAU_POBJT_LIST) {
+			if (!ParseSem_handle_list(o, objects, (void*)ref))
+				goto RETURN;
+			continue;
+		} else if (ref->obj_type != SAU_POBJT_GEN) continue;
+		sauParseGenData *gen = (void*)ref;
+		sauParseEvData *e = gen->event; // TODO: need separate for list?
+		size_t list_max_count = o->idbuf.asize / sizeof(uint32_t);
+		if (o->idbuf.count == list_max_count) {
+			if (!IDBuf_upsize(&o->idbuf, list_max_count + 1024))
+				goto RETURN;
 		}
-		if (link &&
-		    !ParseSem_handle_gendata(o, objects, gen, info))
-			return false;
+//		uint32_t old_ev_vo_id = e->vo_id;
+//		if (e->vo_id == SAU_PVO_NO_ID) // allocate one for each op
+//			if (!sauVoAlloc_update(&o->va, e, &e->vo_id))
+//				goto RETURN;
+		uint32_t gen_id;
+		if (!ParseSem_handle_gendata(o, objects, gen, &gen_id))
+			goto RETURN;
+		o->idbuf.a[o->idbuf.count++] = gen_id;
+//		e->vo_id = old_ev_vo_id;
+
 	}
-	return true;
+	idarr = create_ProgramIDArr(o->mp,
+			&o->idbuf.a[offset], o->idbuf.count - offset);
+RETURN:
+	o->idbuf.count = offset; // reuse allocation (zero when fully out)
+	return idarr;
 }
 
 /*
@@ -464,24 +472,12 @@ static bool
 ParseSem_handle_event(ParseSem *restrict o,
 		sauParseObjInfo *restrict objects,
 		sauParseEvData *restrict e) {
-	sauParseObjRef *obj = e->main_obj;
-	switch (obj->obj_type) {
-	case SAU_POBJT_LIST:
-		if (!ParseSem_handle_gens(o, objects, (void*)obj, false))
-			goto MEM_ERR;
-		return true;
-	case SAU_POBJT_GEN:
-		break; /* below */
-	default:
-		return true; /* no handling yet */
-	}
-	sauVoAllocState *vas = sauVoiceGraph_prepare(&o->ev_vo_graph, obj);
-	e->vo_id = obj->vo_id;
-	o->ev = e;
-	++o->ev_count;
-	sauParseListData e_objs = {0};
-	e_objs.first_item = obj;
-	if (!ParseSem_handle_gens(o, objects, &e_objs, true)) goto MEM_ERR;
+	sauParseObjRef *ref = e->main_obj;
+	sauVoAllocState *vas = sauVoiceGraph_prepare(&o->ev_vo_graph, ref);
+	e->vo_id = ref->vo_id;
+	sauParseGenData *gen = (void*)ref;
+	uint32_t gen_id;
+	if (!ParseSem_handle_gendata(o, objects, gen, &gen_id)) goto MEM_ERR;
 	if (o->ev_gen_data.count > 0) {
 		if (!_GenDataArr_mpmemdup(&o->ev_gen_data,
 					(sauParseGenData***) &e->gen_data,
@@ -490,7 +486,7 @@ ParseSem_handle_event(ParseSem *restrict o,
 		o->ev_gen_data.count = 0; // reuse allocation
 	}
 	if (e->ev_flags & SAU_PEV_ASSIGN_VOICE) {
-		sauParseObjInfo *info = &objects[obj->obj_id];
+		sauParseObjInfo *info = &objects[ref->obj_id];
 		info = &objects[info->root_gen_obj]; // for carrier
 		vas->flags |= SAU_VAS_HAS_CARR | SAU_VAS_SET_GRAPH;
 		vas->carr_gen_id = info->last_gen_id;
@@ -503,6 +499,15 @@ ParseSem_handle_event(ParseSem *restrict o,
 	return true;
 MEM_ERR:
 	return false;
+}
+
+/*
+ * Handle last parts of event bookkeeping.
+ */
+static void
+ParseSem_fini_event(ParseSem *restrict o, sauParseEvData *restrict e) {
+	++o->ev_count;
+	ParseSem_sum_dur_ms(o, e->wait_ms);
 }
 
 /*
@@ -564,6 +569,7 @@ fini_ParseSem(ParseSem *restrict o,
 	sau_fini_VoiceGraph(&o->ev_vo_graph);
 	_GenDataArr_clear(&o->ev_gen_data);
 	IDsArr_clear(&o->ev_ids);
+	IDBuf_clear(&o->idbuf);
 	sauGenAlloc_clear(&o->ga);
 	_sauVoAlloc_clear(&o->va);
 	return ok ? parse : NULL;
