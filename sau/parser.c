@@ -2440,6 +2440,48 @@ static uint32_t time_event(sauParseEvData *restrict e);
 static void flatten_events(sauParseEvData *restrict e);
 
 /*
+ * Final time update for generator, to set flexible default time duration.
+ */
+static void time_gen_tailing(sauParseGenData *restrict gen,
+		sauParseEvData *restrict e,
+		uint32_t cur_longest, uint32_t wait_sum) {
+	if ((gen->time.flags & (SAU_TIMEP_SET|SAU_TIMEP_DEFAULT))
+	    != SAU_TIMEP_SET) {
+		gen->time.v_ms = cur_longest + wait_sum;
+		gen->time.flags |= SAU_TIMEP_SET;
+		if (e->dur_ms < gen->time.v_ms)
+			e->dur_ms = gen->time.v_ms;
+		time_gen_lines(gen);
+	}
+}
+
+static void time_durgroup_object(sauParser *restrict o,
+		sauParseEvData *restrict e,
+		sauParseObjRef *restrict ref,
+		uint32_t cur_longest, uint32_t wait_sum,
+		unsigned level) {
+	if (ref) switch (ref->obj_type) {
+	case SAU_POBJT_LIST: {
+		if (!ParseSem_handle_list(&o->ps, o->obj_arr.a, (void*)ref))
+			return; //goto MEM_ERR;
+//		sauParseListData *list = (void*)ref;
+//		for (sauParseObjRef *ref = list->first_item;
+//				ref; ref = ref->next) {
+//			time_durgroup_object(o, e, ref,
+//					cur_longest, wait_sum, level + 1);
+//		}
+		break; }
+	case SAU_POBJT_GEN: {
+		sauParseGenData *gen = (void*)ref;
+		time_gen_tailing(gen, e, cur_longest, wait_sum);
+		if (level == 0) sauVoAlloc_update(&o->ps.va, o->obj_arr.a, e);
+		ParseSem_handle_event(&o->ps, o->obj_arr.a, e);
+		break; }
+	}
+	if (level == 0) ParseSem_fini_event(&o->ps, e);
+}
+
+/*
  * Adjust timing for a duration group; the script syntax for time grouping is
  * only allowed on the "top" generator level, so the algorithm only deals with
  * this for the events involved.
@@ -2477,23 +2519,8 @@ static sauParseEvData *time_durgroup(sauParser *restrict o,
 	 */
 	for (e = e_from; e; ) {
 		while (e->forks != NULL) flatten_events(e);
-		sauParseObjRef *obj = e->main_obj;
-		if (obj->obj_type == SAU_POBJT_GEN) {
-			sauParseGenData *gen = (sauParseGenData*)obj;
-			if ((gen->time.flags &
-			     (SAU_TIMEP_SET|SAU_TIMEP_DEFAULT))
-			    != SAU_TIMEP_SET) {
-				/* fill in sensible default time */
-				gen->time.v_ms = cur_longest + wait_sum;
-				gen->time.flags |= SAU_TIMEP_SET;
-				if (e->dur_ms < gen->time.v_ms)
-					e->dur_ms = gen->time.v_ms;
-				time_gen_lines(gen);
-			}
-			sauVoAlloc_update(&o->ps.va, o->obj_arr.a, e);
-		}
-		ParseSem_handle_event(&o->ps, o->obj_arr.a, e);
-		ParseSem_sum_dur_ms(&o->ps, e->wait_ms);
+		time_durgroup_object(o, e, e->main_obj,
+				cur_longest, wait_sum, 0);
 		if (!e->next) break;
 		if (e == e_subtract_after) subtract = true;
 		e = e->next;
