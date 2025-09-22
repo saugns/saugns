@@ -797,7 +797,6 @@ struct NestScope {
 };
 
 sauArrType(NestArr, struct NestScope, )
-sauArrType(ObjInfoArr, sauParseObjInfo, _)
 
 typedef struct sauParser {
 	struct ScanLookup sl;
@@ -810,7 +809,6 @@ typedef struct sauParser {
 	sauParseEvData *events, *last_event, *group_event;
 	bool script_fail;
 	uint32_t root_gen_obj;
-	ObjInfoArr obj_arr;
 	ParseSem ps;
 } sauParser;
 
@@ -822,7 +820,6 @@ static void fini_Parser(sauParser *restrict o) {
 	sau_destroy_Mempool(o->tmp_mp);
 	sau_destroy_Mempool(o->mp);
 	NestArr_clear(&o->nest);
-	_ObjInfoArr_clear(&o->obj_arr);
 }
 
 /*
@@ -927,25 +924,6 @@ struct ParseLevel {
 	uint32_t add_wait_ms, carry_wait_ms; /* added for next event */
 	float used_ampmult; /* update on node creation */
 };
-
-typedef struct sauParseEvBranch {
-	sauParseEvData *events;
-	struct sauParseEvBranch *prev;
-} sauParseEvBranch;
-
-static sauParseObjInfo *ObjInfoArr_add(ObjInfoArr *restrict o,
-		sauParseObjRef *restrict ref,
-		uint8_t obj_type, uint8_t gen_type) {
-	uint32_t count = o->count;
-	sauParseObjInfo *info = _ObjInfoArr_add(o);
-	if (!info)
-		return NULL;
-	ref->obj_id = count;
-	info->obj_type = ref->obj_type = obj_type;
-	info->gen_type = ref->gen_type = gen_type;
-	info->last_vo_id = ref->vo_id = SAU_PVO_NO_ID;
-	return info;
-}
 
 static void init_range(sauParser *restrict o, sauRange *restrict r) {
 	// default implicit time value is flexible
@@ -1141,7 +1119,7 @@ static void begin_list(sauParser *restrict o,
 	//if (plist != NULL) {
 	//	list->ref.prev = plist;
 	//} else {
-		ObjInfoArr_add(&o->obj_arr, &list->ref, SAU_POBJT_LIST, 0);
+		ObjInfoArr_add(&o->ps.obj_arr, &list->ref, SAU_POBJT_LIST, 0);
 	//}
 	struct NestScope *parent_nest = NestArr_getrev(&o->nest, 1);
 	if (use_type == SAU_MOD_N_carr) {
@@ -1201,8 +1179,8 @@ static void begin_gen(sauParser *restrict o,
 		 */
 		bool is_nested = pl->use_type != SAU_MOD_N_carr;
 		gen->is_nested = is_nested;
-		sauParseObjInfo *info = ObjInfoArr_add(&o->obj_arr, &gen->ref,
-				SAU_POBJT_GEN, type);
+		sauParseObjInfo *info = ObjInfoArr_add(&o->ps.obj_arr,
+				&gen->ref, SAU_POBJT_GEN, type);
 		if (sau_pgen_has_seed(type))
 			gen->seed = info->seed = sau_rand32(&o->sl.math_state);
 		gen->time = sauTime_DEFAULT(o->sl.sopt.def_time_ms, is_nested);
@@ -1227,24 +1205,20 @@ static void begin_gen(sauParser *restrict o,
 		 * All audio generators have frequency, not only oscillators.
 		 */
 		if (is_nested || o->sl.sopt.def_freq != SAU_PDEF_FREQ)
-			gen->freq = create_range(o,
-					is_nested, SAU_PSWEEP_FREQ);
+			gen->freq = create_range(o, is_nested, SAU_PSWEEP_FREQ);
 	}
 	link_ev_obj(pl, nest, &gen->ref, &pgen->ref);
 	gen->event = e;
 	pl->pl_flags |= PL_OWN_GEN;
 }
 
-static sauParseEvData *time_durgroup(sauParser *restrict o,
-		sauParseEvData *restrict e_from,
-		uint32_t *restrict wait_after);
-
 static void finish_durgroup(sauParser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
 	pl->add_wait_ms = 0; /* reset by each '|' boundary */
 	if (!o->group_event)
 		return; /* nothing to do */
-	o->last_event = time_durgroup(o, o->group_event, &pl->carry_wait_ms);
+	o->last_event = sem_per_durgroup(&o->ps,
+	                                 o->group_event, &pl->carry_wait_ms);
 	o->group_event = NULL;
 }
 
@@ -1296,7 +1270,7 @@ static void leave_level(sauParser *restrict o) {
 		 */
 		end_event(o);
 		finish_durgroup(o);
-		ParseSem_end_dur_ms(&o->ps);
+		sem_end_dur_ms(&o->ps);
 	}
 	if (pl->scope == SCOPE_GROUP) {
 		end_event(o);
@@ -2380,8 +2354,7 @@ sau_build_Parse(const sauScriptArg *restrict arg) {
 	if (!(parse = sau_mpalloc(pr.mp, sizeof(*parse))) ||
 	    !init_ParseSem(&pr.ps, pr.mp)) goto DONE;
 	const char *name = parse_file(&pr, arg);
-	if (!name ||
-	    !_ObjInfoArr_mpmemdup(&pr.obj_arr, &parse->objects, pr.mp)) {
+	if (!name) {
 		parse = NULL;
 		goto DONE;
 	}
@@ -2389,7 +2362,6 @@ sau_build_Parse(const sauScriptArg *restrict arg) {
 	parse->events = pr.events;
 	parse->name = name;
 	parse->sopt = pr.sl.sopt;
-	parse->object_count = pr.obj_arr.count;
 	if ((parse = fini_ParseSem(&pr.ps, parse)) != NULL)
 		pr.mp = NULL; // keep with result
 DONE:
@@ -2405,302 +2377,4 @@ sau_discard_Parse(sauParse *restrict o) {
 	if (!o)
 		return;
 	sau_destroy_Mempool(o->mp);
-}
-
-static inline void time_line(sauLinePar *restrict line,
-		uint32_t default_time_ms) {
-	if (line->flags & SAU_LINEP_TIME_IF_NEW) { // update fallback value
-		line->time_ms = default_time_ms;
-		line->flags |= SAU_LINEP_TIME;
-	}
-}
-
-static void time_range(sauRange *restrict r,
-		uint32_t default_time_ms) {
-	if (!r)
-		return;
-	time_line(&r->a, default_time_ms);
-	time_line(&r->b, default_time_ms);
-	time_line(&r->e, default_time_ms);
-}
-
-static inline void time_pdset(sauPDSet *restrict p,
-		uint32_t default_time_ms) {
-	if (!p)
-		return;
-	for (uint32_t i = 0; i < SAU_PPD_TYPES; ++i) {
-		time_range(&p[i].v, default_time_ms);
-		time_range(&p[i].f, default_time_ms);
-		time_range(&p[i].p, default_time_ms);
-	}
-}
-
-static void time_gen_lines(sauParseGenData *restrict gen);
-static uint32_t time_event(sauParseEvData *restrict e);
-static void flatten_events(sauParseEvData *restrict e);
-
-/*
- * Final time update for generator, to set flexible default time duration.
- */
-static void time_gen_tailing(sauParseGenData *restrict gen,
-		sauParseEvData *restrict e,
-		uint32_t cur_longest, uint32_t wait_sum) {
-	if ((gen->time.flags & (SAU_TIMEP_SET|SAU_TIMEP_DEFAULT))
-	    != SAU_TIMEP_SET) {
-		gen->time.v_ms = cur_longest + wait_sum;
-		gen->time.flags |= SAU_TIMEP_SET;
-		if (e->dur_ms < gen->time.v_ms)
-			e->dur_ms = gen->time.v_ms;
-		time_gen_lines(gen);
-	}
-}
-
-static void time_durgroup_object(sauParser *restrict o,
-		sauParseEvData *restrict e,
-		sauParseObjRef *restrict ref,
-		uint32_t cur_longest, uint32_t wait_sum,
-		unsigned level) {
-	if (ref) switch (ref->obj_type) {
-	case SAU_POBJT_LIST: {
-		if (!ParseSem_handle_list(&o->ps, o->obj_arr.a, (void*)ref))
-			return; //goto MEM_ERR;
-//		sauParseListData *list = (void*)ref;
-//		for (sauParseObjRef *ref = list->first_item;
-//				ref; ref = ref->next) {
-//			time_durgroup_object(o, e, ref,
-//					cur_longest, wait_sum, level + 1);
-//		}
-		break; }
-	case SAU_POBJT_GEN: {
-		sauParseGenData *gen = (void*)ref;
-		time_gen_tailing(gen, e, cur_longest, wait_sum);
-		if (level == 0) sauVoAlloc_update(&o->ps.va, o->obj_arr.a, e);
-		ParseSem_handle_event(&o->ps, o->obj_arr.a, e);
-		break; }
-	}
-	if (level == 0) ParseSem_fini_event(&o->ps, e);
-}
-
-/*
- * Adjust timing for a duration group; the script syntax for time grouping is
- * only allowed on the "top" generator level, so the algorithm only deals with
- * this for the events involved.
- */
-static sauParseEvData *time_durgroup(sauParser *restrict o,
-		sauParseEvData *restrict e_from,
-		uint32_t *restrict wait_after) {
-	sauParseEvData *e, *e_subtract_after = e_from;
-	uint32_t cur_longest = 0, wait_sum = 0, group_carry = 0;
-	bool subtract = false;
-	for (e = e_from; e; ) {
-		if (!(e->ev_flags & SAU_PEV_IMPLICIT_TIME))
-			e->ev_flags |= SAU_PEV_VOICE_SET_DUR;
-		time_event(e);
-		if ((e->ev_flags & SAU_PEV_VOICE_SET_DUR) != 0 &&
-		    cur_longest < e->dur_ms) {
-			cur_longest = e->dur_ms;
-			group_carry = cur_longest;
-			e_subtract_after = e;
-		}
-		if (!e->next) break;
-		e = e->next;
-		if (cur_longest > e->wait_ms)
-			cur_longest -= e->wait_ms;
-		else
-			cur_longest = 0;
-		wait_sum += e->wait_ms;
-	}
-	/*
-	 * Flatten event forks in loop following the timing adjustments
-	 * depending on composite step event structure, complete times.
-	 *
-	 * Also run voice allocation, any other final bookkeeping here.
-	 * This is the last event loop per durgroup, place it all here.
-	 */
-	for (e = e_from; e; ) {
-		while (e->forks != NULL) flatten_events(e);
-		time_durgroup_object(o, e, e->main_obj,
-				cur_longest, wait_sum, 0);
-		if (!e->next) break;
-		if (e == e_subtract_after) subtract = true;
-		e = e->next;
-		wait_sum -= e->wait_ms;
-		if (subtract) {
-			if (group_carry >= e->wait_ms)
-				group_carry -= e->wait_ms;
-			else
-				group_carry = 0;
-		}
-	}
-	if (wait_after) *wait_after += group_carry;
-	return e;
-}
-
-static void time_gen_lines(sauParseGenData *restrict gen) {
-	uint32_t dur_ms = gen->time.v_ms;
-	time_range(gen->pan, dur_ms);
-	time_range(gen->amp, dur_ms);
-	time_range(gen->freq, dur_ms);
-	time_range(gen->pm_a, dur_ms);
-	time_pdset(gen->pd, dur_ms);
-}
-
-static uint32_t time_gen(sauParseGenData *restrict gen) {
-	uint32_t dur_ms = gen->time.v_ms;
-	if (!(gen->params & SAU_PGENP_TIME))
-		gen->event->ev_flags &= ~SAU_PEV_VOICE_SET_DUR;
-	if (!(gen->time.flags & SAU_TIMEP_SET)) {
-		if (gen->time.flags & SAU_TIMEP_DEFAULT)
-			gen->time.flags |= SAU_TIMEP_SET; /* use, may adjust */
-		else
-			gen->time.flags |= SAU_TIMEP_DEFAULT;
-	} else if (!gen->is_nested) {
-		gen->event->ev_flags |= SAU_PEV_LOCK_DUR_SCOPE;
-	}
-	for (sauParseListData *list = gen->mods;
-			list != NULL; list = list->ref.next) {
-		for (sauParseObjRef *obj = list->first_item;
-				obj; obj = obj->next) {
-			if (obj->obj_type != SAU_POBJT_GEN) continue;
-			sauParseGenData *sub_gen = (sauParseGenData*)obj;
-			uint32_t sub_dur_ms = time_gen(sub_gen);
-			if (dur_ms < sub_dur_ms
-			    && (gen->time.flags & SAU_TIMEP_DEFAULT) != 0)
-				dur_ms = sub_dur_ms;
-		}
-	}
-	gen->time.v_ms = dur_ms;
-	time_gen_lines(gen);
-	return dur_ms;
-}
-
-static uint32_t time_event(sauParseEvData *restrict e) {
-	uint32_t dur_ms = 0;
-	if (e->main_obj) {
-		sauParseObjRef *obj = e->main_obj;
-		if (obj->obj_type == SAU_POBJT_GEN) {
-			sauParseGenData *gen = (sauParseGenData*)obj;
-			dur_ms = time_gen(gen);
-		}
-	}
-	/*
-	 * Timing for sub-events - done before event list flattened.
-	 */
-	sauParseEvBranch *fork = e->forks;
-	while (fork != NULL) {
-		uint32_t nest_dur_ms = 0, wait_sum_ms = 0;
-		sauParseEvData *ne = fork->events, *ne_prev = e;
-		sauParseGenData *ne_gen = ne->main_obj,
-				 *ne_gen_prev = ne_gen->prev_ref,
-				 *e_gen = ne_gen_prev;
-		uint32_t first_time_ms = e_gen->time.v_ms;
-		uint32_t def_time_ms = e_gen->time.v_ms;
-		e->dur_ms = first_time_ms; /* for first value in series */
-		if (!(e->ev_flags & SAU_PEV_IMPLICIT_TIME))
-			e->ev_flags |= SAU_PEV_VOICE_SET_DUR;
-		for (;;) {
-			wait_sum_ms += ne->wait_ms;
-			if (!(ne_gen->time.flags & SAU_TIMEP_SET)) {
-				ne_gen->time.v_ms = def_time_ms;
-				if (ne->ev_flags & SAU_PEV_FROM_GAPSHIFT)
-					ne_gen->time.flags |= SAU_TIMEP_SET;
-			}
-			time_event(ne);
-			def_time_ms = ne_gen->time.v_ms;
-			if (ne->ev_flags & SAU_PEV_FROM_GAPSHIFT) {
-				if (ne_gen_prev->time.flags & SAU_TIMEP_DEFAULT
-				    && !(ne_prev->ev_flags &
-					    SAU_PEV_FROM_GAPSHIFT)) /* gap */
-					ne_gen_prev->time = sauTime_VALUE(0, 0);
-			}
-			if (ne->ev_flags & SAU_PEV_WAIT_PREV_DUR) {
-				ne->wait_ms += ne_gen_prev->time.v_ms;
-				ne_gen_prev->time.flags &= ~SAU_TIMEP_IMPLICIT;
-			}
-			if (nest_dur_ms < wait_sum_ms + ne->dur_ms)
-				nest_dur_ms = wait_sum_ms + ne->dur_ms;
-			first_time_ms += ne->dur_ms +
-				(ne->wait_ms - ne_prev->dur_ms);
-			ne_gen_prev->time.flags &= ~SAU_TIMEP_DEFAULT; // fix val
-			ne_gen->time.flags |= SAU_TIMEP_SET;
-			ne_gen->params |= SAU_PGENP_TIME;
-			ne_gen_prev = ne_gen;
-			ne_prev = ne;
-			ne = ne->next;
-			if (!ne) break;
-			ne_gen = ne->main_obj;
-		}
-		/*
-		 * Exclude nested generators when setting a longer duration,
-		 * if time has already been explicitly set for any carriers
-		 * (otherwise the duration can be misreported as too long).
-		 *
-		 * TODO: Replace with design that gives nodes at each level
-		 * their own event. Merge event and data nodes (always make
-		 * new events for everything), or sublist into event nodes?
-		 */
-		if (!(e->ev_flags & SAU_PEV_LOCK_DUR_SCOPE)
-		    || !e_gen->is_nested) {
-			if (dur_ms < first_time_ms)
-				dur_ms = first_time_ms;
-//			if (dur_ms < nest_dur_ms)
-//				dur_ms = nest_dur_ms;
-		}
-		fork = fork->prev;
-	}
-	e->dur_ms = dur_ms; /* unfinished estimate used to adjust timing */
-	return dur_ms;
-}
-
-/*
- * Deals with events that are "sub-events" (attached to a main event as
- * nested sequence rather than part of the main linear event sequence).
- *
- * Such events, if attached to the passed event, will be given their place in
- * the ordinary event list.
- */
-static void flatten_events(sauParseEvData *restrict e) {
-	sauParseEvBranch *fork = e->forks;
-	sauParseEvData *ne = fork->events;
-	sauParseEvData *fe = e->next, *fe_prev = e;
-	while (ne != NULL) {
-		if (!fe) {
-			/*
-			 * No more events in the flat sequence,
-			 * so append all sub-events.
-			 */
-			fe_prev->next = fe = ne;
-			break;
-		}
-		/*
-		 * Insert next sub-event before or after
-		 * the next events of the flat sequence.
-		 */
-		sauParseEvData *ne_next = ne->next;
-		if (fe->wait_ms >= ne->wait_ms) {
-			fe->wait_ms -= ne->wait_ms;
-			fe_prev->next = ne;
-			ne->next = fe;
-		} else {
-			ne->wait_ms -= fe->wait_ms;
-			/*
-			 * If several events should pass in the flat sequence
-			 * before the next sub-event is inserted, skip ahead.
-			 */
-			while (fe->next && fe->next->wait_ms <= ne->wait_ms) {
-				fe_prev = fe;
-				fe = fe->next;
-				ne->wait_ms -= fe->wait_ms;
-			}
-			sauParseEvData *fe_next = fe->next;
-			fe->next = ne;
-			ne->next = fe_next;
-			fe = fe_next;
-			if (fe)
-				fe->wait_ms -= ne->wait_ms;
-		}
-		fe_prev = ne;
-		ne = ne_next;
-	}
-	e->forks = fork->prev;
 }
