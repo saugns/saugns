@@ -116,11 +116,6 @@ typedef struct VoiceNode {
 	uint32_t carr_gen_id;
 } VoiceNode;
 
-typedef struct EventNode {
-	uint32_t wait;
-	const sauParseEvData *prg_event;
-} EventNode;
-
 /*
  * Generator flags.
  */
@@ -134,8 +129,9 @@ struct sauGenerator {
 	uint16_t gen_mix_add_max;
 	Buf *bufs;
 	size_t event, ev_count;
-	EventNode *events;
-	uint32_t event_pos;
+	const sauParseEvData *ev_data;
+	uint32_t ev_pos, ev_wait;
+	int ev_time_carry;
 	uint16_t voice, vo_count;
 	VoiceNode *voices;
 	float amp_scale;
@@ -152,13 +148,7 @@ struct sauGenerator {
 static bool alloc_for_program(sauGenerator *restrict o,
 		const sauParse *restrict prg) {
 	size_t i;
-
-	i = prg->ev_count;
-	if (i > 0) {
-		o->events = sau_mpalloc(o->mem, i * sizeof(EventNode));
-		if (!o->events) goto ERROR;
-		o->ev_count = i;
-	}
+	o->ev_count = prg->ev_count;
 	i = prg->vo_count;
 	if (i > 0) {
 		o->voices = sau_mpalloc(o->mem, i * sizeof(VoiceNode));
@@ -174,7 +164,6 @@ static bool alloc_for_program(sauGenerator *restrict o,
 	i = COUNT_GEN_BUFS(prg->gen_nest_depth);
 	if (!(o->bufs = calloc(i + MIX_BUFS, sizeof(Buf)))) goto ERROR;
 	o->bufs += MIX_BUFS;
-
 	return true;
 ERROR:
 	return false;
@@ -191,29 +180,26 @@ static const float pd_v_default[SAU_PPD_TYPES] = {
 	[SAU_PPD_Y] = 0.5,
 };
 
+/*
+ * The event timeline needs carry to ensure event node timing doesn't
+ * run short (with more nodes, more values), compared to other nodes.
+ */
+static inline void prepare_event(sauGenerator *restrict o,
+		sauParseEvData *restrict prg_e) {
+	o->ev_data = prg_e;
+	if (prg_e) o->ev_wait = sau_ms_in_samples(prg_e->wait_ms,
+			o->srate, &o->ev_time_carry);
+}
+
 static bool convert_program(sauGenerator *restrict o,
 		const sauParse *restrict prg, uint32_t srate) {
 	if (!alloc_for_program(o, prg))
 		return false;
-
-	/*
-	 * The event timeline needs carry to ensure event node timing doesn't
-	 * run short (with more nodes, more values), compared to other nodes.
-	 */
-	int ev_time_carry = 0;
 	o->srate = srate;
-	float ampmult = prg->is_ampmult_set ? prg->sopt.ampmult : 1.f;
-	o->amp_scale = 0.5f * ampmult; // half for panning sum
+	o->amp_scale = 0.5f; // half for panning sum
+	if (prg->is_ampmult_set) o->amp_scale *= prg->sopt.ampmult;
 	if (prg->is_amp_autoscaled) o->amp_scale /= o->vo_count;
-	const sauParseEvData *prg_e = prg->events;
-	for (size_t i = 0; i < prg->ev_count; ++i) {
-		EventNode *e = &o->events[i];
-		e->wait = sau_ms_in_samples(prg_e->wait_ms, srate,
-				&ev_time_carry);
-		e->prg_event = prg_e;
-		prg_e = prg_e->next;
-	}
-
+	prepare_event(o, prg->events);
 	return true;
 }
 
@@ -436,9 +422,9 @@ static void update_gen(sauGenerator *restrict o,
 /*
  * Process one event; to be called for the event when its time comes.
  */
-static void handle_event(sauGenerator *restrict o, EventNode *restrict e) {
+static void handle_event(sauGenerator *restrict o) {
+	const sauParseEvData *pe = o->ev_data;
 	if (1) /* more types to be added in the future */ {
-		const sauParseEvData *pe = e->prg_event;
 		/*
 		 * Set state of generator and/or voice.
 		 *
@@ -465,6 +451,7 @@ static void handle_event(sauGenerator *restrict o, EventNode *restrict e) {
 			set_voice_duration(o, vn);
 		}
 	}
+	prepare_event(o, pe->next);
 }
 
 /*
@@ -1098,25 +1085,24 @@ bool sauGenerator_run(sauGenerator *restrict o,
 PROCESS:
 	skip_len = 0;
 	while (o->event < o->ev_count) {
-		EventNode *e = &o->events[o->event];
-		if (o->event_pos < e->wait) {
+		if (o->ev_pos < o->ev_wait) {
 			/*
 			 * Limit voice running len to waittime.
 			 *
 			 * Split processing into two blocks when needed to
 			 * ensure event handling runs before voices.
 			 */
-			uint32_t waittime = e->wait - o->event_pos;
+			uint32_t waittime = o->ev_wait - o->ev_pos;
 			if (waittime < len) {
 				skip_len = len - waittime;
 				len = waittime;
 			}
-			o->event_pos += len;
+			o->ev_pos += len;
 			break;
 		}
-		handle_event(o, e);
+		handle_event(o);
 		++o->event;
-		o->event_pos = 0;
+		o->ev_pos = 0;
 	}
 	last_len = run_for_time(o, len, sp, stereo);
 	if (skip_len > 0) {
