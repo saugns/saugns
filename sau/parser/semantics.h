@@ -15,10 +15,20 @@
 #include <stdio.h>
 
 /*
- * Handle and calculate some info from part of parsed data.
+ * Semantics code running with parsing, prior to the audio rendering
+ * interpretation. As a first layer of interpreting, this focuses on
+ * "What does it need, what exactly does it use?". Thus, later stage
+ * interpreting can handle it simply, focusing on signal processing.
  *
- * Allocation of events, voices, generators.
+ * In part, this is timing logic (pre-calculating when possible). In
+ * part it is 'measuring' and allocating IDs, establishing exact use
+ * of resources in advance. And each generator is mapped to a voice.
  */
+
+typedef struct sauParseEvBranch {
+	sauParseEvData *events;
+	struct sauParseEvBranch *prev;
+} sauParseEvBranch;
 
 static const sauProgramIDArr blank_idarr = {0};
 
@@ -53,6 +63,22 @@ concat_ProgramIDArr(sauMempool *restrict mp,
 	memcpy(idarr->ids, arr0->ids, size0);
 	memcpy(&idarr->ids[arr0->count], arr1->ids, size1);
 	return idarr;
+}
+
+sauArrType(ObjInfoArr, sauParseObjInfo, _)
+
+static sauParseObjInfo *
+ObjInfoArr_add(ObjInfoArr *restrict o, sauParseObjRef *restrict ref,
+		uint8_t obj_type, uint8_t gen_type) {
+	uint32_t count = o->count;
+	sauParseObjInfo *info = _ObjInfoArr_add(o);
+	if (!info)
+		return NULL;
+	ref->obj_id = count;
+	info->obj_type = ref->obj_type = obj_type;
+	info->gen_type = ref->gen_type = gen_type;
+	info->last_vo_id = ref->vo_id = SAU_PVO_NO_ID;
+	return info;
 }
 
 /*
@@ -193,7 +219,6 @@ sauGenAlloc_clear(sauGenAlloc *restrict o) {
 }
 
 sauArrType(IDsArr, sauProgramIDs, )
-
 sauArrType(GenRefArr, sauProgramGenRef, )
 
 /*
@@ -236,10 +261,11 @@ typedef struct ParseSem {
 	IDsArr ev_ids;
 	sauMempool *mp;
 	sauVoAlloc va;
+	ObjInfoArr obj_arr;
 	uint32_t tot_dur_ms;
 } ParseSem;
 
-#define ParseSem_sum_dur_ms(o, add_ms) ((o)->tot_dur_ms += (add_ms))
+#define sem_sum_dur_ms(o, add_ms) ((o)->tot_dur_ms += (add_ms))
 
 /*
  * Add last duration (greatest remaining duration for a voice) to counter.
@@ -247,19 +273,18 @@ typedef struct ParseSem {
  * \return duration in ms
  */
 static uint32_t
-ParseSem_end_dur_ms(ParseSem *restrict o) {
+sem_end_dur_ms(ParseSem *restrict o) {
 	uint32_t remaining_ms = 0;
 	for (size_t i = 0; i < o->va.count; ++i) {
 		sauVoAllocState *vas = &o->va.a[i];
 		if (vas->duration_ms > remaining_ms)
 			remaining_ms = vas->duration_ms;
 	}
-	return ParseSem_sum_dur_ms(o, remaining_ms);
+	return sem_sum_dur_ms(o, remaining_ms);
 }
 
-static sauNoinline const sauProgramIDArr *
-ParseSem_handle_list(ParseSem *restrict o,
-		sauParseObjInfo *restrict objects,
+static const sauProgramIDArr *
+sem_handle_list(ParseSem *restrict o,
 		const sauParseListData *restrict list_in);
 
 /*
@@ -269,13 +294,12 @@ ParseSem_handle_list(ParseSem *restrict o,
  * \return true, or false on allocation failure
  */
 static bool
-ParseSem_handle_gendata(ParseSem *restrict o,
-		sauParseObjInfo *restrict objects,
+sem_handle_gendata(ParseSem *restrict o,
 		sauParseGenData *restrict gen, uint32_t *restrict gen_id) {
 	sauParseGenData **gen_a = _GenDataArr_add(&o->ev_gen_data);
 	if (!gen_a) goto MEM_ERR;
 	*gen_a = gen;
-	sauParseObjInfo *info = sauGenAlloc_update(&o->ga, objects, gen);
+	sauParseObjInfo *info = sauGenAlloc_update(&o->ga, o->obj_arr.a, gen);
 	if (!info) goto MEM_ERR;
 	*gen_id = gen->id = info->last_gen_id;
 	const sauProgramIDArr *mods[SAU_MOD_NAMED - 1] = {0}; // node's only
@@ -283,12 +307,12 @@ ParseSem_handle_gendata(ParseSem *restrict o,
 			in_list != NULL; in_list = in_list->ref.next) {
 		int type = in_list->use_type - 1;
 		const sauProgramIDArr *arr;
-		if (!(arr = ParseSem_handle_list(o, objects, in_list)))
+		if (!(arr = sem_handle_list(o, in_list)))
 			goto MEM_ERR;
 		/*
 		 * Addresses in resized arrays got here, after maybe changing.
 		 */
-		uint32_t vo_id = gen->event->vo_id; // TODO: need more tracking?
+		uint32_t vo_id = gen->event->vo_id;
 		sauVoAllocState *vas = vo_id != SAU_PVO_NO_ID ?
 			&o->va.a[vo_id] :
 			NULL;
@@ -324,35 +348,28 @@ MEM_ERR:
  *
  * \return result, or NULL on allocation failure
  */
-static sauNoinline const sauProgramIDArr *
-ParseSem_handle_list(ParseSem *restrict o,
-		sauParseObjInfo *restrict objects,
+static const sauProgramIDArr *
+sem_handle_list(ParseSem *restrict o,
 		const sauParseListData *restrict list_in) {
 	const sauProgramIDArr *idarr = NULL;
 	size_t offset = o->idbuf.count;
 	if (list_in) for (sauParseObjRef *ref = list_in->first_item;
 			ref; ref = ref->next) {
 		if (ref->obj_type == SAU_POBJT_LIST) {
-			if (!ParseSem_handle_list(o, objects, (void*)ref))
+			if (!sem_handle_list(o, (void*)ref))
 				goto RETURN;
 			continue;
 		} else if (ref->obj_type != SAU_POBJT_GEN) continue;
 		sauParseGenData *gen = (void*)ref;
-		sauParseEvData *e = gen->event; // TODO: need separate for list?
 		size_t list_max_count = o->idbuf.asize / sizeof(uint32_t);
 		if (o->idbuf.count == list_max_count) {
 			if (!IDBuf_upsize(&o->idbuf, list_max_count + 1024))
 				goto RETURN;
 		}
-//		uint32_t old_ev_vo_id = e->vo_id;
-//		if (e->vo_id == SAU_PVO_NO_ID) // allocate one for each op
-//			if (!sauVoAlloc_update(&o->va, e, &e->vo_id))
-//				goto RETURN;
 		uint32_t gen_id;
-		if (!ParseSem_handle_gendata(o, objects, gen, &gen_id))
+		if (!sem_handle_gendata(o, gen, &gen_id))
 			goto RETURN;
 		o->idbuf.a[o->idbuf.count++] = gen_id;
-//		e->vo_id = old_ev_vo_id;
 
 	}
 	idarr = create_ProgramIDArr(o->mp,
@@ -461,6 +478,169 @@ sau_fini_VoiceGraph(sauVoiceGraph *restrict o) {
 	GenRefArr_clear(&o->vo_graph);
 }
 
+static inline void
+time_line(sauLinePar *restrict line, uint32_t default_time_ms) {
+	if (line->flags & SAU_LINEP_TIME_IF_NEW) { // update fallback value
+		line->time_ms = default_time_ms;
+		line->flags |= SAU_LINEP_TIME;
+	}
+}
+
+static void
+time_range(sauRange *restrict r, uint32_t default_time_ms) {
+	if (!r)
+		return;
+	time_line(&r->a, default_time_ms);
+	time_line(&r->b, default_time_ms);
+	time_line(&r->e, default_time_ms);
+}
+
+static inline void
+time_pdset(sauPDSet *restrict p, uint32_t default_time_ms) {
+	if (!p)
+		return;
+	for (uint32_t i = 0; i < SAU_PPD_TYPES; ++i) {
+		time_range(&p[i].v, default_time_ms);
+		time_range(&p[i].f, default_time_ms);
+		time_range(&p[i].p, default_time_ms);
+	}
+}
+
+static void
+time_gen_lines(sauParseGenData *restrict gen) {
+	uint32_t dur_ms = gen->time.v_ms;
+	time_range(gen->pan, dur_ms);
+	time_range(gen->amp, dur_ms);
+	time_range(gen->freq, dur_ms);
+	time_range(gen->pm_a, dur_ms);
+	time_pdset(gen->pd, dur_ms);
+}
+
+static uint32_t
+time_gen(sauParseGenData *restrict gen) {
+	uint32_t dur_ms = gen->time.v_ms;
+	if (!(gen->params & SAU_PGENP_TIME))
+		gen->event->ev_flags &= ~SAU_PEV_VOICE_SET_DUR;
+	if (!(gen->time.flags & SAU_TIMEP_SET)) {
+		if (gen->time.flags & SAU_TIMEP_DEFAULT)
+			gen->time.flags |= SAU_TIMEP_SET; /* use, may adjust */
+		else
+			gen->time.flags |= SAU_TIMEP_DEFAULT;
+	} else if (!gen->is_nested) {
+		gen->event->ev_flags |= SAU_PEV_LOCK_DUR_SCOPE;
+	}
+	for (sauParseListData *list = gen->mods;
+			list != NULL; list = list->ref.next) {
+		for (sauParseObjRef *obj = list->first_item;
+				obj; obj = obj->next) {
+			if (obj->obj_type != SAU_POBJT_GEN) continue;
+			sauParseGenData *sub_gen = (sauParseGenData*)obj;
+			uint32_t sub_dur_ms = time_gen(sub_gen);
+			if (dur_ms < sub_dur_ms
+			    && (gen->time.flags & SAU_TIMEP_DEFAULT) != 0)
+				dur_ms = sub_dur_ms;
+		}
+	}
+	gen->time.v_ms = dur_ms;
+	time_gen_lines(gen);
+	return dur_ms;
+}
+
+static uint32_t
+time_event(sauParseEvData *restrict e) {
+	uint32_t dur_ms = 0;
+	if (e->main_obj) {
+		sauParseObjRef *obj = e->main_obj;
+		if (obj->obj_type == SAU_POBJT_GEN) {
+			sauParseGenData *gen = (sauParseGenData*)obj;
+			dur_ms = time_gen(gen);
+		}
+	}
+	/*
+	 * Timing for sub-events - done before event list flattened.
+	 */
+	sauParseEvBranch *fork = e->forks;
+	while (fork != NULL) {
+		uint32_t nest_dur_ms = 0, wait_sum_ms = 0;
+		sauParseEvData *ne = fork->events, *ne_prev = e;
+		sauParseGenData *ne_gen = ne->main_obj,
+				 *ne_gen_prev = ne_gen->prev_ref,
+				 *e_gen = ne_gen_prev;
+		uint32_t first_time_ms = e_gen->time.v_ms;
+		uint32_t def_time_ms = e_gen->time.v_ms;
+		e->dur_ms = first_time_ms; /* for first value in series */
+		if (!(e->ev_flags & SAU_PEV_IMPLICIT_TIME))
+			e->ev_flags |= SAU_PEV_VOICE_SET_DUR;
+		for (;;) {
+			wait_sum_ms += ne->wait_ms;
+			if (!(ne_gen->time.flags & SAU_TIMEP_SET)) {
+				ne_gen->time.v_ms = def_time_ms;
+				if (ne->ev_flags & SAU_PEV_FROM_GAPSHIFT)
+					ne_gen->time.flags |= SAU_TIMEP_SET;
+			}
+			time_event(ne);
+			def_time_ms = ne_gen->time.v_ms;
+			if (ne->ev_flags & SAU_PEV_FROM_GAPSHIFT) {
+				if (ne_gen_prev->time.flags & SAU_TIMEP_DEFAULT
+				    && !(ne_prev->ev_flags &
+					    SAU_PEV_FROM_GAPSHIFT)) /* gap */
+					ne_gen_prev->time = sauTime_VALUE(0, 0);
+			}
+			if (ne->ev_flags & SAU_PEV_WAIT_PREV_DUR) {
+				ne->wait_ms += ne_gen_prev->time.v_ms;
+				ne_gen_prev->time.flags &= ~SAU_TIMEP_IMPLICIT;
+			}
+			if (nest_dur_ms < wait_sum_ms + ne->dur_ms)
+				nest_dur_ms = wait_sum_ms + ne->dur_ms;
+			first_time_ms += ne->dur_ms +
+				(ne->wait_ms - ne_prev->dur_ms);
+			ne_gen_prev->time.flags &= ~SAU_TIMEP_DEFAULT; // fix val
+			ne_gen->time.flags |= SAU_TIMEP_SET;
+			ne_gen->params |= SAU_PGENP_TIME;
+			ne_gen_prev = ne_gen;
+			ne_prev = ne;
+			ne = ne->next;
+			if (!ne) break;
+			ne_gen = ne->main_obj;
+		}
+		/*
+		 * Exclude nested generators when setting a longer duration,
+		 * if time has already been explicitly set for any carriers
+		 * (otherwise the duration can be misreported as too long).
+		 *
+		 * TODO: Replace with design that gives nodes at each level
+		 * their own event. Merge event and data nodes (always make
+		 * new events for everything), or sublist into event nodes?
+		 */
+		if (!(e->ev_flags & SAU_PEV_LOCK_DUR_SCOPE)
+		    || !e_gen->is_nested) {
+			if (dur_ms < first_time_ms)
+				dur_ms = first_time_ms;
+//			if (dur_ms < nest_dur_ms)
+//				dur_ms = nest_dur_ms;
+		}
+		fork = fork->prev;
+	}
+	e->dur_ms = dur_ms; /* unfinished estimate used to adjust timing */
+	return dur_ms;
+}
+
+/*
+ * Final time update for generator, to set flexible default time duration.
+ */
+static void
+time_gen_tailing(sauParseGenData *restrict gen, sauParseEvData *restrict e,
+		uint32_t cur_longest, uint32_t wait_sum) {
+	if ((gen->time.flags & (SAU_TIMEP_SET|SAU_TIMEP_DEFAULT))
+	    != SAU_TIMEP_SET) {
+		gen->time.v_ms = cur_longest + wait_sum;
+		gen->time.flags |= SAU_TIMEP_SET;
+		if (e->dur_ms < gen->time.v_ms)
+			e->dur_ms = gen->time.v_ms;
+		time_gen_lines(gen);
+	}
+}
+
 /*
  * Handle all voice and generator data for a parse event node.
  *
@@ -469,15 +649,25 @@ sau_fini_VoiceGraph(sauVoiceGraph *restrict o) {
  * \return true, or false on allocation failure
  */
 static bool
-ParseSem_handle_event(ParseSem *restrict o,
-		sauParseObjInfo *restrict objects,
-		sauParseEvData *restrict e) {
+sem_handle_event(ParseSem *restrict o, sauParseEvData *restrict e,
+		uint32_t cur_longest, uint32_t wait_sum) {
+	sem_sum_dur_ms(o, e->wait_ms);
+	++o->ev_count;
 	sauParseObjRef *ref = e->main_obj;
-	sauVoAllocState *vas = sauVoiceGraph_prepare(&o->ev_vo_graph, ref);
-	e->vo_id = ref->vo_id;
+	switch (ref->obj_type) {
+	case SAU_POBJT_LIST:
+		if (!sem_handle_list(o, (void*)ref)) goto MEM_ERR;
+		return true;
+	case SAU_POBJT_GEN:
+		break;
+	}
 	sauParseGenData *gen = (void*)ref;
 	uint32_t gen_id;
-	if (!ParseSem_handle_gendata(o, objects, gen, &gen_id)) goto MEM_ERR;
+	time_gen_tailing(gen, e, cur_longest, wait_sum); // only for outermost
+	sauVoAlloc_update(&o->va, o->obj_arr.a, e);
+	sauVoAllocState *vas = sauVoiceGraph_prepare(&o->ev_vo_graph, ref);
+	e->vo_id = ref->vo_id;
+	if (!sem_handle_gendata(o, gen, &gen_id)) goto MEM_ERR;
 	if (o->ev_gen_data.count > 0) {
 		if (!_GenDataArr_mpmemdup(&o->ev_gen_data,
 					(sauParseGenData***) &e->gen_data,
@@ -486,8 +676,8 @@ ParseSem_handle_event(ParseSem *restrict o,
 		o->ev_gen_data.count = 0; // reuse allocation
 	}
 	if (e->ev_flags & SAU_PEV_ASSIGN_VOICE) {
-		sauParseObjInfo *info = &objects[ref->obj_id];
-		info = &objects[info->root_gen_obj]; // for carrier
+		sauParseObjInfo *info = &o->obj_arr.a[ref->obj_id];
+		info = &o->obj_arr.a[info->root_gen_obj]; // for carrier
 		vas->flags |= SAU_VAS_HAS_CARR | SAU_VAS_SET_GRAPH;
 		vas->carr_gen_id = info->last_gen_id;
 	}
@@ -502,12 +692,115 @@ MEM_ERR:
 }
 
 /*
- * Handle last parts of event bookkeeping.
+ * Deals with events that are "sub-events" (attached to a main event as
+ * nested sequence rather than part of the main linear event sequence).
+ *
+ * Such events, if attached to the passed event, will be given their place in
+ * the ordinary event list.
  */
 static void
-ParseSem_fini_event(ParseSem *restrict o, sauParseEvData *restrict e) {
-	++o->ev_count;
-	ParseSem_sum_dur_ms(o, e->wait_ms);
+flatten_events(sauParseEvData *restrict e) {
+	sauParseEvBranch *fork = e->forks;
+	sauParseEvData *ne = fork->events;
+	sauParseEvData *fe = e->next, *fe_prev = e;
+	while (ne != NULL) {
+		if (!fe) {
+			/*
+			 * No more events in the flat sequence,
+			 * so append all sub-events.
+			 */
+			fe_prev->next = fe = ne;
+			break;
+		}
+		/*
+		 * Insert next sub-event before or after
+		 * the next events of the flat sequence.
+		 */
+		sauParseEvData *ne_next = ne->next;
+		if (fe->wait_ms >= ne->wait_ms) {
+			fe->wait_ms -= ne->wait_ms;
+			fe_prev->next = ne;
+			ne->next = fe;
+		} else {
+			ne->wait_ms -= fe->wait_ms;
+			/*
+			 * If several events should pass in the flat sequence
+			 * before the next sub-event is inserted, skip ahead.
+			 */
+			while (fe->next && fe->next->wait_ms <= ne->wait_ms) {
+				fe_prev = fe;
+				fe = fe->next;
+				ne->wait_ms -= fe->wait_ms;
+			}
+			sauParseEvData *fe_next = fe->next;
+			fe->next = ne;
+			ne->next = fe_next;
+			fe = fe_next;
+			if (fe)
+				fe->wait_ms -= ne->wait_ms;
+		}
+		fe_prev = ne;
+		ne = ne_next;
+	}
+	e->forks = fork->prev;
+}
+
+/*
+ * Main semantics sem_* function, used per-durgroup. Combines timing logic
+ * with other semantics (examination and allocation before audio rendering
+ * interpretation) after parsing.
+ *
+ * Adjust timing for a duration group; the script syntax for time grouping is
+ * only allowed on the "top" generator level, so the algorithm only deals with
+ * this for the events involved.
+ */
+static sauParseEvData *
+sem_per_durgroup(ParseSem *restrict o, sauParseEvData *restrict e_from,
+		uint32_t *restrict wait_after) {
+	sauParseEvData *e, *e_subtract_after = e_from;
+	uint32_t cur_longest = 0, wait_sum = 0, group_carry = 0;
+	bool subtract = false;
+	for (e = e_from; e; ) {
+		if (!(e->ev_flags & SAU_PEV_IMPLICIT_TIME))
+			e->ev_flags |= SAU_PEV_VOICE_SET_DUR;
+		time_event(e);
+		if ((e->ev_flags & SAU_PEV_VOICE_SET_DUR) != 0 &&
+		    cur_longest < e->dur_ms) {
+			cur_longest = e->dur_ms;
+			group_carry = cur_longest;
+			e_subtract_after = e;
+		}
+		if (!e->next) break;
+		e = e->next;
+		if (cur_longest > e->wait_ms)
+			cur_longest -= e->wait_ms;
+		else
+			cur_longest = 0;
+		wait_sum += e->wait_ms;
+	}
+	/*
+	 * Flatten event forks in loop following the timing adjustments
+	 * depending on composite step event structure, complete times.
+	 *
+	 * Also run voice allocation, any other final bookkeeping here.
+	 * This is the last event loop per durgroup, place it all here.
+	 */
+	for (e = e_from; e; ) {
+		while (e->forks != NULL) flatten_events(e);
+		sem_handle_event(o, e, cur_longest, wait_sum);
+		if (!e->next) break;
+		if (e == e_subtract_after) subtract = true;
+		e = e->next;
+		wait_sum -= e->wait_ms;
+		if (subtract) {
+			if (group_carry >= e->wait_ms)
+				group_carry -= e->wait_ms;
+			else
+				group_carry = 0;
+		}
+	}
+	if (wait_after) *wait_after += group_carry;
+	return e;
 }
 
 /*
@@ -516,7 +809,7 @@ ParseSem_fini_event(ParseSem *restrict o, sauParseEvData *restrict e) {
  * \return true, unless invalid data detected
  */
 static bool
-ParseSem_check_validity(ParseSem *restrict o,
+sem_check_validity(ParseSem *restrict o,
 		sauParse *restrict parse) {
 	bool error = false;
 	if (o->va.count > SAU_PVO_MAX_ID) {
@@ -546,10 +839,11 @@ init_ParseSem(ParseSem *restrict o,
  * Fill in final data, and clean up.
  */
 static sauParse *
-fini_ParseSem(ParseSem *restrict o,
-		sauParse *restrict parse) {
+fini_ParseSem(ParseSem *restrict o, sauParse *restrict parse) {
 	bool ok;
-	if ((ok = ParseSem_check_validity(o, parse))) {
+	if ((ok = sem_check_validity(o, parse) &&
+	    _ObjInfoArr_mpmemdup(&o->obj_arr, &parse->objects, o->mp))) {
+		parse->object_count = o->obj_arr.count;
 		parse->ev_count = o->ev_count;
 		if (isnan(parse->sopt.ampmult)) {
 			/*
@@ -572,10 +866,11 @@ fini_ParseSem(ParseSem *restrict o,
 	IDBuf_clear(&o->idbuf);
 	sauGenAlloc_clear(&o->ga);
 	_sauVoAlloc_clear(&o->va);
+	_ObjInfoArr_clear(&o->obj_arr);
 	return ok ? parse : NULL;
 }
 
-static sauNoinline void
+static void
 print_linked(const char *restrict header,
 		const sauProgramIDArr *restrict idarr) {
 	if (!idarr || !idarr->count)
@@ -589,13 +884,12 @@ print_linked(const char *restrict header,
 static void
 print_genlist(const sauProgramGenRef *restrict list,
 		uint32_t count) {
-	if (!list)
-		return;
-	FILE *out = sau_print_stream();
 	static const char *const uses[SAU_MOD_NAMED] = {
 		SAU_MOD__ITEMS(SAU_MOD__X_GRAPH)
 	};
-
+	if (!list)
+		return;
+	FILE *out = sau_print_stream();
 	uint32_t i = 0;
 	uint32_t max_indent = 0;
 	fputs("\n\t    [", out);
@@ -651,15 +945,14 @@ print_genline(const sauParseGenData *restrict gd) {
 	print_range(gd->amp, 'a');
 }
 
-static const char *const mods_syntax[SAU_MOD_NAMED] = {
-	SAU_MOD__ITEMS(SAU_MOD__X_SYNTAX)
-};
-
 /**
  * Print information about program contents. Useful for debugging.
  */
 void
 sauParse_print_info(const sauParse *restrict o) {
+	static const char *const mods_syntax[SAU_MOD_NAMED] = {
+		SAU_MOD__ITEMS(SAU_MOD__X_SYNTAX)
+	};
 	sau_printf("Program: \"%s\"\n"
 		"\tDuration:\t%u ms\n"
 		"\tEvents:  \t%zu\n"
