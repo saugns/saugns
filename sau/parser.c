@@ -1115,18 +1115,20 @@ static void begin_list(sauParser *restrict o,
 			get_valr_sub_f(nest->valr_parts) :
 			NULL;
 	list->use_type = use_type;
-	//if (plist != NULL) {
-	//	list->ref.prev = plist;
-	//} else {
-		ObjInfoArr_add(&o->ps.obj_arr, &list->ref, SAU_POBJT_LIST, 0);
-	//}
 	struct NestScope *parent_nest = NestArr_getrev(&o->nest, 1);
 	if (use_type == SAU_MOD_N_carr) {
+		//if (plist != NULL) {
+		//	list->ref.prev = plist;
+		//} else {
+			ObjInfoArr_add(&o->ps.obj_arr,
+					&list->ref, SAU_POBJT_LIST, 0);
+		//}
 		link_ev_obj(parent_pl, parent_nest, &list->ref, &plist->ref);
 	} else {
 		/*
 		 * Maintain linked list of modulator lists per owner (carrier).
 		 */
+		list->ref.obj_id = SAU_POBJ_NO_ID; // only used as linked list
 		sauParseGenData *parent_on = parent_pl->gen;
 		if (nest->owner_item != &parent_on->ref)
 			nest->last_mods = NULL;
@@ -1164,6 +1166,7 @@ static void begin_gen(sauParser *restrict o,
 	 * Initialize node.
 	 */
 	if (pgen != NULL) {
+		pgen->has_next_ref = true;
 		gen->ref = pgen->ref;
 		gen->prev_ref = pgen;
 		gen->is_nested = pgen->is_nested;
