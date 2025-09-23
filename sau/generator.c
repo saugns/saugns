@@ -53,9 +53,8 @@ struct BlockBufIDs {
  * Generator node flags.
  */
 enum {
-	GN_INIT = 1<<0,
-	GN_VISITED = 1<<1,
-	GN_TIME_INF = 1<<2, /* used for SAU_TIMEP_IMPLICIT */
+	GN_VISITED  = 1U<<0,
+	GN_TIME_INF = 1U<<1, /* used for SAU_TIMEP_IMPLICIT */
 };
 
 typedef struct GenBase {
@@ -137,6 +136,7 @@ struct sauGenerator {
 	float amp_scale;
 	uint32_t gen_count;
 	AnyGen *gens;
+	uint32_t *obj_to_gen;
 	sauMempool *mem;
 };
 
@@ -149,14 +149,16 @@ static bool alloc_for_program(sauGenerator *restrict o,
 		const sauParse *restrict prg) {
 	size_t i;
 	o->ev_count = prg->ev_count;
-	i = prg->vo_count;
-	if (i > 0) {
+	if ((i = prg->object_count) > 0) {
+		o->obj_to_gen = sau_mpalloc(o->mem, i * sizeof(uint32_t));
+		if (!o->obj_to_gen) goto ERROR;
+	}
+	if ((i = prg->vo_count) > 0) {
 		o->voices = sau_mpalloc(o->mem, i * sizeof(VoiceNode));
 		if (!o->voices) goto ERROR;
 		o->vo_count = i;
 	}
-	i = prg->gen_count;
-	if (i > 0) {
+	if ((i = prg->gen_count) > 0) {
 		o->gens = sau_mpalloc(o->mem, i * sizeof(AnyGen));
 		if (!o->gens) goto ERROR;
 		o->gen_count = i;
@@ -306,7 +308,6 @@ static void prepare_gen(sauGenerator *restrict o,
 	prepare_range(&gen->pan, 0.0, 0.0);
 	prepare_range(&gen->freq, SAU_PDEF_FREQ, 0.0);
 	gen->type = gd->ref.gen_type;
-	gen->flags = GN_INIT;
 }
 
 static void update_ids(AnyGen *restrict n,
@@ -436,13 +437,16 @@ static void handle_event(sauGenerator *restrict o) {
 			vn = &o->voices[pe->vo_id];
 		for (size_t i = 0; i < pe->gen_data_count; ++i) {
 			const sauParseGenData *gd = pe->gen_data[i];
+			o->obj_to_gen[gd->ref.obj_id] = gd->id; // update lookup
 			AnyGen *n = &o->gens[gd->id];
-			if (!(n->gen.flags & GN_INIT))
-				prepare_gen(o, n, gd);
+			if (gd->copy_to_id != SAU_PGEN_NO_ID)
+				o->gens[gd->copy_to_id] = *n;
+			bool reset = !gd->prev_ref;
+			if (reset) prepare_gen(o, n, gd);
 			update_gen(o, n, gd);
 		}
 		if (vn) {
-			vn->carr_gen_id = pe->carr_gen_id;
+			vn->carr_gen_id = o->obj_to_gen[pe->carr_obj_id];
 			vn->flags |= VN_INIT;
 			if (o->voice > pe->vo_id) {
 				/* go back to re-activated node */
@@ -537,7 +541,7 @@ static float *run_mods(sauGenerator *restrict o,
 		bool wave_env, bool buf_filled) {
 	for (uint32_t i = 0; i < mods->count; ++i) {
 		run_block(o, bufs, &(uint32_t){len},
-				&o->gens[mods->ids[i]], note_dur,
+				&o->gens[o->obj_to_gen[mods->ids[i]]], note_dur,
 				freq, wave_env, buf_filled);
 		buf_filled = true;
 	}
