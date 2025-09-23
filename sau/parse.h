@@ -243,6 +243,12 @@ enum {
 #define SAU_PGEN_NO_ID  UINT32_MAX       /* generator ID missing */
 #define SAU_PGEN_MAX_ID (UINT32_MAX - 1) /* error if exceeded */
 
+/*
+ * Object ID constants.
+ */
+#define SAU_POBJ_NO_ID  UINT32_MAX       /* object ID missing */
+#define SAU_POBJ_MAX_ID (UINT32_MAX - 1) /* error if exceeded */
+
 typedef struct sauProgramIDArr {
 	uint32_t count;
 	uint32_t ids[];
@@ -313,6 +319,9 @@ typedef struct sauParseObjInfo {
 	uint32_t last_gen_id; // ID for audio generator, if such
 	uint32_t root_gen_obj; // root gen for gen
 	uint32_t seed; // TODO: divide containing node type
+	struct sauParseGenData *swap_from_gd; // for gen. allocation (renumber)
+	struct sauParseGenData *last_gd;
+	const sauProgramIDArr *mods_idarr[SAU_MOD_NAMED - 1];
 } sauParseObjInfo;
 
 /** Reference to script data object, common data for all subtypes. */
@@ -341,9 +350,10 @@ typedef struct sauParseGenData {
 	sauParseObjRef ref;
 	struct sauParseEvData *event;
 	struct sauParseGenData *prev_ref; // preceding for same gen(s)
-	bool is_nested;
+	bool is_nested : 1;
+	bool has_next_ref : 1; // for heuristic use, can't rely on in same pass
 	/* generator parameters */
-	uint32_t id; // moved here from old Program type
+	uint32_t id, copy_to_id;
 	uint32_t params;
 	sauTime time;
 	sauRange *amp, *pan;
@@ -365,12 +375,11 @@ typedef struct sauParseGenData {
 
 /** Script data event flags. */
 enum {
-	SAU_PEV_ASSIGN_VOICE     = 1U<<0, // numbered voice has new carrier
-	SAU_PEV_VOICE_SET_DUR    = 1U<<1,
-	SAU_PEV_IMPLICIT_TIME    = 1U<<2,
-	SAU_PEV_WAIT_PREV_DUR    = 1U<<3, // compound step timing
-	SAU_PEV_FROM_GAPSHIFT    = 1U<<4, // gapshift follow-on event
-	SAU_PEV_LOCK_DUR_SCOPE   = 1U<<5, // nested data can't lengthen dur
+	SAU_PEV_VOICE_SET_DUR    = 1U<<0,
+	SAU_PEV_IMPLICIT_TIME    = 1U<<1,
+	SAU_PEV_WAIT_PREV_DUR    = 1U<<2, // compound step timing
+	SAU_PEV_FROM_GAPSHIFT    = 1U<<3, // gapshift follow-on event
+	SAU_PEV_LOCK_DUR_SCOPE   = 1U<<4, // nested data can't lengthen dur
 };
 
 struct sauParseEvBranch;
@@ -393,7 +402,7 @@ typedef struct sauParseEvData {
 	uint32_t dur_ms; // for level at which main object is included
 	uint8_t ev_flags;
 	uint16_t vo_id;
-	uint32_t carr_gen_id;
+	uint32_t carr_obj_id;
 	const sauParseGenData **gen_data; // flat per-event list
 	uint32_t gen_data_count;
 	/* for -p printout format (voice graph blocks) */
