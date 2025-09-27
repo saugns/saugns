@@ -9,7 +9,12 @@ Pre-release
 
 Simplify parsing code and semantics before audio generation.
 One less set of data structures, don't copy and "convert".
-No functional change.
+The code formerly called "parseconv" is now parser/semantics.
+
+Write generator number allocation code in parser semantics to
+reuse generators when their durations expire in scripts. The
+printouts from `saugns -p` reflect the new scheduling, the
+audio output is (of course) identical.
 
 v0.5.2 (2025-08-27)
 -------------------
