@@ -60,6 +60,7 @@ enum {
 typedef struct GenBase {
 	uint32_t time;
 	uint32_t note_dur; /* time without countdown, from here or carrier */
+	uint32_t obj_id;
 	uint8_t type;
 	uint8_t flags;
 	//uint8_t cycle_used; /* stored here, used for oscillator only */
@@ -403,6 +404,7 @@ static void update_gen(sauGenerator *restrict o,
 		update_range(&osc->pm_a, gd->pm_a, o->srate);
 	}
 	GenBase *gen = &n->gen;
+	gen->obj_id = gd->ref.obj_id;
 	if (params & SAU_PGENP_TIME) {
 		const sauTime *src = &gd->time;
 		if (src->flags & SAU_TIMEP_IMPLICIT) {
@@ -439,8 +441,10 @@ static void handle_event(sauGenerator *restrict o) {
 			const sauParseGenData *gd = pe->gen_data[i];
 			o->obj_to_gen[gd->ref.obj_id] = gd->id; // update lookup
 			AnyGen *n = &o->gens[gd->id];
-			if (gd->copy_to_id != SAU_PGEN_NO_ID)
+			if (gd->copy_to_id != SAU_PGEN_NO_ID) {
+				o->obj_to_gen[n->gen.obj_id] = gd->copy_to_id;
 				o->gens[gd->copy_to_id] = *n;
+			}
 			bool reset = !gd->prev_ref;
 			if (reset) prepare_gen(o, n, gd);
 			update_gen(o, n, gd);

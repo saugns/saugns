@@ -1120,8 +1120,7 @@ static void begin_list(sauParser *restrict o,
 		//if (plist != NULL) {
 		//	list->ref.prev = plist;
 		//} else {
-			ObjInfoArr_add(&o->ps.obj_arr,
-					&list->ref, SAU_POBJT_LIST, 0);
+			sem_objinfo_add(&o->ps, &list->ref, SAU_POBJT_LIST, 0);
 		//}
 		link_ev_obj(parent_pl, parent_nest, &list->ref, &plist->ref);
 	} else {
@@ -1166,7 +1165,6 @@ static void begin_gen(sauParser *restrict o,
 	 * Initialize node.
 	 */
 	if (pgen != NULL) {
-		pgen->has_next_ref = true;
 		gen->ref = pgen->ref;
 		gen->prev_ref = pgen;
 		gen->is_nested = pgen->is_nested;
@@ -1181,10 +1179,10 @@ static void begin_gen(sauParser *restrict o,
 		 */
 		bool is_nested = pl->use_type != SAU_MOD_N_carr;
 		gen->is_nested = is_nested;
-		sauParseObjInfo *info = ObjInfoArr_add(&o->ps.obj_arr,
-				&gen->ref, SAU_POBJT_GEN, type);
+		sauParseObjInfo *info = sem_objinfo_add(&o->ps, &gen->ref,
+				SAU_POBJT_GEN, type);
 		if (sau_pgen_has_seed(type))
-			gen->seed = info->seed = sau_rand32(&o->sl.math_state);
+			gen->seed = sau_rand32(&o->sl.math_state);
 		gen->time = sauTime_DEFAULT(o->sl.sopt.def_time_ms, is_nested);
 		if (!is_nested) {
 			o->root_gen_obj = gen->ref.obj_id;
