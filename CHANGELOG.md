@@ -9,10 +9,34 @@ Pre-release
 
 [rebase in progress]
 
+Fix remaining object ID allocation/reuse bug. A script like
+the following misbehaved (making the `N` silent last second):
+"W[R t2 ; a0] t1 /1 W[N t4] t2"
+
+v0.5.5 (2025-11-01)
+-------------------
+
 Language changes:
  * Numerical expressions. Fix parsing bug causing `num-[]`
    (where `-[]` is a later expression clearing and setting
    a modulator list) to fail to read number `num`.
+ * Numerical variables. Make them lexically scoped,
+   add an option for accessing globals.
+   - Make `$var=` always assign to a variable at the
+     current block/list level.
+   - Make `$var` in a numerical expression return a value
+     from the lexically closest variable with a value, if
+     any. Thus `$var=$var` may create a new local variable
+     given the value of a variable from an outer scope.
+   - Add `$~var` which can be used to read and/or write
+     to a global variable from any lexical scope. For any
+     syntax that began with `$var`, `$~var` is available.
+   - Restrict `$?var` to being used at the global scope.
+     Non-overriding assignmnent `$var?=` can still be used
+     at any scope; it checks for the existence of `$var` at
+     any scope, does nothing if it exists, defines a local
+     variable if it does not exist.
+ * Time values. Rename constant `D` to `T`.
 
 v0.5.4 (2025-10-27)
 -------------------
