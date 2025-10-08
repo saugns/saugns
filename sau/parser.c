@@ -1062,6 +1062,7 @@ static void prepare_event(sauParser *restrict o,
 static void link_ev_obj(struct ParseLevel *restrict pl,
 		struct NestScope *restrict nest,
 		sauParseObjRef *restrict obj,
+		sauParseObjInfo *restrict obj_info,
 		sauParseObjRef *restrict prev,
 		bool is_copy) {
 	sauParseEvData *e = pl->event;
@@ -1086,6 +1087,7 @@ static void link_ev_obj(struct ParseLevel *restrict pl,
 		pl->set_label->data_use = SAU_SYM_DATA_OBJ;
 		pl->set_label->data.obj = obj;
 		pl->set_label = NULL;
+		obj_info->is_labeled = true;
 	}
 }
 
@@ -1109,13 +1111,17 @@ static void begin_list(sauParser *restrict o,
 	list->use_type = use_type;
 	struct NestScope *parent_nest = NestArr_getrev(&o->nest, 1);
 	if (use_type == SAU_MOD_N_carr) {
+		sauParseObjInfo *info;
 		//if (plist != NULL) {
 		//	list->ref.prev = plist;
+		//	...
+		//	info = &o->ps.obj_arr.a[list->ref.obj_id];
 		//} else {
-			sem_objinfo_add(&o->ps, &list->ref, SAU_POBJT_LIST, 0);
+			info = sem_objinfo_add(&o->ps,
+					&list->ref, SAU_POBJT_LIST, 0);
 		//}
 		link_ev_obj(parent_pl, parent_nest,
-				&list->ref, &plist->ref, false);
+				&list->ref, info, &plist->ref, false);
 	} else {
 		/*
 		 * Maintain linked list of modulator lists per owner (carrier).
@@ -1154,11 +1160,13 @@ static void begin_gen(sauParser *restrict o,
 	if (!is_compstep)
 		pl->pl_flags |= PL_NEW_EVENT_FORK;
 	pl->used_ampmult = o->sl.sopt.def_ampmult;
+	sauParseObjInfo *info;
 	/*
 	 * Initialize node.
 	 */
 	bool is_nested = pl->use_type != SAU_MOD_N_carr;
 	if (pgen != NULL) {
+		pgen->has_next_ref = true;
 		gen->prev_ref = pgen;
 		gen->is_nested = pgen->is_nested;
 		gen->time = sauTime_DEFAULT(pgen->time.v_ms,
@@ -1171,6 +1179,7 @@ static void begin_gen(sauParser *restrict o,
 			goto NEW_COPY;
 		}
 		gen->ref = pgen->ref;
+		info = &o->ps.obj_arr.a[gen->ref.obj_id];
 	} else {
 		/*
 		 * New generator with initial parameter values.
@@ -1199,13 +1208,18 @@ static void begin_gen(sauParser *restrict o,
 	NEW_COPY:
 		gen->is_new = true;
 		gen->is_nested = is_nested;
-		sauParseObjInfo *info = sem_objinfo_add(&o->ps, &gen->ref,
-				SAU_POBJT_GEN, type);
-		if (!is_nested)
+		info = sem_objinfo_add(&o->ps, &gen->ref, SAU_POBJT_GEN, type);
+		if (is_nested) {
+			sauParseObjInfo *owner_info =
+				&o->ps.obj_arr.a[nest->owner_item->obj_id];
+			// modulators count as reachable from carrier
+			info->is_labeled = owner_info->is_labeled;
+		} else {
 			o->root_gen_obj = gen->ref.obj_id;
+		}
 		info->root_gen_obj = o->root_gen_obj;
 	}
-	link_ev_obj(pl, nest, &gen->ref, &pgen->ref, is_copy);
+	link_ev_obj(pl, nest, &gen->ref, info, &pgen->ref, is_copy);
 	gen->event = e;
 	pl->pl_flags |= PL_OWN_GEN;
 }
