@@ -15,7 +15,7 @@ Wsin	fB3 t.2 p.f[
 |/.4
 
 @mod2 r(2/9)
-@carr fB3 t.2
+:carr fB3 t.2
 ;	fA4
 ;	fGs5 t.4
 ;;.3	fB3 t.2
@@ -26,7 +26,7 @@ Wsin	fB3 t.2 p.f[
 |/.4
 
 @mod2 r(3/9)
-@carr fB3 t.2
+:carr fB3 t.2
 ;	fA4
 ;	fGs5 t.4
 ;;.3	fB3 t.2
@@ -37,7 +37,7 @@ Wsin	fB3 t.2 p.f[
 |/.4
 
 @mod2 r(4/9)
-@carr fB3 t.2
+:carr fB3 t.2
 ;	fA4
 ;	fGs5 t.4
 ;;.3	fB3 t.2
@@ -48,7 +48,7 @@ Wsin	fB3 t.2 p.f[
 |/.4
 
 @mod2 r(5/9)
-@carr fB3 t.2
+:carr fB3 t.2
 ;	fA4
 ;	fGs5 t.4
 ;;.3	fB3 t.2
@@ -59,7 +59,7 @@ Wsin	fB3 t.2 p.f[
 |/.4
 
 @mod2 r(6/9)
-@carr fB3 t.2
+:carr fB3 t.2
 ;	fA4
 ;	fGs5 t.4
 ;;.3	fB3 t.2
@@ -70,7 +70,7 @@ Wsin	fB3 t.2 p.f[
 |/.4
 
 @mod2 r(7/9)
-@carr fB3 t.2
+:carr fB3 t.2
 ;	fA4
 ;	fGs5 t.4
 ;;.3	fB3 t.2
@@ -81,7 +81,7 @@ Wsin	fB3 t.2 p.f[
 |/.4
 
 @mod2 r(8/9)
-@carr fB3 t.2
+:carr fB3 t.2
 ;	fA4
 ;	fGs5 t.4
 ;;.3	fB3 t.2

@@ -332,6 +332,7 @@ typedef struct sauParseObjInfo {
 	uint16_t last_vo_id; // for voice allocation (objects change voices)
 	uint32_t last_gen_id; // ID for audio generator, if such
 	uint32_t root_gen_obj; // root gen for gen
+	bool is_labeled : 1; // object can be reached by label, even indirectly
 	uint32_t dst_obj_id;                  // for gen. allocation (copying)
 	struct sauParseGenData *swap_from_gd; // for gen. allocation (renumber)
 	struct sauParseGenData *last_gd;
@@ -367,6 +368,7 @@ typedef struct sauParseGenData {
 	bool is_new    : 1; // generator is first instance or needs reset
 	bool is_cloned : 1;
 	bool is_nested : 1;
+	bool has_next_ref : 1; // usable within scope of a durgroup
 	/* generator parameters */
 	uint32_t id;
 	uint32_t swap_to_id;   // for moving old generator with ID to new ID
@@ -473,7 +475,6 @@ typedef struct sauParseSetOptions {
  */
 typedef struct sauParse {
 	sauParseEvData *events;
-	sauParseObjInfo *objects; // currently also gen info array
 	sauParseSetOptions sopt;
 	const char *name; // currently simply set to the filename
 	struct sauSymtab *st;
