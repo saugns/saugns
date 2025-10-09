@@ -466,20 +466,6 @@ static sauNoinline bool skip_num(sauScanner *restrict o,
 	return true;
 }
 
-static sauNoinline bool scan_time_val(sauScanner *restrict o,
-		uint32_t *restrict val) {
-	sauScanFrame sf = o->sf;
-	double val_s;
-	if (!scan_num(o, NULL, &val_s))
-		return false;
-	if (val_s < 0.f) {
-		sauScanner_warning(o, &sf, "discarding negative time value");
-		return false;
-	}
-	*val = sau_ui32rint(val_s * 1000.f);
-	return true;
-}
-
 static sauNoinline int32_t scan_int_in_range(sauScanner *restrict o,
 		int32_t min, int32_t max, int32_t fallback,
 		int32_t *restrict val, const char *restrict name) {
@@ -497,24 +483,26 @@ static sauNoinline int32_t scan_int_in_range(sauScanner *restrict o,
 	return true;
 }
 
-static size_t scan_chanmix_const(sauScanner *restrict o,
-		double *restrict val) {
-	char c = sauFile_GETC(o->f);
-	switch (c) {
-	case 'C':
-		*val = 0.f;
-		return 1;
-	case 'L':
-		*val = -1.f;
-		return 1;
-	case 'R':
-		*val = 1.f;
-		return 1;
-	default:
-		sauFile_DECP(o->f);
-		return 0;
-	}
+/*
+ * Use to define named constant functions that just map a char to a number.
+ */
+#define SIMPLE_NUMCONST_F(FName, XList) \
+static size_t (FName)(sauScanner *restrict o, double *restrict val) { \
+	struct ScanLookup *sl sauMaybeUnused = o->data; \
+	switch (sauFile_GETC(o->f)) { \
+	XList(SIMPLE_NUMCONST_F__CASE) \
+	default: sauFile_DECP(o->f); return 0; \
+	} \
 }
+#define SIMPLE_NUMCONST_F__CASE(Name, Value) \
+	case Name: *val = (Value); return 1;
+
+#define CHANMIX_XLIST(X) \
+	X('C', 0.f) \
+	X('L', -1.f) \
+	X('R', 1.f) \
+	//
+SIMPLE_NUMCONST_F(scan_chanmix_const, CHANMIX_XLIST)
 
 #define OCTAVES 11
 #define OCTAVE(n) ((1 << ((n)+1)) * (1.f/32)) // standard tuning at no. 4 = 1.0
@@ -739,17 +727,28 @@ static size_t scan_note_const(sauScanner *restrict o,
 	return len;
 }
 
-static size_t scan_cyclepos_const(sauScanner *restrict o,
-		double *restrict val) {
-	char c = sauFile_GETC(o->f);
-	switch (c) {
-	case 'G':
-		*val = SAU_GLDA_1_2PI;
-		return 1;
-	default:
-		sauFile_DECP(o->f);
-		return 0;
+#define CYCLEPOS_XLIST(X) \
+	X('G', SAU_GLDA_1_2PI) \
+	//
+SIMPLE_NUMCONST_F(scan_cyclepos_const, CYCLEPOS_XLIST)
+
+#define TIMEVAL_XLIST(X) \
+	X('D', sl->sopt.def_time_ms * 0.001) \
+	//
+SIMPLE_NUMCONST_F(scan_timeval_const, TIMEVAL_XLIST)
+
+static sauNoinline bool scan_time_val(sauScanner *restrict o,
+		uint32_t *restrict val) {
+	sauScanFrame sf = o->sf;
+	double val_s;
+	if (!scan_num(o, scan_timeval_const, &val_s))
+		return false;
+	if (val_s < 0.f) {
+		sauScanner_warning(o, &sf, "discarding negative time value");
+		return false;
 	}
+	*val = sau_ui32rint(val_s * 1000.f);
+	return true;
 }
 
 static bool scan_sym_id(sauScanner *restrict o,
@@ -2048,10 +2047,6 @@ static void parse_in_gen_step(sauParser *restrict o) {
 		case 't': {
 			uint8_t suffc = sauScanner_get_suffc(sc);
 			switch (suffc) {
-			case 'd':
-				gen->time = sauTime_DEFAULT(
-						o->sl.sopt.def_time_ms, 0);
-				break;
 			case 'i':
 				if (!gen->is_nested) {
 					sauScanner_warning(sc, NULL,
