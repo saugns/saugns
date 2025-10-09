@@ -13,6 +13,7 @@ Language changes:
  * Numerical expressions. Fix parsing bug causing `num-[]`
    (where `-[]` is a later expression clearing and setting
    a modulator list) to fail to read number `num`.
+ * Time values. Rename constant `D` to `T`.
 
 v0.5.4 (2025-10-27)
 -------------------
