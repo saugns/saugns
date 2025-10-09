@@ -124,9 +124,9 @@ Parameters:
 			This is the frequency default used for modulators
 		which have a carrier at some level with a frequency
 		parameter, rather than the "f" value default.
-	t	Default short definite time "t" value, in seconds.
-		Default times may be longer (and occasionally shorter)
-		depending on the context. Starts at 1.0.
+	t	Default short definite time "t" value, in seconds, also
+		named as D. Default times may be longer (and occasionally
+		shorter) depending on the context. Starts at 1.0.
 
 Signal generator common parameters
 ----------------------------------
@@ -171,12 +171,12 @@ Generator universal parameters:
 			The default time lengthens further when modulators
 		with longer definite times are specified for the current step.
 			For modulator generators, default time is however an
-		"implicit" time length (see 'i' below), meaning playing
-		whenever a carrier it is linked to does. (Implicit time is
-		only supported for nested generators.) When such a time
-		length is retrieved as part of setting the default time for
-		something else, a definite default time in seconds (e.g. 1.0
-		seconds or "S t") is however used instead.
+		"implicit" time length (see 'i', "Time values"), meaning
+		playing whenever a carrier it is linked to does. (Implicit
+		time is only supported for nested generators.) When such a
+		time length is retrieved as part of setting the default time
+		for something else, a definite default time in seconds (e.g.
+		1.0 seconds or "S t") is however used instead.
 			For steps began with a "@name" label reference or a
 		":name" label copy, the default time (aside from modulator
 		implicit time) is the last time got through the label. That's
@@ -188,9 +188,7 @@ Generator universal parameters:
 		previous as its default time. The exception is modulators,
 		for which the last substep has implicit time ('i', "ti")
 		by default, just like for undivided steps for modulators.
-			Special non-number literals can also specify time:
-		d	Definite default time can be set using "td", always.
-		i	Implicit time can be set using "ti", for modulators.
+			See "Time values" for named constants, etc.
 
 Oscillator common parameters:
 	Named parameters common to types "R" and "W".
@@ -724,6 +722,13 @@ Cycle position values:
 	leaf-around-a-stem angle.
 	G	0.3819... (golden angle as cycle percentage)
 
+Time values:
+	Constants for time in seconds. There is also the non-number
+	literal 'i' for implicit time, valid to set to time "t" for
+	modulators only.
+	D	The value corresponding to the "S t" default duration,
+		which in turn by default is 1 second.
+
 Value ranges and envelopes:
 	Various parameters support dynamic changes to their values. Apart
 	from the basic plugging in of modulators (see "Modulator list"),
@@ -994,6 +999,7 @@ Variables:
 	f	Frequencies as notes
 	p	Cycle position values (phase)
 	s	Cycle position values (seed)
+	t	Time values
 		Built-in magic variables exist that perform a procedure when
 	set, beyond holding a value. Like other variables, the initial values
 	can be changed by passing options to a script to assign variables.
