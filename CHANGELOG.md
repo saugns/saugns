@@ -8,6 +8,9 @@ Pre-release
 -----------
 
 Language changes:
+ * Time values. Replace non-number literal `d` for
+   the main time `t` parameter with a constant `D`
+   usable for every time length parameter.
  * Label syntax.
    - Add `:name` expression, for copying the object
      pointed to by "name". A generator copy will be
