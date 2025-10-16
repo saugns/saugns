@@ -4,8 +4,19 @@ saugns version changes
 [On the website](https://sau.frama.io/changes.html#saulang)
 is a shorter change log with only the SAU language changes.
 
-Pre-release
------------
+v0.5.3b (2025-10-16)
+--------------------
+
+Fix bug in object ID allocation for cloned modulators.
+
+In v0.5.3 object IDs alongside generator IDs were made
+to be reused. Object ID reuse code missed an edge case
+(to treat cloned modulators as labeled/non-reusable if
+the main/carrier generator cloned is freshly labeled).
+A crash could happen for scripts triggering the error.
+
+v0.5.3 (2025-10-09)
+-------------------
 
 Language changes:
  * Time values. Replace non-number literal `d` for
