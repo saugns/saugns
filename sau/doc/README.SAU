@@ -805,21 +805,27 @@ Value ranges and envelopes:
 	e	Envelope settings. A letter or digit can be set to toggle
 		behavior for the envelope.
 		0	Off. The envelope does nothing.
-		c	Clamp stage times (default). Each time the envelope
-			is triggered, adjust stages to fit their combined
-			duration to the linked generator time "t" value.
-			This lets the envelope always finish the release.
-				Release time is reduced first, then the times
-			of earlier stages if still needed.
+		c	Clip envelope shape. If the current generator "t"
+			time linked to the envelope is too short for all
+			stages, cut off the too-long portion. Release, and
+			maybe earlier stages, may go unfinished before any
+			retriggering and abrupt level jump to a next attack.
+		d	Declicked envelope shape (default). Like clip mode
+			'c', except that if time runs out before completion,
+			the last value reached is kept and the next attack
+			is changed to start from it. (If a stage of 0 time
+			length is reached, it is always completed.)
 		l	Loop envelope. This changes the behavior into that of
 			a periodic waveform generator. Attack immediately
 			follows release, and there's no sustain time. In
 			terms of timing, the envelope runs like a modulator.
-		t	Truncate envelope trajectory. If the generator "t"
-			time linked to the envelope is too short for all
-			stages, cut off the envelope trajectory. Release and
-			maybe earlier stages may go unfinished before any
-			retriggering and abrupt return to the attack stage.
+		s	Shrink stage times. To avoid clipping the envelope
+			shape, each time the envelope is triggered, adjust
+			its stages to fit their combined duration to the
+			linked generator time "t" value. By reducing times,
+			this lets the envelope always "finish".
+				Release time is reduced first, then the times
+			of earlier stages if still needed.
 		The following 'e' subparameters exist.
 		.l	Set line type for every stage at once. If set at the
 			same time as the line type for a specific stage,

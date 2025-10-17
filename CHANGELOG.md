@@ -7,6 +7,16 @@ is a shorter change log with only the SAU language changes.
 Pre-release
 -----------
 
+Language changes:
+ * Parameter envelopes. Adjust ADSR envelope modes,
+   changing the default to the new declick mode `d`.
+   - Rename modes `t` (truncate envelope trajectory)
+     to `c` (clip envelope shape), and the old `c`
+     (clamp stage times) to `s` (shrink stage times).
+   - Add `d` (declicked envelope shape), which when time
+     runs out before completion keeps the last value and
+     starts the next attack from it. Otherwise like `c`.
+
 Fix v0.5.2 bug which caused `S a` behavior when an affected
 generator uses AM lists to go wrong (scaling was wrongly
 applied to `.r[]` too, and not to `.e[]` which it should be).
