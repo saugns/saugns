@@ -1517,9 +1517,10 @@ static bool parse_env_mode(sauScanner *restrict sc, sauEnvPar *restrict env) {
 		if (!(func < SAU_ENV_FUNCTIONS) && ++matched)
 		switch ((c = sauScanner_getc(sc))) {
 		case '0': func = SAU_ENV_FN_OFF; break;
-		case 'c': func = SAU_ENV_FN_CLAMP; break;
+		case 'c': func = SAU_ENV_FN_CLIP; break;
+		case 'd': func = SAU_ENV_FN_DECLICK; break;
 		case 'l': func = SAU_ENV_FN_LOOP; break;
-		case 't': func = SAU_ENV_FN_TRUNC; break;
+		case 's': func = SAU_ENV_FN_SHRINK; break;
 		default:
 			sauScanner_ungetc(sc);
 			--matched;

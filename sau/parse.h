@@ -48,9 +48,10 @@ typedef struct sauTime {
 /** Envelope modes a.k.a. functions. */
 enum {
 	SAU_ENV_FN_OFF = 0,
-	SAU_ENV_FN_CLAMP,
+	SAU_ENV_FN_CLIP,
+	SAU_ENV_FN_DECLICK,
 	SAU_ENV_FN_LOOP,
-	SAU_ENV_FN_TRUNC,
+	SAU_ENV_FN_SHRINK,
 	SAU_ENV_FUNCTIONS
 };
 
