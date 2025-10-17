@@ -18,10 +18,12 @@ typedef struct sauEnvGen {
 	uint32_t time[SAU_ENV_TIMES];
 	uint8_t line[SAU_ENV_TIMES];
 	uint8_t mode;
-	uint8_t stage; // 0 if unused, otherwise indicates what to run
-	bool r_stretch  : 1; // stretch release to take over sustain?
+	uint8_t stage;      // 0 if unused, otherwise indicates what to run
+	bool r_stretch : 1; // stretch release to take over sustain?
+	bool keep_last : 1; // is a final declick value set for use?
 	float s_val;
-	uint32_t i;
+	uint32_t pos;       // time position in current stage
+	float e_last;       // saved last value for declicking the attack
 } sauEnvGen;
 
 static bool sauEnvGen_has_time(sauEnvGen *restrict o) {
@@ -67,16 +69,18 @@ static void sauEnvGen_set_par(sauEnvGen *restrict o,
 	// Suspend or resume envelope?
 	if (o->mode != SAU_ENV_FN_OFF &&
 			(sauEnvGen_has_time(o) || o->s_val != 1.f)) {
-		if (!o->stage) o->stage = 1;
+		if (!o->stage) o->stage = ~0;
 	} else {
 		o->stage = 0;
+		o->pos = 0;
 	}
 }
 
 static inline void sau_init_EnvGen(sauEnvGen *restrict o) {
-	o->mode = SAU_ENV_FN_CLAMP;
-	o->s_val = 1.f;
 	sauEnvGen_set_lines(o, SAU_LINE_N_lin);
+	o->mode = SAU_ENV_FN_DECLICK;
+	o->s_val = 1.f;
+	o->e_last = 1.f;
 }
 
 static uint32_t sauEnvGen_run_line(sauEnvGen *restrict o,
@@ -87,18 +91,29 @@ static uint32_t sauEnvGen_run_line(sauEnvGen *restrict o,
 	if (o->mode == SAU_ENV_FN_LOOP)
 		time = full_time; // Looping needs the full envelope shape.
 	uint32_t n = len, rem = 0;
-	if (o->i + n > time) {
-		rem = (o->i + n) - time;
+	if (o->pos + n > time) {
+		rem = (o->pos + n) - time;
 		if (rem > len) rem = len;
 		n -= rem;
 	}
-	uint32_t line_time = (o->mode == SAU_ENV_FN_CLAMP) ? time : full_time;
+	uint32_t line_time = (o->mode == SAU_ENV_FN_SHRINK) ? time : full_time;
 	sauLine_fill_funcs[o->line[par_i]](buf, n,
-			v0, vt, o->i, line_time, NULL);
-	o->i += n;
-	if (o->i >= time) {
+			v0, vt, o->pos, line_time, NULL);
+	o->pos += n;
+	if (o->pos >= time) {
+		if (o->mode != SAU_ENV_FN_DECLICK || full_time == 0) {
+			if (!o->keep_last)
+				o->e_last = vt;
+		} else if (n > 0) {
+			uint32_t pos =
+				o->pos < line_time ? o->pos + 1 : line_time;
+			sauLine_fill_funcs[o->line[par_i]](&o->e_last, 1,
+					v0, vt, pos, line_time, NULL);
+			if (time < full_time)
+				o->keep_last = true;
+		}
 		++o->stage;
-		o->i = 0;
+		o->pos = 0;
 	}
 	return rem;
 }
@@ -114,17 +129,18 @@ static uint32_t sauEnvGen_run_sustain(sauEnvGen *restrict o,
 		o->time[SAU_ENV_TIME_R] = e_time[SAU_ENV_TIME_R] = time;
 		goto SKIP_STAGE;
 	}
-	if (o->i + n > time) {
-		rem = (o->i + n) - time;
+	if (o->pos + n > time) {
+		rem = (o->pos + n) - time;
 		if (rem > len) rem = len;
 		n -= rem;
 	}
 	float x = 1.f - o->s_val;
 	for (uint32_t i = 0; i < n; ++i) buf[i] = x;
-	o->i += n;
-	if (o->i >= time) {
+	o->pos += n;
+	if (o->pos >= time) {
+		if (n > 0) o->e_last = x;
 		++o->stage;
-		o->i = 0;
+		o->pos = 0;
 	}
 	return rem;
 SKIP_STAGE:
@@ -173,15 +189,21 @@ static sauMaybeUnused void sauEnvGen_run(sauEnvGen *restrict o,
 	float s_val = 1.f - o->s_val;
 	do {
 		switch (o->stage) {
-		default: o->stage = 1; /* fall-through */
+		default:
+			o->keep_last = false;
+			o->stage = 1; /* fall-through */
 		case 1: n = sauEnvGen_run_line(o, buf, len, e_time,
-					SAU_ENV_TIME_A, 1.f, 0.f); break;
+					SAU_ENV_TIME_A, o->e_last, 0.f);
+			break;
 		case 2: n = sauEnvGen_run_line(o, buf, len, e_time,
-					SAU_ENV_TIME_D, 0.f, s_val); break;
+					SAU_ENV_TIME_D, 0.f, s_val);
+			break;
 		case 3: n = sauEnvGen_run_sustain(o, buf, len, e_time,
-					note_dur - e_total); break;
+					note_dur - e_total);
+			break;
 		case 4: n = sauEnvGen_run_line(o, buf, len, e_time,
-					SAU_ENV_TIME_R, s_val, 1.f); break;
+					SAU_ENV_TIME_R, s_val, 1.f);
+			break;
 		}
 		buf += len - n;
 		len = n;
