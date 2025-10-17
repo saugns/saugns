@@ -2,7 +2,7 @@ S a1/2
 
 'carr
 Wsin	fB3 t.2 p.f[
-		Wsin r(4/3) a2.e[a0.01 d0.01 s1/2 r0.1.lxpe]
+		Wsin r(4/3) a2.e[a0.01 d0.01 s1/2 r0.1.lxpe es]
 	'mod2	Wsin a2 r(1/9) a.e[a0.09 r0.01]
 	] a.e[a0.01 r0.01]
 ;	fA4
