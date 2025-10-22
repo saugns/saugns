@@ -7,6 +7,35 @@ is a shorter change log with only the SAU language changes.
 Pre-release
 -----------
 
+Fix v0.5.3 use-after-free when cloning into modulator lists,
+as triggered by scripts such as: `'a W[R] | N[A :a N :a :a]`
+
+v0.5.3d (2025-10-22)
+--------------------
+
+Fix v0.5.3 bug not caught by test scripts, which may prevent
+correct generator ID reuse in scripts which use more voices.
+
+v0.5.3c (2025-10-17)
+--------------------
+
+Fix v0.5.3 bug causing crash (occasionally hang) when saugns
+fails to open a file to parse (for example, bogus filename).
+
+v0.5.3b (2025-10-16)
+--------------------
+
+Fix bug in object ID allocation for cloned modulators.
+
+In v0.5.3 object IDs alongside generator IDs were made
+to be reused. Object ID reuse code missed an edge case
+(to treat cloned modulators as labeled/non-reusable if
+the main/carrier generator cloned is freshly labeled).
+A crash could happen for scripts triggering the error.
+
+v0.5.3 (2025-10-09)
+-------------------
+
 Language changes:
  * Time values. Replace non-number literal `d` for
    the main time `t` parameter with a constant `D`
