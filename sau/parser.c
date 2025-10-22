@@ -1011,7 +1011,7 @@ static void begin_event(sauParser *restrict o,
 	pl->add_wait_ms = pl->carry_wait_ms = 0;
 	if (prev_data != NULL) {
 		sauParseEvData *pve = prev_data->event;
-		if (prev_data->is_nested)
+		if (prev_data->ref.is_nested)
 			e->ev_flags |= SAU_PEV_IMPLICIT_TIME;
 		if (is_compstep) {
 			if (pl->pl_flags & PL_NEW_EVENT_FORK) {
@@ -1063,7 +1063,6 @@ static void prepare_event(sauParser *restrict o,
 static void link_ev_obj(struct ParseLevel *restrict pl,
 		struct NestScope *restrict nest,
 		sauParseObjRef *restrict obj,
-		sauParseObjInfo *restrict obj_info,
 		sauParseObjRef *restrict prev,
 		bool is_copy) {
 	sauParseEvData *e = pl->event;
@@ -1088,7 +1087,7 @@ static void link_ev_obj(struct ParseLevel *restrict pl,
 		pl->set_label->data_use = SAU_SYM_DATA_OBJ;
 		pl->set_label->data.obj = obj;
 		pl->set_label = NULL;
-		obj_info->is_labeled = true;
+		obj->is_labeled = true;
 	}
 }
 
@@ -1111,23 +1110,15 @@ static void begin_list(sauParser *restrict o,
 			NULL;
 	list->use_type = use_type;
 	struct NestScope *parent_nest = NestArr_getrev(&o->nest, 1);
+	sem_objref_init(&list->ref, SAU_POBJT_LIST,
+			0, use_type != SAU_MOD_N_carr);
 	if (use_type == SAU_MOD_N_carr) {
-		sauParseObjInfo *info;
-		//if (plist != NULL) {
-		//	list->ref.prev = plist;
-		//	...
-		//	info = &o->ps.obj_arr.a[list->ref.obj_id];
-		//} else {
-			info = sem_objinfo_add(&o->ps,
-					&list->ref, SAU_POBJT_LIST, 0);
-		//}
 		link_ev_obj(parent_pl, parent_nest,
-				&list->ref, info, &plist->ref, false);
+				&list->ref, &plist->ref, false);
 	} else {
 		/*
 		 * Maintain linked list of modulator lists per owner (carrier).
 		 */
-		list->ref.obj_id = SAU_POBJ_NO_ID; // only used as linked list
 		sauParseGenData *parent_on = parent_pl->gen;
 		if (nest->owner_item != &parent_on->ref)
 			nest->last_mods = NULL;
@@ -1161,15 +1152,13 @@ static void begin_gen(sauParser *restrict o,
 	if (!is_compstep)
 		pl->pl_flags |= PL_NEW_EVENT_FORK;
 	pl->used_ampmult = o->sl.sopt.def_ampmult;
-	sauParseObjInfo *info;
 	/*
 	 * Initialize node.
 	 */
 	bool is_nested = pl->use_type != SAU_MOD_N_carr;
 	if (pgen != NULL) {
-		pgen->has_next_ref = true;
-		gen->prev_ref = pgen;
-		gen->is_nested = pgen->is_nested;
+		pgen->ref.has_next_ref = true;
+		gen->ref.prev_ref = &pgen->ref;
 		// verify time flags wrt nesting for the case of cloning
 		unsigned time_flags = is_nested ?
 			pgen->time.flags & SAU_TIMEP_IMPLICIT :
@@ -1177,13 +1166,16 @@ static void begin_gen(sauParser *restrict o,
 		gen->time = sauTime_DEFAULT(pgen->time.v_ms, time_flags);
 		gen->mode.main = pgen->mode.main;
 		if (is_copy) {
-			type = pgen->ref.gen_type;
+			sem_objref_init(&gen->ref, SAU_POBJT_GEN,
+					pgen->ref.gen_type, is_nested);
+			gen->ref.is_cloned = true;
 			gen->params |= SAU_PGENP_TIME;
-			gen->is_cloned = true;
-			goto NEW_COPY;
+		} else {
+			gen->ref.obj_id = pgen->ref.obj_id;
+			gen->ref.obj_type = pgen->ref.obj_type;
+			gen->ref.gen_type = pgen->ref.gen_type;
+			gen->ref.is_nested = pgen->ref.is_nested;
 		}
-		gen->ref = pgen->ref;
-		info = &o->ps.obj_arr.a[gen->ref.obj_id];
 	} else {
 		/*
 		 * New generator with initial parameter values.
@@ -1209,13 +1201,9 @@ static void begin_gen(sauParser *restrict o,
 		// all audio generators have frequency, not only oscillators
 		if (is_nested || o->sl.sopt.def_freq != SAU_PDEF_FREQ)
 			gen->freq = create_range(o, is_nested, SAU_PSWEEP_FREQ);
-	NEW_COPY: ;
-		uint32_t owner_obj_id = is_nested ?
-			nest->owner_item->obj_id :
-			SAU_POBJ_NO_ID;
-		info = sem_objinfo_add_gen(&o->ps, gen, owner_obj_id, type);
+		sem_objref_init(&gen->ref, SAU_POBJT_GEN, type, is_nested);
 	}
-	link_ev_obj(pl, nest, &gen->ref, info, &pgen->ref, is_copy);
+	link_ev_obj(pl, nest, &gen->ref, &pgen->ref, is_copy);
 	gen->event = e;
 	pl->pl_flags |= PL_OWN_GEN;
 }
@@ -1795,7 +1783,7 @@ static uint8_t parse_gen_amp(sauParser *restrict o) {
 static bool parse_gen_chanmix(sauParser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
 	sauParseGenData *gen = pl->gen;
-	if (gen->is_nested)
+	if (gen->ref.is_nested)
 		return true; // reject, lacks parameter
 	return parse_par_modranges(o, scan_chanmix_const, &gen->pan, false,
 			SAU_PSWEEP_PAN, SAU_MOD_N_c_am);
@@ -1809,7 +1797,7 @@ static bool parse_gen_chanmix(sauParser *restrict o) {
 static bool parse_gen_freq(sauParser *restrict o, bool rel_freq) {
 	struct ParseLevel *pl = o->cur_pl;
 	sauParseGenData *gen = pl->gen;
-	if (rel_freq && !gen->is_nested)
+	if (rel_freq && !gen->ref.is_nested)
 		return true; // reject, lacks parameter
 	sauScanNumConst_f num_f = rel_freq ? NULL : scan_note_const;
 	return parse_par_modranges(o, num_f, &gen->freq, rel_freq,
@@ -2050,7 +2038,7 @@ static void parse_in_gen_step(sauParser *restrict o) {
 			uint8_t suffc = sauScanner_get_suffc(sc);
 			switch (suffc) {
 			case 'i':
-				if (!gen->is_nested) {
+				if (!gen->ref.is_nested) {
 					sauScanner_warning(sc, NULL,
 "ignoring 'ti' (implicit time) for non-nested generator");
 					break;

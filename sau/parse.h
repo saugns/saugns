@@ -330,8 +330,13 @@ typedef struct sauParseObjRef {
 	uint32_t obj_id; // shared by all references to an object
 	uint8_t obj_type; // included for quick access
 	uint8_t gen_type; // included for quick access
-	uint16_t vo_id; // ID for carrier use, or SAU_PVO_NO_ID
+	bool is_new       : 1; // first data for object
+	bool is_cloned    : 1;
+	bool is_nested    : 1;
+	bool is_labeled   : 1; // this exact node is pointed to by label
+	bool has_next_ref : 1; // status usable within scope of a durgroup
 	void *next; // next in set of objects
+	struct sauParseObjRef *prev_ref; // a preceding ref for same object
 } sauParseObjRef;
 
 /**
@@ -350,11 +355,6 @@ typedef struct sauParseListData {
 typedef struct sauParseGenData {
 	sauParseObjRef ref;
 	struct sauParseEvData *event;
-	struct sauParseGenData *prev_ref; // preceding for same gen(s)
-	bool is_new    : 1; // generator is first instance or needs reset
-	bool is_cloned : 1;
-	bool is_nested : 1;
-	bool has_next_ref : 1; // usable within scope of a durgroup
 	/* generator parameters */
 	uint32_t id;
 	uint32_t swap_to_id;   // for moving old generator with ID to new ID
