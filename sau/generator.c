@@ -363,7 +363,7 @@ static void update_gen(sauGenerator *restrict o,
 		const sauParseGenData *restrict gd) {
 	if (gd->copy_from_id != SAU_PGEN_NO_ID)
 		*n = o->gens[gd->copy_from_id];
-	else if (gd->is_new)
+	else if (gd->ref.is_new)
 		prepare_gen(o, n, gd);
 	uint32_t params = gd->params;
 	for (uint32_t i = 0; i < gd->mods_count; ++i)
