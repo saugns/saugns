@@ -131,8 +131,7 @@ typedef struct ParseSem {
 } ParseSem;
 
 static sauParseObjInfo *
-sem_objinfo_add(ParseSem *restrict o, sauParseObjRef *restrict ref,
-		uint8_t obj_type, uint8_t gen_type) {
+sem_objinfo_add(ParseSem *restrict o, sauParseObjRef *restrict ref) {
 	uint32_t id;
 	sauParseObjInfo *info;
 	if (o->obj_dead.count > 0) {
@@ -146,26 +145,27 @@ sem_objinfo_add(ParseSem *restrict o, sauParseObjRef *restrict ref,
 			return NULL;
 	}
 	ref->obj_id = id;
-	info->obj_type = ref->obj_type = obj_type;
-	info->gen_type = ref->gen_type = gen_type;
-	info->last_vo_id = ref->vo_id = SAU_PVO_NO_ID;
+	ref->is_new = true;
+	info->obj_type = ref->obj_type;
+	info->gen_type = ref->gen_type;
+	info->last_vo_id = SAU_PVO_NO_ID;
 	info->last_gen_id = SAU_PGEN_NO_ID;
+	info->is_labeled = ref->is_labeled;
 	info->dst_obj_id = SAU_POBJ_NO_ID;
 	return info;
 }
 
 static sauParseObjInfo *
 sem_objinfo_add_gen(ParseSem *restrict o, sauParseGenData *restrict gen,
-		uint32_t owner_obj_id, uint8_t gen_type) {
+		uint32_t owner_obj_id) {
 	sauParseObjInfo *info;
-	if (!(info = sem_objinfo_add(o, &gen->ref, SAU_POBJT_GEN, gen_type)))
+	if (!(info = sem_objinfo_add(o, &gen->ref)))
 		return NULL;
-	gen->is_new = true;
 	if (owner_obj_id != SAU_POBJ_NO_ID) {
-		gen->is_nested = true;
+		gen->ref.is_nested = true;
 		sauParseObjInfo *owner_info = &o->obj_arr.a[owner_obj_id];
 		// modulators count as reachable from carrier
-		info->is_labeled = owner_info->is_labeled;
+		info->is_labeled |= owner_info->is_labeled;
 		info->root_gen_obj = owner_info->root_gen_obj;
 	} else {
 		info->root_gen_obj = (info - o->obj_arr.a); // this object
@@ -173,6 +173,44 @@ sem_objinfo_add_gen(ParseSem *restrict o, sauParseGenData *restrict gen,
 	for (int i = 1; i < SAU_MOD_NAMED; ++i)
 		info->mods_idarr[i-1] = &blank_idarr;
 	return info;
+}
+
+/*
+ * Initialize object reference for use prior to assigning object info.
+ */
+static inline void
+sem_objref_init(sauParseObjRef *restrict ref,
+		uint8_t obj_type, uint8_t gen_type, bool is_nested) {
+	ref->obj_id = SAU_POBJ_NO_ID; // not assigned yet
+	ref->obj_type = obj_type;
+	ref->gen_type = gen_type;
+	ref->is_new = true; // if not, \a obj_id can be copied from an old ref
+	ref->is_nested = is_nested;
+}
+
+/*
+ * Update object info for an object reference, filling in the ID using
+ * either an old reference or a fresh info allocation.
+ *
+ * \return true, or false on allocation failure
+ */
+static bool
+sem_objref_update(ParseSem *restrict o, sauParseObjRef *restrict ref,
+		sauParseObjRef *restrict owner_ref) {
+	if (ref->obj_id != SAU_POBJ_NO_ID)
+		return true; // nothing to do
+	if (!ref->is_new) {
+		ref->obj_id = ref->prev_ref->obj_id;
+		return true;
+	}
+	switch (ref->obj_type) {
+	case SAU_POBJT_LIST:
+		return sem_objinfo_add(o, ref);
+	case SAU_POBJT_GEN:
+		return sem_objinfo_add_gen(o, (void*)ref,
+				owner_ref ? owner_ref->obj_id : SAU_POBJ_NO_ID);
+	}
+	return false;
 }
 
 /*
@@ -305,12 +343,12 @@ sem_voalloc_update(ParseSem *restrict o, sauParseEvData *restrict e) {
 	sauParseObjInfo *info = &o->obj_arr.a[obj->ref.obj_id];
 	info = &o->obj_arr.a[(obj_id = info->root_gen_obj)];
 	sauVoAllocState *vas;
-	if (obj->prev_ref && info->last_vo_id != SAU_PVO_NO_ID) {
+	if (obj->ref.prev_ref && info->last_vo_id != SAU_PVO_NO_ID) {
 		vo_id = info->last_vo_id;
 		vas = &o->va.a[vo_id];
 		goto PRESERVED;
 	}
-	if (!obj->is_nested && (obj->params & SAU_PGENP_TIME) != 0)
+	if (!obj->ref.is_nested && (obj->params & SAU_PGENP_TIME) != 0)
 		has_new_graph = true; // need to assign one
 	/*
 	 * Reuse first lowest free voice (duration expired), if any.
@@ -337,7 +375,7 @@ PRESERVED:
 	e->carr_obj_id = vas->obj_id;
 	if ((e->ev_flags & SAU_PEV_VOICE_SET_DUR) != 0)
 		vas->time_ms = e->dur_ms;
-	e->vo_id = obj->ref.vo_id = vo_id;
+	e->vo_id = vo_id;
 	vas->has_new_graph = has_new_graph;
 	vas->has_gen_renum = false; // always clear first
 	return vas;
@@ -365,7 +403,7 @@ sem_genalloc_update(ParseSem *restrict o, sauParseGenData *restrict g) {
 	 */
 	sauParseObjInfo *info = &o->obj_arr.a[(obj_id = g->ref.obj_id)];
 	sauGenAllocState *gas;
-	if (g->prev_ref && !g->is_cloned) {
+	if (g->ref.prev_ref && !g->ref.is_cloned) {
 		if (info->last_gen_id != SAU_PGEN_NO_ID) {
 			gen_id = info->last_gen_id;
 			gas = &o->ga.a[gen_id];
@@ -428,7 +466,7 @@ PRESERVED:
 		if (!gas->is_timed || gas->time_ms > 0)
 			gas->is_expired = false;
 	}
-	gas->has_next_ref = g->has_next_ref;
+	gas->has_next_ref = g->ref.has_next_ref;
 	g->id = info->last_gen_id;
 	g->swap_to_id = SAU_PGEN_NO_ID;
 	g->copy_from_id = SAU_PGEN_NO_ID;
@@ -437,9 +475,9 @@ PRESERVED:
 	 * a callback to make the extra generators. A few details are needed
 	 * to avoid trouble on recursion.
 	 */
-	if (g->is_cloned && !o->ga_main_clone) {
+	if (g->ref.is_cloned && !o->ga_main_clone) {
 		sauVoAllocState *vas = &o->va.a[g->event->vo_id];
-		uint32_t src_obj_id = g->prev_ref->ref.obj_id;
+		uint32_t src_obj_id = g->ref.prev_ref->obj_id;
 		o->ga_main_clone = g; // for use by the callback function
 		if (!sem_vograph_handle_gen_node(o, sem_vograph_cb_clonegen,
 				false, vas, src_obj_id, NULL))
@@ -493,11 +531,12 @@ sem_vograph_cb_clonegen(ParseSem *restrict o, sauGenAllocState *restrict gas,
 		if (!dst_gen_a || !dst_gen)
 			return false;
 		*dst_gen_a = dst_gen;
-		dst_gen->prev_ref = dst_pgen;
+		dst_gen->ref.prev_ref = &dst_pgen->ref;
 		dst_gen->event = o->ga_main_clone->event;
-		dst_gen->is_cloned = true;
+		sem_objref_init(&dst_gen->ref, SAU_POBJT_GEN, type, true);
+		dst_gen->ref.is_cloned = true;
 		if (!(dst_info = sem_objinfo_add_gen(o, dst_gen,
-				    o->ga_main_clone->ref.obj_id, type)) ||
+				    o->ga_main_clone->ref.obj_id)) ||
 		    !sem_genalloc_update(o, dst_gen))
 			return false;
 		info = &o->obj_arr.a[gas->obj_id]; // array may have resized!
@@ -556,8 +595,8 @@ sem_end_dur_ms(ParseSem *restrict o) {
 }
 
 static const sauProgramIDArr *
-sem_handle_list(ParseSem *restrict o,
-		const sauParseListData *restrict list_in);
+sem_handle_list(ParseSem *restrict o, const sauParseListData *restrict list_in,
+		sauParseGenData *restrict owner_gen);
 
 /*
  * Handle generator data node (and recurse for its lists in turn),
@@ -566,10 +605,12 @@ sem_handle_list(ParseSem *restrict o,
  * \return true, or false on allocation failure
  */
 static bool
-sem_handle_gendata(ParseSem *restrict o, sauParseGenData *restrict gen) {
+sem_handle_gendata(ParseSem *restrict o, sauParseGenData *restrict gen,
+		sauParseGenData *restrict owner_gen) {
 	sauParseGenData **gen_a = _GenDataArr_add(&o->ev_gen_data);
 	if (!gen_a) goto MEM_ERR;
 	*gen_a = gen;
+	if (!sem_objref_update(o, &gen->ref, &owner_gen->ref)) goto MEM_ERR;
 	sauParseObjInfo *info = sem_genalloc_update(o, gen);
 	if (!info) goto MEM_ERR;
 	const sauProgramIDArr *new_mods[SAU_MOD_NAMED - 1] = {0}; // new here
@@ -577,7 +618,7 @@ sem_handle_gendata(ParseSem *restrict o, sauParseGenData *restrict gen) {
 			in_list != NULL; in_list = in_list->ref.next) {
 		int type = in_list->use_type - 1;
 		const sauProgramIDArr *arr;
-		if (!(arr = sem_handle_list(o, in_list)))
+		if (!(arr = sem_handle_list(o, in_list, gen)))
 			goto MEM_ERR;
 		/*
 		 * Addresses in resized arrays got here, after maybe changing.
@@ -603,7 +644,7 @@ sem_handle_gendata(ParseSem *restrict o, sauParseGenData *restrict gen) {
 		if (vas) vas->has_new_graph = true;
 	}
 	return sem_set_gen_idsarr(o, gen,
-			gen->is_cloned ? info->mods_idarr : new_mods);
+			gen->ref.is_cloned ? info->mods_idarr : new_mods);
 MEM_ERR:
 	return false;
 }
@@ -615,14 +656,14 @@ MEM_ERR:
  * \return result, or NULL on allocation failure
  */
 static const sauProgramIDArr *
-sem_handle_list(ParseSem *restrict o,
-		const sauParseListData *restrict list_in) {
+sem_handle_list(ParseSem *restrict o, const sauParseListData *restrict list_in,
+		sauParseGenData *restrict owner_gen) {
 	const sauProgramIDArr *idarr = NULL;
 	size_t offset = o->idbuf.count;
 	if (list_in) for (sauParseObjRef *ref = list_in->first_item;
 			ref; ref = ref->next) {
 		if (ref->obj_type == SAU_POBJT_LIST) {
-			if (!sem_handle_list(o, (void*)ref)) goto RETURN;
+			if (!sem_handle_list(o, (void*)ref, NULL)) goto RETURN;
 			continue;
 		} else if (ref->obj_type != SAU_POBJT_GEN) continue;
 		sauParseGenData *gen = (void*)ref;
@@ -631,7 +672,7 @@ sem_handle_list(ParseSem *restrict o,
 			if (!IDBuf_upsize(&o->idbuf, list_max_count + 1024))
 				goto RETURN;
 		}
-		if (!sem_handle_gendata(o, gen)) goto RETURN;
+		if (!sem_handle_gendata(o, gen, owner_gen)) goto RETURN;
 		o->idbuf.a[o->idbuf.count++] = gen->ref.obj_id;
 
 	}
@@ -774,7 +815,7 @@ time_gen(sauParseGenData *restrict gen) {
 			gen->time.flags |= SAU_TIMEP_SET; /* use, may adjust */
 		else
 			gen->time.flags |= SAU_TIMEP_DEFAULT;
-	} else if (!gen->is_nested) {
+	} else if (!gen->ref.is_nested) {
 		gen->event->ev_flags |= SAU_PEV_LOCK_DUR_SCOPE;
 	}
 	for (sauParseListData *list = gen->mods;
@@ -812,7 +853,7 @@ time_event(sauParseEvData *restrict e) {
 		uint32_t nest_dur_ms = 0, wait_sum_ms = 0;
 		sauParseEvData *ne = fork->events, *ne_prev = e;
 		sauParseGenData *ne_gen = ne->main_obj,
-				 *ne_gen_prev = ne_gen->prev_ref,
+				 *ne_gen_prev = (void*)ne_gen->ref.prev_ref,
 				 *e_gen = ne_gen_prev;
 		uint32_t first_time_ms = e_gen->time.v_ms;
 		uint32_t def_time_ms = e_gen->time.v_ms;
@@ -861,7 +902,7 @@ time_event(sauParseEvData *restrict e) {
 		 * new events for everything), or sublist into event nodes?
 		 */
 		if (!(e->ev_flags & SAU_PEV_LOCK_DUR_SCOPE)
-		    || !e_gen->is_nested) {
+		    || !e_gen->ref.is_nested) {
 			if (dur_ms < first_time_ms)
 				dur_ms = first_time_ms;
 //			if (dur_ms < nest_dur_ms)
@@ -899,12 +940,13 @@ time_gen_tailing(sauParseGenData *restrict gen, sauParseEvData *restrict e,
 static bool
 sem_handle_event(ParseSem *restrict o, sauParseEvData *restrict e,
 		uint32_t cur_longest, uint32_t wait_sum) {
-	sem_voalloc_timing(o, e);
 	++o->ev_count;
+	sem_voalloc_timing(o, e);
 	sauParseObjRef *ref = e->main_obj;
+	if (!sem_objref_update(o, ref, NULL)) goto MEM_ERR;
 	switch (ref->obj_type) {
 	case SAU_POBJT_LIST:
-		if (!sem_handle_list(o, (void*)ref)) goto MEM_ERR;
+		if (!sem_handle_list(o, (void*)ref, NULL)) goto MEM_ERR;
 		return true;
 	case SAU_POBJT_GEN:
 		break;
@@ -912,7 +954,7 @@ sem_handle_event(ParseSem *restrict o, sauParseEvData *restrict e,
 	sauParseGenData *gen = (void*)ref;
 	time_gen_tailing(gen, e, cur_longest, wait_sum); // only for outermost
 	sauVoAllocState *vas = sem_voalloc_update(o, e);
-	if (!sem_handle_gendata(o, gen)) goto MEM_ERR;
+	if (!sem_handle_gendata(o, gen, NULL)) goto MEM_ERR;
 	if (vas->has_new_graph || vas->has_gen_renum || vas->has_gen_expiry) {
 		if (!sem_vograph_traverse(o, vas, e)) goto MEM_ERR;
 	}
@@ -1177,7 +1219,7 @@ print_genline(const sauParseGenData *restrict gd) {
 	if (gd->copy_from_id != SAU_PGEN_NO_ID) {
 		sau_printf("\n    dup op %-2u to:", gd->copy_from_id);
 	}
-	const char *head = gd->is_new ? "\n    new\t" : "\n\t";
+	const char *head = gd->ref.is_new ? "\n    new\t" : "\n\t";
 	sau_printf("%sop %-2u %c", head, gd->id, type);
 	if (gd->params & SAU_PGENP_TIME) {
 		if (gd->time.flags & SAU_TIMEP_IMPLICIT)
