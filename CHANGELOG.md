@@ -10,6 +10,14 @@ Pre-release
 Fix v0.5.3 use-after-free when cloning into modulator lists,
 as triggered by scripts such as: `'a W[R] | N[A :a N :a :a]`
 
+Fix time placement of `@name` inside modulator list assigned
+for a `;` compound step. This never worked correctly before;
+it used to be placed before the `;` in time from v0.3.12, in
+older versions being placed an extra time after `;` instead.
+
+Also fix behavior of the undocumented `{}` grouping feature,
+specifically it mixed with the `;` compound step, `{; ...}`.
+
 v0.5.3d (2025-10-22)
 --------------------
 
