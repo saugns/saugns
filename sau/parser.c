@@ -897,10 +897,10 @@ static inline bool is_valr_mod_additive(unsigned mod, unsigned valr_first) {
  * Parse level flags.
  */
 enum {
-	PL_NEW_EVENT_FORK = 1<<0,
-	PL_OWN_EV         = 1<<1,
-	PL_OWN_GEN        = 1<<2,
-	PL_WARN_NOSPACE   = 1<<3,
+	PL_NEW_EVENT_FORK = 1U<<0,
+	PL_OWN_EV         = 1U<<1,
+	PL_OWN_GEN        = 1U<<2,
+	PL_WARN_NOSPACE   = 1U<<3,
 };
 
 /*
@@ -915,7 +915,7 @@ struct ParseLevel {
 	uint8_t use_type;
 	sauParseEvData *event;
 	sauParseGenData *gen;
-	sauParseObjRef *ev_last;
+	sauParseObjRef *ev_last; // TODO: is remnant of more gens per event...
 	sauSymitem *set_label;
 	/* timing/delay */
 	sauParseEvData *main_ev; /* if events are nested, for grouping... */
@@ -1009,11 +1009,13 @@ static void begin_event(sauParser *restrict o,
 	e = pl->event;
 	e->wait_ms = pl->add_wait_ms + pl->carry_wait_ms;
 	pl->add_wait_ms = pl->carry_wait_ms = 0;
+	sauParseEvData *pve = NULL;
 	if (prev_data != NULL) {
-		sauParseEvData *pve = prev_data->event;
+		struct NestScope *nest = NestArr_tip(&o->nest);
 		if (prev_data->ref.is_nested)
 			e->ev_flags |= SAU_PEV_IMPLICIT_TIME;
 		if (is_compstep) {
+			pve = prev_data->event;
 			if (pl->pl_flags & PL_NEW_EVENT_FORK) {
 				sauParseEvBranch *fork =
 					sau_mpalloc(o->tmp_mp, sizeof(*fork));
@@ -1024,16 +1026,25 @@ static void begin_event(sauParser *restrict o,
 				pl->main_ev->forks = fork;
 				pl->pl_flags &= ~PL_NEW_EVENT_FORK;
 			} else {
+				while (pve->next) pve = pve->next;
 				pve->next = e;
 			}
+		} else if (nest && nest->owner_item) {
+			sauParseGenData *parent_gen =
+				(void*)nest->owner_item;
+			pve = parent_gen->event;
+			while (pve->next) pve = pve->next;
+			pve->next = e;
 		}
 	}
 	if (!is_compstep) {
-		if (!o->events)
-			o->events = e;
-		else
-			o->last_event->next = e;
-		o->last_event = e;
+		if (!pve) {
+			if (!o->events)
+				o->events = e;
+			else
+				o->last_event->next = e;
+			o->last_event = e;
+		}
 		pl->main_ev = NULL;
 	}
 	if (!o->group_event)
@@ -1062,10 +1073,10 @@ static void prepare_event(sauParser *restrict o,
  */
 static void link_ev_obj(struct ParseLevel *restrict pl,
 		struct NestScope *restrict nest,
+		sauParseEvData *restrict e,
 		sauParseObjRef *restrict obj,
 		sauParseObjRef *restrict prev,
 		bool is_copy) {
-	sauParseEvData *e = pl->event;
 	obj->next = NULL; /* ensure NULL when new, may have been copied */
 	if ((prev && !is_copy) || !nest) {
 		if (!e->main_obj)
@@ -1113,18 +1124,19 @@ static void begin_list(sauParser *restrict o,
 	sem_objref_init(&list->ref, SAU_POBJT_LIST,
 			0, use_type != SAU_MOD_N_carr);
 	if (use_type == SAU_MOD_N_carr) {
-		link_ev_obj(parent_pl, parent_nest,
+		nest->owner_item = NULL;
+		link_ev_obj(parent_pl, parent_nest, pl->event,
 				&list->ref, &plist->ref, false);
 	} else {
 		/*
 		 * Maintain linked list of modulator lists per owner (carrier).
 		 */
-		sauParseGenData *parent_on = parent_pl->gen;
-		if (nest->owner_item != &parent_on->ref)
+		sauParseGenData *parent_gen = parent_pl->gen;
+		if (nest->owner_item != &parent_gen->ref)
 			nest->last_mods = NULL;
-		nest->owner_item = &parent_on->ref;
-		if (!parent_on->mods)
-			parent_on->mods = list;
+		nest->owner_item = &parent_gen->ref;
+		if (!parent_gen->mods)
+			parent_gen->mods = list;
 		else {
 			/*
 			 * If this list is set for a heading subparameter,
@@ -1174,6 +1186,9 @@ static void begin_gen(sauParser *restrict o,
 			gen->ref.is_nested = pgen->ref.is_nested;
 		}
 	} else {
+		// Return to original event in mod list after any @ref
+		if (is_nested)
+			e = ((sauParseGenData*)nest->owner_item)->event;
 		/*
 		 * New generator with initial parameter values.
 		 *
@@ -1200,7 +1215,7 @@ static void begin_gen(sauParser *restrict o,
 			gen->freq = create_range(o, is_nested, SAU_PSWEEP_FREQ);
 		sem_objref_init(&gen->ref, SAU_POBJT_GEN, type, is_nested);
 	}
-	link_ev_obj(pl, nest, &gen->ref, &pgen->ref, is_copy);
+	link_ev_obj(pl, nest, e, &gen->ref, &pgen->ref, is_copy);
 	gen->event = e;
 	pl->pl_flags |= PL_OWN_GEN;
 }
@@ -1222,11 +1237,13 @@ static void enter_level(sauParser *restrict o,
 	*pl = (struct ParseLevel){
 		.scope = newscope,
 		.close_c = close_c,
+		.use_type = use_type,
 	};
 	o->cur_pl = pl;
 	if (parent_pl != NULL) {
 		pl->parent = parent_pl;
 		pl->sub_f = parent_pl->sub_f;
+		pl->pl_flags = parent_pl->pl_flags & PL_NEW_EVENT_FORK;
 		if (newscope == SCOPE_SAME)
 			pl->scope = parent_pl->scope;
 		pl->event = parent_pl->event;
@@ -1246,7 +1263,6 @@ static void enter_level(sauParser *restrict o,
 				o->sl.sopt.def_ampmult = def_sopt.def_ampmult;
 		}
 	}
-	pl->use_type = use_type;
 }
 
 static void leave_level(sauParser *restrict o) {
