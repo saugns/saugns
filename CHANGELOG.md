@@ -4,8 +4,8 @@ saugns version changes
 [On the website](https://sau.frama.io/changes.html#saulang)
 is a shorter change log with only the SAU language changes.
 
-Pre-release
------------
+v0.5.3e (2025-10-23)
+--------------------
 
 Fix v0.5.3 use-after-free when cloning into modulator lists,
 as triggered by scripts such as: `'a W[R] | N[A :a N :a :a]`
