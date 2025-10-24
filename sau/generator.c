@@ -137,7 +137,6 @@ struct sauGenerator {
 	float amp_scale;
 	uint32_t gen_count;
 	AnyGen *gens;
-	uint32_t *obj_to_gen;
 	sauMempool *mem;
 };
 
@@ -150,10 +149,6 @@ static bool alloc_for_program(sauGenerator *restrict o,
 		const sauParse *restrict prg) {
 	size_t i;
 	o->ev_count = prg->ev_count;
-	if ((i = prg->object_count) > 0) {
-		o->obj_to_gen = sau_mpalloc(o->mem, i * sizeof(uint32_t));
-		if (!o->obj_to_gen) goto ERROR;
-	}
 	if ((i = prg->vo_count) > 0) {
 		o->voices = sau_mpalloc(o->mem, i * sizeof(VoiceNode));
 		if (!o->voices) goto ERROR;
@@ -361,7 +356,7 @@ update_range(struct ParWithRangeMod *restrict rm,
 static void update_gen(sauGenerator *restrict o,
 		AnyGen *restrict n,
 		const sauParseGenData *restrict gd) {
-	if (gd->copy_from_id != SAU_PGEN_NO_ID)
+	if (gd->copy_from_id != SAU_POBJ_NO_ID)
 		*n = o->gens[gd->copy_from_id];
 	else if (gd->ref.is_new)
 		prepare_gen(o, n, gd);
@@ -443,16 +438,11 @@ static void handle_event(sauGenerator *restrict o) {
 			vn = &o->voices[pe->vo_id];
 		for (size_t i = 0; i < pe->gen_data_count; ++i) {
 			const sauParseGenData *gd = pe->gen_data[i];
-			o->obj_to_gen[gd->ref.obj_id] = gd->id; // update lookup
-			AnyGen *n = &o->gens[gd->id];
-			if (gd->swap_to_id != SAU_PGEN_NO_ID) {
-				o->obj_to_gen[n->gen.obj_id] = gd->swap_to_id;
-				o->gens[gd->swap_to_id] = *n;
-			}
+			AnyGen *n = &o->gens[gd->ref.obj_id];
 			update_gen(o, n, gd);
 		}
 		if (vn) {
-			vn->carr_gen_id = o->obj_to_gen[pe->carr_obj_id];
+			vn->carr_gen_id = pe->carr_obj_id;
 			vn->flags |= VN_INIT;
 			if (o->voice > pe->vo_id) {
 				/* go back to re-activated node */
@@ -547,7 +537,7 @@ static float *run_mods(sauGenerator *restrict o,
 		bool wave_env, bool buf_filled) {
 	for (uint32_t i = 0; i < mods->count; ++i) {
 		run_block(o, bufs, &(uint32_t){len},
-				&o->gens[o->obj_to_gen[mods->ids[i]]], note_dur,
+				&o->gens[mods->ids[i]], note_dur,
 				freq, wave_env, buf_filled);
 		buf_filled = true;
 	}
