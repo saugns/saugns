@@ -7,11 +7,15 @@ is a shorter change log with only the SAU language changes.
 Pre-release
 -----------
 
-[rebase in progress]
-
 Fix v0.5.2 bug which caused `S a` behavior when an affected
 generator uses AM lists to go wrong (scaling was wrongly
 applied to `.r[]` too, and not to `.e[]` which it should be).
+
+Simplify parser semantics, merge generator and object IDs.
+The object ID reuse is slightly better than in v0.5.3e
+(which improved it compared to v0.5.3d), but less "perfect"
+than v0.5.3e generator ID reuse (in return re-simplifying
+the generator pass code).
 
 v0.5.3e (2025-10-23)
 --------------------
