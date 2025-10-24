@@ -10,8 +10,11 @@ Pre-release
 [rebase in progress]
 
 Fix remaining object ID allocation/reuse bug. A script like
-the following misbehaved (making the `N` silent last second):
-"W[R t2 ; a0] t1 /1 W[N t4] t2"
+the following misbehaved (in this case making the `N` silent
+the last second): "W[R t2 ; a0] t1 /1 W[N t4] t2"
+
+Further ID reuse correctness changes, and final improvements
+for reuse (see `saugns -p` output) with this approach.
 
 v0.5.5 (2025-11-01)
 -------------------
