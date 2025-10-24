@@ -1121,7 +1121,7 @@ static void begin_list(sauParser *restrict o,
 			NULL;
 	list->use_type = use_type;
 	struct NestScope *parent_nest = NestArr_getrev(&o->nest, 1);
-	sem_objref_init(&list->ref, SAU_POBJT_LIST,
+	sem_obj_ref_init(&list->ref, SAU_POBJT_LIST,
 			0, use_type != SAU_MOD_N_carr);
 	if (use_type == SAU_MOD_N_carr) {
 		nest->owner_item = NULL;
@@ -1175,7 +1175,7 @@ static void begin_gen(sauParser *restrict o,
 				pgen->time.flags & SAU_TIMEP_IMPLICIT);
 		gen->mode.main = pgen->mode.main;
 		if (is_copy) {
-			sem_objref_init(&gen->ref, SAU_POBJT_GEN,
+			sem_obj_ref_init(&gen->ref, SAU_POBJT_GEN,
 					pgen->ref.gen_type, is_nested);
 			gen->ref.is_cloned = true;
 			gen->params |= SAU_PGENP_TIME;
@@ -1213,7 +1213,7 @@ static void begin_gen(sauParser *restrict o,
 		// all audio generators have frequency, not only oscillators
 		if (is_nested || o->sl.sopt.def_freq != SAU_PDEF_FREQ)
 			gen->freq = create_range(o, is_nested, SAU_PSWEEP_FREQ);
-		sem_objref_init(&gen->ref, SAU_POBJT_GEN, type, is_nested);
+		sem_obj_ref_init(&gen->ref, SAU_POBJT_GEN, type, is_nested);
 	}
 	link_ev_obj(pl, nest, e, &gen->ref, &pgen->ref, is_copy);
 	gen->event = e;
