@@ -238,12 +238,6 @@ enum {
 #define SAU_PVO_MAX_ID (UINT16_MAX - 1) /* error if exceeded */
 
 /*
- * Generator ID constants.
- */
-#define SAU_PGEN_NO_ID  UINT32_MAX       /* generator ID missing */
-#define SAU_PGEN_MAX_ID (UINT32_MAX - 1) /* error if exceeded */
-
-/*
  * Object ID constants.
  */
 #define SAU_POBJ_NO_ID  UINT32_MAX       /* object ID missing */
@@ -305,27 +299,16 @@ enum {
 	SAU_MOD_N_default = 0, // shares value with carrier
 };
 
-typedef struct sauProgramGenRef {
+typedef struct sauPrintGenRef {
 	uint32_t id;
 	uint8_t use;
 	uint8_t level; /* > 0 if used as a modulator */
-} sauProgramGenRef;
+} sauPrintGenRef;
 
-/** Info per script data object, shared by all references to the object. */
-typedef struct sauParseObjInfo {
-	uint8_t obj_type; // type of object described
-	uint8_t gen_type; // type of audio generator, if such
-	uint16_t last_vo_id; // for voice allocation (objects change voices)
-	uint32_t last_gen_id; // ID for audio generator, if such
-	uint32_t root_gen_obj; // root gen for gen
-	bool is_labeled : 1; // object can be reached by label, even indirectly
-	uint32_t dst_obj_id;                  // for gen. allocation (copying)
-	struct sauParseGenData *swap_from_gd; // for gen. allocation (renumber)
-	struct sauParseGenData *last_gd;
-	const sauProgramIDArr *mods_idarr[SAU_MOD_NAMED - 1];
-} sauParseObjInfo;
-
-/** Reference to script data object, common data for all subtypes. */
+/**
+ * Reference to script data object; the reference is common to all subtypes.
+ * The \a obj_id is a type-specific ID.
+ */
 typedef struct sauParseObjRef {
 	uint32_t obj_id; // shared by all references to an object
 	uint8_t obj_type; // included for quick access
@@ -356,8 +339,6 @@ typedef struct sauParseGenData {
 	sauParseObjRef ref;
 	struct sauParseEvData *event;
 	/* generator parameters */
-	uint32_t id;
-	uint32_t swap_to_id;   // for moving old generator with ID to new ID
 	uint32_t copy_from_id; // for initializing a cloned generator
 	uint32_t params;
 	sauTime time;
@@ -412,7 +393,7 @@ typedef struct sauParseEvData {
 	uint32_t gen_data_count;
 	/* for -p printout format (voice graph blocks) */
 	uint32_t gen_count;
-	const sauProgramGenRef *gen_list;
+	const sauPrintGenRef *gen_list;
 } sauParseEvData;
 
 /** String and number pair for predefined values passed as arguments. */
@@ -468,7 +449,6 @@ typedef struct sauParse {
 	uint8_t gen_nest_depth;
 	uint16_t vo_count;
 	uint32_t gen_count;
-	uint32_t object_count;
 	uint32_t duration_ms;
 	struct sauMempool *mp; // holds memory for the specific program
 } sauParse;
