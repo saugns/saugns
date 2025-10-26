@@ -1,0 +1,15 @@
+A0[
+	S a1/(1 + 1 + 1/20) e[a0.01 r3.lxpe11]
+	W rmet(1) p[W rpi(2) a7/6.e] a1.e
+	W r1 p[W r2 a9/6.e] a1.e
+	Whsi f49 a1/20.e
+] fC t1/2
+; fC
+; fA
+; fA
+; fD t1/4
+; fD
+; fE
+; fE
+; fB/2 t1/2
+; fF t3

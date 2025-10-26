@@ -19,6 +19,38 @@
 #include "parser/semantics.h"
 
 /*
+ * Parse state separated by nesting depth in lists used for modulators etc.
+ *
+ * The global scope uses one element with a NULL \a list.
+ */
+struct NestScope {
+	sauParseListData *list, *last_mods;
+	sauParseObjRef *last_item, *owner_item;
+	sauParseSetOptions *sopt; // statically (block) scoped in lists
+	/* values passed for outer parameter; these are set in next-to-tip */
+	sauRange *gen_valr;
+	sauScanNumConst_f numconst_f;
+	uint8_t valr_parts;
+	bool num_ratio : 1;
+	/* tracking of updates to data parsed, and copies for nodes made */
+	bool is_old_sopt : 1; // sopt must be assigned to a copy if changed
+};
+sauArrType(NestArr, struct NestScope, )
+
+typedef struct sauParser {
+	struct sauMath_state math_state;
+	sauScanner *sc;
+	sauSymtab *st;
+	sauMempool *mp, *tmp_mp;
+	NestArr nest;
+	/* node state */
+	struct ParseLevel *cur_pl;
+	sauParseEvData *events, *last_event, *group_event;
+	bool script_fail;
+	ParseSem ps;
+} sauParser;
+
+/*
  * File-reading code
  */
 
@@ -65,11 +97,6 @@ static const char *const scan_sym_typelabels[SAU_SYM_TYPES] = {
 	SAU_SYM__ITEMS(SAU_SYM__X_STR)
 };
 
-struct ScanLookup {
-	sauParseSetOptions sopt;
-	struct sauMath_state math_state;
-};
-
 /*
  * Default script options, used until changed in a script.
  */
@@ -84,15 +111,22 @@ static const sauParseSetOptions def_sopt = {
 	.note_key = MUSKEY(0, 0),
 	.key_octave = 4,
 	.key_system = 0,
+	.def_parenv_v = 0.f,
 	.def_ras = {0},
 	.def_woo = {.func = SAU_WAVE_F_ADAA, .flags = SAU_WAVE_O_FUNC_SET},
 };
 
-static bool init_ScanLookup(struct ScanLookup *restrict o,
+static inline sauParseSetOptions*
+dup_sopt(sauParser *restrict o, const sauParseSetOptions *restrict sopt) {
+	return sau_mpmemdup(o->tmp_mp, sopt, sizeof(*sopt));
+}
+
+static bool init_syms(sauParser *restrict o,
 		const sauScriptArg *restrict arg,
 		sauSymtab *restrict st) {
-	o->sopt = def_sopt;
-	if (!sauSymtab_add_stra(st, sauMath_names, SAU_MATH_NAMED,
+	struct NestScope *ns = NestArr_add(&o->nest); // global level uses one
+	if (!ns || !(ns->sopt = dup_sopt(o, &def_sopt)) ||
+	    !sauSymtab_add_stra(st, sauMath_names, SAU_MATH_NAMED,
 			SAU_SYM_MATH_ID, 0) ||
 	    !sauSymtab_add_stra(st, sauMath_vars_names, SAU_MATH_VARS_NAMED,
 			SAU_SYM_VAR, 1 /* has ID only if > 0 */) ||
@@ -299,7 +333,7 @@ enum {
 static double
 scan_num_r(struct NumParser *restrict o, uint8_t pri, uint32_t level) {
 	sauScanner *sc = o->sc;
-	struct ScanLookup *sl = sc->data;
+	sauParser *p = sc->data;
 	uint8_t ws_level = sc->ws_level;
 	double num;
 	uint8_t c;
@@ -339,13 +373,13 @@ scan_num_r(struct NumParser *restrict o, uint8_t pri, uint32_t level) {
 				}
 				if (o->skip_num) break; // parse only, no call
 				num = sauMath_symbols[func_id]
-					.state(&sl->math_state);
+					.state(&p->math_state);
 				break;
 			case SAU_MATH_STATEVAL_F:
 				num = scan_num_r(o, NUMEXP_SUB, level+1);
 				if (o->skip_num) break; // parse only, no call
 				num = sauMath_symbols[func_id]
-					.stateval(&sl->math_state, num);
+					.stateval(&p->math_state, num);
 				break;
 			case SAU_MATH_NOARG_F:
 				if (o->skip_num) break; // parse only, no call
@@ -492,7 +526,8 @@ static sauNoinline int32_t scan_int_in_range(sauScanner *restrict o,
  */
 #define SIMPLE_NUMCONST_F(FName, XList) \
 static size_t (FName)(sauScanner *restrict o, double *restrict val) { \
-	struct ScanLookup *sl sauMaybeUnused = o->data; \
+	sauParser *p = o->data; \
+	struct NestScope *ns sauMaybeUnused = NestArr_tip(&p->nest); \
 	switch (sauFile_GETC(o->f)) { \
 	XList(SIMPLE_NUMCONST_F__CASE) \
 	default: sauFile_DECP(o->f); return 0; \
@@ -511,7 +546,7 @@ SIMPLE_NUMCONST_F(scan_chanmix_const, CHANMIX_XLIST)
 #define OCTAVES 11
 #define OCTAVE(n) ((1 << ((n)+1)) * (1.f/32)) // standard tuning at no. 4 = 1.0
 #define OCTAVE_MIDI(n) ((1 << (n)) * (1.f/32)) // shifted range where 5 means 4
-static double get_note_freq(struct ScanLookup *restrict sl,
+static double get_note_freq(const sauParseSetOptions *restrict sopt,
 		int note, int notemod, int subnote) {
 	static const float notes_sau_ji[3][12] = {
 		{ /* SAU JI flat (7-limit simplified 5-limit flat) */
@@ -624,8 +659,8 @@ static double get_note_freq(struct ScanLookup *restrict sl,
 		},
 	};
 	const float *notes, *notemods;
-	double freq = sl->sopt.A4_freq;
-	int system = sl->sopt.key_system;
+	double freq = sopt->A4_freq;
+	int system = sopt->key_system;
 	if (system < 3) {
 		notes = notes_main[system];
 		notemods = notemods_main[system];
@@ -642,7 +677,7 @@ static double get_note_freq(struct ScanLookup *restrict sl,
 		notemods = notemods_main[1]; // same as main 5-limit table
 		freq /= notes_sau_ji[1][9]; // tune using A4/A
 	}
-	const int key = sl->sopt.note_key, key_note = note7to12(MUSNOTE(key));
+	const int key = sopt->note_key, key_note = note7to12(MUSNOTE(key));
 	if ((note -= key_note) < 0) { note += 12; freq *= 0.5f; }
 	freq *= notes[note] * notes[key_note];
 	if (notemod < 0)
@@ -662,8 +697,8 @@ static double get_note_freq(struct ScanLookup *restrict sl,
 }
 
 static size_t scan_note_midinum(sauScanner *restrict o,
+		const sauParseSetOptions *restrict sopt,
 		double *restrict val) {
-	struct ScanLookup *sl = o->data;
 	size_t len = 0;
 	int32_t note = 0;
 	const int min = 0, max = 127 /* 143 */, default_note = 69;
@@ -679,25 +714,27 @@ static size_t scan_note_midinum(sauScanner *restrict o,
 	int notemod_num = notemod(sauFile_GETC(o->f));
 	if (notemod_num != 0) ++len;
 	else sauFile_DECP(o->f);
-	double freq = get_note_freq(sl, note % 12, notemod_num, -1);
+	double freq = get_note_freq(sopt, note % 12, notemod_num, -1);
 	*val = freq * OCTAVE_MIDI(note / 12);
 	return len;
 }
 
 static size_t scan_note_const(sauScanner *restrict o,
 		double *restrict val) {
+	sauParser *p = o->data;
+	struct NestScope *ns = NestArr_tip(&p->nest);
+	sauParseSetOptions *sopt = ns->sopt;
 	sauFile *f = o->f;
 	size_t len = 0, num_len;
 	int c = sauFile_GETC(f); ++len;
 	if (c == 'M') {
-		num_len = scan_note_midinum(o, val);
+		num_len = scan_note_midinum(o, sopt, val);
 		if (!num_len) {
 			sauFile_UNGETN(f, len);
 			return 0;
 		}
 		return len += num_len;
 	}
-	struct ScanLookup *sl = o->data;
 	int subnote = -1;
 	if (c >= 'a' && c <= 'g') {
 		if ((c -= 'c') < 0) c += 7;
@@ -709,9 +746,9 @@ static size_t scan_note_const(sauScanner *restrict o,
 		return 0;
 	}
 	if ((c -= 'C') < 0) c += 7;
-	const int key = sl->sopt.note_key;
+	const int key = sopt->note_key;
 	int note = c;
-	int32_t octave, default_octave = sl->sopt.key_octave;
+	int32_t octave, default_octave = sopt->key_octave;
 	int notemod_num = notemod(sauFile_GETC(f));
 	if (notemod_num != 0) ++len;
 	else sauFile_DECP(f);
@@ -726,7 +763,8 @@ static size_t scan_note_const(sauScanner *restrict o,
 				"note octave number");
 		octave = default_octave;
 	}
-	double freq = get_note_freq(sl, note7to12(note), notemod_num, subnote);
+	double freq = get_note_freq(sopt,
+			note7to12(note), notemod_num, subnote);
 	*val = freq * OCTAVE(octave);
 	return len;
 }
@@ -737,7 +775,7 @@ static size_t scan_note_const(sauScanner *restrict o,
 SIMPLE_NUMCONST_F(scan_cyclepos_const, CYCLEPOS_XLIST)
 
 #define TIMEVAL_XLIST(X) \
-	X('T', sl->sopt.def_time_ms * 0.001) \
+	X('T', ns->sopt->def_time_ms * 0.001) \
 	//
 SIMPLE_NUMCONST_F(scan_timeval_const, TIMEVAL_XLIST)
 
@@ -781,34 +819,8 @@ static bool scan_line_state(sauScanner *restrict o,
 }
 
 /*
- * Parser
+ * Main parser code
  */
-
-struct NestScope {
-	sauParseListData *list, *last_mods;
-	sauParseObjRef *last_item, *owner_item;
-	sauParseSetOptions sopt_save; /* save/restore on nesting */
-	/* values passed for outer parameter */
-	sauRange *gen_valr;
-	sauScanNumConst_f numconst_f;
-	bool num_ratio : 1;
-	uint8_t valr_parts;
-};
-
-sauArrType(NestArr, struct NestScope, )
-
-typedef struct sauParser {
-	struct ScanLookup sl;
-	sauScanner *sc;
-	sauSymtab *st;
-	sauMempool *mp, *tmp_mp;
-	NestArr nest;
-	/* node state */
-	struct ParseLevel *cur_pl;
-	sauParseEvData *events, *last_event, *group_event;
-	bool script_fail;
-	ParseSem ps;
-} sauParser;
 
 /*
  * Finalize parser instance.
@@ -837,9 +849,9 @@ static bool init_Parser(sauParser *restrict o,
 	*o = (sauParser){.sc = sc, .st = st, .mp = mp, .tmp_mp = tmp_mp,
 		.ps = {.mp = mp}};
 	if (!sc || !tmp_mp) goto ERROR;
-	if (!init_ScanLookup(&o->sl, script_arg, st)) goto ERROR;
+	if (!init_syms(o, script_arg, st)) goto ERROR;
 	sc->filters['#'] = scan_filter_hashcommands;
-	sc->data = &o->sl;
+	sc->data = o;
 	return true;
 ERROR:
 	fini_Parser(o);
@@ -860,12 +872,14 @@ static void parse_in_settings(sauParser *restrict o);
 static void parse_in_gen_step(sauParser *restrict o);
 static void parse_in_phase_par(sauParser *restrict o);
 static void parse_in_par_sweep(sauParser *restrict o);
+static void parse_in_par_env(sauParser *restrict o);
 static void parse_in_par_env_and_sweep(sauParser *restrict o);
 
 /* Indexing of parts of a value range struct. */
 enum {
 	RANGE_A = 0,
 	RANGE_B,
+	RANGE_E_DEF, // handle script option default as special case
 	RANGE_E,
 };
 
@@ -873,6 +887,7 @@ static inline sauLinePar *get_valr_line(sauRange *restrict r, unsigned parts) {
 	switch (parts) {
 	case RANGE_A: return &r->a;
 	case RANGE_B: return &r->b;
+	case RANGE_E_DEF: /* fall-through */
 	case RANGE_E: return &r->e;
 	default: return NULL;
 	}
@@ -882,6 +897,7 @@ static inline ParseLevel_sub_f get_valr_sub_f(unsigned parts) {
 	switch (parts) {
 	case RANGE_A:
 	case RANGE_B: return parse_in_par_sweep;
+	case RANGE_E_DEF: return parse_in_par_env;
 	case RANGE_E: return parse_in_par_env_and_sweep;
 	default: return NULL;
 	}
@@ -901,6 +917,7 @@ enum {
 	PL_OWN_EV         = 1U<<1,
 	PL_OWN_GEN        = 1U<<2,
 	PL_WARN_NOSPACE   = 1U<<3,
+	PL_FORBID_OBJ     = 1U<<4,
 };
 
 /*
@@ -919,34 +936,35 @@ struct ParseLevel {
 	sauSymitem *set_label;
 	sauParseEvData *main_ev; /* if events are nested, for grouping... */
 	uint32_t add_wait_ms; /* added for next event */
-	float used_ampmult; /* update on node creation */
 };
 
-static void init_range(sauParser *restrict o, sauRange *restrict r) {
+static void init_range(const sauParseSetOptions *restrict sopt,
+		sauRange *restrict r) {
 	// default implicit time value is flexible
 	r->a.time_ms = r->b.time_ms = r->e.time_ms =
-		o->sl.sopt.def_time_ms;
+		sopt->def_time_ms;
 	r->a.flags = r->b.flags = r->e.flags =
 		SAU_LINEP_TIME | SAU_LINEP_TIME_IF_NEW;
 }
 
 static sauRange *create_range(sauParser *restrict o,
 		bool mult, uint32_t par_flag) {
-	struct ScanLookup *sl = &o->sl;
 	sauRange *r = sau_mpalloc(o->mp, sizeof(*r));
 	if (!r)
 		return NULL;
-	init_range(o, r);
+	struct NestScope *ns = NestArr_tip(&o->nest);
+	sauParseSetOptions *sopt = ns->sopt;
+	init_range(sopt, r);
 	float a;
 	switch (par_flag) {
 	case SAU_PSWEEP_PAN:
-		a = sl->sopt.def_chanmix;
+		a = sopt->def_chanmix;
 		break;
 	case SAU_PSWEEP_AMP:
-		a = 1.0f; // multiplied by sl->sopt.def_ampmult separately
+		a = 1.0f; // value multiplied by sopt->def_ampmult separately
 		break;
 	case SAU_PSWEEP_FREQ:
-		a = mult ? sl->sopt.def_relfreq : sl->sopt.def_freq;
+		a = mult ? sopt->def_relfreq : sopt->def_freq;
 		break;
 	default:
 		return r;
@@ -976,15 +994,6 @@ static void end_gen(sauParser *restrict o) {
 	if (!(pl->pl_flags & PL_OWN_GEN))
 		return;
 	pl->pl_flags &= ~PL_OWN_GEN;
-	sauParseGenData *gen = pl->gen;
-	if (gen->amp) {
-		gen->amp->a.v0 *= pl->used_ampmult;
-		gen->amp->a.vt *= pl->used_ampmult;
-		gen->amp->b.v0 *= pl->used_ampmult;
-		gen->amp->b.vt *= pl->used_ampmult;
-		gen->amp->e.v0 *= pl->used_ampmult;
-		gen->amp->e.vt *= pl->used_ampmult;
-	}
 	pl->gen = NULL;
 }
 
@@ -1010,7 +1019,7 @@ static void begin_event(sauParser *restrict o,
 	pl->add_wait_ms = 0;
 	sauParseEvData *pve = NULL;
 	if (prev_data != NULL) {
-		struct NestScope *nest = NestArr_tip(&o->nest);
+		struct NestScope *ns = NestArr_tip(&o->nest);
 		if (prev_data->ref.is_nested)
 			e->ev_flags |= SAU_PEV_IMPLICIT_TIME;
 		if (is_compstep) {
@@ -1028,9 +1037,8 @@ static void begin_event(sauParser *restrict o,
 				while (pve->next) pve = pve->next;
 				pve->next = e;
 			}
-		} else if (nest && nest->owner_item) {
-			sauParseGenData *parent_gen =
-				(void*)nest->owner_item;
+		} else if (ns->owner_item) {
+			sauParseGenData *parent_gen = (void*)ns->owner_item;
 			pve = parent_gen->event;
 			while (pve->next) pve = pve->next;
 			pve->next = e;
@@ -1059,7 +1067,7 @@ static void prepare_event(sauParser *restrict o,
 		void *restrict prev_obj, bool is_compstep) {
 	struct ParseLevel *pl = o->cur_pl;
 	if (!pl->event || pl->add_wait_ms > 0 ||
-			((prev_obj || !NestArr_tip(&o->nest))
+			((prev_obj || !NestArr_tip(&o->nest)->list)
 			 && pl->event->main_obj) ||
 			is_compstep)
 		begin_event(o, prev_obj, is_compstep);
@@ -1071,24 +1079,24 @@ static void prepare_event(sauParser *restrict o,
  * objects) in the case of object linking/nesting.
  */
 static void link_ev_obj(struct ParseLevel *restrict pl,
-		struct NestScope *restrict nest,
+		struct NestScope *restrict ns,
 		sauParseEvData *restrict e,
 		sauParseObjRef *restrict obj,
 		sauParseObjRef *restrict prev,
 		bool is_copy) {
 	obj->next = NULL; /* ensure NULL when new, may have been copied */
-	if ((prev && !is_copy) || !nest) {
+	if ((prev && !is_copy) || !ns->list) {
 		if (!e->main_obj)
 			e->main_obj = obj;
 		else
 			pl->ev_last->next = obj;
 		pl->ev_last = obj;
 	} else {
-		if (!nest->list->first_item)
-			nest->list->first_item = obj;
+		if (!ns->list->first_item)
+			ns->list->first_item = obj;
 		else
-			nest->last_item->next = obj;
-		nest->last_item = obj;
+			ns->last_item->next = obj;
+		ns->last_item = obj;
 	}
 	/*
 	 * Assign to label?
@@ -1109,31 +1117,35 @@ static void begin_list(sauParser *restrict o,
 		uint8_t use_type) {
 	(void)plist;
 	struct ParseLevel *pl = o->cur_pl, *parent_pl = pl->parent;
-	struct NestScope *nest = NestArr_tip(&o->nest);
-	sauParseListData *list = sau_mpalloc(o->mp, sizeof(*nest->list));
-	nest->list = list;
+	struct NestScope *ns = NestArr_tip(&o->nest), *parent_ns = ns-1;
 	if (use_type == SAU_MOD_N_p_pm)
 		pl->sub_f = parse_in_phase_par;
 	else
-		pl->sub_f = nest->gen_valr ?
-			get_valr_sub_f(nest->valr_parts) :
+		pl->sub_f = parent_ns->gen_valr ?
+			get_valr_sub_f(parent_ns->valr_parts) :
 			NULL;
+	if (pl->pl_flags & PL_FORBID_OBJ) {
+		static sauParseListData dummy_list = {0};
+		ns->list = &dummy_list; // when only used for parsing
+		return;
+	}
+	sauParseListData *list = sau_mpalloc(o->mp, sizeof(*ns->list));
+	ns->list = list;
 	list->use_type = use_type;
-	struct NestScope *parent_nest = NestArr_getrev(&o->nest, 1);
 	sem_obj_ref_init(&list->ref, SAU_POBJT_LIST,
 			0, use_type != SAU_MOD_N_carr);
 	if (use_type == SAU_MOD_N_carr) {
-		nest->owner_item = NULL;
-		link_ev_obj(parent_pl, parent_nest, pl->event,
+		ns->owner_item = NULL;
+		link_ev_obj(parent_pl, parent_ns, pl->event,
 				&list->ref, &plist->ref, false);
 	} else {
 		/*
 		 * Maintain linked list of modulator lists per owner (carrier).
 		 */
 		sauParseGenData *parent_gen = parent_pl->gen;
-		if (nest->owner_item != &parent_gen->ref)
-			nest->last_mods = NULL;
-		nest->owner_item = &parent_gen->ref;
+		if (ns->owner_item != &parent_gen->ref)
+			ns->last_mods = NULL;
+		ns->owner_item = &parent_gen->ref;
 		if (!parent_gen->mods)
 			parent_gen->mods = list;
 		else {
@@ -1143,10 +1155,10 @@ static void begin_list(sauParser *restrict o,
 			 * then we're here with last_mods unset. Append to
 			 * the list of lists one level above in this case.
 			 */
-			if (!nest->last_mods) nest = parent_nest;
-			nest->last_mods->ref.next = list;
+			if (!ns->last_mods) ns = parent_ns;
+			ns->last_mods->ref.next = list;
 		}
-		nest->last_mods = list;
+		ns->last_mods = list;
 	}
 }
 
@@ -1155,14 +1167,14 @@ static void begin_gen(sauParser *restrict o,
 		uint32_t type) {
 	prepare_event(o, is_copy ? NULL : pgen, is_compstep);
 	struct ParseLevel *pl = o->cur_pl;
-	struct NestScope *nest = NestArr_tip(&o->nest);
+	struct NestScope *ns = NestArr_tip(&o->nest);
+	sauParseSetOptions *sopt = ns->sopt;
 	sauParseEvData *e = pl->event;
 	sauParseGenData *gen;
 	end_gen(o);
 	pl->gen = gen = sau_mpalloc(o->mp, sizeof(sauParseGenData));
 	if (!is_compstep)
 		pl->pl_flags |= PL_NEW_EVENT_FORK;
-	pl->used_ampmult = o->sl.sopt.def_ampmult;
 	/*
 	 * Initialize node.
 	 */
@@ -1190,7 +1202,7 @@ static void begin_gen(sauParser *restrict o,
 	} else {
 		// Return to original event in mod list after any @ref
 		if (is_nested)
-			e = ((sauParseGenData*)nest->owner_item)->event;
+			e = ((sauParseGenData*)ns->owner_item)->event;
 		/*
 		 * New generator with initial parameter values.
 		 *
@@ -1198,28 +1210,31 @@ static void begin_gen(sauParser *restrict o,
 		 */
 		gen->params = SAU_PGEN_PARAMS;
 		if (sau_pgen_has_seed(type))
-			gen->seed = sau_rand32(&o->sl.math_state);
-		gen->time = sauTime_DEFAULT(o->sl.sopt.def_time_ms, is_nested);
-		if (pl->used_ampmult != 1.f)
+			gen->seed = sau_rand32(&o->math_state);
+		gen->time = sauTime_DEFAULT(sopt->def_time_ms, is_nested);
+		if (sopt->def_ampmult != 1.f)
 			gen->amp = create_range(o, false, SAU_PSWEEP_AMP);
-		if (!is_nested && o->sl.sopt.def_chanmix != 0.f)
+		if (!is_nested && sopt->def_chanmix != 0.f)
 			gen->pan = create_range(o, false, SAU_PSWEEP_PAN);
 		if (sau_pgen_is_osc(type)) {
 			switch (type) {
 			case SAU_PGEN_N_raseg:
-				gen->mode.ras = o->sl.sopt.def_ras; break;
+				gen->mode.ras = sopt->def_ras; break;
 			case SAU_PGEN_N_wave:
-				gen->mode.woo = o->sl.sopt.def_woo; break;
+				gen->mode.woo = sopt->def_woo; break;
 			}
 		}
 		// all audio generators have frequency, not only oscillators
-		if (is_nested || o->sl.sopt.def_freq != SAU_PDEF_FREQ)
+		if (is_nested || sopt->def_freq != SAU_PDEF_FREQ)
 			gen->freq = create_range(o, is_nested, SAU_PSWEEP_FREQ);
 		sem_obj_ref_init(&gen->ref, SAU_POBJT_GEN, type, is_nested);
 	}
-	link_ev_obj(pl, nest, e, &gen->ref, &pgen->ref, is_copy);
+	link_ev_obj(pl, ns, e, &gen->ref, &pgen->ref, is_copy);
 	gen->event = e;
 	pl->pl_flags |= PL_OWN_GEN;
+	// sopt is now used for this generator node, updates need new struct
+	gen->sopt = sopt;
+	ns->is_old_sopt = true;
 }
 
 static void finish_durgroup(sauParser *restrict o) {
@@ -1241,27 +1256,40 @@ static void enter_level(sauParser *restrict o,
 		.use_type = use_type,
 	};
 	o->cur_pl = pl;
-	if (parent_pl != NULL) {
-		pl->parent = parent_pl;
-		pl->sub_f = parent_pl->sub_f;
-		pl->pl_flags = parent_pl->pl_flags & PL_NEW_EVENT_FORK;
-		if (newscope == SCOPE_SAME)
-			pl->scope = parent_pl->scope;
-		pl->event = parent_pl->event;
-		pl->gen = parent_pl->gen;
-		if (newscope == SCOPE_NEST) {
-			struct NestScope *nest = NestArr_tip(&o->nest);
-			begin_list(o, NULL, use_type);
-			/*
-			 * Push script options, and prepare for a new context.
-			 *
-			 * The amplitude multiplier is reset each list, unless
-			 * an amod list (where the value builds on the outer).
-			 */
-			nest->sopt_save = o->sl.sopt;
-			if (use_type != SAU_MOD_N_carr &&
-			    !is_valr_mod_additive(use_type, SAU_MOD_N_a_am))
-				o->sl.sopt.def_ampmult = def_sopt.def_ampmult;
+	if (!parent_pl)
+		return; // nothing to copy or create
+	pl->parent = parent_pl;
+	pl->sub_f = parent_pl->sub_f;
+	pl->pl_flags = parent_pl->pl_flags &
+		(PL_NEW_EVENT_FORK | PL_FORBID_OBJ);
+	if (newscope == SCOPE_SAME)
+		pl->scope = parent_pl->scope;
+	pl->event = parent_pl->event;
+	pl->gen = parent_pl->gen;
+	if (newscope == SCOPE_NEST) {
+		struct NestScope *ns = NestArr_tip(&o->nest);
+		/*
+		 * Detect uses of nesting syntax without the usual
+		 * support for objects in the nesting list. That's
+		 * the case when it's used only to read subvalues.
+		 */
+		if (!pl->use_type && (ns-1)->gen_valr)
+			pl->pl_flags |= PL_FORBID_OBJ;
+		begin_list(o, NULL, use_type);
+		/*
+		 * Copy script options, and prepare for a new context.
+		 *
+		 * The amplitude multiplier is reset each list, unless
+		 * an amod list (where the value builds on the outer).
+		 */
+		ns->sopt = (ns-1)->sopt;
+		ns->is_old_sopt = true;
+		if (use_type != SAU_MOD_N_carr &&
+		    !is_valr_mod_additive(use_type, SAU_MOD_N_a_am) &&
+		    ns->sopt->def_ampmult != 1.f) {
+			ns->sopt = dup_sopt(o, ns->sopt);
+			ns->sopt->def_ampmult = 1.f;
+			ns->is_old_sopt = false;
 		}
 	}
 }
@@ -1281,15 +1309,8 @@ static void leave_level(sauParser *restrict o) {
 		end_event(o);
 		finish_durgroup(o);
 		sem_end_dur_ms(&o->ps);
-	}
-	if (pl->scope == SCOPE_GROUP) {
+	} else if (pl->scope == SCOPE_GROUP) {
 		end_event(o);
-	} else if (pl->scope == SCOPE_NEST) {
-		struct NestScope *nest = NestArr_tip(&o->nest);
-		/*
-		 * Pop script options.
-		 */
-		o->sl.sopt = nest->sopt_save;
 	}
 	o->cur_pl = pl->parent;
 }
@@ -1318,27 +1339,27 @@ static void leave_level(sauParser *restrict o) {
 DEFER: \
 	sauScanner_ungetc(sc); /* let parse_level() take care of it */
 
-static bool parse_so_amp(sauParser *restrict o) {
-	struct NestScope *nest = NestArr_tip(&o->nest);
+static bool parse_so_amp(sauParser *restrict o,
+		struct NestScope *restrict ns) {
+	sauParseSetOptions *sopt = ns->sopt;
 	struct ParseLevel *pl = o->cur_pl;
-	sauScanner *sc = o->sc;
 	double val;
 	int c;
-	if (scan_num(sc, NULL, &val)) {
+	if (scan_num(o->sc, NULL, &val)) {
 		// amod lists with summing inherit outer value
 		if (is_valr_mod_additive(pl->use_type, SAU_MOD_N_a_am))
-			val *= nest->sopt_save.def_ampmult;
-		o->sl.sopt.def_ampmult = val;
+			val *= (ns-1)->sopt->def_ampmult;
+		sopt->def_ampmult = val;
 	}
-	switch ((c = sauScanner_getc_after(sc, '.'))) {
+	switch ((c = sauScanner_getc_after(o->sc, '.'))) {
 	case 'm':
-		if (nest)
+		if (ns->list)
 			return true; // only allow in global scope
-		if (!isnan(o->sl.sopt.ampmult))
-			sauScanner_warning(sc, NULL,
+		if (!isnan(sopt->ampmult))
+			sauScanner_warning(o->sc, NULL,
 "'a.m' script-wide gain mix control already set");
-		if (scan_num(sc, NULL, &val)) {
-			o->sl.sopt.ampmult = val;
+		if (scan_num(o->sc, NULL, &val)) {
+			sopt->ampmult = val;
 		}
 		break;
 	default:
@@ -1347,64 +1368,65 @@ static bool parse_so_amp(sauParser *restrict o) {
 	return false;
 }
 
-static bool parse_so_freq(sauParser *restrict o, bool rel_freq) {
-	sauScanner *sc = o->sc;
+static bool parse_so_freq(sauParser *restrict o,
+		sauParseSetOptions *sopt, bool rel_freq) {
 	double val;
 	int c;
 	if (rel_freq) {
-		if (scan_num(sc, NULL, &val)) {
-			o->sl.sopt.def_relfreq = val;
+		if (scan_num(o->sc, NULL, &val)) {
+			sopt->def_relfreq = val;
 		}
 		return false;
 	}
-	if (scan_num(sc, scan_note_const, &val)) {
-		o->sl.sopt.def_freq = val;
+	if (scan_num(o->sc, scan_note_const, &val)) {
+		sopt->def_freq = val;
 	}
-	switch ((c = sauScanner_getc_after(sc, '.'))) {
+	switch ((c = sauScanner_getc_after(o->sc, '.'))) {
 	case 'k': {
-		int32_t octave = o->sl.sopt.key_octave;
-		c = sauScanner_getc(sc);
+		int32_t octave = sopt->key_octave;
+		c = sauScanner_getc(o->sc);
 		if (!SAU_IS_ASCIIVISIBLE(c))
 			return true;
 		if (c < 'A' || c > 'G') {
 			if (SAU_IS_DIGIT(c)) {
-				sauScanner_ungetc(sc);
+				sauScanner_ungetc(o->sc);
 				goto K_NUM;
 			}
-			sauScanner_warning(sc, NULL,
+			sauScanner_warning(o->sc, NULL,
 "invalid key; valid are 'A' through 'G',\n"
 "\twith or without added 'b'/'d'/'v'/'w' (flat) or 's'/'z'/'k'/'x' (sharp)");
 			break;
 		}
-		int sufc, notemod_num = notemod((sufc = sauScanner_getc(sc)));
-		if (!notemod_num) sauScanner_ungetc(sc);
+		int sufc;
+		int notemod_num = notemod((sufc = sauScanner_getc(o->sc)));
+		if (!notemod_num) sauScanner_ungetc(o->sc);
 		if ((c -= 'C') < 0) c += 7;
-		o->sl.sopt.note_key = MUSKEY(c, notemod_num);
+		sopt->note_key = MUSKEY(c, notemod_num);
 	K_NUM:
-		if (scan_int_in_range(sc, 0, 10, octave,
+		if (scan_int_in_range(o->sc, 0, 10, octave,
 					 &octave, "mode level"))
-			o->sl.sopt.key_octave = octave;
+			sopt->key_octave = octave;
 		break; }
 	case 'n':
-		if (scan_num(sc, NULL, &val)) {
+		if (scan_num(o->sc, NULL, &val)) {
 			if (val < 1.f) {
-				sauScanner_warning(sc, NULL,
+				sauScanner_warning(o->sc, NULL,
 "ignoring A4 tuning frequency (Hz) below 1.0");
 				break;
 			}
-			o->sl.sopt.A4_freq = val;
+			sopt->A4_freq = val;
 		}
 		break;
 	case 's':
-		switch ((c = sauScanner_get_suffc(sc))) {
-		case 'e': o->sl.sopt.key_system = 0; break;
-		case 'c': o->sl.sopt.key_system = 1; break;
-		case 'p': o->sl.sopt.key_system = 2; break;
-		case 'j': o->sl.sopt.key_system = 3; break;
+		switch ((c = sauScanner_get_suffc(o->sc))) {
+		case 'e': sopt->key_system = 0; break;
+		case 'c': sopt->key_system = 1; break;
+		case 'p': sopt->key_system = 2; break;
+		case 'j': sopt->key_system = 3; break;
 		default:
 			if (!c)
 				return false;
-			sauScanner_warning(sc, NULL,
+			sauScanner_warning(o->sc, NULL,
 "unknown scale; valid are:\n"
 "\t'e' (24-EDO), 'p' (Pythagorean JI), 'c' (classic 5-limit), 'j' (SAU JI)");
 			break;
@@ -1416,47 +1438,20 @@ static bool parse_so_freq(sauParser *restrict o, bool rel_freq) {
 	return false;
 }
 
-static void parse_in_settings(sauParser *restrict o) {
-	PARSE_IN__HEAD(parse_in_settings, true)
-		double val;
-		switch (c) {
-		case 'a':
-			if (parse_so_amp(o)) goto DEFER;
-			break;
-		case 'c':
-			if (scan_num(sc, scan_chanmix_const, &val)) {
-				o->sl.sopt.def_chanmix = val;
-			}
-			break;
-		case 'f':
-			if (parse_so_freq(o, false)) goto DEFER;
-			break;
-		case 'r':
-			if (parse_so_freq(o, true)) goto DEFER;
-			break;
-		case 't':
-			scan_time_val(sc, &o->sl.sopt.def_time_ms);
-			break;
-		default:
-			goto DEFER;
-		}
-	PARSE_IN__TAIL()
-}
-
 static bool parse_level(sauParser *restrict o,
 		uint8_t use_type, uint8_t newscope, uint8_t close_c);
 
 static uint8_t parse_par_sweep(sauScanner *restrict sc,
 		sauLinePar *restrict line,
-		struct NestScope *restrict nest, uint8_t c) {
+		struct NestScope *restrict ns, uint8_t c) {
 	double val;
 	size_t id;
 	switch (c) {
 	case 'g':
-		if (scan_num(sc, nest->numconst_f, &val)) {
+		if (scan_num(sc, ns->numconst_f, &val)) {
 			line->vt = val;
 			line->flags |= SAU_LINEP_GOAL;
-			if (nest->num_ratio)
+			if (ns->num_ratio)
 				line->flags |= SAU_LINEP_GOAL_RATIO;
 			else
 				line->flags &= ~SAU_LINEP_GOAL_RATIO;
@@ -1473,7 +1468,7 @@ static uint8_t parse_par_sweep(sauScanner *restrict sc,
 			line->flags &= ~SAU_LINEP_TIME_IF_NEW;
 		break;
 	case 'v':
-		scan_line_state(sc, nest->numconst_f, line, nest->num_ratio);
+		scan_line_state(sc, ns->numconst_f, line, ns->num_ratio);
 		break;
 	default:
 		return c;
@@ -1585,32 +1580,40 @@ static uint8_t parse_par_env(sauScanner *restrict sc,
 }
 
 static void parse_in_par_sweep(sauParser *restrict o) {
-	struct NestScope *nest = NestArr_tip(&o->nest);
-	sauRange *range = nest->gen_valr;
-	sauLinePar *line = get_valr_line(nest->gen_valr, nest->valr_parts);
-	PARSE_IN__HEAD(parse_in_par_sweep, range)
-		if (!c || parse_par_sweep(sc, line, nest, c)) goto DEFER;
+	struct NestScope *ns = NestArr_getrev(&o->nest, 1);
+	sauRange *range = ns->gen_valr;
+	sauLinePar *line = get_valr_line(range, ns->valr_parts);
+	PARSE_IN__HEAD(parse_in_par_sweep, true)
+		if (!c || parse_par_sweep(sc, line, ns, c)) goto DEFER;
+	PARSE_IN__TAIL()
+}
+
+static void parse_in_par_env(sauParser *restrict o) {
+	struct NestScope *ns = NestArr_getrev(&o->nest, 1);
+	sauRange *range = ns->gen_valr;
+	PARSE_IN__HEAD(parse_in_par_env, true)
+		if (!c || parse_par_env(sc, &range->env, c)) goto DEFER;
 	PARSE_IN__TAIL()
 }
 
 static void parse_in_par_env_and_sweep(sauParser *restrict o) {
-	struct NestScope *nest = NestArr_tip(&o->nest);
-	sauRange *range = nest->gen_valr;
-	sauLinePar *line = get_valr_line(nest->gen_valr, nest->valr_parts);
-	PARSE_IN__HEAD(parse_in_par_env_and_sweep, range)
+	struct NestScope *ns = NestArr_getrev(&o->nest, 1);
+	sauRange *range = ns->gen_valr;
+	sauLinePar *line = get_valr_line(range, ns->valr_parts);
+	PARSE_IN__HEAD(parse_in_par_env_and_sweep, true)
 		if (!c ||
-		    (parse_par_sweep(sc, line, nest, c) &&
+		    (parse_par_sweep(sc, line, ns, c) &&
 		     parse_par_env(sc, &range->env, c))) goto DEFER;
 	PARSE_IN__TAIL()
 }
 
-static bool prepare_sweep(sauParser *restrict o,
-		struct NestScope *restrict nest,
+static bool prepare_par_range(sauParser *restrict o,
+		struct NestScope *restrict ns,
 		sauScanNumConst_f numconst_f,
 		sauRange **restrict gen_valr, bool ratio,
 		unsigned valr_id, unsigned valr_parts) {
 	if (!gen_valr) { /* clear when not provided */
-		nest->gen_valr = NULL;
+		ns->gen_valr = NULL;
 		return true;
 	}
 	if (!*gen_valr) { /* create for updating, unparsed values kept unset */
@@ -1619,10 +1622,11 @@ static bool prepare_sweep(sauParser *restrict o,
 		(*gen_valr)->b.flags &= ~SAU_LINEP_STATE;
 		(*gen_valr)->e.flags &= ~SAU_LINEP_STATE;
 	}
-	nest->gen_valr = *gen_valr;
-	nest->numconst_f = numconst_f;
-	nest->num_ratio = ratio;
-	nest->valr_parts = valr_parts;
+	get_valr_line(*gen_valr, valr_parts)->flags |= SAU_LINEP; // is touched
+	ns->gen_valr = *gen_valr;
+	ns->numconst_f = numconst_f;
+	ns->num_ratio = ratio;
+	ns->valr_parts = valr_parts;
 	return true;
 }
 
@@ -1630,25 +1634,67 @@ static sauParseListData *parse_par_list(sauParser *restrict o,
 		sauScanNumConst_f numconst_f,
 		sauRange **restrict gen_valr, bool ratio,
 		unsigned valr_id, uint8_t use_type, unsigned valr_parts) {
-	struct NestScope *nest = NestArr_add(&o->nest);
-	prepare_sweep(o, nest, numconst_f,
+	struct NestScope *ns = NestArr_tip(&o->nest);
+	prepare_par_range(o, ns, numconst_f,
 			gen_valr, ratio, valr_id, valr_parts);
 	if (gen_valr) {
 		sauLinePar *line = get_valr_line(*gen_valr, valr_parts);
 		if (line) scan_line_state(o->sc, numconst_f, line, ratio);
 	}
+	ns = NestArr_add(&o->nest);
 	bool clear = sauScanner_tryc(o->sc, '-');
 	sauParseListData *first_list = NULL;
 	while (sauScanner_tryc(o->sc, '[')) {
 		parse_level(o, use_type, SCOPE_NEST, ']');
-		nest = NestArr_tip(&o->nest); // re-get, array may have changed
+		ns = NestArr_tip(&o->nest); // array may have resized!
 		if (clear) clear = false;
-		else nest->list->append = true;
-		if (!first_list) first_list = nest->list;
+		else ns->list->append = true;
+		if (!first_list) first_list = ns->list;
 	}
-	nest->gen_valr = NULL;
-	NestArr_pop(&o->nest);
+	NestArr_pop(&o->nest); --ns;
+	ns->gen_valr = NULL;
 	return first_list;
+}
+
+static void parse_in_settings(sauParser *restrict o) {
+	struct NestScope *ns = NestArr_tip(&o->nest);
+	if (ns->is_old_sopt) {
+		ns->sopt = dup_sopt(o, ns->sopt);
+		ns->is_old_sopt = false;
+	}
+	PARSE_IN__HEAD(parse_in_settings, true)
+		double val;
+		switch (c) {
+		case 'a':
+			if (parse_so_amp(o, ns)) goto DEFER;
+			break;
+		case 'c':
+			if (scan_num(o->sc, scan_chanmix_const, &val)) {
+				ns->sopt->def_chanmix = val;
+			}
+			break;
+		case 'e': {
+			sauRange tmp_range = {.env = ns->sopt->def_parenv};
+			parse_par_list(o, NULL, &(sauRange*){&tmp_range},
+					false, 0, 0, RANGE_E_DEF);
+			ns = NestArr_tip(&o->nest); // array may have resized!
+			if (tmp_range.e.flags & SAU_LINEP_STATE)
+				ns->sopt->def_parenv_v = tmp_range.e.v0;
+			ns->sopt->def_parenv = tmp_range.env;
+			break; }
+		case 'f':
+			if (parse_so_freq(o, ns->sopt, false)) goto DEFER;
+			break;
+		case 'r':
+			if (parse_so_freq(o, ns->sopt, true)) goto DEFER;
+			break;
+		case 't':
+			scan_time_val(o->sc, &ns->sopt->def_time_ms);
+			break;
+		default:
+			goto DEFER;
+		}
+	PARSE_IN__TAIL()
 }
 
 static void change_list_use(sauParseListData *first_list, uint8_t use_type) {
@@ -1732,12 +1778,14 @@ static uint8_t parse_par_modranges(sauParser *restrict o,
 static uint8_t parse_par_pdset(sauParser *restrict o,
 		sauPDSet **restrict pdset,
 		uint8_t pdset_id, uint8_t mod) {
+	struct NestScope *ns = NestArr_tip(&o->nest);
+	sauParseSetOptions *sopt = ns->sopt;
 	if (!*pdset) {
 		*pdset = sau_mpalloc(o->mp, sizeof(sauPDSet) * SAU_PPD_TYPES);
 		for (uint32_t i = 0; i < SAU_PPD_TYPES; ++i) {
-			init_range(o, &(*pdset)[i].v);
-			init_range(o, &(*pdset)[i].f);
-			init_range(o, &(*pdset)[i].p);
+			init_range(sopt, &(*pdset)[i].v);
+			init_range(sopt, &(*pdset)[i].f);
+			init_range(sopt, &(*pdset)[i].p);
 		}
 	}
 	sauPDSet *p = &(*pdset)[pdset_id];
@@ -1777,8 +1825,7 @@ static bool parse_gen_main(sauParser *restrict o, uint8_t gen_type,
 static bool parse_gen(sauParser *restrict o, uint8_t gen_type,
 		uint8_t sym_type, const char *const* restrict sym_names) {
 	struct ParseLevel *pl = o->cur_pl;
-	struct NestScope *nest = NestArr_tip(&o->nest);
-	if (!pl->use_type && nest && nest->gen_valr) {
+	if (pl->pl_flags & PL_FORBID_OBJ) {
 		sauScanner_warning(o->sc, NULL,
 				"modulators not supported here");
 		return true;
@@ -1954,7 +2001,7 @@ static uint8_t parse_gen_phase_pdpar(sauParser *restrict o,
 }
 
 static void parse_in_phase_par(sauParser *restrict o) {
-	PARSE_IN__HEAD(parse_in_phase_par, pl->gen)
+	PARSE_IN__HEAD(parse_in_phase_par, true)
 		if (!c || parse_gen_phase_pdpar(o, pl->gen, c)) goto DEFER;
 	PARSE_IN__TAIL()
 }
@@ -2050,6 +2097,7 @@ static void parse_in_gen_step(sauParser *restrict o) {
 			if (parse_gen_seed(o)) goto DEFER;
 			break;
 		case 't': {
+			struct NestScope *ns = NestArr_tip(&o->nest);
 			uint8_t suffc = sauScanner_get_suffc(sc);
 			switch (suffc) {
 			case 'i':
@@ -2059,7 +2107,7 @@ static void parse_in_gen_step(sauParser *restrict o) {
 					break;
 				}
 				gen->time = sauTime_VALUE(
-						o->sl.sopt.def_time_ms, 1);
+						ns->sopt->def_time_ms, 1);
 				break;
 			default:
 				if (suffc)
@@ -2104,7 +2152,7 @@ static bool parse_numvar_rhs(sauParser *restrict o, sauSymitem *restrict var,
 			var->data_use = SAU_SYM_DATA_NUM;
 			if (var->data_id > 0)
 				sauMath_vars_symbols[var->data_id - 1]
-					(&o->sl.math_state, var->data.num);
+					(&o->math_state, var->data.num);
 			return false;
 		}
 	}
@@ -2219,7 +2267,7 @@ static bool parse_level(sauParser *restrict o,
 			pl.set_label = scan_sym(sc, SAU_SYM_LABEL, NULL, false);
 			break;
 		case '/':
-			if (NestArr_tip(&o->nest)) goto INVALID;
+			if (NestArr_tip(&o->nest)->list) goto INVALID;
 			parse_waittime(o);
 			break;
 		case ':':
@@ -2266,6 +2314,11 @@ static bool parse_level(sauParser *restrict o,
 			if ((c = parse_gen_phase(o))) goto INVALID;
 			break;
 		case '[':
+			if (pl.pl_flags & PL_FORBID_OBJ) {
+				sauScanner_warning(o->sc, NULL,
+					"free lists not supported here");
+				break;
+			}
 			prepare_event(o, NULL, false);
 			NestArr_add(&o->nest);
 			parse_level(o, SAU_MOD_N_default, SCOPE_NEST, ']');
@@ -2285,7 +2338,7 @@ static bool parse_level(sauParser *restrict o,
 				goto RETURN;
 			continue;
 		case '|':
-			if (NestArr_tip(&o->nest)) goto INVALID;
+			if (NestArr_tip(&o->nest)->list) goto INVALID;
 			if (newscope == SCOPE_SAME) {
 				sauScanner_ungetc(sc);
 				goto RETURN;
@@ -2362,10 +2415,11 @@ sau_build_Parse(const sauScriptArg *restrict arg) {
 		parse = NULL;
 		goto DONE;
 	}
+	struct NestScope *ns = NestArr_tip(&pr.nest);
 	parse->st = pr.st;
 	parse->events = pr.events;
 	parse->name = name;
-	parse->sopt = pr.sl.sopt;
+	parse->sopt = *ns->sopt;
 	if ((parse = fini_ParseSem(&pr.ps, parse)) != NULL)
 		pr.mp = NULL; // keep with result
 DONE:
