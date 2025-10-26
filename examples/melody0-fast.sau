@@ -1,10 +1,14 @@
-'0 Wsin	fB3 t.1 p[Wsin r(6/5) a.e[a0.08 rs.lxpe]]
-	a.e[a0.02.llin d0.02 s1/2 rs e.lxpe]
+S e[a.llin e.lxpe]
+
+'0 Wsin	fB3 t.1 p[
+		Wsin r(6/5) a.e[a0.08 rs]
+	] a.e[a0.02 d0.02 s1/2 rs]
 	;;.1 ;;.1
 |
 
-'1 Wsin	fG3 t.1 p[Wsin r(4/3) a.e[a0.08 rs.lxpe]]
-	a.e[a0.02.llin d0.02 s1/2 rs e.lxpe]
+'1 Wsin	fG3 t.1 p[
+		Wsin r(4/3) a.e[a0.08 rs]
+	] a.e[a0.02 d0.02 s1/2 rs]
 	; fA3 t.2
 |
 
