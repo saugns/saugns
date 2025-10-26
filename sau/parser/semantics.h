@@ -95,7 +95,6 @@ typedef struct SemGenObj {
 	struct sauParseGenData *last_gd;
 	const sauProgramIDArr *mods_idarr[SAU_MOD_NAMED - 1];
 } SemGenObj;
-
 sauArrType(SemGenObjArr, SemGenObj, _)
 
 /*
@@ -107,10 +106,15 @@ typedef struct sauVoAllocState {
 	bool has_new_graph  : 1; // traverse to make updated graph in event
 	bool has_gen_expiry : 1; // traverse to update generator expiry state
 } sauVoAllocState;
-
 sauArrType(sauVoAlloc, sauVoAllocState, _)
 
 sauArrType(IDsArr, sauProgramIDs, )
+
+typedef struct sauPrintGenRef {
+	uint32_t id;
+	uint8_t use;
+	uint8_t level; /* > 0 if used as a modulator */
+} sauPrintGenRef;
 sauArrType(PrintGenRefArr, sauPrintGenRef, )
 
 sauArrType(GenDataArr, sauParseGenData*, _)
@@ -534,6 +538,66 @@ static const sauProgramIDArr *
 sem_handle_list(ParseSem *restrict o, const sauParseListData *restrict list_in,
 		sauParseGenData *restrict owner_gen);
 
+static void
+gen_pardef_env(sauParseGenData *restrict gen, sauRange *restrict r) {
+	if (!r || !(r->e.flags & SAU_LINEP))
+		return;
+	const sauParseSetOptions *sopt = gen->sopt;
+	// TODO: feature to only change defaults, not always apply it
+	if (!(r->e.flags & SAU_LINEP_STATE) && sopt->def_parenv_v != 0.f) {
+		r->e.v0 = sopt->def_parenv_v;
+		r->e.flags |= SAU_LINEP_STATE;
+	}
+	if (!r->env.line_all_p1)
+		r->env.line_all_p1 = sopt->def_parenv.line_all_p1;
+	for (int i = 0; i < SAU_ENV_TIMES; ++i) {
+		if (!(r->env.time_flags & SAU_ENVP_TIME(i)))
+			r->env.time_ms[i] = sopt->def_parenv.time_ms[i];
+		if (!r->env.line_p1[i])
+			r->env.line_p1[i] = sopt->def_parenv.line_p1[i];
+	}
+	r->env.time_flags |= sopt->def_parenv.time_flags;
+	if (!(r->env.flags & SAU_ENVP_S))
+		r->env.s_val = sopt->def_parenv.s_val;
+	if (!(r->env.flags & SAU_ENVP_MODE))
+		r->env.mode = sopt->def_parenv.mode;
+	// TODO: if setting defaults only, need more for SAU_ENVP_R_STRETCH
+	r->env.flags |= sopt->def_parenv.flags;
+}
+
+static void
+gen_pardef_pdset(sauParseGenData *restrict gen, sauPDSet *restrict p) {
+	if (!p)
+		return;
+	for (uint32_t i = 0; i < SAU_PPD_TYPES; ++i) {
+		gen_pardef_env(gen, &p[i].v);
+		gen_pardef_env(gen, &p[i].f);
+		gen_pardef_env(gen, &p[i].p);
+	}
+}
+
+/*
+ * Apply set options to generator data.
+ */
+static void
+sem_handle_gen_pardef(sauParseGenData *restrict gen) {
+	if (gen->amp) {
+		float used_ampmult = gen->sopt->def_ampmult;
+		gen->amp->a.v0 *= used_ampmult;
+		gen->amp->a.vt *= used_ampmult;
+		gen->amp->b.v0 *= used_ampmult;
+		gen->amp->b.vt *= used_ampmult;
+		gen->amp->e.v0 *= used_ampmult;
+		gen->amp->e.vt *= used_ampmult;
+	}
+	gen_pardef_env(gen, gen->pan);
+	gen_pardef_env(gen, gen->amp);
+	gen_pardef_env(gen, gen->freq);
+	gen_pardef_env(gen, gen->pm_a);
+	gen_pardef_pdset(gen, gen->pd);
+	gen->sopt = NULL; // uses temporary allocation; clear after use
+}
+
 /*
  * Handle generator data node (and recurse for its lists in turn),
  * listing it among those in the current event.
@@ -548,6 +612,7 @@ sem_handle_gendata(ParseSem *restrict o, sauParseGenData *restrict gen,
 	*gen_a = gen;
 	SemGenObj *info = sem_genalloc_update(o, gen, owner_gen);
 	if (!info) goto MEM_ERR;
+	sem_handle_gen_pardef(gen);
 	const sauProgramIDArr *new_mods[SAU_MOD_NAMED - 1] = {0}; // new here
 	for (sauParseListData *in_list = gen->mods;
 			in_list != NULL; in_list = in_list->ref.next) {
