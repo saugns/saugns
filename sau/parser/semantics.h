@@ -566,36 +566,26 @@ gen_pardef_env(sauParseGenData *restrict gen, sauRange *restrict r) {
 	r->env.flags |= sopt->def_parenv.flags;
 }
 
-static void
-gen_pardef_pdset(sauParseGenData *restrict gen, sauPDSet *restrict p) {
-	if (!p)
-		return;
-	for (uint32_t i = 0; i < SAU_PPD_TYPES; ++i) {
-		gen_pardef_env(gen, &p[i].v);
-		gen_pardef_env(gen, &p[i].f);
-		gen_pardef_env(gen, &p[i].p);
-	}
-}
-
 /*
  * Apply set options to generator data.
  */
 static void
-sem_handle_gen_pardef(sauParseGenData *restrict gen) {
-	if (gen->amp) {
+sem_handle_gen_pardef(ParseSem *restrict o, sauParseGenData *restrict gen,
+		SemGenObj *info) {
+	if (!gen->valr)
+		return;
+	sauRange *amp = (*gen->valr)[SAU_PVALR_AMP];
+	if (amp) {
 		float used_ampmult = gen->sopt->def_ampmult;
-		gen->amp->a.v0 *= used_ampmult;
-		gen->amp->a.vt *= used_ampmult;
-		gen->amp->b.v0 *= used_ampmult;
-		gen->amp->b.vt *= used_ampmult;
-		gen->amp->e.v0 *= used_ampmult;
-		gen->amp->e.vt *= used_ampmult;
+		amp->a.v0 *= used_ampmult;
+		amp->a.vt *= used_ampmult;
+		amp->b.v0 *= used_ampmult;
+		amp->b.vt *= used_ampmult;
+		amp->e.v0 *= used_ampmult;
+		amp->e.vt *= used_ampmult;
 	}
-	gen_pardef_env(gen, gen->pan);
-	gen_pardef_env(gen, gen->amp);
-	gen_pardef_env(gen, gen->freq);
-	gen_pardef_env(gen, gen->pm_a);
-	gen_pardef_pdset(gen, gen->pd);
+	for (int i = 0; i < SAU_PVALR_TYPES; ++i)
+		gen_pardef_env(gen, (*gen->valr)[i]);
 	gen->sopt = NULL; // uses temporary allocation; clear after use
 }
 
@@ -613,7 +603,7 @@ sem_handle_gendata(ParseSem *restrict o, sauParseGenData *restrict gen,
 	*gen_a = gen;
 	SemGenObj *info = sem_genalloc_update(o, gen, owner_gen);
 	if (!info) goto MEM_ERR;
-	sem_handle_gen_pardef(gen);
+	sem_handle_gen_pardef(o, gen, info);
 	const sauProgramIDArr *new_mods[SAU_MOD_NAMED - 1] = {0}; // new here
 	for (sauParseListData *in_list = gen->mods;
 			in_list != NULL; in_list = in_list->ref.next) {
@@ -773,25 +763,13 @@ time_range(sauRange *restrict r, uint32_t default_time_ms) {
 	time_line(&r->e, default_time_ms);
 }
 
-static inline void
-time_pdset(sauPDSet *restrict p, uint32_t default_time_ms) {
-	if (!p)
-		return;
-	for (uint32_t i = 0; i < SAU_PPD_TYPES; ++i) {
-		time_range(&p[i].v, default_time_ms);
-		time_range(&p[i].f, default_time_ms);
-		time_range(&p[i].p, default_time_ms);
-	}
-}
-
 static void
 time_gen_lines(sauParseGenData *restrict gen) {
+	if (!gen->valr)
+		return;
 	uint32_t dur_ms = gen->time.v_ms;
-	time_range(gen->pan, dur_ms);
-	time_range(gen->amp, dur_ms);
-	time_range(gen->freq, dur_ms);
-	time_range(gen->pm_a, dur_ms);
-	time_pdset(gen->pd, dur_ms);
+	for (int i = 0; i < SAU_PVALR_TYPES; ++i)
+		time_range((*gen->valr)[i], dur_ms);
 }
 
 static uint32_t
@@ -1020,8 +998,10 @@ print_genline(const sauParseGenData *restrict gd) {
 		else
 			sau_printf(" t=%-6u", gd->time.v_ms);
 	}
-	print_range(gd->freq, 'f');
-	print_range(gd->amp, 'a');
+	if (!gd->valr)
+		return;
+	print_range((*gd->valr)[SAU_PVALR_FREQ], 'f');
+	print_range((*gd->valr)[SAU_PVALR_AMP], 'a');
 }
 
 /*
