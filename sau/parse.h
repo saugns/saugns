@@ -314,11 +314,29 @@ enum {
 	SAU_MOD_N_default = 0, // shares value with carrier
 };
 
-typedef struct sauPrintGenRef {
-	uint32_t id;
-	uint8_t use;
-	uint8_t level; /* > 0 if used as a modulator */
-} sauPrintGenRef;
+/**
+ * Options set in a script, affecting objects after in the same scope,
+ * and the running of the result after parsing.
+ *
+ * The final state is included in the parse result.
+ */
+typedef struct sauParseSetOptions {
+	float ampmult; // global amplitude multiplier for whole script
+	float A4_freq; // A4 tuning for frequency as note
+	/* generator parameter default values (use depends on context) */
+	uint32_t def_time_ms;
+	float def_ampmult,
+	      def_freq,
+	      def_relfreq,
+	      def_chanmix;
+	int8_t note_key;
+	uint8_t key_octave;
+	uint8_t key_system;
+	float def_parenv_v; // first value in env range ".e"
+	sauEnvPar def_parenv;
+	sauRasOpt def_ras;
+	sauWaveOpt def_woo;
+} sauParseSetOptions;
 
 /**
  * Reference to script data object; the reference is common to all subtypes.
@@ -368,6 +386,7 @@ typedef struct sauParseGenData {
 		sauRasOpt ras;
 		sauWaveOpt woo;
 	} mode;
+	const sauParseSetOptions *sopt; // set options at time of node creation
 	sauParseListData *mods; // node adjacents updates
 	/* ID arrays as used by audio generator code */
 	const sauProgramIDs *mods_idarr;
@@ -384,8 +403,6 @@ enum {
 	SAU_PEV_FROM_GAPSHIFT    = 1U<<3, // gapshift follow-on event
 	SAU_PEV_LOCK_DUR_SCOPE   = 1U<<4, // nested data can't lengthen dur
 };
-
-struct sauParseEvBranch;
 
 /**
  * Node type for event data. Events are placed in time per script contents,
@@ -410,7 +427,7 @@ typedef struct sauParseEvData {
 	uint32_t gen_data_count;
 	/* for -p printout format (voice graph blocks) */
 	uint32_t gen_count;
-	const sauPrintGenRef *gen_list;
+	const struct sauPrintGenRef *gen_list;
 } sauParseEvData;
 
 /** String and number pair for predefined values passed as arguments. */
@@ -428,27 +445,6 @@ typedef struct sauScriptArg {
 	sauScriptPredef *predef;
 	size_t predef_count;
 } sauScriptArg;
-
-/**
- * Options set for a script, affecting parsing.
- *
- * The final state is included in the parse result.
- */
-typedef struct sauParseSetOptions {
-	float ampmult; // global amplitude multiplier for whole script
-	float A4_freq; // A4 tuning for frequency as note
-	/* generator parameter default values (use depends on context) */
-	uint32_t def_time_ms;
-	float def_ampmult,
-	      def_freq,
-	      def_relfreq,
-	      def_chanmix;
-	int8_t note_key;
-	uint8_t key_octave;
-	uint8_t key_system;
-	sauRasOpt def_ras;
-	sauWaveOpt def_woo;
-} sauParseSetOptions;
 
 /**
  * Type returned after processing a file. The data is divided into

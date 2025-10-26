@@ -99,6 +99,14 @@ Parameters:
 	c	Default channel mixing "c" value. Starts at 0.0,
 		i.e. C (center). Useful as a main way of setting
 		the parameter value.
+	e	Envelope setting. To change the envelope subparameter for
+		several parameters, in any generators after in the same scope
+		or a nested list scope. After setting options here, to apply
+		them to an envelope subparameter afterward, it must be named
+		in the script, for example "f.e" names a generator's frequency
+		envelope. Options for "S e" are the same as those in any ".e"
+		subparameter, except for a lack of sweep and modulator values.
+			See "Value ranges and envelopes" for more.
 	f	Default frequency "f" value, in Hz. Starts at 440.
 		.k	Key selection for "f" values using note syntax
 			("Frequencies as notes"), default C4. For a just
@@ -768,7 +776,11 @@ Value ranges and envelopes:
 	you can use an alternative timing syntax (see "Timing modifiers").
 		Envelope subparameters for ADSR etc. can be set inside an
 	envelope ".e[]" list, where ".e" is in turn a main envelope
-	subparameter for parameters.
+	subparameter for parameters. Values can also be set by first using
+	the "S e" option to set them there, then naming each envelope for any
+	generators (for example "a.e" for the amplitude envelope) to apply
+	them to. A value can be overridden in each envelope by setting it
+	there, beyond just naming the envelope.
 		Where parameters take a main value, the ".e" subparameter
 	takes a second value, similarly to the ".r" short-form syntax. Either
 	can be written either in a short form just after the main value, or

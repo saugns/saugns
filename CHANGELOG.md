@@ -8,6 +8,15 @@ Pre-release
 -----------
 
 Language changes:
+ * Script options. Add envelope setting `S e` to allow
+   setting values for several envelopes at once. The values
+   accepted are the same as those for any `.e` envelope
+   subparameter, except for a lack of sweep and modulator
+   values within `S e[]`. To apply the setting to envelopes
+   in some generator after in the same scope, "touch" an
+   envelope setting by writing its name, for example `a.e`
+   mentions the amplitude envelope and the setting is then
+   applied to it.
  * Parameter envelopes. Adjust ADSR envelope modes,
    changing the default to the new declick mode `d`.
    - Rename modes `t` (truncate envelope trajectory)
