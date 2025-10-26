@@ -104,6 +104,7 @@ enum {
 	SAU_LINEP_TYPE        = 1U<<4, // type set
 	SAU_LINEP_TIME        = 1U<<5, // time_ms set -- cleared on time expiry
 	SAU_LINEP_TIME_IF_NEW = 1U<<6, // time_ms to be kept if currently set
+	SAU_LINEP             = 1U<<7, // if invoked at all (mention in script)
 };
 
 /**
