@@ -1,8 +1,8 @@
 A0[
-	S a1/3
-	W rmet(1) p[W rpi(2) a8/6.e[a0.1 r2.lxpe11]]
-	W r1 p[W r2 a9/6.e[a0.1 r2.lxpe11]]
-	Whsi f49 a1/6.e[a0.1 r2.lxpe11]
+	S a1/3 e[a0.1 r2.lxpe11]
+	W rmet(1) p[W rpi(2) a8/6.e]
+	W r1 p[W r2 a9/6.e]
+	Whsi f49 a1/6.e
 ] fC t1/2
 ; fC
 ; fA
