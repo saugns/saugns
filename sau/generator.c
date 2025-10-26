@@ -361,6 +361,7 @@ static void update_gen(sauGenerator *restrict o,
 	else if (gd->ref.is_new)
 		prepare_gen(o, n, gd);
 	uint32_t params = gd->params;
+	sauRange *const *valr = gd->valr ? (*gd->valr) : NULL;
 	for (uint32_t i = 0; i < gd->mods_count; ++i)
 		update_ids(n, &gd->mods_idarr[i]);
 	switch (gd->ref.gen_type) {
@@ -392,15 +393,18 @@ static void update_gen(sauGenerator *restrict o,
 	if (false)
 	OSC_COMMON: {
 		OscBase *osc = &n->osc;
-		if (gd->pd) for (uint32_t i = 0; i < SAU_PPD_TYPES; ++i) {
-			update_range(&osc->pd[i].main,
-					&gd->pd[i].v, o->srate);
-			update_range(&osc->pd[i].freq,
-					&gd->pd[i].f, o->srate);
-			update_range(&osc->pd[i].offset,
-					&gd->pd[i].p, o->srate);
+		if (valr) {
+			sauRange *const *pd = valr + SAU_PVALR_PMA;
+			update_range(&osc->pm_a, *pd++, o->srate);
+			for (uint32_t i = 0; i < SAU_PPD_TYPES; ++i) {
+				update_range(&osc->pd[i].main,
+						*pd++, o->srate);
+				update_range(&osc->pd[i].freq,
+						*pd++, o->srate);
+				update_range(&osc->pd[i].offset,
+						*pd++, o->srate);
+			}
 		}
-		update_range(&osc->pm_a, gd->pm_a, o->srate);
 	}
 	GenBase *gen = &n->gen;
 	gen->obj_id = gd->ref.obj_id;
@@ -416,9 +420,11 @@ static void update_gen(sauGenerator *restrict o,
 			gen->flags &= ~GN_TIME_INF;
 		}
 	}
-	update_range(&gen->amp, gd->amp, o->srate);
-	update_range(&gen->pan, gd->pan, o->srate);
-	update_range(&gen->freq, gd->freq, o->srate);
+	if (valr) {
+		update_range(&gen->amp, valr[SAU_PVALR_AMP], o->srate);
+		update_range(&gen->pan, valr[SAU_PVALR_PAN], o->srate);
+		update_range(&gen->freq, valr[SAU_PVALR_FREQ], o->srate);
+	}
 }
 
 /*

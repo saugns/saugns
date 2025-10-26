@@ -95,24 +95,31 @@ typedef struct sauRange {
 	sauEnvPar env;
 } sauRange;
 
-/** Swept parameter IDs. */
+/* Macro used to list phase distortion (PD) value range subparameters. */
+#define SAU_PVALR_PD_(NAME) \
+	SAU_PVALR_PD_##NAME, \
+	SAU_PVALR_PD_##NAME##_f, \
+	SAU_PVALR_PD_##NAME##_p, \
+	//
+
+/** Value range parameter IDs. (Keep PD part synced to SAU_PPD_* enum.) */
 enum {
-	SAU_PSWEEP_PAN = 0,
-	SAU_PSWEEP_AMP,
-	SAU_PSWEEP_FREQ,
-	SAU_PSWEEP_PMA,
+	SAU_PVALR_PAN = 0,
+	SAU_PVALR_AMP,
+	SAU_PVALR_FREQ,
+	SAU_PVALR_PMA,
+	SAU_PVALR_PD_(C)
+	SAU_PVALR_PD_(D)
+	SAU_PVALR_PD_(H)
+	SAU_PVALR_PD_(X)
+	SAU_PVALR_PD_(Y)
+	SAU_PVALR_TYPES
 };
 
-/**
- * Phase distortion parameter set type.
- *
- * Holds main range, phase offset range, frequency multiplier, and flags.
- */
-typedef struct sauPDSet {
-	sauRange v, f, p;
-} sauPDSet;
+/** Value range parameter set type. */
+typedef sauRange *sauRangeSet[SAU_PVALR_TYPES];
 
-/** Phase distortion parameter set IDs. */
+/** Phase distortion parameter set IDs. Keep synced to value range PD IDs. */
 enum {
 	SAU_PPD_C = 0,
 	SAU_PPD_D,
@@ -361,10 +368,7 @@ typedef struct sauParseGenData {
 	uint32_t copy_from_id; // for initializing a cloned generator
 	uint32_t params;
 	sauTime time;
-	sauRange *amp, *pan;
-	sauRange *freq;
-	sauRange *pm_a;
-	sauPDSet *pd;
+	sauRangeSet *valr;
 	uint32_t phase;
 	uint32_t seed;
 	union sauPGenMode {
