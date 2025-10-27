@@ -4,8 +4,8 @@ saugns version changes
 [On the website](https://sau.frama.io/changes.html#saulang)
 is a shorter change log with only the SAU language changes.
 
-Pre-release
------------
+v0.5.4 (2025-10-27)
+-------------------
 
 Language changes:
  * Script options. Add envelope setting `S e` to allow
