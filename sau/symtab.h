@@ -1,5 +1,5 @@
 /* SAU library: Symbol table module.
- * Copyright (c) 2011-2012, 2014, 2017-2024 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2014, 2017-2025 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
@@ -33,14 +33,14 @@ enum {
 };
 
 /**
- * Item with type, string, and data.
+ * Item with type and data, linked to from string entry.
  */
 typedef struct sauSymitem {
 	uint8_t sym_type;
 	uint8_t data_use;
-	uint32_t data_id; // can also hold extra ID for != SAU_SYM_DATA_ID
+	uint16_t block_i; // lexical scope level (0 is global)
+	uint32_t data_id; // can hold ID whether data_use == SAU_SYM_DATA_ID
 	struct sauSymitem *prev; // the previous item with this string
-	sauSymstr *sstr;
 	union {
 		double num;
 		void *obj;
@@ -56,10 +56,17 @@ sauSymstr *sauSymtab_get_symstr(sauSymtab *restrict o,
 		const void *restrict str, size_t len);
 
 sauSymitem *sauSymtab_add_item(sauSymtab *restrict o,
-		sauSymstr *restrict symstr, uint32_t type_id);
+		sauSymstr *restrict symstr, uint8_t sym_type);
+sauSymitem *sauSymtab_add_item_at(sauSymtab *restrict o,
+		sauSymstr *restrict symstr, uint8_t sym_type,
+		uint16_t block_i);
 sauSymitem *sauSymtab_find_item(sauSymtab *restrict o,
-		sauSymstr *restrict symstr, uint32_t type_id);
+		sauSymstr *restrict symstr, uint8_t sym_type);
+sauSymitem *sauSymtab_find_item_at(sauSymtab *restrict o,
+		sauSymstr *restrict symstr, uint8_t sym_type,
+		uint16_t block_i);
+void sauSymtab_drop_to(sauSymtab *restrict o, uint16_t block_i);
 
 bool sauSymtab_add_stra(sauSymtab *restrict o,
 		const char *const*restrict stra, size_t n,
-		uint32_t sym_type, uint32_t id_from);
+		uint8_t sym_type, uint32_t id_from);
