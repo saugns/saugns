@@ -1,5 +1,5 @@
 /* SAU library: Symbol table module.
- * Copyright (c) 2011-2012, 2014, 2017-2024 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2014, 2017-2025 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
@@ -43,8 +43,7 @@ static inline void fini_StrTab(StrTab *restrict o) {
  *
  * \return hash
  */
-static size_t StrTab_hash_key(StrTab *restrict o,
-		const uint8_t *restrict key, size_t len) {
+static size_t hash_key(const uint8_t *restrict key, size_t len, size_t size) {
 	size_t i;
 	size_t hash;
 	/*
@@ -56,8 +55,7 @@ static size_t StrTab_hash_key(StrTab *restrict o,
 		size_t c = key[i];
 		hash = ((hash << 5) + hash) ^ c;
 	}
-	hash &= (o->alloc - 1);
-	return hash;
+	return hash & (size - 1);
 }
 
 /*
@@ -69,15 +67,11 @@ static bool StrTab_upsize(StrTab *restrict o) {
 	sauSymstr **sstra, **old_sstra = o->sstra;
 	size_t alloc, old_alloc = o->alloc;
 	size_t i;
-	alloc = (old_alloc > 0) ?
-		(old_alloc << 1) :
-		STRTAB_ALLOC_INITIAL;
-	sstra = calloc(alloc, sizeof(sauSymstr*));
-	if (!sstra)
+	alloc = old_alloc > 0 ? (old_alloc << 1) : STRTAB_ALLOC_INITIAL;
+	if (!(sstra = calloc(alloc, sizeof(sauSymstr*))))
 		return false;
 	o->alloc = alloc;
 	o->sstra = sstra;
-
 	/*
 	 * Rehash entries
 	 */
@@ -86,7 +80,7 @@ static bool StrTab_upsize(StrTab *restrict o) {
 		while (node != NULL) {
 			sauSymstr *prev_node;
 			size_t hash;
-			hash = StrTab_hash_key(o, node->key, node->key_len);
+			hash = hash_key(node->key, node->key_len, alloc);
 			/*
 			 * Before adding the entry to the new table, set
 			 * node->prev to the previous (if any) node with
@@ -95,8 +89,8 @@ static bool StrTab_upsize(StrTab *restrict o) {
 			 * the same order.
 			 */
 			prev_node = node->prev;
-			node->prev = o->sstra[hash];
-			o->sstra[hash] = node;
+			node->prev = sstra[hash];
+			sstra[hash] = node;
 			node = prev_node;
 		}
 	}
@@ -118,23 +112,19 @@ static sauSymstr *StrTab_unique_node(StrTab *restrict o,
 		const void *restrict key, size_t len, size_t extra) {
 	if (!key || len == 0)
 		return NULL;
-	if (o->count == (o->alloc / 2)) {
-		if (!StrTab_upsize(o))
-			return NULL;
-	}
-
-	size_t hash = StrTab_hash_key(o, key, len);
+	if (o->count == (o->alloc / 2) && !StrTab_upsize(o))
+		return NULL;
+	size_t hash = hash_key(key, len, o->alloc);
 	sauSymstr *sstr = o->sstra[hash];
 	while (sstr != NULL) {
-		if (sstr->key_len == len &&
-			!memcmp(sstr->key, key, len)) return sstr;
+		if (sstr->key_len == len && !memcmp(sstr->key, key, len))
+			return sstr;
 		sstr = sstr->prev;
 #if SAU_SYMTAB_STATS
 		++collision_count;
 #endif
 	}
-	sstr = sau_mpalloc(memp, sizeof(sauSymstr) + (len + extra));
-	if (!sstr)
+	if (!(sstr = sau_mpalloc(memp, sizeof(sauSymstr) + len + extra)))
 		return NULL;
 	sstr->prev = o->sstra[hash];
 	o->sstra[hash] = sstr;
@@ -144,9 +134,41 @@ static sauSymstr *StrTab_unique_node(StrTab *restrict o,
 	return sstr;
 }
 
+typedef struct ScopeReg {
+	sauSymstr **syms;
+	size_t count;
+	size_t alloc;
+} ScopeReg;
+
+static inline void fini_ScopeReg(ScopeReg *restrict o) {
+	free(o->syms);
+}
+
+/*
+ * Add symbol to list of lexically scoped ones;
+ * it is subject to removal when its scope is left.
+ *
+ * \return true, or false on allocation failure
+ */
+static bool ScopeReg_add_item(ScopeReg *restrict o,
+		sauSymstr *restrict symstr, uint16_t block_i) {
+	if (o->count == o->alloc) {
+		size_t alloc = o->alloc > 0 ? (o->alloc << 1) : 1;
+		sauSymstr **syms = realloc(o->syms, sizeof(*syms) * alloc);
+		if (!syms)
+			return false;
+		o->syms = syms;
+		o->alloc = alloc;
+	}
+	o->syms[o->count++] = symstr;
+	symstr->item->block_i = block_i;
+	return true;
+}
+
 struct sauSymtab {
 	sauMempool *memp;
 	StrTab strt;
+	ScopeReg sreg;
 };
 
 static void fini_Symtab(sauSymtab *restrict o) {
@@ -154,6 +176,7 @@ static void fini_Symtab(sauSymtab *restrict o) {
 	fprintf(stderr, "collision count: %zd\n", collision_count);
 #endif
 	fini_StrTab(&o->strt);
+	fini_ScopeReg(&o->sreg);
 }
 
 /**
@@ -183,19 +206,43 @@ sauSymstr *sauSymtab_get_symstr(sauSymtab *restrict o,
 }
 
 /**
- * Add an item for the string \p symstr.
+ * Add an item for the string \p symstr. It will be added as a global symbol.
  *
  * \return item, or NULL if none
  */
 sauSymitem *sauSymtab_add_item(sauSymtab *restrict o,
-		sauSymstr *restrict symstr, uint32_t sym_type) {
+		sauSymstr *restrict symstr, uint8_t sym_type) {
+	return sauSymtab_add_item_at(o, symstr, sym_type, 0);
+}
+
+/**
+ * Add an item for the string \p symstr. It will be located at the
+ * \p block_i lexical scope.
+ *
+ * \return item, or NULL if none
+ */
+sauSymitem *sauSymtab_add_item_at(sauSymtab *restrict o,
+		sauSymstr *restrict symstr, uint8_t sym_type,
+		uint16_t block_i) {
 	sauSymitem *item = sau_mpalloc(o->memp, sizeof(sauSymitem));
 	if (!item)
 		return NULL;
+	// The linked list per string entry must be kept sorted by \p block_i
+	sauSymitem *prev_item = symstr->item, *reorder_item = NULL;
+	while (prev_item && block_i < prev_item->block_i) {
+		reorder_item = prev_item;
+		prev_item = prev_item->prev;
+	}
+	if (reorder_item) {
+		item->prev = reorder_item->prev;
+		reorder_item->prev = item;
+	} else {
+		item->prev = symstr->item;
+		symstr->item = item;
+	}
 	item->sym_type = sym_type;
-	item->prev = symstr->item;
-	item->sstr = symstr;
-	symstr->item = item;
+	if (block_i > 0 && !ScopeReg_add_item(&o->sreg, symstr, block_i))
+		return NULL;
 	return item;
 }
 
@@ -205,7 +252,7 @@ sauSymitem *sauSymtab_add_item(sauSymtab *restrict o,
  * \return item, or NULL if none
  */
 sauSymitem *sauSymtab_find_item(sauSymtab *restrict o sauMaybeUnused,
-		sauSymstr *restrict symstr, uint32_t sym_type) {
+		sauSymstr *restrict symstr, uint8_t sym_type) {
 	sauSymitem *item = symstr->item;
 	while (item) {
 		if (item->sym_type == sym_type)
@@ -216,10 +263,48 @@ sauSymitem *sauSymtab_find_item(sauSymtab *restrict o sauMaybeUnused,
 }
 
 /**
+ * Look for an item for the string \p symstr, matching \p sym_type
+ * and located at lexical scope \p block_i or shallower levels.
+ * For example, looking at level 0 means finding only globals.
+ *
+ * \return item, or NULL if none
+ */
+sauSymitem *sauSymtab_find_item_at(sauSymtab *restrict o sauMaybeUnused,
+		sauSymstr *restrict symstr, uint8_t sym_type,
+		uint16_t block_i) {
+	sauSymitem *item = symstr->item;
+	while (item) {
+		if (item->sym_type == sym_type && item->block_i <= block_i)
+			return item;
+		item = item->prev;
+	}
+	return NULL;
+}
+
+/**
+ * Drop all symbols defined below the \p block_i scope.
+ */
+void sauSymtab_drop_to(sauSymtab *restrict o, uint16_t block_i) {
+	size_t i;
+	for (i = o->sreg.count; i > 0; --i) {
+		sauSymstr *symstr = o->sreg.syms[i-1];
+		sauSymitem *item = symstr->item;
+		if (item->block_i <= block_i) break; // target reached
+		while (item->block_i > block_i)
+			if (!(item = item->prev)) break;
+		symstr->item = item; // shadowing symbols now dropped
+	}
+	o->sreg.count = i;
+}
+
+/**
  * Add the first \p n strings from \p stra to the string pool of the
  * symbol table. For each, an item will be prepared according to the
  * \p sym_type (with the type used assumed to store ID data) and the
  * current string index from 0 to n will be set for SAU_SYM_DATA_ID.
+ *
+ * The string index can be increased by passing non-zero \p id_from.
+ * Each per-string item made will always be made for a global scope.
  *
  * All strings in \p stra need to be null-terminated.
  *
@@ -227,7 +312,7 @@ sauSymitem *sauSymtab_find_item(sauSymtab *restrict o sauMaybeUnused,
  */
 bool sauSymtab_add_stra(sauSymtab *restrict o,
 		const char *const*restrict stra, size_t n,
-		uint32_t sym_type, uint32_t id_from) {
+		uint8_t sym_type, uint32_t id_from) {
 	for (size_t i = 0; i < n; ++i) {
 		sauSymitem *item;
 		sauSymstr *s = sauSymtab_get_symstr(o,
