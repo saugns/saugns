@@ -50,6 +50,11 @@ typedef struct sauParser {
 	ParseSem ps;
 } sauParser;
 
+/* \return lexical scope level i.e. list nesting/block level */
+static inline size_t parser_block_i(sauParser *restrict o) {
+	return o->nest.count - 1;
+}
+
 /*
  * File-reading code
  */
@@ -79,7 +84,7 @@ static inline int note7to12(int n) { return n >= 3 ? (n*2)-1 : n*2; }
 
 #define SAU_SYM__ITEMS(X) \
 	X(VAR, "variable") \
-	X(LABEL, "label") \
+	X(LABEL, "label") /* all something-ID name types must be after this */\
 	X(MATH_ID, "math symbol") \
 	X(LINE_ID, "line shape") \
 	X(WAVE_ID, "wave type") \
@@ -258,22 +263,50 @@ static uint8_t scan_filter_hashcommands(sauScanner *restrict o, uint8_t c) {
 	return c;
 }
 
-static sauSymitem *scan_sym(sauScanner *restrict o, uint32_t type_id,
+struct Symbol {
+	sauSymstr *sstr;
+	sauSymitem *item;
+	bool var_chkset : 1;
+	bool var_global : 1;
+};
+static struct Symbol scan_sym(sauScanner *restrict o, uint32_t type_id,
 		const char *const*restrict help_stra, bool optional) {
 	const char *type_label = scan_sym_typelabels[type_id];
-	sauSymstr *s = NULL;
-	sauScanner_get_symstr(o, &s);
-	if (!s) goto NOT_FOUND;
-	sauSymitem *item = sauSymtab_find_item(o->symtab, s, type_id);
-	if (!item) {
-		if (type_id > SAU_SYM_LABEL) goto NOT_FOUND;
-		item = sauSymtab_add_item(o->symtab, s, type_id);
+	struct Symbol s = {0};
+	if (type_id == SAU_SYM_VAR) {
+		switch (sauScanner_getc(o)) {
+		case '~':
+			s.var_global = true; break;
+		case '?':
+			if (!optional) {
+				s.var_chkset = true; break;
+			} /* fall-through */
+		default:
+			sauScanner_ungetc(o); break;
+		}
 	}
-	return item;
+	sauScanner_get_symstr(o, &s.sstr);
+	if (!s.sstr) goto NOT_FOUND;
+	if (s.var_global)
+		s.item = sauSymtab_find_item_at(o->symtab, s.sstr, type_id, 0);
+	else
+		s.item = sauSymtab_find_item(o->symtab, s.sstr, type_id);
+	if (!s.item) {
+		/*
+		 * Handle item not found per type. ID types are after the
+		 * label type and only allow predefined names to be used.
+		 *
+		 * The label type allows only globals, always makes item.
+		 */
+		if (type_id > SAU_SYM_LABEL) goto NOT_FOUND;
+		if (type_id == SAU_SYM_LABEL)
+			s.item = sauSymtab_add_item(o->symtab, s.sstr, type_id);
+	}
+	return s;
 NOT_FOUND:
-	if (!s) {
+	if (!s.sstr) {
 		if (optional)
-			return NULL;
+			return (struct Symbol){0};
 		const char *msg = help_stra ?
 				"%s name missing; available are:" :
 				"%s name missing";
@@ -282,14 +315,15 @@ NOT_FOUND:
 	} else if (help_stra) /* standard warning produced here */ {
 		sauScanner_warning_at(o, 0,
 				"invalid %s name '%s'; available are:",
-				type_label, s->key);
+				type_label, s.sstr->key);
 		sau_print_names(help_stra, "\t", stderr);
 	}
-	return NULL;
+	return (struct Symbol){0};
 }
 
 static bool scan_mathfunc(sauScanner *restrict o, size_t *restrict found_id) {
-	sauSymitem *sym = scan_sym(o, SAU_SYM_MATH_ID, sauMath_names, false);
+	sauSymitem *sym =
+		scan_sym(o, SAU_SYM_MATH_ID, sauMath_names, false).item;
 	if (!sym)
 		return false;
 	if (sauMath_params[sym->data_id] == SAU_MATH_NOARG_F // no parentheses
@@ -302,17 +336,19 @@ static bool scan_mathfunc(sauScanner *restrict o, size_t *restrict found_id) {
 	return false;
 }
 
+static inline bool is_numvar(sauSymitem *restrict item) {
+	return item && item->data_use == SAU_SYM_DATA_NUM;
+}
+
 static sauSymitem *scan_numvar(sauScanner *restrict o) {
-	sauSymitem *var = scan_sym(o, SAU_SYM_VAR, NULL, false);
-	if (!var)
-		return NULL;
-	if (var->data_use != SAU_SYM_DATA_NUM) {
+	struct Symbol s = scan_sym(o, SAU_SYM_VAR, NULL, true);
+	if (!is_numvar(s.item) && s.sstr) {
+		char *head = s.var_global ? "$~" : "$";
 		sauScanner_warning(o, NULL,
-"variable '$%s' in numerical expression doesn't hold a number",
-				var->sstr->key);
+"variable '%s%s' in numerical expression undefined", head, s.sstr->key);
 		return NULL;
 	}
-	return var;
+	return s.item;
 }
 
 struct NumParser {
@@ -796,11 +832,9 @@ static sauNoinline bool scan_time_val(sauScanner *restrict o,
 static bool scan_sym_id(sauScanner *restrict o,
 		size_t *restrict found_id, uint32_t type_id,
 		const char *const*restrict help_stra) {
-	sauSymitem *sym = scan_sym(o, type_id, help_stra, true);
-	if (!sym)
-		return false;
-	*found_id = sym->data_id;
-	return true;
+	sauSymitem *sym = scan_sym(o, type_id, help_stra, true).item;
+	if (sym) *found_id = sym->data_id;
+	return sym;
 }
 
 static bool scan_line_state(sauScanner *restrict o,
@@ -1068,7 +1102,7 @@ static void prepare_event(sauParser *restrict o,
 		void *restrict prev_obj, bool is_compstep) {
 	struct ParseLevel *pl = o->cur_pl;
 	if (!pl->event || pl->add_wait_ms > 0 ||
-			((prev_obj || !NestArr_tip(&o->nest)->list)
+			((prev_obj || !parser_block_i(o))
 			 && pl->event->main_obj) ||
 			is_compstep)
 		begin_event(o, prev_obj, is_compstep);
@@ -1313,6 +1347,8 @@ static void leave_level(sauParser *restrict o) {
 		sem_end_dur_ms(&o->ps);
 	} else if (pl->scope == SCOPE_GROUP) {
 		end_event(o);
+	} else if (pl->scope == SCOPE_NEST) {
+		sauSymtab_drop_to(o->st, parser_block_i(o)-1);
 	}
 	o->cur_pl = pl->parent;
 }
@@ -2133,8 +2169,23 @@ static void parse_in_gen_step(sauParser *restrict o) {
 	PARSE_IN__TAIL()
 }
 
-static bool parse_numvar_rhs(sauParser *restrict o, sauSymitem *restrict var,
-		bool check_unset, bool no_override) {
+static bool parse_set_numvar(sauParser *restrict o, struct Symbol *restrict s,
+		uint16_t block_i, double num) {
+	if (!s->item || s->item->block_i != block_i) {
+		if (!(s->item = sauSymtab_add_item_at(o->st, s->sstr,
+						SAU_SYM_VAR, block_i)))
+			return false;
+	}
+	s->item->data_use = SAU_SYM_DATA_NUM;
+	s->item->data.num = num;
+	if (s->item->data_id > 0)
+		sauMath_vars_symbols[s->item->data_id - 1]
+			(&o->math_state, s->item->data.num);
+	return true;
+}
+
+static bool parse_numvar_rhs(sauParser *restrict o, struct Symbol *restrict s,
+		const char *restrict head, bool no_override) {
 	uint8_t suffc;
 	sauScanNumConst_f numconst_f = NULL;
 	sauScanner_skipws(o->sc);
@@ -2146,70 +2197,69 @@ static bool parse_numvar_rhs(sauParser *restrict o, sauSymitem *restrict var,
 	default: if (suffc) sauScanner_ungetc(o->sc); break;
 	}
 	if (numconst_f) sauScanner_skipws(o->sc);
-	if (!var || (no_override && var->data_use == SAU_SYM_DATA_NUM)) {
+	uint16_t block_i = s->var_global ? 0 : parser_block_i(o);
+	if (!s->sstr || (no_override && is_numvar(s->item))) {
 		if (skip_num(o->sc, numconst_f))
 			return false;
 	} else {
-		if (scan_num(o->sc, numconst_f, &var->data.num)) {
-			var->data_use = SAU_SYM_DATA_NUM;
-			if (var->data_id > 0)
-				sauMath_vars_symbols[var->data_id - 1]
-					(&o->math_state, var->data.num);
+		double num;
+		if (scan_num(o->sc, numconst_f, &num)) {
+			parse_set_numvar(o, s, block_i, num);
 			return false;
 		}
 	}
-	if (var) sauScanner_warning(o->sc, NULL,
-			"missing right-hand side value for \"$%s%s%s\"",
-			check_unset ? "?" : "", var->sstr->key,
-			(!check_unset && no_override) ? "?=" : "=");
+	if (s->sstr) sauScanner_warning(o->sc, NULL,
+			"missing right-hand side value for \"%s%s%s\"",
+			head, s->sstr->key,
+			(!s->var_chkset && no_override) ? "?=" : "=");
 	return true; // rejected expression
 }
 
 static bool parse_numvar_lhs(sauParser *restrict o) {
-	bool check_unset = sauScanner_tryc(o->sc, '?'), was_unset = false;
-	sauSymitem *var = scan_sym(o->sc, SAU_SYM_VAR, NULL, false);
-	if (check_unset && var && var->data_use != SAU_SYM_DATA_NUM)
-		was_unset = true;
+	bool global_scope = !parser_block_i(o);
+	struct Symbol s = scan_sym(o->sc, SAU_SYM_VAR, NULL, !global_scope);
+	const char *head = s.var_global ? "$~" : (s.var_chkset ? "$?" : "$");
+	bool was_unset = s.var_chkset && !is_numvar(s.item);
 	bool mark_fail = was_unset;
-	bool no_override = check_unset;
-	if (var) {
+	bool no_override = s.var_chkset;
+	if (s.sstr) {
 		sauScanner_skipws(o->sc);
 		if (sauScanner_tryc(o->sc, '?')) {
-			if (!check_unset)
-				no_override = true;
-			else
+			no_override = true;
+			if (s.var_chkset)
 				sauScanner_warning(o->sc, NULL,
-						"'$?%s' needs no '?' after",
-						var->sstr->key);
+						"'%s%s' needs no '?' after",
+						head, s.sstr->key);
 		}
 	}
 	if (sauScanner_tryc(o->sc, '=')) {
-		if (!parse_numvar_rhs(o, var, check_unset, no_override))
+		if (!parse_numvar_rhs(o, &s, head, no_override))
 			mark_fail = false;
-	} else if (!check_unset) {
-		if (var) sauScanner_warning(o->sc, NULL,
-				"variable '$%s' reference does nothing",
-				var->sstr->key);
+	} else if (!s.var_chkset) {
+		if (s.item) sauScanner_warning(o->sc, NULL,
+				"variable '%s%s' reference does nothing",
+				head, s.sstr->key);
 		if (no_override) sauScanner_ungetc(o->sc);
 	}
-	if (was_unset) {
+	if (was_unset && s.sstr) {
 		if (mark_fail) {
 			o->script_fail = true;
 			o->sc->s_flags |= SAU_SCAN_S_QUIET; // silence warnings
 			sauScanner_notice(o->sc, NULL,
-"usage: variable '$%s' in script wasn't set;\n"
-"\ttry passing it to the script as an option, \"%s=...\"",
-					var->sstr->key, var->sstr->key);
+"usage: global variable '$%s' must be set to\n"
+"\trun the script; the option to pass the script is \"%s=...\"",
+					s.sstr->key, s.sstr->key);
 		} else {
 			sauScanner_notice(o->sc, NULL,
-"usage: variable '$%s' in script wasn't set;\n"
-"\tusing the fallback value of %f; to set,\n"
-"\tpass it to the script as an option, \"%s=...\"",
-					var->sstr->key,
-					var->data.num, var->sstr->key);
+"usage: global variable '$%s' in script can\n"
+"\tbe given a value as an option; using the default value\n"
+"\tof %f; to change it, pass the script the option,\n"
+"\t\"%s=...\"",
+					s.sstr->key,
+					s.item->data.num, s.sstr->key);
 		}
 	}
-	return var; // skipped whitespace?
+	return s.item; // skipped whitespace?
 }
 
 /*
@@ -2218,8 +2268,9 @@ static bool parse_numvar_lhs(sauParser *restrict o) {
 static bool parse_getlabel(sauParser *restrict o, uint8_t c, bool is_copy) {
 	struct ParseLevel *pl = o->cur_pl;
 	pl->sub_f = NULL;
-	sauSymitem *label = scan_sym(o->sc, SAU_SYM_LABEL, NULL, false);
-	if (label != NULL) {
+	struct Symbol s = scan_sym(o->sc, SAU_SYM_LABEL, NULL, false);
+	if (s.item != NULL) {
+		sauSymitem *label = s.item;
 		if (label->data_use == SAU_SYM_DATA_OBJ) {
 			sauParseGenData *gen = label->data.obj;
 			if (gen->ref.obj_type == SAU_POBJT_GEN){
@@ -2230,7 +2281,7 @@ static bool parse_getlabel(sauParser *restrict o, uint8_t c, bool is_copy) {
 			if (!is_copy) label->data.obj = gen; /* update */
 		} else {
 			sauScanner_warning(o->sc, NULL,
-"label '%c%s' doesn't refer to any object", c, label->sstr->key);
+"label '%c%s' doesn't refer to any object", c, s.sstr->key);
 		}
 	}
 	return false;
@@ -2266,10 +2317,11 @@ static bool parse_level(sauParser *restrict o,
 "ignoring label assignment to label assignment");
 				break;
 			}
-			pl.set_label = scan_sym(sc, SAU_SYM_LABEL, NULL, false);
+			pl.set_label =
+				scan_sym(sc, SAU_SYM_LABEL, NULL, false).item;
 			break;
 		case '/':
-			if (NestArr_tip(&o->nest)->list) goto INVALID;
+			if (parser_block_i(o)) goto INVALID;
 			parse_waittime(o);
 			break;
 		case ':':
@@ -2340,7 +2392,7 @@ static bool parse_level(sauParser *restrict o,
 				goto RETURN;
 			continue;
 		case '|':
-			if (NestArr_tip(&o->nest)->list) goto INVALID;
+			if (parser_block_i(o)) goto INVALID;
 			if (newscope == SCOPE_SAME) {
 				sauScanner_ungetc(sc);
 				goto RETURN;
