@@ -992,21 +992,29 @@ Modulation with value ranges:
 
 Variables:
 	Variables hold numbers and can be used in numerical expressions.
-	They can be assigned to several times.
-		To assign a number, "$name=" can be written, immediately
-	followed by a numerical expression. The name is case-sensitive and
-	can have any sequence of alphanumeric characters and/or '_'. Once
-	assigned, "$name" can be used in any numerical expression after.
-	(This includes expressions used to give the variable a new value.)
-	Whitespace is allowed both before and after the '='.
-		Alternatively, a non-overriding numerical assignment (mostly
-	useful for passing options to a script) uses '?=' in place of '='.
-	This means that the assignment is done only if the variable didn't
-	hold a number, otherwise the assignment is ignored (and no functions
-	in the expression are called then, meaning it has no side effects).
-	The '?' can instead be written before the variable name, "$?name=",
-	to warn if it wasn't already set. "$?name" by itself instead makes
-	passing a value a hard requirement, the script otherwise not running.
+	They are lexically scoped relative to lists (see "Modulator list")
+	and can be assigned to several times (including using the previous
+	value on the right-hand side of '=').
+		To assign to a local variable, "$name=" can be written,
+	immediately followed by a numerical expression. The name is
+	case-sensitive and can have any sequence of alphanumeric characters
+	and/or '_'. Once assigned, "$name" can be used in any numerical
+	expression after. (The leading '$' sets variables apart from other
+	numerical names.) Whitespace is allowed both before the '=' and
+	after it (before the numerical expression after).
+		To get/set values from/to a global variable from any lexical
+	scope, "$~name" can be used. Otherwise, though readable with "$name"
+	if there's no local variable of the same name, assigning to the name
+	without using "$~name" will create a new local variable.
+		A non-overriding numerical assignment (mostly useful for
+	passing options to a script) uses '?=' in place of '='. Such an
+	assignment is done only if the variable didn't already hold a number,
+	otherwise nothing happens (and the expression after '?=' is skipped).
+	If used in a nested scope, it checks for the variable at any scope.
+		At the global scope, a '?' can instead be written before a
+	variable name, "$?name=", to warn if it wasn't already set, while
+	"$?name" by itself instead makes passing a value a hard requirement,
+	the script not running unless "$name" is set before the "$?name".
 		Numerical expressions for some named parameters can use
 	context-sensitive constants; to also allow their use when assigning a
 	variable, one of the below parameter namespace names can be added
@@ -1021,6 +1029,8 @@ Variables:
 		Built-in magic variables exist that perform a procedure when
 	set, beyond holding a value. Like other variables, the initial values
 	can be changed by passing options to a script to assign variables.
+	To get/set these special variables from a non-global list scope, use
+	the "$~name~ syntax (see above).
 		$seed	Set to reset the rand() value sequence; defaults to 0
 			if no value was passed to the script. Does not hold a
 			number when checked unless a value was passed or set,
