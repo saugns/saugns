@@ -4,8 +4,8 @@ saugns version changes
 [On the website](https://sau.frama.io/changes.html#saulang)
 is a shorter change log with only the SAU language changes.
 
-Pre-release
------------
+v0.5.5 (2025-11-01)
+-------------------
 
 Language changes:
  * Numerical expressions. Fix parsing bug causing `num-[]`
