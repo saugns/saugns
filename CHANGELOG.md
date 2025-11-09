@@ -4,8 +4,8 @@ saugns version changes
 [On the website](https://sau.frama.io/changes.html#saulang)
 is a shorter change log with only the SAU language changes.
 
-Pre-release
------------
+v0.5.5b (2025-11-09)
+--------------------
 
 Fix remaining object ID allocation/reuse bug. A script like
 the following misbehaved (in this case making the `N` silent
