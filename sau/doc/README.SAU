@@ -91,6 +91,8 @@ Parameters:
 		list except the range-mapping ".r[]" list. It does not apply
 		to other nested lists for modulators, that is modulators for
 		other parameters; their multipliers apply unchanged.
+		.f	Script-wide mix frequency filter controls.
+			See "Frequency filter options" for details.
 		.m	Script-wide gain mix control (multiplier). If used,
 			this disables automatic down-scaling of amplitude
 			by the number of voices (max carrier audio generators
@@ -150,6 +152,8 @@ Generator universal parameters:
 		Can be negative to flip the sign of the signal.
 			"Value ranges and envelopes" is supported for AM &
 		RM (amplitude and ring modulation); see section.
+		.f	Generator output frequency filter controls.
+			See "Frequency filter options" for details.
 	c	(For non-nested generators only.) Channel mixing, mainly
 		(-1.0) to 1.0. See "Channel mixing values" for more.
 			"Value ranges and envelopes" is supported for
@@ -711,6 +715,19 @@ Numerical expressions:
 			It can be used for seeding in a randomized script.
 			(Note that the exact value is platform-dependent.)
 			If disabled (deterministic mode), instead gives 0.
+
+Frequency filter options:
+	For filter ".f" parameters such as "a.f". Low-pass filter (LPF),
+	high-pass filter (HPF), or both, can be used. The following named
+	options can be set inside the ".f[]" list as heading subparameters.
+	l	LPF cutoff (-3 dB) frequency in Hz, or 0 to disable the
+		filter. The filter used is a plain 1-pole LPF.
+	h	HPF cutoff (-3 dB) frequency in Hz, or 0 to disable the
+		filter. The filter used is a plain 1-pole HPF.
+	There's also a shorthand syntax for using only at most one filter
+	at a time. Writing a number directly after ".f" will set: LPF only,
+	if the number is positive; HPF only, using the negation of the
+	number if it's negative; or neither if the number is 0.
 
 Channel mixing values:
 	Panning, where 0.0 is centered. Named constants can be used in place
