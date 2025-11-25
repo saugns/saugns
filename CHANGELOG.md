@@ -7,7 +7,26 @@ is a shorter change log with only the SAU language changes.
 Pre-release
 -----------
 
+v0.5.6 (2026-03-15)
+-------------------
+
+Add 1-pole filter options. Redesign rendering.
+
 Language changes:
+ * Frequency filters.
+    - Add filter option `a.f` for all audio generators, and
+      1-pole lowpass and highpass filters. Options `a.f.l`,
+      `a.f.h` (alternatively `a.f[l h]`) will set a cut-off
+      frequency to use if given a positive number; if given
+      0, the filter is disabled. As shorthand, `a.f` can be
+      given a number if only lowpass or highpass (not both)
+      is to be used; a positive number is used for lowpass,
+      while a negative number is negated, and then used for
+      highpass; if 0 is set, both filters are disabled.
+    - Add global mix filters under `S a.f`, the same syntax
+      and use as those for individual audio generators. The
+      use of these filters is recommended to filter a whole
+      audio file.
  * Parameter sweeps. Change sweep time interpretation, from
    being dynamic (much like time for a modulator), to being
    static or parse-time (much like timing offset syntax). A
