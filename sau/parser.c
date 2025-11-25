@@ -28,9 +28,9 @@ struct NestScope {
 	sauParseObjRef *last_item, *owner_item;
 	sauParseSetOptions *sopt; // statically (block) scoped in lists
 	/* values passed for outer parameter; these are set in next-to-tip */
-	sauRange *gen_valr;
+	void *gen_subp;
 	sauScanNumConst_f numconst_f;
-	uint8_t valr_parts;
+	uint16_t subp_part;
 	bool num_ratio : 1;
 	/* tracking of updates to data parsed, and copies for nodes made */
 	bool is_old_sopt : 1; // sopt must be assigned to a copy if changed
@@ -829,6 +829,21 @@ static sauNoinline bool scan_time_val(sauScanner *restrict o,
 	return true;
 }
 
+static sauNoinline bool scan_cutoff_freq(sauScanner *restrict o,
+		float *restrict val) {
+	sauScanFrame sf = o->sf;
+	double val_s;
+	if (!scan_num(o, scan_note_const, &val_s))
+		return false;
+	if (val_s < 0.f) {
+		sauScanner_warning(o, &sf,
+				"discarding negative cut-off frequency value");
+		return false;
+	}
+	*val = val_s;
+	return true;
+}
+
 static bool scan_sym_id(sauScanner *restrict o,
 		size_t *restrict found_id, uint32_t type_id,
 		const char *const*restrict help_stra) {
@@ -849,6 +864,18 @@ static bool scan_line_state(sauScanner *restrict o,
 		line->flags |= SAU_LINEP_STATE_RATIO;
 	else
 		line->flags &= ~SAU_LINEP_STATE_RATIO;
+	return true;
+}
+
+// handle short syntax, one number deciding to use at most one of LPF or HPF
+static bool scan_filt_shorthand(sauScanner *restrict o,
+		sauFiltPar *restrict filt) {
+	double val;
+	if (!scan_num(o, scan_note_const, &val))
+		return false;
+	filt->l_v = val > 0.f ? val : 0.f;
+	filt->h_v = val < 0.f ? -val : 0.f;
+	filt->flags = SAU_FILTP_LPF | SAU_FILTP_HPF;
 	return true;
 }
 
@@ -904,32 +931,46 @@ enum {
 typedef void (*ParseLevel_sub_f)(sauParser *restrict o);
 static void parse_in_settings(sauParser *restrict o);
 static void parse_in_gen_step(sauParser *restrict o);
+static void parse_in_filt_par(sauParser *restrict o);
 static void parse_in_phase_par(sauParser *restrict o);
 static void parse_in_par_sweep(sauParser *restrict o);
 static void parse_in_par_env(sauParser *restrict o);
 static void parse_in_par_env_and_sweep(sauParser *restrict o);
 
-/* Indexing of parts of a value range struct. */
+/* Indexing of subparameter components. */
 enum {
-	RANGE_E_DEF = SAU_RANGE_PARAMS, // handle S sopt values as special case
+	SUBP_NONE = SAU_RANGE_NONE,
+	SOPT_PART = 1U<<8, // flag to add for sopt part
+	// other kinds of values, not part of the range struct, follow...
+	MAIN_FILT = SAU_RANGE_PARAMS,
 };
 
+/* Is part of a value range struct? */
+static inline bool is_valr_part(unsigned parts) {
+	parts &= UINT8_MAX;
+	return parts > SAU_RANGE_NONE && parts < SAU_RANGE_PARAMS;
+}
+
+/* Get part of a value range struct. */
 static inline sauLine *get_valr_line(sauRange *restrict r, unsigned parts) {
 	switch (parts) {
 	case SAU_RANGE_A: return &r->a;
 	case SAU_RANGE_B: return &r->b;
 	case SAU_RANGE_E: /* fall-through */
-	case RANGE_E_DEF: return &r->e;
+	case SAU_RANGE_E|SOPT_PART: return &r->e;
 	default: return NULL;
 	}
 }
 
-static inline ParseLevel_sub_f get_valr_sub_f(unsigned parts) {
+/* Get function for nested scope parsing of subparameter. */
+static inline ParseLevel_sub_f get_subp_sub_f(unsigned parts) {
 	switch (parts) {
 	case SAU_RANGE_A:
 	case SAU_RANGE_B: return parse_in_par_sweep;
 	case SAU_RANGE_E: return parse_in_par_env_and_sweep;
-	case RANGE_E_DEF: return parse_in_par_env;
+	case SAU_RANGE_E|SOPT_PART: return parse_in_par_env;
+	case MAIN_FILT: /* fall-through */
+	case MAIN_FILT|SOPT_PART: return parse_in_filt_par;
 	default: return NULL;
 	}
 }
@@ -1124,12 +1165,9 @@ static void begin_list(sauParser *restrict o,
 	(void)plist;
 	struct ParseLevel *pl = o->cur_pl, *parent_pl = pl->parent;
 	struct NestScope *ns = NestArr_tip(&o->nest), *parent_ns = ns-1;
-	if (use_type == SAU_MOD_N_p_pm)
-		pl->sub_f = parse_in_phase_par;
-	else
-		pl->sub_f = parent_ns->gen_valr ?
-			get_valr_sub_f(parent_ns->valr_parts) :
-			NULL;
+	pl->sub_f = (use_type == SAU_MOD_N_p_pm) ?
+		parse_in_phase_par :
+		get_subp_sub_f(parent_ns->subp_part);
 	if (pl->pl_flags & PL_FORBID_OBJ) {
 		static sauParseListData dummy_list = {0};
 		ns->list = &dummy_list; // when only used for parsing
@@ -1272,7 +1310,7 @@ static void enter_level(sauParser *restrict o,
 		 * support for objects in the nesting list. That's
 		 * the case when it's used only to read subvalues.
 		 */
-		if (!pl->use_type && (ns-1)->gen_valr)
+		if (!pl->use_type && (ns-1)->subp_part)
 			pl->pl_flags |= PL_FORBID_OBJ;
 		begin_list(o, NULL, use_type);
 		/*
@@ -1340,6 +1378,34 @@ static void leave_level(sauParser *restrict o) {
 DEFER: \
 	sauScanner_ungetc(sc); /* let parse_level() take care of it */
 
+static sauParseListData *parse_par_list(sauParser *restrict o,
+		sauScanNumConst_f numconst_f,
+		void *restrict gen_subp, bool ratio,
+		unsigned valr_id, uint8_t use_type, unsigned subp_part);
+
+// used for both 'S' sopt and generators
+static uint8_t parse_main_filt_par(sauParser *restrict o,
+		sauFiltPar *restrict filt,
+		sauParseGenData *restrict gen, uint8_t c) {
+	switch (c) {
+	case 'l':
+		if (scan_cutoff_freq(o->sc, &filt->l_v)) {
+			filt->flags |= SAU_FILTP_LPF;
+			if (gen) gen->params |= SAU_PGENP_FILT;
+		}
+		break;
+	case 'h':
+		if (scan_cutoff_freq(o->sc, &filt->h_v)) {
+			filt->flags |= SAU_FILTP_HPF;
+			if (gen) gen->params |= SAU_PGENP_FILT;
+		}
+		break;
+	default:
+		return c;
+	}
+	return 0;
+}
+
 static bool parse_so_amp(sauParser *restrict o,
 		struct NestScope *restrict ns) {
 	sauParseSetOptions *sopt = ns->sopt;
@@ -1353,6 +1419,14 @@ static bool parse_so_amp(sauParser *restrict o,
 		sopt->def_ampmult = val;
 	}
 	switch ((c = sauScanner_getc_after(o->sc, '.'))) {
+	case 'f':
+		if (ns->list)
+			return true; // only allow in global scope
+		scan_filt_shorthand(o->sc, &sopt->mix_filt);
+		parse_par_list(o, scan_note_const, &sopt->mix_filt, false, 0, 0,
+				MAIN_FILT|SOPT_PART);
+		return parse_main_filt_par(o, &sopt->mix_filt, NULL,
+				sauScanner_getc_after(o->sc, '.'));
 	case 'm':
 		if (ns->list)
 			return true; // only allow in global scope
@@ -1584,8 +1658,8 @@ static uint8_t parse_par_env(sauScanner *restrict sc,
 
 static void parse_in_par_sweep(sauParser *restrict o) {
 	struct NestScope *ns = NestArr_getrev(&o->nest, 1);
-	sauRange *range = ns->gen_valr;
-	sauLine *line = get_valr_line(range, ns->valr_parts);
+	sauRange *range = ns->gen_subp;
+	sauLine *line = get_valr_line(range, ns->subp_part);
 	PARSE_IN__HEAD(parse_in_par_sweep, true)
 		if (!c || parse_par_sweep(sc, line, ns, c)) goto DEFER;
 	PARSE_IN__TAIL()
@@ -1593,7 +1667,7 @@ static void parse_in_par_sweep(sauParser *restrict o) {
 
 static void parse_in_par_env(sauParser *restrict o) {
 	struct NestScope *ns = NestArr_getrev(&o->nest, 1);
-	sauRange *range = ns->gen_valr;
+	sauRange *range = ns->gen_subp;
 	PARSE_IN__HEAD(parse_in_par_env, true)
 		if (!c || parse_par_env(sc, &range->env, c)) goto DEFER;
 	PARSE_IN__TAIL()
@@ -1601,8 +1675,8 @@ static void parse_in_par_env(sauParser *restrict o) {
 
 static void parse_in_par_env_and_sweep(sauParser *restrict o) {
 	struct NestScope *ns = NestArr_getrev(&o->nest, 1);
-	sauRange *range = ns->gen_valr;
-	sauLine *line = get_valr_line(range, ns->valr_parts);
+	sauRange *range = ns->gen_subp;
+	sauLine *line = get_valr_line(range, ns->subp_part);
 	PARSE_IN__HEAD(parse_in_par_env_and_sweep, true)
 		if (!c ||
 		    (parse_par_sweep(sc, line, ns, c) &&
@@ -1613,36 +1687,35 @@ static void parse_in_par_env_and_sweep(sauParser *restrict o) {
 static bool prepare_par_range(sauParser *restrict o,
 		struct NestScope *restrict ns,
 		sauScanNumConst_f numconst_f,
-		sauRange *restrict gen_valr, bool ratio,
-		unsigned valr_id, unsigned valr_parts) {
-	if (!valr_parts) { /* clear when not used */
-		ns->gen_valr = NULL;
-		return true;
-	}
-	struct ParseLevel *pl = o->cur_pl;
-	sauParseGenData *gen = pl->gen;
-	if (gen_valr || !gen) goto DONE;
-	if (!gen->valr || !(gen_valr = (*gen->valr)[valr_id])) {
-		gen_valr = create_range(o, gen, valr_id);
-	}
-	get_valr_line(gen_valr, valr_parts)->flags |= SAU_LINEP; // is touched
-DONE:
-	ns->gen_valr = gen_valr;
+		void *restrict gen_subp, bool ratio,
+		unsigned valr_id, unsigned subp_part) {
 	ns->numconst_f = numconst_f;
 	ns->num_ratio = ratio;
-	ns->valr_parts = valr_parts;
+	ns->subp_part = subp_part;
+	ns->gen_subp = gen_subp;
+	if (!is_valr_part(subp_part)) // clear, not provided
+		return true;
+	sauRange *gen_valr = gen_subp;
+	struct ParseLevel *pl = o->cur_pl;
+	sauParseGenData *gen = pl->gen;
+	if (gen_valr || !gen)
+		return true;
+	if (!gen->valr || !(gen_valr = (*gen->valr)[valr_id]))
+		gen_valr = create_range(o, gen, valr_id);
+	get_valr_line(gen_valr, subp_part)->flags |= SAU_LINEP; // is touched
+	ns->gen_subp = gen_valr;
 	return true;
 }
 
 static sauParseListData *parse_par_list(sauParser *restrict o,
 		sauScanNumConst_f numconst_f,
-		sauRange *restrict gen_valr, bool ratio,
-		unsigned valr_id, uint8_t use_type, unsigned valr_parts) {
+		void *restrict gen_subp, bool ratio,
+		unsigned valr_id, uint8_t use_type, unsigned subp_part) {
 	struct NestScope *ns = NestArr_tip(&o->nest);
 	prepare_par_range(o, ns, numconst_f,
-			gen_valr, ratio, valr_id, valr_parts);
-	if (ns->gen_valr) {
-		sauLine *line = get_valr_line(ns->gen_valr, valr_parts);
+			gen_subp, ratio, valr_id, subp_part);
+	if (ns->gen_subp && is_valr_part(ns->subp_part)) {
+		sauLine *line = get_valr_line(ns->gen_subp, subp_part);
 		if (line) scan_line_state(o->sc, numconst_f, line, ratio);
 	}
 	ns = NestArr_add(&o->nest);
@@ -1656,7 +1729,8 @@ static sauParseListData *parse_par_list(sauParser *restrict o,
 		if (!first_list) first_list = ns->list;
 	}
 	NestArr_pop(&o->nest); --ns;
-	ns->gen_valr = NULL;
+	ns->gen_subp = NULL;
+	ns->subp_part = SUBP_NONE;
 	return first_list;
 }
 
@@ -1680,7 +1754,7 @@ static void parse_in_settings(sauParser *restrict o) {
 		case 'e': {
 			sauRange tmp_range = {.env = ns->sopt->def_parenv};
 			parse_par_list(o, NULL, &tmp_range, false, 0,
-					0, RANGE_E_DEF);
+					0, SAU_RANGE_E|SOPT_PART);
 			ns = NestArr_tip(&o->nest); // array may have resized!
 			if (tmp_range.e.flags & SAU_LINEP_STATE)
 				ns->sopt->def_parenv_v = tmp_range.e.v0;
@@ -1828,9 +1902,31 @@ static bool parse_gen(sauParser *restrict o, uint8_t gen_type,
 	return parse_gen_main(o, gen_type, sym_type, sym_names);
 }
 
+static void parse_in_filt_par(sauParser *restrict o) {
+	struct NestScope *ns = NestArr_getrev(&o->nest, 1);
+	sauFiltPar *filt = ns->gen_subp;
+	PARSE_IN__HEAD(parse_in_filt_par, true)
+		if (!c || parse_main_filt_par(o, filt, pl->gen, c))
+			goto DEFER;
+	PARSE_IN__TAIL()
+}
+
 static uint8_t parse_gen_amp(sauParser *restrict o) {
-	return parse_par_modranges(o, NULL, NULL, false,
+	struct ParseLevel *pl = o->cur_pl;
+	sauParseGenData *gen = pl->gen;
+	uint8_t c = parse_par_modranges(o, NULL, NULL, false,
 			SAU_PVALR_AMP, SAU_MOD_N_a_am);
+	if (c == 'f') {
+		if (!gen->main_filt)
+			gen->main_filt = sau_mpalloc(o->mp, sizeof(sauFiltPar));
+		if (scan_filt_shorthand(o->sc, gen->main_filt))
+			gen->params |= SAU_PGENP_FILT;
+		parse_par_list(o, scan_note_const, gen->main_filt, false, 0, 0,
+				MAIN_FILT);
+		return parse_main_filt_par(o, gen->main_filt, gen,
+				sauScanner_getc_after(o->sc, '.'));
+	}
+	return c;
 }
 
 static bool parse_gen_chanmix(sauParser *restrict o) {
