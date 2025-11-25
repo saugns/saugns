@@ -149,6 +149,21 @@ extern const float sau_pd_v_defaults[SAU_PPD_TYPES];
 /** Is PD cycle zoom a.k.a. pulsar synthesis, '.f' multiplying frequency? */
 #define sau_pd_f_is_fmul(id) ((id) <= SAU_PPD_D)
 
+/** Filter parameter flags. */
+enum {
+	SAU_FILTP_LPF = 1U<<0,
+	SAU_FILTP_HPF = 1U<<1,
+};
+
+/**
+ * Filter subparameters for a parameter (such as amplitude).
+ */
+typedef struct sauFiltPar {
+	float l_v;
+	float h_v;
+	uint8_t flags;
+} sauFiltPar;
+
 /** Frequency parameter default value, when default not changed in a script. */
 #define SAU_PDEF_FREQ 440.0
 
@@ -187,11 +202,12 @@ static inline bool sau_pgen_has_seed(unsigned type_id) {
 
 /** Generator parameter flags. For parameters without other tracking only. */
 enum {
-	SAU_PGENP_TIME = 1<<0,
-	SAU_PGENP_MODE = 1<<1, // type-specific data
-	SAU_PGENP_PHASE = 1<<2,
-	SAU_PGENP_SEED = 1<<3,
-	SAU_PGEN_PARAMS = (1<<4) - 1,
+	SAU_PGENP_TIME  = 1U<<0,
+	SAU_PGENP_FILT  = 1U<<1,
+	SAU_PGENP_MODE  = 1U<<2, // type-specific data
+	SAU_PGENP_PHASE = 1U<<3,
+	SAU_PGENP_SEED  = 1U<<4,
+	SAU_PGEN_PARAMS = (1U<<5) - 1,
 };
 
 /* Macro used to declare and define noise type sets of items. */
@@ -343,6 +359,7 @@ typedef struct sauParseSetOptions {
 	sauEnvPar def_parenv;
 	sauRaslOpt def_ras;
 	sauWaveOpt def_woo;
+	sauFiltPar mix_filt;
 } sauParseSetOptions;
 
 /**
@@ -383,6 +400,7 @@ typedef struct sauParseGenData {
 	uint32_t params;
 	sauTime time;
 	sauRangeSet *valr;
+	sauFiltPar *main_filt;
 	uint32_t phase;
 	uint32_t seed;
 	union sauPGenMode {

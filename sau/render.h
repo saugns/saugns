@@ -97,7 +97,7 @@ sauRIns_gen_pop_mix(uint32_t out_buf_id, uint8_t mix_mode,
 		float amp_v0) {
 	sauRIns ins = {.op = SAU_RINS_N_gen_pop_mix,
 		.mode = mix_mode,
-		.a.i = in_buf_id, .has_a = true,
+		.a.i = in_buf_id, .has_a = mix_mode & SAU_RMIX_LAYER,
 		.b.i = amp_buf_id, .has_b = true,
 		.x = out_buf_id,
 	};

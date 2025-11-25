@@ -1251,7 +1251,7 @@ sem_conv_valr_mods(ParseSem *restrict o, SemGenObj *restrict gen,
 	} else {
 		if (has_buf) buf_count++;
 		// to keep timing in sync, run mods2 despite discarding result
-		sem_conv_mods(o, mods2, buf_count, freq_buf, SAU_RMIX_LAYER);
+		sem_conv_mods(o, mods2, buf_count, freq_buf, 0);
 	}
 	if (o->sbuf_count < buf_count) o->sbuf_count = buf_count;
 	return has_buf;
@@ -1283,7 +1283,7 @@ sem_conv_valr_env(ParseSem *restrict o, SemGenObj *restrict gen,
 	} else {
 		if (has_buf) buf_count++;
 		// to keep timing in sync, run mods_e despite discarding result
-		sem_conv_mods(o, mods_e, buf_count, freq_buf, SAU_RMIX_LAYER);
+		sem_conv_mods(o, mods_e, buf_count, freq_buf, 0);
 	}
 	if (o->sbuf_count < buf_count) o->sbuf_count = buf_count;
 	return has_buf;
@@ -1484,6 +1484,7 @@ sem_conv_gen(ParseSem *restrict o, uint32_t obj_id,
 		return false; // omit entirely
 	if (!(ins = RInsArr_add(&o->ev_ins))) goto MEM_ERR;
 	gen->is_visited = true;
+	bool layer = mix_mode & SAU_RMIX_LAYER;
 	uint32_t mix_buf  = buf_count++; // #0
 	sem_conv_valr(o, gen, SAU_MOD_N_f_fm, SAU_PVALR_FREQ,
 			NULL, buf_count, parent_freq_buf, !!parent_freq_buf,
@@ -1492,7 +1493,7 @@ sem_conv_gen(ParseSem *restrict o, uint32_t obj_id,
 	/*
 	 * Sub-functions, dividing per generator type.
 	 */
-	uint32_t in_buf = buf_count++; // #2
+	uint32_t in_buf = layer ? buf_count++ : mix_buf; // #2 or #0
 	switch (gen->gen_type) {
 	case SAU_PGEN_N_amp:
 		sem_conv_gen_amp(o, buf_count, in_buf);
