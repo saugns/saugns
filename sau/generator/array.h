@@ -34,6 +34,11 @@ static inline void sau_nsetf(float *restrict a, size_t n, float v) {
 	for (size_t i=0; i<n; ++i) a[i]=v;
 }
 
+static inline void sau_naddnf(float *restrict a, size_t n,
+		const float *restrict b) {
+	for (size_t i=0; i<n; ++i) a[i]+=b[i];
+}
+
 static inline void sau_nmulf(float *restrict a, size_t n, float b) {
 	for (size_t i=0; i<n; ++i) a[i]*=b;
 }

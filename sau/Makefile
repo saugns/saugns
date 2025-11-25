@@ -80,7 +80,7 @@ scanner.o: common.h math.h mempool.h file.h scanner.h scanner.c symtab.h
 symtab.o: common.h mempool.h symtab.h symtab.c
 	$(CC) -c $(CFLAGS_FAST) symtab.c
 
-generator.o: common.h generator.c render.h generator/array.h generator/envel.h generator/noise.h generator/phasor.h generator/rosc.h generator/wosc.h math.h mempool.h parse.h line.h wave.h
+generator.o: common.h generator.c render.h generator/array.h generator/envel.h generator/filter.h generator/noise.h generator/phasor.h generator/rosc.h generator/wosc.h math.h mempool.h parse.h line.h wave.h
 	$(CC) -c $(CFLAGS_FASTF) generator.c
 
 wave.o: common.h math.h wave.c wave.h

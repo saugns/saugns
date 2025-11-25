@@ -18,6 +18,7 @@
 #include <string.h>
 #include "generator/array.h"
 #include "generator/envel.h"
+#include "generator/filter.h"
 #include "generator/noise.h"
 #include "generator/wosc.h"
 #include "generator/rosc.h"
@@ -55,14 +56,29 @@ enum {
 	GN_NEW_FREQ_E = 1U<<4, // need to update \a freq_dyn.e_v0
 };
 
+enum {
+	MAIN_FILT = 0,
+	GEN_FILTERS
+};
+
+/*
+ * Generator filter flag values.
+ */
+#define GN_FILT(i, TYPE) (1U<<((i)*2 + GN_FILT_##TYPE))
+#define GN_FILT_LPF 0
+#define GN_FILT_HPF 1
+
 typedef struct GenBase {
 	uint32_t time;
 	uint32_t note_dur; /* time without countdown, from here or carrier */
 	uint32_t obj_id;
 	uint8_t type;
 	uint8_t flags;
+	uint8_t filt; // flags from GN_FILT()
 	struct RangeModDynVal freq_dyn; // parameter changed by some mulbuf[0]
 	struct ParWithRangeMod valr[SAU_PVALR_TYPES];
+	struct FilterCoeff main_lpf_c[GEN_FILTERS], main_hpf_c[GEN_FILTERS];
+	struct Filter main_lpf[GEN_FILTERS], main_hpf[GEN_FILTERS];
 } GenBase;
 
 typedef struct AmpNode {
@@ -109,6 +125,8 @@ struct GenBlock {
 struct sauGenerator {
 	uint32_t srate;
 	bool is_run_out_clear : 1;
+	bool has_mix_lpf      : 1;
+	bool has_mix_hpf      : 1;
 	uint16_t gen_mix_add_max;
 	Buf *bufs;
 	size_t event, ev_count;
@@ -116,12 +134,17 @@ struct sauGenerator {
 	uint32_t ev_pos, ev_wait;
 	int ev_time_carry;
 	uint32_t cur_vo_dur; // longest current remaining duration among voices
+	uint32_t tail_len;   // length added by the final post-filtering if any
 	uint32_t ins_i, ins_count;
 	const sauRIns *ins;
 	struct GenBlock *block_stack, *cur_block;
 	float amp_scale;
 	uint32_t gen_count;
 	AnyGen *gens;
+	struct Filter mix_l_lpf, mix_r_lpf;
+	struct Filter mix_l_hpf, mix_r_hpf;
+	struct FilterCoeff mix_lpf_c;
+	struct FilterCoeff mix_hpf_c;
 	sauMempool *mem;
 };
 
@@ -169,6 +192,19 @@ static bool convert_program(sauGenerator *restrict o,
 	o->amp_scale = 0.5f; // half for panning sum
 	if (prg->is_ampmult_set) o->amp_scale *= prg->sopt.ampmult;
 	if (prg->is_amp_autoscaled) o->amp_scale /= prg->vo_count;
+	if ((o->has_mix_lpf = prg->sopt.mix_filt.l_v > 0)) {
+		uint32_t len = sau_set_filt_1p(&o->mix_lpf_c,
+				prg->sopt.mix_filt.l_v, srate);
+		if (o->tail_len < len) o->tail_len = len;
+	}
+	if ((o->has_mix_hpf = prg->sopt.mix_filt.h_v > 0)) {
+		uint32_t len = sau_set_filt_1p(&o->mix_hpf_c,
+				prg->sopt.mix_filt.h_v, srate);
+		if (o->tail_len < len) o->tail_len = len;
+	}
+	uint32_t max_tail = sau_ms_in_samples(100, srate, NULL);
+	// frequency can go low, don't lengthen audio by ridiculous lengths
+	if (o->tail_len > max_tail) o->tail_len = max_tail;
 	prepare_event(o, prg->events);
 	return true;
 }
@@ -266,6 +302,41 @@ update_range(struct ParWithRangeMod *restrict rm,
 }
 
 /*
+ * Update filter coefficents.
+ */
+static void
+update_filt(AnyGen *restrict n, unsigned filter_i,
+		const sauParseGenData *restrict gd, uint32_t srate) {
+	sauFiltPar *par = gd->main_filt;
+	if (!par)
+		return;
+	if (par->flags & SAU_FILTP_LPF) {
+		unsigned flag = GN_FILT(filter_i, LPF);
+		struct Filter *s = &n->gen.main_lpf[filter_i];
+		struct FilterCoeff *c = &n->gen.main_lpf_c[filter_i];
+		if (par->l_v > 0.f) {
+			n->gen.filt |= flag;
+			sau_set_filt_1p(c, par->l_v, srate);
+		} else {
+			n->gen.filt &= ~flag;
+		}
+		s->t[0] = s->t[1] = 0.f; // reset, prevent burst
+	}
+	if (par->flags & SAU_FILTP_HPF) {
+		unsigned flag = GN_FILT(filter_i, HPF);
+		struct Filter *s = &n->gen.main_hpf[filter_i];
+		struct FilterCoeff *c = &n->gen.main_hpf_c[filter_i];
+		if (par->h_v > 0.f) {
+			n->gen.filt |= flag;
+			sau_set_filt_1p(c, par->h_v, srate);
+		} else {
+			n->gen.filt &= ~flag;
+		}
+		s->t[0] = s->t[1] = 0.f; // reset, prevent burst
+	}
+}
+
+/*
  * Update a generator node with new data from event.
  */
 static void update_gen(sauGenerator *restrict o,
@@ -333,6 +404,7 @@ static void update_gen(sauGenerator *restrict o,
 		if (r_freq && r_freq->e.flags & SAU_LINEP_STATE)
 			gen->flags |= GN_NEW_FREQ_E;
 	}
+	update_filt(n, MAIN_FILT, gd, o->srate);
 }
 
 /*
@@ -353,28 +425,44 @@ static void handle_event(sauGenerator *restrict o) {
 	prepare_event(o, pe->next);
 }
 
+// provided separately as LPF can be used even when HPF cannot
+static inline void block_mix_lpf(float *restrict buf, size_t len,
+		AnyGen *restrict n, unsigned filter_i) {
+	if (n->gen.filt & GN_FILT(filter_i, LPF))
+		sau_arr_lpf_1p(buf, len, &n->gen.main_lpf[filter_i],
+				&n->gen.main_lpf_c[filter_i]);
+}
+
+static inline void block_mix_hpf(float *restrict buf, size_t len,
+		AnyGen *restrict n, unsigned filter_i) {
+	if (n->gen.filt & GN_FILT(filter_i, HPF))
+		sau_arr_hpf_1p(buf, len, &n->gen.main_hpf[filter_i],
+				&n->gen.main_hpf_c[filter_i]);
+}
+
+/*
+ * Apply main filter(s) to audio buffer.
+ */
+static void block_mix_filter(float *restrict buf, size_t len,
+		AnyGen *restrict n, unsigned filter_i) {
+	block_mix_lpf(buf, len, n, filter_i);
+	block_mix_hpf(buf, len, n, filter_i);
+}
+
 /*
  * Add audio layer from \p in_buf into \p buf scaled with \p amp.
  *
  * Used to generate output for carrier or additive modulator.
  */
-static void block_mix_add(float *restrict buf, size_t buf_len,
-		bool layer,
-		const float *restrict in_buf,
-		const float *restrict amp, float amp_v0) {
-#define MIX(OP, AMP) \
-	for (size_t i = 0; i < buf_len; ++i) { \
-		buf[i] OP in_buf[i] * (AMP); \
-	} \
-/**/
-	if (layer) {
-		if (amp) MIX(+=, amp[i])
-		else     MIX(+=, amp_v0)
-	} else {
-		if (amp) MIX(=, amp[i])
-		else     MIX(=, amp_v0)
-	}
-#undef MIX
+static void block_mix_add(float *restrict buf, size_t len,
+		AnyGen *restrict n, float *restrict in_buf,
+		float *restrict amp, float amp_v0) {
+	if (amp)
+		sau_nmulnf(in_buf, len, amp);
+	else if (amp_v0 != 1.f)
+		sau_nmulf(in_buf, len, amp_v0);
+	block_mix_filter(in_buf, len, n, MAIN_FILT);
+	if (buf != in_buf) sau_naddnf(buf, len, in_buf);
 }
 
 /*
@@ -385,38 +473,38 @@ static void block_mix_add(float *restrict buf, size_t buf_len,
  *
  * Used to generate output for modulation with value range.
  */
-static void block_mix_mul_waveenv(float *restrict buf, size_t buf_len,
-		bool layer,
-		const float *restrict in_buf,
-		const float *restrict amp, float amp_v0) {
-#define MIX(OP, AMP) \
-	for (size_t i = 0; i < buf_len; ++i) { \
-		float s = in_buf[i]; \
-		float s_amp = (AMP) * 0.5f; \
-		s = (s * s_amp) + fabsf(s_amp); \
-		buf[i] OP s; \
+static void block_mix_mul_waveenv(float *restrict buf, size_t len,
+		AnyGen *restrict n, float *restrict in_buf,
+		float *restrict amp, float amp_v0) {
+#define MIX(X, AMP) \
+	for (size_t i = 0; i < len; ++i) { \
+		float s_amp = AMP * 0.5f; \
+		X = X * s_amp + fabsf(s_amp); \
 	} \
 /**/
-	if (layer) {
-		if (amp) MIX(*=, amp[i])
-		else     MIX(*=, amp_v0)
-	} else {
-		if (amp) MIX(=, amp[i])
-		else     MIX(=, amp_v0)
-	}
+	// run HPF on input only, to keep it from messing up amp and result;
+	// amp is normally filled with DC, and the result is made unipolar
+	block_mix_hpf(in_buf, len, n, MAIN_FILT);
+	if (amp)
+		MIX(in_buf[i], amp[i])
+	else if (amp_v0 != 1.f)
+		MIX(in_buf[i], amp_v0)
+	else
+		MIX(in_buf[i], 1)
+	block_mix_lpf(in_buf, len, n, MAIN_FILT);
+	if (buf != in_buf) sau_nmulnf(buf, len, in_buf);
 #undef MIX
 }
 
 /*
  * Handle audio layer according to options.
  */
-static void block_mix(float *restrict buf, size_t buf_len,
-		bool wave_env, bool layer,
-		float *restrict in_buf,
-		const float *restrict amp, float amp_v0) {
+static void block_mix(float *restrict buf, size_t len,
+		AnyGen *restrict n, bool wave_env, float *restrict in_buf,
+		float *restrict amp, float amp_v0) {
 	(wave_env ?
 	 block_mix_mul_waveenv :
-	 block_mix_add)(buf, buf_len, layer, in_buf, amp, amp_v0);
+	 block_mix_add)(buf, len, n, in_buf, amp, amp_v0);
 }
 
 static float *mix_valrange(bool is_a_filled,
@@ -495,6 +583,33 @@ static void mix_add(sauGenerator *restrict o,
 			mix_r[i] += s;
 		}
 	}
+	if (o->gen_mix_add_max < len) o->gen_mix_add_max = len;
+}
+
+static void mix_filter(sauGenerator *restrict o, uint32_t len) {
+	uint32_t gen_len = o->gen_mix_add_max;
+	float *mix_l = o->bufs[0 - MIX_BUFS];
+	float *mix_r = o->bufs[1 - MIX_BUFS];
+	if ((o->event == o->ev_count) && (gen_len < len)) {
+		/*
+		 * Extend audio duration to include tail end of filtering.
+		 */
+		uint32_t mix_len = gen_len + o->tail_len;
+		if (mix_len > len) mix_len = len;
+		uint32_t skip_len = mix_len - gen_len;
+		o->cur_vo_dur += skip_len;
+		o->tail_len -= skip_len;
+		len = mix_len;
+	}
+	if (o->has_mix_lpf) {
+		sau_arr_lpf_1p(mix_l, len, &o->mix_l_lpf, &o->mix_lpf_c);
+		sau_arr_lpf_1p(mix_r, len, &o->mix_r_lpf, &o->mix_lpf_c);
+	}
+	if (o->has_mix_hpf) {
+		sau_arr_hpf_1p(mix_l, len, &o->mix_l_hpf, &o->mix_hpf_c);
+		sau_arr_hpf_1p(mix_r, len, &o->mix_r_hpf, &o->mix_hpf_c);
+	}
+	// extend if needed to make sure no filter output values are missed
 	if (o->gen_mix_add_max < len) o->gen_mix_add_max = len;
 }
 
@@ -628,7 +743,7 @@ static uint32_t run_rins_gen_pop_mix(struct sauGenerator *restrict o,
 	float *out_buf = o->bufs[ins->x];
 	uint32_t skip_len = o->cur_block->skip_len;
 	AnyGen *n = o->cur_block->n;
-	block_mix(out_buf, len, mul_we, layer, in_buf, amp_buf, amp_v0);
+	block_mix(out_buf, len, n, mul_we, in_buf, amp_buf, amp_v0);
 	if (n->gen.flags & GN_ROOT_GEN) {
 		// handle panning and add result to voice output
 		float *pan_buf = !ins->has_c_f ? o->bufs[ins->c.i] : NULL;
@@ -901,6 +1016,8 @@ static uint32_t run_for_time(sauGenerator *restrict o,
 			 */
 			len = run_fn(o, ins, len); // may change o->ins_i
 		}
+		if (o->has_mix_lpf || o->has_mix_hpf)
+			mix_filter(o, len);
 		uint32_t last_len = o->gen_mix_add_max;
 		if (last_len > 0) {
 			gen_len += last_len;
