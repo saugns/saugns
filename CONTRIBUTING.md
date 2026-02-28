@@ -34,7 +34,7 @@ Testing saugns using example scripts
 
 The main `Makefile` contains targets useful for quick tests.
 * `make check ARGS=-p > X` after a clean build makes a file `X`
-  which contains `-p` printouts for `examples/` and `devtests/`.
+  which has verbose `-vp` printouts for `examples/` and `devtests/`.
   Making another file `Y` after changes to parsing, etc. in
   libsau, and diffing the two is often a good sanity check.
 * `make fullcheck ARGS="-r6000 -o0.wav"` can allow fuller tests

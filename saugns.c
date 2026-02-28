@@ -1,5 +1,5 @@
 /* saugns: Main module / Command-line interface.
- * Copyright (c) 2011-2013, 2017-2025 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2026 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -427,6 +427,8 @@ REPARSE:
 	for (size_t i = 0; i < script_args->count; ++i) {
 		sauScriptArg *arg = &script_args->a[i];
 		arg->no_time = *flags & OPT_DETERMINISTIC;
+		arg->print_info = *flags & OPT_PRINT_INFO;
+		arg->verbose = *flags & OPT_PRINT_VERBOSE;
 		arg->predef = predef_args->a;
 		arg->predef_count = predef_args->count;
 	}
@@ -632,7 +634,7 @@ ERROR:
  */
 static bool play(const sauParseArr *restrict parse_objs, uint32_t srate,
 		uint32_t options, const char *restrict wav_path) {
-	if (!parse_objs->count)
+	if (!parse_objs->count || (options & OPT_MODE_CHECK) != 0)
 		return true;
 
 	struct Player out;
@@ -647,12 +649,8 @@ static bool play(const sauParseArr *restrict parse_objs, uint32_t srate,
 	for (size_t i = 0; i < parse_objs->count; ++i) {
 		const sauParse *parse = parse_objs->a[i];
 		if (!parse) continue;
-		if ((options & OPT_PRINT_INFO) != 0)
-			sauParse_print_info(parse);
-		if ((options & OPT_PRINT_VERBOSE) != 0)
-			sau_printf((options & OPT_MODE_CHECK) != 0 ?
-					"Checked \"%s\".\n" :
-					"Playing \"%s\".\n", parse->name);
+		if ((options & OPT_PRINT_VERBOSE))
+			sau_printf("Playing \"%s\".\n", parse->name);
 		if (!Player_run(&out, parse))
 			status = false;
 	}
