@@ -1,5 +1,5 @@
 /* SAU library: Extra semantics handling code for parser.
- * Copyright (c) 2011-2012, 2017-2025 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2026 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
@@ -125,6 +125,8 @@ typedef struct ParseSem {
 	PrintGenRefArr vo_graph;
 	uint32_t gen_nest_level, gen_nest_max;
 	uint32_t tot_dur_ms;
+	bool print_info : 1;
+	bool print_verbose : 1;
 	SemGenObjArr gen_obj;
 	sauParseGenData *ga_main_clone; // point to cloned gen during cloning
 	IDBuf idbuf;
@@ -249,8 +251,7 @@ static bool sem_set_gen_idsarr(ParseSem *restrict o,
 }
 
 static bool
-sem_vograph_traverse(ParseSem *restrict o, sauVoAllocState *restrict vas,
-		sauParseEvData *restrict ev);
+sem_vograph_traverse(ParseSem *restrict o, sauVoAllocState *restrict vas);
 
 typedef bool (*semVoGraph_cb)(ParseSem *o, uint32_t obj_id,
 		sauPrintGenRef *print_ref);
@@ -340,7 +341,7 @@ sem_voalloc_timing(ParseSem *restrict o, sauParseEvData *restrict e) {
 			vas->time_ms -= e->wait_ms;
 		if (!(vas->time_ms == 0)) continue;
 		if (vas->has_gen_expiry) // must call before generator reuse
-			sem_vograph_traverse(o, vas, e);
+			sem_vograph_traverse(o, vas);
 	}
 }
 
@@ -746,19 +747,12 @@ sem_vograph_handle_gen_node(ParseSem *restrict o, semVoGraph_cb node_cb,
  * \return true, or false on allocation failure
  */
 static bool
-sem_vograph_traverse(ParseSem *restrict o, sauVoAllocState *restrict vas,
-		sauParseEvData *restrict ev) {
+sem_vograph_traverse(ParseSem *restrict o, sauVoAllocState *restrict vas) {
 	sauPrintGenRef print_ref = {0, SAU_MOD_N_carr, 0};
 	if (!sem_vograph_handle_gen_node(o, sem_vograph_cb_genref,
 				false, vas, vas->obj_id, &print_ref))
 		return false;
-	if (vas->has_new_graph &&
-	    !PrintGenRefArr_mpmemdup(&o->vo_graph,
-				(sauPrintGenRef**) &ev->gen_list, o->mp))
-		return false;
 	vas->has_new_graph = vas->has_gen_expiry = false;
-	ev->gen_count = o->vo_graph.count;
-	o->vo_graph.count = 0; // reuse allocation
 	return true;
 }
 
@@ -925,6 +919,138 @@ time_gen_tailing(sauParseGenData *restrict gen, sauParseEvData *restrict e,
 	}
 }
 
+/**
+ * Print head info about program contents.
+ */
+static void
+sem_print_head(const char *const name) {
+	sau_printf("Program: \"%s\"\n", name);
+}
+
+/**
+ * Print information (duration, statistics) about program contents.
+ */
+static void
+sem_print_stats(const sauParse *restrict o) {
+	sau_printf("\tDuration:\t%u ms\n"
+		"\tEvents:  \t%zu\n"
+		"\tVoices:  \t%hu\n"
+		"\tGenerators:\t%u\n",
+		o->duration_ms,
+		o->ev_count,
+		o->vo_count,
+		o->gen_count);
+}
+
+static void
+print_linked(const char *restrict header,
+		const sauProgramIDArr *restrict idarr) {
+	if (!idarr || !idarr->count)
+		return;
+	sau_printf("\n\t    %s[%u", header, idarr->ids[0]);
+	for (uint32_t i = 0; ++i < idarr->count; )
+		sau_printf(", %u", idarr->ids[i]);
+	sau_printf("]");
+}
+
+static void
+print_genlist(const sauPrintGenRef *restrict list,
+		uint32_t count) {
+	static const char *const uses[SAU_MOD_NAMED] = {
+		SAU_MOD__ITEMS(SAU_MOD__X_GRAPH)
+	};
+	if (!list)
+		return;
+	FILE *out = sau_print_stream();
+	uint32_t i = 0;
+	uint32_t max_indent = 0;
+	fputs("\n\t    [", out);
+	for (;;) {
+		const uint32_t indent = list[i].level * 3;
+		if (indent > max_indent) max_indent = indent;
+		fprintf(out, "%6u:  ", list[i].id);
+		for (uint32_t j = indent; j > 0; --j)
+			putc(' ', out);
+		fputs(uses[list[i].use], out);
+		if (++i == count) break;
+		fputs("\n\t     ", out);
+	}
+	for (uint32_t j = max_indent; j > 0; --j)
+		putc(' ', out);
+	putc(']', out);
+}
+
+static sauNoinline void
+print_range(const sauRange *restrict r, char c) {
+	if (!r)
+		return;
+	const sauLinePar *line = &r->a; // currently prints only the first line
+	if ((line->flags & SAU_LINEP_STATE) != 0) {
+		if ((line->flags & SAU_LINEP_GOAL) != 0)
+			sau_printf("\t%c=%-6.2f->%-6.2f", c, line->v0, line->vt);
+		else
+			sau_printf("\t%c=%-6.2f\t", c, line->v0);
+	} else {
+		if ((line->flags & SAU_LINEP_GOAL) != 0)
+			sau_printf("\t%c->%-6.2f\t", c, line->vt);
+		else
+			sau_printf("\t%c", c);
+	}
+}
+
+#define SAU_PGEN__X_CASE(NAME, LABELC) \
+	case SAU_PGEN_N_##NAME: type = LABELC; break;
+
+static void
+print_genline(const sauParseGenData *restrict gd) {
+	char type = '?';
+	switch (gd->ref.gen_type) {
+	SAU_PGEN__ITEMS(SAU_PGEN__X_CASE)
+	}
+	const char *head = gd->ref.is_new ? "\n    new\t" : "\n\t";
+	if (gd->copy_from_id != SAU_POBJ_NO_ID) {
+		sau_printf("\n     cp op %-2u to op %-2u",
+				gd->copy_from_id, gd->ref.obj_id);
+		head = "\n    dup\t";
+	}
+	sau_printf("%sop %-2u %c", head, gd->ref.obj_id, type);
+	if (gd->params & SAU_PGENP_TIME) {
+		if (gd->time.flags & SAU_TIMEP_IMPLICIT)
+			sau_printf(" t=IMPL  ");
+		else
+			sau_printf(" t=%-6u", gd->time.v_ms);
+	}
+	print_range(gd->freq, 'f');
+	print_range(gd->amp, 'a');
+}
+
+/*
+ * Print first semantics representation per-event debug info for script.
+ */
+static void
+sem_print_event(ParseSem *restrict o, const sauParseEvData *restrict ev) {
+	static const char *const mods_syntax[SAU_MOD_NAMED] = {
+		SAU_MOD__ITEMS(SAU_MOD__X_SYNTAX)
+	};
+	sau_printf("/%u \tEV %zu", ev->wait_ms, o->ev_count);
+	if (ev->vo_id != SAU_PVO_NO_ID)
+		sau_printf(" \t(VO %hu)", ev->vo_id);
+	if (o->vo_graph.count > 0) {
+		sau_printf(
+			"\n\tvo %u", ev->vo_id);
+		print_genlist(o->vo_graph.a, o->vo_graph.count);
+	}
+	for (size_t i = 0; i < o->ev_gen_data.count; ++i) {
+		const sauParseGenData *gd = o->ev_gen_data.a[i];
+		print_genline(gd);
+		for (uint32_t i = 0; i < gd->mods_count; ++i) {
+			const sauProgramIDs *ids = &gd->mods_idarr[i];
+			print_linked(mods_syntax[ids->use], ids->a);
+		}
+	}
+	sau_printf("\n");
+}
+
 /*
  * Handle all voice and generator data for a parse event node.
  *
@@ -935,27 +1061,33 @@ time_gen_tailing(sauParseGenData *restrict gen, sauParseEvData *restrict e,
 static bool
 sem_handle_event(ParseSem *restrict o, sauParseEvData *restrict e,
 		uint32_t cur_longest, uint32_t wait_sum) {
-	++o->ev_count;
 	sem_voalloc_timing(o, e);
 	sauParseObjRef *ref = e->main_obj;
 	switch (ref->obj_type) {
 	case SAU_POBJT_LIST:
 		if (!sem_handle_list(o, (void*)ref, NULL)) goto MEM_ERR;
-		return true;
-	case SAU_POBJT_GEN:
 		break;
+	case SAU_POBJT_GEN: {
+		sauParseGenData *gen = (void*)ref;
+		// time adjustment, only for outermost generator
+		time_gen_tailing(gen, e, cur_longest, wait_sum);
+		sauVoAllocState *vas = sem_voalloc_update(o, e);
+		if (!sem_handle_gendata(o, gen, NULL)) goto MEM_ERR;
+		if (vas && (vas->has_new_graph || vas->has_gen_expiry)) {
+			if (!sem_vograph_traverse(o, vas)) goto MEM_ERR;
+		}
+		break; }
 	}
-	sauParseGenData *gen = (void*)ref;
-	time_gen_tailing(gen, e, cur_longest, wait_sum); // only for outermost
-	sauVoAllocState *vas = sem_voalloc_update(o, e);
-	if (!sem_handle_gendata(o, gen, NULL)) goto MEM_ERR;
-	if (vas && (vas->has_new_graph || vas->has_gen_expiry)) {
-		if (!sem_vograph_traverse(o, vas, e)) goto MEM_ERR;
-	}
+	if (o->print_verbose) sem_print_event(o, e);
+	++o->ev_count;
+	/*
+	 * Clean up per-event temporary data.
+	 */
+	o->vo_graph.count = 0; // reuse allocation
 	if (o->ev_gen_data.count > 0) {
 		if (!_GenDataArr_mpmemdup(&o->ev_gen_data,
-					(sauParseGenData***) &e->gen_data,
-					o->mp)) goto MEM_ERR;
+				(sauParseGenData***) &e->gen_data,
+				o->mp)) goto MEM_ERR;
 		e->gen_data_count = o->ev_gen_data.count;
 		o->ev_gen_data.count = 0; // reuse allocation
 	}
@@ -1101,7 +1233,10 @@ sem_check_validity(ParseSem *restrict o,
 }
 
 static bool
-init_ParseSem(ParseSem *restrict o, sauMempool *restrict mp) {
+init_ParseSem(ParseSem *restrict o, const sauScriptArg *restrict arg,
+		sauMempool *restrict mp) {
+	o->print_info = arg->print_info;
+	o->print_verbose = arg->print_info && arg->verbose;
 	o->mp = mp;
 	return true;
 }
@@ -1128,6 +1263,7 @@ fini_ParseSem(ParseSem *restrict o, sauParse *restrict parse) {
 		parse->gen_nest_depth = o->gen_nest_max;
 		parse->duration_ms = o->tot_dur_ms;
 		parse->mp = o->mp;
+		if (o->print_info) sem_print_stats(parse);
 	}
 	_sauVoAlloc_clear(&o->va);
 	PrintGenRefArr_clear(&o->vo_graph);
@@ -1136,127 +1272,4 @@ fini_ParseSem(ParseSem *restrict o, sauParse *restrict parse) {
 	_GenDataArr_clear(&o->ev_gen_data);
 	IDsArr_clear(&o->ev_ids);
 	return ok ? parse : NULL;
-}
-
-static void
-print_linked(const char *restrict header,
-		const sauProgramIDArr *restrict idarr) {
-	if (!idarr || !idarr->count)
-		return;
-	sau_printf("\n\t    %s[%u", header, idarr->ids[0]);
-	for (uint32_t i = 0; ++i < idarr->count; )
-		sau_printf(", %u", idarr->ids[i]);
-	sau_printf("]");
-}
-
-static void
-print_genlist(const sauPrintGenRef *restrict list,
-		uint32_t count) {
-	static const char *const uses[SAU_MOD_NAMED] = {
-		SAU_MOD__ITEMS(SAU_MOD__X_GRAPH)
-	};
-	if (!list)
-		return;
-	FILE *out = sau_print_stream();
-	uint32_t i = 0;
-	uint32_t max_indent = 0;
-	fputs("\n\t    [", out);
-	for (;;) {
-		const uint32_t indent = list[i].level * 3;
-		if (indent > max_indent) max_indent = indent;
-		fprintf(out, "%6u:  ", list[i].id);
-		for (uint32_t j = indent; j > 0; --j)
-			putc(' ', out);
-		fputs(uses[list[i].use], out);
-		if (++i == count) break;
-		fputs("\n\t     ", out);
-	}
-	for (uint32_t j = max_indent; j > 0; --j)
-		putc(' ', out);
-	putc(']', out);
-}
-
-static sauNoinline void
-print_range(const sauRange *restrict r, char c) {
-	if (!r)
-		return;
-	const sauLinePar *line = &r->a; // currently prints only the first line
-	if ((line->flags & SAU_LINEP_STATE) != 0) {
-		if ((line->flags & SAU_LINEP_GOAL) != 0)
-			sau_printf("\t%c=%-6.2f->%-6.2f", c, line->v0, line->vt);
-		else
-			sau_printf("\t%c=%-6.2f\t", c, line->v0);
-	} else {
-		if ((line->flags & SAU_LINEP_GOAL) != 0)
-			sau_printf("\t%c->%-6.2f\t", c, line->vt);
-		else
-			sau_printf("\t%c", c);
-	}
-}
-
-#define SAU_PGEN__X_CASE(NAME, LABELC) \
-	case SAU_PGEN_N_##NAME: type = LABELC; break;
-
-static void
-print_genline(const sauParseGenData *restrict gd) {
-	char type = '?';
-	switch (gd->ref.gen_type) {
-	SAU_PGEN__ITEMS(SAU_PGEN__X_CASE)
-	}
-	const char *head = gd->ref.is_new ? "\n    new\t" : "\n\t";
-	if (gd->copy_from_id != SAU_POBJ_NO_ID) {
-		sau_printf("\n     cp op %-2u to op %-2u",
-				gd->copy_from_id, gd->ref.obj_id);
-		head = "\n    dup\t";
-	}
-	sau_printf("%sop %-2u %c", head, gd->ref.obj_id, type);
-	if (gd->params & SAU_PGENP_TIME) {
-		if (gd->time.flags & SAU_TIMEP_IMPLICIT)
-			sau_printf(" t=IMPL  ");
-		else
-			sau_printf(" t=%-6u", gd->time.v_ms);
-	}
-	print_range(gd->freq, 'f');
-	print_range(gd->amp, 'a');
-}
-
-/**
- * Print information about program contents. Useful for debugging.
- */
-void
-sauParse_print_info(const sauParse *restrict o) {
-	static const char *const mods_syntax[SAU_MOD_NAMED] = {
-		SAU_MOD__ITEMS(SAU_MOD__X_SYNTAX)
-	};
-	sau_printf("Program: \"%s\"\n"
-		"\tDuration:\t%u ms\n"
-		"\tEvents:  \t%zu\n"
-		"\tVoices:  \t%hu\n"
-		"\tGenerators:\t%u\n",
-		o->name,
-		o->duration_ms,
-		o->ev_count,
-		o->vo_count,
-		o->gen_count);
-	size_t ev_id = 0;
-	for (const sauParseEvData *ev = o->events; ev; ev = ev->next) {
-		sau_printf("/%u \tEV %zu", ev->wait_ms, ev_id);
-		if (ev->vo_id != SAU_PVO_NO_ID)
-			sau_printf(" \t(VO %hu)", ev->vo_id);
-		if (ev->gen_list != NULL) {
-			sau_printf(
-				"\n\tvo %u", ev->vo_id);
-			print_genlist(ev->gen_list, ev->gen_count);
-		}
-		for (size_t i = 0; i < ev->gen_data_count; ++i) {
-			const sauParseGenData *gd = ev->gen_data[i];
-			print_genline(gd);
-			for (uint32_t i = 0; i < gd->mods_count; ++i) {
-				const sauProgramIDs *ids = &gd->mods_idarr[i];
-				print_linked(mods_syntax[ids->use], ids->a);
-			}
-		}
-		sau_printf("\n");
-		++ev_id;
-	}
 }

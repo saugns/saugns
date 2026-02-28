@@ -1,4 +1,4 @@
-# Copyright (c) 2011-2014, 2017-2025 Joel K. Pettersson <joelkp@tuta.io>
+# Copyright (c) 2011-2014, 2017-2026 Joel K. Pettersson <joelkp@tuta.io>
 #
 # This file can be freely copied, modified, distributed. It has no warranty.
 .POSIX:

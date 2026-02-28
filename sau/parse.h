@@ -1,5 +1,5 @@
 /* SAU library: Audio program data and functions.
- * Copyright (c) 2011-2013, 2017-2025 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2026 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
@@ -409,9 +409,6 @@ typedef struct sauParseEvData {
 	uint32_t carr_obj_id;
 	const sauParseGenData **gen_data; // flat per-event list
 	uint32_t gen_data_count;
-	/* for -p printout format (voice graph blocks) */
-	uint32_t gen_count;
-	const struct sauPrintGenRef *gen_list;
 } sauParseEvData;
 
 /** String and number pair for predefined values passed as arguments. */
@@ -426,6 +423,8 @@ typedef struct sauScriptArg {
 	const char *str;
 	bool is_path : 1;
 	bool no_time : 1;
+	bool print_info : 1;
+	bool verbose : 1;
 	sauScriptPredef *predef;
 	size_t predef_count;
 } sauScriptArg;
@@ -452,5 +451,3 @@ typedef struct sauParse {
 
 sauParse* sau_build_Parse(const sauScriptArg *restrict arg) sauMalloclike;
 void sau_discard_Parse(sauParse *restrict o);
-
-void sauParse_print_info(const sauParse *restrict o);
