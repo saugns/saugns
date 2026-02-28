@@ -7,6 +7,12 @@ is a shorter change log with only the SAU language changes.
 Pre-release
 -----------
 
+Change `-p` printouts to only include script/"program" info
+beyond statistics if verbose `-v` is also passed.
+
+v0.5.5b (2025-11-09)
+--------------------
+
 Fix remaining object ID allocation/reuse bug. A script like
 the following misbehaved (in this case making the `N` silent
 the last second): "W[R t2 ; a0] t1 /1 W[N t4] t2"

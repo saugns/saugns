@@ -1,5 +1,5 @@
 /* SAU library: Script parser module.
- * Copyright (c) 2011-2012, 2017-2025 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2026 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
@@ -2438,8 +2438,9 @@ static const char *parse_file(sauParser *restrict o,
 	if (!sauScanner_open(sc, arg->str, arg->is_path)) {
 		return NULL;
 	}
-	parse_level(o, SAU_MOD_N_carr, SCOPE_GROUP, 0);
 	name = sc->f->path;
+	if (arg->print_info) sem_print_head(name);
+	parse_level(o, SAU_MOD_N_carr, SCOPE_GROUP, 0);
 	sauScanner_close(sc);
 	if (o->script_fail) {
 		sauScanner_notice(o->sc, NULL,
@@ -2463,7 +2464,7 @@ sau_build_Parse(const sauScriptArg *restrict arg) {
 	if (!init_Parser(&pr, arg))
 		return NULL;
 	if (!(parse = sau_mpalloc(pr.mp, sizeof(*parse))) ||
-	    !init_ParseSem(&pr.ps, pr.mp)) goto DONE;
+	    !init_ParseSem(&pr.ps, arg, pr.mp)) goto DONE;
 	const char *name = parse_file(&pr, arg);
 	if (!name) {
 		parse = NULL;

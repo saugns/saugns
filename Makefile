@@ -1,4 +1,4 @@
-# Copyright (c) 2011-2014, 2017-2025 Joel K. Pettersson <joelkp@tuta.io>
+# Copyright (c) 2011-2014, 2017-2026 Joel K. Pettersson <joelkp@tuta.io>
 #
 # This file can be freely copied, modified, distributed. It has no warranty.
 .POSIX:
@@ -27,9 +27,9 @@ TEST1_OBJ=\
 
 all: $(BIN)
 check: $(BIN)
-	./$(BIN) -cd $(ARGS) */*.sau examples/*/*.sau examples/*/*/*.sau
+	./$(BIN) -cdv $(ARGS) */*.sau examples/*/*.sau examples/*/*/*.sau
 fullcheck: $(BIN)
-	./$(BIN) -md $(ARGS) */*.sau examples/*/*.sau examples/*/*/*.sau
+	./$(BIN) -mdv $(ARGS) */*.sau examples/*/*.sau examples/*/*/*.sau
 tests: test-scan
 clean:
 	(cd sau; make clean)

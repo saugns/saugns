@@ -1,5 +1,5 @@
 /* saugns: Test program for experimental reader code.
- * Copyright (c) 2017-2025 Joel K. Pettersson
+ * Copyright (c) 2017-2026 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -87,7 +87,8 @@ static bool parse_args(int argc, char **restrict argv,
 		}
 		arg = *argv;
 		if (*arg != '-') {
-			struct sauScriptArg entry = {arg, false, false, 0, 0};
+			struct sauScriptArg entry = {0};
+			entry.str = arg;
 			sauScriptArgArr_push(script_args, &entry);
 			continue;
 		}
