@@ -18,7 +18,7 @@
 #include "saugns.h"
 #include <sau/scanner.h> // character tests
 #include <sau/arrtype.h>
-#include <sau/generator.h>
+#include <sau/render.h>
 #include <sau/math.h>
 #include <sau/help.h>
 #include "player/audiodev.h"

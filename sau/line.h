@@ -40,8 +40,7 @@
 #define SAU_LINE__X_NAME(NAME, ...) #NAME,
 #define SAU_LINE__X_PROTOTYPES(NAME, ...) \
 void sauLine_fill_##NAME(float *restrict buf, uint32_t len, \
-		float v0, float vt, uint32_t pos, uint32_t time, \
-		const float *restrict mulbuf); \
+		float v0, float vt, uint32_t pos, uint32_t time); \
 void sauLine_map_##NAME(float *restrict buf, uint32_t len, \
 		const float *restrict end0, const float *restrict end1); \
 /*float sauLine_val_##NAME(float x, float a, float b);*/ /* inlined */ \
@@ -71,8 +70,7 @@ extern const struct sauLineCoeffs sauLine_coeffs[SAU_LINE_NAMED];
 extern const char *const sauLine_names[SAU_LINE_NAMED + 1];
 
 typedef void (*sauLine_fill_f)(float *restrict buf, uint32_t len,
-		float v0, float vt, uint32_t pos, uint32_t time,
-		const float *restrict mulbuf);
+		float v0, float vt, uint32_t pos, uint32_t time);
 
 typedef void (*sauLine_map_f)(float *restrict buf, uint32_t len,
 		const float *restrict end0, const float *restrict end1);
@@ -139,13 +137,34 @@ static inline void sau_init_Line(sauLine *restrict o, float v0, bool ratio) {
 		(SAU_LINEP_STATE | SAU_LINEP_STATE_RATIO | SAU_LINEP_TYPE) :
 		(SAU_LINEP_STATE | SAU_LINEP_TYPE);
 }
-void sauLine_inherit(sauLine *restrict o, const sauLine *restrict src);
 
 /** Needed before get, run, or skip when a line is not copy-initialized. */
 static inline void sauLine_prepare(sauLine *restrict o, uint32_t srate) {
 	o->end = sau_ms_in_samples(o->time_ms, srate, NULL);
 }
 
+/** Adjust \a v0 for consistency with how ratio flags are set. */
+static inline void sauLine_adjust_v0(sauLine *restrict o, float mul_v0) {
+	if (!(o->flags & SAU_LINEP_GOAL))
+		return; // no goal, no overriding behavior
+	/*
+	 * Adjust state value used for state-to-goal fill,
+	 * so that dynamic multiplier can be cleanly used.
+	 */
+	if ((o->flags & SAU_LINEP_GOAL_RATIO) != 0) {
+		if (!(o->flags & SAU_LINEP_STATE_RATIO)) {
+			o->v0 /= mul_v0;
+			o->flags |= SAU_LINEP_STATE_RATIO;
+		}
+	} else {
+		if ((o->flags & SAU_LINEP_STATE_RATIO) != 0) {
+			o->v0 *= mul_v0;
+			o->flags &= ~SAU_LINEP_STATE_RATIO;
+		}
+	}
+}
+
+void sauLine_inherit(sauLine *restrict o, const sauLine *restrict src);
 void sauLine_copy(sauLine *restrict o,
 		const sauLine *restrict src, uint32_t srate);
 uint32_t sauLine_get(sauLine *restrict o,

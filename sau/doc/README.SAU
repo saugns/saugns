@@ -1109,6 +1109,20 @@ Frequencies as notes:
 Timing
 ------
 
+Two concepts of timing are at play in a script:
+ * Static timing i.e. parse-time timing doesn't require audio generators to
+   actually run. It is time according to how things are placed in a script.
+   The timing modifiers are used to affect static timing. Parameter sweeps
+   (see "Value sweep") also work according to static timing; a sweep always
+   moves forward, even if what is swept is a parameter for a paused or
+   unused audio generator.
+ * Dynamic timing i.e. process-bound timing depends on how something inside
+   a script runs, like how the time for a modulator only advances when the
+   carrier runs, the modulator otherwise being paused. Subcomponents of an
+   audio generator generally only advance when it does. For example, an
+   amplitude envelope is paused, and phase in an oscillator does not change
+   according to the frequency, when the oscillator does not run.
+
 Timing modifiers:
 	|	Time separator. Adjusts delay added to everything after, to
 		ensure it is as long as the remaining duration (play time)

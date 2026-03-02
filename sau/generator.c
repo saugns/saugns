@@ -1,5 +1,5 @@
 /* SAU library: Audio generator module.
- * Copyright (c) 2011-2012, 2017-2025 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2026 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
@@ -11,50 +11,48 @@
  * <https://www.gnu.org/licenses/>.
  */
 
-#include <sau/generator.h>
+#include <sau/render.h>
 #include <sau/mempool.h>
-#define sau_dtoi sau_i64rint  // use for wrap-around behavior
-#define sau_ftoi sau_i64rintf // use for wrap-around behavior
-#define sau_dscalei(i, scale) (((int32_t)(i)) * (double)(scale))
-#define sau_fscalei(i, scale) (((int32_t)(i)) * (float)(scale))
-#define sau_divi(i, div) (((int32_t)(i)) / (int32_t)(div))
-#define sau_nzero(a, n) memset((a), 0, sizeof((a)[0]) * (n))
-static void sau_nzerof(float *restrict a, size_t n) {
-	for (size_t i=0; i<n; ++i) a[i]=0.f;
-}
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "generator/array.h"
 #include "generator/envel.h"
 #include "generator/noise.h"
 #include "generator/wosc.h"
-#include "generator/rasg.h"
+#include "generator/rosc.h"
 
 #define BUF_LEN 1024
 typedef float Buf[BUF_LEN];
 
+struct LineTime {
+	uint32_t pos, end;
+};
+
 struct ParWithRangeMod {
-	sauLine a, b, e;
+	struct LineTime a, b, e;
 	sauEnvGen env;
-	const sauProgramIDArr *mods1, *mods2, *r_mods, *e_mods, *mods_add;
 };
 
-struct ParPDSet {
-	struct ParWithRangeMod main, freq, offset;
+/*
+ * Extra state to accommodate adjustment for use with multiplier buffer.
+ */
+struct RangeModDynVal {
+	float a_v0, b_v0, e_v0;
 };
 
-struct BlockBufIDs {
-	uint8_t out_id, amp_id;
-	uint8_t freq_id; // 0 if none/unused (freq is never mix buffer 0)
-};
+typedef uint32_t (*RIns_run_fn)(struct sauGenerator *restrict o,
+		const sauRIns *restrict ins, uint32_t len);
 
 /*
  * Generator node flags.
  */
 enum {
-	GN_VISITED  = 1U<<0,
-	GN_TIME_INF = 1U<<1, /* used for SAU_TIMEP_IMPLICIT */
+	GN_ROOT_GEN   = 1U<<0, // genereator corresponds to voice output
+	GN_TIME_INF   = 1U<<1, // used for SAU_TIMEP_IMPLICIT
+	GN_NEW_FREQ_A = 1U<<2, // need to update \a freq_dyn.a_v0
+	GN_NEW_FREQ_B = 1U<<3, // need to update \a freq_dyn.b_v0
+	GN_NEW_FREQ_E = 1U<<4, // need to update \a freq_dyn.e_v0
 };
 
 typedef struct GenBase {
@@ -63,9 +61,8 @@ typedef struct GenBase {
 	uint32_t obj_id;
 	uint8_t type;
 	uint8_t flags;
-	//uint8_t cycle_used; /* stored here, used for oscillator only */
-	struct ParWithRangeMod amp, pan;
-	struct ParWithRangeMod freq; // here so wrapper gens can pass to nested
+	struct RangeModDynVal freq_dyn; // parameter changed by some mulbuf[0]
+	struct ParWithRangeMod valr[SAU_PVALR_TYPES];
 } GenBase;
 
 typedef struct AmpNode {
@@ -79,9 +76,6 @@ typedef struct NoiseGNode {
 
 typedef struct OscBase {
 	GenBase gen;
-	const sauProgramIDArr *pmods, *fpmods;
-	struct ParPDSet pd[SAU_PPD_TYPES];
-	struct ParWithRangeMod pm_a;
 } OscBase;
 
 typedef struct WOscNode {
@@ -89,10 +83,10 @@ typedef struct WOscNode {
 	sauWOsc wosc;
 } WOscNode;
 
-typedef struct RasGNode {
+typedef struct ROscNode {
 	OscBase osc;
-	sauRasG rasg;
-} RasGNode;
+	sauROsc rosc;
+} ROscNode;
 
 typedef union AnyGen {
 	GenBase gen; // generator base type
@@ -100,83 +94,70 @@ typedef union AnyGen {
 	NoiseGNode ng;
 	OscBase osc; // oscillator base type
 	WOscNode wo;
-	RasGNode rg;
+	ROscNode ro;
 } AnyGen;
 
 /*
- * Voice node flags.
+ * Data for generator chain/block nesting, to keep apart scope levels.
  */
-enum {
-	VN_INIT = 1<<0,
-};
-
-typedef struct VoiceNode {
-	uint32_t duration;
-	uint8_t flags;
-	uint32_t carr_gen_id;
-} VoiceNode;
-
-/*
- * Generator flags.
- */
-enum {
-	GEN_OUT_CLEAR = 1<<0,
+struct GenBlock {
+	uint32_t run_len;  // length for buffer use, limiting for gen time
+	uint32_t skip_len; // the number of skipped samples after limiting
+	AnyGen *n;
 };
 
 struct sauGenerator {
 	uint32_t srate;
-	uint16_t gen_flags;
+	bool is_run_out_clear : 1;
 	uint16_t gen_mix_add_max;
 	Buf *bufs;
 	size_t event, ev_count;
 	const sauParseEvData *ev_data;
 	uint32_t ev_pos, ev_wait;
 	int ev_time_carry;
-	uint16_t voice, vo_count;
-	VoiceNode *voices;
+	uint32_t cur_vo_dur; // longest current remaining duration among voices
+	uint32_t ins_i, ins_count;
+	const sauRIns *ins;
+	struct GenBlock *block_stack, *cur_block;
 	float amp_scale;
 	uint32_t gen_count;
 	AnyGen *gens;
 	sauMempool *mem;
 };
 
-// maximum number of buffers needed for generator nesting depth
-#define COUNT_GEN_BUFS(gen_nest_depth) ((1 + (gen_nest_depth)) * 9)
-
 #define MIX_BUFS 2
 
 static bool alloc_for_program(sauGenerator *restrict o,
 		const sauParse *restrict prg) {
 	size_t i;
+	i = prg->sbuf_count;
+	if (!(o->bufs = calloc(i + MIX_BUFS, sizeof(Buf)))) goto ERROR;
+	o->bufs += MIX_BUFS; // place final channel mix buffers below 0
 	o->ev_count = prg->ev_count;
-	if ((i = prg->vo_count) > 0) {
-		o->voices = sau_mpalloc(o->mem, i * sizeof(VoiceNode));
-		if (!o->voices) goto ERROR;
-		o->vo_count = i;
-	}
+	// stack for generator/timing block nesting (1 deep with no nesting)
+	i = prg->gen_nest_depth + 1;
+	o->block_stack = sau_mpalloc(o->mem, i * sizeof(struct GenBlock));
+	if (!o->block_stack) goto ERROR;
 	if ((i = prg->gen_count) > 0) {
 		o->gens = sau_mpalloc(o->mem, i * sizeof(AnyGen));
 		if (!o->gens) goto ERROR;
 		o->gen_count = i;
 	}
-	i = COUNT_GEN_BUFS(prg->gen_nest_depth);
-	if (!(o->bufs = calloc(i + MIX_BUFS, sizeof(Buf)))) goto ERROR;
-	o->bufs += MIX_BUFS;
 	return true;
 ERROR:
 	return false;
 }
 
-static const sauProgramIDArr blank_idarr = {0};
-
-/*
- * The event timeline needs carry to ensure event node timing doesn't
- * run short (with more nodes, more values), compared to other nodes.
- */
 static inline void prepare_event(sauGenerator *restrict o,
 		sauParseEvData *restrict prg_e) {
 	o->ev_data = prg_e;
-	if (prg_e) o->ev_wait = sau_ms_in_samples(prg_e->wait_ms,
+	if (!prg_e)
+		return;
+	/*
+	 * The event timeline needs carry to ensure event node timing doesn't
+	 * run short (with more nodes, more values), compared to other nodes.
+	 */
+	o->ev_wait = sau_ms_in_samples(prg_e->wait_ms,
 			o->srate, &o->ev_time_carry);
 }
 
@@ -187,7 +168,7 @@ static bool convert_program(sauGenerator *restrict o,
 	o->srate = srate;
 	o->amp_scale = 0.5f; // half for panning sum
 	if (prg->is_ampmult_set) o->amp_scale *= prg->sopt.ampmult;
-	if (prg->is_amp_autoscaled) o->amp_scale /= o->vo_count;
+	if (prg->is_amp_autoscaled) o->amp_scale /= prg->vo_count;
 	prepare_event(o, prg->events);
 	return true;
 }
@@ -225,38 +206,13 @@ void sau_destroy_Generator(sauGenerator *restrict o) {
 }
 
 /*
- * Set voice duration according to the current list of generators.
- */
-static void set_voice_duration(sauGenerator *restrict o,
-		VoiceNode *restrict vn) {
-	uint32_t time = 0;
-	GenBase *gen = &o->gens[vn->carr_gen_id].gen;
-	if (gen->time > time)
-		time = gen->time;
-	vn->duration = time;
-}
-
-// used to probe usage in updates, ahead of actually filling buffers later
-static float *run_valrange_param(sauGenerator *restrict o,
-		Buf *restrict bufs, uint32_t len, uint32_t note_dur,
-		struct ParWithRangeMod *restrict n,
-		float *restrict param_mulbuf,
-		float *restrict reused_freq,
-		bool is_freq, bool force_fill);
-
-/*
  * Initialize range.
  *
  * The \p v0 value is a fallback which may differ from script defaults.
  */
-static sauNoinline void
-prepare_range(struct ParWithRangeMod *restrict rm, float v0, float vt) {
-	sau_init_Line(&rm->a, v0, false);
-	sau_init_Line(&rm->b, vt, false);
-	sau_init_Line(&rm->e, vt, false);
+static void
+prepare_range(struct ParWithRangeMod *restrict rm) {
 	sau_init_EnvGen(&rm->env);
-	rm->mods1 = rm->mods2 = rm->r_mods = rm->e_mods = rm->mods_add =
-		&blank_idarr;
 }
 
 /*
@@ -272,72 +228,40 @@ static void prepare_gen(sauGenerator *restrict o,
 	case SAU_PGEN_N_wave: {
 		WOscNode *wo = &n->wo;
 		sau_init_WOsc(&wo->wosc, o->srate);
-		goto OSC_COMMON; }
-	case SAU_PGEN_N_raseg: {
-		RasGNode *rg = &n->rg;
-		sau_init_RasG(&rg->rasg, o->srate);
-		goto OSC_COMMON; }
-	}
-	if (false)
-	OSC_COMMON: {
-		OscBase *osc = &n->osc;
-		for (uint32_t i = 0; i < SAU_PPD_TYPES; ++i) {
-			float def = sau_pd_v_defaults[i];
-			prepare_range(&osc->pd[i].main, def, def);
-			prepare_range(&osc->pd[i].freq, 1.0, 0.0);
-			prepare_range(&osc->pd[i].offset, 0.0, 0.0);
-		}
-		prepare_range(&osc->pm_a, 0.0, 0.0);
-		osc->pmods = osc->fpmods = &blank_idarr;
+		break; }
+	case SAU_PGEN_N_rals: {
+		ROscNode *rg = &n->ro;
+		sau_init_ROsc(&rg->rosc, o->srate);
+		break; }
 	}
 	GenBase *gen = &n->gen;
-	prepare_range(&gen->amp, 1.0, 0.0);
-	prepare_range(&gen->pan, 0.0, 0.0);
-	prepare_range(&gen->freq, SAU_PDEF_FREQ, 0.0);
+	for (uint32_t i = 0; i < SAU_PVALR_TYPES; ++i)
+		prepare_range(&gen->valr[i]);
 	gen->type = gd->ref.gen_type;
+	gen->flags |= GN_NEW_FREQ_A | GN_NEW_FREQ_B | GN_NEW_FREQ_E;
 }
 
-static void update_ids(AnyGen *restrict n,
-		const sauProgramIDs *restrict ids) {
-#define CASES_VALR(ID, FIELD) \
-	case SAU_MOD_N_##ID:     FIELD.mods1		= ids->a; break; \
-	case SAU_MOD_N_##ID##2:  FIELD.mods2 		= ids->a; break; \
-	case SAU_MOD_N_##ID##_r: FIELD.r_mods		= ids->a; break; \
-	case SAU_MOD_N_##ID##_e: FIELD.e_mods		= ids->a; break; \
-	case SAU_MOD_N_##ID##_a: FIELD.mods_add		= ids->a; break; \
-/**/
-#define CASES_PDMODS(ID, FIELD) \
-	CASES_VALR(    ID,       FIELD.main) \
-	CASES_VALR(    ID##f,    FIELD.freq) \
-	CASES_VALR(    ID##p,    FIELD.offset) \
-/**/
-	switch (ids->use) {
-	case SAU_MOD_N_carr:     break;
-	CASES_VALR(    c_am,     n->gen.pan)
-	CASES_VALR(    a_am,     n->gen.amp)
-	CASES_VALR(    f_fm,     n->gen.freq)
-	case SAU_MOD_N_p_pm:     n->osc.pmods    	= ids->a; break;
-	case SAU_MOD_N_pf_pm:    n->osc.fpmods   	= ids->a; break;
-	CASES_VALR(    pa_pm,    n->osc.pm_a)
-	CASES_PDMODS(  pd_c,     n->osc.pd[SAU_PPD_C])
-	CASES_PDMODS(  pd_d,     n->osc.pd[SAU_PPD_D])
-	CASES_PDMODS(  pd_h,     n->osc.pd[SAU_PPD_H])
-	CASES_PDMODS(  pd_x,     n->osc.pd[SAU_PPD_X])
-	CASES_PDMODS(  pd_y,     n->osc.pd[SAU_PPD_Y])
-	}
+/*
+ * Update line state.
+ */
+static void
+update_line(struct LineTime *restrict o,
+		const sauLine *restrict src, uint32_t srate) {
+	o->pos = sau_ms_in_samples(src->pos, srate, NULL);
+	o->end = sau_ms_in_samples(src->end, srate, NULL);
 }
 
 /*
  * Update range sweep lines.
  */
-static sauNoinline void
+static void
 update_range(struct ParWithRangeMod *restrict rm,
 		sauRange *restrict r, uint32_t srate) {
 	if (!r)
 		return;
-	sauLine_copy(&rm->a, &r->a, srate);
-	sauLine_copy(&rm->b, &r->b, srate);
-	sauLine_copy(&rm->e, &r->e, srate);
+	update_line(&rm->a, &r->a, srate);
+	update_line(&rm->b, &r->b, srate);
+	update_line(&rm->e, &r->e, srate);
 	sauEnvGen_set_par(&rm->env, &r->env, srate);
 }
 
@@ -353,8 +277,6 @@ static void update_gen(sauGenerator *restrict o,
 		prepare_gen(o, n, gd);
 	uint32_t params = gd->params;
 	sauRange *const *valr = gd->valr ? (*gd->valr) : NULL;
-	for (uint32_t i = 0; i < gd->mods_count; ++i)
-		update_ids(n, &gd->mods_idarr[i]);
 	switch (gd->ref.gen_type) {
 	case SAU_PGEN_N_amp: break;
 	case SAU_PGEN_N_noise: {
@@ -370,38 +292,27 @@ static void update_gen(sauGenerator *restrict o,
 			sauWOsc_set_opt(&wo->wosc, gd->mode.woo);
 		if (params & SAU_PGENP_PHASE)
 			sauWOsc_set_phase(&wo->wosc, gd->phase);
-		goto OSC_COMMON; }
-	case SAU_PGEN_N_raseg: {
-		RasGNode *rg = &n->rg;
+		break; }
+	case SAU_PGEN_N_rals: {
+		ROscNode *rg = &n->ro;
 		if (params & SAU_PGENP_MODE)
-			sauRasG_set_opt(&rg->rasg, gd->mode.ras);
+			sauROsc_set_opt(&rg->rosc, gd->mode.ras);
 		if (params & SAU_PGENP_PHASE)
-			sauRasG_set_phase(&rg->rasg, gd->phase);
+			sauROsc_set_phase(&rg->rosc, gd->phase);
 		if (params & SAU_PGENP_SEED)
-			sauRasG_set_cycle(&rg->rasg, gd->seed);
-		goto OSC_COMMON; }
-	}
-	if (false)
-	OSC_COMMON: {
-		OscBase *osc = &n->osc;
-		if (valr) {
-			sauRange *const *pd = valr + SAU_PVALR_PMA;
-			update_range(&osc->pm_a, *pd++, o->srate);
-			for (uint32_t i = 0; i < SAU_PPD_TYPES; ++i) {
-				update_range(&osc->pd[i].main,
-						*pd++, o->srate);
-				update_range(&osc->pd[i].freq,
-						*pd++, o->srate);
-				update_range(&osc->pd[i].offset,
-						*pd++, o->srate);
-			}
-		}
+			sauROsc_set_cycle(&rg->rosc, gd->seed);
+		break; }
 	}
 	GenBase *gen = &n->gen;
 	gen->obj_id = gd->ref.obj_id;
+	if (!gd->ref.is_nested)
+		gen->flags |= GN_ROOT_GEN;
+	else
+		gen->flags &= ~GN_ROOT_GEN;
 	if (params & SAU_PGENP_TIME) {
 		const sauTime *src = &gd->time;
-		if (src->flags & SAU_TIMEP_IMPLICIT) {
+		bool allow_inf_time = !(gen->flags & GN_ROOT_GEN);
+		if (allow_inf_time && src->flags & SAU_TIMEP_IMPLICIT) {
 			gen->time = 0;
 			gen->flags |= GN_TIME_INF;
 		} else {
@@ -412,9 +323,15 @@ static void update_gen(sauGenerator *restrict o,
 		}
 	}
 	if (valr) {
-		update_range(&gen->amp, valr[SAU_PVALR_AMP], o->srate);
-		update_range(&gen->pan, valr[SAU_PVALR_PAN], o->srate);
-		update_range(&gen->freq, valr[SAU_PVALR_FREQ], o->srate);
+		for (uint32_t i = 0; i < SAU_PVALR_TYPES; ++i)
+			update_range(&gen->valr[i], valr[i], o->srate);
+		sauRange *r_freq = valr[SAU_PVALR_FREQ];
+		if (r_freq && r_freq->a.flags & SAU_LINEP_STATE)
+			gen->flags |= GN_NEW_FREQ_A;
+		if (r_freq && r_freq->b.flags & SAU_LINEP_STATE)
+			gen->flags |= GN_NEW_FREQ_B;
+		if (r_freq && r_freq->e.flags & SAU_LINEP_STATE)
+			gen->flags |= GN_NEW_FREQ_E;
 	}
 }
 
@@ -423,31 +340,16 @@ static void update_gen(sauGenerator *restrict o,
  */
 static void handle_event(sauGenerator *restrict o) {
 	const sauParseEvData *pe = o->ev_data;
-	if (1) /* more types to be added in the future */ {
-		/*
-		 * Set state of generator and/or voice.
-		 *
-		 * Voice updates must be done last, to take into account
-		 * updates for their generators.
-		 */
-		VoiceNode *vn = NULL;
-		if (pe->vo_id != SAU_PVO_NO_ID)
-			vn = &o->voices[pe->vo_id];
-		for (size_t i = 0; i < pe->gen_data_count; ++i) {
-			const sauParseGenData *gd = pe->gen_data[i];
-			AnyGen *n = &o->gens[gd->ref.obj_id];
-			update_gen(o, n, gd);
-		}
-		if (vn) {
-			vn->carr_gen_id = pe->carr_obj_id;
-			vn->flags |= VN_INIT;
-			if (o->voice > pe->vo_id) {
-				/* go back to re-activated node */
-				o->voice = pe->vo_id;
-			}
-			set_voice_duration(o, vn);
-		}
+	/*
+	 * Set state of generators.
+	 */
+	for (size_t i = 0; i < pe->gen_data_count; ++i) {
+		const sauParseGenData *gd = pe->gen_data[i];
+		AnyGen *n = &o->gens[gd->ref.obj_id];
+		update_gen(o, n, gd);
 	}
+	o->ins_count = pe->ins_count;
+	o->ins = pe->ins;
 	prepare_event(o, pe->next);
 }
 
@@ -456,11 +358,10 @@ static void handle_event(sauGenerator *restrict o) {
  *
  * Used to generate output for carrier or additive modulator.
  */
-static void block_mix_add(GenBase *restrict n,
-		float *restrict buf, size_t buf_len,
+static void block_mix_add(float *restrict buf, size_t buf_len,
 		bool layer,
 		const float *restrict in_buf,
-		const float *restrict amp) {
+		const float *restrict amp, float amp_v0) {
 #define MIX(OP, AMP) \
 	for (size_t i = 0; i < buf_len; ++i) { \
 		buf[i] OP in_buf[i] * (AMP); \
@@ -468,10 +369,10 @@ static void block_mix_add(GenBase *restrict n,
 /**/
 	if (layer) {
 		if (amp) MIX(+=, amp[i])
-		else     MIX(+=, n->amp.a.v0)
+		else     MIX(+=, amp_v0)
 	} else {
 		if (amp) MIX(=, amp[i])
-		else     MIX(=, n->amp.a.v0)
+		else     MIX(=, amp_v0)
 	}
 #undef MIX
 }
@@ -484,11 +385,10 @@ static void block_mix_add(GenBase *restrict n,
  *
  * Used to generate output for modulation with value range.
  */
-static void block_mix_mul_waveenv(GenBase *restrict n,
-		float *restrict buf, size_t buf_len,
+static void block_mix_mul_waveenv(float *restrict buf, size_t buf_len,
 		bool layer,
 		const float *restrict in_buf,
-		const float *restrict amp) {
+		const float *restrict amp, float amp_v0) {
 #define MIX(OP, AMP) \
 	for (size_t i = 0; i < buf_len; ++i) { \
 		float s = in_buf[i]; \
@@ -499,10 +399,10 @@ static void block_mix_mul_waveenv(GenBase *restrict n,
 /**/
 	if (layer) {
 		if (amp) MIX(*=, amp[i])
-		else     MIX(*=, n->amp.a.v0)
+		else     MIX(*=, amp_v0)
 	} else {
 		if (amp) MIX(=, amp[i])
-		else     MIX(=, n->amp.a.v0)
+		else     MIX(=, amp_v0)
 	}
 #undef MIX
 }
@@ -510,396 +410,43 @@ static void block_mix_mul_waveenv(GenBase *restrict n,
 /*
  * Handle audio layer according to options.
  */
-static void block_mix(GenBase *restrict n,
-		float *restrict buf, size_t buf_len,
+static void block_mix(float *restrict buf, size_t buf_len,
 		bool wave_env, bool layer,
 		float *restrict in_buf,
-		const float *restrict amp) {
+		const float *restrict amp, float amp_v0) {
 	(wave_env ?
 	 block_mix_mul_waveenv :
-	 block_mix_add)(n, buf, buf_len, layer, in_buf, amp);
+	 block_mix_add)(buf, buf_len, layer, in_buf, amp, amp_v0);
 }
 
-static struct BlockBufIDs
-run_block(sauGenerator *restrict o,
-		Buf *restrict bufs, uint32_t *restrict mix_len,
-		AnyGen *restrict n, uint32_t note_dur,
-		float *restrict parent_freq,
-		bool wave_env, bool layer);
-
-static float *run_mods(sauGenerator *restrict o,
-		Buf *restrict bufs, uint32_t len, uint32_t note_dur,
-		const sauProgramIDArr *restrict mods,
-		float *restrict freq,
-		bool wave_env, bool buf_filled) {
-	for (uint32_t i = 0; i < mods->count; ++i) {
-		run_block(o, bufs, &(uint32_t){len},
-				&o->gens[mods->ids[i]], note_dur,
-				freq, wave_env, buf_filled);
-		buf_filled = true;
-	}
-	return buf_filled ? *bufs : NULL;
-}
-
-#define NEED_FILL(line, mods) \
-	(((line)->flags & SAU_LINEP_GOAL) || (mods)->count > 0)
-
-static float *run_line_plus_mods(sauGenerator *restrict o,
-		Buf *restrict bufs, uint32_t len, uint32_t note_dur,
-		sauLine *restrict line,
-		const sauProgramIDArr *restrict mods,
-		float *restrict mulbuf,
-		float *restrict freq, bool force_fill) {
-	if (!NEED_FILL(line, mods) && !force_fill && !mulbuf)
-		return NULL;
-	sauLine_run(line, *bufs, len, mulbuf);
-	return run_mods(o, bufs, len, note_dur, mods, freq, false, true);
-}
-
-static float *run_valrange_mix(Buf *restrict bufs,
+static float *mix_valrange(bool is_a_filled,
 		float *restrict a, float aval,
 		const float *restrict b, float bval,
 		const float *restrict x, uint32_t len) {
 	uint32_t i;
-	if (a) {
+	if (is_a_filled) {
 		if (b) for (i = 0; i < len; ++i)
 			a[i] += (b[i] - a[i]) * x[i];
-		else   for (i = 0; i < len; ++i)
+		else if (bval) for (i = 0; i < len; ++i)
 			a[i] += (bval - a[i]) * x[i];
+		else   for (i = 0; i < len; ++i)
+			a[i] -= a[i] * x[i];
+	} else if (aval) {
+		if (b) for (i = 0; i < len; ++i)
+			a[i] = aval + (b[i] - aval) * x[i];
+		else if (bval) for (i = 0; i < len; ++i)
+			a[i] = aval + (bval - aval) * x[i];
+		else   for (i = 0; i < len; ++i)
+			a[i] = aval - aval * x[i];
 	} else {
-		a = bufs[0];
-		if (aval != 0.f) {
-			if (b) for (i = 0; i < len; ++i)
-				a[i] = aval + (b[i] - aval) * x[i];
-			else   for (i = 0; i < len; ++i)
-				a[i] = aval + (bval - aval) * x[i];
-		} else {
-			if (b) for (i = 0; i < len; ++i)
-				a[i] = b[i] * x[i];
-			else   for (i = 0; i < len; ++i)
-				a[i] = bval * x[i];
-		}
+		if (b) for (i = 0; i < len; ++i)
+			a[i] = b[i] * x[i];
+		else if (bval) for (i = 0; i < len; ++i)
+			a[i] = bval * x[i];
+		else   for (i = 0; i < len; ++i)
+			a[i] = 0.f;
 	}
 	return a;
-}
-
-/*
- * Run lines and modulators as needed for a parameter with them.
- *
- * Uses up to 1 extra buffers beyond the main output buffer for this level;
- * the buffer after the first doesn't count, as it belongs to a
- * next level of generator nesting, and so counts as its first.
- */
-static inline float *run_valrange_mods(sauGenerator *restrict o,
-		Buf *restrict bufs, uint32_t len, uint32_t note_dur,
-		struct ParWithRangeMod *restrict n,
-		float *restrict param_mulbuf,
-		float *restrict freq,
-		bool force_fill) {
-	float *par_buf = run_line_plus_mods(o, (bufs+0), len, note_dur,
-			&n->a, n->mods1, param_mulbuf, freq,
-			force_fill || (n->mods_add->count > 0));
-	if (n->r_mods->count > 0) {
-		float *par2_buf = run_line_plus_mods(o, (bufs+1), len, note_dur,
-				&n->b, n->mods2, param_mulbuf, freq, false);
-		float *mod_buf = run_mods(o, (bufs+2), len, note_dur,
-				n->r_mods, freq, true, false);
-		par_buf = run_valrange_mix((bufs+0), par_buf, n->a.v0,
-				par2_buf, n->b.v0, mod_buf, len);
-	} else {
-		// to keep timing in sync, run mods2 despite discarding result
-		run_mods(o, (bufs+1), len, note_dur,
-				n->mods2, freq, false, true);
-	}
-	return par_buf;
-}
-
-/*
- * Run envelope and its extra line as needed for a parameter with them.
- *
- * Uses up to 2 extra buffers beyond the main output buffer for this level.
- */
-static float *run_valrange_env(sauGenerator *restrict o,
-		Buf *restrict bufs, uint32_t len, uint32_t note_dur,
-		struct ParWithRangeMod *restrict n,
-		float *restrict param_mulbuf,
-		float *restrict freq,
-		float *restrict par_buf) {
-	if (n->env.stage > 0) {
-		float *par2_buf = run_line_plus_mods(o, (bufs+1), len, note_dur,
-				&n->e, n->e_mods, param_mulbuf, freq, false);
-		float *env_buf = bufs[2];
-		sauEnvGen_run(&n->env, env_buf, len, note_dur);
-		par_buf = run_valrange_mix((bufs+0), par_buf, n->a.v0,
-				par2_buf, n->e.v0, env_buf, len);
-	} else {
-		// to keep timing in sync, run e_mods despite discarding result
-		run_mods(o, (bufs+1), len, note_dur,
-				n->e_mods, freq, false, true);
-	}
-	return par_buf;
-}
-
-/*
- * Run lines and modulators, with any envelope applied on top,
- * for a parameter with these.
- *
- * Uses up to 2 extra buffers beyond the main output buffer for this level.
- */
-static sauNoinline float *
-run_valrange_param(sauGenerator *restrict o,
-		Buf *restrict bufs, uint32_t len, uint32_t note_dur,
-		struct ParWithRangeMod *restrict n,
-		float *restrict param_mulbuf,
-		float *restrict reused_freq,
-		bool is_freq, bool force_fill) {
-	float *freq = (reused_freq ? reused_freq : is_freq ? bufs[0] : NULL);
-	float *par_buf = run_valrange_mods(o, bufs, len, note_dur,
-			n, param_mulbuf, freq, force_fill);
-	par_buf = run_valrange_env(o, bufs, len, note_dur,
-			n, param_mulbuf, freq, par_buf);
-	return run_mods(o, (bufs+0), len, note_dur,
-			n->mods_add, freq, false, !!par_buf);
-}
-
-/*
- * Run PM and frequency-scaled PM modulators, filling the main PM input buffer.
- */
-static float *run_pm_main_params(sauGenerator *restrict o,
-		Buf *restrict bufs, uint32_t len,
-		AnyGen *restrict n,
-		float *restrict freq) {
-	uint32_t note_dur = n->gen.note_dur;
-	bool fpm = n->osc.fpmods->count > 0;
-	if (fpm) {
-		run_mods(o, bufs, len, note_dur,
-				n->osc.fpmods, freq, false, false);
-		const float fpm_scale = 1.f / SAU_HUMMID;
-		for (uint32_t i = 0; i < len; ++i)
-			(*bufs)[i] *= fpm_scale * freq[i];
-	}
-	return run_mods(o, bufs, len, note_dur,
-			n->osc.pmods, freq, false, fpm);
-}
-
-/*
- * The AmpNode sub-function for run_block().
- *
- * Needs up to 4 buffers (IDs from 0) for its own node level.
- */
-static struct BlockBufIDs
-run_block_amp(sauGenerator *restrict o sauMaybeUnused,
-		Buf *restrict bufs, uint32_t len,
-		AnyGen *restrict n sauMaybeUnused,
-		float *restrict parent_freq sauMaybeUnused) {
-	// freq #1 (++), tmp #2..3
-	/*float *freq =*/ run_valrange_param(o, bufs++, len, n->gen.note_dur,
-			&n->gen.freq, parent_freq, NULL, true, true);
-	float *out_buf = *(bufs++); // #2
-	for (uint32_t i = 0; i < len; ++i) out_buf[i] = 1.f;
-	bufs++; // amp #3 (++), tmp #4..5 (reserved highest ID returned)
-	return (struct BlockBufIDs){.out_id = 2, .freq_id = 1, .amp_id = 3};
-}
-
-/*
- * The NoiseGNode sub-function for run_block().
- *
- * Needs up to 4 buffers (IDs from 0) for its own node level.
- */
-static struct BlockBufIDs
-run_block_noiseg(sauGenerator *restrict o sauMaybeUnused,
-		Buf *restrict bufs, uint32_t len,
-		AnyGen *restrict n,
-		float *restrict parent_freq sauMaybeUnused) {
-	// freq #1 (++), tmp #2..3
-	/*float *freq =*/ run_valrange_param(o, bufs++, len, n->gen.note_dur,
-			&n->gen.freq, parent_freq, NULL, true, true);
-	float *out_buf = *(bufs++); // #2
-	sauNoiseG_run(&n->ng.noiseg, out_buf, len);
-	bufs++; // amp #3 (++), tmp #4..5 (reserved highest ID returned)
-	return (struct BlockBufIDs){.out_id = 2, .freq_id = 1, .amp_id = 3};
-}
-
-/*
- * The WOscNode sub-function for run_block().
- *
- * Needs up to 9 buffers (IDs from 0) for its own node level.
- */
-static struct BlockBufIDs
-run_block_wosc(sauGenerator *restrict o,
-		Buf *restrict bufs, uint32_t len,
-		AnyGen *restrict n,
-		float *restrict parent_freq) {
-	// freq #1 (++), tmp #2..3
-	float *freq = run_valrange_param(o, bufs++, len, n->gen.note_dur,
-			&n->gen.freq, parent_freq, NULL, true, true);
-	void *cycle_buf = *(bufs++); // cycle #2 (++)
-	void *main_buf = *(bufs++); // phase #3 (++) later reused for output
-	float *pm_buf = run_pm_main_params(o, bufs, len, n, freq); // #4
-	/*if (!n->gen.cycle_used)*/ cycle_buf = NULL;
-	sauPhasor_fill(&n->wo.wosc.phasor, cycle_buf, main_buf, len,
-			freq, pm_buf); // #2 and #3 <- #4
-	for (unsigned i = 0; i < SAU_PPD_TYPES; ++i) {
-		struct ParPDSet *pd = &n->osc.pd[i];
-		const float nop_value = sau_pd_v_defaults[i];
-		float *pd_f = run_valrange_param(o, bufs,
-				len, n->gen.note_dur, &pd->freq,
-				NULL, freq, false, false); // #3 <- #4..6
-		float *pd_p = run_valrange_param(o, bufs+1,
-				len, n->gen.note_dur, &pd->offset,
-				NULL, freq, false, false); // #4 <- #5..7
-		bool force_use = pd->main.a.v0 != nop_value ||
-			(sau_pd_f_is_fmul(i) &&
-			 (pd_f || pd->freq.a.v0 != 1.f));
-		if (run_valrange_param(o, bufs+2, len, n->gen.note_dur,
-					&pd->main, NULL, freq,
-					false, force_use)) {
-			// #2 and #3 <- #4; #5; #6..8
-			sauWOsc_pdist(&n->wo.wosc, i,
-					main_buf, cycle_buf, len, bufs[2],
-					pd_f, pd->freq.a.v0,
-					pd_p, pd->offset.a.v0);
-		}
-	}
-	bufs++; // amp #4 (++), tmp #5..6 (reserved highest ID returned)
-	if (run_valrange_param(o, bufs, len, n->gen.note_dur,
-				&n->osc.pm_a, NULL, freq, false,
-				n->osc.pm_a.a.v0 != 0.f)) {
-		sauWOsc_run_selfmod(&n->wo.wosc, main_buf, len,
-				bufs[0]); // #3 <- #2; #5, tmp #6..7
-	} else {
-		sauWOsc_run(&n->wo.wosc, main_buf, len);
-	}
-	return (struct BlockBufIDs){.out_id = 3, .freq_id = 1, .amp_id = 4};
-}
-
-/*
- * The RasGNode sub-function for run_block().
- *
- * Needs up to 9 buffers (IDs from 0) for its own node level.
- */
-static struct BlockBufIDs
-run_block_rasg(sauGenerator *restrict o,
-		Buf *restrict bufs, uint32_t len,
-		AnyGen *restrict n,
-		float *restrict parent_freq) {
-	// freq #1 (++), tmp #2..3
-	float *freq = run_valrange_param(o, bufs++, len, n->gen.note_dur,
-			&n->gen.freq, parent_freq, NULL, true, true);
-	void *cycle_buf = *(bufs++); // cycle #2 (++)
-	void *main_buf = *(bufs++);  // phase #3 (++) later reused for output
-	float *pm_buf = run_pm_main_params(o, bufs, len, n, freq); // #4
-	sauPhasor_fill(&n->rg.rasg.phasor, cycle_buf, main_buf, len,
-			freq, pm_buf); // #2 and #3 <- #4
-	for (unsigned i = 0; i < SAU_PPD_TYPES; ++i) {
-		struct ParPDSet *pd = &n->osc.pd[i];
-		const float nop_value = sau_pd_v_defaults[i];
-		float *pd_f = run_valrange_param(o, bufs,
-				len, n->gen.note_dur, &pd->freq,
-				NULL, freq, false, false); // #3 <- #4..6
-		float *pd_p = run_valrange_param(o, bufs+1,
-				len, n->gen.note_dur, &pd->offset,
-				NULL, freq, false, false); // #4 <- #5..7
-		bool force_use = pd->main.a.v0 != nop_value ||
-			(sau_pd_f_is_fmul(i) &&
-			 (pd_f || pd->freq.a.v0 != 1.f));
-		if (run_valrange_param(o, bufs+2, len, n->gen.note_dur,
-					&pd->main, NULL, freq,
-					false, force_use)) {
-			// #2 and #3 <- #4; #5; #6..8
-			sauRasG_pdist(&n->rg.rasg, i,
-					main_buf, cycle_buf, len, bufs[2],
-					pd_f, pd->freq.a.v0,
-					pd_p, pd->offset.a.v0);
-		}
-	}
-	bufs++; // amp #4 (++), tmp #5..6 (reserved highest ID returned)
-	if (run_valrange_param(o, bufs, len, n->gen.note_dur,
-				&n->osc.pm_a, NULL, freq, false,
-				n->osc.pm_a.a.v0 != 0.f)) {
-		sauRasG_run_selfmod(&n->rg.rasg, len, main_buf, cycle_buf,
-				bufs[0]); // #3 <- #2; #5, tmp #6..7
-	} else {
-		sauRasG_run(&n->rg.rasg, len, main_buf, bufs[0], bufs[1],
-				cycle_buf); // #3 <- #2; tmp #5..6
-	}
-	return (struct BlockBufIDs){.out_id = 3, .freq_id = 1, .amp_id = 4};
-}
-
-/*
- * Generate up to \p mix_len samples for an generator node,
- * the remainder (if any) zero-filled when \p layer false.
- * The filled length is set to \p mix_len.
- *
- * Recursively visits the subnodes of the generator node,
- * if any. The first buffer will be used for the output.
- *
- * \return buffer ID assignments for reuse
- */
-static struct BlockBufIDs
-run_block(sauGenerator *restrict o,
-		Buf *restrict bufs, uint32_t *restrict mix_len,
-		AnyGen *restrict n, uint32_t note_dur,
-		float *restrict parent_freq,
-		bool wave_env, bool layer) {
-	GenBase *gen = &n->gen;
-	float *out_buf = *(bufs++); // #0 reserved for final output
-	struct BlockBufIDs buf_ids = {0};
-	uint32_t len = *mix_len;
-	if (gen->flags & GN_TIME_INF) n->gen.note_dur = note_dur;
-	note_dur = n->gen.note_dur;
-	/*
-	 * Guard against circular references.
-	 */
-	if ((gen->flags & GN_VISITED) != 0) {
-		sau_nzerof(out_buf, len);
-		return buf_ids;
-	}
-	gen->flags |= GN_VISITED;
-	/*
-	 * Limit length to time duration of generator.
-	 */
-	uint32_t skip_len = 0;
-	if (gen->time < len && !(gen->flags & GN_TIME_INF)) {
-		skip_len = len - gen->time;
-		len = *mix_len = gen->time;
-	}
-	/*
-	 * Use sub-function.
-	 *
-	 * The \a amp_id it returns must be above other IDs returned,
-	 * so that the other buffers returned remain unclobbered.
-	 */
-	switch (gen->type) {
-	case SAU_PGEN_N_amp:
-		buf_ids = run_block_amp(o, bufs, len, n, parent_freq);
-		break;
-	case SAU_PGEN_N_noise:
-		buf_ids = run_block_noiseg(o, bufs, len, n, parent_freq);
-		break;
-	case SAU_PGEN_N_wave:
-		buf_ids = run_block_wosc(o, bufs, len, n, parent_freq);
-		break;
-	case SAU_PGEN_N_raseg:
-		buf_ids = run_block_rasg(o, bufs, len, n, parent_freq);
-		break;
-	}
-	float *gen_buf = bufs[buf_ids.out_id - 1];
-	float *freq_buf = buf_ids.freq_id ? bufs[buf_ids.freq_id - 1] : NULL;
-	float *amp_buf = run_valrange_param(o, (bufs + buf_ids.amp_id - 1),
-				len, note_dur,
-				&n->gen.amp, NULL, freq_buf, false, false);
-	block_mix(&n->gen, out_buf, len, wave_env, layer, gen_buf, amp_buf);
-	buf_ids.out_id = 0;
-	/*
-	 * Update time duration left, zero rest of buffer if unfilled.
-	 */
-	if (!(gen->flags & GN_TIME_INF)) {
-		if (!layer) sau_nzerof(out_buf+len, skip_len);
-		gen->time -= len;
-	}
-	gen->flags &= ~GN_VISITED;
-	return buf_ids;
 }
 
 /*
@@ -908,13 +455,13 @@ run_block(sauGenerator *restrict o,
 static void mix_clear(sauGenerator *restrict o) {
 	if (o->gen_mix_add_max == 0)
 		return;
-	sau_nzerof(o->bufs[0 - MIX_BUFS], o->gen_mix_add_max);
-	sau_nzerof(o->bufs[1 - MIX_BUFS], o->gen_mix_add_max);
+	sau_nsetf(o->bufs[0 - MIX_BUFS], o->gen_mix_add_max, 0.0);
+	sau_nsetf(o->bufs[1 - MIX_BUFS], o->gen_mix_add_max, 0.0);
 	o->gen_mix_add_max = 0;
 }
 
 /*
- * Add output for voice node \p vn into the mix buffers
+ * Add output for generator node \p n into the mix buffers
  * (0 = left, 1 = right) from the first generator buffer.
  *
  * Dynamic panning will, for nested modulators, pass frequency
@@ -922,20 +469,22 @@ static void mix_clear(sauGenerator *restrict o) {
  * as temporary storage.
  */
 static void mix_add(sauGenerator *restrict o,
-		AnyGen *restrict n, struct BlockBufIDs buf_ids,
+		float *restrict s_buf,
+		const float *restrict pan_buf, float pan_v0,
 		uint32_t len) {
-	float *s_buf = o->bufs[0];
-	Buf *in_bufs = o->bufs + buf_ids.freq_id;
-	float *freq_buf = buf_ids.freq_id ? in_bufs[0] : NULL;
 	float *mix_l = o->bufs[0 - MIX_BUFS];
 	float *mix_r = o->bufs[1 - MIX_BUFS];
-	if (run_valrange_param(o, (in_bufs + 1), len, n->gen.note_dur,
-				&n->gen.pan, NULL, freq_buf, false,
-				n->gen.pan.a.v0 != 0.f)) {
-		float *pan_buf = *(in_bufs + 1);
+	if (pan_buf) {
 		for (uint32_t i = 0; i < len; ++i) {
 			float s = s_buf[i] * o->amp_scale;
 			float s_r = s * pan_buf[i];
+			mix_l[i] += s - s_r;
+			mix_r[i] += s + s_r;
+		}
+	} else if (pan_v0 != 0.f) {
+		for (uint32_t i = 0; i < len; ++i) {
+			float s = s_buf[i] * o->amp_scale;
+			float s_r = s * pan_v0;
 			mix_l[i] += s - s_r;
 			mix_r[i] += s + s_r;
 		}
@@ -958,7 +507,7 @@ static void mix_write_mono(sauGenerator *restrict o,
 		int16_t **restrict spp, uint32_t len) {
 	float *mix_l = o->bufs[0 - MIX_BUFS];
 	float *mix_r = o->bufs[1 - MIX_BUFS];
-	o->gen_flags &= ~GEN_OUT_CLEAR;
+	o->is_run_out_clear = false;
 	for (uint32_t i = 0; i < len; ++i) {
 		float s_m = (mix_l[i] + mix_r[i]) * 0.5f;
 		s_m = sau_fclampf(s_m, -1.f, 1.f);
@@ -975,7 +524,7 @@ static void mix_write_stereo(sauGenerator *restrict o,
 		int16_t **restrict spp, uint32_t len) {
 	float *mix_l = o->bufs[0 - MIX_BUFS];
 	float *mix_r = o->bufs[1 - MIX_BUFS];
-	o->gen_flags &= ~GEN_OUT_CLEAR;
+	o->is_run_out_clear = false;
 	for (uint32_t i = 0; i < len; ++i) {
 		float s_l = mix_l[i];
 		float s_r = mix_r[i];
@@ -986,26 +535,345 @@ static void mix_write_stereo(sauGenerator *restrict o,
 	}
 }
 
+static struct LineTime *
+get_line(AnyGen *restrict n, uint8_t par_id, uint8_t sub_id) {
+	struct ParWithRangeMod *par = &n->gen.valr[par_id];
+	switch (sub_id) {
+	default: return NULL; break;
+	case SAU_RANGE_A: return &par->a; break;
+	case SAU_RANGE_B: return &par->b; break;
+	case SAU_RANGE_E: return &par->e; break;
+	}
+}
+
+static sauEnvGen *
+get_env(AnyGen *restrict n, uint8_t par_id) {
+	struct ParWithRangeMod *par = &n->gen.valr[par_id];
+	return &par->env;
+}
+
 /*
- * Generate up to BUF_LEN samples for a voice, mixed into the
- * mix buffers.
- *
- * \return number of samples generated
+ * Called on any blank or bogus opcode instruction.
  */
-static uint32_t run_voice(sauGenerator *restrict o,
-		VoiceNode *restrict vn, uint32_t len) {
-	AnyGen *n = &o->gens[vn->carr_gen_id];
-	uint32_t time = vn->duration;
-	struct BlockBufIDs buf_ids = {0};
-	if (len > BUF_LEN) len = BUF_LEN;
-	if (len > time) len = time;
-	if (n->gen.time > 0)
-		buf_ids = run_block(o, o->bufs, &len, n, 0,
-				NULL, false, false);
-	if (len > 0)
-		mix_add(o, n, buf_ids, len);
-	vn->duration -= len;
+static uint32_t run_rins_error(struct sauGenerator *restrict o,
+		const sauRIns *restrict ins, uint32_t len) {
+	sau_error("generator", "run_rins_error() called from ins %d [op %d]",
+			o->ins_i, ins->op);
 	return len;
+}
+
+/*
+ * Handle time bookkeeping for a series of instructions for a generator.
+ * Matched by run_rins_gen_pop_mix() for ending a series.
+ */
+static uint32_t run_rins_gen_push_jz(struct sauGenerator *restrict o,
+		const sauRIns *restrict ins, uint32_t len) {
+	uint32_t gen_id = ins->a.i;
+	AnyGen *n = &o->gens[gen_id];
+	GenBase *gen = &n->gen;
+	if (gen->time == 0 && !(gen->flags & GN_TIME_INF)) {
+		/*
+		 * Skip all instructions for this generator.
+		 *
+		 * If a modulator and mixing mode requires a
+		 * valid buffer, zero to length before jump.
+		 */
+		if (!(gen->flags & GN_ROOT_GEN)) {
+			bool layer = ins->mode & SAU_RMIX_LAYER;
+			float *out_buf = o->bufs[ins->x];
+			if (!layer) sau_nsetf(out_buf, len, 0.0);
+		}
+		o->ins_i = ins->b.i - 1; // -1 compensates for increment after
+		return len;
+	}
+	/*
+	 * Ensure generator has note duration.
+	 */
+	if (gen->flags & GN_TIME_INF) // case for modulators (nested) only
+		gen->note_dur = o->cur_block->n->gen.note_dur;
+	/*
+	 * Store length and skipped length adjusted for the current generator.
+	 * Note cur_block pre-increment; it reaches the first entry with it.
+	 */
+	uint32_t skip_len = 0;
+	if (gen->time > 0) {
+		if (len > gen->time) {
+			skip_len = len - gen->time;
+			len = gen->time;
+			gen->time = 0;
+		} else {
+			if ((gen->flags & GN_ROOT_GEN) &&
+			    o->cur_vo_dur < gen->time)
+				o->cur_vo_dur = gen->time;
+			gen->time -= len;
+		}
+	}
+	*(++o->cur_block) = (struct GenBlock){
+		.run_len = len, .skip_len = skip_len, .n = n
+	};
+	return len;
+}
+
+/*
+ * Prepare final output from generator. Pops from time stack; ends a series of
+ * instructions for a generator.
+ */
+static uint32_t run_rins_gen_pop_mix(struct sauGenerator *restrict o,
+		const sauRIns *restrict ins, uint32_t len) {
+	bool layer  = ins->mode & SAU_RMIX_LAYER;
+	bool mul_we = ins->mode & SAU_RMIX_MUL_WE;
+	float *in_buf  = o->bufs[ins->a.i];
+	float *amp_buf = !ins->has_b_f ? o->bufs[ins->b.i] : NULL;
+	float amp_v0 = ins->b.f; // fallback only
+	float *out_buf = o->bufs[ins->x];
+	uint32_t skip_len = o->cur_block->skip_len;
+	AnyGen *n = o->cur_block->n;
+	block_mix(out_buf, len, mul_we, layer, in_buf, amp_buf, amp_v0);
+	if (n->gen.flags & GN_ROOT_GEN) {
+		// handle panning and add result to voice output
+		float *pan_buf = !ins->has_c_f ? o->bufs[ins->c.i] : NULL;
+		float pan_v0 = ins->c.f; // fallback only
+		mix_add(o, out_buf, pan_buf, pan_v0, len);
+	} else {
+		// handle samples skipped due to generator time limit
+		if (!layer && skip_len > 0)
+			sau_nsetf(out_buf+len, skip_len, 0.0);
+	}
+	// pop stack, restore len used for instructions after
+	--o->cur_block;
+	return len + skip_len;
+}
+
+static uint32_t run_rins_run_noisegen(struct sauGenerator *restrict o,
+		const sauRIns *restrict ins, uint32_t len) {
+	AnyGen *n = o->cur_block->n;
+	float *buf = o->bufs[ins->x];
+	sauNoiseG_run(&n->ng.noiseg, buf, len);
+	return len;
+}
+
+/*
+ * Final step for random line segments oscillator.
+ * Requires input from run_rins_run_osc_phasor().
+ */
+static uint32_t run_rins_run_ralsosc(struct sauGenerator *restrict o,
+		const sauRIns *restrict ins, uint32_t len) {
+	AnyGen *n = o->cur_block->n;
+	void *main_buf   = o->bufs[sau_rins_get_w0(ins->x)];
+	void *cycle_buf  = o->bufs[sau_rins_get_w1(ins->x)];
+	float *end_a_buf = o->bufs[sau_rins_get_w0(ins->a.i)];
+	float *end_b_buf = o->bufs[sau_rins_get_w1(ins->a.i)];
+	sauROsc_run(&n->ro.rosc, len, main_buf,
+			end_a_buf, end_b_buf, cycle_buf);
+	return len;
+}
+
+/*
+ * Final step for random line segments oscillator, running with self-modulation.
+ * Requires input from run_rins_run_osc_phasor() and PM self-modulation input.
+ */
+static uint32_t run_rins_run_ralsosc_selfmod(struct sauGenerator *restrict o,
+		const sauRIns *restrict ins, uint32_t len) {
+	AnyGen *n = o->cur_block->n;
+	void *main_buf   = o->bufs[sau_rins_get_w0(ins->x)];
+	void *cycle_buf  = o->bufs[sau_rins_get_w1(ins->x)];
+	float *pma_in_buf = o->bufs[ins->a.i];
+	sauROsc_run_selfmod(&n->ro.rosc, len, main_buf, cycle_buf, pma_in_buf);
+	return len;
+}
+
+/*
+ * Can be applied to phase and cycle. Use before the final ralsosc instruction.
+ */
+static uint32_t run_rins_run_ralsosc_pdist(struct sauGenerator *restrict o,
+		const sauRIns *restrict ins, uint32_t len) {
+	AnyGen *n = o->cur_block->n;
+	void *phase_buf = o->bufs[sau_rins_get_w0(ins->x)];
+	void *cycle_buf = o->bufs[sau_rins_get_w1(ins->x)];
+	void *pd_buf = o->bufs[ins->a.i];
+	uint8_t pd_fn_id = ins->mode;
+	void *pd_f_buf = !ins->has_b_f ? o->bufs[ins->b.i] : NULL;
+	void *pd_p_buf = !ins->has_c_f ? o->bufs[ins->c.i] : NULL;
+	float pd_f_v0 = ins->b.f; // fallback only
+	float pd_p_v0 = ins->c.f; // fallback only
+	sauROsc_pdist(&n->ro.rosc, pd_fn_id,
+			phase_buf, cycle_buf, len, pd_buf,
+			pd_f_buf, pd_f_v0, pd_p_buf, pd_p_v0);
+	return len;
+}
+
+/*
+ * Final step for wave oscillator.
+ * Requires input from run_rins_run_osc_phasor().
+ */
+static uint32_t run_rins_run_waveosc(struct sauGenerator *restrict o,
+		const sauRIns *restrict ins, uint32_t len) {
+	AnyGen *n = o->cur_block->n;
+	void *main_buf = o->bufs[ins->x];
+	sauWOsc_run(&n->wo.wosc, main_buf, len);
+	return len;
+}
+
+/*
+ * Final step for wave oscillator, running with self-modulation.
+ * Requires input from run_rins_run_osc_phasor() and PM self-modulation input.
+ */
+static uint32_t run_rins_run_waveosc_selfmod(struct sauGenerator *restrict o,
+		const sauRIns *restrict ins, uint32_t len) {
+	AnyGen *n = o->cur_block->n;
+	void *main_buf = o->bufs[ins->x];
+	float *pma_in_buf = o->bufs[ins->a.i];
+	sauWOsc_run_selfmod(&n->wo.wosc, main_buf, len, pma_in_buf);
+	return len;
+}
+
+/*
+ * Can be applied to phase buffer. Use before the final waveosc instruction.
+ */
+static uint32_t run_rins_run_waveosc_pdist(struct sauGenerator *restrict o,
+		const sauRIns *restrict ins, uint32_t len) {
+	AnyGen *n = o->cur_block->n;
+	void *phase_buf = o->bufs[ins->x];
+	void *pd_buf = o->bufs[ins->a.i];
+	uint8_t pd_fn_id = ins->mode;
+	void *pd_f_buf = !ins->has_b_f ? o->bufs[ins->b.i] : NULL;
+	void *pd_p_buf = !ins->has_c_f ? o->bufs[ins->c.i] : NULL;
+	float pd_f_v0 = ins->b.f; // fallback only
+	float pd_p_v0 = ins->c.f; // fallback only
+	sauWOsc_pdist(&n->wo.wosc, pd_fn_id,
+			phase_buf, NULL, len, pd_buf,
+			pd_f_buf, pd_f_v0, pd_p_buf, pd_p_v0);
+	return len;
+}
+
+static uint32_t run_rins_run_osc_phasor(struct sauGenerator *restrict o,
+		const sauRIns *restrict ins, uint32_t len) {
+	AnyGen *n = o->cur_block->n;
+	void *phase_buf = o->bufs[sau_rins_get_w0(ins->x)];
+	uint32_t cycle_buf_id = sau_rins_get_w1(ins->x);
+	void *cycle_buf = cycle_buf_id ? o->bufs[cycle_buf_id] : NULL;
+	float *freq_buf = o->bufs[ins->a.i];
+	float *pm_in_buf = ins->has_b ? o->bufs[ins->b.i] : NULL;
+	if (cycle_buf_id)
+		sauPhasor_fill(&n->ro.rosc.phasor, cycle_buf, phase_buf, len,
+				freq_buf, pm_in_buf);
+	else
+		sauPhasor_fill(&n->wo.wosc.phasor, cycle_buf, phase_buf, len,
+				freq_buf, pm_in_buf);
+	return len;
+}
+
+static float *
+adjust_freq_v0(GenBase *restrict gen, uint8_t sub_id,
+		sauLine *restrict line, const float *restrict mulbuf) {
+	if (!mulbuf || !(line->flags & SAU_LINEP_GOAL))
+		return NULL;
+	float *gen_freq_v0 = NULL;
+	unsigned mask = 0;
+	switch (sub_id) {
+	default: return NULL;
+	case SAU_RANGE_A:
+		 gen_freq_v0 = &gen->freq_dyn.a_v0;
+		 mask = GN_NEW_FREQ_A;
+		 break;
+	case SAU_RANGE_B:
+		 gen_freq_v0 = &gen->freq_dyn.b_v0;
+		 mask = GN_NEW_FREQ_B;
+		 break;
+	case SAU_RANGE_E:
+		 gen_freq_v0 = &gen->freq_dyn.e_v0;
+		 mask = GN_NEW_FREQ_E;
+		 break;
+	}
+	if (gen->flags & mask) {
+		gen->flags &= ~mask;
+		sauLine_adjust_v0(line, mulbuf[0]);
+	} else {
+		sauLine_adjust_v0(line, 1.0); // just adjust flags
+		line->v0 = *gen_freq_v0;
+	}
+	return gen_freq_v0;
+}
+
+static uint32_t run_rins_run_par_line(struct sauGenerator *restrict o,
+		const sauRIns *restrict ins, uint32_t len) {
+	AnyGen *n = o->cur_block->n;
+	uint8_t par_id = sau_rins_get_b0(ins->c.i);
+	uint8_t sub_id = sau_rins_get_b1(ins->c.i);
+	struct LineTime *time = get_line(n, par_id, sub_id);
+	sauLine line = {
+		.v0 = ins->a.f,
+		.vt = ins->b.f,
+		.type  = sau_rins_get_b2(ins->c.i),
+		.flags = sau_rins_get_b3(ins->c.i),
+		.pos = time->pos,
+		.end = time->end,
+	};
+	float *par_buf = o->bufs[sau_rins_get_w0(ins->x)];
+	uint32_t mul_buf_id    = sau_rins_get_w1(ins->x);
+	float *mul_buf = mul_buf_id ? o->bufs[mul_buf_id] : NULL;
+	float *store_val = NULL;
+	if (par_id == SAU_PVALR_FREQ)
+		store_val = adjust_freq_v0(&n->gen, sub_id, &line, mul_buf);
+	sauLine_run(&line, par_buf, len, mul_buf);
+	if (store_val) *store_val = line.v0;
+	time->pos = line.pos;
+	time->end = line.end;
+	return len;
+}
+
+static uint32_t run_rins_run_par_env(struct sauGenerator *restrict o,
+		const sauRIns *restrict ins, uint32_t len) {
+	AnyGen *n = o->cur_block->n;
+	uint8_t par_id = ins->a.i;
+	sauEnvGen *env = get_env(n, par_id);
+	void *env_buf = o->bufs[ins->x];
+	sauEnvGen_run(env, env_buf, len, n->gen.note_dur);
+	return len;
+}
+
+static uint32_t run_rins_mix_valrange(struct sauGenerator *restrict o,
+		const sauRIns *restrict ins, uint32_t len) {
+	float a_v0 = ins->a.f, b_v0 = ins->b.f;
+	float *a = o->bufs[sau_rins_get_w0(ins->x)];
+	bool is_a_filled = sau_rins_get_w1(ins->x);
+	float *x = o->bufs[sau_rins_get_w0(ins->c.i)];
+	uint32_t b_buf_id = sau_rins_get_w1(ins->c.i);
+	float *b = b_buf_id ? o->bufs[b_buf_id] : NULL;
+	mix_valrange(is_a_filled, a, a_v0, b, b_v0, x, len);
+	return len;
+}
+
+static uint32_t run_rins_nsetf(struct sauGenerator *restrict o,
+		const sauRIns *restrict ins, uint32_t len) {
+	float *buf = o->bufs[ins->x];
+	sau_nsetf(buf, len, ins->a.f);
+	return len;
+}
+
+static uint32_t run_rins_nmulf(struct sauGenerator *restrict o,
+		const sauRIns *restrict ins, uint32_t len) {
+	float *x = o->bufs[ins->x];
+	if (ins->has_a) {
+		float *a = o->bufs[ins->a.i];
+		if (ins->has_b_f) sau_nmulnff(x, len, a, ins->b.f);
+		else              sau_nmulnf(x, len, a);
+	} else {
+		sau_nmulf(x, len, ins->b.f);
+	}
+	return len;
+}
+
+#define SAU_RINS__X_CASE(NAME) case SAU_RINS_N_##NAME: return run_rins_##NAME;
+
+/*
+ * Get function for instruction number.
+ */
+static inline RIns_run_fn get_rins_run_fn(unsigned ins) {
+	switch (ins) {
+	default: return run_rins_error;
+	SAU_RINS__ITEMS(SAU_RINS__X_CASE)
+	}
 }
 
 /*
@@ -1022,14 +890,18 @@ static uint32_t run_for_time(sauGenerator *restrict o,
 		uint32_t len = (time < BUF_LEN) ? time : BUF_LEN;
 		time -= len;
 		mix_clear(o);
-		uint32_t last_len = 0;
-		for (uint32_t i = o->voice; i < o->vo_count; ++i) {
-			VoiceNode *vn = &o->voices[i];
-			if (vn->duration != 0) {
-				uint32_t voice_len = run_voice(o, vn, len);
-				if (voice_len > last_len) last_len = voice_len;
-			}
+		o->cur_vo_dur = 0; // reset, is increased during new run
+		o->cur_block = o->block_stack-1; // reset gen block scope
+		for (o->ins_i = 0; o->ins_i < o->ins_count; ++o->ins_i) {
+			const sauRIns *ins = &o->ins[o->ins_i];
+			RIns_run_fn run_fn = get_rins_run_fn(ins->op);
+			/*
+			 * Instructions may reduce \a len, but not lengthen it
+			 * beyond the original. This is managed using a stack.
+			 */
+			len = run_fn(o, ins, len); // may change o->ins_i
 		}
+		uint32_t last_len = o->gen_mix_add_max;
 		if (last_len > 0) {
 			gen_len += last_len;
 			(stereo ?
@@ -1038,19 +910,6 @@ static uint32_t run_for_time(sauGenerator *restrict o,
 		}
 	}
 	return gen_len;
-}
-
-/*
- * Any error checking following audio generation goes here.
- */
-static void check_final_state(sauGenerator *restrict o) {
-	for (uint16_t i = 0; i < o->vo_count; ++i) {
-		VoiceNode *vn = &o->voices[i];
-		if (!(vn->flags & VN_INIT)) {
-			sau_warning("generator",
-"voice %hd left uninitialized (never used)", i);
-		}
-	}
 }
 
 /**
@@ -1071,8 +930,8 @@ bool sauGenerator_run(sauGenerator *restrict o,
 	int16_t *sp = buf;
 	uint32_t len = buf_len;
 	uint32_t skip_len, last_len, gen_len = 0;
-	if (!(o->gen_flags & GEN_OUT_CLEAR)) {
-		o->gen_flags |= GEN_OUT_CLEAR;
+	if (!o->is_run_out_clear) {
+		o->is_run_out_clear = true;
 		sau_nzero(buf, stereo ? len * 2 : len);
 	}
 PROCESS:
@@ -1110,22 +969,11 @@ PROCESS:
 		gen_len += last_len;
 	}
 	/*
-	 * Advance starting voice and check for end of signal.
+	 * Check for end of signal.
 	 */
-	for(;;) {
-		VoiceNode *vn;
-		if (o->voice == o->vo_count) {
-			if (o->event != o->ev_count) break;
-			/*
-			 * The end.
-			 */
-			if (out_len) *out_len = gen_len;
-			check_final_state(o);
-			return false;
-		}
-		vn = &o->voices[o->voice];
-		if (vn->duration != 0) break;
-		++o->voice;
+	if (o->event == o->ev_count && o->cur_vo_dur == 0) {
+		if (out_len) *out_len = gen_len;
+		return false;
 	}
 	/*
 	 * Further calls needed to complete signal.

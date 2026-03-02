@@ -98,7 +98,7 @@ static uint32_t sauEnvGen_run_line(sauEnvGen *restrict o,
 	}
 	uint32_t line_time = (o->mode == SAU_ENV_FN_SHRINK) ? time : full_time;
 	sauLine_fill_funcs[o->line[par_i]](buf, n,
-			v0, vt, o->pos, line_time, NULL);
+			v0, vt, o->pos, line_time);
 	o->pos += n;
 	if (o->pos >= time) {
 		if (o->mode != SAU_ENV_FN_DECLICK || full_time == 0) {
@@ -108,7 +108,7 @@ static uint32_t sauEnvGen_run_line(sauEnvGen *restrict o,
 			uint32_t pos =
 				o->pos < line_time ? o->pos + 1 : line_time;
 			sauLine_fill_funcs[o->line[par_i]](&o->e_last, 1,
-					v0, vt, pos, line_time, NULL);
+					v0, vt, pos, line_time);
 			if (time < full_time)
 				o->keep_last = true;
 		}
