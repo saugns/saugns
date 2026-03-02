@@ -26,24 +26,21 @@ SAU_LINE__ITEMS(LINE_MAP_FUNC)
 // fill functions not written in a different optimized form
 #define LINE_FILL_FUNC(NAME, ...) \
 void sauLine_fill_##NAME(float *restrict buf, uint32_t len, \
-		float v0, float vt, uint32_t pos, uint32_t time, \
-		const float *restrict mulbuf) { \
+		float v0, float vt, uint32_t pos, uint32_t time) { \
 	const float inv_time = 1.f / time; \
 	for (uint32_t i = 0; i < len; ++i) { \
 		float x = (i + pos) * inv_time; \
-		float v = sauLine_val_##NAME(x, v0, vt); \
-		buf[i] = mulbuf ? (v * mulbuf[i]) : v; \
+		buf[i] = sauLine_val_##NAME(x, v0, vt); \
 	} \
 }
 
 // fill function which selects one of two other fill functions
 #define LINE_FILL_FUNC_SELECT(NAME, COND, SEL1, SEL2) \
 void sauLine_fill_##NAME(float *restrict buf, uint32_t len, \
-		float v0, float vt, uint32_t pos, uint32_t time, \
-		const float *restrict mulbuf) { \
+		float v0, float vt, uint32_t pos, uint32_t time) { \
 	(COND ? \
 		sauLine_fill_##SEL1 : \
-		sauLine_fill_##SEL2)(buf, len, v0, vt, pos, time, mulbuf); \
+		sauLine_fill_##SEL2)(buf, len, v0, vt, pos, time); \
 }
 
 const struct sauLineCoeffs sauLine_coeffs[SAU_LINE_NAMED] = {
@@ -67,19 +64,16 @@ const sauLine_val_f sauLine_val_funcs[SAU_LINE_NAMED] = {
 	SAU_LINE__ITEMS(SAU_LINE__X_VAL_ADDR)
 };
 
-// the noinline use below works around i386 clang performance issue
 /**
  * Fill \p buf with \p len values along a "sample and hold"
  * straight horizontal line, i.e. \p len copies of \p v0.
  */
-sauNoinline void sauLine_fill_sah(float *restrict buf, uint32_t len,
-		float v0, float vt, uint32_t pos, uint32_t time,
-		const float *restrict mulbuf) {
+void sauLine_fill_sah(float *restrict buf, uint32_t len,
+		float v0, float vt, uint32_t pos, uint32_t time) {
 	(void)vt;
 	(void)pos;
 	(void)time;
-	for (uint32_t i = 0; i < len; ++i)
-		buf[i] = mulbuf ? (v0 * mulbuf[i]) : v0;
+	for (uint32_t i = 0; i < len; ++i) buf[i] = v0;
 }
 
 /**
@@ -88,16 +82,14 @@ sauNoinline void sauLine_fill_sah(float *restrict buf, uint32_t len,
  * beginning at position \p pos.
  */
 void sauLine_fill_lin(float *restrict buf, uint32_t len,
-		float v0, float vt, uint32_t pos, uint32_t time,
-		const float *restrict mulbuf) {
+		float v0, float vt, uint32_t pos, uint32_t time) {
 	const int32_t adj_pos = pos - (time / 2);
 	const float inv_time = 1.f / time;
 	const float vm = (v0 + vt) * 0.5f;
 	const float vd = (vt - v0);
 	for (uint32_t i = 0; i < len; ++i) {
 		float x = ((int32_t)i + adj_pos) * inv_time;
-		float v = vm + vd * x;
-		buf[i] = mulbuf ? (v * mulbuf[i]) : v;
+		buf[i] = vm + vd * x;
 	}
 }
 
@@ -110,16 +102,14 @@ void sauLine_fill_lin(float *restrict buf, uint32_t len,
  * crest and back. Uses a ~99.993% accurate polynomial curve.
  */
 void sauLine_fill_cos(float *restrict buf, uint32_t len,
-		float v0, float vt, uint32_t pos, uint32_t time,
-		const float *restrict mulbuf) {
+		float v0, float vt, uint32_t pos, uint32_t time) {
 	const int32_t adj_pos = pos - (time / 2);
 	const float inv_time = 1.f / time;
 	const float vm = (v0 + vt) * 0.5f;
 	const float vd = (vt - v0);
 	for (uint32_t i = 0; i < len; ++i) {
 		float x = ((int32_t)i + adj_pos) * inv_time;
-		float v = vm + vd * sau_sinramp(x);
-		buf[i] = mulbuf ? (v * mulbuf[i]) : v;
+		buf[i] = vm + vd * sau_sinramp(x);
 	}
 }
 
@@ -181,14 +171,12 @@ LINE_FILL_FUNC(lge11, )
  * A less-steep alternative to the exponential-ish 'xpe' fill type.
  */
 void sauLine_fill_sqe(float *restrict buf, uint32_t len,
-		float v0, float vt, uint32_t pos, uint32_t time,
-		const float *restrict mulbuf) {
+		float v0, float vt, uint32_t pos, uint32_t time) {
 	const int32_t adj_pos = pos - (time / 2);
 	const float inv_time = 1.f / time;
 	for (uint32_t i = 0; i < len; ++i) {
 		float x = 0.5f - ((int32_t)i + adj_pos) * inv_time;
-		float v = vt + (v0 - vt) * (x * x);
-		buf[i] = mulbuf ? (v * mulbuf[i]) : v;
+		buf[i] = vt + (v0 - vt) * (x * x);
 	}
 }
 
@@ -201,15 +189,13 @@ void sauLine_fill_sqe(float *restrict buf, uint32_t len,
  * A little bit like three stages in one (change, sustain, change).
  */
 void sauLine_fill_cub(float *restrict buf, uint32_t len,
-		float v0, float vt, uint32_t pos, uint32_t time,
-		const float *restrict mulbuf) {
+		float v0, float vt, uint32_t pos, uint32_t time) {
 	const int32_t adj_pos = pos - (time / 2);
 	const float inv_time = 1.f / time;
 	const float scale = -2 * inv_time;
 	for (uint32_t i = 0; i < len; ++i) {
 		float x = ((int32_t)i + adj_pos) * scale;
-		float v = vt + (v0 - vt) * (x * x * x * 0.5f + 0.5f);
-		buf[i] = mulbuf ? (v * mulbuf[i]) : v;
+		buf[i] = vt + (v0 - vt) * (x * x * x * 0.5f + 0.5f);
 	}
 }
 
@@ -225,16 +211,14 @@ LINE_FILL_FUNC(smo, )
  * between \p v0 and \p vt, seeded with position \p pos.
  */
 void sauLine_fill_uwh(float *restrict buf, uint32_t len,
-		float v0, float vt, uint32_t pos, uint32_t time,
-		const float *restrict mulbuf) {
+		float v0, float vt, uint32_t pos, uint32_t time) {
 	const float scale = 0.5f/(float)INT32_MAX;
 	const float vm = (v0 + vt) * 0.5f;
 	const float vd = (vt - v0) * scale;
 	(void)time;
 	for (uint32_t i = 0; i < len; ++i) {
 		int32_t s = sau_ranfast32(pos + i);
-		float v = vm + vd * s;
-		buf[i] = mulbuf ? (v * mulbuf[i]) : v;
+		buf[i] = vm + vd * s;
 	}
 }
 
@@ -244,8 +228,7 @@ void sauLine_fill_uwh(float *restrict buf, uint32_t len,
  * seeded with position \p pos.
  */
 void sauLine_fill_ncl(float *restrict buf, uint32_t len,
-		float v0, float vt, uint32_t pos, uint32_t time,
-		const float *restrict mulbuf) {
+		float v0, float vt, uint32_t pos, uint32_t time) {
 	const int32_t adj_pos = pos - (time / 2);
 	const float inv_time = 1.f / time;
 	const float scale = 0.5f/(float)INT32_MAX;
@@ -255,8 +238,7 @@ void sauLine_fill_ncl(float *restrict buf, uint32_t len,
 		float x = ((int32_t)i + adj_pos) * inv_time;
 		float xb = x + 0.5f; xb -= (3.f - (xb+xb))*xb*xb;
 		int32_t s = sau_ranfast32(pos + i);
-		float v = vm + vd * (x + xb * s * scale);
-		buf[i] = mulbuf ? (v * mulbuf[i]) : v;
+		buf[i] = vm + vd * (x + xb * s * scale);
 	}
 }
 
@@ -266,8 +248,7 @@ void sauLine_fill_ncl(float *restrict buf, uint32_t len,
  * seeded with position \p pos.
  */
 void sauLine_fill_nhl(float *restrict buf, uint32_t len,
-		float v0, float vt, uint32_t pos, uint32_t time,
-		const float *restrict mulbuf) {
+		float v0, float vt, uint32_t pos, uint32_t time) {
 	const int32_t adj_pos = pos - (time / 2);
 	const float inv_time = 1.f / time;
 	const float scale = 2 * 0.5f/(float)INT32_MAX;
@@ -277,8 +258,7 @@ void sauLine_fill_nhl(float *restrict buf, uint32_t len,
 		float x = ((int32_t)i + adj_pos) * inv_time;
 		float xb = x + 0.5f; xb -= xb*xb;
 		int32_t s = sau_ranfast32(pos + i);
-		float v = vm + vd * (x + xb * s * scale);
-		buf[i] = mulbuf ? (v * mulbuf[i]) : v;
+		buf[i] = vm + vd * (x + xb * s * scale);
 	}
 }
 
@@ -402,29 +382,19 @@ sauNoinline uint32_t sauLine_get(sauLine *restrict o,
 		const float *restrict mulbuf) {
 	if (!(o->flags & SAU_LINEP_GOAL))
 		return 0;
-	/*
-	 * If only one of state and goal is a ratio value,
-	 * adjust state value used for state-to-goal fill.
-	 */
-	if ((o->flags & SAU_LINEP_GOAL_RATIO) != 0) {
-		if (mulbuf && !(o->flags & SAU_LINEP_STATE_RATIO)) {
-			o->v0 /= mulbuf[0];
-			o->flags |= SAU_LINEP_STATE_RATIO;
-		}
-		/* allow a missing mulbuf */
-	} else {
-		if (mulbuf && (o->flags & SAU_LINEP_STATE_RATIO) != 0) {
-			o->v0 *= mulbuf[0];
-			o->flags &= ~SAU_LINEP_STATE_RATIO;
-		}
-		mulbuf = NULL; /* no ratio handling past first value */
+	if (mulbuf) {
+		sauLine_adjust_v0(o, mulbuf[0]);
+		if (!(o->flags & SAU_LINEP_GOAL_RATIO))
+			mulbuf = NULL;
 	}
 	if (o->pos >= o->end)
 		return 0;
 	uint32_t len = o->end - o->pos;
 	if (len > buf_len) len = buf_len;
 	sauLine_fill_funcs[o->type](buf, len,
-			o->v0, o->vt, o->pos, o->end, mulbuf);
+			o->v0, o->vt, o->pos, o->end);
+	if (mulbuf)
+		for (uint32_t i = 0; i < len; ++i) buf[i] *= mulbuf[i];
 	return len;
 }
 
@@ -448,6 +418,21 @@ static bool advance_len(sauLine *restrict o, uint32_t buf_len) {
 	return true;
 }
 
+/*
+ * Fill in state, with or without mulbuf, for tail end of buffer.
+ */
+static void fill_buf_tail(float *restrict buf,
+		uint32_t buf_len, uint32_t skip_len,
+		float v0, const float *restrict mulbuf) {
+	if (mulbuf) {
+		for (uint32_t i = skip_len; i < buf_len; ++i)
+			buf[i] = v0 * mulbuf[i];
+	} else {
+		for (uint32_t i = skip_len; i < buf_len; ++i)
+			buf[i] = v0;
+	}
+}
+
 /**
  * Fill \p buf with \p buf_len values for the line.
  * A value is \a v0 if no goal is set, or a lineing
@@ -463,17 +448,19 @@ static bool advance_len(sauLine *restrict o, uint32_t buf_len) {
  * When a goal is reached and cleared, its \a vt value becomes
  * the new \a v0 value.
  *
- * \return true if line goal not yet reached
+ * \return true if line has/had goal and its state has changed
  */
 bool sauLine_run(sauLine *restrict o,
 		float *restrict buf, uint32_t buf_len,
 		const float *restrict mulbuf) {
 	uint32_t len = 0;
+	bool has_change = false;
 	if (!(o->flags & SAU_LINEP_GOAL)) {
 		advance_len(o, buf_len);
 		goto FILL;
 	}
-	len = sauLine_get(o, buf, buf_len, mulbuf);
+	has_change = (len = sauLine_get(o, buf, buf_len, mulbuf)) > 0;
+	if (has_change) o->flags |= SAU_LINEP; // mark as having a new change
 	o->pos += len;
 	if (o->pos >= o->end) {
 		/*
@@ -484,17 +471,12 @@ bool sauLine_run(sauLine *restrict o,
 		o->pos = o->end = 0;
 		o->flags &=
 			~(SAU_LINEP_GOAL|SAU_LINEP_GOAL_RATIO|SAU_LINEP_TIME);
-		o->flags |= SAU_LINEP; // mark as having a new change
 	FILL:
 		if (!(o->flags & SAU_LINEP_STATE_RATIO))
 			mulbuf = NULL;
-		else if (mulbuf != NULL)
-			mulbuf += len;
-		sauLine_fill_sah(buf + len, buf_len - len,
-				o->v0, o->v0, 0, 0, mulbuf);
-		return false;
+		fill_buf_tail(buf, buf_len, len, o->v0, mulbuf);
 	}
-	return true;
+	return has_change;
 }
 
 /**
@@ -504,9 +486,11 @@ bool sauLine_run(sauLine *restrict o,
  * When a goal is reached and cleared, its \a vt value becomes
  * the new \a v0 value.
  *
- * \return false unless state changes triggered as line goal reached
+ * \return true if line has/had goal and its state has changed
  */
 bool sauLine_skip(sauLine *restrict o, uint32_t skip_len) {
+	bool has_change = (o->flags & SAU_LINEP_GOAL) && skip_len > 0;
+	if (has_change) o->flags |= SAU_LINEP; // mark as having a new change
 	if (!advance_len(o, skip_len)) {
 		if (!(o->flags & SAU_LINEP_GOAL))
 			return false;
@@ -520,8 +504,6 @@ bool sauLine_skip(sauLine *restrict o, uint32_t skip_len) {
 			o->flags &= ~SAU_LINEP_STATE_RATIO;
 		}
 		o->flags &= ~(SAU_LINEP_GOAL | SAU_LINEP_GOAL_RATIO);
-		o->flags |= SAU_LINEP; // mark as having a new change
-		return true;
 	}
-	return false;
+	return has_change;
 }

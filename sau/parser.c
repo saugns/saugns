@@ -1220,7 +1220,7 @@ static void begin_gen(sauParser *restrict o,
 		gen->time = sauTime_DEFAULT(sopt->def_time_ms, is_nested);
 		if (sau_pgen_is_osc(type)) {
 			switch (type) {
-			case SAU_PGEN_N_raseg:
+			case SAU_PGEN_N_rals:
 				gen->mode.ras = sopt->def_ras; break;
 			case SAU_PGEN_N_wave:
 				gen->mode.woo = sopt->def_woo; break;
@@ -1857,7 +1857,7 @@ static bool parse_gen_freq(sauParser *restrict o, bool rel_freq) {
 			SAU_PVALR_FREQ, SAU_MOD_N_f_fm);
 }
 
-static bool parse_gen_mode_raseg(sauScanner *restrict sc,
+static bool parse_gen_mode_rals(sauScanner *restrict sc,
 		sauParseGenData *restrict gen) {
 	uint8_t func = SAU_RAS_FUNCTIONS;
 	uint8_t flags = 0;
@@ -1964,7 +1964,7 @@ static bool parse_gen_mode(sauParser *restrict o) {
 	sauScanner *sc = o->sc;
 	sauParseGenData *gen = pl->gen;
 	switch (gen->ref.gen_type) {
-	case SAU_PGEN_N_raseg:  return parse_gen_mode_raseg(sc, gen);
+	case SAU_PGEN_N_rals:  return parse_gen_mode_rals(sc, gen);
 	case SAU_PGEN_N_wave:   return parse_gen_mode_wave(sc, gen);
 	default:                return true; // reject
 	}
@@ -2065,7 +2065,7 @@ static void parse_in_gen_step(sauParser *restrict o) {
 			if (parse_gen_freq(o, false)) goto DEFER;
 			break;
 		case 'l':
-			if (parse_gen_main(o, SAU_PGEN_N_raseg, SAU_SYM_LINE_ID,
+			if (parse_gen_main(o, SAU_PGEN_N_rals, SAU_SYM_LINE_ID,
 						sauLine_names)) goto DEFER;
 			gen->mode.ras.flags |= SAU_RAS_O_LINE_SET;
 			break;
@@ -2301,7 +2301,7 @@ static bool parse_level(sauParser *restrict o,
 			if ((c = parse_gen_amp(o))) goto INVALID;
 			break;
 		case 'R':
-			if (parse_gen(o, SAU_PGEN_N_raseg, SAU_SYM_LINE_ID,
+			if (parse_gen(o, SAU_PGEN_N_rals, SAU_SYM_LINE_ID,
 						sauLine_names)) break;
 			pl.gen->mode.ras.flags = SAU_RAS_O_LINE_SET;
 			if ((c = parse_gen_phase(o))) goto INVALID;

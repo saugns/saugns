@@ -7,8 +7,71 @@ is a shorter change log with only the SAU language changes.
 Pre-release
 -----------
 
+[rebase in progress]
+
+Fix v0.5.6 edge case bug for frequency parameter sweeps; if
+using ratio for goal but not for state or vice-versa (mixed
+rather than consistent selection), the newer handling could
+mess up the signal. Scripts like the below are now fixed.
+
+"W f[W f10 a440] t10 p[R f440 r[g1]]"
+
+v0.5.6b (2026-03-20)
+--------------------
+
+Add pan law switches. Remove time `|` quirk.
+
+Language changes:
+ * Channel mixing. Add `c.p` pan law switch to each
+   generator, and a `S c.p` default setting. The modes are:
+   - `l` (linear, center -6 dB, default). The old behavior,
+     allows a mono downmix to undo panning cleanly.
+   - `f` (full, center -0 dB). Makes positions `L`, `R` and
+     `C` behave like traditional channel switcher settings.
+     `2*L` or `2*R` cause a phase-inverted "fake surround".
+     Modulation produces stereo-spread distortion (mono mix
+     simplifies the sound while it remains impure).
+ * Timing. For `|` time separator, correct an inconsistency
+   (and the documentation). Using `|` never decreases delay
+   to add now. Previously, it did so only when no generator
+   was active in scope (like before any is added or after a
+   prior `|`).
+
+v0.5.6 (2026-03-15)
+-------------------
+
+Add 1-pole filter options. Redesign rendering.
+
+Language changes:
+ * Frequency filters.
+    - Add filter option `a.f` for all audio generators, and
+      1-pole lowpass and highpass filters. Options `a.f.l`,
+      `a.f.h` (alternatively `a.f[l h]`) will set a cut-off
+      frequency to use if given a positive number; if given
+      0, the filter is disabled. As shorthand, `a.f` can be
+      given a number if only lowpass or highpass (not both)
+      is to be used; a positive number is used for lowpass,
+      while a negative number is negated, and then used for
+      highpass; if 0 is set, both filters are disabled.
+    - Add global mix filters under `S a.f`, the same syntax
+      and use as those for individual audio generators. The
+      use of these filters is recommended to filter a whole
+      audio file.
+ * Parameter sweeps. Change sweep time interpretation, from
+   being dynamic (much like time for a modulator), to being
+   static or parse-time (much like timing offset syntax). A
+   sweep is no longer paused or delayed if the generator it
+   belongs to is paused or unused.
+
 Change `-p` printouts to only include script/"program" info
-beyond statistics if verbose `-v` is also passed.
+beyond statistics if verbose `-v` is also passed. Tweak the
+format as well both for statistics and for verbose display.
+
+Redesign audio generation code; the traversal of the linked
+generators and deciding what to run now happens in new code
+in parser/semantics.h. The generator.c code now only runs a
+set of instructions (sauRIns), provided/set once per event.
+The aim is to move complexity out from the audio rendering.
 
 v0.5.5b (2025-11-09)
 --------------------
