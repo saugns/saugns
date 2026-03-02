@@ -164,7 +164,7 @@ enum {
 	X(amp,   'A') \
 	X(noise, 'N') \
 	X(wave,  'W') \
-	X(raseg, 'R') \
+	X(rals,  'R') \
 	//
 #define SAU_PGEN__X_ID(NAME, LABELC) SAU_PGEN_N_##NAME,
 
@@ -182,7 +182,7 @@ enum {
 
 /** True if the given program generator type uses seed values. */
 static inline bool sau_pgen_has_seed(unsigned type_id) {
-	return type_id == SAU_PGEN_N_noise || type_id == SAU_PGEN_N_raseg;
+	return type_id == SAU_PGEN_N_noise || type_id == SAU_PGEN_N_rals;
 }
 
 /** Generator parameter flags. For parameters without other tracking only. */
@@ -217,13 +217,13 @@ enum {
 extern const char *const sauNoise_names[SAU_NOISE_NAMED + 1];
 
 /** Random segments option data. */
-typedef struct sauRasOpt {
+typedef struct sauRaslOpt {
 	uint8_t line; // line module type; is first, to match sauPGenMode main
 	unsigned flags: 10;
 	unsigned func:  6;
 	unsigned level: 8;
 	uint32_t alpha;
-} sauRasOpt;
+} sauRaslOpt;
 
 /** Random segments oscillator mode functions. */
 enum {
@@ -273,10 +273,7 @@ typedef struct sauProgramIDArr {
 	uint32_t ids[];
 } sauProgramIDArr;
 
-typedef struct sauProgramIDs {
-	const sauProgramIDArr *a;
-	uint8_t use;
-} sauProgramIDs;
+struct sauRIns;
 
 /* Macro used for generator modulation or use type sets of items. */
 #define SAU_MOD__ITEMS(X) \
@@ -344,7 +341,7 @@ typedef struct sauParseSetOptions {
 	uint8_t key_system;
 	float def_parenv_v; // first value in env range ".e"
 	sauEnvPar def_parenv;
-	sauRasOpt def_ras;
+	sauRaslOpt def_ras;
 	sauWaveOpt def_woo;
 } sauParseSetOptions;
 
@@ -390,14 +387,11 @@ typedef struct sauParseGenData {
 	uint32_t seed;
 	union sauPGenMode {
 		uint8_t main; // holds wave, noise, etc. ID -- what's primary
-		sauRasOpt ras;
+		sauRaslOpt ras;
 		sauWaveOpt woo;
 	} mode;
 	const sauParseSetOptions *sopt; // set options at time of node creation
 	sauParseListData *mods; // node adjacents updates
-	/* ID arrays as used by audio generator code */
-	const sauProgramIDs *mods_idarr;
-	uint32_t mods_count; // number of ID arrays
 } sauParseGenData;
 
 /** Script data event flags. */
@@ -427,9 +421,10 @@ typedef struct sauParseEvData {
 	uint32_t dur_ms; // for level at which main object is included
 	uint8_t ev_flags;
 	uint16_t vo_id;
-	uint32_t carr_obj_id;
 	const sauParseGenData **gen_data; // flat per-event list
 	uint32_t gen_data_count;
+	uint32_t ins_count;
+	const struct sauRIns *ins;
 } sauParseEvData;
 
 /** String and number pair for predefined values passed as arguments. */
@@ -463,7 +458,8 @@ typedef struct sauParse {
 	size_t ev_count;
 	bool is_ampmult_set : 1;
 	bool is_amp_autoscaled : 1;
-	uint8_t gen_nest_depth;
+	uint16_t gen_nest_depth;
+	uint16_t sbuf_count; // sample value buffers needed
 	uint16_t vo_count;
 	uint32_t gen_count;
 	uint32_t duration_ms;
