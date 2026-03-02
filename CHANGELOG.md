@@ -7,8 +7,22 @@ is a shorter change log with only the SAU language changes.
 Pre-release
 -----------
 
+Language changes:
+ * Parameter sweeps. Change sweep time interpretation, from
+   being dynamic (much like time for a modulator), to being
+   static or parse-time (much like timing offset syntax). A
+   sweep is no longer paused or delayed if the generator it
+   belongs to is paused or unused.
+
 Change `-p` printouts to only include script/"program" info
-beyond statistics if verbose `-v` is also passed.
+beyond statistics if verbose `-v` is also passed. Tweak the
+format as well both for statistics and for verbose display.
+
+Redesign audio generation code; the traversal of the linked
+generators and deciding what to run now happens in new code
+in parser/semantics.h. The generator.c code now only runs a
+set of instructions (sauRIns), provided/set once per event.
+The aim is to move complexity out from the audio rendering.
 
 v0.5.5b (2025-11-09)
 --------------------

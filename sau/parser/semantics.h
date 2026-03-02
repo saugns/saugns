@@ -13,6 +13,7 @@
 
 #include <string.h>
 #include <stdio.h>
+#include <sau/render.h>
 
 /*
  * Semantics code running with parsing, prior to the audio rendering
@@ -22,7 +23,7 @@
  *
  * In part, this is timing logic (pre-calculating when possible). In
  * part it is 'measuring' and allocating IDs, establishing exact use
- * of resources in advance. And each generator is mapped to a voice.
+ * of resources in advance. Rendering instructions are built to fit.
  */
 
 typedef struct sauParseEvBranch {
@@ -138,28 +139,29 @@ sauArrType(SemGenObjArr, SemGenObj, _)
 typedef struct sauVoAllocState {
 	uint32_t obj_id;
 	uint32_t time_ms;
+	bool has_carrier    : 1; // has an object valid for use as carrier
 	bool has_new_graph  : 1; // traverse to make updated graph in event
 	bool has_gen_expiry : 1; // traverse to update generator expiry state
 } sauVoAllocState;
 sauArrType(sauVoAlloc, sauVoAllocState, _)
 
-sauArrType(IDsArr, sauProgramIDs, )
-
 typedef struct sauPrintGenRef {
 	uint32_t id;
 	uint8_t use;
-	uint8_t level; /* > 0 if used as a modulator */
+	uint16_t level; /* > 0 if used as a modulator */
 } sauPrintGenRef;
 sauArrType(PrintGenRefArr, sauPrintGenRef, )
 
 sauArrType(GenDataArr, sauParseGenData*, _)
 sauArrType(IDBuf, uint32_t, )
+sauArrType(RInsArr, sauRIns, )
 
 typedef struct ParseSem {
 	sauVoAlloc va;
 	PrintGenRefArr vo_graph;
 	uint32_t gen_nest_level, gen_nest_max;
 	uint32_t tot_dur_ms;
+	uint16_t sbuf_count, max_sbuf_count; // sample value buffers needed
 	bool print_info : 1;
 	bool print_verbose : 1;
 	SemGenObjArr gen_obj;
@@ -167,7 +169,7 @@ typedef struct ParseSem {
 	IDBuf idbuf;
 	size_t ev_count;
 	GenDataArr ev_gen_data; // flat list of pointers
-	IDsArr ev_ids; // tmp buffer for modulator lists
+	RInsArr ev_ins; // per-event, all current audio rendering instructions
 	sauMempool *mp;
 } ParseSem;
 
@@ -220,6 +222,9 @@ sem_valr_inherit(ParseSem *restrict o, unsigned id,
 
 /*
  * Override and update values in \p info for value range parameters.
+ *
+ * Also update \a pos and \a end information the other way around,
+ * copying it from \p info.
  */
 static void
 sem_valr_update(unsigned id, sauRangeSet valr,
@@ -229,6 +234,13 @@ sem_valr_update(unsigned id, sauRangeSet valr,
 	sauLine_copy(&info->valr[id].a, &valr[id]->a, SAU_UPDATE_RATE);
 	sauLine_copy(&info->valr[id].b, &valr[id]->b, SAU_UPDATE_RATE);
 	sauLine_copy(&info->valr[id].e, &valr[id]->e, SAU_UPDATE_RATE);
+	// copy the time values used during audio rendering stage
+	valr[id]->a.pos = info->valr[id].a.pos;
+	valr[id]->a.end = info->valr[id].a.end;
+	valr[id]->b.pos = info->valr[id].b.pos;
+	valr[id]->b.end = info->valr[id].b.end;
+	valr[id]->e.pos = info->valr[id].e.pos;
+	valr[id]->e.end = info->valr[id].e.end;
 }
 
 /*
@@ -350,29 +362,6 @@ sem_obj_ref_update(ParseSem *restrict o, sauParseObjRef *restrict ref,
 	return false;
 }
 
-/*
- * Set the array of ID arrays for a generator node,
- * allocating the sparse variation from the non-sparse one.
- *
- * \return true, or false on allocation failure
- */
-static bool sem_set_gen_idsarr(ParseSem *restrict o,
-		sauParseGenData *restrict gen,
-		const sauProgramIDArr *new_mods[SAU_MOD_NAMED-1]) {
-	o->ev_ids.count = 0; // reuse allocation
-	for (int i = 0; i < SAU_MOD_NAMED - 1; ++i) {
-		sauProgramIDs *ids;
-		if (!new_mods[i]) continue;
-		if (!(ids = IDsArr_add(&o->ev_ids)))
-			return false;
-		ids->a = new_mods[i];
-		ids->use = i + 1;
-	}
-	gen->mods_count = o->ev_ids.count;
-	return IDsArr_mpmemdup(&o->ev_ids,
-			(sauProgramIDs**) &gen->mods_idarr, o->mp);
-}
-
 static bool
 sem_vograph_traverse(ParseSem *restrict o, sauVoAllocState *restrict vas);
 
@@ -413,7 +402,6 @@ static void
 sem_voalloc_timing(ParseSem *restrict o, sauParseEvData *restrict e) {
 	sem_sum_dur_ms(o, e->wait_ms);
 	e->vo_id = SAU_PVO_NO_ID;        // not assigned yet
-	e->carr_obj_id = SAU_POBJ_NO_ID; // not assigned yet
 	/*
 	 * Update all generators, for generator reuse; a call
 	 * to sem_gen_obj_add() reuses the result of this. As
@@ -431,18 +419,13 @@ sem_voalloc_timing(ParseSem *restrict o, sauParseEvData *restrict e) {
 	 */
 	for (uint32_t id = 0; id < o->gen_obj.count; ++id) {
 		SemGenObj *info = &o->gen_obj.a[id];
-		uint32_t time_subt_ms;
-		if (info->time_ms <= e->wait_ms) {
-			time_subt_ms = info->time_ms;
+		if (info->time_ms <= e->wait_ms)
 			info->time_ms = 0;
-		} else {
-			time_subt_ms = e->wait_ms;
+		else
 			info->time_ms -= e->wait_ms;
-		}
 		// update time for generator subcomponents
-		if (!info->is_timed) time_subt_ms = e->wait_ms;
 		for (int i = 0; i < SAU_PVALR_TYPES; ++i)
-			sem_valr_advance(i, info, time_subt_ms);
+			sem_valr_advance(i, info, e->wait_ms);
 		if (info->is_labeled || info->has_next_ref) continue;
 		if (!(info->time_ms == 0 && info->is_timed)) continue;
 		info->is_expired = true;
@@ -455,6 +438,8 @@ sem_voalloc_timing(ParseSem *restrict o, sauParseEvData *restrict e) {
 		if (root_info->last_vo_id != SAU_PVO_NO_ID) {
 			sauVoAllocState *vas = &o->va.a[root_info->last_vo_id];
 			vas->has_gen_expiry = true;
+			if (id == info->root_gen_obj)
+				vas->has_carrier = false; // voice is now bogus
 		}
 	}
 	/*
@@ -528,10 +513,10 @@ RECYCLED:
 	info->last_vo_id = vo_id;
 	vas->obj_id = obj_id;
 PRESERVED:
-	e->carr_obj_id = vas->obj_id;
 	if ((e->ev_flags & SAU_PEV_VOICE_SET_DUR) != 0)
 		vas->time_ms = e->dur_ms;
 	e->vo_id = vo_id;
+	vas->has_carrier = true; // always set on voice (re)allocation
 	vas->has_new_graph = has_new_graph;
 	return vas;
 }
@@ -638,17 +623,14 @@ sem_vograph_cb_clonegen(ParseSem *restrict o, uint32_t obj_id,
 	/*
 	 * Clone/update modulator ID lists as well, to link to the new objects.
 	 */
-	const sauProgramIDArr *new_mods[SAU_MOD_NAMED - 1] = {0};
 	for (int i = 0; i < SAU_MOD_NAMED - 1; ++i) {
-		const sauProgramIDArr *src = info->mods_idarr[i];
+		const sauProgramIDArr *src = info->mods_idarr[i], *dst;
 		if (!src->count) continue;
-		if (!(new_mods[i] = sem_make_clone_idarr(o, src)))
+		if (!(dst = sem_make_clone_idarr(o, src)))
 			return false;
-		dst_info->mods_idarr[i] = new_mods[i];
+		dst_info->mods_idarr[i] = dst;
 	}
-	if (is_main)
-		return true; // final modulators set after processing params
-	return sem_set_gen_idsarr(o, dst_gen, new_mods);
+	return true;
 }
 
 /*
@@ -781,7 +763,6 @@ sem_handle_gendata(ParseSem *restrict o, sauParseGenData *restrict gen,
 	SemGenObj *info = sem_genalloc_update(o, gen, owner_gen);
 	if (!info) goto MEM_ERR;
 	sem_handle_gen_pardef(o, gen, info);
-	const sauProgramIDArr *new_mods[SAU_MOD_NAMED - 1] = {0}; // new here
 	for (sauParseListData *in_list = gen->mods;
 			in_list != NULL; in_list = in_list->ref.next) {
 		int type = in_list->use_type - 1;
@@ -808,11 +789,10 @@ sem_handle_gendata(ParseSem *restrict o, sauParseGenData *restrict gen,
 						true, vas, mods[type], type+1))
 				goto MEM_ERR;
 		}
-		new_mods[type] = mods[type] = arr;
+		mods[type] = arr;
 		if (vas) vas->has_new_graph = true;
 	}
-	return sem_set_gen_idsarr(o, gen,
-			gen->ref.is_cloned ? info->mods_idarr : new_mods);
+	return true;
 MEM_ERR:
 	return false;
 }
@@ -1089,24 +1069,15 @@ sem_print_head(const char *const name) {
 static void
 sem_print_stats(const sauParse *restrict o) {
 	sau_printf("\tDuration:\t%u ms\n"
-		"\tEvents:  \t%zu\n"
 		"\tVoices:  \t%hu\n"
-		"\tGenerators:\t%u\n",
+		"\tEvents:  \t%zu\tBuffers:\t%hu\n"
+		"\tGenerators:\t%u\tChain length:\t%hu\n",
 		o->duration_ms,
-		o->ev_count,
 		o->vo_count,
-		o->gen_count);
-}
-
-static void
-print_linked(const char *restrict header,
-		const sauProgramIDArr *restrict idarr) {
-	if (!idarr || !idarr->count)
-		return;
-	sau_printf("\n\t    %s[%u", header, idarr->ids[0]);
-	for (uint32_t i = 0; ++i < idarr->count; )
-		sau_printf(", %u", idarr->ids[i]);
-	sau_printf("]");
+		o->ev_count,
+		o->sbuf_count,
+		o->gen_count,
+		o->gen_count ? o->gen_nest_depth+1 : 0);
 }
 
 static void
@@ -1118,7 +1089,7 @@ print_genlist(const sauPrintGenRef *restrict list,
 	if (!list)
 		return;
 	FILE *out = sau_print_stream();
-	uint32_t i = 0;
+	int32_t i = count - 1;
 	uint32_t max_indent = 0;
 	fputs("\n\t    [", out);
 	for (;;) {
@@ -1128,7 +1099,7 @@ print_genlist(const sauPrintGenRef *restrict list,
 		for (uint32_t j = indent; j > 0; --j)
 			putc(' ', out);
 		fputs(uses[list[i].use], out);
-		if (++i == count) break;
+		if (--i < 0) break;
 		fputs("\n\t     ", out);
 	}
 	for (uint32_t j = max_indent; j > 0; --j)
@@ -1187,26 +1158,413 @@ print_genline(const sauParseGenData *restrict gd) {
  */
 static void
 sem_print_event(ParseSem *restrict o, const sauParseEvData *restrict ev) {
-	static const char *const mods_syntax[SAU_MOD_NAMED] = {
-		SAU_MOD__ITEMS(SAU_MOD__X_SYNTAX)
-	};
+//	static const char *const mods_syntax[SAU_MOD_NAMED] = {
+//		SAU_MOD__ITEMS(SAU_MOD__X_SYNTAX)
+//	};
 	sau_printf("/%u \tEV %zu", ev->wait_ms, o->ev_count);
 	if (ev->vo_id != SAU_PVO_NO_ID)
 		sau_printf(" \t(VO %hu)", ev->vo_id);
+	if (ev->ins)
+		sau_printf(" \t(%hu ins)", ev->ins_count);
 	if (o->vo_graph.count > 0) {
 		sau_printf(
 			"\n\tvo %u", ev->vo_id);
 		print_genlist(o->vo_graph.a, o->vo_graph.count);
 	}
-	for (size_t i = 0; i < o->ev_gen_data.count; ++i) {
-		const sauParseGenData *gd = o->ev_gen_data.a[i];
+	for (size_t i = 0; i < ev->gen_data_count; ++i) {
+		const sauParseGenData *gd = ev->gen_data[i];
 		print_genline(gd);
-		for (uint32_t i = 0; i < gd->mods_count; ++i) {
-			const sauProgramIDs *ids = &gd->mods_idarr[i];
-			print_linked(mods_syntax[ids->use], ids->a);
-		}
 	}
 	sau_printf("\n");
+}
+
+const char *const sauRIns_names[SAU_RINS_NAMED] = {
+	SAU_RINS__ITEMS(SAU_RINS__X_NAME)
+};
+
+static bool
+sem_conv_mods(ParseSem *restrict o, const sauProgramIDArr *restrict mods,
+		uint32_t buf_count, uint32_t freq_buf, uint8_t mix_mode);
+
+static sauLine *
+sem_get_line(uint8_t par_id, uint8_t sub_id, SemGenObj *restrict gen) {
+	sauRange *r = &gen->valr[par_id];
+	switch (sub_id) {
+	case SAU_RANGE_A: return &r->a;
+	case SAU_RANGE_B: return &r->b;
+	case SAU_RANGE_E: return &r->e;
+	default: return NULL;
+	}
+}
+
+#define NEED_FILL(line, mods) \
+	(((line)->flags & SAU_LINEP_GOAL) || (mods)->count > 0)
+
+static bool
+sem_conv_dynpar(ParseSem *restrict o, SemGenObj *restrict gen,
+		const sauProgramIDArr *restrict mods,
+		uint8_t par_id, uint8_t sub_id, float *restrict line_v0,
+		uint32_t buf_count, uint32_t mul_buf, bool has_mul,
+		uint32_t freq_buf, bool force_fill) {
+	sauRIns *ins = NULL;
+	sauLine *line = sem_get_line(par_id, sub_id, gen);
+	if (line_v0) *line_v0 = line->v0; // get current state for use outside
+	if (!NEED_FILL(line, mods) && !force_fill && !has_mul)
+		return false; // buffer unused
+	ins = RInsArr_add(&o->ev_ins);
+	*ins = sauRIns_run_par_line(par_id, sub_id, line,
+			buf_count, mul_buf, has_mul);
+	uint32_t par_buf = buf_count++;
+	if (o->sbuf_count < buf_count) o->sbuf_count = buf_count;
+	return sem_conv_mods(o, mods, par_buf, freq_buf, SAU_RMIX_LAYER);
+}
+
+static bool
+sem_conv_valr_mods(ParseSem *restrict o, SemGenObj *restrict gen,
+		unsigned mods_from, uint8_t par_id, float *restrict a_v0,
+		uint32_t buf_count, uint32_t mul_buf, bool has_mul,
+		uint32_t freq_buf, bool force_fill) {
+	sauRIns *ins = NULL;
+	const sauProgramIDArr *mods =
+		gen->mods_idarr[mods_from+SAU_MOD_VALR   -1];
+	const sauProgramIDArr *mods2 =
+		gen->mods_idarr[mods_from+SAU_MOD_VALR2  -1];
+	const sauProgramIDArr *mods_r =
+		gen->mods_idarr[mods_from+SAU_MOD_VALR_r -1];
+	bool has_buf = sem_conv_dynpar(o, gen, mods, par_id,
+			SAU_RANGE_A, a_v0, buf_count,
+			mul_buf, has_mul, freq_buf, force_fill);
+	if (mods_r->count > 0) {
+		uint32_t par_buf = buf_count++; // always ends up filled here
+		float b_v0;
+		bool has_buf2 = sem_conv_dynpar(o, gen, mods2, par_id,
+				SAU_RANGE_B, &b_v0, buf_count,
+				mul_buf, has_mul, freq_buf, false);
+		uint32_t par2_buf = has_buf2 ? buf_count++ : 0;
+		sem_conv_mods(o, mods_r, buf_count,
+				freq_buf, SAU_RMIX_MUL_WE);
+		uint32_t mod_buf = buf_count++;
+		ins = RInsArr_add(&o->ev_ins);
+		*ins = sauRIns_mix_valrange(par_buf, has_buf, *a_v0,
+				par2_buf, has_buf2, b_v0, mod_buf);
+		has_buf = true;
+	} else {
+		if (has_buf) buf_count++;
+		// to keep timing in sync, run mods2 despite discarding result
+		sem_conv_mods(o, mods2, buf_count, freq_buf, SAU_RMIX_LAYER);
+	}
+	if (o->sbuf_count < buf_count) o->sbuf_count = buf_count;
+	return has_buf;
+}
+
+static bool
+sem_conv_valr_env(ParseSem *restrict o, SemGenObj *restrict gen,
+		unsigned mods_from, uint8_t par_id, float a_v0,
+		uint32_t buf_count, uint32_t mul_buf, bool has_mul,
+		uint32_t freq_buf, bool has_buf) {
+	sauEnvPar *env = &gen->valr[par_id].env;
+	sauRIns *ins = NULL;
+	const sauProgramIDArr *mods_e =
+		gen->mods_idarr[mods_from+SAU_MOD_VALR_e -1];
+	if (/*env->mode > 0 &&*/ sauEnvPar_has_time(env)) {
+		float e_v0;
+		uint32_t par_buf = buf_count++; // always ends up filled here
+		bool has_buf2 = sem_conv_dynpar(o, gen, mods_e, par_id,
+				SAU_RANGE_E, &e_v0, buf_count,
+				mul_buf, has_mul, freq_buf, false);
+		uint32_t par2_buf = has_buf2 ? buf_count++ : 0;
+		ins = RInsArr_add(&o->ev_ins);
+		*ins = sauRIns_run_par_env(par_id, buf_count);
+		ins = RInsArr_add(&o->ev_ins);
+		uint32_t env_buf = buf_count++;
+		*ins = sauRIns_mix_valrange(par_buf, has_buf, a_v0,
+				par2_buf, has_buf2, e_v0, env_buf);
+		has_buf = true;
+	} else {
+		if (has_buf) buf_count++;
+		// to keep timing in sync, run mods_e despite discarding result
+		sem_conv_mods(o, mods_e, buf_count, freq_buf, SAU_RMIX_LAYER);
+	}
+	if (o->sbuf_count < buf_count) o->sbuf_count = buf_count;
+	return has_buf;
+}
+
+static bool
+sem_conv_valr(ParseSem *restrict o, SemGenObj *restrict gen,
+		unsigned mods_from, uint8_t par_id, float *restrict a_v0,
+		uint32_t buf_count, uint32_t mul_buf, bool has_mul,
+		uint32_t freq_buf, bool force_fill) {
+	const sauProgramIDArr *mods_a =
+		gen->mods_idarr[mods_from+SAU_MOD_VALR_a -1];
+	float tmp_a_v0;
+	if (!a_v0) a_v0 = &tmp_a_v0;
+	bool has_buf = sem_conv_valr_mods(o, gen, mods_from, par_id, a_v0,
+			buf_count, mul_buf, has_mul, freq_buf,
+			force_fill | (mods_a->count > 0));
+	has_buf = sem_conv_valr_env(o, gen, mods_from, par_id, *a_v0,
+			buf_count, mul_buf, has_mul, freq_buf, has_buf);
+	return sem_conv_mods(o, mods_a, buf_count, freq_buf,
+			has_buf ? SAU_RMIX_LAYER : 0);
+}
+
+static void
+sem_conv_gen_amp(ParseSem *restrict o,
+		uint32_t buf_count, uint32_t out_buf) {
+	sauRIns *ins = RInsArr_add(&o->ev_ins);
+	*ins = sauRIns_nsetf(out_buf, 1.0);
+	if (o->sbuf_count < buf_count) o->sbuf_count = buf_count;
+}
+
+static void
+sem_conv_gen_noiseg(ParseSem *restrict o,
+		uint32_t buf_count, uint32_t out_buf) {
+	sauRIns *ins = RInsArr_add(&o->ev_ins);
+	*ins = sauRIns_run_noisegen(out_buf);
+	if (o->sbuf_count < buf_count) o->sbuf_count = buf_count;
+}
+
+static bool
+sem_conv_osc_pm_fill(ParseSem *restrict o, SemGenObj *restrict gen,
+		uint32_t buf_count, uint32_t freq_buf) {
+	const sauProgramIDArr *pm_idarr  = gen->mods_idarr[SAU_MOD_N_p_pm  -1];
+	const sauProgramIDArr *fpm_idarr = gen->mods_idarr[SAU_MOD_N_pf_pm -1];
+	uint8_t mix_mode = 0;
+	if (fpm_idarr->count > 0) {
+		sem_conv_mods(o, fpm_idarr, buf_count, freq_buf, 0);
+		const float fpm_scale = 1.0 / SAU_HUMMID;
+		sauRIns *ins = RInsArr_add(&o->ev_ins);
+		*ins = sauRIns_nmulnff(buf_count, freq_buf, fpm_scale);
+		mix_mode |= SAU_RMIX_LAYER;
+	}
+	return sem_conv_mods(o, pm_idarr, buf_count, freq_buf, mix_mode);
+}
+
+typedef void (*ConvPDist_cb)(ParseSem *restrict o,
+		uint32_t phase_buf, uint32_t cycle_buf,
+		uint32_t pd_buf_id, uint8_t pd_fn_id,
+		uint32_t pd_f_buf_id, float pd_f_v0,
+		uint32_t pd_p_buf_id, float pd_p_v0);
+
+static void sem_conv_pdist_cb_wosc(ParseSem *restrict o,
+		uint32_t phase_buf, uint32_t cycle_buf sauMaybeUnused,
+		uint32_t pd_buf_id, uint8_t pd_fn_id,
+		uint32_t pd_f_buf_id, float pd_f_v0,
+		uint32_t pd_p_buf_id, float pd_p_v0) {
+	sauRIns *ins = RInsArr_add(&o->ev_ins);
+	*ins = sauRIns_run_waveosc_pdist(phase_buf,
+		pd_buf_id, pd_fn_id,
+		pd_f_buf_id, pd_f_v0,
+		pd_p_buf_id, pd_p_v0);
+}
+
+static void sem_conv_pdist_cb_rosc(ParseSem *restrict o,
+		uint32_t phase_buf, uint32_t cycle_buf,
+		uint32_t pd_buf_id, uint8_t pd_fn_id,
+		uint32_t pd_f_buf_id, float pd_f_v0,
+		uint32_t pd_p_buf_id, float pd_p_v0) {
+	sauRIns *ins = RInsArr_add(&o->ev_ins);
+	*ins = sauRIns_run_ralsosc_pdist(phase_buf, cycle_buf,
+		pd_buf_id, pd_fn_id,
+		pd_f_buf_id, pd_f_v0,
+		pd_p_buf_id, pd_p_v0);
+}
+
+static bool
+sem_conv_osc_phase(ParseSem *restrict o, SemGenObj *restrict gen,
+		uint32_t buf_count, uint32_t phase_buf,
+		uint32_t cycle_buf, bool has_cycle_buf,
+		uint32_t freq_buf, ConvPDist_cb pdist_cb) {
+	sauRIns *ins = NULL;
+	bool has_pm_in = sem_conv_osc_pm_fill(o, gen, buf_count, freq_buf);
+	uint32_t pm_in_buf = has_pm_in ? (buf_count++) : 0;
+	ins = RInsArr_add(&o->ev_ins);
+	*ins = sauRIns_run_osc_phasor(phase_buf, cycle_buf, has_cycle_buf,
+			freq_buf, pm_in_buf, has_pm_in);
+	if (o->sbuf_count < buf_count) o->sbuf_count = buf_count;
+	/*
+	 * Convert PD synthesis part.
+	 */
+	int pd_mods_from = SAU_MOD_N_pd_c;
+	for (int j = 0; j < SAU_PPD_TYPES; ++j) {
+		const float nop_value = sau_pd_v_defaults[j];
+		int pd_id = sau_pd_to_valr(j);
+		int pd_f_id = pd_id+1;
+		int pd_p_id = pd_id+2;
+		int pd_f_mods_from = pd_mods_from+SAU_MODS_VALR;
+		int pd_p_mods_from = pd_f_mods_from+SAU_MODS_VALR;
+		sauLine *line_pd   = sem_get_line(pd_id, SAU_RANGE_A, gen);
+		float pd_f_v0, pd_p_v0;
+		bool has_pd_f = sem_conv_valr(o, gen, pd_f_mods_from,
+				pd_f_id, &pd_f_v0, buf_count+0, 0, false,
+				freq_buf, false);
+		bool has_pd_p = sem_conv_valr(o, gen, pd_p_mods_from,
+				pd_p_id, &pd_p_v0, buf_count+1, 0, false,
+				freq_buf, false);
+		bool force_use = line_pd->v0 != nop_value ||
+			(sau_pd_f_is_fmul(j) &&
+			 (has_pd_f || pd_f_v0 != 1.f));
+		if (sem_conv_valr(o, gen, pd_mods_from, pd_id, NULL,
+				buf_count+2, 0, false, freq_buf, force_use)) {
+			pdist_cb(o, phase_buf, has_cycle_buf ? cycle_buf : 0,
+				buf_count+2, j,
+				has_pd_f ? buf_count+0 : 0, pd_f_v0,
+				has_pd_p ? buf_count+1 : 0, pd_p_v0);
+		}
+		pd_mods_from += (SAU_MOD_N_pd_d - SAU_MOD_N_pd_c);
+	}
+	return true;
+}
+
+static bool
+sem_conv_osc_pma_fill(ParseSem *restrict o, SemGenObj *restrict gen,
+		uint32_t buf_count, uint32_t freq_buf) {
+	sauLine *line = sem_get_line(SAU_PVALR_PMA, SAU_RANGE_A, gen);
+	return sem_conv_valr(o, gen, SAU_MOD_N_pa_pm, SAU_PVALR_PMA,
+			NULL, buf_count, 0, false,
+			freq_buf, line->v0 != 0.f);
+}
+
+static void
+sem_conv_gen_wosc(ParseSem *restrict o, SemGenObj *restrict gen,
+		uint32_t buf_count, uint32_t out_buf, uint32_t freq_buf) {
+	uint32_t phase_buf = out_buf; // reuse
+	sem_conv_osc_phase(o, gen, buf_count, phase_buf,
+			0, false, freq_buf, sem_conv_pdist_cb_wosc);
+	sauRIns *ins = NULL;
+	if (sem_conv_osc_pma_fill(o, gen, buf_count, freq_buf)) {
+		uint32_t pma_buf = buf_count++;
+		ins = RInsArr_add(&o->ev_ins);
+		*ins = sauRIns_run_waveosc_selfmod(out_buf, pma_buf);
+	} else {
+		ins = RInsArr_add(&o->ev_ins);
+		*ins = sauRIns_run_waveosc(out_buf);
+	}
+	if (o->sbuf_count < buf_count) o->sbuf_count = buf_count;
+}
+
+static void
+sem_conv_gen_rosc(ParseSem *restrict o, SemGenObj *restrict gen,
+		uint32_t buf_count, uint32_t out_buf, uint32_t freq_buf) {
+	uint32_t phase_buf = out_buf; // reuse
+	uint32_t cycle_buf = buf_count++;
+	sem_conv_osc_phase(o, gen, buf_count, phase_buf,
+			cycle_buf, true, freq_buf, sem_conv_pdist_cb_rosc);
+	sauRIns *ins = NULL;
+	if (sem_conv_osc_pma_fill(o, gen, buf_count, freq_buf)) {
+		uint32_t pma_buf = buf_count++;
+		ins = RInsArr_add(&o->ev_ins);
+		*ins = sauRIns_run_ralsosc_selfmod(out_buf, cycle_buf,
+				pma_buf);
+	} else {
+		uint32_t end_a_buf = buf_count++;
+		uint32_t end_b_buf = buf_count++;
+		ins = RInsArr_add(&o->ev_ins);
+		*ins = sauRIns_run_ralsosc(out_buf, cycle_buf,
+				end_a_buf, end_b_buf);
+	}
+	if (o->sbuf_count < buf_count) o->sbuf_count = buf_count;
+}
+
+/*
+ * Recurse for generator node, converting to audio rendering instructions,
+ * with topolocial sorting. See sem_conv_traverse() for the main function.
+ *
+ * The \p parent_freq_buf is 0 if unused.
+ */
+static bool
+sem_conv_gen(ParseSem *restrict o, uint32_t obj_id,
+		uint32_t buf_count, uint32_t parent_freq_buf,
+		uint8_t mix_mode) {
+	SemGenObj *gen = &o->gen_obj.a[obj_id];
+	if (gen->is_visited)
+		return false; // guard against circular reference
+	sauRIns *ins = NULL;
+	uint32_t check_ins_i = o->ev_ins.count;
+	if (gen->is_timed && gen->time_ms == 0)
+		return false; // omit entirely
+	if (!(ins = RInsArr_add(&o->ev_ins))) goto MEM_ERR;
+	gen->is_visited = true;
+	uint32_t mix_buf  = buf_count++; // #0
+	sem_conv_valr(o, gen, SAU_MOD_N_f_fm, SAU_PVALR_FREQ,
+			NULL, buf_count, parent_freq_buf, !!parent_freq_buf,
+			buf_count, true);
+	uint32_t freq_buf = buf_count++; // #1
+	/*
+	 * Sub-functions, dividing per generator type.
+	 */
+	uint32_t in_buf = buf_count++; // #2
+	switch (gen->gen_type) {
+	case SAU_PGEN_N_amp:
+		sem_conv_gen_amp(o, buf_count, in_buf);
+		break;
+	case SAU_PGEN_N_noise:
+		sem_conv_gen_noiseg(o, buf_count, in_buf);
+		break;
+	case SAU_PGEN_N_wave:
+		sem_conv_gen_wosc(o, gen, buf_count, in_buf, freq_buf);
+		break;
+	case SAU_PGEN_N_rals:
+		sem_conv_gen_rosc(o, gen, buf_count, in_buf, freq_buf);
+		break;
+	}
+	float amp_v0;
+	bool has_amp = sem_conv_valr(o, gen, SAU_MOD_N_a_am,
+			SAU_PVALR_AMP, &amp_v0, buf_count, 0, false,
+			freq_buf, false);
+	uint32_t amp_buf = has_amp ? buf_count++ : 0;
+	float pan_v0;
+	bool has_pan = sem_conv_valr(o, gen, SAU_MOD_N_c_am,
+			SAU_PVALR_PAN, &pan_v0, buf_count, 0, false,
+			freq_buf, false);
+	uint32_t pan_buf = has_pan ? buf_count++ : 0;
+	if (!(ins = RInsArr_add(&o->ev_ins))) goto MEM_ERR;
+	*ins = sauRIns_gen_pop_mix(mix_buf, mix_mode, in_buf,
+			amp_buf, has_amp, amp_v0,
+			pan_buf, has_pan, pan_v0);
+	gen->is_visited = false;
+	// insert time handling (checking, subtraction) if finite time used;
+	// done here since a jump needs a destination, which needs ins count
+	ins = RInsArr_get(&o->ev_ins, check_ins_i); // array may have resized!
+	*ins = sauRIns_gen_push_jz(obj_id, o->ev_ins.count, mix_buf, mix_mode);
+	if (o->sbuf_count < buf_count) o->sbuf_count = buf_count;
+	return true;
+MEM_ERR:
+	// TODO longjmp
+	return false;
+}
+
+static bool
+sem_conv_mods(ParseSem *restrict o, const sauProgramIDArr *restrict mods,
+		uint32_t buf_count, uint32_t freq_buf, uint8_t mix_mode) {
+	for (uint32_t i = 0; i < mods->count; ++i) {
+		if (sem_conv_gen(o, mods->ids[i], buf_count,
+					freq_buf, mix_mode))
+			mix_mode |= SAU_RMIX_LAYER;
+	}
+	return (mix_mode & SAU_RMIX_LAYER) != 0; // true if buffer filled
+}
+
+/*
+ * Convert from parse data to program for rendering audio.
+ * Uses topological sort to schedule instructions.
+ * Needs to be called once per input event.
+ *
+ * Traverses and schedules all voices every call (allowing more,
+ * or easier, optimization than doing more incremental changes).
+ */
+static bool
+sem_conv_traverse(ParseSem *restrict o, sauParseEvData *restrict e) {
+	if (e->next && e->next->wait_ms == 0)
+		return true; // skip, instructions would be replaced before use
+	o->sbuf_count = 0; // reset
+	for (size_t i = 0; i < o->va.count; ++i) {
+		sauVoAllocState *vas = &o->va.a[i];
+		if (!vas->has_carrier) continue;
+		sem_conv_gen(o, vas->obj_id, 0, 0, 0);
+	}
+	if (o->max_sbuf_count < o->sbuf_count)
+		o->max_sbuf_count = o->sbuf_count;
+	return true;
 }
 
 /*
@@ -1236,12 +1594,7 @@ sem_handle_event(ParseSem *restrict o, sauParseEvData *restrict e,
 		}
 		break; }
 	}
-	if (o->print_verbose) sem_print_event(o, e);
-	++o->ev_count;
-	/*
-	 * Clean up per-event temporary data.
-	 */
-	o->vo_graph.count = 0; // reuse allocation
+	if (!sem_conv_traverse(o, e)) goto MEM_ERR;
 	if (o->ev_gen_data.count > 0) {
 		if (!_GenDataArr_mpmemdup(&o->ev_gen_data,
 				(sauParseGenData***) &e->gen_data,
@@ -1249,6 +1602,17 @@ sem_handle_event(ParseSem *restrict o, sauParseEvData *restrict e,
 		e->gen_data_count = o->ev_gen_data.count;
 		o->ev_gen_data.count = 0; // reuse allocation
 	}
+	if (o->ev_ins.count > 0) {
+		if (!RInsArr_mpmemdup(&o->ev_ins,
+				(sauRIns**) &e->ins,
+				o->mp)) goto MEM_ERR;
+		e->ins_count = o->ev_ins.count;
+		o->ev_ins.count = 0; // reuse allocation
+	}
+	if (o->print_verbose) sem_print_event(o, e);
+	// must be after printout...
+	o->vo_graph.count = 0; // reuse allocation
+	++o->ev_count;
 	return true;
 MEM_ERR:
 	return false;
@@ -1419,6 +1783,7 @@ fini_ParseSem(ParseSem *restrict o, sauParse *restrict parse) {
 		parse->vo_count = o->va.count;
 		parse->gen_count = o->gen_obj.count;
 		parse->gen_nest_depth = o->gen_nest_max;
+		parse->sbuf_count = o->max_sbuf_count;
 		parse->duration_ms = o->tot_dur_ms;
 		parse->mp = o->mp;
 		if (o->print_info) sem_print_stats(parse);
@@ -1428,6 +1793,6 @@ fini_ParseSem(ParseSem *restrict o, sauParse *restrict parse) {
 	_SemGenObjArr_clear(&o->gen_obj);
 	IDBuf_clear(&o->idbuf);
 	_GenDataArr_clear(&o->ev_gen_data);
-	IDsArr_clear(&o->ev_ids);
+	RInsArr_clear(&o->ev_ins);
 	return ok ? parse : NULL;
 }

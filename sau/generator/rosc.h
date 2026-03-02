@@ -1,5 +1,5 @@
-/* SAU library: Random segments generator implementation.
- * Copyright (c) 2022-2025 Joel K. Pettersson
+/* SAU library: Random line segments oscillator implementation.
+ * Copyright (c) 2022-2026 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
@@ -21,17 +21,17 @@
 # include <stdio.h>
 #endif
 
-typedef struct sauRasG {
+typedef struct sauROsc {
 	sauPhasor phasor;
-	sauRasOpt opt;
+	sauRaslOpt opt;
 	float prev_s, fb_s;
-} sauRasG;
+} sauROsc;
 
 /**
  * Initialize instance for use.
  */
-static inline void sau_init_RasG(sauRasG *restrict o, uint32_t srate) {
-	*o = (sauRasG){
+static inline void sau_init_ROsc(sauROsc *restrict o, uint32_t srate) {
+	*o = (sauROsc){
 		.phasor = (sauPhasor){
 			.cycle_phase = 0,
 			.coeff = sauPhasor_COEFF(srate),
@@ -45,18 +45,18 @@ static inline void sau_init_RasG(sauRasG *restrict o, uint32_t srate) {
 	};
 }
 
-static inline void sauRasG_set_phase(sauRasG *restrict o, uint32_t phase) {
+static inline void sauROsc_set_phase(sauROsc *restrict o, uint32_t phase) {
 	sauPhasor_set_phase(&o->phasor, phase);
 }
 
-static inline void sauRasG_set_cycle(sauRasG *restrict o, uint32_t cycle) {
+static inline void sauROsc_set_cycle(sauROsc *restrict o, uint32_t cycle) {
 	sauPhasor_set_cycle(&o->phasor, cycle);
 }
 
 /**
  * Update mode options. Will adjust settings which are dependent on the mode.
  */
-static void sauRasG_set_opt(sauRasG *restrict o, const sauRasOpt opt) {
+static void sauROsc_set_opt(sauROsc *restrict o, const sauRaslOpt opt) {
 	unsigned flags = opt.flags;
 	if (opt.flags & SAU_RAS_O_LINE_SET)
 		o->opt.line = opt.line;
@@ -84,7 +84,7 @@ static void sauRasG_set_opt(sauRasG *restrict o, const sauRasOpt opt) {
  *
  * \return number of samples
  */
-static inline uint32_t sauRasG_cycle_len(sauRasG *restrict o, float freq) {
+static inline uint32_t sauROsc_cycle_len(sauROsc *restrict o, float freq) {
 	return sau_ftoi(SAU_INV_FREQ(32, o->phasor.coeff * freq));
 }
 
@@ -93,7 +93,7 @@ static inline uint32_t sauRasG_cycle_len(sauRasG *restrict o, float freq) {
  *
  * \return number of samples
  */
-static inline uint32_t sauRasG_cycle_pos(sauRasG *restrict o,
+static inline uint32_t sauROsc_cycle_pos(sauROsc *restrict o,
 		float freq, uint32_t pos) {
 	uint32_t inc = sau_ftoi(o->phasor.coeff * freq);
 	uint32_t phs = inc * pos;
@@ -105,7 +105,7 @@ static inline uint32_t sauRasG_cycle_pos(sauRasG *restrict o,
  *
  * Can be used to reduce time length to something rounder and reduce clicks.
  */
-static inline int32_t sauRasG_cycle_offs(sauRasG *restrict o,
+static inline int32_t sauROsc_cycle_offs(sauROsc *restrict o,
 		float freq, uint32_t pos) {
 	uint32_t inc = sau_ftoi(o->phasor.coeff * freq);
 	uint32_t phs = inc * pos;
@@ -115,7 +115,7 @@ static inline int32_t sauRasG_cycle_offs(sauRasG *restrict o,
 /**
  * Wrapper for applying PD synthesis distortion.
  */
-void sauRasG_pdist(sauRasG *restrict o,
+void sauROsc_pdist(sauROsc *restrict o,
 		unsigned pdist_fn,
 		void *restrict phase_buf,
 		uint32_t *restrict cycle_ui32,
@@ -131,13 +131,13 @@ void sauRasG_pdist(sauRasG *restrict o,
 			v_f, f_f, f_fval, p_f, p_fval);
 }
 
-typedef void (*sauRasG_map_f)(sauRasG *restrict o,
+typedef void (*sauROsc_map_f)(sauROsc *restrict o,
 		size_t buf_len,
 		float *restrict end_a_buf,
 		float *restrict end_b_buf,
 		const uint32_t *restrict cycle_buf);
 
-typedef void (*sauRasG_map_selfmod_f)(sauRasG *restrict o,
+typedef void (*sauROsc_map_selfmod_f)(sauROsc *restrict o,
 		size_t buf_len,
 		float *restrict main_buf,
 		sauLine_val_f line_f,
@@ -191,7 +191,7 @@ for (size_t i = 0; i < buf_len; ++i) { \
  * Define a whole sauRasg_map_*_s() function. Expects named macro.
  */
 #define RASG_MAP_S_FUNC(loop_for_func) \
-static sauMaybeUnused void sauRasG_map_##loop_for_func##_s(sauRasG *restrict o,\
+static sauMaybeUnused void sauROsc_map_##loop_for_func##_s(sauROsc *restrict o,\
 		size_t buf_len, \
 		float *restrict main_buf, \
 		sauLine_val_f line_f, \
@@ -204,7 +204,7 @@ static sauMaybeUnused void sauRasG_map_##loop_for_func##_s(sauRasG *restrict o,\
 /**
  * Run for \p buf_len samples in 'violet random' mode, generating output.
  */
-static sauMaybeUnused void sauRasG_map_v_urand(sauRasG *restrict o,
+static sauMaybeUnused void sauROsc_map_v_urand(sauROsc *restrict o,
 		size_t buf_len,
 		float *restrict end_a_buf,
 		float *restrict end_b_buf,
@@ -230,13 +230,13 @@ RASG_MAP_S_FUNC(v_urand)
 /**
  * Run for \p buf_len samples in 'uniform random' mode, generating output.
  */
-static sauMaybeUnused void sauRasG_map_urand(sauRasG *restrict o,
+static sauMaybeUnused void sauROsc_map_urand(sauROsc *restrict o,
 		size_t buf_len,
 		float *restrict end_a_buf,
 		float *restrict end_b_buf,
 		const uint32_t *restrict cycle_buf) {
 	if (o->opt.flags & SAU_RAS_O_VIOLET) {
-		sauRasG_map_v_urand(o, buf_len, end_a_buf,end_b_buf, cycle_buf);
+		sauROsc_map_v_urand(o, buf_len, end_a_buf,end_b_buf, cycle_buf);
 		return;
 	}
 	for (size_t i = 0; i < buf_len; ++i) {
@@ -256,14 +256,14 @@ static sauMaybeUnused void sauRasG_map_urand(sauRasG *restrict o,
  *
  * Self-modulation version, slower and more flexible design.
  */
-static sauMaybeUnused void sauRasG_map_urand_s(sauRasG *restrict o,
+static sauMaybeUnused void sauROsc_map_urand_s(sauROsc *restrict o,
 		size_t buf_len,
 		float *restrict main_buf,
 		sauLine_val_f line_f,
 		const uint32_t *restrict cycle_buf,
 		const float *restrict pm_abuf) {
 	if (o->opt.flags & SAU_RAS_O_VIOLET) {
-		sauRasG_map_v_urand_s(o, buf_len, main_buf, line_f,
+		sauROsc_map_v_urand_s(o, buf_len, main_buf, line_f,
 				cycle_buf, pm_abuf);
 		return;
 	}
@@ -273,7 +273,7 @@ static sauMaybeUnused void sauRasG_map_urand_s(sauRasG *restrict o,
 /**
  * Run for \p buf_len samples in 'Gaussian random' mode, generating output.
  */
-static sauMaybeUnused void sauRasG_map_gauss(sauRasG *restrict o,
+static sauMaybeUnused void sauROsc_map_gauss(sauROsc *restrict o,
 		size_t buf_len,
 		float *restrict end_a_buf,
 		float *restrict end_b_buf,
@@ -298,7 +298,7 @@ RASG_MAP_S_FUNC(gauss)
  * scaled 'ternary random' variation. Ternary smooth random always changes
  * value, so only two differences are possible -- hence diffed for binary.
  */
-static sauMaybeUnused void sauRasG_map_v_bin(sauRasG *restrict o,
+static sauMaybeUnused void sauROsc_map_v_bin(sauROsc *restrict o,
 		size_t buf_len,
 		float *restrict end_a_buf,
 		float *restrict end_b_buf,
@@ -333,7 +333,7 @@ static sauMaybeUnused void sauRasG_map_v_bin(sauRasG *restrict o,
  *
  * Self-modulation version, slower and more flexible design.
  */
-static sauMaybeUnused void sauRasG_map_v_bin_s(sauRasG *restrict o,
+static sauMaybeUnused void sauROsc_map_v_bin_s(sauROsc *restrict o,
 		size_t buf_len,
 		float *restrict main_buf,
 		sauLine_val_f line_f,
@@ -352,13 +352,13 @@ static sauMaybeUnused void sauRasG_map_v_bin_s(sauRasG *restrict o,
  * For an increasing \a level > 0 each new level is half as squiggly, for
  * a near-binary mode when above 5 (with best quality seemingly from 27).
  */
-static sauMaybeUnused void sauRasG_map_bin(sauRasG *restrict o,
+static sauMaybeUnused void sauROsc_map_bin(sauROsc *restrict o,
 		size_t buf_len,
 		float *restrict end_a_buf,
 		float *restrict end_b_buf,
 		const uint32_t *restrict cycle_buf) {
 	if (o->opt.flags & SAU_RAS_O_VIOLET) {
-		sauRasG_map_v_bin(o, buf_len, end_a_buf, end_b_buf, cycle_buf);
+		sauROsc_map_v_bin(o, buf_len, end_a_buf, end_b_buf, cycle_buf);
 		return;
 	}
 	int sr = o->opt.level;
@@ -382,14 +382,14 @@ static sauMaybeUnused void sauRasG_map_bin(sauRasG *restrict o,
  *
  * Self-modulation version, slower and more flexible design.
  */
-static sauMaybeUnused void sauRasG_map_bin_s(sauRasG *restrict o,
+static sauMaybeUnused void sauROsc_map_bin_s(sauROsc *restrict o,
 		size_t buf_len,
 		float *restrict main_buf,
 		sauLine_val_f line_f,
 		const uint32_t *restrict cycle_buf,
 		const float *restrict pm_abuf) {
 	if (o->opt.flags & SAU_RAS_O_VIOLET) {
-		sauRasG_map_v_bin_s(o, buf_len, main_buf, line_f,
+		sauROsc_map_v_bin_s(o, buf_len, main_buf, line_f,
 				cycle_buf, pm_abuf);
 		return;
 	}
@@ -406,7 +406,7 @@ static sauMaybeUnused void sauRasG_map_bin_s(sauRasG *restrict o,
  * from top-or-bottom to middle, like an oscillation randomly flipping its
  * polarity at zero crossings. Smooth-sounding, and has useful properties.
  */
-static sauMaybeUnused void sauRasG_map_tern(sauRasG *restrict o,
+static sauMaybeUnused void sauROsc_map_tern(sauROsc *restrict o,
 		size_t buf_len,
 		float *restrict end_a_buf,
 		float *restrict end_b_buf,
@@ -435,7 +435,7 @@ RASG_MAP_S_FUNC(tern)
  * Run for \p buf_len samples in 'fixed cycle' mode, generating output.
  * Simple version, optimizing high level (pure base frequency) setting.
  */
-static sauMaybeUnused void sauRasG_map_fixed_simple(sauRasG *restrict o,
+static sauMaybeUnused void sauROsc_map_fixed_simple(sauROsc *restrict o,
 		size_t buf_len,
 		float *restrict end_a_buf,
 		float *restrict end_b_buf,
@@ -460,7 +460,7 @@ RASG_MAP_S_FUNC(fixed_simple)
  * For an increasing \a level > 0, each new level halves the randomness,
  * the base frequency amplifying in its place -- toward ultimate purity.
  */
-static sauMaybeUnused void sauRasG_map_v_fixed(sauRasG *restrict o,
+static sauMaybeUnused void sauROsc_map_v_fixed(sauROsc *restrict o,
 		size_t buf_len,
 		float *restrict end_a_buf,
 		float *restrict end_b_buf,
@@ -495,18 +495,18 @@ RASG_MAP_S_FUNC(v_fixed)
  * For an increasing \a level > 0 each new level halves the randomness,
  * the base frequency amplifying in its place (toward ultimate purity).
  */
-static sauMaybeUnused void sauRasG_map_fixed(sauRasG *restrict o,
+static sauMaybeUnused void sauROsc_map_fixed(sauROsc *restrict o,
 		size_t buf_len,
 		float *restrict end_a_buf,
 		float *restrict end_b_buf,
 		const uint32_t *restrict cycle_buf) {
 	if (o->opt.level >= sau_ras_level(9)) {
-		sauRasG_map_fixed_simple(o, buf_len, end_a_buf, end_b_buf,
+		sauROsc_map_fixed_simple(o, buf_len, end_a_buf, end_b_buf,
 				cycle_buf);
 		return;
 	}
 	if (o->opt.flags & SAU_RAS_O_VIOLET) {
-		sauRasG_map_v_fixed(o, buf_len, end_a_buf, end_b_buf,
+		sauROsc_map_v_fixed(o, buf_len, end_a_buf, end_b_buf,
 				cycle_buf);
 		return;
 	}
@@ -533,19 +533,19 @@ static sauMaybeUnused void sauRasG_map_fixed(sauRasG *restrict o,
  *
  * Self-modulation version, slower and more flexible design.
  */
-static sauMaybeUnused void sauRasG_map_fixed_s(sauRasG *restrict o,
+static sauMaybeUnused void sauROsc_map_fixed_s(sauROsc *restrict o,
 		size_t buf_len,
 		float *restrict main_buf,
 		sauLine_val_f line_f,
 		const uint32_t *restrict cycle_buf,
 		const float *restrict pm_abuf) {
 	if (o->opt.level >= sau_ras_level(9)) {
-		sauRasG_map_fixed_simple_s(o, buf_len, main_buf, line_f,
+		sauROsc_map_fixed_simple_s(o, buf_len, main_buf, line_f,
 				cycle_buf, pm_abuf);
 		return;
 	}
 	if (o->opt.flags & SAU_RAS_O_VIOLET) {
-		sauRasG_map_v_fixed_s(o, buf_len, main_buf, line_f,
+		sauROsc_map_v_fixed_s(o, buf_len, main_buf, line_f,
 				cycle_buf, pm_abuf);
 		return;
 	}
@@ -556,7 +556,7 @@ static sauMaybeUnused void sauRasG_map_fixed_s(sauRasG *restrict o,
 /**
  * Run for \p buf_len samples in 'additive recurrence' mode, generating output.
  */
-static sauMaybeUnused void sauRasG_map_addrec(sauRasG *restrict o,
+static sauMaybeUnused void sauROsc_map_addrec(sauROsc *restrict o,
 		size_t buf_len,
 		float *restrict end_a_buf,
 		float *restrict end_b_buf,
@@ -578,15 +578,15 @@ static sauMaybeUnused void sauRasG_map_addrec(sauRasG *restrict o,
 
 RASG_MAP_S_FUNC(addrec)
 
-static inline sauRasG_map_f sauRasG_get_map_f(unsigned func) {
+static inline sauROsc_map_f sauROsc_get_map_f(unsigned func) {
 	switch (func) {
 	default:
-	case SAU_RAS_F_URAND: return sauRasG_map_urand;
-	case SAU_RAS_F_GAUSS: return sauRasG_map_gauss;
-	case SAU_RAS_F_BIN: return sauRasG_map_bin;
-	case SAU_RAS_F_TERN: return sauRasG_map_tern;
-	case SAU_RAS_F_FIXED: return sauRasG_map_fixed;
-	case SAU_RAS_F_ADDREC: return sauRasG_map_addrec;
+	case SAU_RAS_F_URAND: return sauROsc_map_urand;
+	case SAU_RAS_F_GAUSS: return sauROsc_map_gauss;
+	case SAU_RAS_F_BIN: return sauROsc_map_bin;
+	case SAU_RAS_F_TERN: return sauROsc_map_tern;
+	case SAU_RAS_F_FIXED: return sauROsc_map_fixed;
+	case SAU_RAS_F_ADDREC: return sauROsc_map_addrec;
 	}
 }
 
@@ -597,13 +597,13 @@ static inline sauRasG_map_f sauRasG_get_map_f(unsigned func) {
  *
  * Uses post-incremented phase each sample.
  */
-static sauMaybeUnused void sauRasG_run(sauRasG *restrict o,
+static sauMaybeUnused void sauROsc_run(sauROsc *restrict o,
 		size_t buf_len,
 		void *restrict main_buf,
 		float *restrict end_a_buf,
 		float *restrict end_b_buf,
 		const uint32_t *restrict cycle_buf) {
-	sauRasG_map_f map = sauRasG_get_map_f(o->opt.func);
+	sauROsc_map_f map = sauROsc_get_map_f(o->opt.func);
 	map(o, buf_len, end_a_buf, end_b_buf, cycle_buf);
 	sauPhasor_ui32tof(&o->phasor, main_buf, buf_len);
 	const unsigned flags = o->opt.flags, line = o->opt.line;
@@ -652,15 +652,15 @@ static sauMaybeUnused void sauRasG_run(sauRasG *restrict o,
 #endif
 }
 
-static inline sauRasG_map_selfmod_f sauRasG_get_map_selfmod_f(unsigned func) {
+static inline sauROsc_map_selfmod_f sauROsc_get_map_selfmod_f(unsigned func) {
 	switch (func) {
 	default:
-	case SAU_RAS_F_URAND: return sauRasG_map_urand_s;
-	case SAU_RAS_F_GAUSS: return sauRasG_map_gauss_s;
-	case SAU_RAS_F_BIN: return sauRasG_map_bin_s;
-	case SAU_RAS_F_TERN: return sauRasG_map_tern_s;
-	case SAU_RAS_F_FIXED: return sauRasG_map_fixed_s;
-	case SAU_RAS_F_ADDREC: return sauRasG_map_addrec_s;
+	case SAU_RAS_F_URAND: return sauROsc_map_urand_s;
+	case SAU_RAS_F_GAUSS: return sauROsc_map_gauss_s;
+	case SAU_RAS_F_BIN: return sauROsc_map_bin_s;
+	case SAU_RAS_F_TERN: return sauROsc_map_tern_s;
+	case SAU_RAS_F_FIXED: return sauROsc_map_fixed_s;
+	case SAU_RAS_F_ADDREC: return sauROsc_map_addrec_s;
 	}
 }
 
@@ -671,13 +671,13 @@ static inline sauRasG_map_selfmod_f sauRasG_get_map_selfmod_f(unsigned func) {
  *
  * Uses post-incremented phase each sample.
  */
-static sauMaybeUnused void sauRasG_run_selfmod(sauRasG *restrict o,
+static sauMaybeUnused void sauROsc_run_selfmod(sauROsc *restrict o,
 		size_t buf_len,
 		void *restrict main_buf,
 		const uint32_t *restrict cycle_buf,
 		const float *restrict pm_abuf) {
 	sauPhasor_ui32tof(&o->phasor, main_buf, buf_len);
-	sauRasG_map_selfmod_f map = sauRasG_get_map_selfmod_f(o->opt.func);
+	sauROsc_map_selfmod_f map = sauROsc_get_map_selfmod_f(o->opt.func);
 	sauLine_val_f line_f = sauLine_val_funcs[o->opt.line];
 	map(o, buf_len, main_buf, line_f, cycle_buf, pm_abuf);
 }

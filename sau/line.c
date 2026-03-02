@@ -463,17 +463,19 @@ static bool advance_len(sauLine *restrict o, uint32_t buf_len) {
  * When a goal is reached and cleared, its \a vt value becomes
  * the new \a v0 value.
  *
- * \return true if line goal not yet reached
+ * \return true if line has/had goal and its state has changed
  */
 bool sauLine_run(sauLine *restrict o,
 		float *restrict buf, uint32_t buf_len,
 		const float *restrict mulbuf) {
 	uint32_t len = 0;
+	bool has_change = false;
 	if (!(o->flags & SAU_LINEP_GOAL)) {
 		advance_len(o, buf_len);
 		goto FILL;
 	}
-	len = sauLine_get(o, buf, buf_len, mulbuf);
+	has_change = (len = sauLine_get(o, buf, buf_len, mulbuf)) > 0;
+	if (has_change) o->flags |= SAU_LINEP; // mark as having a new change
 	o->pos += len;
 	if (o->pos >= o->end) {
 		/*
@@ -484,7 +486,6 @@ bool sauLine_run(sauLine *restrict o,
 		o->pos = o->end = 0;
 		o->flags &=
 			~(SAU_LINEP_GOAL|SAU_LINEP_GOAL_RATIO|SAU_LINEP_TIME);
-		o->flags |= SAU_LINEP; // mark as having a new change
 	FILL:
 		if (!(o->flags & SAU_LINEP_STATE_RATIO))
 			mulbuf = NULL;
@@ -492,9 +493,8 @@ bool sauLine_run(sauLine *restrict o,
 			mulbuf += len;
 		sauLine_fill_sah(buf + len, buf_len - len,
 				o->v0, o->v0, 0, 0, mulbuf);
-		return false;
 	}
-	return true;
+	return has_change;
 }
 
 /**
@@ -504,9 +504,11 @@ bool sauLine_run(sauLine *restrict o,
  * When a goal is reached and cleared, its \a vt value becomes
  * the new \a v0 value.
  *
- * \return false unless state changes triggered as line goal reached
+ * \return true if line has/had goal and its state has changed
  */
 bool sauLine_skip(sauLine *restrict o, uint32_t skip_len) {
+	bool has_change = (o->flags & SAU_LINEP_GOAL) && skip_len > 0;
+	if (has_change) o->flags |= SAU_LINEP; // mark as having a new change
 	if (!advance_len(o, skip_len)) {
 		if (!(o->flags & SAU_LINEP_GOAL))
 			return false;
@@ -520,8 +522,6 @@ bool sauLine_skip(sauLine *restrict o, uint32_t skip_len) {
 			o->flags &= ~SAU_LINEP_STATE_RATIO;
 		}
 		o->flags &= ~(SAU_LINEP_GOAL | SAU_LINEP_GOAL_RATIO);
-		o->flags |= SAU_LINEP; // mark as having a new change
-		return true;
 	}
-	return false;
+	return has_change;
 }
