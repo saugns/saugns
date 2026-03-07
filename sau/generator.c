@@ -169,15 +169,6 @@ ERROR:
 
 static const sauProgramIDArr blank_idarr = {0};
 
-// default values for each phase distortion correspond to doing nothing
-static const float pd_v_default[SAU_PPD_TYPES] = {
-	[SAU_PPD_C] = 1.0,
-	[SAU_PPD_D] = 1.0,
-	[SAU_PPD_H] = 0.0,
-	[SAU_PPD_X] = 0.5,
-	[SAU_PPD_Y] = 0.5,
-};
-
 /*
  * The event timeline needs carry to ensure event node timing doesn't
  * run short (with more nodes, more values), compared to other nodes.
@@ -260,9 +251,9 @@ static float *run_valrange_param(sauGenerator *restrict o,
  */
 static sauNoinline void
 prepare_range(struct ParWithRangeMod *restrict rm, float v0, float vt) {
-	sau_init_LinePar(&rm->a.par, v0);
-	sau_init_LinePar(&rm->b.par, vt);
-	sau_init_LinePar(&rm->e.par, vt);
+	sau_init_Line(&rm->a, v0, false);
+	sau_init_Line(&rm->b, vt, false);
+	sau_init_Line(&rm->e, vt, false);
 	sau_init_EnvGen(&rm->env);
 	rm->mods1 = rm->mods2 = rm->r_mods = rm->e_mods = rm->mods_add =
 		&blank_idarr;
@@ -291,7 +282,7 @@ static void prepare_gen(sauGenerator *restrict o,
 	OSC_COMMON: {
 		OscBase *osc = &n->osc;
 		for (uint32_t i = 0; i < SAU_PPD_TYPES; ++i) {
-			float def = pd_v_default[i];
+			float def = sau_pd_v_defaults[i];
 			prepare_range(&osc->pd[i].main, def, def);
 			prepare_range(&osc->pd[i].freq, 1.0, 0.0);
 			prepare_range(&osc->pd[i].offset, 0.0, 0.0);
@@ -477,10 +468,10 @@ static void block_mix_add(GenBase *restrict n,
 /**/
 	if (layer) {
 		if (amp) MIX(+=, amp[i])
-		else     MIX(+=, n->amp.a.par.v0)
+		else     MIX(+=, n->amp.a.v0)
 	} else {
 		if (amp) MIX(=, amp[i])
-		else     MIX(=, n->amp.a.par.v0)
+		else     MIX(=, n->amp.a.v0)
 	}
 #undef MIX
 }
@@ -508,10 +499,10 @@ static void block_mix_mul_waveenv(GenBase *restrict n,
 /**/
 	if (layer) {
 		if (amp) MIX(*=, amp[i])
-		else     MIX(*=, n->amp.a.par.v0)
+		else     MIX(*=, n->amp.a.v0)
 	} else {
 		if (amp) MIX(=, amp[i])
-		else     MIX(=, n->amp.a.par.v0)
+		else     MIX(=, n->amp.a.v0)
 	}
 #undef MIX
 }
@@ -551,7 +542,7 @@ static float *run_mods(sauGenerator *restrict o,
 }
 
 #define NEED_FILL(line, mods) \
-	(((line)->par.flags & SAU_LINEP_GOAL) || (mods)->count > 0)
+	(((line)->flags & SAU_LINEP_GOAL) || (mods)->count > 0)
 
 static float *run_line_plus_mods(sauGenerator *restrict o,
 		Buf *restrict bufs, uint32_t len, uint32_t note_dur,
@@ -559,10 +550,8 @@ static float *run_line_plus_mods(sauGenerator *restrict o,
 		const sauProgramIDArr *restrict mods,
 		float *restrict mulbuf,
 		float *restrict freq, bool force_fill) {
-	if (!NEED_FILL(line, mods) && !force_fill && !mulbuf) {
-		sauLine_skip(line, len);
+	if (!NEED_FILL(line, mods) && !force_fill && !mulbuf)
 		return NULL;
-	}
 	sauLine_run(line, *bufs, len, mulbuf);
 	return run_mods(o, bufs, len, note_dur, mods, freq, false, true);
 }
@@ -615,10 +604,9 @@ static inline float *run_valrange_mods(sauGenerator *restrict o,
 				&n->b, n->mods2, param_mulbuf, freq, false);
 		float *mod_buf = run_mods(o, (bufs+2), len, note_dur,
 				n->r_mods, freq, true, false);
-		par_buf = run_valrange_mix((bufs+0), par_buf, n->a.par.v0,
-				par2_buf, n->b.par.v0, mod_buf, len);
+		par_buf = run_valrange_mix((bufs+0), par_buf, n->a.v0,
+				par2_buf, n->b.v0, mod_buf, len);
 	} else {
-		sauLine_skip(&n->b, len);
 		// to keep timing in sync, run mods2 despite discarding result
 		run_mods(o, (bufs+1), len, note_dur,
 				n->mods2, freq, false, true);
@@ -642,10 +630,9 @@ static float *run_valrange_env(sauGenerator *restrict o,
 				&n->e, n->e_mods, param_mulbuf, freq, false);
 		float *env_buf = bufs[2];
 		sauEnvGen_run(&n->env, env_buf, len, note_dur);
-		par_buf = run_valrange_mix((bufs+0), par_buf, n->a.par.v0,
-				par2_buf, n->e.par.v0, env_buf, len);
+		par_buf = run_valrange_mix((bufs+0), par_buf, n->a.v0,
+				par2_buf, n->e.v0, env_buf, len);
 	} else {
-		sauLine_skip(&n->e, len);
 		// to keep timing in sync, run e_mods despite discarding result
 		run_mods(o, (bufs+1), len, note_dur,
 				n->e_mods, freq, false, true);
@@ -754,30 +741,30 @@ run_block_wosc(sauGenerator *restrict o,
 			freq, pm_buf); // #2 and #3 <- #4
 	for (unsigned i = 0; i < SAU_PPD_TYPES; ++i) {
 		struct ParPDSet *pd = &n->osc.pd[i];
-		const float nop_value = pd_v_default[i];
+		const float nop_value = sau_pd_v_defaults[i];
 		float *pd_f = run_valrange_param(o, bufs,
 				len, n->gen.note_dur, &pd->freq,
 				NULL, freq, false, false); // #3 <- #4..6
 		float *pd_p = run_valrange_param(o, bufs+1,
 				len, n->gen.note_dur, &pd->offset,
 				NULL, freq, false, false); // #4 <- #5..7
-		bool force_use = pd->main.a.par.v0 != nop_value ||
+		bool force_use = pd->main.a.v0 != nop_value ||
 			(sau_pd_f_is_fmul(i) &&
-			 (pd_f || pd->freq.a.par.v0 != 1.f));
+			 (pd_f || pd->freq.a.v0 != 1.f));
 		if (run_valrange_param(o, bufs+2, len, n->gen.note_dur,
 					&pd->main, NULL, freq,
 					false, force_use)) {
 			// #2 and #3 <- #4; #5; #6..8
 			sauWOsc_pdist(&n->wo.wosc, i,
 					main_buf, cycle_buf, len, bufs[2],
-					pd_f, pd->freq.a.par.v0,
-					pd_p, pd->offset.a.par.v0);
+					pd_f, pd->freq.a.v0,
+					pd_p, pd->offset.a.v0);
 		}
 	}
 	bufs++; // amp #4 (++), tmp #5..6 (reserved highest ID returned)
 	if (run_valrange_param(o, bufs, len, n->gen.note_dur,
 				&n->osc.pm_a, NULL, freq, false,
-				n->osc.pm_a.a.par.v0 != 0.f)) {
+				n->osc.pm_a.a.v0 != 0.f)) {
 		sauWOsc_run_selfmod(&n->wo.wosc, main_buf, len,
 				bufs[0]); // #3 <- #2; #5, tmp #6..7
 	} else {
@@ -806,30 +793,30 @@ run_block_rasg(sauGenerator *restrict o,
 			freq, pm_buf); // #2 and #3 <- #4
 	for (unsigned i = 0; i < SAU_PPD_TYPES; ++i) {
 		struct ParPDSet *pd = &n->osc.pd[i];
-		const float nop_value = pd_v_default[i];
+		const float nop_value = sau_pd_v_defaults[i];
 		float *pd_f = run_valrange_param(o, bufs,
 				len, n->gen.note_dur, &pd->freq,
 				NULL, freq, false, false); // #3 <- #4..6
 		float *pd_p = run_valrange_param(o, bufs+1,
 				len, n->gen.note_dur, &pd->offset,
 				NULL, freq, false, false); // #4 <- #5..7
-		bool force_use = pd->main.a.par.v0 != nop_value ||
+		bool force_use = pd->main.a.v0 != nop_value ||
 			(sau_pd_f_is_fmul(i) &&
-			 (pd_f || pd->freq.a.par.v0 != 1.f));
+			 (pd_f || pd->freq.a.v0 != 1.f));
 		if (run_valrange_param(o, bufs+2, len, n->gen.note_dur,
 					&pd->main, NULL, freq,
 					false, force_use)) {
 			// #2 and #3 <- #4; #5; #6..8
 			sauRasG_pdist(&n->rg.rasg, i,
 					main_buf, cycle_buf, len, bufs[2],
-					pd_f, pd->freq.a.par.v0,
-					pd_p, pd->offset.a.par.v0);
+					pd_f, pd->freq.a.v0,
+					pd_p, pd->offset.a.v0);
 		}
 	}
 	bufs++; // amp #4 (++), tmp #5..6 (reserved highest ID returned)
 	if (run_valrange_param(o, bufs, len, n->gen.note_dur,
 				&n->osc.pm_a, NULL, freq, false,
-				n->osc.pm_a.a.par.v0 != 0.f)) {
+				n->osc.pm_a.a.v0 != 0.f)) {
 		sauRasG_run_selfmod(&n->rg.rasg, len, main_buf, cycle_buf,
 				bufs[0]); // #3 <- #2; #5, tmp #6..7
 	} else {
@@ -944,7 +931,7 @@ static void mix_add(sauGenerator *restrict o,
 	float *mix_r = o->bufs[1 - MIX_BUFS];
 	if (run_valrange_param(o, (in_bufs + 1), len, n->gen.note_dur,
 				&n->gen.pan, NULL, freq_buf, false,
-				n->gen.pan.a.par.v0 != 0.f)) {
+				n->gen.pan.a.v0 != 0.f)) {
 		float *pan_buf = *(in_bufs + 1);
 		for (uint32_t i = 0; i < len; ++i) {
 			float s = s_buf[i] * o->amp_scale;
