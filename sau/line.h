@@ -1,5 +1,5 @@
 /* SAU library: Value line module.
- * Copyright (c) 2011-2013, 2017-2025 Joel K. Pettersson
+ * Copyright (c) 2011-2013, 2017-2026 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
@@ -104,25 +104,8 @@ enum {
 	SAU_LINEP_TYPE        = 1U<<4, // type set
 	SAU_LINEP_TIME        = 1U<<5, // time_ms set -- cleared on time expiry
 	SAU_LINEP_TIME_IF_NEW = 1U<<6, // time_ms to be kept if currently set
-	SAU_LINEP             = 1U<<7, // if invoked at all (mention in script)
+	SAU_LINEP             = 1U<<7, // multi-purpose marker: touched, changed
 };
-
-/**
- * Line parameter type. Holds parameter sweep subparameters.
- */
-typedef struct sauLinePar {
-	float v0, vt;
-	uint32_t time_ms;
-	uint8_t type;
-	uint8_t flags;
-} sauLinePar;
-
-/** Set default values for audio generator use. */
-static inline void sau_init_LinePar(sauLinePar *restrict o, float v0) {
-	o->v0 = v0;
-	o->type = SAU_LINE_N_lin;
-	o->flags = SAU_LINEP_STATE | SAU_LINEP_TYPE;
-}
 
 /**
  * Switch 'log' and 'exp' line types. These differ by a conditional
@@ -137,20 +120,34 @@ static inline uint8_t sauLine_flip_exp_log(uint8_t type) {
 }
 
 /**
- * Line state type. Used during audio rendering.
+ * Line state type. Holds parameter sweep subparameters.
+ * Can be used during both parsing and audio rendering.
  */
 typedef struct sauLine {
-	sauLinePar par;
+	float v0, vt;
+	uint32_t time_ms;
+	uint8_t type;
+	uint8_t flags;
 	uint32_t pos, end;
 } sauLine;
 
+/** Set default values for audio generator use. */
+static inline void sau_init_Line(sauLine *restrict o, float v0, bool ratio) {
+	o->v0 = v0;
+	o->type = SAU_LINE_N_lin;
+	o->flags = ratio ?
+		(SAU_LINEP_STATE | SAU_LINEP_STATE_RATIO | SAU_LINEP_TYPE) :
+		(SAU_LINEP_STATE | SAU_LINEP_TYPE);
+}
+void sauLine_inherit(sauLine *restrict o, const sauLine *restrict src);
+
 /** Needed before get, run, or skip when a line is not copy-initialized. */
-static inline void sauLine_setup(sauLine *restrict o, uint32_t srate) {
-	o->end = sau_ms_in_samples(o->par.time_ms, srate, NULL);
+static inline void sauLine_prepare(sauLine *restrict o, uint32_t srate) {
+	o->end = sau_ms_in_samples(o->time_ms, srate, NULL);
 }
 
 void sauLine_copy(sauLine *restrict o,
-		const sauLinePar *restrict src, uint32_t srate);
+		const sauLine *restrict src, uint32_t srate);
 uint32_t sauLine_get(sauLine *restrict o,
 		float *restrict buf, uint32_t buf_len,
 		const float *restrict mulbuf);

@@ -1,5 +1,5 @@
 /* SAU library: Envelope generator module.
- * Copyright (c) 2025 Joel K. Pettersson
+ * Copyright (c) 2025-2026 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
@@ -78,7 +78,7 @@ static void sauEnvGen_set_par(sauEnvGen *restrict o,
 
 static inline void sau_init_EnvGen(sauEnvGen *restrict o) {
 	sauEnvGen_set_lines(o, SAU_LINE_N_lin);
-	o->mode = SAU_ENV_FN_DECLICK;
+	o->mode = SAU_ENV_FN_DEFAULT;
 	o->s_val = 1.f;
 	o->e_last = 1.f;
 }
