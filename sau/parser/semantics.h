@@ -77,6 +77,40 @@ concat_ProgramIDArr(sauMempool *restrict mp,
 	return idarr;
 }
 
+// as srate for lines, matches 1ms resolution of script time
+#define SAU_UPDATE_RATE 1000
+
+static sauNoinline void
+init_range(sauRange *restrict r, float v0, bool v0_ratio, float vt) {
+	sau_init_Line(&r->a, v0, v0_ratio);
+	sau_init_Line(&r->b, vt, false);
+	sau_init_Line(&r->e, vt, false);
+	r->env.mode = SAU_ENV_FN_DEFAULT;
+}
+
+static sauRangeSet *
+set_gen_valr(sauMempool *restrict mp,
+		sauParseGenData *restrict gen) {
+	if (!gen->valr) gen->valr = sau_mpalloc(mp, sizeof(*gen->valr));
+	return gen->valr;
+}
+
+static bool sauEnvPar_has_time(sauEnvPar *restrict o) {
+	if (o->flags & SAU_ENVP_R_STRETCH)
+		return true;
+	for (int i = 0; i < SAU_ENV_TIMES; ++i) if (o->time_ms[i] > 0)
+		return true;
+	return false;
+}
+
+const float sau_pd_v_defaults[SAU_PPD_TYPES] = {
+	[SAU_PPD_C] = 1.0,
+	[SAU_PPD_D] = 1.0,
+	[SAU_PPD_H] = 0.0,
+	[SAU_PPD_X] = 0.5,
+	[SAU_PPD_Y] = 0.5,
+};
+
 /*
  * Per-generator state used during program data allocation.
  * In parsed generator data, \a obj_id refers to an element of this.
@@ -94,6 +128,7 @@ typedef struct SemGenObj {
 	uint32_t dst_obj_id;   // for gen allocation (copying)
 	struct sauParseGenData *last_gd;
 	const sauProgramIDArr *mods_idarr[SAU_MOD_NAMED - 1];
+	sauRange valr[SAU_PVALR_TYPES];
 } SemGenObj;
 sauArrType(SemGenObjArr, SemGenObj, _)
 
@@ -135,6 +170,66 @@ typedef struct ParseSem {
 	IDsArr ev_ids; // tmp buffer for modulator lists
 	sauMempool *mp;
 } ParseSem;
+
+/*
+ * Advance time and state parameters in \p info for value range parameters.
+ */
+static void
+sem_valr_advance(unsigned id, SemGenObj *info, uint32_t skip_time) {
+	sauLine_skip(&info->valr[id].a, skip_time);
+	sauLine_skip(&info->valr[id].b, skip_time);
+	sauLine_skip(&info->valr[id].e, skip_time);
+}
+
+/*
+ * Check if sem_valr_advance() caused a change that needs to be copied on.
+ */
+static bool
+sem_valr_need_inherit(unsigned id, SemGenObj *info) {
+	return	(info->valr[id].a.flags & SAU_LINEP) ||
+		(info->valr[id].b.flags & SAU_LINEP) ||
+		(info->valr[id].e.flags & SAU_LINEP);
+}
+
+/*
+ * Copy values for a value range parameter \p id from \p info.
+ */
+static bool
+sem_valr_inherit(ParseSem *restrict o, unsigned id,
+		sauParseGenData *restrict gen, SemGenObj *info) {
+	if (!set_gen_valr(o->mp, gen))
+		return false;
+	sauRange **valr = *gen->valr;
+	if (!valr[id]) {
+		valr[id] = sau_mpmemdup(o->mp, &info->valr[id],
+				sizeof(sauRange));
+	} else {
+		sauLine_inherit(&valr[id]->a, &info->valr[id].a);
+		sauLine_inherit(&valr[id]->b, &info->valr[id].b);
+		sauLine_inherit(&valr[id]->e, &info->valr[id].e);
+	}
+	/*
+	 * Clear state change tracking set by sem_valr_advance()
+	 * and checked by sem_valr_need_inherit().
+	 */
+	info->valr[id].a.flags &= ~SAU_LINEP;
+	info->valr[id].b.flags &= ~SAU_LINEP;
+	info->valr[id].e.flags &= ~SAU_LINEP;
+	return !!valr[id];
+}
+
+/*
+ * Override and update values in \p info for value range parameters.
+ */
+static void
+sem_valr_update(unsigned id, sauRangeSet valr,
+		SemGenObj *info) {
+	if (!valr[id])
+		return;
+	sauLine_copy(&info->valr[id].a, &valr[id]->a, SAU_UPDATE_RATE);
+	sauLine_copy(&info->valr[id].b, &valr[id]->b, SAU_UPDATE_RATE);
+	sauLine_copy(&info->valr[id].e, &valr[id]->e, SAU_UPDATE_RATE);
+}
 
 /*
  * Get a recycled generator ID if available.
@@ -188,6 +283,34 @@ sem_gen_obj_add(ParseSem *restrict o, sauParseObjRef *restrict ref,
 	}
 	for (int i = 1; i < SAU_MOD_NAMED; ++i)
 		info->mods_idarr[i-1] = &blank_idarr;
+	if (ref->is_cloned) {
+		/*
+		 * Copy parts of info to be passed along directly on clone.
+		 */
+		const sauParseObjRef *src_ref = ref->prev_ref;
+		const SemGenObj *src_info =
+			&o->gen_obj.a[src_ref->obj_id];
+		memcpy(info->valr, src_info->valr, sizeof(info->valr));
+		return info;
+	}
+	sauParseGenData *gen = (void*)ref;
+	const sauParseSetOptions *sopt = gen->sopt;
+	init_range(&info->valr[SAU_PVALR_PAN],
+			sopt->def_chanmix, false, 0.0);
+	init_range(&info->valr[SAU_PVALR_AMP],
+			sopt->def_ampmult, false, 0.0);
+	init_range(&info->valr[SAU_PVALR_FREQ],
+			ref->is_nested ? sopt->def_relfreq : sopt->def_freq,
+			ref->is_nested, 0.0);
+	init_range(&info->valr[SAU_PVALR_PMA],
+			0.0, false, 0.0);
+	for (int j = 0; j < SAU_PPD_TYPES; ++j) {
+		float def = sau_pd_v_defaults[j];
+		int i = sau_pd_to_valr(j);
+		init_range(&info->valr[i+0], def, false, def);
+		init_range(&info->valr[i+1], 1.0, false, 0.0);
+		init_range(&info->valr[i+2], 0.0, false, 0.0);
+	}
 	return info;
 }
 
@@ -308,10 +431,18 @@ sem_voalloc_timing(ParseSem *restrict o, sauParseEvData *restrict e) {
 	 */
 	for (uint32_t id = 0; id < o->gen_obj.count; ++id) {
 		SemGenObj *info = &o->gen_obj.a[id];
-		if (info->time_ms <= e->wait_ms)
+		uint32_t time_subt_ms;
+		if (info->time_ms <= e->wait_ms) {
+			time_subt_ms = info->time_ms;
 			info->time_ms = 0;
-		else
+		} else {
+			time_subt_ms = e->wait_ms;
 			info->time_ms -= e->wait_ms;
+		}
+		// update time for generator subcomponents
+		if (!info->is_timed) time_subt_ms = e->wait_ms;
+		for (int i = 0; i < SAU_PVALR_TYPES; ++i)
+			sem_valr_advance(i, info, time_subt_ms);
 		if (info->is_labeled || info->has_next_ref) continue;
 		if (!(info->time_ms == 0 && info->is_timed)) continue;
 		info->is_expired = true;
@@ -494,6 +625,7 @@ sem_vograph_cb_clonegen(ParseSem *restrict o, uint32_t obj_id,
 		*dst_gen_a = dst_gen;
 		dst_gen->ref.prev_ref = &dst_pgen->ref;
 		dst_gen->event = o->ga_main_clone->event;
+		dst_gen->sopt = o->ga_main_clone->sopt;
 		sem_obj_ref_init(&dst_gen->ref, SAU_POBJT_GEN, type, true);
 		dst_gen->ref.is_cloned = true;
 		if (!(dst_info = sem_genalloc_update(o, dst_gen,
@@ -540,7 +672,9 @@ sem_handle_list(ParseSem *restrict o, const sauParseListData *restrict list_in,
 		sauParseGenData *restrict owner_gen);
 
 static void
-gen_pardef_env(sauParseGenData *restrict gen, sauRange *restrict r) {
+gen_pardef_env(sauParseGenData *restrict gen, unsigned id,
+		sauRangeSet valr, SemGenObj *info) {
+	sauRange *r = valr[id];
 	if (!r || !(r->e.flags & SAU_LINEP))
 		return;
 	const sauParseSetOptions *sopt = gen->sopt;
@@ -564,6 +698,26 @@ gen_pardef_env(sauParseGenData *restrict gen, sauRange *restrict r) {
 		r->env.mode = sopt->def_parenv.mode;
 	// TODO: if setting defaults only, need more for SAU_ENVP_R_STRETCH
 	r->env.flags |= sopt->def_parenv.flags;
+	/*
+	 * Update copy in info...
+	 */
+	if (r->env.line_all_p1 > 0)
+		info->valr[id].env.line_all_p1 = r->env.line_all_p1;
+	for (int i = 0; i < SAU_ENV_TIMES; ++i) {
+		if (r->env.time_flags & SAU_ENVP_TIME(i))
+			info->valr[id].env.time_ms[i] = r->env.time_ms[i];
+		if (r->env.line_p1[i] > 0)
+			info->valr[id].env.line_p1[i] = r->env.line_p1[i];
+	}
+	if (r->env.time_flags & SAU_ENVP_TIME(SAU_ENV_TIME_R)) {
+		uint8_t mask = SAU_ENVP_R_STRETCH;
+		info->valr[id].env.flags &= ~mask;
+		info->valr[id].env.flags |= r->env.flags & mask;
+	}
+	if (r->env.flags & SAU_ENVP_S)
+		info->valr[id].env.s_val = r->env.s_val;
+	if (r->env.flags & SAU_ENVP_MODE)
+		info->valr[id].env.mode = r->env.mode;
 }
 
 /*
@@ -572,20 +726,43 @@ gen_pardef_env(sauParseGenData *restrict gen, sauRange *restrict r) {
 static void
 sem_handle_gen_pardef(ParseSem *restrict o, sauParseGenData *restrict gen,
 		SemGenObj *info) {
-	if (!gen->valr)
-		return;
-	sauRange *amp = (*gen->valr)[SAU_PVALR_AMP];
-	if (amp) {
-		float used_ampmult = gen->sopt->def_ampmult;
-		amp->a.v0 *= used_ampmult;
-		amp->a.vt *= used_ampmult;
-		amp->b.v0 *= used_ampmult;
-		amp->b.vt *= used_ampmult;
-		amp->e.v0 *= used_ampmult;
-		amp->e.vt *= used_ampmult;
+	const sauParseSetOptions *sopt = gen->sopt;
+	if (gen->valr) {
+		/*
+		 * Use input from parser to update parameter state.
+		 */
+		for (int i = 0; i < SAU_PVALR_TYPES; ++i)
+			gen_pardef_env(gen, i, *gen->valr, info);
+		sauRange *amp = (*gen->valr)[SAU_PVALR_AMP];
+		if (amp) {
+			amp->a.v0 *= sopt->def_ampmult;
+			amp->a.vt *= sopt->def_ampmult;
+			amp->b.v0 *= sopt->def_ampmult;
+			amp->b.vt *= sopt->def_ampmult;
+			amp->e.v0 *= sopt->def_ampmult;
+			amp->e.vt *= sopt->def_ampmult;
+		}
+		for (int i = 0; i < SAU_PVALR_TYPES; ++i)
+			sem_valr_update(i, *gen->valr, info);
 	}
-	for (int i = 0; i < SAU_PVALR_TYPES; ++i)
-		gen_pardef_env(gen, (*gen->valr)[i]);
+	if (gen->ref.is_new && !gen->ref.is_cloned) {
+		/*
+		 * Fill in initial default values if missing.
+		 */
+		if (sopt->def_ampmult != 1.f)
+			sem_valr_inherit(o, SAU_PVALR_AMP, gen, info);
+		if (!gen->ref.is_nested && sopt->def_chanmix != 0.f)
+			sem_valr_inherit(o, SAU_PVALR_PAN, gen, info);
+		if (gen->ref.is_nested || sopt->def_freq != SAU_PDEF_FREQ)
+			sem_valr_inherit(o, SAU_PVALR_FREQ, gen, info);
+	}
+	/*
+	 * Copy tracked/timed state changes from \p info to output.
+	 */
+	for (int i = 0; i < SAU_PVALR_TYPES; ++i) {
+		if (sem_valr_need_inherit(i, info))
+			sem_valr_inherit(o, i, gen, info);
+	}
 	gen->sopt = NULL; // uses temporary allocation; clear after use
 }
 
@@ -747,8 +924,9 @@ sem_vograph_traverse(ParseSem *restrict o, sauVoAllocState *restrict vas) {
 }
 
 static inline void
-time_line(sauLinePar *restrict line, uint32_t default_time_ms) {
-	if (line->flags & SAU_LINEP_TIME_IF_NEW) { // update fallback value
+time_line(sauLine *restrict line, uint32_t default_time_ms) {
+	unsigned mask = SAU_LINEP_GOAL | SAU_LINEP_TIME_IF_NEW;
+	if ((line->flags & mask) == mask) { // update fallback value
 		line->time_ms = default_time_ms;
 		line->flags |= SAU_LINEP_TIME;
 	}
@@ -962,7 +1140,7 @@ static sauNoinline void
 print_range(const sauRange *restrict r, char c) {
 	if (!r)
 		return;
-	const sauLinePar *line = &r->a; // currently prints only the first line
+	const sauLine *line = &r->a; // currently prints only the first line
 	if ((line->flags & SAU_LINEP_STATE) != 0) {
 		if ((line->flags & SAU_LINEP_GOAL) != 0)
 			sau_printf("\t%c=%-6.2f->%-6.2f", c, line->v0, line->vt);

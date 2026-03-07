@@ -839,7 +839,7 @@ static bool scan_sym_id(sauScanner *restrict o,
 
 static bool scan_line_state(sauScanner *restrict o,
 		sauScanNumConst_f scan_numconst,
-		sauLinePar *restrict line, bool ratio) {
+		sauLine *restrict line, bool ratio) {
 	double v0;
 	if (!scan_num(o, scan_numconst, &v0))
 		return false;
@@ -911,29 +911,25 @@ static void parse_in_par_env_and_sweep(sauParser *restrict o);
 
 /* Indexing of parts of a value range struct. */
 enum {
-	RANGE_NONE = 0,
-	RANGE_A,
-	RANGE_B,
-	RANGE_E_DEF, // handle script option default as special case
-	RANGE_E,
+	RANGE_E_DEF = SAU_RANGE_PARAMS, // handle S sopt values as special case
 };
 
-static inline sauLinePar *get_valr_line(sauRange *restrict r, unsigned parts) {
+static inline sauLine *get_valr_line(sauRange *restrict r, unsigned parts) {
 	switch (parts) {
-	case RANGE_A: return &r->a;
-	case RANGE_B: return &r->b;
-	case RANGE_E_DEF: /* fall-through */
-	case RANGE_E: return &r->e;
+	case SAU_RANGE_A: return &r->a;
+	case SAU_RANGE_B: return &r->b;
+	case SAU_RANGE_E: /* fall-through */
+	case RANGE_E_DEF: return &r->e;
 	default: return NULL;
 	}
 }
 
 static inline ParseLevel_sub_f get_valr_sub_f(unsigned parts) {
 	switch (parts) {
-	case RANGE_A:
-	case RANGE_B: return parse_in_par_sweep;
+	case SAU_RANGE_A:
+	case SAU_RANGE_B: return parse_in_par_sweep;
+	case SAU_RANGE_E: return parse_in_par_env_and_sweep;
 	case RANGE_E_DEF: return parse_in_par_env;
-	case RANGE_E: return parse_in_par_env_and_sweep;
 	default: return NULL;
 	}
 }
@@ -974,45 +970,16 @@ struct ParseLevel {
 	uint32_t add_wait_ms, carry_wait_ms; /* added for next event */
 };
 
-static void init_range(const sauParseSetOptions *restrict sopt,
-		sauRange *restrict r) {
-	// default implicit time value is flexible
-	r->a.time_ms = r->b.time_ms = r->e.time_ms =
-		sopt->def_time_ms;
-	r->a.flags = r->b.flags = r->e.flags =
-		SAU_LINEP_TIME | SAU_LINEP_TIME_IF_NEW;
-}
-
 static sauRange *create_range(sauParser *restrict o,
 		sauParseGenData *restrict gen,
-		bool mult, uint32_t valr_id) {
-	if (!gen->valr &&
-	    !(gen->valr = sau_mpalloc(o->mp, sizeof(*gen->valr))))
+		uint32_t valr_id) {
+	if (!set_gen_valr(o->mp, gen))
 		return NULL;
 	sauRange *r;
 	if (!((*gen->valr)[valr_id] = r = sau_mpalloc(o->mp, sizeof(*r))))
 		return NULL;
-	struct NestScope *ns = NestArr_tip(&o->nest);
-	sauParseSetOptions *sopt = ns->sopt;
-	init_range(sopt, r);
-	float a;
-	switch (valr_id) {
-	case SAU_PVALR_PAN:
-		a = sopt->def_chanmix;
-		break;
-	case SAU_PVALR_AMP:
-		a = 1.0f; // value multiplied by sopt->def_ampmult separately
-		break;
-	case SAU_PVALR_FREQ:
-		a = mult ? sopt->def_relfreq : sopt->def_freq;
-		break;
-	default:
-		return r;
-	}
-	r->a.v0 = a;
-	r->a.flags |= SAU_LINEP_STATE;
-	if (mult)
-		r->a.flags |= SAU_LINEP_STATE_RATIO;
+	// apply default time logic
+	r->a.flags = r->b.flags = r->e.flags = SAU_LINEP_TIME_IF_NEW;
 	return r;
 }
 
@@ -1252,10 +1219,6 @@ static void begin_gen(sauParser *restrict o,
 		if (sau_pgen_has_seed(type))
 			gen->seed = sau_rand32(&o->math_state);
 		gen->time = sauTime_DEFAULT(sopt->def_time_ms, is_nested);
-		if (sopt->def_ampmult != 1.f)
-			create_range(o, gen, false, SAU_PVALR_AMP);
-		if (!is_nested && sopt->def_chanmix != 0.f)
-			create_range(o, gen, false, SAU_PVALR_PAN);
 		if (sau_pgen_is_osc(type)) {
 			switch (type) {
 			case SAU_PGEN_N_raseg:
@@ -1264,9 +1227,6 @@ static void begin_gen(sauParser *restrict o,
 				gen->mode.woo = sopt->def_woo; break;
 			}
 		}
-		// all audio generators have frequency, not only oscillators
-		if (is_nested || sopt->def_freq != SAU_PDEF_FREQ)
-			create_range(o, gen, is_nested, SAU_PVALR_FREQ);
 		sem_obj_ref_init(&gen->ref, SAU_POBJT_GEN, type, is_nested);
 	}
 	link_ev_obj(pl, ns, e, &gen->ref, &pgen->ref, is_copy);
@@ -1485,7 +1445,7 @@ static bool parse_level(sauParser *restrict o,
 		uint8_t use_type, uint8_t newscope, uint8_t close_c);
 
 static uint8_t parse_par_sweep(sauScanner *restrict sc,
-		sauLinePar *restrict line,
+		sauLine *restrict line,
 		struct NestScope *restrict ns, uint8_t c) {
 	double val;
 	size_t id;
@@ -1507,8 +1467,10 @@ static uint8_t parse_par_sweep(sauScanner *restrict sc,
 		line->flags |= SAU_LINEP_TYPE;
 		break;
 	case 't':
-		if (scan_time_val(sc, &line->time_ms))
+		if (scan_time_val(sc, &line->time_ms)) {
+			line->flags |= SAU_LINEP_TIME;
 			line->flags &= ~SAU_LINEP_TIME_IF_NEW;
+		}
 		break;
 	case 'v':
 		scan_line_state(sc, ns->numconst_f, line, ns->num_ratio);
@@ -1625,7 +1587,7 @@ static uint8_t parse_par_env(sauScanner *restrict sc,
 static void parse_in_par_sweep(sauParser *restrict o) {
 	struct NestScope *ns = NestArr_getrev(&o->nest, 1);
 	sauRange *range = ns->gen_valr;
-	sauLinePar *line = get_valr_line(range, ns->valr_parts);
+	sauLine *line = get_valr_line(range, ns->valr_parts);
 	PARSE_IN__HEAD(parse_in_par_sweep, true)
 		if (!c || parse_par_sweep(sc, line, ns, c)) goto DEFER;
 	PARSE_IN__TAIL()
@@ -1642,7 +1604,7 @@ static void parse_in_par_env(sauParser *restrict o) {
 static void parse_in_par_env_and_sweep(sauParser *restrict o) {
 	struct NestScope *ns = NestArr_getrev(&o->nest, 1);
 	sauRange *range = ns->gen_valr;
-	sauLinePar *line = get_valr_line(range, ns->valr_parts);
+	sauLine *line = get_valr_line(range, ns->valr_parts);
 	PARSE_IN__HEAD(parse_in_par_env_and_sweep, true)
 		if (!c ||
 		    (parse_par_sweep(sc, line, ns, c) &&
@@ -1663,11 +1625,7 @@ static bool prepare_par_range(sauParser *restrict o,
 	sauParseGenData *gen = pl->gen;
 	if (gen_valr || !gen) goto DONE;
 	if (!gen->valr || !(gen_valr = (*gen->valr)[valr_id])) {
-		/* create for updating, unparsed values kept unset */
-		gen_valr = create_range(o, gen, ratio, valr_id);
-		gen_valr->a.flags &= ~SAU_LINEP_STATE;
-		gen_valr->b.flags &= ~SAU_LINEP_STATE;
-		gen_valr->e.flags &= ~SAU_LINEP_STATE;
+		gen_valr = create_range(o, gen, valr_id);
 	}
 	get_valr_line(gen_valr, valr_parts)->flags |= SAU_LINEP; // is touched
 DONE:
@@ -1686,7 +1644,7 @@ static sauParseListData *parse_par_list(sauParser *restrict o,
 	prepare_par_range(o, ns, numconst_f,
 			gen_valr, ratio, valr_id, valr_parts);
 	if (ns->gen_valr) {
-		sauLinePar *line = get_valr_line(ns->gen_valr, valr_parts);
+		sauLine *line = get_valr_line(ns->gen_valr, valr_parts);
 		if (line) scan_line_state(o->sc, numconst_f, line, ratio);
 	}
 	ns = NestArr_add(&o->nest);
@@ -1755,7 +1713,7 @@ static uint8_t parse_par_dotdot(sauParser *restrict o,
 		sauRange *restrict range, bool ratio,
 		unsigned valr_id, uint8_t mod) {
 	parse_par_list(o, num_f, range, ratio, valr_id,
-			mod+SAU_MOD_VALR2, RANGE_B);
+			mod+SAU_MOD_VALR2, SAU_RANGE_B);
 	uint8_t c = 0;
 	const char *opt_expected =
 		"'.r', '.e', '.a' or nothing after '..' and second value";
@@ -1776,7 +1734,7 @@ static uint8_t parse_par_dotdot(sauParser *restrict o,
 			opt_at = 2;
 			if (c == 'e') {
 				parse_par_list(o, num_f, range, ratio, valr_id,
-						mod+SAU_MOD_VALR_e, RANGE_E);
+					mod+SAU_MOD_VALR_e, SAU_RANGE_E);
 				opt_expected = "'.a' or nothing after '.e'";
 				break;
 			} /* fall-through */
@@ -1803,20 +1761,20 @@ static uint8_t parse_par_modranges(sauParser *restrict o,
 		sauRange *restrict range, bool ratio,
 		unsigned valr_id, uint8_t mod) {
 	uint8_t c;
-	sauParseListData *first_list =
-		parse_par_list(o, num_f, range, ratio, valr_id, mod, RANGE_A);
+	sauParseListData *first_list = parse_par_list(o, num_f, range, ratio,
+			valr_id, mod, SAU_RANGE_A);
 	switch ((c = sauScanner_getc_after(o->sc, '.'))) {
 	case '.':
 		return parse_par_dotdot(o, num_f, range, ratio, valr_id, mod);
 	case 'e':
 		change_list_use(first_list, mod+4);
 		parse_par_list(o, num_f, range, ratio, valr_id,
-				mod+SAU_MOD_VALR_e, RANGE_E);
+				mod+SAU_MOD_VALR_e, SAU_RANGE_E);
 		break;
 	case 'r':
 		change_list_use(first_list, mod+4);
 		parse_par_list(o, num_f, range, ratio, valr_id,
-				mod+SAU_MOD_VALR_r, RANGE_B);
+				mod+SAU_MOD_VALR_r, SAU_RANGE_B);
 		break;
 	default:
 		return c;

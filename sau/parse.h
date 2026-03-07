@@ -52,7 +52,8 @@ enum {
 	SAU_ENV_FN_DECLICK,
 	SAU_ENV_FN_LOOP,
 	SAU_ENV_FN_SHRINK,
-	SAU_ENV_FUNCTIONS
+	SAU_ENV_FUNCTIONS,
+	SAU_ENV_FN_DEFAULT = SAU_ENV_FN_DECLICK
 };
 
 /** Envelope time parameters. Used as indices for time and line arrays. */
@@ -84,6 +85,16 @@ typedef struct sauEnvPar {
 	uint8_t mode;
 } sauEnvPar;
 
+/** Range subparameters. Used as indices in various places. */
+enum{
+	SAU_RANGE_NONE = 0,
+	SAU_RANGE_A,
+	SAU_RANGE_B,
+	SAU_RANGE_E,
+	SAU_RANGE_ENV,
+	SAU_RANGE_PARAMS
+};
+
 /**
  * Range parameter type.
  *
@@ -91,7 +102,7 @@ typedef struct sauEnvPar {
  * Also holds envelope parameter data, for use with a separate triggered timer.
  */
 typedef struct sauRange {
-	sauLinePar a, b, e;
+	sauLine a, b, e;
 	sauEnvPar env;
 } sauRange;
 
@@ -113,7 +124,8 @@ enum {
 	SAU_PVALR_PD_(H)
 	SAU_PVALR_PD_(X)
 	SAU_PVALR_PD_(Y)
-	SAU_PVALR_TYPES
+	SAU_PVALR_TYPES,
+	SAU_PVALR_PD_FIRST = SAU_PVALR_PD_C
 };
 
 /** Value range parameter set type. */
@@ -128,6 +140,11 @@ enum {
 	SAU_PPD_Y,
 	SAU_PPD_TYPES,
 };
+
+#define sau_pd_to_valr(id) (SAU_PVALR_PD_FIRST + (id)*3)
+
+/** Default value for each PD corresponding to doing nothing. */
+extern const float sau_pd_v_defaults[SAU_PPD_TYPES];
 
 /** Is PD cycle zoom a.k.a. pulsar synthesis, '.f' multiplying frequency? */
 #define sau_pd_f_is_fmul(id) ((id) <= SAU_PPD_D)
