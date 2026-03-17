@@ -1,5 +1,5 @@
 /* SAU library: Phase signal generation for oscillators.
- * Copyright (c) 2022-2025 Joel K. Pettersson
+ * Copyright (c) 2022-2026 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
@@ -85,12 +85,15 @@ static inline void sauPhasor_set_phase(sauPhasor *restrict o, uint32_t phase) {
  * A NULL \p cycle_ui32 is allowed. This can be used for an oscillator
  * which does not need cycle data. It is also allowed for PD *_pdist_*
  * functions when they're not ran in rate2x mode.
+ *
+ * A NULL \p freq_f means the value \p freq_v0 will be used instead.
  */
 static sauMaybeUnused void sauPhasor_fill(sauPhasor *restrict o,
 		uint32_t *restrict cycle_ui32,
 		uint32_t *restrict phase_ui32,
 		size_t len,
 		const float *restrict freq_f,
+		float freq_v0,
 		const float *restrict pm_f) {
 #define PRE(inc, ofs)  ofs + (o->cycle_phase += inc) // be ahead one sample
 #define POST(inc, ofs) ofs + o->cycle_phase; (o->cycle_phase += inc)
@@ -102,19 +105,41 @@ static sauMaybeUnused void sauPhasor_fill(sauPhasor *restrict o,
 	}
 	o->i_to_f = false; // new fill
 #define FILL(FREQ, P, PM_IN) \
-	for (size_t i = 0; i < len; ++i) { \
-		uint64_t cycle_phase = P(sau_ftoi(coeff * (FREQ)), (PM_IN)); \
-		if (cycle_ui32) \
+	if (cycle_ui32) {\
+		for (size_t i = 0; i < len; ++i) { \
+			uint64_t inc = sau_ftoi((FREQ) * coeff); \
+			uint64_t cycle_phase = P(inc, (PM_IN)); \
 			cycle_ui32[i] = cycle_phase >> 32; \
-		phase_ui32[i] = cycle_phase; \
+			phase_ui32[i] = cycle_phase; \
+		} \
+	} else {\
+		for (size_t i = 0; i < len; ++i) { \
+			uint64_t inc = sau_ftoi((FREQ) * coeff); \
+			uint64_t cycle_phase = P(inc, (PM_IN)); \
+			phase_ui32[i] = cycle_phase; \
+		} \
 	} \
 /**/
 	if (o->preinc) { // compensate for 1-sample off delay
-		if (!pm_f) FILL(freq_f[i], PRE, 0)
-		else       FILL(freq_f[i], PRE, sau_ftoi(pm_f[i]*phase_scale))
+		if (!freq_f) {
+			if (!pm_f) FILL(freq_v0, PRE, 0)
+			else       FILL(freq_v0, PRE,
+					sau_ftoi(pm_f[i]*phase_scale))
+		} else {
+			if (!pm_f) FILL(freq_f[i], PRE, 0)
+			else       FILL(freq_f[i], PRE,
+					sau_ftoi(pm_f[i]*phase_scale))
+		}
 	} else {
-		if (!pm_f) FILL(freq_f[i], POST, 0)
-		else       FILL(freq_f[i], POST, sau_ftoi(pm_f[i]*phase_scale))
+		if (!freq_f) {
+			if (!pm_f) FILL(freq_v0, POST, 0)
+			else       FILL(freq_v0, POST,
+					sau_ftoi(pm_f[i]*phase_scale))
+		} else {
+			if (!pm_f) FILL(freq_f[i], POST, 0)
+			else       FILL(freq_f[i], POST,
+					sau_ftoi(pm_f[i]*phase_scale))
+		}
 	}
 #undef PRE
 #undef POST
