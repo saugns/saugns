@@ -867,14 +867,15 @@ static uint32_t run_rins_run_osc_phasor(struct sauGenerator *restrict o,
 	void *phase_buf = o->bufs[sau_rins_get_w0(ins->x)];
 	uint32_t cycle_buf_id = sau_rins_get_w1(ins->x);
 	void *cycle_buf = cycle_buf_id ? o->bufs[cycle_buf_id] : NULL;
-	float *freq_buf = o->bufs[ins->a.i];
+	float *freq_buf = !ins->has_a_f ? o->bufs[ins->a.i] : NULL;
+	float freq_v0 = ins->a.f; // fallback only
 	float *pm_in_buf = ins->has_b ? o->bufs[ins->b.i] : NULL;
 	if (cycle_buf_id)
 		sauPhasor_fill(&n->ro.rosc.phasor, cycle_buf, phase_buf, len,
-				freq_buf, pm_in_buf);
+				freq_buf, freq_v0, pm_in_buf);
 	else
 		sauPhasor_fill(&n->wo.wosc.phasor, cycle_buf, phase_buf, len,
-				freq_buf, pm_in_buf);
+				freq_buf, freq_v0, pm_in_buf);
 	return len;
 }
 

@@ -181,29 +181,40 @@ sauRIns_run_waveosc_pdist(uint32_t phase_buf_id,
 	return ins;
 }
 
+// buffers other than \p phase_buf_id are disabled if 0 is passed
 static inline sauRIns
 sauRIns_run_osc_phasor(uint32_t phase_buf_id,
-		uint32_t cycle_buf_id, bool has_cycle_buf,
-		uint32_t freq_buf_id,
-		uint32_t pm_in_buf, bool has_pm_in) {
-	return (sauRIns){.op = SAU_RINS_N_run_osc_phasor,
+		uint32_t cycle_buf_id,
+		uint32_t freq_buf_id, float freq_v0,
+		uint32_t pm_in_buf) {
+	sauRIns ins = {.op = SAU_RINS_N_run_osc_phasor,
 		.a.i = freq_buf_id, .has_a = true,
-		.b.i = (has_pm_in ? pm_in_buf : 0), .has_b = has_pm_in,
-		.x = sau_rins_wpair(phase_buf_id,
-				has_cycle_buf ? cycle_buf_id : 0),
+		.b.i = pm_in_buf, .has_b = !!pm_in_buf,
+		.x = sau_rins_wpair(phase_buf_id, cycle_buf_id),
 	};
+	if (!freq_buf_id) { ins.a.f = freq_v0; ins.has_a_f = true; }
+	return ins;
 }
 
 static inline sauRIns
 sauRIns_run_par_line(uint8_t par_id, uint8_t sub_id,
 		const sauLine *restrict line,
-		uint32_t par_buf_id, uint32_t mul_buf_id, bool has_mul) {
+		uint32_t par_buf_id, uint32_t mul_buf_id, float mul_v0) {
+	unsigned flags = line->flags;
+	float v0 = line->v0, vt = line->vt;
+	if (!mul_buf_id) {
+		if (flags & SAU_LINEP_STATE_RATIO)
+			v0 *= mul_v0;
+		if (flags & SAU_LINEP_GOAL_RATIO)
+			vt *= mul_v0;
+		flags &= ~(SAU_LINEP_STATE_RATIO | SAU_LINEP_GOAL_RATIO);
+	}
 	return (sauRIns){.op = SAU_RINS_N_run_par_line,
-		.a.f = line->v0, .has_a_f = true, .has_a = true,
-		.b.f = line->vt, .has_b_f = true, .has_b = true,
-		.c.i = sau_rins_bquad(par_id, sub_id, line->type, line->flags),
+		.a.f = v0, .has_a_f = true, .has_a = true,
+		.b.f = vt, .has_b_f = true, .has_b = true,
+		.c.i = sau_rins_bquad(par_id, sub_id, line->type, flags),
 		.has_c = true,
-		.x = sau_rins_wpair(par_buf_id, has_mul ? mul_buf_id : 0),
+		.x = sau_rins_wpair(par_buf_id, mul_buf_id),
 	};
 }
 
@@ -217,12 +228,11 @@ sauRIns_run_par_env(uint8_t par_id, uint32_t env_buf_id) {
 
 static inline sauRIns
 sauRIns_mix_valrange(uint32_t buf_id, bool is_buf_filled, float a_v0,
-		uint32_t buf2_id, bool has_buf2, float b_v0,
-		uint32_t buf3_id) {
+		uint32_t buf2_id, float b_v0, uint32_t buf3_id) {
 	return (sauRIns){.op = SAU_RINS_N_mix_valrange,
 		.a.f = a_v0, .has_a_f = true, .has_a = true,
 		.b.f = b_v0, .has_b_f = true, .has_b = true,
-		.c.i = sau_rins_wpair(buf3_id, has_buf2 ? buf2_id : 0),
+		.c.i = sau_rins_wpair(buf3_id, buf2_id),
 		.has_c = true,
 		.x = sau_rins_wpair(buf_id, is_buf_filled),
 	};
@@ -237,26 +247,11 @@ sauRIns_nsetf(uint32_t buf_id, float val) {
 }
 
 static inline sauRIns
-sauRIns_nmulf(uint32_t buf_id, float val) {
+sauRIns_nmulf(uint32_t buf_id, uint32_t mul_buf_id, float mul2_val) {
+	bool has_mul2 = mul2_val != 1.f;
 	return (sauRIns){.op = SAU_RINS_N_nmulf,
-		.b.f = val, .has_b_f = true, .has_b = true,
-		.x = buf_id,
-	};
-}
-
-static inline sauRIns
-sauRIns_nmulnf(uint32_t buf_id, uint32_t buf2_id) {
-	return (sauRIns){.op = SAU_RINS_N_nmulf,
-		.a.i = buf2_id, .has_a = true,
-		.x = buf_id,
-	};
-}
-
-static inline sauRIns
-sauRIns_nmulnff(uint32_t buf_id, uint32_t buf2_id, float val) {
-	return (sauRIns){.op = SAU_RINS_N_nmulf,
-		.a.i = buf2_id, .has_a = true,
-		.b.f = val, .has_b_f = true, .has_b = true,
+		.a.i = mul_buf_id, .has_a = !!mul_buf_id,
+		.b.f = mul2_val, .has_b_f = has_mul2, .has_b = has_mul2,
 		.x = buf_id,
 	};
 }
