@@ -101,6 +101,8 @@ Parameters:
 	c	Default channel mixing "c" value. Starts at 0.0,
 		i.e. C (center). Useful as a main way of setting
 		the parameter value.
+		.p	Default pan law. One of 'l' (linear, center -6 dB,
+			default), or 'f' (full, center -0 dB).
 	e	Envelope setting. To change the envelope subparameter for
 		several parameters, in any generators after in the same scope
 		or a nested list scope. After setting options here, to apply
@@ -148,7 +150,7 @@ Generator universal parameters:
 		0.0 is silence. (Note that the "S a" option can be used to
 		set a multiplier for this value. Further options affect mixing
 		and the final output level afterwards; this includes panning,
-		which reduces output level unless fully left or right.)
+		which may reduce output level unless fully left or right.)
 		Can be negative to flip the sign of the signal.
 			"Value ranges and envelopes" is supported for AM &
 		RM (amplitude and ring modulation); see section.
@@ -159,8 +161,11 @@ Generator universal parameters:
 			"Value ranges and envelopes" is supported for
 		panning-AM (stereo placement amplitude modulation); see
 		section. The result of modulation is added to the channel
-		mixing used. (If you downmix the result to mono, the effect
-		will disappear, provided there's no clipping etc. first.)
+		mixing used. (If you downmix the result to mono and use
+		the default linear panning, the effect will disappear,
+		provided there's no clipping etc. first.)
+		.p	Pan law or mode. One of 'l' (linear, center -6 dB,
+			default), or 'f' (full, center -0 dB).
 	f	Frequency in Hz. Does nothing in a non-oscillator, yet is
 		provided for all generator types, to control pitch in
 		nested oscillators from a wrapper generator.
@@ -732,8 +737,8 @@ Frequency filter options:
 Channel mixing values:
 	Panning, where 0.0 is centered. Named constants can be used in place
 	of numbers for the three classic channel "modes". Values outside the
-	range of L to R are allowed, amplifying one channel while giving the
-	other a negative amplitude.
+	range of L to R are allowed, giving one channel a negative amplitude
+	while possibly amplifying the other (depends on selected pan law).
 	C	0.0
 	L	(-1.0)
 	R	1.0
