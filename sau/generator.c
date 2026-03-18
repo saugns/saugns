@@ -74,6 +74,7 @@ typedef struct GenBase {
 	uint32_t obj_id;
 	uint8_t type;
 	uint8_t flags;
+	uint8_t pan_law;
 	uint8_t filt; // flags from GN_FILT()
 	struct RangeModDynVal freq_dyn; // parameter changed by some mulbuf[0]
 	struct ParWithRangeMod valr[SAU_PVALR_TYPES];
@@ -189,7 +190,7 @@ static bool convert_program(sauGenerator *restrict o,
 	if (!alloc_for_program(o, prg))
 		return false;
 	o->srate = srate;
-	o->amp_scale = 0.5f; // half for panning sum
+	o->amp_scale = 1.0;
 	if (prg->is_ampmult_set) o->amp_scale *= prg->sopt.ampmult;
 	if (prg->is_amp_autoscaled) o->amp_scale /= prg->vo_count;
 	if ((o->has_mix_lpf = prg->sopt.mix_filt.l_v > 0)) {
@@ -275,6 +276,7 @@ static void prepare_gen(sauGenerator *restrict o,
 		prepare_range(&gen->valr[i]);
 	gen->type = gd->ref.gen_type;
 	gen->flags |= GN_NEW_FREQ_A | GN_NEW_FREQ_B | GN_NEW_FREQ_E;
+	gen->pan_law = SAU_PAN_DEFAULT;
 }
 
 /*
@@ -396,6 +398,9 @@ static void update_gen(sauGenerator *restrict o,
 	if (valr) {
 		for (uint32_t i = 0; i < SAU_PVALR_TYPES; ++i)
 			update_range(&gen->valr[i], valr[i], o->srate);
+		sauRange *r_pan = valr[SAU_PVALR_PAN];
+		if (r_pan && r_pan->a.user_flags)
+			gen->pan_law = r_pan->a.user_flags;
 		sauRange *r_freq = valr[SAU_PVALR_FREQ];
 		if (r_freq && r_freq->a.flags & SAU_LINEP_STATE)
 			gen->flags |= GN_NEW_FREQ_A;
@@ -549,6 +554,78 @@ static void mix_clear(sauGenerator *restrict o) {
 }
 
 /*
+ * Linear panning version of mix_add().
+ */
+static void mix_add_pan_lin(sauGenerator *restrict o,
+		float *restrict s_buf,
+		const float *restrict pan_buf, float pan_v0,
+		uint32_t len) {
+	float *mix_l = o->bufs[0 - MIX_BUFS];
+	float *mix_r = o->bufs[1 - MIX_BUFS];
+	float amp_scale = o->amp_scale * 0.5f;
+	if (pan_buf) {
+		for (uint32_t i = 0; i < len; ++i) {
+			float s = s_buf[i] * amp_scale;
+			float s_r = s * pan_buf[i];
+			mix_l[i] += s - s_r;
+			mix_r[i] += s + s_r;
+		}
+	} else if (pan_v0 != 0.f) {
+		for (uint32_t i = 0; i < len; ++i) {
+			float s = s_buf[i] * amp_scale;
+			float s_r = s * pan_v0;
+			mix_l[i] += s - s_r;
+			mix_r[i] += s + s_r;
+		}
+	} else {
+		for (uint32_t i = 0; i < len; ++i) {
+			float s = s_buf[i] * amp_scale;
+			mix_l[i] += s;
+			mix_r[i] += s;
+		}
+	}
+}
+
+/*
+ * Full-volume panning version of mix_add().
+ */
+static void mix_add_pan_full(sauGenerator *restrict o,
+		float *restrict s_buf,
+		const float *restrict pan_buf, float pan_v0,
+		uint32_t len) {
+	float *mix_l = o->bufs[0 - MIX_BUFS];
+	float *mix_r = o->bufs[1 - MIX_BUFS];
+	float amp_scale = o->amp_scale;
+	if (pan_buf) {
+		for (uint32_t i = 0; i < len; ++i) {
+			float s = s_buf[i] * amp_scale;
+			float p = pan_buf[i];
+			float s_p = s * p;
+			mix_l[i] += s - (p >= 0.f ? s_p : 0.f);
+			mix_r[i] += s + (p >= 0.f ? 0.f : s_p);
+		}
+	} else if (pan_v0 != 0.f) {
+		if (pan_v0 > 0.f) for (uint32_t i = 0; i < len; ++i) {
+			float s = s_buf[i] * amp_scale;
+			float s_r = s * pan_v0;
+			mix_l[i] += s - s_r;
+			mix_r[i] += s;
+		} else for (uint32_t i = 0; i < len; ++i) {
+			float s = s_buf[i] * amp_scale;
+			float s_l = s * pan_v0;
+			mix_l[i] += s;
+			mix_r[i] += s + s_l;
+		}
+	} else {
+		for (uint32_t i = 0; i < len; ++i) {
+			float s = s_buf[i] * amp_scale;
+			mix_l[i] += s;
+			mix_r[i] += s;
+		}
+	}
+}
+
+/*
  * Add output for generator node \p n into the mix buffers
  * (0 = left, 1 = right) from the first generator buffer.
  *
@@ -557,31 +634,15 @@ static void mix_clear(sauGenerator *restrict o) {
  * as temporary storage.
  */
 static void mix_add(sauGenerator *restrict o,
+		AnyGen *restrict n,
 		float *restrict s_buf,
 		const float *restrict pan_buf, float pan_v0,
 		uint32_t len) {
-	float *mix_l = o->bufs[0 - MIX_BUFS];
-	float *mix_r = o->bufs[1 - MIX_BUFS];
-	if (pan_buf) {
-		for (uint32_t i = 0; i < len; ++i) {
-			float s = s_buf[i] * o->amp_scale;
-			float s_r = s * pan_buf[i];
-			mix_l[i] += s - s_r;
-			mix_r[i] += s + s_r;
-		}
-	} else if (pan_v0 != 0.f) {
-		for (uint32_t i = 0; i < len; ++i) {
-			float s = s_buf[i] * o->amp_scale;
-			float s_r = s * pan_v0;
-			mix_l[i] += s - s_r;
-			mix_r[i] += s + s_r;
-		}
-	} else {
-		for (uint32_t i = 0; i < len; ++i) {
-			float s = s_buf[i] * o->amp_scale;
-			mix_l[i] += s;
-			mix_r[i] += s;
-		}
+	switch (n->gen.pan_law) {
+	case SAU_PAN_LIN:
+		mix_add_pan_lin(o, s_buf, pan_buf, pan_v0, len); break;
+	case SAU_PAN_FULL:
+		mix_add_pan_full(o, s_buf, pan_buf, pan_v0, len); break;
 	}
 	if (o->gen_mix_add_max < len) o->gen_mix_add_max = len;
 }
@@ -748,7 +809,7 @@ static uint32_t run_rins_gen_pop_mix(struct sauGenerator *restrict o,
 		// handle panning and add result to voice output
 		float *pan_buf = !ins->has_c_f ? o->bufs[ins->c.i] : NULL;
 		float pan_v0 = ins->c.f; // fallback only
-		mix_add(o, out_buf, pan_buf, pan_v0, len);
+		mix_add(o, n, out_buf, pan_buf, pan_v0, len);
 	} else {
 		// handle samples skipped due to generator time limit
 		if (!layer && skip_len > 0)

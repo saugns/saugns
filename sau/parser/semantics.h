@@ -82,11 +82,13 @@ concat_ProgramIDArr(sauMempool *restrict mp,
 #define SAU_UPDATE_RATE 1000
 
 static sauNoinline void
-init_range(sauRange *restrict r, float v0, bool v0_ratio, float vt) {
+init_range(sauRange *restrict r, float v0, bool v0_ratio, float vt,
+		unsigned user_flags) {
 	sau_init_Line(&r->a, v0, v0_ratio);
 	sau_init_Line(&r->b, vt, false);
 	sau_init_Line(&r->e, vt, false);
 	r->env.mode = SAU_ENV_FN_DEFAULT;
+	r->a.user_flags = user_flags;
 }
 
 static sauRangeSet *
@@ -209,6 +211,8 @@ sem_valr_inherit(ParseSem *restrict o, unsigned id,
 		sauLine_inherit(&valr[id]->a, &info->valr[id].a);
 		sauLine_inherit(&valr[id]->b, &info->valr[id].b);
 		sauLine_inherit(&valr[id]->e, &info->valr[id].e);
+		if (!valr[id]->a.user_flags)
+			valr[id]->a.user_flags = info->valr[id].a.user_flags;
 	}
 	/*
 	 * Clear state change tracking set by sem_valr_advance()
@@ -308,20 +312,20 @@ sem_gen_obj_add(ParseSem *restrict o, sauParseObjRef *restrict ref,
 	sauParseGenData *gen = (void*)ref;
 	const sauParseSetOptions *sopt = gen->sopt;
 	init_range(&info->valr[SAU_PVALR_PAN],
-			sopt->def_chanmix, false, 0.0);
+			sopt->def_chanmix, false, 0.0, sopt->def_pan_law);
 	init_range(&info->valr[SAU_PVALR_AMP],
-			sopt->def_ampmult, false, 0.0);
+			sopt->def_ampmult, false, 0.0, 0);
 	init_range(&info->valr[SAU_PVALR_FREQ],
 			ref->is_nested ? sopt->def_relfreq : sopt->def_freq,
-			ref->is_nested, 0.0);
+			ref->is_nested, 0.0, 0);
 	init_range(&info->valr[SAU_PVALR_PMA],
-			0.0, false, 0.0);
+			0.0, false, 0.0, 0);
 	for (int j = 0; j < SAU_PPD_TYPES; ++j) {
 		float def = sau_pd_v_defaults[j];
 		int i = sau_pd_to_valr(j);
-		init_range(&info->valr[i+0], def, false, def);
-		init_range(&info->valr[i+1], 1.0, false, 0.0);
-		init_range(&info->valr[i+2], 0.0, false, 0.0);
+		init_range(&info->valr[i+0], def, false, def, 0);
+		init_range(&info->valr[i+1], 1.0, false, 0.0, 0);
+		init_range(&info->valr[i+2], 0.0, false, 0.0, 0);
 	}
 	return info;
 }
@@ -733,7 +737,8 @@ sem_handle_gen_pardef(ParseSem *restrict o, sauParseGenData *restrict gen,
 		 */
 		if (sopt->def_ampmult != 1.f)
 			sem_valr_inherit(o, SAU_PVALR_AMP, gen, info);
-		if (!gen->ref.is_nested && sopt->def_chanmix != 0.f)
+		if (!gen->ref.is_nested &&
+		    (sopt->def_chanmix != 0.f || sopt->def_pan_law))
 			sem_valr_inherit(o, SAU_PVALR_PAN, gen, info);
 		if (gen->ref.is_nested || sopt->def_freq != SAU_PDEF_FREQ)
 			sem_valr_inherit(o, SAU_PVALR_FREQ, gen, info);
