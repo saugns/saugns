@@ -7,6 +7,17 @@ is a shorter change log with only the SAU language changes.
 Pre-release
 -----------
 
+Language changes:
+ * Channel mixing. Add `c.p` pan law switch to each
+   generator, and a `S c.p` default setting. The modes are:
+   - `l` (linear, center -6 dB, default). The old behavior,
+     allows a mono downmix to undo panning cleanly.
+   - `f` (full, center -0 dB). Makes positions `L`, `R` and
+     `C` behave like traditional channel switcher settings.
+     `2*L` or `2*R` cause a phase-inverted "fake surround".
+     Modulation produces stereo-spread distortion (mono mix
+     simplifies the sound while it remains impure).
+
 v0.5.6 (2026-03-15)
 -------------------
 

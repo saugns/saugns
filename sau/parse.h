@@ -149,6 +149,13 @@ extern const float sau_pd_v_defaults[SAU_PPD_TYPES];
 /** Is PD cycle zoom a.k.a. pulsar synthesis, '.f' multiplying frequency? */
 #define sau_pd_f_is_fmul(id) ((id) <= SAU_PPD_D)
 
+/** Pan law selection. Set in the \a user_flags for main SAU_PVALR_PAN line. */
+enum {
+	SAU_PAN_LIN = 1,
+	SAU_PAN_FULL,
+	SAU_PAN_DEFAULT = SAU_PAN_LIN,
+};
+
 /** Filter parameter flags. */
 enum {
 	SAU_FILTP_LPF = 1U<<0,
@@ -352,6 +359,7 @@ typedef struct sauParseSetOptions {
 	      def_freq,
 	      def_relfreq,
 	      def_chanmix;
+	uint8_t def_pan_law;
 	int8_t note_key;
 	uint8_t key_octave;
 	uint8_t key_system;

@@ -128,6 +128,7 @@ typedef struct sauLine {
 	uint32_t time_ms;
 	uint8_t type;
 	uint8_t flags;
+	uint8_t user_flags; // can be used to store flags for associated data
 	uint32_t pos, end;
 } sauLine;
 

@@ -113,6 +113,7 @@ static const sauParseSetOptions def_sopt = {
 	.def_freq = SAU_PDEF_FREQ,
 	.def_relfreq = 1.f,
 	.def_chanmix = 0.f,
+	.def_pan_law = SAU_PAN_DEFAULT,
 	.note_key = MUSKEY(0, 0),
 	.key_octave = 4,
 	.key_system = 0,
@@ -1734,6 +1735,41 @@ static sauParseListData *parse_par_list(sauParser *restrict o,
 	return first_list;
 }
 
+static bool parse_chanmix_pan_law(sauParser *restrict o,
+		uint8_t *restrict val) {
+	uint8_t pan_law, c;
+	switch ((c = sauScanner_get_suffc(o->sc))) {
+	case 'l': pan_law = SAU_PAN_LIN;  break;
+	case 'f': pan_law = SAU_PAN_FULL; break;
+	default:
+		if (!c)
+			return false;
+		sauScanner_warning(o->sc, NULL,
+"unknown pan law; valid are:\n"
+"\t'f' (full, -0 dB), 'l' (linear, -6 dB)");
+		return true;
+	}
+	*val = pan_law;
+	return false;
+}
+
+static bool parse_so_chanmix(sauParser *restrict o,
+		struct NestScope *restrict ns) {
+	sauParseSetOptions *sopt = ns->sopt;
+	double val;
+	int c;
+	if (scan_num(o->sc, scan_chanmix_const, &val)) {
+		ns->sopt->def_chanmix = val;
+	}
+	switch ((c = sauScanner_getc_after(o->sc, '.'))) {
+	case 'p':
+		return parse_chanmix_pan_law(o, &sopt->def_pan_law);
+	default:
+		return c != 0;
+	}
+	return false;
+}
+
 static void parse_in_settings(sauParser *restrict o) {
 	struct NestScope *ns = NestArr_tip(&o->nest);
 	if (ns->is_old_sopt) {
@@ -1741,15 +1777,12 @@ static void parse_in_settings(sauParser *restrict o) {
 		ns->is_old_sopt = false;
 	}
 	PARSE_IN__HEAD(parse_in_settings, true)
-		double val;
 		switch (c) {
 		case 'a':
 			if (parse_so_amp(o, ns)) goto DEFER;
 			break;
 		case 'c':
-			if (scan_num(o->sc, scan_chanmix_const, &val)) {
-				ns->sopt->def_chanmix = val;
-			}
+			if (parse_so_chanmix(o, ns)) goto DEFER;
 			break;
 		case 'e': {
 			sauRange tmp_range = {.env = ns->sopt->def_parenv};
@@ -1934,8 +1967,16 @@ static bool parse_gen_chanmix(sauParser *restrict o) {
 	sauParseGenData *gen = pl->gen;
 	if (gen->ref.is_nested)
 		return true; // reject, lacks parameter
-	return parse_par_modranges(o, scan_chanmix_const, NULL, false,
-			SAU_PVALR_PAN, SAU_MOD_N_c_am);
+	int c;
+	switch ((c = parse_par_modranges(o, scan_chanmix_const, NULL, false,
+					SAU_PVALR_PAN, SAU_MOD_N_c_am))) {
+	case 'p': {
+		sauRange *r = *gen->valr[SAU_PVALR_PAN];
+		sauLine *line = &r->a;
+		return parse_chanmix_pan_law(o, &line->user_flags); }
+	default:
+		return c != 0;
+	}
 }
 
 /*
