@@ -4,8 +4,10 @@ saugns version changes
 [On the website](https://sau.frama.io/changes.html#saulang)
 is a shorter change log with only the SAU language changes.
 
-Pre-release
------------
+v0.5.6b (2026-03-20)
+--------------------
+
+Add pan law switches. Remove time `|` quirk.
 
 Language changes:
  * Channel mixing. Add `c.p` pan law switch to each
@@ -17,6 +19,11 @@ Language changes:
      `2*L` or `2*R` cause a phase-inverted "fake surround".
      Modulation produces stereo-spread distortion (mono mix
      simplifies the sound while it remains impure).
+ * Timing. For `|` time separator, correct an inconsistency
+   (and the documentation). Using `|` never decreases delay
+   to add now. Previously, it did so only when no generator
+   was active in scope (like before any is added or after a
+   prior `|`).
 
 v0.5.6 (2026-03-15)
 -------------------
