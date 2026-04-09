@@ -130,6 +130,7 @@ typedef struct SemGenObj {
 	struct sauParseGenData *last_gd;
 	const sauProgramIDArr *mods_idarr[SAU_MOD_NAMED - 1];
 	sauRange valr[SAU_PVALR_TYPES];
+	uint16_t block_i, ratio_block_i;
 } SemGenObj;
 sauArrType(SemGenObjArr, SemGenObj, _)
 
@@ -152,6 +153,12 @@ typedef struct sauPrintGenRef {
 } sauPrintGenRef;
 sauArrType(PrintGenRefArr, sauPrintGenRef, )
 
+typedef struct RInsBlock {
+	uint32_t buf_id;
+	float v0; // used if \a buf_id is 0
+} RInsBlock;
+sauArrType(RInsBlockArr, RInsBlock, )
+
 sauArrType(GenDataArr, sauParseGenData*, _)
 sauArrType(IDBuf, uint32_t, )
 sauArrType(RInsArr, sauRIns, )
@@ -170,6 +177,7 @@ typedef struct ParseSem {
 	size_t ev_count;
 	GenDataArr ev_gen_data; // flat list of pointers
 	RInsArr ev_ins; // per-event, all current audio rendering instructions
+	RInsBlockArr ins_block; // stack used during \a ev_ins allocation
 	sauMempool *mp;
 } ParseSem;
 
@@ -290,6 +298,8 @@ sem_gen_obj_add(ParseSem *restrict o, sauParseObjRef *restrict ref,
 		// modulators count as reachable from carrier
 		info->is_labeled |= owner_info->is_labeled;
 		info->root_gen_obj = owner_info->root_gen_obj;
+		info->block_i = owner_info->block_i + 1;
+		info->ratio_block_i = owner_info->block_i; // default
 	} else {
 		info->root_gen_obj = id;
 	}
@@ -706,7 +716,7 @@ gen_pardef_env(sauParseGenData *restrict gen, unsigned id,
  * Apply set options to generator data.
  */
 static void
-sem_handle_gen_pardef(ParseSem *restrict o, sauParseGenData *restrict gen,
+sem_handle_gen_params(ParseSem *restrict o, sauParseGenData *restrict gen,
 		SemGenObj *info) {
 	const sauParseSetOptions *sopt = gen->sopt;
 	if (gen->valr) {
@@ -723,6 +733,22 @@ sem_handle_gen_pardef(ParseSem *restrict o, sauParseGenData *restrict gen,
 			amp->b.vt *= sopt->def_ampmult;
 			amp->e.v0 *= sopt->def_ampmult;
 			amp->e.vt *= sopt->def_ampmult;
+		}
+		sauRange *freq = (*gen->valr)[SAU_PVALR_FREQ];
+		int32_t ratio_block_i = info->block_i;
+		if (freq) switch (freq->a.user_flags) {
+		case SAU_CARR_GET:
+			ratio_block_i = gen->ratio_carr_level;
+			if (ratio_block_i > info->block_i - 1)
+				ratio_block_i = info->block_i - 1;
+			info->ratio_block_i = ratio_block_i;
+			break;
+		case SAU_CARR_GETREV:
+			ratio_block_i -= gen->ratio_carr_level;
+			if (ratio_block_i < 0)
+				ratio_block_i = 0;
+			info->ratio_block_i = ratio_block_i;
+			break;
 		}
 		for (int i = 0; i < SAU_PVALR_TYPES; ++i)
 			sem_valr_update(i, *gen->valr, info);
@@ -762,7 +788,7 @@ sem_handle_gendata(ParseSem *restrict o, sauParseGenData *restrict gen,
 	*gen_a = gen;
 	SemGenObj *info = sem_genalloc_update(o, gen, owner_gen);
 	if (!info) goto MEM_ERR;
-	sem_handle_gen_pardef(o, gen, info);
+	sem_handle_gen_params(o, gen, info);
 	for (sauParseListData *in_list = gen->mods;
 			in_list != NULL; in_list = in_list->ref.next) {
 		int type = in_list->use_type - 1;
@@ -1184,8 +1210,7 @@ const char *const sauRIns_names[SAU_RINS_NAMED] = {
 
 static bool
 sem_conv_mods(ParseSem *restrict o, const sauProgramIDArr *restrict mods,
-		uint32_t buf_count, uint32_t freq_buf, float freq_v0,
-		uint8_t mix_mode);
+		uint32_t buf_count, uint8_t mix_mode);
 
 static sauLine *
 sem_get_line(uint8_t par_id, uint8_t sub_id, SemGenObj *restrict gen) {
@@ -1216,22 +1241,21 @@ sem_conv_dynpar(ParseSem *restrict o, SemGenObj *restrict gen,
 		const sauProgramIDArr *restrict mods,
 		uint8_t par_id, uint8_t sub_id, float *restrict used_v0,
 		uint32_t buf_count, uint32_t *restrict out_buf,
-		uint32_t mul_buf, float mul_v0,
-		uint32_t freq_buf, float freq_v0, bool force_fill) {
+		const RInsBlock *restrict mul, bool force_fill) {
 	const sauLine *line = sem_get_line(par_id, sub_id, gen);
 	sauRIns *ins = NULL;
 	if (used_v0) *used_v0 = (line->flags & SAU_LINEP_STATE_RATIO) ?
-		line->v0 * mul_v0 :
+		line->v0 * mul->v0 :
 		line->v0;
-	if (!NEED_FILL(line, mods, mul_buf) && !force_fill) {
+	if (!NEED_FILL(line, mods, mul->buf_id) && !force_fill) {
 		*out_buf = 0; // no buffer
 		return line;
 	}
 	ins = RInsArr_add(&o->ev_ins);
 	*ins = sauRIns_run_par_line(par_id, sub_id, line,
-			buf_count, mul_buf, mul_v0);
+			buf_count, mul->buf_id, mul->v0);
 	uint32_t par_buf = buf_count++;
-	sem_conv_mods(o, mods, par_buf, freq_buf, freq_v0, SAU_RMIX_LAYER);
+	sem_conv_mods(o, mods, par_buf, SAU_RMIX_LAYER);
 	*out_buf = par_buf;
 	if (o->sbuf_count < buf_count) o->sbuf_count = buf_count;
 	return line;
@@ -1240,8 +1264,8 @@ sem_conv_dynpar(ParseSem *restrict o, SemGenObj *restrict gen,
 static uint32_t
 sem_conv_valr_mods(ParseSem *restrict o, SemGenObj *restrict gen,
 		unsigned mods_from, uint8_t par_id, float *restrict a_v0,
-		uint32_t buf_count, uint32_t mul_buf, float mul_v0,
-		uint32_t freq_buf, float freq_v0, bool force_fill) {
+		uint32_t buf_count, const RInsBlock *restrict mul,
+		RInsBlock *restrict freq, bool is_freq, bool force_fill) {
 	sauRIns *ins = NULL;
 	const sauProgramIDArr *mods =
 		gen->mods_idarr[mods_from+SAU_MOD_VALR   -1];
@@ -1250,34 +1274,27 @@ sem_conv_valr_mods(ParseSem *restrict o, SemGenObj *restrict gen,
 	const sauProgramIDArr *mods_r =
 		gen->mods_idarr[mods_from+SAU_MOD_VALR_r -1];
 	uint32_t par_buf;
-	sem_conv_dynpar(o, gen, mods, par_id,
-			SAU_RANGE_A, a_v0, buf_count, &par_buf,
-			mul_buf, mul_v0, freq_buf, freq_v0, force_fill);
+	sem_conv_dynpar(o, gen, mods, par_id, SAU_RANGE_A, a_v0,
+			buf_count, &par_buf, mul, force_fill);
 	if (par_buf) buf_count++;
+	if (is_freq) freq->buf_id = par_buf; // if filled, now uses buffer
 	if (mods_r->count > 0) {
 		bool had_par_buf = !!par_buf;
-		if (!had_par_buf) {
-			par_buf = buf_count++; // always filled, used
-			if (freq_buf == par_buf) {
-				freq_buf = 0;    // not filled yet, is so below
-				freq_v0 = *a_v0; // may need multiplier applied
-			}
-		}
+		if (!had_par_buf) par_buf = buf_count++; // always filled, used
 		uint32_t par2_buf;
 		float b_v0;
-		sem_conv_dynpar(o, gen, mods2, par_id,
-				SAU_RANGE_B, &b_v0, buf_count, &par2_buf,
-				mul_buf, mul_v0, freq_buf, freq_v0, false);
+		sem_conv_dynpar(o, gen, mods2, par_id, SAU_RANGE_B, &b_v0,
+				buf_count, &par2_buf, mul, false);
 		if (par2_buf) buf_count++;
-		sem_conv_mods(o, mods_r, buf_count, freq_buf, freq_v0,
-				SAU_RMIX_MUL_WE);
+		sem_conv_mods(o, mods_r, buf_count, SAU_RMIX_MUL_WE);
 		uint32_t mod_buf = buf_count++;
 		ins = RInsArr_add(&o->ev_ins);
 		*ins = sauRIns_mix_valrange(par_buf, had_par_buf, *a_v0,
 				par2_buf, b_v0, mod_buf);
+		if (is_freq) freq->buf_id = par_buf; // now filled, uses buffer
 	} else {
 		// to keep timing in sync, run mods2 despite discarding result
-		sem_conv_mods(o, mods2, buf_count, 0, 1.0, 0);
+		sem_conv_mods(o, mods2, buf_count, 0);
 	}
 	if (o->sbuf_count < buf_count) o->sbuf_count = buf_count;
 	return par_buf;
@@ -1286,26 +1303,19 @@ sem_conv_valr_mods(ParseSem *restrict o, SemGenObj *restrict gen,
 static uint32_t
 sem_conv_valr_env(ParseSem *restrict o, SemGenObj *restrict gen,
 		unsigned mods_from, uint8_t par_id, float a_v0,
-		uint32_t buf_count, uint32_t mul_buf, float mul_v0,
-		uint32_t freq_buf, float freq_v0, uint32_t par_buf) {
+		uint32_t buf_count, const RInsBlock *restrict mul,
+		RInsBlock *restrict freq, bool is_freq, uint32_t par_buf) {
 	sauEnvPar *env = &gen->valr[par_id].env;
 	sauRIns *ins = NULL;
 	const sauProgramIDArr *mods_e =
 		gen->mods_idarr[mods_from+SAU_MOD_VALR_e -1];
 	if (/*env->mode > 0 &&*/ sauEnvPar_has_time(env)) {
 		bool had_par_buf = !!par_buf;
-		if (!had_par_buf) {
-			par_buf = buf_count++; // always filled, used
-			if (freq_buf == par_buf) {
-				freq_buf = 0;   // not filled yet, is so below
-				freq_v0 = a_v0; // may need multiplier applied
-			}
-		}
+		if (!had_par_buf) par_buf = buf_count++; // always filled, used
 		uint32_t par2_buf;
 		float e_v0;
-		sem_conv_dynpar(o, gen, mods_e, par_id,
-				SAU_RANGE_E, &e_v0, buf_count, &par2_buf,
-				mul_buf, mul_v0, freq_buf, freq_v0, false);
+		sem_conv_dynpar(o, gen, mods_e, par_id, SAU_RANGE_E, &e_v0,
+				buf_count, &par2_buf, mul, false);
 		if (par2_buf) buf_count++;
 		ins = RInsArr_add(&o->ev_ins);
 		*ins = sauRIns_run_par_env(par_id, buf_count);
@@ -1313,9 +1323,10 @@ sem_conv_valr_env(ParseSem *restrict o, SemGenObj *restrict gen,
 		uint32_t env_buf = buf_count++;
 		*ins = sauRIns_mix_valrange(par_buf, had_par_buf, a_v0,
 				par2_buf, e_v0, env_buf);
+		if (is_freq) freq->buf_id = par_buf; // now filled, uses buffer
 	} else {
 		// to keep timing in sync, run mods_e despite discarding result
-		sem_conv_mods(o, mods_e, buf_count, 0, 1.0, 0);
+		sem_conv_mods(o, mods_e, buf_count, 0);
 	}
 	if (o->sbuf_count < buf_count) o->sbuf_count = buf_count;
 	return par_buf;
@@ -1324,20 +1335,21 @@ sem_conv_valr_env(ParseSem *restrict o, SemGenObj *restrict gen,
 static bool
 sem_conv_valr(ParseSem *restrict o, SemGenObj *restrict gen,
 		unsigned mods_from, uint8_t par_id, float *restrict a_v0,
-		uint32_t buf_count, uint32_t mul_buf, float mul_v0,
-		uint32_t freq_buf, float freq_v0, bool force_fill) {
+		uint32_t buf_count, const RInsBlock *restrict mul,
+		RInsBlock *restrict freq, bool force_fill) {
 	const sauProgramIDArr *mods_a =
 		gen->mods_idarr[mods_from+SAU_MOD_VALR_a -1];
-	float tmp_a_v0;
-	if (!a_v0) a_v0 = &tmp_a_v0;
+	const RInsBlock def_mul = {0, 1.0};
+	if (!mul) mul = &def_mul;
+	bool is_freq = (a_v0 == &freq->v0);
+	if (is_freq) freq->buf_id = 0; // uses buffer only after fill here
 	uint32_t par_buf = sem_conv_valr_mods(o, gen, mods_from, par_id, a_v0,
-			buf_count, mul_buf, mul_v0, freq_buf, freq_v0,
+			buf_count, mul, freq, is_freq,
 			force_fill | (mods_a->count > 0));
 	if (par_buf) buf_count++;
 	par_buf = sem_conv_valr_env(o, gen, mods_from, par_id, *a_v0,
-			buf_count, mul_buf, mul_v0, freq_buf, freq_v0,
-			par_buf);
-	return sem_conv_mods(o, mods_a, buf_count, freq_buf, freq_v0,
+			buf_count, mul, freq, is_freq, par_buf);
+	return sem_conv_mods(o, mods_a, buf_count,
 			par_buf ? SAU_RMIX_LAYER : 0);
 }
 
@@ -1364,15 +1376,14 @@ sem_conv_osc_pm_fill(ParseSem *restrict o, SemGenObj *restrict gen,
 	const sauProgramIDArr *fpm_idarr = gen->mods_idarr[SAU_MOD_N_pf_pm -1];
 	uint8_t mix_mode = 0;
 	if (fpm_idarr->count > 0) {
-		sem_conv_mods(o, fpm_idarr, buf_count, freq_buf, freq_v0, 0);
+		sem_conv_mods(o, fpm_idarr, buf_count, 0);
 		const float fpm_scale = 1.0 / SAU_HUMMID;
 		sauRIns *ins = RInsArr_add(&o->ev_ins);
 		*ins = sauRIns_nmulf(buf_count, freq_buf,
 				!freq_buf ? freq_v0*fpm_scale : fpm_scale);
 		mix_mode |= SAU_RMIX_LAYER;
 	}
-	return sem_conv_mods(o, pm_idarr, buf_count, freq_buf, freq_v0,
-			mix_mode);
+	return sem_conv_mods(o, pm_idarr, buf_count, mix_mode);
 }
 
 typedef void (*ConvPDist_cb)(ParseSem *restrict o,
@@ -1408,7 +1419,9 @@ static void sem_conv_pdist_cb_rosc(ParseSem *restrict o,
 static bool
 sem_conv_osc_phase(ParseSem *restrict o, SemGenObj *restrict gen,
 		uint32_t buf_count, uint32_t phase_buf, uint32_t cycle_buf,
-		uint32_t freq_buf, float freq_v0, ConvPDist_cb pdist_cb) {
+		RInsBlock *restrict freq, ConvPDist_cb pdist_cb) {
+	uint32_t freq_buf = freq->buf_id;
+	float freq_v0 = freq->v0;
 	sauRIns *ins = NULL;
 	bool has_pm_in = sem_conv_osc_pm_fill(o, gen, buf_count,
 			freq_buf, freq_v0);
@@ -1429,19 +1442,18 @@ sem_conv_osc_phase(ParseSem *restrict o, SemGenObj *restrict gen,
 		int pd_f_mods_from = pd_mods_from+SAU_MODS_VALR;
 		int pd_p_mods_from = pd_f_mods_from+SAU_MODS_VALR;
 		sauLine *line_pd   = sem_get_line(pd_id, SAU_RANGE_A, gen);
-		float pd_f_v0, pd_p_v0;
+		float pd_v0, pd_f_v0, pd_p_v0;
 		bool has_pd_f = sem_conv_valr(o, gen, pd_f_mods_from,
-				pd_f_id, &pd_f_v0, buf_count+0, 0, 1.0,
-				freq_buf, freq_v0, false);
+				pd_f_id, &pd_f_v0, buf_count+0, NULL,
+				freq, false);
 		bool has_pd_p = sem_conv_valr(o, gen, pd_p_mods_from,
-				pd_p_id, &pd_p_v0, buf_count+1, 0, 1.0,
-				freq_buf, freq_v0, false);
+				pd_p_id, &pd_p_v0, buf_count+1, NULL,
+				freq, false);
 		bool force_use = line_pd->v0 != nop_value ||
 			(sau_pd_f_is_fmul(j) &&
 			 (has_pd_f || pd_f_v0 != 1.f));
-		if (sem_conv_valr(o, gen, pd_mods_from, pd_id, NULL,
-				buf_count+2, 0, 1.0, freq_buf, freq_v0,
-				force_use)) {
+		if (sem_conv_valr(o, gen, pd_mods_from, pd_id, &pd_v0,
+				buf_count+2, NULL, freq, force_use)) {
 			pdist_cb(o, phase_buf, cycle_buf,
 				buf_count+2, j,
 				has_pd_f ? buf_count+0 : 0, pd_f_v0,
@@ -1454,22 +1466,22 @@ sem_conv_osc_phase(ParseSem *restrict o, SemGenObj *restrict gen,
 
 static bool
 sem_conv_osc_pma_fill(ParseSem *restrict o, SemGenObj *restrict gen,
-		uint32_t buf_count, uint32_t freq_buf, float freq_v0) {
+		uint32_t buf_count, RInsBlock *restrict freq) {
 	sauLine *line = sem_get_line(SAU_PVALR_PMA, SAU_RANGE_A, gen);
+	float pma_v0;
 	return sem_conv_valr(o, gen, SAU_MOD_N_pa_pm, SAU_PVALR_PMA,
-			NULL, buf_count, 0, 1.0,
-			freq_buf, freq_v0, line->v0 != 0.f);
+			&pma_v0, buf_count, NULL, freq, line->v0 != 0.f);
 }
 
 static void
 sem_conv_gen_wosc(ParseSem *restrict o, SemGenObj *restrict gen,
 		uint32_t buf_count, uint32_t out_buf,
-		uint32_t freq_buf, float freq_v0) {
+		RInsBlock *restrict freq) {
 	uint32_t phase_buf = out_buf; // reuse
 	sem_conv_osc_phase(o, gen, buf_count, phase_buf, 0,
-			freq_buf, freq_v0, sem_conv_pdist_cb_wosc);
+			freq, sem_conv_pdist_cb_wosc);
 	sauRIns *ins = NULL;
-	if (sem_conv_osc_pma_fill(o, gen, buf_count, freq_buf, freq_v0)) {
+	if (sem_conv_osc_pma_fill(o, gen, buf_count, freq)) {
 		uint32_t pma_buf = buf_count++;
 		ins = RInsArr_add(&o->ev_ins);
 		*ins = sauRIns_run_waveosc_selfmod(out_buf, pma_buf);
@@ -1483,13 +1495,13 @@ sem_conv_gen_wosc(ParseSem *restrict o, SemGenObj *restrict gen,
 static void
 sem_conv_gen_rosc(ParseSem *restrict o, SemGenObj *restrict gen,
 		uint32_t buf_count, uint32_t out_buf,
-		uint32_t freq_buf, float freq_v0) {
+		RInsBlock *restrict freq) {
 	uint32_t phase_buf = out_buf; // reuse
 	uint32_t cycle_buf = buf_count++;
 	sem_conv_osc_phase(o, gen, buf_count, phase_buf, cycle_buf,
-			freq_buf, freq_v0, sem_conv_pdist_cb_rosc);
+			freq, sem_conv_pdist_cb_rosc);
 	sauRIns *ins = NULL;
-	if (sem_conv_osc_pma_fill(o, gen, buf_count, freq_buf, freq_v0)) {
+	if (sem_conv_osc_pma_fill(o, gen, buf_count, freq)) {
 		uint32_t pma_buf = buf_count++;
 		ins = RInsArr_add(&o->ev_ins);
 		*ins = sauRIns_run_ralsosc_selfmod(out_buf, cycle_buf,
@@ -1513,7 +1525,6 @@ sem_conv_gen_rosc(ParseSem *restrict o, SemGenObj *restrict gen,
 static bool
 sem_conv_gen(ParseSem *restrict o, uint32_t obj_id,
 		uint32_t buf_count,
-		uint32_t parent_freq_buf, float parent_freq_v0,
 		uint8_t mix_mode) {
 	SemGenObj *gen = &o->gen_obj.a[obj_id];
 	if (gen->is_visited)
@@ -1525,13 +1536,14 @@ sem_conv_gen(ParseSem *restrict o, uint32_t obj_id,
 	if (!(ins = RInsArr_add(&o->ev_ins))) goto MEM_ERR;
 	gen->is_visited = true;
 	bool layer = mix_mode & SAU_RMIX_LAYER;
-	uint32_t mix_buf  = buf_count++; // #0
-	float freq_v0;
+	uint32_t mix_buf = buf_count++; // #0
+	RInsBlock *freq = &o->ins_block.a[gen->block_i];
+	RInsBlock *carr_freq = gen->block_i > 0 ?
+		&o->ins_block.a[gen->ratio_block_i] :
+		NULL;
 	bool has_freq = sem_conv_valr(o, gen, SAU_MOD_N_f_fm, SAU_PVALR_FREQ,
-			&freq_v0, buf_count,
-			parent_freq_buf, parent_freq_v0,
-			buf_count, 1.0, false);
-	uint32_t freq_buf = has_freq ? buf_count++ : 0; // #1 if used
+			&freq->v0, buf_count, carr_freq, freq, false);
+	if (has_freq) buf_count++; // #1 if used
 	/*
 	 * Sub-functions, dividing per generator type.
 	 */
@@ -1544,23 +1556,19 @@ sem_conv_gen(ParseSem *restrict o, uint32_t obj_id,
 		sem_conv_gen_noiseg(o, buf_count, in_buf);
 		break;
 	case SAU_PGEN_N_wave:
-		sem_conv_gen_wosc(o, gen, buf_count, in_buf,
-				freq_buf, freq_v0);
+		sem_conv_gen_wosc(o, gen, buf_count, in_buf, freq);
 		break;
 	case SAU_PGEN_N_rals:
-		sem_conv_gen_rosc(o, gen, buf_count, in_buf,
-				freq_buf, freq_v0);
+		sem_conv_gen_rosc(o, gen, buf_count, in_buf, freq);
 		break;
 	}
 	float amp_v0;
 	bool has_amp = sem_conv_valr(o, gen, SAU_MOD_N_a_am,
-			SAU_PVALR_AMP, &amp_v0, buf_count, 0, 1.0,
-			freq_buf, freq_v0, false);
+			SAU_PVALR_AMP, &amp_v0, buf_count, NULL, freq, false);
 	uint32_t amp_buf = has_amp ? buf_count++ : 0;
 	float pan_v0;
 	bool has_pan = sem_conv_valr(o, gen, SAU_MOD_N_c_am,
-			SAU_PVALR_PAN, &pan_v0, buf_count, 0, 1.0,
-			freq_buf, freq_v0, false);
+			SAU_PVALR_PAN, &pan_v0, buf_count, NULL, freq, false);
 	uint32_t pan_buf = has_pan ? buf_count++ : 0;
 	if (!(ins = RInsArr_add(&o->ev_ins))) goto MEM_ERR;
 	*ins = sauRIns_gen_pop_mix(mix_buf, mix_mode, in_buf,
@@ -1580,11 +1588,9 @@ MEM_ERR:
 
 static bool
 sem_conv_mods(ParseSem *restrict o, const sauProgramIDArr *restrict mods,
-		uint32_t buf_count, uint32_t freq_buf, float freq_v0,
-		uint8_t mix_mode) {
+		uint32_t buf_count, uint8_t mix_mode) {
 	for (uint32_t i = 0; i < mods->count; ++i) {
-		if (sem_conv_gen(o, mods->ids[i], buf_count,
-					freq_buf, freq_v0, mix_mode))
+		if (sem_conv_gen(o, mods->ids[i], buf_count, mix_mode))
 			mix_mode |= SAU_RMIX_LAYER;
 	}
 	return (mix_mode & SAU_RMIX_LAYER) != 0; // true if buffer filled
@@ -1602,11 +1608,12 @@ static bool
 sem_conv_traverse(ParseSem *restrict o, sauParseEvData *restrict e) {
 	if (e->next && e->next->wait_ms == 0)
 		return true; // skip, instructions would be replaced before use
+	RInsBlockArr_upsize(&o->ins_block, o->gen_nest_max+1);
 	o->sbuf_count = 0; // reset
 	for (size_t i = 0; i < o->va.count; ++i) {
 		sauVoAllocState *vas = &o->va.a[i];
 		if (!vas->has_carrier) continue;
-		sem_conv_gen(o, vas->obj_id, 0, 0, 1.0, 0);
+		sem_conv_gen(o, vas->obj_id, 0, 0);
 	}
 	if (o->max_sbuf_count < o->sbuf_count)
 		o->max_sbuf_count = o->sbuf_count;
@@ -1840,5 +1847,6 @@ fini_ParseSem(ParseSem *restrict o, sauParse *restrict parse) {
 	IDBuf_clear(&o->idbuf);
 	_GenDataArr_clear(&o->ev_gen_data);
 	RInsArr_clear(&o->ev_ins);
+	RInsBlockArr_clear(&o->ins_block);
 	return ok ? parse : NULL;
 }

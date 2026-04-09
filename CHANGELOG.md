@@ -7,7 +7,14 @@ is a shorter change log with only the SAU language changes.
 Pre-release
 -----------
 
-[rebase in progress]
+Language changes:
+ * Frequency. Ratio carrier selection for modulators. Every
+   modulator now has the `r.c` option; it allows overriding
+   which carrier's frequency is multiplied by the `r` value
+   (by default going up one level, `r.c-1`). Changing it to
+   0 or a positive value will go inward, from the root/top.
+   Values out of range are clamped to the range, from root,
+   to the level just above the modulator being set.
 
 Fix v0.5.6 edge case bug for frequency parameter sweeps; if
 using ratio for goal but not for state or vice-versa (mixed

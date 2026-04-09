@@ -156,6 +156,12 @@ enum {
 	SAU_PAN_DEFAULT = SAU_PAN_LIN,
 };
 
+/** Ratio carrier. Set in the \a user_flags for main SAU_PVALR_FREQ line. */
+enum {
+	SAU_CARR_GET = 1,
+	SAU_CARR_GETREV,
+};
+
 /** Filter parameter flags. */
 enum {
 	SAU_FILTP_LPF = 1U<<0,
@@ -409,6 +415,7 @@ typedef struct sauParseGenData {
 	sauTime time;
 	sauRangeSet *valr;
 	sauFiltPar *main_filt;
+	uint16_t ratio_carr_level;
 	uint32_t phase;
 	uint32_t seed;
 	union sauPGenMode {

@@ -214,25 +214,40 @@ Oscillator common parameters:
 			"Value ranges and envelopes" is supported for FM
 		(frequency modulation); see section. Note that the modulator
 		lists for "f" and "r" expressions are shared and identical.
+			Note that for FM modulators under this "f" or "r",
+		the carrier frequency used as a multiplier is simply the
+		unmodulated value. (If several types of FM list are set and
+		used at the same time, the result of earlier stages will be
+		used for later.) For other kinds of modulation, if FM is also
+		done its result is used.
 	r	(Only for generators nested inside a carrier.) Relative
 		frequency, a value which will be multiplied by the frequency
-		of the closest carrier which has a frequency parameter in the
+		of a selected carrier which has a frequency parameter in the
 		chain for the modulator, to give the frequency to use. For an
 		n:m modulator:carrier frequency ratio, a value of the form
-		(n/m) may be used; e.g., for a 4:3 frequency ratio, "r(4/3)".
-			When using "r" the same values are changed as when
-		using "f", the difference simply being whether multiplication
-		by carrier frequency is switched on or off. Specific values
-		like the main value or the ".r" second value can be set again
-		under "f" or "r" to toggle just that value.
+		n/m may be used; e.g., for a 4:3 frequency ratio, "r4/3".
 			"Value ranges and envelopes" is supported for FM
 		(frequency modulation); see section. Note that the modulator
 		lists for "f" and "r" expressions are shared and identical.
-			Note that for FM modulators, the carrier frequency
-		used as a multiplier is simply the unmodulated value. (If
-		several types of FM list are set and used at the same time,
-		the result of earlier stages will be used for later.) For
-		other kinds of modulation, if FM is done the result is used.
+			Under "r" the same values are set as under "f", the
+		difference simply being whether multiplication by carrier
+		frequency is switched on or off. Specific values like the
+		main paramater value or the value range ".r" second value can
+		be set again under "f" or "r" to toggle just that value.
+		Sweeps ("Value sweep") can also go from an "f" state to an
+		"r" goal, or from an "r" state to an "f" goal; the goal
+		decides the behavior after the first value.
+			The following subparameter can be used to change the
+		target carrier whose frequency multiplies values under `r`.
+		The default is the carrier just above, the immediate
+		container of this modulator.
+		.c	Ratio carrier, as an integer indexing the modulator
+			list nesting level. The default is -1 (as in "r.c-1"),
+			negative values going up a number of steps from this
+			modulator. A positive value or 0 will count up from 0,
+			the root/top, towards this modulator. The selection is
+			clamped to the range of root carrier to carrier just
+			above, no matter the numbers entered.
 	p	Phase in percentage of the wave cycle modulo 1.0. Set to
 		reset the phase, e.g. to change the initial value from 0.0.
 		See "Cycle position values" for more.

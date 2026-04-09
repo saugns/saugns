@@ -547,7 +547,7 @@ static sauNoinline int32_t scan_int_in_range(sauScanner *restrict o,
 	sauScanFrame sf = o->sf;
 	size_t num_len;
 	int32_t num;
-	sauScanner_geti(o, &num, false, &num_len);
+	sauScanner_geti(o, &num, min < 0, &num_len);
 	if (num_len == 0)
 		return false;
 	if (num < min || num > max) {
@@ -1989,9 +1989,28 @@ static bool parse_gen_freq(sauParser *restrict o, bool rel_freq) {
 	sauParseGenData *gen = pl->gen;
 	if (rel_freq && !gen->ref.is_nested)
 		return true; // reject, lacks parameter
+	int c;
 	sauScanNumConst_f num_f = rel_freq ? NULL : scan_note_const;
-	return parse_par_modranges(o, num_f, NULL, rel_freq,
-			SAU_PVALR_FREQ, SAU_MOD_N_f_fm);
+	switch ((c = parse_par_modranges(o, num_f, NULL, rel_freq,
+				SAU_PVALR_FREQ, SAU_MOD_N_f_fm))) {
+	case 'c': {
+		if (!rel_freq)
+			return true; // reject, lacks parameter
+		sauRange *r = (*gen->valr)[SAU_PVALR_FREQ];
+		int32_t i;
+		if (scan_int_in_range(o->sc, -UINT16_MAX, +UINT16_MAX, -1, &i,
+					"carrier block level")) {
+			sauLine *line = &r->a;
+			line->user_flags = i < 0 ?
+				SAU_CARR_GETREV :
+				SAU_CARR_GET;
+			gen->ratio_carr_level = i < 0 ? -i : i;
+		}
+		return false; }
+	default:
+		return c != 0;
+	}
+	return false;
 }
 
 static bool parse_gen_mode_rals(sauScanner *restrict sc,
