@@ -4,8 +4,8 @@ saugns version changes
 [On the website](https://sau.frama.io/changes.html#saulang)
 is a shorter change log with only the SAU language changes.
 
-Pre-release
------------
+v0.5.6c (2026-04-09)
+--------------------
 
 Language changes:
  * Frequency. Ratio carrier selection for modulators. Every
