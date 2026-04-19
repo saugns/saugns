@@ -13,6 +13,16 @@ Language changes:
    or `r` to `f`, no longer convert its `v` to match `g` --
    do not make the `v` value a ratio or non-ratio to match.
    Instead let the line type interpolate between behaviors.
+ * Deprecate use of PD and self-PM subparameters after `p.`
+   in favor of the `p[]` syntax. This also means e.g. `W[]`
+   and `R[]` instead of `W.` and `R.` for shorthand syntax.
+ * Deprecate use of filter options `a.f.l` and `a.f.h`; the
+   `a.f[l h]` options are favored.
+
+From now on each subparameter option will be available only
+through one of, after a `.` or within `[]`, never both. New
+options may use this to have the same name, but a different
+meaning.
 
 v0.5.6c (2026-04-09)
 --------------------

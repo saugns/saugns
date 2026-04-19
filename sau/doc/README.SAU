@@ -258,7 +258,7 @@ Oscillator common parameters:
 			A subparameter can be used instead or in addition
 		to set up another kind of PM. Phase distortion can also be
 		used; see the "Phase distortion subparameters" section for
-		those options. There you'll also find the ".a" self-PM
+		those options. There you'll also find the "p[a]" self-PM
 		a.k.a.  "feedback FM" subparameter described.
 		.f	Frequency-scaled PM modulators can be set in a
 			separate list, as in "p.f[...]". See "Modulator list".
@@ -268,11 +268,10 @@ Oscillator common parameters:
 		by 632.45... Hz (the geometric mean of 20 and 20000 Hz).
 
 Phase distortion subparameters:
-	These phase "p" subparameters can be written each with a "p."-prefix.
-	Alternatively, they can be written inside a "p[]" list, as heading
-	subparameters. Both forms can also be used after the oscillator
+	These phase "p" subparameters can be written within a "p[]" list,
+	as heading subparameters. This can also be used after the oscillator
 	type names "W" and "R" (since they accept "p" values as a shorthand
-	syntax), e.g. "W.c2" or "W[c2.f2 d2]".
+	syntax), e.g. "W[c2.f2 d2]" or "Wsqr[x3/4]".
 		The phase distortions below are performed in the listed
 	order. Self-PM a.k.a. "feedback FM" is listed among them as it can
 	be used in the same places (and likewise distorts waveform through
@@ -334,7 +333,7 @@ Phase distortion subparameters:
 		and buzzy. This and "d" both tend to sound deep when
 		modulated, but this sounds less bright.
 	y	Inverse of the x-axis half-cycle lenght PWM-like PD,
-		".x". Where PWM changes length proportions of halves
+		"x". Where PWM changes length proportions of halves
 		of a waveform while preserving their shapes, instead
 		this distortion deforms one half, by reducing change
 		in phase inside it, the other half being accelerated
@@ -363,7 +362,7 @@ Phase distortion subparameters:
 			When combined with more modulation, self-PM is most
 		useful for innermost PM or similar modulators, which can
 		have frequency ratio etc. changed to vary what it causes.
-		For example, "W[W.a1/2 r2]" gives a soft square-like wave
+		For example, "W[W[a1/2] r2]" gives a soft square-like wave
 		because of the 2:1 modulator:carrier frequency ratio.
 	The following subparameters are available for all PD options, i.e.
 	all but the self-PM "a" option.

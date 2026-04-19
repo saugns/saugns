@@ -1384,22 +1384,29 @@ static sauParseListData *parse_par_list(sauParser *restrict o,
 		void *restrict gen_subp, bool ratio,
 		unsigned valr_id, uint8_t use_type, unsigned subp_part);
 
-// used for both 'S' sopt and generators
 static uint8_t parse_main_filt_par(sauParser *restrict o,
 		sauFiltPar *restrict filt, uint8_t c) {
 	switch (c) {
-	case 'l':
+	break; case 'l':
 		if (scan_cutoff_freq(o->sc, &filt->l_v))
 			filt->flags |= SAU_FILTP_LPF;
-		break;
-	case 'h':
+	break; case 'h':
 		if (scan_cutoff_freq(o->sc, &filt->h_v))
 			filt->flags |= SAU_FILTP_HPF;
-		break;
-	default:
+	break; default:
 		return c;
 	}
 	return 0;
+}
+
+static uint8_t parse_main_filt(sauParser *restrict o,
+		sauFiltPar *restrict filt, unsigned subp_part) {
+	scan_filt_shorthand(o->sc, filt);
+	parse_par_list(o, scan_note_const, filt, false, 0, 0, subp_part);
+	uint8_t c = sauScanner_getc_after(o->sc, '.');
+	if (c && !(c = parse_main_filt_par(o, filt, c)))
+		warn_deprecated(o->sc, "filter .f.", ".f[]");
+	return c;
 }
 
 static bool parse_so_amp(sauParser *restrict o,
@@ -1415,15 +1422,11 @@ static bool parse_so_amp(sauParser *restrict o,
 		sopt->def_ampmult = val;
 	}
 	switch ((c = sauScanner_getc_after(o->sc, '.'))) {
-	case 'f':
+	break; case 'f':
 		if (ns->list)
 			return true; // only allow in global scope
-		scan_filt_shorthand(o->sc, &sopt->mix_filt);
-		parse_par_list(o, scan_note_const, &sopt->mix_filt, false, 0, 0,
-				MAIN_FILT|SOPT_PART);
-		return parse_main_filt_par(o, &sopt->mix_filt,
-				sauScanner_getc_after(o->sc, '.'));
-	case 'm':
+		return parse_main_filt(o, &sopt->mix_filt, MAIN_FILT|SOPT_PART);
+	break; case 'm':
 		if (ns->list)
 			return true; // only allow in global scope
 		if (!isnan(sopt->ampmult))
@@ -1432,8 +1435,7 @@ static bool parse_so_amp(sauParser *restrict o,
 		if (scan_num(o->sc, NULL, &val)) {
 			sopt->ampmult = val;
 		}
-		break;
-	default:
+	break; default:
 		return c != 0;
 	}
 	return false;
@@ -1944,14 +1946,13 @@ static uint8_t parse_gen_amp(sauParser *restrict o) {
 	sauParseGenData *gen = pl->gen;
 	uint8_t c = parse_par_modranges(o, NULL, NULL, false,
 			SAU_PVALR_AMP, SAU_MOD_N_a_am);
-	if (c == 'f') {
+	switch (c) {
+	break; case 'f':
 		if (!gen->main_filt)
 			gen->main_filt = sau_mpalloc(o->mp, sizeof(sauFiltPar));
-		scan_filt_shorthand(o->sc, gen->main_filt);
-		parse_par_list(o, scan_note_const, gen->main_filt, false, 0, 0,
-				MAIN_FILT);
-		return parse_main_filt_par(o, gen->main_filt,
-				sauScanner_getc_after(o->sc, '.'));
+		return parse_main_filt(o, gen->main_filt, MAIN_FILT);
+	break; default:
+		return c;
 	}
 	return c;
 }
@@ -2157,12 +2158,14 @@ static uint8_t parse_gen_phase(sauParser *restrict o) {
 		gen->params |= SAU_PGENP_PHASE;
 	}
 	parse_par_list(o, NULL, NULL, false, 0, SAU_MOD_N_p_pm, 0);
-	uint8_t c = parse_gen_phase_pdpar(o, sauScanner_getc_after(o->sc, '.'));
-	switch (c) {
+	uint8_t c;
+	switch ((c = sauScanner_getc_after(o->sc, '.'))) {
 	case 'f':
 		parse_par_list(o, NULL, NULL, false, 0, SAU_MOD_N_pf_pm, 0);
 		break;
 	default:
+		if (c && !(c = parse_gen_phase_pdpar(o, c)))
+			warn_deprecated(o->sc, "PD and self-PM p.", "p[]");
 		return c;
 	}
 	return 0;

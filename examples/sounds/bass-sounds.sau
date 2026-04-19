@@ -3,8 +3,8 @@
 $bpm?=120
 $strength?=2
 $pitch?=3
-Wean f$pitch*30 p.a$strength/8[
+Wean f$pitch*30 p[a$strength/8[
 	Rsqe mfh f$bpm/60 a$strength/8
-] a1/8.r1[
-	Wtri p.a.5 f$bpm/60
+]] a1/8.r1[
+	Wtri p[a.5] f$bpm/60
 ] t5; wspa; wtri; wsin
