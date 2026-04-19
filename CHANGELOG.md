@@ -7,10 +7,12 @@ is a shorter change log with only the SAU language changes.
 Pre-release
 -----------
 
-[rebase in progress]
-
 Language changes:
  * Fix, that is apply `S c.p`; didn't actually work before.
+ * Parameter sweeps. For a frequency sweep from `f` to `r`,
+   or `r` to `f`, no longer convert its `v` to match `g` --
+   do not make the `v` value a ratio or non-ratio to match.
+   Instead let the line type interpolate between behaviors.
 
 v0.5.6c (2026-04-09)
 --------------------
