@@ -327,8 +327,7 @@ void sauLine_copy(sauLine *restrict o,
 		if ((o->flags & SAU_LINEP_GOAL) != 0 &&
 		    (src->flags & SAU_LINEP_GOAL) != 0) {
 			float f;
-			sauLine_get(o, &f, 1, NULL);
-			o->v0 = f;
+			if (sauLine_get(o, &f, 1, NULL)) o->v0 = f;
 			if (o->flags & SAU_LINEP_GOAL_RATIO)
 				o->flags |= SAU_LINEP_STATE_RATIO;
 			else
@@ -364,10 +363,7 @@ void sauLine_copy(sauLine *restrict o,
 
 /**
  * Fill \p buf with up to \p buf_len values for the line.
- * Only fills values for an active (remaining) goal, none
- * if there's none. Will fill less than \p buf_len values
- * if the goal is reached first. Does not advance current
- * position for the line.
+ * Only fills values until the \a end time is reached.
  *
  * If state and/or goal is a ratio, \p mulbuf is
  * used for value multipliers, to get "absolute"
@@ -380,21 +376,34 @@ void sauLine_copy(sauLine *restrict o,
 sauNoinline uint32_t sauLine_get(sauLine *restrict o,
 		float *restrict buf, uint32_t buf_len,
 		const float *restrict mulbuf) {
-	if (!(o->flags & SAU_LINEP_GOAL))
-		return 0;
-	if (mulbuf) {
-		sauLine_adjust_v0(o, mulbuf[0]);
-		if (!(o->flags & SAU_LINEP_GOAL_RATIO))
-			mulbuf = NULL;
-	}
 	if (o->pos >= o->end)
 		return 0;
 	uint32_t len = o->end - o->pos;
 	if (len > buf_len) len = buf_len;
-	sauLine_fill_funcs[o->type](buf, len,
-			o->v0, o->vt, o->pos, o->end);
-	if (mulbuf)
-		for (uint32_t i = 0; i < len; ++i) buf[i] *= mulbuf[i];
+	sauLine_fill_f fill_fn = sauLine_fill_funcs[o->type];
+	if (!mulbuf ||
+	    !(o->flags & (SAU_LINEP_STATE_RATIO|SAU_LINEP_GOAL_RATIO))) {
+		fill_fn(buf, len, o->v0, o->vt, o->pos, o->end);
+	} else if ((o->flags & (SAU_LINEP_STATE_RATIO|SAU_LINEP_GOAL_RATIO)) ==
+			(SAU_LINEP_STATE_RATIO|SAU_LINEP_GOAL_RATIO)) {
+		fill_fn(buf, len, o->v0, o->vt, o->pos, o->end);
+		for (uint32_t i = 0; i < len; ++i)
+			buf[i] *= mulbuf[i];
+	} else if (o->flags & SAU_LINEP_GOAL_RATIO) {
+		fill_fn(buf, len, 0.0, 1.0, o->pos, o->end);
+		float a = o->v0;
+		for (uint32_t i = 0; i < len; ++i) {
+			float b = o->vt * mulbuf[i];
+			buf[i] = a + (b - a) * buf[i];
+		}
+	} else {
+		fill_fn(buf, len, 0.0, 1.0, o->pos, o->end);
+		float b = o->vt;
+		for (uint32_t i = 0; i < len; ++i) {
+			float a = o->v0 * mulbuf[i];
+			buf[i] = a + (b - a) * buf[i];
+		}
+	}
 	return len;
 }
 
@@ -469,6 +478,11 @@ bool sauLine_run(sauLine *restrict o,
 		 */
 		o->v0 = o->vt;
 		o->pos = o->end = 0;
+		if ((o->flags & SAU_LINEP_GOAL_RATIO) != 0) {
+			o->flags |= SAU_LINEP_STATE_RATIO;
+		} else {
+			o->flags &= ~SAU_LINEP_STATE_RATIO;
+		}
 		o->flags &=
 			~(SAU_LINEP_GOAL|SAU_LINEP_GOAL_RATIO|SAU_LINEP_TIME);
 	FILL:

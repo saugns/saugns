@@ -35,13 +35,6 @@ struct ParWithRangeMod {
 	sauEnvGen env;
 };
 
-/*
- * Extra state to accommodate adjustment for use with multiplier buffer.
- */
-struct RangeModDynVal {
-	float a_v0, b_v0, e_v0;
-};
-
 typedef uint32_t (*RIns_run_fn)(struct sauGenerator *restrict o,
 		const sauRIns *restrict ins, uint32_t len);
 
@@ -51,9 +44,6 @@ typedef uint32_t (*RIns_run_fn)(struct sauGenerator *restrict o,
 enum {
 	GN_ROOT_GEN   = 1U<<0, // genereator corresponds to voice output
 	GN_TIME_INF   = 1U<<1, // used for SAU_TIMEP_IMPLICIT
-	GN_NEW_FREQ_A = 1U<<2, // need to update \a freq_dyn.a_v0
-	GN_NEW_FREQ_B = 1U<<3, // need to update \a freq_dyn.b_v0
-	GN_NEW_FREQ_E = 1U<<4, // need to update \a freq_dyn.e_v0
 };
 
 enum {
@@ -76,7 +66,6 @@ typedef struct GenBase {
 	uint8_t flags;
 	uint8_t pan_law;
 	uint8_t filt; // flags from GN_FILT()
-	struct RangeModDynVal freq_dyn; // parameter changed by some mulbuf[0]
 	struct ParWithRangeMod valr[SAU_PVALR_TYPES];
 	struct FilterCoeff main_lpf_c[GEN_FILTERS], main_hpf_c[GEN_FILTERS];
 	struct Filter main_lpf[GEN_FILTERS], main_hpf[GEN_FILTERS];
@@ -275,7 +264,6 @@ static void prepare_gen(sauGenerator *restrict o,
 	for (uint32_t i = 0; i < SAU_PVALR_TYPES; ++i)
 		prepare_range(&gen->valr[i]);
 	gen->type = gd->ref.gen_type;
-	gen->flags |= GN_NEW_FREQ_A | GN_NEW_FREQ_B | GN_NEW_FREQ_E;
 	gen->pan_law = SAU_PAN_DEFAULT;
 }
 
@@ -401,13 +389,6 @@ static void update_gen(sauGenerator *restrict o,
 		sauRange *r_pan = valr[SAU_PVALR_PAN];
 		if (r_pan && r_pan->a.user_flags)
 			gen->pan_law = r_pan->a.user_flags;
-		sauRange *r_freq = valr[SAU_PVALR_FREQ];
-		if (r_freq && r_freq->a.flags & SAU_LINEP_STATE)
-			gen->flags |= GN_NEW_FREQ_A;
-		if (r_freq && r_freq->b.flags & SAU_LINEP_STATE)
-			gen->flags |= GN_NEW_FREQ_B;
-		if (r_freq && r_freq->e.flags & SAU_LINEP_STATE)
-			gen->flags |= GN_NEW_FREQ_E;
 	}
 	update_filt(n, MAIN_FILT, gd, o->srate);
 }
@@ -940,38 +921,6 @@ static uint32_t run_rins_run_osc_phasor(struct sauGenerator *restrict o,
 	return len;
 }
 
-static float *
-adjust_freq_v0(GenBase *restrict gen, uint8_t sub_id,
-		sauLine *restrict line, const float *restrict mulbuf) {
-	if (!mulbuf || !(line->flags & SAU_LINEP_GOAL))
-		return NULL;
-	float *gen_freq_v0 = NULL;
-	unsigned mask = 0;
-	switch (sub_id) {
-	default: return NULL;
-	case SAU_RANGE_A:
-		 gen_freq_v0 = &gen->freq_dyn.a_v0;
-		 mask = GN_NEW_FREQ_A;
-		 break;
-	case SAU_RANGE_B:
-		 gen_freq_v0 = &gen->freq_dyn.b_v0;
-		 mask = GN_NEW_FREQ_B;
-		 break;
-	case SAU_RANGE_E:
-		 gen_freq_v0 = &gen->freq_dyn.e_v0;
-		 mask = GN_NEW_FREQ_E;
-		 break;
-	}
-	if (gen->flags & mask) {
-		gen->flags &= ~mask;
-		sauLine_adjust_v0(line, mulbuf[0]);
-	} else {
-		sauLine_adjust_v0(line, 1.0); // just adjust flags
-		line->v0 = *gen_freq_v0;
-	}
-	return gen_freq_v0;
-}
-
 static uint32_t run_rins_run_par_line(struct sauGenerator *restrict o,
 		const sauRIns *restrict ins, uint32_t len) {
 	AnyGen *n = o->cur_block->n;
@@ -989,11 +938,7 @@ static uint32_t run_rins_run_par_line(struct sauGenerator *restrict o,
 	float *par_buf = o->bufs[sau_rins_get_w0(ins->x)];
 	uint32_t mul_buf_id    = sau_rins_get_w1(ins->x);
 	float *mul_buf = mul_buf_id ? o->bufs[mul_buf_id] : NULL;
-	float *store_val = NULL;
-	if (par_id == SAU_PVALR_FREQ)
-		store_val = adjust_freq_v0(&n->gen, sub_id, &line, mul_buf);
 	sauLine_run(&line, par_buf, len, mul_buf);
-	if (store_val) *store_val = line.v0;
 	time->pos = line.pos;
 	time->end = line.end;
 	return len;
