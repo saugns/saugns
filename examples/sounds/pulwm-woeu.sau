@@ -1,2 +1,2 @@
 // Simple PulWM example, somewhat randomized; uses single sine cycle
-W.c1.r200[Wpar f1 R mp f1/2] f20.r100[R mb1p f2] t30
+W[c1.r200[Wpar f1 R mp f1/2]] f20.r100[R mb1p f2] t30
