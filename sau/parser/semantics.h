@@ -1529,8 +1529,7 @@ sem_conv_gen_rosc(ParseSem *restrict o, SemGenObj *restrict gen,
  */
 static bool
 sem_conv_gen(ParseSem *restrict o, uint32_t obj_id,
-		uint32_t buf_count,
-		uint8_t mix_mode) {
+		uint32_t buf_count, uint8_t mix_mode) {
 	SemGenObj *gen = &o->gen_obj.a[obj_id];
 	if (gen->is_visited)
 		return false; // guard against circular reference
@@ -1541,7 +1540,8 @@ sem_conv_gen(ParseSem *restrict o, uint32_t obj_id,
 	if (!(ins = RInsArr_add(&o->ev_ins))) goto MEM_ERR;
 	gen->is_visited = true;
 	bool layer = mix_mode & SAU_RMIX_LAYER;
-	uint32_t mix_buf = buf_count++; // #0
+	uint32_t mix_buf = buf_count; // #0
+	buf_count += SAU_RMIX_BUFS;
 	RInsBlock *freq = &o->ins_block.a[gen->block_i];
 	RInsBlock *carr_freq = gen->block_i > 0 ?
 		&o->ins_block.a[gen->ratio_block_i] :
@@ -1577,8 +1577,7 @@ sem_conv_gen(ParseSem *restrict o, uint32_t obj_id,
 	uint32_t pan_buf = has_pan ? buf_count++ : 0;
 	if (!(ins = RInsArr_add(&o->ev_ins))) goto MEM_ERR;
 	*ins = sauRIns_gen_pop_mix(mix_buf, mix_mode, in_buf,
-			amp_buf, has_amp, amp_v0,
-			pan_buf, has_pan, pan_v0);
+			amp_buf, amp_v0, pan_buf, pan_v0);
 	gen->is_visited = false;
 	// insert time handling (checking, subtraction) if finite time used;
 	// done here since a jump needs a destination, which needs ins count
@@ -1615,10 +1614,12 @@ sem_conv_traverse(ParseSem *restrict o, sauParseEvData *restrict e) {
 		return true; // skip, instructions would be replaced before use
 	RInsBlockArr_upsize(&o->ins_block, o->gen_nest_max+1);
 	o->sbuf_count = 0; // reset
+	uint8_t mix_mode = 0;
 	for (size_t i = 0; i < o->va.count; ++i) {
 		sauVoAllocState *vas = &o->va.a[i];
 		if (!vas->has_carrier) continue;
-		sem_conv_gen(o, vas->obj_id, 0, 0);
+		if (sem_conv_gen(o, vas->obj_id, 0, mix_mode))
+			mix_mode |= SAU_RMIX_LAYER;
 	}
 	if (o->max_sbuf_count < o->sbuf_count)
 		o->max_sbuf_count = o->sbuf_count;

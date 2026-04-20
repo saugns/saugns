@@ -44,10 +44,13 @@ enum {
 
 extern const char *const sauRIns_names[SAU_RINS_NAMED]; // define in semantics.h
 
+#define SAU_RMIX_BUFS 2 // buffers per block used for mixing result, at bottom
+
 /** Audio rendering mix mode flags. */
 enum {
 	SAU_RMIX_LAYER    = 1U<<0,
-	SAU_RMIX_MUL_WE   = 1U<<1,
+	SAU_RMIX_STEREO   = 1U<<1,
+	SAU_RMIX_MUL_WE   = 1U<<2,
 };
 
 // for packing 2 16-bit values into 32-bit value; higher args go in higher bits
@@ -92,8 +95,10 @@ sauRIns_gen_push_jz(uint32_t gen_id, uint32_t jmp_dst,
 
 static inline sauRIns
 sauRIns_gen_pop_mix(uint32_t out_buf_id, uint8_t mix_mode, uint32_t in_buf_id,
-		uint32_t amp_buf_id, bool has_amp, float amp_v0,
-		uint32_t pan_buf_id, bool has_pan, float pan_v0) {
+		uint32_t amp_buf_id, float amp_v0,
+		uint32_t pan_buf_id, float pan_v0) {
+	if (pan_buf_id || pan_v0 != 0.0)
+		mix_mode |= SAU_RMIX_STEREO;
 	sauRIns ins = {.op = SAU_RINS_N_gen_pop_mix,
 		.mode = mix_mode,
 		.a.i = in_buf_id, .has_a = mix_mode & SAU_RMIX_LAYER,
@@ -101,8 +106,8 @@ sauRIns_gen_pop_mix(uint32_t out_buf_id, uint8_t mix_mode, uint32_t in_buf_id,
 		.c.i = pan_buf_id, .has_c = true,
 		.x = out_buf_id,
 	};
-	if (!has_amp) { ins.b.f = amp_v0; ins.has_b_f = true; }
-	if (!has_pan) { ins.c.f = pan_v0; ins.has_c_f = true; }
+	if (!amp_buf_id) { ins.b.f = amp_v0; ins.has_b_f = true; }
+	if (!pan_buf_id) { ins.c.f = pan_v0; ins.has_c_f = true; }
 	return ins;
 }
 

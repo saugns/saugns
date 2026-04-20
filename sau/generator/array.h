@@ -29,6 +29,7 @@
  */
 
 #define sau_nzero(a, n) memset((a), 0, sizeof((a)[0]) * (n))
+#define sau_ncpy(a, b, n) memcpy((a), (b), sizeof((a)[0]) * (n))
 
 static inline void sau_nsetf(float *restrict a, size_t n, float v) {
 	for (size_t i=0; i<n; ++i) a[i]=v;
