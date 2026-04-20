@@ -92,6 +92,7 @@ Parameters:
 		to other nested lists for modulators, that is modulators for
 		other parameters; their multipliers apply unchanged.
 		.f	Script-wide mix frequency filter controls.
+			Can only be set in the outermost scope.
 			See "Frequency filter options" for details.
 		.m	Script-wide gain mix control (multiplier). If used,
 			this disables automatic down-scaling of amplitude
@@ -155,6 +156,7 @@ Generator universal parameters:
 			"Value ranges and envelopes" is supported for AM &
 		RM (amplitude and ring modulation); see section.
 		.f	Generator output frequency filter controls.
+			Applied after all else for this generator.
 			See "Frequency filter options" for details.
 	c	(For non-nested generators only.) Channel mixing, mainly
 		(-1.0) to 1.0. See "Channel mixing values" for more.

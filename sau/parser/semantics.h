@@ -1512,11 +1512,8 @@ sem_conv_gen_rosc(ParseSem *restrict o, SemGenObj *restrict gen,
 		*ins = sauRIns_run_ralsosc_selfmod(out_buf, cycle_buf,
 				pma_buf);
 	} else {
-		uint32_t end_a_buf = buf_count++;
-		uint32_t end_b_buf = buf_count++;
 		ins = RInsArr_add(&o->ev_ins);
-		*ins = sauRIns_run_ralsosc(out_buf, cycle_buf,
-				end_a_buf, end_b_buf);
+		*ins = sauRIns_run_ralsosc(out_buf, cycle_buf);
 	}
 	if (o->sbuf_count < buf_count) o->sbuf_count = buf_count;
 }

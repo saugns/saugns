@@ -35,8 +35,8 @@ struct ParWithRangeMod {
 	sauEnvGen env;
 };
 
-typedef uint32_t (*RIns_run_fn)(struct sauGenerator *restrict o,
-		const sauRIns *restrict ins, uint32_t len);
+typedef size_t (*RIns_run_fn)(struct sauGenerator *restrict o,
+		const sauRIns *restrict ins, size_t len);
 
 /*
  * Generator node flags.
@@ -48,7 +48,7 @@ enum {
 };
 
 enum {
-	MAIN_FILT = 0,
+	MIX_FILT = 0, // last, +1 holds 2nd channel state
 	GEN_FILTERS
 };
 
@@ -68,8 +68,8 @@ typedef struct GenBase {
 	uint8_t pan_law;
 	uint8_t filt; // flags from GN_FILT()
 	struct ParWithRangeMod valr[SAU_PVALR_TYPES];
-	struct FilterCoeff main_lpf_c[GEN_FILTERS], main_hpf_c[GEN_FILTERS];
-	struct Filter main_lpf[GEN_FILTERS], main_hpf[GEN_FILTERS];
+	struct FilterCoeff lpf_c[GEN_FILTERS], hpf_c[GEN_FILTERS];
+	struct Filter lpf[GEN_FILTERS+1], hpf[GEN_FILTERS+1];
 } GenBase;
 
 typedef struct AmpNode {
@@ -140,11 +140,14 @@ struct sauGenerator {
 	sauMempool *mem;
 };
 
+#define TMP_BUF(i) ((i) - SAU_RTMP_BUFS)
+
 static bool alloc_for_program(sauGenerator *restrict o,
 		const sauParse *restrict prg) {
 	size_t i;
-	i = prg->sbuf_count;
+	i = prg->sbuf_count + SAU_RTMP_BUFS;
 	if (!(o->bufs = calloc(i, sizeof(Buf)))) goto ERROR;
+	o->bufs += SAU_RTMP_BUFS; // place temporary buffers below stack
 	o->ev_count = prg->ev_count;
 	// stack for generator/timing block nesting (1 deep with no nesting)
 	i = prg->gen_nest_depth + 1;
@@ -226,7 +229,7 @@ sauGenerator* sau_create_Generator(const sauParse *restrict prg,
 void sau_destroy_Generator(sauGenerator *restrict o) {
 	if (!o)
 		return;
-	free(o->bufs);
+	free(o->bufs - SAU_RTMP_BUFS);
 	sau_destroy_Mempool(o->mem);
 }
 
@@ -260,7 +263,7 @@ static void prepare_gen(sauGenerator *restrict o,
 		break; }
 	}
 	GenBase *gen = &n->gen;
-	for (uint32_t i = 0; i < SAU_PVALR_TYPES; ++i)
+	for (size_t i = 0; i < SAU_PVALR_TYPES; ++i)
 		prepare_range(&gen->valr[i]);
 	gen->type = gd->ref.gen_type;
 	gen->pan_law = SAU_PAN_DEFAULT;
@@ -301,8 +304,8 @@ update_filt(AnyGen *restrict n, unsigned filter_i,
 		return;
 	if (par->flags & SAU_FILTP_LPF) {
 		unsigned flag = GN_FILT(filter_i, LPF);
-		struct Filter *s = &n->gen.main_lpf[filter_i];
-		struct FilterCoeff *c = &n->gen.main_lpf_c[filter_i];
+		struct Filter *s = &n->gen.lpf[filter_i];
+		struct FilterCoeff *c = &n->gen.lpf_c[filter_i];
 		if (par->l_v > 0.f) {
 			n->gen.filt |= flag;
 			sau_set_filt_1p(c, par->l_v, srate);
@@ -310,11 +313,12 @@ update_filt(AnyGen *restrict n, unsigned filter_i,
 			n->gen.filt &= ~flag;
 		}
 		s->t[0] = s->t[1] = 0.f; // reset, prevent burst
+		if (filter_i == MIX_FILT) s[1] = s[0];
 	}
 	if (par->flags & SAU_FILTP_HPF) {
 		unsigned flag = GN_FILT(filter_i, HPF);
-		struct Filter *s = &n->gen.main_hpf[filter_i];
-		struct FilterCoeff *c = &n->gen.main_hpf_c[filter_i];
+		struct Filter *s = &n->gen.hpf[filter_i];
+		struct FilterCoeff *c = &n->gen.hpf_c[filter_i];
 		if (par->h_v > 0.f) {
 			n->gen.filt |= flag;
 			sau_set_filt_1p(c, par->h_v, srate);
@@ -322,6 +326,7 @@ update_filt(AnyGen *restrict n, unsigned filter_i,
 			n->gen.filt &= ~flag;
 		}
 		s->t[0] = s->t[1] = 0.f; // reset, prevent burst
+		if (filter_i == MIX_FILT) s[1] = s[0];
 	}
 }
 
@@ -383,13 +388,13 @@ static void update_gen(sauGenerator *restrict o,
 		}
 	}
 	if (valr) {
-		for (uint32_t i = 0; i < SAU_PVALR_TYPES; ++i)
+		for (size_t i = 0; i < SAU_PVALR_TYPES; ++i)
 			update_range(&gen->valr[i], valr[i], o->srate);
 		sauRange *r_pan = valr[SAU_PVALR_PAN];
 		if (r_pan && r_pan->a.user_flags)
 			gen->pan_law = r_pan->a.user_flags;
 	}
-	update_filt(n, MAIN_FILT, gd, o->srate);
+	update_filt(n, MIX_FILT, gd, o->srate);
 }
 
 /*
@@ -412,26 +417,26 @@ static void handle_event(sauGenerator *restrict o) {
 
 // provided separately as LPF can be used even when HPF cannot
 static inline void block_mix_lpf(float *restrict buf, size_t len,
-		AnyGen *restrict n, unsigned filter_i) {
+		AnyGen *restrict n, unsigned filter_i, unsigned ch_i) {
 	if (n->gen.filt & GN_FILT(filter_i, LPF))
-		sau_arr_lpf_1p(buf, len, &n->gen.main_lpf[filter_i],
-				&n->gen.main_lpf_c[filter_i]);
+		sau_arr_lpf_1p(buf, len, &n->gen.lpf[filter_i + ch_i],
+				&n->gen.lpf_c[filter_i]);
 }
 
 static inline void block_mix_hpf(float *restrict buf, size_t len,
-		AnyGen *restrict n, unsigned filter_i) {
+		AnyGen *restrict n, unsigned filter_i, unsigned ch_i) {
 	if (n->gen.filt & GN_FILT(filter_i, HPF))
-		sau_arr_hpf_1p(buf, len, &n->gen.main_hpf[filter_i],
-				&n->gen.main_hpf_c[filter_i]);
+		sau_arr_hpf_1p(buf, len, &n->gen.hpf[filter_i + ch_i],
+				&n->gen.hpf_c[filter_i]);
 }
 
 /*
  * Apply main filter(s) to audio buffer.
  */
 static void block_mix_filter(float *restrict buf, size_t len,
-		AnyGen *restrict n, unsigned filter_i) {
-	block_mix_lpf(buf, len, n, filter_i);
-	block_mix_hpf(buf, len, n, filter_i);
+		AnyGen *restrict n, unsigned filter_i, unsigned ch_i) {
+	block_mix_lpf(buf, len, n, filter_i, ch_i);
+	block_mix_hpf(buf, len, n, filter_i, ch_i);
 }
 
 /*
@@ -441,12 +446,12 @@ static void block_mix_filter(float *restrict buf, size_t len,
  */
 static void block_mix_add(float *restrict buf, size_t len,
 		AnyGen *restrict n, float *restrict in_buf,
-		float *restrict amp, float amp_v0) {
+		const float *restrict amp, float amp_v0) {
 	if (amp)
 		sau_nmulnf(in_buf, len, amp);
 	else if (amp_v0 != 1.f)
 		sau_nmulf(in_buf, len, amp_v0);
-	block_mix_filter(in_buf, len, n, MAIN_FILT);
+	block_mix_filter(in_buf, len, n, MIX_FILT, 0);
 	if (buf != in_buf) sau_naddnf(buf, len, in_buf);
 }
 
@@ -460,7 +465,7 @@ static void block_mix_add(float *restrict buf, size_t len,
  */
 static void block_mix_mul_waveenv(float *restrict buf, size_t len,
 		AnyGen *restrict n, float *restrict in_buf,
-		float *restrict amp, float amp_v0) {
+		const float *restrict amp, float amp_v0) {
 #define MIX(X, AMP) \
 	for (size_t i = 0; i < len; ++i) { \
 		float s_amp = AMP * 0.5f; \
@@ -469,24 +474,24 @@ static void block_mix_mul_waveenv(float *restrict buf, size_t len,
 /**/
 	// run HPF on input only, to keep it from messing up amp and result;
 	// amp is normally filled with DC, and the result is made unipolar
-	block_mix_hpf(in_buf, len, n, MAIN_FILT);
+	block_mix_hpf(in_buf, len, n, MIX_FILT, 0);
 	if (amp)
 		MIX(in_buf[i], amp[i])
 	else if (amp_v0 != 1.f)
 		MIX(in_buf[i], amp_v0)
 	else
 		MIX(in_buf[i], 1)
-	block_mix_lpf(in_buf, len, n, MAIN_FILT);
+	block_mix_lpf(in_buf, len, n, MIX_FILT, 0);
 	if (buf != in_buf) sau_nmulnf(buf, len, in_buf);
 #undef MIX
 }
 
 /*
- * Handle audio layer according to options.
+ * Handle audio layer according to options. Mono output only.
  */
 static void block_mix(float *restrict buf, size_t len,
 		AnyGen *restrict n, bool wave_env, float *restrict in_buf,
-		float *restrict amp, float amp_v0) {
+		const float *restrict amp, float amp_v0) {
 	(wave_env ?
 	 block_mix_mul_waveenv :
 	 block_mix_add)(buf, len, n, in_buf, amp, amp_v0);
@@ -495,8 +500,8 @@ static void block_mix(float *restrict buf, size_t len,
 static float *mix_valrange(bool is_a_filled,
 		float *restrict a, float aval,
 		const float *restrict b, float bval,
-		const float *restrict x, uint32_t len) {
-	uint32_t i;
+		const float *restrict x, size_t len) {
+	size_t i;
 	if (is_a_filled) {
 		if (b) for (i = 0; i < len; ++i)
 			a[i] += (b[i] - a[i]) * x[i];
@@ -531,19 +536,14 @@ static inline float get_pan_amp(sauGenerator *restrict o, unsigned pan_law) {
 }
 
 static void fill_pan_2chcenter(float *restrict mix_l, float *restrict mix_r,
-		uint32_t len, float amp) {
-	for (uint32_t i = 0; i < len; ++i) {
-		float s = mix_l[i] * amp;
-		mix_l[i] = s;
-		mix_r[i] = s;
-	}
+		size_t len, float amp) {
+	for (size_t i = 0; i < len; ++i) mix_r[i] = (mix_l[i] *= amp);
 }
 
 static void add_pan_2chcenter(float *restrict mix_l, float *restrict mix_r,
-		const float *restrict s_buf,
-		uint32_t len, float amp) {
-	for (uint32_t i = 0; i < len; ++i) {
-		float s = s_buf[i] * amp;
+		const float *restrict in, size_t len, float amp) {
+	for (size_t i = 0; i < len; ++i) {
+		float s = in[i] * amp;
 		mix_l[i] += s;
 		mix_r[i] += s;
 	}
@@ -552,57 +552,53 @@ static void add_pan_2chcenter(float *restrict mix_l, float *restrict mix_r,
 /*
  * Linear panning version of mix_pan_fill().
  */
-static void mix_pan_fill_lin(sauGenerator *restrict o,
-		float *restrict mix_l, float *restrict mix_r,
+static void mix_pan_fill_lin(float *restrict mix_l, float *restrict mix_r,
 		const float *restrict pan_buf, float pan_v0,
-		uint32_t len) {
-	float amp_scale = o->amp_scale * 0.5f;
+		size_t len, float amp) {
 	if (pan_buf) {
-		for (uint32_t i = 0; i < len; ++i) {
-			float s = mix_l[i] * amp_scale;
+		for (size_t i = 0; i < len; ++i) {
+			float s = mix_l[i] * amp;
 			float s_r = s * pan_buf[i];
 			mix_l[i] = s - s_r;
 			mix_r[i] = s + s_r;
 		}
 	} else if (pan_v0 != 0.f) {
-		for (uint32_t i = 0; i < len; ++i) {
-			float s = mix_l[i] * amp_scale;
+		for (size_t i = 0; i < len; ++i) {
+			float s = mix_l[i] * amp;
 			float s_r = s * pan_v0;
 			mix_l[i] = s - s_r;
 			mix_r[i] = s + s_r;
 		}
-	} else fill_pan_2chcenter(mix_l, mix_r, len, amp_scale);
+	} else fill_pan_2chcenter(mix_l, mix_r, len, amp);
 }
 
 /*
  * Linear panning version of mix_pan_add().
  */
-static void mix_pan_add_lin(sauGenerator *restrict o,
-		float *restrict mix_l, float *restrict mix_r,
-		const float *restrict s_buf,
+static void mix_pan_add_lin(float *restrict mix_l, float *restrict mix_r,
+		const float *restrict in,
 		const float *restrict pan_buf, float pan_v0,
-		uint32_t len) {
-	float amp_scale = o->amp_scale * 0.5f;
+		size_t len, float amp) {
 	if (pan_buf) {
-		for (uint32_t i = 0; i < len; ++i) {
-			float s = s_buf[i] * amp_scale;
+		for (size_t i = 0; i < len; ++i) {
+			float s = in[i] * amp;
 			float s_r = s * pan_buf[i];
 			mix_l[i] += s - s_r;
 			mix_r[i] += s + s_r;
 		}
 	} else if (pan_v0 != 0.f) {
-		for (uint32_t i = 0; i < len; ++i) {
-			float s = s_buf[i] * amp_scale;
+		for (size_t i = 0; i < len; ++i) {
+			float s = in[i] * amp;
 			float s_r = s * pan_v0;
 			mix_l[i] += s - s_r;
 			mix_r[i] += s + s_r;
 		}
-	} else add_pan_2chcenter(mix_l, mix_r, s_buf, len, amp_scale);
+	} else add_pan_2chcenter(mix_l, mix_r, in, len, amp);
 }
 
 static void fill_pan_full_leftf(float *restrict mix_l, float *restrict mix_r,
-		uint32_t len, float amp, float pan_v0) {
-	for (uint32_t i = 0; i < len; ++i) {
+		size_t len, float pan_v0, float amp) {
+	for (size_t i = 0; i < len; ++i) {
 		float s = mix_l[i] * amp;
 		mix_l[i] = s;
 		mix_r[i] = s + s * pan_v0;
@@ -610,8 +606,8 @@ static void fill_pan_full_leftf(float *restrict mix_l, float *restrict mix_r,
 }
 
 static void fill_pan_full_rightf(float *restrict mix_l, float *restrict mix_r,
-		uint32_t len, float amp, float pan_v0) {
-	for (uint32_t i = 0; i < len; ++i) {
+		uint32_t len, float pan_v0, float amp) {
+	for (size_t i = 0; i < len; ++i) {
 		float s = mix_l[i] * amp;
 		mix_l[i] = s - s * pan_v0;
 		mix_r[i] = s;
@@ -619,29 +615,27 @@ static void fill_pan_full_rightf(float *restrict mix_l, float *restrict mix_r,
 }
 
 static void add_pan_full_leftf(float *restrict mix_l, float *restrict mix_r,
-		const float *restrict s_buf,
-		uint32_t len, float amp, float pan_v0) {
-	for (uint32_t i = 0; i < len; ++i) {
-		float s = s_buf[i] * amp;
+		const float *restrict in,
+		size_t len, float pan_v0, float amp) {
+	for (size_t i = 0; i < len; ++i) {
+		float s = in[i] * amp;
 		mix_l[i] += s;
 		mix_r[i] += s + s * pan_v0;
 	}
 }
 
-#define add_pan_full_rightf(mix_l, mix_r, s_buf, len, amp, pan_v0) \
-	add_pan_full_leftf(mix_r, mix_l, s_buf, len, amp, -pan_v0)
+#define add_pan_full_rightf(mix_l, mix_r, in, len, pan_v0, amp) \
+	add_pan_full_leftf(mix_r, mix_l, in, len, -pan_v0, amp)
 
 /*
  * Full-volume panning version of mix_pan_fill().
  */
-static void mix_pan_fill_full(sauGenerator *restrict o,
-		float *restrict mix_l, float *restrict mix_r,
+static void mix_pan_fill_full(float *restrict mix_l, float *restrict mix_r,
 		const float *restrict pan_buf, float pan_v0,
-		uint32_t len) {
-	float amp_scale = o->amp_scale;
+		size_t len, float amp) {
 	if (pan_buf) {
-		for (uint32_t i = 0; i < len; ++i) {
-			float s = mix_l[i] * amp_scale;
+		for (size_t i = 0; i < len; ++i) {
+			float s = mix_l[i] * amp;
 			float p = pan_buf[i];
 			float s_p = s * p;
 			mix_l[i] = s - (p >= 0.f ? s_p : 0.f);
@@ -649,26 +643,22 @@ static void mix_pan_fill_full(sauGenerator *restrict o,
 		}
 	} else if (pan_v0 != 0.f) {
 		if (pan_v0 > 0.f)
-			fill_pan_full_rightf(mix_l, mix_r,
-					len, amp_scale, pan_v0);
+			fill_pan_full_rightf(mix_l, mix_r, len, pan_v0, amp);
 		else
-			fill_pan_full_leftf(mix_l, mix_r,
-					len, amp_scale, pan_v0);
-	} else fill_pan_2chcenter(mix_l, mix_r, len, amp_scale);
+			fill_pan_full_leftf(mix_l, mix_r, len, pan_v0, amp);
+	} else fill_pan_2chcenter(mix_l, mix_r, len, amp);
 }
 
 /*
  * Full-volume panning version of mix_pan_add().
  */
-static void mix_pan_add_full(sauGenerator *restrict o,
-		float *restrict mix_l, float *restrict mix_r,
-		const float *restrict s_buf,
+static void mix_pan_add_full(float *restrict mix_l, float *restrict mix_r,
+		const float *restrict in,
 		const float *restrict pan_buf, float pan_v0,
-		uint32_t len) {
-	float amp_scale = o->amp_scale;
+		size_t len, float amp) {
 	if (pan_buf) {
-		for (uint32_t i = 0; i < len; ++i) {
-			float s = s_buf[i] * amp_scale;
+		for (size_t i = 0; i < len; ++i) {
+			float s = in[i] * amp;
 			float p = pan_buf[i];
 			float s_p = s * p;
 			mix_l[i] += s - (p >= 0.f ? s_p : 0.f);
@@ -676,77 +666,107 @@ static void mix_pan_add_full(sauGenerator *restrict o,
 		}
 	} else if (pan_v0 != 0.f) {
 		if (pan_v0 > 0.f)
-			add_pan_full_rightf(mix_l, mix_r, s_buf,
-					len, amp_scale, pan_v0);
+			add_pan_full_rightf(mix_l, mix_r, in, len, pan_v0, amp);
 		else
-			add_pan_full_leftf(mix_l, mix_r, s_buf,
-					len, amp_scale, pan_v0);
-	} else add_pan_2chcenter(mix_l, mix_r, s_buf, len, amp_scale);
+			add_pan_full_leftf(mix_l, mix_r, in, len, pan_v0, amp);
+	} else add_pan_2chcenter(mix_l, mix_r, in, len, amp);
 }
 
 /*
  * Fill initial output for generator node \p n into the mix buffers
  * (left, right) using the first mix buffer as input.
  */
-static void mix_pan_fill(sauGenerator *restrict o,
-		AnyGen *restrict n,
+static void mix_pan_fill(unsigned pan_law,
 		float *restrict mix_l, float *restrict mix_r,
 		const float *restrict pan_buf, float pan_v0,
-		uint32_t len) {
-	switch (n->gen.pan_law) {
-	case SAU_PAN_LIN:
-		mix_pan_fill_lin(o, mix_l, mix_r,
-				pan_buf, pan_v0, len); break;
-	case SAU_PAN_FULL:
-		mix_pan_fill_full(o, mix_l, mix_r,
-				pan_buf, pan_v0, len); break;
+		size_t len, float amp) {
+	switch (pan_law) {
+	break; case SAU_PAN_LIN:
+		mix_pan_fill_lin(mix_l, mix_r, pan_buf, pan_v0, len, amp);
+	break; case SAU_PAN_FULL:
+		mix_pan_fill_full(mix_l, mix_r, pan_buf, pan_v0, len, amp);
 	}
-	if (o->gen_mix_add_max < len) o->gen_mix_add_max = len;
 }
 
 /*
  * Fill initial output for generator node \p n into the first mix buffer
- * (mono mode) from the first generator buffer.
+ * (mono mode) using the first mix buffer as input.
  */
-static void mix_pan_fill_1chcenter(sauGenerator *restrict o,
-		AnyGen *restrict n, float *restrict mix, uint32_t len) {
-	float amp = get_pan_amp(o, n->gen.pan_law);
+static void mix_pan_fill_1chcenter(float *restrict mix,
+		size_t len, float amp) {
 	if (amp != 1.f) sau_nmulf(mix, len, amp);
-	if (o->gen_mix_add_max < len) o->gen_mix_add_max = len;
 }
 
 /*
  * Add output for generator node \p n into the mix buffers
  * (left, right) from the first generator buffer.
  */
-static void mix_pan_add(sauGenerator *restrict o,
-		AnyGen *restrict n,
+static void mix_pan_add(unsigned pan_law,
 		float *restrict mix_l, float *restrict mix_r,
-		const float *restrict s_buf,
+		const float *restrict in,
 		const float *restrict pan_buf, float pan_v0,
-		uint32_t len) {
-	switch (n->gen.pan_law) {
-	case SAU_PAN_LIN:
-		mix_pan_add_lin(o, mix_l, mix_r, s_buf,
-				pan_buf, pan_v0, len); break;
-	case SAU_PAN_FULL:
-		mix_pan_add_full(o, mix_l, mix_r, s_buf,
-				pan_buf, pan_v0, len); break;
+		size_t len, float amp) {
+	switch (pan_law) {
+	break; case SAU_PAN_LIN:
+		mix_pan_add_lin(mix_l, mix_r, in, pan_buf, pan_v0, len, amp);
+	break; case SAU_PAN_FULL:
+		mix_pan_add_full(mix_l, mix_r, in, pan_buf, pan_v0, len, amp);
 	}
-	if (o->gen_mix_add_max < len) o->gen_mix_add_max = len;
 }
 
 /*
  * Add output for generator node \p n into the first mix buffer
  * (mono mode) from the first generator buffer.
  */
-static void mix_pan_add_1chcenter(sauGenerator *restrict o,
-		AnyGen *restrict n,
-		float *restrict mix, const float *restrict s_buf,
-		uint32_t len) {
-	float amp = get_pan_amp(o, n->gen.pan_law);
-	for (uint32_t i = 0; i < len; ++i) mix[i] += s_buf[i] * amp;
-	if (o->gen_mix_add_max < len) o->gen_mix_add_max = len;
+static void mix_pan_add_1chcenter(float *restrict mix,
+		const float *restrict in, size_t len, float amp) {
+	for (size_t i = 0; i < len; ++i) mix[i] += in[i] * amp;
+}
+
+/*
+ * Handle audio layer. Version handling panning and stereo options.
+ */
+static void block_mix_pan(sauGenerator *restrict o, bool layer, bool stereo,
+		float *restrict out, float *restrict out2, size_t len,
+		AnyGen *restrict n, float *restrict in,
+		const float *restrict amp, float amp_v0,
+		const float *restrict pan, float pan_v0) {
+	if (amp)
+		sau_nmulnf(in, len, amp);
+	else if (amp_v0 != 1.f)
+		sau_nmulf(in, len, amp_v0);
+	unsigned pan_law = n->gen.pan_law;
+	float pan_amp = get_pan_amp(o, pan_law);
+	if (n->gen.filt & (GN_FILT(MIX_FILT, LPF) | GN_FILT(MIX_FILT, HPF))) {
+		float *mix  = in; // reusable; if !layer, then in == out
+		float *mix2 = layer ? o->bufs[TMP_BUF(0)] : out2;
+		if (stereo) {
+			mix_pan_fill(pan_law, mix, mix2,
+					pan, pan_v0, len, pan_amp);
+			block_mix_filter(mix, len, n, MIX_FILT, 0);
+			block_mix_filter(mix2, len, n, MIX_FILT, 1);
+			if (layer) sau_naddnf(out, len, mix);
+			if (layer) sau_naddnf(out2, len, mix2);
+		} else {
+			mix_pan_fill_1chcenter(mix, len, pan_amp);
+			block_mix_filter(mix, len, n, MIX_FILT, 0);
+			if (layer) sau_naddnf(out, len, mix);
+		}
+	} else {
+		if (stereo) {
+			if (layer)
+				mix_pan_add(pan_law, out, out2, in,
+						pan, pan_v0, len, pan_amp);
+			else
+				mix_pan_fill(pan_law, out, out2,
+						pan, pan_v0, len, pan_amp);
+		} else {
+			if (layer)
+				mix_pan_add_1chcenter(out, in, len, pan_amp);
+			else
+				mix_pan_fill_1chcenter(out, len, pan_amp);
+		}
+	}
 }
 
 static void mix_filter_to_stereo(sauGenerator *restrict o) {
@@ -754,17 +774,17 @@ static void mix_filter_to_stereo(sauGenerator *restrict o) {
 	o->mix_r_hpf = o->mix_l_hpf;
 }
 
-static void mix_filter(sauGenerator *restrict o, uint32_t len) {
-	uint32_t gen_len = o->gen_mix_add_max;
+static void mix_filter(sauGenerator *restrict o, size_t len) {
+	size_t gen_len = o->gen_mix_add_max;
 	float *mix_l = o->bufs[0];
 	float *mix_r = o->bufs[1];
 	if ((o->event == o->ev_count) && (gen_len < len)) {
 		/*
 		 * Extend audio duration to include tail end of filtering.
 		 */
-		uint32_t mix_len = gen_len + o->tail_len;
+		size_t mix_len = gen_len + o->tail_len;
 		if (mix_len > len) mix_len = len;
-		uint32_t skip_len = mix_len - gen_len;
+		size_t skip_len = mix_len - gen_len;
 		o->cur_vo_dur += skip_len;
 		o->tail_len -= skip_len;
 		len = mix_len;
@@ -789,19 +809,19 @@ static void mix_filter(sauGenerator *restrict o, uint32_t len) {
  * pointed to by \p spp. Advances \p spp.
  */
 static void mix_write_mono(sauGenerator *restrict o,
-		int16_t **restrict spp, uint32_t len) {
+		int16_t **restrict spp, size_t len) {
 	o->is_run_out_clear = false;
 	if (o->is_out_stereo_in) {
 		float *mix_l = o->bufs[0];
 		float *mix_r = o->bufs[1];
-		for (uint32_t i = 0; i < len; ++i) {
+		for (size_t i = 0; i < len; ++i) {
 			float s_m = (mix_l[i] + mix_r[i]) * 0.5f;
 			s_m = sau_fclampf(s_m, -1.f, 1.f);
 			*(*spp)++ += lrintf(s_m * (float) INT16_MAX);
 		}
 	} else {
 		float *mix = o->bufs[0];
-		for (uint32_t i = 0; i < len; ++i) {
+		for (size_t i = 0; i < len; ++i) {
 			float s_m = sau_fclampf(mix[i], -1.f, 1.f);
 			*(*spp)++ += lrintf(s_m * (float) INT16_MAX);
 		}
@@ -814,12 +834,12 @@ static void mix_write_mono(sauGenerator *restrict o,
  * Advances \p spp.
  */
 static void mix_write_stereo(sauGenerator *restrict o,
-		int16_t **restrict spp, uint32_t len) {
+		int16_t **restrict spp, size_t len) {
 	o->is_run_out_clear = false;
 	if (o->is_out_stereo_in) {
 		float *mix_l = o->bufs[0];
 		float *mix_r = o->bufs[1];
-		for (uint32_t i = 0; i < len; ++i) {
+		for (size_t i = 0; i < len; ++i) {
 			float s_l = sau_fclampf(mix_l[i], -1.f, 1.f);
 			float s_r = sau_fclampf(mix_r[i], -1.f, 1.f);
 			*(*spp)++ += lrintf(s_l * (float) INT16_MAX);
@@ -827,7 +847,7 @@ static void mix_write_stereo(sauGenerator *restrict o,
 		}
 	} else {
 		float *mix = o->bufs[0];
-		for (uint32_t i = 0; i < len; ++i) {
+		for (size_t i = 0; i < len; ++i) {
 			float sf = sau_fclampf(mix[i], -1.f, 1.f);
 			int16_t s16 = lrintf(sf * (float) INT16_MAX);
 			*(*spp)++ += s16;
@@ -856,8 +876,8 @@ get_env(AnyGen *restrict n, uint8_t par_id) {
 /*
  * Called on any blank or bogus opcode instruction.
  */
-static uint32_t run_rins_error(struct sauGenerator *restrict o,
-		const sauRIns *restrict ins, uint32_t len) {
+static size_t run_rins_error(struct sauGenerator *restrict o,
+		const sauRIns *restrict ins, size_t len) {
 	sau_error("generator", "run_rins_error() called from ins %d [op %d]",
 			o->ins_i, ins->op);
 	return len;
@@ -867,8 +887,8 @@ static uint32_t run_rins_error(struct sauGenerator *restrict o,
  * Handle time bookkeeping for a series of instructions for a generator.
  * Matched by run_rins_gen_pop_mix() for ending a series.
  */
-static uint32_t run_rins_gen_push_jz(struct sauGenerator *restrict o,
-		const sauRIns *restrict ins, uint32_t len) {
+static size_t run_rins_gen_push_jz(struct sauGenerator *restrict o,
+		const sauRIns *restrict ins, size_t len) {
 	uint32_t gen_id = ins->a.i;
 	AnyGen *n = &o->gens[gen_id];
 	GenBase *gen = &n->gen;
@@ -924,8 +944,8 @@ static uint32_t run_rins_gen_push_jz(struct sauGenerator *restrict o,
  * Prepare final output from generator. Pops from time stack; ends a series of
  * instructions for a generator.
  */
-static uint32_t run_rins_gen_pop_mix(struct sauGenerator *restrict o,
-		const sauRIns *restrict ins, uint32_t len) {
+static size_t run_rins_gen_pop_mix(struct sauGenerator *restrict o,
+		const sauRIns *restrict ins, size_t len) {
 	bool layer  = ins->mode & SAU_RMIX_LAYER;
 	bool stereo = ins->mode & SAU_RMIX_STEREO;
 	bool mul_we = ins->mode & SAU_RMIX_MUL_WE;
@@ -933,7 +953,7 @@ static uint32_t run_rins_gen_pop_mix(struct sauGenerator *restrict o,
 	float *amp_buf = !ins->has_b_f ? o->bufs[ins->b.i] : NULL;
 	float amp_v0 = ins->b.f; // fallback only
 	float *out_buf = o->bufs[ins->x], *out_buf2 = out_buf+BUF_LEN;
-	uint32_t skip_len = o->cur_block->skip_len;
+	size_t skip_len = o->cur_block->skip_len;
 	AnyGen *n = o->cur_block->n;
 	if (n->gen.flags & GN_ROOT_GEN) {
 		// handle panning and add result to voice output
@@ -942,27 +962,17 @@ static uint32_t run_rins_gen_pop_mix(struct sauGenerator *restrict o,
 		stereo |= o->is_out_stereo_in;
 		if (stereo && !(n->gen.flags & GN_STEREO_OUT)) {
 			mix_filter_to_stereo(o);
+			n->gen.lpf[MIX_FILT+1] = n->gen.lpf[MIX_FILT];
+			n->gen.hpf[MIX_FILT+1] = n->gen.hpf[MIX_FILT];
 			n->gen.flags |= GN_STEREO_OUT;
 		}
 		stereo |= n->gen.flags & GN_STEREO_OUT;
 		if (stereo && layer && !o->is_out_stereo_in)
 			sau_ncpy(out_buf2, out_buf, len+skip_len);
-		block_mix_add(in_buf, len, n, in_buf, amp_buf, amp_v0);
-		if (stereo) {
-			if (layer)
-				mix_pan_add(o, n, out_buf, out_buf2, in_buf,
-						pan_buf, pan_v0, len);
-			else
-				mix_pan_fill(o, n, out_buf, out_buf2,
-						pan_buf, pan_v0, len);
-		} else {
-			if (layer)
-				mix_pan_add_1chcenter(o, n, out_buf, in_buf,
-						len);
-			else
-				mix_pan_fill_1chcenter(o, n, out_buf, len);
-		}
+		block_mix_pan(o, layer, stereo, out_buf, out_buf2, len,
+				n, in_buf, amp_buf, amp_v0, pan_buf, pan_v0);
 		o->is_out_stereo_in = stereo;
+		if (o->gen_mix_add_max < len) o->gen_mix_add_max = len;
 	} else {
 		block_mix(out_buf, len, n, mul_we, in_buf, amp_buf, amp_v0);
 	}
@@ -977,8 +987,8 @@ static uint32_t run_rins_gen_pop_mix(struct sauGenerator *restrict o,
 	return len + skip_len;
 }
 
-static uint32_t run_rins_run_noisegen(struct sauGenerator *restrict o,
-		const sauRIns *restrict ins, uint32_t len) {
+static size_t run_rins_run_noisegen(struct sauGenerator *restrict o,
+		const sauRIns *restrict ins, size_t len) {
 	AnyGen *n = o->cur_block->n;
 	float *buf = o->bufs[ins->x];
 	sauNoiseG_run(&n->ng.noiseg, buf, len);
@@ -989,13 +999,13 @@ static uint32_t run_rins_run_noisegen(struct sauGenerator *restrict o,
  * Final step for random line segments oscillator.
  * Requires input from run_rins_run_osc_phasor().
  */
-static uint32_t run_rins_run_ralsosc(struct sauGenerator *restrict o,
-		const sauRIns *restrict ins, uint32_t len) {
+static size_t run_rins_run_ralsosc(struct sauGenerator *restrict o,
+		const sauRIns *restrict ins, size_t len) {
 	AnyGen *n = o->cur_block->n;
 	void *main_buf   = o->bufs[sau_rins_get_w0(ins->x)];
 	void *cycle_buf  = o->bufs[sau_rins_get_w1(ins->x)];
-	float *end_a_buf = o->bufs[sau_rins_get_w0(ins->a.i)];
-	float *end_b_buf = o->bufs[sau_rins_get_w1(ins->a.i)];
+	float *end_a_buf = o->bufs[TMP_BUF(0)];
+	float *end_b_buf = o->bufs[TMP_BUF(1)];
 	sauROsc_run(&n->ro.rosc, len, main_buf,
 			end_a_buf, end_b_buf, cycle_buf);
 	return len;
@@ -1005,8 +1015,8 @@ static uint32_t run_rins_run_ralsosc(struct sauGenerator *restrict o,
  * Final step for random line segments oscillator, running with self-modulation.
  * Requires input from run_rins_run_osc_phasor() and PM self-modulation input.
  */
-static uint32_t run_rins_run_ralsosc_selfmod(struct sauGenerator *restrict o,
-		const sauRIns *restrict ins, uint32_t len) {
+static size_t run_rins_run_ralsosc_selfmod(struct sauGenerator *restrict o,
+		const sauRIns *restrict ins, size_t len) {
 	AnyGen *n = o->cur_block->n;
 	void *main_buf   = o->bufs[sau_rins_get_w0(ins->x)];
 	void *cycle_buf  = o->bufs[sau_rins_get_w1(ins->x)];
@@ -1018,8 +1028,8 @@ static uint32_t run_rins_run_ralsosc_selfmod(struct sauGenerator *restrict o,
 /*
  * Can be applied to phase and cycle. Use before the final ralsosc instruction.
  */
-static uint32_t run_rins_run_ralsosc_pdist(struct sauGenerator *restrict o,
-		const sauRIns *restrict ins, uint32_t len) {
+static size_t run_rins_run_ralsosc_pdist(struct sauGenerator *restrict o,
+		const sauRIns *restrict ins, size_t len) {
 	AnyGen *n = o->cur_block->n;
 	void *phase_buf = o->bufs[sau_rins_get_w0(ins->x)];
 	void *cycle_buf = o->bufs[sau_rins_get_w1(ins->x)];
@@ -1039,8 +1049,8 @@ static uint32_t run_rins_run_ralsosc_pdist(struct sauGenerator *restrict o,
  * Final step for wave oscillator.
  * Requires input from run_rins_run_osc_phasor().
  */
-static uint32_t run_rins_run_waveosc(struct sauGenerator *restrict o,
-		const sauRIns *restrict ins, uint32_t len) {
+static size_t run_rins_run_waveosc(struct sauGenerator *restrict o,
+		const sauRIns *restrict ins, size_t len) {
 	AnyGen *n = o->cur_block->n;
 	void *main_buf = o->bufs[ins->x];
 	sauWOsc_run(&n->wo.wosc, main_buf, len);
@@ -1051,8 +1061,8 @@ static uint32_t run_rins_run_waveosc(struct sauGenerator *restrict o,
  * Final step for wave oscillator, running with self-modulation.
  * Requires input from run_rins_run_osc_phasor() and PM self-modulation input.
  */
-static uint32_t run_rins_run_waveosc_selfmod(struct sauGenerator *restrict o,
-		const sauRIns *restrict ins, uint32_t len) {
+static size_t run_rins_run_waveosc_selfmod(struct sauGenerator *restrict o,
+		const sauRIns *restrict ins, size_t len) {
 	AnyGen *n = o->cur_block->n;
 	void *main_buf = o->bufs[ins->x];
 	float *pma_in_buf = o->bufs[ins->a.i];
@@ -1063,8 +1073,8 @@ static uint32_t run_rins_run_waveosc_selfmod(struct sauGenerator *restrict o,
 /*
  * Can be applied to phase buffer. Use before the final waveosc instruction.
  */
-static uint32_t run_rins_run_waveosc_pdist(struct sauGenerator *restrict o,
-		const sauRIns *restrict ins, uint32_t len) {
+static size_t run_rins_run_waveosc_pdist(struct sauGenerator *restrict o,
+		const sauRIns *restrict ins, size_t len) {
 	AnyGen *n = o->cur_block->n;
 	void *phase_buf = o->bufs[ins->x];
 	void *pd_buf = o->bufs[ins->a.i];
@@ -1079,8 +1089,8 @@ static uint32_t run_rins_run_waveosc_pdist(struct sauGenerator *restrict o,
 	return len;
 }
 
-static uint32_t run_rins_run_osc_phasor(struct sauGenerator *restrict o,
-		const sauRIns *restrict ins, uint32_t len) {
+static size_t run_rins_run_osc_phasor(struct sauGenerator *restrict o,
+		const sauRIns *restrict ins, size_t len) {
 	AnyGen *n = o->cur_block->n;
 	void *phase_buf = o->bufs[sau_rins_get_w0(ins->x)];
 	uint32_t cycle_buf_id = sau_rins_get_w1(ins->x);
@@ -1097,8 +1107,8 @@ static uint32_t run_rins_run_osc_phasor(struct sauGenerator *restrict o,
 	return len;
 }
 
-static uint32_t run_rins_run_par_line(struct sauGenerator *restrict o,
-		const sauRIns *restrict ins, uint32_t len) {
+static size_t run_rins_run_par_line(struct sauGenerator *restrict o,
+		const sauRIns *restrict ins, size_t len) {
 	AnyGen *n = o->cur_block->n;
 	uint8_t par_id = sau_rins_get_b0(ins->c.i);
 	uint8_t sub_id = sau_rins_get_b1(ins->c.i);
@@ -1120,8 +1130,8 @@ static uint32_t run_rins_run_par_line(struct sauGenerator *restrict o,
 	return len;
 }
 
-static uint32_t run_rins_run_par_env(struct sauGenerator *restrict o,
-		const sauRIns *restrict ins, uint32_t len) {
+static size_t run_rins_run_par_env(struct sauGenerator *restrict o,
+		const sauRIns *restrict ins, size_t len) {
 	AnyGen *n = o->cur_block->n;
 	uint8_t par_id = ins->a.i;
 	sauEnvGen *env = get_env(n, par_id);
@@ -1130,8 +1140,8 @@ static uint32_t run_rins_run_par_env(struct sauGenerator *restrict o,
 	return len;
 }
 
-static uint32_t run_rins_mix_valrange(struct sauGenerator *restrict o,
-		const sauRIns *restrict ins, uint32_t len) {
+static size_t run_rins_mix_valrange(struct sauGenerator *restrict o,
+		const sauRIns *restrict ins, size_t len) {
 	float a_v0 = ins->a.f, b_v0 = ins->b.f;
 	float *a = o->bufs[sau_rins_get_w0(ins->x)];
 	bool is_a_filled = sau_rins_get_w1(ins->x);
@@ -1142,15 +1152,15 @@ static uint32_t run_rins_mix_valrange(struct sauGenerator *restrict o,
 	return len;
 }
 
-static uint32_t run_rins_nsetf(struct sauGenerator *restrict o,
-		const sauRIns *restrict ins, uint32_t len) {
+static size_t run_rins_nsetf(struct sauGenerator *restrict o,
+		const sauRIns *restrict ins, size_t len) {
 	float *buf = o->bufs[ins->x];
 	sau_nsetf(buf, len, ins->a.f);
 	return len;
 }
 
-static uint32_t run_rins_nmulf(struct sauGenerator *restrict o,
-		const sauRIns *restrict ins, uint32_t len) {
+static size_t run_rins_nmulf(struct sauGenerator *restrict o,
+		const sauRIns *restrict ins, size_t len) {
 	float *x = o->bufs[ins->x];
 	if (ins->has_a) {
 		float *a = o->bufs[ins->a.i];
@@ -1180,10 +1190,10 @@ static inline RIns_run_fn get_rins_run_fn(unsigned ins) {
  *
  * \return number of samples generated
  */
-static uint32_t run_for_time(sauGenerator *restrict o,
-		uint32_t time, int16_t *restrict buf, bool stereo) {
+static size_t run_for_time(sauGenerator *restrict o,
+		size_t time, int16_t *restrict buf, bool stereo) {
 	int16_t *sp = buf;
-	uint32_t gen_len = 0;
+	size_t gen_len = 0;
 	while (time > 0) {
 		uint32_t len = (time < BUF_LEN) ? time : BUF_LEN;
 		time -= len;
@@ -1229,8 +1239,8 @@ bool sauGenerator_run(sauGenerator *restrict o,
 		int16_t *restrict buf, size_t buf_len, bool stereo,
 		size_t *restrict out_len) {
 	int16_t *sp = buf;
-	uint32_t len = buf_len;
-	uint32_t skip_len, last_len, gen_len = 0;
+	size_t len = buf_len;
+	size_t skip_len, last_len, gen_len = 0;
 	if (!o->is_run_out_clear) {
 		o->is_run_out_clear = true;
 		sau_nzero(buf, stereo ? len * 2 : len);
