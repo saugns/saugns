@@ -44,7 +44,8 @@ enum {
 
 extern const char *const sauRIns_names[SAU_RINS_NAMED]; // define in semantics.h
 
-#define SAU_RMIX_BUFS 2 // buffers per block used for mixing result, at bottom
+#define SAU_RMIX_BUFS 2 // buffers at bottom per block, used for mixing result
+#define SAU_RTMP_BUFS 2 // buffers not indexed, only used inside instructions
 
 /** Audio rendering mix mode flags. */
 enum {
@@ -119,11 +120,8 @@ sauRIns_run_noisegen(uint32_t buf_id) {
 }
 
 static inline sauRIns
-sauRIns_run_ralsosc(uint32_t main_buf_id, uint32_t cycle_buf_id,
-		uint32_t end_a_buf_id, uint32_t end_b_buf_id) {
+sauRIns_run_ralsosc(uint32_t main_buf_id, uint32_t cycle_buf_id) {
 	return (sauRIns){.op = SAU_RINS_N_run_ralsosc,
-		.a.i = sau_rins_wpair(end_a_buf_id, end_b_buf_id),
-		.has_a = true,
 		.x = sau_rins_wpair(main_buf_id, cycle_buf_id),
 	};
 }

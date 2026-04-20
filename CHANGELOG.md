@@ -8,6 +8,10 @@ Pre-release
 -----------
 
 Language changes:
+ * Frequency filters. The generator `a.f` options now apply
+   to the final result for a generator. Previously, the `c`
+   (channel mixing) options were handled afterward; panning
+   wasn't filtered, but rather after filtering, unlike now.
  * Fix, that is apply `S c.p`; didn't actually work before.
  * Parameter sweeps. For a frequency sweep from `f` to `r`,
    or `r` to `f`, no longer convert its `v` to match `g` --
