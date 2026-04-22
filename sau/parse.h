@@ -180,6 +180,24 @@ typedef struct sauFiltPar {
 /** Frequency parameter default value, when default not changed in a script. */
 #define SAU_PDEF_FREQ 440.0
 
+/** Chip's "ladder effect" intensity. Matches Sega Genesis/Mega Drive I. */
+#define SAU_LADDERFX_CHIP 0.013671875f // 3.5/256 approx. based on MAME ymfm
+#define SAU_LADDERFX_THR_CHIP 0x1p-13f // match YM2612 fade-out behavior
+
+/** Parameter flags for "ladder effect". */
+enum {
+	SAU_LAFXP_AMP = 1U<<0,
+	SAU_LAFXP_THR = 1U<<1,
+};
+
+/**
+ * Parameters for "ladder effect".
+ */
+typedef struct sauLafxPar {
+	float amp, thr;
+	uint8_t flags;
+} sauLafxPar;
+
 /** Object types. */
 enum {
 	SAU_POBJT_LIST = 0,
@@ -373,6 +391,7 @@ typedef struct sauParseSetOptions {
 	sauRaslOpt def_ras;
 	sauWaveOpt def_woo;
 	sauFiltPar mix_filt;
+	sauLafxPar def_lafx;
 } sauParseSetOptions;
 
 /**
@@ -414,6 +433,7 @@ typedef struct sauParseGenData {
 	sauTime time;
 	sauRangeSet *valr;
 	sauFiltPar *main_filt;
+	sauLafxPar *lafx;
 	uint16_t ratio_carr_level;
 	uint32_t phase;
 	uint32_t seed;

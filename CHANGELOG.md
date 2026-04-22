@@ -8,6 +8,31 @@ Pre-release
 -----------
 
 Language changes:
+ * Amplitude handling. Add "ladder effect" distortion `a.l`
+   (by default off). The constant `C` (7/512, as in `a.lC`)
+   matches the YM2612 chip level for the pulse added by the
+   distortion. This is Sega Mega Drive/Genesis model 1 type
+   distortion, a.k.a. the hardware bug part of the "sound".
+    - The mixing scales the original signal, plus the added
+      pulse, so that 1.0 plus pulse is brought down to 1.0.
+    - The pulse is added in mono regardless of panning. The
+      actual chip only allowed switching channels (left and
+      right) on and off and added the pulse in all 4 cases.
+      For more accurate behavior, use full-level panning as
+      in `c.pf`; only the mute + pulse behavior is missing.
+    - A threshold control `a.l.t` generalizes the behavior.
+      The pulse shape is controlled by the threshold; where
+      the size of negative input amplitudes exceeds the set
+      threshold, the pulse is down, otherwise up (including
+      whenever the amplitude is positive). The default `C`,
+      here 2^-13, makes it match the chip behavior. For any
+      levels from zero to minus the threshold, a completely
+      different distortion (not matching the chip) is added
+      by silencing that portion of the waveform. If raising
+      the threshold, this becomes audible; it combines with
+      the added pulse such that when the pulse fades out, a
+      half-wave rectified signal remains which is "colored"
+      similarly to a milder version of the pulse.
  * Frequency filters. The generator `a.f` options now apply
    to the final result for a generator. Previously, the `c`
    (channel mixing) options were handled afterward; panning

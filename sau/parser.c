@@ -114,6 +114,7 @@ static const sauParseSetOptions def_sopt = {
 	.def_relfreq = 1.f,
 	.def_chanmix = 0.f,
 	.def_pan_law = SAU_PAN_DEFAULT,
+	.def_lafx = {.thr = SAU_LADDERFX_THR_CHIP, .flags = SAU_LAFXP_THR},
 	.note_key = MUSKEY(0, 0),
 	.key_octave = 4,
 	.key_system = 0,
@@ -580,6 +581,16 @@ static size_t (FName)(sauScanner *restrict o, double *restrict val) { \
 	//
 SIMPLE_NUMCONST_F(scan_chanmix_const, CHANMIX_XLIST)
 
+#define LADDERFX_XLIST(X) \
+	X('C', SAU_LADDERFX_CHIP) \
+	//
+SIMPLE_NUMCONST_F(scan_ladderfx_const, LADDERFX_XLIST)
+
+#define LADDERFX_THR_XLIST(X) \
+	X('C', SAU_LADDERFX_THR_CHIP) \
+	//
+SIMPLE_NUMCONST_F(scan_ladderfx_thr_const, LADDERFX_THR_XLIST)
+
 #define OCTAVES 11
 #define OCTAVE(n) ((1 << ((n)+1)) * (1.f/32)) // standard tuning at no. 4 = 1.0
 #define OCTAVE_MIDI(n) ((1 << (n)) * (1.f/32)) // shifted range where 5 means 4
@@ -816,31 +827,36 @@ SIMPLE_NUMCONST_F(scan_cyclepos_const, CYCLEPOS_XLIST)
 	//
 SIMPLE_NUMCONST_F(scan_timeval_const, TIMEVAL_XLIST)
 
-static sauNoinline bool scan_time_val(sauScanner *restrict o,
-		uint32_t *restrict val) {
+static bool scan_posnum(sauScanner *restrict o,
+		sauScanNumConst_f scan_numconst, double *restrict val,
+		const char *const label) {
 	sauScanFrame sf = o->sf;
 	double val_s;
-	if (!scan_num(o, scan_timeval_const, &val_s))
+	if (!scan_num(o, scan_numconst, &val_s))
 		return false;
 	if (val_s < 0.f) {
-		sauScanner_warning(o, &sf, "discarding negative time value");
+		sauScanner_warning(o, &sf,
+				"discarding negative %s value", label);
 		return false;
 	}
+	*val = val_s;
+	return true;
+}
+
+static sauNoinline bool scan_time_val(sauScanner *restrict o,
+		uint32_t *restrict val) {
+	double val_s;
+	if (!scan_posnum(o, scan_timeval_const, &val_s, "time"))
+		return false;
 	*val = sau_ui32rint(val_s * 1000.f);
 	return true;
 }
 
 static sauNoinline bool scan_cutoff_freq(sauScanner *restrict o,
 		float *restrict val) {
-	sauScanFrame sf = o->sf;
 	double val_s;
-	if (!scan_num(o, scan_note_const, &val_s))
+	if (!scan_posnum(o, scan_note_const, &val_s, "cut-off frequency"))
 		return false;
-	if (val_s < 0.f) {
-		sauScanner_warning(o, &sf,
-				"discarding negative cut-off frequency value");
-		return false;
-	}
 	*val = val_s;
 	return true;
 }
@@ -1329,6 +1345,12 @@ static void enter_level(sauParser *restrict o,
 			ns->sopt->def_ampmult = 1.f;
 			ns->is_old_sopt = false;
 		}
+		if (use_type != SAU_MOD_N_carr &&
+		    ns->sopt->def_lafx.amp != 0.f) { // reset, clear
+			if (ns->is_old_sopt) ns->sopt = dup_sopt(o, ns->sopt);
+			ns->sopt->def_lafx = def_sopt.def_lafx;
+			ns->is_old_sopt = false;
+		}
 	}
 }
 
@@ -1409,6 +1431,27 @@ static uint8_t parse_main_filt(sauParser *restrict o,
 	return c;
 }
 
+static uint8_t parse_lafx_par(sauParser *restrict o,
+		sauLafxPar *restrict lafx, uint8_t c) {
+	double val;
+	if (scan_posnum(o->sc, scan_ladderfx_const, &val,
+			"ladder effect pulse amplitude")) {
+		lafx->amp = val;
+		lafx->flags |= SAU_LAFXP_AMP;
+	}
+	switch ((c = sauScanner_getc_after(o->sc, '.'))) {
+	break; case 't':
+		if (scan_posnum(o->sc, scan_ladderfx_thr_const, &val,
+					"ladder effect threshold")) {
+			lafx->thr = val;
+			lafx->flags |= SAU_LAFXP_THR;
+		}
+	break; default:
+		return c;
+	}
+	return 0;
+}
+
 static bool parse_so_amp(sauParser *restrict o,
 		struct NestScope *restrict ns) {
 	sauParseSetOptions *sopt = ns->sopt;
@@ -1426,6 +1469,8 @@ static bool parse_so_amp(sauParser *restrict o,
 		if (ns->list)
 			return true; // only allow in global scope
 		return parse_main_filt(o, &sopt->mix_filt, MAIN_FILT|SOPT_PART);
+	break; case 'l':
+		return parse_lafx_par(o, &sopt->def_lafx, c);
 	break; case 'm':
 		if (ns->list)
 			return true; // only allow in global scope
@@ -1944,17 +1989,21 @@ static void parse_in_filt_par(sauParser *restrict o) {
 static uint8_t parse_gen_amp(sauParser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
 	sauParseGenData *gen = pl->gen;
-	uint8_t c = parse_par_modranges(o, NULL, NULL, false,
-			SAU_PVALR_AMP, SAU_MOD_N_a_am);
-	switch (c) {
+	uint8_t c;
+	switch ((c = parse_par_modranges(o, NULL, NULL, false,
+					SAU_PVALR_AMP, SAU_MOD_N_a_am))) {
 	break; case 'f':
 		if (!gen->main_filt)
 			gen->main_filt = sau_mpalloc(o->mp, sizeof(sauFiltPar));
 		return parse_main_filt(o, gen->main_filt, MAIN_FILT);
+	break; case 'l':
+		if (!gen->lafx)
+			gen->lafx = sau_mpalloc(o->mp, sizeof(sauLafxPar));
+		return parse_lafx_par(o, gen->lafx, c);
 	break; default:
 		return c;
 	}
-	return c;
+	return 0;
 }
 
 static bool parse_gen_chanmix(sauParser *restrict o) {
@@ -2294,11 +2343,20 @@ static bool parse_numvar_rhs(sauParser *restrict o, struct Symbol *restrict s,
 	sauScanNumConst_f numconst_f = NULL;
 	sauScanner_skipws(o->sc);
 	switch ((suffc = sauScanner_get_suffc(o->sc))) {
-	case 'c': numconst_f = scan_chanmix_const; break;
-	case 'f': numconst_f = scan_note_const; break;
-	case 'p': numconst_f = scan_cyclepos_const; break;
-	case 's': numconst_f = scan_cyclepos_const; break;
-	default: if (suffc) sauScanner_ungetc(o->sc); break;
+	break; case 'a':
+		if ((suffc = sauScanner_getc_after(o->sc, '.')) == 'l') {
+			numconst_f = scan_ladderfx_const;
+			if ((suffc = sauScanner_getc_after(o->sc, '.')) == 't')
+				numconst_f = scan_ladderfx_thr_const;
+			else if (suffc != 0)
+				sauScanner_ungetc(o->sc);
+		} else if (suffc != 0)
+			sauScanner_ungetc(o->sc);
+	break; case 'c': numconst_f = scan_chanmix_const;
+	break; case 'f': numconst_f = scan_note_const;
+	break; case 'p': numconst_f = scan_cyclepos_const;
+	break; case 's': numconst_f = scan_cyclepos_const;
+	break; default: if (suffc) sauScanner_ungetc(o->sc);
 	}
 	if (numconst_f) sauScanner_skipws(o->sc);
 	uint16_t block_i = s->var_global ? 0 : parser_block_i(o);

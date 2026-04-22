@@ -768,6 +768,16 @@ sem_handle_gen_params(ParseSem *restrict o, sauParseGenData *restrict gen,
 			sem_valr_inherit(o, SAU_PVALR_PAN, gen, info);
 		if (gen->ref.is_nested || sopt->def_freq != SAU_PDEF_FREQ)
 			sem_valr_inherit(o, SAU_PVALR_FREQ, gen, info);
+		if (gen->lafx) {
+			if (!(gen->lafx->flags & SAU_LAFXP_AMP))
+				gen->lafx->amp = sopt->def_lafx.amp;
+			if (!(gen->lafx->flags & SAU_LAFXP_THR))
+				gen->lafx->thr = sopt->def_lafx.thr;
+			gen->lafx->flags |= sopt->def_lafx.flags;
+		} else if (sopt->def_lafx.flags) {
+			gen->lafx = sau_mpmemdup(o->mp, &sopt->def_lafx,
+					sizeof(sopt->def_lafx));
+		}
 	}
 	/*
 	 * Copy tracked/timed state changes from \p info to output.
