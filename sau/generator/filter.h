@@ -18,15 +18,17 @@
  * One-pole filters from my older fluffDSP project, and similar code.
  */
 
-/** RC time constant for \p msXsr time in ms multiplied by sample rate. */
-#define RC_TIME_COEFF(msXsr) exp(-1000.f / (msXsr))
-
-/** RC frequency constant for \p hz_sr frequency in Hz divided by sample rate.*/
-#define RC_FREQ_COEFF(hz_sr) exp(-2*SAU_PI * (hz_sr))
-
 /** Run exponential averaging for 1 sample, updating and returning state. */
 #define RC_AVG_NEXT(state, in, coeff) \
 	((state) = (in) + (coeff)*((state)-(in)))
+
+/** Run exponential decay with reset condition and level. */
+#define RC_DECAY_NEXT(state, cond, reset, coeff) \
+	((state) = (cond) ? (reset) : ((coeff)*(state)))
+
+/** Run HPF for 1 sample, updating and returning state. */
+#define RC_HPF_NEXT(state, in, in_prev, coeff) \
+	((state) = (in) - (in_prev) + (coeff)*(state))
 
 /** Run zero-attack envelope for 1 sample, updating and returning state. */
 #define RC_ZAENV_NEXT(state, in, coeff) \
@@ -40,10 +42,6 @@
 #define RC_ARENV_NEXT(state, in, a_coeff, r_coeff) \
 	((state) = (in) + ((((state)-(in)) < 0.f) ? (a_coeff) : (r_coeff)) * \
 	                  ((state)-(in)))
-
-/** Run HPF for 1 sample, updating and returning state. */
-#define RC_HPF_NEXT(state, in, in_prev, coeff) \
-	((state) = (in) - (in_prev) + (coeff)*(state))
 
 /*
  * Code to apply LPF & HPF filters...
@@ -59,12 +57,12 @@ struct Filter {
 
 static inline void sau_set_filt_1p_time(struct FilterCoeff *restrict c,
 		double time_ms, uint32_t srate) {
-	c->a[0] = RC_TIME_COEFF(time_ms * srate);
+	c->a[0] = sau_rc_time_coeff(time_ms, srate);
 }
 
 static inline uint32_t sau_set_filt_1p(struct FilterCoeff *restrict c,
 		double freq, uint32_t srate) {
-	c->a[0] = RC_FREQ_COEFF(freq / srate);
+	c->a[0] = sau_rc_freq_coeff(freq, srate);
 	double time = srate / freq;
 	return sau_dtoi(time);
 }

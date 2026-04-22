@@ -1,0 +1,6 @@
+/* Ladder effect sine-wave fade-out test. Has the same timing and
+ * amplitude curve as Aly James's old example of how the YM2612 works.
+ * <https://joelkp.frama.io/blog/dist-ladder-effect.html>
+ */
+S a.f2840 a.lC c.pf
+W fG a[g0 lexp11] t3

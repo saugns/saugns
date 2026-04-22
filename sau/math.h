@@ -1,5 +1,5 @@
 /* SAU library: Math definitions.
- * Copyright (c) 2011-2012, 2017-2025 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2017-2026 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
@@ -447,6 +447,12 @@ static inline float sau_sinpi_d5f(float x) {
 
 /** Inverse frequency coefficient with \p po2 power of two multiplier. */
 #define SAU_INV_FREQ(po2, freq) (SAU_PASTE(0x1.0p, po2) / (freq))
+
+/** RC time constant for time \p ms and sample rate \p srate. */
+#define sau_rc_time_coeff(ms, srate) exp(-1000.f / (((double)(ms))*(srate)))
+
+/** RC frequency constant for frequency \p hz and sample rate \p srate.*/
+#define sau_rc_freq_coeff(hz, srate) exp(-2*SAU_PI * (((double)(hz))/(srate)))
 
 /*
  * Generic waveshaping, phaseshaping, etc.

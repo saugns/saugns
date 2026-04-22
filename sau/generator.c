@@ -70,6 +70,8 @@ typedef struct GenBase {
 	struct ParWithRangeMod valr[SAU_PVALR_TYPES];
 	struct FilterCoeff lpf_c[GEN_FILTERS], hpf_c[GEN_FILTERS];
 	struct Filter lpf[GEN_FILTERS+1], hpf[GEN_FILTERS+1];
+	float lafx_amp, lafx_thr;
+	float lafx_dc; // filter state
 } GenBase;
 
 typedef struct AmpNode {
@@ -127,16 +129,17 @@ struct sauGenerator {
 	int ev_time_carry;
 	uint32_t cur_vo_dur; // longest current remaining duration among voices
 	uint32_t tail_len;   // length added by the final post-filtering if any
+	uint32_t gen_count;
+	AnyGen *gens;
 	uint32_t ins_i, ins_count;
 	const sauRIns *ins;
 	struct GenBlock *block_stack, *cur_block;
-	float amp_scale;
-	uint32_t gen_count;
-	AnyGen *gens;
 	struct Filter mix_l_lpf, mix_r_lpf;
 	struct Filter mix_l_hpf, mix_r_hpf;
 	struct FilterCoeff mix_lpf_c;
 	struct FilterCoeff mix_hpf_c;
+	float amp_scale;
+	float dc_coeff;
 	sauMempool *mem;
 };
 
@@ -182,6 +185,7 @@ static bool convert_program(sauGenerator *restrict o,
 		return false;
 	o->srate = srate;
 	o->amp_scale = 1.0;
+	o->dc_coeff = sau_rc_time_coeff(5.0, srate);
 	if (prg->is_ampmult_set) o->amp_scale *= prg->sopt.ampmult;
 	if (prg->is_amp_autoscaled) o->amp_scale /= prg->vo_count;
 	if ((o->has_mix_lpf = prg->sopt.mix_filt.l_v > 0)) {
@@ -395,6 +399,15 @@ static void update_gen(sauGenerator *restrict o,
 			gen->pan_law = r_pan->a.user_flags;
 	}
 	update_filt(n, MIX_FILT, gd, o->srate);
+	if (gd->lafx) {
+		if (gd->lafx->flags & SAU_LAFXP_AMP) {
+			gen->lafx_amp = gd->lafx->amp;
+			// reset, prevent overshoot on difference
+			gen->lafx_dc = 0.f;
+		}
+		if (gd->lafx->flags & SAU_LAFXP_THR)
+			gen->lafx_thr = -gd->lafx->thr;
+	}
 }
 
 /*
@@ -413,6 +426,66 @@ static void handle_event(sauGenerator *restrict o) {
 	o->ins_count = pe->ins_count;
 	o->ins = pe->ins;
 	prepare_event(o, pe->next);
+}
+
+static void dist_ladderfx_mix(sauGenerator *restrict o,
+		AnyGen *restrict n, float *restrict buf, size_t len) {
+	const float le_shift = fabsf(n->gen.lafx_amp);
+	const float le_th = n->gen.lafx_thr;
+	const float le_gr = 1.f / (1.f + le_shift);
+	for (size_t i = 0; i < len; ++i) {
+		float x = buf[i];
+		float dc_x = RC_DECAY_NEXT(n->gen.lafx_dc, (x < le_th),
+				le_shift, o->dc_coeff);
+		float fq_x = (x > 0.f) ? 0.f : x; // fake quantize region of in
+		float le_x = (x < le_th) ? -le_shift : (dc_x - fq_x);
+		buf[i] = (x + le_x) * le_gr;
+	}
+}
+
+/*
+ * "Ladder effect" adapted for stereo mixing. Store pulse in separate \p out,
+ * to later be mixed in mono while \p in is first panned. Modify \p in signal
+ * here for "fake quantization" since the panning mismatch later prevents it.
+ */
+static float dist_ladderfx_wetdry(sauGenerator *restrict o,
+		AnyGen *restrict n, float *restrict out, size_t len,
+		float *restrict in) {
+	const float le_shift = fabsf(n->gen.lafx_amp);
+	const float le_th = n->gen.lafx_thr;
+	const float le_gr = 1.f / (1.f + le_shift);
+	for (size_t i = 0; i < len; ++i) {
+		float x = in[i];
+		float dc_x = RC_DECAY_NEXT(n->gen.lafx_dc, (x < le_th),
+				le_shift, o->dc_coeff);
+		float fq_x = (x > 0.f) ? 0.f : x; // fake quantize region of in
+		float le_x = (x < le_th) ? -le_shift : dc_x;
+		in[i] -= (x < le_th) ? 0.f : fq_x;
+		out[i] = le_x;
+	}
+	return le_gr; // multiplier for both in and out
+}
+
+/*
+ * "Ladder effect" adapted for wave envelope (unipolar signal result) mixing.
+ *
+ * Remove the exponential decay filter, shifting the signal up by \a le_shift
+ * directly instead. This is way nicer for LFO modulation, DC doesn't matter.
+ */
+static void dist_ladderfx_mix_waveenv(sauGenerator *restrict o sauMaybeUnused,
+		AnyGen *restrict n, float *restrict buf, size_t len,
+		const float *restrict amp, float amp_v0) {
+	const float le_shift = fabsf(n->gen.lafx_amp);
+	const float le_th = n->gen.lafx_thr;
+	const float le_gr = 1.f / (1.f + le_shift);
+	for (size_t i = 0; i < len; ++i) {
+		float a = amp ? amp[i] : amp_v0;
+		float x = buf[i] * a;
+		float dc_x = le_shift*2;
+		float fq_x = (x > 0.f) ? 0.f : x; // fake quantize region of in
+		float le_x = (x < le_th) ? 0.f : (dc_x - fq_x);
+		buf[i] = (x + fabsf(a) + le_x) * (le_gr*0.5f);
+	}
 }
 
 // provided separately as LPF can be used even when HPF cannot
@@ -444,13 +517,16 @@ static void block_mix_filter(float *restrict buf, size_t len,
  *
  * Used to generate output for carrier or additive modulator.
  */
-static void block_mix_add(float *restrict buf, size_t len,
+static void block_mix_add(sauGenerator *restrict o,
+		float *restrict buf, size_t len,
 		AnyGen *restrict n, float *restrict in_buf,
 		const float *restrict amp, float amp_v0) {
 	if (amp)
 		sau_nmulnf(in_buf, len, amp);
 	else if (amp_v0 != 1.f)
 		sau_nmulf(in_buf, len, amp_v0);
+	bool use_lafx = sau_fnonzero(n->gen.lafx_amp);
+	if (use_lafx) dist_ladderfx_mix(o, n, in_buf, len);
 	block_mix_filter(in_buf, len, n, MIX_FILT, 0);
 	if (buf != in_buf) sau_naddnf(buf, len, in_buf);
 }
@@ -463,7 +539,8 @@ static void block_mix_add(float *restrict buf, size_t len,
  *
  * Used to generate output for modulation with value range.
  */
-static void block_mix_mul_waveenv(float *restrict buf, size_t len,
+static void block_mix_mul_waveenv(sauGenerator *restrict o,
+		float *restrict buf, size_t len,
 		AnyGen *restrict n, float *restrict in_buf,
 		const float *restrict amp, float amp_v0) {
 #define MIX(X, AMP) \
@@ -475,12 +552,17 @@ static void block_mix_mul_waveenv(float *restrict buf, size_t len,
 	// run HPF on input only, to keep it from messing up amp and result;
 	// amp is normally filled with DC, and the result is made unipolar
 	block_mix_hpf(in_buf, len, n, MIX_FILT, 0);
-	if (amp)
-		MIX(in_buf[i], amp[i])
-	else if (amp_v0 != 1.f)
-		MIX(in_buf[i], amp_v0)
-	else
-		MIX(in_buf[i], 1)
+	bool use_lafx = sau_fnonzero(n->gen.lafx_amp);
+	if (use_lafx)
+		dist_ladderfx_mix_waveenv(o, n, in_buf, len, amp, amp_v0);
+	else {
+		if (amp)
+			MIX(in_buf[i], amp[i])
+		else if (amp_v0 != 1.f)
+			MIX(in_buf[i], amp_v0)
+		else
+			MIX(in_buf[i], 1)
+	}
 	block_mix_lpf(in_buf, len, n, MIX_FILT, 0);
 	if (buf != in_buf) sau_nmulnf(buf, len, in_buf);
 #undef MIX
@@ -489,12 +571,13 @@ static void block_mix_mul_waveenv(float *restrict buf, size_t len,
 /*
  * Handle audio layer according to options. Mono output only.
  */
-static void block_mix(float *restrict buf, size_t len,
+static void block_mix(sauGenerator *restrict o,
+		float *restrict buf, size_t len,
 		AnyGen *restrict n, bool wave_env, float *restrict in_buf,
 		const float *restrict amp, float amp_v0) {
 	(wave_env ?
 	 block_mix_mul_waveenv :
-	 block_mix_add)(buf, len, n, in_buf, amp, amp_v0);
+	 block_mix_add)(o, buf, len, n, in_buf, amp, amp_v0);
 }
 
 static float *mix_valrange(bool is_a_filled,
@@ -542,11 +625,7 @@ static void fill_pan_2chcenter(float *restrict mix_l, float *restrict mix_r,
 
 static void add_pan_2chcenter(float *restrict mix_l, float *restrict mix_r,
 		const float *restrict in, size_t len, float amp) {
-	for (size_t i = 0; i < len; ++i) {
-		float s = in[i] * amp;
-		mix_l[i] += s;
-		mix_r[i] += s;
-	}
+	sau_2naddnfmulf(mix_l, mix_r, len, in, amp);
 }
 
 /*
@@ -720,7 +799,7 @@ static void mix_pan_add(unsigned pan_law,
  */
 static void mix_pan_add_1chcenter(float *restrict mix,
 		const float *restrict in, size_t len, float amp) {
-	for (size_t i = 0; i < len; ++i) mix[i] += in[i] * amp;
+	sau_naddnfmulf(mix, len, in, amp);
 }
 
 /*
@@ -737,12 +816,22 @@ static void block_mix_pan(sauGenerator *restrict o, bool layer, bool stereo,
 		sau_nmulf(in, len, amp_v0);
 	unsigned pan_law = n->gen.pan_law;
 	float pan_amp = get_pan_amp(o, pan_law);
+	float *lafx = o->bufs[TMP_BUF(0)];
+	bool use_lafx = sau_fnonzero(n->gen.lafx_amp);
+	if (use_lafx) {
+		if (stereo)
+			pan_amp *= dist_ladderfx_wetdry(o, n, lafx, len, in);
+		else
+			dist_ladderfx_mix(o, n, in, len);
+	}
 	if (n->gen.filt & (GN_FILT(MIX_FILT, LPF) | GN_FILT(MIX_FILT, HPF))) {
 		float *mix  = in; // reusable; if !layer, then in == out
-		float *mix2 = layer ? o->bufs[TMP_BUF(0)] : out2;
+		float *mix2 = layer ? o->bufs[TMP_BUF(1)] : out2;
 		if (stereo) {
 			mix_pan_fill(pan_law, mix, mix2,
 					pan, pan_v0, len, pan_amp);
+			if (use_lafx)
+				sau_2naddnfmulf(mix, mix2, len, lafx, pan_amp);
 			block_mix_filter(mix, len, n, MIX_FILT, 0);
 			block_mix_filter(mix2, len, n, MIX_FILT, 1);
 			if (layer) sau_naddnf(out, len, mix);
@@ -760,6 +849,8 @@ static void block_mix_pan(sauGenerator *restrict o, bool layer, bool stereo,
 			else
 				mix_pan_fill(pan_law, out, out2,
 						pan, pan_v0, len, pan_amp);
+			if (use_lafx)
+				sau_2naddnfmulf(out, out2, len, lafx, pan_amp);
 		} else {
 			if (layer)
 				mix_pan_add_1chcenter(out, in, len, pan_amp);
@@ -974,7 +1065,7 @@ static size_t run_rins_gen_pop_mix(struct sauGenerator *restrict o,
 		o->is_out_stereo_in = stereo;
 		if (o->gen_mix_add_max < len) o->gen_mix_add_max = len;
 	} else {
-		block_mix(out_buf, len, n, mul_we, in_buf, amp_buf, amp_v0);
+		block_mix(o, out_buf, len, n, mul_we, in_buf, amp_buf, amp_v0);
 	}
 	// handle samples skipped due to generator time limit
 	if (!layer && skip_len > 0) {

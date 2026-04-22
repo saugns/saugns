@@ -23,6 +23,7 @@
 #define sau_dscalei(i, scale) (((int32_t)(i)) * (double)(scale))
 #define sau_fscalei(i, scale) (((int32_t)(i)) * (float)(scale))
 #define sau_divi(i, div) (((int32_t)(i)) / (int32_t)(div))
+#define sau_fnonzero(x) isnormal(x)
 
 /*
  * Array math functions, single-precision floating point.
@@ -38,6 +39,16 @@ static inline void sau_nsetf(float *restrict a, size_t n, float v) {
 static inline void sau_naddnf(float *restrict a, size_t n,
 		const float *restrict b) {
 	for (size_t i=0; i<n; ++i) a[i]+=b[i];
+}
+
+static inline void sau_naddnfmulf(float *restrict a, size_t n,
+		const float *restrict b, float c) {
+	for (size_t i=0; i<n; ++i) a[i]+=b[i]*c;
+}
+
+static inline void sau_2naddnfmulf(float *restrict a, float *restrict a2,
+		size_t n, const float *restrict b, float c) {
+	for (size_t i=0; i<n; ++i) {float x = b[i]*c; a[i]+=x; a2[i]+=x;}
 }
 
 static inline void sau_nmulf(float *restrict a, size_t n, float b) {
