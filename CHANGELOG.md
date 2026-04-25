@@ -4,8 +4,8 @@ saugns version changes
 [On the website](https://sau.frama.io/changes.html#saulang)
 is a shorter change log with only the SAU language changes.
 
-Pre-release
------------
+v0.5.7 (2026-04-25)
+-------------------
 
 Language changes:
  * Amplitude handling. Add "ladder effect" distortion `a.l`
