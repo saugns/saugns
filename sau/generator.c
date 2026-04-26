@@ -417,6 +417,8 @@ static void update_gen(sauGenerator *restrict o,
  */
 static void handle_event(sauGenerator *restrict o) {
 	const sauParseEvData *pe = o->ev_data;
+	if (!pe)
+		return; // bad input, handle this case gracefully
 	/*
 	 * Set state of generators.
 	 */
