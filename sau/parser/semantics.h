@@ -154,9 +154,16 @@ IDsSet_set(IDsSet *restrict o, sauProgramIDs *restrict elem, size_t i,
 // as srate for lines, matches 1ms resolution of script time
 #define SAU_UPDATE_RATE 1000
 
-static sauNoinline void
+static inline void
+sauLine_copy_pos(sauLine *restrict dst, const sauLine *restrict src) {
+	dst->pos = src->pos;
+	dst->end = src->end;
+}
+
+static void
 init_range(sauRange *restrict r, float v0, bool v0_ratio, float vt,
 		unsigned user_flags) {
+	*r = (sauRange){0};
 	sau_init_Line(&r->a, v0, v0_ratio);
 	sau_init_Line(&r->b, vt, false);
 	sau_init_Line(&r->e, vt, false);
@@ -171,7 +178,7 @@ set_gen_valr(sauMempool *restrict mp,
 	return gen->valr;
 }
 
-static bool sauEnvPar_has_time(sauEnvPar *restrict o) {
+static bool sauEnvPar_has_time(const sauEnvPar *restrict o) {
 	if (o->flags & SAU_ENVP_R_STRETCH)
 		return true;
 	for (int i = 0; i < SAU_ENV_TIMES; ++i) if (o->time_ms[i] > 0)
@@ -186,6 +193,8 @@ const float sau_pd_v_defaults[SAU_PPD_TYPES] = {
 	[SAU_PPD_X] = 0.5,
 	[SAU_PPD_Y] = 0.5,
 };
+
+sauArrType(RangeSet, sauRange, )
 
 /*
  * Per-generator state used during program data allocation.
@@ -204,9 +213,10 @@ typedef struct SemGenObj {
 	uint32_t dst_obj_id;   // for gen allocation (copying)
 	struct sauParseGenData *last_gd;
 	uint16_t block_i, ratio_block_i;
-	sauRange valr[SAU_PVALR_TYPES];
 	// reuse of object clears memory to here
 	IDsSet mods;
+	RangeSet valr;
+	const sauParseSetOptions *sopt;
 } SemGenObj;
 sauArrType(SemGenObjArr, SemGenObj, _)
 
@@ -257,52 +267,149 @@ typedef struct ParseSem {
 	sauMempool *mp, *tmp_mp;
 } ParseSem;
 
+static void
+sem_get_range_def(sauRange *restrict r,
+		uint8_t par_id, const SemGenObj *restrict gen) {
+	const sauParseSetOptions *sopt = gen->sopt;
+	bool is_nested = gen->block_i > 0;
+	switch (par_id) {
+	break; case SAU_PVALR_PAN:
+		init_range(r, sopt->def_chanmix, false, 0.0, sopt->def_pan_law);
+	break; case SAU_PVALR_AMP:
+		init_range(r, sopt->def_ampmult, false, 0.0, 0);
+	break; case SAU_PVALR_FREQ:
+		init_range(r, (is_nested ? sopt->def_relfreq : sopt->def_freq),
+				is_nested, 0.0, 0);
+	break; case SAU_PVALR_PMA:
+		init_range(r, 0.0, false, 0.0, 0);
+	break; default: {
+		int pd_id = sau_valr_to_pd(par_id);
+		float def = sau_pd_v_defaults[pd_id];
+		int sub_id = par_id - sau_pd_to_valr(pd_id);
+		switch (sub_id) {
+		break; case 0:
+			init_range(r, def, false, def, 0);
+		break; case 1:
+			init_range(r, 1.0, false, 0.0, 0);
+		break; case 2:
+			init_range(r, 0.0, false, 0.0, 0);
+		}
+	}
+	}
+	r->a.par_id = par_id;
+}
+
+static sauRange *
+RangeSet_find(const RangeSet *restrict o, uint8_t par_id) {
+	ptrdiff_t i, min = 0, max = o->count - 1;
+	while (min <= max) {
+		i = min + ((max - min) / 2);
+		if (o->a[i].a.par_id < par_id)  {
+			min = i + 1;
+		} else if (o->a[i].a.par_id > par_id) {
+			max = i - 1;
+		} else {
+			return &o->a[i];
+		}
+	}
+	return NULL;
+}
+
+static sauRange *
+RangeSet_find_i(const RangeSet *restrict o,
+		uint8_t par_id, size_t *restrict ins_i) {
+	if (!o->count) goto NO_MATCH;
+	ptrdiff_t i = 0, min = 0, max = o->count - 1;
+	while (min < max) {
+		i = max - ((max - min) / 2);
+		if (o->a[i].a.par_id > par_id)  {
+			max = i - 1;
+		} else {
+			min = i;
+		}
+	}
+	if (o->a[min].a.par_id == par_id) {
+		*ins_i = min;
+		return &o->a[min];
+	} else if (o->a[min].a.par_id < par_id) {
+		*ins_i = min+1;
+		return NULL;
+	}
+NO_MATCH:
+	*ins_i = 0;
+	return NULL;
+}
+
+/*
+ * Get existing range element, or add at sorted position if missing.
+ */
+static sauRange *
+sem_add_range(uint8_t par_id, SemGenObj *gen, const SemGenObj *src_gen) {
+	size_t i;
+	sauRange *r = RangeSet_find_i(&gen->valr, par_id, &i);
+	if (r)
+		return r;
+	sauRange def_r;
+	sem_get_range_def(&def_r, par_id, src_gen);
+	return RangeSet_ins(&gen->valr, i, &def_r);
+}
+
+static sauRange *
+sem_get_range(sauRange *restrict def_r,
+		uint8_t par_id, const SemGenObj *restrict gen) {
+	sauRange *r = RangeSet_find(&gen->valr, par_id);
+	if (r)
+		return r;
+	sem_get_range_def(def_r, par_id, gen);
+	return def_r;
+}
+
 /*
  * Advance time and state parameters in \p info for value range parameters.
  */
 static void
-sem_valr_advance(unsigned id, SemGenObj *info, uint32_t skip_time) {
-	sauLine_skip(&info->valr[id].a, skip_time);
-	sauLine_skip(&info->valr[id].b, skip_time);
-	sauLine_skip(&info->valr[id].e, skip_time);
+sem_valr_advance(sauRange *restrict r, uint32_t skip_time) {
+	sauLine_skip(&r->a, skip_time);
+	sauLine_skip(&r->b, skip_time);
+	sauLine_skip(&r->e, skip_time);
 }
 
 /*
  * Check if sem_valr_advance() caused a change that needs to be copied on.
  */
 static bool
-sem_valr_need_inherit(unsigned id, SemGenObj *info) {
-	return	(info->valr[id].a.flags & SAU_LINEP) ||
-		(info->valr[id].b.flags & SAU_LINEP) ||
-		(info->valr[id].e.flags & SAU_LINEP);
+sem_valr_need_inherit(const sauRange *restrict r) {
+	return	(r->a.flags & SAU_LINEP) ||
+		(r->b.flags & SAU_LINEP) ||
+		(r->e.flags & SAU_LINEP);
 }
 
 /*
  * Copy values for a value range parameter \p id from \p info.
  */
 static bool
-sem_valr_inherit(ParseSem *restrict o, unsigned id,
-		sauParseGenData *restrict gen, SemGenObj *info) {
+sem_valr_inherit(ParseSem *restrict o, sauRange *restrict r,
+		sauParseGenData *restrict gen) {
 	if (!set_gen_valr(o->mp, gen))
 		return false;
 	sauRange **valr = *gen->valr;
+	uint8_t id = r->a.par_id;
 	if (!valr[id]) {
-		valr[id] = sau_mpmemdup(o->mp, &info->valr[id],
-				sizeof(sauRange));
+		valr[id] = sau_mpmemdup(o->mp, r, sizeof(sauRange));
 	} else {
-		sauLine_inherit(&valr[id]->a, &info->valr[id].a);
-		sauLine_inherit(&valr[id]->b, &info->valr[id].b);
-		sauLine_inherit(&valr[id]->e, &info->valr[id].e);
+		sauLine_inherit(&valr[id]->a, &r->a);
+		sauLine_inherit(&valr[id]->b, &r->b);
+		sauLine_inherit(&valr[id]->e, &r->e);
 		if (!valr[id]->a.user_flags)
-			valr[id]->a.user_flags = info->valr[id].a.user_flags;
+			valr[id]->a.user_flags = r->a.user_flags;
 	}
 	/*
 	 * Clear state change tracking set by sem_valr_advance()
 	 * and checked by sem_valr_need_inherit().
 	 */
-	info->valr[id].a.flags &= ~SAU_LINEP;
-	info->valr[id].b.flags &= ~SAU_LINEP;
-	info->valr[id].e.flags &= ~SAU_LINEP;
+	r->a.flags &= ~SAU_LINEP;
+	r->b.flags &= ~SAU_LINEP;
+	r->e.flags &= ~SAU_LINEP;
 	return !!valr[id];
 }
 
@@ -313,20 +420,17 @@ sem_valr_inherit(ParseSem *restrict o, unsigned id,
  * copying it from \p info.
  */
 static void
-sem_valr_update(unsigned id, sauRangeSet valr,
-		SemGenObj *info) {
+sem_valr_update(unsigned id, sauRangeSet valr, SemGenObj *info) {
 	if (!valr[id])
 		return;
-	sauLine_copy(&info->valr[id].a, &valr[id]->a, SAU_UPDATE_RATE);
-	sauLine_copy(&info->valr[id].b, &valr[id]->b, SAU_UPDATE_RATE);
-	sauLine_copy(&info->valr[id].e, &valr[id]->e, SAU_UPDATE_RATE);
+	sauRange *r = sem_add_range(id, info, info);
+	sauLine_copy(&r->a, &valr[id]->a, SAU_UPDATE_RATE);
+	sauLine_copy(&r->b, &valr[id]->b, SAU_UPDATE_RATE);
+	sauLine_copy(&r->e, &valr[id]->e, SAU_UPDATE_RATE);
 	// copy the time values used during audio rendering stage
-	valr[id]->a.pos = info->valr[id].a.pos;
-	valr[id]->a.end = info->valr[id].a.end;
-	valr[id]->b.pos = info->valr[id].b.pos;
-	valr[id]->b.end = info->valr[id].b.end;
-	valr[id]->e.pos = info->valr[id].e.pos;
-	valr[id]->e.end = info->valr[id].e.end;
+	sauLine_copy_pos(&valr[id]->a, &r->a);
+	sauLine_copy_pos(&valr[id]->b, &r->b);
+	sauLine_copy_pos(&valr[id]->e, &r->e);
 }
 
 /*
@@ -359,6 +463,7 @@ sem_gen_obj_add(ParseSem *restrict o, sauParseObjRef *restrict ref,
 		info = &o->gen_obj.a[id];
 		memset(info, 0, offsetof(SemGenObj, mods));
 		info->mods.count = 0; // reuse allocation
+		info->valr.count = 0; // reuse allocation
 	} else {
 		id = o->gen_obj.count;
 		info = _SemGenObjArr_add(&o->gen_obj);
@@ -382,40 +487,30 @@ sem_gen_obj_add(ParseSem *restrict o, sauParseObjRef *restrict ref,
 	} else {
 		info->root_gen_obj = id;
 	}
-	if (ref->is_cloned) {
-		/*
-		 * Copy parts of info to be passed along directly on clone.
-		 */
-		const sauParseObjRef *src_ref = ref->prev_ref;
-		const SemGenObj *src_info =
-			&o->gen_obj.a[src_ref->obj_id];
-		memcpy(info->valr, src_info->valr, sizeof(info->valr));
-		return info;
-	}
 	sauParseGenData *gen = (void*)ref;
-	const sauParseSetOptions *sopt = gen->sopt;
-	init_range(&info->valr[SAU_PVALR_PAN],
-			sopt->def_chanmix, false, 0.0, sopt->def_pan_law);
-	init_range(&info->valr[SAU_PVALR_AMP],
-			sopt->def_ampmult, false, 0.0, 0);
-	init_range(&info->valr[SAU_PVALR_FREQ],
-			ref->is_nested ? sopt->def_relfreq : sopt->def_freq,
-			ref->is_nested, 0.0, 0);
-	init_range(&info->valr[SAU_PVALR_PMA],
-			0.0, false, 0.0, 0);
-	for (int j = 0; j < SAU_PPD_TYPES; ++j) {
-		float def = sau_pd_v_defaults[j];
-		int i = sau_pd_to_valr(j);
-		init_range(&info->valr[i+0], def, false, def, 0);
-		init_range(&info->valr[i+1], 1.0, false, 0.0, 0);
-		init_range(&info->valr[i+2], 0.0, false, 0.0, 0);
+	info->sopt = gen->sopt;
+	if (ref->is_cloned) {
+		const sauParseObjRef *src_ref = ref->prev_ref;
+		const SemGenObj *src_info = &o->gen_obj.a[src_ref->obj_id];
+		RangeSet_clone(&info->valr, &src_info->valr);
+		/*
+		 * A few parameters have settings which are not copied by
+		 * the above; this includes value range default values.
+		 */
+		sem_add_range(SAU_PVALR_PAN,  info, src_info);
+		sem_add_range(SAU_PVALR_AMP,  info, src_info);
+		sem_add_range(SAU_PVALR_FREQ, info, src_info);
+		return info;
 	}
 	return info;
 }
 
 static void
 SemGenObjArr_clear(SemGenObjArr *restrict o) {
-	for (size_t i = 0; i < o->count; ++i) IDsSet_clear(&o->a[i].mods);
+	for (size_t i = 0; i < o->count; ++i) {
+		IDsSet_clear(&o->a[i].mods);
+		RangeSet_clear(&o->a[i].valr);
+	}
 	_SemGenObjArr_clear(o);
 }
 
@@ -517,8 +612,8 @@ sem_voalloc_timing(ParseSem *restrict o, sauParseEvData *restrict e) {
 		else
 			info->time_ms -= e->wait_ms;
 		// update time for generator subcomponents
-		for (int i = 0; i < SAU_PVALR_TYPES; ++i)
-			sem_valr_advance(i, info, e->wait_ms);
+		for (size_t i = 0; i < info->valr.count; ++i)
+			sem_valr_advance(&info->valr.a[i], e->wait_ms);
 		if (info->is_labeled || info->has_next_ref) continue;
 		if (!(info->time_ms == 0 && info->is_timed)) continue;
 		info->is_expired = true;
@@ -781,23 +876,24 @@ gen_pardef_env(sauParseGenData *restrict gen, unsigned id,
 	/*
 	 * Update copy in info...
 	 */
+	sauRange *info_r = sem_add_range(id, info, info);
 	if (r->env.line_all_p1 > 0)
-		info->valr[id].env.line_all_p1 = r->env.line_all_p1;
+		info_r->env.line_all_p1 = r->env.line_all_p1;
 	for (int i = 0; i < SAU_ENV_TIMES; ++i) {
 		if (r->env.time_flags & SAU_ENVP_TIME(i))
-			info->valr[id].env.time_ms[i] = r->env.time_ms[i];
+			info_r->env.time_ms[i] = r->env.time_ms[i];
 		if (r->env.line_p1[i] > 0)
-			info->valr[id].env.line_p1[i] = r->env.line_p1[i];
+			info_r->env.line_p1[i] = r->env.line_p1[i];
 	}
 	if (r->env.time_flags & SAU_ENVP_TIME(SAU_ENV_TIME_R)) {
 		uint8_t mask = SAU_ENVP_R_STRETCH;
-		info->valr[id].env.flags &= ~mask;
-		info->valr[id].env.flags |= r->env.flags & mask;
+		info_r->env.flags &= ~mask;
+		info_r->env.flags |= r->env.flags & mask;
 	}
 	if (r->env.flags & SAU_ENVP_S)
-		info->valr[id].env.s_val = r->env.s_val;
+		info_r->env.s_val = r->env.s_val;
 	if (r->env.flags & SAU_ENVP_MODE)
-		info->valr[id].env.mode = r->env.mode;
+		info_r->env.mode = r->env.mode;
 }
 
 /*
@@ -842,16 +938,20 @@ sem_handle_gen_params(ParseSem *restrict o, sauParseGenData *restrict gen,
 			sem_valr_update(i, *gen->valr, info);
 	}
 	if (gen->ref.is_new && !gen->ref.is_cloned) {
+		sauRange def_r;
 		/*
 		 * Fill in initial default values if missing.
 		 */
-		if (sopt->def_ampmult != 1.f)
-			sem_valr_inherit(o, SAU_PVALR_AMP, gen, info);
 		if (!gen->ref.is_nested &&
 		    (sopt->def_chanmix != 0.f || sopt->def_pan_law))
-			sem_valr_inherit(o, SAU_PVALR_PAN, gen, info);
+			sem_valr_inherit(o, sem_get_range(&def_r,
+						SAU_PVALR_PAN, info), gen);
+		if (sopt->def_ampmult != 1.f)
+			sem_valr_inherit(o, sem_get_range(&def_r,
+						SAU_PVALR_AMP, info), gen);
 		if (gen->ref.is_nested || sopt->def_freq != SAU_PDEF_FREQ)
-			sem_valr_inherit(o, SAU_PVALR_FREQ, gen, info);
+			sem_valr_inherit(o, sem_get_range(&def_r,
+						SAU_PVALR_FREQ, info), gen);
 		if (gen->lafx) {
 			if (!(gen->lafx->flags & SAU_LAFXP_AMP))
 				gen->lafx->amp = sopt->def_lafx.amp;
@@ -866,9 +966,10 @@ sem_handle_gen_params(ParseSem *restrict o, sauParseGenData *restrict gen,
 	/*
 	 * Copy tracked/timed state changes from \p info to output.
 	 */
-	for (int i = 0; i < SAU_PVALR_TYPES; ++i) {
-		if (sem_valr_need_inherit(i, info))
-			sem_valr_inherit(o, i, gen, info);
+	for (size_t i = 0; i < info->valr.count; ++i) {
+		sauRange *r = &info->valr.a[i];
+		if (sem_valr_need_inherit(r))
+			sem_valr_inherit(o, r, gen);
 	}
 	gen->sopt = NULL; // uses temporary allocation; clear after use
 }
@@ -1311,9 +1412,8 @@ static bool
 sem_conv_mods(ParseSem *restrict o, const sauProgramIDArr *restrict mods,
 		uint32_t buf_count, uint8_t mix_mode);
 
-static sauLine *
-sem_get_line(uint8_t par_id, uint8_t sub_id, SemGenObj *restrict gen) {
-	sauRange *r = &gen->valr[par_id];
+static const sauLine *
+sem_get_line(const sauRange *restrict r, uint8_t sub_id) {
 	switch (sub_id) {
 	case SAU_RANGE_A: return &r->a;
 	case SAU_RANGE_B: return &r->b;
@@ -1336,12 +1436,12 @@ sem_get_line(uint8_t par_id, uint8_t sub_id, SemGenObj *restrict gen) {
  * use only if the buffer is not filled.
  */
 static const sauLine *
-sem_conv_dynpar(ParseSem *restrict o, SemGenObj *restrict gen,
+sem_conv_dynpar(ParseSem *restrict o, const sauRange *restrict r,
 		const sauProgramIDArr *restrict mods,
 		uint8_t par_id, uint8_t sub_id, float *restrict used_v0,
 		uint32_t buf_count, uint32_t *restrict out_buf,
 		const RInsBlock *restrict mul, bool force_fill) {
-	const sauLine *line = sem_get_line(par_id, sub_id, gen);
+	const sauLine *line = sem_get_line(r, sub_id);
 	sauRIns *ins = NULL;
 	if (used_v0) *used_v0 = (line->flags & SAU_LINEP_STATE_RATIO) ?
 		line->v0 * mul->v0 :
@@ -1361,7 +1461,8 @@ sem_conv_dynpar(ParseSem *restrict o, SemGenObj *restrict gen,
 }
 
 static uint32_t
-sem_conv_valr_mods(ParseSem *restrict o, SemGenObj *restrict gen,
+sem_conv_valr_mods(ParseSem *restrict o,
+		const sauRange *restrict r, const SemGenObj *restrict gen,
 		unsigned mods_from, uint8_t par_id, float *restrict a_v0,
 		uint32_t buf_count, const RInsBlock *restrict mul,
 		RInsBlock *restrict freq, bool is_freq, bool force_fill) {
@@ -1373,7 +1474,7 @@ sem_conv_valr_mods(ParseSem *restrict o, SemGenObj *restrict gen,
 	const sauProgramIDArr *mods_r =
 		IDArr_find(&gen->mods, mods_from+SAU_MOD_VALR_r);
 	uint32_t par_buf;
-	sem_conv_dynpar(o, gen, mods, par_id, SAU_RANGE_A, a_v0,
+	sem_conv_dynpar(o, r, mods, par_id, SAU_RANGE_A, a_v0,
 			buf_count, &par_buf, mul, force_fill);
 	if (par_buf) buf_count++;
 	if (is_freq) freq->buf_id = par_buf; // if filled, now uses buffer
@@ -1382,7 +1483,7 @@ sem_conv_valr_mods(ParseSem *restrict o, SemGenObj *restrict gen,
 		if (!had_par_buf) par_buf = buf_count++; // always filled, used
 		uint32_t par2_buf;
 		float b_v0;
-		sem_conv_dynpar(o, gen, mods2, par_id, SAU_RANGE_B, &b_v0,
+		sem_conv_dynpar(o, r, mods2, par_id, SAU_RANGE_B, &b_v0,
 				buf_count, &par2_buf, mul, false);
 		if (par2_buf) buf_count++;
 		sem_conv_mods(o, mods_r, buf_count, SAU_RMIX_MUL_WE);
@@ -1400,11 +1501,12 @@ sem_conv_valr_mods(ParseSem *restrict o, SemGenObj *restrict gen,
 }
 
 static uint32_t
-sem_conv_valr_env(ParseSem *restrict o, SemGenObj *restrict gen,
+sem_conv_valr_env(ParseSem *restrict o,
+		const sauRange *restrict r, const SemGenObj *restrict gen,
 		unsigned mods_from, uint8_t par_id, float a_v0,
 		uint32_t buf_count, const RInsBlock *restrict mul,
 		RInsBlock *restrict freq, bool is_freq, uint32_t par_buf) {
-	sauEnvPar *env = &gen->valr[par_id].env;
+	const sauEnvPar *env = &r->env;
 	sauRIns *ins = NULL;
 	const sauProgramIDArr *mods_e =
 		IDArr_find(&gen->mods, mods_from+SAU_MOD_VALR_e);
@@ -1413,7 +1515,7 @@ sem_conv_valr_env(ParseSem *restrict o, SemGenObj *restrict gen,
 		if (!had_par_buf) par_buf = buf_count++; // always filled, used
 		uint32_t par2_buf;
 		float e_v0;
-		sem_conv_dynpar(o, gen, mods_e, par_id, SAU_RANGE_E, &e_v0,
+		sem_conv_dynpar(o, r, mods_e, par_id, SAU_RANGE_E, &e_v0,
 				buf_count, &par2_buf, mul, false);
 		if (par2_buf) buf_count++;
 		ins = RInsArr_add(&o->ev_ins);
@@ -1432,20 +1534,23 @@ sem_conv_valr_env(ParseSem *restrict o, SemGenObj *restrict gen,
 }
 
 static bool
-sem_conv_valr(ParseSem *restrict o, SemGenObj *restrict gen,
+sem_conv_valr(ParseSem *restrict o, const SemGenObj *restrict gen,
 		unsigned mods_from, uint8_t par_id, float *restrict a_v0,
 		uint32_t buf_count, const RInsBlock *restrict mul,
 		RInsBlock *restrict freq, bool force_fill) {
+	sauRange def_r;
+	const sauRange *r = sem_get_range(&def_r, par_id, gen);
 	const sauProgramIDArr *mods_a =
 		IDArr_find(&gen->mods, mods_from+SAU_MOD_VALR_a);
 	const RInsBlock def_mul = {0, 1.0};
 	if (!mul) mul = &def_mul;
 	bool is_freq = (a_v0 == &freq->v0);
 	if (is_freq) freq->buf_id = 0; // uses buffer only after fill here
-	uint32_t par_buf = sem_conv_valr_mods(o, gen, mods_from, par_id, a_v0,
-			buf_count, mul, freq, is_freq, force_fill | !!(mods_a));
+	uint32_t par_buf = sem_conv_valr_mods(o, r, gen, mods_from, par_id,
+			a_v0, buf_count, mul, freq, is_freq,
+			force_fill | !!mods_a);
 	if (par_buf) buf_count++;
-	par_buf = sem_conv_valr_env(o, gen, mods_from, par_id, *a_v0,
+	par_buf = sem_conv_valr_env(o, r, gen, mods_from, par_id, *a_v0,
 			buf_count, mul, freq, is_freq, par_buf);
 	return sem_conv_mods(o, mods_a, buf_count,
 			par_buf ? SAU_RMIX_LAYER : 0);
@@ -1541,7 +1646,9 @@ sem_conv_osc_phase(ParseSem *restrict o, SemGenObj *restrict gen,
 		int pd_p_id = pd_id+2;
 		int pd_f_mods_from = pd_mods_from+SAU_MODS_VALR;
 		int pd_p_mods_from = pd_f_mods_from+SAU_MODS_VALR;
-		sauLine *line_pd   = sem_get_line(pd_id, SAU_RANGE_A, gen);
+		sauRange def_r;
+		const sauRange *r = sem_get_range(&def_r, pd_id, gen);
+		const sauLine *line_pd = sem_get_line(r, SAU_RANGE_A);
 		float pd_v0, pd_f_v0, pd_p_v0;
 		bool has_pd_f = sem_conv_valr(o, gen, pd_f_mods_from,
 				pd_f_id, &pd_f_v0, buf_count+0, NULL,
@@ -1567,7 +1674,9 @@ sem_conv_osc_phase(ParseSem *restrict o, SemGenObj *restrict gen,
 static bool
 sem_conv_osc_pma_fill(ParseSem *restrict o, SemGenObj *restrict gen,
 		uint32_t buf_count, RInsBlock *restrict freq) {
-	sauLine *line = sem_get_line(SAU_PVALR_PMA, SAU_RANGE_A, gen);
+	sauRange def_r;
+	const sauRange *r = sem_get_range(&def_r, SAU_PVALR_PMA, gen);
+	const sauLine *line = sem_get_line(r, SAU_RANGE_A);
 	float pma_v0;
 	return sem_conv_valr(o, gen, SAU_MOD_N_pa_pm, SAU_PVALR_PMA,
 			&pma_v0, buf_count, NULL, freq, line->v0 != 0.f);

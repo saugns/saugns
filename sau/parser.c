@@ -1035,6 +1035,8 @@ static sauRange *create_range(sauParser *restrict o,
 	sauRange *r;
 	if (!((*gen->valr)[valr_id] = r = sau_mpalloc(o->mp, sizeof(*r))))
 		return NULL;
+	// the parameter ID is used as search ID in semantics code
+	r->a.par_id = valr_id;
 	// apply default time logic
 	r->a.flags = r->b.flags = r->e.flags = SAU_LINEP_TIME_IF_NEW;
 	return r;

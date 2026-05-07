@@ -97,6 +97,16 @@ static inline ElementType* sauMaybeUnused \
 MethodPrefix##Name##_tip(Name *restrict o) { \
 	return (o->count > 0) ? &o->a[o->count - 1] : NULL; \
 } \
+static inline ElementType* sauMaybeUnused \
+MethodPrefix##Name##_clone(Name *restrict o, const Name *restrict src_o) { \
+	return sauArrType_copy(o, src_o->a, src_o->count, \
+			sizeof(ElementType)); \
+} \
+static inline ElementType* sauMaybeUnused \
+MethodPrefix##Name##_copy(Name *restrict o, const void *restrict a, \
+		size_t count) { \
+	return sauArrType_copy(o, a, count, sizeof(ElementType)); \
+} \
 static inline void sauMaybeUnused \
 MethodPrefix##Name##_clear(Name *restrict o) { \
 	sauArrType_clear(o); \
@@ -140,6 +150,8 @@ void *sauArrType_ins(sauAnyArr *restrict o, size_t i,
 		const void *restrict item, size_t item_size);
 void sauArrType_rem(sauAnyArr *restrict o, size_t i, size_t item_size);
 bool sauArrType_upsize(sauAnyArr *restrict o, size_t count, size_t item_size);
+void *sauArrType_copy(sauAnyArr *restrict o, const void *restrict a,
+		size_t count, size_t item_size);
 void sauArrType_clear(sauAnyArr *restrict o);
 bool sauArrType_memdup(sauAnyArr *restrict o,
 		void **restrict dst, size_t item_size);
