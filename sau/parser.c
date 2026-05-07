@@ -2627,7 +2627,7 @@ sau_build_Parse(const sauScriptArg *restrict arg) {
 	if (!init_Parser(&pr, arg))
 		return NULL;
 	if (!(parse = sau_mpalloc(pr.mp, sizeof(*parse))) ||
-	    !init_ParseSem(&pr.ps, arg, pr.mp)) goto DONE;
+	    !init_ParseSem(&pr.ps, arg, pr.mp, pr.tmp_mp)) goto DONE;
 	const char *name = parse_file(&pr, arg);
 	if (!name) {
 		parse = NULL;
