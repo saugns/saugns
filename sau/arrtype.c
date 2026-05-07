@@ -152,6 +152,23 @@ bool sauArrType_upsize(sauAnyArr *restrict o, size_t count, size_t item_size) {
 }
 
 /**
+ * Copy \a count elements of \a into the array, and set the array
+ * count to the passed count.
+ *
+ * (Generic version of the function, to be used through wrapper.)
+ *
+ * \return first item in array, or NULL if allocation failed
+ */
+void *sauArrType_copy(sauAnyArr *restrict o, const void *restrict a,
+		size_t count, size_t item_size) {
+	if (!sauArrType_upsize(o, count, item_size))
+		return NULL;
+	memcpy(o->a, a, count * item_size);
+	o->count = count;
+	return o->a;
+}
+
+/**
  * Clear the given array.
  *
  * (Generic version of the function, to be used through wrapper.)

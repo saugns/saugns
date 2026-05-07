@@ -141,7 +141,8 @@ enum {
 	SAU_PPD_TYPES,
 };
 
-#define sau_pd_to_valr(id) (SAU_PVALR_PD_FIRST + (id)*3)
+#define sau_pd_to_valr(id) (SAU_PVALR_PD_FIRST + ((id)*3))
+#define sau_valr_to_pd(id) (((id) - SAU_PVALR_PD_FIRST)/3)
 
 /** Default value for each PD corresponding to doing nothing. */
 extern const float sau_pd_v_defaults[SAU_PPD_TYPES];
