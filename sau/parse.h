@@ -314,11 +314,6 @@ enum {
 #define SAU_POBJ_NO_ID  UINT32_MAX       /* object ID missing */
 #define SAU_POBJ_MAX_ID (UINT32_MAX - 1) /* error if exceeded */
 
-typedef struct sauProgramIDArr {
-	uint32_t count;
-	uint32_t ids[];
-} sauProgramIDArr;
-
 struct sauRIns;
 
 /* Macro used for generator modulation or use type sets of items. */

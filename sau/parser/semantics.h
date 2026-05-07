@@ -31,6 +31,11 @@ typedef struct sauParseEvBranch {
 	struct sauParseEvBranch *prev;
 } sauParseEvBranch;
 
+typedef struct sauProgramIDArr {
+	uint32_t count;
+	uint32_t ids[];
+} sauProgramIDArr;
+
 static const sauProgramIDArr blank_idarr = {0}; // used as value for "none"
 
 static sauProgramIDArr *
@@ -76,6 +81,74 @@ concat_ProgramIDArr(sauMempool *restrict mp,
 	memcpy(idarr->ids, arr0->ids, size0);
 	memcpy(&idarr->ids[arr0->count], arr1->ids, size1);
 	return idarr;
+}
+
+static const char *const mods_uses[SAU_MOD_NAMED] = {
+	SAU_MOD__ITEMS(SAU_MOD__X_GRAPH)
+};
+
+typedef struct sauProgramIDs {
+	const sauProgramIDArr *a;
+	uint8_t use;
+} sauProgramIDs;
+sauArrType(IDsSet, sauProgramIDs, )
+
+static const sauProgramIDArr *
+IDArr_find(const IDsSet *restrict o, uint8_t use) {
+	ptrdiff_t i, min = 0, max = o->count - 1;
+	while (min <= max) {
+		i = min + ((max - min) / 2);
+		if (o->a[i].use < use)  {
+			min = i + 1;
+		} else if (o->a[i].use > use) {
+			max = i - 1;
+		} else {
+			return o->a[i].a;
+		}
+	}
+	return NULL;
+}
+
+static sauProgramIDs *
+IDsSet_find_i(const IDsSet *restrict o, uint8_t use, size_t *restrict ins_i) {
+	if (!o->count) goto NO_MATCH;
+	ptrdiff_t i = 0, min = 0, max = o->count - 1;
+	while (min < max) {
+		i = max - ((max - min) / 2);
+		if (o->a[i].use > use)  {
+			max = i - 1;
+		} else {
+			min = i;
+		}
+	}
+	if (o->a[min].use == use) {
+		*ins_i = min;
+		return &o->a[min];
+	} else if (o->a[min].use < use) {
+		*ins_i = min+1;
+		return NULL;
+	}
+NO_MATCH:
+	*ins_i = 0;
+	return NULL;
+}
+
+/*
+ * Set existing IDs element, or add at sorted position if non-empty.
+ * If empty, instead remove it if existing.
+ */
+static bool
+IDsSet_set(IDsSet *restrict o, sauProgramIDs *restrict elem, size_t i,
+		const sauProgramIDArr *restrict new_a, uint8_t new_use) {
+	if (new_a == &blank_idarr) {
+		if (elem) IDsSet_rem(o, i);
+		return true;
+	}
+	sauProgramIDs ids = {.a = new_a, .use = new_use};
+	if (!elem)
+		return IDsSet_ins(o, i, &ids);
+	elem->a = new_a;
+	return true;
 }
 
 // as srate for lines, matches 1ms resolution of script time
@@ -130,9 +203,10 @@ typedef struct SemGenObj {
 	uint32_t root_gen_obj; // root gen for gen
 	uint32_t dst_obj_id;   // for gen allocation (copying)
 	struct sauParseGenData *last_gd;
-	const sauProgramIDArr *mods_idarr[SAU_MOD_NAMED - 1];
-	sauRange valr[SAU_PVALR_TYPES];
 	uint16_t block_i, ratio_block_i;
+	sauRange valr[SAU_PVALR_TYPES];
+	// reuse of object clears memory to here
+	IDsSet mods;
 } SemGenObj;
 sauArrType(SemGenObjArr, SemGenObj, _)
 
@@ -180,7 +254,7 @@ typedef struct ParseSem {
 	GenDataArr ev_gen_data; // flat list of pointers
 	RInsArr ev_ins; // per-event, all current audio rendering instructions
 	RInsBlockArr ins_block; // stack used during \a ev_ins allocation
-	sauMempool *mp;
+	sauMempool *mp, *tmp_mp;
 } ParseSem;
 
 /*
@@ -283,7 +357,8 @@ sem_gen_obj_add(ParseSem *restrict o, sauParseObjRef *restrict ref,
 	SemGenObj *info;
 	if (id != SAU_POBJ_NO_ID) {
 		info = &o->gen_obj.a[id];
-		*info = (SemGenObj){0};
+		memset(info, 0, offsetof(SemGenObj, mods));
+		info->mods.count = 0; // reuse allocation
 	} else {
 		id = o->gen_obj.count;
 		info = _SemGenObjArr_add(&o->gen_obj);
@@ -307,8 +382,6 @@ sem_gen_obj_add(ParseSem *restrict o, sauParseObjRef *restrict ref,
 	} else {
 		info->root_gen_obj = id;
 	}
-	for (int i = 1; i < SAU_MOD_NAMED; ++i)
-		info->mods_idarr[i-1] = &blank_idarr;
 	if (ref->is_cloned) {
 		/*
 		 * Copy parts of info to be passed along directly on clone.
@@ -338,6 +411,12 @@ sem_gen_obj_add(ParseSem *restrict o, sauParseObjRef *restrict ref,
 		init_range(&info->valr[i+2], 0.0, false, 0.0, 0);
 	}
 	return info;
+}
+
+static void
+SemGenObjArr_clear(SemGenObjArr *restrict o) {
+	for (size_t i = 0; i < o->count; ++i) IDsSet_clear(&o->a[i].mods);
+	_SemGenObjArr_clear(o);
 }
 
 /*
@@ -589,7 +668,7 @@ sem_genalloc_update(ParseSem *restrict o, sauParseGenData *restrict g,
 static sauProgramIDArr *
 sem_make_clone_idarr(ParseSem *restrict o,
 		const sauProgramIDArr *restrict src) {
-	sauProgramIDArr *dst = create_ProgramIDArr(o->mp, src->count);
+	sauProgramIDArr *dst = create_ProgramIDArr(o->tmp_mp, src->count);
 	if (!dst)
 		return NULL;
 	for (uint32_t j = 0; j < src->count; ++j) {
@@ -637,13 +716,18 @@ sem_vograph_cb_clonegen(ParseSem *restrict o, uint32_t obj_id,
 	/*
 	 * Clone/update modulator ID lists as well, to link to the new objects.
 	 */
-	for (int i = 0; i < SAU_MOD_NAMED - 1; ++i) {
-		const sauProgramIDArr *src = info->mods_idarr[i], *dst;
-		if (!src->count) continue;
-		if (!(dst = sem_make_clone_idarr(o, src)))
+	if (!IDsSet_upsize(&dst_info->mods, info->mods.count))
+		return false;
+	for (size_t i = 0; i < info->mods.count; ++i) {
+		const sauProgramIDs *src = &info->mods.a[i];
+		sauProgramIDs *dst = &dst_info->mods.a[i];
+		sauProgramIDArr *dst_arr;
+		if (!(dst_arr = sem_make_clone_idarr(o, src->a)))
 			return false;
-		dst_info->mods_idarr[i] = dst;
+		dst->a = dst_arr;
+		dst->use = src->use;
 	}
+	dst_info->mods.count = info->mods.count;
 	return true;
 }
 
@@ -806,7 +890,7 @@ sem_handle_gendata(ParseSem *restrict o, sauParseGenData *restrict gen,
 	sem_handle_gen_params(o, gen, info);
 	for (sauParseListData *in_list = gen->mods;
 			in_list != NULL; in_list = in_list->ref.next) {
-		int type = in_list->use_type - 1;
+		int type = in_list->use_type;
 		const sauProgramIDArr *arr;
 		if (!(arr = sem_handle_list(o, in_list, gen)))
 			goto MEM_ERR;
@@ -818,19 +902,21 @@ sem_handle_gendata(ParseSem *restrict o, sauParseGenData *restrict gen,
 		sauVoAllocState *vas = vo_id != SAU_PVO_NO_ID ?
 			&o->va.a[vo_id] :
 			NULL;
-		const sauProgramIDArr **mods = info->mods_idarr;
+		size_t i;
+		sauProgramIDs *ids = IDsSet_find_i(&info->mods, type, &i);
+		const sauProgramIDArr *old_arr = ids ? ids->a : &blank_idarr;
 		if (in_list->append) {
 			if (arr == &blank_idarr) continue; // omit no-op
-			if (!(arr = concat_ProgramIDArr(o->mp,
-					mods[type], arr))) goto MEM_ERR;
+			if (!(arr = concat_ProgramIDArr(o->tmp_mp,
+					old_arr, arr))) goto MEM_ERR;
 		} else {
-			if (arr == mods[type]) continue; // omit no-op
+			if (arr == old_arr) continue; // omit no-op
 			// recycle IDs for generators made unreachable
 			if (vas && !sem_vograph_handle_gen_list(o, NULL,
-						true, vas, mods[type], type+1))
+						true, vas, old_arr, type+1))
 				goto MEM_ERR;
 		}
-		mods[type] = arr;
+		if (!IDsSet_set(&info->mods, ids, i, arr, type)) goto MEM_ERR;
 		if (vas) vas->has_new_graph = true;
 	}
 	return true;
@@ -865,7 +951,7 @@ sem_handle_list(ParseSem *restrict o, const sauParseListData *restrict list_in,
 		o->idbuf.a[o->idbuf.count++] = gen->ref.obj_id;
 
 	}
-	idarr = clone_ProgramIDArr(o->mp,
+	idarr = clone_ProgramIDArr(o->tmp_mp,
 			&o->idbuf.a[offset], o->idbuf.count - offset);
 RETURN:
 	o->idbuf.count = offset; // reuse allocation (zero when fully out)
@@ -909,9 +995,10 @@ sem_vograph_handle_gen_node(ParseSem *restrict o, semVoGraph_cb node_cb,
 	} else if (vas->has_gen_expiry && info->is_expired)
 		gens_expired = true;
 	++o->gen_nest_level;
-	for (int i = 1; i < SAU_MOD_NAMED; ++i) {
+	for (size_t i = 0; i < info->mods.count; ++i) {
+		const sauProgramIDs *ids = &info->mods.a[i];
 		if (!sem_vograph_handle_gen_list(o, node_cb, gens_expired, vas,
-					info->mods_idarr[i-1], i))
+					ids->a, ids->use))
 			return false;
 		// array may have been resized by action of callback function!
 		info = &o->gen_obj.a[obj_id];
@@ -1124,9 +1211,6 @@ sem_print_stats(const sauParse *restrict o) {
 static void
 print_genlist(const sauPrintGenRef *restrict list,
 		uint32_t count) {
-	static const char *const uses[SAU_MOD_NAMED] = {
-		SAU_MOD__ITEMS(SAU_MOD__X_GRAPH)
-	};
 	if (!list)
 		return;
 	FILE *out = sau_print_stream();
@@ -1139,7 +1223,7 @@ print_genlist(const sauPrintGenRef *restrict list,
 		fprintf(out, "%6u:  ", list[i].id);
 		for (uint32_t j = indent; j > 0; --j)
 			putc(' ', out);
-		fputs(uses[list[i].use], out);
+		fputs(mods_uses[list[i].use], out);
 		if (--i < 0) break;
 		fputs("\n\t     ", out);
 	}
@@ -1239,7 +1323,7 @@ sem_get_line(uint8_t par_id, uint8_t sub_id, SemGenObj *restrict gen) {
 }
 
 #define NEED_FILL(line, mods, mulbuf) \
-	(((line)->flags & SAU_LINEP_GOAL) || (mods)->count > 0 || \
+	(((line)->flags & SAU_LINEP_GOAL) || (mods) || \
 	 ((mulbuf) && ((line)->flags & SAU_LINEP_STATE_RATIO)))
 
 /*
@@ -1283,17 +1367,17 @@ sem_conv_valr_mods(ParseSem *restrict o, SemGenObj *restrict gen,
 		RInsBlock *restrict freq, bool is_freq, bool force_fill) {
 	sauRIns *ins = NULL;
 	const sauProgramIDArr *mods =
-		gen->mods_idarr[mods_from+SAU_MOD_VALR   -1];
+		IDArr_find(&gen->mods, mods_from+SAU_MOD_VALR);
 	const sauProgramIDArr *mods2 =
-		gen->mods_idarr[mods_from+SAU_MOD_VALR2  -1];
+		IDArr_find(&gen->mods, mods_from+SAU_MOD_VALR2);
 	const sauProgramIDArr *mods_r =
-		gen->mods_idarr[mods_from+SAU_MOD_VALR_r -1];
+		IDArr_find(&gen->mods, mods_from+SAU_MOD_VALR_r);
 	uint32_t par_buf;
 	sem_conv_dynpar(o, gen, mods, par_id, SAU_RANGE_A, a_v0,
 			buf_count, &par_buf, mul, force_fill);
 	if (par_buf) buf_count++;
 	if (is_freq) freq->buf_id = par_buf; // if filled, now uses buffer
-	if (mods_r->count > 0) {
+	if (mods_r) {
 		bool had_par_buf = !!par_buf;
 		if (!had_par_buf) par_buf = buf_count++; // always filled, used
 		uint32_t par2_buf;
@@ -1323,7 +1407,7 @@ sem_conv_valr_env(ParseSem *restrict o, SemGenObj *restrict gen,
 	sauEnvPar *env = &gen->valr[par_id].env;
 	sauRIns *ins = NULL;
 	const sauProgramIDArr *mods_e =
-		gen->mods_idarr[mods_from+SAU_MOD_VALR_e -1];
+		IDArr_find(&gen->mods, mods_from+SAU_MOD_VALR_e);
 	if (/*env->mode > 0 &&*/ sauEnvPar_has_time(env)) {
 		bool had_par_buf = !!par_buf;
 		if (!had_par_buf) par_buf = buf_count++; // always filled, used
@@ -1353,14 +1437,13 @@ sem_conv_valr(ParseSem *restrict o, SemGenObj *restrict gen,
 		uint32_t buf_count, const RInsBlock *restrict mul,
 		RInsBlock *restrict freq, bool force_fill) {
 	const sauProgramIDArr *mods_a =
-		gen->mods_idarr[mods_from+SAU_MOD_VALR_a -1];
+		IDArr_find(&gen->mods, mods_from+SAU_MOD_VALR_a);
 	const RInsBlock def_mul = {0, 1.0};
 	if (!mul) mul = &def_mul;
 	bool is_freq = (a_v0 == &freq->v0);
 	if (is_freq) freq->buf_id = 0; // uses buffer only after fill here
 	uint32_t par_buf = sem_conv_valr_mods(o, gen, mods_from, par_id, a_v0,
-			buf_count, mul, freq, is_freq,
-			force_fill | (mods_a->count > 0));
+			buf_count, mul, freq, is_freq, force_fill | !!(mods_a));
 	if (par_buf) buf_count++;
 	par_buf = sem_conv_valr_env(o, gen, mods_from, par_id, *a_v0,
 			buf_count, mul, freq, is_freq, par_buf);
@@ -1387,10 +1470,12 @@ sem_conv_gen_noiseg(ParseSem *restrict o,
 static bool
 sem_conv_osc_pm_fill(ParseSem *restrict o, SemGenObj *restrict gen,
 		uint32_t buf_count, uint32_t freq_buf, float freq_v0) {
-	const sauProgramIDArr *pm_idarr  = gen->mods_idarr[SAU_MOD_N_p_pm  -1];
-	const sauProgramIDArr *fpm_idarr = gen->mods_idarr[SAU_MOD_N_pf_pm -1];
+	const sauProgramIDArr *pm_idarr =
+		IDArr_find(&gen->mods, SAU_MOD_N_p_pm);
+	const sauProgramIDArr *fpm_idarr =
+		IDArr_find(&gen->mods, SAU_MOD_N_pf_pm);
 	uint8_t mix_mode = 0;
-	if (fpm_idarr->count > 0) {
+	if (fpm_idarr) {
 		sem_conv_mods(o, fpm_idarr, buf_count, 0);
 		const float fpm_scale = 1.0 / SAU_HUMMID;
 		sauRIns *ins = RInsArr_add(&o->ev_ins);
@@ -1600,7 +1685,7 @@ MEM_ERR:
 static bool
 sem_conv_mods(ParseSem *restrict o, const sauProgramIDArr *restrict mods,
 		uint32_t buf_count, uint8_t mix_mode) {
-	for (uint32_t i = 0; i < mods->count; ++i) {
+	if (mods) for (uint32_t i = 0; i < mods->count; ++i) {
 		if (sem_conv_gen(o, mods->ids[i], buf_count, mix_mode))
 			mix_mode |= SAU_RMIX_LAYER;
 	}
@@ -1822,10 +1907,11 @@ sem_check_validity(ParseSem *restrict o,
 
 static bool
 init_ParseSem(ParseSem *restrict o, const sauScriptArg *restrict arg,
-		sauMempool *restrict mp) {
+		sauMempool *restrict mp, sauMempool *restrict tmp_mp) {
 	o->print_info = arg->print_info;
 	o->print_verbose = arg->print_info && arg->verbose;
 	o->mp = mp;
+	o->tmp_mp = tmp_mp;
 	return true;
 }
 
@@ -1856,7 +1942,7 @@ fini_ParseSem(ParseSem *restrict o, sauParse *restrict parse) {
 	}
 	_sauVoAlloc_clear(&o->va);
 	PrintGenRefArr_clear(&o->vo_graph);
-	_SemGenObjArr_clear(&o->gen_obj);
+	SemGenObjArr_clear(&o->gen_obj);
 	IDBuf_clear(&o->idbuf);
 	_GenDataArr_clear(&o->ev_gen_data);
 	RInsArr_clear(&o->ev_ins);

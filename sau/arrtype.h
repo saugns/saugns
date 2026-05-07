@@ -1,5 +1,5 @@
 /* SAU library: Generic array module.
- * Copyright (c) 2018-2025 Joel K. Pettersson
+ * Copyright (c) 2018-2026 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
@@ -13,6 +13,9 @@
 
 #pragma once
 #include "common.h"
+#ifndef sauAnyArr
+# define sauAnyArr void // for use outside implementation
+#endif
 
 /*
  * Generic array meta-type. A given type is used for the elements,
@@ -56,33 +59,42 @@ typedef struct Name { \
  * not blank, \p MethodPrefix will be used to prefix their names.
  */
 #define sauArrTypeMethods(Name, ElementType, MethodPrefix) \
-static inline ElementType sauMaybeUnused \
-*MethodPrefix##Name##_add(Name *restrict o) { \
+static inline ElementType* sauMaybeUnused \
+MethodPrefix##Name##_add(Name *restrict o) { \
 	return sauArrType_add(o, sizeof(ElementType)); \
 } \
-static inline ElementType sauMaybeUnused \
-*MethodPrefix##Name##_push(Name *restrict o, \
+static inline ElementType* sauMaybeUnused \
+MethodPrefix##Name##_push(Name *restrict o, \
 		const ElementType *restrict item) { \
 	return sauArrType_push(o, item, sizeof(ElementType)); \
 } \
-static inline ElementType sauMaybeUnused \
-*MethodPrefix##Name##_pop(Name *restrict o) { \
+static inline ElementType* sauMaybeUnused \
+MethodPrefix##Name##_pop(Name *restrict o) { \
 	return (o->count > 0) ? &o->a[--o->count] : NULL; \
+} \
+static inline ElementType* sauMaybeUnused \
+MethodPrefix##Name##_ins(Name *restrict o, size_t i, \
+		const ElementType *restrict item) { \
+	return sauArrType_ins(o, i, item, sizeof(ElementType)); \
+} \
+static inline void sauMaybeUnused \
+MethodPrefix##Name##_rem(Name *restrict o, size_t i) { \
+	sauArrType_rem(o, i, sizeof(ElementType)); \
 } \
 static inline bool sauMaybeUnused \
 MethodPrefix##Name##_upsize(Name *restrict o, size_t count) { \
 	return sauArrType_upsize(o, count, sizeof(ElementType)); \
 } \
-static inline ElementType sauMaybeUnused \
-*MethodPrefix##Name##_get(Name *restrict o, size_t i) { \
+static inline ElementType* sauMaybeUnused \
+MethodPrefix##Name##_get(Name *restrict o, size_t i) { \
 	return (o->count > i) ? &o->a[i] : NULL; \
 } \
-static inline ElementType sauMaybeUnused \
-*MethodPrefix##Name##_getrev(Name *restrict o, size_t i) { \
+static inline ElementType* sauMaybeUnused \
+MethodPrefix##Name##_getrev(Name *restrict o, size_t i) { \
 	return (o->count > i) ? &o->a[o->count - (i+1)] : NULL; \
 } \
-static inline ElementType sauMaybeUnused \
-*MethodPrefix##Name##_tip(Name *restrict o) { \
+static inline ElementType* sauMaybeUnused \
+MethodPrefix##Name##_tip(Name *restrict o) { \
 	return (o->count > 0) ? &o->a[o->count - 1] : NULL; \
 } \
 static inline void sauMaybeUnused \
@@ -113,19 +125,26 @@ MethodPrefix##Name##_mpmemdup(Name *restrict o, ElementType **restrict dst, \
 sauArrTypeStruct(Name, ElementType) \
 sauArrTypeMethods(Name, ElementType, MethodPrefix)
 
-void *sauArrType_add(void *restrict o, size_t item_size);
-void *sauArrType_push(void *restrict o,
-		const void *restrict item, size_t item_size);
-bool sauArrType_upsize(void *restrict o,
-		size_t count, size_t item_size);
-void sauArrType_clear(void *restrict o);
-bool sauArrType_memdup(void *restrict o,
-		void **restrict dst, size_t item_size);
-bool sauArrType_mpmemdup(void *restrict o,
-		void **restrict dst, size_t item_size,
-		struct sauMempool *restrict mempool);
-
 /*
  * Arrays of primitive types.
  */
-sauArrType(sauByteArr, uint8_t, )
+sauArrTypeStruct(sauByteArr, uint8_t) // methods after; this may be sauAnyArr
+
+/*
+ * Generic methods.
+ */
+void *sauArrType_add(sauAnyArr *restrict o, size_t item_size);
+void *sauArrType_push(sauAnyArr *restrict o,
+		const void *restrict item, size_t item_size);
+void *sauArrType_ins(sauAnyArr *restrict o, size_t i,
+		const void *restrict item, size_t item_size);
+void sauArrType_rem(sauAnyArr *restrict o, size_t i, size_t item_size);
+bool sauArrType_upsize(sauAnyArr *restrict o, size_t count, size_t item_size);
+void sauArrType_clear(sauAnyArr *restrict o);
+bool sauArrType_memdup(sauAnyArr *restrict o,
+		void **restrict dst, size_t item_size);
+bool sauArrType_mpmemdup(sauAnyArr *restrict o,
+		void **restrict dst, size_t item_size,
+		struct sauMempool *restrict mempool);
+
+sauArrTypeMethods(sauByteArr, uint8_t, )
