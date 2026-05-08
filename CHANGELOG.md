@@ -8,6 +8,19 @@ Pre-release
 -----------
 
 Language changes:
+ * Parameter envelopes.
+   - Add minimum sustain time `s.t` envelope parameter. Can
+     be used to ensure the sustain stage runs for a time if
+     the envelope continues. When time is insufficient, and
+     sustain is normally missing, the release is displaced.
+     In loop mode `el`, a sustain stage is added.
+   - Rename envelope mode `c` (clip envelope shape) back to
+     `t` (truncated envelope).
+
+v0.5.7 (2026-04-25)
+-------------------
+
+Language changes:
  * Amplitude handling. Add "ladder effect" distortion `a.l`
    (by default off). The constant `C` (7/512, as in `a.lC`)
    matches the YM2612 chip level for the pulse added by the

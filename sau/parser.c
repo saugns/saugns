@@ -1598,16 +1598,15 @@ static uint8_t parse_par_sweep(sauScanner *restrict sc,
 }
 
 static void parse_env_line(sauScanner *restrict sc,
-		sauEnvPar *restrict env, unsigned i) {
+		uint8_t *restrict line_p1) {
 	uint8_t c;
 	size_t id;
 	switch ((c = sauScanner_getc_after(sc, '.'))) {
-	case 'l':
+	break; case 'l':
 		if (!scan_sym_id(sc, &id, SAU_SYM_LINE_ID, sauLine_names))
 			break;
-		env->line_p1[i] = id + 1; // != 0 if set
-		break;
-	default:
+		*line_p1 = id + 1; // != 0 if set
+	break; default:
 		if (c) sauScanner_ungetc(sc);
 	}
 }
@@ -1619,7 +1618,6 @@ static bool parse_env_time(sauScanner *restrict sc,
 		env->time_flags |= SAU_ENVP_TIME(i);
 		has_time = true;
 	}
-	parse_env_line(sc, env, i);
 	return has_time;
 }
 
@@ -1631,7 +1629,7 @@ static bool parse_env_mode(sauScanner *restrict sc, sauEnvPar *restrict env) {
 		if (!(func < SAU_ENV_FUNCTIONS) && ++matched)
 		switch ((c = sauScanner_getc(sc))) {
 		case '0': func = SAU_ENV_FN_OFF; break;
-		case 'c': func = SAU_ENV_FN_CLIP; break;
+		case 't': func = SAU_ENV_FN_TRUNC; break;
 		case 'd': func = SAU_ENV_FN_DECLICK; break;
 		case 'l': func = SAU_ENV_FN_LOOP; break;
 		case 's': func = SAU_ENV_FN_SHRINK; break;
@@ -1653,48 +1651,40 @@ static bool parse_env_mode(sauScanner *restrict sc, sauEnvPar *restrict env) {
 static uint8_t parse_par_env(sauScanner *restrict sc,
 		sauEnvPar *restrict env, uint8_t c) {
 	double val;
-	size_t id;
 	uint8_t suffc;
 	switch (c) {
-	case 'a':
+	break; case 'a':
 		parse_env_time(sc, env, SAU_ENV_TIME_A);
-		break;
-	case 'd':
+		parse_env_line(sc, &env->line_p1[SAU_ENV_LINE_A]);
+	break; case 'd':
 		parse_env_time(sc, env, SAU_ENV_TIME_D);
-		break;
-	case 'e':
+		parse_env_line(sc, &env->line_p1[SAU_ENV_LINE_D]);
+	break; case 'e':
 		parse_env_mode(sc, env);
-		switch ((c = sauScanner_getc_after(sc, '.'))) {
-		case 'l':
-			if (!scan_sym_id(sc, &id, SAU_SYM_LINE_ID,
-			                 sauLine_names)) break;
-			env->line_all_p1 = id + 1; // != 0 if set
-			break;
-		default:
-			if (c) sauScanner_ungetc(sc);
-		}
-		break;
-	case 'r':
+		parse_env_line(sc, &env->line_all_p1);
+	break; case 'r':
 		switch ((suffc = sauScanner_get_suffc(sc))) {
-		case 's':
+		break; case 's':
 			env->time_flags |= SAU_ENVP_TIME(SAU_ENV_TIME_R);
 			env->flags |= SAU_ENVP_R_STRETCH;
-			parse_env_line(sc, env, SAU_ENV_TIME_R);
-			break;
-		default:
+		break; default:
 			if (suffc) sauScanner_ungetc(sc);
 			if (parse_env_time(sc, env, SAU_ENV_TIME_R))
 				env->flags &= ~SAU_ENVP_R_STRETCH;
-			break;
 		}
-		break;
-	case 's':
+		parse_env_line(sc, &env->line_p1[SAU_ENV_LINE_R]);
+	break; case 's':
 		if (scan_num(sc, NULL, &val)) {
 			env->s_val = val;
 			env->flags |= SAU_ENVP_S;
 		}
-		break;
-	default:
+		switch ((c = sauScanner_getc_after(sc, '.'))) {
+		break; case 't':
+			parse_env_time(sc, env, SAU_ENV_TIME_S);
+		break; default:
+			if (c) sauScanner_ungetc(sc);
+		}
+	break; default:
 		return c;
 	}
 	return 0;

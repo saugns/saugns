@@ -887,6 +887,13 @@ Value ranges and envelopes:
 		If below 0.0, the level goes beyond the second value, and the
 		release then returns to it the other way around. If above 1.0,
 		the level goes beyond the main value, like a second attack.
+		The following sustain-specific subparameters exist.
+		.t	Minimum sustain time (default 0 seconds). Normally,
+			sustain is auto-fit to the generator "t" time minus
+			the other stages. If this parameter is set above zero,
+			and there's not enough time for both release after and
+			this sustain time, then lengthening sustain takes
+			priority. Results depend on the envelope mode set.
 	r	Release time (default 0 seconds). If above zero, the result
 		will "fade out" from the sustain level to the second value.
 			The special non-number literal 's' can also be set,
@@ -897,20 +904,21 @@ Value ranges and envelopes:
 	e	Envelope settings. A letter or digit can be set to toggle
 		behavior for the envelope.
 		0	Off. The envelope does nothing.
-		c	Clip envelope shape. If the current generator "t"
+		t	Truncated envelope. If the current generator "t"
 			time linked to the envelope is too short for all
 			stages, cut off the too-long portion. Release, and
 			maybe earlier stages, may go unfinished before any
-			retriggering and abrupt level jump to a next attack.
-		d	Declicked envelope shape (default). Like clip mode
-			'c', except that if time runs out before completion,
-			the last value reached is kept and the next attack
+			retriggering, and level reset for the next attack.
+		d	Declicked envelope shape (default). Like truncated
+			't', except that if time runs out before completion,
+			the last value reached is saved and the next attack
 			is changed to start from it. (If a stage of 0 time
-			length is reached, it is always completed.)
+			length is reached, that stage is always completed.)
 		l	Loop envelope. This changes the behavior into that of
 			a periodic waveform generator. Attack immediately
-			follows release, and there's no sustain time. In
-			terms of timing, the envelope runs like a modulator.
+			follows release, and there's no sustain time other
+			than "s.t". In terms of timing, the envelope runs
+			like a modulator.
 		s	Shrink stage times. To avoid clipping the envelope
 			shape, each time the envelope is triggered, adjust
 			its stages to fit their combined duration to the
