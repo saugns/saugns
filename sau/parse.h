@@ -48,7 +48,7 @@ typedef struct sauTime {
 /** Envelope modes a.k.a. functions. */
 enum {
 	SAU_ENV_FN_OFF = 0,
-	SAU_ENV_FN_CLIP,
+	SAU_ENV_FN_TRUNC,
 	SAU_ENV_FN_DECLICK,
 	SAU_ENV_FN_LOOP,
 	SAU_ENV_FN_SHRINK,
@@ -56,12 +56,21 @@ enum {
 	SAU_ENV_FN_DEFAULT = SAU_ENV_FN_DECLICK
 };
 
-/** Envelope time parameters. Used as indices for time and line arrays. */
+/** Envelope time parameters. Used as indices for time arrays. */
 enum {
 	SAU_ENV_TIME_A = 0,
 	SAU_ENV_TIME_D,
+	SAU_ENV_TIME_S,
 	SAU_ENV_TIME_R,
-	SAU_ENV_TIMES /* stages except the sustain stage */
+	SAU_ENV_TIMES
+};
+
+/** Envelope line parameters. Used as indices for line arrays. */
+enum {
+	SAU_ENV_LINE_A = 0,
+	SAU_ENV_LINE_D,
+	SAU_ENV_LINE_R,
+	SAU_ENV_LINES
 };
 
 /** Envelope time parameter flag; see envelope time enums for \p i range. */
@@ -79,10 +88,10 @@ enum {
  */
 typedef struct sauEnvPar {
 	uint32_t time_ms[SAU_ENV_TIMES];
-	uint8_t line_p1[SAU_ENV_TIMES], line_all_p1; // set +1 the value
-	float s_val;
+	uint8_t line_p1[SAU_ENV_LINES], line_all_p1; // set +1 the value
 	uint8_t flags, time_flags;
 	uint8_t mode;
+	float s_val;
 } sauEnvPar;
 
 /** Range subparameters. Used as indices in various places. */

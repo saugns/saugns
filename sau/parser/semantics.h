@@ -858,11 +858,13 @@ gen_pardef_env(sauParseGenData *restrict gen, unsigned id,
 		r->e.v0 = sopt->def_parenv_v;
 		r->e.flags |= SAU_LINEP_STATE;
 	}
-	if (!r->env.line_all_p1)
-		r->env.line_all_p1 = sopt->def_parenv.line_all_p1;
 	for (int i = 0; i < SAU_ENV_TIMES; ++i) {
 		if (!(r->env.time_flags & SAU_ENVP_TIME(i)))
 			r->env.time_ms[i] = sopt->def_parenv.time_ms[i];
+	}
+	if (!r->env.line_all_p1)
+		r->env.line_all_p1 = sopt->def_parenv.line_all_p1;
+	for (int i = 0; i < SAU_ENV_LINES; ++i) {
 		if (!r->env.line_p1[i])
 			r->env.line_p1[i] = sopt->def_parenv.line_p1[i];
 	}
@@ -877,11 +879,13 @@ gen_pardef_env(sauParseGenData *restrict gen, unsigned id,
 	 * Update copy in info...
 	 */
 	sauRange *info_r = sem_add_range(id, info, info);
-	if (r->env.line_all_p1 > 0)
-		info_r->env.line_all_p1 = r->env.line_all_p1;
 	for (int i = 0; i < SAU_ENV_TIMES; ++i) {
 		if (r->env.time_flags & SAU_ENVP_TIME(i))
 			info_r->env.time_ms[i] = r->env.time_ms[i];
+	}
+	if (r->env.line_all_p1 > 0)
+		info_r->env.line_all_p1 = r->env.line_all_p1;
+	for (int i = 0; i < SAU_ENV_LINES; ++i) {
 		if (r->env.line_p1[i] > 0)
 			info_r->env.line_p1[i] = r->env.line_p1[i];
 	}
