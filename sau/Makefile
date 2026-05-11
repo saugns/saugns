@@ -53,7 +53,7 @@ arrtype.o: arrtype.c arrtype.h common.h math.h mempool.h
 error.o: common.h error.c
 	$(CC) -c $(CFLAGS_SIZE) error.c
 
-help.o: common.h help.c help.h line.h math.h parse.h wave.h
+help.o: common.h help.c help.h line.h env.h math.h parse.h wave.h
 	$(CC) -c $(CFLAGS_SIZE) help.c
 
 math.o: common.h math.c math.h
@@ -71,7 +71,7 @@ file.o: common.h file.c file.h
 lexer.o: common.h math.h mempool.h file.h lexer.c lexer.h scanner.h symtab.h
 	$(CC) -c $(CFLAGS) lexer.c
 
-parser.o: arrtype.h common.h math.h mempool.h parse.h line.h file.h parser.c parser/semantics.h render.h scanner.h symtab.h wave.h
+parser.o: arrtype.h common.h math.h mempool.h parse.h line.h env.h file.h parser.c parser/semantics.h render.h scanner.h symtab.h wave.h
 	$(CC) -c $(CFLAGS_SIZE) parser.c
 
 scanner.o: common.h math.h mempool.h file.h scanner.h scanner.c symtab.h
@@ -80,7 +80,7 @@ scanner.o: common.h math.h mempool.h file.h scanner.h scanner.c symtab.h
 symtab.o: common.h mempool.h symtab.h symtab.c
 	$(CC) -c $(CFLAGS_FAST) symtab.c
 
-generator.o: common.h generator.c render.h generator/array.h generator/envel.h generator/filter.h generator/noise.h generator/phasor.h generator/rosc.h generator/wosc.h math.h mempool.h parse.h line.h wave.h
+generator.o: common.h generator.c render.h generator/array.h generator/envel.h generator/filter.h generator/noise.h generator/phasor.h generator/rosc.h generator/wosc.h math.h mempool.h parse.h line.h env.h wave.h
 	$(CC) -c $(CFLAGS_FASTF) generator.c
 
 wave.o: common.h math.h wave.c wave.h

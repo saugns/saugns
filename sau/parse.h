@@ -13,6 +13,7 @@
 
 #pragma once
 #include "line.h"
+#include "env.h"
 #include "wave.h"
 
 /*
@@ -44,56 +45,6 @@ typedef struct sauTime {
 #define sauTime_DEFAULT(v_ms, implicit) (sauTime){ \
 	(v_ms), SAU_TIMEP_DEFAULT | ((implicit) ? SAU_TIMEP_IMPLICIT : 0) \
 }
-
-/** Envelope modes a.k.a. functions. */
-enum {
-	SAU_ENV_FN_OFF = 0,
-	SAU_ENV_FN_TRUNC,
-	SAU_ENV_FN_DECLICK,
-	SAU_ENV_FN_CLONED,
-	SAU_ENV_FN_LOOP,
-	SAU_ENV_FN_SHRINK,
-	SAU_ENV_FUNCTIONS,
-	SAU_ENV_FN_DEFAULT = SAU_ENV_FN_DECLICK
-};
-
-/** Envelope time parameters. Used as indices for time arrays. */
-enum {
-	SAU_ENV_TIME_A = 0,
-	SAU_ENV_TIME_D,
-	SAU_ENV_TIME_S,
-	SAU_ENV_TIME_R,
-	SAU_ENV_TIMES
-};
-
-/** Envelope line parameters. Used as indices for line arrays. */
-enum {
-	SAU_ENV_LINE_A = 0,
-	SAU_ENV_LINE_D,
-	SAU_ENV_LINE_R,
-	SAU_ENV_LINES
-};
-
-/** Envelope time parameter flag; see envelope time enums for \p i range. */
-#define SAU_ENVP_TIME(i) (1U<<(i))
-
-/** Envelope other parameter flags. */
-enum {
-	SAU_ENVP_S         = 1U<<0,
-	SAU_ENVP_MODE      = 1U<<1,
-	SAU_ENVP_R_STRETCH = 1U<<2,
-};
-
-/**
- * Envelope parameter type.
- */
-typedef struct sauEnvPar {
-	uint32_t time_ms[SAU_ENV_TIMES];
-	uint8_t line_p1[SAU_ENV_LINES], line_all_p1; // set +1 the value
-	uint8_t flags, time_flags;
-	uint8_t mode;
-	float s_val;
-} sauEnvPar;
 
 /** Range subparameters. Used as indices in various places. */
 enum{
