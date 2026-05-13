@@ -17,6 +17,10 @@ Language changes:
    - Rename envelope mode `c` (clip envelope shape) back to
      `t` (truncated envelope).
 
+Fix voice allocation for `;` syntax with no time `t` after;
+an old bug could make such a voice expire prematurely. This
+fix is needed for a new `examples/drums-and-eh.sau` script.
+
 v0.5.7 (2026-04-25)
 -------------------
 

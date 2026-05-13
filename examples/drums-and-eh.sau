@@ -1,0 +1,22 @@
+S a.m4/5
+
+W[
+	A8.e[a0.01.lxpe d1/4-0.01 s0 r1/4 el.lxpe11]
+] f0 t45
+Rsmo[
+	A12.e[a0.01.lxpe d1/4-0.01 s0 r3/4 el.lxpe11]
+] map f0 ;1/4
+Rsmo[
+	A12.e[a0.01.lxpe d1/4-0.01 s0 r3+3/4 el.lxpe11]
+] map f0 ;2+3/4
+
+W[c2.f2 d2] mn a.e[a0.01.llin rs e.lxpe]
+;1 fC t2 ; fB/2 t1 ; fC t2
+;  fD t1 ; fB/2 t1 ; fC t2
+
+/10
+Rlin[W r3/7] a3/2.e[a0.01 d0.1 s1/4 r1-0.11 el.lxpe] fG t20
+/10
+W[W r[W f0.1]] a1/2.e[a0.1 r3] t12
+/10
+W[a1/2 W r4/11] a.e[a0.1 rs e.lxpe11] fBs/2 t1/4; ;;1/2; ;;1/2; t10
