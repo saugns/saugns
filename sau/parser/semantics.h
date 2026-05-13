@@ -1166,15 +1166,20 @@ time_gen_lines(sauParseGenData *restrict gen) {
 static uint32_t
 time_gen(sauParseGenData *restrict gen) {
 	uint32_t dur_ms = gen->time.v_ms;
+	sauParseEvData *e = gen->event;
 	if (!(gen->params & SAU_PGENP_TIME))
-		gen->event->ev_flags &= ~SAU_PEV_VOICE_SET_DUR;
+		e->ev_flags &= ~SAU_PEV_VOICE_SET_DUR;
+	// the ';' SAU syntax always renews time even if 't' param unset
+	if ((e->ev_flags & (SAU_PEV_FROM_GAPSHIFT|SAU_PEV_WAIT_PREV_DUR)) &&
+	    !(e->ev_flags & SAU_PEV_IMPLICIT_TIME))
+		e->ev_flags |= SAU_PEV_VOICE_SET_DUR;
 	if (!(gen->time.flags & SAU_TIMEP_SET)) {
 		if (gen->time.flags & SAU_TIMEP_DEFAULT)
 			gen->time.flags |= SAU_TIMEP_SET; /* use, may adjust */
 		else
 			gen->time.flags |= SAU_TIMEP_DEFAULT;
 	} else if (!gen->ref.is_nested) {
-		gen->event->ev_flags |= SAU_PEV_LOCK_DUR_SCOPE;
+		e->ev_flags |= SAU_PEV_LOCK_DUR_SCOPE;
 	}
 	for (sauParseListData *list = gen->mods;
 			list != NULL; list = list->ref.next) {
