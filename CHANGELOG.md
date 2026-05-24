@@ -7,6 +7,26 @@ is a shorter change log with only the SAU language changes.
 Pre-release
 -----------
 
+Tweak ladder effect distortion `a.l` behavior; the behavior
+to limit DC offset on silence was bad especially for LFO as
+it could halve the pulse level for half the cycle. It could
+_somewhat_ reduce pulse amplitude in more cases too. Fixed.
+
+Previously, the pulse (always up for an input amplitude not
+below minus `a.l.t` threshold value) would decay to zero if
+it remained up. Now, it only decays to 0 when input is also
+not above plus the `a.l.t` threshold value. If not decaying
+pulse amplitude is reset to full.
+
+This does cause a new quirk, mainly noticeable for a larger
+`a.l.t` value and larger `a.l` pulse amplitude too. When up
+the pulse may distort, decay beginning, only to be followed
+by a jump up in level if the input amplitude rises. This is
+mainly visible in the waveform but not audible.
+
+v0.5.7b (2026-05-13)
+--------------------
+
 Language changes:
  * Parameter envelopes.
    - Add minimum sustain time `s.t` envelope parameter. Can

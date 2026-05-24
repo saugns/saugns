@@ -435,7 +435,7 @@ static void dist_ladderfx_mix(sauGenerator *restrict o,
 	const float le_gr = 1.f / (1.f + le_shift);
 	for (size_t i = 0; i < len; ++i) {
 		float x = buf[i];
-		float dc_x = RC_DECAY_NEXT(n->gen.lafx_dc, (x < le_th),
+		float dc_x = RC_DECAY_NEXT(n->gen.lafx_dc, (-fabsf(x) < le_th),
 				le_shift, o->dc_coeff);
 		float fq_x = (x > 0.f) ? 0.f : x; // fake quantize region of in
 		float le_x = (x < le_th) ? -le_shift : (dc_x - fq_x);
@@ -456,7 +456,7 @@ static float dist_ladderfx_wetdry(sauGenerator *restrict o,
 	const float le_gr = 1.f / (1.f + le_shift);
 	for (size_t i = 0; i < len; ++i) {
 		float x = in[i];
-		float dc_x = RC_DECAY_NEXT(n->gen.lafx_dc, (x < le_th),
+		float dc_x = RC_DECAY_NEXT(n->gen.lafx_dc, (-fabsf(x) < le_th),
 				le_shift, o->dc_coeff);
 		float fq_x = (x > 0.f) ? 0.f : x; // fake quantize region of in
 		float le_x = (x < le_th) ? -le_shift : dc_x;
@@ -470,7 +470,7 @@ static float dist_ladderfx_wetdry(sauGenerator *restrict o,
  * "Ladder effect" adapted for wave envelope (unipolar signal result) mixing.
  *
  * Remove the exponential decay filter, shifting the signal up by \a le_shift
- * directly instead. This is way nicer for LFO modulation, DC doesn't matter.
+ * directly instead. This is nicest for LFO modulation and DC doesn't matter.
  */
 static void dist_ladderfx_mix_waveenv(sauGenerator *restrict o sauMaybeUnused,
 		AnyGen *restrict n, float *restrict buf, size_t len,
