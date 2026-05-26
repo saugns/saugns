@@ -1,5 +1,5 @@
 /* SAU library: Script scanner module.
- * Copyright (c) 2014, 2017-2024 Joel K. Pettersson
+ * Copyright (c) 2014, 2017-2026 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the

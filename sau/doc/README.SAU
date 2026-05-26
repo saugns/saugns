@@ -95,15 +95,7 @@ Parameters:
 			Can only be set in the outermost scope.
 			See "Frequency filter options" for details.
 		.l	Default "ladder effect" distortion intensity. Starts
-			at 0.0. See "Ladder effect intensity values" for more.
-			(Also use panning mode "c.pf" and an "a.f2840" lowpass
-			filter for the most authentic result.) Traditionally
-			only used for carriers, changes aren't copied over to
-			nested modulator lists.
-			.t	Default threshold amplitude for the distortion
-				pulse. Starts at C (2^-13).
-				See "Ladder effect threshold values" for more.
-				Isn't copied over to nested modulator lists.
+			at 0.0. See "Ladder effect options" for details.
 		.m	Script-wide gain mix control (multiplier). If used,
 			this disables automatic down-scaling of amplitude
 			by the number of voices (max carrier audio generators
@@ -169,15 +161,8 @@ Generator universal parameters:
 			Applied after all else for this generator.
 			See "Frequency filter options" for details.
 		.l	YM2612 "ladder effect" distortion, as proportion of
-			an added pulse to a fixed amplitude of 1.0. A value
-			of C or 7/512 on carriers gives the classic effect.
-			See "Ladder effect intensity values" for more. (Also
-			use panning mode "c.pf" and an "a.f2840" lowpass
-			filter for the most authentic result.)
-			.t	Threshold amplitude for the distortion pulse.
-				Determines pulse width and fade-out behavior.
-				A value of C or 2^-13 stays true to the chip.
-				See "Ladder effect threshold values" for more.
+			an added pulse to a fixed amplitude of 1.0.
+			See "Ladder effect options" for details.
 	c	(For non-nested generators only.) Channel mixing, mainly
 		(-1.0) to 1.0. See "Channel mixing values" for more.
 			"Value ranges and envelopes" is supported for
@@ -281,7 +266,7 @@ Oscillator common parameters:
 		to set up another kind of PM. Phase distortion can also be
 		used; see the "Phase distortion subparameters" section for
 		those options. There you'll also find the "p[a]" self-PM
-		a.k.a.  "feedback FM" subparameter described.
+		a.k.a. "feedback FM" subparameter described.
 		.f	Frequency-scaled PM modulators can be set in a
 			separate list, as in "p.f[...]". See "Modulator list".
 		The sum of all PM modulator amplitudes will phase-modulate
@@ -779,6 +764,19 @@ Channel mixing values:
 	L	(-1.0)
 	R	1.0
 
+Ladder effect options:
+	For "a.l" parameters. YM2612 "ladder effect" distortion with
+	generalized or extended behavior. The main parameter "a.l" governs
+	mixing of an added pulse signal. If 0 (the default) the effect is
+	disabled. See "Ladder effect intensity values" for more. (For the
+	most authentic Sega Mega Drive/Genesis model 1 sound, use panning
+	mode "c.pf" and an "a.f2840" lowpass filter as well.)
+		The following named options can be set inside the ".l[]" list
+	as heading subparameters.
+	t	Threshold amplitude for the distortion pulse.
+		Determines pulse width and fade-out behavior.
+		See "Ladder effect threshold values" for more.
+
 Ladder effect intensity values:
 	Intensity, as proportion of an added pulse to a fixed amplitude of
 	1.0. (The mixing scales the signal plus added pulse down so that a
@@ -787,8 +785,9 @@ Ladder effect intensity values:
 	larger in size than the threshold, otherwise it is up. It is mixed
 	into the signal in mono regardless of panning options.
 		Non-zero (typically small) values make a brighter, noisier
-	timbre. Traditionally only used for carriers, applied per voice (a
-        root/top-level audio generator using it).
+	timbre. The distortion stands out in and makes louder the quietest
+	sounds. Traditionally only used for carriers, applied per voice (a
+	root/top-level audio generator using it).
 	C	7/512 (chip, mimic Sega Genesis/Mega Drive model 1 YM2612)
 
 Ladder effect threshold values:
@@ -1110,7 +1109,7 @@ Variables:
 	must be whitespace and/or a mathematical symbol, to keep names apart.
 	For example, "$freq=f A4" has the frequency value of the note "A4".
 	a.l     Ladder effect intensity values
-	a.l.t   Ladder effect threshold values
+	a.l[t]  Ladder effect threshold values
 	c	Channel mixing values
 	f	Frequencies as notes
 	p	Cycle position values (phase)

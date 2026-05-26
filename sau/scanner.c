@@ -1,5 +1,5 @@
 /* SAU library: Script scanner module.
- * Copyright (c) 2014, 2017-2024 Joel K. Pettersson
+ * Copyright (c) 2014, 2017-2026 Joel K. Pettersson
  * <joelkp@tuta.io>.
  *
  * This file and the software of which it is part is distributed under the
@@ -674,33 +674,20 @@ uint8_t sauScanner_getc_after(sauScanner *restrict o, uint8_t testc) {
 
 /**
  * Advance the position past the current character if it matches \p testc.
- * Note that characters removed by filters cannot be tested successfully.
- *
- * For filtered characters, does a get followed by sauScanner_ungetc()
- * if the characters do not match; characters skipped or changed by the
- * filtering remain skipped or changed for future gets.
+ * Note that this tests characters without filtering.
  *
  * \return true if character matched \p testc
  */
 bool sauScanner_tryc(sauScanner *restrict o, uint8_t testc) {
 	sauFile *f = o->f;
 	uint8_t c = sauFile_RETC(f);
-	sauScanFilter_f filter_f = sauScanner_getfilter(o, c);
-	if (!filter_f) {
-		if (c != testc)
-			return false;
-		pre_get_setup(o);
-		++o->sf.char_num;
-		sauFile_INCP(f);
-		o->sf.c = c;
-		prepare_frame(o);
-	} else {
-		c = sauScanner_filterc(o, c, filter_f);
-		if (c != testc) {
-			sauScanner_ungetc(o);
-			return false;
-		}
-	}
+	if (c != testc)
+		return false;
+	pre_get_setup(o);
+	++o->sf.char_num;
+	sauFile_INCP(f);
+	o->sf.c = c;
+	prepare_frame(o);
 	return true;
 }
 
@@ -817,32 +804,23 @@ bool sauScanner_getd(sauScanner *restrict o,
 
 /**
  * Get character if alphabetic and not followed by an identifier character.
+ * Note that this tests characters without filtering.
  *
  * \return character or 0 if not got
  */
 uint8_t sauScanner_get_suffc(sauScanner *restrict o) {
 	sauFile *f = o->f;
-	uint8_t c = sauFile_RETC(f), next_c;
-	sauScanFilter_f filter_f = sauScanner_getfilter(o, c);
-	if (!filter_f) {
-		if (!SAU_IS_ALPHA(c))
-			return 0;
-		pre_get_setup(o);
-		sauFile_INCP(f);
-		++o->sf.char_num;
-		o->sf.c = c;
-		prepare_frame(o);
-	} else {
-		c = sauScanner_filterc(o, c, filter_f);
-		if (!SAU_IS_ALPHA(c)) goto UNGET_C;
+	uint8_t c = sauFile_GETC(f);
+	uint8_t next_c = sauFile_RETC(f);
+	if (!SAU_IS_ALPHA(c) || sau_is_symchar(next_c)) {
+		sauFile_DECP(f);
+		return 0;
 	}
-	next_c = sauScanner_retc(o);
-	if (sau_is_symchar(next_c)) goto UNGET_C;
+	pre_get_setup(o);
+	++o->sf.char_num;
+	o->sf.c = c;
+	prepare_frame(o);
 	return c;
-
-UNGET_C:
-	sauScanner_ungetc(o);
-	return 0;
 }
 
 /**

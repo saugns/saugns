@@ -7,19 +7,22 @@ is a shorter change log with only the SAU language changes.
 Pre-release
 -----------
 
+Language changes:
+ * Deprecate `a.l.t` in favor of new/moved `a.l[t]` option.
+
 Tweak ladder effect distortion `a.l` behavior; the behavior
 to limit DC offset on silence was bad especially for LFO as
 it could halve the pulse level for half the cycle. It could
 _somewhat_ reduce pulse amplitude in more cases too. Fixed.
 
 Previously, the pulse (always up for an input amplitude not
-below minus `a.l.t` threshold value) would decay to zero if
-it remained up. Now, it only decays to 0 when input is also
-not above plus the `a.l.t` threshold value. If not decaying
-pulse amplitude is reset to full.
+below minus the `a.l[t]` threshold value) would if up decay
+to 0 if it remained up. Now it only decays when input isn't
+also above plus the `a.l[t]` threshold value. It's reset to
+full amplitude when not decaying.
 
 This does cause a new quirk, mainly noticeable for a larger
-`a.l.t` value and larger `a.l` pulse amplitude too. When up
+`a.l[t]` value and/or larger `a.l` pulse amplitude. When up
 the pulse may distort, decay beginning, only to be followed
 by a jump up in level if the input amplitude rises. This is
 mainly visible in the waveform but not audible.

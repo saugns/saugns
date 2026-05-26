@@ -187,28 +187,27 @@ static bool handle_unknown_or_eof(sauScanner *restrict o, uint8_t c) {
 }
 
 /*
- * Print warning for EOF without closing \p c scope-closing character.
- */
-static void warn_eof_without_closing(sauScanner *restrict o, uint8_t c) {
-	sauScanner_warning(o, NULL, "end of file without closing '%c'", c);
-}
-
-/*
- * Print warning for scope-opening character in disallowed place.
- */
-static void warn_opening_disallowed(sauScanner *restrict o,
-		uint8_t open_c) {
-	sauScanner_warning(o, NULL, "opening '%c' out of place",
-			open_c);
-}
-
-/*
  * Print warning for scope-closing character without scope-opening character.
  */
 static void warn_closing_without_opening(sauScanner *restrict o,
 		uint8_t close_c, uint8_t open_c) {
 	sauScanner_warning(o, NULL, "closing '%c' without opening '%c'",
 			close_c, open_c);
+}
+
+/*
+ * Print warning for use of deprecated feature or alias.
+ */
+static void warn_deprecated(sauScanner *restrict o,
+		const char *restrict old, const char *restrict new) {
+	sauScanner_warning(o, NULL, "%s is deprecated, use new %s", old, new);
+}
+
+/*
+ * Print warning for EOF without closing \p c scope-closing character.
+ */
+static void warn_eof_without_closing(sauScanner *restrict o, uint8_t c) {
+	sauScanner_warning(o, NULL, "end of file without closing '%c'", c);
 }
 
 /*
@@ -221,6 +220,33 @@ static void warn_expected_before(sauScanner *restrict o,
 }
 
 /*
+ * Print warning for integer outside allowed range, with fallback value.
+ */
+static void warn_int_range_fallback(sauScanner *restrict o,
+		sauScanFrame *sf, int32_t min, int32_t max, int32_t used,
+		const char *restrict name) {
+	sauScanner_warning(o, sf,
+"invalid %s, using %d (valid range %d-%d)", name, used, min, max);
+}
+
+/*
+ * Print warning for a subname missing in some context.
+ */
+static void warn_invalid_subname(sauScanner *restrict o, char c) {
+	if (!c || c == SAU_SCAN_SPACE || c == SAU_SCAN_LNBRK)
+		sauScanner_warning(o, NULL, "missing subname");
+	else
+		sauScanner_warning(o, NULL, "invalid subname '%c'", c);
+}
+
+/*
+ * Print warning for EOF without closing \p c scope-closing character.
+ */
+static void warn_missing_closing(sauScanner *restrict o, uint8_t c) {
+	sauScanner_warning(o, NULL, "missing closing '%c'", c);
+}
+
+/*
  * Print warning for missing whitespace before character.
  */
 static void warn_missing_whitespace(sauScanner *restrict o,
@@ -229,21 +255,12 @@ static void warn_missing_whitespace(sauScanner *restrict o,
 }
 
 /*
- * Print warning for use of deprecated feature or alias.
+ * Print warning for scope-opening character in disallowed place.
  */
-static void warn_deprecated(sauScanner *restrict o,
-		const char *restrict old, const char *restrict new) {
-	sauScanner_warning(o, NULL, "%s is deprecated, use new %s", old, new);
-}
-
-/*
- * Print warning for integer outside allowed range, with fallback value.
- */
-static void warn_int_range_fallback(sauScanner *restrict o,
-		sauScanFrame *sf, int32_t min, int32_t max, int32_t used,
-		const char *restrict name) {
-	sauScanner_warning(o, sf,
-"invalid %s, using %d (valid range %d-%d)", name, used, min, max);
+static void warn_opening_disallowed(sauScanner *restrict o,
+		uint8_t open_c) {
+	sauScanner_warning(o, NULL, "opening '%c' out of place",
+			open_c);
 }
 
 /*
@@ -949,6 +966,7 @@ typedef void (*ParseLevel_sub_f)(sauParser *restrict o);
 static void parse_in_settings(sauParser *restrict o);
 static void parse_in_gen_step(sauParser *restrict o);
 static void parse_in_filt_par(sauParser *restrict o);
+static void parse_in_lafx_par(sauParser *restrict o);
 static void parse_in_phase_par(sauParser *restrict o);
 static void parse_in_par_sweep(sauParser *restrict o);
 static void parse_in_par_env(sauParser *restrict o);
@@ -960,6 +978,7 @@ enum {
 	SOPT_PART = 1U<<8, // flag to add for sopt part
 	// other kinds of values, not part of the range struct, follow...
 	MAIN_FILT = SAU_RANGE_PARAMS,
+	MAIN_LAFX,
 };
 
 /* Is part of a value range struct? */
@@ -988,6 +1007,8 @@ static inline ParseLevel_sub_f get_subp_sub_f(unsigned parts) {
 	case SAU_RANGE_E|SOPT_PART: return parse_in_par_env;
 	case MAIN_FILT: /* fall-through */
 	case MAIN_FILT|SOPT_PART: return parse_in_filt_par;
+	case MAIN_LAFX: /* fall-through */
+	case MAIN_LAFX|SOPT_PART: return parse_in_lafx_par;
 	default: return NULL;
 	}
 }
@@ -1436,12 +1457,7 @@ static uint8_t parse_main_filt(sauParser *restrict o,
 static uint8_t parse_lafx_par(sauParser *restrict o,
 		sauLafxPar *restrict lafx, uint8_t c) {
 	double val;
-	if (scan_posnum(o->sc, scan_ladderfx_const, &val,
-			"ladder effect pulse amplitude")) {
-		lafx->amp = val;
-		lafx->flags |= SAU_LAFXP_AMP;
-	}
-	switch ((c = sauScanner_getc_after(o->sc, '.'))) {
+	switch (c) {
 	break; case 't':
 		if (scan_posnum(o->sc, scan_ladderfx_thr_const, &val,
 					"ladder effect threshold")) {
@@ -1452,6 +1468,21 @@ static uint8_t parse_lafx_par(sauParser *restrict o,
 		return c;
 	}
 	return 0;
+}
+
+static uint8_t parse_lafx(sauParser *restrict o,
+		sauLafxPar *restrict lafx, unsigned subp_part) {
+	double val;
+	if (scan_posnum(o->sc, scan_ladderfx_const, &val,
+			"ladder effect pulse amplitude")) {
+		lafx->amp = val;
+		lafx->flags |= SAU_LAFXP_AMP;
+	}
+	parse_par_list(o, scan_note_const, lafx, false, 0, 0, subp_part);
+	uint8_t c = sauScanner_getc_after(o->sc, '.');
+	if (c && !(c = parse_lafx_par(o, lafx, c)))
+		warn_deprecated(o->sc, "ladder effect .l.", ".l[]");
+	return c;
 }
 
 static bool parse_so_amp(sauParser *restrict o,
@@ -1472,7 +1503,7 @@ static bool parse_so_amp(sauParser *restrict o,
 			return true; // only allow in global scope
 		return parse_main_filt(o, &sopt->mix_filt, MAIN_FILT|SOPT_PART);
 	break; case 'l':
-		return parse_lafx_par(o, &sopt->def_lafx, c);
+		return parse_lafx(o, &sopt->def_lafx, MAIN_LAFX|SOPT_PART);
 	break; case 'm':
 		if (ns->list)
 			return true; // only allow in global scope
@@ -1978,6 +2009,15 @@ static void parse_in_filt_par(sauParser *restrict o) {
 	PARSE_IN__TAIL()
 }
 
+static void parse_in_lafx_par(sauParser *restrict o) {
+	struct NestScope *ns = NestArr_getrev(&o->nest, 1);
+	sauLafxPar *lafx = ns->gen_subp;
+	PARSE_IN__HEAD(parse_in_lafx_par, true)
+		if (!c || parse_lafx_par(o, lafx, c))
+			goto DEFER;
+	PARSE_IN__TAIL()
+}
+
 static uint8_t parse_gen_amp(sauParser *restrict o) {
 	struct ParseLevel *pl = o->cur_pl;
 	sauParseGenData *gen = pl->gen;
@@ -1991,7 +2031,7 @@ static uint8_t parse_gen_amp(sauParser *restrict o) {
 	break; case 'l':
 		if (!gen->lafx)
 			gen->lafx = sau_mpalloc(o->mp, sizeof(sauLafxPar));
-		return parse_lafx_par(o, gen->lafx, c);
+		return parse_lafx(o, gen->lafx, MAIN_LAFX);
 	break; default:
 		return c;
 	}
@@ -2329,28 +2369,40 @@ static bool parse_set_numvar(sauParser *restrict o, struct Symbol *restrict s,
 	return true;
 }
 
-static bool parse_numvar_rhs(sauParser *restrict o, struct Symbol *restrict s,
-		const char *restrict head, bool no_override) {
-	uint8_t suffc;
+static sauScanNumConst_f parse_numvar_namespace(sauParser *restrict o) {
+	uint8_t suffc, c;
 	sauScanNumConst_f numconst_f = NULL;
-	sauScanner_skipws(o->sc);
 	switch ((suffc = sauScanner_get_suffc(o->sc))) {
 	break; case 'a':
-		if ((suffc = sauScanner_getc_after(o->sc, '.')) == 'l') {
+		switch ((c = sauScanner_getc_after(o->sc, '.'))) {
+		break; case 'l':
 			numconst_f = scan_ladderfx_const;
-			if ((suffc = sauScanner_getc_after(o->sc, '.')) == 't')
-				numconst_f = scan_ladderfx_thr_const;
-			else if (suffc != 0)
-				sauScanner_ungetc(o->sc);
-		} else if (suffc != 0)
-			sauScanner_ungetc(o->sc);
+			if (!sauScanner_tryc(o->sc, '[')) break;
+			sauScanner_skipws(o->sc);
+			switch ((c = sauScanner_getc(o->sc))) {
+			break; case 't': numconst_f = scan_ladderfx_thr_const;
+			break; case ']': warn_invalid_subname(o->sc, 0);
+			break; default: if (c) warn_invalid_subname(o->sc, c);
+			}
+			sauScanner_skipws(o->sc);
+			if (!sauScanner_tryc(o->sc, ']'))
+				warn_missing_closing(o->sc, ']');
+		break; default: if (c) warn_invalid_subname(o->sc, c);
+		}
 	break; case 'c': numconst_f = scan_chanmix_const;
 	break; case 'f': numconst_f = scan_note_const;
 	break; case 'p': numconst_f = scan_cyclepos_const;
 	break; case 's': numconst_f = scan_cyclepos_const;
-	break; default: if (suffc) sauScanner_ungetc(o->sc);
+	break; default: if (suffc) warn_invalid_subname(o->sc, suffc);
 	}
-	if (numconst_f) sauScanner_skipws(o->sc);
+	if (suffc) sauScanner_skipws(o->sc);
+	return numconst_f;
+}
+
+static bool parse_numvar_rhs(sauParser *restrict o, struct Symbol *restrict s,
+		const char *restrict head, bool no_override) {
+	sauScanner_skipws(o->sc);
+	sauScanNumConst_f numconst_f = parse_numvar_namespace(o);
 	uint16_t block_i = s->var_global ? 0 : parser_block_i(o);
 	if (!s->sstr || (no_override && is_numvar(s->item))) {
 		if (skip_num(o->sc, numconst_f))
