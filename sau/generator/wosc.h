@@ -26,7 +26,7 @@ typedef struct sauWOsc {
 	uint32_t prev_phase;
 	double prev_Is;
 	float prev_s;
-	float filt_s;
+	float fb_s;
 } sauWOsc;
 
 /**
@@ -202,12 +202,13 @@ static void sauWOsc_naive_run_selfmod(sauWOsc *restrict o,
 	const float *const lut = sauWave_luts[o->opt.wave];
 	for (size_t i = 0; i < buf_len; ++i) {
 		float s = buf[i] = sauWave_get_lerp(lut, phase_buf[i]
-				+ sau_ftoi(o->filt_s * pm_abuf[i] * fb_scale));
+				+ sau_ftoi(o->fb_s * pm_abuf[i] * fb_scale));
 		/*
-		 * Suppress ringing. Use 1-zero filter (Tomisawa oscillator)
-		 * for classic Yamaha FM synth chip behavior.
+		 * Suppress ringing. 1-pole filter is a little better than
+		 * 1-zero. (Yamaha's synths and Tomisawa design use 1-zero.)
+		 * Combine the two to dampen enough given no anti-aliasing.
 		 */
-		o->filt_s = s + o->prev_s;
+		o->fb_s = (o->fb_s + s + o->prev_s) * 0.5f;
 		o->prev_s = s;
 	}
 }
@@ -308,7 +309,7 @@ static void sauWOsc_run_selfmod(sauWOsc *restrict o,
 	for (size_t i = 0; i < buf_len; ++i) {
 		float s;
 		uint32_t phase = phase_buf[i] +
-			sau_ftoi(o->filt_s * pm_abuf[i] * fb_scale);
+			sau_ftoi(o->fb_s * pm_abuf[i] * fb_scale);
 		uint32_t phase_diff = phase - o->prev_phase;
 		if (phase_diff + sauWave_SLEN < 2 * sauWave_SLEN) {
 			/*
@@ -337,7 +338,7 @@ static void sauWOsc_run_selfmod(sauWOsc *restrict o,
 		 * 1-zero. (Yamaha's synths and Tomisawa design use 1-zero.)
 		 * The differentiation above is like adding an extra 1-zero.
 		 */
-		o->filt_s = (o->filt_s + s) * 0.5f;
+		o->fb_s = (o->fb_s + s) * 0.5f;
 	}
 	if (skipped_Is)
 		o->opt.flags |= SAU_OSC_SKIPPED_I;

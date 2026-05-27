@@ -8,11 +8,6 @@ v0.5.7c (2026-06-06)
 --------------------
 
 Language changes:
- * Tweak self-PM/"feedback FM". For `W mn` naive oscillator
-   mode, make it match "classic" Yamaha FM oscillators; use
-   only a 1-zero filter internally for the feedback. Result
-   is slightly brighter sound for feedback levels, and more
-   noise more quickly e.g. `p[a1]` is now way more aliased.
  * Channel mixing. Add new pan law `a` additive mix panning
    (`c.pa`), which is a complement to `f` full-volume mode.
    Only increases channel panned to (the other unaffected).
