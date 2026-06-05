@@ -959,6 +959,8 @@ sem_handle_gen_params(ParseSem *restrict o, sauParseGenData *restrict gen,
 		if (gen->lafx) {
 			if (!(gen->lafx->flags & SAU_LAFXP_AMP))
 				gen->lafx->amp = sopt->def_lafx.amp;
+			if (!(gen->lafx->flags & SAU_LAFXP_PAN))
+				gen->lafx->pan = sopt->def_lafx.pan;
 			if (!(gen->lafx->flags & SAU_LAFXP_THR))
 				gen->lafx->thr = sopt->def_lafx.thr;
 			gen->lafx->flags |= sopt->def_lafx.flags;

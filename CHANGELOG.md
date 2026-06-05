@@ -8,7 +8,18 @@ Pre-release
 -----------
 
 Language changes:
- * Deprecate `a.l.t` in favor of new/moved `a.l[t]` option.
+ * Channel mixing. Add new pan law `a` additive mix panning
+   (`c.pa`), which is a complement to `f` full-volume mode.
+   Only increases channel panned to (the other unaffected).
+   Used as part of implementing more accurate ladder effect
+   panning.
+ * Ladder effect distortion:
+   - Add `a.l[p]` pan ratio control; multiplier for channel
+     mixing `c` parameter, used specifically for the ladder
+     effect pulse. If 0, mixes the pulse in mono as before.
+     The new behavior, for more accurate emulation uses `C`
+     (-1/7) as the default. Behavior depends on pan law.
+   - Deprecate `a.l.t` in favor of renamed `a.l[t]` option.
 
 Tweak ladder effect distortion `a.l` behavior; the behavior
 to limit DC offset on silence was bad especially for LFO as

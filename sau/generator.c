@@ -70,7 +70,7 @@ typedef struct GenBase {
 	struct ParWithRangeMod valr[SAU_PVALR_TYPES];
 	struct FilterCoeff lpf_c[GEN_FILTERS], hpf_c[GEN_FILTERS];
 	struct Filter lpf[GEN_FILTERS+1], hpf[GEN_FILTERS+1];
-	float lafx_amp, lafx_thr;
+	float lafx_amp, lafx_thr, lafx_pan;
 	float lafx_dc; // filter state
 } GenBase;
 
@@ -405,6 +405,8 @@ static void update_gen(sauGenerator *restrict o,
 			// reset, prevent overshoot on difference
 			gen->lafx_dc = 0.f;
 		}
+		if (gd->lafx->flags & SAU_LAFXP_PAN)
+			gen->lafx_pan = gd->lafx->pan;
 		if (gd->lafx->flags & SAU_LAFXP_THR)
 			gen->lafx_thr = -gd->lafx->thr;
 	}
@@ -612,8 +614,9 @@ static float *mix_valrange(bool is_a_filled,
 
 static inline float get_pan_amp(sauGenerator *restrict o, unsigned pan_law) {
 	switch (pan_law) {
-	case SAU_PAN_LIN:	return o->amp_scale * 0.5f;
+	case SAU_PAN_ADD:	return o->amp_scale * 0.5f;
 	case SAU_PAN_FULL:	return o->amp_scale;
+	case SAU_PAN_LIN:	return o->amp_scale * 0.5f;
 	}
 	return 0.f;
 }
@@ -626,6 +629,136 @@ static void fill_pan_2chcenter(float *restrict mix_l, float *restrict mix_r,
 static void add_pan_2chcenter(float *restrict mix_l, float *restrict mix_r,
 		const float *restrict in, size_t len, float amp) {
 	sau_2naddnfmulf(mix_l, mix_r, len, in, amp);
+}
+
+static sauNoinline void
+fill_pan_full_leftf(float *restrict mix_l, float *restrict mix_r,
+		size_t len, float pan_v0, float amp) {
+	for (size_t i = 0; i < len; ++i) {
+		float s = mix_l[i] * amp;
+		mix_l[i] = s;
+		mix_r[i] = s + s * pan_v0;
+	}
+}
+
+static sauNoinline void
+fill_pan_full_rightf(float *restrict mix_l, float *restrict mix_r,
+		uint32_t len, float pan_v0, float amp) {
+	for (size_t i = 0; i < len; ++i) {
+		float s = mix_l[i] * amp;
+		mix_l[i] = s - s * pan_v0;
+		mix_r[i] = s;
+	}
+}
+
+static sauNoinline void
+add_pan_full_leftf(float *restrict mix_l, float *restrict mix_r,
+		const float *restrict in,
+		size_t len, float pan_v0, float amp) {
+	for (size_t i = 0; i < len; ++i) {
+		float s = in[i] * amp;
+		mix_l[i] += s;
+		mix_r[i] += s + s * pan_v0;
+	}
+}
+
+#define add_pan_full_rightf(mix_l, mix_r, in, len, pan_v0, amp) \
+	add_pan_full_leftf(mix_r, mix_l, in, len, -pan_v0, amp)
+
+// reuse; reversing direction switches between addition and subtraction
+#define fill_pan_addt_leftf fill_pan_full_rightf
+#define fill_pan_addt_rightf fill_pan_full_leftf
+#define add_pan_addt_leftf add_pan_full_rightf
+#define add_pan_addt_rightf add_pan_full_leftf
+
+/*
+ * Additive panning version of mix_pan_fill().
+ */
+static void mix_pan_fill_addt(float *restrict mix_l, float *restrict mix_r,
+		const float *restrict pan_buf, float pan_v0,
+		size_t len, float amp) {
+	if (pan_buf) {
+		for (size_t i = 0; i < len; ++i) {
+			float s = mix_l[i] * amp;
+			float p = pan_buf[i];
+			float s_p = s * p;
+			mix_l[i] = s - (p >= 0.f ? 0.f : s_p);
+			mix_r[i] = s + (p >= 0.f ? s_p : 0.f);
+		}
+	} else if (pan_v0 != 0.f) {
+		if (pan_v0 > 0.f)
+			fill_pan_addt_rightf(mix_l, mix_r, len, pan_v0, amp);
+		else
+			fill_pan_addt_leftf(mix_l, mix_r, len, pan_v0, amp);
+	} else fill_pan_2chcenter(mix_l, mix_r, len, amp);
+}
+
+/*
+ * Additive panning version of mix_pan_add().
+ */
+static void mix_pan_add_addt(float *restrict mix_l, float *restrict mix_r,
+		const float *restrict in,
+		const float *restrict pan_buf, float pan_v0,
+		size_t len, float amp) {
+	if (pan_buf) {
+		for (size_t i = 0; i < len; ++i) {
+			float s = in[i] * amp;
+			float p = pan_buf[i];
+			float s_p = s * p;
+			mix_l[i] += s - (p >= 0.f ? 0.f : s_p);
+			mix_r[i] += s + (p >= 0.f ? s_p : 0.f);
+		}
+	} else if (pan_v0 != 0.f) {
+		if (pan_v0 > 0.f)
+			add_pan_addt_rightf(mix_l, mix_r, in, len, pan_v0, amp);
+		else
+			add_pan_addt_leftf(mix_l, mix_r, in, len, pan_v0, amp);
+	} else add_pan_2chcenter(mix_l, mix_r, in, len, amp);
+}
+
+/*
+ * Full-volume panning version of mix_pan_fill().
+ */
+static void mix_pan_fill_full(float *restrict mix_l, float *restrict mix_r,
+		const float *restrict pan_buf, float pan_v0,
+		size_t len, float amp) {
+	if (pan_buf) {
+		for (size_t i = 0; i < len; ++i) {
+			float s = mix_l[i] * amp;
+			float p = pan_buf[i];
+			float s_p = s * p;
+			mix_l[i] = s - (p >= 0.f ? s_p : 0.f);
+			mix_r[i] = s + (p >= 0.f ? 0.f : s_p);
+		}
+	} else if (pan_v0 != 0.f) {
+		if (pan_v0 > 0.f)
+			fill_pan_full_rightf(mix_l, mix_r, len, pan_v0, amp);
+		else
+			fill_pan_full_leftf(mix_l, mix_r, len, pan_v0, amp);
+	} else fill_pan_2chcenter(mix_l, mix_r, len, amp);
+}
+
+/*
+ * Full-volume panning version of mix_pan_add().
+ */
+static void mix_pan_add_full(float *restrict mix_l, float *restrict mix_r,
+		const float *restrict in,
+		const float *restrict pan_buf, float pan_v0,
+		size_t len, float amp) {
+	if (pan_buf) {
+		for (size_t i = 0; i < len; ++i) {
+			float s = in[i] * amp;
+			float p = pan_buf[i];
+			float s_p = s * p;
+			mix_l[i] += s - (p >= 0.f ? s_p : 0.f);
+			mix_r[i] += s + (p >= 0.f ? 0.f : s_p);
+		}
+	} else if (pan_v0 != 0.f) {
+		if (pan_v0 > 0.f)
+			add_pan_full_rightf(mix_l, mix_r, in, len, pan_v0, amp);
+		else
+			add_pan_full_leftf(mix_l, mix_r, in, len, pan_v0, amp);
+	} else add_pan_2chcenter(mix_l, mix_r, in, len, amp);
 }
 
 /*
@@ -675,82 +808,6 @@ static void mix_pan_add_lin(float *restrict mix_l, float *restrict mix_r,
 	} else add_pan_2chcenter(mix_l, mix_r, in, len, amp);
 }
 
-static void fill_pan_full_leftf(float *restrict mix_l, float *restrict mix_r,
-		size_t len, float pan_v0, float amp) {
-	for (size_t i = 0; i < len; ++i) {
-		float s = mix_l[i] * amp;
-		mix_l[i] = s;
-		mix_r[i] = s + s * pan_v0;
-	}
-}
-
-static void fill_pan_full_rightf(float *restrict mix_l, float *restrict mix_r,
-		uint32_t len, float pan_v0, float amp) {
-	for (size_t i = 0; i < len; ++i) {
-		float s = mix_l[i] * amp;
-		mix_l[i] = s - s * pan_v0;
-		mix_r[i] = s;
-	}
-}
-
-static void add_pan_full_leftf(float *restrict mix_l, float *restrict mix_r,
-		const float *restrict in,
-		size_t len, float pan_v0, float amp) {
-	for (size_t i = 0; i < len; ++i) {
-		float s = in[i] * amp;
-		mix_l[i] += s;
-		mix_r[i] += s + s * pan_v0;
-	}
-}
-
-#define add_pan_full_rightf(mix_l, mix_r, in, len, pan_v0, amp) \
-	add_pan_full_leftf(mix_r, mix_l, in, len, -pan_v0, amp)
-
-/*
- * Full-volume panning version of mix_pan_fill().
- */
-static void mix_pan_fill_full(float *restrict mix_l, float *restrict mix_r,
-		const float *restrict pan_buf, float pan_v0,
-		size_t len, float amp) {
-	if (pan_buf) {
-		for (size_t i = 0; i < len; ++i) {
-			float s = mix_l[i] * amp;
-			float p = pan_buf[i];
-			float s_p = s * p;
-			mix_l[i] = s - (p >= 0.f ? s_p : 0.f);
-			mix_r[i] = s + (p >= 0.f ? 0.f : s_p);
-		}
-	} else if (pan_v0 != 0.f) {
-		if (pan_v0 > 0.f)
-			fill_pan_full_rightf(mix_l, mix_r, len, pan_v0, amp);
-		else
-			fill_pan_full_leftf(mix_l, mix_r, len, pan_v0, amp);
-	} else fill_pan_2chcenter(mix_l, mix_r, len, amp);
-}
-
-/*
- * Full-volume panning version of mix_pan_add().
- */
-static void mix_pan_add_full(float *restrict mix_l, float *restrict mix_r,
-		const float *restrict in,
-		const float *restrict pan_buf, float pan_v0,
-		size_t len, float amp) {
-	if (pan_buf) {
-		for (size_t i = 0; i < len; ++i) {
-			float s = in[i] * amp;
-			float p = pan_buf[i];
-			float s_p = s * p;
-			mix_l[i] += s - (p >= 0.f ? s_p : 0.f);
-			mix_r[i] += s + (p >= 0.f ? 0.f : s_p);
-		}
-	} else if (pan_v0 != 0.f) {
-		if (pan_v0 > 0.f)
-			add_pan_full_rightf(mix_l, mix_r, in, len, pan_v0, amp);
-		else
-			add_pan_full_leftf(mix_l, mix_r, in, len, pan_v0, amp);
-	} else add_pan_2chcenter(mix_l, mix_r, in, len, amp);
-}
-
 /*
  * Fill initial output for generator node \p n into the mix buffers
  * (left, right) using the first mix buffer as input.
@@ -760,10 +817,12 @@ static void mix_pan_fill(unsigned pan_law,
 		const float *restrict pan_buf, float pan_v0,
 		size_t len, float amp) {
 	switch (pan_law) {
-	break; case SAU_PAN_LIN:
-		mix_pan_fill_lin(mix_l, mix_r, pan_buf, pan_v0, len, amp);
+	break; case SAU_PAN_ADD:
+		mix_pan_fill_addt(mix_l, mix_r, pan_buf, pan_v0, len, amp);
 	break; case SAU_PAN_FULL:
 		mix_pan_fill_full(mix_l, mix_r, pan_buf, pan_v0, len, amp);
+	break; case SAU_PAN_LIN:
+		mix_pan_fill_lin(mix_l, mix_r, pan_buf, pan_v0, len, amp);
 	}
 }
 
@@ -771,7 +830,8 @@ static void mix_pan_fill(unsigned pan_law,
  * Fill initial output for generator node \p n into the first mix buffer
  * (mono mode) using the first mix buffer as input.
  */
-static void mix_pan_fill_1chcenter(float *restrict mix,
+static sauNoinline void
+mix_pan_fill_1chcenter(float *restrict mix,
 		size_t len, float amp) {
 	if (amp != 1.f) sau_nmulf(mix, len, amp);
 }
@@ -786,10 +846,12 @@ static void mix_pan_add(unsigned pan_law,
 		const float *restrict pan_buf, float pan_v0,
 		size_t len, float amp) {
 	switch (pan_law) {
-	break; case SAU_PAN_LIN:
-		mix_pan_add_lin(mix_l, mix_r, in, pan_buf, pan_v0, len, amp);
+	break; case SAU_PAN_ADD:
+		mix_pan_add_addt(mix_l, mix_r, in, pan_buf, pan_v0, len, amp);
 	break; case SAU_PAN_FULL:
 		mix_pan_add_full(mix_l, mix_r, in, pan_buf, pan_v0, len, amp);
+	break; case SAU_PAN_LIN:
+		mix_pan_add_lin(mix_l, mix_r, in, pan_buf, pan_v0, len, amp);
 	}
 }
 
@@ -802,6 +864,28 @@ static void mix_pan_add_1chcenter(float *restrict mix,
 	sau_naddnfmulf(mix, len, in, amp);
 }
 
+static void mix_pan_ladderfx(AnyGen *restrict n,
+		float *restrict mix_l, float *restrict mix_r,
+		const float *restrict lafx_buf,
+		float *restrict pan_buf, float pan_v0,
+		size_t len, float amp) {
+	float pan_ratio = n->gen.lafx_pan;
+	if (pan_ratio == 0.f) {
+		add_pan_2chcenter(mix_l, mix_r, lafx_buf, len, amp);
+		return;
+	}
+	unsigned pan_law = n->gen.pan_law;
+	if (pan_ratio < 0.f) switch (pan_law) {
+	break; case SAU_PAN_ADD:  pan_law = SAU_PAN_FULL;
+	break; case SAU_PAN_FULL: pan_law = SAU_PAN_ADD;
+	}
+	if (pan_buf)
+		sau_nmulf(pan_buf, len, pan_ratio);
+	else
+		pan_v0 *= pan_ratio;
+	mix_pan_add(pan_law, mix_l, mix_r, lafx_buf, pan_buf, pan_v0, len, amp);
+}
+
 /*
  * Handle audio layer. Version handling panning and stereo options.
  */
@@ -809,20 +893,23 @@ static void block_mix_pan(sauGenerator *restrict o, bool layer, bool stereo,
 		float *restrict out, float *restrict out2, size_t len,
 		AnyGen *restrict n, float *restrict in,
 		const float *restrict amp, float amp_v0,
-		const float *restrict pan, float pan_v0) {
+		float *restrict pan, float pan_v0) {
 	if (amp)
 		sau_nmulnf(in, len, amp);
 	else if (amp_v0 != 1.f)
 		sau_nmulf(in, len, amp_v0);
 	unsigned pan_law = n->gen.pan_law;
 	float pan_amp = get_pan_amp(o, pan_law);
-	float *lafx = o->bufs[TMP_BUF(0)];
-	bool use_lafx = sau_fnonzero(n->gen.lafx_amp);
-	if (use_lafx) {
-		if (stereo)
+	float *lafx = sau_fnonzero(n->gen.lafx_amp) ?
+		o->bufs[TMP_BUF(0)] :
+		NULL;
+	if (lafx) {
+		if (stereo && n->gen.lafx_pan != 1.f)
 			pan_amp *= dist_ladderfx_wetdry(o, n, lafx, len, in);
-		else
+		else {
 			dist_ladderfx_mix(o, n, in, len);
+			lafx = NULL; // simpler mixing done here
+		}
 	}
 	if (n->gen.filt & (GN_FILT(MIX_FILT, LPF) | GN_FILT(MIX_FILT, HPF))) {
 		float *mix  = in; // reusable; if !layer, then in == out
@@ -830,8 +917,9 @@ static void block_mix_pan(sauGenerator *restrict o, bool layer, bool stereo,
 		if (stereo) {
 			mix_pan_fill(pan_law, mix, mix2,
 					pan, pan_v0, len, pan_amp);
-			if (use_lafx)
-				sau_2naddnfmulf(mix, mix2, len, lafx, pan_amp);
+			if (lafx)
+				mix_pan_ladderfx(n, mix, mix2, lafx,
+						pan, pan_v0, len, pan_amp);
 			block_mix_filter(mix, len, n, MIX_FILT, 0);
 			block_mix_filter(mix2, len, n, MIX_FILT, 1);
 			if (layer) sau_naddnf(out, len, mix);
@@ -849,8 +937,9 @@ static void block_mix_pan(sauGenerator *restrict o, bool layer, bool stereo,
 			else
 				mix_pan_fill(pan_law, out, out2,
 						pan, pan_v0, len, pan_amp);
-			if (use_lafx)
-				sau_2naddnfmulf(out, out2, len, lafx, pan_amp);
+			if (lafx)
+				mix_pan_ladderfx(n, out, out2, lafx,
+						pan, pan_v0, len, pan_amp);
 		} else {
 			if (layer)
 				mix_pan_add_1chcenter(out, in, len, pan_amp);

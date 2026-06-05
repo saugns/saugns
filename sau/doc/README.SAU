@@ -104,8 +104,7 @@ Parameters:
 	c	Default channel mixing "c" value. Starts at 0.0,
 		i.e. C (center). Useful as a main way of setting
 		the parameter value.
-		.p	Default pan law. One of 'l' (linear, center -6 dB,
-			default), or 'f' (full, center -0 dB).
+		.p	Default pan law (default 'l' linear). See "Pan laws".
 	e	Envelope setting. To change the envelope subparameter for
 		several parameters, in any generators after in the same scope
 		or a nested list scope. After setting options here, to apply
@@ -164,15 +163,14 @@ Generator universal parameters:
 			an added pulse to a fixed amplitude of 1.0.
 			See "Ladder effect options" for details.
 	c	(For non-nested generators only.) Channel mixing, mainly
-		(-1.0) to 1.0. See "Channel mixing values" for more.
+		-1.0 to +1.0. See "Channel mixing values" for more.
 			"Value ranges and envelopes" is supported for
 		panning-AM (stereo placement amplitude modulation); see
 		section. The result of modulation is added to the channel
 		mixing used. (If you downmix the result to mono and use
 		the default linear panning, the effect will disappear,
 		provided there's no clipping etc. first.)
-		.p	Pan law or mode. One of 'l' (linear, center -6 dB,
-			default), or 'f' (full, center -0 dB).
+		.p	Pan law or mode (default 'l' linear). See "Pan laws".
 	f	Frequency in Hz. Does nothing in a non-oscillator, yet is
 		provided for all generator types, to control pitch in
 		nested oscillators from a wrapper generator.
@@ -759,21 +757,38 @@ Channel mixing values:
 	Panning, where 0.0 is centered. Named constants can be used in place
 	of numbers for the three classic channel "modes". Values outside the
 	range of L to R are allowed, giving one channel a negative amplitude
-	while possibly amplifying the other (depends on selected pan law).
+	while possibly amplifying the other. The result depends on the used
+	pan law, see "Pan laws".
 	C	0.0
-	L	(-1.0)
+	L	-1.0
 	R	1.0
+
+Pan laws:
+	Values for the "c.p" channel mixing pan law switches. The default
+	pan law is 'l' (linear). These values are non-number literals.
+	a	Additive mix mode (center -6 dB, pan away weakly). Increase
+		a channel panned to (away from center), but never decrease
+		a channel. Hard panning turns into doubling/emphasizing only.
+	f	Full-volume panning mode (center -0 dB). Generalizes channel
+		switchers with one or both channels fully on; only reduces
+		amplitude of a channel panned away from (further than center).
+	l	Linear panning mode (center -6 dB). Allows clean mono downmix.
 
 Ladder effect options:
 	For "a.l" parameters. YM2612 "ladder effect" distortion with
 	generalized or extended behavior. The main parameter "a.l" governs
 	mixing of an added pulse signal. If 0 (the default) the effect is
-	disabled. See "Ladder effect intensity values" for more. (For the
-	most authentic Sega Mega Drive/Genesis model 1 sound, use panning
-	mode "c.pf" and an "a.f2840" lowpass filter as well.)
+	disabled. See "Ladder effect intensity values" for more.
+		For the most authentic Sega Mega Drive/Genesis model 1
+	sound, combine "a.lC" with the channel mixing mode "c.pf" and an
+	"a.f2840" lowpass filter.
 		The following named options can be set inside the ".l[]" list
 	as heading subparameters.
-	t	Threshold amplitude for the distortion pulse.
+	p	Pan ratio (default -1/7). A multiplier for the channel
+		mixing "c" position used for panning, determining the
+		panning of the added pulse when mixing it into the signal.
+		See "Ladder effect pan ratios" for more.
+	t	Threshold amplitude for the distortion pulse (default 2^-13).
 		Determines pulse width and fade-out behavior.
 		See "Ladder effect threshold values" for more.
 
@@ -782,13 +797,27 @@ Ladder effect intensity values:
 	1.0. (The mixing scales the signal plus added pulse down so that a
 	fixed 1.0 value plus the pulse would be brought down to only 1.0.)
 	The pulse is down when the dry signal is negative and in amplitude
-	larger in size than the threshold, otherwise it is up. It is mixed
-	into the signal in mono regardless of panning options.
+	larger in size than the threshold, otherwise it is up.
 		Non-zero (typically small) values make a brighter, noisier
 	timbre. The distortion stands out in and makes louder the quietest
 	sounds. Traditionally only used for carriers, applied per voice (a
 	root/top-level audio generator using it).
-	C	7/512 (chip, mimic Sega Genesis/Mega Drive model 1 YM2612)
+	C	7/512 (chip; mimic Sega Genesis/Mega Drive model 1 YM2612)
+
+Ladder effect pan ratios:
+	Pan ratio for the "ladder effect" distortion pulse, a multiplier
+	for the channel mixing "c" position used for panning, applied to
+	pan the added pulse. The default is C (-1/7) which causes slight
+	"reverse panning" of the pulse, as needed for accuracy. Strictly
+	this only adds accuracy with the 'f' pan law (see "Pan laws").
+		Other useful values are 1.0 (to pan the pulse normally),
+	and 0.0 (to pan the pulse dead center).
+		For negative values (including C) the meaning of reverse
+	panning depends on pan law choice; further, the pan laws 'a' and
+	'f' are internally swapped in this context. Thus the 'f' pan law
+	boosts a channel rather than reducing the other, when handling a
+	negative pan ratio value here.
+	C	-1/7 (chip; for 1 + 1/7 = 8/7 pulse volume on muted channels)
 
 Ladder effect threshold values:
 	Threshold amplitude for the "ladder effect" distortion pulse
@@ -798,7 +827,7 @@ Ladder effect threshold values:
 	adding even harmonics. The amplitude range too quiet for the
 	pulse given the threshold, instead has a half-wave rectified
 	sound, which sounds almost like a milder narrow-pulse sound.
-	C	2^-13 (chip, mimic Sega Genesis/Mega Drive model 1 YM2612)
+	C	2^-13 (chip; mimic Sega Genesis/Mega Drive model 1 YM2612)
 
 Cycle position values:
 	Phase offset as a percentage of the wave cycle, or seed position as a

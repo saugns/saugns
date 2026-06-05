@@ -114,7 +114,10 @@ static const sauParseSetOptions def_sopt = {
 	.def_relfreq = 1.f,
 	.def_chanmix = 0.f,
 	.def_pan_law = SAU_PAN_DEFAULT,
-	.def_lafx = {.thr = SAU_LADDERFX_THR_CHIP, .flags = SAU_LAFXP_THR},
+	.def_lafx = {
+		.pan = SAU_LADDERFX_PAN_CHIP, .thr = SAU_LADDERFX_THR_CHIP,
+		.flags = SAU_LAFXP_PAN|SAU_LAFXP_THR,
+	},
 	.note_key = MUSKEY(0, 0),
 	.key_octave = 4,
 	.key_system = 0,
@@ -602,6 +605,11 @@ SIMPLE_NUMCONST_F(scan_chanmix_const, CHANMIX_XLIST)
 	X('C', SAU_LADDERFX_CHIP) \
 	//
 SIMPLE_NUMCONST_F(scan_ladderfx_const, LADDERFX_XLIST)
+
+#define LADDERFX_PAN_XLIST(X) \
+	X('C', SAU_LADDERFX_PAN_CHIP) \
+	//
+SIMPLE_NUMCONST_F(scan_ladderfx_pan_const, LADDERFX_PAN_XLIST)
 
 #define LADDERFX_THR_XLIST(X) \
 	X('C', SAU_LADDERFX_THR_CHIP) \
@@ -1458,6 +1466,11 @@ static uint8_t parse_lafx_par(sauParser *restrict o,
 		sauLafxPar *restrict lafx, uint8_t c) {
 	double val;
 	switch (c) {
+	break; case 'p':
+		if (scan_num(o->sc, scan_ladderfx_pan_const, &val)) {
+			lafx->pan = val;
+			lafx->flags |= SAU_LAFXP_PAN;
+		}
 	break; case 't':
 		if (scan_posnum(o->sc, scan_ladderfx_thr_const, &val,
 					"ladder effect threshold")) {
@@ -1804,14 +1817,15 @@ static bool parse_chanmix_pan_law(sauParser *restrict o,
 		uint8_t *restrict val) {
 	uint8_t pan_law, c;
 	switch ((c = sauScanner_get_suffc(o->sc))) {
-	case 'l': pan_law = SAU_PAN_LIN;  break;
-	case 'f': pan_law = SAU_PAN_FULL; break;
-	default:
+	break; case 'a': pan_law = SAU_PAN_ADD;
+	break; case 'f': pan_law = SAU_PAN_FULL;
+	break; case 'l': pan_law = SAU_PAN_LIN;
+	break; default:
 		if (!c)
 			return false;
 		sauScanner_warning(o->sc, NULL,
 "unknown pan law; valid are:\n"
-"\t'f' (full, -0 dB), 'l' (linear, -6 dB)");
+"\t'a' (additive, -6 dB), 'f' (full, -0 dB), 'l' (linear, -6 dB)");
 		return true;
 	}
 	*val = pan_law;
@@ -2380,6 +2394,7 @@ static sauScanNumConst_f parse_numvar_namespace(sauParser *restrict o) {
 			if (!sauScanner_tryc(o->sc, '[')) break;
 			sauScanner_skipws(o->sc);
 			switch ((c = sauScanner_getc(o->sc))) {
+			break; case 'p': numconst_f = scan_ladderfx_pan_const;
 			break; case 't': numconst_f = scan_ladderfx_thr_const;
 			break; case ']': warn_invalid_subname(o->sc, 0);
 			break; default: if (c) warn_invalid_subname(o->sc, c);

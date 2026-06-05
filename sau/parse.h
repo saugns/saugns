@@ -161,8 +161,9 @@ extern const float sau_pd_v_defaults[SAU_PPD_TYPES];
 
 /** Pan law selection. Set in the \a user_flags for main SAU_PVALR_PAN line. */
 enum {
-	SAU_PAN_LIN = 1,
+	SAU_PAN_ADD = 1,
 	SAU_PAN_FULL,
+	SAU_PAN_LIN,
 	SAU_PAN_DEFAULT = SAU_PAN_LIN,
 };
 
@@ -191,20 +192,22 @@ typedef struct sauFiltPar {
 #define SAU_PDEF_FREQ 440.0
 
 /** Chip's "ladder effect" intensity. Matches Sega Genesis/Mega Drive I. */
-#define SAU_LADDERFX_CHIP 0.013671875f // 3.5/256 approx. based on MAME ymfm
+#define SAU_LADDERFX_CHIP 0.013671875f // 7/512 based on MAME ymfm
+#define SAU_LADDERFX_PAN_CHIP (-1.f/7) // muted amp 8/512 = 7/512 * (1 + 1/7)
 #define SAU_LADDERFX_THR_CHIP 0x1p-13f // match YM2612 fade-out behavior
 
 /** Parameter flags for "ladder effect". */
 enum {
 	SAU_LAFXP_AMP = 1U<<0,
 	SAU_LAFXP_THR = 1U<<1,
+	SAU_LAFXP_PAN = 1U<<2,
 };
 
 /**
  * Parameters for "ladder effect".
  */
 typedef struct sauLafxPar {
-	float amp, thr;
+	float amp, thr, pan;
 	uint8_t flags;
 } sauLafxPar;
 
