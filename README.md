@@ -1,3 +1,7 @@
+**Moved [to Codeberg](https://codeberg.org/sau/saugns).
+Will no longer be updated.**
+
+
 **saugns** is the Scriptable AUdio GeNeration System,
 the implementation of the **SAU language** (Scriptable AUdio).
 [The project website](https://sau.frama.io/) has more on them.
